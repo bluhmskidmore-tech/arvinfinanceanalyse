@@ -1,133 +1,133 @@
 {
-  "backtest_run_count": 566,
+  "backtest_run_count": 493,
   "db_path": "data\\moss.duckdb",
   "dedupe": {
     "deduped_matches_table_distinct_keys": true,
-    "deduped_rows": 5833,
+    "deduped_rows": 5518,
     "duplicate_keys": 14,
     "ema10_conflict_keys": 0,
-    "join_fanout_rows": 14,
+    "join_fanout_rows": 28,
     "keep_rule": "ema10 非空优先，其次 ema10 最小，其次加载顺序首行",
     "key_fields": [
       "signal_date",
       "stock_code",
       "signal_kind"
     ],
-    "loaded_rows": 5847,
-    "max_multiplicity": 2,
-    "removed_rows": 14,
+    "loaded_rows": 5560,
+    "max_multiplicity": 4,
+    "removed_rows": 42,
     "removed_rows_by_kind": {
-      "hybrid_fusion": 5,
-      "mean_reversion": 4,
-      "stock_candidate": 5
+      "hybrid_fusion": 15,
+      "mean_reversion": 12,
+      "stock_candidate": 15
     },
-    "table_distinct_keys": 5833,
-    "table_duplicate_rows": 0,
-    "table_rows_with_entry_date": 5833
+    "table_distinct_keys": 5518,
+    "table_duplicate_rows": 14,
+    "table_rows_with_entry_date": 5532
   },
   "disclosure": {
     "adjusted_return_missing_block": {
-      "max_exit_date": "2026-08-07",
-      "max_signal_date": "2026-07-10",
+      "max_exit_date": "2026-06-26",
+      "max_signal_date": "2026-05-28",
       "min_signal_date": "2024-08-30",
       "recent_block_min_signal_date": "2026-05-25",
-      "recent_block_rows": 1584,
-      "rows": 2077
+      "recent_block_rows": 249,
+      "rows": 743
     },
     "adjustment_factor_coverage": {
       "dense_coverage_end": "2026-06-22",
       "first_uncovered_target_date": "2024-11-14",
-      "last_uncovered_target_date": "2026-08-07",
+      "last_uncovered_target_date": "2026-06-26",
       "max_factor_trade_date": "2026-07-21",
-      "rows_after_dense_coverage_end": 1584,
-      "rows_with_uncovered_target": 1902,
+      "rows_after_dense_coverage_end": 249,
+      "rows_with_uncovered_target": 567,
       "status": "ready",
-      "uncovered_target_date_count": 69
+      "uncovered_target_date_count": 51
     },
     "by_kind": {
       "factor_screen": {
-        "adjusted_return_missing_coalesced": 660,
-        "entry_blocked": 0,
+        "adjusted_return_missing_coalesced": 119,
+        "entry_blocked": 124,
         "exit_date_without_return": 0,
         "max_signal_date": "2026-07-24",
-        "max_usable_signal_date": "2026-07-10",
+        "max_usable_signal_date": "2026-05-28",
         "min_signal_date": "2026-04-30",
-        "no_entry_date": 0,
-        "outcome_no_exit_date": 60,
+        "no_entry_date": 120,
+        "outcome_no_exit_date": 604,
         "total_rows": 1131,
-        "usable_rows": 1071
+        "usable_rows": 527
       },
       "fresh_trend_watchlist": {
-        "adjusted_return_missing_coalesced": 400,
-        "entry_blocked": 0,
+        "adjusted_return_missing_coalesced": 80,
+        "entry_blocked": 35,
         "exit_date_without_return": 0,
         "max_signal_date": "2026-07-24",
-        "max_usable_signal_date": "2026-07-08",
+        "max_usable_signal_date": "2026-05-28",
         "min_signal_date": "2026-03-25",
-        "no_entry_date": 0,
-        "outcome_no_exit_date": 14,
+        "no_entry_date": 34,
+        "outcome_no_exit_date": 335,
         "total_rows": 1194,
-        "usable_rows": 1180
+        "usable_rows": 859
       },
       "hybrid_fusion": {
-        "adjusted_return_missing_coalesced": 121,
-        "entry_blocked": 0,
+        "adjusted_return_missing_coalesced": 11,
+        "entry_blocked": 41,
         "exit_date_without_return": 0,
         "max_signal_date": "2026-07-24",
-        "max_usable_signal_date": "2026-07-10",
+        "max_usable_signal_date": "2026-05-25",
         "min_signal_date": "2026-03-18",
-        "no_entry_date": 0,
-        "outcome_no_exit_date": 20,
-        "total_rows": 248,
-        "usable_rows": 228
+        "no_entry_date": 40,
+        "outcome_no_exit_date": 131,
+        "total_rows": 253,
+        "usable_rows": 122
       },
       "mean_reversion": {
-        "adjusted_return_missing_coalesced": 133,
-        "entry_blocked": 7,
+        "adjusted_return_missing_coalesced": 108,
+        "entry_blocked": 45,
         "exit_date_without_return": 0,
         "max_signal_date": "2026-07-24",
-        "max_usable_signal_date": "2026-07-08",
+        "max_usable_signal_date": "2026-04-13",
         "min_signal_date": "2024-09-24",
-        "no_entry_date": 0,
-        "outcome_no_exit_date": 27,
-        "total_rows": 629,
-        "usable_rows": 602
+        "no_entry_date": 38,
+        "outcome_no_exit_date": 59,
+        "total_rows": 640,
+        "usable_rows": 581
       },
       "stock_candidate": {
-        "adjusted_return_missing_coalesced": 224,
+        "adjusted_return_missing_coalesced": 222,
         "entry_blocked": 40,
         "exit_date_without_return": 0,
         "max_signal_date": "2026-06-15",
-        "max_usable_signal_date": "2026-06-15",
+        "max_usable_signal_date": "2026-05-25",
         "min_signal_date": "2024-09-24",
         "no_entry_date": 0,
-        "outcome_no_exit_date": 41,
-        "total_rows": 811,
-        "usable_rows": 770
+        "outcome_no_exit_date": 43,
+        "total_rows": 816,
+        "usable_rows": 773
       },
       "theme_breakout": {
-        "adjusted_return_missing_coalesced": 209,
-        "entry_blocked": 10,
+        "adjusted_return_missing_coalesced": 173,
+        "entry_blocked": 19,
         "exit_date_without_return": 0,
         "max_signal_date": "2026-07-10",
-        "max_usable_signal_date": "2026-07-10",
+        "max_usable_signal_date": "2026-05-25",
         "min_signal_date": "2024-08-30",
-        "no_entry_date": 0,
-        "outcome_no_exit_date": 10,
+        "no_entry_date": 9,
+        "outcome_no_exit_date": 46,
         "total_rows": 569,
-        "usable_rows": 559
+        "usable_rows": 523
       },
       "uptrend_momentum": {
-        "adjusted_return_missing_coalesced": 330,
-        "entry_blocked": 0,
+        "adjusted_return_missing_coalesced": 30,
+        "entry_blocked": 83,
         "exit_date_without_return": 0,
         "max_signal_date": "2026-07-24",
-        "max_usable_signal_date": "2026-07-08",
+        "max_usable_signal_date": "2026-05-25",
         "min_signal_date": "2026-03-25",
-        "no_entry_date": 0,
-        "outcome_no_exit_date": 51,
+        "no_entry_date": 81,
+        "outcome_no_exit_date": 353,
         "total_rows": 1251,
-        "usable_rows": 1200
+        "usable_rows": 898
       }
     },
     "exit_date_without_return_block": {
@@ -162,17 +162,16 @@
     "no_exit_date_block": {
       "max_signal_date": "2026-07-24",
       "min_signal_date": "2024-09-27",
-      "rows": 223
+      "rows": 1571
     }
   },
   "engine_version": "pbt_v2_path_mode",
-  "execution_row_count": 5833,
-  "generated_at": "2026-08-13 09:44:18+0800",
+  "execution_row_count": 5518,
+  "generated_at": "2026-08-12 15:11:47+0800",
   "issues": [
-    "226 rows lacked signal-day adjustment factors; signal_high/observation signal_close are set to null for adjusted-basis variants.",
-    "执行历史加载行 5847 行去重为 5833 行（涉及 14 个 (signal_date, stock_code, signal_kind) 键）：ema10 join 扇出 14 行 + 表内完全重复 0 行；walk-forward 编排侧按键去重（保留 ema10 非空且最小者），不改共享加载器。",
-    "Daily exposure source counts: missing=238, replayed=467",
-    "238 dates lacked persisted or replayed gate exposure; portfolio uses state fallback for those dates."
+    "执行历史加载行 5560 行去重为 5518 行（涉及 14 个 (signal_date, stock_code, signal_kind) 键）：ema10 join 扇出 28 行 + 表内完全重复 14 行；walk-forward 编排侧按键去重（保留 ema10 非空且最小者），不改共享加载器。",
+    "Daily exposure source counts: missing=226, replayed=437",
+    "226 dates lacked persisted or replayed gate exposure; portfolio uses state fallback for those dates."
   ],
   "mode": "path",
   "schedules": [
@@ -198,17 +197,17 @@
           },
           "first_signal_date": "2026-04-30",
           "in_sample": {
-            "buy_trades": 15,
-            "cagr": -0.280956,
-            "cumulative_return": -0.080605,
-            "daily_sharpe": -1.571944,
-            "excess_vs_gate": -0.030715,
-            "gate_return": -0.04989,
-            "input_rows": 1071,
-            "max_drawdown": 0.128046,
+            "buy_trades": 5,
+            "cagr": -0.129419,
+            "cumulative_return": -0.019179,
+            "daily_sharpe": -0.425677,
+            "excess_vs_gate": -0.015551,
+            "gate_return": -0.003628,
+            "input_rows": 527,
+            "max_drawdown": 0.070241,
             "skipped_missing_outcome": 0
           },
-          "last_signal_date": "2026-07-10",
+          "last_signal_date": "2026-05-28",
           "oos_annualized_return": null,
           "oos_chain_excess": null,
           "oos_chain_return": null,
@@ -220,7 +219,7 @@
             "positive_windows": 0,
             "zero_windows": 0
           },
-          "total_usable_rows": 1071,
+          "total_usable_rows": 527,
           "verdict": "insufficient_windows",
           "verdict_reason": "验证窗仅 0 个 (< 3)，自由度不足，不下结论",
           "windows": [
@@ -316,17 +315,17 @@
           },
           "first_signal_date": "2026-03-25",
           "in_sample": {
-            "buy_trades": 20,
-            "cagr": 0.47073,
-            "cumulative_return": 0.149707,
-            "daily_sharpe": 1.130222,
-            "excess_vs_gate": 0.161811,
-            "gate_return": -0.012104,
-            "input_rows": 1180,
-            "max_drawdown": 0.260391,
+            "buy_trades": 15,
+            "cagr": 2.659648,
+            "cumulative_return": 0.386812,
+            "daily_sharpe": 3.70044,
+            "excess_vs_gate": 0.348994,
+            "gate_return": 0.037818,
+            "input_rows": 859,
+            "max_drawdown": 0.119138,
             "skipped_missing_outcome": 0
           },
-          "last_signal_date": "2026-07-08",
+          "last_signal_date": "2026-05-28",
           "oos_annualized_return": null,
           "oos_chain_excess": null,
           "oos_chain_return": null,
@@ -338,7 +337,7 @@
             "positive_windows": 0,
             "zero_windows": 0
           },
-          "total_usable_rows": 1180,
+          "total_usable_rows": 859,
           "verdict": "insufficient_windows",
           "verdict_reason": "验证窗仅 0 个 (< 3)，自由度不足，不下结论",
           "windows": [
@@ -434,17 +433,17 @@
           },
           "first_signal_date": "2026-03-18",
           "in_sample": {
-            "buy_trades": 20,
-            "cagr": 0.002396,
-            "cumulative_return": 0.000925,
-            "daily_sharpe": 0.165232,
-            "excess_vs_gate": 0.014795,
-            "gate_return": -0.01387,
-            "input_rows": 228,
-            "max_drawdown": 0.215462,
+            "buy_trades": 15,
+            "cagr": 0.429623,
+            "cumulative_return": 0.098564,
+            "daily_sharpe": 1.446491,
+            "excess_vs_gate": 0.058618,
+            "gate_return": 0.039946,
+            "input_rows": 117,
+            "max_drawdown": 0.101643,
             "skipped_missing_outcome": 0
           },
-          "last_signal_date": "2026-07-10",
+          "last_signal_date": "2026-05-25",
           "oos_annualized_return": null,
           "oos_chain_excess": null,
           "oos_chain_return": null,
@@ -456,7 +455,7 @@
             "positive_windows": 0,
             "zero_windows": 0
           },
-          "total_usable_rows": 228,
+          "total_usable_rows": 117,
           "verdict": "insufficient_windows",
           "verdict_reason": "验证窗仅 0 个 (< 3)，自由度不足，不下结论",
           "windows": [
@@ -534,13 +533,13 @@
         },
         "mean_reversion": {
           "decay_cagr": {
-            "delta": -0.078428,
-            "ratio": -4.935241,
+            "delta": -0.114578,
+            "ratio": -1.32109,
             "status": "ready"
           },
           "decay_cumulative": {
-            "delta": -0.068447,
-            "ratio": -1.768909,
+            "delta": -0.125584,
+            "ratio": -0.534193,
             "status": "ready"
           },
           "excess_sign_consistency": {
@@ -552,17 +551,17 @@
           },
           "first_signal_date": "2024-09-24",
           "in_sample": {
-            "buy_trades": 60,
-            "cagr": 0.013214,
-            "cumulative_return": 0.02472,
-            "daily_sharpe": 0.158267,
-            "excess_vs_gate": -0.200737,
-            "gate_return": 0.225457,
-            "input_rows": 602,
-            "max_drawdown": 0.208383,
+            "buy_trades": 50,
+            "cagr": 0.049364,
+            "cumulative_return": 0.081857,
+            "daily_sharpe": 0.343553,
+            "excess_vs_gate": -0.219752,
+            "gate_return": 0.301609,
+            "input_rows": 577,
+            "max_drawdown": 0.190479,
             "skipped_missing_outcome": 0
           },
-          "last_signal_date": "2026-07-08",
+          "last_signal_date": "2026-04-13",
           "oos_annualized_return": -0.065214,
           "oos_chain_excess": -0.116972,
           "oos_chain_return": -0.043727,
@@ -574,7 +573,7 @@
             "positive_windows": 2,
             "zero_windows": 0
           },
-          "total_usable_rows": 602,
+          "total_usable_rows": 577,
           "verdict": "oos_weakened",
           "verdict_reason": "1/4 窗正超额，链式超额 -11.70%",
           "windows": [
@@ -652,12 +651,12 @@
         },
         "stock_candidate": {
           "decay_cagr": {
-            "delta": -0.312552,
+            "delta": -0.307243,
             "ratio": null,
             "status": "is_non_positive"
           },
           "decay_cumulative": {
-            "delta": -0.246451,
+            "delta": -0.233271,
             "ratio": null,
             "status": "is_non_positive"
           },
@@ -670,20 +669,20 @@
           },
           "first_signal_date": "2024-09-24",
           "in_sample": {
-            "buy_trades": 82,
-            "cagr": -0.023347,
-            "cumulative_return": -0.041631,
-            "daily_sharpe": 0.079449,
-            "excess_vs_gate": -0.311338,
-            "gate_return": 0.269707,
-            "input_rows": 770,
+            "buy_trades": 80,
+            "cagr": -0.035335,
+            "cumulative_return": -0.06076,
+            "daily_sharpe": 0.036704,
+            "excess_vs_gate": -0.357735,
+            "gate_return": 0.296975,
+            "input_rows": 768,
             "max_drawdown": 0.537004,
             "skipped_missing_outcome": 0
           },
-          "last_signal_date": "2026-06-15",
-          "oos_annualized_return": -0.335899,
-          "oos_chain_excess": -0.545777,
-          "oos_chain_return": -0.288082,
+          "last_signal_date": "2026-05-25",
+          "oos_annualized_return": -0.342578,
+          "oos_chain_excess": -0.551725,
+          "oos_chain_return": -0.294031,
           "oos_window_count": 5,
           "return_sign_consistency": {
             "negative_windows": 5,
@@ -692,9 +691,9 @@
             "positive_windows": 0,
             "zero_windows": 0
           },
-          "total_usable_rows": 770,
+          "total_usable_rows": 768,
           "verdict": "oos_weakened",
-          "verdict_reason": "1/5 窗正超额，链式超额 -54.58%",
+          "verdict_reason": "1/5 窗正超额，链式超额 -55.17%",
           "windows": [
             {
               "buy_trades": 10,
@@ -754,13 +753,13 @@
             },
             {
               "buy_trades": 10,
-              "cagr": -0.490615,
-              "cumulative_return": -0.108261,
-              "daily_sharpe": -2.029565,
-              "excess_vs_gate": -0.095022,
+              "cagr": -0.515168,
+              "cumulative_return": -0.115712,
+              "daily_sharpe": -2.301361,
+              "excess_vs_gate": -0.102473,
               "gate_return": -0.013239,
-              "input_rows": 77,
-              "max_drawdown": 0.142461,
+              "input_rows": 78,
+              "max_drawdown": 0.14184,
               "skipped_missing_outcome": 0,
               "valid_end": "2025-11-30",
               "valid_start": "2025-10-01",
@@ -770,13 +769,13 @@
         },
         "theme_breakout": {
           "decay_cagr": {
-            "delta": 1.953212,
-            "ratio": 4.913759,
+            "delta": 1.783256,
+            "ratio": 3.665479,
             "status": "ready"
           },
           "decay_cumulative": {
-            "delta": 0.613745,
-            "ratio": 1.518668,
+            "delta": 0.275612,
+            "ratio": 1.181152,
             "status": "ready"
           },
           "excess_sign_consistency": {
@@ -788,17 +787,17 @@
           },
           "first_signal_date": "2024-08-30",
           "in_sample": {
-            "buy_trades": 84,
-            "cagr": 0.499063,
-            "cumulative_return": 1.183311,
-            "daily_sharpe": 1.322421,
-            "excess_vs_gate": 0.934199,
-            "gate_return": 0.249112,
-            "input_rows": 559,
-            "max_drawdown": 0.262649,
+            "buy_trades": 79,
+            "cagr": 0.669019,
+            "cumulative_return": 1.521444,
+            "daily_sharpe": 1.615713,
+            "excess_vs_gate": 1.204566,
+            "gate_return": 0.316878,
+            "input_rows": 523,
+            "max_drawdown": 0.185275,
             "skipped_missing_outcome": 0
           },
-          "last_signal_date": "2026-07-10",
+          "last_signal_date": "2026-05-25",
           "oos_annualized_return": 2.452275,
           "oos_chain_excess": 1.537792,
           "oos_chain_return": 1.797056,
@@ -810,7 +809,7 @@
             "positive_windows": 5,
             "zero_windows": 0
           },
-          "total_usable_rows": 559,
+          "total_usable_rows": 523,
           "verdict": "oos_supported",
           "verdict_reason": "5/5 窗正超额且链式超额 +153.78%",
           "windows": [
@@ -906,17 +905,17 @@
           },
           "first_signal_date": "2026-03-25",
           "in_sample": {
-            "buy_trades": 20,
-            "cagr": 0.217556,
-            "cumulative_return": 0.073783,
-            "daily_sharpe": 0.76171,
-            "excess_vs_gate": 0.085887,
-            "gate_return": -0.012104,
-            "input_rows": 1200,
-            "max_drawdown": 0.254422,
+            "buy_trades": 10,
+            "cagr": 0.790797,
+            "cumulative_return": 0.152661,
+            "daily_sharpe": 3.043,
+            "excess_vs_gate": 0.106791,
+            "gate_return": 0.04587,
+            "input_rows": 898,
+            "max_drawdown": 0.056597,
             "skipped_missing_outcome": 0
           },
-          "last_signal_date": "2026-07-08",
+          "last_signal_date": "2026-05-25",
           "oos_annualized_return": null,
           "oos_chain_excess": null,
           "oos_chain_return": null,
@@ -928,7 +927,7 @@
             "positive_windows": 0,
             "zero_windows": 0
           },
-          "total_usable_rows": 1200,
+          "total_usable_rows": 898,
           "verdict": "insufficient_windows",
           "verdict_reason": "验证窗仅 0 个 (< 3)，自由度不足，不下结论",
           "windows": [
@@ -1049,47 +1048,47 @@
           ],
           "in_sample_by_param": {
             "0.0025": {
-              "buy_trades": 15,
-              "cagr": -0.058506,
-              "cumulative_return": -0.015243,
-              "daily_sharpe": -1.58101,
-              "excess_vs_gate": 0.034647,
-              "gate_return": -0.04989,
-              "input_rows": 1071,
-              "max_drawdown": 0.024839,
+              "buy_trades": 5,
+              "cagr": -0.02125,
+              "cumulative_return": -0.002997,
+              "daily_sharpe": -0.507548,
+              "excess_vs_gate": 0.000631,
+              "gate_return": -0.003628,
+              "input_rows": 527,
+              "max_drawdown": 0.011321,
               "skipped_missing_outcome": 0
             },
             "0.005": {
-              "buy_trades": 15,
-              "cagr": -0.114372,
-              "cumulative_return": -0.030473,
-              "daily_sharpe": -1.576019,
-              "excess_vs_gate": 0.019417,
-              "gate_return": -0.04989,
-              "input_rows": 1071,
-              "max_drawdown": 0.049294,
+              "buy_trades": 5,
+              "cagr": -0.042111,
+              "cumulative_return": -0.005993,
+              "daily_sharpe": -0.492385,
+              "excess_vs_gate": -0.002365,
+              "gate_return": -0.003628,
+              "input_rows": 527,
+              "max_drawdown": 0.022511,
               "skipped_missing_outcome": 0
             },
             "0.0075": {
-              "buy_trades": 15,
-              "cagr": -0.167681,
-              "cumulative_return": -0.045688,
-              "daily_sharpe": -1.571127,
-              "excess_vs_gate": 0.004202,
-              "gate_return": -0.04989,
-              "input_rows": 1071,
-              "max_drawdown": 0.073372,
+              "buy_trades": 5,
+              "cagr": -0.062588,
+              "cumulative_return": -0.00899,
+              "daily_sharpe": -0.477224,
+              "excess_vs_gate": -0.005362,
+              "gate_return": -0.003628,
+              "input_rows": 527,
+              "max_drawdown": 0.033571,
               "skipped_missing_outcome": 0
             },
             "0.01": {
-              "buy_trades": 15,
-              "cagr": -0.19479,
-              "cumulative_return": -0.053706,
-              "daily_sharpe": -1.359342,
-              "excess_vs_gate": -0.003816,
-              "gate_return": -0.04989,
-              "input_rows": 1071,
-              "max_drawdown": 0.097079,
+              "buy_trades": 5,
+              "cagr": -0.082687,
+              "cumulative_return": -0.011987,
+              "daily_sharpe": -0.462064,
+              "excess_vs_gate": -0.008359,
+              "gate_return": -0.003628,
+              "input_rows": 527,
+              "max_drawdown": 0.044505,
               "skipped_missing_outcome": 0
             }
           },
@@ -1120,14 +1119,14 @@
             "verdict": "insufficient_windows"
           },
           "policy_in_sample": {
-            "buy_trades": 15,
-            "cagr": -0.114372,
-            "cumulative_return": -0.030473,
-            "daily_sharpe": -1.576019,
-            "excess_vs_gate": 0.019417,
-            "gate_return": -0.04989,
-            "input_rows": 1071,
-            "max_drawdown": 0.049294,
+            "buy_trades": 5,
+            "cagr": -0.042111,
+            "cumulative_return": -0.005993,
+            "daily_sharpe": -0.492385,
+            "excess_vs_gate": -0.002365,
+            "gate_return": -0.003628,
+            "input_rows": 527,
+            "max_drawdown": 0.022511,
             "skipped_missing_outcome": 0
           },
           "policy_param": 0.005,
@@ -1277,47 +1276,47 @@
           ],
           "in_sample_by_param": {
             "0.0025": {
-              "buy_trades": 20,
-              "cagr": 0.13645,
-              "cumulative_return": 0.047344,
-              "daily_sharpe": 1.146486,
-              "excess_vs_gate": 0.059448,
-              "gate_return": -0.012104,
-              "input_rows": 1180,
-              "max_drawdown": 0.084163,
+              "buy_trades": 15,
+              "cagr": 0.493865,
+              "cumulative_return": 0.106461,
+              "daily_sharpe": 4.118094,
+              "excess_vs_gate": 0.068643,
+              "gate_return": 0.037818,
+              "input_rows": 859,
+              "max_drawdown": 0.033333,
               "skipped_missing_outcome": 0
             },
             "0.005": {
-              "buy_trades": 20,
-              "cagr": 0.237888,
-              "cumulative_return": 0.080233,
-              "daily_sharpe": 1.090525,
-              "excess_vs_gate": 0.092337,
-              "gate_return": -0.012104,
-              "input_rows": 1180,
-              "max_drawdown": 0.165742,
+              "buy_trades": 15,
+              "cagr": 1.126635,
+              "cumulative_return": 0.209474,
+              "daily_sharpe": 4.189817,
+              "excess_vs_gate": 0.171656,
+              "gate_return": 0.037818,
+              "input_rows": 859,
+              "max_drawdown": 0.064269,
               "skipped_missing_outcome": 0
             },
             "0.0075": {
-              "buy_trades": 20,
-              "cagr": 0.254086,
-              "cumulative_return": 0.085324,
-              "daily_sharpe": 0.833364,
-              "excess_vs_gate": 0.097428,
-              "gate_return": -0.012104,
-              "input_rows": 1180,
-              "max_drawdown": 0.244854,
+              "buy_trades": 15,
+              "cagr": 1.767437,
+              "cumulative_return": 0.292492,
+              "daily_sharpe": 3.842334,
+              "excess_vs_gate": 0.254674,
+              "gate_return": 0.037818,
+              "input_rows": 859,
+              "max_drawdown": 0.093323,
               "skipped_missing_outcome": 0
             },
             "0.01": {
-              "buy_trades": 19,
-              "cagr": 1.176861,
-              "cumulative_return": 0.324873,
-              "daily_sharpe": 2.049805,
-              "excess_vs_gate": 0.336977,
-              "gate_return": -0.012104,
-              "input_rows": 1180,
-              "max_drawdown": 0.256046,
+              "buy_trades": 15,
+              "cagr": 5.987233,
+              "cumulative_return": 0.632342,
+              "daily_sharpe": 5.145548,
+              "excess_vs_gate": 0.594524,
+              "gate_return": 0.037818,
+              "input_rows": 859,
+              "max_drawdown": 0.137734,
               "skipped_missing_outcome": 0
             }
           },
@@ -1348,14 +1347,14 @@
             "verdict": "insufficient_windows"
           },
           "policy_in_sample": {
-            "buy_trades": 20,
-            "cagr": 0.237888,
-            "cumulative_return": 0.080233,
-            "daily_sharpe": 1.090525,
-            "excess_vs_gate": 0.092337,
-            "gate_return": -0.012104,
-            "input_rows": 1180,
-            "max_drawdown": 0.165742,
+            "buy_trades": 15,
+            "cagr": 1.126635,
+            "cumulative_return": 0.209474,
+            "daily_sharpe": 4.189817,
+            "excess_vs_gate": 0.171656,
+            "gate_return": 0.037818,
+            "input_rows": 859,
+            "max_drawdown": 0.064269,
             "skipped_missing_outcome": 0
           },
           "policy_param": 0.005,
@@ -1505,51 +1504,51 @@
           ],
           "in_sample_by_param": {
             "0.0025": {
-              "buy_trades": 20,
-              "cagr": -0.020993,
-              "cumulative_return": -0.008162,
-              "daily_sharpe": -0.215447,
-              "excess_vs_gate": 0.005708,
-              "gate_return": -0.01387,
-              "input_rows": 228,
-              "max_drawdown": 0.068449,
+              "buy_trades": 15,
+              "cagr": 0.100639,
+              "cumulative_return": 0.025541,
+              "daily_sharpe": 1.608835,
+              "excess_vs_gate": -0.014405,
+              "gate_return": 0.039946,
+              "input_rows": 117,
+              "max_drawdown": 0.022985,
               "skipped_missing_outcome": 0
             },
             "0.005": {
-              "buy_trades": 20,
-              "cagr": -0.049524,
-              "cumulative_return": -0.01943,
-              "daily_sharpe": -0.225058,
-              "excess_vs_gate": -0.00556,
-              "gate_return": -0.01387,
-              "input_rows": 228,
-              "max_drawdown": 0.135874,
+              "buy_trades": 15,
+              "cagr": 0.209636,
+              "cumulative_return": 0.051331,
+              "daily_sharpe": 1.629651,
+              "excess_vs_gate": 0.011385,
+              "gate_return": 0.039946,
+              "input_rows": 117,
+              "max_drawdown": 0.045365,
               "skipped_missing_outcome": 0
             },
             "0.0075": {
-              "buy_trades": 20,
-              "cagr": -0.08554,
-              "cumulative_return": -0.033954,
-              "daily_sharpe": -0.233213,
-              "excess_vs_gate": -0.020084,
-              "gate_return": -0.01387,
-              "input_rows": 228,
-              "max_drawdown": 0.202296,
+              "buy_trades": 15,
+              "cagr": 0.327548,
+              "cumulative_return": 0.077368,
+              "daily_sharpe": 1.650287,
+              "excess_vs_gate": 0.037422,
+              "gate_return": 0.039946,
+              "input_rows": 117,
+              "max_drawdown": 0.067179,
               "skipped_missing_outcome": 0
             },
             "0.01": {
-              "buy_trades": 20,
-              "cagr": -0.122106,
-              "cumulative_return": -0.049063,
-              "daily_sharpe": -0.229376,
-              "excess_vs_gate": -0.035193,
-              "gate_return": -0.01387,
-              "input_rows": 228,
-              "max_drawdown": 0.264337,
+              "buy_trades": 15,
+              "cagr": 0.454961,
+              "cumulative_return": 0.103652,
+              "daily_sharpe": 1.670763,
+              "excess_vs_gate": 0.063706,
+              "gate_return": 0.039946,
+              "input_rows": 117,
+              "max_drawdown": 0.088465,
               "skipped_missing_outcome": 0
             }
           },
-          "in_sample_selection": 0.0025,
+          "in_sample_selection": 0.01,
           "oracle": {
             "decay_cagr": {
               "delta": null,
@@ -1576,14 +1575,14 @@
             "verdict": "insufficient_windows"
           },
           "policy_in_sample": {
-            "buy_trades": 20,
-            "cagr": -0.049524,
-            "cumulative_return": -0.01943,
-            "daily_sharpe": -0.225058,
-            "excess_vs_gate": -0.00556,
-            "gate_return": -0.01387,
-            "input_rows": 228,
-            "max_drawdown": 0.135874,
+            "buy_trades": 15,
+            "cagr": 0.209636,
+            "cumulative_return": 0.051331,
+            "daily_sharpe": 1.629651,
+            "excess_vs_gate": 0.011385,
+            "gate_return": 0.039946,
+            "input_rows": 117,
+            "max_drawdown": 0.045365,
             "skipped_missing_outcome": 0
           },
           "policy_param": 0.005,
@@ -1702,13 +1701,13 @@
           },
           "fixed_policy": {
             "decay_cagr": {
-              "delta": -0.036239,
-              "ratio": 0.319215,
+              "delta": -0.065796,
+              "ratio": 0.205249,
               "status": "ready"
             },
             "decay_cumulative": {
-              "delta": -0.090053,
-              "ratio": 0.110913,
+              "delta": -0.127455,
+              "ratio": 0.081001,
               "status": "ready"
             },
             "excess_sign_consistency": {
@@ -1733,46 +1732,46 @@
           ],
           "in_sample_by_param": {
             "0.0025": {
-              "buy_trades": 60,
-              "cagr": 0.027479,
-              "cumulative_return": 0.051722,
-              "daily_sharpe": 0.564013,
-              "excess_vs_gate": -0.173735,
-              "gate_return": 0.225457,
-              "input_rows": 602,
+              "buy_trades": 50,
+              "cagr": 0.041834,
+              "cumulative_return": 0.06921,
+              "daily_sharpe": 0.843146,
+              "excess_vs_gate": -0.232399,
+              "gate_return": 0.301609,
+              "input_rows": 577,
               "max_drawdown": 0.048067,
               "skipped_missing_outcome": 0
             },
             "0.005": {
-              "buy_trades": 60,
-              "cagr": 0.053231,
-              "cumulative_return": 0.101287,
-              "daily_sharpe": 0.570699,
-              "excess_vs_gate": -0.12417,
-              "gate_return": 0.225457,
-              "input_rows": 602,
+              "buy_trades": 50,
+              "cagr": 0.082788,
+              "cumulative_return": 0.138689,
+              "daily_sharpe": 0.854058,
+              "excess_vs_gate": -0.16292,
+              "gate_return": 0.301609,
+              "input_rows": 577,
               "max_drawdown": 0.093388,
               "skipped_missing_outcome": 0
             },
             "0.0075": {
-              "buy_trades": 60,
-              "cagr": 0.07677,
-              "cumulative_return": 0.147512,
-              "daily_sharpe": 0.577863,
-              "excess_vs_gate": -0.077945,
-              "gate_return": 0.225457,
-              "input_rows": 602,
+              "buy_trades": 50,
+              "cagr": 0.122254,
+              "cumulative_return": 0.207237,
+              "daily_sharpe": 0.868509,
+              "excess_vs_gate": -0.094372,
+              "gate_return": 0.301609,
+              "input_rows": 577,
               "max_drawdown": 0.131864,
               "skipped_missing_outcome": 0
             },
             "0.01": {
-              "buy_trades": 58,
-              "cagr": 0.168463,
-              "cumulative_return": 0.335925,
-              "daily_sharpe": 0.951419,
-              "excess_vs_gate": 0.110468,
-              "gate_return": 0.225457,
-              "input_rows": 602,
+              "buy_trades": 49,
+              "cagr": 0.196757,
+              "cumulative_return": 0.340831,
+              "daily_sharpe": 1.082195,
+              "excess_vs_gate": 0.039222,
+              "gate_return": 0.301609,
+              "input_rows": 577,
               "max_drawdown": 0.117615,
               "skipped_missing_outcome": 0
             }
@@ -1780,13 +1779,13 @@
           "in_sample_selection": 0.01,
           "oracle": {
             "decay_cagr": {
-              "delta": 0.010953,
-              "ratio": 1.205765,
+              "delta": -0.018604,
+              "ratio": 0.775282,
               "status": "ready"
             },
             "decay_cumulative": {
-              "delta": -0.05918,
-              "ratio": 0.415724,
+              "delta": -0.096582,
+              "ratio": 0.30361,
               "status": "ready"
             },
             "excess_sign_consistency": {
@@ -1804,26 +1803,26 @@
             "verdict": "oos_weakened"
           },
           "policy_in_sample": {
-            "buy_trades": 60,
-            "cagr": 0.053231,
-            "cumulative_return": 0.101287,
-            "daily_sharpe": 0.570699,
-            "excess_vs_gate": -0.12417,
-            "gate_return": 0.225457,
-            "input_rows": 602,
+            "buy_trades": 50,
+            "cagr": 0.082788,
+            "cumulative_return": 0.138689,
+            "daily_sharpe": 0.854058,
+            "excess_vs_gate": -0.16292,
+            "gate_return": 0.301609,
+            "input_rows": 577,
             "max_drawdown": 0.093388,
             "skipped_missing_outcome": 0
           },
           "policy_param": 0.005,
           "selected": {
             "decay_cagr": {
-              "delta": 0.020367,
-              "ratio": 1.382612,
+              "delta": -0.00919,
+              "ratio": 0.888992,
               "status": "ready"
             },
             "decay_cumulative": {
-              "delta": -0.053077,
-              "ratio": 0.475977,
+              "delta": -0.090479,
+              "ratio": 0.347614,
               "status": "ready"
             },
             "excess_sign_consistency": {
@@ -1930,13 +1929,13 @@
           },
           "fixed_policy": {
             "decay_cagr": {
-              "delta": -0.116001,
-              "ratio": -0.383215,
+              "delta": -0.116684,
+              "ratio": -0.381542,
               "status": "ready"
             },
             "decay_cumulative": {
-              "delta": -0.182742,
-              "ratio": -0.1715,
+              "delta": -0.178573,
+              "ratio": -0.176774,
               "status": "ready"
             },
             "excess_sign_consistency": {
@@ -1946,9 +1945,9 @@
               "positive_windows": 1,
               "zero_windows": 0
             },
-            "oos_annualized_return": -0.032138,
-            "oos_chain_excess": -0.284447,
-            "oos_chain_return": -0.026752,
+            "oos_annualized_return": -0.032225,
+            "oos_chain_excess": -0.28452,
+            "oos_chain_return": -0.026825,
             "oos_total_span_days": 303,
             "oos_window_count": 5,
             "verdict": "oos_weakened"
@@ -1961,46 +1960,46 @@
           ],
           "in_sample_by_param": {
             "0.0025": {
-              "buy_trades": 82,
-              "cagr": 0.043396,
-              "cumulative_return": 0.079466,
-              "daily_sharpe": 0.893373,
-              "excess_vs_gate": -0.190241,
-              "gate_return": 0.269707,
-              "input_rows": 770,
+              "buy_trades": 80,
+              "cagr": 0.04375,
+              "cumulative_return": 0.077467,
+              "daily_sharpe": 0.893274,
+              "excess_vs_gate": -0.219508,
+              "gate_return": 0.296975,
+              "input_rows": 768,
               "max_drawdown": 0.07324,
               "skipped_missing_outcome": 0
             },
             "0.005": {
-              "buy_trades": 82,
-              "cagr": 0.083863,
-              "cumulative_return": 0.15599,
-              "daily_sharpe": 0.883127,
-              "excess_vs_gate": -0.113717,
-              "gate_return": 0.269707,
-              "input_rows": 770,
+              "buy_trades": 80,
+              "cagr": 0.084459,
+              "cumulative_return": 0.151748,
+              "daily_sharpe": 0.882437,
+              "excess_vs_gate": -0.145227,
+              "gate_return": 0.296975,
+              "input_rows": 768,
               "max_drawdown": 0.141817,
               "skipped_missing_outcome": 0
             },
             "0.0075": {
-              "buy_trades": 82,
-              "cagr": 0.121248,
-              "cumulative_return": 0.228749,
-              "daily_sharpe": 0.872635,
-              "excess_vs_gate": -0.040958,
-              "gate_return": 0.269707,
-              "input_rows": 770,
+              "buy_trades": 80,
+              "cagr": 0.121965,
+              "cumulative_return": 0.222045,
+              "daily_sharpe": 0.871351,
+              "excess_vs_gate": -0.07493,
+              "gate_return": 0.296975,
+              "input_rows": 768,
               "max_drawdown": 0.205989,
               "skipped_missing_outcome": 0
             },
             "0.01": {
-              "buy_trades": 82,
-              "cagr": 0.11729,
-              "cumulative_return": 0.220952,
-              "daily_sharpe": 0.711588,
-              "excess_vs_gate": -0.048755,
-              "gate_return": 0.269707,
-              "input_rows": 770,
+              "buy_trades": 80,
+              "cagr": 0.116742,
+              "cumulative_return": 0.212149,
+              "daily_sharpe": 0.705519,
+              "excess_vs_gate": -0.084826,
+              "gate_return": 0.296975,
+              "input_rows": 768,
               "max_drawdown": 0.287301,
               "skipped_missing_outcome": 0
             }
@@ -2008,13 +2007,13 @@
           "in_sample_selection": 0.0025,
           "oracle": {
             "decay_cagr": {
-              "delta": -0.189378,
-              "ratio": -1.258185,
+              "delta": -0.189825,
+              "ratio": -1.247542,
               "status": "ready"
             },
             "decay_cumulative": {
-              "delta": -0.244401,
-              "ratio": -0.566775,
+              "delta": -0.240033,
+              "ratio": -0.581789,
               "status": "ready"
             },
             "excess_sign_consistency": {
@@ -2024,34 +2023,34 @@
               "positive_windows": 1,
               "zero_windows": 0
             },
-            "oos_annualized_return": -0.105515,
-            "oos_chain_excess": -0.346106,
-            "oos_chain_return": -0.088411,
+            "oos_annualized_return": -0.105366,
+            "oos_chain_excess": -0.34598,
+            "oos_chain_return": -0.088285,
             "oos_total_span_days": 303,
             "oos_window_count": 5,
             "verdict": "oos_weakened"
           },
           "policy_in_sample": {
-            "buy_trades": 82,
-            "cagr": 0.083863,
-            "cumulative_return": 0.15599,
-            "daily_sharpe": 0.883127,
-            "excess_vs_gate": -0.113717,
-            "gate_return": 0.269707,
-            "input_rows": 770,
+            "buy_trades": 80,
+            "cagr": 0.084459,
+            "cumulative_return": 0.151748,
+            "daily_sharpe": 0.882437,
+            "excess_vs_gate": -0.145227,
+            "gate_return": 0.296975,
+            "input_rows": 768,
             "max_drawdown": 0.141817,
             "skipped_missing_outcome": 0
           },
           "policy_param": 0.005,
           "selected": {
             "decay_cagr": {
-              "delta": -0.085422,
-              "ratio": -0.018593,
+              "delta": -0.085852,
+              "ratio": -0.016493,
               "status": "ready"
             },
             "decay_cumulative": {
-              "delta": -0.157285,
-              "ratio": -0.008299,
+              "delta": -0.152905,
+              "ratio": -0.007621,
               "status": "ready"
             },
             "excess_sign_consistency": {
@@ -2061,9 +2060,9 @@
               "positive_windows": 1,
               "zero_windows": 0
             },
-            "oos_annualized_return": -0.001559,
-            "oos_chain_excess": -0.258989,
-            "oos_chain_return": -0.001295,
+            "oos_annualized_return": -0.001393,
+            "oos_chain_excess": -0.258851,
+            "oos_chain_return": -0.001157,
             "oos_total_span_days": 303,
             "oos_window_count": 5,
             "verdict": "oos_weakened"
@@ -2141,7 +2140,7 @@
                 "0.0075": -1.426312,
                 "0.01": -1.384376
               },
-              "valid_rows": 77,
+              "valid_rows": 78,
               "window_id": "S1W5"
             }
           ]
@@ -2158,13 +2157,13 @@
           },
           "fixed_policy": {
             "decay_cagr": {
-              "delta": 0.479882,
-              "ratio": 3.295572,
+              "delta": 0.403261,
+              "ratio": 2.411643,
               "status": "ready"
             },
             "decay_cumulative": {
-              "delta": 0.102912,
-              "ratio": 1.232748,
+              "delta": -0.02902,
+              "ratio": 0.949451,
               "status": "ready"
             },
             "excess_sign_consistency": {
@@ -2189,60 +2188,60 @@
           ],
           "in_sample_by_param": {
             "0.0025": {
-              "buy_trades": 84,
-              "cagr": 0.103632,
-              "cumulative_return": 0.209479,
-              "daily_sharpe": 1.276223,
-              "excess_vs_gate": -0.039633,
-              "gate_return": 0.249112,
-              "input_rows": 559,
-              "max_drawdown": 0.076167,
+              "buy_trades": 79,
+              "cagr": 0.137749,
+              "cumulative_return": 0.262381,
+              "daily_sharpe": 1.673159,
+              "excess_vs_gate": -0.054497,
+              "gate_return": 0.316878,
+              "input_rows": 523,
+              "max_drawdown": 0.039352,
               "skipped_missing_outcome": 0
             },
             "0.005": {
-              "buy_trades": 84,
-              "cagr": 0.209047,
-              "cumulative_return": 0.44216,
-              "daily_sharpe": 1.279841,
-              "excess_vs_gate": 0.193048,
-              "gate_return": 0.249112,
-              "input_rows": 559,
-              "max_drawdown": 0.149684,
+              "buy_trades": 79,
+              "cagr": 0.285668,
+              "cumulative_return": 0.574092,
+              "daily_sharpe": 1.687489,
+              "excess_vs_gate": 0.257214,
+              "gate_return": 0.316878,
+              "input_rows": 523,
+              "max_drawdown": 0.078302,
               "skipped_missing_outcome": 0
             },
             "0.0075": {
-              "buy_trades": 84,
-              "cagr": 0.318022,
-              "cumulative_return": 0.703345,
-              "daily_sharpe": 1.291441,
-              "excess_vs_gate": 0.454233,
-              "gate_return": 0.249112,
-              "input_rows": 559,
-              "max_drawdown": 0.22059,
+              "buy_trades": 79,
+              "cagr": 0.446871,
+              "cumulative_return": 0.948287,
+              "daily_sharpe": 1.71106,
+              "excess_vs_gate": 0.631409,
+              "gate_return": 0.316878,
+              "input_rows": 523,
+              "max_drawdown": 0.116856,
               "skipped_missing_outcome": 0
             },
             "0.01": {
-              "buy_trades": 83,
-              "cagr": 0.42256,
-              "cumulative_return": 0.973502,
-              "daily_sharpe": 1.273345,
-              "excess_vs_gate": 0.72439,
-              "gate_return": 0.249112,
-              "input_rows": 559,
-              "max_drawdown": 0.310552,
+              "buy_trades": 78,
+              "cagr": 0.638948,
+              "cumulative_return": 1.440019,
+              "daily_sharpe": 1.755119,
+              "excess_vs_gate": 1.123141,
+              "gate_return": 0.316878,
+              "input_rows": 523,
+              "max_drawdown": 0.15502,
               "skipped_missing_outcome": 0
             }
           },
-          "in_sample_selection": 0.0075,
+          "in_sample_selection": 0.01,
           "oracle": {
             "decay_cagr": {
-              "delta": 1.369456,
-              "ratio": 7.550949,
+              "delta": 1.292835,
+              "ratio": 5.525657,
               "status": "ready"
             },
             "decay_cumulative": {
-              "delta": 0.753128,
-              "ratio": 2.703293,
+              "delta": 0.621196,
+              "ratio": 2.08205,
               "status": "ready"
             },
             "excess_sign_consistency": {
@@ -2260,26 +2259,26 @@
             "verdict": "oos_supported"
           },
           "policy_in_sample": {
-            "buy_trades": 84,
-            "cagr": 0.209047,
-            "cumulative_return": 0.44216,
-            "daily_sharpe": 1.279841,
-            "excess_vs_gate": 0.193048,
-            "gate_return": 0.249112,
-            "input_rows": 559,
-            "max_drawdown": 0.149684,
+            "buy_trades": 79,
+            "cagr": 0.285668,
+            "cumulative_return": 0.574092,
+            "daily_sharpe": 1.687489,
+            "excess_vs_gate": 0.257214,
+            "gate_return": 0.316878,
+            "input_rows": 523,
+            "max_drawdown": 0.078302,
             "skipped_missing_outcome": 0
           },
           "policy_param": 0.005,
           "selected": {
             "decay_cagr": {
-              "delta": 0.949449,
-              "ratio": 5.541798,
+              "delta": 0.872828,
+              "ratio": 4.055393,
               "status": "ready"
             },
             "decay_cumulative": {
-              "delta": 0.45189,
-              "ratio": 2.022005,
+              "delta": 0.319958,
+              "ratio": 1.557328,
               "status": "ready"
             },
             "excess_sign_consistency": {
@@ -2417,47 +2416,47 @@
           ],
           "in_sample_by_param": {
             "0.0025": {
-              "buy_trades": 20,
-              "cagr": 0.064281,
-              "cumulative_return": 0.022786,
-              "daily_sharpe": 0.740672,
-              "excess_vs_gate": 0.03489,
-              "gate_return": -0.012104,
-              "input_rows": 1200,
-              "max_drawdown": 0.076644,
+              "buy_trades": 10,
+              "cagr": 0.224557,
+              "cumulative_return": 0.050636,
+              "daily_sharpe": 2.891102,
+              "excess_vs_gate": 0.004766,
+              "gate_return": 0.04587,
+              "input_rows": 898,
+              "max_drawdown": 0.021229,
               "skipped_missing_outcome": 0
             },
             "0.005": {
-              "buy_trades": 20,
-              "cagr": 0.116645,
-              "cumulative_return": 0.040706,
-              "daily_sharpe": 0.721011,
-              "excess_vs_gate": 0.05281,
-              "gate_return": -0.012104,
-              "input_rows": 1200,
-              "max_drawdown": 0.1497,
+              "buy_trades": 10,
+              "cagr": 0.480346,
+              "cumulative_return": 0.100375,
+              "daily_sharpe": 3.114891,
+              "excess_vs_gate": 0.054505,
+              "gate_return": 0.04587,
+              "input_rows": 898,
+              "max_drawdown": 0.039021,
               "skipped_missing_outcome": 0
             },
             "0.0075": {
-              "buy_trades": 20,
-              "cagr": -0.068793,
-              "cumulative_return": -0.025447,
-              "daily_sharpe": 0.028107,
-              "excess_vs_gate": -0.013343,
-              "gate_return": -0.012104,
-              "input_rows": 1200,
-              "max_drawdown": 0.21952,
+              "buy_trades": 10,
+              "cagr": 0.284444,
+              "cumulative_return": 0.06294,
+              "daily_sharpe": 1.937972,
+              "excess_vs_gate": 0.01707,
+              "gate_return": 0.04587,
+              "input_rows": 898,
+              "max_drawdown": 0.064534,
               "skipped_missing_outcome": 0
             },
             "0.01": {
-              "buy_trades": 19,
-              "cagr": 0.291665,
-              "cumulative_return": 0.096975,
-              "daily_sharpe": 1.011705,
-              "excess_vs_gate": 0.109079,
-              "gate_return": -0.012104,
-              "input_rows": 1200,
-              "max_drawdown": 0.252771,
+              "buy_trades": 10,
+              "cagr": 1.074906,
+              "cumulative_return": 0.194801,
+              "daily_sharpe": 3.835055,
+              "excess_vs_gate": 0.148931,
+              "gate_return": 0.04587,
+              "input_rows": 898,
+              "max_drawdown": 0.068296,
               "skipped_missing_outcome": 0
             }
           },
@@ -2488,14 +2487,14 @@
             "verdict": "insufficient_windows"
           },
           "policy_in_sample": {
-            "buy_trades": 20,
-            "cagr": 0.116645,
-            "cumulative_return": 0.040706,
-            "daily_sharpe": 0.721011,
-            "excess_vs_gate": 0.05281,
-            "gate_return": -0.012104,
-            "input_rows": 1200,
-            "max_drawdown": 0.1497,
+            "buy_trades": 10,
+            "cagr": 0.480346,
+            "cumulative_return": 0.100375,
+            "daily_sharpe": 3.114891,
+            "excess_vs_gate": 0.054505,
+            "gate_return": 0.04587,
+            "input_rows": 898,
+            "max_drawdown": 0.039021,
             "skipped_missing_outcome": 0
           },
           "policy_param": 0.005,
@@ -2617,14 +2616,14 @@
         {
           "end_date": "2025-12-31",
           "segment_id": "S1",
-          "signal_date_count": 249,
+          "signal_date_count": 250,
           "start_date": "2024-08-30",
           "start_reason": "series_start"
         },
         {
-          "end_date": "2026-07-10",
+          "end_date": "2026-05-28",
           "segment_id": "S2",
-          "signal_date_count": 65,
+          "signal_date_count": 47,
           "start_date": "2026-03-18",
           "start_reason": "forced_cut:2026-01-05+data_gap:77d"
         }
@@ -2684,49 +2683,49 @@
       "equal_weight": {
         "factor_screen": {
           "decay_cagr": {
-            "delta": 0.010609,
+            "delta": -0.020478,
             "ratio": null,
             "status": "is_non_positive"
           },
           "decay_cumulative": {
-            "delta": -0.019385,
+            "delta": -0.007596,
             "ratio": null,
             "status": "is_non_positive"
           },
           "excess_sign_consistency": {
-            "negative_windows": 3,
-            "observed_windows": 4,
-            "positive_ratio": 0.25,
+            "negative_windows": 1,
+            "observed_windows": 2,
+            "positive_ratio": 0.5,
             "positive_windows": 1,
             "zero_windows": 0
           },
           "first_signal_date": "2026-04-30",
           "in_sample": {
-            "buy_trades": 15,
-            "cagr": -0.280956,
-            "cumulative_return": -0.080605,
-            "daily_sharpe": -1.571944,
-            "excess_vs_gate": -0.030715,
-            "gate_return": -0.04989,
-            "input_rows": 1071,
-            "max_drawdown": 0.128046,
+            "buy_trades": 5,
+            "cagr": -0.129419,
+            "cumulative_return": -0.019179,
+            "daily_sharpe": -0.425677,
+            "excess_vs_gate": -0.015551,
+            "gate_return": -0.003628,
+            "input_rows": 527,
+            "max_drawdown": 0.070241,
             "skipped_missing_outcome": 0
           },
-          "last_signal_date": "2026-07-10",
-          "oos_annualized_return": -0.270347,
-          "oos_chain_excess": -0.004235,
-          "oos_chain_return": -0.09999,
-          "oos_window_count": 4,
+          "last_signal_date": "2026-05-28",
+          "oos_annualized_return": -0.149897,
+          "oos_chain_excess": -0.022911,
+          "oos_chain_return": -0.026775,
+          "oos_window_count": 2,
           "return_sign_consistency": {
-            "negative_windows": 3,
-            "observed_windows": 4,
-            "positive_ratio": 0.25,
-            "positive_windows": 1,
+            "negative_windows": 2,
+            "observed_windows": 2,
+            "positive_ratio": 0.0,
+            "positive_windows": 0,
             "zero_windows": 0
           },
-          "total_usable_rows": 1071,
-          "verdict": "oos_weakened",
-          "verdict_reason": "1/4 窗正超额，链式超额 -0.42%",
+          "total_usable_rows": 527,
+          "verdict": "insufficient_windows",
+          "verdict_reason": "验证窗仅 2 个 (< 3)，自由度不足，不下结论",
           "windows": [
             {
               "buy_trades": 0,
@@ -2968,93 +2967,65 @@
             },
             {
               "buy_trades": 5,
-              "cagr": -0.052136,
+              "cagr": -0.055176,
               "cumulative_return": -0.007745,
-              "daily_sharpe": -0.227566,
-              "excess_vs_gate": -0.010721,
-              "gate_return": 0.002976,
-              "input_rows": 534,
+              "daily_sharpe": -0.234199,
+              "excess_vs_gate": 0.000644,
+              "gate_return": -0.008389,
+              "input_rows": 500,
               "max_drawdown": 0.074486,
               "skipped_missing_outcome": 0,
               "valid_end": "2026-05-31",
               "valid_start": "2026-05-01",
               "window_id": "S2W18"
-            },
-            {
-              "buy_trades": 5,
-              "cagr": -0.488669,
-              "cumulative_return": -0.084428,
-              "daily_sharpe": -6.08134,
-              "excess_vs_gate": -0.023663,
-              "gate_return": -0.060765,
-              "input_rows": 450,
-              "max_drawdown": 0.082013,
-              "skipped_missing_outcome": 0,
-              "valid_end": "2026-06-30",
-              "valid_start": "2026-06-01",
-              "window_id": "S2W19"
-            },
-            {
-              "buy_trades": 5,
-              "cagr": 0.134077,
-              "cumulative_return": 0.010047,
-              "daily_sharpe": 1.277321,
-              "excess_vs_gate": 0.054518,
-              "gate_return": -0.044471,
-              "input_rows": 60,
-              "max_drawdown": 0.03231,
-              "skipped_missing_outcome": 0,
-              "valid_end": "2026-07-31",
-              "valid_start": "2026-07-01",
-              "window_id": "S2W20"
             }
           ]
         },
         "fresh_trend_watchlist": {
           "decay_cagr": {
-            "delta": 1.36874,
-            "ratio": 3.907697,
+            "delta": 8.964134,
+            "ratio": 4.370421,
             "status": "ready"
           },
           "decay_cumulative": {
-            "delta": 0.267695,
-            "ratio": 2.788125,
+            "delta": 0.140875,
+            "ratio": 1.364195,
             "status": "ready"
           },
           "excess_sign_consistency": {
-            "negative_windows": 1,
-            "observed_windows": 4,
-            "positive_ratio": 0.75,
-            "positive_windows": 3,
+            "negative_windows": 0,
+            "observed_windows": 2,
+            "positive_ratio": 1.0,
+            "positive_windows": 2,
             "zero_windows": 0
           },
           "first_signal_date": "2026-03-25",
           "in_sample": {
-            "buy_trades": 20,
-            "cagr": 0.47073,
-            "cumulative_return": 0.149707,
-            "daily_sharpe": 1.130222,
-            "excess_vs_gate": 0.161811,
-            "gate_return": -0.012104,
-            "input_rows": 1180,
-            "max_drawdown": 0.260391,
+            "buy_trades": 15,
+            "cagr": 2.659648,
+            "cumulative_return": 0.386812,
+            "daily_sharpe": 3.70044,
+            "excess_vs_gate": 0.348994,
+            "gate_return": 0.037818,
+            "input_rows": 859,
+            "max_drawdown": 0.119138,
             "skipped_missing_outcome": 0
           },
-          "last_signal_date": "2026-07-08",
-          "oos_annualized_return": 1.83947,
-          "oos_chain_excess": 0.479673,
-          "oos_chain_return": 0.417402,
-          "oos_window_count": 4,
+          "last_signal_date": "2026-05-28",
+          "oos_annualized_return": 11.623782,
+          "oos_chain_excess": 0.488895,
+          "oos_chain_return": 0.527687,
+          "oos_window_count": 2,
           "return_sign_consistency": {
-            "negative_windows": 1,
-            "observed_windows": 4,
-            "positive_ratio": 0.75,
-            "positive_windows": 3,
+            "negative_windows": 0,
+            "observed_windows": 2,
+            "positive_ratio": 1.0,
+            "positive_windows": 2,
             "zero_windows": 0
           },
-          "total_usable_rows": 1180,
-          "verdict": "oos_supported",
-          "verdict_reason": "3/4 窗正超额且链式超额 +47.97%",
+          "total_usable_rows": 859,
+          "verdict": "insufficient_windows",
+          "verdict_reason": "验证窗仅 2 个 (< 3)，自由度不足，不下结论",
           "windows": [
             {
               "buy_trades": 0,
@@ -3282,11 +3253,11 @@
             },
             {
               "buy_trades": 10,
-              "cagr": 3.350552,
-              "cumulative_return": 0.278544,
-              "daily_sharpe": 3.596714,
-              "excess_vs_gate": 0.228725,
-              "gate_return": 0.049819,
+              "cagr": 5.818679,
+              "cumulative_return": 0.378259,
+              "daily_sharpe": 4.525917,
+              "excess_vs_gate": 0.330679,
+              "gate_return": 0.04758,
               "input_rows": 420,
               "max_drawdown": 0.128923,
               "skipped_missing_outcome": 0,
@@ -3296,93 +3267,65 @@
             },
             {
               "buy_trades": 5,
-              "cagr": 2.483431,
-              "cumulative_return": 0.198678,
-              "daily_sharpe": 2.108044,
-              "excess_vs_gate": 0.195702,
-              "gate_return": 0.002976,
-              "input_rows": 360,
-              "max_drawdown": 0.10769,
+              "cagr": 1.119996,
+              "cumulative_return": 0.108418,
+              "daily_sharpe": 1.308578,
+              "excess_vs_gate": 0.116807,
+              "gate_return": -0.008389,
+              "input_rows": 339,
+              "max_drawdown": 0.097363,
               "skipped_missing_outcome": 0,
               "valid_end": "2026-05-31",
               "valid_start": "2026-05-01",
               "window_id": "S2W18"
-            },
-            {
-              "buy_trades": 5,
-              "cagr": 4.870549,
-              "cumulative_return": 0.243852,
-              "daily_sharpe": 3.722951,
-              "excess_vs_gate": 0.308192,
-              "gate_return": -0.06434,
-              "input_rows": 280,
-              "max_drawdown": 0.050328,
-              "skipped_missing_outcome": 0,
-              "valid_end": "2026-06-30",
-              "valid_start": "2026-06-01",
-              "window_id": "S2W19"
-            },
-            {
-              "buy_trades": 5,
-              "cagr": -0.981792,
-              "cumulative_return": -0.256457,
-              "daily_sharpe": -4.904744,
-              "excess_vs_gate": -0.208276,
-              "gate_return": -0.048181,
-              "input_rows": 20,
-              "max_drawdown": 0.381388,
-              "skipped_missing_outcome": 0,
-              "valid_end": "2026-07-31",
-              "valid_start": "2026-07-01",
-              "window_id": "S2W20"
             }
           ]
         },
         "hybrid_fusion": {
           "decay_cagr": {
-            "delta": -0.139268,
-            "ratio": -57.125116,
+            "delta": 3.018057,
+            "ratio": 8.024895,
             "status": "ready"
           },
           "decay_cumulative": {
-            "delta": -0.048933,
-            "ratio": -51.900315,
+            "delta": 0.184706,
+            "ratio": 2.873975,
             "status": "ready"
           },
           "excess_sign_consistency": {
-            "negative_windows": 1,
-            "observed_windows": 4,
-            "positive_ratio": 0.75,
-            "positive_windows": 3,
+            "negative_windows": 0,
+            "observed_windows": 2,
+            "positive_ratio": 1.0,
+            "positive_windows": 2,
             "zero_windows": 0
           },
           "first_signal_date": "2026-03-18",
           "in_sample": {
-            "buy_trades": 20,
-            "cagr": 0.002396,
-            "cumulative_return": 0.000925,
-            "daily_sharpe": 0.165232,
-            "excess_vs_gate": 0.014795,
-            "gate_return": -0.01387,
-            "input_rows": 228,
-            "max_drawdown": 0.215462,
+            "buy_trades": 15,
+            "cagr": 0.429623,
+            "cumulative_return": 0.098564,
+            "daily_sharpe": 1.446491,
+            "excess_vs_gate": 0.058618,
+            "gate_return": 0.039946,
+            "input_rows": 117,
+            "max_drawdown": 0.101643,
             "skipped_missing_outcome": 0
           },
-          "last_signal_date": "2026-07-10",
-          "oos_annualized_return": -0.136872,
-          "oos_chain_excess": -0.031636,
-          "oos_chain_return": -0.048008,
-          "oos_window_count": 4,
+          "last_signal_date": "2026-05-25",
+          "oos_annualized_return": 3.44768,
+          "oos_chain_excess": 0.229585,
+          "oos_chain_return": 0.28327,
+          "oos_window_count": 2,
           "return_sign_consistency": {
-            "negative_windows": 1,
-            "observed_windows": 4,
-            "positive_ratio": 0.75,
-            "positive_windows": 3,
+            "negative_windows": 0,
+            "observed_windows": 2,
+            "positive_ratio": 1.0,
+            "positive_windows": 2,
             "zero_windows": 0
           },
-          "total_usable_rows": 228,
-          "verdict": "oos_weakened",
-          "verdict_reason": "3/4 窗正超额，链式超额 -3.16%",
+          "total_usable_rows": 117,
+          "verdict": "insufficient_windows",
+          "verdict_reason": "验证窗仅 2 个 (< 3)，自由度不足，不下结论",
           "windows": [
             {
               "buy_trades": 0,
@@ -3610,13 +3553,13 @@
             },
             {
               "buy_trades": 5,
-              "cagr": 0.595321,
-              "cumulative_return": 0.074291,
-              "daily_sharpe": 4.479882,
-              "excess_vs_gate": 0.024559,
-              "gate_return": 0.049732,
+              "cagr": 1.466761,
+              "cumulative_return": 0.148582,
+              "daily_sharpe": 4.555413,
+              "excess_vs_gate": 0.101089,
+              "gate_return": 0.047493,
               "input_rows": 45,
-              "max_drawdown": 0.014231,
+              "max_drawdown": 0.026785,
               "skipped_missing_outcome": 0,
               "valid_end": "2026-04-30",
               "valid_start": "2026-04-01",
@@ -3627,90 +3570,62 @@
               "cagr": 2.178351,
               "cumulative_return": 0.117265,
               "daily_sharpe": 3.620708,
-              "excess_vs_gate": 0.108942,
-              "gate_return": 0.008323,
-              "input_rows": 60,
+              "excess_vs_gate": 0.111353,
+              "gate_return": 0.005912,
+              "input_rows": 59,
               "max_drawdown": 0.049352,
               "skipped_missing_outcome": 0,
               "valid_end": "2026-05-31",
               "valid_start": "2026-05-01",
               "window_id": "S2W18"
-            },
-            {
-              "buy_trades": 5,
-              "cagr": 0.337108,
-              "cumulative_return": 0.033171,
-              "daily_sharpe": 1.107271,
-              "excess_vs_gate": 0.060628,
-              "gate_return": -0.027457,
-              "input_rows": 90,
-              "max_drawdown": 0.116855,
-              "skipped_missing_outcome": 0,
-              "valid_end": "2026-06-30",
-              "valid_start": "2026-06-01",
-              "window_id": "S2W19"
-            },
-            {
-              "buy_trades": 5,
-              "cagr": -0.964117,
-              "cumulative_return": -0.232315,
-              "daily_sharpe": -5.345295,
-              "excess_vs_gate": -0.187844,
-              "gate_return": -0.044471,
-              "input_rows": 20,
-              "max_drawdown": 0.3194,
-              "skipped_missing_outcome": 0,
-              "valid_end": "2026-07-31",
-              "valid_start": "2026-07-01",
-              "window_id": "S2W20"
             }
           ]
         },
         "mean_reversion": {
           "decay_cagr": {
-            "delta": -0.108538,
-            "ratio": -7.213854,
+            "delta": -0.09554,
+            "ratio": -0.935428,
             "status": "ready"
           },
           "decay_cumulative": {
-            "delta": -0.149595,
-            "ratio": -5.05156,
+            "delta": -0.135417,
+            "ratio": -0.654316,
             "status": "ready"
           },
           "excess_sign_consistency": {
-            "negative_windows": 11,
-            "observed_windows": 16,
-            "positive_ratio": 0.3125,
-            "positive_windows": 5,
+            "negative_windows": 10,
+            "observed_windows": 14,
+            "positive_ratio": 0.285714,
+            "positive_windows": 4,
             "zero_windows": 0
           },
           "first_signal_date": "2024-09-24",
           "in_sample": {
-            "buy_trades": 60,
-            "cagr": 0.013214,
-            "cumulative_return": 0.02472,
-            "daily_sharpe": 0.158267,
-            "excess_vs_gate": -0.200737,
-            "gate_return": 0.225457,
-            "input_rows": 602,
-            "max_drawdown": 0.208383,
+            "buy_trades": 50,
+            "cagr": 0.049364,
+            "cumulative_return": 0.081857,
+            "daily_sharpe": 0.343553,
+            "excess_vs_gate": -0.219752,
+            "gate_return": 0.301609,
+            "input_rows": 577,
+            "max_drawdown": 0.190479,
             "skipped_missing_outcome": 0
           },
-          "last_signal_date": "2026-07-08",
-          "oos_annualized_return": -0.095324,
-          "oos_chain_excess": -0.393294,
-          "oos_chain_return": -0.124875,
-          "oos_window_count": 16,
+          "last_signal_date": "2026-04-13",
+          "oos_annualized_return": -0.046176,
+          "oos_chain_excess": -0.387508,
+          "oos_chain_return": -0.05356,
+          "oos_window_count": 14,
           "return_sign_consistency": {
-            "negative_windows": 9,
-            "observed_windows": 16,
-            "positive_ratio": 0.4375,
-            "positive_windows": 7,
+            "negative_windows": 8,
+            "observed_windows": 14,
+            "positive_ratio": 0.428571,
+            "positive_windows": 6,
             "zero_windows": 0
           },
-          "total_usable_rows": 602,
+          "total_usable_rows": 577,
           "verdict": "oos_weakened",
-          "verdict_reason": "5/16 窗正超额，链式超额 -39.33%",
+          "verdict_reason": "4/14 窗正超额，链式超额 -38.75%",
           "windows": [
             {
               "buy_trades": 5,
@@ -3938,13 +3853,13 @@
             },
             {
               "buy_trades": 5,
-              "cagr": -0.0403,
-              "cumulative_return": -0.004722,
-              "daily_sharpe": -1.512977,
-              "excess_vs_gate": -0.057809,
-              "gate_return": 0.053087,
+              "cagr": -0.079156,
+              "cumulative_return": -0.009444,
+              "daily_sharpe": -1.476654,
+              "excess_vs_gate": -0.060285,
+              "gate_return": 0.050841,
               "input_rows": 107,
-              "max_drawdown": 0.019254,
+              "max_drawdown": 0.038171,
               "skipped_missing_outcome": 0,
               "valid_end": "2026-04-30",
               "valid_start": "2026-04-01",
@@ -3963,82 +3878,54 @@
               "valid_end": "2026-05-31",
               "valid_start": "2026-05-01",
               "window_id": "S2W18"
-            },
-            {
-              "buy_trades": 5,
-              "cagr": -0.689598,
-              "cumulative_return": -0.094583,
-              "daily_sharpe": -4.401039,
-              "excess_vs_gate": -0.091462,
-              "gate_return": -0.003121,
-              "input_rows": 14,
-              "max_drawdown": 0.136044,
-              "skipped_missing_outcome": 0,
-              "valid_end": "2026-06-30",
-              "valid_start": "2026-06-01",
-              "window_id": "S2W19"
-            },
-            {
-              "buy_trades": 5,
-              "cagr": 0.245911,
-              "cumulative_return": 0.016397,
-              "daily_sharpe": 1.11116,
-              "excess_vs_gate": 0.064578,
-              "gate_return": -0.048181,
-              "input_rows": 11,
-              "max_drawdown": 0.063943,
-              "skipped_missing_outcome": 0,
-              "valid_end": "2026-07-31",
-              "valid_start": "2026-07-01",
-              "window_id": "S2W20"
             }
           ]
         },
         "stock_candidate": {
           "decay_cagr": {
-            "delta": 0.319201,
+            "delta": 0.320898,
             "ratio": null,
             "status": "is_non_positive"
           },
           "decay_cumulative": {
-            "delta": 0.516251,
+            "delta": 0.488089,
             "ratio": null,
             "status": "is_non_positive"
           },
           "excess_sign_consistency": {
             "negative_windows": 10,
-            "observed_windows": 18,
-            "positive_ratio": 0.444444,
-            "positive_windows": 8,
+            "observed_windows": 17,
+            "positive_ratio": 0.411765,
+            "positive_windows": 7,
             "zero_windows": 0
           },
           "first_signal_date": "2024-09-24",
           "in_sample": {
-            "buy_trades": 82,
-            "cagr": -0.023347,
-            "cumulative_return": -0.041631,
-            "daily_sharpe": 0.079449,
-            "excess_vs_gate": -0.311338,
-            "gate_return": 0.269707,
-            "input_rows": 770,
+            "buy_trades": 80,
+            "cagr": -0.035335,
+            "cumulative_return": -0.06076,
+            "daily_sharpe": 0.036704,
+            "excess_vs_gate": -0.357735,
+            "gate_return": 0.296975,
+            "input_rows": 768,
             "max_drawdown": 0.537004,
             "skipped_missing_outcome": 0
           },
-          "last_signal_date": "2026-06-15",
-          "oos_annualized_return": 0.295854,
-          "oos_chain_excess": 0.020172,
-          "oos_chain_return": 0.47462,
-          "oos_window_count": 18,
+          "last_signal_date": "2026-05-25",
+          "oos_annualized_return": 0.285563,
+          "oos_chain_excess": -0.064604,
+          "oos_chain_return": 0.427329,
+          "oos_window_count": 17,
           "return_sign_consistency": {
             "negative_windows": 9,
-            "observed_windows": 18,
-            "positive_ratio": 0.5,
-            "positive_windows": 9,
+            "observed_windows": 17,
+            "positive_ratio": 0.470588,
+            "positive_windows": 8,
             "zero_windows": 0
           },
-          "total_usable_rows": 770,
-          "verdict": "oos_inconclusive",
-          "verdict_reason": "8/18 窗正超额，链式超额 +2.02%，方向不稳定",
+          "total_usable_rows": 768,
+          "verdict": "oos_weakened",
+          "verdict_reason": "7/17 窗正超额，链式超额 -6.46%",
           "windows": [
             {
               "buy_trades": 5,
@@ -4243,7 +4130,7 @@
               "daily_sharpe": -4.599132,
               "excess_vs_gate": -0.150779,
               "gate_return": -0.009978,
-              "input_rows": 23,
+              "input_rows": 24,
               "max_drawdown": 0.168645,
               "skipped_missing_outcome": 0,
               "valid_end": "2025-11-30",
@@ -4283,90 +4170,62 @@
               "cagr": 5.307978,
               "cumulative_return": 0.193169,
               "daily_sharpe": 4.730499,
-              "excess_vs_gate": 0.184846,
-              "gate_return": 0.008323,
+              "excess_vs_gate": 0.187257,
+              "gate_return": 0.005912,
               "input_rows": 6,
               "max_drawdown": 0.079678,
               "skipped_missing_outcome": 0,
               "valid_end": "2026-05-31",
               "valid_start": "2026-05-01",
               "window_id": "S2W18"
-            },
-            {
-              "buy_trades": 3,
-              "cagr": 0.336659,
-              "cumulative_return": 0.033132,
-              "daily_sharpe": 1.500594,
-              "excess_vs_gate": 0.060589,
-              "gate_return": -0.027457,
-              "input_rows": 3,
-              "max_drawdown": 0.058459,
-              "skipped_missing_outcome": 0,
-              "valid_end": "2026-06-30",
-              "valid_start": "2026-06-01",
-              "window_id": "S2W19"
-            },
-            {
-              "buy_trades": 0,
-              "cagr": null,
-              "cumulative_return": null,
-              "daily_sharpe": null,
-              "excess_vs_gate": null,
-              "gate_return": null,
-              "input_rows": 0,
-              "max_drawdown": null,
-              "skipped_missing_outcome": 0,
-              "valid_end": "2026-07-31",
-              "valid_start": "2026-07-01",
-              "window_id": "S2W20"
             }
           ]
         },
         "theme_breakout": {
           "decay_cagr": {
-            "delta": 0.5109,
-            "ratio": 2.023719,
+            "delta": 0.80157,
+            "ratio": 2.198127,
             "status": "ready"
           },
           "decay_cumulative": {
-            "delta": 1.021978,
-            "ratio": 1.86366,
+            "delta": 1.366668,
+            "ratio": 1.898271,
             "status": "ready"
           },
           "excess_sign_consistency": {
-            "negative_windows": 6,
-            "observed_windows": 20,
-            "positive_ratio": 0.7,
-            "positive_windows": 14,
+            "negative_windows": 5,
+            "observed_windows": 18,
+            "positive_ratio": 0.722222,
+            "positive_windows": 13,
             "zero_windows": 0
           },
           "first_signal_date": "2024-08-30",
           "in_sample": {
-            "buy_trades": 84,
-            "cagr": 0.499063,
-            "cumulative_return": 1.183311,
-            "daily_sharpe": 1.322421,
-            "excess_vs_gate": 0.934199,
-            "gate_return": 0.249112,
-            "input_rows": 559,
-            "max_drawdown": 0.262649,
+            "buy_trades": 79,
+            "cagr": 0.669019,
+            "cumulative_return": 1.521444,
+            "daily_sharpe": 1.615713,
+            "excess_vs_gate": 1.204566,
+            "gate_return": 0.316878,
+            "input_rows": 523,
+            "max_drawdown": 0.185275,
             "skipped_missing_outcome": 0
           },
-          "last_signal_date": "2026-07-10",
-          "oos_annualized_return": 1.009963,
-          "oos_chain_excess": 1.941954,
-          "oos_chain_return": 2.205289,
-          "oos_window_count": 20,
+          "last_signal_date": "2026-05-25",
+          "oos_annualized_return": 1.470589,
+          "oos_chain_excess": 2.534796,
+          "oos_chain_return": 2.888112,
+          "oos_window_count": 18,
           "return_sign_consistency": {
-            "negative_windows": 7,
-            "observed_windows": 20,
-            "positive_ratio": 0.65,
-            "positive_windows": 13,
+            "negative_windows": 6,
+            "observed_windows": 18,
+            "positive_ratio": 0.666667,
+            "positive_windows": 12,
             "zero_windows": 0
           },
-          "total_usable_rows": 559,
+          "total_usable_rows": 523,
           "verdict": "oos_supported",
-          "verdict_reason": "14/20 窗正超额且链式超额 +194.20%",
+          "verdict_reason": "13/18 窗正超额且链式超额 +253.48%",
           "windows": [
             {
               "buy_trades": 5,
@@ -4594,13 +4453,13 @@
             },
             {
               "buy_trades": 5,
-              "cagr": 0.595321,
-              "cumulative_return": 0.074291,
-              "daily_sharpe": 4.479882,
-              "excess_vs_gate": 0.024559,
-              "gate_return": 0.049732,
+              "cagr": 1.466761,
+              "cumulative_return": 0.148582,
+              "daily_sharpe": 4.555413,
+              "excess_vs_gate": 0.101089,
+              "gate_return": 0.047493,
               "input_rows": 39,
-              "max_drawdown": 0.014231,
+              "max_drawdown": 0.026785,
               "skipped_missing_outcome": 0,
               "valid_end": "2026-04-30",
               "valid_start": "2026-04-01",
@@ -4611,90 +4470,62 @@
               "cagr": -0.601912,
               "cumulative_return": -0.082222,
               "daily_sharpe": -2.266969,
-              "excess_vs_gate": -0.090885,
-              "gate_return": 0.008663,
+              "excess_vs_gate": -0.088474,
+              "gate_return": 0.006252,
               "input_rows": 22,
               "max_drawdown": 0.185275,
               "skipped_missing_outcome": 0,
               "valid_end": "2026-05-31",
               "valid_start": "2026-05-01",
               "window_id": "S2W18"
-            },
-            {
-              "buy_trades": 5,
-              "cagr": 1.399833,
-              "cumulative_return": 0.10333,
-              "daily_sharpe": 1.730827,
-              "excess_vs_gate": 0.130787,
-              "gate_return": -0.027457,
-              "input_rows": 27,
-              "max_drawdown": 0.11083,
-              "skipped_missing_outcome": 0,
-              "valid_end": "2026-06-30",
-              "valid_start": "2026-06-01",
-              "window_id": "S2W19"
-            },
-            {
-              "buy_trades": 5,
-              "cagr": -0.940792,
-              "cumulative_return": -0.201154,
-              "daily_sharpe": -4.921352,
-              "excess_vs_gate": -0.156683,
-              "gate_return": -0.044471,
-              "input_rows": 9,
-              "max_drawdown": 0.290574,
-              "skipped_missing_outcome": 0,
-              "valid_end": "2026-07-31",
-              "valid_start": "2026-07-01",
-              "window_id": "S2W20"
             }
           ]
         },
         "uptrend_momentum": {
           "decay_cagr": {
-            "delta": -0.683575,
-            "ratio": -2.142062,
+            "delta": -0.602648,
+            "ratio": 0.237923,
             "status": "ready"
           },
           "decay_cumulative": {
-            "delta": -0.262959,
-            "ratio": -2.563952,
+            "delta": -0.123431,
+            "ratio": 0.191473,
             "status": "ready"
           },
           "excess_sign_consistency": {
-            "negative_windows": 2,
-            "observed_windows": 4,
+            "negative_windows": 1,
+            "observed_windows": 2,
             "positive_ratio": 0.5,
-            "positive_windows": 2,
+            "positive_windows": 1,
             "zero_windows": 0
           },
           "first_signal_date": "2026-03-25",
           "in_sample": {
-            "buy_trades": 20,
-            "cagr": 0.217556,
-            "cumulative_return": 0.073783,
-            "daily_sharpe": 0.76171,
-            "excess_vs_gate": 0.085887,
-            "gate_return": -0.012104,
-            "input_rows": 1200,
-            "max_drawdown": 0.254422,
+            "buy_trades": 10,
+            "cagr": 0.790797,
+            "cumulative_return": 0.152661,
+            "daily_sharpe": 3.043,
+            "excess_vs_gate": 0.106791,
+            "gate_return": 0.04587,
+            "input_rows": 898,
+            "max_drawdown": 0.056597,
             "skipped_missing_outcome": 0
           },
-          "last_signal_date": "2026-07-08",
-          "oos_annualized_return": -0.466019,
-          "oos_chain_excess": -0.158515,
-          "oos_chain_return": -0.189176,
-          "oos_window_count": 4,
+          "last_signal_date": "2026-05-25",
+          "oos_annualized_return": 0.188149,
+          "oos_chain_excess": -0.013197,
+          "oos_chain_return": 0.02923,
+          "oos_window_count": 2,
           "return_sign_consistency": {
-            "negative_windows": 2,
-            "observed_windows": 4,
+            "negative_windows": 1,
+            "observed_windows": 2,
             "positive_ratio": 0.5,
-            "positive_windows": 2,
+            "positive_windows": 1,
             "zero_windows": 0
           },
-          "total_usable_rows": 1200,
-          "verdict": "oos_weakened",
-          "verdict_reason": "2/4 窗正超额，链式超额 -15.85%",
+          "total_usable_rows": 898,
+          "verdict": "insufficient_windows",
+          "verdict_reason": "验证窗仅 2 个 (< 3)，自由度不足，不下结论",
           "windows": [
             {
               "buy_trades": 0,
@@ -4922,13 +4753,13 @@
             },
             {
               "buy_trades": 5,
-              "cagr": 0.821235,
-              "cumulative_return": 0.10357,
-              "daily_sharpe": 6.478417,
-              "excess_vs_gate": 0.065055,
-              "gate_return": 0.038515,
-              "input_rows": 570,
-              "max_drawdown": 0.020564,
+              "cagr": 2.143104,
+              "cumulative_return": 0.20714,
+              "daily_sharpe": 6.474678,
+              "excess_vs_gate": 0.170839,
+              "gate_return": 0.036301,
+              "input_rows": 569,
+              "max_drawdown": 0.040307,
               "skipped_missing_outcome": 0,
               "valid_end": "2026-04-30",
               "valid_start": "2026-04-01",
@@ -4939,42 +4770,14 @@
               "cagr": -0.810385,
               "cumulative_return": -0.147381,
               "daily_sharpe": -4.197977,
-              "excess_vs_gate": -0.155704,
-              "gate_return": 0.008323,
+              "excess_vs_gate": -0.153293,
+              "gate_return": 0.005912,
               "input_rows": 180,
               "max_drawdown": 0.190674,
               "skipped_missing_outcome": 0,
               "valid_end": "2026-05-31",
               "valid_start": "2026-05-01",
               "window_id": "S2W18"
-            },
-            {
-              "buy_trades": 5,
-              "cagr": 0.845368,
-              "cumulative_return": 0.071245,
-              "daily_sharpe": 1.521933,
-              "excess_vs_gate": 0.098702,
-              "gate_return": -0.027457,
-              "input_rows": 270,
-              "max_drawdown": 0.087279,
-              "skipped_missing_outcome": 0,
-              "valid_end": "2026-06-30",
-              "valid_start": "2026-06-01",
-              "window_id": "S2W19"
-            },
-            {
-              "buy_trades": 5,
-              "cagr": -0.947245,
-              "cumulative_return": -0.19558,
-              "daily_sharpe": -4.665278,
-              "excess_vs_gate": -0.147399,
-              "gate_return": -0.048181,
-              "input_rows": 30,
-              "max_drawdown": 0.309617,
-              "skipped_missing_outcome": 0,
-              "valid_end": "2026-07-31",
-              "valid_start": "2026-07-01",
-              "window_id": "S2W20"
             }
           ]
         }
@@ -4982,38 +4785,38 @@
       "risk_budget": {
         "factor_screen": {
           "drift": {
-            "distinct_values": 1,
+            "distinct_values": 0,
             "mean_abs_step": null,
-            "mode_share": 1.0,
-            "mode_value": 0.01,
-            "observed_windows": 1,
-            "switch_count": 0,
+            "mode_share": null,
+            "mode_value": null,
+            "observed_windows": 0,
+            "switch_count": null,
             "switch_rate": null
           },
           "fixed_policy": {
             "decay_cagr": {
-              "delta": 0.001402,
+              "delta": -0.007102,
               "ratio": null,
               "status": "is_non_positive"
             },
             "decay_cumulative": {
-              "delta": -0.008803,
+              "delta": -0.002405,
               "ratio": null,
               "status": "is_non_positive"
             },
             "excess_sign_consistency": {
-              "negative_windows": 2,
-              "observed_windows": 4,
+              "negative_windows": 1,
+              "observed_windows": 2,
               "positive_ratio": 0.5,
-              "positive_windows": 2,
+              "positive_windows": 1,
               "zero_windows": 0
             },
-            "oos_annualized_return": -0.11297,
-            "oos_chain_excess": 0.056479,
-            "oos_chain_return": -0.039276,
-            "oos_total_span_days": 122,
-            "oos_window_count": 4,
-            "verdict": "oos_inconclusive"
+            "oos_annualized_return": -0.049213,
+            "oos_chain_excess": -0.004534,
+            "oos_chain_return": -0.008398,
+            "oos_total_span_days": 61,
+            "oos_window_count": 2,
+            "verdict": "insufficient_windows"
           },
           "grid": [
             0.0025,
@@ -5023,111 +4826,111 @@
           ],
           "in_sample_by_param": {
             "0.0025": {
-              "buy_trades": 15,
-              "cagr": -0.058506,
-              "cumulative_return": -0.015243,
-              "daily_sharpe": -1.58101,
-              "excess_vs_gate": 0.034647,
-              "gate_return": -0.04989,
-              "input_rows": 1071,
-              "max_drawdown": 0.024839,
+              "buy_trades": 5,
+              "cagr": -0.02125,
+              "cumulative_return": -0.002997,
+              "daily_sharpe": -0.507548,
+              "excess_vs_gate": 0.000631,
+              "gate_return": -0.003628,
+              "input_rows": 527,
+              "max_drawdown": 0.011321,
               "skipped_missing_outcome": 0
             },
             "0.005": {
-              "buy_trades": 15,
-              "cagr": -0.114372,
-              "cumulative_return": -0.030473,
-              "daily_sharpe": -1.576019,
-              "excess_vs_gate": 0.019417,
-              "gate_return": -0.04989,
-              "input_rows": 1071,
-              "max_drawdown": 0.049294,
+              "buy_trades": 5,
+              "cagr": -0.042111,
+              "cumulative_return": -0.005993,
+              "daily_sharpe": -0.492385,
+              "excess_vs_gate": -0.002365,
+              "gate_return": -0.003628,
+              "input_rows": 527,
+              "max_drawdown": 0.022511,
               "skipped_missing_outcome": 0
             },
             "0.0075": {
-              "buy_trades": 15,
-              "cagr": -0.167681,
-              "cumulative_return": -0.045688,
-              "daily_sharpe": -1.571127,
-              "excess_vs_gate": 0.004202,
-              "gate_return": -0.04989,
-              "input_rows": 1071,
-              "max_drawdown": 0.073372,
+              "buy_trades": 5,
+              "cagr": -0.062588,
+              "cumulative_return": -0.00899,
+              "daily_sharpe": -0.477224,
+              "excess_vs_gate": -0.005362,
+              "gate_return": -0.003628,
+              "input_rows": 527,
+              "max_drawdown": 0.033571,
               "skipped_missing_outcome": 0
             },
             "0.01": {
-              "buy_trades": 15,
-              "cagr": -0.19479,
-              "cumulative_return": -0.053706,
-              "daily_sharpe": -1.359342,
-              "excess_vs_gate": -0.003816,
-              "gate_return": -0.04989,
-              "input_rows": 1071,
-              "max_drawdown": 0.097079,
+              "buy_trades": 5,
+              "cagr": -0.082687,
+              "cumulative_return": -0.011987,
+              "daily_sharpe": -0.462064,
+              "excess_vs_gate": -0.008359,
+              "gate_return": -0.003628,
+              "input_rows": 527,
+              "max_drawdown": 0.044505,
               "skipped_missing_outcome": 0
             }
           },
           "in_sample_selection": 0.01,
           "oracle": {
             "decay_cagr": {
-              "delta": -0.102076,
+              "delta": -0.054128,
               "ratio": null,
               "status": "is_non_positive"
             },
             "decay_cumulative": {
-              "delta": -0.047821,
+              "delta": -0.010776,
               "ratio": null,
               "status": "is_non_positive"
             },
             "excess_sign_consistency": {
-              "negative_windows": 3,
-              "observed_windows": 4,
-              "positive_ratio": 0.25,
+              "negative_windows": 1,
+              "observed_windows": 2,
+              "positive_ratio": 0.5,
               "positive_windows": 1,
               "zero_windows": 0
             },
-            "oos_annualized_return": -0.216448,
-            "oos_chain_excess": 0.017462,
-            "oos_chain_return": -0.078294,
-            "oos_total_span_days": 122,
-            "oos_window_count": 4,
-            "verdict": "oos_weakened"
+            "oos_annualized_return": -0.096239,
+            "oos_chain_excess": -0.012905,
+            "oos_chain_return": -0.016769,
+            "oos_total_span_days": 61,
+            "oos_window_count": 2,
+            "verdict": "insufficient_windows"
           },
           "policy_in_sample": {
-            "buy_trades": 15,
-            "cagr": -0.114372,
-            "cumulative_return": -0.030473,
-            "daily_sharpe": -1.576019,
-            "excess_vs_gate": 0.019417,
-            "gate_return": -0.04989,
-            "input_rows": 1071,
-            "max_drawdown": 0.049294,
+            "buy_trades": 5,
+            "cagr": -0.042111,
+            "cumulative_return": -0.005993,
+            "daily_sharpe": -0.492385,
+            "excess_vs_gate": -0.002365,
+            "gate_return": -0.003628,
+            "input_rows": 527,
+            "max_drawdown": 0.022511,
             "skipped_missing_outcome": 0
           },
           "policy_param": 0.005,
           "selected": {
             "decay_cagr": {
-              "delta": 0.217515,
+              "delta": null,
               "ratio": null,
-              "status": "is_non_positive"
+              "status": "unavailable"
             },
             "decay_cumulative": {
-              "delta": 0.038845,
+              "delta": null,
               "ratio": null,
-              "status": "is_non_positive"
+              "status": "unavailable"
             },
             "excess_sign_consistency": {
               "negative_windows": 0,
-              "observed_windows": 1,
-              "positive_ratio": 1.0,
-              "positive_windows": 1,
+              "observed_windows": 0,
+              "positive_ratio": null,
+              "positive_windows": 0,
               "zero_windows": 0
             },
-            "oos_annualized_return": 0.103143,
-            "oos_chain_excess": 0.052843,
-            "oos_chain_return": 0.008372,
-            "oos_total_span_days": 31,
-            "oos_window_count": 1,
+            "oos_annualized_return": null,
+            "oos_chain_excess": null,
+            "oos_chain_return": null,
+            "oos_total_span_days": 0,
+            "oos_window_count": 0,
             "verdict": "insufficient_windows"
           },
           "windows": [
@@ -5398,75 +5201,45 @@
                 "0.0075": null,
                 "0.01": null
               },
-              "valid_rows": 534,
+              "valid_rows": 500,
               "window_id": "S2W18"
-            },
-            {
-              "oracle": 0.01,
-              "selected": null,
-              "selection_status": "insufficient_train_rows",
-              "train_rows": 0,
-              "train_rows_unpurged": 534,
-              "train_scores": {
-                "0.0025": null,
-                "0.005": null,
-                "0.0075": null,
-                "0.01": null
-              },
-              "valid_rows": 450,
-              "window_id": "S2W19"
-            },
-            {
-              "oracle": 0.01,
-              "selected": 0.01,
-              "selection_status": "selected",
-              "train_rows": 30,
-              "train_rows_unpurged": 450,
-              "train_scores": {
-                "0.0025": -8.379705,
-                "0.005": -8.373019,
-                "0.0075": -8.365852,
-                "0.01": -8.358181
-              },
-              "valid_rows": 60,
-              "window_id": "S2W20"
             }
           ]
         },
         "fresh_trend_watchlist": {
           "drift": {
-            "distinct_values": 2,
-            "mean_abs_step": 0.0075,
-            "mode_share": 0.5,
-            "mode_value": 0.0025,
-            "observed_windows": 2,
-            "switch_count": 1,
-            "switch_rate": 1.0
+            "distinct_values": 1,
+            "mean_abs_step": null,
+            "mode_share": 1.0,
+            "mode_value": 0.0075,
+            "observed_windows": 1,
+            "switch_count": 0,
+            "switch_rate": null
           },
           "fixed_policy": {
             "decay_cagr": {
-              "delta": 0.341948,
-              "ratio": 2.437432,
+              "delta": 0.957172,
+              "ratio": 1.849585,
               "status": "ready"
             },
             "decay_cumulative": {
-              "delta": 0.084926,
-              "ratio": 2.058498,
+              "delta": -0.002389,
+              "ratio": 0.988595,
               "status": "ready"
             },
             "excess_sign_consistency": {
-              "negative_windows": 1,
-              "observed_windows": 4,
-              "positive_ratio": 0.75,
-              "positive_windows": 3,
+              "negative_windows": 0,
+              "observed_windows": 2,
+              "positive_ratio": 1.0,
+              "positive_windows": 2,
               "zero_windows": 0
             },
-            "oos_annualized_return": 0.579836,
-            "oos_chain_excess": 0.22743,
-            "oos_chain_return": 0.165159,
-            "oos_total_span_days": 122,
-            "oos_window_count": 4,
-            "verdict": "oos_supported"
+            "oos_annualized_return": 2.083807,
+            "oos_chain_excess": 0.168293,
+            "oos_chain_return": 0.207085,
+            "oos_total_span_days": 61,
+            "oos_window_count": 2,
+            "verdict": "insufficient_windows"
           },
           "grid": [
             0.0025,
@@ -5476,111 +5249,111 @@
           ],
           "in_sample_by_param": {
             "0.0025": {
-              "buy_trades": 20,
-              "cagr": 0.13645,
-              "cumulative_return": 0.047344,
-              "daily_sharpe": 1.146486,
-              "excess_vs_gate": 0.059448,
-              "gate_return": -0.012104,
-              "input_rows": 1180,
-              "max_drawdown": 0.084163,
+              "buy_trades": 15,
+              "cagr": 0.493865,
+              "cumulative_return": 0.106461,
+              "daily_sharpe": 4.118094,
+              "excess_vs_gate": 0.068643,
+              "gate_return": 0.037818,
+              "input_rows": 859,
+              "max_drawdown": 0.033333,
               "skipped_missing_outcome": 0
             },
             "0.005": {
-              "buy_trades": 20,
-              "cagr": 0.237888,
-              "cumulative_return": 0.080233,
-              "daily_sharpe": 1.090525,
-              "excess_vs_gate": 0.092337,
-              "gate_return": -0.012104,
-              "input_rows": 1180,
-              "max_drawdown": 0.165742,
+              "buy_trades": 15,
+              "cagr": 1.126635,
+              "cumulative_return": 0.209474,
+              "daily_sharpe": 4.189817,
+              "excess_vs_gate": 0.171656,
+              "gate_return": 0.037818,
+              "input_rows": 859,
+              "max_drawdown": 0.064269,
               "skipped_missing_outcome": 0
             },
             "0.0075": {
-              "buy_trades": 20,
-              "cagr": 0.254086,
-              "cumulative_return": 0.085324,
-              "daily_sharpe": 0.833364,
-              "excess_vs_gate": 0.097428,
-              "gate_return": -0.012104,
-              "input_rows": 1180,
-              "max_drawdown": 0.244854,
+              "buy_trades": 15,
+              "cagr": 1.767437,
+              "cumulative_return": 0.292492,
+              "daily_sharpe": 3.842334,
+              "excess_vs_gate": 0.254674,
+              "gate_return": 0.037818,
+              "input_rows": 859,
+              "max_drawdown": 0.093323,
               "skipped_missing_outcome": 0
             },
             "0.01": {
-              "buy_trades": 19,
-              "cagr": 1.176861,
-              "cumulative_return": 0.324873,
-              "daily_sharpe": 2.049805,
-              "excess_vs_gate": 0.336977,
-              "gate_return": -0.012104,
-              "input_rows": 1180,
-              "max_drawdown": 0.256046,
+              "buy_trades": 15,
+              "cagr": 5.987233,
+              "cumulative_return": 0.632342,
+              "daily_sharpe": 5.145548,
+              "excess_vs_gate": 0.594524,
+              "gate_return": 0.037818,
+              "input_rows": 859,
+              "max_drawdown": 0.137734,
               "skipped_missing_outcome": 0
             }
           },
           "in_sample_selection": 0.01,
           "oracle": {
             "decay_cagr": {
-              "delta": 0.285439,
-              "ratio": 2.199887,
+              "delta": 3.655943,
+              "ratio": 4.245011,
               "status": "ready"
             },
             "decay_cumulative": {
-              "delta": 0.070827,
-              "ratio": 1.882766,
+              "delta": 0.131339,
+              "ratio": 1.626995,
               "status": "ready"
             },
             "excess_sign_consistency": {
-              "negative_windows": 1,
-              "observed_windows": 4,
-              "positive_ratio": 0.75,
-              "positive_windows": 3,
+              "negative_windows": 0,
+              "observed_windows": 2,
+              "positive_ratio": 1.0,
+              "positive_windows": 2,
               "zero_windows": 0
             },
-            "oos_annualized_return": 0.523327,
-            "oos_chain_excess": 0.213331,
-            "oos_chain_return": 0.15106,
-            "oos_total_span_days": 122,
-            "oos_window_count": 4,
-            "verdict": "oos_supported"
+            "oos_annualized_return": 4.782578,
+            "oos_chain_excess": 0.302021,
+            "oos_chain_return": 0.340813,
+            "oos_total_span_days": 61,
+            "oos_window_count": 2,
+            "verdict": "insufficient_windows"
           },
           "policy_in_sample": {
-            "buy_trades": 20,
-            "cagr": 0.237888,
-            "cumulative_return": 0.080233,
-            "daily_sharpe": 1.090525,
-            "excess_vs_gate": 0.092337,
-            "gate_return": -0.012104,
-            "input_rows": 1180,
-            "max_drawdown": 0.165742,
+            "buy_trades": 15,
+            "cagr": 1.126635,
+            "cumulative_return": 0.209474,
+            "daily_sharpe": 4.189817,
+            "excess_vs_gate": 0.171656,
+            "gate_return": 0.037818,
+            "input_rows": 859,
+            "max_drawdown": 0.064269,
             "skipped_missing_outcome": 0
           },
           "policy_param": 0.005,
           "selected": {
             "decay_cagr": {
-              "delta": -0.947195,
-              "ratio": -2.981686,
+              "delta": -0.334034,
+              "ratio": 0.703512,
               "status": "ready"
             },
             "decay_cumulative": {
-              "delta": -0.269538,
-              "ratio": -2.359445,
+              "delta": -0.158653,
+              "ratio": 0.242612,
               "status": "ready"
             },
             "excess_sign_consistency": {
-              "negative_windows": 1,
-              "observed_windows": 2,
-              "positive_ratio": 0.5,
+              "negative_windows": 0,
+              "observed_windows": 1,
+              "positive_ratio": 1.0,
               "positive_windows": 1,
               "zero_windows": 0
             },
-            "oos_annualized_return": -0.709307,
-            "oos_chain_excess": -0.143957,
-            "oos_chain_return": -0.189305,
-            "oos_total_span_days": 62,
-            "oos_window_count": 2,
+            "oos_annualized_return": 0.792601,
+            "oos_chain_excess": 0.05921,
+            "oos_chain_return": 0.050821,
+            "oos_total_span_days": 31,
+            "oos_window_count": 1,
             "verdict": "insufficient_windows"
           },
           "windows": [
@@ -5825,7 +5598,7 @@
               "window_id": "S1W16"
             },
             {
-              "oracle": 0.0025,
+              "oracle": 0.0075,
               "selected": null,
               "selection_status": "insufficient_train_rows",
               "train_rows": 0,
@@ -5841,48 +5614,18 @@
             },
             {
               "oracle": 0.01,
-              "selected": 0.0025,
+              "selected": 0.0075,
               "selection_status": "selected",
               "train_rows": 20,
               "train_rows_unpurged": 420,
               "train_scores": {
                 "0.0025": 9.131115,
-                "0.005": 7.200701,
-                "0.0075": 6.353322,
-                "0.01": 2.317725
+                "0.005": 9.193543,
+                "0.0075": 9.249164,
+                "0.01": 7.271485
               },
-              "valid_rows": 360,
+              "valid_rows": 339,
               "window_id": "S2W18"
-            },
-            {
-              "oracle": 0.01,
-              "selected": null,
-              "selection_status": "insufficient_train_rows",
-              "train_rows": 0,
-              "train_rows_unpurged": 360,
-              "train_scores": {
-                "0.0025": null,
-                "0.005": null,
-                "0.0075": null,
-                "0.01": null
-              },
-              "valid_rows": 280,
-              "window_id": "S2W19"
-            },
-            {
-              "oracle": 0.01,
-              "selected": 0.01,
-              "selection_status": "selected",
-              "train_rows": 20,
-              "train_rows_unpurged": 280,
-              "train_scores": {
-                "0.0025": 4.499641,
-                "0.005": 4.576803,
-                "0.0075": 4.646849,
-                "0.01": 4.710724
-              },
-              "valid_rows": 20,
-              "window_id": "S2W20"
             }
           ]
         },
@@ -5898,28 +5641,28 @@
           },
           "fixed_policy": {
             "decay_cagr": {
-              "delta": 0.330699,
-              "ratio": null,
-              "status": "is_non_positive"
+              "delta": 1.053614,
+              "ratio": 6.02592,
+              "status": "ready"
             },
             "decay_cumulative": {
-              "delta": 0.105775,
-              "ratio": null,
-              "status": "is_non_positive"
+              "delta": 0.094931,
+              "ratio": 2.849398,
+              "status": "ready"
             },
             "excess_sign_consistency": {
-              "negative_windows": 1,
-              "observed_windows": 4,
-              "positive_ratio": 0.75,
-              "positive_windows": 3,
+              "negative_windows": 0,
+              "observed_windows": 2,
+              "positive_ratio": 1.0,
+              "positive_windows": 2,
               "zero_windows": 0
             },
-            "oos_annualized_return": 0.281175,
-            "oos_chain_excess": 0.102717,
-            "oos_chain_return": 0.086345,
-            "oos_total_span_days": 122,
-            "oos_window_count": 4,
-            "verdict": "oos_supported"
+            "oos_annualized_return": 1.26325,
+            "oos_chain_excess": 0.092577,
+            "oos_chain_return": 0.146262,
+            "oos_total_span_days": 61,
+            "oos_window_count": 2,
+            "verdict": "insufficient_windows"
           },
           "grid": [
             0.0025,
@@ -5929,85 +5672,85 @@
           ],
           "in_sample_by_param": {
             "0.0025": {
-              "buy_trades": 20,
-              "cagr": -0.020993,
-              "cumulative_return": -0.008162,
-              "daily_sharpe": -0.215447,
-              "excess_vs_gate": 0.005708,
-              "gate_return": -0.01387,
-              "input_rows": 228,
-              "max_drawdown": 0.068449,
+              "buy_trades": 15,
+              "cagr": 0.100639,
+              "cumulative_return": 0.025541,
+              "daily_sharpe": 1.608835,
+              "excess_vs_gate": -0.014405,
+              "gate_return": 0.039946,
+              "input_rows": 117,
+              "max_drawdown": 0.022985,
               "skipped_missing_outcome": 0
             },
             "0.005": {
-              "buy_trades": 20,
-              "cagr": -0.049524,
-              "cumulative_return": -0.01943,
-              "daily_sharpe": -0.225058,
-              "excess_vs_gate": -0.00556,
-              "gate_return": -0.01387,
-              "input_rows": 228,
-              "max_drawdown": 0.135874,
+              "buy_trades": 15,
+              "cagr": 0.209636,
+              "cumulative_return": 0.051331,
+              "daily_sharpe": 1.629651,
+              "excess_vs_gate": 0.011385,
+              "gate_return": 0.039946,
+              "input_rows": 117,
+              "max_drawdown": 0.045365,
               "skipped_missing_outcome": 0
             },
             "0.0075": {
-              "buy_trades": 20,
-              "cagr": -0.08554,
-              "cumulative_return": -0.033954,
-              "daily_sharpe": -0.233213,
-              "excess_vs_gate": -0.020084,
-              "gate_return": -0.01387,
-              "input_rows": 228,
-              "max_drawdown": 0.202296,
+              "buy_trades": 15,
+              "cagr": 0.327548,
+              "cumulative_return": 0.077368,
+              "daily_sharpe": 1.650287,
+              "excess_vs_gate": 0.037422,
+              "gate_return": 0.039946,
+              "input_rows": 117,
+              "max_drawdown": 0.067179,
               "skipped_missing_outcome": 0
             },
             "0.01": {
-              "buy_trades": 20,
-              "cagr": -0.122106,
-              "cumulative_return": -0.049063,
-              "daily_sharpe": -0.229376,
-              "excess_vs_gate": -0.035193,
-              "gate_return": -0.01387,
-              "input_rows": 228,
-              "max_drawdown": 0.264337,
+              "buy_trades": 15,
+              "cagr": 0.454961,
+              "cumulative_return": 0.103652,
+              "daily_sharpe": 1.670763,
+              "excess_vs_gate": 0.063706,
+              "gate_return": 0.039946,
+              "input_rows": 117,
+              "max_drawdown": 0.088465,
               "skipped_missing_outcome": 0
             }
           },
-          "in_sample_selection": 0.0025,
+          "in_sample_selection": 0.01,
           "oracle": {
             "decay_cagr": {
-              "delta": 0.608775,
-              "ratio": null,
-              "status": "is_non_positive"
+              "delta": 5.843582,
+              "ratio": 28.874897,
+              "status": "ready"
             },
             "decay_cumulative": {
-              "delta": 0.179493,
-              "ratio": null,
-              "status": "is_non_positive"
+              "delta": 0.334739,
+              "ratio": 7.521193,
+              "status": "ready"
             },
             "excess_sign_consistency": {
-              "negative_windows": 1,
-              "observed_windows": 4,
-              "positive_ratio": 0.75,
-              "positive_windows": 3,
+              "negative_windows": 0,
+              "observed_windows": 2,
+              "positive_ratio": 1.0,
+              "positive_windows": 2,
               "zero_windows": 0
             },
-            "oos_annualized_return": 0.559251,
-            "oos_chain_excess": 0.176435,
-            "oos_chain_return": 0.160063,
-            "oos_total_span_days": 122,
-            "oos_window_count": 4,
-            "verdict": "oos_supported"
+            "oos_annualized_return": 6.053218,
+            "oos_chain_excess": 0.332385,
+            "oos_chain_return": 0.38607,
+            "oos_total_span_days": 61,
+            "oos_window_count": 2,
+            "verdict": "insufficient_windows"
           },
           "policy_in_sample": {
-            "buy_trades": 20,
-            "cagr": -0.049524,
-            "cumulative_return": -0.01943,
-            "daily_sharpe": -0.225058,
-            "excess_vs_gate": -0.00556,
-            "gate_return": -0.01387,
-            "input_rows": 228,
-            "max_drawdown": 0.135874,
+            "buy_trades": 15,
+            "cagr": 0.209636,
+            "cumulative_return": 0.051331,
+            "daily_sharpe": 1.629651,
+            "excess_vs_gate": 0.011385,
+            "gate_return": 0.039946,
+            "input_rows": 117,
+            "max_drawdown": 0.045365,
             "skipped_missing_outcome": 0
           },
           "policy_param": 0.005,
@@ -6304,38 +6047,8 @@
                 "0.0075": null,
                 "0.01": null
               },
-              "valid_rows": 60,
+              "valid_rows": 59,
               "window_id": "S2W18"
-            },
-            {
-              "oracle": 0.01,
-              "selected": null,
-              "selection_status": "insufficient_train_rows",
-              "train_rows": 0,
-              "train_rows_unpurged": 60,
-              "train_scores": {
-                "0.0025": null,
-                "0.005": null,
-                "0.0075": null,
-                "0.01": null
-              },
-              "valid_rows": 90,
-              "window_id": "S2W19"
-            },
-            {
-              "oracle": 0.01,
-              "selected": null,
-              "selection_status": "insufficient_train_rows",
-              "train_rows": 0,
-              "train_rows_unpurged": 90,
-              "train_scores": {
-                "0.0025": null,
-                "0.005": null,
-                "0.0075": null,
-                "0.01": null
-              },
-              "valid_rows": 20,
-              "window_id": "S2W20"
             }
           ]
         },
@@ -6351,27 +6064,27 @@
           },
           "fixed_policy": {
             "decay_cagr": {
-              "delta": -0.038248,
-              "ratio": 0.281471,
+              "delta": -0.033376,
+              "ratio": 0.596854,
               "status": "ready"
             },
             "decay_cumulative": {
-              "delta": -0.081288,
-              "ratio": 0.197452,
+              "delta": -0.080924,
+              "ratio": 0.41651,
               "status": "ready"
             },
             "excess_sign_consistency": {
-              "negative_windows": 11,
-              "observed_windows": 16,
-              "positive_ratio": 0.3125,
-              "positive_windows": 5,
+              "negative_windows": 10,
+              "observed_windows": 14,
+              "positive_ratio": 0.285714,
+              "positive_windows": 4,
               "zero_windows": 0
             },
-            "oos_annualized_return": 0.014983,
-            "oos_chain_excess": -0.24842,
-            "oos_chain_return": 0.019999,
-            "oos_total_span_days": 486,
-            "oos_window_count": 16,
+            "oos_annualized_return": 0.049412,
+            "oos_chain_excess": -0.276182,
+            "oos_chain_return": 0.057765,
+            "oos_total_span_days": 425,
+            "oos_window_count": 14,
             "verdict": "oos_weakened"
           },
           "grid": [
@@ -6382,46 +6095,46 @@
           ],
           "in_sample_by_param": {
             "0.0025": {
-              "buy_trades": 60,
-              "cagr": 0.027479,
-              "cumulative_return": 0.051722,
-              "daily_sharpe": 0.564013,
-              "excess_vs_gate": -0.173735,
-              "gate_return": 0.225457,
-              "input_rows": 602,
+              "buy_trades": 50,
+              "cagr": 0.041834,
+              "cumulative_return": 0.06921,
+              "daily_sharpe": 0.843146,
+              "excess_vs_gate": -0.232399,
+              "gate_return": 0.301609,
+              "input_rows": 577,
               "max_drawdown": 0.048067,
               "skipped_missing_outcome": 0
             },
             "0.005": {
-              "buy_trades": 60,
-              "cagr": 0.053231,
-              "cumulative_return": 0.101287,
-              "daily_sharpe": 0.570699,
-              "excess_vs_gate": -0.12417,
-              "gate_return": 0.225457,
-              "input_rows": 602,
+              "buy_trades": 50,
+              "cagr": 0.082788,
+              "cumulative_return": 0.138689,
+              "daily_sharpe": 0.854058,
+              "excess_vs_gate": -0.16292,
+              "gate_return": 0.301609,
+              "input_rows": 577,
               "max_drawdown": 0.093388,
               "skipped_missing_outcome": 0
             },
             "0.0075": {
-              "buy_trades": 60,
-              "cagr": 0.07677,
-              "cumulative_return": 0.147512,
-              "daily_sharpe": 0.577863,
-              "excess_vs_gate": -0.077945,
-              "gate_return": 0.225457,
-              "input_rows": 602,
+              "buy_trades": 50,
+              "cagr": 0.122254,
+              "cumulative_return": 0.207237,
+              "daily_sharpe": 0.868509,
+              "excess_vs_gate": -0.094372,
+              "gate_return": 0.301609,
+              "input_rows": 577,
               "max_drawdown": 0.131864,
               "skipped_missing_outcome": 0
             },
             "0.01": {
-              "buy_trades": 58,
-              "cagr": 0.168463,
-              "cumulative_return": 0.335925,
-              "daily_sharpe": 0.951419,
-              "excess_vs_gate": 0.110468,
-              "gate_return": 0.225457,
-              "input_rows": 602,
+              "buy_trades": 49,
+              "cagr": 0.196757,
+              "cumulative_return": 0.340831,
+              "daily_sharpe": 1.082195,
+              "excess_vs_gate": 0.039222,
+              "gate_return": 0.301609,
+              "input_rows": 577,
               "max_drawdown": 0.117615,
               "skipped_missing_outcome": 0
             }
@@ -6429,37 +6142,37 @@
           "in_sample_selection": 0.01,
           "oracle": {
             "decay_cagr": {
-              "delta": 0.026337,
-              "ratio": 1.49476,
+              "delta": 0.046646,
+              "ratio": 1.563443,
               "status": "ready"
             },
             "decay_cumulative": {
-              "delta": 0.006031,
-              "ratio": 1.059544,
+              "delta": 0.013571,
+              "ratio": 1.097851,
               "status": "ready"
             },
             "excess_sign_consistency": {
-              "negative_windows": 11,
-              "observed_windows": 16,
-              "positive_ratio": 0.3125,
-              "positive_windows": 5,
+              "negative_windows": 10,
+              "observed_windows": 14,
+              "positive_ratio": 0.285714,
+              "positive_windows": 4,
               "zero_windows": 0
             },
-            "oos_annualized_return": 0.079568,
-            "oos_chain_excess": -0.161101,
-            "oos_chain_return": 0.107318,
-            "oos_total_span_days": 486,
-            "oos_window_count": 16,
+            "oos_annualized_return": 0.129434,
+            "oos_chain_excess": -0.181688,
+            "oos_chain_return": 0.15226,
+            "oos_total_span_days": 425,
+            "oos_window_count": 14,
             "verdict": "oos_weakened"
           },
           "policy_in_sample": {
-            "buy_trades": 60,
-            "cagr": 0.053231,
-            "cumulative_return": 0.101287,
-            "daily_sharpe": 0.570699,
-            "excess_vs_gate": -0.12417,
-            "gate_return": 0.225457,
-            "input_rows": 602,
+            "buy_trades": 50,
+            "cagr": 0.082788,
+            "cumulative_return": 0.138689,
+            "daily_sharpe": 0.854058,
+            "excess_vs_gate": -0.16292,
+            "gate_return": 0.301609,
+            "input_rows": 577,
             "max_drawdown": 0.093388,
             "skipped_missing_outcome": 0
           },
@@ -6731,7 +6444,7 @@
               "window_id": "S1W16"
             },
             {
-              "oracle": 0.01,
+              "oracle": 0.0075,
               "selected": null,
               "selection_status": "insufficient_train_rows",
               "train_rows": 0,
@@ -6759,36 +6472,6 @@
               },
               "valid_rows": 0,
               "window_id": "S2W18"
-            },
-            {
-              "oracle": 0.01,
-              "selected": null,
-              "selection_status": "insufficient_train_rows",
-              "train_rows": 0,
-              "train_rows_unpurged": 0,
-              "train_scores": {
-                "0.0025": null,
-                "0.005": null,
-                "0.0075": null,
-                "0.01": null
-              },
-              "valid_rows": 14,
-              "window_id": "S2W19"
-            },
-            {
-              "oracle": 0.01,
-              "selected": null,
-              "selection_status": "insufficient_train_rows",
-              "train_rows": 0,
-              "train_rows_unpurged": 14,
-              "train_scores": {
-                "0.0025": null,
-                "0.005": null,
-                "0.0075": null,
-                "0.01": null
-              },
-              "valid_rows": 11,
-              "window_id": "S2W20"
             }
           ]
         },
@@ -6804,28 +6487,28 @@
           },
           "fixed_policy": {
             "decay_cagr": {
-              "delta": 0.210369,
-              "ratio": 3.508486,
+              "delta": 0.223272,
+              "ratio": 3.643554,
               "status": "ready"
             },
             "decay_cumulative": {
-              "delta": 0.315864,
-              "ratio": 3.024901,
+              "delta": 0.310568,
+              "ratio": 3.046601,
               "status": "ready"
             },
             "excess_sign_consistency": {
               "negative_windows": 9,
-              "observed_windows": 18,
-              "positive_ratio": 0.5,
-              "positive_windows": 9,
+              "observed_windows": 17,
+              "positive_ratio": 0.470588,
+              "positive_windows": 8,
               "zero_windows": 0
             },
-            "oos_annualized_return": 0.294232,
-            "oos_chain_excess": 0.017407,
-            "oos_chain_return": 0.471854,
-            "oos_total_span_days": 547,
-            "oos_window_count": 18,
-            "verdict": "oos_inconclusive"
+            "oos_annualized_return": 0.307731,
+            "oos_chain_excess": -0.029618,
+            "oos_chain_return": 0.462316,
+            "oos_total_span_days": 517,
+            "oos_window_count": 17,
+            "verdict": "oos_weakened"
           },
           "grid": [
             0.0025,
@@ -6835,46 +6518,46 @@
           ],
           "in_sample_by_param": {
             "0.0025": {
-              "buy_trades": 82,
-              "cagr": 0.043396,
-              "cumulative_return": 0.079466,
-              "daily_sharpe": 0.893373,
-              "excess_vs_gate": -0.190241,
-              "gate_return": 0.269707,
-              "input_rows": 770,
+              "buy_trades": 80,
+              "cagr": 0.04375,
+              "cumulative_return": 0.077467,
+              "daily_sharpe": 0.893274,
+              "excess_vs_gate": -0.219508,
+              "gate_return": 0.296975,
+              "input_rows": 768,
               "max_drawdown": 0.07324,
               "skipped_missing_outcome": 0
             },
             "0.005": {
-              "buy_trades": 82,
-              "cagr": 0.083863,
-              "cumulative_return": 0.15599,
-              "daily_sharpe": 0.883127,
-              "excess_vs_gate": -0.113717,
-              "gate_return": 0.269707,
-              "input_rows": 770,
+              "buy_trades": 80,
+              "cagr": 0.084459,
+              "cumulative_return": 0.151748,
+              "daily_sharpe": 0.882437,
+              "excess_vs_gate": -0.145227,
+              "gate_return": 0.296975,
+              "input_rows": 768,
               "max_drawdown": 0.141817,
               "skipped_missing_outcome": 0
             },
             "0.0075": {
-              "buy_trades": 82,
-              "cagr": 0.121248,
-              "cumulative_return": 0.228749,
-              "daily_sharpe": 0.872635,
-              "excess_vs_gate": -0.040958,
-              "gate_return": 0.269707,
-              "input_rows": 770,
+              "buy_trades": 80,
+              "cagr": 0.121965,
+              "cumulative_return": 0.222045,
+              "daily_sharpe": 0.871351,
+              "excess_vs_gate": -0.07493,
+              "gate_return": 0.296975,
+              "input_rows": 768,
               "max_drawdown": 0.205989,
               "skipped_missing_outcome": 0
             },
             "0.01": {
-              "buy_trades": 82,
-              "cagr": 0.11729,
-              "cumulative_return": 0.220952,
-              "daily_sharpe": 0.711588,
-              "excess_vs_gate": -0.048755,
-              "gate_return": 0.269707,
-              "input_rows": 770,
+              "buy_trades": 80,
+              "cagr": 0.116742,
+              "cumulative_return": 0.212149,
+              "daily_sharpe": 0.705519,
+              "excess_vs_gate": -0.084826,
+              "gate_return": 0.296975,
+              "input_rows": 768,
               "max_drawdown": 0.287301,
               "skipped_missing_outcome": 0
             }
@@ -6882,37 +6565,37 @@
           "in_sample_selection": 0.0025,
           "oracle": {
             "decay_cagr": {
-              "delta": 0.522543,
-              "ratio": 7.230912,
+              "delta": 0.551782,
+              "ratio": 7.533131,
               "status": "ready"
             },
             "decay_cumulative": {
-              "delta": 0.878713,
-              "ratio": 6.633135,
+              "delta": 0.856889,
+              "ratio": 6.646787,
               "status": "ready"
             },
             "excess_sign_consistency": {
               "negative_windows": 9,
-              "observed_windows": 18,
-              "positive_ratio": 0.5,
-              "positive_windows": 9,
+              "observed_windows": 17,
+              "positive_ratio": 0.470588,
+              "positive_windows": 8,
               "zero_windows": 0
             },
-            "oos_annualized_return": 0.606406,
-            "oos_chain_excess": 0.580255,
-            "oos_chain_return": 1.034703,
-            "oos_total_span_days": 547,
-            "oos_window_count": 18,
+            "oos_annualized_return": 0.636241,
+            "oos_chain_excess": 0.516703,
+            "oos_chain_return": 1.008637,
+            "oos_total_span_days": 517,
+            "oos_window_count": 17,
             "verdict": "oos_inconclusive"
           },
           "policy_in_sample": {
-            "buy_trades": 82,
-            "cagr": 0.083863,
-            "cumulative_return": 0.15599,
-            "daily_sharpe": 0.883127,
-            "excess_vs_gate": -0.113717,
-            "gate_return": 0.269707,
-            "input_rows": 770,
+            "buy_trades": 80,
+            "cagr": 0.084459,
+            "cumulative_return": 0.151748,
+            "daily_sharpe": 0.882437,
+            "excess_vs_gate": -0.145227,
+            "gate_return": 0.296975,
+            "input_rows": 768,
             "max_drawdown": 0.141817,
             "skipped_missing_outcome": 0
           },
@@ -7165,7 +6848,7 @@
                 "0.0075": null,
                 "0.01": null
               },
-              "valid_rows": 23,
+              "valid_rows": 24,
               "window_id": "S1W15"
             },
             {
@@ -7173,7 +6856,7 @@
               "selected": null,
               "selection_status": "insufficient_train_rows",
               "train_rows": 0,
-              "train_rows_unpurged": 23,
+              "train_rows_unpurged": 24,
               "train_scores": {
                 "0.0025": null,
                 "0.005": null,
@@ -7212,36 +6895,6 @@
               },
               "valid_rows": 6,
               "window_id": "S2W18"
-            },
-            {
-              "oracle": 0.01,
-              "selected": null,
-              "selection_status": "insufficient_train_rows",
-              "train_rows": 0,
-              "train_rows_unpurged": 6,
-              "train_scores": {
-                "0.0025": null,
-                "0.005": null,
-                "0.0075": null,
-                "0.01": null
-              },
-              "valid_rows": 3,
-              "window_id": "S2W19"
-            },
-            {
-              "oracle": null,
-              "selected": null,
-              "selection_status": "insufficient_train_rows",
-              "train_rows": 0,
-              "train_rows_unpurged": 3,
-              "train_scores": {
-                "0.0025": null,
-                "0.005": null,
-                "0.0075": null,
-                "0.01": null
-              },
-              "valid_rows": 0,
-              "window_id": "S2W20"
             }
           ]
         },
@@ -7257,27 +6910,27 @@
           },
           "fixed_policy": {
             "decay_cagr": {
-              "delta": 0.265408,
-              "ratio": 2.269608,
+              "delta": 0.293771,
+              "ratio": 2.028363,
               "status": "ready"
             },
             "decay_cumulative": {
-              "delta": 0.469279,
-              "ratio": 2.061332,
+              "delta": 0.412122,
+              "ratio": 1.717867,
               "status": "ready"
             },
             "excess_sign_consistency": {
-              "negative_windows": 6,
-              "observed_windows": 20,
-              "positive_ratio": 0.7,
-              "positive_windows": 14,
+              "negative_windows": 5,
+              "observed_windows": 18,
+              "positive_ratio": 0.722222,
+              "positive_windows": 13,
               "zero_windows": 0
             },
-            "oos_annualized_return": 0.474455,
-            "oos_chain_excess": 0.648103,
-            "oos_chain_return": 0.911439,
-            "oos_total_span_days": 609,
-            "oos_window_count": 20,
+            "oos_annualized_return": 0.579439,
+            "oos_chain_excess": 0.632897,
+            "oos_chain_return": 0.986214,
+            "oos_total_span_days": 548,
+            "oos_window_count": 18,
             "verdict": "oos_supported"
           },
           "grid": [
@@ -7288,85 +6941,85 @@
           ],
           "in_sample_by_param": {
             "0.0025": {
-              "buy_trades": 84,
-              "cagr": 0.103632,
-              "cumulative_return": 0.209479,
-              "daily_sharpe": 1.276223,
-              "excess_vs_gate": -0.039633,
-              "gate_return": 0.249112,
-              "input_rows": 559,
-              "max_drawdown": 0.076167,
+              "buy_trades": 79,
+              "cagr": 0.137749,
+              "cumulative_return": 0.262381,
+              "daily_sharpe": 1.673159,
+              "excess_vs_gate": -0.054497,
+              "gate_return": 0.316878,
+              "input_rows": 523,
+              "max_drawdown": 0.039352,
               "skipped_missing_outcome": 0
             },
             "0.005": {
-              "buy_trades": 84,
-              "cagr": 0.209047,
-              "cumulative_return": 0.44216,
-              "daily_sharpe": 1.279841,
-              "excess_vs_gate": 0.193048,
-              "gate_return": 0.249112,
-              "input_rows": 559,
-              "max_drawdown": 0.149684,
+              "buy_trades": 79,
+              "cagr": 0.285668,
+              "cumulative_return": 0.574092,
+              "daily_sharpe": 1.687489,
+              "excess_vs_gate": 0.257214,
+              "gate_return": 0.316878,
+              "input_rows": 523,
+              "max_drawdown": 0.078302,
               "skipped_missing_outcome": 0
             },
             "0.0075": {
-              "buy_trades": 84,
-              "cagr": 0.318022,
-              "cumulative_return": 0.703345,
-              "daily_sharpe": 1.291441,
-              "excess_vs_gate": 0.454233,
-              "gate_return": 0.249112,
-              "input_rows": 559,
-              "max_drawdown": 0.22059,
+              "buy_trades": 79,
+              "cagr": 0.446871,
+              "cumulative_return": 0.948287,
+              "daily_sharpe": 1.71106,
+              "excess_vs_gate": 0.631409,
+              "gate_return": 0.316878,
+              "input_rows": 523,
+              "max_drawdown": 0.116856,
               "skipped_missing_outcome": 0
             },
             "0.01": {
-              "buy_trades": 83,
-              "cagr": 0.42256,
-              "cumulative_return": 0.973502,
-              "daily_sharpe": 1.273345,
-              "excess_vs_gate": 0.72439,
-              "gate_return": 0.249112,
-              "input_rows": 559,
-              "max_drawdown": 0.310552,
+              "buy_trades": 78,
+              "cagr": 0.638948,
+              "cumulative_return": 1.440019,
+              "daily_sharpe": 1.755119,
+              "excess_vs_gate": 1.123141,
+              "gate_return": 0.316878,
+              "input_rows": 523,
+              "max_drawdown": 0.15502,
               "skipped_missing_outcome": 0
             }
           },
-          "in_sample_selection": 0.0075,
+          "in_sample_selection": 0.01,
           "oracle": {
             "decay_cagr": {
-              "delta": 0.592734,
-              "ratio": 3.835408,
+              "delta": 0.858162,
+              "ratio": 4.004055,
               "status": "ready"
             },
             "decay_cumulative": {
-              "delta": 1.228612,
-              "ratio": 3.77866,
+              "delta": 1.568148,
+              "ratio": 3.731527,
               "status": "ready"
             },
             "excess_sign_consistency": {
-              "negative_windows": 5,
-              "observed_windows": 20,
-              "positive_ratio": 0.75,
-              "positive_windows": 15,
+              "negative_windows": 4,
+              "observed_windows": 18,
+              "positive_ratio": 0.777778,
+              "positive_windows": 14,
               "zero_windows": 0
             },
-            "oos_annualized_return": 0.801781,
-            "oos_chain_excess": 1.407437,
-            "oos_chain_return": 1.670772,
-            "oos_total_span_days": 609,
-            "oos_window_count": 20,
+            "oos_annualized_return": 1.14383,
+            "oos_chain_excess": 1.788923,
+            "oos_chain_return": 2.14224,
+            "oos_total_span_days": 548,
+            "oos_window_count": 18,
             "verdict": "oos_supported"
           },
           "policy_in_sample": {
-            "buy_trades": 84,
-            "cagr": 0.209047,
-            "cumulative_return": 0.44216,
-            "daily_sharpe": 1.279841,
-            "excess_vs_gate": 0.193048,
-            "gate_return": 0.249112,
-            "input_rows": 559,
-            "max_drawdown": 0.149684,
+            "buy_trades": 79,
+            "cagr": 0.285668,
+            "cumulative_return": 0.574092,
+            "daily_sharpe": 1.687489,
+            "excess_vs_gate": 0.257214,
+            "gate_return": 0.316878,
+            "input_rows": 523,
+            "max_drawdown": 0.078302,
             "skipped_missing_outcome": 0
           },
           "policy_param": 0.005,
@@ -7637,7 +7290,7 @@
               "window_id": "S1W16"
             },
             {
-              "oracle": 0.0075,
+              "oracle": 0.01,
               "selected": null,
               "selection_status": "insufficient_train_rows",
               "train_rows": 0,
@@ -7665,36 +7318,6 @@
               },
               "valid_rows": 22,
               "window_id": "S2W18"
-            },
-            {
-              "oracle": 0.01,
-              "selected": null,
-              "selection_status": "insufficient_train_rows",
-              "train_rows": 0,
-              "train_rows_unpurged": 22,
-              "train_scores": {
-                "0.0025": null,
-                "0.005": null,
-                "0.0075": null,
-                "0.01": null
-              },
-              "valid_rows": 27,
-              "window_id": "S2W19"
-            },
-            {
-              "oracle": 0.01,
-              "selected": null,
-              "selection_status": "insufficient_train_rows",
-              "train_rows": 0,
-              "train_rows_unpurged": 27,
-              "train_scores": {
-                "0.0025": null,
-                "0.005": null,
-                "0.0075": null,
-                "0.01": null
-              },
-              "valid_rows": 9,
-              "window_id": "S2W20"
             }
           ]
         },
@@ -7710,28 +7333,28 @@
           },
           "fixed_policy": {
             "decay_cagr": {
-              "delta": -0.07116,
-              "ratio": 0.389947,
+              "delta": -0.062358,
+              "ratio": 0.870181,
               "status": "ready"
             },
             "decay_cumulative": {
-              "delta": -0.025727,
-              "ratio": 0.367975,
+              "delta": -0.040272,
+              "ratio": 0.598783,
               "status": "ready"
             },
             "excess_sign_consistency": {
-              "negative_windows": 2,
-              "observed_windows": 4,
+              "negative_windows": 1,
+              "observed_windows": 2,
               "positive_ratio": 0.5,
-              "positive_windows": 2,
+              "positive_windows": 1,
               "zero_windows": 0
             },
-            "oos_annualized_return": 0.045485,
-            "oos_chain_excess": 0.04564,
-            "oos_chain_return": 0.014979,
-            "oos_total_span_days": 122,
-            "oos_window_count": 4,
-            "verdict": "oos_inconclusive"
+            "oos_annualized_return": 0.417988,
+            "oos_chain_excess": 0.017675,
+            "oos_chain_return": 0.060103,
+            "oos_total_span_days": 61,
+            "oos_window_count": 2,
+            "verdict": "insufficient_windows"
           },
           "grid": [
             0.0025,
@@ -7741,97 +7364,97 @@
           ],
           "in_sample_by_param": {
             "0.0025": {
-              "buy_trades": 20,
-              "cagr": 0.064281,
-              "cumulative_return": 0.022786,
-              "daily_sharpe": 0.740672,
-              "excess_vs_gate": 0.03489,
-              "gate_return": -0.012104,
-              "input_rows": 1200,
-              "max_drawdown": 0.076644,
+              "buy_trades": 10,
+              "cagr": 0.224557,
+              "cumulative_return": 0.050636,
+              "daily_sharpe": 2.891102,
+              "excess_vs_gate": 0.004766,
+              "gate_return": 0.04587,
+              "input_rows": 898,
+              "max_drawdown": 0.021229,
               "skipped_missing_outcome": 0
             },
             "0.005": {
-              "buy_trades": 20,
-              "cagr": 0.116645,
-              "cumulative_return": 0.040706,
-              "daily_sharpe": 0.721011,
-              "excess_vs_gate": 0.05281,
-              "gate_return": -0.012104,
-              "input_rows": 1200,
-              "max_drawdown": 0.1497,
+              "buy_trades": 10,
+              "cagr": 0.480346,
+              "cumulative_return": 0.100375,
+              "daily_sharpe": 3.114891,
+              "excess_vs_gate": 0.054505,
+              "gate_return": 0.04587,
+              "input_rows": 898,
+              "max_drawdown": 0.039021,
               "skipped_missing_outcome": 0
             },
             "0.0075": {
-              "buy_trades": 20,
-              "cagr": -0.068793,
-              "cumulative_return": -0.025447,
-              "daily_sharpe": 0.028107,
-              "excess_vs_gate": -0.013343,
-              "gate_return": -0.012104,
-              "input_rows": 1200,
-              "max_drawdown": 0.21952,
+              "buy_trades": 10,
+              "cagr": 0.284444,
+              "cumulative_return": 0.06294,
+              "daily_sharpe": 1.937972,
+              "excess_vs_gate": 0.01707,
+              "gate_return": 0.04587,
+              "input_rows": 898,
+              "max_drawdown": 0.064534,
               "skipped_missing_outcome": 0
             },
             "0.01": {
-              "buy_trades": 19,
-              "cagr": 0.291665,
-              "cumulative_return": 0.096975,
-              "daily_sharpe": 1.011705,
-              "excess_vs_gate": 0.109079,
-              "gate_return": -0.012104,
-              "input_rows": 1200,
-              "max_drawdown": 0.252771,
+              "buy_trades": 10,
+              "cagr": 1.074906,
+              "cumulative_return": 0.194801,
+              "daily_sharpe": 3.835055,
+              "excess_vs_gate": 0.148931,
+              "gate_return": 0.04587,
+              "input_rows": 898,
+              "max_drawdown": 0.068296,
               "skipped_missing_outcome": 0
             }
           },
           "in_sample_selection": 0.01,
           "oracle": {
             "decay_cagr": {
-              "delta": 0.123715,
-              "ratio": 2.060612,
+              "delta": 0.579963,
+              "ratio": 2.207386,
               "status": "ready"
             },
             "decay_cumulative": {
-              "delta": 0.033946,
-              "ratio": 1.833941,
+              "delta": 0.028031,
+              "ratio": 1.279263,
               "status": "ready"
             },
             "excess_sign_consistency": {
-              "negative_windows": 2,
-              "observed_windows": 4,
+              "negative_windows": 1,
+              "observed_windows": 2,
               "positive_ratio": 0.5,
-              "positive_windows": 2,
+              "positive_windows": 1,
               "zero_windows": 0
             },
-            "oos_annualized_return": 0.24036,
-            "oos_chain_excess": 0.105314,
-            "oos_chain_return": 0.074652,
-            "oos_total_span_days": 122,
-            "oos_window_count": 4,
-            "verdict": "oos_inconclusive"
+            "oos_annualized_return": 1.060309,
+            "oos_chain_excess": 0.085978,
+            "oos_chain_return": 0.128406,
+            "oos_total_span_days": 61,
+            "oos_window_count": 2,
+            "verdict": "insufficient_windows"
           },
           "policy_in_sample": {
-            "buy_trades": 20,
-            "cagr": 0.116645,
-            "cumulative_return": 0.040706,
-            "daily_sharpe": 0.721011,
-            "excess_vs_gate": 0.05281,
-            "gate_return": -0.012104,
-            "input_rows": 1200,
-            "max_drawdown": 0.1497,
+            "buy_trades": 10,
+            "cagr": 0.480346,
+            "cumulative_return": 0.100375,
+            "daily_sharpe": 3.114891,
+            "excess_vs_gate": 0.054505,
+            "gate_return": 0.04587,
+            "input_rows": 898,
+            "max_drawdown": 0.039021,
             "skipped_missing_outcome": 0
           },
           "policy_param": 0.005,
           "selected": {
             "decay_cagr": {
-              "delta": -0.902885,
-              "ratio": -6.740448,
+              "delta": -1.266586,
+              "ratio": -1.636819,
               "status": "ready"
             },
             "decay_cumulative": {
-              "delta": -0.163524,
-              "ratio": -3.017196,
+              "delta": -0.223193,
+              "ratio": -1.223592,
               "status": "ready"
             },
             "excess_sign_consistency": {
@@ -7842,7 +7465,7 @@
               "zero_windows": 0
             },
             "oos_annualized_return": -0.78624,
-            "oos_chain_excess": -0.131141,
+            "oos_chain_excess": -0.12873,
             "oos_chain_return": -0.122818,
             "oos_total_span_days": 31,
             "oos_window_count": 1,
@@ -8094,14 +7717,14 @@
               "selected": null,
               "selection_status": "insufficient_train_rows",
               "train_rows": 0,
-              "train_rows_unpurged": 150,
+              "train_rows_unpurged": 149,
               "train_scores": {
                 "0.0025": null,
                 "0.005": null,
                 "0.0075": null,
                 "0.01": null
               },
-              "valid_rows": 570,
+              "valid_rows": 569,
               "window_id": "S2W17"
             },
             {
@@ -8109,45 +7732,15 @@
               "selected": 0.01,
               "selection_status": "selected",
               "train_rows": 30,
-              "train_rows_unpurged": 570,
+              "train_rows_unpurged": 569,
               "train_scores": {
                 "0.0025": 10.371193,
-                "0.005": 11.559031,
-                "0.0075": 14.117825,
-                "0.01": 15.677482
+                "0.005": 10.37025,
+                "0.0075": 10.365236,
+                "0.01": 11.582223
               },
               "valid_rows": 180,
               "window_id": "S2W18"
-            },
-            {
-              "oracle": 0.01,
-              "selected": null,
-              "selection_status": "insufficient_train_rows",
-              "train_rows": 0,
-              "train_rows_unpurged": 180,
-              "train_scores": {
-                "0.0025": null,
-                "0.005": null,
-                "0.0075": null,
-                "0.01": null
-              },
-              "valid_rows": 270,
-              "window_id": "S2W19"
-            },
-            {
-              "oracle": 0.01,
-              "selected": null,
-              "selection_status": "insufficient_train_rows",
-              "train_rows": 0,
-              "train_rows_unpurged": 270,
-              "train_scores": {
-                "0.0025": null,
-                "0.005": null,
-                "0.0075": null,
-                "0.01": null
-              },
-              "valid_rows": 30,
-              "window_id": "S2W20"
             }
           ]
         }
@@ -8166,14 +7759,14 @@
         {
           "end_date": "2025-12-31",
           "segment_id": "S1",
-          "signal_date_count": 249,
+          "signal_date_count": 250,
           "start_date": "2024-08-30",
           "start_reason": "series_start"
         },
         {
-          "end_date": "2026-07-10",
+          "end_date": "2026-05-28",
           "segment_id": "S2",
-          "signal_date_count": 65,
+          "signal_date_count": 47,
           "start_date": "2026-03-18",
           "start_reason": "forced_cut:2026-01-05+data_gap:77d"
         }
@@ -8340,24 +7933,6 @@
           "valid_end_clamped": false,
           "valid_start": "2026-05-01",
           "window_id": "S2W18"
-        },
-        {
-          "segment_id": "S2",
-          "train_end": "2026-05-31",
-          "train_start": "2026-05-01",
-          "valid_end": "2026-06-30",
-          "valid_end_clamped": false,
-          "valid_start": "2026-06-01",
-          "window_id": "S2W19"
-        },
-        {
-          "segment_id": "S2",
-          "train_end": "2026-06-30",
-          "train_start": "2026-06-01",
-          "valid_end": "2026-07-31",
-          "valid_end_clamped": false,
-          "valid_start": "2026-07-01",
-          "window_id": "S2W20"
         }
       ],
       "windows_crossing_forced_cut": {},
@@ -8365,5 +7940,5 @@
       "windows_valid_end_clamped": {}
     }
   ],
-  "usable_row_count": 5610
+  "usable_row_count": 4269
 }
