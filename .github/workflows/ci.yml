@@ -57,6 +57,9 @@ jobs:
           tests/test_agent_eval_pr_replay.py
           tests/test_agent_eval_rollout.py
           tests/test_agent_eval_coverage_report.py
+          tests/test_agent_sql_disclosure_drift.py
+          tests/test_agent_api_contract.py
+          tests/test_agent_audit_log_contract.py
           tests/test_caliber_gate_mapping.py
           tests/test_mcp_config_consistency.py
 
