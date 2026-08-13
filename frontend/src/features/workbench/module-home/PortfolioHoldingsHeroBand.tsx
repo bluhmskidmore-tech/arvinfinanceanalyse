@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 
 import dhStyles from "../dashboard-home/dashboardHome.module.css";
+import { EM_DASH } from "../../../utils/format";
 import { PORTFOLIO_DIST_CHART_COLORS } from "./portfolioDistributionChart";
 import type {
   ModuleHomeDetailPanel,
@@ -100,7 +101,6 @@ export function PortfolioHoldingsHeroBand({
     >
       <div className={styles.holdingsHeroHead}>
         <div>
-          <span className={styles.holdingsHeroKicker}>图表</span>
           <strong>{heroTitle}</strong>
           <p className={styles.holdingsHeroMeta}>{heroMeta}</p>
         </div>
@@ -118,7 +118,7 @@ export function PortfolioHoldingsHeroBand({
             </span>
             <div className={styles.holdingsHeroFigureHead}>
               <span>{leadingRow?.label ?? "TOP"}</span>
-              <strong>{leadingRow?.share !== "-" ? leadingRow?.share : `${leadingRow?.barPct.toFixed(1) ?? 0}%`}</strong>
+              <strong>{leadingRow?.share !== EM_DASH ? leadingRow?.share : `${leadingRow?.barPct.toFixed(1) ?? 0}%`}</strong>
             </div>
             <div className={styles.holdingsHeroStackBar} aria-hidden="true">
               {visibleStackRows.map((row, index) => (
@@ -150,7 +150,7 @@ export function PortfolioHoldingsHeroBand({
                 >
                   <div className={styles.holdingsHeroBarTop}>
                     <span className={styles.holdingsHeroBarLabel}>{row.label}</span>
-                    <strong>{row.share !== "-" ? row.share : `${row.barPct.toFixed(2)}%`}</strong>
+                    <strong>{row.share !== EM_DASH ? row.share : `${row.barPct.toFixed(2)}%`}</strong>
                   </div>
                   <span className={styles.holdingsHeroBarTrack} aria-hidden="true">
                     <span

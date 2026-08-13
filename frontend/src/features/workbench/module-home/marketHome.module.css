@@ -95,7 +95,7 @@
 .macroTickerLabel {
   overflow: hidden;
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0;
   text-overflow: ellipsis;
@@ -129,7 +129,7 @@
 }
 
 .macroTickerChange {
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 700;
   line-height: 1.2;
@@ -160,7 +160,7 @@
   margin: 0;
   padding: 10px 12px;
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -222,7 +222,7 @@
   position: relative;
   z-index: 1;
   color: var(--dh-blue, var(--ib-accent));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -369,7 +369,7 @@
 
 .marketFocusHeader span {
   color: var(--dh-blue, var(--ib-accent));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
   letter-spacing: 0;
 }
@@ -377,7 +377,7 @@
 .marketFocusHeader em {
   overflow: hidden;
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -396,7 +396,7 @@
 .marketFocusBucket {
   overflow: hidden;
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -414,7 +414,7 @@
 
 .marketFocusItem em {
   overflow: hidden;
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 760;
   line-height: 1.22;
@@ -451,7 +451,7 @@
 .marketMorningReadoutHeader em {
   overflow: hidden;
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 750;
   text-overflow: ellipsis;
@@ -477,14 +477,14 @@
   display: block;
   margin-top: 4px;
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
 .decisionMatrixHeader em {
   overflow: hidden;
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   line-height: 1.3;
   text-overflow: ellipsis;
@@ -494,7 +494,7 @@
 .actionQueueHeader em {
   overflow: hidden;
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   line-height: 1.3;
   text-overflow: ellipsis;
@@ -537,14 +537,14 @@
 
 .decisionMatrixTableLabel {
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
 }
 
 .decisionMatrixTableImplication {
   overflow: hidden;
   color: var(--dh-ink-2, var(--ib-ink-secondary));
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 760;
   line-height: 1.32;
   text-overflow: ellipsis;
@@ -626,7 +626,7 @@
   flex-basis: 100%;
   margin-bottom: 1px;
   color: var(--dh-muted-2, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 850;
   letter-spacing: 0;
@@ -657,7 +657,7 @@
 
 .actionQueueSourceGate span {
   color: var(--dh-blue, var(--ib-accent));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
   letter-spacing: 0;
   text-transform: uppercase;
@@ -665,7 +665,7 @@
 
 .actionQueueSourceGate strong {
   color: var(--dh-ink, var(--ib-ink));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
   white-space: nowrap;
 }
@@ -673,7 +673,7 @@
 .actionQueueSourceGate em {
   overflow: hidden;
   color: var(--dh-muted-2, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -771,7 +771,7 @@
 
 .rateTableDate {
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   text-align: right;
   white-space: nowrap;
 }
@@ -1034,7 +1034,7 @@
 .macroOverviewAction span,
 .macroOverviewEvidenceItem span {
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
   letter-spacing: 0;
 }
@@ -1108,7 +1108,7 @@
   gap: 4px 8px;
   min-width: 0;
   color: var(--dh-muted-2, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
   line-height: 1.35;
 }
@@ -1196,7 +1196,7 @@
   background: var(--ib-surface);
   color: var(--dh-blue-deep, var(--ib-accent));
   font-family: var(--dh-font-mono, var(--moss-font-mono));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
@@ -1204,7 +1204,7 @@
 .marketBottomNavItem b {
   width: 100%;
   color: var(--dh-ink, var(--ib-ink));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 1.35;
   overflow: hidden;
@@ -1215,7 +1215,7 @@
 .marketBottomNavItem em {
   width: 100%;
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   line-height: 1.3;
   overflow: hidden;
@@ -1227,7 +1227,7 @@
   margin: 0;
   padding: 0 4px;
   color: var(--dh-muted-2, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -1301,7 +1301,7 @@
   background: var(--ib-surface);
   color: var(--dh-blue-deep, var(--ib-accent));
   font-family: var(--dh-font-mono, var(--moss-font-mono));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
@@ -1320,7 +1320,7 @@
   border-radius: var(--ib-radius);
   background: var(--dh-line-soft, var(--ib-hairline));
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -1342,7 +1342,7 @@
 
 .drillDesc {
   color: var(--dh-muted-2, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.35;
   display: -webkit-box;
   overflow: hidden;
@@ -1487,7 +1487,7 @@
 .macroDetailSummaryMeta {
   overflow: hidden;
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1586,7 +1586,7 @@
 
 .drillLink em {
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
 }
 
@@ -1616,7 +1616,7 @@
   border-radius: var(--ib-radius);
   background: var(--dh-blue-soft);
   color: var(--dh-blue-deep, var(--ib-accent));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1688,7 +1688,7 @@
 
 .evidenceRailLabel {
   color: rgba(156, 201, 255, 0.92);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
   letter-spacing: 0;
   text-transform: uppercase;
@@ -1703,7 +1703,7 @@
 .evidenceRailCard p {
   margin: 0;
   color: rgba(169, 182, 199, 0.76);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -1859,7 +1859,7 @@
   overflow: hidden;
   min-width: 0;
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.38;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -2019,7 +2019,7 @@
   align-content: start;
   color: var(--dh-muted-2, var(--ib-ink-muted));
   line-height: 1.38;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .marketKpiTile[data-tone="error"] > div:nth-child(2) {
@@ -2067,7 +2067,7 @@
 
 .evidenceRailState {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
   border: 1px solid var(--dh-line);
   color: var(--dh-muted);
@@ -2079,7 +2079,7 @@
 
 .decisionMatrixCell > span {
   color: var(--dh-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
 }
 
@@ -2100,7 +2100,7 @@
   padding-top: 6px;
   border-top: 1px solid var(--dh-line);
   color: var(--ib-accent);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 820;
 }
 
@@ -2109,7 +2109,7 @@
   margin: 0;
   line-height: 1.42;
   color: var(--dh-muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .decisionMatrixMeta span:not(.fieldSeparator) {
@@ -2129,7 +2129,7 @@
   padding: 0 6px;
   background: rgba(114, 167, 220, 0.08);
   color: var(--dh-blue-deep, var(--ib-accent));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   letter-spacing: 0;
   min-width: 26px;
@@ -2148,7 +2148,7 @@
 
 .actionQueueMain em {
   color: var(--dh-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .actionQueueMetaGrid {
@@ -2225,7 +2225,7 @@
   display: -webkit-box;
   overflow: hidden;
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   line-height: 1.35;
   -webkit-box-orient: vertical;
@@ -2279,7 +2279,7 @@
 .marketInstrumentTitle span {
   color: var(--ib-accent);
   font-weight: 850;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .marketInstrumentFacts em {
@@ -2289,7 +2289,7 @@
   font-weight: 760;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .marketInstrumentFacts b {
@@ -2298,7 +2298,7 @@
   font-weight: 850;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11.5px;
+  font-size: 12px;
 }
 
 .judgementCard h2 {
@@ -2317,14 +2317,14 @@
 .judgementCard p {
   max-width: 70ch;
   color: var(--dh-muted);
-  font-size: 11.5px;
+  font-size: 13px;
   line-height: 1.42;
 }
 
 .marketKpiTile > div:first-child {
   text-transform: none;
   color: var(--dh-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
   margin-bottom: 5px;
 }
@@ -2477,7 +2477,7 @@
   font-weight: 780;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .evidenceRailMetric strong {
@@ -2554,7 +2554,7 @@
 .decisionMatrixHeader em,
 .actionQueueHeader em {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   color: var(--dh-muted, var(--ib-ink-muted));
 }
@@ -2633,7 +2633,7 @@
 }
 
 .decisionMatrixSummary {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 760;
   color: var(--dh-api-soft);
 }
@@ -2745,7 +2745,7 @@
 .navigationSection :global(.dhLink),
 .macroSection :global(.dhLink) {
   color: var(--ib-accent);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
 }
 
@@ -2773,7 +2773,7 @@
 
 .panelMeta {
   margin: 0 0 var(--dh-space-2, 12px);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.45;
   color: var(--ib-ink-muted);
 }
@@ -2789,7 +2789,7 @@
 
 .panelSummaryStrip b {
   overflow: hidden;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   line-height: 1.1;
   text-overflow: ellipsis;
@@ -2799,7 +2799,7 @@
 
 .panelSummaryStrip strong {
   overflow: hidden;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   line-height: 1.15;
   text-overflow: ellipsis;
@@ -3102,7 +3102,7 @@
   background: var(--dh-green-soft);
   color: var(--dh-green);
   padding: 1px 6px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
 }
 
@@ -3175,7 +3175,7 @@
 .dataNote {
   margin: 0;
   color: var(--dh-muted-2, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.45;
   padding: 6px 8px 0;
   border-top: 1px solid var(--dh-line);
@@ -3209,7 +3209,7 @@
     display: block;
     margin: 0 0 6px;
     color: var(--dh-muted-2, var(--ib-ink-muted));
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.02em;
     text-align: right;
@@ -3245,7 +3245,7 @@
     display: block;
     margin: 0 0 6px;
     color: var(--dh-muted-2, var(--ib-ink-muted));
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.02em;
     text-align: right;
@@ -3295,7 +3295,7 @@
     display: block;
     margin: 0 0 6px;
     color: var(--ib-ink-muted);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.02em;
     text-align: right;
@@ -3752,7 +3752,7 @@
 .marketCockpitCohesion .marketMorningReadout .decisionMatrixHeader span,
 .marketCockpitCohesion .marketMorningReadout .actionQueueHeader span {
   color: var(--dh-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   letter-spacing: 0;
   text-transform: none;
@@ -3760,7 +3760,7 @@
 
 .marketCockpitCohesion .marketMorningReadout .marketFocusHeader em {
   color: var(--dh-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .marketCockpitCohesion .actionQueue,
@@ -3822,7 +3822,7 @@
 }
 
 .marketCockpitCohesion .decisionMatrixTableChange {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .marketCockpitCohesion .decisionMatrixTableImplication {
@@ -3887,7 +3887,7 @@
   border-radius: 0;
   background: transparent;
   color: var(--dh-blue-deep, var(--ib-accent));
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .marketCockpitCohesion .actionQueueTableTitle {
@@ -3918,7 +3918,7 @@
   background: rgba(114, 167, 220, 0.05);
   color: var(--ib-accent);
   padding: 4px 10px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   transition: background 0.2s ease;
 }
@@ -3994,7 +3994,7 @@
   border-radius: var(--ib-radius);
   background: var(--dh-green-soft);
   color: var(--dh-green);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
 }
 
@@ -4018,7 +4018,7 @@
   border-radius: 0;
   background: transparent;
   color: var(--dh-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.42;
 }
 
@@ -4046,7 +4046,7 @@
 
 .marketCockpitCohesion .evidenceRailDateStack dt {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -4287,7 +4287,7 @@
   }
 
   .marketCockpitCohesion .marketJudgementHero p {
-    font-size: 11.5px;
+    font-size: 13px;
   }
 
   .marketCockpitCohesion .marketKpiBox {
@@ -4316,7 +4316,7 @@
   }
 
   .marketCockpitCohesion .marketKpiDetail {
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .marketCockpitCohesion .actionQueueTableTitle {
@@ -4366,7 +4366,7 @@
   .topbarSummary {
     display: -webkit-box;
     overflow: hidden;
-    font-size: 11px;
+    font-size: 13px;
     line-height: 1.34;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
@@ -4420,7 +4420,7 @@
 
   .marketCockpitCohesion .marketKpiTile > div:first-child {
     margin-bottom: 3px;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .marketCockpitCohesion .marketKpiValueRow {
@@ -4466,7 +4466,7 @@
   }
 
   .marketCockpitCohesion .marketFocusItem em {
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .marketCockpitCohesion .macroTickerTrack {
@@ -4519,12 +4519,12 @@
     min-width: 22px;
     height: 16px;
     padding: 0 4px;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .marketCockpitCohesion .actionQueueTableTitle {
     min-width: 0;
-    font-size: 11.5px;
+    font-size: 12px;
     line-height: 1.22;
     white-space: nowrap;
   }
@@ -4682,7 +4682,7 @@
 .marketRefreshSecondaryLink {
   grid-area: link;
   color: var(--ib-accent);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   text-decoration: none;
   white-space: nowrap;
@@ -4698,7 +4698,7 @@
   max-width: 280px;
   overflow: hidden;
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.35;
   text-overflow: ellipsis;
@@ -4748,7 +4748,7 @@
   border-radius: var(--ib-radius);
   background: transparent;
   color: var(--ib-ink-secondary);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.4;
   white-space: nowrap;
@@ -4781,7 +4781,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 560px;
-  font-size: 11px;
+  font-size: 13px;
   display: none;
   color: var(--ib-ink-muted);
 }
@@ -4820,7 +4820,7 @@
 
 .macroTickerDate {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.2;
 }
 
@@ -4854,7 +4854,7 @@
 
 .marketThesisKicker {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -4894,7 +4894,7 @@
 
 .marketThesisBriefingTitle {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
@@ -4908,7 +4908,7 @@
 
 .marketThesisBriefingEvidence {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.35;
   font-style: normal;
 }
@@ -4927,7 +4927,7 @@
   border-radius: 0 0 var(--ib-radius, 2px) var(--ib-radius, 2px);
   background: var(--ib-surface-muted);
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.35;
 }
 
@@ -4949,7 +4949,7 @@
   justify-content: space-between;
   gap: 8px;
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
@@ -4971,7 +4971,7 @@
 
 .marketNewsStripList em {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
 }
 
@@ -4984,7 +4984,7 @@
 
 .marketThesisTransmission strong {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
@@ -5132,7 +5132,7 @@
   margin: 0;
   overflow: hidden;
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.35;
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -5223,7 +5223,7 @@
 
 .crossAssetPanelKicker {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -5238,7 +5238,7 @@
 
 .crossAssetPanelMeta {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   line-height: 1.35;
 }
@@ -5273,7 +5273,7 @@
 
 .marketActionBandHead em {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
 }
 
@@ -5312,7 +5312,7 @@
 
 .marketAuditFooterLabel em {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 500;
 }
@@ -5386,7 +5386,7 @@
 .marketMosaicPanelMeta {
   overflow: hidden;
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 600;
   line-height: 1.35;
@@ -5400,7 +5400,7 @@
 
 .marketSummaryKicker {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -5447,7 +5447,7 @@
 
 .marketIbLink {
   color: var(--ib-accent);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   text-decoration: none;
 }
@@ -5574,7 +5574,7 @@
 
 .crossAssetBucketKicker {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.08em;
 }
@@ -5596,7 +5596,7 @@
   overflow: hidden;
   min-width: 0;
   color: var(--ib-ink-secondary);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5701,7 +5701,7 @@
   border-radius: var(--ib-radius);
   background: var(--dh-card-soft, var(--ib-paper));
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
   text-align: center;
 }
@@ -5715,7 +5715,7 @@
 
 .macroSignalHitKicker {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
@@ -5756,7 +5756,7 @@
 
 .macroSignalKicker {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.08em;
 }
@@ -5764,7 +5764,7 @@
 .macroSignalTitle {
   overflow: hidden;
   color: var(--ib-ink-secondary, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 1.25;
   text-overflow: ellipsis;
@@ -5801,7 +5801,7 @@
   margin-top: auto;
   overflow: hidden;
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5841,7 +5841,7 @@
 
 .marketInstitutionalCockpit .macroLeadTitle {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -5889,7 +5889,7 @@
   flex-wrap: wrap;
   border-top: 1px solid var(--ib-hairline);
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
   padding-top: 6px;
   gap: 4px 8px;
@@ -6062,7 +6062,7 @@
 
 .marketCurveSpreadLabel {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -6070,7 +6070,7 @@
 
 .marketCurveSpreadDetail {
   color: var(--ib-ink-secondary);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
 }
 
@@ -6140,7 +6140,7 @@
 
 .marketCrisisWarningItem {
   color: var(--dh-amber);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.4;
   background: rgba(181, 71, 8, 0.06);
   padding: 2px 6px;
@@ -6149,7 +6149,7 @@
 
 .marketCrisisExplainMeta {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .marketCurveSpreadValueRow {
@@ -6181,7 +6181,7 @@
   justify-content: space-between;
   gap: 10px;
   color: var(--ib-ink-secondary);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -6221,7 +6221,7 @@
   display: flex;
   justify-content: space-between;
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .marketCrisisTrendBlock {
@@ -6239,7 +6239,7 @@
   align-items: baseline;
   gap: 8px;
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .marketCrisisTrendHead span {
@@ -6284,7 +6284,7 @@
   border: 1px solid var(--ib-hairline);
   border-radius: 2px;
   background: rgba(114, 167, 220, 0.02);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--ib-ink-muted);
 }
 
@@ -6311,7 +6311,7 @@
 
 .marketCrisisZBarMeta {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
 }
 
@@ -6351,7 +6351,7 @@
 
 .marketDeskIntelCardKicker {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -6368,7 +6368,7 @@
 .marketDeskIntelInterpretation {
   margin: 0;
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -6388,7 +6388,7 @@
 }
 
 .marketDeskIntelIndicatorLabel {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--ib-ink);
 }
 
@@ -6426,7 +6426,7 @@
   margin: 0;
   overflow: hidden;
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.35;
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -6512,7 +6512,7 @@
 
 .crossAssetBucketCount {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
 }
 
@@ -6539,7 +6539,7 @@
 }
 
 .crossAssetBarRowCompact .crossAssetBarValue {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .crossAssetBarRowCompact .crossAssetBarChange {
@@ -6548,7 +6548,7 @@
 
 .crossAssetPanelFoot {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -6616,7 +6616,7 @@
 
 .crossAssetDeskContextLabel {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.06em;
 }
@@ -6634,7 +6634,7 @@
 .crossAssetDeskContextDetail {
   overflow: hidden;
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -6650,7 +6650,7 @@
 
 .crossAssetGapSectionHead span {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -6658,7 +6658,7 @@
 
 .crossAssetGapSectionMeta {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
 }
 
@@ -6677,7 +6677,7 @@
   border-radius: 2px;
   background: var(--ib-surface);
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .crossAssetMissingBucketChipValue {
@@ -6704,7 +6704,7 @@
 
 .crossAssetCrisisMiniRegime {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
 }
 
@@ -6722,7 +6722,7 @@
 .crossAssetDeskHint {
   margin: 0;
   color: var(--ib-ink);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.4;
 }
 
@@ -6790,7 +6790,7 @@
   margin-right: 8px;
   color: var(--dh-api-blue, var(--dh-blue));
   font-family: var(--dh-font-mono, var(--moss-font-mono));
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 760;
   letter-spacing: 0.08em;
@@ -6860,7 +6860,7 @@
 .evidenceRailLink i[data-row-index] {
   color: var(--dh-api-blue, var(--dh-blue));
   font-family: var(--dh-font-mono, var(--moss-font-mono));
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 760;
   letter-spacing: 0.08em;
@@ -6879,7 +6879,7 @@
   grid-row: span 2;
   color: var(--dh-api-blue, var(--dh-blue));
   font-family: var(--dh-font-mono, var(--moss-font-mono));
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 760;
   letter-spacing: 0.08em;
@@ -6949,7 +6949,7 @@
   border-bottom: 1px solid var(--ib-hairline);
   background: transparent;
   color: var(--ib-accent);
-  font-size: 11px;
+  font-size: 12px;
   justify-content: flex-start;
   gap: 8px;
 }
@@ -6994,7 +6994,7 @@
 
 .marketCockpitCohesion .macroTickerLabel {
   color: var(--dh-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -7010,7 +7010,7 @@
 }
 
 .marketCockpitCohesion .macroTickerDate {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .marketCockpitCohesion .macroTickerSparkline {
@@ -7029,7 +7029,7 @@
   min-width: 0;
   padding: 4px 2px;
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.14em;
   white-space: nowrap;
@@ -7136,7 +7136,7 @@
 }
 
 .marketCockpitCohesion .marketBottomNavNote {
-  font-size: 11px;
+  font-size: 13px;
 }
 
 /* 5) 响应式回落：窄屏退回单栏，不硬压三�?*/

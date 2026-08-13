@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import { Link } from "react-router-dom";
 
 import ReactECharts from "../../../lib/echarts";
+import { EM_DASH } from "../../../utils/format";
 import dhStyles from "../dashboard-home/dashboardHome.module.css";
 import {
   buildPortfolioPieOption,
@@ -34,7 +35,7 @@ function topRow(rows: ModuleHomeDistributionRow[]) {
 
 function formatMetric(row: ModuleHomeDistributionRow) {
   const value = row.marketValue.replace(" 亿元", "亿");
-  const share = row.share !== "-" ? row.share : `${row.barPct.toFixed(2)}%`;
+  const share = row.share !== EM_DASH ? row.share : `${row.barPct.toFixed(2)}%`;
   return `${value} · ${share}`;
 }
 
@@ -72,7 +73,7 @@ export function PortfolioDistributionPanel({ panel }: PortfolioDistributionPanel
           <p className={styles.distTopHighlight} data-testid={`module-home-distribution-top-${panel.key}`}>
             <span className={styles.distTopLabel}>最大项</span>
             <strong title={leader.label}>{leader.label}</strong>
-            <em>{leader.share !== "-" ? leader.share : `${leader.barPct.toFixed(2)}%`}</em>
+            <em>{leader.share !== EM_DASH ? leader.share : `${leader.barPct.toFixed(2)}%`}</em>
           </p>
         ) : null}
         <p className={styles.distMeta}>{panel.meta}</p>
@@ -112,7 +113,7 @@ export function PortfolioDistributionPanel({ panel }: PortfolioDistributionPanel
                     <span className={styles.distLabel} title={row.label}>
                       {row.label}
                     </span>
-                    <span className={styles.distMetric}>{row.share !== "-" ? row.share : `${row.barPct.toFixed(2)}%`}</span>
+                    <span className={styles.distMetric}>{row.share !== EM_DASH ? row.share : `${row.barPct.toFixed(2)}%`}</span>
                     <span className={styles.distMarketValue}>{row.marketValue}</span>
                   </div>
                   <div className={styles.distBarTrack} aria-hidden="true">

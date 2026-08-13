@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { apiQueryKeys } from "../../../api/queryKeys";
-import { sanitizeMetricCopy } from "../../executive-dashboard/lib/sanitizeMetricCopy";
+import { sanitizeMetricCopy } from "./lib/sanitizeMetricCopy";
 import {
   mapToHomeFirstScreenView,
   type MapToHomeFirstScreenViewInput,
@@ -92,7 +92,6 @@ export function useDashboardHomeSupplementalHydration(
   const {
     dataClient,
     snapshotQuery,
-    isLiveDataFallback,
     adapterOutput,
     snapshotResult,
     snapshotMeta,
@@ -100,7 +99,9 @@ export function useDashboardHomeSupplementalHydration(
     reportDateDataWarning,
   } = snapshotBoundary;
 
-  const useMockFallback = dataClient.mode !== "real" || isLiveDataFallback;
+  // real 模式不允许任何 mock UI 可达路径：useMockFallback 只看数据源模式，
+  // 不再挂接 isLiveDataFallback 之类的运行时回退信号。
+  const useMockFallback = dataClient.mode !== "real";
   const mockFirstScreenView = useMockHomeFirstScreenView(useMockFallback);
   const snapshotReportDate = snapshotResult?.report_date?.trim() || "";
   const hasSupplementalReportDate = Boolean(supplementalReportDate);

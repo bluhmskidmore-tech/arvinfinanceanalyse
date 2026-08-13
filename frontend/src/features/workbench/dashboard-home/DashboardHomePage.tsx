@@ -7,7 +7,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { useLocation } from "react-router-dom";
 
 /* 顺序契约：shell 表必须先于 optionTwo 表注册。两表间存在同特异性 (0,3,0) 的
    toolbar 锚点规则（shell 稠密层 id254 组 vs optionTwo .page>[toolbar] 组），
@@ -35,7 +34,6 @@ const HOME_DEFERRED_CONTENT_REVEAL_KEYS = new Set(["ArrowDown", "PageDown", "End
 const HOME_DEFERRED_CONTENT_IDLE_MIN_DELAY_MS = 800;
 const HOME_DEFERRED_CONTENT_IDLE_TIMEOUT_MS = 1_200;
 const HOME_DEFERRED_CONTENT_TIMEOUT_FALLBACK_MS = 600;
-const POLICY_FUNDING_DEEP_LINK_PATH = "/政策与资金面";
 
 function resolveHomeScrollRoot(node: HTMLElement | null): HTMLElement | null {
   if (!node) {
@@ -117,17 +115,8 @@ function firstScreenHydrationSignature(hydration: DashboardHomeFirstScreenHydrat
   });
 }
 
-function isPolicyFundingDeepLink(pathname: string): boolean {
-  try {
-    return decodeURIComponent(pathname) === POLICY_FUNDING_DEEP_LINK_PATH;
-  } catch {
-    return pathname === POLICY_FUNDING_DEEP_LINK_PATH;
-  }
-}
-
 function useDeferredHomeContent(
   snapshotSettled: boolean,
-  eagerLoad: boolean,
   layoutScrollRootRef: { current: HTMLElement | null },
 ) {
   const deferredContentSentinelRef = useRef<HTMLDivElement | null>(null);
@@ -142,12 +131,6 @@ function useDeferredHomeContent(
   }, [snapshotSettled]);
 
   useEffect(() => {
-    if (eagerLoad && snapshotSettled) {
-      setUserReachedDeferredContent(true);
-      setShouldLoad(true);
-      return undefined;
-    }
-
     if (shouldLoad || userReachedDeferredContent) {
       return undefined;
     }
@@ -179,21 +162,13 @@ function useDeferredHomeContent(
 
     return removeReachListeners;
   }, [
-    eagerLoad,
     layoutScrollRootRef,
     markUserReached,
     shouldLoad,
-    snapshotSettled,
     userReachedDeferredContent,
   ]);
 
   useEffect(() => {
-    if (eagerLoad && snapshotSettled) {
-      setUserReachedDeferredContent(true);
-      setShouldLoad(true);
-      return undefined;
-    }
-
     if (shouldLoad || userReachedDeferredContent) {
       return undefined;
     }
@@ -225,20 +200,13 @@ function useDeferredHomeContent(
       observer.disconnect();
     };
   }, [
-    eagerLoad,
     layoutScrollRootRef,
     markUserReached,
     shouldLoad,
-    snapshotSettled,
     userReachedDeferredContent,
   ]);
 
   useEffect(() => {
-    if (eagerLoad && snapshotSettled) {
-      setShouldLoad(true);
-      return undefined;
-    }
-
     if (shouldLoad || !snapshotSettled) {
       return undefined;
     }
@@ -295,16 +263,14 @@ function useDeferredHomeContent(
       isActive = false;
       cancelScheduledWork();
     };
-  }, [eagerLoad, shouldLoad, snapshotSettled, userReachedDeferredContent]);
+  }, [shouldLoad, snapshotSettled, userReachedDeferredContent]);
 
   return { deferredContentSentinelRef, shouldLoad, userReachedDeferredContent };
 }
 
 export default function DashboardHomePage() {
-  const location = useLocation();
   const layoutScrollRootRef = useRef<HTMLDivElement | null>(null);
   useDeferredHomeChunkPrefetch();
-  const shouldFocusPolicyFunding = isPolicyFundingDeepLink(location.pathname);
   const {
     view,
     reportDate,
@@ -321,11 +287,7 @@ export default function DashboardHomePage() {
     deferredContentSentinelRef,
     shouldLoad: loadDeferredContent,
     userReachedDeferredContent,
-  } = useDeferredHomeContent(
-    !snapshotQuery.isFetching,
-    shouldFocusPolicyFunding,
-    layoutScrollRootRef,
-  );
+  } = useDeferredHomeContent(!snapshotQuery.isFetching, layoutScrollRootRef);
   const [hydratedFirstScreen, setHydratedFirstScreen] =
     useState<HydratedFirstScreenState | null>(null);
   const lastSnapshotErrorDetailRef = useRef<string | null>(null);
@@ -470,7 +432,6 @@ export default function DashboardHomePage() {
         snapshotBoundary={snapshotBoundary}
         firstScreenView={firstScreenView}
         userReachedDeferredContent={userReachedDeferredContent}
-        focusPolicyFunding={shouldFocusPolicyFunding}
         homeAvailability={homeAvailability}
         homeAvailabilityKind={homeAvailabilityKind}
         snapshotRefreshing={snapshotQuery.isFetching}

@@ -38,7 +38,7 @@
 .header small,
 .header > span {
   color: var(--option-two-muted);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 16px;
 }
 
@@ -65,7 +65,7 @@
   background: transparent;
   color: var(--option-two-muted);
   font-family: var(--option-two-font-ui);
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
 }
 
@@ -119,7 +119,7 @@
   padding: 5px 10px;
   overflow: hidden;
   border-bottom: 1px solid var(--option-two-line);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 16px;
   text-align: left;
   text-overflow: ellipsis;
@@ -131,7 +131,7 @@
   height: 28px;
   color: var(--option-two-muted);
   background: var(--option-two-panel-2);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 500;
 }
 
@@ -165,7 +165,7 @@
 .primary small {
   color: var(--option-two-muted);
   font-family: var(--option-two-font-data);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .numeric,
@@ -188,7 +188,7 @@
   border: 1px solid var(--option-two-line-strong);
   border-radius: var(--dh-api-radius, 6px);
   color: var(--option-two-muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -215,7 +215,7 @@
   padding: 5px 12px;
   border-top: 1px solid var(--option-two-line-strong);
   color: var(--option-two-muted);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 18px;
   box-sizing: border-box;
 }

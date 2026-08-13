@@ -20,7 +20,6 @@ type DeferredTerminalHomeContentProps = {
   snapshotBoundary: DashboardHomeSnapshotBoundary;
   firstScreenView: DashboardHomeFirstScreenView;
   userReachedDeferredContent: boolean;
-  focusPolicyFunding?: boolean;
   homeAvailability?: DashboardHomeAvailability;
   homeAvailabilityKind?: "normal" | "serviceUnavailable";
   snapshotRefreshing?: boolean;
@@ -54,7 +53,6 @@ export function DeferredTerminalHomeContent({
   snapshotBoundary,
   firstScreenView,
   userReachedDeferredContent,
-  focusPolicyFunding = false,
   homeAvailability,
   homeAvailabilityKind = "normal",
   snapshotRefreshing = false,
@@ -80,10 +78,10 @@ export function DeferredTerminalHomeContent({
   }, [firstScreenHydration, hydrationSignature, onFirstScreenHydrated]);
 
   useEffect(() => {
-    if (focusPolicyFunding || userReachedDeferredContent) {
+    if (userReachedDeferredContent) {
       setLoadBody(true);
     }
-  }, [focusPolicyFunding, userReachedDeferredContent]);
+  }, [userReachedDeferredContent]);
 
   useEffect(() => {
     if (loadBody) {
@@ -100,7 +98,6 @@ export function DeferredTerminalHomeContent({
       <DeferredTerminalHomeBody
         snapshotBoundary={snapshotBoundary}
         firstScreenView={firstScreenView}
-        focusPolicyFunding={focusPolicyFunding}
         homeAvailability={homeAvailability}
         homeAvailabilityKind={homeAvailabilityKind}
         snapshotRefreshing={snapshotRefreshing}

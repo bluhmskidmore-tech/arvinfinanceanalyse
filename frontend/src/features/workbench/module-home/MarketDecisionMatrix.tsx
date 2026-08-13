@@ -1,4 +1,5 @@
 import dhStyles from "../dashboard-home/dashboardHome.module.css";
+import { EM_DASH } from "../../../utils/format";
 import { marketChangePresentation } from "./marketHomeChangeTone";
 import type { ModuleHomeDetailPanel, ModuleHomeDetailRow, ModuleHomeTone, ModuleHomeView } from "./moduleHomeModel";
 import marketStyles from "./marketHome.module.css";
@@ -53,7 +54,7 @@ function latestPanelDate(panel?: ModuleHomeDetailPanel) {
 }
 
 function panelSourceCount(panel?: ModuleHomeDetailPanel) {
-  return new Set(panel?.rows.map((row) => row.source).filter((source) => source && source !== "-") ?? []).size;
+  return new Set(panel?.rows.map((row) => row.source).filter((source) => source && source !== EM_DASH) ?? []).size;
 }
 
 function panelWithRows(primary?: ModuleHomeDetailPanel, fallback?: ModuleHomeDetailPanel) {
@@ -61,7 +62,7 @@ function panelWithRows(primary?: ModuleHomeDetailPanel, fallback?: ModuleHomeDet
 }
 
 function compactParts(parts: Array<string | undefined | null>) {
-  return parts.map((part) => part?.trim()).filter((part): part is string => Boolean(part && part !== "-"));
+  return parts.map((part) => part?.trim()).filter((part): part is string => Boolean(part && part !== EM_DASH));
 }
 
 function renderFieldSegments(parts: string[]) {
@@ -128,7 +129,7 @@ function findRow(panel: ModuleHomeDetailPanel | undefined, patterns: string[]) {
 }
 
 function panelCoverage(panel: ModuleHomeDetailPanel | undefined, fallbackDate?: string) {
-  const date = latestPanelDate(panel) ?? fallbackDate ?? "-";
+  const date = latestPanelDate(panel) ?? fallbackDate ?? EM_DASH;
   const rowCount = panel?.rows.length ?? 0;
   const sourceCount = panelSourceCount(panel);
   return compactParts([`${rowCount} 条`, `${sourceCount} 源`, date]);
@@ -211,7 +212,7 @@ export function MarketDecisionMatrix({
       label: "数据闸门",
       headline: view.stateLabel,
       summary: [],
-      meta: compactParts([formalPanel?.stateLabel, `最新 ${latestTradeDate || "-"}`, `正式 ${formalTradeDate || "-"}`]),
+      meta: compactParts([formalPanel?.stateLabel, `最新 ${latestTradeDate || EM_DASH}`, `正式 ${formalTradeDate || EM_DASH}`]),
       evidence: catalogPanel ? panelCoverage(catalogPanel, formalTradeDate) : compactParts([view.sourceScope]),
       tone: errorCount > 0 ? "error" : watchCount > 0 ? "watch" : "ok",
       auditOnly: true,

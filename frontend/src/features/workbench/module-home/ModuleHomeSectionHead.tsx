@@ -13,16 +13,19 @@ export function ModuleHomeSectionHead({
   className?: string;
   index?: string;
 }) {
+  const showLabel = Boolean(label) || Boolean(index);
   return (
     <div className={className}>
-      <span>
-        {index ? (
-          <i data-section-index aria-hidden="true">
-            {index}
-          </i>
-        ) : null}
-        {label}
-      </span>
+      {showLabel ? (
+        <span>
+          {index ? (
+            <i data-section-index aria-hidden="true">
+              {index}
+            </i>
+          ) : null}
+          {label}
+        </span>
+      ) : null}
       <strong>{title}</strong>
       {trailing}
     </div>

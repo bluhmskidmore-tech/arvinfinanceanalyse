@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "../../../api/client";
@@ -74,12 +75,23 @@ export function useMarketHomeQueries(): ModuleHomeSourceQueries {
     ...MARKET_HOME_QUERY_OPTIONS,
   });
 
-  return {
-    choiceLatest: choiceLatestQuery,
-    marketRates: marketRatesQuery,
-    marketCatalog: marketCatalogQuery,
-    macroToolkitAnalysis: macroToolkitAnalysisQuery,
-    macroToolkitStrategySummaries: macroToolkitStrategySummariesQuery,
-    newsEvents: newsEventsQuery,
-  };
+  // 返回对象随任一 query 结果变化才更新引用，供页面 useMemo 直接依赖 queries 本身。
+  return useMemo(
+    () => ({
+      choiceLatest: choiceLatestQuery,
+      marketRates: marketRatesQuery,
+      marketCatalog: marketCatalogQuery,
+      macroToolkitAnalysis: macroToolkitAnalysisQuery,
+      macroToolkitStrategySummaries: macroToolkitStrategySummariesQuery,
+      newsEvents: newsEventsQuery,
+    }),
+    [
+      choiceLatestQuery,
+      marketRatesQuery,
+      marketCatalogQuery,
+      macroToolkitAnalysisQuery,
+      macroToolkitStrategySummariesQuery,
+      newsEventsQuery,
+    ],
+  );
 }

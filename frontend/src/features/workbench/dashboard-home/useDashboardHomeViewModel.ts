@@ -160,14 +160,15 @@ export function useDashboardHomeViewModel(
   const {
     dataClient,
     snapshotQuery,
-    isLiveDataFallback,
     adapterOutput,
     snapshotResult,
     initialEffectiveReportDate,
     supplementalReportDate,
   } = snapshotBoundary;
 
-  const useMockFallback = dataClient.mode !== "real" || isLiveDataFallback;
+  // real 模式不允许任何 mock UI 可达路径：useMockFallback 只看数据源模式，
+  // 不再挂接 isLiveDataFallback 之类的运行时回退信号。
+  const useMockFallback = dataClient.mode !== "real";
   const snapshotReportDate = snapshotResult?.report_date?.trim() || "";
   const hasSupplementalReportDate = Boolean(supplementalReportDate);
   const hasDeferredSupplementalReportDate = hasSupplementalReportDate;

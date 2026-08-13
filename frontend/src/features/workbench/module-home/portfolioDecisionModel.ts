@@ -8,6 +8,7 @@ import {
   formatRatePercent,
   nativeToNumber,
 } from "../../bond-dashboard/utils/format";
+import { EM_DASH } from "../../../utils/format";
 import type {
   ModuleHomeDecision,
   ModuleHomeDetailPanel,
@@ -268,8 +269,8 @@ export function buildPortfolioDecision(args: {
       ? `${formatDv01Wan(args.bondKpis.total_dv01)} 万元`
       : args.risk
         ? `${formatDv01Wan(args.risk.total_dv01)} 万元`
-        : "-";
-  const creditValue = args.risk ? `${formatRatePercent(args.risk.credit_ratio)}%` : "-";
+        : EM_DASH;
+  const creditValue = args.risk ? `${formatRatePercent(args.risk.credit_ratio)}%` : EM_DASH;
   const attributionValue = args.pnlSummary
     ? pnlDriverLabel(args.pnlSummary.primary_driver)
     : args.pnlState.label;
@@ -295,7 +296,7 @@ export function buildPortfolioDecision(args: {
       {
         label: "DV01",
         value: dv01Value,
-        tone: dv01Value === "-" ? "muted" : "ok",
+        tone: dv01Value === EM_DASH ? "muted" : "ok",
       },
       {
         label: "归因摘要",
@@ -366,7 +367,7 @@ export function guardMockPortfolioHomeView(view: ModuleHomeViewBody): ModuleHome
         key: "mock-portfolio-guard-row",
         label: "正式数据源",
         value: "待切换",
-        tradeDate: "-",
+        tradeDate: EM_DASH,
         source: "mock-mode-guard",
         tone: "error",
         detail: "切换真实数据源后再查看组合规模、信用占比、DV01、持仓只数和归因摘要。",

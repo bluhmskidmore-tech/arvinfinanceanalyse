@@ -152,7 +152,7 @@
 .dhMacroDecisionStrip {
   align-items: center;
   display: grid;
-  gap: 14px;
+  gap: 10px;
   grid-template-columns: minmax(0, 1fr) auto;
   min-width: 0;
   padding-bottom: 10px;
@@ -181,7 +181,7 @@
 .dhMacroDecisionStats {
   display: grid;
   gap: 1px;
-  grid-template-columns: repeat(3, minmax(72px, 1fr));
+  grid-template-columns: repeat(3, minmax(66px, 1fr));
   min-width: 0;
 }
 
@@ -310,7 +310,7 @@
 
 .dhMacroReleaseDate small {
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
 }
 
@@ -322,14 +322,14 @@
   padding: 0;
   background: transparent;
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
-  line-height: 1.2;
+  line-height: 1.3;
   white-space: normal;
 }
 
 .dhMacroNewsTopic b {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--ib-ink-muted);
 }
@@ -490,7 +490,7 @@
 .dhMacroReleaseHistoryMetric small {
   overflow: hidden;
   color: var(--dh-text-muted, rgba(0, 0, 0, 0.48));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -525,7 +525,7 @@
 .dhMacroReleaseHistoryMessage {
   margin: 0;
   color: var(--dh-text-muted, rgba(0, 0, 0, 0.48));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   line-height: 1.45;
   overflow-wrap: anywhere;
@@ -582,7 +582,7 @@
   border-radius: 0;
   background: transparent;
   color: var(--ib-warn);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
 }
 
@@ -668,7 +668,7 @@
 
 .dhPolicyFundingDiagnosticsHeader span {
   color: var(--dh-blue-deep);
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 850;
   line-height: 1.2;
 }
@@ -691,7 +691,7 @@
   padding-left: 8px;
   border-left: 2px solid rgba(24, 80, 161, 0.42);
   color: var(--dh-ink-2);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 750;
   line-height: 1.45;
   overflow-wrap: anywhere;
@@ -729,7 +729,7 @@
 .dhPolicyFundingDiagnosticMetrics small {
   overflow: hidden;
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
   line-height: 1.1;
   text-overflow: ellipsis;
@@ -757,7 +757,7 @@
 .dhPolicyFundingDiagnosticHint {
   margin: -1px 0 0;
   color: var(--dh-amber);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
   line-height: 1.45;
 }
@@ -778,7 +778,7 @@
   border-radius: 0;
   background: transparent;
   color: var(--ib-ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
   line-height: 1.3;
   white-space: nowrap;
@@ -814,7 +814,7 @@
 .dhPolicyFundingDiagnosticReasons b {
   color: currentColor;
   font-family: var(--dh-font-mono);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .dhPolicyFundingGroup {
@@ -877,11 +877,40 @@
   content: " · ";
 }
 
+.dhBondNewsSection {
+  margin-bottom: var(--dh-space-2);
+}
+
+.dhBondNewsCard {
+  padding: 12px 14px 14px;
+}
+
+.dhBondNewsHeader {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.dhBondNewsHeader > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
 .dhBondNewsHeader span {
   color: var(--dh-blue-deep);
   font-size: 14px;
   font-weight: 850;
   line-height: 1.25;
+}
+
+.dhBondNewsHeader small {
+  color: var(--dh-muted);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.35;
 }
 
 .dhBondNewsHeader > .dhBondNewsActions {
@@ -900,7 +929,7 @@
   background: transparent;
   color: var(--dh-ink-2);
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 720;
   line-height: 1.2;
   cursor: pointer;
@@ -937,7 +966,7 @@
 .dhBondNewsActionStatus {
   margin: 0 0 8px;
   color: var(--dh-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.4;
 }
 
@@ -945,11 +974,26 @@
   color: var(--dh-red);
 }
 
+.dhBondNewsGrid {
+  display: grid;
+  align-items: start;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
 .dhBondNewsGroup {
-  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  min-height: 120px;
+  padding: 10px 12px;
   border: 1px solid var(--dh-line);
   border-radius: var(--dh-api-radius);
   background: rgba(255, 255, 255, 0.008);
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
 }
 .dhBondNewsGroup:hover {
   background: rgba(255, 255, 255, 0.016);
@@ -975,7 +1019,9 @@
 }
 
 .dhBondNewsGroupHeader small {
-  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
+  flex-shrink: 0;
+  color: var(--dh-muted);
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -985,6 +1031,20 @@
   min-width: 0;
 }
 
+.dhBondNewsItem {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  min-width: 0;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.024);
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease;
+}
 .dhBondNewsItem + .dhBondNewsItem {
   border-top: 1px solid rgba(255, 255, 255, 0.04);
   border-top-left-radius: 0;
@@ -995,10 +1055,47 @@
   border-color: rgba(255, 255, 255, 0.06);
 }
 
+.dhBondNewsTopic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  padding: 3px 7px;
+  border-radius: var(--dh-api-radius);
+  background: rgba(53, 103, 155, 0.12);
+  color: var(--dh-blue);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
 .dhBondNewsBody {
   display: grid;
   gap: 4px;
   min-width: 0;
+}
+
+.dhBondNewsBody strong {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--dh-ink);
+  font-size: 12.5px;
+  font-weight: 750;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.dhBondNewsBody small {
+  overflow: hidden;
+  color: var(--dh-muted);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 1100px) {
@@ -1042,6 +1139,9 @@
 
 @media (max-width: 720px) {
 
+  .dhBondNewsGrid {
+    grid-template-columns: 1fr;
+  }
 }
 
 :global([data-testid="dashboard-home-page"]) .dhCalendarSection {
@@ -1360,7 +1460,7 @@
   }
 
   :global([data-testid="dashboard-home-page"]) .dhMacroReleaseDate b {
-    font-size: 11.5px;
+    font-size: 12px;
   }
 
   :global([data-testid="dashboard-home-page"]) .dhMacroReleaseTitle {
@@ -1384,16 +1484,16 @@
   }
 
   :global([data-testid="dashboard-home-page"]) .dhMacroReleaseHistoryTitle {
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.26;
   }
 
   :global([data-testid="dashboard-home-page"]) .dhMacroReleaseHistoryMetric b {
-    font-size: 11px;
+    font-size: 12px;
   }
 
   :global([data-testid="dashboard-home-page"]) .dhMacroReleaseHistoryNote {
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.28;
   }
 
@@ -1459,7 +1559,7 @@
   :global([data-testid="dashboard-home-page"])
     .dhPolicyFundingDiagnosticNarratives
     p {
-    font-size: 11px;
+    font-size: 13px;
     line-height: 1.32;
     padding-left: 7px;
   }
@@ -1556,13 +1656,41 @@
   }
 }
 
+.dhBondNewsSection {
+  --dh-api-line: rgba(103, 119, 142, 0.34);
+  --dh-api-line-soft: rgba(103, 119, 142, 0.22);
+  --dh-api-muted: var(--dh-hex-9aa8bb);
+  --dh-density-panel-bg:
+    linear-gradient(
+      145deg,
+      rgba(232, 238, 247, 0.054),
+      rgba(232, 238, 247, 0.01) 44%,
+      rgba(7, 12, 20, 0.2)
+    ),
+    linear-gradient(180deg, rgba(114, 167, 220, 0.032), rgba(255, 255, 255, 0)),
+    rgba(10, 17, 29, 0.82);
+  --dh-density-inner-bg: rgba(7, 12, 20, 0.24);
+  --dh-density-border: rgba(126, 157, 194, 0.28);
+  --dh-density-border-soft: rgba(55, 73, 104, 0.5);
+  --dh-density-divider: rgba(126, 157, 194, 0.18);
+}
+
 .dhBondNewsCard {
-  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
+  background: var(--dh-density-panel-bg);
+  border: 1px solid var(--dh-density-border);
+  border-radius: 6px;
+  box-shadow:
+    0 16px 38px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(232, 238, 247, 0.07);
+  color: var(--dh-api-ink);
+}
+
+.dhBondNewsCard {
+  gap: 12px;
   padding: 14px;
 }
 
 .dhBondNewsHeader {
-  margin-bottom: 8px;
   align-items: center;
   border-bottom: 1px solid var(--dh-density-divider);
   display: flex;
@@ -1599,8 +1727,6 @@
 }
 
 .dhBondNewsHeader small {
-  font-weight: 650;
-  line-height: 1.35;
   color: var(--dh-api-soft);
   font-size: 11px;
   letter-spacing: 0;
@@ -1624,8 +1750,6 @@
 }
 
 .dhBondNewsGroupHeader small {
-  flex-shrink: 0;
-  font-size: 11px;
   background: rgba(7, 12, 20, 0.24);
   border: 1px solid rgba(126, 157, 194, 0.16);
   color: var(--dh-api-muted);
@@ -1639,86 +1763,48 @@
   box-shadow: inset 0 1px 0 rgba(232, 238, 247, 0.04);
 }
 
+.dhBondNewsGrid {
+  gap: 12px;
+}
+
 .dhBondNewsBody strong {
-  display: -webkit-box;
-  overflow: hidden;
-  color: var(--dh-ink);
-  overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
   font-size: 12px;
   font-weight: 760;
   line-height: 1.34;
 }
 
 .dhBondNewsBody small {
-  overflow: hidden;
-  color: var(--dh-muted);
-  font-weight: 650;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .dhBondNewsSection {
-  --dh-api-line: rgba(103, 119, 142, 0.34);
-  --dh-api-line-soft: rgba(103, 119, 142, 0.22);
-  --dh-api-muted: var(--dh-hex-9aa8bb);
-  --dh-density-panel-bg: linear-gradient( 145deg, rgba(232, 238, 247, 0.054), rgba(232, 238, 247, 0.01) 44%, rgba(7, 12, 20, 0.2) ), linear-gradient(180deg, rgba(114, 167, 220, 0.032), rgba(255, 255, 255, 0)), rgba(10, 17, 29, 0.82);
-  --dh-density-inner-bg: rgba(7, 12, 20, 0.24);
-  --dh-density-border: rgba(126, 157, 194, 0.28);
-  --dh-density-border-soft: rgba(55, 73, 104, 0.5);
-  --dh-density-divider: rgba(126, 157, 194, 0.18);
   margin-bottom: 0;
 }
 
-.dhBondNewsHeader > div {
+.dhBondNewsCard {
   display: grid;
-  min-width: 0;
+}
+
+.dhBondNewsHeader > div {
   gap: 0;
 }
 
 .dhBondNewsGrid {
-  display: grid;
-  align-items: start;
-  gap: 12px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .dhBondNewsGroup {
-  display: grid;
-  align-content: start;
-  min-width: 0;
-  transition: background 0.2s ease, border-color 0.2s ease;
   gap: 7px;
   min-height: 112px;
   padding: 10px;
 }
 
 .dhBondNewsItem {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: start;
-  min-width: 0;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: rgba(255, 255, 255, 0.024);
-  transition: background 0.18s ease, border-color 0.18s ease;
   gap: 7px;
   padding: 7px;
 }
 
 .dhBondNewsTopic {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 3px 7px;
-  border-radius: var(--dh-api-radius);
-  font-size: 11px;
-  font-weight: 800;
-  line-height: 1.25;
-  white-space: nowrap;
   background: rgba(114, 167, 220, 0.1);
   border: 1px solid rgba(114, 167, 220, 0.22);
   color: var(--dh-api-blue);
@@ -1732,7 +1818,7 @@
   margin: 0;
   padding: 0;
   color: var(--dh-muted);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.35;
   opacity: 0.75;
@@ -1893,7 +1979,7 @@
   color: var(--dh-api-muted);
   content: counter(dhChapter, decimal-leading-zero);
   font-family: var(--dh-font-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.2em;
 }
@@ -1919,7 +2005,7 @@
   .dhPolicyFundingDiagnosticsHeader
   span {
   color: var(--dh-api-muted);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
 }
 @media (min-width: 721px) {
@@ -1990,8 +2076,8 @@
   }
 
   :global([data-testid="dashboard-home-page"]) .dhBondNewsItem {
-    gap: 9px;
-    padding: 10px 11px;
+    gap: 8px;
+    padding: 10px 8px;
   }
 
   :global([data-testid="dashboard-home-bond-news-market"]) .dhBondNewsList {
@@ -2052,13 +2138,6 @@
   }
 }
 .dhBondNewsCard {
-  background: var(--dh-density-panel-bg);
-  border: 1px solid var(--dh-density-border);
-  border-radius: 6px;
-  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.16), inset 0 1px 0 rgba(232, 238, 247, 0.07);
-  color: var(--dh-api-ink);
-  gap: 12px;
-  display: grid;
   container-name: dh-bond-news;
   container-type: inline-size;
 }

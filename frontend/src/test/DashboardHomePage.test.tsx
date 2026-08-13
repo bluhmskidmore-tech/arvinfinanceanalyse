@@ -588,7 +588,11 @@ describe("DashboardHomePage", () => {
   });
 
   it("keeps stored-news reread available while source updates remain backend-controlled", async () => {
-    renderPolicyFundingDeepLink();
+    const idle = stubIdleCallbacks();
+    renderDashboardHome();
+
+    expect(await screen.findByTestId("dashboard-home-page")).toBeInTheDocument();
+    await revealHomeBodyDetailAndBondNewsFeeds(idle);
 
     const bondNews = await screen.findByTestId("dashboard-home-bond-news");
     expect(
@@ -603,81 +607,17 @@ describe("DashboardHomePage", () => {
     ).toBeDisabled();
   });
 
-  it("starts policy funding event feeds immediately on the Chinese deep link", async () => {
-    const base = createApiClient({ mode: "real" });
-    const mockSnapshotSource = createApiClient({ mode: "mock" });
-    let releaseSnapshot: (() => void) | undefined;
+  // 路由层已将 /政策与资金面 重定向到 canonical "/"（见 routes.tsx），
+  // 深链不再原地渲染，也不再触发政策资金面聚焦与即时事件订阅。
+  it("redirects the policy funding Chinese deep link to the canonical home without focus mode", async () => {
     const idle = stubIdleCallbacks();
-    const getResearchCalendarEvents = vi.fn(async () => []);
-    const getChoiceNewsEventsBatch = vi.fn(async (options: ChoiceNewsBatchOptions) =>
-      choiceNewsBatchEnvelope(options, (topicCode) =>
-        topicCode === "tushare.news.sina"
-          ? [
-              choiceNewsEvent({
-                event_key: "tushare-policy-funding-deep-link",
-                received_at: "2026-06-04T10:17:00Z",
-                topic_code: "tushare.news.sina",
-                payload_text: "10年期美国国债收益率最新上涨2.8个基点，报4.483%。",
-              }),
-            ]
-          : [],
-      ),
-    );
-    const client = createRealModeHomeClient({
-      ...base,
-      getHomeSnapshot: async (...args) => {
-        await new Promise<void>((resolve) => {
-          releaseSnapshot = resolve;
-        });
-        return mockSnapshotSource.getHomeSnapshot(...args);
-      },
-      getResearchCalendarEvents,
-      getChoiceNewsEventsBatch,
-      getHomeIncomeTrend: vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) =>
-        mockSnapshotSource.getHomeIncomeTrend(...args),
-      ),
-      getBondAnalyticsTopHoldings: vi.fn(
-        async (...args: Parameters<ApiClient["getBondAnalyticsTopHoldings"]>) =>
-          mockSnapshotSource.getBondAnalyticsTopHoldings(...args),
-      ),
-      getBondAnalyticsPositionChanges: vi.fn(
-        async (...args: Parameters<ApiClient["getBondAnalyticsPositionChanges"]>) =>
-          mockSnapshotSource.getBondAnalyticsPositionChanges(...args),
-      ),
-    });
-
-    renderPolicyFundingDeepLink(client);
+    renderPolicyFundingDeepLink();
 
     expect(await screen.findByTestId("dashboard-home-page")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(releaseSnapshot).toBeDefined();
-    });
-    releaseSnapshot?.();
     await runNextIdle(idle);
-    await screen.findByTestId("dashboard-home-policy-funding-pane");
 
-    await waitFor(() => {
-      expect(getResearchCalendarEvents).toHaveBeenCalled();
-      expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
-        expect.arrayContaining([DASHBOARD_MACRO_NEWS_TOPICS[0].code]),
-      );
-    });
-    await waitForSecondaryEventFeedDataDelay();
-    await runPendingIdleIfAny(idle);
-    await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
-        expect.arrayContaining(["tushare.news.sina"]),
-      );
-    });
-    const policyFundingPane = screen.getByTestId("dashboard-home-policy-funding-pane");
-    await waitFor(() => {
-      expect(policyFundingPane).toHaveAttribute("data-focused", "true");
-      expect(policyFundingPane).toHaveTextContent(
-        "当前使用 Tushare 兜底：Choice 快讯无可展示项，已切换到兜底源。",
-      );
-      expect(policyFundingPane).toHaveTextContent("仅展示 1 条，未发现筛选剔除；样本偏少。");
-      expect(policyFundingPane).toHaveTextContent("样本偏少，请结合兜底源原始明细复核。");
-    });
+    const policyFundingPane = await screen.findByTestId("dashboard-home-policy-funding-pane");
+    expect(policyFundingPane).not.toHaveAttribute("data-focused");
   });
 
   it("skips macro fallback news when Choice macro news is fresh and usable", async () => {

@@ -13,7 +13,7 @@ import { summarizeMacroNewsEvent } from "../dashboard-home/adapters/macroNewsPre
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
 import { choiceSeriesById, enrichMarketHomeRows } from "./marketHomeRowEnrichment";
 import { formatMacroSignalEvidence } from "./marketEvidenceVisual";
-import { formatRawAsNumeric } from "../../../utils/format";
+import { EM_DASH, formatRawAsNumeric } from "../../../utils/format";
 import type {
   ApiEnvelope,
   AssetStructurePayload,
@@ -40,6 +40,7 @@ import type {
   MaturityStructurePayload,
   Numeric,
   PnlAttributionAnalysisSummary,
+  VolumeRateAttributionPayload,
   PnlByBusinessYtdItem,
   PnlByBusinessYtdPayload,
   PortfolioComparisonPayload,
@@ -279,6 +280,8 @@ export type ModuleHomeView = {
   decision?: ModuleHomeDecision;
   distributionPanels?: ModuleHomeDistributionPanel[];
   detailPanels?: ModuleHomeDetailPanel[];
+  /** 损益变动「规模/利率/交叉」分解（与归因摘要 primary_driver 同源），供归因瀑布图使用。 */
+  pnlWaterfall?: VolumeRateAttributionPayload;
   marketCrisisExplain?: MarketCrisisExplainView | null;
   marketDeskIntel?: MarketDeskIntelView | null;
   dataNote: ModuleHomeDataNote;
@@ -302,6 +305,7 @@ export type ModuleHomeSourceQueries = {
   bondBusinessType?: UseQueryResult<BondBusinessTypeMetricsPayload>;
   balanceBasis?: UseQueryResult<ApiEnvelope<BalanceAnalysisBasisBreakdownPayload>>;
   pnlSummary?: UseQueryResult<ApiEnvelope<PnlAttributionAnalysisSummary>>;
+  pnlVolumeRate?: UseQueryResult<ApiEnvelope<VolumeRateAttributionPayload>>;
   choiceLatest?: UseQueryResult<ApiEnvelope<ChoiceMacroLatestPayload>>;
   marketRates?: UseQueryResult<ApiEnvelope<ChoiceMacroLatestPayload>>;
   marketCatalog?: UseQueryResult<ApiEnvelope<MacroVendorPayload>>;
@@ -333,14 +337,14 @@ function decimalToNumber(value: string | number | null | undefined): number | nu
 function formatYiFromYuan(value: string | number | null | undefined) {
   const parsed = decimalToNumber(value);
   if (parsed === null) {
-    return "-";
+    return EM_DASH;
   }
   return `${(parsed / YUAN_PER_YI).toLocaleString("zh-CN", {
     maximumFractionDigits: 2,
   })} 亿元`;
 }
 
-function plain(value: unknown, fallback = "-") {
+function plain(value: unknown, fallback = EM_DASH) {
   if (value === null || value === undefined || value === "") {
     return fallback;
   }
@@ -497,7 +501,7 @@ function sourceUseStatus(
 }
 
 function bondDashboardMeta(reportDate: string) {
-  return `来源 bond-dashboard · ${reportDate || "-"}`;
+  return `来源 bond-dashboard · ${reportDate || EM_DASH}`;
 }
 
 function marketDataMeta(
@@ -506,7 +510,7 @@ function marketDataMeta(
   fallbackDate?: string,
 ) {
   const date =
-    meta?.as_of_date ?? meta?.resolved_report_date ?? meta?.fallback_date ?? fallbackDate ?? "-";
+    meta?.as_of_date ?? meta?.resolved_report_date ?? meta?.fallback_date ?? fallbackDate ?? EM_DASH;
   const dateIsFallback = Boolean(
     meta && !meta.as_of_date && !meta.resolved_report_date && meta.fallback_date,
   );
@@ -665,7 +669,7 @@ function macroPointToDetailRow(
 }
 
 function rateSnapshotChange(deltaText: string | undefined): string | undefined {
-  if (!deltaText || deltaText === "-" || deltaText === "无变动") {
+  if (!deltaText || deltaText === EM_DASH || deltaText === "无变动") {
     return undefined;
   }
   return deltaText;
@@ -1049,17 +1053,17 @@ function formatBondHeadlineKpi(
   value: Numeric | number | null | undefined,
 ) {
   if (value === null || value === undefined) {
-    return "-";
+    return EM_DASH;
   }
   if (key === "bond_count") {
     const count = typeof value === "number" ? value : nativeToNumber(value);
     if (count === null) {
-      return "-";
+      return EM_DASH;
     }
     return `${count.toLocaleString("zh-CN", { maximumFractionDigits: 0 })} 只`;
   }
   if (typeof value !== "object" || !("raw" in value)) {
-    return "-";
+    return EM_DASH;
   }
   if (key === "total_market_value" || key === "unrealized_pnl") {
     return `${formatYi(value)} 亿元`;
@@ -1092,7 +1096,7 @@ function distributionRows(
   return items.map((item) => {
     const mvRaw = nativeToNumber(item.marketValue);
     const barPct = totalRaw > 0 && mvRaw !== null ? (mvRaw / totalRaw) * 100 : 0;
-    const share = item.percentage ? plain(item.percentage) : "-";
+    const share = item.percentage ? plain(item.percentage) : EM_DASH;
     return {
       key: item.key,
       label: item.label?.trim() || options.emptyLabel || "未分类",
@@ -1203,7 +1207,7 @@ function metaEvidenceLine(label: string, meta: ResultMeta | undefined): string |
     meta.as_of_date ??
     meta.requested_report_date ??
     meta.fallback_date ??
-    "-";
+    EM_DASH;
   const table = meta.tables_used?.length ? meta.tables_used.join(" / ") : "未披露";
   const rows =
     typeof meta.evidence_rows === "number" ? `${meta.evidence_rows} 行` : "未披露";
@@ -1246,7 +1250,7 @@ function marketDataNote(queries: ModuleHomeSourceQueries): ModuleHomeDataNote {
 }
 
 function balanceSourceMeta(reportDate: string) {
-  return `来源 balance-analysis · ${reportDate || "-"}`;
+  return `来源 balance-analysis · ${reportDate || EM_DASH}`;
 }
 
 function buildRiskIndicatorDetailRows(risk: RiskIndicatorsPayload): ModuleHomeDetailRow[] {
@@ -1289,7 +1293,7 @@ function buildRiskIndicatorDetailRows(risk: RiskIndicatorsPayload): ModuleHomeDe
       label: "凸性(加权)",
       value: (() => {
         const raw = nativeToNumber(risk.weighted_convexity);
-        return raw === null ? "-" : raw.toFixed(4);
+        return raw === null ? EM_DASH : raw.toFixed(4);
       })(),
       tradeDate: reportDate,
       source: "weighted_convexity",
@@ -1392,7 +1396,7 @@ function buildYieldCurveQuoteRows(
   return terminalModel.rateQuotes.rows.map((row) => ({
     key: row.key,
     label: `${row.variety} ${row.tenor}`,
-    value: row.deltaText && row.deltaText !== "-" ? `${row.rateText} · ${row.deltaText}` : row.rateText,
+    value: row.deltaText && row.deltaText !== EM_DASH ? `${row.rateText} · ${row.deltaText}` : row.rateText,
     tradeDate: row.tradeDate,
     source: row.seriesId,
     tone: "ok" as ModuleHomeTone,
@@ -1443,7 +1447,7 @@ function buildNewsEventsSnapshotRows(
       key: "news-events-total",
       label: "事件总数",
       value: `${payload.total_rows} 条`,
-      tradeDate: "-",
+      tradeDate: EM_DASH,
       source: "choice-events",
       tone: payload.total_rows > 0 ? "ok" : "muted",
     },
@@ -1455,7 +1459,7 @@ function buildNewsEventsSnapshotRows(
       label: event.topic_code || "新闻事件",
       value: headline || event.payload_text?.trim() || "待解析标题",
       detail: event.received_at?.slice(0, 10) ?? undefined,
-      tradeDate: event.received_at?.slice(0, 10) ?? "-",
+      tradeDate: event.received_at?.slice(0, 10) ?? EM_DASH,
       source: event.content_type || "choice-events",
       tone: event.error_code === 0 ? "ok" : "watch",
     });
@@ -1480,7 +1484,7 @@ function formatMacroToolkitPrimaryMetric(
   metric: { label: string; value: string | number; unit: string } | null,
 ): string {
   if (!metric) {
-    return "-";
+    return EM_DASH;
   }
   const unit = metric.unit ? ` ${metric.unit}` : "";
   return `${metric.value}${unit}`;
@@ -1736,7 +1740,7 @@ function buildMacroToolkitSignalRows(analysis: MacroToolkitAnalysisPayload): Mod
         label: card.title,
         value: card.score !== null ? `${card.stance} · ${card.score}` : card.stance,
         detail,
-        tradeDate: analysis.as_of_date ?? "-",
+        tradeDate: analysis.as_of_date ?? EM_DASH,
         source: formatMacroSignalEvidence(card.evidence) || "macro-toolkit",
         tone: macroToolkitModuleTone(card.tone),
       };
@@ -1749,7 +1753,7 @@ function buildMacroToolkitCapabilityRows(analysis: MacroToolkitAnalysisPayload):
     key: capability.key,
     label: capability.label,
     value: capability.headline || formatMacroToolkitPrimaryMetric(capability.primary_metric),
-    tradeDate: analysis.as_of_date ?? "-",
+    tradeDate: analysis.as_of_date ?? EM_DASH,
     source: [capability.group, capability.evidence.join(" · ")].filter(Boolean).join(" · "),
     tone: macroToolkitModuleTone(capability.status),
   }));
@@ -1764,12 +1768,12 @@ function buildMacroToolkitIndicatorRows(indicators: MacroToolkitIndicator[]): Mo
     const value =
       indicator.latest_value !== null
         ? `${indicator.latest_value}${indicator.unit ? indicator.unit : ""}${changeText}`
-        : "-";
+        : EM_DASH;
     return {
       key: indicator.key,
       label: indicator.label,
       value,
-      tradeDate: indicator.latest_date ?? "-",
+      tradeDate: indicator.latest_date ?? EM_DASH,
       source: [indicator.group, indicator.series_id ?? indicator.source].filter(Boolean).join(" · "),
       tone: indicator.quality === "ok" ? "ok" : "watch",
     };
@@ -1824,7 +1828,7 @@ function buildMacroToolkitAShareRiskRows(risk: MacroToolkitAShareRiskPayload): M
       key: "a-share-score",
       label: "风险评分",
       value: risk.risk_score !== null ? String(risk.risk_score) : "缺失",
-      tradeDate: risk.trade_date ?? "-",
+      tradeDate: risk.trade_date ?? EM_DASH,
       source: risk.risk_name,
       tone,
     },
@@ -1832,7 +1836,7 @@ function buildMacroToolkitAShareRiskRows(risk: MacroToolkitAShareRiskPayload): M
       key: "a-share-summary",
       label: "风险摘要",
       value: risk.summary,
-      tradeDate: risk.trade_date ?? "-",
+      tradeDate: risk.trade_date ?? EM_DASH,
       source: risk.status,
       tone,
     },
@@ -1840,7 +1844,7 @@ function buildMacroToolkitAShareRiskRows(risk: MacroToolkitAShareRiskPayload): M
       key: "a-share-position",
       label: "仓位规则",
       value: risk.position_rule,
-      tradeDate: "-",
+      tradeDate: EM_DASH,
       source: "position_rule",
       tone: "muted",
     },
@@ -1851,7 +1855,7 @@ function buildMacroToolkitAShareRiskRows(risk: MacroToolkitAShareRiskPayload): M
       key: `a-share-${metric.key}`,
       label: metric.label,
       value: formatMacroRiskMetric(risk.metrics[metric.key], metric.format),
-      tradeDate: risk.trade_date ?? "-",
+      tradeDate: risk.trade_date ?? EM_DASH,
       source: "metrics",
       tone: "ok",
     });
@@ -1862,7 +1866,7 @@ function buildMacroToolkitAShareRiskRows(risk: MacroToolkitAShareRiskPayload): M
       key: `a-share-trigger-${index}`,
       label: "触发规则",
       value: rule,
-      tradeDate: risk.trade_date ?? "-",
+      tradeDate: risk.trade_date ?? EM_DASH,
       source: "triggered_rules",
       tone: "watch",
     });
@@ -1873,7 +1877,7 @@ function buildMacroToolkitAShareRiskRows(risk: MacroToolkitAShareRiskPayload): M
       key: `a-share-watch-${index}`,
       label: "观察条件",
       value: item,
-      tradeDate: "-",
+      tradeDate: EM_DASH,
       source: "watch_next",
       tone: "muted",
     });
@@ -1888,7 +1892,7 @@ function buildMacroToolkitHasonRows(strategy: MacroToolkitHasonStrategy): Module
       key: "hason-framework",
       label: "策略框架",
       value: strategy.framework_name,
-      tradeDate: "-",
+      tradeDate: EM_DASH,
       source: strategy.boundary,
       tone: macroToolkitModuleTone(strategy.status),
     },
@@ -1896,7 +1900,7 @@ function buildMacroToolkitHasonRows(strategy: MacroToolkitHasonStrategy): Module
       key: "hason-readiness",
       label: "模块就绪",
       value: `${strategy.readiness.ready_modules}/${strategy.readiness.total_modules} · ${(strategy.readiness.ratio * 100).toFixed(0)}%`,
-      tradeDate: "-",
+      tradeDate: EM_DASH,
       source: `${strategy.readiness.partial_modules} 部分 / ${strategy.readiness.missing_modules} 缺失`,
       tone: strategy.readiness.ratio >= 0.7 ? "ok" : "watch",
     },
@@ -1904,8 +1908,8 @@ function buildMacroToolkitHasonRows(strategy: MacroToolkitHasonStrategy): Module
       key: "hason-runtime",
       label: "运行时产物",
       value: strategy.runtime_output_status,
-      tradeDate: "-",
-      source: strategy.runtime_output_gaps.join(" / ") || strategy.required_runtime_outputs.join(" / ") || "-",
+      tradeDate: EM_DASH,
+      source: strategy.runtime_output_gaps.join(" / ") || strategy.required_runtime_outputs.join(" / ") || EM_DASH,
       tone: strategy.runtime_output_status === "current" ? "ok" : "watch",
     },
   ];
@@ -1915,7 +1919,7 @@ function buildMacroToolkitHasonRows(strategy: MacroToolkitHasonStrategy): Module
       key: `hason-${module.key}`,
       label: module.label,
       value: module.status,
-      tradeDate: "-",
+      tradeDate: EM_DASH,
       source: module.available_scripts.join(" / ") || "无可用脚本",
       tone: module.missing_scripts.length > 0 ? "watch" : "ok",
     });
@@ -1930,7 +1934,7 @@ function buildMacroToolkitShadowRows(report: MacroToolkitShadowPortfolioReport):
       key: "shadow-status",
       label: "报告状态",
       value: report.status,
-      tradeDate: report.as_of_date ?? "-",
+      tradeDate: report.as_of_date ?? EM_DASH,
       source: report.basis,
       tone: report.status === "complete" ? "ok" : "watch",
     },
@@ -1938,7 +1942,7 @@ function buildMacroToolkitShadowRows(report: MacroToolkitShadowPortfolioReport):
       key: "shadow-periods",
       label: "完成周期",
       value: `${report.completed_periods} 期`,
-      tradeDate: report.as_of_date ?? "-",
+      tradeDate: report.as_of_date ?? EM_DASH,
       source: report.rule_version,
       tone: report.completed_periods >= 12 ? "ok" : "watch",
     },
@@ -1949,7 +1953,7 @@ function buildMacroToolkitShadowRows(report: MacroToolkitShadowPortfolioReport):
       key: "shadow-benchmark",
       label: report.benchmark.label,
       value: `累计 ${(report.benchmark.total_return * 100).toFixed(2)}% · 回撤 ${(report.benchmark.max_drawdown * 100).toFixed(2)}%`,
-      tradeDate: report.as_of_date ?? "-",
+      tradeDate: report.as_of_date ?? EM_DASH,
       source: report.benchmark.key,
       tone: "muted",
     });
@@ -1961,7 +1965,7 @@ function buildMacroToolkitShadowRows(report: MacroToolkitShadowPortfolioReport):
       key: `shadow-${portfolio.key}`,
       label: portfolio.label,
       value: `累计 ${(portfolio.total_return * 100).toFixed(2)}% · 超额 ${(portfolio.excess_return * 100).toFixed(2)}%${admission}`,
-      tradeDate: report.as_of_date ?? "-",
+      tradeDate: report.as_of_date ?? EM_DASH,
       source: portfolio.role,
       tone: portfolio.total_return >= 0 ? "ok" : "watch",
     });
@@ -1979,8 +1983,8 @@ function buildMacroToolkitRuntimeRows(analysis: MacroToolkitAnalysisPayload): Mo
       key: "cffex-member-rank",
       label: "中金所会员排名",
       value: `${rank.status} · ${rank.row_count} 行`,
-      tradeDate: rank.latest_trade_date ?? "-",
-      source: `${rank.freshness_status} · ${rank.source_vendors?.join("/") ?? "-"}`,
+      tradeDate: rank.latest_trade_date ?? EM_DASH,
+      source: `${rank.freshness_status} · ${rank.source_vendors?.join("/") ?? EM_DASH}`,
       tone: rank.freshness_status === "current" ? "ok" : "watch",
     });
   }
@@ -1991,9 +1995,9 @@ function buildMacroToolkitRuntimeRows(analysis: MacroToolkitAnalysisPayload): Mo
     rows.push({
       key: "choice-daily-observation",
       label: "Choice 日频观测",
-      value: `${daily.status} · ${daily.stock_count ?? "-"} 只`,
-      tradeDate: daily.latest_trade_date ?? "-",
-      source: daily.freshness_status ?? "-",
+      value: `${daily.status} · ${daily.stock_count ?? EM_DASH} 只`,
+      tradeDate: daily.latest_trade_date ?? EM_DASH,
+      source: daily.freshness_status ?? EM_DASH,
       tone: daily.freshness_status === "current" ? "ok" : "watch",
     });
   }
@@ -2002,9 +2006,9 @@ function buildMacroToolkitRuntimeRows(analysis: MacroToolkitAnalysisPayload): Mo
     rows.push({
       key: "choice-factor-snapshot",
       label: "Choice 因子快照",
-      value: `${factor.status} · ${factor.stock_count ?? "-"} 只`,
-      tradeDate: factor.as_of_date ?? "-",
-      source: factor.freshness_status ?? "-",
+      value: `${factor.status} · ${factor.stock_count ?? EM_DASH} 只`,
+      tradeDate: factor.as_of_date ?? EM_DASH,
+      source: factor.freshness_status ?? EM_DASH,
       tone: factor.freshness_status === "current" ? "ok" : "watch",
     });
   }
@@ -2016,8 +2020,8 @@ function buildMacroToolkitRuntimeRows(analysis: MacroToolkitAnalysisPayload): Mo
       value: check.latest
         ? `${check.latest.value} · ${check.latest.series_id}`
         : "未命中",
-      tradeDate: check.latest?.date ?? "-",
-      source: check.latest?.vendor_name ?? "-",
+      tradeDate: check.latest?.date ?? EM_DASH,
+      source: check.latest?.vendor_name ?? EM_DASH,
       tone: check.latest ? "ok" : "watch",
     });
   }
@@ -2027,7 +2031,7 @@ function buildMacroToolkitRuntimeRows(analysis: MacroToolkitAnalysisPayload): Mo
       key: `macro-warning-${index}`,
       label: "数据提示",
       value: warning,
-      tradeDate: "-",
+      tradeDate: EM_DASH,
       source: "warnings",
       tone: "watch",
     });
@@ -2042,7 +2046,7 @@ function buildMacroToolkitOverviewRows(analysis: MacroToolkitAnalysisPayload): M
       key: "macro-summary",
       label: "结论摘要",
       value: analysis.conclusion.summary,
-      tradeDate: analysis.as_of_date ?? "-",
+      tradeDate: analysis.as_of_date ?? EM_DASH,
       source: "conclusion",
       tone: macroToolkitModuleTone(analysis.conclusion.tone),
     },
@@ -2050,7 +2054,7 @@ function buildMacroToolkitOverviewRows(analysis: MacroToolkitAnalysisPayload): M
       key: "macro-stance",
       label: "工具立场",
       value: analysis.conclusion.stance,
-      tradeDate: analysis.as_of_date ?? "-",
+      tradeDate: analysis.as_of_date ?? EM_DASH,
       source: "conclusion",
       tone: macroToolkitModuleTone(analysis.conclusion.tone),
     },
@@ -2058,7 +2062,7 @@ function buildMacroToolkitOverviewRows(analysis: MacroToolkitAnalysisPayload): M
       key: "macro-hit-rate",
       label: "指标命中率",
       value: `${analysis.coverage.hit_count}/${analysis.coverage.indicator_count} · ${(analysis.coverage.hit_rate * 100).toFixed(1)}%`,
-      tradeDate: analysis.as_of_date ?? "-",
+      tradeDate: analysis.as_of_date ?? EM_DASH,
       source: "coverage",
       tone: analysis.coverage.hit_rate >= 0.7 ? "ok" : "watch",
     },
@@ -2066,7 +2070,7 @@ function buildMacroToolkitOverviewRows(analysis: MacroToolkitAnalysisPayload): M
       key: "macro-scripts",
       label: "注册脚本",
       value: `${analysis.coverage.script_count} 个 · 产物 ${analysis.coverage.output_file_count} 个`,
-      tradeDate: analysis.as_of_date ?? "-",
+      tradeDate: analysis.as_of_date ?? EM_DASH,
       source: "toolkit",
       tone: analysis.coverage.script_count > 0 ? "ok" : "muted",
     },
@@ -2074,7 +2078,7 @@ function buildMacroToolkitOverviewRows(analysis: MacroToolkitAnalysisPayload): M
       key: "macro-action",
       label: "建议动作",
       value: analysis.conclusion.recommended_action,
-      tradeDate: "-",
+      tradeDate: EM_DASH,
       source: "conclusion",
       tone: "muted",
     },
@@ -2106,7 +2110,7 @@ function buildMacroToolkitStrategyRows(analysis: MacroToolkitAnalysisPayload): M
     key: strategy.key,
     label: strategy.label,
     value: formatMacroToolkitPrimaryMetric(strategy.primary_metric) || strategy.status,
-    tradeDate: analysis.as_of_date ?? "-",
+    tradeDate: analysis.as_of_date ?? EM_DASH,
     source: [strategy.group, strategy.evidence.join(" · ")].filter(Boolean).join(" · "),
     tone: macroToolkitModuleTone(strategy.status),
   }));
@@ -2195,7 +2199,7 @@ function buildSpreadAnalysisRows(payload: SpreadAnalysisPayload): ModuleHomeDeta
   return payload.items.slice(0, 8).map((item) => ({
     key: `spread-${item.bond_type}`,
     label: item.bond_type,
-    value: item.median_yield ? `${formatRatePercent(item.median_yield)}%` : "-",
+    value: item.median_yield ? `${formatRatePercent(item.median_yield)}%` : EM_DASH,
     tradeDate: payload.report_date,
     source: `${formatYi(item.total_market_value)} 亿 · ${item.bond_count} 只`,
     tone: "ok",
@@ -2380,8 +2384,8 @@ function portfolioView(
   const balance = queries.balanceOverview?.data?.result;
   const bond = queries.bondHeadline?.data?.result;
   const risk = queries.bondRisk?.data?.result;
-  const balanceDate = queries.balanceDates?.data?.result.report_dates[0] ?? "-";
-  const bondDate = queries.bondDates?.data?.result.report_dates[0] ?? bond?.report_date ?? "-";
+  const balanceDate = queries.balanceDates?.data?.result.report_dates[0] ?? EM_DASH;
+  const bondDate = queries.bondDates?.data?.result.report_dates[0] ?? bond?.report_date ?? EM_DASH;
   const bondKpis = bond?.kpis;
   const assetType = queries.bondAssetType?.data?.result;
   const assetRating = queries.bondAssetRating?.data?.result;
@@ -2467,7 +2471,7 @@ function portfolioView(
     {
       key: "bond-credit-ratio",
       label: "信用占比",
-      customValue: visibleRisk ? `${formatRatePercent(visibleRisk.credit_ratio)}%` : "-",
+      customValue: visibleRisk ? `${formatRatePercent(visibleRisk.credit_ratio)}%` : EM_DASH,
       detail: formalRisk
         ? "风险指标口径。"
         : visibleRisk
@@ -2497,14 +2501,14 @@ function portfolioView(
           label: def.label,
           value: def.customValue,
           detail: def.detail,
-          tone: def.tone ?? (def.customValue === "-" ? "watch" : "ok"),
+          tone: def.tone ?? (def.customValue === EM_DASH ? "watch" : "ok"),
         };
       }
       const raw = visibleBondKpis?.[def.field!];
       return {
         key: def.key,
         label: def.label,
-        value: visibleBondKpis ? formatBondHeadlineKpi(def.field!, raw) : "-",
+        value: visibleBondKpis ? formatBondHeadlineKpi(def.field!, raw) : EM_DASH,
         detail: formalBondKpis
           ? def.detail
           : visibleBondKpis
@@ -2879,6 +2883,7 @@ function portfolioView(
     ],
     distributionPanels,
     detailPanels,
+    pnlWaterfall: queries.pnlVolumeRate?.data?.result,
     dataNote: portfolioDataNote(queries),
   };
 }
@@ -2905,7 +2910,7 @@ function marketView(
   const seriesById = choiceSeriesById(latestSeries, rateSeries);
   const baseKeyRateRows = buildMarketKeyRateRows(latestSeries, rateSeries, terminalModel);
   const spreadTradeDate =
-    baseKeyRateRows[0]?.tradeDate ?? latestSeries[0]?.trade_date ?? rateSeries[0]?.trade_date ?? "-";
+    baseKeyRateRows[0]?.tradeDate ?? latestSeries[0]?.trade_date ?? rateSeries[0]?.trade_date ?? EM_DASH;
   const keyRateRows = enrichMarketHomeRows(
     [
       ...baseKeyRateRows,
@@ -2959,7 +2964,7 @@ function marketView(
     chart: buildPercentRateChart(formalRateRows, "正式利率对比"),
   });
 
-  const keyRateSeriesIds = new Set(keyRateRows.map((row) => row.source).filter((source) => source !== "-"));
+  const keyRateSeriesIds = new Set(keyRateRows.map((row) => row.source).filter((source) => source !== EM_DASH));
   const macroSnapshotRows = enrichMarketHomeRows(
     buildLatestMacroSnapshotRows(latestSeries, keyRateSeriesIds),
     seriesById,
@@ -3004,7 +3009,7 @@ function marketView(
       key: "catalog-total",
       label: "已注册序列",
       value: `${catalogSeries.length} 条`,
-      tradeDate: "-",
+      tradeDate: EM_DASH,
       source: "catalog",
       tone: catalogSeries.length > 0 ? "ok" : "watch",
     },
@@ -3012,7 +3017,7 @@ function marketView(
       key: "catalog-stable",
       label: "stable 序列",
       value: `${tierCounts.stable} 条`,
-      tradeDate: "-",
+      tradeDate: EM_DASH,
       source: "refresh_tier",
       tone: tierCounts.stable > 0 ? "ok" : "muted",
     },
@@ -3020,15 +3025,15 @@ function marketView(
       key: "catalog-fallback",
       label: "fallback 序列",
       value: `${tierCounts.fallback} 条`,
-      tradeDate: "-",
+      tradeDate: EM_DASH,
       source: "refresh_tier",
       tone: tierCounts.fallback > 0 ? "watch" : "muted",
     },
     ...catalogSeries.slice(0, 8).map((item) => ({
       key: `catalog-${item.series_id}`,
       label: item.series_name,
-      value: item.unit ? `${item.unit}` : "-",
-      tradeDate: item.frequency ?? "-",
+      value: item.unit ? `${item.unit}` : EM_DASH,
+      tradeDate: item.frequency ?? EM_DASH,
       source: item.series_id,
       tone: "muted" as ModuleHomeTone,
     })),
@@ -3170,7 +3175,7 @@ function marketView(
       {
         key: "ten-year-rate",
         label: "10年利率",
-        value: tenYear ? formatChoiceMacroValue(tenYear, { spaceBeforeUnit: false }) : "-",
+        value: tenYear ? formatChoiceMacroValue(tenYear, { spaceBeforeUnit: false }) : EM_DASH,
         detail: tenYear ? `${tenYear.series_name} / ${tenYear.trade_date}` : "未返回 10 年利率点。",
         tone: tenYear ? "ok" : "watch",
       },
@@ -3774,7 +3779,7 @@ function riskView(
       : undefined;
   const tensor = queries.riskTensor?.data?.result;
   const cashflow = queries.cashflow?.data?.result;
-  const reportDate = tensor?.report_date ?? cashflow?.report_date ?? dates[0] ?? "-";
+  const reportDate = tensor?.report_date ?? cashflow?.report_date ?? dates[0] ?? EM_DASH;
   const cashflowReportDate = cashflow?.report_date ?? reportDate;
   const tensorWarnings = tensor?.warnings ?? [];
   const hasRiskPartialError = Boolean(queries.riskDates?.isError || queries.riskTensor?.isError || queries.cashflow?.isError);
@@ -3875,28 +3880,28 @@ function riskView(
       {
         key: "regulatory-dv01",
         label: "监管 DV01",
-        value: tensor ? riskTensorPendingOrWan(tensor.regulatory_dv01) : "-",
+        value: tensor ? riskTensorPendingOrWan(tensor.regulatory_dv01) : EM_DASH,
         detail: "来自 regulatory_dv01；缺失时不使用估值 DV01 替代。",
         tone: tensor ? riskTensorValueTone(tensor.regulatory_dv01) : "watch",
       },
       {
         key: "portfolio-dv01",
         label: "估值 DV01",
-        value: tensor ? riskTensorWanWithUnit(tensor.portfolio_dv01) : "-",
+        value: tensor ? riskTensorWanWithUnit(tensor.portfolio_dv01) : EM_DASH,
         detail: "portfolio_dv01，只作估值敏感度读数。",
         tone: tensor ? "ok" : "watch",
       },
       {
         key: "modified-duration",
         label: "修正久期",
-        value: tensor ? riskTensorDisplay(tensor.portfolio_modified_duration) : "-",
+        value: tensor ? riskTensorDisplay(tensor.portfolio_modified_duration) : EM_DASH,
         detail: "portfolio_modified_duration。",
         tone: tensor ? "ok" : "watch",
       },
       {
         key: "liquidity-gap",
         label: durationGapKpi.label,
-        value: cashflow || tensor ? durationGapKpi.value : "-",
+        value: cashflow || tensor ? durationGapKpi.value : EM_DASH,
         detail: durationGapKpi.detail,
         tone: cashflow || tensor ? "ok" : "watch",
       },
@@ -3919,10 +3924,10 @@ function riskView(
       detail: decisionDetail,
       tone: decisionTone,
       facts: [
-        { label: "报告日", value: reportDate, tone: reportDate === "-" ? "watch" : "ok" },
+        { label: "报告日", value: reportDate, tone: reportDate === EM_DASH ? "watch" : "ok" },
         {
           label: "质量标记",
-          value: tensor?.quality_flag ?? "-",
+          value: tensor?.quality_flag ?? EM_DASH,
           tone: tensor?.quality_flag === "ok" ? "ok" : tensor ? "watch" : "muted",
         },
         {
@@ -3978,7 +3983,7 @@ function riskView(
 
 function formatKpiDecimal(value: string | null | undefined, decimals = 2): string {
   if (value === null || value === undefined || value === "") {
-    return "-";
+    return EM_DASH;
   }
   const num = Number.parseFloat(value);
   if (Number.isNaN(num)) {
@@ -4022,11 +4027,11 @@ function buildPerformanceBusinessPnlRows(
     const balance = formatYiFromYuan(item.current_balance);
     const pnlValue = formatYiFromYuan(item.total_pnl);
     const valueParts = [pnlValue];
-    if (proportion && proportion !== "-") {
+    if (proportion && proportion !== EM_DASH) {
       valueParts.push(`占比 ${proportion}`);
     }
     const sourceParts = [item.row_key];
-    if (balance !== "-") {
+    if (balance !== EM_DASH) {
       sourceParts.push(`规模 ${balance}`);
     }
     return {
@@ -4041,7 +4046,7 @@ function buildPerformanceBusinessPnlRows(
 }
 
 function performanceSourceMeta(source: string, periodLabel: string): string {
-  return `来源 ${source} · ${periodLabel || "-"}`;
+  return `来源 ${source} · ${periodLabel || EM_DASH}`;
 }
 
 function performanceView(
@@ -4063,7 +4068,7 @@ function performanceView(
   const kpiDetailPanel = buildDetailPanel({
     key: "kpi-metric-detail",
     title: "KPI 指标明细",
-    meta: performanceSourceMeta("kpi", kpi?.period_label ?? String(kpi?.year ?? "-")),
+    meta: performanceSourceMeta("kpi", kpi?.period_label ?? String(kpi?.year ?? EM_DASH)),
     status: kpiDetailStatus,
     rows: kpiDetailRows,
   });
@@ -4082,7 +4087,7 @@ function performanceView(
   const businessPnlPanel = buildDetailPanel({
     key: "business-pnl-detail",
     title: "业务种类损益",
-    meta: performanceSourceMeta("pnl/by-business", pnl?.period_label ?? String(pnl?.year ?? "-")),
+    meta: performanceSourceMeta("pnl/by-business", pnl?.period_label ?? String(pnl?.year ?? EM_DASH)),
     status: businessPnlStatus,
     rows: businessPnlRows,
   });
@@ -4096,21 +4101,21 @@ function performanceView(
       {
         key: "owner-count",
         label: "KPI Owner",
-        value: String(owners?.total ?? "-"),
+        value: String(owners?.total ?? EM_DASH),
         detail: "来自 getKpiOwners。",
         tone: owners && owners.total > 0 ? "ok" : "watch",
       },
       {
         key: "kpi-score",
         label: "本期得分",
-        value: kpi?.total_score ? `${kpi.total_score} 分` : "-",
+        value: kpi?.total_score ? `${kpi.total_score} 分` : EM_DASH,
         detail: kpi ? `${kpi.period_label} / owner ${kpi.owner_name}` : "KPI summary 未返回。",
         tone: kpi ? "ok" : "watch",
       },
       {
         key: "metric-count",
         label: "指标数",
-        value: String(kpi?.total ?? "-"),
+        value: String(kpi?.total ?? EM_DASH),
         detail: "KPI summary total。",
         tone: kpi ? "ok" : "watch",
       },
@@ -4197,7 +4202,7 @@ function buildGovernanceSourceRows(sources: SourcePreviewSummary[]): ModuleHomeD
       key: `source-${summary.source_family}-${index}`,
       label: summary.source_family.toUpperCase(),
       value: status.label,
-      tradeDate: summary.report_date ?? summary.batch_created_at ?? "-",
+      tradeDate: summary.report_date ?? summary.batch_created_at ?? EM_DASH,
       source:
         versionParts.length > 0
           ? `版本 ${versionParts.join(" / ")} · 行数 ${summary.total_rows}`
@@ -4213,7 +4218,7 @@ function buildGovernanceCubeRows(dims: CubeDimensionsPayload): ModuleHomeDetailR
       key: "cube-fact-table",
       label: "事实表",
       value: dims.fact_table,
-      tradeDate: "-",
+      tradeDate: EM_DASH,
       source: "fact_table",
       tone: "ok",
     },
@@ -4227,7 +4232,7 @@ function buildGovernanceCubeRows(dims: CubeDimensionsPayload): ModuleHomeDetailR
       key: `cube-dim-${dimension}`,
       label: dimension,
       value: "维度",
-      tradeDate: "-",
+      tradeDate: EM_DASH,
       source: "dimensions",
       tone: "muted",
     });
@@ -4241,7 +4246,7 @@ function buildGovernanceCubeRows(dims: CubeDimensionsPayload): ModuleHomeDetailR
       key: `cube-measure-${measure}`,
       label: measure,
       value: "聚合",
-      tradeDate: "-",
+      tradeDate: EM_DASH,
       source: "measures",
       tone: "muted",
     });
@@ -4255,7 +4260,7 @@ function buildGovernanceCubeRows(dims: CubeDimensionsPayload): ModuleHomeDetailR
       key: `cube-field-${field}`,
       label: field,
       value: "度量字段",
-      tradeDate: "-",
+      tradeDate: EM_DASH,
       source: "measure_fields",
       tone: "muted",
     });
@@ -4278,7 +4283,7 @@ function extractHealthCheckRows(healthData: unknown): ModuleHomeDetailRow[] {
       key: `health-check-${name}`,
       label: name,
       value: check.ok ? "ok" : "异常",
-      tradeDate: "-",
+      tradeDate: EM_DASH,
       source: check.detail || name,
       tone: check.ok ? "ok" : "watch",
     }));
@@ -4356,19 +4361,19 @@ function governanceView(
     stateLabel: hasError(queries) ? "读取失败" : hasLoading(queries) ? "读取中" : "已接入",
     stateDetail: hasError(queries)
       ? "数据中心读链路失败，不使用前端补数。"
-      : `live=${live ?? "-"}，health=${summary ?? "-"}，source=${sources.length}。`,
+      : `live=${live ?? EM_DASH}，health=${summary ?? EM_DASH}，source=${sources.length}。`,
     kpis: [
       {
         key: "health-live",
         label: "Live",
-        value: live ?? "-",
+        value: live ?? EM_DASH,
         detail: "GET /health/live。",
         tone: live === "ok" ? "ok" : live ? "watch" : "muted",
       },
       {
         key: "health-summary",
         label: "Health",
-        value: summary ?? "-",
+        value: summary ?? EM_DASH,
         detail: "GET /health。",
         tone: summary === "ok" ? "ok" : summary ? "watch" : "muted",
       },
@@ -4402,7 +4407,7 @@ function governanceView(
     briefings: [
       {
         title: "系统健康",
-        conclusion: `live=${live ?? "-"}，summary=${summary ?? "-"}。`,
+        conclusion: `live=${live ?? EM_DASH}，summary=${summary ?? EM_DASH}。`,
         evidence: "来自既有 health endpoints。",
         tone: live === "ok" && summary === "ok" ? "ok" : "watch",
       },
@@ -4422,51 +4427,6 @@ function governanceView(
     detailPanels,
     dataNote: baseDataNote("governance", queries),
   };
-}
-
-const MODULE_HOME_QUERY_KEYS: (keyof ModuleHomeSourceQueries)[] = [
-  "balanceDates",
-  "balanceOverview",
-  "bondDates",
-  "bondHeadline",
-  "bondRisk",
-  "bondAssetType",
-  "bondAssetRating",
-  "bondMaturity",
-  "bondIndustry",
-  "bondYield",
-  "bondPortfolioComparison",
-  "bondSpread",
-  "bondBusinessType",
-  "balanceBasis",
-  "pnlSummary",
-  "choiceLatest",
-  "marketRates",
-  "marketCatalog",
-  "riskDates",
-  "riskTensor",
-  "cashflow",
-  "kpiOwners",
-  "kpiSummary",
-  "pnlYtd",
-  "healthLive",
-  "healthSummary",
-  "sourceFoundation",
-  "cubeDimensions",
-  "macroToolkitAnalysis",
-  "macroToolkitStrategySummaries",
-  "newsEvents",
-];
-
-/** Stable react-query revision tokens for memoizing buildModuleHomeView in page consumers. */
-export function moduleHomeQueriesMemoDeps(queries: ModuleHomeSourceQueries): unknown[] {
-  const deps: unknown[] = [];
-  for (const key of MODULE_HOME_QUERY_KEYS) {
-    const query = queries[key];
-    if (!query) continue;
-    deps.push(query.data, query.status, query.fetchStatus, query.errorUpdatedAt);
-  }
-  return deps;
 }
 
 export function buildModuleHomeView(

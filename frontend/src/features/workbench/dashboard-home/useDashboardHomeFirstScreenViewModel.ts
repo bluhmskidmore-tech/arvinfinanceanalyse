@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { sanitizeMetricCopy } from "../../executive-dashboard/lib/sanitizeMetricCopy";
+import { sanitizeMetricCopy } from "./lib/sanitizeMetricCopy";
 import { useDashboardSnapshotBoundary } from "../pages/useDashboardSnapshotBoundary";
 import {
   mapToHomeFirstScreenView,
@@ -23,14 +23,15 @@ export function useDashboardHomeFirstScreenViewModel() {
 
   const {
     dataClient,
-    isLiveDataFallback,
     adapterOutput,
     snapshotResult,
     snapshotMeta,
     reportDateDataWarning,
     snapshotQuery,
   } = snapshotBoundary;
-  const useMockFallback = dataClient.mode !== "real" || isLiveDataFallback;
+  // real 模式不允许任何 mock UI 可达路径：useMockFallback 只看数据源模式，
+  // 不再挂接 isLiveDataFallback 之类的运行时回退信号。
+  const useMockFallback = dataClient.mode !== "real";
   const requestedReportDate = reportDate.trim();
   const snapshotReportDate = snapshotResult?.report_date?.trim() || "";
   const effectiveReportDate = snapshotReportDate;

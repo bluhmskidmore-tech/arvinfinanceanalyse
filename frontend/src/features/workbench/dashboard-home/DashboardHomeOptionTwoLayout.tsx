@@ -42,7 +42,6 @@ type DashboardHomeOptionTwoBodyProps = {
   bondNewsActions?: BondNewsActions;
   homeAvailability?: DashboardHomeAvailability;
   homeAvailabilityKind?: "normal" | "serviceUnavailable";
-  focusPolicyFunding?: boolean;
   onRefresh?: () => void | Promise<unknown>;
   snapshotRefreshing?: boolean;
   supplementalStateLabel?: string;
@@ -199,7 +198,6 @@ export function DashboardHomeOptionTwoBody({
   bondNewsActions,
   homeAvailability,
   homeAvailabilityKind = "normal",
-  focusPolicyFunding = false,
   onRefresh,
   snapshotRefreshing = false,
   supplementalStateLabel,
@@ -959,10 +957,7 @@ export function DashboardHomeOptionTwoBody({
           </div>
           <small>事件、政策与债券新闻</small>
         </header>
-        <ResearchCalendarSection
-          macroBriefing={view.macroBriefing}
-          focusPolicyFunding={focusPolicyFunding}
-        />
+        <ResearchCalendarSection macroBriefing={view.macroBriefing} />
         <BondNewsSection
           bondNews={view.bondNews}
           actions={bondNewsActions}

@@ -104,7 +104,7 @@
 }
 
 .decisionKicker {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
 }
 
@@ -143,7 +143,7 @@
 
 .decisionFact span {
   color: var(--mh-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
 }
 
@@ -217,7 +217,7 @@
 
 .credibilityLabel {
   color: var(--mh-muted-2);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: none;
@@ -233,7 +233,7 @@
   border: 1px solid var(--mh-line-soft);
   background: var(--mh-card-soft);
   color: var(--mh-ink-2);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.25;
   overflow-wrap: anywhere;
@@ -306,7 +306,7 @@
 }
 
 .kpiLabel {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   color: var(--mh-ink-2);
 }
@@ -321,7 +321,7 @@
 
 .kpiDetail {
   color: var(--mh-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -352,17 +352,17 @@
 
 .statusLabel {
   color: var(--mh-ink-2);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
 }
 
 .statusValue {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
 }
 
 .statusDetail {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -402,7 +402,7 @@
 
 .sectionMeta {
   color: var(--mh-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -438,7 +438,7 @@
 }
 
 .briefEvidence {
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -471,13 +471,13 @@
 }
 
 .distributionState {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
 }
 
 .distributionMeta {
   color: var(--mh-muted-2);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.35;
 }
 
@@ -504,7 +504,7 @@
 
 .distributionLabel {
   color: var(--mh-ink-2);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
   overflow-wrap: anywhere;
 }
@@ -539,7 +539,7 @@
 
 .distributionEmpty {
   margin: 0;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -587,13 +587,13 @@
 }
 
 .detailState {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
 }
 
 .detailMeta {
   color: var(--mh-muted-2);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.35;
 }
 
@@ -620,7 +620,7 @@
 
 .detailLabel {
   color: var(--mh-ink-2);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
   overflow-wrap: anywhere;
 }
@@ -643,14 +643,14 @@
 
 .detailSource {
   color: var(--mh-muted-2);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
 .detailEmpty {
   margin: 0;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -662,7 +662,7 @@
 
 .railLead {
   margin: 0;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.55;
 }
 
@@ -710,13 +710,13 @@
   border: 1px solid var(--mh-line);
   background: var(--mh-card);
   color: var(--mh-blue-deep);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   white-space: nowrap;
 }
 
 .drillDesc {
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -728,7 +728,7 @@
 }
 
 .dataNote li {
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.45;
 }
 

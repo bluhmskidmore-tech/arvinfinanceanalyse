@@ -1,6 +1,6 @@
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
-import { mossChartCategoricalPalette } from "../../../components/charts/chartTheme";
-import { ibTokens } from "../../../theme/designSystem";
+import { nocturneTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 import type { ModuleHomeDetailChart } from "./moduleHomeModel";
 import { useDeferredChartMount } from "./useDeferredChartMount";
 import styles from "./portfolioHome.module.css";
@@ -11,23 +11,25 @@ type PortfolioStructureChartProps = {
   hideTitle?: boolean;
 };
 
+/* 所有使用方（组合/市场工作台）都是深色终端页；此前取浅色主题 palette，
+   深蓝条画在深蓝底上不可见（DESIGN.md §2.2 深色 token 才是这里的正确色源）。 */
 const CHART_COLORS = [
-  mossChartCategoricalPalette[0],
-  mossChartCategoricalPalette[1],
-  mossChartCategoricalPalette[2],
-  ibTokens.color.gold,
-  ibTokens.color.down,
+  nocturneTokens.color.blue,
+  nocturneTokens.color.inkSoft,
+  nocturneTokens.color.green,
+  nocturneTokens.color.amber,
+  nocturneTokens.color.red,
 ] as const;
-const GRID_LINE_COLOR = ibTokens.color.hairline;
-const AXIS_LABEL_COLOR = ibTokens.color.inkMuted;
-const AXIS_NAME_COLOR = ibTokens.color.inkMuted;
+const GRID_LINE_COLOR = nocturneTokens.color.lineSoft;
+const AXIS_LABEL_COLOR = nocturneTokens.color.inkMuted;
+const AXIS_NAME_COLOR = nocturneTokens.color.inkMuted;
 
 function formatTooltipValue(value: unknown, unit: string) {
-  if (value === null || value === undefined || value === "-") {
-    return "—";
+  if (value === null || value === undefined || value === EM_DASH) {
+    return EM_DASH;
   }
   const n = Number(value);
-  return Number.isFinite(n) ? `${n.toFixed(2)} ${unit}` : "—";
+  return Number.isFinite(n) ? `${n.toFixed(2)} ${unit}` : EM_DASH;
 }
 
 export function PortfolioStructureChart({ chart, height, hideTitle = false }: PortfolioStructureChartProps) {
@@ -58,14 +60,14 @@ export function PortfolioStructureChart({ chart, height, hideTitle = false }: Po
     trigger: "axis" as const,
     axisPointer: {
       type: "shadow" as const,
-      shadowStyle: { color: "rgba(114, 167, 220, 0.08)" },
+      shadowStyle: { color: "rgba(145, 132, 217, 0.08)" },
     },
-    backgroundColor: ibTokens.color.surface,
-    borderColor: ibTokens.color.hairline,
+    backgroundColor: nocturneTokens.color.panel2,
+    borderColor: nocturneTokens.color.line,
     borderWidth: 1,
     padding: [8, 10],
     textStyle: {
-      color: ibTokens.color.ink,
+      color: nocturneTokens.color.ink,
       fontSize: 11,
       fontWeight: 650,
     },

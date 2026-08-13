@@ -144,10 +144,9 @@ describe("ResearchCalendarSection", () => {
     expect(screen.queryByText("当前窗口暂无供给/招标事件。")).not.toBeInTheDocument();
   });
 
-  it("renders the policy funding pane as a focused summary with grouped evidence", () => {
+  it("renders the policy funding pane as a summary with grouped evidence", () => {
     render(
       <ResearchCalendarSection
-        focusPolicyFunding
         macroBriefing={{
           releaseItems: [],
           releaseHistoryItems: [],
@@ -167,10 +166,7 @@ describe("ResearchCalendarSection", () => {
       />,
     );
 
-    expect(screen.getByTestId("dashboard-home-policy-funding-pane")).toHaveAttribute(
-      "data-focused",
-      "true",
-    );
+    expect(screen.getByTestId("dashboard-home-policy-funding-pane")).toBeInTheDocument();
     expect(screen.getByText(policyFundingSummary.headline)).toBeInTheDocument();
     expect(screen.getByText("Tushare 兜底")).toBeInTheDocument();
     expect(screen.getByText("央行/公开市场")).toBeInTheDocument();

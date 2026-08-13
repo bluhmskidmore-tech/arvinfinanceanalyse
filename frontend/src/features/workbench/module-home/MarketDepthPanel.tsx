@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 
 import dhStyles from "../dashboard-home/dashboardHome.module.css";
+import { EM_DASH } from "../../../utils/format";
 import type { MarketVisualAccent } from "./marketEvidenceVisual";
 import { marketChangePresentation } from "./marketHomeChangeTone";
 import type { MarketIconProps } from "./marketHomeIcons";
@@ -72,14 +73,14 @@ function depthTable(panel: ModuleHomeDetailPanel, compact: boolean, compactLadde
         const sourceMeta = compactLadder
           ? hideLadderDates
             ? null
-            : row.tradeDate !== "-"
+            : row.tradeDate !== EM_DASH
               ? row.tradeDate
               : null
-          : [row.tradeDate !== "-" ? row.tradeDate : null, row.source !== "-" ? row.source : null]
+          : [row.tradeDate !== EM_DASH ? row.tradeDate : null, row.source !== EM_DASH ? row.source : null]
               .filter(Boolean)
               .join(" · ");
         const labelTitle =
-          compactLadder && row.source !== "-"
+          compactLadder && row.source !== EM_DASH
             ? `${row.label} · ${row.source}`
             : row.label;
         return (
@@ -91,7 +92,7 @@ function depthTable(panel: ModuleHomeDetailPanel, compact: boolean, compactLadde
               {sourceMeta ? (
                 <span
                   className={marketStyles.terminalTableSource}
-                  title={compactLadder && row.source !== "-" ? row.source : undefined}
+                  title={compactLadder && row.source !== EM_DASH ? row.source : undefined}
                 >
                   {sourceMeta}
                 </span>

@@ -13,6 +13,13 @@ const routeModulePreloaders = {
     import("../features/cashflow-projection/pages/CashflowProjectionPage"),
   "concentration-monitor": () =>
     import("../features/concentration-monitor/ConcentrationMonitorPage"),
+  // CrossAssetPage 只是薄壳，真正的重头是它内部再懒加载的 CrossAssetDriversPage，
+  // 预热时两层都要付掉。
+  "cross-asset": () =>
+    Promise.all([
+      import("../features/cross-asset/pages/CrossAssetPage"),
+      import("../features/cross-asset/pages/CrossAssetDriversPage"),
+    ]),
   "dashboard-home": () => import("../features/workbench/dashboard-home/DashboardHomePage"),
   "decision-items": () => import("../features/decision-items/pages/DecisionItemsPage"),
   kpi: () => import("../features/kpi-performance/pages/KpiPerformancePage"),
@@ -31,6 +38,9 @@ const routeModulePreloaders = {
   "pnl-by-business": () => import("../features/pnl/PnlByBusinessPage"),
   "pnl-by-business-insights": () =>
     import("../features/pnl-business-insights/PnlByBusinessInsightsPage"),
+  // /portfolio 路由实际渲染 PortfolioHomePage（静态携带 PortfolioHomeLayout 与
+  // usePortfolioHomeQueries 整条链），不是 ModuleWorkbenchHomePage。
+  "portfolio-home": () => import("../features/workbench/module-home/PortfolioHomePage"),
   "product-category-pnl": () =>
     import("../features/product-category-pnl/pages/ProductCategoryPnlPage"),
   "product-category-pnl-audit": () =>
@@ -38,6 +48,8 @@ const routeModulePreloaders = {
   "risk-tensor": () => import("../features/risk-tensor/RiskTensorPage"),
   "risk-overview": () => import("../features/workbench/module-home/RiskOverviewPage"),
   "team-performance": () => import("../features/team-performance/TeamPerformancePage"),
+  "workbench-placeholder": () =>
+    import("../features/workbench/pages/WorkbenchPlaceholderPage"),
 } as const;
 
 type RoutePreloadKey = keyof typeof routeModulePreloaders;

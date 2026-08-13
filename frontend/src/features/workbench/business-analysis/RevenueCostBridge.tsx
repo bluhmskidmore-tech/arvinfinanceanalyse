@@ -2,6 +2,8 @@ import type { EChartsOption } from "echarts";
 
 import { BaseChart } from "../../../components/charts/BaseChart";
 import { EvidencePanel } from "../../../components/page/PagePrimitives";
+import { DataSourceBadge } from "../../../components/StatusPill";
+import { EM_DASH } from "../../../utils/format";
 import styles from "./RevenueCostBridge.module.css";
 
 const STEPS = [
@@ -97,7 +99,7 @@ function buildOption(): EChartsOption {
         left: "center",
         top: 8,
         style: {
-          text: `累计净经营贡献 ${total.toFixed(2)} 亿 · 净利差 29.5bp，净经营贡献主要来源于债券资产`,
+          text: `示意瀑布（静态样例，累计 ${total.toFixed(2)} 为示意值）· 非正式口径，不作正式读数`,
           fill: "#64748b",
           fontSize: 11,
         },
@@ -110,8 +112,16 @@ export function RevenueCostBridge() {
   return (
     <EvidencePanel heading="收益成本桥（示意）">
       <div className={styles.body}>
-        <p className={styles.note}>
-          债券与同业资产收益合计约 72.87 亿，抵减负债成本后得到净贡献（柱状为示意瀑布，单位亿元）。
+        <div>
+          <DataSourceBadge
+            status="mock"
+            label="示意数据·未接入正式口径"
+            testId="revenue-cost-bridge-sample-badge"
+            title="瀑布图为静态示意样例，未接入正式口径读链路，不作正式读数"
+          />
+        </div>
+        <p className={styles.note} data-testid="revenue-cost-bridge-sample-note">
+          正式口径读数：{EM_DASH}（未接入）。下方瀑布为静态示意样例，仅演示“资产收益抵减负债成本得到净贡献”的结构，数值不代表正式读数。
         </p>
         <BaseChart option={buildOption()} height={300} />
       </div>

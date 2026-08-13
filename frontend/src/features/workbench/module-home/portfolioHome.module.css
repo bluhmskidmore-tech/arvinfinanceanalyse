@@ -1,7 +1,8 @@
+/* 主列贴住侧边栏并铺满剩余宽度，与首页壳层行为一致（此前 1440px 居中会在侧栏与内容间留出空档）。 */
 :global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"]) .workbench-main-column) {
-  width: min(100%, 1440px) !important;
-  max-width: 1440px !important;
-  justify-self: center !important;
+  width: 100% !important;
+  max-width: none !important;
+  justify-self: stretch !important;
 }
 
 .holdingsHeroFigureHead,
@@ -18,7 +19,7 @@
 .holdingsHeroFigureMeta em {
   overflow: hidden;
   color: var(--dh-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 760;
   line-height: 1.25;
@@ -116,7 +117,7 @@
 
 .portfolioTopbar :global(.moss-light-icon),
 .portfolioTopbar :where(span) {
-  border-color: rgba(114, 147, 190, 0.26);
+  border-color: color-mix(in srgb, var(--dh-api-muted) 26%, transparent);
 }
 
 .portfolioTopbarLeft {
@@ -149,7 +150,7 @@
   overflow: hidden;
   margin: 0;
   color: var(--dh-muted-2);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.45;
   max-width: 82ch;
   -webkit-box-orient: vertical;
@@ -175,7 +176,7 @@
   gap: 6px;
   padding: 4px 10px;
   border: 1px solid var(--dh-line-soft);
-  border-radius: 6px;
+  border-radius: var(--dh-api-radius);
   background: var(--dh-card-soft);
   color: var(--dh-muted);
   font-size: 12px;
@@ -253,10 +254,10 @@
   padding: 4px 8px;
   overflow: hidden;
   border: 1px solid var(--dh-line-soft);
-  border-radius: 6px;
+  border-radius: var(--dh-api-radius);
   background: var(--dh-card-soft);
   color: var(--dh-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 780;
   text-overflow: ellipsis;
@@ -289,8 +290,8 @@
 }
 
 .closureGateBlocked {
-  border-color: rgba(201, 165, 101, 0.34);
-  background: rgba(201, 165, 101, 0.1);
+  border-color: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-amber) 10%, transparent);
 }
 
 .closureGateHead {
@@ -303,7 +304,7 @@
 
 .closureGateHead span {
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
   letter-spacing: 0;
 }
@@ -382,15 +383,15 @@
   margin: 8px 10px 0;
   padding: 7px 9px;
   border: 1px solid var(--dh-line-soft, var(--ib-hairline));
-  border-radius: 6px;
+  border-radius: var(--dh-api-radius);
   background: var(--dh-card-soft);
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
 }
 
 .structureGapAction:hover {
-  border-color: rgba(162, 102, 2, 0.34);
+  border-color: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
   text-decoration: none;
 }
 
@@ -406,7 +407,7 @@
   border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card-soft, var(--ib-paper));
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
   text-align: center;
 }
@@ -418,7 +419,7 @@
 
 .quickAccessCard:hover,
 .drillCard:hover {
-  border-color: rgba(114, 167, 220, 0.42);
+  border-color: color-mix(in srgb, var(--dh-api-blue) 42%, transparent);
   background: var(--moss-color-primary-50);
   text-decoration: none;
 }
@@ -428,7 +429,7 @@
   grid-column: 2;
   justify-self: start;
   color: var(--dh-muted-2, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 760;
   line-height: 1.25;
@@ -436,7 +437,7 @@
 }
 
 .drillCardCurrent {
-  border-color: rgba(24, 80, 161, 0.34);
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
   background: var(--moss-color-primary-50);
 }
 
@@ -463,7 +464,7 @@
 
 .sectionHead span {
   color: var(--dh-muted-2, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -496,7 +497,7 @@
 
 .chartSnapshotHead span {
   color: var(--dh-muted-2);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -536,7 +537,7 @@
 .chartSnapshotCardHead span {
   overflow: hidden;
   color: var(--dh-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   line-height: 1.25;
   overflow-wrap: anywhere;
@@ -546,7 +547,7 @@
   justify-self: start;
   color: var(--dh-ink);
   font-family: var(--dh-font-mono, var(--moss-font-mono));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -589,7 +590,7 @@
   height: 7px;
   overflow: hidden;
   border-radius: var(--dh-api-radius, 6px);
-  background: rgba(114, 167, 220, 0.12);
+  background: color-mix(in srgb, var(--dh-api-blue) 12%, transparent);
 }
 
 .chartMiniFill {
@@ -646,7 +647,7 @@
 
 .terminalPanelHead strong {
   color: var(--dh-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.01em;
 }
@@ -660,14 +661,14 @@
   min-height: 32px;
   padding: 6px 8px;
   border: 1px solid var(--dh-line-soft, var(--ib-hairline));
-  border-radius: 6px;
+  border-radius: var(--dh-api-radius);
   background: var(--dh-card-soft, var(--ib-paper));
 }
 
 .decisionReadinessBar span {
   overflow: hidden;
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -675,7 +676,7 @@
 
 .decisionReadinessBar strong {
   color: var(--dh-blue-deep, var(--ib-accent));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
   white-space: nowrap;
 }
@@ -724,7 +725,7 @@
 
 .decisionActionLabel {
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -742,7 +743,7 @@
   min-height: 36px;
   padding: 6px 8px;
   border: 1px solid var(--dh-line-soft, var(--ib-hairline));
-  border-radius: 6px;
+  border-radius: var(--dh-api-radius);
   color: inherit;
 }
 
@@ -766,13 +767,13 @@
 }
 
 .decisionActionText strong {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
 }
 
 .decisionActionText small {
   color: var(--dh-muted-2, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -781,7 +782,7 @@
   gap: 4px;
   align-items: center;
   color: var(--dh-blue-deep, var(--ib-accent));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   white-space: nowrap;
 }
@@ -831,13 +832,13 @@
 }
 
 .briefCardPrimary {
-  background: rgba(114, 167, 220, 0.1);
+  background: color-mix(in srgb, var(--dh-api-blue) 10%, transparent);
   box-shadow: none;
 }
 
 .briefTitle {
   color: var(--dh-muted-2, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -858,7 +859,7 @@
   display: -webkit-box;
   overflow: hidden;
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.35;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -885,20 +886,20 @@
 
 .kpiGridTape::-webkit-scrollbar-thumb {
   border-radius: var(--dh-api-radius, 6px);
-  background: rgba(24, 80, 161, 0.22);
+  background: color-mix(in srgb, var(--dh-api-blue) 22%, transparent);
 }
 
 .portfolioRiskTickerBar {
   min-width: 0;
   padding: 8px 10px;
-  border: 1px solid rgba(114, 147, 190, 0.28);
+  border: 1px solid color-mix(in srgb, var(--dh-api-muted) 28%, transparent);
   border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card-soft, var(--ib-paper));
   box-shadow: none;
 }
 
 .portfolioRiskTickerUnavailable {
-  border-color: rgba(245, 158, 11, 0.28);
+  border-color: color-mix(in srgb, var(--dh-api-amber) 28%, transparent);
   background: var(--moss-color-warning-50);
 }
 
@@ -912,7 +913,7 @@
 
 .portfolioRiskTickerHead span {
   color: var(--moss-color-info-300);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -920,7 +921,7 @@
 
 .portfolioRiskTickerHead strong {
   color: var(--dh-blue-deep, var(--ib-accent));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -945,7 +946,7 @@
 
 .portfolioRiskTickerLabel {
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   line-height: 1.2;
 }
@@ -980,7 +981,7 @@
 .portfolioRiskTickerEmpty {
   margin: 0;
   color: var(--dh-muted-2, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 750;
   line-height: 1.45;
 }
@@ -1112,7 +1113,7 @@
 .statusCell em {
   display: block;
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   line-height: 1.4;
 }
@@ -1143,7 +1144,7 @@
 
 .distViewAll {
   color: var(--dh-blue, var(--ib-accent));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
   line-height: 1.2;
   text-decoration: none;
@@ -1168,7 +1169,7 @@
   margin: 0;
   grid-column: 1 / -1;
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -1183,13 +1184,13 @@
   margin: 0;
   padding: 6px 10px;
   border: 1px solid var(--dh-line-soft);
-  border-radius: 6px;
+  border-radius: var(--dh-api-radius);
   background: var(--dh-card-soft);
 }
 
 .distTopLabel {
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   white-space: nowrap;
 }
@@ -1225,9 +1226,9 @@
 
 .distStateBadge {
   padding: 2px 8px;
-  border-radius: 6px;
+  border-radius: var(--dh-api-radius);
   background: var(--dh-card-soft, var(--ib-paper));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -1260,7 +1261,7 @@
 
 .distChartCenter span {
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -1376,7 +1377,7 @@
   overflow: hidden;
   border: 0;
   border-radius: var(--dh-api-radius, 6px);
-  background: rgba(114, 167, 220, 0.14);
+  background: color-mix(in srgb, var(--dh-api-blue) 14%, transparent);
 }
 
 .distBarFill {
@@ -1447,7 +1448,7 @@
   aspect-ratio: 1;
   border-radius: 50%;
   background:
-    radial-gradient(circle, var(--ib-surface) 0 56%, rgba(24, 80, 161, 0.1) 57% 63%, var(--ib-surface) 64%);
+    radial-gradient(circle, var(--ib-surface) 0 56%, color-mix(in srgb, var(--dh-api-blue) 10%, transparent) 57% 63%, var(--ib-surface) 64%);
 }
 
 .distEmptyChart span {
@@ -1559,7 +1560,7 @@
   place-items: end stretch;
   min-height: 240px;
   padding: 16px;
-  border: 1px dashed rgba(24, 80, 161, 0.26);
+  border: 1px dashed color-mix(in srgb, var(--dh-api-blue) 26%, transparent);
   border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card);
   background-position: left 46px, left 86px, left 126px, left 166px, 0 0;
@@ -1690,7 +1691,7 @@
 
 .detailSource {
   color: var(--dh-muted-2, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -1718,7 +1719,7 @@
 .holdingsHeroMeta {
   margin: 0;
   color: var(--dh-muted-2, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -1738,7 +1739,7 @@
 .holdingsHeroBarTop strong {
   color: var(--dh-api-ink-soft);
   font-family: var(--dh-font-mono, var(--moss-font-mono));
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 850;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -1783,18 +1784,18 @@
 }
 
 .workbenchNav a:nth-of-type(2) {
-  border-color: rgba(176, 146, 97, 0.28);
-  background: rgba(16, 31, 51, 0.58);
+  border-color: color-mix(in srgb, var(--dh-api-amber) 28%, transparent);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 58%, transparent);
 }
 
 .workbenchNav a:nth-of-type(3) {
-  border-color: rgba(127, 142, 165, 0.28);
-  background: rgba(16, 31, 51, 0.58);
+  border-color: color-mix(in srgb, var(--dh-api-muted) 28%, transparent);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 58%, transparent);
 }
 
 .workbenchNav a:nth-of-type(4) {
-  border-color: rgba(125, 154, 127, 0.28);
-  background: rgba(16, 31, 51, 0.58);
+  border-color: color-mix(in srgb, var(--dh-api-green) 28%, transparent);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 58%, transparent);
 }
 
 .workbenchNav span {
@@ -1803,7 +1804,7 @@
   align-self: start;
   color: var(--portfolio-signal-info-strong);
   font-family: var(--dh-font-mono, var(--moss-font-mono));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
 }
@@ -1811,7 +1812,7 @@
 .workbenchNav strong {
   overflow: hidden;
   color: var(--dh-ink);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1821,7 +1822,7 @@
   display: none;
   overflow: hidden;
   color: var(--dh-muted-2);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 740;
   text-overflow: ellipsis;
@@ -1832,7 +1833,7 @@
   min-width: 0;
   margin: 0;
   color: var(--dh-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 1.45;
 }
@@ -1846,7 +1847,7 @@
     gap: 6px;
     height: auto;
     min-height: 52px;
-    padding: 9px 10px;
+    padding: 9px 0;
     background: var(--dh-card);
   }
 
@@ -1856,7 +1857,7 @@
   }
 
   .workbenchNav p {
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.32;
   }
 }
@@ -1876,7 +1877,7 @@
   .workbenchNav {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     overflow: visible;
-    padding: 8px;
+    padding: 8px 0;
   }
 
   .workbenchNav a {
@@ -1955,7 +1956,7 @@
 .summaryLedgerCard .chartMiniTrack {
   height: 5px;
   border-radius: var(--dh-api-radius, 6px);
-  background: rgba(114, 167, 220, 0.12);
+  background: color-mix(in srgb, var(--dh-api-blue) 12%, transparent);
 }
 
 .summaryLedgerCard .chartMiniFill {
@@ -1991,7 +1992,7 @@
   padding: 5px 8px 4px;
   color: var(--dh-muted);
   background: var(--dh-card-soft);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
 }
 
@@ -2055,7 +2056,7 @@
 
 .holdingsHeroTotal {
   color: var(--dh-muted-2);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 760;
 }
@@ -2096,7 +2097,7 @@
   height: 7px;
   overflow: hidden;
   border-radius: var(--dh-api-radius, 6px);
-  background: rgba(114, 167, 220, 0.12);
+  background: color-mix(in srgb, var(--dh-api-blue) 12%, transparent);
 }
 
 .holdingsHeroBarFill {
@@ -2117,7 +2118,7 @@
 
 .exposureWorkbenchHead span {
   color: var(--dh-muted-2);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
 }
 
@@ -2132,7 +2133,7 @@
   max-width: 230px;
   margin: 0;
   color: var(--dh-muted);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   line-height: 1.45;
   text-align: right;
@@ -2189,7 +2190,7 @@
 
 .structureTableHead span {
   color: var(--dh-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 720;
 }
 
@@ -2204,14 +2205,14 @@
 .structureTableWorkbench :global(.ant-tabs-tab) {
   min-width: 132px;
   padding: 6px 8px;
-  border: 1px solid rgba(114, 167, 220, 0.28);
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 28%, transparent);
   border-radius: var(--dh-api-radius, 6px);
-  background: rgba(114, 167, 220, 0.1);
+  background: color-mix(in srgb, var(--dh-api-blue) 10%, transparent);
 }
 
 .structureTableWorkbench :global(.ant-tabs-tab:nth-child(2)) {
-  border-color: rgba(201, 165, 101, 0.34);
-  background: rgba(201, 165, 101, 0.16);
+  border-color: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-amber) 16%, transparent);
 }
 
 .structureTableWorkbench :global(.ant-tabs-ink-bar) {
@@ -2244,11 +2245,11 @@
   place-items: center;
   width: 20px;
   height: 20px;
-  border: 1px solid rgba(159, 180, 199, 0.18);
+  border: 1px solid color-mix(in srgb, var(--dh-api-soft) 18%, transparent);
   border-radius: var(--dh-api-radius, 6px);
-  background: rgba(11, 23, 40, 0.72);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 72%, transparent);
   color: var(--dh-api-ink-soft);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .quickAccessCard b,
@@ -2258,7 +2259,7 @@
   font-weight: 850;
   line-height: 1.25;
   overflow-wrap: anywhere;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 /* 快捷入口为主级：保留说明文字、抬高对比，与明细索引区分层级。 */
@@ -2271,7 +2272,7 @@
 .quickAccessCard span {
   width: 24px;
   height: 24px;
-  border-color: rgba(114, 167, 220, 0.3);
+  border-color: color-mix(in srgb, var(--dh-api-blue) 30%, transparent);
   color: var(--dh-api-blue);
   font-size: 12px;
 }
@@ -2282,7 +2283,7 @@
 
 .quickAccessCard em {
   color: var(--dh-muted-2);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 720;
 }
 
@@ -2293,7 +2294,7 @@
 
 .drillCard[data-readiness="note"] em {
   color: var(--dh-api-amber);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
 }
 
@@ -2326,7 +2327,7 @@
   overflow: hidden;
   margin: 0;
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 700;
   line-height: 1.42;
   -webkit-box-orient: vertical;
@@ -2360,9 +2361,9 @@
 }
 
 .kpiCard[data-empty="true"] {
-  border-color: rgba(201, 165, 101, 0.32);
+  border-color: color-mix(in srgb, var(--dh-api-amber) 32%, transparent);
   background:
-    linear-gradient(180deg, rgba(201, 165, 101, 0.1), rgba(201, 165, 101, 0.018)),
+    linear-gradient(180deg, color-mix(in srgb, var(--dh-api-amber) 10%, transparent), color-mix(in srgb, var(--dh-api-amber) 1.8%, transparent)),
     var(--dh-card);
 }
 
@@ -2394,7 +2395,7 @@
   border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card);
   min-height: 158px;
-  border-color: rgba(114, 167, 220, 0.2);
+  border-color: color-mix(in srgb, var(--dh-api-blue) 20%, transparent);
 }
 
 .summaryLedgerCard .chartSnapshotCard,
@@ -2402,12 +2403,12 @@
 .summaryLedgerCard .statusCell {
   /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   min-height: 34px;
-  border-left: 2px solid rgba(114, 167, 220, 0.28);
+  border-left: 2px solid color-mix(in srgb, var(--dh-api-blue) 28%, transparent);
 }
 
 .summaryLedgerCard .briefCardWatch,
 .summaryLedgerCard .statusCell:has(.toneWatch) {
-  border-left-color: rgba(201, 165, 101, 0.58);
+  border-left-color: color-mix(in srgb, var(--dh-api-amber) 58%, transparent);
 }
 
 .summaryLedgerCard .chartMiniSkeleton {
@@ -2426,9 +2427,9 @@
   padding: 14px;
   border-style: solid;
   background:
-    linear-gradient(rgba(114, 167, 220, 0.08) 0 0) 14px 34px / 76% 8px no-repeat,
-    linear-gradient(rgba(114, 167, 220, 0.12) 0 0) 14px 58px / 62% 8px no-repeat,
-    linear-gradient(rgba(201, 165, 101, 0.18) 0 0) 14px 82px / 46% 8px no-repeat,
+    linear-gradient(color-mix(in srgb, var(--dh-api-blue) 8%, transparent) 0 0) 14px 34px / 76% 8px no-repeat,
+    linear-gradient(color-mix(in srgb, var(--dh-api-blue) 12%, transparent) 0 0) 14px 58px / 62% 8px no-repeat,
+    linear-gradient(color-mix(in srgb, var(--dh-api-amber) 18%, transparent) 0 0) 14px 82px / 46% 8px no-repeat,
     var(--dh-card-soft);
   color: var(--dh-amber);
   font-weight: 820;
@@ -2444,7 +2445,7 @@
   border: 1px solid var(--dh-line-soft);
   border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card);
-  border-color: rgba(114, 167, 220, 0.22);
+  border-color: color-mix(in srgb, var(--dh-api-blue) 22%, transparent);
 }
 
 .exposureLedgerRow strong {
@@ -2462,7 +2463,7 @@
 
 .closureReviewCard {
   /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
-  border-color: rgba(114, 167, 220, 0.18);
+  border-color: color-mix(in srgb, var(--dh-api-blue) 18%, transparent);
 }
 
 .closureReviewCard .detailValue {
@@ -2471,7 +2472,7 @@
 
 .structureTableWorkbench {
   /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
-  border-color: rgba(114, 167, 220, 0.2);
+  border-color: color-mix(in srgb, var(--dh-api-blue) 20%, transparent);
 }
 
 .structureTableWorkbench :global(.ant-tabs-tab) {
@@ -2485,15 +2486,15 @@
 
 .quickAccessBlock,
 .drilldownBlock {
-  border: 1px solid rgba(114, 167, 220, 0.14);
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 14%, transparent);
   border-radius: var(--dh-api-radius, 6px);
-  background: rgba(16, 31, 51, 0.48);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 48%, transparent);
 }
 
 .quickAccessCard,
 .drillCard {
-  border-color: rgba(159, 180, 199, 0.2);
-  background: rgba(16, 31, 51, 0.46);
+  border-color: color-mix(in srgb, var(--dh-api-soft) 20%, transparent);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 46%, transparent);
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 8px;
@@ -2523,7 +2524,7 @@
   border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card-soft);
   color: var(--dh-muted);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.55;
 }
 
@@ -2551,7 +2552,7 @@
   align-items: center;
   min-width: 0;
   margin-top: -2px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .structureGapAction span,
@@ -2569,7 +2570,7 @@
 .structureGapAction strong {
   min-width: 0;
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -2586,7 +2587,7 @@
   align-items: center;
   padding: 2px 10px;
   border-radius: var(--dh-api-radius, 6px);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   border: 1px solid var(--dh-line, var(--ib-hairline));
   background: var(--ib-surface);
@@ -2684,7 +2685,7 @@
   }
 
   .workbenchSection {
-    padding: 10px;
+    padding: 0;
   }
 
   .workbenchSectionHead {
@@ -2879,11 +2880,11 @@
   }
 
   .decisionFact span {
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .decisionFact strong {
-    font-size: 11.5px;
+    font-size: 12px;
     line-height: 1.25;
   }
 
@@ -2918,20 +2919,20 @@
   }
 
   .briefTitle {
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .briefConclusion {
     display: -webkit-box;
     overflow: hidden;
-    font-size: 11.5px;
+    font-size: 13px;
     line-height: 1.3;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
   }
 
   .briefEvidence {
-    font-size: 11px;
+    font-size: 13px;
     -webkit-line-clamp: 1;
   }
 
@@ -2940,8 +2941,8 @@
   }
 
   .workbenchSection {
-    gap: 10px;
-    padding: 10px;
+    gap: 12px;
+    padding: 0;
   }
 
   .workbenchSectionHead {
@@ -2968,7 +2969,7 @@
   }
 
   .exposureWorkbenchHead p {
-    font-size: 11px;
+    font-size: 13px;
     line-height: 1.34;
   }
 
@@ -3006,40 +3007,27 @@
   .quickAccessCard,
   .drillCard {
     min-height: 28px;
-    padding: 5px 7px;
+    padding: 6px 8px;
   }
 
   .quickAccessCard b,
   .drillCard b {
-    font-size: 11px;
+    font-size: 12px;
   }
 
 }
 
 @media (min-width: 1101px) {
-  :global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"])) {
-    grid-template-columns: minmax(184px, 208px) minmax(0, 1fr) !important;
-    gap: clamp(12px, 1.5vw, 20px) !important;
-    align-items: stretch !important;
-    padding: 16px clamp(14px, 1.8vw, 26px) 34px !important;
-  }
-
-  :global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"]) .workbench-shell-rail) {
-    box-sizing: border-box !important;
-    height: calc(100vh - 32px) !important;
-    min-height: 0 !important;
-    padding: 18px 14px !important;
-  }
-
+  /* 壳层几何（216px 贴边通栏侧栏）统一由 workbenchShell.css 末尾的
+     「全系统侧边栏统一」层定义，页面不再覆盖列宽/边距/侧栏高度。 */
   :global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"]) .workbench-main-column) {
-    width: min(100%, 1440px) !important;
-    max-width: 1440px !important;
-    justify-self: center !important;
+    width: 100% !important;
+    max-width: none !important;
+    justify-self: stretch !important;
   }
 
   .portfolioPage {
     gap: 16px;
-    max-width: 1440px;
     min-height: 0;
     padding: 0;
     border: 0;
@@ -3068,7 +3056,7 @@
     box-sizing: border-box;
     height: auto;
     min-height: 152px;
-    padding: 10px;
+    padding: 10px 12px;
     overflow: visible;
   }
 
@@ -3117,7 +3105,7 @@
   .summaryLedgerCard .statusCell em {
     min-width: 0;
     overflow: hidden;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.22;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -3140,7 +3128,7 @@
 
   .summaryLedgerCard .statusCell span,
   .summaryLedgerCard .statusCell em {
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.2;
   }
 
@@ -3169,14 +3157,13 @@
 
   .holdingsHeroBand,
   .exposureWorkbenchSection {
-    padding: 9px;
+    padding: 10px 12px;
     box-sizing: border-box;
     min-height: 204px;
   }
 
   .holdingsHeroBand {
     gap: 7px;
-    padding: 9px;
   }
 
   .holdingsHeroHead {
@@ -3267,7 +3254,7 @@
     padding: 5px 8px 4px;
     color: var(--dh-muted);
     background: var(--dh-card-soft);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 850;
     letter-spacing: 0.01em;
   }
@@ -3337,11 +3324,11 @@
 
   .evidenceConsole .decisionFact + .decisionFact {
     padding-top: 9px;
-    border-top: 1px solid rgba(125, 154, 127, 0.16);
+    border-top: 1px solid color-mix(in srgb, var(--dh-api-green) 16%, transparent);
   }
 
   .evidenceConsole .decisionFact span {
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .decisionActionList {
@@ -3377,7 +3364,7 @@
 }
 
 .decisionKicker {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.01em;
   color: var(--portfolio-signal-review);
@@ -3410,12 +3397,12 @@
 .closureReviewCard,
 .quickAccessBlock,
 .drilldownBlock {
-  border-color: rgba(143, 174, 195, 0.16);
+  border-color: color-mix(in srgb, var(--dh-api-soft) 16%, transparent);
 }
 
 .kpiCard:nth-child(-n + 2) {
   background:
-    linear-gradient(180deg, rgba(143, 174, 195, 0.055), rgba(143, 174, 195, 0.012)),
+    linear-gradient(180deg, color-mix(in srgb, var(--dh-api-soft) 5.5%, transparent), color-mix(in srgb, var(--dh-api-soft) 1.2%, transparent)),
     var(--dh-card);
 }
 
@@ -3452,7 +3439,7 @@
 
 .summaryLedgerCard .chartMiniSkeleton span {
   height: 8px;
-  background: linear-gradient(90deg, rgba(143, 174, 195, 0.24), rgba(143, 174, 195, 0.08));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--dh-api-soft) 24%, transparent), color-mix(in srgb, var(--dh-api-soft) 8%, transparent));
 }
 
 .closureReviewCard .detailRow > .detailSource {
@@ -3481,28 +3468,6 @@
   }
 }
 
-/* Structure workbook as a spacious ledger, matching the reference workbench. */
-.portfolioStructureWorkbench .workbenchSectionHead {
-  gap: 10px;
-  padding-bottom: 0;
-  border-bottom: 0;
-}
-
-/* 标题层级与 01/03/04 同级：此区块的「宽松」由容器 padding 承担，不靠放大标题。 */
-
-.portfolioStructureWorkbench .workbenchSectionMeta em {
-  min-height: auto;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--dh-api-soft);
-  font-size: 12px;
-}
-
-.portfolioStructureWorkbench .workbenchSectionMeta em::first-letter {
-  color: var(--dh-api-green);
-}
-
 .structureTableHead,
 .structureGapActions,
 .structureTableWorkbench .embeddedPanelHead,
@@ -3528,19 +3493,19 @@
   height: 36px;
   margin: 0;
   padding: 0 14px;
-  border: 1px solid rgba(143, 174, 195, 0.18);
+  border: 1px solid color-mix(in srgb, var(--dh-api-soft) 18%, transparent);
   border-radius: var(--dh-api-radius, 6px);
-  background: rgba(13, 25, 43, 0.54);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 54%, transparent);
 }
 
 .structureTableWorkbench :global(.ant-tabs-tab-active) {
-  border-color: rgba(94, 133, 193, 0.58);
-  background: rgba(28, 50, 82, 0.62);
+  border-color: color-mix(in srgb, var(--dh-api-blue) 58%, transparent);
+  background: color-mix(in srgb, var(--dh-api-panel-3) 62%, transparent);
 }
 
 .structureTableWorkbench :global(.ant-tabs-tab:nth-child(2):not(.ant-tabs-tab-active)) {
-  border-color: rgba(143, 174, 195, 0.18);
-  background: rgba(13, 25, 43, 0.54);
+  border-color: color-mix(in srgb, var(--dh-api-soft) 18%, transparent);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 54%, transparent);
 }
 
 .structureTableWorkbench :global(.ant-tabs-tab-btn) {
@@ -3570,7 +3535,7 @@
   border: 0;
   background: transparent;
   color: var(--dh-api-blue);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .structureTableWorkbench .compactListHeader,
@@ -3630,10 +3595,6 @@
 }
 
 @media (max-width: 1320px) {
-  .portfolioStructureWorkbench {
-    padding: 16px 18px;
-  }
-
   .structureTableWorkbench .compactListHeader,
   .structureTableWorkbench .compactRow {
     grid-template-columns: minmax(132px, 1fr) minmax(130px, 0.86fr) minmax(90px, 0.64fr) minmax(120px, 0.82fr);
@@ -3648,13 +3609,8 @@
   }
 }
 
-.portfolioStructureWorkbench {
-  padding: 14px 20px 16px;
-}
-
 .portfolioStructureWorkbench .workbenchSectionHead p {
   color: var(--dh-api-muted);
-  font-weight: 720;
   line-height: 1.25;
 }
 
@@ -3700,7 +3656,7 @@
 .closureGateDetail {
   margin: 0;
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 720;
   line-height: 1.45;
   display: -webkit-box;
@@ -3735,7 +3691,7 @@
 }
 
 .closureReviewCard .detailSource {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.3;
 }
 
@@ -3751,12 +3707,12 @@
 }
 
 .closureReviewCard .detailList::-webkit-scrollbar-track {
-  background: rgba(31, 45, 74, 0.42);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 42%, transparent);
   border-radius: 999px;
 }
 
 .closureReviewCard .detailList::-webkit-scrollbar-thumb {
-  background: rgba(108, 168, 255, 0.38);
+  background: color-mix(in srgb, var(--dh-api-blue) 38%, transparent);
   border-radius: 999px;
 }
 
@@ -3809,7 +3765,7 @@
 
 .dataNoteDisclosure summary span {
   color: var(--dh-ink);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 850;
 }
 
@@ -3825,7 +3781,7 @@
 .dataNoteDisclosure summary strong span {
   overflow: hidden;
   color: var(--dh-muted);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 760;
   text-overflow: ellipsis;
 }
@@ -3866,12 +3822,12 @@
 
 .actionWorkbenchSection .dataNoteDisclosure summary span {
   color: var(--dh-muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .actionWorkbenchSection .dataNoteDisclosure summary strong {
   color: var(--dh-muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .actionWorkbenchSection .dataNoteDisclosure summary::after {
@@ -3904,7 +3860,7 @@
     grid-template-columns: minmax(220px, 0.56fr) minmax(0, 1fr) auto;
     align-items: center;
     min-height: 72px;
-    padding: 10px 14px;
+    padding: 10px 12px;
   }
 
   .closureGateHead {
@@ -3982,13 +3938,13 @@
   .datePill {
     min-height: 30px;
     padding: 5px 11px;
-    border-color: rgba(143, 174, 195, 0.22);
+    border-color: color-mix(in srgb, var(--dh-api-soft) 22%, transparent);
     border-radius: var(--dh-api-radius, 6px);
-    background: rgba(18, 32, 52, 0.78);
+    background: color-mix(in srgb, var(--dh-api-panel-2) 78%, transparent);
   }
 
   .datePill strong {
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .decisionPanel {
@@ -3997,11 +3953,9 @@
     gap: 0 18px;
     min-height: 126px;
     padding: 16px 20px;
-    border-color: rgba(228, 179, 99, 0.38);
+    border-color: color-mix(in srgb, var(--dh-api-amber) 38%, transparent);
     border-radius: var(--dh-api-radius, 6px);
-    background:
-      linear-gradient(180deg, rgba(22, 28, 40, 0.94), rgba(15, 22, 34, 0.96)),
-      var(--dh-card);
+    background: var(--dh-api-panel-2);
   }
 
   .decisionLedger {
@@ -4041,10 +3995,10 @@
     align-self: center;
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
-    border-left: 1px solid rgba(125, 154, 127, 0.24);
+    border-left: 1px solid color-mix(in srgb, var(--dh-api-green) 24%, transparent);
     background: transparent;
     padding-left: 16px;
-    border-left-color: rgba(143, 174, 195, 0.22);
+    border-left-color: color-mix(in srgb, var(--dh-api-soft) 22%, transparent);
   }
 
   .evidenceConsole .decisionFact {
@@ -4073,13 +4027,13 @@
   .decisionActionLabel {
     white-space: nowrap;
     color: var(--portfolio-signal-review);
-    font-size: 11px;
+    font-size: 12px;
     letter-spacing: 0;
   }
 
   .decisionAction {
-    border-color: rgba(74, 126, 190, 0.28);
-    background: rgba(23, 38, 62, 0.72);
+    border-color: color-mix(in srgb, var(--dh-api-blue) 28%, transparent);
+    background: color-mix(in srgb, var(--dh-api-panel-3) 72%, transparent);
     grid-template-columns: 5px minmax(0, 1fr) auto;
     gap: 6px;
     min-height: 31px;
@@ -4089,14 +4043,14 @@
 
   .decisionActionText strong {
     overflow: hidden;
-    font-size: 11px;
+    font-size: 12px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .decisionActionTarget {
     color: var(--portfolio-signal-info-strong);
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .portfolioPrimaryColumn [data-testid="module-home-kpi-strip"] {
@@ -4202,22 +4156,22 @@
 .stateOk,
 .terminalStatus.toneOk {
   color: color-mix(in srgb, var(--portfolio-signal-ok) 78%, var(--portfolio-status-idle-strong));
-  border-color: rgba(143, 180, 134, 0.2);
-  background: rgba(143, 180, 134, 0.08);
+  border-color: color-mix(in srgb, var(--dh-api-green) 20%, transparent);
+  background: color-mix(in srgb, var(--dh-api-green) 8%, transparent);
 }
 
 .stateError,
 .terminalStatus.toneError {
   color: color-mix(in srgb, var(--portfolio-signal-danger) 86%, var(--dh-api-ink));
-  border-color: rgba(201, 135, 138, 0.32);
-  background: rgba(201, 135, 138, 0.11);
+  border-color: color-mix(in srgb, var(--dh-api-red) 32%, transparent);
+  background: color-mix(in srgb, var(--dh-api-red) 11%, transparent);
 }
 
 .kpiCard[data-empty="true"],
 .kpiCard[data-empty="true"]:hover {
   border-color: var(--portfolio-status-idle-border);
   background:
-    linear-gradient(180deg, rgba(127, 147, 167, 0.055), rgba(127, 147, 167, 0.012)),
+    linear-gradient(180deg, color-mix(in srgb, var(--dh-api-muted) 5.5%, transparent), color-mix(in srgb, var(--dh-api-muted) 1.2%, transparent)),
     var(--dh-card);
 }
 
@@ -4226,7 +4180,7 @@
 }
 
 .kpiCard[data-empty="true"]::after {
-  background: rgba(127, 147, 167, 0.14);
+  background: color-mix(in srgb, var(--dh-api-muted) 14%, transparent);
 }
 
 .kpiCard[data-empty="true"] .kpiDetail {
@@ -4262,7 +4216,7 @@
 .closureGate[data-state="source-review"] {
   border-color: var(--portfolio-status-idle-border);
   background:
-    linear-gradient(180deg, rgba(127, 147, 167, 0.055), rgba(127, 147, 167, 0.012)),
+    linear-gradient(180deg, color-mix(in srgb, var(--dh-api-muted) 5.5%, transparent), color-mix(in srgb, var(--dh-api-muted) 1.2%, transparent)),
     var(--dh-card);
 }
 
@@ -4273,7 +4227,7 @@
 .closureGate[data-state="blocked"] {
   border-color: var(--portfolio-status-review-border);
   background:
-    linear-gradient(180deg, rgba(203, 161, 92, 0.075), rgba(203, 161, 92, 0.018)),
+    linear-gradient(180deg, color-mix(in srgb, var(--dh-api-amber) 7.5%, transparent), color-mix(in srgb, var(--dh-api-amber) 1.8%, transparent)),
     var(--dh-card);
 }
 
@@ -4281,13 +4235,13 @@
   display: inline-flex;
   align-items: center;
   border: 1px solid var(--dh-line-soft, var(--ib-hairline));
-  border-radius: 6px;
-  font-size: 11px;
+  border-radius: var(--dh-api-radius);
+  font-size: 12px;
   font-weight: 820;
   min-height: 20px;
   padding: 2px 6px;
   border-color: var(--portfolio-status-idle-border);
-  background: rgba(127, 147, 167, 0.08);
+  background: color-mix(in srgb, var(--dh-api-muted) 8%, transparent);
   color: var(--portfolio-status-idle-strong);
 }
 
@@ -4316,7 +4270,7 @@
 }
 
 .structureGapAction {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   display: inline-flex;
   gap: 6px;
@@ -4330,7 +4284,7 @@
   line-height: 1.2;
   text-decoration: none;
   border-color: var(--portfolio-status-idle-border);
-  background: rgba(127, 147, 167, 0.07);
+  background: color-mix(in srgb, var(--dh-api-muted) 7%, transparent);
 }
 
 .summaryLedgerCard .statusCell:has(.toneWatch) {
@@ -4343,7 +4297,7 @@
 }
 
 .summaryLedgerCard .statusCell:has(.toneError) {
-  border-left-color: rgba(201, 135, 138, 0.34);
+  border-left-color: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
 }
 
 .summaryLedgerCard .statusCell:has(.toneError) b,
@@ -4374,7 +4328,7 @@
   border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card-soft);
   color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 720;
 }
 
@@ -4392,7 +4346,7 @@
 }
 
 .kpiCard.kpiCardSecondary .kpiValue small {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .kpiCard.kpiCardPrimary .kpiValue[data-empty="true"],
@@ -4437,15 +4391,15 @@
   align-items: center;
   min-width: 0;
   text-decoration: none;
-  border-color: rgba(111, 135, 155, 0.26);
-  background: rgba(18, 32, 52, 0.72);
+  border-color: color-mix(in srgb, var(--dh-api-muted) 26%, transparent);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 72%, transparent);
   grid-template-columns: auto 8px minmax(0, 1fr) auto;
 }
 
 .decisionAction i[data-row-index] {
   color: var(--dh-api-blue, var(--dh-blue));
   font-family: var(--dh-font-mono, var(--moss-font-mono));
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 760;
   letter-spacing: 0.08em;
@@ -4456,8 +4410,8 @@
 .portfolioPageMain p[data-empty] {
   position: relative;
   padding: 10px 12px 10px 34px;
-  border: 1px dashed var(--dh-line-soft, rgba(114, 167, 220, 0.3));
-  border-radius: 6px;
+  border: 1px dashed var(--dh-line-soft, color-mix(in srgb, var(--dh-api-blue) 30%, transparent));
+  border-radius: var(--dh-api-radius);
 }
 
 .portfolioPageMain p[data-empty]::before {
@@ -4467,9 +4421,9 @@
   top: 50%;
   width: 12px;
   height: 12px;
-  border: 1px solid rgba(114, 167, 220, 0.35);
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 35%, transparent);
   border-radius: 999px;
-  background: radial-gradient(circle at center, rgba(114, 167, 220, 0.55) 0 2px, transparent 2px);
+  background: radial-gradient(circle at center, color-mix(in srgb, var(--dh-api-blue) 55%, transparent) 0 2px, transparent 2px);
   transform: translateY(-50%);
 }
 
@@ -4479,8 +4433,8 @@
   border-radius: var(--dh-api-radius, 6px);
   background: repeating-linear-gradient(
     135deg,
-    rgba(226, 239, 255, 0.16) 0 4px,
-    rgba(226, 239, 255, 0.04) 4px 8px
+    color-mix(in srgb, var(--dh-api-ink) 16%, transparent) 0 4px,
+    color-mix(in srgb, var(--dh-api-ink) 4%, transparent) 4px 8px
   );
 }
 
@@ -4511,7 +4465,7 @@
 .exposureLedgerRow:hover span,
 .exposureLedgerRow:hover strong,
 .exposureLedgerRow:hover em {
-  background: rgba(114, 167, 220, 0.07);
+  background: color-mix(in srgb, var(--dh-api-blue) 7%, transparent);
 }
 
 /* Decision fact labels read as quiet caps above tabular values. */
@@ -4521,7 +4475,7 @@
   font-weight: 750;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.04em;
 }
 
@@ -4573,7 +4527,7 @@
 }
 
 .terminalPanelHead span {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.02em;
   color: var(--dh-api-muted);
@@ -4601,7 +4555,7 @@
   position: absolute;
   height: 2px;
   border-radius: 999px;
-  background: rgba(143, 174, 195, 0.16);
+  background: color-mix(in srgb, var(--dh-api-soft) 16%, transparent);
   content: none;
 }
 
@@ -4733,7 +4687,7 @@
 }
 
 .kpiCard.kpiCardSecondary:hover {
-  background: rgba(114, 167, 220, 0.045);
+  background: color-mix(in srgb, var(--dh-api-blue) 4.5%, transparent);
 }
 
 .decisionActionDot {
@@ -4753,7 +4707,7 @@
 .decisionPanel[data-layout="banner"] {
   grid-template-columns: minmax(0, 1fr) minmax(300px, 0.62fr);
   grid-template-rows: auto auto;
-  border: 1px solid var(--portfolio-review-border, rgba(201, 165, 101, 0.34));
+  border: 1px solid var(--portfolio-review-border, color-mix(in srgb, var(--dh-api-amber) 34%, transparent));
 }
 
 .decisionPanel[data-layout="banner"] .decisionMatrix {
@@ -4818,7 +4772,7 @@
 
 .decisionPanel[data-layout="banner"] .decisionDetail {
   -webkit-line-clamp: 1;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .decisionPanel[data-layout="banner"] .decisionReadinessBar {
@@ -4875,7 +4829,7 @@
 
 .decisionPanel[data-layout="banner"] .decisionFact span {
   color: var(--dh-muted-2);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -4943,7 +4897,7 @@
 /* KPI 主带首屏化 */
 .kpiCard.kpiCardPrimary {
   /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
-  box-shadow: inset 0 1px 0 rgba(114, 167, 220, 0.08);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
 }
 
 .kpiCard.kpiCardSecondary {
@@ -4966,7 +4920,7 @@
   flex-wrap: wrap;
   gap: 8px 10px;
   align-items: center;
-  padding: 4px 2px 8px;
+  padding: 4px 0 8px;
   border: 0;
   border-bottom: 1px solid var(--dh-line-soft);
   border-radius: 0;
@@ -5001,7 +4955,7 @@
 .workbenchNav a span {
   color: var(--dh-api-blue, var(--dh-blue));
   font-family: var(--moss-font-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 780;
 }
 
@@ -5013,8 +4967,8 @@
 
 .workbenchNav a:hover {
   transform: translateX(2px);
-  border-color: var(--portfolio-info-border-strong, rgba(114, 167, 220, 0.4));
-  background: rgba(114, 167, 220, 0.08);
+  border-color: var(--portfolio-info-border-strong, color-mix(in srgb, var(--dh-api-blue) 40%, transparent));
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
 }
 
 .workbenchNav a em,
@@ -5044,7 +4998,7 @@
 .holdingsHeroFigure {
   display: grid;
   min-width: 0;
-  border-radius: 6px;
+  border-radius: var(--dh-api-radius);
   background: var(--dh-api-panel-2);
   border: 0;
   padding: 12px;
@@ -5073,7 +5027,6 @@
    高密度网格、绿色完成态徽标。仅换视觉层，不动数据与 testid。 */
 
 .portfolioPage {
-  max-width: 1440px;
   /* —— 页面级深色重映射：legacy --ib-/--dh-/--moss- 消费变量指向官方 --dh-api-* token（DESIGN.md §2.2）—— */
   --ib-paper: var(--dh-api-bg);
   --ib-surface: var(--dh-api-panel);
@@ -5106,15 +5059,15 @@
   --portfolio-signal-review: var(--dh-api-amber);
   --portfolio-signal-ok: var(--dh-api-green);
   --portfolio-signal-danger: var(--dh-api-red);
-  --portfolio-info-soft: rgba(143, 174, 195, 0.095);
-  --portfolio-info-border: rgba(143, 174, 195, 0.22);
-  --portfolio-info-border-strong: rgba(143, 174, 195, 0.32);
-  --portfolio-review-soft: rgba(228, 179, 99, 0.13);
-  --portfolio-review-border: rgba(228, 179, 99, 0.36);
-  --portfolio-ok-soft: rgba(143, 180, 134, 0.12);
-  --portfolio-ok-border: rgba(143, 180, 134, 0.28);
-  --portfolio-danger-soft: rgba(201, 135, 138, 0.13);
-  --portfolio-danger-border: rgba(201, 135, 138, 0.28);
+  --portfolio-info-soft: color-mix(in srgb, var(--dh-api-soft) 10%, transparent);
+  --portfolio-info-border: color-mix(in srgb, var(--dh-api-soft) 22%, transparent);
+  --portfolio-info-border-strong: color-mix(in srgb, var(--dh-api-soft) 32%, transparent);
+  --portfolio-review-soft: color-mix(in srgb, var(--dh-api-amber) 13%, transparent);
+  --portfolio-review-border: color-mix(in srgb, var(--dh-api-amber) 36%, transparent);
+  --portfolio-ok-soft: color-mix(in srgb, var(--dh-api-green) 12%, transparent);
+  --portfolio-ok-border: color-mix(in srgb, var(--dh-api-green) 28%, transparent);
+  --portfolio-danger-soft: color-mix(in srgb, var(--dh-api-red) 13%, transparent);
+  --portfolio-danger-border: color-mix(in srgb, var(--dh-api-red) 28%, transparent);
   --ib-accent: var(--portfolio-signal-info);
   --ib-accent-hover: color-mix(in srgb, var(--dh-api-blue) 78%, var(--dh-api-ink));
   --ib-accent-surface: var(--portfolio-info-soft);
@@ -5131,7 +5084,7 @@
   --dh-amber: var(--portfolio-signal-review);
   --dh-amber-soft: var(--portfolio-review-soft);
   --moss-color-primary-50: var(--portfolio-info-soft);
-  --moss-color-primary-100: rgba(143, 174, 195, 0.14);
+  --moss-color-primary-100: color-mix(in srgb, var(--dh-api-soft) 14%, transparent);
   --moss-color-primary-200: var(--portfolio-info-border);
   --moss-color-primary-700: var(--portfolio-signal-info);
   --moss-color-info-100: color-mix(in srgb, var(--dh-api-blue) 30%, var(--dh-api-ink));
@@ -5156,44 +5109,29 @@
   /* —— Status taxonomy pass: quiet pending/data states, reserve warm color for real review blockers. —— */
   --portfolio-status-idle: var(--dh-api-muted);
   --portfolio-status-idle-strong: var(--dh-api-ink-soft);
-  --portfolio-status-idle-soft: rgba(127, 147, 167, 0.11);
-  --portfolio-status-idle-border: rgba(127, 147, 167, 0.22);
-  --portfolio-status-review-soft: rgba(203, 161, 92, 0.1);
-  --portfolio-status-review-border: rgba(203, 161, 92, 0.26);
+  --portfolio-status-idle-soft: color-mix(in srgb, var(--dh-api-muted) 11%, transparent);
+  --portfolio-status-idle-border: color-mix(in srgb, var(--dh-api-muted) 22%, transparent);
+  --portfolio-status-review-soft: color-mix(in srgb, var(--dh-api-amber) 10%, transparent);
+  --portfolio-status-review-border: color-mix(in srgb, var(--dh-api-amber) 26%, transparent);
   /* —— 统一纪律样张层：数字 tabular 等宽声部 —— */
   --dh-font-sans: var(--moss-font-sans);
   --dh-font-mono: var(--moss-font-mono);
-  /* —— 审美打磨层：圆角回到深色终端 6px，页级呼吸感 —— */
-  --dh-api-radius: 6px;
+  /* —— 审美打磨层：圆角随 Nocturne scope 的 --dh-api-radius（8px），页级呼吸感 —— */
   gap: 20px;
   padding: 20px;
-  /* —— V3 深蓝终端皮肤：整链路 token 在页面作用域内重定向；卡底与页底拉开半档层次 ——
-     页底不再本地覆盖：深色路由校验要求 --dh-api-bg 为 hex 形式，而本文件 hex 基线为 0，
-     写成 rgb() 会让校验失败、写成 hex 又会抬高视觉审计基线；回落到 .theme-dh-api 的页底
-     token 同时满足两道门禁，与原本的近黑深蓝在肉眼上无差。 */
-  --dh-api-panel: rgb(15, 31, 60);
-  --dh-api-panel-2: rgb(17, 35, 67);
-  --dh-api-panel-3: rgb(19, 39, 74);
-  --dh-api-line: rgba(86, 140, 224, 0.3);
-  --dh-api-line-soft: rgba(74, 126, 208, 0.17);
-  --dh-api-blue: rgb(79, 141, 255);
-  --dh-api-blue-soft: rgba(79, 141, 255, 0.14);
-  --dh-api-ink: rgb(234, 241, 251);
-  --dh-api-soft: rgb(183, 199, 226);
-  --dh-api-muted: rgb(126, 147, 184);
-  --dh-line: rgba(86, 140, 224, 0.3);
-  --dh-line-soft: rgba(74, 126, 208, 0.17);
-  --dh-blue: rgb(79, 141, 255);
-  --dh-ink: rgb(234, 241, 251);
-  --dh-muted: rgb(147, 167, 201);
-  --dh-muted-2: rgb(126, 147, 184);
-  background:
-    radial-gradient(1200px 500px at 18% -6%, rgba(38, 84, 178, 0.16), transparent 62%),
-    radial-gradient(900px 420px at 96% 2%, rgba(30, 72, 160, 0.12), transparent 58%),
-    var(--dh-api-bg);
+  /* —— Nocturne 换肤：页内不再定义 --dh-api-* 钢蓝字面量，数值唯一来源是
+     tokens.css 的 [data-moss-theme-scope="portfolio-home"] 块；legacy --dh-*
+     消费变量改走 --dh-api-* 引用链，token 翻转后自动跟随。页底为 Nocturne 平铺底。 */
+  --dh-line: var(--dh-api-line);
+  --dh-line-soft: var(--dh-api-line-soft);
+  --dh-blue: var(--dh-api-blue);
+  --dh-ink: var(--dh-api-ink);
+  --dh-muted: var(--dh-api-soft);
+  --dh-muted-2: var(--dh-api-muted);
+  background: var(--dh-api-bg);
 }
 
-/* 卡片制度：统一微蓝渐变底 + 蓝光边，替代灰边深底 */
+/* 卡片制度：对齐首页 Nocturne 平卡面（灰边 + panel 平底，无渐变无内阴影） */
 .portfolioPage .kpiCard,
 .portfolioPage .decisionPanel,
 .portfolioPage .closureGate,
@@ -5203,24 +5141,22 @@
 .portfolioPage .exposureWorkbenchSection,
 .portfolioPage .structureTableWorkbench,
 .portfolioPage .chartSnapshot {
-  border: 1px solid rgba(79, 141, 255, 0.16);
-  background:
-    linear-gradient(180deg, rgba(64, 118, 214, 0.075), rgba(64, 118, 214, 0.012) 46%),
-    var(--dh-api-panel);
-  box-shadow: inset 0 1px 0 rgba(126, 168, 240, 0.07);
+  border: 1px solid var(--dh-api-line);
+  background: var(--dh-api-panel);
+  box-shadow: none;
 }
 
 .portfolioPage .kpiCard:hover,
 .portfolioPage .closureReviewCard:hover,
 .portfolioPage .summaryLedgerCard:hover {
-  border-color: rgba(79, 141, 255, 0.34);
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
 }
 
 /* ── KPI 带：紧凑驾驶舱密度（对齐基准图顶带）── */
 .kpiCard.kpiCardPrimary {
   min-height: 96px;
-  padding: 11px 13px 10px;
-  border-top: 1px solid rgba(79, 141, 255, 0.16);
+  padding: 10px 12px;
+  border-top: 1px solid var(--dh-api-line);
 }
 
 .kpiCard.kpiCardPrimary .kpiValue {
@@ -5247,9 +5183,8 @@
   font-weight: 700;
 }
 
-/* 次级 KPI 行恢复分卡（基准图第二行也是卡片） */
+/* 次级 KPI 行恢复分卡（基准图第二行也是卡片）；gap 随 .kpiGrid 统一 12px，两排列缝共线 */
 .kpiGridSecondary {
-  gap: 10px;
   padding-top: 0;
   border-top: 0;
 }
@@ -5258,12 +5193,10 @@
 .kpiCard.kpiCardSecondary:nth-child(-n + 2),
 .kpiCard.kpiCardSecondary[data-empty="true"] {
   min-height: 70px;
-  padding: 10px 12px 9px;
-  border: 1px solid rgba(79, 141, 255, 0.12);
+  padding: 10px 12px;
+  border: 1px solid var(--dh-api-line);
   border-radius: var(--dh-api-radius, 6px);
-  background:
-    linear-gradient(180deg, rgba(64, 118, 214, 0.05), rgba(64, 118, 214, 0.008) 50%),
-    var(--dh-api-panel);
+  background: var(--dh-api-panel);
 }
 
 /* ── 决策横幅融入蓝系（语义琥珀仅保留在文字与状态点）── */
@@ -5276,10 +5209,8 @@
   padding: 0;
   overflow: hidden;
   border-radius: var(--dh-api-radius, 6px);
-  border-color: rgba(226, 178, 100, 0.3);
-  background:
-    linear-gradient(180deg, rgba(201, 160, 92, 0.07), rgba(201, 160, 92, 0.012) 52%),
-    var(--dh-api-panel);
+  border-color: color-mix(in srgb, var(--dh-api-amber) 30%, transparent);
+  background: var(--dh-api-panel);
 }
 
 /* ── 分布条形（券种/评级/期限/行业）：标签左、蓝渐变细条、mono 数值右 ── */
@@ -5287,22 +5218,22 @@
   display: flex;
   min-width: 0;
   overflow: hidden;
-  background: rgba(114, 167, 220, 0.09);
+  background: color-mix(in srgb, var(--dh-api-blue) 9%, transparent);
   height: 14px;
-  border-radius: 6px;
+  border-radius: var(--dh-api-radius);
 }
 
 .holdingsHeroBarTrack,
 .chartMiniTrack {
   height: 6px;
   border-radius: 999px;
-  background: rgba(79, 141, 255, 0.1);
+  background: color-mix(in srgb, var(--dh-api-blue) 10%, transparent);
 }
 
 .holdingsHeroBarFill,
 .chartMiniFill {
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(79, 141, 255, 0.55), rgb(79, 141, 255));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--dh-api-blue) 55%, transparent), var(--dh-api-blue));
 }
 
 /* ── 表格：极淡行分隔 + 行 hover 蓝底 + mono 数值 ── */
@@ -5311,7 +5242,7 @@
   font-weight: 680;
   min-height: 22px;
   padding: 0 10px 5px;
-  border-bottom: 1px solid rgba(79, 141, 255, 0.22);
+  border-bottom: 1px solid color-mix(in srgb, var(--dh-api-blue) 22%, transparent);
   color: var(--dh-api-muted);
 }
 
@@ -5320,15 +5251,15 @@
   background: transparent;
   min-height: 30px;
   padding: 0 10px;
-  border-bottom: 1px solid rgba(79, 141, 255, 0.07);
+  border-bottom: 1px solid color-mix(in srgb, var(--dh-api-blue) 7%, transparent);
 }
 
 .structureTableWorkbench .compactRow:hover {
-  background: rgba(79, 141, 255, 0.07);
+  background: color-mix(in srgb, var(--dh-api-blue) 7%, transparent);
 }
 
 .exposureLedgerHeader {
-  background: rgba(79, 141, 255, 0.07);
+  background: color-mix(in srgb, var(--dh-api-blue) 7%, transparent);
 }
 
 .exposureLedgerHeader,
@@ -5337,13 +5268,13 @@
   align-items: center;
   min-width: 0;
   gap: 0;
-  border-bottom: 1px solid rgba(79, 141, 255, 0.09);
+  border-bottom: 1px solid color-mix(in srgb, var(--dh-api-blue) 9%, transparent);
 }
 
 /* ── 状态徽标语言：完成=绿、分析口径=琥珀、蓝色信息（对齐基准图审计区）── */
 .statusCell b.toneOk,
 .chartSnapshotHead em.toneOk {
-  color: rgb(79, 208, 140);
+  color: var(--dh-api-green);
 }
 
 .terminalStatus {
@@ -5351,11 +5282,11 @@
   align-items: center;
   min-height: 22px;
   border-radius: var(--dh-api-radius, 6px);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0;
-  border: 1px solid rgba(79, 141, 255, 0.22);
-  background: rgba(79, 141, 255, 0.08);
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 22%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
 }
 
 /* ── 章节头：蓝色编号 + 白标题，分隔线蓝光 ── */
@@ -5365,54 +5296,52 @@
   min-width: 0;
   border-bottom: 1px solid var(--dh-line-soft);
   padding-bottom: 8px;
-  border-bottom-color: rgba(79, 141, 255, 0.14);
+  border-bottom-color: color-mix(in srgb, var(--dh-api-blue) 14%, transparent);
 }
 
 .workbenchSectionHead span {
   display: inline-grid;
   place-items: center;
-  border: 1px solid rgba(114, 167, 220, 0.38);
-  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 38%, transparent);
+  border-radius: var(--dh-api-radius);
   font-family: var(--dh-font-mono, var(--moss-font-mono));
   font-weight: 900;
   width: 32px;
   height: 32px;
   border-width: 1px;
   font-size: 12px;
-  border-color: rgba(79, 141, 255, 0.26);
-  background: rgba(79, 141, 255, 0.1);
-  color: rgb(116, 164, 245);
+  border-color: color-mix(in srgb, var(--dh-api-blue) 26%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 10%, transparent);
+  color: color-mix(in srgb, var(--dh-api-blue) 70%, var(--dh-api-ink));
 }
 
 /* ── 工作入口：基准图快捷入口语言（圆角图标底 + 蓝光 hover）── */
 .quickAccessCard {
-  border-color: rgba(114, 167, 220, 0.26);
-  border: 1px solid rgba(79, 141, 255, 0.14);
-  background:
-    linear-gradient(180deg, rgba(64, 118, 214, 0.06), rgba(64, 118, 214, 0.01) 55%),
-    var(--dh-api-panel);
+  border-color: var(--dh-api-line);
+  border: 1px solid var(--dh-api-line);
+  background: var(--dh-api-panel);
 }
 
 .quickAccessCard:hover {
-  border-color: rgba(79, 141, 255, 0.4);
-  background: rgba(79, 141, 255, 0.1);
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 10%, transparent);
 }
 
 .quickAccessCard > span {
-  border-radius: 6px;
-  background: rgba(79, 141, 255, 0.14);
-  color: rgb(140, 180, 255);
+  border-radius: var(--dh-api-radius);
+  background: color-mix(in srgb, var(--dh-api-blue) 14%, transparent);
+  color: color-mix(in srgb, var(--dh-api-blue) 70%, var(--dh-api-ink));
 }
 
 .drillCard {
   align-content: center;
-  border-color: rgba(79, 141, 255, 0.1);
-  background: rgba(12, 26, 51, 0.55);
+  border-color: color-mix(in srgb, var(--dh-api-blue) 10%, transparent);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 55%, transparent);
 }
 
 .drillCard:hover {
-  border-color: rgba(79, 141, 255, 0.34);
-  background: rgba(79, 141, 255, 0.08);
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
 }
 
 /* ── 02 区图表解除隐藏：表格全宽在上、图表全宽在下
@@ -5431,11 +5360,9 @@
   min-height: 236px;
   padding: 8px 12px 6px;
   overflow: hidden;
-  border: 1px solid rgba(79, 141, 255, 0.14);
+  border: 1px solid var(--dh-api-line);
   border-radius: var(--dh-api-radius, 6px);
-  background:
-    linear-gradient(180deg, rgba(64, 118, 214, 0.05), rgba(64, 118, 214, 0.008) 50%),
-    var(--dh-api-panel);
+  background: var(--dh-api-panel);
 }
 
 .portfolioPage .structureTableWorkbench .structureChartWrap {
@@ -5458,11 +5385,9 @@
   margin-top: 12px;
   padding: 10px 12px 6px;
   overflow: hidden;
-  border: 1px solid rgba(79, 141, 255, 0.14);
+  border: 1px solid var(--dh-api-line);
   border-radius: var(--dh-api-radius, 6px);
-  background:
-    linear-gradient(180deg, rgba(64, 118, 214, 0.05), rgba(64, 118, 214, 0.008) 50%),
-    var(--dh-api-panel);
+  background: var(--dh-api-panel);
 }
 
 .attributionWaterfallHead {
@@ -5483,7 +5408,7 @@
   overflow: hidden;
   color: var(--dh-muted-2);
   font-family: var(--moss-font-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 700;
   text-overflow: ellipsis;
@@ -5513,7 +5438,31 @@
 }
 
 .portfolioPage .structureTableWorkbench :global(.ant-tabs-nav)::before {
-  border-bottom: 1px solid rgba(79, 141, 255, 0.12);
+  border-bottom: 1px solid color-mix(in srgb, var(--dh-api-blue) 12%, transparent);
+}
+
+/* ── antd 残留：激活 tab 文字跟随 Nocturne 强调色（antd cssinjs 注入在打包
+   CSS 之后且选择器为 0-4-0，这里以重复类提权到 0-5-0 才能稳定覆盖）── */
+.portfolioPage.portfolioPage :global(.ant-tabs-tab-active .ant-tabs-tab-btn) {
+  color: var(--dh-api-blue);
+}
+
+/* Nocturne 壳层同步：变量由 tokens.css scope 别名提供，此处仅压制
+   workbenchShell.css 的烘焙钢蓝渐变（均带 !important，须同权覆盖）。 */
+:global(.workbench-shell-grid.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"])) {
+  background: var(--dh-api-bg) !important;
+}
+
+:global(.workbench-shell-grid.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]) .workbench-shell-aside),
+:global(.workbench-shell-grid.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]) .workbench-shell-rail) {
+  background: var(--dh-api-rail) !important;
+  border-right-color: var(--dh-api-line-soft) !important;
+}
+
+:global(.workbench-shell-grid.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]) .workbench-shell-rail-mark) {
+  background: var(--dh-api-panel) !important;
+  border-color: var(--dh-api-line) !important;
+  box-shadow: none !important;
 }
 
 /* ──────────────────────────────────────────────────────────────
@@ -5563,10 +5512,15 @@
   min-height: 0;
 }
 
-/* 不等高多列区一律顶端对齐（DESIGN.md 反模式：等高拉伸留白）。 */
+/* 多列区拉平同排卡片边框：行高由最高卡决定，卡内内容仍以 align-content: start 顶对齐。
+   行内高差 ≤60px 且卡片有边框，非 DESIGN.md 反模式所指的大面积空白拉伸。 */
 .holdingsPanoramaGrid,
 .closureWorkbenchGrid,
-.summaryLedgerGrid,
+.summaryLedgerGrid {
+  align-items: stretch;
+}
+
+/* 行动矩阵为单列纵向堆叠，保持顶对齐语义。 */
 .actionMatrixGrid {
   align-items: start;
 }
@@ -5574,9 +5528,16 @@
 /* 复盘摘要三卡与其他区块共用同一套区块头 + 内容栅格结构。 */
 .summaryLedgerGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   min-width: 0;
+}
+
+/* 窄屏沿用原 auto-fit 语义（3/2/1 列自适应），仅宽屏固定 3 列消除 auto-fit 残留的 0px 幽灵轨道。 */
+@media (max-width: 1100px) {
+  .summaryLedgerGrid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  }
 }
 
 @media (min-width: 1101px) {

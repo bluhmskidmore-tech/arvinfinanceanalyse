@@ -1,11 +1,8 @@
-import { useEffect, useRef } from "react";
-
 import type { HomeMacroBriefingModel } from "../adapters/buildHomeMacroBriefingModel";
 import styles from "../dashboardHomeOptionTwoDeferred.module.css";
 
 type ResearchCalendarSectionProps = {
   macroBriefing: HomeMacroBriefingModel;
-  focusPolicyFunding?: boolean;
 };
 
 function releaseImportanceClass(importance: string): string {
@@ -20,9 +17,7 @@ function releaseImportanceClass(importance: string): string {
 
 export function ResearchCalendarSection({
   macroBriefing,
-  focusPolicyFunding = false,
 }: ResearchCalendarSectionProps) {
-  const policyFundingPaneRef = useRef<HTMLDivElement | null>(null);
   const summary = macroBriefing.policyFundingSummary;
   const diagnosticNarratives = summary.diagnostics
     ? [
@@ -37,16 +32,6 @@ export function ResearchCalendarSection({
     : [];
   const releaseHistoryItems = macroBriefing.releaseHistoryItems;
   const visibleReleaseHistoryItems = releaseHistoryItems;
-
-  useEffect(() => {
-    if (!focusPolicyFunding) {
-      return;
-    }
-
-    const pane = policyFundingPaneRef.current;
-    pane?.scrollIntoView?.({ block: "start" });
-    pane?.focus({ preventScroll: true });
-  }, [focusPolicyFunding, summary.headline]);
 
   return (
     <section
@@ -244,12 +229,9 @@ export function ResearchCalendarSection({
           </div>
 
           <div
-            ref={policyFundingPaneRef}
             className={`${styles.dhMacroBriefingPane} ${styles.dhPolicyFundingPane}`}
-            data-focused={focusPolicyFunding ? "true" : "false"}
             data-testid="dashboard-home-policy-funding-pane"
             data-layout-role="research-policy-pane"
-            tabIndex={-1}
           >
             <div className={styles.dhMacroBriefingHeader}>
               <span>政策与资金面</span>

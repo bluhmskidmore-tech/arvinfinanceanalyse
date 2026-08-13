@@ -15,7 +15,7 @@ import type { Tone } from "../../../utils/tone";
 import {
   sanitizeMetricDetail,
   sanitizeMetricLabel,
-} from "../../executive-dashboard/lib/sanitizeMetricCopy";
+} from "./lib/sanitizeMetricCopy";
 import type { HomeProductCategoryHeadline } from "./dashboardHomeFirstScreenTypes";
 
 type HomeSnapshotMetricTone = "positive" | "neutral" | "warning" | "negative";

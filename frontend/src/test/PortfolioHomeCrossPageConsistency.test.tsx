@@ -66,9 +66,24 @@ vi.mock("../app/ThemedRouteBoundary", () => ({
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
+// /portfolio 路由渲染的是 PortfolioHomePage（含 PortfolioHomeLayout 与
+// usePortfolioHomeQueries 的静态链），不是 ModuleWorkbenchHomePage。这条链的
+// 最大单体是 PortfolioHomeLayout 引入的 antd barrel（vitest 下会整体求值）。
+// 多文件组合冷启动时 4 个 worker 并发抢 transform/求值，单个 30s hook 可能
+// 不够，所以在模块 collection 阶段就发起预热（不 await），两个 beforeAll 按
+// 序等待完成，各自保持 30s 超时上限。
+const antdBarrelWarmup = import("antd");
+const portfolioHomeWarmup = antdBarrelWarmup.then(() =>
+  preloadWorkbenchRouteModules("portfolio-home"),
+);
+
 beforeAll(async () => {
-  await preloadWorkbenchRouteModules("module-home");
-}, 20_000);
+  await antdBarrelWarmup;
+}, 30_000);
+
+beforeAll(async () => {
+  await portfolioHomeWarmup;
+}, 30_000);
 
 afterEach(() => {
   cleanup();

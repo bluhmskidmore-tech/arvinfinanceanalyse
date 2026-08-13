@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { UseQueryResult } from "@tanstack/react-query";
 
@@ -72,10 +73,6 @@ export function usePortfolioHomeQueries(): ModuleHomeSourceQueries {
     staleTime: 60_000,
   });
 
-  const bondHeadlineQuery = fromBondHomeSummary<BondDashboardHeadlinePayload>(
-    bondHomeSummaryQuery,
-    (summary) => summary.headline,
-  );
   const bondRiskQuery = useQuery({
     queryKey: ["module-home", "bond-risk", client.mode, bondReportDate],
     queryFn: () => client.getBondDashboardRiskIndicators(bondReportDate),
@@ -83,38 +80,6 @@ export function usePortfolioHomeQueries(): ModuleHomeSourceQueries {
     retry: false,
     staleTime: 60_000,
   });
-  const bondAssetTypeQuery = fromBondHomeSummary<AssetStructurePayload>(
-    bondHomeSummaryQuery,
-    (summary) => summary.asset_type,
-  );
-  const bondAssetRatingQuery = fromBondHomeSummary<AssetStructurePayload>(
-    bondHomeSummaryQuery,
-    (summary) => summary.asset_rating,
-  );
-  const bondMaturityQuery = fromBondHomeSummary<MaturityStructurePayload>(
-    bondHomeSummaryQuery,
-    (summary) => summary.maturity,
-  );
-  const bondIndustryQuery = fromBondHomeSummary<IndustryDistPayload>(
-    bondHomeSummaryQuery,
-    (summary) => summary.industry,
-  );
-  const bondYieldQuery = fromBondHomeSummary<YieldDistributionPayload>(
-    bondHomeSummaryQuery,
-    (summary) => summary.yield_distribution,
-  );
-  const bondPortfolioComparisonQuery = fromBondHomeSummary<PortfolioComparisonPayload>(
-    bondHomeSummaryQuery,
-    (summary) => summary.portfolio_comparison,
-  );
-  const bondSpreadQuery = fromBondHomeSummary<SpreadAnalysisPayload>(
-    bondHomeSummaryQuery,
-    (summary) => summary.spread,
-  );
-  const bondBusinessTypeQuery = fromBondHomeSummary<BondBusinessTypeMetricsPayload["result"]>(
-    bondHomeSummaryQuery,
-    (summary) => summary.business_type,
-  ) as UseQueryResult<BondBusinessTypeMetricsPayload>;
 
   const balanceBasisQuery = useQuery({
     queryKey: ["module-home", "balance-basis", client.mode, balanceReportDate],
@@ -137,6 +102,15 @@ export function usePortfolioHomeQueries(): ModuleHomeSourceQueries {
     staleTime: 60_000,
   });
 
+  // 归因瀑布数据（规模/利率/交叉分解）；纯展示增强，不参与决策 readiness gate。
+  const pnlVolumeRateQuery = useQuery({
+    queryKey: ["module-home", "pnl-volume-rate", client.mode, bondReportDate],
+    queryFn: () => client.getVolumeRateAttribution({ reportDate: bondReportDate }),
+    enabled: Boolean(bondReportDate),
+    retry: false,
+    staleTime: 60_000,
+  });
+
   const riskDatesQuery = useQuery({
     queryKey: ["module-home", "portfolio-risk-dates", client.mode],
     queryFn: () => client.getRiskTensorDates(),
@@ -144,22 +118,65 @@ export function usePortfolioHomeQueries(): ModuleHomeSourceQueries {
     staleTime: 60_000,
   });
 
-  return {
-    balanceDates: balanceDatesQuery,
-    balanceOverview: balanceOverviewQuery,
-    bondDates: bondDatesQuery,
-    bondHeadline: bondHeadlineQuery,
-    bondRisk: bondRiskQuery,
-    bondAssetType: bondAssetTypeQuery,
-    bondAssetRating: bondAssetRatingQuery,
-    bondMaturity: bondMaturityQuery,
-    bondIndustry: bondIndustryQuery,
-    bondYield: bondYieldQuery,
-    bondPortfolioComparison: bondPortfolioComparisonQuery,
-    bondSpread: bondSpreadQuery,
-    bondBusinessType: bondBusinessTypeQuery,
-    balanceBasis: balanceBasisQuery,
-    pnlSummary: pnlSummaryQuery,
-    riskDates: riskDatesQuery,
-  };
+  // fromBondHomeSummary 的派生投影随源 query 一起在此重建；
+  // 返回对象只有底层 query 结果变化才更新引用，供页面 useMemo 直接依赖 queries 本身。
+  return useMemo(
+    () => ({
+      balanceDates: balanceDatesQuery,
+      balanceOverview: balanceOverviewQuery,
+      bondDates: bondDatesQuery,
+      bondHeadline: fromBondHomeSummary<BondDashboardHeadlinePayload>(
+        bondHomeSummaryQuery,
+        (summary) => summary.headline,
+      ),
+      bondRisk: bondRiskQuery,
+      bondAssetType: fromBondHomeSummary<AssetStructurePayload>(
+        bondHomeSummaryQuery,
+        (summary) => summary.asset_type,
+      ),
+      bondAssetRating: fromBondHomeSummary<AssetStructurePayload>(
+        bondHomeSummaryQuery,
+        (summary) => summary.asset_rating,
+      ),
+      bondMaturity: fromBondHomeSummary<MaturityStructurePayload>(
+        bondHomeSummaryQuery,
+        (summary) => summary.maturity,
+      ),
+      bondIndustry: fromBondHomeSummary<IndustryDistPayload>(
+        bondHomeSummaryQuery,
+        (summary) => summary.industry,
+      ),
+      bondYield: fromBondHomeSummary<YieldDistributionPayload>(
+        bondHomeSummaryQuery,
+        (summary) => summary.yield_distribution,
+      ),
+      bondPortfolioComparison: fromBondHomeSummary<PortfolioComparisonPayload>(
+        bondHomeSummaryQuery,
+        (summary) => summary.portfolio_comparison,
+      ),
+      bondSpread: fromBondHomeSummary<SpreadAnalysisPayload>(
+        bondHomeSummaryQuery,
+        (summary) => summary.spread,
+      ),
+      bondBusinessType: fromBondHomeSummary<BondBusinessTypeMetricsPayload["result"]>(
+        bondHomeSummaryQuery,
+        (summary) => summary.business_type,
+      ) as UseQueryResult<BondBusinessTypeMetricsPayload>,
+      balanceBasis: balanceBasisQuery,
+      pnlSummary: pnlSummaryQuery,
+      pnlVolumeRate: pnlVolumeRateQuery,
+      riskDates: riskDatesQuery,
+    }),
+    [
+      balanceDatesQuery,
+      balanceOverviewQuery,
+      bondDatesQuery,
+      bondHomeSummaryQuery,
+      bondRiskQuery,
+      balanceBasisQuery,
+      pnlSummaryQuery,
+      pnlVolumeRateQuery,
+      riskDatesQuery,
+    ],
+  );
 }

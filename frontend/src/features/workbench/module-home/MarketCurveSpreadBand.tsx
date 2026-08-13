@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 
 import dhStyles from "../dashboard-home/dashboardHome.module.css";
+import { EM_DASH } from "../../../utils/format";
 import { MARKET_KPI_ACCENT } from "./marketEvidenceVisual";
 import { marketChangePresentation, resolveMarketChangeDirection } from "./marketHomeChangeTone";
 import { MarketHomeKpiSparkline } from "./MarketHomeKpiSparkline";
@@ -29,7 +30,7 @@ function toneClass(tone: ModuleHomeTone) {
 }
 
 function resolveWatchDate(rows: ModuleHomeDetailRow[]): string | undefined {
-  const dated = rows.find((row) => row.tradeDate && row.tradeDate !== "-");
+  const dated = rows.find((row) => row.tradeDate && row.tradeDate !== EM_DASH);
   return dated?.tradeDate;
 }
 

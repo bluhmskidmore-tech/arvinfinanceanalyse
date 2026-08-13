@@ -1,6 +1,7 @@
 import type { ModuleHomeDetailPanel, ModuleHomeTone } from "./moduleHomeModel";
 import { PortfolioStructureChart } from "./PortfolioStructureChart";
 import dhStyles from "../dashboard-home/dashboardHome.module.css";
+import { EM_DASH } from "../../../utils/format";
 import { MarketPanelSummary } from "./MarketPanelSummary";
 import marketStyles from "./marketHome.module.css";
 
@@ -40,7 +41,7 @@ export function MarketStructureTabPanel({
             <div className={marketStyles.terminalTableMain}>
               <span className={marketStyles.terminalTableLabel}>{row.label}</span>
               <span className={marketStyles.terminalTableSource}>
-                {[row.tradeDate !== "-" ? row.tradeDate : null, row.source !== "-" ? row.source : null]
+                {[row.tradeDate !== EM_DASH ? row.tradeDate : null, row.source !== EM_DASH ? row.source : null]
                   .filter(Boolean)
                   .join(" · ")}
               </span>

@@ -5,7 +5,6 @@ import { Link } from "react-router-dom";
 import { useApiClient } from "../../../api/client";
 import {
   buildModuleHomeView,
-  moduleHomeQueriesMemoDeps,
   type ModuleHomeDetailPanel,
   type ModuleHomeTone,
 } from "./moduleHomeModel";
@@ -283,25 +282,44 @@ export default function ModuleWorkbenchHomePage({
     staleTime: 60_000,
   });
 
-  const queries = {
-    choiceLatest: choiceLatestQuery,
-    marketRates: marketRatesQuery,
-    marketCatalog: marketCatalogQuery,
-    riskDates: riskDatesQuery,
-    riskTensor: riskTensorQuery,
-    cashflow: cashflowQuery,
-    kpiOwners: kpiOwnersQuery,
-    kpiSummary: kpiSummaryQuery,
-    pnlYtd: pnlYtdQuery,
-    healthLive: healthLiveQuery,
-    healthSummary: healthSummaryQuery,
-    sourceFoundation: sourceFoundationQuery,
-    cubeDimensions: cubeDimensionsQuery,
-  };
+  // queries 对象包进 useMemo：只有任一 query 结果变化才更新引用，
+  // 让下方 view 的 useMemo 能直接依赖 queries 本身（可静态校验）。
+  const queries = useMemo(
+    () => ({
+      choiceLatest: choiceLatestQuery,
+      marketRates: marketRatesQuery,
+      marketCatalog: marketCatalogQuery,
+      riskDates: riskDatesQuery,
+      riskTensor: riskTensorQuery,
+      cashflow: cashflowQuery,
+      kpiOwners: kpiOwnersQuery,
+      kpiSummary: kpiSummaryQuery,
+      pnlYtd: pnlYtdQuery,
+      healthLive: healthLiveQuery,
+      healthSummary: healthSummaryQuery,
+      sourceFoundation: sourceFoundationQuery,
+      cubeDimensions: cubeDimensionsQuery,
+    }),
+    [
+      choiceLatestQuery,
+      marketRatesQuery,
+      marketCatalogQuery,
+      riskDatesQuery,
+      riskTensorQuery,
+      cashflowQuery,
+      kpiOwnersQuery,
+      kpiSummaryQuery,
+      pnlYtdQuery,
+      healthLiveQuery,
+      healthSummaryQuery,
+      sourceFoundationQuery,
+      cubeDimensionsQuery,
+    ],
+  );
   const config = moduleWorkbenchHomeConfigs[kind];
   const view = useMemo(
     () => buildModuleHomeView(kind, client, queries),
-    [kind, client, ...moduleHomeQueriesMemoDeps(queries)],
+    [kind, client, queries],
   );
   const isRiskView = view.kind === "risk";
   const decisionBand = view.decision ? (

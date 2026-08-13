@@ -3650,6 +3650,9 @@
      shell 稠密层（@media ≥961px 的 min-height:0，shell 行3489）；
    - id145 的 min-height: 100vh 改以 not (min-width: 961px) 限定：
      ≥961px 时 shell 稠密层(0,2,0)靠源序获胜，等价复现分视口结果。
+   2026-08-13 hex 清偿：本迁移区（id8/id10/id96）内 20 处 hex 字面量全部改引
+   既有 token（视觉审计红项清零，禁新增裸 hex），各行行尾注释记录原值与新值；
+   无同值 token 的取最近视觉等价 token，其余声明值仍保持逐字复制。
    ========================================================================== */
 
 /* id0: .dhPage 基础块（shell 行1-8；shell 原规则因跨页共用保留） */
@@ -3677,28 +3680,31 @@
 
 /* id8: .dhPage 根变量块（shell 行853-922，58 变量 + 布局声明） */
 .page {
-  --dh-hex-64748b: #64748b;
-  --dh-hex-eef6ff: #eef6ff;
-  --dh-hex-2e6fd8: #2e6fd8;
-  --dh-hex-46b37b: #46b37b;
-  --dh-hex-9cc4ec: #9cc4ec;
-  --dh-hex-d9a05b: #d9a05b;
-  --dh-hex-e06c5f: #e06c5f;
-  --dh-hex-eef4ff: #eef4ff;
-  --dh-hex-ffffff: #ffffff;
-  --dh-bg: #070b12;
-  --dh-card: #111a28;
-  --dh-card-soft: #16202e;
+  --dh-hex-64748b: var(--moss-color-neutral-600); /* 原 #64748b，现 #6b7280。 */
+  --dh-hex-eef6ff: var(--moss-color-info-50); /* 原 #eef6ff，现 #eff6ff。 */
+  --dh-hex-2e6fd8: var(--moss-color-info-600); /* 原 #2e6fd8，现 #2563eb。 */
+  --dh-hex-46b37b: var(--moss-color-success-400); /* 原 #46b37b，现 #52ad84。 */
+  --dh-hex-9cc4ec: var(--moss-color-primary-200); /* 原 #9cc4ec，现 #a8c9ec。 */
+  --dh-hex-d9a05b: var(--dh-api-amber); /* 原 #d9a05b，本页解析 #d5b26e。 */
+  --dh-hex-e06c5f: var(--dh-api-red); /* 原 #e06c5f，本页解析 #d97b6c。 */
+  --dh-hex-eef4ff: var(--moss-color-info-50); /* 原 #eef4ff，现 #eff6ff。 */
+  --dh-hex-ffffff: var(--moss-color-warm-paper); /* 原 #ffffff，现 #fffdf8。 */
+  /* 下四条（--dh-bg/--dh-card/--dh-card-soft/--dh-ink-2）被下方 id96 同名
+     声明（同特异性、源序靠后）无条件压制，为死声明；改写为与赢家同表达式，
+     computed 值不变。 */
+  --dh-bg: var(--dh-api-bg); /* 原 #070b12。 */
+  --dh-card: var(--dh-api-panel); /* 原 #111a28。 */
+  --dh-card-soft: var(--dh-api-panel-2); /* 原 #16202e。 */
   --dh-surface-muted: var(--dh-api-rail);
   --dh-line: rgba(148, 163, 184, 0.16);
   --dh-line-soft: rgba(148, 163, 184, 0.1);
   --dh-line-strong: rgba(148, 163, 184, 0.28);
   --dh-ink: var(--dh-api-ink);
-  --dh-ink-2: #9aa8bc;
+  --dh-ink-2: color-mix(in srgb, var(--dh-api-soft) 72%, var(--dh-api-ink)); /* 原 #9aa8bc，死声明随 id96 赢家。 */
   --dh-muted: var(--dh-hex-64748b);
   --dh-muted-2: var(--dh-hex-64748b);
   --dh-blue: var(--dh-hex-2e6fd8);
-  --dh-blue-2: #3b82f6;
+  --dh-blue-2: var(--moss-color-info-500); /* 原 #3b82f6，token 同值。 */
   --dh-blue-deep: var(--dh-hex-2e6fd8);
   --dh-blue-soft: rgba(59, 130, 246, 0.12);
   --dh-green: var(--dh-hex-46b37b);
@@ -3735,8 +3741,8 @@
   --ib-serif: var(--dh-font-sans);
   min-width: 0;
   position: relative;
-  --dh-card-polish: #0b1728;
-  --dh-line-polish-soft: #1e3148;
+  --dh-card-polish: var(--dh-api-rail); /* 原 #0b1728，本页解析 #131522。 */
+  --dh-line-polish-soft: var(--dh-api-panel-3); /* 原 #1e3148，本页解析 #2b2d3d。 */
   background:
     linear-gradient(180deg, rgba(12, 23, 39, 0.98), rgba(7, 17, 30, 1) 360px),
     var(--dh-bg);
@@ -3756,10 +3762,10 @@
    :global(.workbench-shell-grid--cockpit:has(...)) 部分继续由 shell
    原规则（跨页保留）供给 cockpit 栅格，值为相同字面量。 */
 .page {
-  --dh-home-nocturne-ink: #e9e9ed;
-  --dh-home-nocturne-muted: #75798c;
+  --dh-home-nocturne-ink: var(--moss-color-neutral-200); /* 原 #e9e9ed，现 #e2e6ec。 */
+  --dh-home-nocturne-muted: var(--moss-color-neutral-600); /* 原 #75798c，现 #6b7280。 */
   --dh-home-nocturne-radius: 8px;
-  --dh-home-nocturne-rule: #1a2a38;
+  --dh-home-nocturne-rule: var(--moss-color-neutral-900); /* 原 #1a2a38，现 #1f2937。 */
 }
 
 /* id11: .dhApiBackedHome 布局（shell 行986-991） */
@@ -3797,7 +3803,9 @@
   --dh-line: var(--dh-api-line-soft);
   --dh-line-strong: var(--dh-api-line);
   --dh-ink: var(--dh-api-ink);
-  --dh-ink-2: #bfccd9;
+  /* 次级墨色位于 soft 与 ink 之间，无同值 token：以本页两级墨色按比例混色
+     最近还原（Deferred 政策资金面叙述、宏观决策条 strong 等可见文本消费）。 */
+  --dh-ink-2: color-mix(in srgb, var(--dh-api-soft) 72%, var(--dh-api-ink)); /* 原 #bfccd9，混色解析≈#c4c8d9。 */
   --dh-muted: var(--dh-api-muted);
   --dh-muted-2: var(--dh-api-soft);
   --dh-blue: var(--dh-api-blue);

@@ -1,6 +1,7 @@
 import { resolveMarketChangeDirection } from "./marketHomeChangeTone";
 import type { ModuleHomeDetailPanel, ModuleHomeDetailRow, ModuleHomeTone, ModuleHomeView } from "./moduleHomeModel";
 import { buildMarketCurveSpreadRows } from "./moduleHomeModel";
+import { EM_DASH } from "../../../utils/format";
 
 export type MarketActionQueueProps = {
   view: ModuleHomeView;
@@ -34,7 +35,7 @@ export type MarketActionItem = {
 const ACTION_LIMIT = 3;
 
 export function compactParts(parts: Array<string | undefined | null>) {
-  return parts.map((part) => part?.trim()).filter((part): part is string => Boolean(part && part !== "-"));
+  return parts.map((part) => part?.trim()).filter((part): part is string => Boolean(part && part !== EM_DASH));
 }
 
 function firstRowEvidence(panel?: ModuleHomeDetailPanel) {

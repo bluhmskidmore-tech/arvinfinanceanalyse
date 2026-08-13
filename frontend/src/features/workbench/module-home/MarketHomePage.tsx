@@ -5,7 +5,6 @@ import type { ChoiceMacroRefreshPayload } from "../../../api/contracts";
 import { runPollingTask } from "../../../app/jobs/polling";
 import {
   buildModuleHomeView,
-  moduleHomeQueriesMemoDeps,
   type ModuleHomeDetailPanel,
 } from "./moduleHomeModel";
 import { moduleWorkbenchHomeConfigs } from "./moduleHomeConfig";
@@ -93,7 +92,7 @@ export default function MarketHomePage() {
   const config = moduleWorkbenchHomeConfigs.market;
   const view = useMemo(
     () => buildModuleHomeView("market", client, queries),
-    [client, ...moduleHomeQueriesMemoDeps(queries)],
+    [client, queries],
   );
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshStatus, setRefreshStatus] = useState("");
