@@ -15,18 +15,6 @@
     "frontend/src/features/pnl/PnlByBusinessPage.css": {
       "belowFloor": 2
     },
-    "frontend/src/features/workbench/dashboard-home/dashboardHomeOptionTwoDeferred.module.css": {
-      "belowFloor": 1
-    },
-    "frontend/src/features/workbench/dashboard-home/dashboardHomeOptionTwoGovernanceSection.module.css": {
-      "belowFloor": 5
-    },
-    "frontend/src/features/workbench/dashboard-home/dashboardHomeOptionTwoResearchList.module.css": {
-      "belowFloor": 1
-    },
-    "frontend/src/features/workbench/dashboard-home/dashboardHomeOptionTwoSupportBand.module.css": {
-      "belowFloor": 11
-    },
     "frontend/src/features/workbench/market-shell/MarketWorkbenchFrame.module.css": {
       "belowFloor": 3
     },
