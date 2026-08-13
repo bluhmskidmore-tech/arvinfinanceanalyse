@@ -202,7 +202,7 @@ def test_current_overlay_source_is_visible_on_theme_and_nested_stock_rows() -> N
     )
 
     payload = cast(dict[str, Any], result.payload)
-    assert payload["formula_version"] == "rv_livermore_theme_breakout_multi_proxy_v6"
+    assert payload["formula_version"] == "rv_livermore_theme_breakout_real_concept_interval_v7"
     assert payload["is_proxy"] is False
     theme = cast(list[dict[str, Any]], payload["items"])[0]
     assert theme["source_kind"] == "tushare_current_overlay"

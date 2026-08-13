@@ -25,6 +25,7 @@ RELATION_CHOICE_STOCK_SECTOR_MEMBERSHIP = "choice_stock_sector_membership"
 RELATION_CHOICE_STOCK_UNIVERSE = "choice_stock_universe"
 RELATION_CHOICE_STOCK_LIMIT_QUALITY = "choice_stock_limit_quality"
 RELATION_CHOICE_STOCK_CONCEPT_MEMBERSHIP = "choice_stock_concept_membership"
+RELATION_CHOICE_STOCK_CONCEPT_MEMBERSHIP_INTERVAL = "choice_stock_concept_membership_interval"
 RELATION_CHOICE_STOCK_INTRADAY_MOVEMENT_EVENT = "choice_stock_intraday_movement_event"
 RELATION_LIVERMORE_POSITION_SNAPSHOT = "livermore_position_snapshot"
 RELATION_FACT_CHOICE_MACRO_DAILY = "fact_choice_macro_daily"
@@ -1583,6 +1584,35 @@ class LivermoreStrategyReadRepository(DuckDBRepository):
                 order by stock_code asc, concept_code asc, concept_name asc
                 """,
             [as_of_date],
+        ).fetchall()
+
+    def fetch_theme_concept_interval_rows(
+        self,
+        *,
+        as_of_date: str,
+        conn: duckdb.DuckDBPyConnection,
+    ) -> list[tuple[Any, ...]]:
+        """As-of join on the SCD interval read model: valid_from <= date < valid_to.
+
+        Open intervals (valid_to IS NULL) cover every date at or after
+        valid_from; dates before a stock's first observed snapshot match no
+        rows by construction (fail-closed for historical replay).
+        """
+        return conn.execute(
+            f"""
+                select
+                  stock_code,
+                  concept_code,
+                  concept_name,
+                  concept_source,
+                  source_version,
+                  vendor_version
+                from {RELATION_CHOICE_STOCK_CONCEPT_MEMBERSHIP_INTERVAL}
+                where valid_from <= ?
+                  and (valid_to is null or valid_to > ?)
+                order by stock_code asc, concept_code asc, concept_name asc
+                """,
+            [as_of_date, as_of_date],
         ).fetchall()
 
     def fetch_intraday_movement_rows(

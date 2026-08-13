@@ -227,6 +227,17 @@ def materialize_choice_stock_inputs(
     enable_tushare_concept_fallback: bool = False,
     allow_cross_era_backfill: bool = False,
 ) -> dict[str, object]:
+    """Materialize the Choice stock front layer (with Tushare fallbacks) for one date.
+
+    Concept-membership note: rows landed into ``choice_stock_concept_membership``
+    (Choice css path or the Tushare THS ``enable_tushare_concept_fallback`` path)
+    are current-state snapshots, not point-in-time facts. After every ingest that
+    lands concept rows, run
+    ``backend.app.tasks.concept_membership_intervalize.intervalize_concept_membership``
+    so the SCD interval read model ``choice_stock_concept_membership_interval``
+    closes/opens intervals against the new snapshot date (contract:
+    docs/data_contracts.md §4.11).
+    """
     settings = get_settings()
     resolved_date = _normalize_date(as_of_date)
     resolved_duckdb_path = str(duckdb_path or settings.duckdb_path)

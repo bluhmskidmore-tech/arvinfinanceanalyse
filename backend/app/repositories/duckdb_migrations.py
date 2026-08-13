@@ -472,6 +472,189 @@ def _v41_livermore_gate_history(conn: duckdb.DuckDBPyConnection) -> None:
     _run_sql_slice(conn, "41_livermore_gate_history.sql")
 
 
+def _v42_accounting_movement_control_conclusion(conn: duckdb.DuckDBPyConnection) -> None:
+    if not _main_table_exists(conn, "fact_accounting_asset_movement_monthly"):
+        _run_sql_slice(conn, "18_accounting_asset_movement.sql")
+    _run_sql_slice(conn, "42_accounting_movement_control_conclusion.sql")
+
+
+_V43_RECOVERY_SQL: dict[str, str] = {
+    "fact_formal_bond_analytics_daily": "02_bond_analytics.sql",
+    "fact_formal_zqtz_balance_daily": "05_balance_analysis.sql",
+    "fact_formal_tyw_balance_daily": "05_balance_analysis.sql",
+    "fact_formal_risk_tensor_daily": "04_risk_tensor.sql",
+    "fact_nonstd_pnl_bridge": "07_pnl_materialize.sql",
+}
+
+_V43_STATEMENT = re.compile(
+    r"\s*create\s+unique\s+index\s+if\s+not\s+exists\s+"
+    r"([a-z_][a-z0-9_]*)\s+on\s+([a-z_][a-z0-9_]*)\s*\((.+)\)\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
+_V43_BARE_COLUMN = re.compile(r"^[a-z_][a-z0-9_]*$", re.IGNORECASE)
+# coalesce(cast(<column> as varchar), '<sentinel>'): the cast keeps one sentinel
+# literal valid for both the DATE and VARCHAR flavours of maturity_date that
+# different database vintages carry.
+_V43_COALESCE_PART = re.compile(
+    r"^coalesce\(\s*(cast\(\s*([a-z_][a-z0-9_]*)\s+as\s+varchar\s*\))\s*,\s*(.+?)\s*\)$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _v43_split_key_parts(key_text: str) -> list[str]:
+    """Split an index key list on top-level commas (coalesce(...) contains commas)."""
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for character in key_text:
+        if character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+        if character == "," and depth == 0:
+            parts.append("".join(current).strip())
+            current = []
+            continue
+        current.append(character)
+    tail = "".join(current).strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
+
+def _v43_constraint_statements() -> list[tuple[str, str, str, tuple[tuple[str, str, str], ...]]]:
+    """Parse slice 43 into (statement, index_name, table_name, key_parts).
+
+    Each key part is ``(column, index_expression, collision_predicate)``. The
+    predicate is the SQL that finds rows already carrying the sentinel value; a
+    bare column yields an empty predicate and is rejected downstream.
+    """
+    text = (REGISTRY_DIR / "43_core_fact_natural_key_constraints.sql").read_text(encoding="utf-8")
+    specs: list[tuple[str, str, str, tuple[tuple[str, str, str], ...]]] = []
+    for statement in parse_registry_sql_text(text):
+        body = "\n".join(
+            line for line in statement.splitlines() if not line.lstrip().startswith("--")
+        ).strip()
+        match = _V43_STATEMENT.fullmatch(body)
+        if not match:
+            raise RuntimeError(f"Unsupported v43 constraint statement: {statement}")
+        index_name = match.group(1)
+        table_name = match.group(2)
+        key_parts: list[tuple[str, str, str]] = []
+        for part in _v43_split_key_parts(match.group(3)):
+            if _V43_BARE_COLUMN.fullmatch(part):
+                key_parts.append((part, part, ""))
+                continue
+            coalesced = _V43_COALESCE_PART.fullmatch(part)
+            if coalesced is None:
+                raise RuntimeError(f"Unsupported v43 key expression: {part!r}")
+            inner, column, sentinel = coalesced.groups()
+            key_parts.append((column, part, f"{inner} = {sentinel}"))
+        if not key_parts:
+            raise RuntimeError(f"v43 constraint statement without key columns: {statement}")
+        specs.append((body, index_name, table_name, tuple(key_parts)))
+    return specs
+
+
+def _v43_add_core_fact_natural_key_constraints(conn: duckdb.DuckDBPyConnection) -> None:
+    """Constrain the core ALM fact grains that only had delete-then-insert protection.
+
+    Deliberate deviation from the v32 pattern: v32 promoted its key columns to
+    NOT NULL and aborted on any NULL. These facts are declared fully nullable and
+    ``maturity_date`` is legitimately unknown for 7.5% of bond rows, so instead of
+    demanding cleanup the key folds every column onto a sentinel. That is not
+    cosmetic — DuckDB treats NULL as DISTINCT inside a unique index, so an
+    unwrapped nullable column would exempt its NULL rows from the constraint
+    entirely. The duplicate preflight below runs over the same folded expressions,
+    which makes it strictly stronger than the v32 check it is modelled on.
+    """
+    specs = _v43_constraint_statements()
+    spec_tables = [table_name for _statement, _index_name, table_name, _parts in specs]
+    if len(spec_tables) != len(set(spec_tables)) or set(spec_tables) != set(_V43_RECOVERY_SQL):
+        raise RuntimeError(
+            "v43 constraint SQL must contain exactly one statement per governed core fact table"
+        )
+
+    missing_tables = {
+        table_name
+        for _statement, _index_name, table_name, _parts in specs
+        if not _main_table_exists(conn, table_name)
+    }
+
+    # Preflight every existing table before any DDL so a defect cannot leave the
+    # database half-constrained.
+    for _statement, _index_name, table_name, key_parts in specs:
+        if table_name in missing_tables:
+            continue
+
+        existing_columns = {
+            row[0]
+            for row in conn.execute(
+                """
+                select column_name
+                from information_schema.columns
+                where table_schema = 'main' and table_name = ?
+                """,
+                [table_name],
+            ).fetchall()
+        }
+        missing_columns = [
+            column for column, _expression, _sentinel in key_parts if column not in existing_columns
+        ]
+        if missing_columns:
+            raise RuntimeError(
+                f"v43 constraint target {table_name} is missing columns: "
+                f"{', '.join(missing_columns)}"
+            )
+
+        for column, _expression, collision_predicate in key_parts:
+            if not collision_predicate:
+                raise RuntimeError(
+                    f"v43 key column {table_name}.{column} is indexed bare; a nullable column "
+                    "must be folded onto a sentinel or its NULL rows escape the constraint"
+                )
+            # A sentinel that already occurs as real data would merge a genuine
+            # value with "unknown" and reject a legitimate row.
+            collision_row = conn.execute(
+                f"select count(*) from {table_name} where {collision_predicate}"
+            ).fetchone()
+            collision_count = int(collision_row[0]) if collision_row else 0
+            if collision_count:
+                raise RuntimeError(
+                    f"{table_name}.{column} contains {collision_count} rows matching the v43 "
+                    f"NULL sentinel ({collision_predicate}); pick a value outside the domain"
+                )
+
+        key_expression = ", ".join(expression for _column, expression, _predicate in key_parts)
+        duplicate_count_row = conn.execute(
+            f"""
+            select count(*) from (
+                select {key_expression}, count(*) as row_count
+                from {table_name}
+                group by {key_expression}
+                having count(*) > 1
+            )
+            """
+        ).fetchone()
+        duplicate_count = int(duplicate_count_row[0]) if duplicate_count_row else 0
+        if duplicate_count:
+            raise RuntimeError(
+                f"{table_name} has {duplicate_count} duplicate natural-key groups "
+                f"for ({key_expression}); do NOT deduplicate — investigate the grain first"
+            )
+
+    for _statement, _index_name, table_name, _parts in specs:
+        if table_name in missing_tables:
+            _run_sql_slice(conn, _V43_RECOVERY_SQL[table_name])
+
+    for statement, _index_name, _table_name, _parts in specs:
+        conn.execute(statement)
+
+
+def _v44_choice_stock_concept_membership_interval(conn: duckdb.DuckDBPyConnection) -> None:
+    _run_sql_slice(conn, "44_choice_stock_concept_membership_interval.sql")
+
+
 def _v30_fact_snapshot_indexes(conn: duckdb.DuckDBPyConnection) -> None:
     text = (REGISTRY_DIR / "32_fact_snapshot_indexes.sql").read_text(encoding="utf-8")
     for statement in parse_registry_sql_text(text):
@@ -621,6 +804,9 @@ def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(39, "Repair stock official disclosure timestamp timezone", _v39_stock_official_disclosure_timestamp_tz)
     registry.register(40, "Numeric daily limit prices from tushare stk_limit", _v40_stock_limit_price_daily)
     registry.register(41, "Livermore market-gate realtime label anchor", _v41_livermore_gate_history)
+    registry.register(42, "Persist movement chain-continuity and position-source conclusions", _v42_accounting_movement_control_conclusion)
+    registry.register(43, "Constrain core ALM fact natural-key grains", _v43_add_core_fact_natural_key_constraints)
+    registry.register(44, "Point-in-time concept membership SCD intervals", _v44_choice_stock_concept_membership_interval)
 
 
 def apply_pending_migrations_on_connection(conn: duckdb.DuckDBPyConnection) -> None:

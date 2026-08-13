@@ -17,7 +17,7 @@ from backend.app.repositories.duckdb_migrations import (
 )
 from backend.app.repositories.duckdb_schema_registry import DuckDBSchemaRegistry
 
-_BASELINE_VERSION_COUNT = 41
+_BASELINE_VERSION_COUNT = 44
 _RISK_PROJECTION_QUALITY_COLUMNS = {
     "missing_maturity_market_value",
     "missing_maturity_count",
@@ -351,7 +351,7 @@ def test_migration_tracking(tmp_path) -> None:
     assert versions == list(range(1, _BASELINE_VERSION_COUNT + 1))
     assert len(rows) == _BASELINE_VERSION_COUNT
     assert any("snapshot" in str(row[1]).lower() for row in rows)
-    assert rows[-1] == (41, "Livermore market-gate realtime label anchor")
+    assert rows[-1] == (44, "Point-in-time concept membership SCD intervals")
 
 
 def test_v36_adds_projection_quality_columns_without_backfilling_legacy_rows() -> None:

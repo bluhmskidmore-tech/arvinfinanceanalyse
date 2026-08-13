@@ -706,6 +706,11 @@ def test_v20_database_upgrades_to_v21_choice_stock_schema(tmp_path: Path) -> Non
         "v37: Preserve bond payment-frequency fallback provenance",
         "v38: Stock official disclosure fact + sync status",
         "v39: Repair stock official disclosure timestamp timezone",
+        "v40: Numeric daily limit prices from tushare stk_limit",
+        "v41: Livermore market-gate realtime label anchor",
+        "v42: Persist movement chain-continuity and position-source conclusions",
+        "v43: Constrain core ALM fact natural-key grains",
+        "v44: Point-in-time concept membership SCD intervals",
     ]
     conn = duckdb.connect(str(db_path), read_only=True)
     try:

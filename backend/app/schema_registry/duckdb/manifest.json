@@ -212,6 +212,21 @@
       "path": "41_livermore_gate_history.sql",
       "ensure_module": "backend.app.tasks.livermore_gate_history_materialize",
       "ensure_symbol": "ensure_livermore_gate_history_schema"
+    },
+    {
+      "path": "42_accounting_movement_control_conclusion.sql",
+      "ensure_module": "backend.app.tasks.accounting_asset_movement",
+      "ensure_symbol": "_ensure_tables"
+    },
+    {
+      "path": "43_core_fact_natural_key_constraints.sql",
+      "ensure_module": "backend.app.repositories.duckdb_migrations",
+      "ensure_symbol": "_v43_add_core_fact_natural_key_constraints"
+    },
+    {
+      "path": "44_choice_stock_concept_membership_interval.sql",
+      "ensure_module": "backend.app.tasks.concept_membership_intervalize",
+      "ensure_symbol": "ensure_concept_membership_interval_schema"
     }
   ]
 }

@@ -646,6 +646,55 @@ canonical grain：
 
 `scripts/run_batch3_stock_strategy_research.py` 先前将该字段标为 `daily_amount_rmb_unconfirmed`，原因是当时仅有本地 pass-through lineage，尚无 vendor 单位证据。现已具备 Tushare 官方接口口径及上述代际交叉校验，可建议将该状态升级为 confirmed；该状态变更及其脚本内落实由 Batch3 维护者负责，不属于本文档变更范围。
 
+### 4.11 choice_stock_concept_membership_interval（概念成分时点化 SCD 区间表）
+
+用途：把 `choice_stock_concept_membership` 的"当前概念成分快照"派生为时点（point-in-time）SCD 区间读模型，供 theme_breakout 真实概念路径按 signal_date 做 as-of join，消除"用现在的概念成分回填历史"的前视偏差（`docs/strategy-reports/theme-breakout-decay-review.md` §10.3 Critical 项）。
+
+#### 源表语义与局限
+
+- 源表 `choice_stock_concept_membership`（schema 切片 21）每行是**某快照日抓取的当前成分**，`concept_source` 现存量全部为 `tushare_ths_current`（同花顺概念当前成分，探测式抓取：仅当日强势股被探测，每个快照日的股票集不同）。截至本节撰写，快照日共 4 个：2026-05-13 / 2026-07-08 / 2026-07-10 / 2026-07-14。
+- **探测式抓取的关键推论**：某股票缺席某快照日 = "当日未被观测"，**不代表**"退出了所有概念"。因此区间化必须按 `(stock_code, concept_source)` 的**自身观测日序列** diff，不能按全局快照日 diff。
+- 源表无法区分"被探测但无概念"与"未被探测"（前者不落行）；该歧义按未观测处理（保守，不闭合区间）。
+
+#### 表结构（schema 切片 44，迁移 v44）
+
+| 列 | 类型 | 语义 |
+| --- | --- | --- |
+| `stock_code` | varchar not null | 股票代码 |
+| `concept_code` | varchar not null | 概念代码（源行代码为空时回退概念名） |
+| `concept_name` | varchar | 概念名（取该区间最后一次观测行的值） |
+| `concept_source` | varchar not null | 源标识（现为 `tushare_ths_current`），区间化按源独立进行 |
+| `valid_from` | varchar not null | 首次观测到该成分的快照日（含） |
+| `valid_to` | varchar | 首个观测到该成分消失的快照日（**不含**，半开区间）；NULL = 开放区间（最近观测仍在册） |
+| `last_observed_date` | varchar not null | 该区间内最后一次观测到成分的快照日（消费端陈旧度依据） |
+| `field_key` / `source_version` / `vendor_version` / `rule_version` / `run_id` | varchar | 溯源列，取最后观测行 + 本次构建 run |
+
+自然键唯一索引：`(stock_code, concept_code, concept_source, valid_from)`（同一成分退出后再进入产生新行，SCD type 2）。
+
+#### 区间化算法（快照对比）
+
+对每个 `(stock_code, concept_source)`，取其观测日升序序列 `d_1 < d_2 < …`（观测日 = 该股在源表有行的快照日），fold：
+
+1. `d_1` 出现的成分开区间 `[d_1, NULL)`；
+2. 相邻观测日 `d_i → d_{i+1}`：`d_i` 有、`d_{i+1}` 无 → 闭合为 `[valid_from, d_{i+1})`（退出事件按"发现日"闭合，是无前视的最优近似）；两日都有 → 延续并更新 `last_observed_date`；仅 `d_{i+1}` 有 → 新开区间（进入事件）；
+3. 最后一个观测日仍在册的成分保持开放区间（`valid_to = NULL`）。
+
+构建是**全量快照集的确定性纯函数**（`build_membership_intervals`），持久化为单事务 delete-then-insert：同快照集重跑内容不变（幂等）；追加新快照日重跑即完成区间闭合与新开。源表缺失/为空时返回 `no_snapshots` 且**不清空**既有区间（防源部分不可用误清读模型）。
+
+#### 消费契约与 fail-closed 边界
+
+- as-of join：`valid_from <= signal_date and (valid_to is null or valid_to > signal_date)`（`livermore_market_read_repo.fetch_theme_concept_interval_rows`）。
+- **首快照（2026-05-13）之前**：无区间行匹配 → theme_breakout 真实概念路径无输入 → 维持既有 proxy 行业篮子回退（fail-closed，历史回放行为与接通前一致）。
+- 消费优先级：精确请求日 Choice 概念行（`concept_source='choice'`，时点性最强）> 区间表 as-of 行（real_concept）> 非时点 current overlay > proxy。
+- **末次快照之后**：开放区间继续生效（= "已知的最新在册状态"，无前视但有陈旧度）；`last_observed_date` 已落列供消费端做陈旧度预警。摄入停摆时该路径的陈旧度单调增长，运维观察点为 `max(last_observed_date)` 与当前日期的间距。
+- 消费端版本：`rv_livermore_theme_breakout_real_concept_interval_v7`（real_concept 分支首次生效，信号分布会变；公式本体零变化）。
+
+#### 写路径与运维 runbook
+
+- 唯一写者：`backend/app/tasks/concept_membership_intervalize.py::intervalize_concept_membership`（受 `lock:duckdb:concept-membership-intervalize` 锁保护）。
+- **每次概念快照摄入后必须重跑本任务**（摄入入口 `materialize_choice_stock_inputs`，Choice css 或 Tushare THS fallback 路径），否则区间表停留在上一快照集。
+- 外部网络恢复后的历史回灌：按日期升序逐日调用摄入（落快照）→ 全部落地后跑一次 intervalize 即可（全量重建，无需逐日跑）；回灌只影响 `valid_from >= 回灌首日` 的区间边界，不会伪造首快照前的历史。
+
 ## 5. 事实表清单
 
 - `fact_bond_monthly_avg`

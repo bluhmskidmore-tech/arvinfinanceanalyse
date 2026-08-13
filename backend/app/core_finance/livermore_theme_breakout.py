@@ -12,7 +12,13 @@ EPS = 1e-12
 # 行业篮子（半导体/算力AI/机器人/军工/新能源/医药/券商），每个题材独立评估并按
 # 题材分组输出，theme 行新增 proxy_code；突破判定门槛与公式（强度阈值/集群/
 # 广度/排序）保持 v5 不变。
-FORMULA_VERSION = "rv_livermore_theme_breakout_multi_proxy_v6"
+# v7：真实概念路径首次接通——上游改读 SCD 区间表
+# choice_stock_concept_membership_interval 做 as-of join（signal_date 落在
+# [valid_from, valid_to)），概念快照覆盖期内 real_concept 分支生效，覆盖期外
+# （首快照 2026-05-13 之前）无区间行匹配，维持 proxy 回退（fail-closed，与 v6
+# 行为一致）。本模块公式（强度阈值/集群/广度/排序）零变化；bump 版本是因为
+# 概念路径从未生效过，接通后 real_concept 分支首次产出会改变信号分布。
+FORMULA_VERSION = "rv_livermore_theme_breakout_real_concept_interval_v7"
 STRONG_PCTCHANGE_THRESHOLD = 5.0
 MIN_STRONG_STOCK_COUNT = 3
 MIN_LIMIT_STOCK_COUNT = 2
