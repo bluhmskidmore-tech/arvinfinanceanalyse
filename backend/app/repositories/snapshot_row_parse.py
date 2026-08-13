@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import unicodedata
 from datetime import date
 from decimal import Decimal
 from uuid import uuid4
@@ -29,6 +30,7 @@ ZQTZ_ISSUER = "授信客户名称"
 ZQTZ_FAIR_VALUE = "公允价值"
 ZQTZ_AMORTIZED = "摊余成本"
 ZQTZ_ACCRUED = "应计利息"
+ZQTZ_INTEREST_RECEIVABLE_PAYABLE = "应收/应付利息"
 ZQTZ_FACE_VALUE = "面值"
 ZQTZ_INTEREST_MODE = "计息方式"
 ZQTZ_COUPON = "利率"
@@ -55,6 +57,20 @@ TYW_MATURITY = "到期日"
 TYW_PLEDGED = "质押债券号"
 
 _LIABILITY_PRODUCTS = frozenset({"同业拆入", "同业存放", "卖出回购证券", "卖出回购票据"})
+
+
+def _normalized_header(header: str) -> str:
+    """Fold full-width punctuation and any inner whitespace onto one comparable key."""
+    return "".join(unicodedata.normalize("NFKC", header).split())
+
+
+def _resolve_header(headers: list[str], canonical: str) -> str | None:
+    """Return the sheet header matching `canonical` allowing width/whitespace variants."""
+    target = _normalized_header(canonical)
+    for header in headers:
+        if header and _normalized_header(header) == target:
+            return header
+    return None
 
 
 def _text(row: dict[str, object], key: str) -> str:
@@ -120,6 +136,7 @@ def parse_zqtz_snapshot_rows_from_bytes(
     sheet = book.sheet_by_index(0)
     headers = [str(sheet.cell_value(1, column)).strip() for column in range(sheet.ncols)]
     metadata = describe_source_file(source_file)
+    interest_receivable_header = _resolve_header(headers, ZQTZ_INTEREST_RECEIVABLE_PAYABLE)
     rows_out: list[dict[str, object]] = []
 
     for row_index in range(2, sheet.nrows):
@@ -165,6 +182,11 @@ def parse_zqtz_snapshot_rows_from_bytes(
                 "market_value_native": _decimal_required(raw_row.get(ZQTZ_FAIR_VALUE)),
                 "amortized_cost_native": _decimal_required(raw_row.get(ZQTZ_AMORTIZED)),
                 "accrued_interest_native": _decimal_required(raw_row.get(ZQTZ_ACCRUED)),
+                "interest_receivable_payable": (
+                    _decimal(raw_row.get(interest_receivable_header))
+                    if interest_receivable_header
+                    else None
+                ),
                 "coupon_rate": _decimal(raw_row.get(ZQTZ_COUPON)),
                 "ytm_value": _decimal(raw_row.get(ZQTZ_YTM)),
                 "maturity_date": _cell_to_iso_date(book, raw_row.get(ZQTZ_MATURITY)),
