@@ -1,10 +1,11 @@
 import type { HomeDataStateKind } from "./dashboardHomeFirstScreenTypes";
 
+import { EM_DASH } from "../../../utils/format";
 export type HomeStatusKind = HomeDataStateKind | "fallback";
 
 export function compactClock(value: string | undefined): string {
   const match = /(?:\d{4}-\d{2}-\d{2}[ T])?(\d{2}:\d{2})/.exec(value?.trim() ?? "");
-  return match?.[1] ?? "—";
+  return match?.[1] ?? EM_DASH;
 }
 
 export function stateLabel(kind: HomeStatusKind): string {
@@ -37,7 +38,7 @@ export function statusTone(kind: HomeStatusKind): "ok" | "warn" | "bad" | "muted
 
 export function reportDatePath(path: string, reportDate: string): string {
   const trimmed = reportDate.trim();
-  return trimmed && trimmed !== "—"
+  return trimmed && trimmed !== EM_DASH
     ? `${path}?report_date=${encodeURIComponent(trimmed)}`
     : path;
 }

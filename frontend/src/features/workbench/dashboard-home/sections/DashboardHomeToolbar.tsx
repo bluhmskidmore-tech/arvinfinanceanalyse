@@ -16,18 +16,26 @@ import {
 } from "../homeReportDateLabel";
 import styles from "../dashboardHomeShell.module.css";
 
+/** 常态零徽标：ok 态降为无边框点+文字；异常态保留描边琥珀胶囊。 */
 function statusPillClass(statusKind: HomeHeaderStatus["dataStatusKind"]) {
   return statusKind === "ok"
-    ? styles.dhStatusPill
-    : `${styles.dhStatusPill} ${styles.dhStatusPillWarning}`;
+    ? `${styles.dhStatusPill} ${styles.dhStatusPillQuiet}`
+    : `${styles.dhStatusPill} ${styles.dhStatusPillWarning} ${styles.dhStatusPillWarnTone}`;
 }
 
 function statusDotClass(statusKind: HomeHeaderStatus["dataStatusKind"]) {
   return `${styles.dhDot} ${statusKind === "ok" ? styles.dhDotGreen : styles.dhDotOrange}`;
 }
 
+function marketPillClass(valuationTone: HomeHeaderStatus["valuationTone"]) {
+  return valuationTone === "ok"
+    ? `${styles.dhStatusPill} ${styles.dhStatusPillQuiet}`
+    : `${styles.dhStatusPill} ${styles.dhStatusPillWarning} ${styles.dhStatusPillWarnTone}`;
+}
+
+// 强调色纪律：蓝色只用于可点击/激活态，状态点常态用绿。
 function marketDotClass(valuationTone: HomeHeaderStatus["valuationTone"]) {
-  return `${styles.dhDot} ${valuationTone === "ok" ? styles.dhDotBlue : styles.dhDotOrange}`;
+  return `${styles.dhDot} ${valuationTone === "ok" ? styles.dhDotGreen : styles.dhDotOrange}`;
 }
 
 type DashboardHomeToolbarProps = {
@@ -129,7 +137,11 @@ export function DashboardHomeToolbar({
       </div>
 
       <div className={styles.dhTopbarRight} data-role="dashboard-home-toolbar-right">
-        <div className={styles.dhStatusRow} data-role="dashboard-home-status-row">
+        <div
+          className={`${styles.dhStatusRow} ${styles.dhStatusRowPlain}`}
+          data-role="dashboard-home-status-row"
+        >
+          {/* 更新时间全页去重：时间只保留在左侧“更新 {updateStamp}”，此处仅状态点+文案。 */}
           <span
             data-testid="dashboard-home-data-status"
             data-status-kind={headerStatus.dataStatusKind}
@@ -137,22 +149,21 @@ export function DashboardHomeToolbar({
           >
             <i className={statusDotClass(headerStatus.dataStatusKind)} aria-hidden="true" />
             {headerStatus.dataSyncPrefix}
-            <span className={styles.dhNum}>{headerStatus.dataUpdatedAt}</span>
           </span>
+          {/* 市场/估值两段合为一段短文案，全量语境放 title。 */}
           <span
             data-role="dashboard-home-market-status"
-            className={styles.dhStatusPill}
+            data-valuation-tone={headerStatus.valuationTone}
+            className={marketPillClass(headerStatus.valuationTone)}
             title={`${headerStatus.marketStatus} · ${headerStatus.valuationLabel}`}
           >
             <i className={marketDotClass(headerStatus.valuationTone)} aria-hidden="true" />
-            <span>{headerStatus.marketStatus}</span>
-            <span aria-hidden="true"> · </span>
             <span>{headerStatus.valuationLabel}</span>
           </span>
           {headerStatus.showRiskReview ? (
             <Link
               to="/decision-items"
-              className={`${styles.dhStatusPill} ${styles.dhStatusPillAlert}`}
+              className={`${styles.dhStatusPill} ${styles.dhStatusPillAlert} ${styles.dhStatusPillRiskEntry}`}
             >
               <LightIcon name="warning" />
               风险待复核

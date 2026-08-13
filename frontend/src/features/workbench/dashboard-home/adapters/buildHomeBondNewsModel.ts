@@ -8,6 +8,7 @@ import type {
 import { dashboardMacroNewsTopicLabel } from "../../dashboard/dashboardMacroNewsTopics";
 import { stripHtmlTags } from "./macroNewsPresentation";
 
+import { EM_DASH } from "../../../../utils/format";
 export type HomeBondNewsItem = {
   id: string;
   title: string;
@@ -142,7 +143,7 @@ function normalizeToken(value: string | null | undefined): string {
 
 function dateLabel(value: string): string {
   const normalized = value.trim();
-  if (!normalized || normalized === "—") {
+  if (!normalized || normalized === EM_DASH) {
     return "时间待核";
   }
   if (normalized.length >= 16) {
@@ -282,7 +283,7 @@ function addCandidate(
   priority: number,
 ): void {
   const normalized = normalizeToken(value);
-  if (!normalized || normalized === "—" || normalized.length < 3) {
+  if (!normalized || normalized === EM_DASH || normalized.length < 3) {
     return;
   }
   const key = normalized.toLowerCase();

@@ -6,12 +6,13 @@ import type { HomeMarketTicker } from "./dashboardHomeMarket";
 import { OptionTwoSparkline } from "./OptionTwoSparkline";
 import styles from "./dashboardHomeOptionTwoSupportBand.module.css";
 
+import { EM_DASH } from "../../../utils/format";
 type DashboardHomeOptionTwoSupportBandProps = {
   view: DashboardHomeBodyView;
   dataStatusKind: HomeGovernanceStatusKind;
 };
 
-const GAP = "—";
+const GAP = EM_DASH;
 const KEY_TENORS = ["1Y", "3Y", "5Y", "10Y"] as const;
 /** 期限的真实年限，用于小图横轴按比例定位（1/3/5/10 年不是等距）。 */
 const KEY_TENOR_YEARS = [1, 3, 5, 10] as const;
@@ -22,10 +23,11 @@ const FUNDING_PROXY_SERIES = [
   { id: "shibor-6m", label: "SHIBOR 6M", seriesIds: ["NCD.SHIBOR.6M"] },
 ] as const;
 
-function governanceStatusLabel(kind: HomeGovernanceStatusKind): string {
+/** 常态零徽标：正常态返回 null 不渲染状态词，仅异常/加载态给可见文案。 */
+function governanceStatusLabel(kind: HomeGovernanceStatusKind): string | null {
   switch (kind) {
     case "ok":
-      return "已同步";
+      return null;
     case "partial":
       return "部分可用";
     case "fallback":
@@ -88,7 +90,20 @@ function isUsableFundingTicker(
   );
 }
 
-function fundingVendorLabel(ticker: HomeMarketTicker): string {
+/**
+ * 行内可见来源：vendor 缺失或形如 public_repo_rate_query 的 snake_case
+ * 内部管道 token 时省略（行级 title 已全量披露），正常 vendor 名原样展示。
+ */
+function fundingVendorDisplay(ticker: HomeMarketTicker): string | null {
+  const vendor = ticker.vendorName?.trim() ?? "";
+  if (!vendor || vendor.includes("_")) {
+    return null;
+  }
+  return vendor;
+}
+
+/** 行级 title 的全量来源披露：保留 sourceVersion 原始 token 供追溯。 */
+function fundingVendorDisclosure(ticker: HomeMarketTicker): string {
   return (
     ticker.vendorName?.trim() ||
     ticker.sourceVersion?.trim() ||
@@ -110,10 +125,27 @@ function fundingTickerTitle(ticker: HomeMarketTicker): string {
     `数值 ${ticker.value}`,
     `较前值 ${ticker.delta}`,
     `质量 ${ticker.qualityFlag ?? "未返回"}`,
-    `来源 ${fundingVendorLabel(ticker)}`,
+    `来源 ${fundingVendorDisclosure(ticker)}`,
     ticker.policyNote ?? "未返回来源政策说明",
     "仅作为已落地资金代理展示，不推导资金松紧或评分",
   ].join("｜");
+}
+
+/** 元信息可见文本：剥离内部 snake_case token 段（全文保留在 title）。 */
+function stripInternalTokens(label: string): string {
+  const kept = label
+    .split("/")
+    .map((part) => part.trim())
+    .filter((part) => !(part.includes("_") && /^[a-z0-9_.-]+$/iu.test(part)));
+  return kept.join(" / ").trim() || label;
+}
+
+/** 元信息可见文本：去掉"标签："前缀只留值，窄格内不再中句截断（全文保留在 title）。 */
+function metaValueDisplay(label: string): string {
+  const separatorIndex = label.search(/[：:]/u);
+  if (separatorIndex < 0) return label;
+  const value = label.slice(separatorIndex + 1).trim();
+  return value || label;
 }
 
 function MarketCurvePanel({ view }: { view: DashboardHomeBodyView }) {
@@ -154,16 +186,16 @@ function MarketCurvePanel({ view }: { view: DashboardHomeBodyView }) {
           className={styles.curveMetaSource}
           title={displayOrGap(context.sourceLabel)}
         >
-          {displayOrGap(context.sourceLabel)}
+          {stripInternalTokens(displayOrGap(context.sourceLabel))}
         </span>
         <span title={displayOrGap(context.asOfLabel)}>
           {displayOrGap(context.asOfLabel)}
         </span>
         <span title={displayOrGap(context.statusLabel)}>
-          {displayOrGap(context.statusLabel)}
+          {metaValueDisplay(displayOrGap(context.statusLabel))}
         </span>
         <span title={displayOrGap(context.refreshLabel)}>
-          {displayOrGap(context.refreshLabel)}
+          {metaValueDisplay(displayOrGap(context.refreshLabel))}
         </span>
       </div>
 
@@ -181,6 +213,7 @@ function MarketCurvePanel({ view }: { view: DashboardHomeBodyView }) {
             title={rows
               .map((row) => `${row.tenor} ${row.yieldLabel}`)
               .join(" / ")}
+            pointDots
             endDot
           />
         </div>
@@ -311,6 +344,7 @@ function FundingProxyPanel({
         {fundingRows.map((row) => {
           const ticker = row.ticker;
           const policyLabel = ticker ? fundingPolicyLabel(ticker) : "";
+          const vendorDisplay = ticker ? fundingVendorDisplay(ticker) : null;
           const deltaDisplay = ticker
             ? neutralizeZeroDelta(ticker.delta, ticker.deltaTone)
             : null;
@@ -340,7 +374,7 @@ function FundingProxyPanel({
                     <time dateTime={ticker.tradeDate}>
                       {displayOrGap(ticker.tradeDate)}
                     </time>
-                    <span>{fundingVendorLabel(ticker)}</span>
+                    {vendorDisplay ? <span>{vendorDisplay}</span> : null}
                     {policyLabel ? <span>{policyLabel}</span> : null}
                   </small>
                 </dd>
@@ -381,7 +415,9 @@ function QuickDrilldownPanel({
           <Link key={item.id} to={item.path} className={styles.quickLink}>
             <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
             <strong>{item.label}</strong>
-            <small data-status-kind={dataStatusKind}>{statusLabel}</small>
+            {statusLabel ? (
+              <small data-status-kind={dataStatusKind}>{statusLabel}</small>
+            ) : null}
             <em aria-hidden="true">→</em>
           </Link>
         ))}

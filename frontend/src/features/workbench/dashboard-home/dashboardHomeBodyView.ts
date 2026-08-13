@@ -62,6 +62,7 @@ import { mapMarketTape, type HomeMarketTicker } from "./dashboardHomeMarket";
 import type { HomeDataStateKind, HomeDeltaTone } from "./dashboardHomeFirstScreenTypes";
 import { formatDv01Wan } from "../../bond-dashboard/utils/format";
 
+import { EM_DASH } from "../../../utils/format";
 export type { HomeDataStateKind, HomeDeltaTone } from "./dashboardHomeFirstScreenTypes";
 export { resolveDeltaClass } from "./dashboardHomeFirstScreenTypes";
 
@@ -280,7 +281,7 @@ export type MapToHomeBodyViewInput = {
   macroReleaseContextError?: boolean;
 };
 
-const GAP = "—";
+const GAP = EM_DASH;
 const HOME_RESEARCH_REPORT_FOCUS_TERMS = [
   "fixed_income",
   "bond",

@@ -58,4 +58,20 @@ describe("OptionTwoSparkline", () => {
     expect(circle).not.toBeNull();
     expect(Number(circle?.getAttribute("cx"))).toBeCloseTo(50, 1);
   });
+
+  it("renders a dot per valid point when pointDots is enabled", () => {
+    const { container } = render(
+      <OptionTwoSparkline values={[1, null, 3, 4]} pointDots />,
+    );
+    const dots = container.querySelectorAll('circle[data-point-dot="true"]');
+    expect(dots).toHaveLength(3);
+  });
+
+  it("keeps the end dot distinct from point dots", () => {
+    const { container } = render(
+      <OptionTwoSparkline values={[1, 2, 3]} pointDots endDot />,
+    );
+    expect(container.querySelectorAll('circle[data-point-dot="true"]')).toHaveLength(3);
+    expect(container.querySelectorAll('circle[data-end-dot="true"]')).toHaveLength(1);
+  });
 });

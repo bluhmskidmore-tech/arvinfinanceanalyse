@@ -25,6 +25,14 @@ const bondNews: HomeBondNewsModel = {
       topicLabel: "债券市场",
       hitLabel: null,
     },
+    {
+      id: "market-file",
+      title: "硕远咨询_2026年中国旅游产业链研究报告_20260715.pdf",
+      timeLabel: "06-01 08:40",
+      sourceLabel: "市场快讯",
+      topicLabel: "资金面",
+      hitLabel: null,
+    },
   ],
   creditAndIssuanceNews: [],
   holdingMessage: null,
@@ -57,11 +65,17 @@ describe("BondNewsSection", () => {
 
     expect(screen.getByTestId("dashboard-home-bond-news")).toBeInTheDocument();
     expect(screen.getByText("债券信息新闻")).toBeInTheDocument();
-    expect(screen.getByText("后端入库：Choice / Tushare 债券新闻")).toBeInTheDocument();
-    expect(screen.getByText("最新内容 04-21 15:06")).toBeInTheDocument();
-    expect(screen.getByText("来源状态：正常")).toBeInTheDocument();
-    expect(screen.getByText("页面读取：每 5 分钟重新读取已落库数据")).toBeInTheDocument();
-    expect(screen.getByText("来源更新：后台受控")).toBeInTheDocument();
+
+    const trustStrip = screen.getByLabelText("债券新闻数据状态");
+    expect(within(trustStrip).getByText("最新内容 04-21 15:06")).toBeInTheDocument();
+    expect(screen.queryByText("来源状态：正常")).not.toBeInTheDocument();
+    expect(screen.queryByText("后端入库：Choice / Tushare 债券新闻")).not.toBeInTheDocument();
+    expect(screen.queryByText("页面读取：每 5 分钟重新读取已落库数据")).not.toBeInTheDocument();
+    expect(screen.queryByText("来源更新：后台受控")).not.toBeInTheDocument();
+    expect(trustStrip).toHaveAttribute(
+      "title",
+      "后端入库：Choice / Tushare 债券新闻 · 来源更新：后台受控 · 来源状态：正常 · 页面读取：每 5 分钟重新读取已落库数据",
+    );
     expect(
       screen.getByRole("button", { name: "重新读取已落库新闻与研报" }),
     ).toHaveAttribute(
@@ -79,18 +93,58 @@ describe("BondNewsSection", () => {
     );
 
     const holdingGroup = screen.getByTestId("dashboard-home-bond-news-holding");
-    expect(within(holdingGroup).getAllByText("持仓命中")).toHaveLength(2);
+    // 与分组标题重复的行内分类不再渲染：组内只剩分组标题一处。
+    expect(within(holdingGroup).getAllByText("持仓命中")).toHaveLength(1);
     expect(within(holdingGroup).getByText("25山东债26 成交活跃")).toBeInTheDocument();
     expect(within(holdingGroup).getByText("命中持仓：25山东债26 · 06-01 09:30")).toBeInTheDocument();
 
     const marketGroup = screen.getByTestId("dashboard-home-bond-news-market");
-    expect(within(marketGroup).getAllByText("债券市场")).toHaveLength(2);
+    expect(within(marketGroup).getAllByText("债券市场")).toHaveLength(1);
     expect(within(marketGroup).getByText("国债收益率曲线延续下行，资金面保持宽松")).toBeInTheDocument();
     expect(within(marketGroup).getByText("政策要闻 · 06-01 09:10")).toBeInTheDocument();
+    // 与分组标题不同的分类保留为轻量文本。
+    expect(within(marketGroup).getByText("资金面")).toBeInTheDocument();
+    // 文件名式标题清洗后展示，原文保留在 title。
+    const cleanedTitle = within(marketGroup).getByText(
+      "硕远咨询 2026年中国旅游产业链研究报告",
+    );
+    expect(cleanedTitle).toHaveAttribute(
+      "title",
+      "硕远咨询_2026年中国旅游产业链研究报告_20260715.pdf",
+    );
+    expect(
+      within(marketGroup).queryByText(
+        "硕远咨询_2026年中国旅游产业链研究报告_20260715.pdf",
+      ),
+    ).not.toBeInTheDocument();
 
     const creditGroup = screen.getByTestId("dashboard-home-bond-news-credit");
     expect(within(creditGroup).getByText("发行/评级")).toBeInTheDocument();
     expect(within(creditGroup).getByText("发行/评级：暂无相关新闻")).toBeInTheDocument();
+  });
+
+  it("keeps only the abnormal status badge visible and folds the page-level update time into the tooltip", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <BondNewsSection
+          bondNews={{ ...bondNews, statusLabel: "来源状态：偏旧" }}
+          actions={{ queryClient }}
+          updatedAt="09:27"
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.queryByText("更新 09:27")).not.toBeInTheDocument();
+    const trustStrip = screen.getByLabelText("债券新闻数据状态");
+    expect(trustStrip).toHaveAttribute(
+      "title",
+      expect.stringContaining("更新 09:27"),
+    );
+    const staleBadge = within(trustStrip).getByText("来源状态：偏旧");
+    expect(staleBadge).toHaveAttribute("data-tone", "warning");
   });
 
   it("invalidates and refetches every relevant stored-content query on reread", async () => {

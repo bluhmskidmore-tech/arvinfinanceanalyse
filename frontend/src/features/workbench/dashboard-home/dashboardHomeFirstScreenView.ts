@@ -27,6 +27,7 @@ import type {
   HomeTerminalKpi,
 } from "./dashboardHomeFirstScreenTypes";
 
+import { EM_DASH } from "../../../utils/format";
 type NumericLike = Numeric | string | number | null | undefined;
 
 export type MapToHomeFirstScreenViewInput = {
@@ -51,7 +52,7 @@ export type MapToHomeFirstScreenViewInput = {
   staleWarning?: string | null;
 };
 
-const GAP = "—";
+const GAP = EM_DASH;
 
 const DECISION_ACTION_ROUTES = new Set([
   "/bond-analysis",

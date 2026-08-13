@@ -15,6 +15,7 @@ import {
 } from "./macroNewsPresentation";
 import type { HomeResearchCalendarModel } from "./buildHomeResearchCalendarModel";
 
+import { EM_DASH } from "../../../../utils/format";
 export type HomeMacroReleaseItem = {
   id: string;
   date: string;
@@ -244,7 +245,7 @@ function dateLabel(date: string): string {
 
 function dateTimeLabel(value: string): string {
   const normalized = value.trim();
-  if (!normalized || normalized === "—") {
+  if (!normalized || normalized === EM_DASH) {
     return "时间待核";
   }
   if (normalized.length >= 16) {
@@ -307,11 +308,11 @@ function buildReleaseHistory(
 
   return {
     latestLabel: trimmedText(history.latest_label) || "最近一期",
-    latestValue: latestValue || "—",
+    latestValue: latestValue || EM_DASH,
     previousLabel: trimmedText(history.previous_label) || "前值",
-    previousValue: previousValue || "—",
+    previousValue: previousValue || EM_DASH,
     changeLabel: trimmedText(history.change_label) || "变动",
-    changeValue: changeValue || "—",
+    changeValue: changeValue || EM_DASH,
     changeTone: normalizeReleaseChangeTone(history.change_tone),
     note: trimmedText(history.note) || null,
     sourceLabel: trimmedText(history.source_label) || null,
@@ -1034,7 +1035,7 @@ function buildSupplyItems(calendar: HomeResearchCalendarModel): HomeMacroSupplyI
   }
   return calendar.items.slice(0, 2).map((item) => ({
     id: item.id,
-    label: `供给/招标：${dateLabel(item.date)} ${item.title}${item.amountLabel !== "—" ? ` · ${item.amountLabel}` : ""}`,
+    label: `供给/招标：${dateLabel(item.date)} ${item.title}${item.amountLabel !== EM_DASH ? ` · ${item.amountLabel}` : ""}`,
   }));
 }
 

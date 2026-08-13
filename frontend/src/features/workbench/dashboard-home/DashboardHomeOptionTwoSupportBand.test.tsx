@@ -147,8 +147,16 @@ describe("DashboardHomeOptionTwoSupportBand", () => {
     expect(context).toHaveTextContent("2026-04-30");
     expect(context).toHaveTextContent("来源：正式曲线服务");
     expect(context).toHaveTextContent("数据截至 2026-04-30");
-    expect(context).toHaveTextContent("来源状态：正式链路有提示");
-    expect(context).toHaveTextContent("刷新：随报告日查询自动更新");
+    // 窄格可见处只留值（去"标签："前缀），全文保留在 title 全量披露。
+    expect(context).toHaveTextContent("正式链路有提示");
+    expect(context).toHaveTextContent("随报告日查询自动更新");
+    expect(context).not.toHaveTextContent("来源状态：正式链路有提示");
+    expect(
+      within(context).getByTitle("来源状态：正式链路有提示"),
+    ).toBeInTheDocument();
+    expect(
+      within(context).getByTitle("刷新：随报告日查询自动更新"),
+    ).toBeInTheDocument();
 
     const table = screen.getByTestId("dashboard-home-market-curve-table");
     expect(table).toHaveAttribute("data-as-of", "2026-04-30");
@@ -221,6 +229,41 @@ describe("DashboardHomeOptionTwoSupportBand", () => {
     expect(panel).not.toHaveTextContent("流动性评分");
     expect(panel).not.toHaveTextContent("偏松");
     expect(panel).not.toHaveTextContent("偏紧");
+  });
+
+  it("keeps raw source tokens out of the visible vendor slot but in the row title", () => {
+    const base = buildView();
+    const view: DashboardHomeBodyView = {
+      ...base,
+      marketContext: {
+        ...base.marketContext,
+        rateSeries: [
+          fundingTicker("M002", {
+            vendorName: null,
+            sourceVersion: "public_repo_rate_query",
+          }),
+          fundingTicker("NCD.SHIBOR.1M", {
+            vendorName: "public_repo_rate_query",
+          }),
+          fundingTicker("NCD.SHIBOR.3M", { vendorName: "tushare" }),
+        ],
+      },
+    };
+
+    renderBand(view);
+
+    const panel = screen.getByTestId("dashboard-home-liquidity-panel");
+    // vendorName 缺失时可见行不再回退 sourceVersion 原始 token。
+    const dr007 = within(panel).getByText("DR007").closest("div");
+    expect(dr007).not.toHaveTextContent("public_repo_rate_query");
+    expect(dr007?.getAttribute("title")).toContain("public_repo_rate_query");
+    // vendorName 本身是 snake_case 内部 token 时同样只留在 title。
+    const shibor1m = within(panel).getByText("SHIBOR 1M").closest("div");
+    expect(shibor1m).not.toHaveTextContent("public_repo_rate_query");
+    expect(shibor1m?.getAttribute("title")).toContain("public_repo_rate_query");
+    // 正常 vendor 名保留在可见行。
+    const shibor3m = within(panel).getByText("SHIBOR 3M").closest("div");
+    expect(shibor3m).toHaveTextContent("tushare");
   });
 
   it("uses the next DR007 alias when the preferred alias fails validation", () => {
@@ -313,5 +356,15 @@ describe("DashboardHomeOptionTwoSupportBand", () => {
     expect(Array.from(statusLabels, (label) => label.textContent)).toEqual(
       Array.from({ length: 8 }, () => "部分可用"),
     );
+  });
+
+  it("renders no per-link status word when the data status is ok", () => {
+    const view = buildView();
+    renderBand(view, "ok");
+
+    const quickLinks = screen.getByTestId("dashboard-home-bottom-grid");
+    expect(within(quickLinks).getAllByRole("link")).toHaveLength(8);
+    expect(quickLinks.querySelectorAll("small")).toHaveLength(0);
+    expect(quickLinks).not.toHaveTextContent("已同步");
   });
 });

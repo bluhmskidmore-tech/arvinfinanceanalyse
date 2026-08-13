@@ -8,7 +8,8 @@ import type {
   HomeMacroReleaseHistoryItem,
 } from "./buildHomeMacroBriefingModel";
 
-const GAP = "—";
+import { EM_DASH } from "../../../../utils/format";
+const GAP = EM_DASH;
 
 function fixed(value: number, precision: number): string {
   return value.toLocaleString("zh-CN", {
@@ -109,7 +110,7 @@ export function buildHomeMacroReleaseHistoryItems(
     category: item.category,
     importance: item.importance,
     importanceLabel: importanceLabel(item.importance),
-    timeLabel: item.release_date ?? "—",
+    timeLabel: item.release_date ?? EM_DASH,
     sourceName: item.source_name ?? "来源待确认",
     sourceUrl: "",
     history: {

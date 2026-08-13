@@ -6,9 +6,11 @@ import {
   normalizeHomeResearchLink,
   normalizeHomeResearchPublishedDate,
 } from "./dashboardHomeResearchContract";
+import { formatResearchTitleDisplay } from "./lib/researchTitleDisplay";
 import styles from "./dashboardHomeOptionTwoResearchList.module.css";
 
-const GAP = "—";
+import { EM_DASH } from "../../../utils/format";
+const GAP = EM_DASH;
 const MAX_VISIBLE_REPORTS = 5;
 
 export type DashboardHomeOptionTwoResearchListProps = {
@@ -22,27 +24,28 @@ function rawResearchTitle(row: HomeResearchReportRow): string {
 
 function researchDisplayTitle(row: HomeResearchReportRow): string {
   const rawTitle = rawResearchTitle(row);
-  if (row.isNewsFallback) return rawTitle;
+  if (rawTitle === GAP) return rawTitle;
 
-  let candidate = rawTitle
-    .replace(/\.pdf$/i, "")
-    .replace(/_\d{8}$/, "")
-    .trim();
+  // 可见标题统一走共享清洗（去扩展名/尾部日期戳、下划线转空格）；原文保留在 title/aria-label。
+  const cleaned = formatResearchTitleDisplay(rawTitle);
+  if (row.isNewsFallback) return cleaned;
+
+  let candidate = cleaned;
   const managedPrefixes = [...new Set(
     [row.institution, row.source]
-      .map((value) => value.trim())
+      .map((value) => value.trim().replaceAll("_", " "))
       .filter((value) => value.length > 0 && value !== GAP),
   )].sort((left, right) => right.length - left.length);
 
   for (const managedPrefix of managedPrefixes) {
-    const boundary = `${managedPrefix}_`;
+    const boundary = `${managedPrefix} `;
     if (candidate.startsWith(boundary)) {
       candidate = candidate.slice(boundary.length).trim();
       break;
     }
   }
 
-  return candidate || rawTitle;
+  return candidate || cleaned;
 }
 
 function researchSummary(row: HomeResearchReportRow, displayTitle: string): string | null {

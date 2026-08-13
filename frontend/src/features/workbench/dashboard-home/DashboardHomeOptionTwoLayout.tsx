@@ -29,6 +29,7 @@ import {
   normalizeHomeResearchLink,
   normalizeHomeResearchPublishedDate,
 } from "./dashboardHomeResearchContract";
+import { formatResearchTitleDisplay } from "./lib/researchTitleDisplay";
 import {
   BondNewsSection,
   type BondNewsActions,
@@ -36,6 +37,7 @@ import {
 import { ResearchCalendarSection } from "./sections/ResearchCalendarSection";
 import styles from "./dashboardHomeOptionTwo.module.css";
 
+import { EM_DASH } from "../../../utils/format";
 type DashboardHomeOptionTwoBodyProps = {
   view: DashboardHomeBodyView;
   firstScreenView: DashboardHomeFirstScreenView;
@@ -64,7 +66,7 @@ function holdingDetailPath(code: string, reportDate: string): string | null {
   const normalizedReportDate = reportDate.trim();
   if (
     !normalizedCode ||
-    normalizedCode === "—" ||
+    normalizedCode === EM_DASH ||
     !/^\d{4}-\d{2}-\d{2}$/.test(normalizedReportDate)
   ) {
     return null;
@@ -488,7 +490,7 @@ export function DashboardHomeOptionTwoBody({
                                 data-state="unavailable"
                                 data-source="unavailable"
                               >
-                                —
+                                {EM_DASH}
                               </span>
                             )}
                           </td>
@@ -855,11 +857,17 @@ export function DashboardHomeOptionTwoBody({
                   <tbody>
                     {visibleResearchReports.map((row) => {
                       const researchLink = normalizeHomeResearchLink(row.link);
+                      // 可见标题走显示层清洗（去扩展名/日期戳/下划线）；title 与 href 保留原文。
+                      const displayTitle = formatResearchTitleDisplay(row.title);
                       return (
                         <tr key={row.id} data-testid="dashboard-home-research-row">
                           <td><ResearchPublishedAt value={row.publishedAt} compact /></td>
                           <td title={row.title}>
-                            {researchLink ? <a href={researchLink}>{row.title}</a> : row.title}
+                            {researchLink ? (
+                              <a href={researchLink}>{displayTitle}</a>
+                            ) : (
+                              displayTitle
+                            )}
                           </td>
                           <td>{row.institution || row.source}</td>
                         </tr>
@@ -904,32 +912,27 @@ export function DashboardHomeOptionTwoBody({
         aria-label="数据证据"
       >
         <strong>数据证据</strong>
-        <span>
-          <LightIcon name="database" />
-          {`核心模块 ${trust.total}`}
-        </span>
+        <span>{`核心模块 ${trust.total}`}</span>
         <span data-tone={trust.ready === trust.total ? "ok" : "warn"}>
-          <LightIcon name="check-circle" />
-          {`核心就绪 ${trust.ready}/${trust.total}`}
+          {`就绪 ${trust.ready}/${trust.total}`}
         </span>
-        <span data-tone={trust.attention > 0 ? "warn" : "ok"}>
-          <LightIcon name={trust.attention > 0 ? "alert" : "safety-certificate"} />
-          {`核心关注 ${trust.attention} 项`}
+        <span
+          className={styles.trustFooterSignal}
+          data-tone={trust.attention > 0 ? "warn" : "ok"}
+        >
+          {`关注 ${trust.attention} 项`}
         </span>
+        <span>{`就绪率 ${trustCompleteness}%`}</span>
+        <span>{`报告日 ${view.reportDate}`}</span>
         <span>
-          <LightIcon name="check-square" />
-          {`核心模块就绪率 ${trustCompleteness}%`}
-        </span>
-        <span>
-          <LightIcon name="calendar" />
-          {`报告日 ${view.reportDate}`}
-        </span>
-        <span>
-          <LightIcon name="clock" />
           {`更新 ${compactClock(updatedAt || firstScreenView.headerStatus.dataUpdatedAt)}`}
         </span>
         {supplementalStateLabel ? (
-          <span data-tone="warn">{`辅助来源 · ${supplementalStateLabel}`}</span>
+          <span
+            className={styles.trustFooterSignal}
+            data-tone="warn"
+            title={`辅助来源 · ${supplementalStateLabel}`}
+          >{`辅助来源 · ${supplementalStateLabel}`}</span>
         ) : null}
         <Link
           data-testid="dashboard-home-data-task-footer"

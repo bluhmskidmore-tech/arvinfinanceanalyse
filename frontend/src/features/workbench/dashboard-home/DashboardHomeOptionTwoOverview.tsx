@@ -19,6 +19,7 @@ import { formatKpiNumeric, parseKpiNumeric } from "./kpiCountUpFormat";
 import { OptionTwoSparkline } from "./OptionTwoSparkline";
 import styles from "./dashboardHomeOptionTwo.module.css";
 
+import { EM_DASH } from "../../../utils/format";
 type DashboardHomeOptionTwoOverviewProps = {
   view: DashboardHomeFirstScreenView;
 };
@@ -42,8 +43,8 @@ function overviewKpiSlot(
   return {
     id: spec.id,
     label: spec.label,
-    value: "—",
-    delta: "—",
+    value: EM_DASH,
+    delta: EM_DASH,
     deltaTone: "muted",
     sparkline: [],
     state: pagePartial ? "partial" : "empty",
@@ -227,6 +228,7 @@ export function DashboardHomeOptionTwoOverview({
     view.decisionRail.keyRisk?.trim() ||
     view.decisionRail.pendingSummary?.trim() ||
     decisionReason;
+  const attentionTitle = decisionTitle(view.decisionRail.conclusion);
   const dataAsOfText = view.reportDateContext.dataAsOfDate.trim() || "无";
   const missingDomainText =
     view.missingDomains.map((domain) => domain.label.trim()).filter(Boolean).join("、") || "无";
@@ -263,6 +265,9 @@ export function DashboardHomeOptionTwoOverview({
             <span>当前状态</span>
             <strong
               data-tone={!governanceFeedAvailable || governedCount > 0 ? "warn" : "ok"}
+              data-emphasis={
+                governanceFeedAvailable && governedCount > 0 ? "high" : "low"
+              }
             >
               {!governanceFeedAvailable
                 ? "暂无正式待办源"
@@ -278,7 +283,7 @@ export function DashboardHomeOptionTwoOverview({
 
           <div className={styles.overviewAttention}>
             <span>观察与数据状态 · 不计入治理待办</span>
-            <strong>{decisionTitle(view.decisionRail.conclusion)}</strong>
+            <strong title={attentionTitle}>{attentionTitle}</strong>
             <small title={attentionSummary}>{attentionSummary}</small>
           </div>
 
@@ -301,7 +306,14 @@ export function DashboardHomeOptionTwoOverview({
                 <dt>数据质量</dt>
                 <dd title={`数据质量 ${stateLabel(dataKind)} · 核心域截至 ${dataAsOfText}`}>
                   <span>{stateLabel(dataKind)}</span>
-                  <small>{`核心域截至 ${dataAsOfText}`}</small>
+                  <small>
+                    {"核心域截至 "}
+                    {/* 每个「域 日期」分段 nowrap，换行只落在分段间，避免日期被拆断。 */}
+                    {dataAsOfText.split(" · ").flatMap((segment, index) => [
+                      index > 0 ? " · " : null,
+                      <span key={`${index}-${segment}`}>{segment}</span>,
+                    ])}
+                  </small>
                 </dd>
               </div>
               <div>
@@ -331,7 +343,15 @@ export function DashboardHomeOptionTwoOverview({
         >
           <article className={styles.productCategoryLeadCell}>
             <span>产品分类经营摘要</span>
-            <strong data-tone={statusTone(productKind)}>{productStateText}</strong>
+            {productKind === "ready" ? (
+              <i
+                data-tone={statusTone(productKind)}
+                title={productStateText}
+                aria-hidden="true"
+              />
+            ) : (
+              <strong data-tone={statusTone(productKind)}>{productStateText}</strong>
+            )}
           </article>
           {view.productCategoryHeadline.metrics.length > 0 ? (
             view.productCategoryHeadline.metrics.map((metric) => (
@@ -427,12 +447,14 @@ export function DashboardHomeOptionTwoOverview({
                     <AnimatedKpiValue value={display.value} state={kpi.state} />
                     {display.unit ? <small>{display.unit}</small> : null}
                   </strong>
-                  <em data-tone={kpi.deltaTone}>{kpi.delta || "—"}</em>
+                  <em data-tone={kpi.deltaTone}>{kpi.delta || EM_DASH}</em>
                   {kpi.sparkline.length > 1 ? (
                     <span className={styles.kpiSparkSlot} aria-hidden="true">
-                      <OptionTwoSparkline values={kpi.sparkline} />
+                      <OptionTwoSparkline values={kpi.sparkline} endDot />
                     </span>
-                  ) : null}
+                  ) : (
+                    <small className={styles.kpiSparkNote}>无历史序列</small>
+                  )}
                 </article>
               );
             })}

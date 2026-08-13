@@ -187,6 +187,51 @@ describe("DashboardHomeToolbar", () => {
     expect(screen.getByTestId("dashboard-home-data-status")).toHaveTextContent("读取中");
   });
 
+  it("keeps the update time only in the left stamp, not in the data status pill", () => {
+    renderToolbar();
+
+    // 左侧“更新 …”是全页更新时间的唯一出处（fixture 无 generatedAt，回落到 dataUpdatedAt）。
+    expect(screen.getByText("更新 09:15")).toBeInTheDocument();
+
+    const dataStatusPill = screen.getByTestId("dashboard-home-data-status");
+    expect(dataStatusPill).toHaveTextContent("数据更新");
+    expect(dataStatusPill).not.toHaveTextContent("09:15");
+  });
+
+  it("merges the market status pill into one short segment with the full context in title", () => {
+    renderToolbar();
+
+    const marketPill = screen.getByTitle("市场同步 · 估值完成");
+    expect(marketPill).toHaveAttribute("data-valuation-tone", "ok");
+    expect(marketPill).toHaveTextContent("估值完成");
+    expect(marketPill).not.toHaveTextContent("市场同步");
+  });
+
+  it("keeps the amber tone marker when the valuation state is abnormal", () => {
+    renderToolbar({
+      headerStatus: {
+        ...headerStatus,
+        marketStatus: "新报告日失败",
+        valuationLabel: "沿用旧快照",
+        valuationTone: "warn",
+      },
+    });
+
+    const marketPill = screen.getByTitle("新报告日失败 · 沿用旧快照");
+    expect(marketPill).toHaveAttribute("data-valuation-tone", "warn");
+    expect(marketPill).toHaveTextContent("沿用旧快照");
+  });
+
+  it("keeps the clickable risk-review pill with its count", () => {
+    renderToolbar({
+      headerStatus: { ...headerStatus, showRiskReview: true, riskReviewCount: 3 },
+    });
+
+    const riskLink = screen.getByRole("link", { name: /风险待复核/ });
+    expect(riskLink).toHaveAttribute("href", "/decision-items");
+    expect(riskLink).toHaveTextContent("3");
+  });
+
   it("does not invent a report date when no actual data date exists", () => {
     render(
       <MemoryRouter>

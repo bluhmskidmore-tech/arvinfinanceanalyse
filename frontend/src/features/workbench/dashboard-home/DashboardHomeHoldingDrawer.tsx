@@ -8,6 +8,7 @@ import type {
 } from "./dashboardHomeBodyView";
 import styles from "./dashboardHomeHoldingDrawer.module.css";
 
+import { EM_DASH } from "../../../utils/format";
 type DashboardHomeHoldingDrawerProps = {
   holdingCount: number;
   holdingsState: HomeTerminalListState;
@@ -32,7 +33,7 @@ const FOCUSABLE_SELECTOR = [
 
 function buildReportDatePath(path: string, reportDate: string): string {
   const trimmed = reportDate.trim();
-  return trimmed && trimmed !== "—"
+  return trimmed && trimmed !== EM_DASH
     ? `${path}?report_date=${encodeURIComponent(trimmed)}`
     : path;
 }
@@ -60,7 +61,7 @@ function resolveDrawerStatus(state: HomeTerminalListState): DrawerStatus {
 }
 
 function NullSafeValue({ value }: { value: string }) {
-  const isNull = value.trim() === "—";
+  const isNull = value.trim() === EM_DASH;
   return (
     <b title={isNull ? "接口未返回可展示值；不替换为 0" : undefined}>
       {value}

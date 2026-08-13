@@ -1,4 +1,5 @@
 import type { HomeMacroBriefingModel } from "../adapters/buildHomeMacroBriefingModel";
+import { formatResearchTitleDisplay } from "../lib/researchTitleDisplay";
 import styles from "../dashboardHomeOptionTwoDeferred.module.css";
 
 type ResearchCalendarSectionProps = {
@@ -13,6 +14,16 @@ function releaseImportanceClass(importance: string): string {
     return styles.dhMacroReleaseItemMedium ?? "";
   }
   return "";
+}
+
+/** 来源长说明只进 title；可见处保留不被截断的短文案。 */
+function compactNewsSourceLabel(sourceLabel: string): string {
+  const base = sourceLabel.replace(/^来源：/, "").trim();
+  if (base.includes("Choice 不可用")) {
+    return "来源 Tushare · Choice 回退";
+  }
+  const head = (base.split("（")[0] ?? base).trim();
+  return `来源 ${head || base}`;
 }
 
 export function ResearchCalendarSection({
@@ -32,6 +43,16 @@ export function ResearchCalendarSection({
     : [];
   const releaseHistoryItems = macroBriefing.releaseHistoryItems;
   const visibleReleaseHistoryItems = releaseHistoryItems;
+  // 常态零徽标：仅异常态（偏旧/兜底/错误）保留轻量徽标，中性元信息进悬浮说明。
+  const visibleSummaryChips = summary.chips.filter(
+    (chip) => chip.tone === "warning" || chip.tone === "danger",
+  );
+  const newsSourceTooltip = [
+    macroBriefing.newsSourceLabel,
+    macroBriefing.newsStatusLabel,
+    macroBriefing.newsAsOfLabel,
+    macroBriefing.newsRefreshLabel,
+  ].join(" · ");
 
   return (
     <section
@@ -85,10 +106,14 @@ export function ResearchCalendarSection({
               <span className={styles.dhMacroReleaseLegacyTitle}>
                 重大信息发布日期前瞻
               </span>
-              <span>时间</span>
-              <span>主题 / 事件</span>
-              <span>来源</span>
-              <span>重要性</span>
+              {macroBriefing.releaseItems.length > 0 ? (
+                <>
+                  <span>时间</span>
+                  <span>主题 / 事件</span>
+                  <span>来源</span>
+                  <span>重要性</span>
+                </>
+              ) : null}
             </div>
             {macroBriefing.releaseItems.length > 0 ? (
               <div
@@ -237,25 +262,27 @@ export function ResearchCalendarSection({
               <span>政策与资金面</span>
               <small>{macroBriefing.newsFreshnessLabel}</small>
             </div>
-            <div
-              className={styles.dhPolicyFundingChips}
-              aria-label="政策与资金面状态标签"
-            >
-              {summary.chips.map((chip) => (
-                <span key={chip.id} data-tone={chip.tone}>
-                  {chip.label}
-                </span>
-              ))}
-            </div>
+            {visibleSummaryChips.length > 0 ? (
+              <div
+                className={styles.dhPolicyFundingChips}
+                aria-label="政策与资金面状态标签"
+              >
+                {visibleSummaryChips.map((chip) => (
+                  <span key={chip.id} data-tone={chip.tone}>
+                    {chip.label}
+                  </span>
+                ))}
+              </div>
+            ) : null}
             <p className={styles.dhPolicyFundingHeadline}>{summary.headline}</p>
             <div
               className={styles.dhMacroTrustStrip}
               aria-label="政策与资金面数据状态"
+              title={newsSourceTooltip}
             >
-              <span>{macroBriefing.newsSourceLabel}</span>
-              <span>{macroBriefing.newsAsOfLabel}</span>
-              <span>{macroBriefing.newsStatusLabel}</span>
-              <span>{macroBriefing.newsRefreshLabel}</span>
+              <span title={macroBriefing.newsSourceLabel}>
+                {compactNewsSourceLabel(macroBriefing.newsSourceLabel)}
+              </span>
             </div>
             {summary.diagnostics ? (
               <div
@@ -302,9 +329,6 @@ export function ResearchCalendarSection({
                 ) : null}
               </div>
             ) : null}
-            {macroBriefing.newsStale ? (
-              <span className={styles.dhMacroNewsStale}>新闻源偏旧</span>
-            ) : null}
           </div>
         </div>
         {summary.groups.length > 0 ? (
@@ -325,8 +349,11 @@ export function ResearchCalendarSection({
                         {item.topicLabel}
                       </span>
                       <span className={styles.dhMacroNewsBody}>
-                        <span className={styles.dhMacroNewsTitle}>
-                          {item.title}
+                        <span
+                          className={styles.dhMacroNewsTitle}
+                          title={item.title}
+                        >
+                          {formatResearchTitleDisplay(item.title)}
                         </span>
                         <span className={styles.dhMacroBriefingMeta}>
                           {item.timeLabel}

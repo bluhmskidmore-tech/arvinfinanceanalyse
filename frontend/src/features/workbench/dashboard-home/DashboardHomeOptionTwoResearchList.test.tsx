@@ -24,7 +24,7 @@ function report(
 }
 
 describe("DashboardHomeOptionTwoResearchList", () => {
-  it("cleans only governed filename boundaries and keeps raw titles as metadata", () => {
+  it("cleans filename artifacts from visible titles and keeps raw titles as metadata", () => {
     const rawTitle = "中信固收_利率债周报_20260715.PDF";
     render(
       <DashboardHomeOptionTwoResearchList
@@ -58,8 +58,8 @@ describe("DashboardHomeOptionTwoResearchList", () => {
     const cells = rows.map((row) => within(row).getAllByRole("cell"));
     expect(cells.map((row) => row[0].textContent)).toEqual([
       "利率债周报",
-      "中信固收研究_信用债周报",
-      "华泰固收_.pdf",
+      "中信固收研究 信用债周报",
+      "华泰固收",
       "国债曲线",
       "普通固收观点.PDF附注",
     ]);
@@ -108,7 +108,7 @@ describe("DashboardHomeOptionTwoResearchList", () => {
     expect(within(rows[3]).queryByRole("link")).not.toBeInTheDocument();
   });
 
-  it("keeps news fallback titles intact and makes the fallback explicit without a report date", () => {
+  it("cleans news fallback titles for display, keeps the raw title as metadata, and stays explicit without a report date", () => {
     const fallbackTitle = "宏观新闻_央行公开市场_20260715.PDF";
     render(
       <DashboardHomeOptionTwoResearchList
@@ -128,8 +128,10 @@ describe("DashboardHomeOptionTwoResearchList", () => {
     expect(within(panel).getByText("研报源暂缺 · 新闻补位")).toBeInTheDocument();
     const row = within(panel).getByTestId("dashboard-home-research-row");
     const cells = within(row).getAllByRole("cell");
-    expect(cells[0]).toHaveTextContent(fallbackTitle);
+    expect(cells[0]).toHaveTextContent("宏观新闻 央行公开市场");
+    expect(cells[0]).not.toHaveTextContent(fallbackTitle);
     expect(cells[0]).toHaveAttribute("aria-label", fallbackTitle);
+    expect(cells[0]).toHaveAttribute("title", fallbackTitle);
     expect(cells[1]).toHaveTextContent("—");
     expect(cells[2]).toHaveTextContent("—");
     expect(row.querySelector("time")).toBeNull();

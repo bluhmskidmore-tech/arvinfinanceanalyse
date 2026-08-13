@@ -1,5 +1,6 @@
 import type { HomeReportDateContext, HomeReportDateMode } from "./dashboardHomeFirstScreenTypes";
 
+import { EM_DASH } from "../../../utils/format";
 /**
  * 首页报告日期展示标签辅助模块。
  *
@@ -9,7 +10,7 @@ import type { HomeReportDateContext, HomeReportDateMode } from "./dashboardHomeF
  * 语义对齐 docs/page_contracts.md：请求日 ≠ 实际数据日时必须显式说明原因。
  */
 
-const GAP = "—";
+const GAP = EM_DASH;
 
 /** 把 "2026-04-18" 格式化为紧凑的 "04/18"；非法或空值返回 GAP。 */
 export function formatShortDate(iso: string | null | undefined): string {

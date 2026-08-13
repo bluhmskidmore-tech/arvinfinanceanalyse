@@ -80,7 +80,7 @@
 }
 
 .tabs button[aria-selected="true"] {
-  color: var(--option-two-ink);
+  color: var(--option-two-blue);
 }
 
 .tabs button[aria-selected="true"]::after {
@@ -131,7 +131,7 @@
   height: 28px;
   color: var(--option-two-muted);
   background: var(--option-two-panel-2);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
 }
 
@@ -165,7 +165,7 @@
 .primary small {
   color: var(--option-two-muted);
   font-family: var(--option-two-font-data);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .numeric,
@@ -175,18 +175,17 @@
 }
 
 .endpoint {
-  color: var(--option-two-soft);
+  color: var(--option-two-muted);
 }
 
+/* 常态零徽标：正常/中性态是圆点或纯文字，胶囊只留 warn/bad 异常态。 */
 .status {
   display: inline-flex;
   max-width: 100%;
   min-height: 20px;
-  padding: 1px 6px;
   align-items: center;
+  gap: 6px;
   overflow: hidden;
-  border: 1px solid var(--option-two-line-strong);
-  border-radius: var(--dh-api-radius, 6px);
   color: var(--option-two-muted);
   font-size: 11px;
   line-height: 16px;
@@ -195,18 +194,35 @@
   box-sizing: border-box;
 }
 
-.status[data-tone="ok"] {
-  border-color: color-mix(in srgb, var(--option-two-green) 48%, transparent);
-  color: var(--option-two-green);
+.status[data-tone="ok"]::before {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: color-mix(
+    in srgb,
+    var(--option-two-green) 58%,
+    var(--option-two-panel-2)
+  );
+  content: "";
 }
 
-.status[data-tone="warn"] {
-  border-color: color-mix(in srgb, var(--option-two-amber) 48%, transparent);
+/* 页级 [data-tone="ok"] 绿色 !important 服务涨跌语义；
+   台账常态文字回归 muted，仅保留暗绿圆点（对齐 stateMessage 压制先例）。 */
+.ledger .status[data-tone="ok"] {
+  color: var(--option-two-muted) !important;
+}
+
+.status[data-tone="warn"],
+.status[data-tone="bad"] {
+  padding: 1px 6px;
+  border-radius: var(--dh-api-radius, 6px);
+  background: color-mix(in srgb, var(--option-two-amber) 12%, transparent);
   color: var(--option-two-amber);
 }
 
 .status[data-tone="bad"] {
-  border-color: color-mix(in srgb, var(--option-two-red) 48%, transparent);
+  background: color-mix(in srgb, var(--option-two-red) 12%, transparent);
   color: var(--option-two-red);
 }
 

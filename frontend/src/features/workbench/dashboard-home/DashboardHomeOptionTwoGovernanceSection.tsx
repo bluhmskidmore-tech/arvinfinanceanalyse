@@ -12,6 +12,7 @@ import type {
 import type { DashboardHomeAvailability } from "./dashboardHomeAvailability";
 import styles from "./dashboardHomeOptionTwoGovernanceSection.module.css";
 
+import { EM_DASH } from "../../../utils/format";
 type DashboardHomeOptionTwoGovernanceSectionProps = {
   view: DashboardHomeBodyView;
   availability?: DashboardHomeAvailability;
@@ -22,7 +23,7 @@ type GovernanceTabId = "source" | "evidence" | "api" | "lineage";
 type LedgerTone = "ok" | "warn" | "bad" | "muted";
 type LedgerStatus = { label: string; tone: LedgerTone };
 
-const GAP = "—";
+const GAP = EM_DASH;
 const GOVERNANCE_TABS: ReadonlyArray<{
   id: GovernanceTabId;
   label: string;
@@ -151,7 +152,7 @@ function supplementalStatus(label: string | undefined): LedgerStatus {
 
 function Status({ status }: { status: LedgerStatus }) {
   return (
-    <span className={styles.status} data-tone={status.tone}>
+    <span className={styles.status} data-tone={status.tone} title={status.label}>
       {status.label}
     </span>
   );

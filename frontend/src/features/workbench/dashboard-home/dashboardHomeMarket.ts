@@ -5,6 +5,7 @@ import {
 } from "../../../utils/choiceMacroFormat";
 import { sparklineFromChoicePoint } from "../module-home/marketHomeRowEnrichment";
 
+import { EM_DASH } from "../../../utils/format";
 const MARKET_TICKER_PRIORITY: ReadonlyArray<{
   ids: readonly string[];
   label: string;
@@ -85,8 +86,8 @@ function mapMarketPoint(point: ChoiceMacroLatestPoint): HomeMarketTicker {
   return {
     id: point.series_id,
     label,
-    value: formatChoiceMacroValue(point, { spaceBeforeUnit: false, emptyDisplay: "—" }),
-    delta: formatChoiceMacroDelta(point, { spaceBeforeUnit: false, emptyDisplay: "—" }),
+    value: formatChoiceMacroValue(point, { spaceBeforeUnit: false, emptyDisplay: EM_DASH }),
+    delta: formatChoiceMacroDelta(point, { spaceBeforeUnit: false, emptyDisplay: EM_DASH }),
     deltaTone: changeTone(point.latest_change),
     sparkline: sparklineFromChoicePoint(point) ?? [],
     tradeDate: point.trade_date,

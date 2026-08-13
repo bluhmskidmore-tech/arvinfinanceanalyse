@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 
+import { EM_DASH } from "../../../utils/format";
 import { buildBondTradingDeskPath } from "../../bond-trading-desk/lib/bondTradingDeskPageModel";
 import { createMockHomeFirstScreenView } from "./dashboardHomeFirstScreenMockView";
 import {
@@ -340,7 +341,8 @@ describe("DashboardHomeOptionTwoBody", () => {
     );
 
     const evidence = screen.getByTestId("dashboard-home-data-tasks");
-    expect(within(evidence).getByText(/核心模块就绪率/)).toBeInTheDocument();
+    expect(within(evidence).getByText(/^核心模块 \d+$/)).toBeInTheDocument();
+    expect(within(evidence).getByText(/^就绪率 \d+%$/)).toBeInTheDocument();
     expect(within(evidence).queryByText(/^完整率/)).not.toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "研究与资讯证据" }),
@@ -475,8 +477,11 @@ describe("DashboardHomeOptionTwoBody", () => {
     );
 
     const evidence = screen.getByTestId("dashboard-home-data-tasks");
-    expect(evidence).toHaveTextContent("核心就绪 4/6");
-    expect(evidence).toHaveTextContent("核心关注 2 项");
+    expect(evidence).toHaveTextContent("就绪 4/6");
+    expect(within(evidence).getByText("关注 2 项")).toHaveAttribute(
+      "data-tone",
+      "warn",
+    );
   });
 
   it("gives position and risk drilldowns descriptive accessible names", () => {
@@ -672,5 +677,49 @@ describe("DashboardHomeOptionTwoBody", () => {
       within(researchTable).getByTestId("dashboard-home-research-disclosure"),
     ).toHaveTextContent("研报源暂缺 · 新闻补位");
     expect(within(researchTable).getByText("政策资金面快讯")).toBeInTheDocument();
+  });
+
+  it("cleans raw research filenames in the visible title while keeping href and title raw", () => {
+    const baseView = mapToHomeBodyView({
+      reportDate: "2026-06-30",
+      useMockFallback: true,
+    } as MapToHomeBodyViewInput);
+    const view = {
+      ...baseView,
+      researchReports: [
+        {
+          id: "raw-file-report",
+          title: "华源证券_公司动态研究报告_20260712.pdf",
+          category: "fixed_income",
+          publishedAt: "2026-07-12",
+          source: "research",
+          institution: "华源证券",
+          summary: EM_DASH,
+          link: "https://example.com/hy.pdf",
+          isNewsFallback: false,
+        },
+      ],
+      researchReportsState: { kind: "ready" as const, label: "已接入" },
+    };
+
+    render(
+      <MemoryRouter>
+        <DashboardHomeOptionTwoBody
+          firstScreenView={createMockHomeFirstScreenView()}
+          view={view}
+        />
+      </MemoryRouter>,
+    );
+
+    const researchTable = screen.getByTestId("dashboard-home-research-reports");
+    const cleanedLink = within(researchTable).getByRole("link", {
+      name: "华源证券 公司动态研究报告",
+    });
+    expect(cleanedLink).toHaveAttribute("href", "https://example.com/hy.pdf");
+    expect(cleanedLink.closest("td")).toHaveAttribute(
+      "title",
+      "华源证券_公司动态研究报告_20260712.pdf",
+    );
+    expect(within(researchTable).queryByText(/\.pdf/)).toBeNull();
   });
 });

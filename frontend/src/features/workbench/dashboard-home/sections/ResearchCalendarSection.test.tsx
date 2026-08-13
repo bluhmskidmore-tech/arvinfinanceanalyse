@@ -131,11 +131,23 @@ describe("ResearchCalendarSection", () => {
     expect(screen.getByText("发布项")).toBeInTheDocument();
     expect(screen.getByText("重大信息发布日期前瞻")).toBeInTheDocument();
     expect(screen.getByText("未来 45 天 · 1 项")).toBeInTheDocument();
+    expect(screen.getByText("主题 / 事件")).toBeInTheDocument();
     expect(screen.getByText("政策与资金面")).toBeInTheDocument();
-    expect(screen.getByText("来源：Choice 宏观新闻")).toBeInTheDocument();
-    expect(screen.getAllByText("数据截至 04-21 15:06").length).toBeGreaterThan(0);
-    expect(screen.getByText("来源状态：正常")).toBeInTheDocument();
-    expect(screen.getByText("刷新：随页面查询读取已落库数据")).toBeInTheDocument();
+
+    // 来源长说明只进 title，可见处保留短文案；正常态不渲染状态胶囊。
+    const policyTrustStrip = screen.getByLabelText("政策与资金面数据状态");
+    expect(
+      within(policyTrustStrip).getByText("来源 Choice 宏观新闻"),
+    ).toBeInTheDocument();
+    expect(policyTrustStrip).toHaveAttribute(
+      "title",
+      "来源：Choice 宏观新闻 · 来源状态：正常 · 数据截至 04-21 15:06 · 刷新：随页面查询读取已落库数据",
+    );
+    expect(screen.queryByText("来源状态：正常")).not.toBeInTheDocument();
+    expect(screen.queryByText("刷新：随页面查询读取已落库数据")).not.toBeInTheDocument();
+    expect(screen.queryByText("正常")).not.toBeInTheDocument();
+    expect(screen.queryByText("数据截至 04-21 15:06")).not.toBeInTheDocument();
+    expect(screen.getByText("最近更新 04-21 15:06")).toBeInTheDocument();
     expect(screen.getByText("ISM 制造业 PMI")).toBeInTheDocument();
     expect(screen.getByText("明日")).toBeInTheDocument();
     expect(screen.getByText("高优先级")).toBeInTheDocument();
@@ -168,7 +180,22 @@ describe("ResearchCalendarSection", () => {
 
     expect(screen.getByTestId("dashboard-home-policy-funding-pane")).toBeInTheDocument();
     expect(screen.getByText(policyFundingSummary.headline)).toBeInTheDocument();
-    expect(screen.getByText("Tushare 兜底")).toBeInTheDocument();
+    // 异常态（兜底）胶囊保留；来源长说明折叠为短文案，原文进 title。
+    const fallbackChip = screen.getByText("Tushare 兜底");
+    expect(fallbackChip).toHaveAttribute("data-tone", "warning");
+    expect(screen.getByText("来源 Tushare · Choice 回退")).toBeInTheDocument();
+    expect(
+      screen.queryByText("来源：Tushare 宏观快讯（Choice 不可用或偏旧兜底）"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText("政策与资金面数据状态")).toHaveAttribute(
+      "title",
+      expect.stringContaining("来源：Tushare 宏观快讯（Choice 不可用或偏旧兜底）"),
+    );
+    // 未来事件空态收缩为一行说明，不渲染空表头。
+    expect(
+      screen.getByText("暂无已维护发布日期，请补充配置清单。"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("主题 / 事件")).not.toBeInTheDocument();
     expect(screen.getByText("央行/公开市场")).toBeInTheDocument();
     expect(screen.getByText("利率/债券")).toBeInTheDocument();
     expect(screen.getByText("本周中国央行公开市场将有9089亿元逆回购到期")).toBeInTheDocument();

@@ -4,6 +4,7 @@ import type {
   HomeReportDateContext,
 } from "./dashboardHomeFirstScreenTypes";
 
+import { EM_DASH } from "../../../utils/format";
 export type DashboardHomeAvailabilityKind =
   | "available"
   | "partial"
@@ -52,7 +53,7 @@ const ISO_REPORT_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 function cleanOptionalText(value: string | null | undefined): string {
   const normalized = value?.trim() ?? "";
-  return normalized && normalized !== "—" ? normalized : "";
+  return normalized && normalized !== EM_DASH ? normalized : "";
 }
 
 export function dashboardHomeSnapshotFailureCopy(

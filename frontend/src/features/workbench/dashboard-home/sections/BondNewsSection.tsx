@@ -5,6 +5,7 @@ import type {
   HomeBondNewsModel,
   HomeBondNewsItem,
 } from "../adapters/buildHomeBondNewsModel";
+import { formatResearchTitleDisplay } from "../lib/researchTitleDisplay";
 import styles from "../dashboardHomeOptionTwoDeferred.module.css";
 
 type BondNewsSectionProps = {
@@ -35,22 +36,32 @@ const HOME_NEWS_QUERY_PREFIXES = [
 ] as const;
 const SOURCE_UPDATE_BOUNDARY_LABEL = "来源更新：后台受控";
 
-function BondNewsItemRow({ item }: { item: HomeBondNewsItem }) {
+function BondNewsItemRow({
+  item,
+  groupTitle,
+}: {
+  item: HomeBondNewsItem;
+  groupTitle: string;
+}) {
   const itemTooltip = `${item.title} · ${item.hitLabel ?? item.sourceLabel} · ${item.timeLabel}`;
+  // 与分组标题重复的分类不再逐行渲染；仅保留有业务差异的分类作轻量文本。
+  const showTopic = Boolean(item.topicLabel) && item.topicLabel !== groupTitle;
   return (
     <div
       data-layout-role="bond-news-item"
-      className={styles.dhBondNewsItem}
+      className={`${styles.dhBondNewsItem} ${showTopic ? "" : styles.dhBondNewsItemBare}`}
       title={itemTooltip}
     >
-      <span
-        data-layout-role="bond-news-topic"
-        className={styles.dhBondNewsTopic}
-      >
-        {item.topicLabel}
-      </span>
+      {showTopic ? (
+        <span
+          data-layout-role="bond-news-topic"
+          className={styles.dhBondNewsTopic}
+        >
+          {item.topicLabel}
+        </span>
+      ) : null}
       <span data-layout-role="bond-news-body" className={styles.dhBondNewsBody}>
-        <strong title={item.title}>{item.title}</strong>
+        <strong title={item.title}>{formatResearchTitleDisplay(item.title)}</strong>
         <small>
           {item.hitLabel ?? item.sourceLabel} · {item.timeLabel}
         </small>
@@ -86,7 +97,7 @@ function BondNewsGroup({
           className={styles.dhBondNewsList}
         >
           {items.map((item) => (
-            <BondNewsItemRow key={item.id} item={item} />
+            <BondNewsItemRow key={item.id} item={item} groupTitle={title} />
           ))}
         </div>
       ) : (
@@ -105,6 +116,18 @@ export function BondNewsSection({
   const [isRereading, setIsRereading] = useState(false);
   const [actionStatus, setActionStatus] = useState("");
   const [actionError, setActionError] = useState("");
+
+  // 卡头元信息最多两枚：数据截止 + 异常态状态；来源/边界/刷新说明与全页更新时间收进悬浮说明。
+  const isStatusAbnormal = !bondNews.statusLabel.includes("正常");
+  const headerTooltip = [
+    bondNews.sourceLabel,
+    SOURCE_UPDATE_BOUNDARY_LABEL,
+    bondNews.statusLabel,
+    bondNews.refreshLabel,
+    updatedAt ? `更新 ${updatedAt}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   const handleReread = async () => {
     if (!actions) {
@@ -160,14 +183,14 @@ export function BondNewsSection({
             data-layout-role="bond-news-trust-strip"
             className={styles.dhMacroTrustStrip}
             aria-label="债券新闻数据状态"
+            title={headerTooltip}
           >
-            <span title={bondNews.sourceLabel}>{bondNews.sourceLabel}</span>
-            <span title={SOURCE_UPDATE_BOUNDARY_LABEL}>
-              {SOURCE_UPDATE_BOUNDARY_LABEL}
-            </span>
             <span title={bondNews.asOfLabel}>{bondNews.asOfLabel}</span>
-            <span title={bondNews.statusLabel}>{bondNews.statusLabel}</span>
-            <span title={bondNews.refreshLabel}>{bondNews.refreshLabel}</span>
+            {isStatusAbnormal ? (
+              <span data-tone="warning" title={bondNews.statusLabel}>
+                {bondNews.statusLabel}
+              </span>
+            ) : null}
           </div>
           <div
             data-layout-role="bond-news-actions"
@@ -193,7 +216,6 @@ export function BondNewsSection({
               更新来源
             </button>
           </div>
-          {updatedAt ? <time>{`更新 ${updatedAt}`}</time> : null}
         </div>
         {actionStatus || actionError ? (
           <p

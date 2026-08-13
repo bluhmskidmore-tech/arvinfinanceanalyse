@@ -573,19 +573,6 @@
   content: " · ";
 }
 
-.dhMacroNewsStale {
-  display: inline;
-  width: auto;
-  margin: 0 0 8px;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--ib-warn);
-  font-size: 12px;
-  font-weight: 400;
-}
-
 .dhPolicyFundingPane {
   align-self: start;
   scroll-margin-top: 18px;
@@ -1050,6 +1037,10 @@
   border-top-left-radius: 0;
   border-top-right-radius: 0;
 }
+
+.dhBondNewsItemBare {
+  grid-template-columns: minmax(0, 1fr);
+}
 .dhBondNewsItem:hover {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.06);
@@ -1058,14 +1049,14 @@
 .dhBondNewsTopic {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-width: 54px;
-  padding: 3px 7px;
-  border-radius: var(--dh-api-radius);
-  background: rgba(53, 103, 155, 0.12);
-  color: var(--dh-blue);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--dh-muted);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 500;
   line-height: 1.25;
   white-space: nowrap;
 }
@@ -1291,12 +1282,6 @@
   color: var(--dh-api-soft);
 }
 
-:global([data-testid="dashboard-home-page"]) .dhMacroNewsStale {
-  background: var(--dh-api-amber-soft);
-  border-color: rgba(201, 165, 101, 0.3);
-  color: var(--dh-api-amber);
-}
-
 :global([data-testid="dashboard-home-page"]) .dhPolicyFundingHeadline {
   background: rgba(7, 11, 21, 0.54);
   border: 1px solid rgba(36, 49, 73, 0.62);
@@ -1333,6 +1318,14 @@
   content: none;
 }
 
+:global([data-testid="dashboard-home-page"])
+  .dhMacroTrustStrip
+  span[data-tone="warning"] {
+  background: var(--dh-api-amber-soft);
+  border-color: rgba(201, 165, 101, 0.3);
+  color: var(--dh-api-amber);
+}
+
 :global([data-testid="dashboard-home-page"]) .dhPolicyFundingChips {
   gap: 6px;
   margin-bottom: 10px;
@@ -1355,6 +1348,33 @@
   span
   + span::before {
   content: none;
+}
+
+:global([data-testid="dashboard-home-page"])
+  .dhPolicyFundingChips
+  span[data-tone="warning"],
+:global([data-testid="dashboard-home-page"])
+  .dhPolicyFundingChips
+  span[data-tone="danger"] {
+  border-radius: 2px;
+  font-weight: 600;
+  min-height: 0;
+  padding: 2px 6px;
+}
+
+:global([data-testid="dashboard-home-page"])
+  .dhPolicyFundingChips
+  span[data-tone="warning"] {
+  background: var(--dh-api-amber-soft);
+  border-color: rgba(201, 165, 101, 0.3);
+  color: var(--dh-api-amber);
+}
+
+:global([data-testid="dashboard-home-page"])
+  .dhPolicyFundingChips
+  span[data-tone="danger"] {
+  border-color: rgba(214, 105, 111, 0.34);
+  color: var(--dh-api-red);
 }
 
 :global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnostics {
@@ -1732,7 +1752,6 @@
   letter-spacing: 0;
 }
 
-.dhBondNewsTopic,
 .dhBondNewsGroupHeader small {
   align-items: center;
   border-radius: 999px;
@@ -1805,10 +1824,7 @@
 }
 
 .dhBondNewsTopic {
-  background: rgba(114, 167, 220, 0.1);
-  border: 1px solid rgba(114, 167, 220, 0.22);
-  color: var(--dh-api-blue);
-  min-width: 50px;
+  color: var(--dh-api-muted);
 }
 .dhBondNewsGroupEmpty {
   min-height: 0;

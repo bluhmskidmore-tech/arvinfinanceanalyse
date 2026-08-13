@@ -8,6 +8,8 @@ type OptionTwoSparklineProps = {
   className?: string;
   title?: string;
   endDot?: boolean;
+  /** 在每个有效数据点画小圆点（如期限锚点），末点仍由 endDot 单独加重。 */
+  pointDots?: boolean;
   /** 与 values 等长的横轴刻度（须递增）；缺省时按索引等距。 */
   xValues?: ReadonlyArray<number>;
 };
@@ -42,6 +44,7 @@ export function OptionTwoSparkline({
   className,
   title,
   endDot = false,
+  pointDots = false,
   xValues,
 }: OptionTwoSparklineProps) {
   const numeric = values.filter(
@@ -99,6 +102,20 @@ export function OptionTwoSparkline({
         strokeLinecap="round"
         vectorEffect="non-scaling-stroke"
       />
+      {pointDots
+        ? points.map((point, index) => (
+            <circle
+              key={`${point.x}-${index}`}
+              cx={point.x}
+              cy={point.y}
+              r={1.3}
+              fill="currentColor"
+              fillOpacity={0.85}
+              stroke="none"
+              data-point-dot="true"
+            />
+          ))
+        : null}
       {endDot && lastPoint ? (
         <circle
           cx={lastPoint.x}
@@ -106,6 +123,7 @@ export function OptionTwoSparkline({
           r={1.8}
           fill="currentColor"
           stroke="none"
+          data-end-dot="true"
         />
       ) : null}
     </svg>

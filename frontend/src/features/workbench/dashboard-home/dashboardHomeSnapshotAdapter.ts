@@ -18,6 +18,7 @@ import {
 } from "./lib/sanitizeMetricCopy";
 import type { HomeProductCategoryHeadline } from "./dashboardHomeFirstScreenTypes";
 
+import { EM_DASH } from "../../../utils/format";
 type HomeSnapshotMetricTone = "positive" | "neutral" | "warning" | "negative";
 
 export type HomeSnapshotOverviewMetricVM = {
@@ -304,7 +305,7 @@ function datesDiverged(domains: Record<string, string>): boolean {
   return uniqueDates.size > 1;
 }
 
-const PRODUCT_CATEGORY_GAP = "—";
+const PRODUCT_CATEGORY_GAP = EM_DASH;
 
 function isGovernedNumeric(value: Numeric | null | undefined): boolean {
   return value?.raw != null && Number.isFinite(value.raw);

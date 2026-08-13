@@ -3317,3 +3317,53 @@ i.dhApiStateMuted {
     padding-left: 0;
   }
 }
+
+/* ============================================================
+ * 首页顶栏状态列（视觉打磨新增层）：以下均为【新增】首页专用类，
+ * 不修改任何跨页共享类的既有值（risk-overview / stock-analysis /
+ * macro-toolkit 继续消费上方的 dhTopbar/dhStatusPill/dhDot 原值）。
+ * 统一标准：常态零徽标 —— ok 态降为无边框状态点+文字；
+ * 胶囊只保留异常态（琥珀描边）与可点击项（风险待复核）。
+ * ============================================================ */
+
+/* 状态行去容器铬件：不再叠一层暗底圆角框，避免与内部胶囊形成双重描边。 */
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhStatusRowPlain {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  gap: 10px;
+  padding: 0;
+}
+
+/* 常态（ok）：无边框点+文字；display 同时抵消旧皮肤对第 2+ 项的整列隐藏。 */
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhStatusRow > .dhStatusPillQuiet {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--dh-api-soft);
+  display: inline-flex;
+  font-weight: 400;
+  gap: 6px;
+  padding: 0 2px;
+}
+
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhStatusRow > .dhStatusPillQuiet .dhDot {
+  background: var(--dh-api-green);
+}
+
+/* 异常态：描边琥珀胶囊（旧皮肤会把警示胶囊也刷成绿色，此处按状态语义纠正）。 */
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhStatusRow > .dhStatusPillWarnTone {
+  background: color-mix(in srgb, var(--dh-api-amber) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--dh-api-amber) 38%, transparent);
+  color: var(--dh-api-amber);
+  display: inline-flex;
+}
+
+/* 可点击胶囊（风险待复核）：保留红色警示语义与计数。 */
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhStatusRow > .dhStatusPillRiskEntry {
+  background: color-mix(in srgb, var(--dh-api-red) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--dh-api-red) 38%, transparent);
+  color: var(--dh-api-red);
+  display: inline-flex;
+  text-decoration: none;
+}

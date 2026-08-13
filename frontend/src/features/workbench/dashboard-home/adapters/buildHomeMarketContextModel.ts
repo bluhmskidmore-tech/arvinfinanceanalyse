@@ -18,6 +18,7 @@ import {
   type HomeMarketTicker,
 } from "../dashboardHomeMarket";
 
+import { EM_DASH } from "../../../../utils/format";
 export type HomeMarketContextTone = "cool" | "neutral" | "hot";
 
 export type HomeMarketContextBlock = {
@@ -75,7 +76,7 @@ type MoneyComponent = {
 const SOURCE_LABEL =
   "来源：收益归因 / yield_curve_term_structure / credit_spread_migration";
 const REFRESH_LABEL = "刷新：随报告日查询自动更新";
-const GAP = "—";
+const GAP = EM_DASH;
 const KEY_TENORS = ["1Y", "3Y", "5Y", "10Y"] as const;
 
 function clampScore(value: number): number {
