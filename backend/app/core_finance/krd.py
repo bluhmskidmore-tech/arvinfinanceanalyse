@@ -1,3 +1,27 @@
+"""
+DORMANT: 无生产调用方（2026-08 复核：除 tests/ 外，仓库内仅同样休眠的
+credit_spread.py 引用 classify_asset_class / map_accounting_class）。接线前必须：
+
+1. 短端桶归并（``KRD_SHORT_END_BUCKET_MERGE``）已补，但**正式 KRD 口径以
+   risk_tensor.py 为准**；本文件是迁移期备用实现，不得与 risk_tensor 并行出账。
+2. 先消歧"KRD"三义再暴露给页面：本文件 ``krd`` = Σ weight × 修正久期（无量纲）；
+   ``risk_tensor`` 的 krd_1y..krd_30y = 桶内 ΣDV01（元/bp）；
+   ``bond_analytics/read_models`` 的 krd_buckets.avg_modified_duration
+   = 桶内市值加权平均修正久期（年）。见 docs/calc_rules.md
+   "Curve-risk bucket field naming"。
+3. 补齐黄金测试：tests/test_krd_golden.py 三只券均 ≥2Y，短端另见
+   tests/test_krd_short_end_buckets.py；接线新口径需同步扩这两个文件。
+
+已知口径限制：
+- 久期来自 bond_duration.py 的整期闭式近似，对碎期券与街市惯例（引擎口径）
+  存在约 8% 量级差异，见 docs/calc_rules.md "Fractional-period duration
+  dual caliber"。
+- steepening / flattening 幅度与 bond_analytics/common.py 同名情景不同
+  （本文件 1Y∓25bp / 30Y±25bp 驼峰形，该处为 30Y±50bp 线性），2026-07 经确认并存。
+
+关键利率久期（KRD）与曲线情景（纯函数）。
+"""
+
 from __future__ import annotations
 
 import logging
@@ -25,26 +49,42 @@ logger = logging.getLogger(__name__)
 
 KRD_TENORS = ("1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "15Y", "20Y", "30Y")
 
+# 短端桶归并。``attribution_core.get_tenor_bucket`` 会产出 ON/7D/1M/3M/6M，而
+# ``KRD_TENORS`` 自 1Y 起：不归并则短融/超短融/存单被静默丢弃，但权重分母仍含
+# 全部持仓，导致 Σ KRD < 组合修正久期且无披露。
+# 口径对齐 ``risk_tensor.KRD_BUCKET_FALLBACK``（生产路径）的"就近映射到受支持桶"
+# 规则——其中 6M -> krd_1y 已是既有生产口径；其余 <1Y 桶按同一规则同归 1Y。
+KRD_SHORT_END_BUCKET_MERGE: dict[str, str] = {
+    "ON": "1Y",
+    "7D": "1Y",
+    "1M": "1Y",
+    "3M": "1Y",
+    "6M": "1Y",
+}
+
 STANDARD_KRD_SCENARIOS = (
+    # 平行情景用 ``"all"`` 键（与 bond_analytics/common.py 的 STANDARD_SCENARIOS
+    # 一致）：逐桶枚举 KRD_TENORS 会让 ON~6M 短端持仓冲击恒为 0，"平行"情景损益
+    # 被系统性低估。
     {
         "name": "parallel_up_25bp",
         "description": "Parallel +25bp",
-        "shocks": {tenor: 25 for tenor in KRD_TENORS},
+        "shocks": {"all": 25},
     },
     {
         "name": "parallel_up_50bp",
         "description": "Parallel +50bp",
-        "shocks": {tenor: 50 for tenor in KRD_TENORS},
+        "shocks": {"all": 50},
     },
     {
         "name": "parallel_up_100bp",
         "description": "Parallel +100bp",
-        "shocks": {tenor: 100 for tenor in KRD_TENORS},
+        "shocks": {"all": 100},
     },
     {
         "name": "parallel_down_25bp",
         "description": "Parallel -25bp",
-        "shocks": {tenor: -25 for tenor in KRD_TENORS},
+        "shocks": {"all": -25},
     },
     # 口径说明（2026-07 经确认并存，勿擅自统一）：本文件 KRD 情景的陡峭化/平坦化
     # 幅度为 1Y∓25bp / 30Y±25bp（10Y 后回落的驼峰形），而 bond_analytics/common.py
@@ -267,7 +307,11 @@ def _get_tenor_from_position(
     if maturity_date is not None and effective_report_date is not None:
         years = max((maturity_date - effective_report_date).days / 365.0, 0.0)
         return get_tenor_bucket(years)
-    return get_tenor_bucket(float(duration or Decimal("5")))
+    # ``duration`` 为 Decimal("0") 时必须按真实的 0 处理：缺到期日的持仓经
+    # ``common.resolve_missing_maturity_duration`` 返回 DURATION_UNAVAILABLE(0)，
+    # 而 ``or`` 会把它当成"没有值"回退到 5 年，把这批持仓错分进 5Y 桶。
+    # 只有"根本没传久期"（None）才走 5 年占位。
+    return get_tenor_bucket(float(duration if duration is not None else Decimal("5")))
 
 
 def build_krd_position_metrics(
@@ -356,18 +400,17 @@ def build_krd_position_metrics(
     return metrics
 
 
-def compute_krd_by_tenor(
-    positions: Iterable[Any],
-    *,
-    report_date: date | None = None,
-    wind_metrics: Mapping[str, Mapping[str, Any]] | None = None,
-    tenors: Iterable[str] = KRD_TENORS,
-) -> list[dict[str, Any]]:
-    metrics = build_krd_position_metrics(
-        positions,
-        report_date=report_date,
-        wind_metrics=wind_metrics,
-    )
+def _aggregate_krd_buckets(
+    metrics: Iterable[Mapping[str, Any]],
+    tenors: Iterable[str],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """按桶聚合 KRD，并返回归并/丢弃披露。
+
+    短端桶按 ``KRD_SHORT_END_BUCKET_MERGE`` 归并；仍无法归并的桶才丢弃，
+    丢弃必须 warning 并在披露中给出市值、行数与占组合市值的比重（该比重即
+    Σ KRD 相对组合修正久期的缺口上界）。
+    """
+    metric_list = list(metrics)
     tenor_map = {
         tenor: {
             "tenor": tenor,
@@ -378,23 +421,113 @@ def compute_krd_by_tenor(
         for tenor in tenors
     }
     total_market_value = sum(
-        (metric["market_value"] for metric in metrics),
+        (safe_decimal(metric["market_value"]) for metric in metric_list),
         Decimal("0"),
     )
 
-    for metric in metrics:
-        tenor_bucket = metric["tenor_bucket"]
-        if tenor_bucket not in tenor_map:
-            continue
-        tenor_map[tenor_bucket]["krd"] += metric["weight"] * safe_decimal(metric["modified_duration"])
-        tenor_map[tenor_bucket]["dv01"] += safe_decimal(metric["dv01"])
-        tenor_map[tenor_bucket]["market_value_weight"] += (
-            safe_decimal(metric["market_value"]) / total_market_value
-            if total_market_value > 0
-            else Decimal("0")
+    merged_buckets: dict[str, str] = {}
+    merged_market_value = Decimal("0")
+    merged_position_count = 0
+    dropped_buckets: set[str] = set()
+    dropped_market_value = Decimal("0")
+    dropped_position_count = 0
+
+    for metric in metric_list:
+        tenor_bucket = str(metric["tenor_bucket"])
+        market_value = safe_decimal(metric["market_value"])
+        if tenor_bucket in tenor_map:
+            target = tenor_bucket
+        else:
+            target = KRD_SHORT_END_BUCKET_MERGE.get(tenor_bucket, "")
+            if target not in tenor_map:
+                dropped_buckets.add(tenor_bucket)
+                dropped_market_value += market_value
+                dropped_position_count += 1
+                continue
+            merged_buckets[tenor_bucket] = target
+            merged_market_value += market_value
+            merged_position_count += 1
+
+        bucket = tenor_map[target]
+        bucket["krd"] += metric["weight"] * safe_decimal(metric["modified_duration"])
+        bucket["dv01"] += safe_decimal(metric["dv01"])
+        bucket["market_value_weight"] += (
+            market_value / total_market_value if total_market_value > 0 else Decimal("0")
         )
 
-    return list(tenor_map.values())
+    warnings: list[str] = []
+    if merged_buckets:
+        detail = ", ".join(f"{src}->{dst}" for src, dst in sorted(merged_buckets.items()))
+        warnings.append(f"Short-end tenor buckets merged into nearest KRD bucket: {detail}")
+        logger.warning(
+            "compute_krd_by_tenor: merged short-end buckets %s (market_value=%s, rows=%s)",
+            detail,
+            merged_market_value,
+            merged_position_count,
+        )
+    if dropped_buckets:
+        detail = ", ".join(sorted(dropped_buckets))
+        warnings.append(f"Tenor buckets excluded from KRD: {detail}")
+        logger.warning(
+            "compute_krd_by_tenor: dropped buckets %s (market_value=%s, rows=%s); "
+            "sum(KRD) understates portfolio modified duration",
+            detail,
+            dropped_market_value,
+            dropped_position_count,
+        )
+
+    disclosure = {
+        "total_market_value": total_market_value,
+        "merged_buckets": dict(sorted(merged_buckets.items())),
+        "merged_market_value": merged_market_value,
+        "merged_position_count": merged_position_count,
+        "dropped_buckets": sorted(dropped_buckets),
+        "dropped_market_value": dropped_market_value,
+        "dropped_position_count": dropped_position_count,
+        "dropped_market_value_weight": (
+            dropped_market_value / total_market_value
+            if total_market_value > 0
+            else Decimal("0")
+        ),
+        "warnings": warnings,
+    }
+    return list(tenor_map.values()), disclosure
+
+
+def compute_krd_by_tenor(
+    positions: Iterable[Any],
+    *,
+    report_date: date | None = None,
+    wind_metrics: Mapping[str, Mapping[str, Any]] | None = None,
+    tenors: Iterable[str] = KRD_TENORS,
+) -> list[dict[str, Any]]:
+    """按期限桶汇总 KRD。归并/丢弃披露见 ``compute_krd_curve_risk`` 的
+    ``krd_bucket_disclosure``（本函数只保留桶行，另经 logger 告警）。"""
+    metrics = build_krd_position_metrics(
+        positions,
+        report_date=report_date,
+        wind_metrics=wind_metrics,
+    )
+    buckets, _disclosure = _aggregate_krd_buckets(metrics, tenors)
+    return buckets
+
+
+def _resolve_scenario_shock(shocks: Mapping[str, Any], tenor_bucket: str) -> Decimal:
+    """解析某个期限桶的冲击（bp）。
+
+    - ``"all"`` 键表示平行情景，对所有桶（含 ON~6M 短端）生效并优先于逐桶键，
+      与 ``bond_analytics/common.py`` 的 STANDARD_SCENARIOS 语义一致。
+    - 逐桶情景（陡峭化/平坦化）对短端按 ``KRD_SHORT_END_BUCKET_MERGE`` 回落到
+      归并桶，避免短端持仓冲击被静默置零。
+    """
+    if "all" in shocks:
+        return safe_decimal(shocks["all"])
+    if tenor_bucket in shocks:
+        return safe_decimal(shocks[tenor_bucket])
+    merged = KRD_SHORT_END_BUCKET_MERGE.get(tenor_bucket)
+    if merged is not None and merged in shocks:
+        return safe_decimal(shocks[merged])
+    return Decimal("0")
 
 
 def compute_curve_scenario(
@@ -410,7 +543,7 @@ def compute_curve_scenario(
     by_asset_class = {"rate": Decimal("0"), "credit": Decimal("0"), "other": Decimal("0")}
 
     for metric in position_metrics:
-        shock_bp = safe_decimal(shocks.get(str(metric["tenor_bucket"]), 0))
+        shock_bp = _resolve_scenario_shock(shocks, str(metric["tenor_bucket"]))
         shock_decimal = shock_bp / Decimal("10000")
         market_value = safe_decimal(metric["market_value"])
         modified_duration = safe_decimal(metric["modified_duration"])
@@ -524,6 +657,7 @@ def compute_krd_curve_risk(
         portfolio_convexity += weight * safe_decimal(metric["convexity"])
 
     scenario_inputs = list(scenarios) if scenarios is not None else list(STANDARD_KRD_SCENARIOS)
+    krd_buckets, krd_bucket_disclosure = _aggregate_krd_buckets(metrics, KRD_TENORS)
     return {
         "position_metrics": metrics,
         "total_market_value": total_market_value,
@@ -531,11 +665,8 @@ def compute_krd_curve_risk(
         "portfolio_modified_duration": portfolio_modified_duration,
         "portfolio_dv01": portfolio_dv01,
         "portfolio_convexity": portfolio_convexity,
-        "krd_buckets": compute_krd_by_tenor(
-            positions,
-            report_date=report_date,
-            wind_metrics=wind_metrics,
-        ),
+        "krd_buckets": krd_buckets,
+        "krd_bucket_disclosure": krd_bucket_disclosure,
         "scenarios": [compute_curve_scenario(metrics, scenario) for scenario in scenario_inputs],
         "by_asset_class": aggregate_krd_by_asset_class(metrics),
     }

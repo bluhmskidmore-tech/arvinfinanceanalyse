@@ -462,13 +462,20 @@ def _compute_liquidity_gaps(
             continue
         if maturity_date < report_date:
             continue
+        # 余额为 0 是合法业务值（fact_formal_tyw_balance_daily 中约 10.9% 的行），
+        # 而 ``principal_native`` 是换汇前的原币口径：用 ``or`` 会在余额为 0 时静默
+        # 改用原币金额，既凭空造出敞口又混淆币种口径。只有字段缺失才回退到原币。
+        # 口径与 ``core_finance/cashflow_projection.py`` 的 ``_get_value`` 一致。
+        principal_amount = row.get("principal_amount")
+        if principal_amount is None:
+            principal_amount = row.get("principal_native")
         liability_projection_rows.append(
             {
                 "position_id": str(row.get("position_id") or ""),
                 "counterparty_name": str(row.get("counterparty_name") or ""),
                 "position_side": str(row.get("position_side") or "liability"),
                 "maturity_date": maturity_date,
-                "principal_amount": _safe_decimal(row.get("principal_amount") or row.get("principal_native")),
+                "principal_amount": _safe_decimal(principal_amount),
                 "funding_cost_rate": _safe_decimal(row.get("funding_cost_rate")),
                 "currency_code": str(row.get("currency_code") or "CNY"),
             }

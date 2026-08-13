@@ -513,7 +513,15 @@ class TestEdgeCases:
         assert "total_return" in result
 
     def test_missing_maturity_date(self):
-        """Missing maturity uses proxy years (3.0) per bond_duration._estimate_duration_proxy_years."""
+        """Missing maturity short-circuits to mod_duration=0 inside bond_four_effects itself.
+
+        No duration proxy is involved: compute_bond_four_effects guards on
+        ``mat_date is None`` before it would call ``estimate_duration``, and records the
+        ``mod_dur_fallback_zero`` diagnostic. The former
+        ``bond_duration._estimate_duration_proxy_years`` (3.0) has since been deleted --
+        missing maturity now resolves to ``DURATION_UNAVAILABLE`` (0) via
+        ``bond_analytics.common.resolve_missing_maturity_duration``.
+        """
         bond = _make_bond(maturity_date=None)
         result = compute_bond_four_effects(
             bond, 30, Decimal("0.002"), Decimal("0.001"), date(2026, 1, 1)

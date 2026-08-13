@@ -129,8 +129,47 @@ def test_estimate_duration_macaulay_vs_fallback() -> None:
     d_years = common.estimate_duration(mat, rd)
     years_approx = Decimal("1826") / Decimal("365")  # ~5y
     assert abs(d_years - years_approx) < Decimal("0.02")
-    # No dates -> fixed fallback
-    assert common.estimate_duration(None, rd) == Decimal("3")
+    # 缺到期日 -> 不可用标记（W-fi-2026-08 P2：不再硬编码 3.0 年占位）
+    assert common.estimate_duration(None, rd) == common.DURATION_UNAVAILABLE
+    assert common.estimate_duration(None, rd) != Decimal("3")
+
+
+def test_estimate_duration_missing_maturity_signals_unavailable() -> None:
+    """缺到期日：``estimate_duration_with_status`` 返回 ``(None, maturity_unavailable)``。
+
+    W-fi-2026-08 P2：此前 ``return Decimal("3")`` 给一批**根本不是债券**的持仓
+    （2026-07-31 实测 127 笔 / 434.00 亿，全是公募基金与 ETF）凭空编了 3 年久期，
+    折合组合加权久期虚增 0.3804 年。现在返回明确的「不可用」信号，兼容外壳
+    ``estimate_duration`` 折成 ``DURATION_UNAVAILABLE``（0）以保住 Decimal 契约。
+    """
+    rd = date(2026, 7, 31)
+
+    assert common.estimate_duration_with_status(None, rd) == (
+        None,
+        common.DURATION_TERM_MATURITY_UNAVAILABLE,
+    )
+    assert common.estimate_duration_with_status(date(2031, 7, 31), None) == (
+        None,
+        common.DURATION_TERM_MATURITY_UNAVAILABLE,
+    )
+    # 已到期与缺到期日数值同为 0，但状态必须可区分。
+    assert common.estimate_duration_with_status(date(2026, 1, 31), rd) == (
+        Decimal("0"),
+        common.DURATION_TERM_NO_REMAINING_TERM,
+    )
+
+
+def test_missing_maturity_duration_constant_is_defined_once() -> None:
+    """占位常数只此一处：``resolve_missing_maturity_duration`` 是唯一出处。"""
+    assert common.DURATION_UNAVAILABLE == Decimal("0")
+    assert (
+        common.resolve_missing_maturity_duration(
+            bond_code="SA0106070101",
+            maturity_date_missing=True,
+            report_date_missing=False,
+        )
+        == common.DURATION_UNAVAILABLE
+    )
 
 
 # --- W-fi-2026-08 P1: 有票息缺 ytm 的 par 假设回退（黄金手算样本） ---

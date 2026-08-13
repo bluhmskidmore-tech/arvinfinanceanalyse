@@ -174,6 +174,67 @@ def get_accounting_rule_trace(asset_class: str) -> tuple[str, str | None]:
 # --- Duration estimation ---
 
 YTM_PAR_FALLBACK_RULE_ID = "ytm_par_fallback_duration_v1"
+MISSING_MATURITY_RULE_ID = "duration_maturity_unavailable_v1"
+
+# 剩余期限输入的可得性分级。三条久期路径（bond_duration.estimate_duration /
+# bond_analytics.common.estimate_duration / bond_analytics.engine）共用这一套字面量，
+# 消费方只需认一套词表。
+#
+# observed             —— 到期日与报告日均可得，久期由剩余期限算出。
+# no_remaining_term    —— 到期日可得且 <= 报告日：已到期，久期真的是 0。
+# maturity_unavailable —— 到期日（或报告日）缺失：久期**不适用**，不是 0。
+DURATION_TERM_OBSERVED = "observed"
+DURATION_TERM_NO_REMAINING_TERM = "no_remaining_term"
+DURATION_TERM_MATURITY_UNAVAILABLE = "maturity_unavailable"
+
+# 缺到期日时久期不可得。历史调用方（krd / credit_spread / pnl_bridge /
+# bond_four_effects / cashflow_projection）都直接对返回值做 Decimal 算术，返回
+# None 会让它们全部 TypeError，因此数值契约仍是 Decimal；但取值必须是 0，不是
+# 任何正的占位常数：
+#
+#   0    → 不生成久期敞口，也不生成 DV01/凸性敞口，聚合层可按披露口径整行剔除；
+#   3.0  → 凭空给非债券编 3 年久期（2026-07-31 实测抬高组合加权久期 0.3804 年）；
+#   0.25 → 凭空给非债券编 3 个月久期（同日实测凭空造出 106.47 万/bp 的 DV01）。
+#
+# 想区分「久期确实是 0（已到期）」与「久期不适用（缺到期日）」的调用方，请改用
+# ``estimate_duration_with_status``：它在不可得时返回 ``(None, maturity_unavailable)``。
+# 正面样板见 ``core_finance/risk_tensor.py``：缺到期日的行整行移出久期分母，
+# 另由 ``missing_maturity_count`` / ``missing_maturity_market_value`` 单独披露。
+DURATION_UNAVAILABLE = Decimal("0")
+
+
+def resolve_missing_maturity_duration(
+    *,
+    bond_code: str = "",
+    maturity_date_missing: bool,
+    report_date_missing: bool,
+) -> Decimal:
+    """缺到期日时久期的**唯一**取值定义（W-fi-2026-08 P2）。
+
+    此前同一批持仓在三条路径上拿到三个答案：事实表物化 0、
+    ``bond_duration.estimate_duration`` 0.25（``SA``/``SCP`` 前缀短路）、
+    ``bond_analytics.common.estimate_duration`` 3.0（硬编码占位）。三个数散落三处，
+    折合 2026-07-31 组合加权久期差 0.3487 年（= (3.0 − 0.25) × 12.68% 缺失市值占比），
+    比同期修掉的整期截断 bug（0.0249 年）大一个数量级。
+
+    现在三条路径都必须经过本函数，常数只此一处。
+    """
+    missing = [
+        name
+        for name, flag in (("maturity_date", maturity_date_missing), ("report_date", report_date_missing))
+        if flag
+    ]
+    logger.warning(
+        "duration unavailable for instrument %s: missing %s (rule_id=%s); "
+        "returning %s as an UNAVAILABLE marker, not an observed zero-duration position — "
+        "aggregations must exclude this row from the duration denominator and disclose it "
+        "separately (see risk_tensor.missing_maturity_count)",
+        bond_code or "<unknown>",
+        ",".join(missing) or "<unknown>",
+        MISSING_MATURITY_RULE_ID,
+        DURATION_UNAVAILABLE,
+    )
+    return DURATION_UNAVAILABLE
 
 
 def resolve_ytm_with_par_fallback(
@@ -252,6 +313,45 @@ def compute_macaulay_duration(
     return pv_sum / price
 
 
+def estimate_duration_with_status(
+    maturity_date: date | None,
+    report_date: date | None,
+    coupon_rate: Decimal = Decimal("0"),
+    ytm: Decimal = Decimal("0"),
+    bond_code: str = "",
+    coupon_frequency: int = 1,
+) -> tuple[Decimal | None, str]:
+    """久期 + 剩余期限输入状态。缺到期日时返回 ``(None, maturity_unavailable)``。
+
+    这是诚实版入口：``None`` 表示久期**不适用**（该行多半根本不是债券），调用方
+    应把它移出久期分母并单独披露，而不是当成一只久期为 0 的债。
+    ``estimate_duration`` 是它的兼容外壳，把 ``None`` 折成
+    ``DURATION_UNAVAILABLE``（0）以维持既有 Decimal 契约。
+    """
+    if not maturity_date or not report_date:
+        return None, DURATION_TERM_MATURITY_UNAVAILABLE
+
+    remaining_days = (maturity_date - report_date).days
+    if remaining_days <= 0:
+        return Decimal("0"), DURATION_TERM_NO_REMAINING_TERM
+
+    years = Decimal(str(remaining_days)) / Decimal("365")
+
+    effective_ytm, _par_fallback_used = resolve_ytm_with_par_fallback(coupon_rate, ytm)
+    if coupon_rate > 0 and effective_ytm > 0:
+        return (
+            compute_macaulay_duration(
+                coupon_rate,
+                effective_ytm,
+                years,
+                coupon_frequency=coupon_frequency,
+            ),
+            DURATION_TERM_OBSERVED,
+        )
+
+    return years, DURATION_TERM_OBSERVED
+
+
 def estimate_duration(
     maturity_date: date | None,
     report_date: date | None,
@@ -260,25 +360,27 @@ def estimate_duration(
     bond_code: str = "",
     coupon_frequency: int = 1,
 ) -> Decimal:
-    if not maturity_date or not report_date:
-        return Decimal("3")
+    """Macaulay 久期（年）。缺到期日时返回 ``DURATION_UNAVAILABLE``（0）+ 告警。
 
-    remaining_days = (maturity_date - report_date).days
-    if remaining_days <= 0:
-        return Decimal("0")
-
-    years = Decimal(str(remaining_days)) / Decimal("365")
-
-    effective_ytm, _par_fallback_used = resolve_ytm_with_par_fallback(coupon_rate, ytm)
-    if coupon_rate > 0 and effective_ytm > 0:
-        return compute_macaulay_duration(
-            coupon_rate,
-            effective_ytm,
-            years,
-            coupon_frequency=coupon_frequency,
+    W-fi-2026-08 P2：此前缺到期日时 ``return Decimal("3")``——给一批**根本不是债券**
+    的持仓（2026-07-31 实测 127 笔 / 434.00 亿，全是公募基金与 ETF）凭空编了 3 年
+    久期。占位常数现已收敛到 ``resolve_missing_maturity_duration`` 一处。
+    """
+    duration, status = estimate_duration_with_status(
+        maturity_date,
+        report_date,
+        coupon_rate=coupon_rate,
+        ytm=ytm,
+        bond_code=bond_code,
+        coupon_frequency=coupon_frequency,
+    )
+    if duration is None or status == DURATION_TERM_MATURITY_UNAVAILABLE:
+        return resolve_missing_maturity_duration(
+            bond_code=bond_code,
+            maturity_date_missing=not maturity_date,
+            report_date_missing=not report_date,
         )
-
-    return years
+    return duration
 
 
 def estimate_modified_duration(

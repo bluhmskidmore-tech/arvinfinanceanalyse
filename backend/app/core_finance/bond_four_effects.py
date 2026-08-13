@@ -23,6 +23,19 @@ from .safe_decimal import safe_decimal
 
 logger = logging.getLogger(__name__)
 
+# 稳定的诊断码：归因链路入口（campisi.campisi_attribution / campisi_enhanced）按这些
+# 常量统计"跑在退化分支上"的行数与市值占比，避免两个模块各写一份字符串字面量。
+ACCRUED_INTEREST_MISSING_DIAGNOSTIC = "accrued_interest_missing"
+ACCRUED_INTEREST_PARTIAL_DIAGNOSTIC = "accrued_interest_partial"
+ACCRUED_INTEREST_EXCEEDS_CARRY_DIAGNOSTIC = "accrued_interest_exceeds_modeled_carry"
+MATURITY_DATE_PARSE_FAILED_DIAGNOSTIC = "maturity_date_parse_failed"
+MOD_DUR_FALLBACK_ZERO_DIAGNOSTIC = "mod_dur_fallback_zero"
+# 这两个诊断都意味着 total_return 退化为「净价变动 + 票息估算」，selection_effect
+# 因此吸收面值/市值差异；`has_accrued_interest is False` 与本集合等价。
+CLEAN_PRICE_FALLBACK_DIAGNOSTICS = frozenset(
+    {ACCRUED_INTEREST_MISSING_DIAGNOSTIC, ACCRUED_INTEREST_PARTIAL_DIAGNOSTIC}
+)
+
 
 def _get_bond_field(bond: Any, *keys: str, default: Any = 0):
     for k in keys:
@@ -185,27 +198,29 @@ def compute_bond_four_effects(
 
     diagnostics: list[str] = []
     if _mat_parse_failed:
-        diagnostics.append("maturity_date_parse_failed")
+        diagnostics.append(MATURITY_DATE_PARSE_FAILED_DIAGNOSTIC)
     if mat_date is None:
-        diagnostics.append("mod_dur_fallback_zero")
+        diagnostics.append(MOD_DUR_FALLBACK_ZERO_DIAGNOSTIC)
     log_id = bond_code or str(
         _get_bond_field(bond, "instrument_code", "instrument_id", default="") or "UNKNOWN"
     )
     if _ai_partial:
-        diagnostics.append("accrued_interest_partial")
+        diagnostics.append(ACCRUED_INTEREST_PARTIAL_DIAGNOSTIC)
         logger.warning(
             "bond %s: only one side of accrued_interest present "
-            "(start=%r, end=%r), falling back to clean-price basis",
+            "(start=%r, end=%r), falling back to clean-price basis; "
+            "selection_effect absorbs the par/market difference on this row",
             log_id, ai_start_raw, ai_end_raw,
         )
     elif not has_accrued:
-        diagnostics.append("accrued_interest_missing")
+        diagnostics.append(ACCRUED_INTEREST_MISSING_DIAGNOSTIC)
         logger.warning(
-            "bond %s: accrued_interest missing on both sides, falling back to clean-price basis",
+            "bond %s: accrued_interest missing on both sides, falling back to clean-price basis; "
+            "selection_effect absorbs the par/market difference on this row",
             log_id,
         )
     elif coupon_cash < Decimal("0"):
-        diagnostics.append("accrued_interest_exceeds_modeled_carry")
+        diagnostics.append(ACCRUED_INTEREST_EXCEEDS_CARRY_DIAGNOSTIC)
         logger.warning(
             "bond %s: accrued-interest delta %s exceeds modeled carry %s; "
             "retaining clean-price + income identity (inferred coupon_cash=%s)",
