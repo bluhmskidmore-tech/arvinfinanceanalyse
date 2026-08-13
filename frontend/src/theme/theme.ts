@@ -5,6 +5,15 @@ import { designTokens, nocturneTokens } from "./designSystem";
 
 const routeSurfaceShadow = "none";
 
+function hexColorWithAlpha(hexColor: string, alpha: number): string {
+  const hex = /^#([0-9a-f]{6})$/i.exec(hexColor)?.[1];
+  if (!hex) {
+    throw new Error(`Expected a six-digit hex color, received "${hexColor}"`);
+  }
+  const channel = (offset: number) => Number.parseInt(hex.slice(offset, offset + 2), 16);
+  return `rgba(${channel(0)}, ${channel(2)}, ${channel(4)}, ${alpha})`;
+}
+
 /*
  * antd cssinjs 基础皮肤：全站 37 个 scope Nocturne 收敛完成（2026-08-13）后，
  * token 由 dhApiTokens 钢蓝基准切至 nocturneTokens（数值源=tokens.css Nocturne
@@ -85,7 +94,7 @@ export const workbenchTheme: ThemeConfig = {
       headerBg: nocturneTokens.color.panel3,
       headerColor: nocturneTokens.color.inkSoft,
       /* --nct-accent 8%，对齐 tokens.css --moss-institutional-row-hover 的 mix 惯例。 */
-      rowHoverBg: "rgba(145, 132, 217, 0.08)",
+      rowHoverBg: hexColorWithAlpha(nocturneTokens.color.blue, 0.08),
     },
     Layout: {
       bodyBg: nocturneTokens.color.bg,

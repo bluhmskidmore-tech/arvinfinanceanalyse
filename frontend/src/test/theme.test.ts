@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -15,6 +15,7 @@ import { NOCTURNE_THEME_SCOPES } from "../theme/themeScopes";
 import { shellTokens } from "../theme/tokens";
 import { workbenchTheme } from "../theme/theme";
 
+const SRC_PATH = resolve(process.cwd(), "src");
 const GLOBAL_CSS_PATH = resolve(process.cwd(), "src/styles/global.css");
 const WORKBENCH_INSTITUTIONAL_CONSOLE_CSS_PATH = resolve(
   process.cwd(),
@@ -126,7 +127,7 @@ function nocturneScopeSetForLegs(
  * （dashboard 首页 scope 为 dashboard-home；kpi-performance 为 kpi；
  * performance-home / reports-center 共用 ModuleWorkbenchHome 的
  * module-workbench-home 单 scope；macro-observation 与 macro-toolkit
- * 共用同一页面组件与 scope）。
+ * 已是独立页面，但共用 macro-toolkit scope）。
  */
 const NOCTURNE_SECTION_SCOPE_ALIASES: Record<string, string> = {
   dashboard: "dashboard-home",
@@ -208,26 +209,91 @@ function normalizeColorLiteral(value: string): string {
   return value.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-/**
- * tokens.css Nocturne 主色板块提取：全 src 仅此一个规则声明 --nct-*（其余
- * 出现处均为 var(--nct-…) 引用）。出现第二个声明块＝引入第二套 Nocturne
- * 数值源，直接抛错要求并回主色板块，防止分叉后互锁断言只盯其中一份。
- */
-function nocturnePaletteDeclarations(css: string): string {
-  const cleaned = stripCssComments(css);
-  const bodies: string[] = [];
-  const ruleRe = /([^{}]+)\{([^{}]*)\}/g;
-  let rule: RegExpExecArray | null;
-  while ((rule = ruleRe.exec(cleaned)) !== null) {
-    if (/--nct-[a-z0-9-]+\s*:/.test(rule[2])) bodies.push(rule[2]);
+interface CssSourceFile {
+  filePath: string;
+  source: string;
+}
+
+interface NocturneDeclarationBlock {
+  filePath: string;
+  body: string;
+  variables: string[];
+}
+
+/** 从实际文件系统递归收集 frontend/src 下全部 CSS，不复用任何生产 scope 清单。 */
+function collectCssSourceFiles(dir: string): CssSourceFile[] {
+  const files: CssSourceFile[] = [];
+  const entries = readdirSync(dir, { withFileTypes: true }).sort((left, right) =>
+    left.name.localeCompare(right.name),
+  );
+  for (const entry of entries) {
+    const filePath = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...collectCssSourceFiles(filePath));
+      continue;
+    }
+    if (entry.isFile() && entry.name.endsWith(".css")) {
+      files.push({ filePath, source: readFileSync(filePath, "utf8") });
+    }
   }
-  if (bodies.length !== 1) {
+  return files;
+}
+
+/**
+ * Nocturne 主色板块提取：扫描 frontend/src 下全部实际 CSS 文件，且只允许
+ * tokens.css 的唯一规则块声明 --nct-*（其余出现处只能是 var(--nct-…) 引用）。
+ * 错误会列出声明文件、变量及重复变量，避免分叉后互锁断言只盯权威文件。
+ */
+function nocturnePaletteDeclarations(cssFiles: readonly CssSourceFile[]): string {
+  const blocks: NocturneDeclarationBlock[] = [];
+  for (const { filePath, source } of cssFiles) {
+    const cleaned = stripCssComments(source);
+    const ruleRe = /([^{}]+)\{([^{}]*)\}/g;
+    let rule: RegExpExecArray | null;
+    while ((rule = ruleRe.exec(cleaned)) !== null) {
+      const variables = [...rule[2].matchAll(/--(nct-[a-z0-9-]+)\s*:/g)].map(
+        (match) => match[1],
+      );
+      if (variables.length > 0) {
+        blocks.push({ filePath, body: rule[2], variables });
+      }
+    }
+  }
+
+  const authorityBlocks = blocks.filter(({ filePath }) => filePath === TOKENS_CSS_PATH);
+  const nonAuthorityBlocks = blocks.filter(({ filePath }) => filePath !== TOKENS_CSS_PATH);
+  const variableCounts = new Map<string, number>();
+  for (const { variables } of blocks) {
+    for (const variable of variables) {
+      variableCounts.set(variable, (variableCounts.get(variable) ?? 0) + 1);
+    }
+  }
+  const duplicateVariables = [...variableCounts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([variable, count]) => `--${variable}（${count} 处）`)
+    .sort();
+
+  if (
+    authorityBlocks.length !== 1 ||
+    nonAuthorityBlocks.length > 0 ||
+    duplicateVariables.length > 0
+  ) {
+    const declarationDetails = blocks
+      .map(
+        ({ filePath, variables }) =>
+          `${relative(SRC_PATH, filePath).replaceAll("\\", "/")}: ${variables
+            .map((variable) => `--${variable}`)
+            .join(", ")}`,
+      )
+      .join("\n");
     throw new Error(
-      `tokens.css 应恰有 1 个 --nct-* 声明块，实际 ${bodies.length} 个；` +
-        "新增声明块会成为第二套 Nocturne 数值源，请并回主色板块或更新互锁断言。",
+      "Nocturne --nct-* 只允许在 src/styles/tokens.css 的唯一权威声明块出现；" +
+        `权威块实际 ${authorityBlocks.length} 个，非权威声明块 ${nonAuthorityBlocks.length} 个。\n` +
+        `重复变量：${duplicateVariables.join(", ") || "无"}。\n` +
+        `声明文件/变量：\n${declarationDetails || "（未发现 --nct-* 声明）"}`,
     );
   }
-  return bodies[0];
+  return authorityBlocks[0].body;
 }
 
 /** 提取单个规则体内的全部自定义属性声明（键不含 --，值空白收敛）。 */
@@ -270,6 +336,16 @@ function nocturneColorMixToRgba(expression: string, blockVars: Map<string, strin
   }
   const channel = (offset: number) => parseInt(hex.slice(offset, offset + 2), 16);
   return `rgba(${channel(0)}, ${channel(2)}, ${channel(4)}, ${Number(match[2]) / 100})`;
+}
+
+/** 测试侧独立计算 hex + alpha，避免与生产代码共享派生 helper 形成套套测试。 */
+function testHexColorWithAlpha(hexColor: string, alpha: number): string {
+  const hex = /^#([0-9a-f]{6})$/i.exec(hexColor)?.[1];
+  if (!hex) {
+    throw new Error(`测试期望色不是 6 位 hex：${hexColor}`);
+  }
+  const channel = (offset: number) => parseInt(hex.slice(offset, offset + 2), 16);
+  return `rgba(${channel(0)}, ${channel(2)}, ${channel(4)}, ${alpha})`;
 }
 
 describe("ibTokens", () => {
@@ -342,11 +418,15 @@ const NOCTURNE_COLOR_MIX_SLOTS: ReadonlyArray<
  */
 describe("nocturneTokens ↔ tokens.css Nocturne scope parity", () => {
   const nocturneCssVars = parseCssVarDeclarations(
-    nocturnePaletteDeclarations(readFileSync(TOKENS_CSS_PATH, "utf8")),
+    nocturnePaletteDeclarations(collectCssSourceFiles(SRC_PATH)),
   );
   const driftHint =
     "改了一侧色值未同步另一侧：CSS 侧改动需同步 designSystem.ts nocturneTokens，" +
     "JS 侧改动需同步 tokens.css Nocturne scope 块。";
+
+  it("keeps every --nct-* declaration in the single tokens.css authority block", () => {
+    expect([...nocturneCssVars.keys()].some((name) => name.startsWith("nct-"))).toBe(true);
+  });
 
   it("keeps every hex slot in value parity", () => {
     for (const [cssVar, jsKey] of NOCTURNE_HEX_SLOTS) {
@@ -484,7 +564,9 @@ describe("workbenchTheme", () => {
     expect(components?.Table?.headerBg).toBe(nocturneTokens.color.panel3);
     expect(components?.Table?.headerColor).toBe(nocturneTokens.color.inkSoft);
     // accent 8% 行悬停，对齐 --moss-institutional-row-hover 的 mix 惯例。
-    expect(components?.Table?.rowHoverBg).toBe("rgba(145, 132, 217, 0.08)");
+    expect(components?.Table?.rowHoverBg).toBe(
+      testHexColorWithAlpha(nocturneTokens.color.blue, 0.08),
+    );
   });
 });
 
