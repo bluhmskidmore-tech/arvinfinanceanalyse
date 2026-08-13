@@ -83,9 +83,20 @@
   margin-left: var(--moss-space-5);
 }
 
-.tabRail :global(.ant-tabs-tab-active .ant-tabs-tab-btn) {
+/* antd 残留：激活 tab 文字/下划线被 antd cssinjs 钢蓝 colorPrimary 压住
+   （cssinjs 注入在打包 CSS 之后且选择器约 0-4-0），以重复类提权稳定覆盖，
+   跟随页根 Nocturne 强调链（portfolio-home 先例）。 */
+.tabRail.tabRail.tabRail :global(.ant-tabs-tab-active .ant-tabs-tab-btn) {
   color: var(--moss-color-primary-600);
   font-weight: 700;
+}
+
+.tabRail.tabRail.tabRail :global(.ant-tabs-tab:hover .ant-tabs-tab-btn) {
+  color: var(--moss-color-primary-600);
+}
+
+.tabRail.tabRail.tabRail :global(.ant-tabs-ink-bar) {
+  background: var(--moss-color-primary-600);
 }
 
 .contentFrame {

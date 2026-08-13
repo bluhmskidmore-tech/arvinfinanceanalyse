@@ -627,6 +627,37 @@
   color: var(--ib-accent);
 }
 
+/* 共享骨架「展开」胶囊在 dashboardCockpit.css 里是浅色白底（白 56% 实底 +
+   slate 边线），页内升权覆盖为 Nocturne 次级面板链（stock-analysis 页内
+   升权覆盖共享骨架先例）。 */
+.bondWorkbenchPage :global(.dashboard-progressive-disclosure__cue) {
+  border-color: var(--dh-api-line-soft);
+  background: var(--dh-api-panel-2);
+}
+
+/* 共享正式结果元信息面板的徽标 tone 为组件 inline 浅色面（浅绿/浅琥珀），
+   按语义家族压为 --dh-api-* 软底链；inline style 须 !important 才压得住
+   （pnl-by-business 先例）。 */
+.bondWorkbenchPage :global(.formal-result-meta-panel__badge[title$="正常"]),
+.bondWorkbenchPage :global(.formal-result-meta-panel__badge[title$="未降级"]) {
+  border-color: color-mix(in srgb, var(--dh-api-green) 42%, var(--dh-api-line) 58%) !important;
+  background: var(--dh-api-green-soft) !important;
+  color: var(--dh-api-green) !important;
+}
+
+.bondWorkbenchPage :global(.formal-result-meta-panel__badge[title$="供应商陈旧"]),
+.bondWorkbenchPage :global(.formal-result-meta-panel__badge[title$="最新快照降级"]) {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 42%, var(--dh-api-line) 58%) !important;
+  background: var(--dh-api-amber-soft) !important;
+  color: var(--dh-api-amber) !important;
+}
+
+.bondWorkbenchPage :global(.formal-result-meta-panel__badge[title$="供应商不可用"]) {
+  border-color: color-mix(in srgb, var(--dh-api-red) 42%, var(--dh-api-line) 58%) !important;
+  background: var(--dh-api-red-soft) !important;
+  color: var(--dh-api-red) !important;
+}
+
 @media (max-width: 640px) {
   .bondWorkbenchPage {
     min-height: 0;

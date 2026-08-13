@@ -1,10 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
-import { designTokens } from "../../../theme/designSystem";
 import { DONUT_CHART_COLORS, IB_ACCENT_BAR } from "./bondAnalyticsCockpitTokens";
 import styles from "./BondAnalyticsInstitutionalCockpit.module.css";
-
-const dt = designTokens;
 
 export function SectionCardTitle({
   eyebrow,
