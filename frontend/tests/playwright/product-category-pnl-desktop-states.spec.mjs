@@ -421,8 +421,9 @@ for (const viewport of DESKTOP_VIEWPORTS) {
       page.getByRole("combobox", { name: "选择报告月份" }).selectOption(PRIOR_REPORT_DATE),
     ]);
     await expectDesktopLoadingLayout(page, viewport, "正式基线加载中");
+    // slot 结构（DESIGN.md §7 单行 1 个 · 配额，提交 a97c282d）：`日期 · 口径 | 视图`。
     await expect(page.locator('[data-testid="product-category-report-date-slot"]')).toContainText(
-      `${PRIOR_REPORT_DATE} · 口径待确认`,
+      `${PRIOR_REPORT_DATE} · 口径待确认 | 月度视图`,
     );
     await page.screenshot({
       path: testInfo.outputPath(`product-category-pnl-month-switch-loading-${viewport.name}.jpg`),
@@ -471,8 +472,10 @@ for (const viewport of DESKTOP_VIEWPORTS) {
       page.getByRole("button", { name: "汇总视图" }).click(),
     ]);
     await expectDesktopLoadingLayout(page, viewport, "正式基线加载中");
+    // 旧断言 `口径待确认 · 汇总视图` 基于第二段仍用 · 的结构；提交 a97c282d 起视图段改用 |
+    // 分隔（DESIGN.md §7），此处锁定含日期前缀的完整 slot 结构。
     await expect(page.locator('[data-testid="product-category-report-date-slot"]')).toContainText(
-      "口径待确认 · 汇总视图",
+      `${FIXED_REPORT_DATE} · 口径待确认 | 汇总视图`,
     );
     await page.screenshot({
       path: testInfo.outputPath(`product-category-pnl-view-switch-loading-${viewport.name}.jpg`),

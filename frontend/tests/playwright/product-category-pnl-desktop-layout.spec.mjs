@@ -31,13 +31,25 @@ for (const viewport of DESKTOP_VIEWPORTS) {
     await expect(page.locator('[data-testid="product-category-driver-item"]')).toHaveCount(3);
     await expect(page.locator('[data-testid="product-category-next-analysis-preview"]')).toBeHidden();
 
+    // 2026-08-13 98f190d0 起，mock 模式的固定数据模式横幅（.moss-data-mode-ribbon）
+    // 由外壳 padding-top 让位，首屏内容整体下移横幅高度。首屏预算按内容坐标核算：
+    // 未滚动时量到的 rect 先扣除该固定 chrome 高度（real 模式无横幅，恒为 0）；
+    // 预算严格度不变，页面自身再长高约 1px 仍会失败。
+    const fixedChromeHeight = await page.evaluate(() => {
+      const ribbon = document.querySelector(".moss-data-mode-ribbon");
+      return ribbon ? Math.max(0, ribbon.getBoundingClientRect().height) : 0;
+    });
+
     for (const selector of FIRST_SCREEN_SELECTORS) {
       const box = await page.locator(selector).boundingBox();
       expect(box, `${selector} should have a desktop layout box`).not.toBeNull();
-      expect(box.y, `${selector} should start inside the first screen`).toBeLessThan(viewport.height);
       expect(
-        box.y + box.height,
-        `${selector} should remain completely visible inside the first screen`,
+        box.y - fixedChromeHeight,
+        `${selector} should start inside the first screen`,
+      ).toBeLessThan(viewport.height);
+      expect(
+        box.y + box.height - fixedChromeHeight,
+        `${selector} should remain completely visible inside the first screen (net of the fixed data-mode ribbon)`,
       ).toBeLessThanOrEqual(viewport.height);
     }
 
@@ -45,11 +57,12 @@ for (const viewport of DESKTOP_VIEWPORTS) {
       .locator('[data-testid="product-category-attribution-workbench"]')
       .boundingBox();
     expect(attributionBox).not.toBeNull();
-    expect(attributionBox.y, "the next analysis region should peek into the first screen").toBeLessThan(
-      viewport.height,
-    );
     expect(
-      attributionBox.y + attributionBox.height,
+      attributionBox.y - fixedChromeHeight,
+      "the next analysis region should peek into the first screen",
+    ).toBeLessThan(viewport.height);
+    expect(
+      attributionBox.y + attributionBox.height - fixedChromeHeight,
       "only the beginning of the next analysis region should be visible",
     ).toBeGreaterThan(viewport.height);
 

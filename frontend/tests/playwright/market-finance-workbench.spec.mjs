@@ -56,10 +56,18 @@ async function readLayout(page) {
     const deepContentRect = rect(deepContent);
     const viewportWidth = document.documentElement.clientWidth;
     const viewportHeight = window.innerHeight;
+    // 2026-08-13 98f190d0 起，mock 模式的固定数据模式横幅（.moss-data-mode-ribbon）
+    // 由外壳 padding-top 让位，页面内容整体下移横幅高度。首屏预算按内容坐标核算：
+    // 量到的 rect 需先扣除该固定 chrome 高度（real 模式无横幅，恒为 0）。
+    const dataModeRibbon = document.querySelector(".moss-data-mode-ribbon");
+    const fixedChromeHeight = dataModeRibbon
+      ? Math.max(0, dataModeRibbon.getBoundingClientRect().height)
+      : 0;
 
     return {
       viewportWidth,
       viewportHeight,
+      fixedChromeHeight,
       documentScrollWidth: Math.max(
         document.documentElement.scrollWidth,
         document.body?.scrollWidth ?? 0,
@@ -101,9 +109,12 @@ function expectRectInsideViewport(rect, layout, label, bottomInset = 0) {
     layout.viewportWidth + 1,
   );
   expect(rect.top, `${label} should start inside the viewport`).toBeGreaterThanOrEqual(-1);
-  expect(rect.bottom, `${label} should end inside the viewport`).toBeLessThanOrEqual(
-    layout.viewportHeight - bottomInset,
-  );
+  // 内容坐标核算：扣除 mock 横幅固定 chrome 后，首屏内容预算保持原有严格度
+  //（页面自身再长高 >~2.7px 仍会失败）。
+  expect(
+    rect.bottom - layout.fixedChromeHeight,
+    `${label} should end inside the first-screen content budget (net of the fixed data-mode ribbon)`,
+  ).toBeLessThanOrEqual(layout.viewportHeight - bottomInset);
 }
 
 test("market-finance mock 1440x900 keeps the KPI band in the first screen", async ({

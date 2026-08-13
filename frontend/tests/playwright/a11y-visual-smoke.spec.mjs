@@ -206,8 +206,10 @@ const flagshipKeyboardPages = [
     slug: "macro-toolkit",
     path: "/macro-toolkit",
     readySelector: '[data-testid="macro-toolkit-tailwind-cockpit"]',
+    // 913db8d0/63ccb747 信息架构重构后 cockpit 是只读结论卡；
+    // 业务控件（刷新动作、治理与证据入口）现位于路由工具栏与治理证据栏。
     businessFocusSelector:
-      '[data-testid="macro-toolkit-tailwind-cockpit"] button, [data-testid="macro-toolkit-tailwind-cockpit"] a',
+      '[data-testid="macro-toolkit-toolbar"] button, [data-testid="macro-toolkit-meta-rail"] button, [data-testid="macro-toolkit-meta-rail"] a',
   },
   {
     slug: "stock-analysis",
@@ -275,11 +277,16 @@ const gateHControlContextPages = [
     readySelector: '[data-testid="macro-toolkit-tailwind-cockpit"]',
     controls: [
       {
-        label: "cockpit action",
-        selector: '[data-testid="macro-toolkit-tailwind-cockpit"] button, [data-testid="macro-toolkit-tailwind-cockpit"] a',
+        label: "toolbar refresh action",
+        selector: '[data-testid="macro-toolkit-toolbar"] button',
+      },
+      {
+        label: "governance evidence rail entry",
+        selector:
+          '[data-testid="macro-toolkit-meta-rail"] button, [data-testid="macro-toolkit-meta-rail"] a',
       },
     ],
-    stateCueSelector: '[data-testid="macro-toolkit-tailwind-cockpit"]',
+    stateCueSelector: '[data-testid="macro-toolkit-meta-rail"]',
   },
   {
     slug: "stock-analysis",
