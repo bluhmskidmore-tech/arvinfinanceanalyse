@@ -3,13 +3,14 @@ import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import type { Numeric, VolumeRateAttributionPayload } from "../../../api/contracts";
 import { PageDataSection } from "../../../components/page/PageDataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
-import { designTokens, ibTokens } from "../../../theme/designSystem";
+import { designTokens, nocturneTokens } from "../../../theme/designSystem";
 import { numericRaw } from "../../../pageModel";
+import { EM_DASH } from "../../../utils/format";
 import "./AttributionWaterfallChart.css";
 
 function formatYi(value: number | null | undefined): string {
   if (value === null || value === undefined) {
-    return "—";
+    return EM_DASH;
   }
   const yi = value / 100_000_000;
   return `${yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
@@ -22,7 +23,7 @@ function rawOrNull(value: Numeric | null | undefined): number | null {
 function formatTooltipYi(value: unknown): string {
   return typeof value === "number" && Number.isFinite(value)
     ? `${value.toFixed(2)} 亿元`
-    : "—";
+    : EM_DASH;
 }
 
 type Props = {
@@ -47,7 +48,7 @@ export function AttributionWaterfallChart({ data, state, onRetry }: Props) {
     categories.push("上期损益");
     const previousRaw = rawOrNull(data.total_previous_pnl);
     values.push(previousRaw === null ? null : previousRaw / 100_000_000);
-    colors.push(ibTokens.color.inkMuted);
+    colors.push(nocturneTokens.color.inkMuted);
 
     const volumeRaw = rawOrNull(data.total_volume_effect);
     const vol = volumeRaw === null ? null : volumeRaw / 100_000_000;
@@ -55,10 +56,10 @@ export function AttributionWaterfallChart({ data, state, onRetry }: Props) {
     values.push(vol);
     colors.push(
       vol === null
-        ? ibTokens.color.inkMuted
+        ? nocturneTokens.color.inkMuted
         : vol >= 0
-          ? ibTokens.color.down
-          : ibTokens.color.up,
+          ? nocturneTokens.color.green
+          : nocturneTokens.color.red,
     );
 
     const rateRaw = rawOrNull(data.total_rate_effect);
@@ -67,25 +68,25 @@ export function AttributionWaterfallChart({ data, state, onRetry }: Props) {
     values.push(rate);
     colors.push(
       rate === null
-        ? ibTokens.color.inkMuted
+        ? nocturneTokens.color.inkMuted
         : rate >= 0
-          ? ibTokens.color.down
-          : ibTokens.color.up,
+          ? nocturneTokens.color.green
+          : nocturneTokens.color.red,
     );
 
+    // 交叉效应恒列示（含小值与缺失断点），不做阈值静默省略。
     const crossRaw = rawOrNull(data.total_interaction_effect);
     const cross = crossRaw === null ? null : crossRaw / 100_000_000;
-    if (cross !== null && Math.abs(cross) > 0.001) {
-      categories.push("交叉效应");
-      values.push(cross);
-      colors.push(ibTokens.color.inkMuted);
-    }
+    categories.push("交叉效应");
+    values.push(cross);
+    colors.push(nocturneTokens.color.inkMuted);
 
     categories.push("当期损益");
     const currentRaw = rawOrNull(data.total_current_pnl);
     values.push(currentRaw === null ? null : currentRaw / 100_000_000);
-    colors.push(ibTokens.color.accent);
+    colors.push(nocturneTokens.color.blue);
 
+    // ECharts canvas 读不到 CSS 变量，按 tone.ts 指南使用 Nocturne TS 镜像 token。
     return {
       tooltip: {
         trigger: "axis",
@@ -102,18 +103,18 @@ export function AttributionWaterfallChart({ data, state, onRetry }: Props) {
         type: "category",
         data: categories,
         axisLabel: {
-          fontSize: ibTokens.kicker.fontSize,
-          color: ibTokens.color.inkMuted,
+          fontSize: designTokens.fontSize[11],
+          color: nocturneTokens.color.inkMuted,
         },
       },
       yAxis: {
         type: "value",
         axisLabel: {
           formatter: (v: number) => `${v.toFixed(1)}亿`,
-          color: ibTokens.color.inkMuted,
+          color: nocturneTokens.color.inkMuted,
         },
         splitLine: {
-          lineStyle: { type: "solid", color: ibTokens.color.hairline },
+          lineStyle: { type: "solid", color: nocturneTokens.color.lineSoft },
         },
       },
       series: [

@@ -12,11 +12,9 @@
 
 .pnl-composition-chart__card {
   padding: var(--moss-space-5);
-  border-radius: var(--ib-radius);
-  border: 1px solid var(--moss-color-neutral-200);
-  background: var(--ib-surface);
-  /* Non-token-equal lift kept verbatim (≠ --ib-shadow). */
-  box-shadow: 0 1px 2px rgba(31, 41, 55, 0.04);
+  border-radius: var(--dh-api-radius);
+  border: 1px solid var(--dh-api-line);
+  background: var(--dh-api-panel);
 }
 
 .pnl-composition-chart__card--compact {
@@ -24,36 +22,36 @@
 }
 
 .pnl-composition-chart__card--interest {
-  background: var(--moss-color-success-50);
+  background: var(--dh-api-green-soft);
 }
 
 .pnl-composition-chart__card--fair-value {
-  background: var(--moss-color-info-50);
+  background: var(--dh-api-blue-soft);
 }
 
 .pnl-composition-chart__card--capital {
-  background: var(--moss-color-warning-50);
+  background: var(--dh-api-amber-soft);
 }
 
 .pnl-composition-chart__card--other {
-  background: var(--moss-color-neutral-100);
+  background: var(--dh-api-panel-2);
 }
 
 .pnl-composition-chart__label {
   font-size: 12px;
-  color: var(--moss-color-neutral-700);
+  color: var(--dh-api-soft);
 }
 
 .pnl-composition-chart__label--interest {
-  color: var(--moss-color-success-500);
+  color: var(--dh-api-green);
 }
 
 .pnl-composition-chart__label--fair-value {
-  color: var(--moss-color-info-600);
+  color: var(--dh-api-blue);
 }
 
 .pnl-composition-chart__label--capital {
-  color: var(--moss-color-warning-600);
+  color: var(--dh-api-amber);
 }
 
 .pnl-composition-chart__value {
@@ -68,35 +66,35 @@
 }
 
 .pnl-composition-chart__value[data-direction="positive"] {
-  color: var(--moss-color-success-600);
+  color: var(--dh-api-green);
 }
 
 .pnl-composition-chart__value[data-direction="negative"] {
-  color: var(--moss-color-danger-500);
+  color: var(--dh-api-red);
 }
 
 .pnl-composition-chart__value[data-direction="neutral"] {
-  color: var(--moss-color-neutral-600);
+  color: var(--dh-api-ink);
 }
 
 .pnl-composition-chart__meta {
   font-size: 12px;
-  color: var(--moss-color-neutral-500);
+  color: var(--dh-api-muted);
 }
 
 .pnl-composition-chart__meta--interest {
-  color: var(--moss-color-success-600);
+  color: var(--dh-api-green);
 }
 
 .pnl-composition-chart__meta--muted {
-  color: var(--moss-color-neutral-700);
+  color: var(--dh-api-soft);
 }
 
 .pnl-composition-chart__section-title {
   margin: 0 0 var(--moss-space-3);
   font-size: 16px;
   font-weight: 600;
-  color: var(--moss-color-neutral-900);
+  color: var(--dh-api-ink);
 }
 
 .pnl-composition-chart__chart {
@@ -118,7 +116,7 @@
 }
 
 .pnl-composition-chart__table thead tr {
-  background: var(--moss-color-neutral-100);
+  background: var(--dh-api-panel-2);
 }
 
 .pnl-composition-chart__table th,
@@ -138,7 +136,7 @@
 }
 
 .pnl-composition-chart__table tbody tr {
-  border-bottom: 1px solid var(--moss-color-neutral-200);
+  border-bottom: 1px solid var(--dh-api-line-soft);
 }
 
 .pnl-composition-chart__table td[data-weight="500"] {
@@ -146,17 +144,17 @@
 }
 
 .pnl-composition-chart__table td[data-direction="positive"] {
-  color: var(--moss-color-success-600);
+  color: var(--dh-api-green);
 }
 
 .pnl-composition-chart__table td[data-direction="negative"] {
-  color: var(--moss-color-danger-500);
+  color: var(--dh-api-red);
 }
 
 .pnl-composition-chart__table td[data-direction="neutral"] {
-  color: var(--moss-color-neutral-600);
+  color: var(--dh-api-ink);
 }
 
 .pnl-composition-chart__table td[data-tone="profit"] {
-  color: var(--moss-color-success-500);
+  color: var(--dh-api-green);
 }

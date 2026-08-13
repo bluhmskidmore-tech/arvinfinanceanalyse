@@ -139,9 +139,12 @@ export default function FormalPnlV1Page() {
     }
   }, [reportDates, selectedReportDate]);
 
+  // 后端 /api/pnl/v1-data 不支持 basis 参数（仅正式口径读模型）；
+  // 分析口径下不加载明细，避免与概览查询的口径混用。
+  const detailBasisLocked = basis !== "formal";
   const dataQuery = useQuery({
     queryKey: ["pnl", "v1-data", client.mode, selectedReportDate],
-    enabled: Boolean(selectedReportDate),
+    enabled: Boolean(selectedReportDate) && !detailBasisLocked,
     queryFn: () => client.getPnlV1Data(selectedReportDate),
     retry: false,
   });
@@ -174,9 +177,12 @@ export default function FormalPnlV1Page() {
     !overviewQuery.isError &&
     (!selectedReportDate || overview === null);
 
-  const dataLoading = datesQuery.isLoading || (Boolean(selectedReportDate) && dataQuery.isLoading);
-  const dataError = datesQuery.isError || dataQuery.isError;
+  const detailTabLocked = detailBasisLocked && dataTab !== "yield";
+  const dataLoading =
+    !detailTabLocked && (datesQuery.isLoading || (Boolean(selectedReportDate) && !detailBasisLocked && dataQuery.isLoading));
+  const dataError = !detailTabLocked && (datesQuery.isError || dataQuery.isError);
   const dataEmpty =
+    !detailTabLocked &&
     !datesQuery.isLoading &&
     !dataQuery.isLoading &&
     !datesQuery.isError &&
@@ -448,7 +454,12 @@ export default function FormalPnlV1Page() {
             }
           }}
         >
-          {dataTab === "fi" ? (
+          {detailTabLocked ? (
+            <div data-testid="pnl-detail-basis-locked" className="formal-pnl-v1-basis-note">
+              明细仅正式口径：后端明细接口（/api/pnl/v1-data）不支持分析口径参数，为避免明细与概览口径混用，
+              分析口径下不加载固收明细与非标桥接表。切回「正式口径」查看明细。
+            </div>
+          ) : dataTab === "fi" ? (
             <div className="ag-theme-alpine formal-pnl-v1-grid-shell" data-testid="pnl-formal-fi-table">
               <AgGridReact<PnlV1DetailRow>
                 rowData={formalRows}

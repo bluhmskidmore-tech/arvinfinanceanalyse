@@ -7,7 +7,7 @@ import type { CellClassParams, ColDef, IHeaderParams } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import "../../styles/agGridInstitutional.css";
-import ReactECharts, { type EChartsOption } from "../../lib/echarts";
+import ReactECharts from "../../lib/echarts";
 
 import { useApiClient } from "../../api/client";
 import { runPollingTask } from "../../app/jobs/polling";
@@ -18,18 +18,24 @@ import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPan
 import { SectionLead } from "../../components/page/SectionLead";
 import type {
   Numeric,
+  PnlBridgeEffectAvailability,
+  PnlBridgeEffectAvailabilityReason,
   PnlBridgeQuality,
   PnlBridgeRow,
   PnlBridgeSummary,
-  ResultMeta,
 } from "../../api/contracts";
-import { designTokens } from "../../theme/designSystem";
 import { shellTokens } from "../../theme/tokens";
 import { toneFromNumeric } from "../../utils/tone";
 import { KpiCard } from "../../components/KpiCard";
 import { pnlSurfaceQualityToTone } from "../workbench/components/kpiFormat";
 import { PnlRefreshStatus } from "./PnlRuntimePanels";
 import { adaptPnlBridge } from "./adapters/pnlBridgeAdapter";
+import {
+  buildCurveAvailabilityNotices,
+  buildPnlBridgeFirstScreenMetaNotice,
+  buildWaterfallOption,
+  effectAvailabilityCellText,
+} from "./pnlBridgePageSupport";
 import "./PnlBridgePage.css";
 
 function kpiToneFromNumeric(n: Numeric): "default" | "positive" | "negative" {
@@ -37,127 +43,6 @@ function kpiToneFromNumeric(n: Numeric): "default" | "positive" | "negative" {
   if (tone === "positive") return "positive";
   if (tone === "negative") return "negative";
   return "default";
-}
-
-// 互斥分解口径（2026-08 审计 PNL-01）：未实现公允（516）是市场效应要解释的
-// 对象，不再作为解释分量进入瀑布；明细表仍保留该列作参照。
-const BRIDGE_CATEGORIES = [
-  "票息",
-  "骑乘",
-  "国债曲线",
-  "信用利差",
-  "汇兑",
-  "已实现交易",
-  "人工调整",
-  "解释合计",
-  "实际PnL",
-] as const;
-
-const TRANSPARENT_BAR = {
-  borderColor: "transparent",
-  color: "rgba(0,0,0,0)",
-  borderWidth: 0,
-} as const;
-
-export function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
-  const displayStrings = [
-    summary.total_carry.display,
-    summary.total_roll_down.display,
-    summary.total_treasury_curve.display,
-    summary.total_credit_spread.display,
-    summary.total_fx_translation.display,
-    summary.total_realized_trading.display,
-    summary.total_manual_adjustment.display,
-    summary.total_explained_pnl.display,
-    summary.total_actual_pnl.display,
-  ];
-
-  const stepValues = [
-    summary.total_carry.raw,
-    summary.total_roll_down.raw,
-    summary.total_treasury_curve.raw,
-    summary.total_credit_spread.raw,
-    summary.total_fx_translation.raw,
-    summary.total_realized_trading.raw,
-    summary.total_manual_adjustment.raw,
-  ];
-
-  const helperRaw: Array<number | null> = [];
-  const valueRaw: Array<number | null> = [];
-  const barColors: string[] = [];
-
-  let running = 0;
-  for (const value of stepValues) {
-    // 缺失效应不画 0 值柱：value/helper 传 null，让 ECharts 留出断点，且不推进累计值。
-    if (value === null) {
-      helperRaw.push(null);
-      valueRaw.push(null);
-      barColors.push(designTokens.color.neutral[400]);
-    } else if (value >= 0) {
-      helperRaw.push(running);
-      valueRaw.push(value);
-      barColors.push(designTokens.color.semantic.profit);
-      running += value;
-    } else {
-      helperRaw.push(running + value);
-      valueRaw.push(-value);
-      barColors.push(designTokens.color.semantic.loss);
-      running += value;
-    }
-  }
-
-  helperRaw.push(0);
-  valueRaw.push(summary.total_explained_pnl.raw);
-  barColors.push(designTokens.color.primary[600]);
-
-  helperRaw.push(0);
-  valueRaw.push(summary.total_actual_pnl.raw);
-  barColors.push(designTokens.color.primary[600]);
-
-  return {
-    tooltip: {
-      trigger: "axis",
-      axisPointer: { type: "shadow" },
-      formatter: (items: unknown) => {
-        const list = Array.isArray(items) ? items : [items];
-        const bar = list.find((item: { seriesName?: string }) => item.seriesName === "效应");
-        const idx = (bar as { dataIndex?: number })?.dataIndex ?? 0;
-        const label = BRIDGE_CATEGORIES[idx] ?? "";
-        return `${label}<br/>${displayStrings[idx] ?? "—"}`;
-      },
-    },
-    grid: { left: 48, right: 24, top: 24, bottom: 44, containLabel: true },
-    xAxis: {
-      type: "category",
-      data: [...BRIDGE_CATEGORIES],
-      axisLabel: { interval: 0, rotate: 22, fontSize: 11, color: designTokens.color.neutral[600] },
-    },
-    yAxis: {
-      type: "value",
-      splitLine: { lineStyle: { type: "dashed" as const, color: designTokens.color.neutral[200] } },
-      axisLabel: { fontSize: 11, color: designTokens.color.neutral[600] },
-    },
-    series: [
-      {
-        name: "辅助",
-        type: "bar",
-        stack: "waterfall",
-        silent: true,
-        itemStyle: TRANSPARENT_BAR,
-        emphasis: { itemStyle: TRANSPARENT_BAR },
-        data: helperRaw,
-      },
-      {
-        name: "效应",
-        type: "bar",
-        stack: "waterfall",
-        data: valueRaw.map((value, index) => ({
-          value,
-          itemStyle: { color: barColors[index] },
-        })),
-      },
-    ],
-  };
 }
 
 function cellText(value: string | number | null | undefined) {
@@ -178,41 +63,6 @@ function qualityLabel(value: PnlBridgeQuality | null | undefined) {
     return "错误";
   }
   return "—";
-}
-
-function pickMetaEffectiveDate(state: DataSectionState, meta: ResultMeta | null): string | undefined {
-  if ((state.kind === "fallback" || state.kind === "stale") && state.effective_date) {
-    return state.effective_date;
-  }
-  return meta?.fallback_date ?? meta?.resolved_report_date ?? meta?.as_of_date ?? undefined;
-}
-
-/** Decision-level first-screen notice from envelope result_meta (adapter state). */
-export function buildPnlBridgeFirstScreenMetaNotice(
-  state: DataSectionState,
-  meta: ResultMeta | null,
-): string | null {
-  if (state.kind === "fallback") {
-    const parts = ["首屏读模型已回退至最近可用快照"];
-    const effectiveDate = pickMetaEffectiveDate(state, meta);
-    if (meta?.requested_report_date && effectiveDate && meta.requested_report_date !== effectiveDate) {
-      parts.push(`请求日 ${meta.requested_report_date} 回退至 ${effectiveDate}`);
-    } else if (effectiveDate) {
-      parts.push(`有效日 ${effectiveDate}`);
-    }
-    return `${parts.join("；")}。下方 KPI 与瀑布图基于上述回退数据，请以实际数据日期为准。`;
-  }
-
-  if (state.kind === "stale") {
-    const parts = ["首屏读模型数据偏旧"];
-    const effectiveDate = pickMetaEffectiveDate(state, meta);
-    if (effectiveDate) {
-      parts.push(`有效日 ${effectiveDate}`);
-    }
-    return `${parts.join("；")}。下方校验状态仍可能显示为正常，因其来自行级闭合质量，不代表读模型新鲜度。`;
-  }
-
-  return null;
 }
 
 function buildBridgeConclusion(summary: PnlBridgeSummary | undefined) {
@@ -272,6 +122,44 @@ function numericNumericCol(
   };
 }
 
+const MARKET_EFFECT_AVAILABILITY_FIELDS = {
+  roll_down: ["roll_down_availability", "roll_down_availability_reason"],
+  treasury_curve: ["treasury_curve_availability", "treasury_curve_availability_reason"],
+  credit_spread: ["credit_spread_availability", "credit_spread_availability_reason"],
+} as const satisfies Record<
+  string,
+  readonly [keyof PnlBridgeRow & `${string}_availability`, keyof PnlBridgeRow]
+>;
+
+type MarketEffectField = keyof typeof MARKET_EFFECT_AVAILABILITY_FIELDS;
+
+/**
+ * 市场效应列：可用时与其它金额列完全一致，不可用/不适用时显示文字而不是 0。
+ *
+ * `valueGetter` 一并返回 null，否则按"国债曲线"排序会把缺曲线的结构性 0 和真实
+ * 的零变动混在一起——恰好是本次整改要消灭的那种混淆的另一种形态。
+ */
+function marketEffectCol(field: MarketEffectField, headerName: string): ColDef<PnlBridgeRow> {
+  const [availabilityField, reasonField] = MARKET_EFFECT_AVAILABILITY_FIELDS[field];
+  const unavailableText = (row: PnlBridgeRow | undefined) =>
+    effectAvailabilityCellText(
+      row?.[availabilityField] as PnlBridgeEffectAvailability | undefined,
+      row?.[reasonField] as PnlBridgeEffectAvailabilityReason | null | undefined,
+    );
+  return {
+    field,
+    headerName,
+    width: 170,
+    type: "numericColumn",
+    valueGetter: (params) =>
+      unavailableText(params.data) === null
+        ? (params.data?.[field] as Numeric | undefined)?.raw ?? null
+        : null,
+    valueFormatter: (params) =>
+      unavailableText(params.data) ?? (params.data?.[field] as Numeric | undefined)?.display ?? "—",
+  };
+}
+
 const bridgeGridDefaultColDef: ColDef = {
   sortable: true,
   filter: true,
@@ -289,9 +177,9 @@ const bridgeColumnDefsBase: ColDef<PnlBridgeRow>[] = [
     headerComponent: PnlBridgeBalanceScopeHeader,
   }),
   numericNumericCol("carry", "持有收益", 110),
-  numericNumericCol("roll_down", "骑乘", 110),
-  numericNumericCol("treasury_curve", "国债曲线", 110),
-  numericNumericCol("credit_spread", "信用利差", 110),
+  marketEffectCol("roll_down", "骑乘"),
+  marketEffectCol("treasury_curve", "国债曲线"),
+  marketEffectCol("credit_spread", "信用利差"),
   numericNumericCol("fx_translation", "汇兑效应", 110),
   numericNumericCol("realized_trading", "已实现交易", 120),
   numericNumericCol("unrealized_fv", "未实现公允", 120),
@@ -363,6 +251,7 @@ export default function PnlBridgePage() {
 
   const chartOption = useMemo(() => (summary ? buildWaterfallOption(summary) : null), [summary]);
   const conclusion = useMemo(() => buildBridgeConclusion(summary), [summary]);
+  const curveAvailabilityNotices = useMemo(() => buildCurveAvailabilityNotices(summary), [summary]);
 
   const summaryState = useMemo<DataSectionState>(() => {
     if (datesQuery.isLoading) return { kind: "loading" };
@@ -532,6 +421,29 @@ export default function PnlBridgePage() {
                   <div className="pnl-bridge-conclusion-detail">{conclusion.detail}</div>
                 </div>
               </div>
+
+              {curveAvailabilityNotices.length > 0 ? (
+                <div
+                  data-testid="pnl-bridge-curve-availability"
+                  className="pnl-bridge-curve-availability"
+                >
+                  <div className="pnl-bridge-curve-availability__title">曲线效应可用性</div>
+                  <ul className="pnl-bridge-curve-availability__list">
+                    {curveAvailabilityNotices.map((notice) => (
+                      <li
+                        key={notice.key}
+                        className="pnl-bridge-curve-availability__item"
+                        data-testid={`pnl-bridge-curve-availability-${notice.key}`}
+                      >
+                        <span className="pnl-bridge-curve-availability__label">{notice.label}</span>
+                        <span>
+                          {notice.statusText}：{notice.text}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
 
               <div data-testid="pnl-bridge-summary-cards" className="pnl-bridge-summary-cards">
                 <KpiCard title="行数" value={cellText(summary.row_count)} detail="汇总行数" unit="行" />

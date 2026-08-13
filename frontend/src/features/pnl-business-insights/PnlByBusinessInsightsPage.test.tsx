@@ -10,7 +10,7 @@ vi.mock("../../lib/echarts", () => ({
 }));
 
 import { ApiClientProvider, createApiClient, type ApiClient } from "../../api/client";
-import type { ApiEnvelope, PnlByBusinessInsightsPayload, ResultMeta } from "../../api/contracts";
+import type { ApiEnvelope, PnlByBusinessInsightsPayload, PnlDatesPayload, ResultMeta } from "../../api/contracts";
 import PnlByBusinessInsightsPage from "./PnlByBusinessInsightsPage";
 
 const meta: ResultMeta = {
@@ -188,6 +188,14 @@ function buildPayload(
         comparison_basis: "PRIOR_YEAR_SAME_PERIOD_YTD_AVG_BALANCE_SHARE",
         rows: [
           {
+            row_key: "asset_zqtz_interbank_cd",
+            business_type: "同业存单",
+            current_share_pct: "14.52",
+            baseline_share_pct: "7.62",
+            drift_pp: "6.90",
+            lifecycle_status: "continued",
+          },
+          {
             row_key: "asset_zqtz_public_fund",
             business_type: "公募基金",
             current_share_pct: "12.00",
@@ -230,8 +238,36 @@ function buildPayload(
   };
 }
 
-function buildClient(getPnlByBusinessInsights: ApiClient["getPnlByBusinessInsights"]): ApiClient {
-  return { ...createApiClient({ mode: "mock" }), getPnlByBusinessInsights };
+const DEFAULT_REPORT_DATES = ["2026-06-30", "2025-12-31"];
+
+function buildDatesPayload(reportDates: string[]): ApiEnvelope<PnlDatesPayload> {
+  return {
+    result_meta: {
+      ...meta,
+      trace_id: "tr_pnl_dates_test",
+      result_kind: "pnl.dates",
+      requested_report_date: null,
+      resolved_report_date: null,
+      as_of_date: null,
+      date_basis: null,
+    },
+    result: {
+      report_dates: reportDates,
+      formal_fi_report_dates: reportDates,
+      nonstd_bridge_report_dates: reportDates,
+    },
+  };
+}
+
+function buildClient(
+  getPnlByBusinessInsights: ApiClient["getPnlByBusinessInsights"],
+  reportDates: string[] = DEFAULT_REPORT_DATES,
+): ApiClient {
+  return {
+    ...createApiClient({ mode: "mock" }),
+    getFormalPnlDates: vi.fn(async () => buildDatesPayload(reportDates)),
+    getPnlByBusinessInsights,
+  };
 }
 
 function renderPage(client: ApiClient, initialEntry = "/pnl-by-business-insights") {
@@ -299,6 +335,67 @@ describe("PnlByBusinessInsightsPage", () => {
     expect(document.querySelector('[data-testid="capital-efficiency-quadrant-grid"]')).not.toBeNull();
   });
 
+  it("combines approved structure, negative-FTP and share-drift outputs into a management brief", async () => {
+    renderPage(buildClient(vi.fn(async () => buildPayload())));
+
+    const brief = await waitFor(() => {
+      const node = document.querySelector('[data-testid="pnl-by-business-insights-decision-brief"]');
+      expect(node).not.toBeNull();
+      return node as HTMLElement;
+    });
+
+    expect(brief).toHaveTextContent("Top3 占比 50.50%");
+    expect(brief).toHaveTextContent("HHI 13.42% 用于观察集中度趋势");
+    expect(brief).toHaveTextContent("同业存单：FTP后损益为负月份占比 91.67%，最长连续9个月");
+    expect(brief).toHaveTextContent("当前日均份额 14.52%，较上年同期间 +6.90pp");
+    expect(brief).toHaveTextContent("当前接口未返回利润影响所需输入，本页不作估算");
+  });
+
+  it("states that the negative-FTP warning includes approved manual entries and is not an all-month loss", async () => {
+    const result = buildPayload().result;
+    const componentEvidence = result.component_evidence.map((item) =>
+      item.component === "monthly_2026"
+        ? { ...item, tables_used: [...item.tables_used, "pnl_by_business_adjustments"] }
+        : item,
+    );
+    renderPage(buildClient(vi.fn(async () => buildPayload({}, { component_evidence: componentEvidence }))));
+
+    const brief = await waitFor(() => {
+      const node = document.querySelector('[data-testid="pnl-by-business-insights-decision-brief"]');
+      expect(node).not.toBeNull();
+      return node as HTMLElement;
+    });
+
+    expect(brief).toHaveTextContent("FTP后损益为负月份观察");
+    expect(brief).toHaveTextContent("滚动月度口径已纳入已批准手工补录");
+    expect(brief).toHaveTextContent("不表示每个月均为负，也不表示业务总损益为负");
+  });
+
+  it("warns when current and baseline YTD rule versions differ", async () => {
+    const result = buildPayload().result;
+    const componentEvidence = result.component_evidence.map((item) => {
+      if (item.component === "current_ytd") {
+        return { ...item, rule_version: "v3" };
+      }
+      if (item.component === "baseline_ytd") {
+        return { ...item, rule_version: "v1" };
+      }
+      return item;
+    });
+    renderPage(buildClient(vi.fn(async () => buildPayload({}, { component_evidence: componentEvidence }))));
+
+    const warning = await waitFor(() => {
+      const node = document.querySelector(
+        '[data-testid="pnl-by-business-insights-cross-period-rule-warning"]',
+      );
+      expect(node).not.toBeNull();
+      return node as HTMLElement;
+    });
+
+    expect(warning).toHaveTextContent("当前 YTD 使用 v3，上年同期间使用 v1");
+    expect(warning).toHaveTextContent("统一口径重算后再形成经营判断");
+  });
+
   it("converts concentration average balance from yuan to yi", async () => {
     const result = buildPayload().result;
     renderPage(buildClient(vi.fn(async () => buildPayload({}, {
@@ -321,7 +418,8 @@ describe("PnlByBusinessInsightsPage", () => {
       expect(node).not.toBeNull();
       return node as HTMLElement;
     });
-    expect(concentration).toHaveTextContent("总日均 1.00 亿元");
+    expect(concentration).toHaveTextContent("总日均余额");
+    expect(concentration).toHaveTextContent("1.00 亿元");
     expect(document.querySelector('[data-testid="pnl-by-business-insights-concentration-table"]')).toHaveTextContent(
       "1.00",
     );
@@ -339,7 +437,8 @@ describe("PnlByBusinessInsightsPage", () => {
       expect(node).not.toBeNull();
       return node as HTMLElement;
     });
-    expect(concentration).toHaveTextContent("总日均 — 亿元");
+    expect(concentration).toHaveTextContent("总日均余额");
+    expect(concentration).toHaveTextContent("— 亿元");
   });
 
   it.each([
@@ -483,6 +582,16 @@ describe("PnlByBusinessInsightsPage", () => {
     );
 
     await waitFor(() => expect(getInsights).toHaveBeenCalledWith(2025, "2025-12-31"));
+  });
+
+  it("uses the latest available formal cutoff instead of today's unavailable date", async () => {
+    vi.setSystemTime(new Date("2026-08-11T12:00:00Z"));
+    const getInsights = vi.fn(async () => buildPayload());
+
+    renderPage(buildClient(getInsights, ["2026-07-31", "2026-06-30"]));
+
+    await waitFor(() => expect(getInsights).toHaveBeenCalledWith(2026, "2026-07-31"));
+    expect(getInsights).not.toHaveBeenCalledWith(2026, "2026-08-11");
   });
 
   it("rejects non-canonical query parameters instead of sending them to the formal endpoint", async () => {

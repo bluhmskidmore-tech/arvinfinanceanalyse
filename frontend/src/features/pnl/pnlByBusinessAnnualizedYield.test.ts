@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { EM_DASH } from "../../utils/format";
 import { formatAnnualizedYieldPctDisplay, inclusiveCalendarDays } from "./pnlByBusinessAnnualizedYield";
 
 describe("pnlByBusinessAnnualizedYield", () => {
@@ -16,9 +17,9 @@ describe("pnlByBusinessAnnualizedYield", () => {
   });
 
   it("returns dash when inputs are unusable", () => {
-    expect(formatAnnualizedYieldPctDisplay(null)).toBe("-");
-    expect(formatAnnualizedYieldPctDisplay(undefined)).toBe("-");
-    expect(formatAnnualizedYieldPctDisplay("")).toBe("-");
-    expect(formatAnnualizedYieldPctDisplay("not-a-number")).toBe("-");
+    expect(formatAnnualizedYieldPctDisplay(null)).toBe(EM_DASH);
+    expect(formatAnnualizedYieldPctDisplay(undefined)).toBe(EM_DASH);
+    expect(formatAnnualizedYieldPctDisplay("")).toBe(EM_DASH);
+    expect(formatAnnualizedYieldPctDisplay("not-a-number")).toBe(EM_DASH);
   });
 });

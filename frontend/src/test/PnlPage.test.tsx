@@ -326,11 +326,21 @@ describe("PnlPage", () => {
     });
 
     expect(screen.getByTestId("pnl-overview-cards")).toHaveTextContent("9.88");
-    expect(screen.getByTestId("pnl-formal-fi-table")).toHaveTextContent("240001.IB");
+    // /api/pnl/v1-data 不支持 basis：分析口径下明细区禁用，不再展示正式口径明细混用
+    expect(screen.queryByTestId("pnl-formal-fi-table")).not.toBeInTheDocument();
+    expect(screen.getByTestId("pnl-detail-basis-locked")).toHaveTextContent("明细仅正式口径");
+    expect(getPnlV1Data).toHaveBeenCalledTimes(1);
+    expect(getPnlV1Data).toHaveBeenCalledWith("2025-12-31");
     expect(screen.getByTestId("pnl-result-meta-panel")).toHaveTextContent("analytical");
-    expect(screen.getByTestId("pnl-result-meta-panel")).toHaveTextContent("tr_pnl_data_formal");
     expect(screen.getByTestId("pnl-basis-note")).toHaveTextContent("正式口径");
     expect(screen.getByTestId("pnl-refresh-button")).toBeDisabled();
+
+    // 切回正式口径后恢复明细表
+    await user.click(screen.getByRole("button", { name: "正式口径" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("pnl-formal-fi-table")).toHaveTextContent("240001.IB");
+    });
+    expect(screen.queryByTestId("pnl-detail-basis-locked")).not.toBeInTheDocument();
   });
 
   it("surfaces loading and then empty state when no report dates are available", async () => {

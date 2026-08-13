@@ -63,6 +63,7 @@ import {
   toneFromSigned,
 } from "./pnlByBusinessPageModel";
 import { resolveAdbAvgYuan } from "./zqtzAdbAvgRollup";
+import { EM_DASH } from "../../utils/format";
 import "./PnlByBusinessPage.css";
 
 function pnlKpiToneClassName(
@@ -79,14 +80,14 @@ function pnlKpiToneClassName(
 
 function formatPrecomputeTimestamp(value: string | null | undefined): string {
   if (!value) {
-    return "-";
+    return EM_DASH;
   }
   return value.replace("T", " ").replace(/(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/, "");
 }
 
 function compactPrecomputeSourceVersion(value: string | null | undefined): string {
   if (!value) {
-    return "-";
+    return EM_DASH;
   }
   return value.length > 34 ? `${value.slice(0, 34)}…` : value;
 }
@@ -128,7 +129,7 @@ function PnlByBusinessPrecomputeStatusPanel({
             ? "预计算已就绪"
             : "预计算未就绪，当前使用实时计算";
   const tone = failed || isError ? "error" : inflight || servingLive ? "warning" : "ready";
-  const cutoff = status?.report_date ?? status?.latest_available_as_of_date ?? "-";
+  const cutoff = status?.report_date ?? status?.latest_available_as_of_date ?? EM_DASH;
 
   return (
     <section
@@ -159,7 +160,7 @@ function PnlByBusinessPrecomputeStatusPanel({
         <span title={status?.source_version ?? undefined}>
           <small>源版本</small><strong>{compactPrecomputeSourceVersion(status?.source_version)}</strong>
         </span>
-        <span><small>记录</small><strong>{status?.record_count ?? "-"}</strong></span>
+        <span><small>记录</small><strong>{status?.record_count ?? EM_DASH}</strong></span>
       </div>
       <button
         type="button"
@@ -219,7 +220,7 @@ function PnlByBusinessInsightStrip({
   const formalToneClass =
     insight.formalUntracedCount > 0 ? "pnl-by-business-insight-strip__value--negative" : "";
   const dragToneClass =
-    insight.topDragDisplay === "-"
+    insight.topDragDisplay === EM_DASH
       ? "pnl-by-business-insight-strip__value--positive"
       : "pnl-by-business-insight-strip__value--negative";
 
@@ -332,11 +333,11 @@ const EMPTY_MANUAL_ADJUSTMENT_DRAFT: ManualAdjustmentDraft = {
 function formatPnlWan(raw: string | number | null | undefined) {
   const value = numeric(raw);
   if (value === null) {
-    return "-";
+    return EM_DASH;
   }
-  const valueWan = value / 10_000;
-  const displayValue = Math.abs(valueWan) < 0.005 ? 0 : valueWan;
-  return displayValue.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
+  // 不做近零折叠：真实小值按两位小数如实四舍五入展示；仅规整 "-0" 符号噪声。
+  const display = (value / 10_000).toLocaleString("zh-CN", { maximumFractionDigits: 2 });
+  return display === "-0" ? "0" : display;
 }
 
 function formatAdbAvgYiCell(yuan: number): string {
@@ -346,7 +347,7 @@ function formatAdbAvgYiCell(yuan: number): string {
 function formatYuanAsYiCell(raw: string | number | null | undefined): string {
   const value = numeric(raw);
   if (value === null) {
-    return "-";
+    return EM_DASH;
   }
   return (value / YUAN_PER_YI).toFixed(2);
 }
@@ -361,7 +362,7 @@ function formatAdjustmentStatus(status: string): string {
   if (status === "rejected") {
     return "已撤销";
   }
-  return status || "-";
+  return status || EM_DASH;
 }
 
 function formatAdjustmentEvent(eventType: string): string {
@@ -377,7 +378,7 @@ function formatAdjustmentEvent(eventType: string): string {
   if (eventType === "restored") {
     return "恢复";
   }
-  return eventType || "-";
+  return eventType || EM_DASH;
 }
 
 function normalizeAdjustmentStatus(status: string): PnlByBusinessManualAdjustmentRequest["approval_status"] {
@@ -391,7 +392,7 @@ function normalizeAdjustmentStatus(status: string): PnlByBusinessManualAdjustmen
 function formatFormalYieldPctPoints(raw: string | number | null | undefined) {
   const value = numeric(raw);
   if (value === null) {
-    return "-";
+    return EM_DASH;
   }
   return `${value.toFixed(2)}%`;
 }
@@ -399,7 +400,7 @@ function formatFormalYieldPctPoints(raw: string | number | null | undefined) {
 function formatFtpRatePct(raw: string | number | null | undefined): string {
   const value = numeric(raw);
   if (value === null) {
-    return "-";
+    return EM_DASH;
   }
   return `${value.toFixed(2)}%`;
 }
@@ -795,8 +796,22 @@ function MonthlyBusinessRowsTable({ month }: { month: PnlByBusinessMonthlyBucket
   const detailRows = month.items.filter(isDetailZqtzBusinessRow);
   const evidenceComplete = month.unallocated_evidence_complete === true;
   const reconciliationClosed = evidenceComplete && (numeric(month.reconciliation_delta) ?? Number.NaN) === 0;
+  const expectedCoverageDays = month.expected_days ?? month.calendar_days;
+  const coverageIncomplete =
+    typeof month.coverage_days === "number" &&
+    expectedCoverageDays > 0 &&
+    month.coverage_days < expectedCoverageDays;
   return (
     <>
+      {coverageIncomplete ? (
+        <div
+          className="pnl-by-business-detail-warning"
+          data-testid={`pnl-by-business-monthly-coverage-warning-${month.month_key}`}
+        >
+          日均余额仅覆盖 {month.coverage_days}/{expectedCoverageDays} 天。下表日均、年化收益率、FTP 成本及 FTP
+          后结果为观测样本估算，仅供对账，暂不作为完整月度结论。
+        </div>
+      ) : null}
       <div
         className="pnl-by-business-table-shell pnl-by-business-month-table-shell"
         data-testid={`pnl-by-business-monthly-table-${month.month_key}`}
@@ -805,17 +820,17 @@ function MonthlyBusinessRowsTable({ month }: { month: PnlByBusinessMonthlyBucket
           <thead>
             <tr>
               <th>业务种类</th>
-              <th>日均(亿元)</th>
+              <th>{coverageIncomplete ? "观测日均(亿元)" : "日均(亿元)"}</th>
               <th>期末余额(亿元)</th>
               <th>利息收入（万元）</th>
               <th>公允价值变动（万元）</th>
               <th>资本利得（万元）</th>
               <th>手工调整（万元）</th>
               <th>合计损益（万元）</th>
-              <th>年化收益率</th>
-              <th>FTP成本（万元）</th>
-              <th>FTP后收益（万元）</th>
-              <th>FTP后收益率</th>
+              <th>{coverageIncomplete ? "年化收益率（待核对）" : "年化收益率"}</th>
+              <th>{coverageIncomplete ? "FTP成本（待核对，万元）" : "FTP成本（万元）"}</th>
+              <th>{coverageIncomplete ? "FTP后收益（待核对，万元）" : "FTP后收益（万元）"}</th>
+              <th>{coverageIncomplete ? "FTP后收益率（待核对）" : "FTP后收益率"}</th>
               <th>占比</th>
               <th>资产数</th>
             </tr>
@@ -913,17 +928,17 @@ function MonthlyBusinessRowsTable({ month }: { month: PnlByBusinessMonthlyBucket
               <thead>
                 <tr>
                   <th>业务种类</th>
-                  <th>日均(亿元)</th>
+                  <th>{coverageIncomplete ? "观测日均(亿元)" : "日均(亿元)"}</th>
                   <th>期末余额(亿元)</th>
                   <th>利息收入（万元）</th>
                   <th>公允价值变动（万元）</th>
                   <th>资本利得（万元）</th>
                   <th>手工调整（万元）</th>
                   <th>合计损益（万元）</th>
-                  <th>年化收益率</th>
-                  <th>FTP成本（万元）</th>
-                  <th>FTP后收益（万元）</th>
-                  <th>FTP后收益率</th>
+                  <th>{coverageIncomplete ? "年化收益率（待核对）" : "年化收益率"}</th>
+                  <th>{coverageIncomplete ? "FTP成本（待核对，万元）" : "FTP成本（万元）"}</th>
+                  <th>{coverageIncomplete ? "FTP后收益（待核对，万元）" : "FTP后收益（万元）"}</th>
+                  <th>{coverageIncomplete ? "FTP后收益率（待核对）" : "FTP后收益率"}</th>
                   <th>占比</th>
                   <th>资产数</th>
                 </tr>
@@ -999,6 +1014,13 @@ function MonthlyBusinessBreakdownPanel({
         <div className="pnl-by-business-monthly-list">
           {months.map((month) => {
             const isOpen = openMonthKeys.has(month.month_key) || (forceOpenSingleMonth && months.length === 1);
+            const expectedCoverageDays = month.expected_days ?? month.calendar_days;
+            const coverageIncomplete =
+              typeof month.coverage_days === "number" &&
+              expectedCoverageDays > 0 &&
+              month.coverage_days < expectedCoverageDays;
+            const manualAdjustment = numeric(month.summary.manual_adjustment);
+            const hasManualAdjustment = manualAdjustment !== null && manualAdjustment !== 0;
             return (
               <div
                 className={
@@ -1023,20 +1045,30 @@ function MonthlyBusinessBreakdownPanel({
                   </span>
                   <span className="pnl-by-business-month-metrics">
                     <span>
-                      <small>日均余额</small>
+                      <small>
+                        {coverageIncomplete
+                          ? `观测日均（${month.coverage_days}/${expectedCoverageDays}天）`
+                          : "日均余额"}
+                      </small>
                       <strong>{formatAvgBalanceYiMetric(month.summary.avg_balance)}</strong>
                     </span>
                     <span>
-                      <small>总损益</small>
+                      <small>{hasManualAdjustment ? "调整后损益" : "总损益"}</small>
                       <strong>{formatPnlWan(month.summary.total_pnl)} 万元</strong>
                     </span>
                     <span>
                       <small>年化收益率</small>
-                      <strong>{formatAnalysisYieldPct(month.summary.annualized_yield_pct)}</strong>
+                      <strong>
+                        {coverageIncomplete ? "待核对" : formatAnalysisYieldPct(month.summary.annualized_yield_pct)}
+                      </strong>
                     </span>
                     <span>
                       <small>FTP后收益率</small>
-                      <strong>{formatAnalysisYieldPct(month.summary.ftp_net_annualized_yield_pct)}</strong>
+                      <strong>
+                        {coverageIncomplete
+                          ? "待核对"
+                          : formatAnalysisYieldPct(month.summary.ftp_net_annualized_yield_pct)}
+                      </strong>
                     </span>
                     <span>
                       <small>资产数</small>
@@ -1110,7 +1142,7 @@ function PnlByBusinessManualAdjustmentPanel({
         <div>
           <h2>手工调整</h2>
           <p>
-            {selectedReportDate} · {selectedBusinessRow?.business_type ?? "-"}
+            {selectedReportDate} · {selectedBusinessRow?.business_type ?? EM_DASH}
           </p>
         </div>
         <span className="pnl-by-business-section-pill">{readError ? "读取失败" : `${adjustments.length} 当前`}</span>
@@ -1224,7 +1256,7 @@ function PnlByBusinessManualAdjustmentPanel({
                       <td>{item.business_type || item.row_key}</td>
                       <td>{formatPnlWan(item.manual_adjustment)}</td>
                       <td>{formatAdjustmentStatus(item.approval_status)}</td>
-                      <td>{item.reason || "-"}</td>
+                      <td>{item.reason || EM_DASH}</td>
                       <td>{formatAdjustmentEvent(item.event_type)}</td>
                       <td>
                         <div className="pnl-by-business-row-actions">
@@ -1287,7 +1319,7 @@ function PnlByBusinessManualAdjustmentPanel({
                       <td>{item.business_type || item.row_key}</td>
                       <td>{formatPnlWan(item.manual_adjustment)}</td>
                       <td>{formatAdjustmentStatus(item.approval_status)}</td>
-                      <td>{item.reason || "-"}</td>
+                      <td>{item.reason || EM_DASH}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1413,13 +1445,19 @@ function DriverOverviewPanel({
     .slice(0, 5);
   const gapRows = [...rows]
     .map((row) => {
-      const adbAvg = resolveAdbAvgYuan(row.business_type, adbAvgByBusinessType);
+      const adbAvg = resolveAdbAvgYuan(row.business_type, adbAvgByBusinessType, row.avg_balance);
       const current = numeric(row.current_balance) ?? 0;
-      return { row, gap: adbAvg !== undefined ? current - adbAvg : null };
+      return {
+        row,
+        gap: adbAvg !== undefined ? current - adbAvg.valueYuan : null,
+        adbSource: adbAvg?.source,
+      };
     })
     .filter((item) => item.gap !== null)
     .sort((left, right) => Math.abs(right.gap ?? 0) - Math.abs(left.gap ?? 0))
     .slice(0, 5);
+  const gapUsesYtdParentField =
+    adbEvidenceStatus === "comparison" && gapRows.some((item) => item.adbSource === "ytd_row");
 
   return (
     <section className="pnl-by-business-analysis-block" data-testid="pnl-by-business-driver-overview">
@@ -1429,7 +1467,9 @@ function DriverOverviewPanel({
           <p>
             按 YTD 损益、分项、年化收益率和日均/期末差异看业务种类贡献；日均来源：
             {adbEvidenceStatus === "comparison"
-              ? "ADB 补充复核"
+              ? gapUsesYtdParentField
+                ? "ADB 补充复核（父级行日均消费 YTD 主端点后端字段，不做前端子类求和）"
+                : "ADB 补充复核"
               : adbEvidenceStatus === "loading"
                 ? "YTD 主端点（ADB 补充复核读取中）"
                 : "YTD 主端点（ADB 补充复核不可用）"}
@@ -1635,13 +1675,13 @@ function SelectedBusinessDrilldownPanel({
       <div className="pnl-by-business-analysis-heading">
         <div>
           <h2>证券级下钻</h2>
-          <p>{selectedRow?.business_type ?? "-"} · 从业务种类落到具体券，先看贡献、拖累和 FTP 后为负。</p>
+          <p>{selectedRow?.business_type ?? EM_DASH} · 从业务种类落到具体券，先看贡献、拖累和 FTP 后为负。</p>
         </div>
       </div>
       <div className="pnl-by-business-selected-drilldown__summary">
         <div>
           <small>选中业务</small>
-          <strong>{selectedRow?.business_type ?? "-"}</strong>
+          <strong>{selectedRow?.business_type ?? EM_DASH}</strong>
           <span>{rows.length} 条证券级记录</span>
         </div>
         <div>
@@ -1796,25 +1836,21 @@ function MonthlyAdjustmentFtpBridgePanel({
           label="补数前损益（对账值）"
           value={formatYuanAsWanUnit(bridge.preAdjustmentPnl)}
           detail="利息收入 + 公允价值变动 + 资本利得"
-          tone={toneFromSigned(bridge.preAdjustmentPnl)}
         />
         <KpiCard
           label="已入账手工调整"
           value={formatYuanAsWanUnit(row.manual_adjustment)}
           detail="月报接口已生效金额"
-          tone={toneFromSigned(row.manual_adjustment)}
         />
         <KpiCard
           label="调整后合计损益"
           value={formatYuanAsWanUnit(row.total_pnl)}
           detail="补数前损益 + 手工调整"
-          tone={toneFromSigned(row.total_pnl)}
         />
         <KpiCard
           label="FTP成本"
           value={formatYuanAsWanUnit(row.ftp_cost)}
           detail={`月度日均 × ${formatFtpRatePct(row.ftp_rate_pct)} × 当月自然日/365`}
-          tone={(numeric(row.ftp_cost) ?? 0) > 0 ? "negative" : "default"}
         />
         <KpiCard
           label="FTP后收益"
@@ -1873,7 +1909,7 @@ function FtpBridgePanel({
       <div className="pnl-by-business-analysis-heading">
         <div>
           <h2>FTP后收益桥</h2>
-          <p>{selectedRow?.business_type ?? "-"} · FTP 年化利率 {ftpRateDisplay}</p>
+          <p>{selectedRow?.business_type ?? EM_DASH} · FTP 年化利率 {ftpRateDisplay}</p>
         </div>
       </div>
       <div className="pnl-by-business-analysis-kpis">
@@ -1881,13 +1917,11 @@ function FtpBridgePanel({
           label="合计损益"
           value={formatYuanAsWanUnit(selectedRow?.total_pnl)}
           detail="扣 FTP 前"
-          tone={toneFromSigned(selectedRow?.total_pnl)}
         />
         <KpiCard
           label="FTP成本"
           value={formatYuanAsWanUnit(selectedRow?.ftp_cost)}
           detail={avgBalance === null ? "日均缺失" : numeric(avgBalance) === 0 ? "日均为0" : `日均 × ${ftpRateDisplay}`}
-          tone={(numeric(selectedRow?.ftp_cost) ?? 0) > 0 ? "negative" : "default"}
         />
         <KpiCard
           label="FTP后收益"
@@ -2680,7 +2714,11 @@ export default function PnlByBusinessPage() {
   })();
 
   return (
-    <section data-testid="pnl-by-business-page" className="pnl-by-business-page">
+    <section
+      data-testid="pnl-by-business-page"
+      data-moss-theme-scope="pnl-by-business"
+      className="pnl-by-business-page"
+    >
       <PageV2Shell testId="pnl-by-business-page-shell">
         <PageDecisionHero
           testId="pnl-by-business-contract-hero"
@@ -2891,7 +2929,7 @@ export default function PnlByBusinessPage() {
                 }
                 description={
                   adbComparisonFallbackReason === "range_mismatch"
-                    ? `ADB 返回区间 ${adbComparisonQuery.data?.start_date || "-"} 至 ${adbComparisonQuery.data?.end_date || "-"}，与 YTD 主端点 ${ytdRange?.startDate || "-"} 至 ${ytdRange?.endDate || "-"} 不一致。本页日均、年化与 FTP 继续使用 YTD 主端点返回字段，不据此宣称跨源 ADB 已核对。`
+                    ? `ADB 返回区间 ${adbComparisonQuery.data?.start_date || EM_DASH} 至 ${adbComparisonQuery.data?.end_date || EM_DASH}，与 YTD 主端点 ${ytdRange?.startDate || EM_DASH} 至 ${ytdRange?.endDate || EM_DASH} 不一致。本页日均、年化与 FTP 继续使用 YTD 主端点返回字段，不据此宣称跨源 ADB 已核对。`
                     : "当前身份无法读取或暂时无法访问 ADB comparison 补充证据。本页日均、年化与 FTP 继续使用 YTD 主端点返回字段；这不代表缺日均，但跨源 ADB 覆盖结论已降级。"
                 }
               />
@@ -2926,13 +2964,15 @@ export default function PnlByBusinessPage() {
           <AnalysisGrid columns={1} testId="pnl-by-business-analysis-grid" className="pnl-by-business-analysis-grid">
             {viewMode === "monthly" ? (
             <>
-              <PageSectionLead
-                eyebrow="Monthly Report"
-                title={`${selectedYear} 月报（截至 ${
-                  activeMonthlyBucket?.month_key ?? selectedReportDate.slice(0, 7)
-                }）`}
-                description="月报与累计视图使用同一套 ZQTZ 管理披露分类：金额列为万元，日均与期末余额为亿元，收益率按各月自然日数年化。该视图列出截至当前报表日已加载的月报；切换到「年累计」可查看这些月报的累计结果。"
-              />
+              <div className="pnl-by-business-section-lead">
+                <PageSectionLead
+                  eyebrow="Monthly Report"
+                  title={`${selectedYear} 月报（截至 ${
+                    activeMonthlyBucket?.month_key ?? selectedReportDate.slice(0, 7)
+                  }）`}
+                  description="月报与累计视图使用同一套 ZQTZ 管理披露分类：金额列为万元，日均与期末余额为亿元，收益率按各月自然日数年化。该视图列出截至当前报表日已加载的月报；切换到「年累计」可查看这些月报的累计结果。"
+                />
+              </div>
               <MonthlyAdjustmentFtpBridgePanel
                 bridge={monthlyAdjustmentBridge}
                 approvedAdjustmentCount={monthlyBridgeApprovedAdjustments.length}
@@ -2985,7 +3025,7 @@ export default function PnlByBusinessPage() {
                   <div>
                     <h2>总表分项拆解</h2>
                     <p>
-                      {selectedBusinessRow?.business_type ?? "-"} · 子项仅拆分当前父级，不与其他父级重复
+                      {selectedBusinessRow?.business_type ?? EM_DASH} · 子项仅拆分当前父级，不与其他父级重复
                     </p>
                   </div>
                   <label className="pnl-by-business-filter-label">
@@ -3118,7 +3158,7 @@ export default function PnlByBusinessPage() {
                 <div className="pnl-by-business-analysis-heading">
                   <div>
                     <h2>多维下钻</h2>
-                    <p>{selectedBusinessRow?.business_type ?? "-"}</p>
+                    <p>{selectedBusinessRow?.business_type ?? EM_DASH}</p>
                   </div>
                   <label className="pnl-by-business-filter-label">
                     维度
@@ -3140,7 +3180,7 @@ export default function PnlByBusinessPage() {
                   <KpiCard
                     label="选中业务损益"
                     value={formatYuanAsWanUnit(selectedBusinessRow?.total_pnl)}
-                    detail={selectedBusinessRow?.business_type ?? "-"}
+                    detail={selectedBusinessRow?.business_type ?? EM_DASH}
                     tone={toneFromSigned(selectedBusinessRow?.total_pnl)}
                   />
                   <KpiCard

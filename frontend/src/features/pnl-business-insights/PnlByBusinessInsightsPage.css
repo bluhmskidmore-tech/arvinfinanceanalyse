@@ -1,5 +1,29 @@
 .pnl-by-business-insights-page {
   min-width: 0;
+
+  /*
+   * Nocturne 接入桥：本页与 KpiCard 等子树组件消费 --ib-*，而 --ib-* 在
+   * ThemedRouteBoundary 的 .theme-dh-api 块上就被算成钢蓝字面值再继承，
+   * 页根 scope 对 --dh-api-* 的翻转够不到（ledger-pnl 2026-08-12 结论）。
+   * 此处按 theme-dh-api 的语义映射在页根重声明，令其在 scope 内重新解析；
+   * 全部走 var 引用，不落字面色值。
+   */
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line-soft);
+  --ib-rule-strong: var(--dh-api-line);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-hover: var(--nct-accent-300, var(--dh-api-blue));
+  --ib-accent-surface: var(--dh-api-blue-soft);
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
+  --ib-warn: var(--dh-api-amber);
+  --ib-gold: var(--dh-api-amber);
+  --ib-radius: var(--dh-api-radius);
 }
 
 .pnl-by-business-insights-filter-label {
@@ -19,8 +43,10 @@
 }
 
 .pnl-by-business-insights-data-status-strip {
-  display: grid;
-  gap: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
   width: 100%;
 }
 
@@ -67,6 +93,116 @@
   gap: 16px;
 }
 
+.pnl-by-business-insights-decision-brief {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface-muted);
+}
+
+.pnl-by-business-insights-decision-brief__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pnl-by-business-insights-decision-brief__header > div > span,
+.pnl-by-business-insights-decision-brief__label {
+  color: var(--ib-accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.pnl-by-business-insights-decision-brief__header h2 {
+  margin: 3px 0 0;
+  color: var(--ib-ink);
+  font-size: 17px;
+}
+
+.pnl-by-business-insights-decision-brief__cutoff {
+  color: var(--ib-ink-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pnl-by-business-insights-decision-brief__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  border-top: 1px solid var(--ib-hairline);
+}
+
+.pnl-by-business-insights-decision-brief__grid article {
+  min-width: 0;
+  padding: 14px 16px 0;
+  color: var(--ib-ink-secondary);
+}
+
+.pnl-by-business-insights-decision-brief__grid article:first-child {
+  padding-left: 0;
+}
+
+.pnl-by-business-insights-decision-brief__grid article + article {
+  border-left: 1px solid var(--ib-hairline);
+}
+
+.pnl-by-business-insights-decision-brief__grid article > strong {
+  display: block;
+  margin-top: 8px;
+  color: var(--ib-ink);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pnl-by-business-insights-decision-brief__grid p,
+.pnl-by-business-insights-decision-brief__grid ol {
+  margin: 8px 0;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.pnl-by-business-insights-decision-brief__grid ol {
+  padding-left: 18px;
+}
+
+.pnl-by-business-insights-decision-brief__grid small {
+  color: var(--ib-ink-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pnl-by-business-insights-decision-brief__focus {
+  background: color-mix(in srgb, var(--ib-warn) 5%, transparent);
+}
+
+.pnl-by-business-insights-decision-brief__signals p {
+  margin: 8px 0 0;
+}
+
+.pnl-by-business-insights-decision-brief__signals strong {
+  color: var(--ib-ink);
+}
+
+.pnl-by-business-insights-rule-warning {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--ib-warn) 45%, var(--ib-hairline));
+  color: var(--ib-ink-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.pnl-by-business-insights-rule-warning strong {
+  color: var(--ib-warn);
+}
+
 /* 对账健康度诊断区块：与上方业务分析区块刻意用中性灰调隔离，禁止使用 warning/danger/info 等强调色，
    以免被误读为业务结论或业务预警。 */
 .pnl-by-business-insights-quadrant-card {
@@ -80,8 +216,21 @@
 .pnl-by-business-insights-quadrant-card__header {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   margin-bottom: 10px;
+}
+
+.pnl-by-business-insights-quadrant-card__header > span {
+  color: var(--ib-accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pnl-by-business-insights-quadrant-card__header > p {
+  margin: 0;
+  color: var(--ib-ink-muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .pnl-by-business-insights-quadrant-note {
@@ -168,6 +317,78 @@
   line-height: 1.6;
 }
 
+/* 组内子导航是页根的外壳兄弟节点，继承不到页根桥接；以 :has() 按路由校正
+   （姊妹页 pnl-by-business 同款先例），变量值由外壳 grid 的 scope 块提供。 */
+[data-testid="workbench-main-content"]:has(.pnl-by-business-insights-page)
+  .workbench-section-subnav {
+  border-bottom-color: var(--dh-api-line-soft);
+}
+
+[data-testid="workbench-main-content"]:has(.pnl-by-business-insights-page)
+  .workbench-section-subnav__eyebrow {
+  color: var(--dh-api-muted);
+}
+
+[data-testid="workbench-main-content"]:has(.pnl-by-business-insights-page)
+  .workbench-section-subnav__title {
+  color: var(--dh-api-ink);
+}
+
+[data-testid="workbench-main-content"]:has(.pnl-by-business-insights-page)
+  .workbench-section-subnav__link {
+  border-color: var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  color: var(--dh-api-soft);
+  box-shadow: none;
+}
+
+[data-testid="workbench-main-content"]:has(.pnl-by-business-insights-page)
+  .workbench-section-subnav__link:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 42%, var(--dh-api-line) 58%);
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-ink);
+}
+
+[data-testid="workbench-main-content"]:has(.pnl-by-business-insights-page)
+  .workbench-section-subnav__link[data-active="true"] {
+  border-color: var(--dh-api-blue);
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-ink);
+}
+
+/* 共享 pageStyles 的三张内联表格仍烘焙浅色字面量（白底 / 浅灰边 / 深墨字），
+   内联样式变量翻转够不到，路由内以 !important 校正到 Nocturne 链；
+   待共享基元主题化后移除（姊妹页 pnl-by-business 同款先例）。 */
+.pnl-by-business-insights-page [data-testid="pnl-by-business-insights-concentration-table"],
+.pnl-by-business-insights-page [data-testid="pnl-by-business-insights-negative-ftp-table"],
+.pnl-by-business-insights-page [data-testid="pnl-by-business-insights-share-drift-table"] {
+  border-color: var(--dh-api-line-soft) !important;
+  border-radius: var(--dh-api-radius) !important;
+  background: var(--dh-api-panel) !important;
+}
+
+.pnl-by-business-insights-page [data-testid="pnl-by-business-insights-concentration-table"] th,
+.pnl-by-business-insights-page [data-testid="pnl-by-business-insights-negative-ftp-table"] th,
+.pnl-by-business-insights-page [data-testid="pnl-by-business-insights-share-drift-table"] th {
+  border-bottom-color: var(--dh-api-line) !important;
+  color: var(--dh-api-muted) !important;
+}
+
+.pnl-by-business-insights-page [data-testid="pnl-by-business-insights-concentration-table"] td,
+.pnl-by-business-insights-page [data-testid="pnl-by-business-insights-negative-ftp-table"] td,
+.pnl-by-business-insights-page [data-testid="pnl-by-business-insights-share-drift-table"] td {
+  border-bottom-color: var(--dh-api-line-soft) !important;
+  color: var(--dh-api-ink) !important;
+}
+
+/* 负FTP持续性达到提示条件的单元格：数据属性钩子保住警示琥珀（源序后置压过上行通配 td）。 */
+.pnl-by-business-insights-page
+  [data-testid="pnl-by-business-insights-negative-ftp-table"]
+  td[data-warning="true"] {
+  color: var(--dh-api-amber) !important;
+}
+
 @media (max-width: 1080px) {
   .pnl-by-business-insights-data-status-strip__grid {
     grid-template-columns: minmax(0, 1fr);
@@ -175,5 +396,18 @@
 
   .pnl-by-business-insights-quadrant-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pnl-by-business-insights-decision-brief__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pnl-by-business-insights-decision-brief__grid article {
+    padding: 14px 0;
+  }
+
+  .pnl-by-business-insights-decision-brief__grid article + article {
+    border-top: 1px solid var(--ib-hairline);
+    border-left: 0;
   }
 }

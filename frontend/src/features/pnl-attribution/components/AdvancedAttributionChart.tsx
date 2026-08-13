@@ -9,10 +9,42 @@ import type {
 } from "../../../api/contracts";
 import { PageDataSection } from "../../../components/page/PageDataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
-import { createBarChartOption, createBaseChartOption } from "../../../components/charts/chartTheme";
-import { designTokens, ibTokens } from "../../../theme/designSystem";
+import { dhApiChartTheme } from "../../../components/charts/chartTheme";
+import { designTokens, nocturneTokens } from "../../../theme/designSystem";
 import { numericRaw } from "../../../pageModel";
+import { EM_DASH } from "../../../utils/format";
 import "./AdvancedAttributionChart.css";
+
+// 本图挂在暗色路由（theme-dh-api）下且页面已切首页 Nocturne 色板：基础 option
+// 仍走共享 dhApiChartTheme（结构性默认：grid/legend 形态、confine 等），但该
+// 主题内嵌钢蓝深色常量（调色板 / tooltip 背景 / 图例字色 / 轴线色），共享主题
+// 不改，统一在下方覆盖项与显式取色处压回 nocturneTokens 静态镜像（ECharts
+// canvas 读不到 CSS 变量，迁法同 TPLMarketChart / 组合工作台先例）。
+const { createBarChartOption, createBaseChartOption } = dhApiChartTheme;
+
+const NOCTURNE_CHART_PALETTE = [
+  nocturneTokens.color.blue,
+  nocturneTokens.color.green,
+  nocturneTokens.color.amber,
+  nocturneTokens.color.red,
+  nocturneTokens.color.inkSoft,
+  nocturneTokens.color.inkMuted,
+];
+
+const NOCTURNE_CHART_TEXT = { color: nocturneTokens.color.ink } as const;
+
+const NOCTURNE_TOOLTIP_STYLE = {
+  backgroundColor: nocturneTokens.color.panel2,
+  borderColor: nocturneTokens.color.lineSoft,
+  textStyle: { color: nocturneTokens.color.ink },
+  axisPointer: { lineStyle: { color: nocturneTokens.color.amber } },
+} as const;
+
+const NOCTURNE_LEGEND_TEXT_COLOR = nocturneTokens.color.inkMuted;
+
+const NOCTURNE_AXIS_LINE = {
+  lineStyle: { color: nocturneTokens.color.lineSoft },
+} as const;
 
 const CONTRIBUTION_PCT_CALIBER_NOTE =
   "占比按各效应绝对值计算，方向相反时合计可能超过 100%";
@@ -59,7 +91,7 @@ function AttributionPctCaliberNote(props: { testId: string }) {
 
 function formatYi(value: number | null | undefined): string {
   if (value === null || value === undefined) {
-    return "—";
+    return EM_DASH;
   }
   const yi = value / 100_000_000;
   return `${yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
@@ -82,7 +114,7 @@ function yiOrNull(value: Numeric | null | undefined): number | null {
 
 function numericDisplay(
   value: { raw: number | null; display?: string } | null | undefined,
-  fallback = "—",
+  fallback = EM_DASH,
 ): string {
   const display = value?.display?.trim();
   if (display) return display;
@@ -93,7 +125,7 @@ function pctDisplay(value: Numeric | null | undefined): string {
   const display = value?.display?.trim();
   if (display) return display;
   const points = pctPoints(value);
-  return points === null ? "—" : `${points.toFixed(2)}%`;
+  return points === null ? EM_DASH : `${points.toFixed(2)}%`;
 }
 
 type Props = {
@@ -120,8 +152,16 @@ export function AdvancedAttributionChart({
     }
     const rows = carryData.items.slice(0, 10);
     return createBarChartOption({
-      tooltip: { trigger: "axis" },
-      legend: { bottom: 0, textStyle: { fontSize: designTokens.fontSize[12] } },
+      color: NOCTURNE_CHART_PALETTE,
+      textStyle: NOCTURNE_CHART_TEXT,
+      tooltip: { trigger: "axis", ...NOCTURNE_TOOLTIP_STYLE },
+      legend: {
+        bottom: 0,
+        textStyle: {
+          fontSize: designTokens.fontSize[12],
+          color: NOCTURNE_LEGEND_TEXT_COLOR,
+        },
+      },
       grid: {
         left: 48,
         right: designTokens.space[6],
@@ -133,20 +173,22 @@ export function AdvancedAttributionChart({
         data: rows.map((r) =>
           r.category.length > 8 ? `${r.category.slice(0, 8)}…` : r.category,
         ),
+        axisLine: NOCTURNE_AXIS_LINE,
         axisLabel: {
           fontSize: designTokens.fontSize[11],
           rotate: 20,
-          color: designTokens.color.neutral[700],
+          color: nocturneTokens.color.inkSoft,
         },
       },
       yAxis: {
         type: "value",
+        axisLine: NOCTURNE_AXIS_LINE,
         axisLabel: {
           formatter: (v: number) => `${v.toFixed(1)}%`,
-          color: designTokens.color.neutral[700],
+          color: nocturneTokens.color.inkSoft,
         },
         splitLine: {
-          lineStyle: { type: "dashed", color: designTokens.color.neutral[100] },
+          lineStyle: { type: "dashed", color: nocturneTokens.color.lineSoft },
         },
       },
       series: [
@@ -155,7 +197,7 @@ export function AdvancedAttributionChart({
           type: "bar",
           data: rows.map((r) => pctPoints(r.carry)),
           itemStyle: {
-            color: ibTokens.color.up,
+            color: nocturneTokens.color.green,
             borderRadius: BAR_RADIUS,
           },
         },
@@ -164,7 +206,7 @@ export function AdvancedAttributionChart({
           type: "bar",
           data: rows.map((r) => pctPoints(r.rolldown)),
           itemStyle: {
-            color: ibTokens.color.accent,
+            color: nocturneTokens.color.blue,
             borderRadius: BAR_RADIUS,
           },
         },
@@ -181,33 +223,44 @@ export function AdvancedAttributionChart({
     const contrib = krdData.buckets.map((b) => yiOrNull(b.duration_contribution));
     const ychg = krdData.buckets.map((b) => pctPoints(b.yield_change));
     return createBaseChartOption({
-      tooltip: { trigger: "axis" },
-      legend: { bottom: 0, textStyle: { fontSize: designTokens.fontSize[12] } },
+      color: NOCTURNE_CHART_PALETTE,
+      textStyle: NOCTURNE_CHART_TEXT,
+      tooltip: { trigger: "axis", ...NOCTURNE_TOOLTIP_STYLE },
+      legend: {
+        bottom: 0,
+        textStyle: {
+          fontSize: designTokens.fontSize[12],
+          color: NOCTURNE_LEGEND_TEXT_COLOR,
+        },
+      },
       grid: { left: 52, right: 52, top: designTokens.space[6], bottom: 48 },
       xAxis: {
         type: "category",
         data: tenors,
+        axisLine: NOCTURNE_AXIS_LINE,
         axisLabel: {
           fontSize: designTokens.fontSize[11],
-          color: designTokens.color.neutral[700],
+          color: nocturneTokens.color.inkSoft,
         },
       },
       yAxis: [
         {
           type: "value",
           name: "久期贡献(亿)",
-          axisLabel: { color: designTokens.color.neutral[700] },
+          axisLine: NOCTURNE_AXIS_LINE,
+          axisLabel: { color: nocturneTokens.color.inkSoft },
           splitLine: {
             lineStyle: {
               type: "dashed",
-              color: designTokens.color.neutral[100],
+              color: nocturneTokens.color.lineSoft,
             },
           },
         },
         {
           type: "value",
           name: "BP",
-          axisLabel: { color: designTokens.color.neutral[700] },
+          axisLine: NOCTURNE_AXIS_LINE,
+          axisLabel: { color: nocturneTokens.color.inkSoft },
           splitLine: { show: false },
         },
       ],
@@ -221,8 +274,8 @@ export function AdvancedAttributionChart({
             itemStyle: {
               color:
                 v !== null && v < 0
-                  ? ibTokens.color.down
-                  : ibTokens.color.up,
+                  ? nocturneTokens.color.red
+                  : nocturneTokens.color.green,
               borderRadius: BAR_RADIUS,
             },
           })),
@@ -234,7 +287,7 @@ export function AdvancedAttributionChart({
           data: ychg,
           smooth: true,
           symbolSize: 8,
-          lineStyle: { color: ibTokens.color.accent, width: 2 },
+          lineStyle: { color: nocturneTokens.color.blue, width: 2 },
         },
       ],
     });
@@ -245,8 +298,16 @@ export function AdvancedAttributionChart({
       return null;
     }
     return createBarChartOption({
-      tooltip: { trigger: "axis" },
-      legend: { bottom: 0, textStyle: { fontSize: designTokens.fontSize[12] } },
+      color: NOCTURNE_CHART_PALETTE,
+      textStyle: NOCTURNE_CHART_TEXT,
+      tooltip: { trigger: "axis", ...NOCTURNE_TOOLTIP_STYLE },
+      legend: {
+        bottom: 0,
+        textStyle: {
+          fontSize: designTokens.fontSize[12],
+          color: NOCTURNE_LEGEND_TEXT_COLOR,
+        },
+      },
       grid: {
         left: 48,
         right: designTokens.space[6],
@@ -256,16 +317,21 @@ export function AdvancedAttributionChart({
       xAxis: {
         type: "category",
         data: krdData.buckets.map((b) => b.tenor),
+        axisLine: NOCTURNE_AXIS_LINE,
         axisLabel: {
           fontSize: designTokens.fontSize[11],
-          color: designTokens.color.neutral[700],
+          color: nocturneTokens.color.inkSoft,
         },
       },
       yAxis: {
         type: "value",
+        axisLine: NOCTURNE_AXIS_LINE,
         axisLabel: {
           formatter: (v: number) => `${v}%`,
-          color: designTokens.color.neutral[700],
+          color: nocturneTokens.color.inkSoft,
+        },
+        splitLine: {
+          lineStyle: { color: nocturneTokens.color.lineSoft },
         },
       },
       series: [
@@ -274,7 +340,7 @@ export function AdvancedAttributionChart({
           type: "bar",
           data: krdData.buckets.map((b) => pctPoints(b.contribution_pct)),
           itemStyle: {
-            color: ibTokens.color.accent,
+            color: nocturneTokens.color.blue,
             borderRadius: BAR_RADIUS,
           },
         },
@@ -284,7 +350,7 @@ export function AdvancedAttributionChart({
           // weight 契约 raw 为小数比率，经 pctPoints ×100 与「贡献占比」同轴（百分点）。
           data: krdData.buckets.map((b) => pctPoints(b.weight)),
           itemStyle: {
-            color: ibTokens.color.up,
+            color: nocturneTokens.color.green,
             borderRadius: BAR_RADIUS,
           },
         },
@@ -402,7 +468,7 @@ export function AdvancedAttributionChart({
                 >
                   {spreadData.treasury_10y_change?.raw != null
                     ? `${spreadData.treasury_10y_change.raw >= 0 ? "+" : ""}${spreadData.treasury_10y_change.raw.toFixed(0)} BP`
-                    : "—"}
+                    : EM_DASH}
                 </div>
               </div>
             </>
@@ -415,7 +481,7 @@ export function AdvancedAttributionChart({
               <div className="advanced-attribution-chart__metric-value" data-direction="info">
                 {krdData.portfolio_dv01.raw != null
                   ? `${(krdData.portfolio_dv01.raw / 10_000).toFixed(0)} 万`
-                  : "—"}
+                  : EM_DASH}
               </div>
               <div className="advanced-attribution-chart__metric-note">
                 每 BP 价值变动
@@ -478,7 +544,7 @@ export function AdvancedAttributionChart({
                         {item.category}
                       </td>
                       <td className="advanced-attribution-chart__table-num">
-                        {yiOrNull(item.market_value)?.toFixed(1) ?? "—"}
+                        {yiOrNull(item.market_value)?.toFixed(1) ?? EM_DASH}
                       </td>
                       <td className="advanced-attribution-chart__table-num">
                         {pctDisplay(item.coupon_rate)}
@@ -493,7 +559,7 @@ export function AdvancedAttributionChart({
                         {formatYi(item.carry_pnl.raw ?? undefined)}
                       </td>
                       <td className="advanced-attribution-chart__table-num">
-                        {item.duration.raw != null ? item.duration.raw.toFixed(2) : "—"}
+                        {item.duration.raw != null ? item.duration.raw.toFixed(2) : EM_DASH}
                       </td>
                       <td className="advanced-attribution-chart__table-num" data-direction={toneDirection(item.rolldown.raw)}>
                         {pctDisplay(item.rolldown)}
@@ -634,7 +700,7 @@ export function AdvancedAttributionChart({
                         {b.bond_count}
                       </td>
                       <td className="advanced-attribution-chart__table-num">
-                        {yiOrNull(b.market_value)?.toFixed(1) ?? "—"}
+                        {yiOrNull(b.market_value)?.toFixed(1) ?? EM_DASH}
                       </td>
                       <td className="advanced-attribution-chart__table-num">
                         {pctDisplay(b.weight)}
@@ -643,10 +709,10 @@ export function AdvancedAttributionChart({
                         {numericDisplay(b.bucket_duration)}
                       </td>
                       <td className="advanced-attribution-chart__table-num" data-direction={rateMoveDirection(b.yield_change?.raw)}>
-                        {pctPoints(b.yield_change)?.toFixed(1) ?? "—"}
+                        {pctPoints(b.yield_change)?.toFixed(1) ?? EM_DASH}
                       </td>
                       <td className="advanced-attribution-chart__table-num" data-direction={valueDirection(b.duration_contribution.raw)}>
-                        {yiOrNull(b.duration_contribution)?.toFixed(2) ?? "—"}
+                        {yiOrNull(b.duration_contribution)?.toFixed(2) ?? EM_DASH}
                       </td>
                       <td className="advanced-attribution-chart__table-num advanced-attribution-chart__table-num--strong">
                         {pctDisplay(b.contribution_pct)}

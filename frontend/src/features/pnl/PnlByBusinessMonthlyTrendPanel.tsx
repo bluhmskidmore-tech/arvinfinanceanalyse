@@ -5,6 +5,7 @@ import { BaseChart } from "../../components/charts/BaseChart";
 import { createLineChartOption, mossChartPalette } from "../../components/charts/chartTheme";
 import type { EChartsOption } from "../../lib/echarts";
 import { ibTokens } from "../../theme/designSystem";
+import { EM_DASH } from "../../utils/format";
 import {
   buildSelectedBusinessMonthlyTrend,
   type PnlByBusinessMonthlyTrendPoint,
@@ -67,10 +68,10 @@ function buildTrendOption(
     tooltip: {
       valueFormatter: (value) => {
         if (value === null || value === undefined || value === "") {
-          return "-";
+          return EM_DASH;
         }
         const numericValue = Number(value);
-        return Number.isFinite(numericValue) ? `${formatAxisValue(numericValue)} ${unit}` : "-";
+        return Number.isFinite(numericValue) ? `${formatAxisValue(numericValue)} ${unit}` : EM_DASH;
       },
     },
     legend: {

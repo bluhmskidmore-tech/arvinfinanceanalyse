@@ -1,18 +1,20 @@
-import { designTokens } from "../../../theme/designSystem";
+import { nocturneTokens } from "../../../theme/designSystem";
 
 /**
  * PnL attribution chart series / tone colors.
- * All values resolve through designTokens (token-equal); no bare hex.
+ * 本页挂暗色路由（theme-dh-api）且已切首页 Nocturne 色板；ECharts canvas
+ * 读不到 CSS 变量，一律走 nocturneTokens 静态镜像 token（token-equal）；
+ * no bare hex 原则不变。正负色方向不变：positive=green / negative=red。
  */
 export const pnlCompositionSeriesColors = {
-  positive: designTokens.color.success[600],
-  neutral: designTokens.color.neutral[600],
-  negative: designTokens.color.danger[500],
-  interest: designTokens.color.success[500],
-  fairValue: designTokens.color.info[500],
-  capital: designTokens.color.warning[500],
-  other: designTokens.color.neutral[500],
+  positive: nocturneTokens.color.green,
+  neutral: nocturneTokens.color.inkMuted,
+  negative: nocturneTokens.color.red,
+  interest: nocturneTokens.color.green,
+  fairValue: nocturneTokens.color.blue,
+  capital: nocturneTokens.color.amber,
+  other: nocturneTokens.color.inkMuted,
 } as const;
 
-/** ECharts bar label on filled bars — equals cockpit white / IB surface. */
-export const pnlChartLabelOnFill = designTokens.color.cockpit.white;
+/** ECharts bar label on filled bars — Nocturne ink（近白），保证落在实心柱上的对比度。 */
+export const pnlChartLabelOnFill = nocturneTokens.color.ink;

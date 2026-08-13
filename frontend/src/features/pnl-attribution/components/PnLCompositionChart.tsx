@@ -4,8 +4,9 @@ import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { PageDataSection } from "../../../components/page/PageDataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import type { Numeric, PnlCompositionPayload } from "../../../api/contracts";
-import { designTokens } from "../../../theme/designSystem";
+import { designTokens, nocturneTokens } from "../../../theme/designSystem";
 import { numericRaw } from "../../../pageModel";
+import { EM_DASH } from "../../../utils/format";
 import {
   pnlChartLabelOnFill,
   pnlCompositionSeriesColors,
@@ -31,7 +32,7 @@ function pctDisplay(
   n: Numeric | null | undefined,
 ): string {
   const points = pctPoints(n);
-  if (points === null) return "—";
+  if (points === null) return EM_DASH;
   const display = n?.display?.trim();
   if (display) return display;
   return `${points.toFixed(1)}%`;
@@ -58,13 +59,13 @@ function yiDisplay(
   signed = false,
 ): string {
   const raw = rawOr(value);
-  if (raw === null) return "—";
+  if (raw === null) return EM_DASH;
   const yi = raw / 100_000_000;
   return `${signed && yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
 }
 
 function yiCell(raw: number | null): string {
-  return raw === null ? "—" : (raw / 100_000_000).toFixed(2);
+  return raw === null ? EM_DASH : (raw / 100_000_000).toFixed(2);
 }
 
 type Props = {
@@ -119,9 +120,9 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
           const e = entries[0];
           if (!e) return "";
           const yi = e.data.value;
-          if (yi === null) return `${e.axisValue}<br/>—`;
+          if (yi === null) return `${e.axisValue}<br/>${EM_DASH}`;
           const sign = yi >= 0 ? "+" : "";
-          const pct = e.data.pct === null ? "—" : `${e.data.pct.toFixed(1)}%`;
+          const pct = e.data.pct === null ? EM_DASH : `${e.data.pct.toFixed(1)}%`;
           return `${e.axisValue}<br/>${sign}${yi.toFixed(2)} 亿（占比 ${pct}）`;
         },
       },
@@ -137,12 +138,12 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
         name: "亿元",
         axisLine: {
           show: true,
-          lineStyle: { color: designTokens.color.neutral[300] },
+          lineStyle: { color: nocturneTokens.color.line },
         },
         splitLine: {
           lineStyle: {
             type: "dashed" as const,
-            color: designTokens.color.neutral[200],
+            color: nocturneTokens.color.lineSoft,
           },
         },
       },
@@ -165,13 +166,13 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
             show: true,
             formatter: (params: { value?: unknown }) => {
               if (params.value === null || params.value === undefined) {
-                return "—";
+                return EM_DASH;
               }
               const rawValue =
                 typeof params.value === "number"
                   ? params.value
                   : Number(params.value);
-              if (!Number.isFinite(rawValue)) return "—";
+              if (!Number.isFinite(rawValue)) return EM_DASH;
               const v = rawValue;
               const sign = v >= 0 ? "+" : "";
               return `${sign}${v.toFixed(2)}`;
@@ -190,9 +191,16 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
     const periods = data.trend_data.map((t) =>
       (t.period_label ?? t.period).replace("年", "-").replace("月", ""),
     );
+    // ECharts canvas 读不到 CSS 变量，按 tone.ts 指南使用 Nocturne TS 镜像 token。
     return {
       tooltip: { trigger: "axis" as const },
-      legend: { bottom: 0, textStyle: { fontSize: designTokens.fontSize[12] } },
+      legend: {
+        bottom: 0,
+        textStyle: {
+          fontSize: designTokens.fontSize[12],
+          color: nocturneTokens.color.inkSoft,
+        },
+      },
       grid: {
         left: 48,
         right: designTokens.space[6],
@@ -204,19 +212,19 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
         data: periods,
         axisLabel: {
           fontSize: designTokens.fontSize[11],
-          color: designTokens.color.neutral[700],
+          color: nocturneTokens.color.inkSoft,
         },
       },
       yAxis: {
         type: "value" as const,
         axisLabel: {
           formatter: (v: number) => `${v.toFixed(1)}亿`,
-          color: designTokens.color.neutral[700],
+          color: nocturneTokens.color.inkSoft,
         },
         splitLine: {
           lineStyle: {
             type: "dashed" as const,
-            color: designTokens.color.neutral[100],
+            color: nocturneTokens.color.lineSoft,
           },
         },
       },

@@ -3,12 +3,15 @@ import type { DataSectionState } from "../../../components/DataSection.types";
 import { PageDataSection } from "../../../components/page/PageDataSection";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 
+// 本面板挂在 Nocturne 深色路由（theme-dh-api + pnl-attribution scope）下，
+// 面色/文字一律走主题感知 CSS 变量（--dh-api-*），禁止浅色 hex、designTokens
+// 浅色 neutral 或 --ib-*（路由边界已算成钢蓝字面值）直灌（迁法同
+// CampisiAttributionPanel / CampisiDecisionGradePanel）。
 const cardStyle = {
   padding: designTokens.space[5],
-  borderRadius: designTokens.radius.sm,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: "#ffffff",
-  boxShadow: "0 1px 2px rgba(31, 41, 55, 0.04)",
+  borderRadius: "var(--dh-api-radius)",
+  border: "1px solid var(--dh-api-line)",
+  background: "var(--dh-api-panel)",
 } as const;
 
 function toYi(value: number) {
@@ -31,7 +34,7 @@ export function CampisiMaturityBucketPanel({ data, state, onRetry }: Props) {
           style={{
             margin: `0 0 ${designTokens.space[4]}px`,
             fontSize: designTokens.fontSize[13],
-            color: designTokens.color.neutral[700],
+            color: "var(--dh-api-soft)",
             lineHeight: designTokens.lineHeight.normal,
           }}
         >
@@ -45,7 +48,7 @@ export function CampisiMaturityBucketPanel({ data, state, onRetry }: Props) {
           }}
         >
           <thead>
-            <tr style={{ background: designTokens.color.neutral[100] }}>
+            <tr style={{ background: "var(--dh-api-panel-2)" }}>
               <th style={{ textAlign: "left", padding: designTokens.space[2] }}>
                 到期桶
               </th>
@@ -101,7 +104,7 @@ export function CampisiMaturityBucketPanel({ data, state, onRetry }: Props) {
               <tr
                 key={bucket}
                 style={{
-                  borderTop: `1px solid ${designTokens.color.neutral[200]}`,
+                  borderTop: "1px solid var(--dh-api-line-soft)",
                 }}
               >
                 <td style={{ padding: designTokens.space[2] }}>{bucket}</td>

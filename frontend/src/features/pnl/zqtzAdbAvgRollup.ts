@@ -1,49 +1,31 @@
 /**
- * 日均 breakdown 使用 classify_zqtz_asset_bond_label（最细一档类目）；父级「非底层投资资产」、
- * 「证券业资管计划」在明细里常常没有单独一行，PnL 父级行却仍汇总损益，
- * 故日均列应对其子类日均（元）求和以便对齐口径。
- * 与 backend/app/core_finance/zqtz_asset_bond_category.py 中 sort_order 83–88 行一致。
+ * ADB 补充复核 breakdown 使用 classify_zqtz_asset_bond_label（最细一档类目），父级
+ * 「非底层投资资产」「证券业资管计划」在该明细里没有单独一行。父级日均不再由前端对
+ * 子类求和拼合（子类含「其中：」项，非完备分区，求和不是日均口径）；后端
+ * /api/pnl/by-business-ytd 已在父级行返回 avg_balance（元），未命中证据 map 时消费该字段。
  */
-export const ADB_AVG_ROLLUP_CHILDREN_BY_PARENT: Record<string, readonly string[]> = {
-  非底层投资资产: ["信托计划", "证券业资管计划"],
-  证券业资管计划: [
-    "结构化融资（券商）",
-    "其中：外币委外",
-    "其中：本币委外（市值法）",
-    "其中：本币专户（成本法）",
-  ],
+export type AdbAvgResolution = {
+  valueYuan: number;
+  /** direct：ADB 证据 map 直接命中；ytd_row：消费后端 YTD 行的父级 avg_balance 字段 */
+  source: "direct" | "ytd_row";
 };
 
-/** 返回折算前日均余额（元）；无可用数据时 undefined */
-export function resolveAdbAvgYuan(businessType: string, directMap: Map<string, number>): number | undefined {
-  return resolveAdbAvgYuanFromRollup(businessType, directMap, new Set());
-}
-
-function resolveAdbAvgYuanFromRollup(
+/** 返回折算前日均余额（元）与来源；两个来源都缺失或非法时返回 undefined（展示端用 EM_DASH） */
+export function resolveAdbAvgYuan(
   businessType: string,
   directMap: Map<string, number>,
-  visiting: Set<string>,
-): number | undefined {
-  if (directMap.has(businessType)) {
-    return directMap.get(businessType);
+  backendAvgBalanceYuan?: string | number | null,
+): AdbAvgResolution | undefined {
+  const direct = directMap.get(businessType);
+  if (direct !== undefined) {
+    return { valueYuan: direct, source: "direct" };
   }
-  if (visiting.has(businessType)) {
+  if (backendAvgBalanceYuan === null || backendAvgBalanceYuan === undefined || backendAvgBalanceYuan === "") {
     return undefined;
   }
-  const children = ADB_AVG_ROLLUP_CHILDREN_BY_PARENT[businessType];
-  if (!children?.length) {
+  const parsed = Number(backendAvgBalanceYuan);
+  if (!Number.isFinite(parsed)) {
     return undefined;
   }
-  visiting.add(businessType);
-  let sum = 0;
-  for (const label of children) {
-    const v = resolveAdbAvgYuanFromRollup(label, directMap, visiting);
-    if (v === undefined) {
-      visiting.delete(businessType);
-      return undefined;
-    }
-    sum += v;
-  }
-  visiting.delete(businessType);
-  return sum;
+  return { valueYuan: parsed, source: "ytd_row" };
 }

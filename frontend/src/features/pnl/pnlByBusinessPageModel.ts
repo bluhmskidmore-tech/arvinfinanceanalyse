@@ -12,6 +12,7 @@ import type {
   PnlByBusinessYtdPayload,
   ResultMeta,
 } from "../../api/contracts";
+import { EM_DASH } from "../../utils/format";
 import { resolveAdbAvgYuan } from "./zqtzAdbAvgRollup";
 
 export type PnlByBusinessViewMode = "monthly" | "ytd" | "formal";
@@ -273,7 +274,7 @@ export function buildPnlByBusinessSelectedDrilldownModel(
 function formatPnlWan(raw: string | number | null | undefined) {
   const value = numeric(raw);
   if (value === null) {
-    return "-";
+    return EM_DASH;
   }
   return (value / YUAN_PER_WAN).toLocaleString("zh-CN", { maximumFractionDigits: 2 });
 }
@@ -281,7 +282,7 @@ function formatPnlWan(raw: string | number | null | undefined) {
 export function formatYuanAsWanUnit(raw: string | number | null | undefined) {
   const value = numeric(raw);
   if (value === null) {
-    return "-";
+    return EM_DASH;
   }
   return `${formatPnlWan(value)} 万元`;
 }
@@ -289,7 +290,7 @@ export function formatYuanAsWanUnit(raw: string | number | null | undefined) {
 function formatYuanByMateriality(raw: string | number | null | undefined): string {
   const value = numeric(raw);
   if (value === null) {
-    return "-";
+    return EM_DASH;
   }
   if (Math.abs(value) < YUAN_PER_WAN) {
     return `${value.toLocaleString("zh-CN", {
@@ -303,7 +304,7 @@ function formatYuanByMateriality(raw: string | number | null | undefined): strin
 function formatYuanAsYiCell(raw: string | number | null | undefined): string {
   const value = numeric(raw);
   if (value === null) {
-    return "-";
+    return EM_DASH;
   }
   return (value / YUAN_PER_YI).toFixed(2);
 }
@@ -324,7 +325,7 @@ export function formatAvgBalanceYiMetric(raw: string | number | null | undefined
 export function formatAnalysisYieldPct(raw: string | number | null | undefined): string {
   const value = numeric(raw);
   if (value === null) {
-    return "-";
+    return EM_DASH;
   }
   return `${value.toFixed(2)}%`;
 }
@@ -332,7 +333,7 @@ export function formatAnalysisYieldPct(raw: string | number | null | undefined):
 export function formatRatioPct(raw: string | number | null | undefined) {
   const value = numeric(raw);
   if (value === null) {
-    return "-";
+    return EM_DASH;
   }
   return `${(value * 100).toFixed(2)}%`;
 }
@@ -700,12 +701,20 @@ function buildHeroConclusion(input: {
   if (input.viewMode === "monthly") {
     const monthKey = input.activeMonthlyBucket?.month_key ?? input.selectedReportDate.slice(0, 7);
     const total = formatYuanAsWanUnit(input.activeMonthlyBucket?.summary.total_pnl);
+    const manualAdjustment = numeric(input.activeMonthlyBucket?.summary.manual_adjustment);
+    const hasManualAdjustment = manualAdjustment !== null && manualAdjustment !== 0;
     const topBusiness = input.topMonthlyRow?.business_type ?? "暂无明细";
     return {
       ...reportDateFields,
       businessQuestion: VIEW_MODE_BUSINESS_QUESTIONS.monthly,
-      conclusionTitle: `${monthKey} 月报合计 ${total}`,
-      conclusionDetail: `最大损益业务：${topBusiness}；口径与月报 ZQTZ 管理披露分类一致。`,
+      conclusionTitle: hasManualAdjustment
+        ? `${monthKey} 调整后已分类损益 ${total}`
+        : `${monthKey} 月报合计 ${total}`,
+      conclusionDetail: hasManualAdjustment
+        ? `已含批准手工调整 ${manualAdjustment > 0 ? "+" : ""}${formatYuanAsWanUnit(
+            manualAdjustment,
+          )}；最大损益业务：${topBusiness}。`
+        : `最大损益业务：${topBusiness}；口径与月报 ZQTZ 管理披露分类一致。`,
     };
   }
 
@@ -738,6 +747,9 @@ function buildStateSurfaces(input: {
     expected_days?: number;
     sample_filled?: boolean;
     sample_fill_method?: string | null;
+    source_total_pnl?: string;
+    classified_parent_total_pnl?: string;
+    manual_adjustment?: string;
     unallocated_pnl?: string;
     unallocated_abs_pnl?: string;
     unallocated_row_count?: number;
@@ -767,6 +779,27 @@ function buildStateSurfaces(input: {
   }
 
   const diagnostics = input.activeDiagnostics;
+  const manualAdjustment = numeric(diagnostics?.manual_adjustment);
+  if (manualAdjustment !== null && manualAdjustment !== 0) {
+    const sourceTotal = numeric(diagnostics?.source_total_pnl);
+    const preAdjustmentSource = sourceTotal === null ? null : sourceTotal - manualAdjustment;
+    surfaces.push({
+      key: "manual-adjustment-included",
+      variant: "definition-pending",
+      title: "月报已包含批准手工调整",
+      description: `已批准手工调整 ${manualAdjustment > 0 ? "+" : ""}${formatYuanAsWanUnit(
+        manualAdjustment,
+      )} 已计入当前结果${
+        preAdjustmentSource === null
+          ? ""
+          : `；调整前源损益（含未分类）为 ${formatYuanAsWanUnit(preAdjustmentSource)}`
+      }${
+        diagnostics?.classified_parent_total_pnl
+          ? `；调整后已分类损益为 ${formatYuanAsWanUnit(diagnostics.classified_parent_total_pnl)}`
+          : ""
+      }。`,
+    });
+  }
   const coverageDays = diagnostics?.coverage_days;
   const expectedDays = diagnostics?.expected_days;
   if (
@@ -779,9 +812,9 @@ function buildStateSurfaces(input: {
       key: "coverage-partial",
       variant: "stale",
       title: "日均余额样本覆盖不足",
-      description: `余额观测覆盖 ${coverageDays}/${expectedDays} 天；sample_filled=${String(
+      description: `余额观测仅覆盖 ${coverageDays}/${expectedDays} 天；当前“日均”为已观测日的月度估算，不是完整自然月日均。月报收益率、FTP 成本及 FTP 后结果暂不作为汇报结论。（sample_filled=${String(
         diagnostics?.sample_filled ?? false,
-      )}，method=${diagnostics?.sample_fill_method ?? "none"}。收益率与 FTP 结果需结合覆盖率使用。`,
+      )}，method=${diagnostics?.sample_fill_method ?? "none"}）`,
     });
   }
 
@@ -907,11 +940,22 @@ function buildMonthlySummaryCards(input: {
   topMonthlyRow?: PnlByBusinessMonthlyItem;
 }): PnlSummaryCard[] {
   const { activeMonthlyBucket, topMonthlyRow } = input;
+  const manualAdjustment = numeric(activeMonthlyBucket?.summary.manual_adjustment);
+  const hasManualAdjustment = manualAdjustment !== null && manualAdjustment !== 0;
+  const coverageDays = activeMonthlyBucket?.coverage_days;
+  const expectedDays = activeMonthlyBucket?.expected_days ?? activeMonthlyBucket?.calendar_days;
+  const coverageIncomplete =
+    typeof coverageDays === "number" &&
+    typeof expectedDays === "number" &&
+    expectedDays > 0 &&
+    coverageDays < expectedDays;
   return [
     {
-      label: "月报合计损益",
+      label: hasManualAdjustment ? "调整后已分类损益" : "月报合计损益",
       value: formatYuanAsWanUnit(activeMonthlyBucket?.summary.total_pnl),
-      detail: activeMonthlyBucket?.month_key ?? input.selectedReportDate,
+      detail: hasManualAdjustment
+        ? `含已批准调整 ${manualAdjustment > 0 ? "+" : ""}${formatYuanAsWanUnit(manualAdjustment)}`
+        : activeMonthlyBucket?.month_key ?? input.selectedReportDate,
       tone: toneFromSigned(activeMonthlyBucket?.summary.total_pnl),
     },
     {
@@ -921,16 +965,23 @@ function buildMonthlySummaryCards(input: {
     },
     {
       label: "最大损益业务",
-      value: topMonthlyRow?.business_type ?? "-",
+      value: topMonthlyRow?.business_type ?? EM_DASH,
       detail: topMonthlyRow ? formatYuanAsWanUnit(topMonthlyRow.total_pnl) : "无明细",
       valueVariant: "text",
       tone: toneFromSigned(topMonthlyRow?.total_pnl),
     },
     {
       label: "月报收益率",
-      value: formatAnalysisYieldPct(activeMonthlyBucket?.summary.annualized_yield_pct),
-      detail: "月度日均分母",
-      tone: toneFromSigned(activeMonthlyBucket?.summary.annualized_yield_pct),
+      value: coverageIncomplete
+        ? "待核对"
+        : formatAnalysisYieldPct(activeMonthlyBucket?.summary.annualized_yield_pct),
+      detail: coverageIncomplete
+        ? `日均仅覆盖 ${coverageDays}/${expectedDays} 天`
+        : "月度日均分母",
+      valueVariant: coverageIncomplete ? "text" : undefined,
+      tone: coverageIncomplete
+        ? undefined
+        : toneFromSigned(activeMonthlyBucket?.summary.annualized_yield_pct),
     },
   ];
 }
@@ -958,7 +1009,7 @@ function buildYtdSummaryCards(input: {
     },
     {
       label: "最大损益业务",
-      value: topYtdRow?.business_type ?? "-",
+      value: topYtdRow?.business_type ?? EM_DASH,
       detail: topYtdRow ? formatYuanAsWanUnit(topYtdRow.total_pnl) : "无明细",
       valueVariant: "text",
       tone: toneFromSigned(topYtdRow?.total_pnl),
@@ -992,7 +1043,7 @@ function buildFormalSummaryCards(input: {
     },
     {
       label: "最大损益（行）",
-      value: topFormalRow?.business_type_primary ?? "-",
+      value: topFormalRow?.business_type_primary ?? EM_DASH,
       detail: topFormalRow ? formatYuanAsWanUnit(topFormalRow.total_pnl) : "无明细",
       valueVariant: "text",
       tone: toneFromSigned(topFormalRow?.total_pnl),
@@ -1137,7 +1188,7 @@ function buildPnlByBusinessInsight(input: {
       topContributionLabel: input.topFormalRow?.business_type_primary ?? "暂无明细",
       topContributionDisplay: formatYuanAsWanUnit(topFormalValue),
       topDragLabel: (numeric(topFormalValue) ?? 0) < 0 ? (input.topFormalRow?.business_type_primary ?? "暂无明细") : "无拖累",
-      topDragDisplay: (numeric(topFormalValue) ?? 0) < 0 ? formatYuanAsWanUnit(topFormalValue) : "-",
+      topDragDisplay: (numeric(topFormalValue) ?? 0) < 0 ? formatYuanAsWanUnit(topFormalValue) : EM_DASH,
       topShareLabel: "仅对账",
       topShareDisplay: "不与月报/YTD 混加",
       ftpAvailable: false,
@@ -1173,7 +1224,7 @@ function buildPnlByBusinessInsight(input: {
       topContributionLabel: input.topMonthlyRow?.business_type ?? "暂无明细",
       topContributionDisplay: formatYuanAsWanUnit(input.topMonthlyRow?.total_pnl),
       topDragLabel: input.topMonthlyDragRow?.business_type ?? "无拖累",
-      topDragDisplay: input.topMonthlyDragRow ? formatYuanAsWanUnit(input.topMonthlyDragRow.total_pnl) : "-",
+      topDragDisplay: input.topMonthlyDragRow ? formatYuanAsWanUnit(input.topMonthlyDragRow.total_pnl) : EM_DASH,
       topShareLabel: input.topMonthlyRow?.business_type ?? "暂无明细",
       topShareDisplay: formatRatioPct(input.topMonthlyRow?.proportion),
       ftpAvailable: numeric(input.activeMonthlyBucket?.summary.ftp_net_pnl) !== null,
@@ -1204,11 +1255,11 @@ function buildPnlByBusinessInsight(input: {
   const activeYtdRows = input.parentYtdRows.filter(hasYtdBusinessActivity);
   const resolvedAdbValues = activeYtdRows.map((row) =>
       input.adbAvgByBusinessType
-        ? resolveAdbAvgYuan(row.business_type, input.adbAvgByBusinessType)
+        ? resolveAdbAvgYuan(row.business_type, input.adbAvgByBusinessType, row.avg_balance)
         : undefined,
     );
   const missingAdbCount = resolvedAdbValues.filter((adb) => adb === undefined).length;
-  const zeroAdbCount = resolvedAdbValues.filter((adb) => adb === 0).length;
+  const zeroAdbCount = resolvedAdbValues.filter((adb) => adb !== undefined && adb.valueYuan === 0).length;
   const missingFtpFieldCount = activeYtdRows.filter(
     (row) => numeric(row.ftp_cost) === null || numeric(row.ftp_net_pnl) === null,
   ).length;
@@ -1235,7 +1286,7 @@ function buildPnlByBusinessInsight(input: {
     topContributionLabel: topContribution?.business_type ?? "暂无正贡献",
     topContributionDisplay: formatYuanAsWanUnit(topContribution?.total_pnl),
     topDragLabel: topDrag?.business_type ?? "无拖累",
-    topDragDisplay: topDrag ? formatYuanAsWanUnit(topDrag.total_pnl) : "-",
+    topDragDisplay: topDrag ? formatYuanAsWanUnit(topDrag.total_pnl) : EM_DASH,
     topShareLabel: topShare?.business_type ?? "暂无占比",
     topShareDisplay: formatRatioPct(topShare?.proportion),
     ftpAvailable,
@@ -1320,7 +1371,14 @@ export function buildPnlByBusinessPageModel(
         ? input.ytdMeta
         : input.formalMeta;
   const activeDiagnostics =
-    input.viewMode === "monthly" ? activeMonthlyBucket : input.viewMode === "ytd" ? input.ytdResult : undefined;
+    input.viewMode === "monthly" && activeMonthlyBucket
+      ? {
+          ...activeMonthlyBucket,
+          manual_adjustment: activeMonthlyBucket.summary.manual_adjustment,
+        }
+      : input.viewMode === "ytd"
+        ? input.ytdResult
+        : undefined;
   const activeDataStatus = formatPnlQualityStatus(activeResultMeta?.quality_flag, {
     isLoading: loading,
     isError: error,

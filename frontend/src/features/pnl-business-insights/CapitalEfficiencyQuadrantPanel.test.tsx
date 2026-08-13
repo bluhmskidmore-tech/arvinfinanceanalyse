@@ -62,13 +62,28 @@ describe("CapitalEfficiencyQuadrantPanel", () => {
     const { getByTestId } = render(<CapitalEfficiencyQuadrantPanel summary={summary()} />);
 
     expect(getByTestId("capital-efficiency-quadrant-large_high")).toHaveTextContent("业务A");
+    expect(getByTestId("capital-efficiency-quadrant-large_high")).toHaveTextContent("核心收益观察");
     expect(getByTestId("capital-efficiency-quadrant-large_low")).toHaveTextContent("业务B");
+    expect(getByTestId("capital-efficiency-quadrant-large_low")).toHaveTextContent("优先核查收益成因");
     expect(getByTestId("capital-efficiency-quadrant-small_high")).toHaveTextContent("业务C");
     expect(getByTestId("capital-efficiency-quadrant-small_low")).toHaveTextContent("业务D");
     expect(getByTestId("capital-efficiency-quadrant-note")).toHaveTextContent("日均余额份额中位数 15.00%");
     expect(getByTestId("capital-efficiency-quadrant-note")).toHaveTextContent("FTP后年化收益率中位数 1.50%");
     expect(getByTestId("capital-efficiency-quadrant-panel")).not.toHaveTextContent("增配");
     expect(getByTestId("capital-efficiency-quadrant-panel")).not.toHaveTextContent("压降");
+  });
+
+  it("keeps backend precision but formats the displayed yield median to two decimals", () => {
+    const { getByTestId } = render(
+      <CapitalEfficiencyQuadrantPanel
+        summary={summary({ ftp_net_annualized_yield_median_pct: "1.036546" })}
+      />,
+    );
+
+    expect(getByTestId("capital-efficiency-quadrant-note")).toHaveTextContent(
+      "FTP后年化收益率中位数 1.04%",
+    );
+    expect(getByTestId("capital-efficiency-quadrant-note")).not.toHaveTextContent("1.036546%");
   });
 
   it("fails closed when fewer than six eligible parent rows are available", () => {

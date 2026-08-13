@@ -2,10 +2,8 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import type { CampisiEnhancedPayload } from "../api/contracts";
-import {
-  CampisiEnhancedPanel,
-  sumCampisiEnhancedDisplayAmounts,
-} from "../features/pnl-attribution/components/CampisiEnhancedPanel";
+import { CampisiEnhancedPanel } from "../features/pnl-attribution/components/CampisiEnhancedPanel";
+import { sumCampisiEnhancedDisplayAmounts } from "../features/pnl-attribution/components/campisiEnhancedPanelSupport";
 import { mockCampisiEnhanced } from "../mocks/campisiMocks";
 
 const SECOND_ORDER_KEYS = ["convexity_effect", "cross_effect", "reinvestment_effect"] as const;

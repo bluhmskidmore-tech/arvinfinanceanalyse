@@ -9,10 +9,8 @@ vi.mock("../../lib/echarts", () => ({
 
 import type { PnlByBusinessUntracedTrendRow } from "../../api/contracts";
 import { ibTokens } from "../../theme/designSystem";
-import {
-  buildUntracedReconciliationTrendOption,
-  UntracedReconciliationTrendPanel,
-} from "./UntracedReconciliationTrendPanel";
+import { UntracedReconciliationTrendPanel } from "./UntracedReconciliationTrendPanel";
+import { buildUntracedReconciliationTrendOption } from "./untracedReconciliationTrendOption";
 
 function buildRow(partial: Partial<PnlByBusinessUntracedTrendRow>): PnlByBusinessUntracedTrendRow {
   return {

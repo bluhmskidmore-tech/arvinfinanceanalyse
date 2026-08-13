@@ -18,6 +18,7 @@ type DeltaMetric = {
   digits: number;
   unit: string;
   directional: boolean;
+  blocked?: boolean;
 };
 
 function finiteNumber(raw: string | number | null | undefined): number | null {
@@ -199,6 +200,7 @@ export function PnlByBusinessManagementChangePanel({
   }
 
   const summary = managementChange.summary;
+  const coverageSensitiveMetricsBlocked = managementChange.coverage_warning_months.length > 0;
   const metrics: DeltaMetric[] = [
     {
       label: "日均变化",
@@ -207,6 +209,7 @@ export function PnlByBusinessManagementChangePanel({
       digits: 2,
       unit: "亿元",
       directional: false,
+      blocked: coverageSensitiveMetricsBlocked,
     },
     {
       label: "已分类父级损益变化",
@@ -223,6 +226,7 @@ export function PnlByBusinessManagementChangePanel({
       digits: 2,
       unit: "万元",
       directional: true,
+      blocked: coverageSensitiveMetricsBlocked,
     },
     {
       label: "FTP后年化变化",
@@ -231,6 +235,7 @@ export function PnlByBusinessManagementChangePanel({
       digits: 2,
       unit: "bp",
       directional: true,
+      blocked: coverageSensitiveMetricsBlocked,
     },
   ];
   const componentMetrics = [
@@ -270,15 +275,30 @@ export function PnlByBusinessManagementChangePanel({
       <div className="pnl-by-business-management-change__conclusion" role="note">
         <strong>
           {managementChange.current_month_key} 已分类父级损益较上月{formatPnlMovement(summary.total_pnl_delta)}
-          ；日均余额{formatMovement(summary.avg_balance_delta, 100_000_000, 2, "亿元")}，期末余额
-          {formatMovement(summary.current_balance_delta, 100_000_000, 2, "亿元")}。
+          {coverageSensitiveMetricsBlocked
+            ? `；日均及 FTP 指标因 ${managementChange.coverage_warning_months.join("、")} 覆盖不足暂不比较，期末余额${formatMovement(
+                summary.current_balance_delta,
+                100_000_000,
+                2,
+                "亿元",
+              )}。`
+            : `；日均余额${formatMovement(summary.avg_balance_delta, 100_000_000, 2, "亿元")}，期末余额${formatMovement(
+                summary.current_balance_delta,
+                100_000_000,
+                2,
+                "亿元",
+              )}。`}
         </strong>
         <span>
           {topDriver
             ? `最大波动业务为${topDriver.business_type}（${formatPnlMovement(topDriver.total_pnl_delta)}）。`
             : "未发现非零业务损益波动。"}
         </span>
-        <span>{balanceTimingInterpretation(summary.avg_balance_delta, summary.current_balance_delta)}</span>
+        <span>
+          {coverageSensitiveMetricsBlocked
+            ? "日均样本不完整，不能用当前观测值判断整月平均或月末集中变化。"
+            : balanceTimingInterpretation(summary.avg_balance_delta, summary.current_balance_delta)}
+        </span>
       </div>
 
       <div className="pnl-by-business-management-change__metrics">
@@ -286,9 +306,9 @@ export function PnlByBusinessManagementChangePanel({
           <article key={metric.label}>
             <span>{metric.label}</span>
             <strong
-              data-delta-tone={metric.directional ? deltaTone(metric.value) : "neutral"}
+              data-delta-tone={metric.blocked ? "neutral" : metric.directional ? deltaTone(metric.value) : "neutral"}
             >
-              {formatSignedDelta(metric.value, metric.scale, metric.digits, metric.unit)}
+              {metric.blocked ? "待核对" : formatSignedDelta(metric.value, metric.scale, metric.digits, metric.unit)}
             </strong>
           </article>
         ))}
@@ -321,7 +341,7 @@ export function PnlByBusinessManagementChangePanel({
             {managementChange.reconciliation_warning_months.length > 0
               ? `${managementChange.reconciliation_warning_months.join("、")} 存在未分类记录、对账差异或证据不完整。`
               : ""}
-            环比值仍为系统计算的已分类父级口径，汇报时需保留该限制。
+            已分类父级损益环比仍按系统结果展示；日均、FTP 净损益及 FTP 后年化变化在覆盖补齐前已停止用于汇报。
           </span>
         </div>
       ) : null}
@@ -361,12 +381,30 @@ export function PnlByBusinessManagementChangePanel({
                   <td data-delta-tone={deltaTone(row.total_pnl_delta)}>
                     {formatSignedDelta(row.total_pnl_delta, 10_000, 2, "")}
                   </td>
-                  <td data-delta-tone={deltaTone(row.ftp_net_pnl_delta)}>
-                    {formatSignedDelta(row.ftp_net_pnl_delta, 10_000, 2, "")}
+                  <td
+                    data-delta-tone={
+                      coverageSensitiveMetricsBlocked ? "neutral" : deltaTone(row.ftp_net_pnl_delta)
+                    }
+                  >
+                    {coverageSensitiveMetricsBlocked
+                      ? "待核对"
+                      : formatSignedDelta(row.ftp_net_pnl_delta, 10_000, 2, "")}
                   </td>
-                  <td>{formatSignedDelta(row.avg_balance_delta, 100_000_000, 2, "")}</td>
-                  <td data-delta-tone={deltaTone(row.ftp_net_annualized_yield_delta_bp)}>
-                    {formatSignedDelta(row.ftp_net_annualized_yield_delta_bp, 1, 2, "")}
+                  <td>
+                    {coverageSensitiveMetricsBlocked
+                      ? "待核对"
+                      : formatSignedDelta(row.avg_balance_delta, 100_000_000, 2, "")}
+                  </td>
+                  <td
+                    data-delta-tone={
+                      coverageSensitiveMetricsBlocked
+                        ? "neutral"
+                        : deltaTone(row.ftp_net_annualized_yield_delta_bp)
+                    }
+                  >
+                    {coverageSensitiveMetricsBlocked
+                      ? "待核对"
+                      : formatSignedDelta(row.ftp_net_annualized_yield_delta_bp, 1, 2, "")}
                   </td>
                 </tr>
               ))}

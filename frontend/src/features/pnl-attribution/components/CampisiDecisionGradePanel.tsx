@@ -2,17 +2,23 @@ import type {
   CampisiDecisionComponents,
   CampisiDecisionEffectKey,
   CampisiDecisionGradePayload,
+  CampisiDecisionWindowDeclaration,
 } from "../../../api/contracts";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { PageDataSection } from "../../../components/page/PageDataSection";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
+import { TONE_DH_CSS_VAR } from "../../../utils/tone";
 
+// 本面板挂在 Nocturne 深色路由（theme-dh-api + pnl-attribution scope）下，
+// 面色/文字/盈亏着色一律走主题感知 CSS 变量（--dh-api-* / TONE_DH_CSS_VAR），
+// 禁止浅色 hex 或 semantic.profit/loss 直灌（--ib-* 在路由边界被算成钢蓝
+// 字面值再继承，Nocturne scope 翻不动，不得引用）。
 const CARD_STYLE = {
   padding: designTokens.space[5],
-  borderRadius: designTokens.radius.sm,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: "#ffffff",
-  boxShadow: "0 1px 2px rgba(31, 41, 55, 0.04)",
+  borderRadius: "var(--dh-api-radius)",
+  border: "1px solid var(--dh-api-line)",
+  background: "var(--dh-api-panel)",
 } as const;
 
 const GRID_STYLE = {
@@ -30,13 +36,13 @@ const VIEW_GRID_STYLE = {
 
 const LABEL_STYLE = {
   fontSize: designTokens.fontSize[12],
-  color: designTokens.color.neutral[600],
+  color: "var(--dh-api-muted)",
 } as const;
 
 const VALUE_STYLE = {
   marginTop: designTokens.space[2],
   fontWeight: 700,
-  color: designTokens.color.neutral[900],
+  color: "var(--dh-api-ink)",
   ...tabularNumsStyle,
 } as const;
 
@@ -49,11 +55,19 @@ const BOUNDARY_STYLE = {
 
 const CHIP_STYLE = {
   padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-  borderRadius: 999,
-  background: "#f8fafc",
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  color: designTokens.color.neutral[700],
+  borderRadius: "var(--dh-api-radius)",
+  background: "var(--dh-api-panel-2)",
+  border: "1px solid var(--dh-api-line-soft)",
+  color: "var(--dh-api-soft)",
   fontSize: designTokens.fontSize[12],
+} as const;
+
+const DISCLOSURE_STYLE = {
+  marginTop: designTokens.space[4],
+  padding: `${designTokens.space[3]}px ${designTokens.space[4]}px`,
+  borderRadius: "var(--dh-api-radius)",
+  fontSize: designTokens.fontSize[12],
+  lineHeight: designTokens.lineHeight.normal,
 } as const;
 
 const TABLE_STYLE = {
@@ -65,14 +79,15 @@ const TABLE_STYLE = {
 const TH_STYLE = {
   padding: `${designTokens.space[2]}px 0`,
   textAlign: "left",
-  color: designTokens.color.neutral[600],
-  borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
+  color: "var(--dh-api-muted)",
+  fontSize: designTokens.fontSize[11],
+  borderBottom: "1px solid var(--dh-api-line-soft)",
 } as const;
 
 const TD_STYLE = {
   padding: `${designTokens.space[2]}px 0`,
-  borderBottom: `1px solid ${designTokens.color.neutral[100]}`,
-  color: designTokens.color.neutral[800],
+  borderBottom: "1px solid var(--dh-api-line-soft)",
+  color: "var(--dh-api-ink)",
 } as const;
 
 const COMPONENT_ORDER: Array<[CampisiDecisionEffectKey, string]> = [
@@ -100,19 +115,43 @@ function formatYi(value: number): string {
 
 function formatPct(value: number | null): string {
   if (value === null) {
-    return "—";
+    return EM_DASH;
   }
   return `${(value * 100).toFixed(1)}%`;
 }
 
+function formatWindowLabel(window: CampisiDecisionWindowDeclaration | undefined): string {
+  if (!window) {
+    return EM_DASH;
+  }
+  return `${window.start} 至 ${window.end}（${window.kind}）`;
+}
+
+function windowDisclosureStyle(level: "info" | "warning") {
+  if (level === "warning") {
+    return {
+      ...DISCLOSURE_STYLE,
+      background: "color-mix(in srgb, var(--dh-api-amber) 8%, var(--dh-api-panel))",
+      border: "1px solid color-mix(in srgb, var(--dh-api-amber) 34%, transparent)",
+      color: "var(--dh-api-amber)",
+    } as const;
+  }
+  return {
+    ...DISCLOSURE_STYLE,
+    background: "var(--dh-api-panel-2)",
+    border: "1px solid var(--dh-api-line-soft)",
+    color: "var(--dh-api-soft)",
+  } as const;
+}
+
 function effectColor(value: number): string {
   if (value > 0) {
-    return designTokens.color.semantic.profit;
+    return TONE_DH_CSS_VAR.positive;
   }
   if (value < 0) {
-    return designTokens.color.semantic.loss;
+    return TONE_DH_CSS_VAR.negative;
   }
-  return designTokens.color.neutral[600];
+  return TONE_DH_CSS_VAR.neutral;
 }
 
 function effectLabel(data: CampisiDecisionGradePayload): string {
@@ -175,6 +214,27 @@ export function CampisiDecisionGradePanel({ data, state, onRetry }: Props) {
               <span style={CHIP_STYLE}>残差不算能力</span>
               <span style={CHIP_STYLE}>剩余/选券只作为代理指标</span>
             </div>
+            <div
+              data-testid="campisi-decision-window-context"
+              style={{ ...GRID_STYLE, marginTop: designTokens.space[4] }}
+            >
+              <div>
+                <div style={LABEL_STYLE}>PnL 窗口</div>
+                <div style={VALUE_STYLE}>{formatWindowLabel(data.pnl_window)}</div>
+              </div>
+              <div>
+                <div style={LABEL_STYLE}>曲线窗口</div>
+                <div style={VALUE_STYLE}>{formatWindowLabel(data.curve_window)}</div>
+              </div>
+            </div>
+            {data.window_disclosure ? (
+              <div
+                data-testid="campisi-decision-window-disclosure"
+                style={windowDisclosureStyle(data.window_disclosure.level)}
+              >
+                {data.window_disclosure.message}
+              </div>
+            ) : null}
           </div>
 
           <div style={VIEW_GRID_STYLE}>
@@ -237,7 +297,7 @@ export function CampisiDecisionGradePanel({ data, state, onRetry }: Props) {
                   ))}
                 </tbody>
               </table>
-              <p style={{ margin: `${designTokens.space[4]}px 0 0`, color: designTokens.color.neutral[700] }}>
+              <p style={{ margin: `${designTokens.space[4]}px 0 0`, color: "var(--dh-api-soft)" }}>
                 {data.valuation_oci_view.reinvestment.message}
               </p>
             </div>

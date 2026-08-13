@@ -10,6 +10,21 @@ const decisionGradePayload: CampisiDecisionGradePayload = {
   period_start: "2026-01-01",
   period_end: "2026-01-31",
   num_days: 30,
+  pnl_window: {
+    start: "2026-01-31",
+    end: "2026-01-31",
+    kind: "single_day",
+  },
+  curve_window: {
+    start: "2026-01-01",
+    end: "2026-01-31",
+    kind: "curve_displacement",
+  },
+  window_disclosure: {
+    level: "info",
+    message:
+      "口径说明：市场效应按 curve_window（2026-01-01→2026-01-31，30 天）整段曲线位移计算，而 formal PnL 仅取 pnl_window 单日（2026-01-31）；selection_proxy 含该窗口跨度影响，解读主动管理能力时需扣除。",
+  },
   summary: {
     formal_actual_pnl: 107,
     explained_pnl: 107,
@@ -150,6 +165,45 @@ describe("CampisiDecisionGradePanel", () => {
     expect(screen.getByText("残差不算能力")).toBeInTheDocument();
     expect(screen.getByText("剩余/选券只作为代理指标")).toBeInTheDocument();
     expect(screen.queryByText("交易员能力")).not.toBeInTheDocument();
+    expect(screen.getByTestId("campisi-decision-window-context")).toHaveTextContent("single_day");
+    expect(screen.getByTestId("campisi-decision-window-context")).toHaveTextContent("curve_displacement");
+    expect(screen.getByTestId("campisi-decision-window-disclosure")).toHaveTextContent("selection_proxy");
+  });
+
+  it("renders warning window disclosure and EM_DASH when windows are missing", () => {
+    render(
+      <CampisiDecisionGradePanel
+        data={{
+          ...decisionGradePayload,
+          pnl_window: undefined,
+          curve_window: undefined,
+          window_disclosure: {
+            level: "warning",
+            message: "口径错配：selection_proxy 含窗口错配影响，不得解读为主动管理能力。",
+          },
+        }}
+        state={{ kind: "ok" }}
+        onRetry={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId("campisi-decision-window-context")).toHaveTextContent("—");
+    expect(screen.getByTestId("campisi-decision-window-disclosure")).toHaveTextContent("口径错配");
+  });
+
+  it("omits window disclosure callout when payload window_disclosure is null", () => {
+    render(
+      <CampisiDecisionGradePanel
+        data={{
+          ...decisionGradePayload,
+          window_disclosure: null,
+        }}
+        state={{ kind: "ok" }}
+        onRetry={() => {}}
+      />,
+    );
+
+    expect(screen.queryByTestId("campisi-decision-window-disclosure")).not.toBeInTheDocument();
   });
 
   it("renders unavailable residual ratio as a dash", () => {

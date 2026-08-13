@@ -12,13 +12,13 @@ import type {
   CampisiFourEffectsPayload,
   Numeric,
 } from "../api/contracts";
+import { CampisiAttributionPanel } from "../features/pnl-attribution/components/CampisiAttributionPanel";
 import {
   buildEffectRows,
-  CampisiAttributionPanel,
   normalizeCampisiData,
   sumCampisiEffectAmounts,
-} from "../features/pnl-attribution/components/CampisiAttributionPanel";
-import { sumCampisiEnhancedDisplayAmounts } from "../features/pnl-attribution/components/CampisiEnhancedPanel";
+} from "../features/pnl-attribution/components/campisiAttributionPanelSupport";
+import { sumCampisiEnhancedDisplayAmounts } from "../features/pnl-attribution/components/campisiEnhancedPanelSupport";
 import {
   mockCampisiEnhanced,
   mockCampisiFourEffects,
@@ -70,6 +70,10 @@ describe("CampisiAttributionPanel", () => {
     expect(warning).toBeInTheDocument();
     expect(warning).toHaveTextContent("+8.00 亿");
     expect(screen.getByTestId("campisi-driver-summary")).toHaveTextContent("75.0%");
+    // 四效应 totals 后端无占比字段，前端派生占比时必须标注非正式指标。
+    expect(screen.getByTestId("campisi-share-derived-note")).toHaveTextContent(
+      "展示辅助计算（非正式指标）",
+    );
   });
 
   it("makes the main Campisi driver and quiet effects obvious", () => {
@@ -140,6 +144,8 @@ describe("CampisiAttributionPanel", () => {
 
     expect(screen.getByTestId("campisi-driver-summary")).toHaveTextContent("75.0%");
     expect(screen.queryByText(/0\.8%/)).not.toBeInTheDocument();
+    // 老口径占比消费后端 contribution_pct，不应出现前端派生标注。
+    expect(screen.queryByTestId("campisi-share-derived-note")).not.toBeInTheDocument();
   });
 
   it("bridge path effect rows sum to total_return and surface decomposition_basis", () => {
@@ -280,5 +286,137 @@ describe("CampisiAttributionPanel", () => {
     const barValues = option.series[0].data.map((item: { value: number | null }) => item.value);
     expect(barValues[1]).toBeNull();
     expect(barValues[0]).toBeCloseTo(6);
+  });
+});
+
+/**
+ * 2026-07-31：曲线事实停在 06-30，`treasury_effect` 恒为 0。以前页面把它当成一个
+ * 数字发布，使用者读成"利率没动"。下面两条把"输入缺失"和"观测为零"分别锁住——
+ * 只有后者才允许出现 0。
+ */
+describe("CampisiAttributionPanel effect availability", () => {
+  function payloadWithTreasuryStatus(
+    availability: CampisiFourEffectsPayload["effect_availability"],
+  ): CampisiFourEffectsPayload {
+    return {
+      report_date: "2026-07-31",
+      period_start: "2026-06-30",
+      period_end: "2026-07-31",
+      num_days: 31,
+      totals: {
+        income_return: 529_838_963.09,
+        treasury_effect: 0,
+        spread_effect: -100_000_000,
+        selection_effect: 6_106_054.95,
+        total_return: 435_945_018.04,
+        market_value_start: 343_822_795_478.69,
+      },
+      by_asset_class: [
+        {
+          asset_class: "利率债",
+          market_value_start: 343_822_795_478.69,
+          income_return: 529_838_963.09,
+          treasury_effect: 0,
+          spread_effect: -100_000_000,
+          selection_effect: 6_106_054.95,
+          total_return: 435_945_018.04,
+        },
+      ],
+      by_bond: [],
+      effect_availability: availability,
+    };
+  }
+
+  const OK_AVAILABILITY: CampisiFourEffectsPayload["effect_availability"] = {
+    bonds: 1829,
+    treasury_effect: {
+      status: "ok",
+      reason: null,
+      unavailable_bonds: 0,
+      unavailable_market_value_start: 0,
+    },
+    spread_effect: {
+      status: "ok",
+      reason: null,
+      unavailable_bonds: 0,
+      unavailable_market_value_start: 0,
+    },
+    accrued_interest: {
+      status: "ok",
+      reason: null,
+      unavailable_bonds: 0,
+      unavailable_market_value_start: 0,
+      basis: "dirty_price",
+    },
+  };
+
+  it("renders an unavailable treasury effect as text with its cause, never as 0", () => {
+    const data = payloadWithTreasuryStatus({
+      ...OK_AVAILABILITY!,
+      treasury_effect: {
+        status: "unavailable",
+        reason: "curve_absent",
+        unavailable_bonds: 1829,
+        unavailable_market_value_start: 343_822_795_478.69,
+      },
+    });
+
+    render(<CampisiAttributionPanel data={data} state={{ kind: "ok" }} onRetry={() => {}} />);
+
+    const amount = screen.getByTestId("campisi-effect-amount-treasury");
+    expect(amount).toHaveTextContent("不可用");
+    expect(amount).toHaveTextContent("该交易日没有曲线事实");
+    expect(amount.textContent).not.toMatch(/0/);
+
+    const notice = screen.getByTestId("campisi-effect-availability-treasury_effect");
+    expect(notice).toHaveTextContent("国债曲线效应不可用");
+    expect(notice).toHaveTextContent("影响 1829/1829 只债券");
+    expect(notice).toHaveTextContent("不能读成“市场没有变动”");
+
+    // "几乎没有影响"是对观测量的判断，不可用的效应不该被这样描述。
+    expect(screen.getByTestId("campisi-driver-summary")).not.toHaveTextContent(
+      "几乎没有影响：国债曲线",
+    );
+
+    // 条形图不画 0 值柱（国债曲线是第二根）。
+    const option = JSON.parse(screen.getByTestId("campisi-echarts-stub").textContent ?? "{}");
+    expect(option.series[0].data[1].value).toBeNull();
+  });
+
+  it("still shows a plain 0 when the curve existed and the effect really was zero", () => {
+    render(
+      <CampisiAttributionPanel
+        data={payloadWithTreasuryStatus(OK_AVAILABILITY)}
+        state={{ kind: "ok" }}
+        onRetry={() => {}}
+      />,
+    );
+
+    const amount = screen.getByTestId("campisi-effect-amount-treasury");
+    expect(amount).toHaveTextContent("+0.00 亿");
+    expect(amount).not.toHaveTextContent("不可用");
+    expect(screen.queryByTestId("campisi-effect-availability")).not.toBeInTheDocument();
+    expect(screen.getByTestId("campisi-driver-summary")).toHaveTextContent(
+      "几乎没有影响：国债曲线",
+    );
+  });
+
+  it("keeps a partially degraded effect as a number but discloses the understatement", () => {
+    const data = payloadWithTreasuryStatus({
+      ...OK_AVAILABILITY!,
+      spread_effect: {
+        status: "partial",
+        reason: "credit_spread_input_missing",
+        unavailable_bonds: 12,
+        unavailable_market_value_start: 4_000_000_000,
+      },
+    });
+
+    render(<CampisiAttributionPanel data={data} state={{ kind: "ok" }} onRetry={() => {}} />);
+
+    expect(screen.getByTestId("campisi-effect-amount-spread")).toHaveTextContent("-1.00 亿");
+    expect(screen.getByTestId("campisi-effect-availability-spread_effect")).toHaveTextContent(
+      "合计因此被低估",
+    );
   });
 });

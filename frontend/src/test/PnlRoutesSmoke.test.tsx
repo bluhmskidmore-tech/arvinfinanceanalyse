@@ -1122,7 +1122,10 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("未读取");
       expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("1 条手工调整");
       expect(screen.getByText("报表月份")).toBeInTheDocument();
-      expect(screen.getByTestId("pnl-by-business-summary-cards")).toHaveTextContent("月报合计损益");
+      // This fixture carries an approved manual adjustment (+0.25 万元), so the
+      // first summary card uses the adjusted-caliber label from the page model.
+      expect(screen.getByTestId("pnl-by-business-summary-cards")).toHaveTextContent("调整后已分类损益");
+      expect(screen.getByTestId("pnl-by-business-summary-cards")).toHaveTextContent("含已批准调整 +0.25 万元");
       expect(screen.getByTestId("pnl-by-business-summary-cards")).toHaveTextContent("13 万元");
       expect(screen.getByTestId("pnl-by-business-monthly-breakdown")).toHaveTextContent("月报业务种类明细");
       expect(screen.getByTestId("pnl-by-business-monthly-breakdown")).toHaveTextContent("2 个月");
@@ -1138,8 +1141,10 @@ describe("pnl routed pages smoke", () => {
     expect(dataStatusStrip.compareDocumentPosition(filterTray) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await waitFor(() => {
       expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("政策性金融债");
-      expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("FTP成本（万元）");
-      expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("FTP后收益（万元）");
+      // Coverage is 1/31 days in this fixture, so FTP columns carry the
+      // incomplete-coverage 待核对 caveat.
+      expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("FTP成本（待核对，万元）");
+      expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("FTP后收益（待核对，万元）");
       expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).not.toHaveTextContent(
         "其中：本币专户（成本法）",
       );
@@ -1332,18 +1337,26 @@ describe("pnl routed pages smoke", () => {
       expect(parentFooterCells[11]).toHaveTextContent("4");
       const managementChange = screen.getByTestId("pnl-by-business-management-change");
       expect(managementChange).toHaveTextContent("2025-12 较 2025-11");
+      // 2025-12 coverage is incomplete in this fixture, so balance/FTP deltas
+      // fail closed to 待核对 while the classified parent PnL delta stays numeric.
       expect(managementChange).toHaveTextContent("日均变化");
-      expect(managementChange).toHaveTextContent("+0.10 亿元");
+      expect(managementChange).toHaveTextContent("待核对");
+      expect(managementChange).not.toHaveTextContent("+0.10 亿元");
       expect(managementChange).toHaveTextContent("已分类父级损益变化");
       expect(managementChange).toHaveTextContent("+3.50 万元");
       expect(managementChange).toHaveTextContent("FTP净损益变化");
-      expect(managementChange).toHaveTextContent("+1.75 万元");
+      expect(managementChange).not.toHaveTextContent("+1.75 万元");
       expect(managementChange).toHaveTextContent("FTP后年化变化");
-      expect(managementChange).toHaveTextContent("+24.64 bp");
+      expect(managementChange).not.toHaveTextContent("+24.64 bp");
       expect(managementChange).toHaveTextContent("数据质量提示");
       expect(managementChange).toHaveTextContent("2025-12 已分类父级损益较上月增加 3.50 万元");
       expect(managementChange).toHaveTextContent("最大波动业务为政策性金融债（增加 3.50 万元）");
-      expect(managementChange).toHaveTextContent("日均余额增加 0.10 亿元，期末余额增加 0.08 亿元");
+      expect(managementChange).toHaveTextContent(
+        "日均及 FTP 指标因 2025-12 覆盖不足暂不比较，期末余额增加 0.08 亿元",
+      );
+      expect(managementChange).toHaveTextContent(
+        "日均、FTP 净损益及 FTP 后年化变化在覆盖补齐前已停止用于汇报",
+      );
       expect(managementChange).toHaveTextContent("损益构成变化");
       expect(screen.getByTestId("pnl-by-business-management-change-drivers")).toHaveTextContent("政策性金融债");
       const ytdTable = within(screen.getByTestId("pnl-by-business-table")).getByRole("table");
@@ -1485,7 +1498,7 @@ describe("pnl routed pages smoke", () => {
     await waitFor(() => {
       expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("政策性金融债");
       expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("手工调整（万元）");
-      expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("FTP后收益（万元）");
+      expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("FTP后收益（待核对，万元）");
       expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("-0.59");
     });
     fireEvent.change(screen.getByLabelText("pnl-by-business-view-mode"), { target: { value: "ytd" } });
@@ -1860,6 +1873,8 @@ describe("pnl routed pages smoke", () => {
             ? {
                 ...item,
                 avg_balance: "0.00",
+                // 近零真实值：-30 元 = -0.003 万，按两位小数如实四舍五入展示为 0（无 "-0" 噪声、不做阈值折叠）
+                fair_value_change: "-30",
                 annualized_yield_pct: null,
                 ftp_cost: null,
                 ftp_net_pnl: null,
@@ -1919,9 +1934,12 @@ describe("pnl routed pages smoke", () => {
       expect(policyRow).toHaveTextContent("0.00");
       const policyCells = policyRow?.querySelectorAll("td");
       expect(policyCells).toHaveLength(12);
-      expect(policyCells?.[7]).toHaveTextContent("-");
-      expect(policyCells?.[8]).toHaveTextContent("-");
-      expect(policyCells?.[9]).toHaveTextContent("-");
+      // 近零真实值不折叠：-30 元四舍五入为 0，且不出现 "-0"
+      expect(policyCells?.[3]?.textContent).toBe("0");
+      // 年化收益率 / FTP后收益 缺失时使用 EM_DASH 基元（不再是 "-"）
+      expect(policyCells?.[7]).toHaveTextContent("—");
+      expect(policyCells?.[8]).toHaveTextContent("—");
+      expect(policyCells?.[9]).toHaveTextContent("—");
       expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toHaveTextContent(
         "日均为0，收益率/FTP 暂不计算",
       );

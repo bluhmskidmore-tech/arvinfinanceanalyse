@@ -651,6 +651,68 @@ describe("pnlByBusinessPageModel", () => {
     expect(emptyModel.stateSurfaces).toEqual([]);
   });
 
+  it("makes a partial-coverage monthly estimate and approved adjustment explicit", () => {
+    const baseBucket = monthlyBucket();
+    const julyBucket = monthlyBucket({
+      month_key: "2026-07",
+      period_start_date: "2026-07-01",
+      period_end_date: "2026-07-31",
+      calendar_days: 31,
+      coverage_days: 1,
+      expected_days: 31,
+      sample_filled: true,
+      sample_fill_method: "observed_days_scaled_to_calendar",
+      source_total_pnl: "110050000.00",
+      classified_parent_total_pnl: "110000000.00",
+      unallocated_pnl: "50000.00",
+      unallocated_row_count: 21,
+      reconciliation_delta: "0",
+      summary: {
+        ...baseBucket.summary,
+        manual_adjustment: "10000000",
+        total_pnl: "110000000.00",
+        annualized_yield_pct: "2.30",
+      },
+    });
+    const model = buildPnlByBusinessPageModel({
+      viewMode: "monthly",
+      selectedReportDate: "2026-07-31",
+      selectedYear: 2026,
+      selectedBusinessKey: null,
+      datesState: { isLoading: false, isError: false },
+      monthlyState: { isLoading: false, isError: false },
+      ytdState: { isLoading: false, isError: false },
+      formalState: { isLoading: false, isError: false },
+      monthlyResult: {
+        year: 2026,
+        as_of_date: "2026-07-31",
+        source_tables: ["monthly"],
+        management_change: null,
+        months: [julyBucket],
+      },
+      monthlyMeta: meta({ quality_flag: "warning", formal_use_allowed: false }),
+    });
+
+    expect(model.hero.conclusionTitle).toContain("调整后已分类损益 11,000 万元");
+    expect(model.hero.conclusionDetail).toContain("已含批准手工调整 +1,000 万元");
+    expect(model.summaryCards[0]).toMatchObject({
+      label: "调整后已分类损益",
+      value: "11,000 万元",
+      detail: "含已批准调整 +1,000 万元",
+    });
+    expect(model.summaryCards[3]).toMatchObject({
+      label: "月报收益率",
+      value: "待核对",
+      detail: "日均仅覆盖 1/31 天",
+    });
+    const adjustment = model.stateSurfaces.find((surface) => surface.key === "manual-adjustment-included");
+    expect(adjustment?.description).toContain("调整前源损益（含未分类）为 10,005 万元");
+    expect(adjustment?.description).toContain("调整后已分类损益为 11,000 万元");
+    const coverage = model.stateSurfaces.find((surface) => surface.key === "coverage-partial");
+    expect(coverage?.description).toContain("不是完整自然月日均");
+    expect(coverage?.description).toContain("暂不作为汇报结论");
+  });
+
   it("keeps monthly top contribution separate from the largest drag row", () => {
     const model = buildPnlByBusinessPageModel({
       viewMode: "monthly",
@@ -738,7 +800,9 @@ describe("pnlByBusinessPageModel", () => {
   it("builds analysis insight from parent YTD rows and marks missing ADB", () => {
     const payload = ytdPayload({
       items: [
-        ...ytdPayload().items,
+        ...ytdPayload().items.map((row) =>
+          row.row_key === "asset_zqtz_parent_b" ? { ...row, avg_balance: "" } : row,
+        ),
         {
           row_key: "asset_zqtz_parent_loss",
           sort_order: 4,
@@ -748,7 +812,7 @@ describe("pnlByBusinessPageModel", () => {
           capital_gain: "0",
           manual_adjustment: "0",
           total_pnl: "-500000",
-          avg_balance: "10000000",
+          avg_balance: "",
           current_balance: "10000000",
           balance_yield_pct: null,
           annualized_yield_pct: null,
@@ -826,8 +890,8 @@ describe("pnlByBusinessPageModel", () => {
     });
 
     expect(model.insight.topShareLabel).toBe("暂无占比");
-    expect(model.insight.topShareDisplay).toBe("-");
-    expect(model.summaryCards[3]).toMatchObject({ label: "最大占比", value: "-", detail: "无明细" });
+    expect(model.insight.topShareDisplay).toBe("—");
+    expect(model.summaryCards[3]).toMatchObject({ label: "最大占比", value: "—", detail: "无明细" });
   });
 
   it("uses the true maximum-share row for YTD KPI and keeps a real zero share", () => {
@@ -870,17 +934,14 @@ describe("pnlByBusinessPageModel", () => {
     expect(model.insight.topShareDisplay).toBe("0.00%");
   });
 
-  it("does not mark YTD ADB missing when parent rows resolve from rollup children", () => {
+  it("does not mark YTD ADB missing when parent rows consume the backend avg_balance field", () => {
     const model = buildPnlByBusinessPageModel({
       viewMode: "ytd",
       selectedReportDate: "2026-04-30",
       selectedYear: 2026,
       selectedBusinessKey: null,
-      adbAvgByBusinessType: new Map([
-        ["债券投资", 100_000_000],
-        ["信托计划", 25_000_000],
-        ["证券业资管计划", 75_000_000],
-      ]),
+      // 非底层投资资产 未命中证据 map：不做前端子类求和，改为消费后端父级 avg_balance
+      adbAvgByBusinessType: new Map([["债券投资", 100_000_000]]),
       datesState: { isLoading: false, isError: false },
       monthlyState: { isLoading: false, isError: false },
       ytdState: { isLoading: false, isError: false },
@@ -1015,8 +1076,7 @@ describe("pnlByBusinessPageModel", () => {
       selectedBusinessKey: null,
       adbAvgByBusinessType: new Map([
         ["债券投资", 100_000_000],
-        ["信托计划", 0],
-        ["证券业资管计划", 0],
+        ["非底层投资资产", 0],
       ]),
       datesState: { isLoading: false, isError: false },
       monthlyState: { isLoading: false, isError: false },
@@ -1045,11 +1105,7 @@ describe("pnlByBusinessPageModel", () => {
       selectedReportDate: "2026-04-30",
       selectedYear: 2026,
       selectedBusinessKey: null,
-      adbAvgByBusinessType: new Map([
-        ["债券投资", 100_000_000],
-        ["信托计划", 25_000_000],
-        ["证券业资管计划", 75_000_000],
-      ]),
+      adbAvgByBusinessType: new Map([["债券投资", 100_000_000]]),
       datesState: { isLoading: false, isError: false },
       monthlyState: { isLoading: false, isError: false },
       ytdState: { isLoading: false, isError: false },

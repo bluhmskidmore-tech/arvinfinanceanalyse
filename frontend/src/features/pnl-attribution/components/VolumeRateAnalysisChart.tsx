@@ -3,8 +3,9 @@ import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import type { Numeric, VolumeRateAttributionPayload } from "../../../api/contracts";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { PageDataSection } from "../../../components/page/PageDataSection";
-import { designTokens } from "../../../theme/designSystem";
+import { designTokens, nocturneTokens } from "../../../theme/designSystem";
 import { numericRaw } from "../../../pageModel";
+import { EM_DASH } from "../../../utils/format";
 import "./VolumeRateAnalysisChart.css";
 
 type Props = {
@@ -19,16 +20,16 @@ function rawOrNull(value: NumericLike): number | null {
   return numericRaw(value);
 }
 
-/** 缺失（对象为 null 或 raw 为 null）显示 "—"，不显示 0。 */
+/** 缺失（对象为 null 或 raw 为 null）显示 EM_DASH，不显示 0。 */
 function yiText(value: NumericLike, digits = 2): string {
   const raw = rawOrNull(value);
-  return raw === null ? "—" : (raw / 100_000_000).toFixed(digits);
+  return raw === null ? EM_DASH : (raw / 100_000_000).toFixed(digits);
 }
 
 function signedYiText(value: NumericLike, digits = 2): string {
   const raw = rawOrNull(value);
   if (raw === null) {
-    return "—";
+    return EM_DASH;
   }
   const yi = raw / 100_000_000;
   return `${yi >= 0 ? "+" : ""}${yi.toFixed(digits)}`;
@@ -37,7 +38,7 @@ function signedYiText(value: NumericLike, digits = 2): string {
 function reconErrorText(value: NumericLike): string {
   const raw = rawOrNull(value);
   if (raw === null) {
-    return "—";
+    return EM_DASH;
   }
   const yi = raw / 100_000_000;
   return Math.abs(yi) < 0.0001 ? "\u2248 0" : yi.toFixed(4);
@@ -59,9 +60,16 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
     if (rows.length === 0) {
       return null;
     }
+    // ECharts canvas 读不到 CSS 变量，按 tone.ts 指南使用 Nocturne TS 镜像 token。
     return {
       tooltip: { trigger: "axis" },
-      legend: { bottom: 0, textStyle: { fontSize: designTokens.fontSize[12] } },
+      legend: {
+        bottom: 0,
+        textStyle: {
+          fontSize: designTokens.fontSize[12],
+          color: nocturneTokens.color.inkSoft,
+        },
+      },
       grid: {
         left: 48,
         right: designTokens.space[6],
@@ -74,17 +82,17 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
         axisLabel: {
           fontSize: designTokens.fontSize[11],
           rotate: 24,
-          color: designTokens.color.neutral[700],
+          color: nocturneTokens.color.inkSoft,
         },
       },
       yAxis: {
         type: "value",
         axisLabel: {
           formatter: (v: number) => `${v.toFixed(1)}亿`,
-          color: designTokens.color.neutral[700],
+          color: nocturneTokens.color.inkSoft,
         },
         splitLine: {
-          lineStyle: { type: "dashed", color: designTokens.color.neutral[100] },
+          lineStyle: { type: "dashed", color: nocturneTokens.color.lineSoft },
         },
       },
       series: [
@@ -97,7 +105,7 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
             return raw === null ? null : raw / 100_000_000;
           }),
           itemStyle: {
-            color: designTokens.color.primary[600],
+            color: nocturneTokens.color.blue,
             borderRadius: [
               designTokens.radius.sm,
               designTokens.radius.sm,
@@ -114,7 +122,7 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
             return raw === null ? null : raw / 100_000_000;
           }),
           itemStyle: {
-            color: designTokens.color.neutral[500],
+            color: nocturneTokens.color.inkMuted,
             borderRadius: [
               designTokens.radius.sm,
               designTokens.radius.sm,
@@ -186,12 +194,12 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                         <td>
                           {item.current_yield_pct != null
                             ? item.current_yield_pct.display
-                            : "—"}
+                            : EM_DASH}
                         </td>
                         <td>
                           {item.previous_yield_pct != null
                             ? item.previous_yield_pct.display
-                            : "—"}
+                            : EM_DASH}
                         </td>
                         <td data-direction={signedDirection(item.current_pnl)}>
                           {yiText(item.current_pnl)}
@@ -221,12 +229,12 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                         <td>
                           {item.current_yield_pct != null
                             ? item.current_yield_pct.display
-                            : "—"}
+                            : EM_DASH}
                         </td>
                         <td>
                           {item.previous_yield_pct != null
                             ? item.previous_yield_pct.display
-                            : "—"}
+                            : EM_DASH}
                         </td>
                         <td data-direction={signedDirection(item.current_pnl)}>
                           {yiText(item.current_pnl)}

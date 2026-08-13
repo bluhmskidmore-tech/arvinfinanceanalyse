@@ -8,18 +8,25 @@ import type {
 } from "../../../api/contracts";
 import { PageDataSection } from "../../../components/page/PageDataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
-import { designTokens } from "../../../theme/designSystem";
+import { designTokens, nocturneTokens } from "../../../theme/designSystem";
 import { formatProductCategoryRowDisplayValue } from "../../product-category-pnl/pages/productCategoryPnlPageModel";
 import { numericRaw as sharedNumericRaw } from "../../../pageModel";
+import { TONE_DH_CSS_VAR } from "../../../utils/tone";
+import { EM_DASH } from "../../../utils/format";
 import "./TPLMarketChart.css";
 
 function formatYi(value: number | null | undefined): string {
   if (value === null || value === undefined) {
-    return "—";
+    return EM_DASH;
   }
   const yi = value / 100_000_000;
   return `${yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
 }
+
+// 暗色路由（theme-dh-api，Nocturne 色板）着色一律走主题感知入口：文字色用
+// TONE_DH_CSS_VAR / --dh-api-* CSS 变量，背景用 --dh-api-panel-2，禁止浅色
+// semantic/50 系直灌。
+const CORR_CARD_BG = "var(--dh-api-panel-2)";
 
 function correlationLabel(corr: number | null): {
   level: string;
@@ -29,8 +36,8 @@ function correlationLabel(corr: number | null): {
   if (corr === null) {
     return {
       level: "无数据",
-      color: designTokens.color.neutral[700],
-      bg: designTokens.color.neutral[100],
+      color: TONE_DH_CSS_VAR.neutral,
+      bg: CORR_CARD_BG,
     };
   }
   const a = Math.abs(corr);
@@ -38,33 +45,33 @@ function correlationLabel(corr: number | null): {
     return corr < 0
       ? {
           level: "强相关",
-          color: designTokens.color.semantic.profit,
-          bg: designTokens.color.success[50],
+          color: TONE_DH_CSS_VAR.positive,
+          bg: CORR_CARD_BG,
         }
       : {
           level: "强相关",
-          color: designTokens.color.semantic.loss,
-          bg: designTokens.color.danger[50],
+          color: TONE_DH_CSS_VAR.negative,
+          bg: CORR_CARD_BG,
         };
   }
   if (a >= 0.4) {
     return {
       level: "中等相关",
-      color: designTokens.color.info[600],
-      bg: designTokens.color.info[50],
+      color: "var(--dh-api-blue)",
+      bg: CORR_CARD_BG,
     };
   }
   if (a >= 0.2) {
     return {
       level: "弱相关",
-      color: designTokens.color.warning[600],
-      bg: designTokens.color.warning[50],
+      color: TONE_DH_CSS_VAR.warning,
+      bg: CORR_CARD_BG,
     };
   }
   return {
     level: "无显著相关",
-    color: designTokens.color.neutral[700],
-    bg: designTokens.color.neutral[100],
+    color: TONE_DH_CSS_VAR.neutral,
+    bg: CORR_CARD_BG,
   };
 }
 
@@ -104,10 +111,10 @@ function productCategoryYi(
   value: DecimalLike | null | undefined,
 ): string {
   if (!row) {
-    return "—";
+    return EM_DASH;
   }
   const display = formatProductCategoryRowDisplayValue(row, value);
-  return display === "-" ? "—" : display;
+  return display === "-" ? EM_DASH : display;
 }
 
 function valueDirection(
@@ -120,13 +127,23 @@ function valueDirection(
   return raw >= 0 ? "positive" : "negative";
 }
 
-function signedDirection(raw: number | null | undefined): "positive" | "negative" {
-  return (raw ?? 0) >= 0 ? "positive" : "negative";
+function signedDirection(
+  raw: number | null | undefined,
+): "positive" | "negative" | "neutral" {
+  if (raw === null || raw === undefined) {
+    return "neutral";
+  }
+  return raw >= 0 ? "positive" : "negative";
 }
 
 /** Rate-down is favorable (profit tone) for bond context. */
-function rateMoveDirection(raw: number | null | undefined): "positive" | "negative" {
-  return (raw ?? 0) <= 0 ? "positive" : "negative";
+function rateMoveDirection(
+  raw: number | null | undefined,
+): "positive" | "negative" | "neutral" {
+  if (raw === null || raw === undefined) {
+    return "neutral";
+  }
+  return raw <= 0 ? "positive" : "negative";
 }
 
 /** Legacy payloads may expose BP total under `treasury_10y_total_change`. */
@@ -165,16 +182,23 @@ export function TPLMarketChart({
       return raw === null ? null : raw / 100_000_000;
     });
     const bp = data.data_points.map((p) => p.treasury_10y_change?.raw ?? null);
+    // ECharts canvas 读不到 CSS 变量，按 tone.ts 指南使用 Nocturne TS 镜像 token。
     return {
       tooltip: { trigger: "axis" },
-      legend: { bottom: 0, textStyle: { fontSize: designTokens.fontSize[12] } },
+      legend: {
+        bottom: 0,
+        textStyle: {
+          fontSize: designTokens.fontSize[12],
+          color: nocturneTokens.color.inkSoft,
+        },
+      },
       grid: { left: 56, right: 56, top: 28, bottom: 52 },
       xAxis: {
         type: "category",
         data: periods,
         axisLabel: {
           fontSize: designTokens.fontSize[11],
-          color: designTokens.color.neutral[700],
+          color: nocturneTokens.color.inkSoft,
         },
       },
       yAxis: [
@@ -183,12 +207,12 @@ export function TPLMarketChart({
           name: "FVTPL(亿)",
           axisLabel: {
             formatter: (v: number) => `${v.toFixed(1)}`,
-            color: designTokens.color.neutral[700],
+            color: nocturneTokens.color.inkSoft,
           },
           splitLine: {
             lineStyle: {
               type: "dashed",
-              color: designTokens.color.neutral[100],
+              color: nocturneTokens.color.lineSoft,
             },
           },
         },
@@ -197,7 +221,7 @@ export function TPLMarketChart({
           name: "BP",
           axisLabel: {
             formatter: (v: number) => `${v}`,
-            color: designTokens.color.neutral[700],
+            color: nocturneTokens.color.inkSoft,
           },
           splitLine: { show: false },
         },
@@ -209,7 +233,7 @@ export function TPLMarketChart({
           yAxisIndex: 0,
           data: tpl,
           itemStyle: {
-            color: designTokens.color.info[500],
+            color: nocturneTokens.color.blue,
             borderRadius: [
               designTokens.radius.sm,
               designTokens.radius.sm,
@@ -225,7 +249,7 @@ export function TPLMarketChart({
           data: bp,
           smooth: false,
           symbolSize: 8,
-          lineStyle: { color: designTokens.color.danger[400], width: 2 },
+          lineStyle: { color: nocturneTokens.color.red, width: 2 },
         },
       ],
     };
@@ -265,7 +289,7 @@ export function TPLMarketChart({
               <div className="tpl-market-chart__value" style={{ color: corr.color }}>
                 {data.correlation_coefficient?.raw != null
                   ? data.correlation_coefficient.raw.toFixed(3)
-                  : "—"}
+                  : EM_DASH}
               </div>
               <div className="tpl-market-chart__meta" style={{ color: corr.color }}>
                 {corr.level}
@@ -288,7 +312,7 @@ export function TPLMarketChart({
               >
                 {treasuryBpTotal !== null
                   ? `${treasuryBpTotal >= 0 ? "+" : ""}${treasuryBpTotal.toFixed(1)} BP`
-                  : "—"}
+                  : EM_DASH}
               </div>
             </div>
             <div className="tpl-market-chart__card tpl-market-chart__card--compact">
@@ -401,7 +425,7 @@ export function TPLMarketChart({
                         <td data-align="right">
                           {point.treasury_10y !== null
                             ? point.treasury_10y.display
-                            : "—"}
+                            : EM_DASH}
                         </td>
                         <td
                           data-align="right"
@@ -409,10 +433,10 @@ export function TPLMarketChart({
                         >
                           {point.treasury_10y_change?.raw != null
                             ? `${point.treasury_10y_change.raw >= 0 ? "+" : ""}${point.treasury_10y_change.raw.toFixed(1)}`
-                            : "—"}
+                            : EM_DASH}
                         </td>
                         <td data-align="right">
-                          {point.dr007 !== null ? point.dr007.display : "—"}
+                          {point.dr007 !== null ? point.dr007.display : EM_DASH}
                         </td>
                       </tr>
                     );

@@ -4,9 +4,11 @@ import type {
   PnlCompositionPayload,
   ProductCategoryAttributionPayload,
   ProductCategoryPnlPayload,
+  ProductCategoryPnlRow,
   TPLMarketCorrelationPayload,
   VolumeRateAttributionPayload,
 } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 
 export type PnlAttributionTab = "product-category" | "volume-rate" | "tpl-market" | "composition" | "advanced";
 export type MissingReportDateSource = "none" | "formal-attribution" | "product-category" | "both";
@@ -37,8 +39,27 @@ export type VolumeRateBridgeSummary = {
   statusLabel: string;
 };
 
-const MISSING_DISPLAY = "—";
+const MISSING_DISPLAY = EM_DASH;
 const VOLUME_RATE_CLOSURE_TOLERANCE_YUAN = 10_000;
+
+const PRODUCT_CATEGORY_TPL_ROW_ID = "bond_tpl";
+
+export function findProductCategoryReportDateForPeriod(
+  reportDates: readonly string[],
+  period: string,
+): string | null {
+  const periodPrefix = `${period}-`;
+  return reportDates.find((date) => date.startsWith(periodPrefix)) ?? null;
+}
+
+export function selectProductCategoryTplRow(
+  payload: ProductCategoryPnlPayload,
+): ProductCategoryPnlRow | null {
+  return (
+    payload.rows.find((row) => row.category_id === PRODUCT_CATEGORY_TPL_ROW_ID) ??
+    null
+  );
+}
 
 export function numericRaw(value: Numeric | null | undefined): number | undefined {
   if (value === null || value === undefined) {

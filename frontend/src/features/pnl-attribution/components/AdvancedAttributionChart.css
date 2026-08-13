@@ -12,9 +12,9 @@
 
 .advanced-attribution-chart__metric-card,
 .advanced-attribution-chart__panel {
-  border: 1px solid var(--ib-hairline);
-  border-radius: var(--ib-radius);
-  background: var(--ib-surface);
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
 }
 
 .advanced-attribution-chart__metric-card {
@@ -26,57 +26,57 @@
 }
 
 .advanced-attribution-chart__metric-card[data-tone="profit"] {
-  border-color: color-mix(in srgb, var(--ib-up) 24%, var(--ib-hairline));
-  background: color-mix(in srgb, var(--ib-up) 7%, var(--ib-surface));
+  border-color: color-mix(in srgb, var(--dh-api-green) 24%, var(--dh-api-line));
+  background: color-mix(in srgb, var(--dh-api-green) 7%, var(--dh-api-panel));
 }
 
 .advanced-attribution-chart__metric-card[data-tone="info"] {
-  border-color: color-mix(in srgb, var(--ib-accent) 22%, var(--ib-hairline));
-  background: color-mix(in srgb, var(--ib-accent) 7%, var(--ib-surface));
+  border-color: color-mix(in srgb, var(--dh-api-blue) 22%, var(--dh-api-line));
+  background: color-mix(in srgb, var(--dh-api-blue) 7%, var(--dh-api-panel));
 }
 
 .advanced-attribution-chart__metric-card[data-tone="neutral"] {
-  border-color: var(--ib-hairline);
-  background: var(--ib-surface-muted);
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel-2);
 }
 
 .advanced-attribution-chart__metric-card[data-tone="warning"] {
-  border-color: color-mix(in srgb, var(--ib-warn) 24%, var(--ib-hairline));
-  background: color-mix(in srgb, var(--ib-warn) 7%, var(--ib-surface));
+  border-color: color-mix(in srgb, var(--dh-api-amber) 24%, var(--dh-api-line));
+  background: color-mix(in srgb, var(--dh-api-amber) 7%, var(--dh-api-panel));
 }
 
 .advanced-attribution-chart__metric-card[data-tone="loss"] {
-  border-color: color-mix(in srgb, var(--ib-down) 22%, var(--ib-hairline));
-  background: color-mix(in srgb, var(--ib-down) 6%, var(--ib-surface));
+  border-color: color-mix(in srgb, var(--dh-api-red) 22%, var(--dh-api-line));
+  background: color-mix(in srgb, var(--dh-api-red) 6%, var(--dh-api-panel));
 }
 
 .advanced-attribution-chart__metric-label {
-  color: var(--ib-ink-secondary);
+  color: var(--dh-api-soft);
   font-size: 12px;
   font-weight: 650;
 }
 
 .advanced-attribution-chart__metric-card[data-tone="profit"] .advanced-attribution-chart__metric-label {
-  color: var(--ib-up);
+  color: var(--dh-api-green);
 }
 
 .advanced-attribution-chart__metric-card[data-tone="info"] .advanced-attribution-chart__metric-label,
 .advanced-attribution-chart__metric-value[data-direction="info"] {
-  color: var(--ib-accent);
+  color: var(--dh-api-blue);
 }
 
 .advanced-attribution-chart__metric-card[data-tone="warning"] .advanced-attribution-chart__metric-label,
 .advanced-attribution-chart__metric-value[data-direction="warning"] {
-  color: var(--ib-warn);
+  color: var(--dh-api-amber);
 }
 
 .advanced-attribution-chart__metric-card[data-tone="loss"] .advanced-attribution-chart__metric-label {
-  color: var(--ib-down);
+  color: var(--dh-api-red);
 }
 
 .advanced-attribution-chart__metric-value {
   margin-top: 4px;
-  color: var(--ib-ink);
+  color: var(--dh-api-ink);
   font-family: var(--moss-font-mono);
   font-size: 20px;
   font-variant-numeric: tabular-nums;
@@ -88,30 +88,30 @@
 }
 
 .advanced-attribution-chart__metric-value[data-direction="positive"] {
-  color: var(--ib-up);
+  color: var(--dh-api-green);
 }
 
 .advanced-attribution-chart__metric-value[data-direction="negative"] {
-  color: var(--ib-down);
+  color: var(--dh-api-red);
 }
 
 .advanced-attribution-chart__metric-value[data-direction="neutral"] {
-  color: var(--ib-ink);
+  color: var(--dh-api-ink);
 }
 
 .advanced-attribution-chart__metric-note {
   margin-top: 4px;
-  color: var(--ib-ink-muted);
+  color: var(--dh-api-muted);
   font-size: 11px;
 }
 
 .advanced-attribution-chart__metric-card[data-tone="profit"] .advanced-attribution-chart__metric-note {
-  color: var(--ib-up);
+  color: var(--dh-api-green);
 }
 
 .advanced-attribution-chart__section-title {
   margin: 0 0 12px;
-  color: var(--ib-ink);
+  color: var(--dh-api-ink);
   font-size: 16px;
   font-weight: 650;
 }
@@ -122,30 +122,30 @@
 
 .advanced-attribution-chart__section-copy {
   margin: 0;
-  color: var(--ib-ink-secondary);
+  color: var(--dh-api-soft);
   font-size: 14px;
   line-height: 1.5;
 }
 
 .advanced-attribution-chart__section-meta {
   margin: 12px 0 0;
-  color: var(--ib-ink-muted);
+  color: var(--dh-api-muted);
   font-size: 12px;
 }
 
 .advanced-attribution-chart__curve-note {
   margin: 0 0 12px;
   padding: 12px;
-  border: 1px solid var(--ib-hairline);
-  border-radius: var(--ib-radius);
-  background: var(--ib-surface-muted);
-  color: var(--ib-ink-secondary);
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
   font-size: 13px;
 }
 
 .advanced-attribution-chart__curve-highlight {
   margin-left: 12px;
-  color: var(--ib-accent);
+  color: var(--dh-api-blue);
 }
 
 .advanced-attribution-chart__chart {
@@ -178,7 +178,7 @@
 }
 
 .advanced-attribution-chart__table thead {
-  background: var(--ib-surface);
+  background: var(--dh-api-panel);
 }
 
 .advanced-attribution-chart__table--sticky thead {
@@ -187,7 +187,7 @@
 }
 
 .advanced-attribution-chart__table tr {
-  border-bottom: 1px solid var(--ib-hairline);
+  border-bottom: 1px solid var(--dh-api-line-soft);
 }
 
 .advanced-attribution-chart__table th,
@@ -196,15 +196,15 @@
 }
 
 .advanced-attribution-chart__table th {
-  border-bottom: 1px solid var(--ib-rule-strong);
-  color: var(--ib-ink-muted);
+  border-bottom: 1px solid var(--dh-api-line);
+  color: var(--dh-api-muted);
   font-size: var(--ib-kicker-font-size);
   font-weight: 600;
   letter-spacing: var(--ib-kicker-letter-spacing);
 }
 
 .advanced-attribution-chart__table tbody tr:hover td {
-  background: var(--ib-surface-muted);
+  background: var(--dh-api-panel-2);
 }
 
 .advanced-attribution-chart__table-left {
@@ -219,23 +219,23 @@
 }
 
 .advanced-attribution-chart__table-num[data-direction="positive"] {
-  color: var(--ib-up);
+  color: var(--dh-api-green);
 }
 
 .advanced-attribution-chart__table-num[data-direction="negative"] {
-  color: var(--ib-down);
+  color: var(--dh-api-red);
 }
 
 .advanced-attribution-chart__table-num[data-direction="info"] {
-  color: var(--ib-accent);
+  color: var(--dh-api-blue);
 }
 
 .advanced-attribution-chart__table-num[data-direction="warning"] {
-  color: var(--ib-warn);
+  color: var(--dh-api-amber);
 }
 
 .advanced-attribution-chart__table-num[data-direction="neutral"] {
-  color: var(--ib-ink);
+  color: var(--dh-api-ink);
 }
 
 .advanced-attribution-chart__table-num--strong {
@@ -244,7 +244,7 @@
 
 .advanced-attribution-chart__caliber-note {
   margin: 8px 0 0;
-  color: var(--ib-ink-muted);
+  color: var(--dh-api-muted);
   font-size: 11px;
   line-height: 1.5;
 }

@@ -164,9 +164,15 @@ describe("PnlAttributionPage", () => {
 
     expect(source).not.toMatch(/designTokens\.color\.warm|moss-color-warm-/);
     expect(source).not.toMatch(/#ded6ca|#ece6dd|#665f58/);
-    expect(source).toContain("designTokens.color.neutral[900]");
-    expect(source).toContain("designTokens.color.primary[600]");
-    expect(source).toContain("designTokens.color.info[600]");
+    // 暗色路由面色/文字/盈亏/强调着色走主题感知入口（TONE_CSS_VAR / --dh-api-*，
+    // Nocturne scope 下 --ib-* 在路由边界被算成钢蓝字面值故不得引用）；
+    // ECharts canvas 读不到 CSS 变量，图表色走 dhApiTokens 暗色镜像（仍是
+    // 蓝灰族），不再直灌浅色 designTokens.color.*（neutral[900]、primary[600]、
+    // info[600] 等）。
+    expect(source).not.toMatch(/designTokens\.color\./);
+    expect(source).toContain("dhApiTokens.color.");
+    expect(source).toContain("TONE_CSS_VAR");
+    expect(source).toContain("var(--dh-api-");
   });
 
   it("mounts with explicit product-category and formal FI lenses", async () => {
@@ -282,7 +288,7 @@ describe("PnlAttributionPage", () => {
     await user.click(screen.getByRole("button", { name: /TPL/i }));
     expect(screen.getByRole("button", { name: /TPL/i })).toBeInTheDocument();
     const tplDecisionStrip = await screen.findByTestId("pnl-attribution-decision-strip");
-    expect(tplDecisionStrip).toHaveTextContent("TPL hybrid exception");
+    expect(tplDecisionStrip).toHaveTextContent("TPL 混合口径例外");
     expect(tplDecisionStrip).toHaveTextContent("/api/pnl-attribution/tpl-market");
     expect(tplDecisionStrip).toHaveTextContent("/ui/pnl/product-category");
 

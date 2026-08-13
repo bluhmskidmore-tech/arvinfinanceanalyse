@@ -1,5 +1,169 @@
 .pnl-by-business-page {
   min-width: 0;
+
+  /*
+   * This page still consumes the legacy colour scale while the route is
+   * hosted inside the dark decision-desk shell. Keep the compatibility
+   * bridge page-local so light pages and the global token system are not
+   * changed by this closure.
+   */
+  /* tokens.css 把 card-bg 别名定义在 ThemedRouteBoundary 层，计算时取
+     boundary 未翻转的钢蓝 --dh-api-panel；页内重声明才能跟随 Nocturne
+     scope 翻转（portfolio-home 页根桥接同款处理）。 */
+  --moss-color-card-bg: var(--dh-api-panel);
+  --moss-color-neutral-50: var(--dh-api-panel-2);
+  --moss-color-neutral-100: var(--dh-api-panel-3);
+  --moss-color-neutral-200: var(--dh-api-line);
+  --moss-color-neutral-300: var(--dh-api-line);
+  --moss-color-neutral-400: var(--dh-api-muted);
+  --moss-color-neutral-500: var(--dh-api-muted);
+  --moss-color-neutral-600: var(--dh-api-soft);
+  --moss-color-neutral-700: var(--dh-api-soft);
+  --moss-color-neutral-800: var(--dh-api-ink);
+  --moss-color-neutral-900: var(--dh-api-ink);
+  --moss-color-primary-50: var(--dh-api-blue-soft);
+  --moss-color-primary-100: var(--dh-api-blue-soft);
+  --moss-color-primary-200: color-mix(in srgb, var(--dh-api-blue) 42%, var(--dh-api-line) 58%);
+  --moss-color-primary-300: var(--dh-api-blue);
+  --moss-color-primary-400: var(--dh-api-blue);
+  --moss-color-primary-500: var(--dh-api-blue);
+  --moss-color-primary-600: var(--dh-api-blue);
+  --moss-color-primary-700: var(--dh-api-blue);
+  --moss-color-primary-800: var(--dh-api-blue);
+  --moss-color-primary-900: var(--dh-api-blue);
+  --moss-color-info-50: var(--dh-api-blue-soft);
+  --moss-color-info-100: var(--dh-api-blue-soft);
+  --moss-color-info-200: color-mix(in srgb, var(--dh-api-blue) 42%, var(--dh-api-line) 58%);
+  --moss-color-info-300: var(--dh-api-blue);
+  --moss-color-info-400: var(--dh-api-blue);
+  --moss-color-info-500: var(--dh-api-blue);
+  --moss-color-info-600: var(--dh-api-blue);
+  --moss-color-info-700: var(--dh-api-blue);
+  --moss-color-info-800: var(--dh-api-blue);
+  --moss-color-info-900: var(--dh-api-blue);
+  --moss-color-success-50: var(--dh-api-green-soft);
+  --moss-color-success-100: var(--dh-api-green-soft);
+  --moss-color-success-200: color-mix(in srgb, var(--dh-api-green) 42%, var(--dh-api-line) 58%);
+  --moss-color-success-300: var(--dh-api-green);
+  --moss-color-success-400: var(--dh-api-green);
+  --moss-color-success-500: var(--dh-api-green);
+  --moss-color-success-600: var(--dh-api-green);
+  --moss-color-success-700: var(--dh-api-green);
+  --moss-color-success-800: var(--dh-api-green);
+  --moss-color-success-900: var(--dh-api-green);
+  --moss-color-warning-50: var(--dh-api-amber-soft);
+  --moss-color-warning-100: var(--dh-api-amber-soft);
+  --moss-color-warning-200: color-mix(in srgb, var(--dh-api-amber) 42%, var(--dh-api-line) 58%);
+  --moss-color-warning-300: var(--dh-api-amber);
+  --moss-color-warning-400: var(--dh-api-amber);
+  --moss-color-warning-500: var(--dh-api-amber);
+  --moss-color-warning-600: var(--dh-api-amber);
+  --moss-color-warning-700: var(--dh-api-amber);
+  --moss-color-warning-800: var(--dh-api-amber);
+  --moss-color-warning-900: var(--dh-api-amber);
+  --moss-color-danger-50: var(--dh-api-red-soft);
+  --moss-color-danger-100: var(--dh-api-red-soft);
+  --moss-color-danger-200: color-mix(in srgb, var(--dh-api-red) 42%, var(--dh-api-line) 58%);
+  --moss-color-danger-300: var(--dh-api-red);
+  --moss-color-danger-400: var(--dh-api-red);
+  --moss-color-danger-500: var(--dh-api-red);
+  --moss-color-danger-600: var(--dh-api-red);
+  --moss-color-danger-700: var(--dh-api-red);
+  --moss-color-danger-800: var(--dh-api-red);
+  --moss-color-danger-900: var(--dh-api-red);
+}
+
+/* The route navigation and governance notice are shell siblings of the page
+ * root, so they cannot inherit the page-local legacy-token bridge above. */
+[data-testid="workbench-main-content"]:has(.pnl-by-business-page)
+  .workbench-section-subnav {
+  border-bottom-color: var(--dh-api-line-soft);
+}
+
+[data-testid="workbench-main-content"]:has(.pnl-by-business-page)
+  .workbench-section-subnav__eyebrow {
+  color: var(--dh-api-muted);
+}
+
+[data-testid="workbench-main-content"]:has(.pnl-by-business-page)
+  .workbench-section-subnav__title {
+  color: var(--dh-api-ink);
+}
+
+[data-testid="workbench-main-content"]:has(.pnl-by-business-page)
+  .workbench-section-subnav__link {
+  border-color: var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  color: var(--dh-api-soft);
+  box-shadow: none;
+}
+
+[data-testid="workbench-main-content"]:has(.pnl-by-business-page)
+  .workbench-section-subnav__link:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 42%, var(--dh-api-line) 58%);
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-ink);
+}
+
+[data-testid="workbench-main-content"]:has(.pnl-by-business-page)
+  .workbench-section-subnav__link[data-active="true"] {
+  border-color: var(--dh-api-blue);
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-ink);
+}
+
+[data-testid="workbench-main-content"]:has(.pnl-by-business-page)
+  > [data-testid="workbench-governance-banner"] {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 42%, var(--dh-api-line) 58%);
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-ink);
+}
+
+[data-testid="workbench-main-content"]:has(.pnl-by-business-page)
+  > [data-testid="workbench-governance-banner"]
+  .workbench-notice__title {
+  color: var(--dh-api-amber);
+}
+
+[data-testid="workbench-main-content"]:has(.pnl-by-business-page)
+  > [data-testid="workbench-governance-banner"]
+  .workbench-notice__hint {
+  color: var(--dh-api-soft);
+}
+
+/* Shared primitives still carry static light-theme colours inline. Keep the
+ * correction scoped to this route until those primitives become theme-aware. */
+.pnl-by-business-section-lead > div > span {
+  color: var(--dh-api-muted) !important;
+}
+
+.pnl-by-business-section-lead > div > h2 {
+  color: var(--dh-api-ink) !important;
+}
+
+.pnl-by-business-section-lead > div > p {
+  color: var(--dh-api-soft) !important;
+}
+
+.pnl-by-business-page .formal-result-meta-panel__badge[title$="正常"],
+.pnl-by-business-page .formal-result-meta-panel__badge[title$="未降级"] {
+  border-color: color-mix(in srgb, var(--dh-api-green) 42%, var(--dh-api-line) 58%) !important;
+  background: var(--dh-api-green-soft) !important;
+  color: var(--dh-api-green) !important;
+}
+
+.pnl-by-business-page .formal-result-meta-panel__badge[title$="供应商陈旧"],
+.pnl-by-business-page .formal-result-meta-panel__badge[title$="最新快照降级"] {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 42%, var(--dh-api-line) 58%) !important;
+  background: var(--dh-api-amber-soft) !important;
+  color: var(--dh-api-amber) !important;
+}
+
+.pnl-by-business-page .formal-result-meta-panel__badge[title$="供应商不可用"] {
+  border-color: color-mix(in srgb, var(--dh-api-red) 42%, var(--dh-api-line) 58%) !important;
+  background: var(--dh-api-red-soft) !important;
+  color: var(--dh-api-red) !important;
 }
 
 .pnl-by-business-hero-conclusion {
@@ -112,12 +276,9 @@
   min-width: 0;
 }
 
-.pnl-by-business-kpi-item.pnl-by-business-kpi-metric--positive .moss-page-v2-kpi-metric__value {
-  color: var(--moss-color-success-700);
-}
-
+.pnl-by-business-kpi-item.pnl-by-business-kpi-metric--positive .moss-page-v2-kpi-metric__value,
 .pnl-by-business-kpi-item.pnl-by-business-kpi-metric--negative .moss-page-v2-kpi-metric__value {
-  color: var(--moss-color-danger-500);
+  color: var(--moss-color-neutral-900);
 }
 
 .pnl-by-business-kpi-metric__tabular-value {
@@ -946,6 +1107,12 @@
   color: var(--moss-color-danger-700);
 }
 
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"]
+  .pnl-by-business-table
+  td:nth-child(7) {
+  color: var(--moss-color-neutral-900);
+}
+
 .pnl-by-business-table-footer-cell {
   border-top: 1px solid var(--moss-color-neutral-100);
   background: var(--moss-color-neutral-50);
@@ -1346,7 +1513,8 @@
 .pnl-by-business-selected-trend__tabs button[aria-pressed="true"] {
   background: var(--moss-color-card-bg);
   color: var(--moss-color-primary-800);
-  box-shadow: 0 1px 2px rgba(15, 45, 80, 0.12);
+  /* 深色制度无投影（tokens.css 深色块 --moss-shadow-card/panel 均为 none） */
+  box-shadow: none;
 }
 
 .pnl-by-business-selected-trend__tabs button:focus-visible,
@@ -1599,7 +1767,30 @@
 .pnl-by-business-month-table-shell .pnl-by-business-table tfoot td {
   position: sticky;
   bottom: 0;
-  z-index: 1;
+  z-index: 2;
+  border-top-color: var(--moss-color-primary-200);
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-neutral-900);
+  font-weight: 700;
+}
+
+.pnl-by-business-month-table-shell .pnl-by-business-table th:first-child,
+.pnl-by-business-month-table-shell .pnl-by-business-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--moss-color-card-bg);
+  box-shadow: 1px 0 0 var(--moss-color-neutral-200);
+}
+
+.pnl-by-business-month-table-shell .pnl-by-business-table th:first-child {
+  z-index: 4;
+  background: var(--moss-color-neutral-50);
+}
+
+.pnl-by-business-month-table-shell .pnl-by-business-table tfoot td:first-child {
+  z-index: 4;
+  background: var(--moss-color-neutral-50);
 }
 
 .pnl-by-business-adjustment-panel {
@@ -1649,13 +1840,13 @@
 .pnl-by-business-action-button-primary {
   border-color: var(--moss-color-primary-600);
   background: var(--moss-color-primary-600);
-  color: #fff;
+  color: var(--dh-api-bg);
 }
 
 .pnl-by-business-action-button-primary:hover:not(:disabled) {
   border-color: var(--moss-color-primary-700);
   background: var(--moss-color-primary-700);
-  color: #fff;
+  color: var(--dh-api-bg);
 }
 
 .pnl-by-business-action-button:disabled,

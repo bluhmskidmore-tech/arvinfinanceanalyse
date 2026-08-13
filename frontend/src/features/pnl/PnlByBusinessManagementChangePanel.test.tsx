@@ -99,6 +99,39 @@ describe("PnlByBusinessManagementChangePanel", () => {
     expect(within(ftpYieldCard!).getByText("—")).toBeInTheDocument();
   });
 
+  it("fails closed for balance and FTP comparisons when monthly coverage is incomplete", () => {
+    render(
+      <PnlByBusinessManagementChangePanel
+        managementChange={{
+          ...availableChange(),
+          comparison_status: "data_quality_warning",
+          coverage_warning_months: ["2025-12"],
+          summary: {
+            ...availableChange().summary!,
+            total_pnl_delta: "35000.00",
+            ftp_net_pnl_delta: "20000.00",
+            ftp_net_annualized_yield_delta_bp: "12.00",
+          },
+        }}
+        expectedCurrentMonthKey="2025-12"
+        selectedRowKey={null}
+        isLoading={false}
+        isError={false}
+      />,
+    );
+
+    const pnlCard = screen.getByText("已分类父级损益变化").closest("article");
+    const avgCard = screen.getByText("日均变化").closest("article");
+    const ftpCard = screen.getByText("FTP净损益变化").closest("article");
+    const ftpYieldCard = screen.getByText("FTP后年化变化").closest("article");
+    expect(within(pnlCard!).getByText("+3.50 万元")).toBeInTheDocument();
+    expect(within(avgCard!).getByText("待核对")).toBeInTheDocument();
+    expect(within(ftpCard!).getByText("待核对")).toBeInTheDocument();
+    expect(within(ftpYieldCard!).getByText("待核对")).toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent("日均及 FTP 指标因 2025-12 覆盖不足暂不比较");
+    expect(screen.getByText(/日均、FTP 净损益及 FTP 后年化变化在覆盖补齐前已停止用于汇报/)).toBeInTheDocument();
+  });
+
   it("marks cached comparison data stale when a background refresh fails", () => {
     render(
       <PnlByBusinessManagementChangePanel

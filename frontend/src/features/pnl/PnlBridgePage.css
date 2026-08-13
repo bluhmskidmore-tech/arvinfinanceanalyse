@@ -205,6 +205,39 @@
   margin-bottom: 6px;
 }
 
+/* 曲线效应可用性披露：与 warnings 同一视觉家族，但排在汇总卡片之前——
+   它决定的是下方合计能不能按面值解读，读到后面才看到就晚了。 */
+.pnl-bridge-curve-availability {
+  margin-bottom: 20px;
+  padding: 16px;
+  border-radius: var(--ib-radius);
+  background: var(--moss-color-warning-50);
+  border: 1px solid var(--moss-color-warning-200);
+}
+
+.pnl-bridge-curve-availability__title {
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--moss-color-warning-800);
+}
+
+.pnl-bridge-curve-availability__list {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--ib-ink-secondary);
+}
+
+.pnl-bridge-curve-availability__item {
+  margin-bottom: 6px;
+  line-height: 1.65;
+}
+
+.pnl-bridge-curve-availability__label {
+  font-weight: 600;
+  margin-right: 6px;
+  color: var(--ib-ink);
+}
+
 .pnl-bridge-balance-scope-header {
   cursor: help;
 }
