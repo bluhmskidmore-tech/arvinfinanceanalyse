@@ -395,6 +395,28 @@
   color: var(--dh-api-red);
 }
 
+/*
+ * 主值 tone 消费：模型层已按业务档位判定（投研观点/主信号走 signal tone、
+ * A股风险 yellow 档警戒→warning），组件透传 data-tone，这里对齐角色 6 分区的
+ * TONE_DH_CSS_VAR 映射（positive→green / warning→amber / negative→red，
+ * neutral 缺省 ink 保首屏层级）。限定 data-status="ready"：只有实值着色，
+ * loading/deferred 的 muted 降权与 failed 的红色不被 tone 覆盖。
+ */
+.macro-observation-view__kpi-cell[data-status="ready"][data-tone="positive"]
+  .macro-observation-view__kpi-value {
+  color: var(--dh-api-green);
+}
+
+.macro-observation-view__kpi-cell[data-status="ready"][data-tone="warning"]
+  .macro-observation-view__kpi-value {
+  color: var(--dh-api-amber);
+}
+
+.macro-observation-view__kpi-cell[data-status="ready"][data-tone="negative"]
+  .macro-observation-view__kpi-value {
+  color: var(--dh-api-red);
+}
+
 .macro-observation-view__kpi-note {
   display: -webkit-box;
   overflow: hidden;
