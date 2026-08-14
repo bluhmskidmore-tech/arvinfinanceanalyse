@@ -494,6 +494,16 @@
   outline-offset: 2px;
 }
 
+.product-category-liability-matrix__controls {
+  margin-block: var(--moss-space-3) var(--moss-space-2);
+}
+
+.product-category-liability-matrix__mode-note {
+  margin: 0 0 var(--moss-space-2);
+  color: var(--moss-color-neutral-500);
+  font-size: 12px;
+}
+
 .product-category-formal-selection-context {
   display: grid;
   grid-template-columns: minmax(170px, 0.8fr) minmax(520px, 2.4fr) auto;

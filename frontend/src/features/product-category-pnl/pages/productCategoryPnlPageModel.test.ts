@@ -4422,6 +4422,15 @@ describe("productCategoryPnlPageModel", () => {
     ]);
     expect(surface.chart?.totalAverageDaily).toEqual([1500, 1600, 1700]);
     expect(surface.chart?.totalRate).toEqual([1.6, null, 1.75]);
+    expect(surface.totalReadout).toMatchObject({
+      categoryId: "liability_total",
+      latestAmountLabel: "1700.00",
+      amountDeltaLabel: "+100.00",
+      latestRateLabel: "1.75",
+      rateDeltaLabel: "+15 bp",
+      comparisonLabel:
+        "日均额：2025年11月 → 2026年03月；利率：2025年Q1 → 2026年03月",
+    });
     expect(surface.incompleteReasons).toContain("2025年11月负债端利率缺失");
     expect(surface.detailRows.map((item) => item.categoryId)).toContain(
       "credit_linked_notes",
@@ -4464,7 +4473,7 @@ describe("productCategoryPnlPageModel", () => {
             side: "liability",
             is_total: true,
             cnx_scale: yi(-75),
-            weighted_yield: "1.10",
+            weighted_yield: "1.46460272",
           }),
           grand_total: row({ category_id: "grand_total", is_total: true }),
         },
@@ -4492,7 +4501,7 @@ describe("productCategoryPnlPageModel", () => {
             side: "liability",
             is_total: true,
             cnx_scale: yi(-82),
-            weighted_yield: "1.20",
+            weighted_yield: "1.45721234",
           }),
           grand_total: row({ category_id: "grand_total", is_total: true }),
         },
@@ -4511,6 +4520,13 @@ describe("productCategoryPnlPageModel", () => {
       amountDeltaLabel: "+7.00",
       latestRateLabel: "1.20",
       rateDeltaLabel: "+10 bp",
+    });
+    expect(surface.totalReadout).toMatchObject({
+      categoryId: "liability_total",
+      latestAmountLabel: "82.00",
+      amountDeltaLabel: "+7.00",
+      latestRateLabel: "1.46",
+      rateDeltaLabel: "-0.7 bp",
     });
   });
 

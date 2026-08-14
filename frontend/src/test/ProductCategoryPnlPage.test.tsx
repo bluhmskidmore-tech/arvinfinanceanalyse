@@ -438,6 +438,19 @@ function renderWorkbenchAppWithTwoMonthLiabilityTrend() {
     ),
     getProductCategoryPnl: vi.fn(async (options) => {
       const env = buildMockProductCategoryPnlEnvelope(options);
+      if (options.view === "ytd") {
+        return {
+          ...env,
+          result: {
+            ...env.result,
+            liability_total: {
+              ...env.result.liability_total,
+              cnx_scale: "-200000000000.00",
+              weighted_yield: "1.80",
+            },
+          },
+        };
+      }
       if (options.reportDate !== "2026-01-31") {
         return env;
       }
@@ -1155,6 +1168,9 @@ describe("ProductCategoryPnlPage", () => {
     expect(liabilityOption.xAxis).toMatchObject({
       data: ["2026年01月", "2026年02月"],
     });
+    expect(liabilityCard).toHaveTextContent("1728.58");
+    expect(liabilityCard).toHaveTextContent("1.63");
+    expect(liabilityCard).toHaveTextContent("0 bp");
 
     await user.click(trendSummary!);
     await waitFor(() => {
@@ -3883,6 +3899,66 @@ describe("ProductCategoryPnlPage", () => {
     expect(readout).toHaveTextContent("1.63");
     expect(readout).toHaveTextContent("+5 bp");
     expect(readout).toHaveTextContent("2");
+  });
+
+  it("switches liability detail matrices between backend YTD and monthly values", async () => {
+    const user = userEvent.setup();
+    renderWorkbenchAppWithTwoMonthLiabilityTrend();
+
+    await waitForTrendDiagnosticsAutoLoad();
+    const controls = await screen.findByTestId(
+      "product-category-liability-matrix-display-mode",
+    );
+    const ytdButton = within(controls).getByRole("button", {
+      name: "累进值",
+    });
+    const monthlyButton = within(controls).getByRole("button", {
+      name: "单月值",
+    });
+
+    expect(ytdButton).toHaveAttribute("aria-pressed", "false");
+    expect(monthlyButton).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(ytdButton);
+
+    expect(ytdButton).toHaveAttribute("aria-pressed", "true");
+    expect(monthlyButton).toHaveAttribute("aria-pressed", "false");
+    await waitFor(() => {
+      expect(
+        within(
+          screen.getByTestId(
+            "product-category-liability-side-detail-liability_total",
+          ),
+        ).getAllByText("2000.00"),
+      ).toHaveLength(2);
+    });
+    expect(
+      screen.getByTestId("product-category-liability-matrix-caliber-note"),
+    ).toHaveTextContent("后端原始年初至今累计口径");
+    expect(
+      screen.getByTestId("product-category-trend-liability-card"),
+    ).toHaveTextContent("2000.00");
+    expect(
+      screen.getByTestId("product-category-trend-liability-card"),
+    ).toHaveTextContent("1.80");
+
+    await user.click(monthlyButton);
+
+    const liabilityTotalRow = screen.getByTestId(
+      "product-category-liability-side-detail-liability_total",
+    );
+    expect(
+      within(liabilityTotalRow).getAllByText("1728.58"),
+    ).toHaveLength(2);
+    expect(
+      screen.getByTestId("product-category-liability-matrix-caliber-note"),
+    ).toHaveTextContent("后端原始单月口径");
+    expect(
+      screen.getByTestId("product-category-trend-liability-card"),
+    ).toHaveTextContent("1728.58");
+    expect(
+      screen.getByTestId("product-category-trend-liability-card"),
+    ).toHaveTextContent("1.63");
   });
 
   it("places mobile liability-side currency readouts before each raw currency matrix", async () => {

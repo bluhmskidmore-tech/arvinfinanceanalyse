@@ -35,6 +35,10 @@ import MonthlyOperatingAnalysisBranch from "./MonthlyOperatingAnalysisBranch";
 import "./ProductCategoryPnlPage.css";
 import { ProductCategoryFormalReadinessBand } from "./ProductCategoryFormalReadinessBand";
 import { ProductCategoryGovernanceStrip } from "./ProductCategoryGovernanceStrip";
+import {
+  ProductCategoryLiabilityViewToggle,
+  type ProductCategoryLiabilityView,
+} from "./ProductCategoryLiabilityViewToggle";
 import { ProductCategorySpreadReadout } from "./ProductCategorySpreadReadout";
 import { selectProductCategorySpreadReadoutSurface } from "./model/productCategoryPnlSpreadReadoutModel";
 import {
@@ -873,6 +877,8 @@ export default function ProductCategoryPnlPage() {
   >("product_category_pnl");
   const [formalTableDisplayMode, setFormalTableDisplayMode] =
     useState<FormalTableDisplayMode>("key");
+  const [liabilityMatrixViewOverride, setLiabilityMatrixViewOverride] =
+    useState<ProductCategoryLiabilityView | null>(null);
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedView, setSelectedView] = useState("monthly");
   const [scenarioRate, setScenarioRate] = useState("1.75");
@@ -1468,6 +1474,47 @@ export default function ProductCategoryPnlPage() {
     () => uniqueProductCategoryReportDates(trendHistoryPoints),
     [trendHistoryPoints],
   );
+  const selectedLiabilityMatrixView: ProductCategoryLiabilityView =
+    selectedView === "ytd" ? "ytd" : "monthly";
+  const liabilityMatrixView =
+    liabilityMatrixViewOverride ?? selectedLiabilityMatrixView;
+  const handleLiabilityMatrixViewChange = useCallback(
+    (nextView: ProductCategoryLiabilityView) => {
+      setLiabilityMatrixViewOverride(
+        nextView === selectedLiabilityMatrixView ? null : nextView,
+      );
+    },
+    [selectedLiabilityMatrixView],
+  );
+  const liabilityMatrixReportDates = useMemo(
+    () => uniqueProductCategoryReportDates(trendReportPoints),
+    [trendReportPoints],
+  );
+  const liabilityMatrixAlternateQuery = useQuery({
+    queryKey: [
+      "product-category-pnl",
+      "liability-matrix-history",
+      client.mode,
+      liabilityMatrixReportDates.join(","),
+      liabilityMatrixView,
+      appliedScenarioRate,
+    ],
+    queryFn: () =>
+      client.getProductCategoryHistory({
+        reportDates: liabilityMatrixReportDates,
+        view: liabilityMatrixView,
+        ...(appliedScenarioRate
+          ? { scenarioRatePct: appliedScenarioRate }
+          : {}),
+      }),
+    enabled: Boolean(
+      trendHistoryConsumerOpen &&
+        trendDiagnosticsLoaded &&
+        liabilityMatrixReportDates.length > 0 &&
+        liabilityMatrixView !== selectedLiabilityMatrixView,
+    ),
+    retry: false,
+  });
   const trendHistoryView = trendHistoryPoints[0]?.view ?? selectedView;
   const trendHistoryBatches = useMemo(
     () => chunkProductCategoryReportDates(trendHistoryReportDates),
@@ -1639,6 +1686,21 @@ export default function ProductCategoryPnlPage() {
       trendHistoryPoints,
     ],
   );
+  const liabilityMatrixAlternateSnapshots = useMemo(
+    () =>
+      liabilityMatrixAlternateQuery.data?.result.items.flatMap((item) =>
+        item.status === "ok" && item.result
+          ? [
+              buildProductCategoryTrendSnapshot(
+                item.result,
+                formatProductCategoryReportMonthLabel(item.report_date),
+                item.result_meta ?? undefined,
+              ),
+            ]
+          : [],
+      ) ?? [],
+    [liabilityMatrixAlternateQuery.data?.result.items],
+  );
   const operatingActionBacktestPayloads = useMemo(
     () =>
       trendDiagnosticsLoaded
@@ -1772,6 +1834,18 @@ export default function ProductCategoryPnlPage() {
   const liabilitySideTrendSurface = useMemo(
     () => buildProductCategoryLiabilitySideTrendSurface(trendSnapshots),
     [trendSnapshots],
+  );
+  const liabilityMatrixUsesAlternateView =
+    liabilityMatrixView !== selectedLiabilityMatrixView;
+  const liabilityMatrixHasAlternateData =
+    liabilityMatrixAlternateSnapshots.length > 0;
+  const liabilityMatrixSnapshots =
+    liabilityMatrixUsesAlternateView && liabilityMatrixHasAlternateData
+      ? liabilityMatrixAlternateSnapshots
+      : trendSnapshots;
+  const liabilityMatrixTrendSurface = useMemo(
+    () => buildProductCategoryLiabilitySideTrendSurface(liabilityMatrixSnapshots),
+    [liabilityMatrixSnapshots],
   );
   const tplScaleYieldChart = useMemo(
     () => selectProductCategoryTplScaleYieldChart(trendSnapshots),
@@ -2137,14 +2211,15 @@ export default function ProductCategoryPnlPage() {
   );
   const liabilitySideTrendOption = useMemo(
     () =>
-      liabilitySideTrendSurface.chart
+      liabilityMatrixTrendSurface.chart
         ? buildLiabilitySideTrendChartOption({
-            labels: liabilitySideTrendSurface.chart.labels,
-            averageDaily: liabilitySideTrendSurface.chart.totalAverageDaily,
-            rate: liabilitySideTrendSurface.chart.totalRate,
+            labels: liabilityMatrixTrendSurface.chart.labels,
+            averageDaily:
+              liabilityMatrixTrendSurface.chart.totalAverageDaily,
+            rate: liabilityMatrixTrendSurface.chart.totalRate,
           })
         : null,
-    [liabilitySideTrendSurface.chart],
+    [liabilityMatrixTrendSurface.chart],
   );
   const interestEarningSpreadComparisonReadout =
     buildProductCategoryComparisonReadout({
@@ -2332,12 +2407,7 @@ export default function ProductCategoryPnlPage() {
       "%",
     ),
   };
-  const liabilityTrendReadout =
-    liabilitySideTrendSurface.detailRows.find(
-      (row) => row.categoryId === "liability_total",
-    ) ??
-    liabilitySideTrendSurface.detailRows[0] ??
-    null;
+  const liabilityTrendReadout = liabilityMatrixTrendSurface.totalReadout;
   const adjustmentCount =
     adjustmentsQuery.data?.adjustment_count ??
     adjustmentsQuery.data?.adjustments.length ??
@@ -3495,6 +3565,12 @@ export default function ProductCategoryPnlPage() {
                     </div>
                     <a href="#product-category-liabilities">负债侧口径 →</a>
                   </div>
+                  <ProductCategoryLiabilityViewToggle
+                    ariaLabel="负债趋势展示口径"
+                    testId="product-category-trend-liability-view-mode"
+                    value={liabilityMatrixView}
+                    onChange={handleLiabilityMatrixViewChange}
+                  />
                   {liabilitySideTrendOption ? (
                     <LazyReactECharts
                       option={liabilitySideTrendOption}
@@ -4682,8 +4758,34 @@ export default function ProductCategoryPnlPage() {
                 ) : null}
                 {liabilitySideTrendSurface.detailMatrix.rows.length > 0 ? (
                   <>
+                    <ProductCategoryLiabilityViewToggle
+                      ariaLabel="负债明细矩阵展示口径"
+                      className="product-category-liability-matrix__controls"
+                      testId="product-category-liability-matrix-display-mode"
+                      value={liabilityMatrixView}
+                      onChange={handleLiabilityMatrixViewChange}
+                    />
+                    <p
+                      className="product-category-liability-matrix__mode-note"
+                      data-testid="product-category-liability-matrix-caliber-note"
+                      role={
+                        liabilityMatrixUsesAlternateView &&
+                        liabilityMatrixAlternateQuery.isFetching
+                          ? "status"
+                          : undefined
+                      }
+                    >
+                      {liabilityMatrixUsesAlternateView &&
+                      liabilityMatrixAlternateQuery.isFetching
+                        ? `正在载入后端原始${liabilityMatrixView === "ytd" ? "年初至今累计" : "单月"}口径…`
+                        : liabilityMatrixUsesAlternateView &&
+                            (liabilityMatrixAlternateQuery.isError ||
+                              !liabilityMatrixHasAlternateData)
+                          ? `后端原始${liabilityMatrixView === "ytd" ? "年初至今累计" : "单月"}口径暂不可用，当前保留原口径。`
+                          : `当前显示后端原始${liabilityMatrixView === "ytd" ? "年初至今累计" : "单月"}口径。`}
+                    </p>
                     <ProductCategoryLiabilityDetailMatrixMobileReadout
-                      matrix={liabilitySideTrendSurface.detailMatrix}
+                      matrix={liabilityMatrixTrendSurface.detailMatrix}
                     />
                     <details
                       className="product-category-liability-matrix__disclosure"
@@ -4693,11 +4795,12 @@ export default function ProductCategoryPnlPage() {
                         <span>全币种明细矩阵</span>
                         <small>
                           {
-                            liabilitySideTrendSurface.detailMatrix.periods
+                            liabilityMatrixTrendSurface.detailMatrix.periods
                               .length
                           }
                           期 ·{" "}
-                          {liabilitySideTrendSurface.detailMatrix.rows.length}行
+                          {liabilityMatrixTrendSurface.detailMatrix.rows.length}
+                          行
                         </small>
                       </summary>
                       <div className="product-category-diagnostics__table-wrap product-category-liability-matrix__wrap">
@@ -4715,7 +4818,7 @@ export default function ProductCategoryPnlPage() {
                               >
                                 负债明细
                               </th>
-                              {liabilitySideTrendSurface.detailMatrix.periods.map(
+                              {liabilityMatrixTrendSurface.detailMatrix.periods.map(
                                 (period) => (
                                   <th
                                     key={period.key}
@@ -4734,13 +4837,13 @@ export default function ProductCategoryPnlPage() {
                                 scope="colgroup"
                               >
                                 {
-                                  liabilitySideTrendSurface.detailMatrix
+                                  liabilityMatrixTrendSurface.detailMatrix
                                     .movementGroupLabel
                                 }
                               </th>
                             </tr>
                             <tr>
-                              {liabilitySideTrendSurface.detailMatrix.periods.map(
+                              {liabilityMatrixTrendSurface.detailMatrix.periods.map(
                                 (period) => (
                                   <Fragment key={period.key}>
                                     <th className="product-category-diagnostics__table-head product-category-liability-matrix__metric-head">
@@ -4761,7 +4864,7 @@ export default function ProductCategoryPnlPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {liabilitySideTrendSurface.detailMatrix.rows.map(
+                            {liabilityMatrixTrendSurface.detailMatrix.rows.map(
                               (item) => (
                                 <tr
                                   key={item.categoryId}
@@ -4799,7 +4902,7 @@ export default function ProductCategoryPnlPage() {
                       </div>
                     </details>
                     <div className="product-category-liability-matrix__currency-grid">
-                      {liabilitySideTrendSurface.detailMatrix.currencyMatrices.map(
+                      {liabilityMatrixTrendSurface.detailMatrix.currencyMatrices.map(
                         (currencyMatrix) => (
                           <section
                             key={currencyMatrix.currencyKey}
@@ -4811,7 +4914,7 @@ export default function ProductCategoryPnlPage() {
                             <ProductCategoryLiabilityCurrencyMatrixMobileReadout
                               matrix={currencyMatrix}
                               periods={
-                                liabilitySideTrendSurface.detailMatrix.periods
+                                liabilityMatrixTrendSurface.detailMatrix.periods
                               }
                             />
                             <details
@@ -4822,7 +4925,7 @@ export default function ProductCategoryPnlPage() {
                                 <span>完整明细矩阵</span>
                                 <small>
                                   {
-                                    liabilitySideTrendSurface.detailMatrix
+                                    liabilityMatrixTrendSurface.detailMatrix
                                       .periods.length
                                   }
                                   期 · {currencyMatrix.rows.length}行
@@ -4843,7 +4946,7 @@ export default function ProductCategoryPnlPage() {
                                       >
                                         负债明细
                                       </th>
-                                      {liabilitySideTrendSurface.detailMatrix.periods.map(
+                                      {liabilityMatrixTrendSurface.detailMatrix.periods.map(
                                         (period) => (
                                           <th
                                             key={period.key}
@@ -4864,7 +4967,7 @@ export default function ProductCategoryPnlPage() {
                                       </th>
                                     </tr>
                                     <tr>
-                                      {liabilitySideTrendSurface.detailMatrix.periods.map(
+                                      {liabilityMatrixTrendSurface.detailMatrix.periods.map(
                                         (period) => (
                                           <Fragment key={period.key}>
                                             <th className="product-category-diagnostics__table-head product-category-liability-matrix__metric-head">

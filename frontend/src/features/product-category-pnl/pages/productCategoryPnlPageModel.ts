@@ -1013,6 +1013,7 @@ export type ProductCategoryLiabilityDetailMatrix = {
 export type ProductCategoryLiabilitySideTrendSurface = {
   metricStatus: ProductCategoryCandidateMetricStatus;
   chart: ProductCategoryLiabilitySideTrendChart | null;
+  totalReadout: ProductCategoryLiabilityDetailTrendRow | null;
   detailRows: ProductCategoryLiabilityDetailTrendRow[];
   detailMatrix: ProductCategoryLiabilityDetailMatrix;
   emptyCopy: string | null;

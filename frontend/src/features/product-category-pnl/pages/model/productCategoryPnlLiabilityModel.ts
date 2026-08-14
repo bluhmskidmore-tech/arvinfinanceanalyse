@@ -5,6 +5,7 @@ import type {
 import { EM_DASH } from "../../../../utils/format";
 import {
   chronologicalProductCategorySnapshotsInternal,
+  decimalNumberInternal,
   type ProductCategoryReportDateParts,
   type ProductCategoryTrendSnapshotLike,
 } from "./productCategoryPnlModelInternals";
@@ -51,6 +52,7 @@ export function buildProductCategoryLiabilitySideTrendSurfaceImpl(input: {
   copy: ProductCategoryLiabilityCopy;
 }) {
   const chart = selectProductCategoryLiabilitySideTrendChartImpl(input);
+  const totalReadout = selectProductCategoryLiabilityTotalTrendReadout(input);
   const detailRows = selectProductCategoryLiabilityDetailTrendRowsImpl(input);
   const detailMatrix = selectProductCategoryLiabilityDetailMatrixImpl(input);
   const incompleteReasons = chart?.incompleteReasons ?? [];
@@ -58,6 +60,7 @@ export function buildProductCategoryLiabilitySideTrendSurfaceImpl(input: {
     return {
       metricStatus: input.metricStatus,
       chart: null,
+      totalReadout,
       detailRows,
       detailMatrix,
       emptyCopy: input.copy.emptySurfaceCopy,
@@ -67,6 +70,7 @@ export function buildProductCategoryLiabilitySideTrendSurfaceImpl(input: {
   return {
     metricStatus: input.metricStatus,
     chart,
+    totalReadout,
     detailRows,
     detailMatrix,
     emptyCopy: chart ? null : input.copy.emptyChartCopy,
@@ -402,6 +406,95 @@ export function selectProductCategoryLiabilityDetailTrendRowsImpl(input: {
       }),
     };
   });
+}
+
+function selectProductCategoryLiabilityTotalTrendReadout(input: {
+  snapshots: ProductCategoryTrendSnapshotLike[];
+  formatReportMonthLabel: (reportDate: string) => string;
+  formatRowDisplayValue: FormatDisplayValue;
+  formatForeignDisplayValue: FormatDisplayValue;
+  signedYiDeltaLabel: (value: number | null) => string;
+  signedBpLabel: (value: number | null) => string;
+  copy: ProductCategoryLiabilityCopy;
+}) {
+  const ordered = chronologicalProductCategorySnapshotsInternal(
+    input.snapshots,
+  );
+  const latestIndex = ordered.length - 1;
+  const latestSnapshot = ordered[latestIndex];
+  const latestRow = latestSnapshot?.liabilityTotal ?? undefined;
+  if (!latestSnapshot || !latestRow) {
+    return null;
+  }
+  const labelForIndex = (index: number) => {
+    const snapshot = ordered[index];
+    return snapshot
+      ? (snapshot.label ??
+          input.formatReportMonthLabel(snapshot.reportDate))
+      : null;
+  };
+  const latestAmount = liabilityAmountDisplayNumber({
+    row: latestRow,
+    amountField: "cnx_scale",
+    formatRowDisplayValue: input.formatRowDisplayValue,
+    formatForeignDisplayValue: input.formatForeignDisplayValue,
+  });
+  const latestRate = decimalNumberInternal(latestRow.weighted_yield);
+  let priorAmount: { label: string; value: number } | null = null;
+  let priorRate: { label: string; value: number } | null = null;
+  for (let index = latestIndex - 1; index >= 0; index -= 1) {
+    const row = ordered[index]?.liabilityTotal ?? undefined;
+    const label = labelForIndex(index);
+    if (!row || !label) {
+      continue;
+    }
+    if (!priorAmount) {
+      const value = liabilityAmountDisplayNumber({
+        row,
+        amountField: "cnx_scale",
+        formatRowDisplayValue: input.formatRowDisplayValue,
+        formatForeignDisplayValue: input.formatForeignDisplayValue,
+      });
+      if (value !== null) {
+        priorAmount = { label, value };
+      }
+    }
+    if (!priorRate) {
+      const value = decimalNumberInternal(row.weighted_yield);
+      if (value !== null) {
+        priorRate = { label, value };
+      }
+    }
+    if (priorAmount && priorRate) {
+      break;
+    }
+  }
+  const amountDelta =
+    latestAmount !== null && priorAmount
+      ? Number((latestAmount - priorAmount.value).toFixed(2))
+      : null;
+  const rateDelta =
+    latestRate !== null && priorRate
+      ? Number(((latestRate - priorRate.value) * 100).toFixed(1))
+      : null;
+  const latestLabel = labelForIndex(latestIndex);
+  return {
+    categoryId: "liability_total",
+    categoryLabel:
+      latestRow.category_name || input.copy.liabilityTotalFallbackLabel,
+    latestAmountLabel:
+      latestAmount !== null ? latestAmount.toFixed(2) : EM_DASH,
+    amountDeltaLabel: input.signedYiDeltaLabel(amountDelta),
+    latestRateLabel: latestRate !== null ? latestRate.toFixed(2) : EM_DASH,
+    rateDeltaLabel: input.signedBpLabel(rateDelta),
+    comparisonLabel: liabilityComparisonLabel({
+      amountLatestLabel: latestAmount !== null ? latestLabel : null,
+      amountPriorLabel: priorAmount?.label ?? null,
+      rateLatestLabel: latestRate !== null ? latestLabel : null,
+      ratePriorLabel: priorRate?.label ?? null,
+      copy: input.copy,
+    }),
+  };
 }
 
 function latestComparableLiabilityValue(input: {
