@@ -46,6 +46,7 @@ def test_movement_service_import_does_not_load_tasks_modules() -> None:
 def test_movement_service_task_identity_constants_match_task_module() -> None:
     import backend.app.tasks.accounting_asset_movement as movement_task
 
+    assert movement_service.RULE_VERSION == "rv_accounting_asset_movement_v3"
     assert movement_service.JOB_NAME == movement_task.JOB_NAME
     assert movement_service.RULE_VERSION == movement_task.RULE_VERSION
     assert movement_service.CACHE_KEY == movement_task.CACHE_KEY
@@ -411,7 +412,7 @@ def _legacy_refresh_rematerializes_stale_zqtz_formal_window_before_movement(
                 "currency_basis": currency_basis,
                 "row_count": 3,
                 "source_version": "sv-new",
-                "rule_version": "rv_accounting_asset_movement_v2",
+                "rule_version": "rv_accounting_asset_movement_v3",
             }
             for report_date in report_dates
         }
@@ -569,7 +570,7 @@ def _legacy_refresh_materializes_missing_product_category_before_movement(monkey
                 "currency_basis": currency_basis,
                 "row_count": 3,
                 "source_version": "sv-new",
-                "rule_version": "rv_accounting_asset_movement_v2",
+                "rule_version": "rv_accounting_asset_movement_v3",
             }
             for report_date in report_dates
         }
@@ -671,7 +672,7 @@ def _legacy_refresh_service_delegates_window_materialization_to_task_and_hides_i
                     "currency_basis": "CNX",
                     "row_count": 3,
                     "source_version": "sv-old",
-                    "rule_version": "rv_accounting_asset_movement_v2",
+                    "rule_version": "rv_accounting_asset_movement_v3",
                 },
                 "2026-02-28": {
                     "status": "completed",
@@ -680,7 +681,7 @@ def _legacy_refresh_service_delegates_window_materialization_to_task_and_hides_i
                     "currency_basis": "CNX",
                     "row_count": 4,
                     "source_version": "sv-new",
-                    "rule_version": "rv_accounting_asset_movement_v2",
+                    "rule_version": "rv_accounting_asset_movement_v3",
                 },
             },
             "movement_refreshed_dates": ["2026-01-31", "2026-02-28"],
@@ -718,7 +719,7 @@ def _legacy_refresh_service_delegates_window_materialization_to_task_and_hides_i
         "currency_basis": "CNX",
         "row_count": 4,
         "source_version": "sv-new",
-        "rule_version": "rv_accounting_asset_movement_v2",
+        "rule_version": "rv_accounting_asset_movement_v3",
         "product_category_refreshed_dates": ["2026-01-31"],
         "formal_balance_refreshed_dates": ["2026-02-28"],
         "movement_refreshed_dates": ["2026-01-31", "2026-02-28"],
@@ -892,14 +893,17 @@ def test_balance_movement_analysis_service_exposes_gl_control_rows():
     assert envelope["result_meta"]["resolved_report_date"] == "2026-02-28"
     assert envelope["result_meta"]["as_of_date"] == "2026-02-28"
     assert envelope["result_meta"]["date_basis"] == "month_end_report_date"
+    # 头寸源真的参与了对账，所以 ZQTZ 侧的 source/rule version 必须出现在血缘里。
     assert set(envelope["result_meta"]["source_version"].split("__")) == {
         "sv-gl",
         "sv-gl-prior",
         "sv-zqtz",
+        "sv-zqtz-cny",
         "sv-zqtz-prior",
     }
     assert set(envelope["result_meta"]["rule_version"].split("__")) == {
-        "rv_accounting_asset_movement_v2",
+        "rv_accounting_asset_movement_v3",
+        "rv-balance-cny",
         "rv-gl",
         "rv-gl-prior",
         "rv-zqtz",
@@ -908,7 +912,13 @@ def test_balance_movement_analysis_service_exposes_gl_control_rows():
     assert envelope["result_meta"]["evidence_rows"] == 64
 
 
-def test_balance_movement_analysis_service_uses_cnx_diagnostic_and_ignores_cny_noise():
+def test_balance_movement_analysis_reconciles_cnx_ledger_against_zqtz_position_source():
+    """CNX 的对账对手方必须是 fact_formal_zqtz_balance_daily，不是总账自己。
+
+    回归：头寸侧曾经也从 product_category_pnl_canonical_fact 取数，
+    reconciliation_diff 恒为 0、status 恒为 matched，对账退化成自我比对。
+    只改头寸源、不动总账，对账列必须跟着变，列报余额必须不变。
+    """
     duckdb_path = (
         Path("test_output")
         / "accounting_asset_movement"
@@ -930,6 +940,114 @@ def test_balance_movement_analysis_service_uses_cnx_diagnostic_and_ignores_cny_n
     assert Decimal(by_bucket["TPL"]["reconciliation_diff"]) == Decimal("0E-8")
     assert by_bucket["TPL"]["reconciliation_status"] == "matched"
     assert envelope["result_meta"]["quality_flag"] == "ok"
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_formal_zqtz_balance_daily
+            set market_value_amount = market_value_amount + 25
+            where report_date = '2026-02-28'
+              and accounting_basis = 'FVTPL'
+              and bond_type = '国债'
+            """
+        )
+        materialize_accounting_asset_movement_on_connection(
+            conn,
+            report_date="2026-02-28",
+            currency_basis="CNX",
+        )
+    finally:
+        conn.close()
+
+    perturbed = accounting_asset_movement_envelope(
+        str(duckdb_path),
+        report_date="2026-02-28",
+        currency_basis="CNX",
+    )
+    perturbed_tpl = next(
+        row for row in perturbed["result"]["rows"] if row["basis_bucket"] == "TPL"
+    )
+    assert Decimal(perturbed_tpl["current_balance"]) == Decimal("110.00000000")
+    assert Decimal(perturbed_tpl["zqtz_amount"]) == Decimal("135.00000000")
+    assert Decimal(perturbed_tpl["reconciliation_diff"]) == Decimal("25.00000000")
+    assert perturbed_tpl["reconciliation_status"] == "mismatch"
+    assert perturbed["result_meta"]["quality_flag"] == "warning"
+
+
+def test_repository_exposes_reconciliation_and_chain_control_evidence():
+    """读模型侧的只读取证入口：不平的行、断裂的跨月衔接、头寸源覆盖情况。"""
+    duckdb_path = (
+        Path("test_output")
+        / "accounting_asset_movement"
+        / f"{uuid4().hex}.duckdb"
+    )
+    duckdb_path.parent.mkdir(parents=True, exist_ok=True)
+    _seed_source_tables_and_materialize(duckdb_path)
+    repo = AccountingAssetMovementRepository(str(duckdb_path))
+
+    # 头寸源与总账对得平，且跨月衔接一致 —— 两个控制都应当是干净的。
+    assert repo.fetch_reconciliation_breaches(currency_basis="CNX") == []
+    assert repo.fetch_chain_continuity_gaps(currency_basis="CNX") == []
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_accounting_asset_movement_monthly
+            set reconciliation_status = 'mismatch',
+                reconciliation_diff = -25,
+                zqtz_amount = zqtz_amount - 25
+            where report_date = '2026-02-28' and basis_bucket = 'TPL'
+            """
+        )
+        conn.execute(
+            """
+            update fact_accounting_asset_movement_monthly
+            set previous_balance = previous_balance - 40
+            where report_date = '2026-02-28' and basis_bucket = 'AC'
+            """
+        )
+    finally:
+        conn.close()
+
+    breaches = repo.fetch_reconciliation_breaches(currency_basis="CNX")
+    assert [(row["report_date"], row["basis_bucket"]) for row in breaches] == [
+        ("2026-02-28", "TPL")
+    ]
+    assert breaches[0]["reconciliation_diff"] == Decimal("-25.00000000")
+
+    gaps = repo.fetch_chain_continuity_gaps(currency_basis="CNX")
+    assert [(row["report_date"], row["basis_bucket"]) for row in gaps] == [
+        ("2026-02-28", "AC")
+    ]
+    assert gaps[0]["prior_report_date"] == "2026-01-31"
+    assert gaps[0]["gap"] == Decimal("-40.00000000")
+
+
+def test_repository_reports_position_source_currency_basis_fallback():
+    """总账 CNX 在 ZQTZ 正式头寸表里对应 CNY；两个口径都没有行时必须报 None，
+    调用方不能把"没有对手方"当成"对平"。"""
+    duckdb_path = (
+        Path("test_output")
+        / "accounting_asset_movement"
+        / f"{uuid4().hex}.duckdb"
+    )
+    duckdb_path.parent.mkdir(parents=True, exist_ok=True)
+    _seed_source_tables_and_materialize(duckdb_path)
+    repo = AccountingAssetMovementRepository(str(duckdb_path))
+
+    coverage = repo.fetch_position_source_coverage(
+        report_dates=["2026-01-31", "2026-02-28", "2025-12-31"],
+        currency_basis="CNX",
+    )
+
+    assert coverage["2026-02-28"]["resolved_currency_basis"] == "CNY"
+    assert coverage["2026-02-28"]["row_count"] == 4
+    assert coverage["2026-01-31"]["resolved_currency_basis"] == "CNY"
+    assert coverage["2025-12-31"]["resolved_currency_basis"] is None
+    assert coverage["2025-12-31"]["row_count"] == 0
+    assert coverage["2025-12-31"]["candidates"] == ["CNX", "CNY"]
 
 
 def test_balance_movement_analysis_marks_reconciliation_mismatch_as_warning():
@@ -964,7 +1082,7 @@ def test_balance_movement_analysis_marks_reconciliation_mismatch_as_warning():
     assert envelope["result"]["summary"]["matched_bucket_count"] == 2
     assert envelope["result_meta"]["quality_flag"] == "warning"
     assert envelope["result_meta"]["requested_report_date"] == "2026-02-28"
-    assert "rv_accounting_asset_movement_v2" in envelope["result_meta"]["rule_version"]
+    assert "rv_accounting_asset_movement_v3" in envelope["result_meta"]["rule_version"]
 
 
 def test_balance_movement_analysis_service_exposes_zqtz_asset_product_rows():
@@ -2119,6 +2237,10 @@ def _seed_source_tables_and_materialize(
             """
             create table fact_formal_zqtz_balance_daily (
               report_date varchar,
+              instrument_code varchar,
+              portfolio_name varchar,
+              cost_center varchar,
+              maturity_date varchar,
               accounting_basis varchar,
               position_scope varchar,
               currency_basis varchar,
@@ -2149,14 +2271,27 @@ def _seed_source_tables_and_materialize(
             )
             """
         )
+        # CNX 总账口径在 ZQTZ 侧对应 currency_basis='CNY'（外币持仓已折人民币）。
+        # 这些头寸行必须与下面的总账控制科目对得平：
+        # 2026-01-31 TPL=100 / AC=205 / OCI=70，2026-02-28 TPL=110 / AC=225 / OCI=80。
         conn.executemany(
-            "insert into fact_formal_zqtz_balance_daily values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            """
+            insert into fact_formal_zqtz_balance_daily (
+              report_date, instrument_code, portfolio_name, cost_center, maturity_date,
+              accounting_basis, position_scope, currency_basis, bond_type,
+              business_type_primary, market_value_amount, amortized_cost_amount,
+              source_version, rule_version
+            ) values (?, ?, 'TEST_PORTFOLIO', 'TEST_COST_CENTER', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
             [
-                ("2026-01-31", "FVTPL", "asset", "CNY", "其他债券", "同业存单", "12", "12", "sv-zqtz-prior", "rv-zqtz-prior"),
-                ("2026-02-28", "FVTPL", "asset", "CNY", "其他债券", "同业存单", "18", "18", "sv-zqtz", "rv-zqtz"),
-                ("2026-02-28", "FVTPL", "asset", "CNY", "国债", "国债", "999", "999", "sv-zqtz-cny", "rv-balance-cny"),
-                ("2026-02-28", "AC", "asset", "CNY", "国债", "国债", "999", "999", "sv-zqtz-cny", "rv-balance-cny"),
-                ("2026-02-28", "FVOCI", "asset", "CNY", "国债", "国债", "999", "999", "sv-zqtz-cny", "rv-balance-cny"),
+                ("2026-01-31", "TEST-NCD-001", "FVTPL", "asset", "CNY", "其他债券", "同业存单", "12", "12", "sv-zqtz-prior", "rv-zqtz-prior"),
+                ("2026-01-31", "TEST-CGB-001", "FVTPL", "asset", "CNY", "国债", "国债", "88", "0", "sv-zqtz-prior", "rv-zqtz-prior"),
+                ("2026-01-31", "TEST-CGB-001", "AC", "asset", "CNY", "国债", "国债", "0", "205", "sv-zqtz-prior", "rv-zqtz-prior"),
+                ("2026-01-31", "TEST-CGB-001", "FVOCI", "asset", "CNY", "国债", "国债", "70", "0", "sv-zqtz-prior", "rv-zqtz-prior"),
+                ("2026-02-28", "TEST-NCD-001", "FVTPL", "asset", "CNY", "其他债券", "同业存单", "18", "18", "sv-zqtz", "rv-zqtz"),
+                ("2026-02-28", "TEST-CGB-001", "FVTPL", "asset", "CNY", "国债", "国债", "92", "0", "sv-zqtz-cny", "rv-balance-cny"),
+                ("2026-02-28", "TEST-CGB-001", "AC", "asset", "CNY", "国债", "国债", "0", "225", "sv-zqtz-cny", "rv-balance-cny"),
+                ("2026-02-28", "TEST-CGB-001", "FVOCI", "asset", "CNY", "国债", "国债", "80", "0", "sv-zqtz-cny", "rv-balance-cny"),
             ],
         )
         conn.executemany(

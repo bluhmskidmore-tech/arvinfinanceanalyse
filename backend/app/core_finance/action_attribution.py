@@ -53,14 +53,21 @@ def build_action_attribution_success_payload(
     computed_at: str,
 ) -> dict[str, Any]:
     warn_parts: list[str | None] = [str(w) for w in (raw.get("warnings") or [])]
+    warn_parts.extend(
+        [
+            "ACTION_ATTRIBUTION_DV01_UNAVAILABLE",
+            "ACTION_ATTRIBUTION_ACCOUNTING_PNL_DERIVED_COPY",
+        ]
+    )
     if not prior_snapshot_date:
         warn_parts.append("ACTION_ATTRIBUTION_NO_PRIOR_SNAPSHOT")
     warn_parts.extend(pnl_warning_codes)
     warnings = _ordered_unique_warnings(warn_parts)
 
-    missing_inputs: list[str] = []
+    missing_inputs: list[str] = ["action_level_dv01"]
     if not pnl_by_key:
         missing_inputs.append("fact_formal_pnl_fi_capital_gain_517")
+    missing_inputs.append("independent_accounting_pnl")
 
     return {
         "report_date": report_date,
@@ -76,10 +83,13 @@ def build_action_attribution_success_payload(
         "duration_change_from_actions": raw["duration_change_from_actions"],
         "period_start_dv01": raw["period_start_dv01"],
         "period_end_dv01": raw["period_end_dv01"],
-        "status": "ready",
+        "status": "partial",
         "available_components": ["snapshot_diff", "capital_gain_517_allocation"],
         "missing_inputs": missing_inputs,
-        "blocked_components": [],
+        "blocked_components": [
+            "dv01_attribution",
+            "independent_accounting_pnl_reconciliation",
+        ],
         "computed_at": computed_at,
         "warnings": warnings,
         "warnings_detail": [
@@ -266,8 +276,8 @@ def compute_action_attribution_bonds(
                     "pnl_economic": float(pnl),
                     "pnl_accounting": float(pnl),
                     "delta_duration": float(e.mod_dur),
-                    "delta_dv01": 0.0,
-                    "delta_spread_dv01": 0.0,
+                    "delta_dv01": None,
+                    "delta_spread_dv01": None,
                 }
             )
             covered_keys.add(k)
@@ -288,8 +298,8 @@ def compute_action_attribution_bonds(
                     "pnl_economic": float(pnl),
                     "pnl_accounting": float(pnl),
                     "delta_duration": float(-s.mod_dur),
-                    "delta_dv01": 0.0,
-                    "delta_spread_dv01": 0.0,
+                    "delta_dv01": None,
+                    "delta_spread_dv01": None,
                 }
             )
             covered_keys.add(k)
@@ -319,8 +329,8 @@ def compute_action_attribution_bonds(
                     "pnl_economic": float(pnl),
                     "pnl_accounting": float(pnl),
                     "delta_duration": float(dur_delta),
-                    "delta_dv01": 0.0,
-                    "delta_spread_dv01": 0.0,
+                    "delta_dv01": None,
+                    "delta_spread_dv01": None,
                 }
             )
             covered_keys.add(k)
@@ -338,8 +348,8 @@ def compute_action_attribution_bonds(
                     "pnl_economic": float(pnl),
                     "pnl_accounting": float(pnl),
                     "delta_duration": float(dur_delta),
-                    "delta_dv01": 0.0,
-                    "delta_spread_dv01": 0.0,
+                    "delta_dv01": None,
+                    "delta_spread_dv01": None,
                 }
             )
             covered_keys.add(k)
@@ -357,8 +367,8 @@ def compute_action_attribution_bonds(
                     "pnl_economic": float(pnl),
                     "pnl_accounting": float(pnl),
                     "delta_duration": float(dur_delta),
-                    "delta_dv01": 0.0,
-                    "delta_spread_dv01": 0.0,
+                    "delta_dv01": None,
+                    "delta_spread_dv01": None,
                 }
             )
             covered_keys.add(k)
@@ -444,8 +454,8 @@ def compute_action_attribution_bonds(
         "period_start_duration": float(dur_s),
         "period_end_duration": float(dur_e),
         "duration_change_from_actions": float(dur_e - dur_s),
-        "period_start_dv01": 0.0,
-        "period_end_dv01": 0.0,
+        "period_start_dv01": None,
+        "period_end_dv01": None,
         "warnings": warnings,
     }
 
@@ -461,7 +471,7 @@ def _empty(period_start: date, period_end: date, warnings: list[str]) -> dict[st
         "period_start_duration": 0.0,
         "period_end_duration": 0.0,
         "duration_change_from_actions": 0.0,
-        "period_start_dv01": 0.0,
-        "period_end_dv01": 0.0,
+        "period_start_dv01": None,
+        "period_end_dv01": None,
         "warnings": warnings,
     }

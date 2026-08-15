@@ -77,10 +77,11 @@
   margin-bottom: var(--moss-space-6);
 }
 
+/* 页标题 §3 档位 18-20px（标杆页 20px/700）。 */
 .formal-pnl-v1-title {
   margin: 0;
-  font-size: 32px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
   letter-spacing: 0;
   color: var(--dh-api-ink);
 }
@@ -140,15 +141,47 @@
   text-decoration: none;
 }
 
+/*
+ * 工具条对齐（§5）：「口径」「报告日」两组共用同一 grid 行制度——label 固定
+ * 首行、控件第二行，口径组的行内小注落第三行且不推挤相邻组基线。
+ * 双写类名对齐共享 .moss-filter-bar.moss-filter-bar（0-2-0）的 flex-end 基线。
+ */
 .formal-pnl-v1-filter {
   gap: var(--moss-space-3);
   margin-bottom: var(--moss-space-5);
+}
+
+.moss-filter-bar.formal-pnl-v1-filter {
+  align-items: flex-start;
+}
+
+.formal-pnl-v1-filter > div,
+.formal-pnl-v1-filter > label {
+  display: grid;
+  grid-template-rows: 18px auto;
+  align-content: start;
+  gap: 6px;
+}
+
+.formal-pnl-v1-filter .formal-pnl-v1-tab-bar {
+  margin-bottom: 0;
+}
+
+/* 无 label 的刷新按钮沿控件行对齐（18px label 行 + 6px 行距）。 */
+.formal-pnl-v1-filter > .formal-pnl-v1-refresh-button {
+  margin-top: 24px;
 }
 
 .formal-pnl-v1-filter-label {
   display: block;
   margin-bottom: 6px;
   color: var(--dh-api-soft);
+  line-height: 18px;
+}
+
+.formal-pnl-v1-filter > div .formal-pnl-v1-filter-label,
+.formal-pnl-v1-filter > label .formal-pnl-v1-filter-label {
+  margin-bottom: 0;
 }
 
 .formal-pnl-v1-tab-bar {
@@ -235,6 +268,12 @@
   gap: var(--moss-space-4);
 }
 
+/* KPI 技术小注的 title 载体：本身不产生视觉盒，内部卡片撑满格位。 */
+.formal-pnl-v1-kpi-cell {
+  display: grid;
+  min-width: 0;
+}
+
 .formal-pnl-v1-grid-shell {
   width: 100%;
   height: 480px;
@@ -246,6 +285,22 @@
   --ag-header-foreground-color: var(--dh-api-soft);
   --ag-row-hover-color: var(--dh-api-panel-2);
   --ag-border-color: var(--dh-api-line-soft);
+  /* alpine 内建 --ag-secondary-* 未被共享 theme-dh-api 块覆盖，页内补齐
+     （balance-analysis 先例）。 */
+  --ag-secondary-border-color: var(--dh-api-line-soft);
+  --ag-row-border-color: var(--dh-api-line-soft);
+  --ag-secondary-foreground-color: var(--dh-api-soft);
   --ag-font-family: "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", sans-serif;
   --ag-font-size: 13px;
+}
+
+/*
+ * 共享溯源面板长值（source_version 哈希串等）钳制 3 行，完整值经组件自身
+ * textContent 保留（ledger-pnl / positions 先例；§6 溯源标识分层）。
+ */
+[data-moss-theme-scope="pnl"] .formal-result-meta-panel__value {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
 }

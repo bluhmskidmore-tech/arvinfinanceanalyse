@@ -822,6 +822,37 @@
           "precision": 2,
           "sign_aware": true
         }
+      },
+      {
+        "year_month": "2028-04",
+        "asset_inflow": {
+          "raw": 0.0,
+          "unit": "yuan",
+          "display": "0.00",
+          "precision": 2,
+          "sign_aware": false
+        },
+        "liability_outflow": {
+          "raw": 0.0,
+          "unit": "yuan",
+          "display": "0.00",
+          "precision": 2,
+          "sign_aware": false
+        },
+        "net_cashflow": {
+          "raw": 0.0,
+          "unit": "yuan",
+          "display": "+0.00",
+          "precision": 2,
+          "sign_aware": true
+        },
+        "cumulative_net": {
+          "raw": 200.0,
+          "unit": "yuan",
+          "display": "+200.00",
+          "precision": 2,
+          "sign_aware": true
+        }
       }
     ],
     "top_maturing_assets_12m": [

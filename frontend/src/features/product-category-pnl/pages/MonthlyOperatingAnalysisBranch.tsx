@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { runPollingTask } from "../../../app/jobs/polling";
@@ -448,12 +449,12 @@ export default function MonthlyOperatingAnalysisBranch() {
         >
           {isExportingWorkbook ? "正在导出工作簿" : "导出工作簿"}
         </button>
-        <a
+        <Link
           data-testid="monthly-operating-analysis-audit-link"
-          href={auditLinkHref}
+          to={auditLinkHref}
         >
           查看调整审计
-        </a>
+        </Link>
         <label className="product-category-audit-field--compact">
           偏离预警阈值
           <input

@@ -188,6 +188,41 @@ class _TplMarketCurveRepo:
         return curves.get(trade_date, {})
 
 
+class _TplMarketChoiceMacroRepo:
+    def dr007_on_or_before(self, trade_date: str, *, conn=None) -> tuple[float | None, str | None]:
+        return (
+            {
+                "2026-03-31": 1.50,
+                "2026-04-30": 1.40,
+            }.get(trade_date),
+            {
+                "2026-03-31": "2026-03-29",
+                "2026-04-30": "2026-04-30",
+            }.get(trade_date),
+        )
+
+
+class _EmptyChoiceMacroRepo:
+    def dr007_on_or_before(self, *_args, **_kwargs) -> tuple[None, None]:
+        return None, None
+
+    def dr007_on_or_before_many(self, *_args, **_kwargs) -> dict[str, tuple[None, None]]:
+        return {}
+
+
+class _BatchSummaryChoiceMacroRepo:
+    def dr007_on_or_before(self, *_args, **_kwargs) -> tuple[float | None, str | None]:
+        raise AssertionError("summary TPL market path must batch DR007 reads")
+
+    def dr007_on_or_before_many(
+        self,
+        trade_dates: list[str],
+        *,
+        conn=None,
+    ) -> dict[str, tuple[float | None, str | None]]:
+        return {trade_date: (1.5, trade_date) for trade_date in trade_dates}
+
+
 class _BatchSummaryCurveRepo:
     path = "unused.duckdb"
 
@@ -448,20 +483,7 @@ def test_tpl_market_uses_market_data_on_or_before_and_prior_month_change(monkeyp
     monkeypatch.setattr(mod, "_pnl_repo", lambda: _TplMarketPnlRepo())
     monkeypatch.setattr(mod, "_bond_repo", lambda: _TplMarketBondRepo())
     monkeypatch.setattr(mod, "_curve_repo", lambda: _TplMarketCurveRepo())
-    monkeypatch.setattr(
-        mod,
-        "_dr007_on_or_before",
-        lambda _duckdb_path, trade_date: (
-            {
-                "2026-03-31": 1.50,
-                "2026-04-30": 1.40,
-            }.get(trade_date),
-            {
-                "2026-03-31": "2026-03-29",
-                "2026-04-30": "2026-04-30",
-            }.get(trade_date),
-        ),
-    )
+    monkeypatch.setattr(mod, "_choice_macro_repo", lambda _path=None: _TplMarketChoiceMacroRepo())
 
     env = mod.tpl_market_correlation_envelope(months=2, report_date="2026-04-30")
     points = env["result"]["data_points"]
@@ -590,7 +612,7 @@ def test_attribution_analysis_summary_envelope_uses_fast_summary_path(monkeypatc
     monkeypatch.setattr(mod, "volume_rate_attribution_envelope", fail_full_volume_rate)
     monkeypatch.setattr(mod, "tpl_market_correlation_envelope", fail_full_tpl_market)
     monkeypatch.setattr(mod, "_treasury_10y_on_or_before", lambda _repo, _date: (None, None))
-    monkeypatch.setattr(mod, "_dr007_on_or_before", lambda _duckdb_path, _date: (None, None))
+    monkeypatch.setattr(mod, "_choice_macro_repo", lambda _path=None: _EmptyChoiceMacroRepo())
 
     env = mod.attribution_analysis_summary_envelope(report_date="2026-04-30")
     result = env["result"]
@@ -618,12 +640,9 @@ def test_attribution_analysis_summary_envelope_batches_tpl_market_reads(monkeypa
     def fail_single_curve(*_args, **_kwargs):
         raise AssertionError("summary TPL market path must batch treasury reads")
 
-    def fail_single_dr007(*_args, **_kwargs):
-        raise AssertionError("summary TPL market path must batch DR007 reads")
-
     monkeypatch.setattr(mod.pnl_service, "pnl_by_business_envelope", fake_by_business_envelope)
     monkeypatch.setattr(mod, "_treasury_10y_on_or_before", fail_single_curve)
-    monkeypatch.setattr(mod, "_dr007_on_or_before", fail_single_dr007)
+    monkeypatch.setattr(mod, "_choice_macro_repo", lambda _path=None: _BatchSummaryChoiceMacroRepo())
 
     env = mod.attribution_analysis_summary_envelope(report_date="2026-04-30")
 

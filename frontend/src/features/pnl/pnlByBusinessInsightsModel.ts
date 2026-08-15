@@ -205,7 +205,7 @@ function buildLeadershipItems(result: PnlByBusinessInsightsPayload): PnlByBusine
     },
     {
       key: "scale_yield",
-      label: "规模—FTP后收益",
+      label: "规模与FTP后收益",
       value: quadrant
         ? `${quadrant.business_type} · ${quadrantLabel[quadrant.quadrant_key]} · ${pct(quadrant.scale_share_pct)}`
         : "有效业务数不足，暂不分类",

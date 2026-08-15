@@ -130,6 +130,190 @@ def test_summary_call_does_not_pollute_cached_full_result(
     )
 
 
+def _install_four_effects_bridge_fixture(monkeypatch: pytest.MonkeyPatch) -> None:
+    """formal-bridge 路径夹具：bridge 行与 SUMMARY_BOND 仓位重叠，触发提前返回分支。
+
+    该分支从台账桥接分解四效应，不读任何曲线，因此 curves 留空、
+    input_quality 不含 market_curve_coverage。数值沿用
+    test_campisi_attribution_service 的闭合桥行（residual 必须等于服务端重算的
+    selection，否则桥行闭合校验会拒绝）。
+    """
+    _clear_four_effects_cache()
+    start_rows = [
+        _bond_row(
+            code="SUMMARY_BOND",
+            market_value=Decimal("1000"),
+            face_value=Decimal("1000"),
+            accrued_interest=Decimal("0"),
+            coupon_rate=Decimal("0.0000"),
+            ytm=Decimal("0.0500"),
+            rating="AAA",
+            asset_class="credit",
+        )
+    ]
+    end_rows = [{**start_rows[0], "market_value": Decimal("1100")}]
+    _install_full_service_fakes(
+        monkeypatch,
+        dates=["2026-01-31", "2026-01-01"],
+        rows_by_date={
+            "2026-01-01": start_rows,
+            "2026-01-31": end_rows,
+        },
+        curves={},
+        duckdb_path="campisi-summary-bridge.duckdb",
+    )
+    bridge = {
+        "result_meta": {
+            "quality_flag": "ok",
+            "vendor_status": "ok",
+            "fallback_mode": "none",
+        },
+        "result": {
+            "summary": {"total_actual_pnl": {"raw": 35.0}},
+            "rows": [
+                {
+                    "instrument_code": "SUMMARY_BOND",
+                    "portfolio_name": "FIOA",
+                    "cost_center": "5010",
+                    "accounting_basis": "FVTPL",
+                    "beginning_dirty_mv": {"raw": 1000.0},
+                    "ending_dirty_mv": {"raw": 1100.0},
+                    "carry": {"raw": 5.0},
+                    "roll_down": {"raw": 1.0},
+                    "treasury_curve": {"raw": 2.0},
+                    "credit_spread": {"raw": 3.0},
+                    "fx_translation": {"raw": 4.0},
+                    "realized_trading": {"raw": 6.0},
+                    "unrealized_fv": {"raw": 14.0},
+                    "manual_adjustment": {"raw": 0.0},
+                    "actual_pnl": {"raw": 35.0},
+                    "residual": {"raw": 14.0},
+                    "quality_flag": "ok",
+                }
+            ],
+        },
+    }
+    monkeypatch.setattr(campisi_svc, "_fetch_formal_bridge", lambda **_kwargs: bridge, raising=False)
+
+
+def test_four_effects_summary_bridge_path_passes_response_model_without_market_curve_coverage(
+    tmp_path, monkeypatch
+) -> None:
+    """回归：detail=summary 在 formal-bridge 路径上曾 500。
+
+    bridge 分解不消费曲线，input_quality 里没有 market_curve_coverage；
+    响应模型把该字段定为必填后（e5345a47），凡 bridge 缓存命中即
+    ResponseValidationError -> 500。契约现在把它放宽为"model 路径专属"。
+    """
+    client, _route_module = _campisi_route_client_with_read_scope(tmp_path, monkeypatch)
+    _install_four_effects_bridge_fixture(monkeypatch)
+
+    response = client.get(
+        "/api/pnl-attribution/campisi/four-effects",
+        params={"end_date": "2026-01-31", "lookback_days": 30, "detail": "summary"},
+    )
+
+    assert response.status_code == 200, response.text
+    result = response.json()["result"]
+    assert result["basis"] == "formal_report_pnl_bridge"
+    assert result["by_bond"] == []
+    input_quality = result["input_quality"]
+    assert input_quality["merged_positions"] == 1
+    # exclude_unset：字段保持缺席，而不是被物化成显式 null。
+    assert "market_curve_coverage" not in input_quality
+    assert result["formal_closure"]["status"] == "closed"
+    get_settings.cache_clear()
+
+
+def test_four_effects_summary_model_path_still_emits_market_curve_coverage(
+    tmp_path, monkeypatch
+) -> None:
+    """放宽为 Optional 不得动摇 model 路径的保证：曲线覆盖度必须仍在响应里。"""
+    client, _route_module = _campisi_route_client_with_read_scope(tmp_path, monkeypatch)
+    _install_four_effects_fixture(monkeypatch)
+
+    response = client.get(
+        "/api/pnl-attribution/campisi/four-effects",
+        params={"start_date": "2026-01-01", "end_date": "2026-01-31", "detail": "summary"},
+    )
+
+    assert response.status_code == 200, response.text
+    coverage = response.json()["result"]["input_quality"]["market_curve_coverage"]
+    assert coverage["treasury_effect"]["status"] == "ok"
+    assert coverage["treasury_tenors"]["shared_positive_tenors"] == 6
+    get_settings.cache_clear()
+
+
+def test_four_effects_unavailable_closure_passes_response_model(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """正式桥不可用是合法降级态，closure 的未知金额和桥状态必须允许 null。"""
+    client, _route_module = _campisi_route_client_with_read_scope(tmp_path, monkeypatch)
+    _install_four_effects_fixture(monkeypatch)
+    monkeypatch.setattr(
+        campisi_svc,
+        "_fetch_formal_closure",
+        lambda *, report_date, campisi_total_return, **_kwargs: campisi_svc._formal_closure_unavailable(
+            report_date=report_date,
+            campisi_total_return=campisi_total_return,
+            reason="formal bridge unavailable",
+        ),
+    )
+
+    response = client.get(
+        "/api/pnl-attribution/campisi/four-effects",
+        params={"start_date": "2026-01-01", "end_date": "2026-01-31"},
+    )
+
+    assert response.status_code == 200, response.text
+    closure = response.json()["result"]["formal_closure"]
+    assert closure["status"] == "unavailable"
+    assert closure["formal_actual_pnl"] is None
+    assert closure["residual_to_formal_pnl"] is None
+    assert closure["residual_ratio"] is None
+    assert closure["bridge_quality_flag"] is None
+    assert closure["bridge_vendor_status"] is None
+    assert closure["bridge_fallback_mode"] is None
+    get_settings.cache_clear()
+
+
+def test_maturity_bucket_formal_bridge_basis_passes_response_model(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """正式桥到期桶声明 decomposition basis 时，严格响应模型不得把它判为额外字段。"""
+    client, route_module = _campisi_route_client_with_read_scope(tmp_path, monkeypatch)
+
+    class _StubService:
+        def campisi_maturity_bucket_envelope(self, **_kwargs):
+            return {
+                "result_meta": {
+                    "result_kind": "campisi.maturity_buckets",
+                    "trace_id": "stub-maturity-trace",
+                    "source_version": "sv_stub",
+                    "rule_version": "rv_stub",
+                    "cache_version": "cv_stub",
+                    "source_surface": "formal_attribution",
+                },
+                "result": {
+                    "period_start": "2026-01-01",
+                    "period_end": "2026-01-31",
+                    "basis": "formal_report_pnl_bridge",
+                    "buckets": {},
+                },
+            }
+
+    monkeypatch.setattr(route_module, "_svc", lambda: _StubService())
+
+    response = client.get(
+        "/api/pnl-attribution/campisi/maturity-buckets",
+        params={"start_date": "2026-01-01", "end_date": "2026-01-31"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["result"]["basis"] == "formal_report_pnl_bridge"
+    get_settings.cache_clear()
+
+
 def _stub_four_effects_envelope(by_bond: list[dict[str, object]]) -> dict[str, object]:
     """路由挂了严格 response_model 之后，桩必须是最小**合法** payload。
 

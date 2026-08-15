@@ -43,27 +43,37 @@ export function ProductCategorySpreadReadout(
         </div>
       </div>
 
-      {surface.state === "ready" ? (
-        <div
-          data-testid="product-category-spread-readout-metrics"
-          className="product-category-formal-readiness__totals product-category-spread-readout__totals"
-        >
-          {surface.metrics.map((item) => (
-            <div
-              key={item.key}
-              data-testid={`product-category-spread-readout-metric-${item.key}`}
-              className={
-                HEADLINE_METRIC_KEYS.has(item.key)
-                  ? "product-category-formal-readiness__metric product-category-spread-readout__metric--headline"
-                  : "product-category-formal-readiness__metric"
-              }
+      {surface.state !== "unavailable" ? (
+        <>
+          <div
+            data-testid="product-category-spread-readout-metrics"
+            className="product-category-formal-readiness__totals product-category-spread-readout__totals"
+          >
+            {surface.metrics.map((item) => (
+              <div
+                key={item.key}
+                data-testid={`product-category-spread-readout-metric-${item.key}`}
+                className={
+                  HEADLINE_METRIC_KEYS.has(item.key)
+                    ? "product-category-formal-readiness__metric product-category-spread-readout__metric--headline"
+                    : "product-category-formal-readiness__metric"
+                }
+              >
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+                <small>{item.note}</small>
+              </div>
+            ))}
+          </div>
+          {surface.state === "partial" ? (
+            <p
+              data-testid="product-category-spread-readout-partial"
+              className="product-category-spread-readout__gap"
             >
-              <span>{item.label}</span>
-              <strong>{item.value}</strong>
-              <small>{item.note}</small>
-            </div>
-          ))}
-        </div>
+              {surface.reason}
+            </p>
+          ) : null}
+        </>
       ) : (
         <p
           data-testid="product-category-spread-readout-unavailable"
@@ -74,26 +84,36 @@ export function ProductCategorySpreadReadout(
       )}
 
       <div className="product-category-spread-readout__caption">
-        <strong>负债端 CLN 拖累</strong>
-        <span>信用联结票据对负债端成本率的影响，后端直出</span>
+        <strong>{surface.liability.title}</strong>
+        <span>{surface.liability.description}</span>
       </div>
-      {surface.liability.state === "ready" ? (
-        <div
-          data-testid="product-category-spread-readout-liability"
-          className="product-category-formal-readiness__totals product-category-spread-readout__totals product-category-spread-readout__totals--liability"
-        >
-          {surface.liability.metrics.map((item) => (
-            <div
-              key={item.key}
-              data-testid={`product-category-spread-readout-liability-metric-${item.key}`}
-              className="product-category-formal-readiness__metric"
+      {surface.liability.state !== "unavailable" ? (
+        <>
+          <div
+            data-testid="product-category-spread-readout-liability"
+            className="product-category-formal-readiness__totals product-category-spread-readout__totals product-category-spread-readout__totals--liability"
+          >
+            {surface.liability.metrics.map((item) => (
+              <div
+                key={item.key}
+                data-testid={`product-category-spread-readout-liability-metric-${item.key}`}
+                className="product-category-formal-readiness__metric"
+              >
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+                <small>{item.note}</small>
+              </div>
+            ))}
+          </div>
+          {surface.liability.state === "partial" ? (
+            <p
+              data-testid="product-category-spread-readout-liability-partial"
+              className="product-category-spread-readout__gap"
             >
-              <span>{item.label}</span>
-              <strong>{item.value}</strong>
-              <small>{item.note}</small>
-            </div>
-          ))}
-        </div>
+              {surface.liability.reason}
+            </p>
+          ) : null}
+        </>
       ) : (
         <p
           data-testid="product-category-spread-readout-liability-gap"

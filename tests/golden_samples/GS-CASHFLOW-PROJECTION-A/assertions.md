@@ -40,6 +40,7 @@
 - `result.reinvestment_risk_12m.display == "100.00%"`.
 - `result.monthly_buckets[3].year_month == "2026-07"` and `net_cashflow.display == "-800.00"`.
 - `result.monthly_buckets[6].year_month == "2026-10"` and `net_cashflow.display == "+1,000.00"`.
+- The 24-month horizon is date-inclusive: buckets start in the `2026-04` report month and include the partial horizon-end month `2028-04`, so this non-month-start report date yields 25 calendar-month buckets without extending `horizon_end` beyond `2028-04-30`.
 - `result.top_maturing_assets_12m[0].instrument_code == "CF-BOND-001"`.
 - `result.floating_rate_proxy_count == 0` and `result.floating_rate_proxy_market_value.raw == 0.0`.
 - `result.payment_frequency_fallback_count == 0` and `result.payment_frequency_fallback_market_value.raw == 0.0`.

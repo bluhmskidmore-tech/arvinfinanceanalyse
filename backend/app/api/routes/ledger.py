@@ -53,6 +53,13 @@ async def import_ledger(
             message=str(exc),
             retryable=False,
         )
+    except RuntimeError as exc:
+        return _error_response(
+            status_code=503,
+            code="LEDGER_AUTH_UNAVAILABLE",
+            message=str(exc),
+            retryable=True,
+        )
     try:
         _reject_unknown_query_params(request, set())
         service_module = _svc()
@@ -509,7 +516,12 @@ async def _extract_multipart_file(
     )
     marker = b"--" + boundary
     for raw_part in body.split(marker):
-        part = raw_part.strip(b"\r\n")
+        # RFC 2046：boundary 前后的 CRLF 属于分隔符本身，只允许精确剥离一个；
+        # strip(b"\r\n") 会把 payload 结尾任意数量的 CR/LF 字节一并剥掉，
+        # 静默截断以换行结尾的 CSV 内容。
+        part = raw_part[2:] if raw_part.startswith(b"\r\n") else raw_part
+        if part.endswith(b"\r\n"):
+            part = part[:-2]
         if not part or part == b"--":
             continue
         if part.endswith(b"--"):
@@ -531,8 +543,7 @@ async def _extract_multipart_file(
         filename = _multipart_filename(disposition)
         if not filename:
             raise ValueError("Multipart file field is missing filename.")
-        if payload.endswith(b"\r\n"):
-            payload = payload[:-2]
+        # 分隔用 CRLF 已在 part 级精确剥离一次，这里不得再剥，否则会截掉文件自身的结尾换行。
         if not payload:
             raise ValueError("Uploaded ledger file is empty.")
         if len(payload) > max_file_bytes:

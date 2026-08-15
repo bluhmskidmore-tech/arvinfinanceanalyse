@@ -4,7 +4,7 @@ import logging
 import re
 from calendar import monthrange
 from datetime import UTC, date, datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from functools import lru_cache
 from pathlib import Path
 from uuid import uuid4
@@ -90,6 +90,61 @@ from backend.app.services.pnl_by_business_unallocated import (
     pnl_by_business_unallocated_breakdown,
     pnl_by_business_unallocated_item,
     pnl_by_business_unallocated_reason,
+)
+from backend.app.services.pnl_service_analysis_dims import (
+    _analysis_annualized_yield_pct,
+    _analysis_classification_from_balance_row,
+    _analysis_dimension_report_date,
+    _analysis_ftp_values,
+    _analysis_is_monthly_dimension,
+    _analysis_latest_balance_before_or_on,
+    _analysis_original_currency_dimension,
+    _balance_coverage_diagnostics,
+    _dimension_key_label,
+    _instrument_code_variants,
+    _instrument_key_label,
+    _new_analysis_dimension_bucket,
+)
+from backend.app.services.pnl_service_by_business_support import (
+    _active_pnl_by_business_manual_adjustments,
+    _available_pnl_by_business_precompute_cutoffs,
+    _load_pnl_by_business_manual_adjustment_events,
+    _manual_adjustment_row_def,
+    _normalize_pnl_by_business_precompute_as_of_date,
+    _normalize_pnl_by_business_precompute_year,
+    _pnl_by_business_manual_classification,
+    _pnl_by_business_precompute_cutoff_result,
+    _pnl_by_business_precompute_record_target_dates,
+    _reduce_latest_pnl_by_business_manual_adjustments,
+    _require_pnl_by_business_manual_adjustment,
+    _safe_pnl_by_business_precompute_error_message,
+    _source_tables_with_manual_adjustments,
+)
+from backend.app.services.pnl_service_shared_utils import (
+    _calendar_days,
+    _coverage_quality_flag,
+    _decimal_value,
+    _dispatch_failure_message,
+    _is_calendar_month_end,
+    _json_safe_payload,
+    _norm_text,
+    _normalize_idempotency_key,
+    _parse_created_at,
+    _parse_timestamp,
+    _safe_int,
+)
+from backend.app.services.pnl_service_v1_compat import (
+    V1_BUSINESS_NAME_NORMALIZATION,
+    V1_ZQTZ_PREFIX_MAP,
+    _append_unique_value,
+    _merge_v1_business_record,
+    _v1_fi_classification_row,
+    _v1_fx_rate,
+    _v1_nonstd_classification_row,
+    _v1_nonstd_display_name,
+    _v1_normalize_business_type,
+    _v1_record,
+    _zqtz_other_bond_type,
 )
 from backend.app.services.pnl_source_service import (
     list_pnl_refresh_report_dates,
@@ -206,26 +261,6 @@ STALE_IN_FLIGHT_AFTER = timedelta(hours=1)
 SAFE_SYNC_FALLBACK_MESSAGES = ("queue disabled", "broker unavailable")
 SAFE_SYNC_FALLBACK_EXCEPTIONS = (ConnectionError, OSError, TimeoutError)
 V1_VAT_DIVISOR = FI_514_VAT_DIVISOR
-V1_ZQTZ_PREFIX_MAP = {
-    "SA": "公募基金",
-    "J0": "人民币资管产品",
-    "J1": "美元委外产品",
-    "J4": "结构化产业基金",
-    "JM": "债权投资",
-    "G0": "信托结构化产品",
-    "G2": "信托产品",
-}
-V1_BUSINESS_NAME_NORMALIZATION = {
-    "存单": "同业存单",
-    "次级债": "次级债券",
-    "美元委外": "美元委外产品",
-    "结构化融资": "信托结构化产品",
-    "结构化产品": "结构化产业基金",
-    "债券-其他": "其他债券",
-    "未分类": "其他债券",
-    "大额存单": "同业存单",
-    "凭证式国债": "国债",
-}
 
 
 class PnlRefreshServiceError(RuntimeError):
@@ -607,7 +642,8 @@ def _build_pnl_by_business_ytd_payload_from_groups(
             group=group,
             total_pnl_for_proportion=total_pnl,
             balance_row=balance_by_key.get(str(group["row_key"]), {}),
-            avg_balance=avg_balance_by_key.get(str(group["row_key"]), Decimal("0")),
+            # 未匹配到日均余额数据时保留 None（区别于真零），供前端区分「日均缺失」与「日均为 0」。
+            avg_balance=avg_balance_by_key.get(str(group["row_key"])),
             current_balance=current_balance_by_key.get(
                 str(group["row_key"]),
                 Decimal(str(balance_by_key.get(str(group["row_key"]), {}).get("current_balance") or "0")),
@@ -701,38 +737,21 @@ def _build_pnl_by_business_ytd_payload_from_groups(
     )
 
 
-def _balance_coverage_diagnostics(
-    balance_rows: list[dict[str, object]] | tuple[dict[str, object], ...],
-    *,
-    period_start: str,
-    period_end: str,
-) -> tuple[int, int, bool, str | None]:
-    coverage_dates = {
-        report_date
-        for row in balance_rows
-        if (report_date := _norm_text(row.get("report_date"))) and period_start <= report_date <= period_end
-    }
-    coverage_days = len(coverage_dates)
-    expected_days = _calendar_days(period_start, period_end)
-    sample_filled = 0 < coverage_days < expected_days
-    sample_fill_method = "observed_days_scaled_to_calendar" if sample_filled else None
-    return coverage_days, expected_days, sample_filled, sample_fill_method
-
-
 def _ytd_business_item_from_group(
     *,
     group: dict[str, object],
     total_pnl_for_proportion: Decimal,
     balance_row: dict[str, object],
-    avg_balance: Decimal,
+    avg_balance: Decimal | None,
     current_balance: Decimal,
     calendar_days: int,
     ftp_rate_pct: Decimal,
 ) -> PnlByBusinessYtdItem:
     total_pnl = Decimal(str(group["total_pnl"]))
+    # avg_balance=None（日均缺失）与真零共用同一收益率守卫：avg_balance <= 0 时收益率/FTP 为 None。
     yield_ftp = compute_pnl_by_business_yield_and_ftp(
         total_pnl=total_pnl,
-        avg_balance=avg_balance,
+        avg_balance=avg_balance if avg_balance is not None else Decimal("0"),
         calendar_days=calendar_days,
         ftp_rate_pct=ftp_rate_pct,
     )
@@ -745,7 +764,7 @@ def _ytd_business_item_from_group(
         capital_gain=_quantize_decimal(Decimal(str(group["capital_gain"]))),
         manual_adjustment=_quantize_decimal(Decimal(str(group.get("manual_adjustment") or "0"))),
         total_pnl=_quantize_decimal(total_pnl),
-        avg_balance=_quantize_decimal(avg_balance),
+        avg_balance=_quantize_decimal(avg_balance) if avg_balance is not None else None,
         current_balance=_quantize_decimal(current_balance),
         balance_yield_pct=_balance_yield_pct(total_pnl, current_balance),
         annualized_yield_pct=yield_ftp.annualized_yield_pct,
@@ -806,7 +825,11 @@ def _pnl_by_business_ytd_summary_from_items(
         (Decimal(str(group.get("total_pnl") or "0")) for group in parent_groups),
         Decimal("0"),
     )
-    avg_balance = sum((item.avg_balance for item in parent_items), Decimal("0"))
+    # 汇总口径：日均缺失（None）的父级行按 0 参与合计，不影响其余父级的日均汇总。
+    avg_balance = sum(
+        (item.avg_balance for item in parent_items if item.avg_balance is not None),
+        Decimal("0"),
+    )
     current_balance = sum((item.current_balance for item in parent_items), Decimal("0"))
     yield_ftp = compute_pnl_by_business_yield_and_ftp(
         total_pnl=total_pnl,
@@ -888,36 +911,6 @@ def _ytd_business_balance_amounts(
     return avg_by_key, current_sums
 
 
-def _load_pnl_by_business_manual_adjustment_events(settings: Settings) -> list[dict[str, object]]:
-    return load_pnl_by_business_manual_adjustment_events(settings.governance_path)
-
-
-def _reduce_latest_pnl_by_business_manual_adjustments(events: list[dict[str, object]]) -> list[dict[str, object]]:
-    return reduce_latest_pnl_by_business_manual_adjustments(events)
-
-
-def _active_pnl_by_business_manual_adjustments(settings: Settings, *, report_date: str) -> list[dict[str, object]]:
-    return [
-        record
-        for record in active_pnl_by_business_manual_adjustments_for_period(
-            settings.governance_path,
-            year=int(report_date[:4]),
-            period_end=report_date,
-        )
-        if str(record.get("report_date") or "") == report_date
-    ]
-
-
-def _require_pnl_by_business_manual_adjustment(settings: Settings, adjustment_id: str) -> dict[str, object]:
-    records = _reduce_latest_pnl_by_business_manual_adjustments(
-        _load_pnl_by_business_manual_adjustment_events(settings)
-    )
-    for record in records:
-        if str(record.get("adjustment_id") or "") == adjustment_id:
-            return record
-    raise ValueError(f"Unknown pnl-by-business adjustment_id={adjustment_id}")
-
-
 def _pnl_by_business_adjustment_record(
     *,
     report_date: str,
@@ -936,39 +929,6 @@ def _pnl_by_business_adjustment_record(
     )
     row["source_note"] = source_note
     return row
-
-
-def _manual_adjustment_row_def(record: dict[str, object]) -> dict[str, object]:
-    row_key = str(record.get("manual_business_row_key") or record.get("row_key") or "").strip()
-    for row_def in ZQTZ_ASSET_BOND_ROWS:
-        if str(row_def.get("row_key") or "") == row_key:
-            return row_def
-    return {
-        "row_key": row_key or "manual_unclassified",
-        "sort_order": 999,
-        "row_label": str(record.get("manual_business_type") or record.get("business_type") or row_key or "手工调整"),
-        "source_note": str(record.get("source_note") or "pnl_by_business_adjustments"),
-    }
-
-
-def _pnl_by_business_manual_classification(record: dict[str, object]) -> dict[str, object]:
-    row_def = _manual_adjustment_row_def(record)
-    label = str(row_def.get("row_label") or record.get("manual_business_type") or "")
-    return {
-        "report_date": _norm_text(record.get("report_date")),
-        "instrument_code": _norm_text(record.get("instrument_code")),
-        "instrument_name": label,
-        "account_category": "manual_adjustment",
-        "asset_class": label,
-        "bond_type": label,
-        "sub_type": label,
-        "business_type_primary": label,
-        "business_type_final": label,
-        "invest_type_std": "",
-        "accounting_basis": "manual_adjustment",
-        "currency_code": "CNY",
-        "manual_business_row_key": str(row_def.get("row_key") or ""),
-    }
 
 
 def _apply_pnl_by_business_manual_adjustments_to_ytd_groups(
@@ -1035,26 +995,6 @@ def _append_pnl_by_business_manual_adjustments_to_rows(
                 )
             )
     return tuple(appended)
-
-
-def _source_tables_with_manual_adjustments(source_tables: list[str], *, settings: Settings, loaded_dates: list[str]) -> list[str]:
-    for report_date in loaded_dates:
-        if _active_pnl_by_business_manual_adjustments(settings, report_date=report_date):
-            if PNL_BY_BUSINESS_ADJUSTMENT_STREAM not in source_tables:
-                return [*source_tables, PNL_BY_BUSINESS_ADJUSTMENT_STREAM]
-            return source_tables
-    return source_tables
-
-
-def _parse_created_at(value: str) -> datetime:
-    raw_value = str(value or "").strip()
-    if not raw_value:
-        return datetime.min.replace(tzinfo=UTC)
-    normalized = raw_value.replace("Z", "+00:00") if raw_value.endswith("Z") else raw_value
-    parsed = datetime.fromisoformat(normalized)
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC)
 
 
 def _pnl_by_business_ytd_payload_from_formal_facts(
@@ -1752,7 +1692,7 @@ def pnl_by_business_analysis_envelope(
     loaded_date_list = list(loaded_dates)
 
     period_start = f"{min(loaded_dates)[:7]}-01"
-    pnl_rows, balance_rows = _cached_pnl_by_business_analysis_inputs(
+    pnl_rows, balance_rows = _pnl_by_business_analysis_inputs(
         duckdb_path,
         year,
         period_start,
@@ -1873,7 +1813,7 @@ def pnl_by_business_monthly_envelope(
     loaded_date_list = list(loaded_dates)
 
     period_start = f"{min(loaded_dates)[:7]}-01"
-    pnl_rows, balance_rows = _cached_pnl_by_business_analysis_inputs(
+    pnl_rows, balance_rows = _pnl_by_business_analysis_inputs(
         duckdb_path,
         year,
         period_start,
@@ -1955,12 +1895,42 @@ def pnl_yearly_summary_envelope(*, duckdb_path: str, governance_dir: str, year: 
     )
 
 
+def _duckdb_storage_identity(duckdb_path: str) -> tuple[str, int, int]:
+    """DuckDB 文件身份 (resolved_path, mtime_ns, size)，折入无 TTL 读缓存键。
+
+    物化任务重写 DuckDB 后 mtime/size 变化，API 进程的旧缓存键自然不再命中——
+    不依赖只在 worker 进程执行的 cache_clear 钩子。文件缺失时返回 (-1, -1) 哨兵。
+    """
+    path = Path(duckdb_path)
+    try:
+        stat = path.stat()
+        return (str(path.resolve()), stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        return (str(path), -1, -1)
+
+
+def _pnl_by_business_analysis_inputs(
+    duckdb_path: str,
+    year: int,
+    period_start: str,
+    period_end: str,
+) -> tuple[tuple[dict[str, object], ...], tuple[dict[str, object], ...]]:
+    return _cached_pnl_by_business_analysis_inputs(
+        duckdb_path,
+        year,
+        period_start,
+        period_end,
+        _duckdb_storage_identity(duckdb_path),
+    )
+
+
 @lru_cache(maxsize=16)
 def _cached_pnl_by_business_analysis_inputs(
     duckdb_path: str,
     year: int,
     period_start: str,
     period_end: str,
+    _storage_identity: tuple[str, int, int],
 ) -> tuple[tuple[dict[str, object], ...], tuple[dict[str, object], ...]]:
     repo = PnlRepository(duckdb_path)
     pnl_rows = repo.fetch_by_business_analysis_pnl_rows(year=year, as_of_date=period_end)
@@ -2263,57 +2233,6 @@ def _inflight_pnl_by_business_precompute_runs(
     ]
 
 
-def _normalize_pnl_by_business_precompute_year(year: int) -> int:
-    normalized_year = int(year)
-    if not 2000 <= normalized_year <= 2100:
-        raise ValueError("year must be between 2000 and 2100.")
-    return normalized_year
-
-
-def _normalize_pnl_by_business_precompute_as_of_date(*, year: int, as_of_date: str | None) -> str | None:
-    if as_of_date is None:
-        return None
-    raw_value = str(as_of_date)
-    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw_value) is None:
-        raise ValueError("as_of_date must use YYYY-MM-DD format.")
-    try:
-        parsed = date.fromisoformat(raw_value)
-    except ValueError as exc:
-        raise ValueError("as_of_date must use YYYY-MM-DD format.") from exc
-    if parsed.year != int(year):
-        raise ValueError(f"as_of_date={parsed.isoformat()} is outside requested year={int(year)}.")
-    return parsed.isoformat()
-
-
-def _available_pnl_by_business_precompute_cutoffs(
-    repo: PnlRepository,
-    *,
-    year: int,
-) -> list[str]:
-    cutoffs: set[str] = set()
-    for raw_date in repo.list_union_report_dates():
-        raw_value = str(raw_date)
-        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw_value) is None:
-            continue
-        try:
-            parsed = date.fromisoformat(raw_value)
-        except ValueError:
-            continue
-        if parsed.year != int(year) or parsed.day != monthrange(parsed.year, parsed.month)[1]:
-            continue
-        cutoffs.add(parsed.isoformat())
-    if not cutoffs:
-        raise ValueError(f"No available month-end cutoffs found for year={int(year)}.")
-    return sorted(cutoffs)
-
-
-def _safe_int(value: object) -> int:
-    try:
-        return int(value or 0)
-    except (TypeError, ValueError):
-        return 0
-
-
 def _effective_pnl_by_business_precompute_run_records(
     records: list[dict[str, object]],
 ) -> list[dict[str, object]]:
@@ -2393,27 +2312,6 @@ def _pnl_by_business_precompute_status_record(
     return (inflight or relevant)[-1]
 
 
-def _pnl_by_business_precompute_record_target_dates(record: dict[str, object]) -> set[str]:
-    raw_dates = record.get("target_as_of_dates")
-    if not isinstance(raw_dates, (list, tuple, set)):
-        return set()
-    return {str(item) for item in raw_dates if str(item)}
-
-
-def _pnl_by_business_precompute_cutoff_result(
-    record: dict[str, object],
-    *,
-    period_end: str,
-) -> dict[str, object] | None:
-    raw_results = record.get("cutoff_results")
-    if not isinstance(raw_results, list):
-        return None
-    for item in raw_results:
-        if isinstance(item, dict) and str(item.get("as_of_date") or "") == period_end:
-            return item
-    return None
-
-
 def _pnl_by_business_precompute_status_payload(
     *,
     year: int,
@@ -2473,20 +2371,6 @@ def _pnl_by_business_precompute_status_payload(
             "min_backoff_seconds": int(actor_options.get("min_backoff", 15_000)) // 1000,
         },
     }
-
-
-def _safe_pnl_by_business_precompute_error_message(*, status: str, failure_category: str) -> str | None:
-    if failure_category == "automatic_retry_pending":
-        return "上一次预计算未完成，后台正在按策略自动重试。"
-    if status != "failed":
-        return None
-    if failure_category == "queue_dispatch_failure":
-        return "预计算任务分发失败，请检查后台队列后重试。"
-    if failure_category == "stale_inflight":
-        return "预计算任务长时间未更新，已解除占用，可重新生成。"
-    if failure_category == "lock_timeout":
-        return "预计算暂未取得数据写入锁，自动重试已结束。"
-    return "预计算执行失败，自动重试已结束，请查看后台运行日志。"
 
 
 def _build_pnl_by_business_analysis_rows(
@@ -3130,24 +3014,6 @@ def _pnl_by_business_monthly_measure(
     )
 
 
-def _is_calendar_month_end(value: str) -> bool:
-    period_end = date.fromisoformat(value)
-    return (period_end + timedelta(days=1)).day == 1
-
-
-def _new_analysis_dimension_bucket(dimension_key: str, dimension_label: str) -> dict[str, object]:
-    return {
-        "dimension_key": dimension_key,
-        "dimension_label": dimension_label,
-        "interest_income": Decimal("0"),
-        "fair_value_change": Decimal("0"),
-        "capital_gain": Decimal("0"),
-        "manual_adjustment": Decimal("0"),
-        "total_pnl": Decimal("0"),
-        "asset_codes": set(),
-    }
-
-
 def _analysis_balance_lookup(balance_rows: list[dict[str, object]]) -> dict[tuple[str, str, str, str, str], dict[str, object]]:
     lookup: dict[tuple[str, str, str, str, str], dict[str, object]] = {}
     for row in balance_rows:
@@ -3176,23 +3042,6 @@ def _analysis_historical_balance_lookup(
     for rows in lookup.values():
         rows.sort(key=lambda item: _norm_text(item.get("report_date")))
     return lookup
-
-
-def _analysis_latest_balance_before_or_on(
-    lookup: dict[tuple[str, str, str, str], list[dict[str, object]]],
-    key: tuple[str, str, str, str],
-    report_date: str,
-) -> dict[str, object] | None:
-    rows = lookup.get(key)
-    if not rows or not report_date:
-        return None
-    latest: dict[str, object] | None = None
-    for row in rows:
-        row_date = _norm_text(row.get("report_date"))
-        if row_date > report_date:
-            break
-        latest = row
-    return latest
 
 
 def _analysis_sub_type_by_date_code(balance_rows: list[dict[str, object]]) -> dict[tuple[str, str], str]:
@@ -3262,23 +3111,6 @@ def _analysis_classification_for_pnl_row(
     return classification
 
 
-def _analysis_classification_from_balance_row(row: dict[str, object]) -> dict[str, object]:
-    return {
-        "report_date": _norm_text(row.get("report_date")),
-        "instrument_code": _norm_text(row.get("instrument_code")),
-        "instrument_name": _norm_text(row.get("instrument_name")),
-        "account_category": _norm_text(row.get("account_category")),
-        "asset_class": _norm_text(row.get("asset_class")),
-        "bond_type": _norm_text(row.get("bond_type")),
-        "sub_type": _norm_text(row.get("sub_type")),
-        "business_type_primary": _norm_text(row.get("business_type_primary")),
-        "business_type_final": _norm_text(row.get("business_type_final")),
-        "invest_type_std": _norm_text(row.get("invest_type_std")),
-        "accounting_basis": _norm_text(row.get("accounting_basis")),
-        "currency_code": _norm_text(row.get("currency_code")),
-    }
-
-
 def _analysis_matches_business_key(classification: dict[str, object], business_key: str | None) -> bool:
     if not business_key:
         return True
@@ -3286,15 +3118,6 @@ def _analysis_matches_business_key(classification: dict[str, object], business_k
     if manual_key:
         return manual_key == business_key
     return any(str(row_def.get("row_key")) == business_key for row_def in match_zqtz_asset_bond_rows(classification))
-
-
-def _analysis_original_currency_dimension(
-    instrument_code: object,
-    currency_code: object = None,
-) -> tuple[str, str]:
-    if original_asset_currency_from_instrument_code(instrument_code, currency_code) == "USD":
-        return "USD", "美元（折人民币）"
-    return "CNY", "人民币"
 
 
 def _analysis_dimension_for_pnl_row(
@@ -3362,98 +3185,12 @@ def _analysis_dimension_for_balance_row(
     return _instrument_key_label(row.get("instrument_code"), row.get("instrument_name"))
 
 
-def _dimension_key_label(value: object, blank_label: str) -> tuple[str, str]:
-    text = _norm_text(value)
-    if text:
-        return text, text
-    return f"__blank__{blank_label}", blank_label
-
-
 def _analysis_bond_bucket_for_classification(classification: dict[str, object]) -> tuple[str, str]:
     matched_keys = {str(row_def.get("row_key")) for row_def in match_zqtz_asset_bond_rows(classification)}
     for bucket_key, label, row_keys in ANALYSIS_BOND_BUCKETS:
         if matched_keys & row_keys:
             return bucket_key, label
     return "other_bond", ANALYSIS_BOND_BUCKET_LABELS["other_bond"]
-
-
-def _analysis_is_monthly_dimension(dimension: PnlByBusinessAnalysisDimension) -> bool:
-    return dimension in {"monthly", "bond_bucket_monthly"}
-
-
-def _analysis_dimension_report_date(dimension_key: str) -> str:
-    return dimension_key.split("::", 1)[0]
-
-
-def _instrument_key_label(code_value: object, name_value: object) -> tuple[str, str]:
-    code = _norm_text(code_value)
-    name = _norm_text(name_value)
-    key = code or "__blank__instrument"
-    if code and name and name != code:
-        return key, f"{code} {name}"
-    return key, code or name or "未填资产"
-
-
-def _instrument_code_variants(value: object) -> tuple[str, ...]:
-    code = _norm_text(value)
-    if not code:
-        return tuple()
-    variants = {code}
-    if code.startswith("BOND-"):
-        variants.add(code[5:])
-    else:
-        variants.add(f"BOND-{code}")
-    return tuple(sorted(variants))
-
-
-def _analysis_annualized_yield_pct(
-    total_pnl: Decimal,
-    avg_balance: Decimal,
-    calendar_days: int,
-    ftp_rate_pct: Decimal,
-) -> Decimal | None:
-    return compute_pnl_by_business_yield_and_ftp(
-        total_pnl=total_pnl,
-        avg_balance=avg_balance,
-        calendar_days=calendar_days,
-        ftp_rate_pct=ftp_rate_pct,
-    ).annualized_yield_pct
-
-
-def _analysis_ftp_values(
-    *,
-    total_pnl: Decimal,
-    avg_balance: Decimal,
-    annualized_yield_pct: Decimal | None,
-    calendar_days: int,
-    ftp_rate_pct: Decimal,
-) -> dict[str, Decimal | None]:
-    yield_ftp = compute_pnl_by_business_yield_and_ftp(
-        total_pnl=total_pnl,
-        avg_balance=avg_balance,
-        calendar_days=calendar_days,
-        ftp_rate_pct=ftp_rate_pct,
-    )
-    return {
-        "ftp_rate_pct": yield_ftp.ftp_rate_pct,
-        "ftp_cost": yield_ftp.ftp_cost,
-        "ftp_net_pnl": yield_ftp.ftp_net_pnl,
-        "ftp_net_annualized_yield_pct": yield_ftp.ftp_net_annualized_yield_pct,
-    }
-
-
-def _calendar_days(start_date: str, end_date: str) -> int:
-    start = datetime.strptime(start_date, "%Y-%m-%d").date()
-    end = datetime.strptime(end_date, "%Y-%m-%d").date()
-    return max((end - start).days + 1, 0)
-
-
-def _decimal_value(value: object) -> Decimal:
-    return Decimal(str(value or "0"))
-
-
-def _norm_text(value: object) -> str:
-    return str(value or "").strip()
 
 
 def _build_v1_detail_rows(
@@ -3674,31 +3411,6 @@ def _iter_v1_compatible_pnl_records(
     return records
 
 
-def _v1_record(
-    *,
-    report_date: str,
-    bond_code: str,
-    raw_business_type: str,
-    interest_income: Decimal,
-    fair_value_change: Decimal,
-    capital_gain: Decimal,
-    source_version: str,
-    classification_row: dict[str, object],
-) -> dict[str, object]:
-    return {
-        "report_date": report_date,
-        "business_type": _v1_normalize_business_type(raw_business_type, bond_code),
-        "bond_code": bond_code,
-        "interest_income": interest_income,
-        "fair_value_change": fair_value_change,
-        "capital_gain": capital_gain,
-        "manual_adjustment": Decimal("0"),
-        "total_pnl": interest_income + fair_value_change + capital_gain,
-        "source_version": source_version,
-        "classification_row": classification_row,
-    }
-
-
 def _new_balance_movement_pnl_group(row_def: dict[str, object]) -> dict[str, object]:
     return {
         "row_key": str(row_def["row_key"]),
@@ -3730,132 +3442,10 @@ def _merge_balance_movement_business_record(
     group["row_count"] = int(group["row_count"]) + 1
 
 
-def _merge_v1_business_record(groups: dict[str, dict[str, object]], record: dict[str, object]) -> None:
-    business_type = str(record["business_type"])
-    group = groups.setdefault(
-        business_type,
-        {
-            "interest_income": Decimal("0"),
-            "fair_value_change": Decimal("0"),
-            "capital_gain": Decimal("0"),
-            "total_pnl": Decimal("0"),
-            "asset_codes": set(),
-            "row_count": 0,
-        },
-    )
-    for key in ("interest_income", "fair_value_change", "capital_gain", "total_pnl"):
-        group[key] = Decimal(str(group[key])) + Decimal(str(record[key]))
-    code = str(record.get("bond_code") or "").strip()
-    if code:
-        group["asset_codes"].add(code)
-    group["row_count"] = int(group["row_count"]) + 1
-
-
-def _v1_fi_classification_row(
-    *,
-    report_date: str,
-    row: dict[str, object],
-    code: str,
-    asset_class: str,
-    sub_type: str,
-) -> dict[str, object]:
-    currency_code = str(row.get("fx_base_currency") or row.get("currency_code") or row.get("currency_basis") or "CNY")
-    return {
-        "report_date": report_date,
-        "instrument_code": code,
-        "sub_type": sub_type,
-        "business_type_final": sub_type,
-        "business_type_primary": sub_type or asset_class,
-        "bond_type": asset_class or sub_type,
-        "instrument_name": str(row.get("instrument_name") or row.get("bond_name") or code),
-        "asset_class": asset_class,
-        "currency_code": currency_code.strip().upper() or "CNY",
-    }
-
-
-def _v1_nonstd_classification_row(*, report_date: str, code: str, sub_type: str) -> dict[str, object]:
-    bond_type = _zqtz_other_bond_type()
-    code_u = code.upper()
-    return {
-        "report_date": report_date,
-        "instrument_code": code,
-        "sub_type": sub_type,
-        "business_type_final": sub_type,
-        "business_type_primary": bond_type,
-        "bond_type": bond_type,
-        "instrument_name": code,
-        "asset_class": sub_type or bond_type,
-        "currency_code": "USD" if code_u.startswith("J1") else "CNY",
-    }
-
-
-def _zqtz_other_bond_type() -> str:
-    for row_def in ZQTZ_ASSET_BOND_ROWS:
-        if row_def.get("row_key") == "asset_zqtz_non_bottom_investment":
-            bond_types = tuple(str(value) for value in row_def.get("bond_types", ()))
-            if bond_types:
-                return bond_types[0]
-    return "其他"
-
-
 def _balance_yield_pct(total_pnl: Decimal, current_balance: Decimal) -> Decimal | None:
     if current_balance == Decimal("0"):
         return None
     return _quantize_yield_pct((total_pnl / current_balance) * Decimal("100"))
-
-
-def _v1_normalize_business_type(raw_business_type: object, bond_code: object) -> str:
-    normalized = V1_BUSINESS_NAME_NORMALIZATION.get(
-        str(raw_business_type or "").strip(),
-        str(raw_business_type or "").strip() or "其他债券",
-    )
-    if normalized != "其他债券":
-        return normalized
-    code = str(bond_code or "").strip().upper()
-    if len(code) >= 2:
-        return V1_ZQTZ_PREFIX_MAP.get(code[:2], "其他债券")
-    return "其他债券"
-
-
-def _v1_nonstd_display_name(asset_code: object) -> str:
-    code = str(asset_code or "").strip()
-    if not code or code.lower() in {"nan", "none"}:
-        return "未标注"
-    for prefix, name in (
-        ("J0", "人民币资管产品"),
-        ("JM", "债权投资"),
-        ("J4", "结构化产业基金"),
-        ("J1", "美元委外"),
-        ("SA", "公募基金"),
-        ("G0", "结构化融资"),
-        ("G2", "信托产品"),
-    ):
-        if code.startswith(prefix):
-            return name
-    return "其他"
-
-
-def _v1_fx_rate(base_currency: object, fx_rates: dict[str, Decimal]) -> Decimal:
-    key = str(base_currency or "").strip().upper()
-    if not key:
-        return Decimal("1")
-    return fx_rates[key]
-
-
-def _append_unique_value(bucket: dict[str, object], key: str, value: str) -> None:
-    if not value:
-        return
-    existing = str(bucket.get(key) or "")
-    values = [part for part in existing.split("__") if part]
-    if value not in values:
-        values.append(value)
-    bucket[key] = "__".join(values)
-
-
-def _coverage_quality_flag(coverage_days: int, expected_days: int) -> str | None:
-    if expected_days > 0 and coverage_days < expected_days:
-        return "warning"
-    return None
 
 
 def _pnl_by_business_ytd_quality_flag(payload: PnlByBusinessYtdPayload) -> str | None:
@@ -3961,18 +3551,20 @@ def _build_pnl_formal_result_envelope_from_lineage(
     )
 
 
+# 显式 ROUND_HALF_UP：与 core 层全库舍入口径一致（2026-08 审计 SHR-01），
+# 避免 Decimal.quantize 默认银行家舍入在 .005 类边界产生方向性尾差。
 def _quantize_decimal(value: Decimal) -> Decimal:
-    return value.quantize(TWOPLACES)
+    return value.quantize(TWOPLACES, rounding=ROUND_HALF_UP)
 
 
 def _quantize_ratio(value: Decimal) -> Decimal:
-    return value.quantize(RATIOPLACES)
+    return value.quantize(RATIOPLACES, rounding=ROUND_HALF_UP)
 
 
 def _quantize_yield_pct(value: object) -> Decimal | None:
     if value is None:
         return None
-    return Decimal(str(value)).quantize(Decimal("0.000001"))
+    return Decimal(str(value)).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
 
 
 def _quantized_business_row(row: dict[str, object]) -> dict[str, object]:
@@ -3990,18 +3582,6 @@ def _quantized_business_row(row: dict[str, object]) -> dict[str, object]:
     out["pnl_row_count"] = int(out.get("pnl_row_count") or 0)
     out["balance_row_count"] = int(out.get("balance_row_count") or 0)
     return out
-
-
-def _json_safe_payload(value: object) -> object:
-    if isinstance(value, Decimal):
-        return str(value)
-    if isinstance(value, list):
-        return [_json_safe_payload(item) for item in value]
-    if isinstance(value, tuple):
-        return [_json_safe_payload(item) for item in value]
-    if isinstance(value, dict):
-        return {str(key): _json_safe_payload(item) for key, item in value.items()}
-    return value
 
 
 def _pnl_overview_reconciliation_check(totals: dict[str, Decimal]) -> dict[str, object]:
@@ -4035,11 +3615,6 @@ def _load_refresh_run_records(settings: Settings) -> list[dict[str, object]]:
         for record in GovernanceRepository(base_dir=settings.governance_path).read_all(CACHE_BUILD_RUN_STREAM)
         if str(record.get("cache_key")) == CACHE_KEY and str(record.get("job_name")) == PNL_JOB_NAME
     ]
-
-
-def _normalize_idempotency_key(value: str | None) -> str | None:
-    text = str(value or "").strip()
-    return text or None
 
 
 def _latest_refresh_for_idempotency_key(
@@ -4115,14 +3690,6 @@ def _is_stale_inflight_record(record: dict[str, object]) -> bool:
     return False
 
 
-def _parse_timestamp(raw_value: str) -> datetime:
-    normalized = raw_value.replace("Z", "+00:00") if raw_value.endswith("Z") else raw_value
-    parsed = datetime.fromisoformat(normalized)
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC)
-
-
 def _mark_stale_inflight_run(
     *,
     settings: Settings,
@@ -4179,7 +3746,3 @@ def _record_dispatch_failure(
             "failure_reason": str(exc),
         },
     )
-
-
-def _dispatch_failure_message(exc: Exception) -> str:
-    return f"Pnl refresh queue dispatch failed: {type(exc).__name__}: {exc}"

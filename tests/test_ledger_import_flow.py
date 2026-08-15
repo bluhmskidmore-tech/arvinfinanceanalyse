@@ -341,6 +341,34 @@ def test_ledger_import_api_queues_json_safe_payload_without_writing_batch(tmp_pa
     get_settings.cache_clear()
 
 
+def test_ledger_import_api_preserves_trailing_newlines_in_uploaded_file(tmp_path, monkeypatch):
+    """multipart 解析只允许剥离协议分隔用的单个 CRLF；CSV 自身的结尾换行必须原样入队。"""
+    _configure_ledger_import_env(tmp_path, monkeypatch)
+    from backend.app.tasks.ledger_import import run_ledger_import
+
+    sent: list[dict[str, object]] = []
+    monkeypatch.setattr(run_ledger_import, "send", lambda **kwargs: sent.append(kwargs))
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    cases = (
+        b"h1,h2\r\nv1,v2\r\n",  # Windows CSV：单个结尾 CRLF
+        b"h1,h2\nv1,v2\n",  # Unix CSV：单个结尾 LF
+        b"h1,h2\nv1,v2\n\r\n\r\n",  # 末尾多个空行也属于文件内容
+    )
+    for content in cases:
+        body, content_type = _multipart_body(content, file_name="ZQTZSHOW-20260317.csv")
+        response = client.post(
+            "/api/ledger/import",
+            content=body,
+            headers={"content-type": content_type},
+        )
+        assert response.status_code == 202, f"{content!r}: {response.status_code} {response.text}"
+        queued = base64.b64decode(str(sent.pop()["content_base64"]), validate=True)
+        assert queued == content, f"payload truncated: sent {content!r}, queued {queued!r}"
+    assert sent == []
+    get_settings.cache_clear()
+
+
 def test_ledger_import_api_enforces_file_limit_when_content_length_is_false_or_missing(
     tmp_path,
     monkeypatch,
@@ -1891,3 +1919,62 @@ def _multipart_body(content: bytes, *, file_name: str) -> tuple[bytes, str]:
         "\r\n"
     ).encode("ascii") + content + f"\r\n--{boundary}--\r\n".encode("ascii")
     return body, f"multipart/form-data; boundary={boundary}"
+
+
+def test_ledger_import_repo_acquires_lock_before_opening_write_connection(tmp_path, monkeypatch):
+    """insert_import 必须先持 LEDGER_IMPORT_LOCK，再打开写连接（B5 审计修复）。"""
+    from contextlib import contextmanager
+
+    import backend.app.repositories.ledger_import_repo as repo_module
+    from backend.app.repositories.task_write_guard import repository_task_write_scope
+
+    events: list[str] = []
+    real_acquire_lock = repo_module.acquire_lock
+    real_connect = duckdb.connect
+
+    @contextmanager
+    def recording_acquire_lock(definition, *args, **kwargs):
+        events.append(f"lock_enter:{definition.key}")
+        with real_acquire_lock(definition, *args, **kwargs) as handle:
+            try:
+                yield handle
+            finally:
+                events.append(f"lock_exit:{definition.key}")
+
+    class _RecordingConn:
+        def __init__(self, inner) -> None:
+            self._inner = inner
+
+        def close(self) -> None:
+            events.append("connection_closed")
+            self._inner.close()
+
+        def __getattr__(self, name: str):
+            return getattr(self._inner, name)
+
+    def recording_connect(*args, **kwargs):
+        events.append("connection_opened")
+        return _RecordingConn(real_connect(*args, **kwargs))
+
+    monkeypatch.setattr(repo_module, "acquire_lock", recording_acquire_lock)
+    monkeypatch.setattr(repo_module.duckdb, "connect", recording_connect)
+
+    db_path = tmp_path / "ledger-lock-order.duckdb"
+    with repository_task_write_scope("backend.app.tasks.test_ledger_lock_order"):
+        summary = repo_module.LedgerImportRepository(str(db_path)).insert_import(
+            file_name="lock-order.csv",
+            file_hash="hash-lock-order",
+            as_of_date="2026-01-31",
+            rows=[{"row_no": 2, "raw_json": "{}"}],
+            source_version="sv_test",
+            rule_version="rv_test",
+        )
+
+    assert summary["status"] == "success"
+    lock_key = repo_module.LEDGER_IMPORT_LOCK.key
+    assert events == [
+        f"lock_enter:{lock_key}",
+        "connection_opened",
+        "connection_closed",
+        f"lock_exit:{lock_key}",
+    ]

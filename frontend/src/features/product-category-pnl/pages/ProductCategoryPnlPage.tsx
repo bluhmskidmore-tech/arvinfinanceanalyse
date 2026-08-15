@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { Link } from "react-router-dom";
 import { useQueries, useQuery } from "@tanstack/react-query";
 
 import { runPollingTask } from "../../../app/jobs/polling";
@@ -835,7 +836,7 @@ function ProductCategoryApiContractLedger(
           >
             {props.isExporting ? "导出中..." : "导出 CSV"}
           </button>
-          <a href="/product-category-pnl/audit">打开审计账本</a>
+          <Link to="/product-category-pnl/audit">打开审计账本</Link>
         </div>
       </footer>
     </section>
@@ -2903,18 +2904,18 @@ export default function ProductCategoryPnlPage() {
               >
                 {client.mode === "real" ? "正式只读链路" : "本地离线契约回放"}
               </span>
-              <a
+              <Link
                 data-testid="product-category-audit-link"
-                href="/product-category-pnl/audit"
+                to="/product-category-pnl/audit"
               >
                 查看调整审计
-              </a>
-              <a
+              </Link>
+              <Link
                 data-testid="product-category-ledger-link"
-                href={ledgerPnlHref}
+                to={ledgerPnlHref}
               >
                 总账损益
-              </a>
+              </Link>
               <button
                 type="button"
                 data-testid="product-category-manual-button"
@@ -3018,8 +3019,8 @@ export default function ProductCategoryPnlPage() {
               </select>
             </label>
 
-            <label className="product-category-scenario-controls__field">
-              视图模式
+            <div className="product-category-scenario-controls__field">
+              <span>视图模式</span>
               <div
                 role="group"
                 aria-label="视图模式"
@@ -3027,6 +3028,7 @@ export default function ProductCategoryPnlPage() {
               >
                 <button
                   type="button"
+                  aria-pressed={selectedView === "monthly"}
                   onClick={() => setSelectedView("monthly")}
                   className={
                     selectedView === "monthly"
@@ -3038,6 +3040,7 @@ export default function ProductCategoryPnlPage() {
                 </button>
                 <button
                   type="button"
+                  aria-pressed={selectedView === "ytd"}
                   onClick={() => setSelectedView("ytd")}
                   className={
                     selectedView === "ytd"
@@ -3048,7 +3051,7 @@ export default function ProductCategoryPnlPage() {
                   汇总视图
                 </button>
               </div>
-            </label>
+            </div>
 
             <label className="product-category-scenario-controls__field">
               FTP 场景
@@ -3864,12 +3867,12 @@ export default function ProductCategoryPnlPage() {
                     {(adjustmentsQuery.data?.events ?? []).length} 条调整事件。
                   </div>
                 </div>
-                <a
-                  href="/product-category-pnl/audit"
+                <Link
+                  to="/product-category-pnl/audit"
                   data-testid="product-category-audit-summary-link"
                 >
                   查看调整审计
-                </a>
+                </Link>
               </div>
             </div>
           </PageAsyncSection>

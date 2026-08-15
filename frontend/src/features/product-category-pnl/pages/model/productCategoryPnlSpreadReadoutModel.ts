@@ -37,18 +37,21 @@ export type ProductCategorySpreadReadoutMetric = {
   available: boolean;
 };
 
-export type ProductCategorySpreadReadoutLiability =
-  | {
-      state: "ready";
-      metrics: ProductCategorySpreadReadoutMetric[];
-    }
-  | {
-      state: "unavailable";
-      reason: string;
-    };
+export type ProductCategorySpreadReadoutState =
+  | "ready"
+  | "partial"
+  | "unavailable";
+
+export type ProductCategorySpreadReadoutLiability = {
+  state: ProductCategorySpreadReadoutState;
+  title: string;
+  description: string;
+  reason: string | null;
+  metrics: ProductCategorySpreadReadoutMetric[];
+};
 
 export type ProductCategorySpreadReadoutSurface = {
-  state: "ready" | "unavailable";
+  state: ProductCategorySpreadReadoutState;
   /** 单月 / 累计的显式口径标注，随视图切换。 */
   viewLabel: string;
   caliberNote: string;
@@ -85,7 +88,8 @@ function bpLabel(metric: SpreadMetricLike): string {
   if (raw === null) {
     return EM_DASH;
   }
-  return formatBp(raw, false);
+  const display = typeof metric?.display === "string" ? metric.display.trim() : "";
+  return display.length > 0 ? display : formatBp(raw, false);
 }
 
 function liabilityScaleLabel(value: DecimalLike | null | undefined): string {
@@ -104,6 +108,43 @@ function metric(input: {
   note: string;
 }): ProductCategorySpreadReadoutMetric {
   return { ...input, available: input.value !== EM_DASH };
+}
+
+function clnImpactCopy(metricValue: SpreadMetricLike): {
+  title: string;
+  description: string;
+  metricLabel: string;
+  metricNote: string;
+} {
+  const raw = spreadMetricNumber(metricValue);
+  if (raw === null || raw === 0) {
+    return {
+      title: "负债端 CLN 影响",
+      description:
+        raw === 0
+          ? "信用联结票据对负债端成本率无净影响，后端直出"
+          : "信用联结票据对负债端成本率的影响，后端直出",
+      metricLabel: "CLN 影响（bp）",
+      metricNote:
+        raw === 0
+          ? "信用联结票据对负债成本率无净影响"
+          : "信用联结票据对负债成本率的影响",
+    };
+  }
+  if (raw < 0) {
+    return {
+      title: "负债端 CLN 降本",
+      description: "信用联结票据降低负债端成本率，后端直出",
+      metricLabel: "CLN 降本（bp）",
+      metricNote: "信用联结票据对负债成本率的降低",
+    };
+  }
+  return {
+    title: "负债端 CLN 拖累",
+    description: "信用联结票据抬升负债端成本率，后端直出",
+    metricLabel: "CLN 拖累（bp）",
+    metricNote: "信用联结票据对负债成本率的抬升",
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -151,9 +192,14 @@ function buildLiabilitySurface(
   if (!decomposition) {
     return {
       state: "unavailable",
-      reason: "后端未返回负债成本拆解字段，CLN 拖累暂不可用。",
+      title: "负债端 CLN 影响",
+      description: "信用联结票据对负债端成本率的影响，后端直出",
+      reason: "后端未返回负债成本拆解字段，CLN 影响暂不可用。",
+      metrics: [],
     };
   }
+  const impactCopy = clnImpactCopy(decomposition.cln_drag_bp);
+  const clnScale = liabilityScaleLabel(decomposition.cln_scale);
   const metrics = [
     metric({
       key: "liability_yield_pct",
@@ -169,24 +215,44 @@ function buildLiabilitySurface(
     }),
     metric({
       key: "cln_drag_bp",
-      label: "CLN 拖累（bp）",
+      label: impactCopy.metricLabel,
       value: bpLabel(decomposition.cln_drag_bp),
-      note: "信用联结票据对负债成本率的抬升",
+      note: impactCopy.metricNote,
     }),
     metric({
       key: "cln_yield_pct",
       label: "CLN 自身成本率",
       value: percentLabel(decomposition.cln_yield_pct),
-      note: `规模 ${liabilityScaleLabel(decomposition.cln_scale)}`,
+      note: `规模 ${clnScale}`,
     }),
   ];
-  if (metrics.every((item) => !item.available)) {
+  const availableCount =
+    metrics.filter((item) => item.available).length +
+    (clnScale === EM_DASH ? 0 : 1);
+  const expectedFieldCount = metrics.length + 1;
+  if (availableCount === 0) {
     return {
       state: "unavailable",
-      reason: "后端返回的负债成本拆解全部为空，CLN 拖累暂不可用。",
+      title: impactCopy.title,
+      description: impactCopy.description,
+      reason: "后端返回的负债成本拆解全部为空，CLN 影响暂不可用。",
+      metrics,
     };
   }
-  return { state: "ready", metrics };
+  const state =
+    availableCount === expectedFieldCount
+      ? ("ready" as const)
+      : ("partial" as const);
+  return {
+    state,
+    title: impactCopy.title,
+    description: impactCopy.description,
+    reason:
+      state === "partial"
+        ? "后端返回的负债成本拆解不完整，缺失项以—展示。"
+        : null,
+    metrics,
+  };
 }
 
 /**
@@ -239,14 +305,23 @@ export function selectProductCategorySpreadReadoutSurface(input: {
       note: "含TPL 资产端与负债端之差（后端计算）",
     }),
   ];
-  const anyAvailable = metrics.some((item) => item.available);
+  const availableCount = metrics.filter((item) => item.available).length;
+  const state: ProductCategorySpreadReadoutState =
+    availableCount === metrics.length
+      ? "ready"
+      : availableCount > 0
+        ? "partial"
+        : "unavailable";
   return {
-    state: anyAvailable ? "ready" : "unavailable",
+    state,
     viewLabel,
     caliberNote,
-    reason: anyAvailable
-      ? null
-      : "后端未返回利差指标，主屏利差读数暂不可用。",
+    reason:
+      state === "ready"
+        ? null
+        : state === "partial"
+          ? "后端返回的利差指标不完整，缺失项以—展示。"
+          : "后端未返回利差指标，主屏利差读数暂不可用。",
     metrics,
     liability: buildLiabilitySurface(
       readProductCategoryLiabilityCostDecomposition(input.payload),

@@ -357,6 +357,13 @@ def test_decision_grade_default_window_aligns_to_prior_month_end_not_lookback(
         assert alt["result_meta"]["filters_applied"]["resolved_start_date"] == "2026-01-31"
         assert alt["result"]["formal_pnl_view"]["components"]["rate_level_effect"] == pytest.approx(-20.0)
 
+    fallback = campisi_svc.campisi_decision_grade_envelope(end_date="2026-03-05")
+    fallback_meta = fallback["result_meta"]
+    assert fallback_meta["requested_report_date"] == "2026-03-05"
+    assert fallback_meta["resolved_report_date"] == "2026-02-28"
+    assert fallback_meta["fallback_mode"] == "latest_snapshot"
+    assert fallback_meta["fallback_date"] == "2026-02-28"
+
 
 def test_decision_grade_explicit_dates_keep_resolution_and_guard_stale_curves(
     tmp_path,

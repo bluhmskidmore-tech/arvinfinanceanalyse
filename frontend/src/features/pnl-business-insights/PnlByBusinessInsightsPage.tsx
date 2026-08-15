@@ -32,6 +32,13 @@ import "./PnlByBusinessInsightsPage.css";
 const RECONCILIATION_NOTE_TEXT =
   "以下为正式数据链路的对账诊断趋势，反映的是追溯完整性，不是业务贡献或拖累结论，不作为资源配置或业务评价依据。";
 
+/** 后端本页无缓存、单次重算约 1 分钟：超过该时长仍在加载时向用户说明进度。 */
+const SLOW_INSIGHTS_LOADING_DELAY_MS = 10_000;
+
+/* 金融表数值列右对齐 + 等宽对齐（§3）；共享 pageStyles 无数值列变体，页内派生。 */
+const numericThStyle = { ...thStyle, textAlign: "right" } as const;
+const numericTdStyle = { ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" } as const;
+
 function toNumber(value: string | null | undefined): number | null {
   if (value === null || value === undefined || value === "") {
     return null;
@@ -218,8 +225,8 @@ function ConcentrationTable({ rows }: { rows: PnlByBusinessConcentrationRow[] })
         <thead>
           <tr>
             <th style={thStyle}>业务种类</th>
-            <th style={thStyle}>YTD日均（亿元）</th>
-            <th style={thStyle}>日均份额</th>
+            <th style={numericThStyle}>YTD日均（亿元）</th>
+            <th style={numericThStyle}>日均份额</th>
           </tr>
         </thead>
         <tbody>
@@ -229,8 +236,8 @@ function ConcentrationTable({ rows }: { rows: PnlByBusinessConcentrationRow[] })
             sortedRows.map((row) => (
               <tr key={row.row_key}>
                 <td style={tdStyle}>{row.business_type}</td>
-                <td style={tdStyle}>{formatYuanAsYi(row.avg_balance)}</td>
-                <td style={tdStyle}>{formatPct(row.share_pct)}</td>
+                <td style={numericTdStyle}>{formatYuanAsYi(row.avg_balance)}</td>
+                <td style={numericTdStyle}>{formatPct(row.share_pct)}</td>
               </tr>
             ))
           )}
@@ -253,9 +260,9 @@ function NegativeFtpTable({ rows }: { rows: PnlByBusinessNegativeFtpPersistenceR
         <thead>
           <tr>
             <th style={thStyle}>业务种类</th>
-            <th style={thStyle}>FTP后损益为负月份占比</th>
-            <th style={thStyle}>最长连续负值</th>
-            <th style={thStyle}>已观测月份</th>
+            <th style={numericThStyle}>FTP后损益为负月份占比</th>
+            <th style={numericThStyle}>最长连续负值</th>
+            <th style={numericThStyle}>已观测月份</th>
             <th style={thStyle}>状态</th>
           </tr>
         </thead>
@@ -269,7 +276,7 @@ function NegativeFtpTable({ rows }: { rows: PnlByBusinessNegativeFtpPersistenceR
                 <td
                   data-warning={row.warning_triggered ? "true" : undefined}
                   style={{
-                    ...tdStyle,
+                    ...numericTdStyle,
                     fontWeight: row.warning_triggered ? 700 : undefined,
                   }}
                 >
@@ -277,12 +284,12 @@ function NegativeFtpTable({ rows }: { rows: PnlByBusinessNegativeFtpPersistenceR
                     ? formatPct(row.negative_ftp_month_share_pct)
                     : EM_DASH}
                 </td>
-                <td style={tdStyle}>
+                <td style={numericTdStyle}>
                   {row.eligible && row.status === "eligible" && row.negative_ftp_longest_streak_months !== null
                     ? `${row.negative_ftp_longest_streak_months} 个月`
                     : EM_DASH}
                 </td>
-                <td style={tdStyle}>{row.months_observed}</td>
+                <td style={numericTdStyle}>{row.months_observed}</td>
                 <td style={tdStyle}>
                   {!row.eligible || row.status === "insufficient_observations"
                     ? "观察不足"
@@ -334,9 +341,9 @@ function ShareDriftTable({
         <thead>
           <tr>
             <th style={thStyle}>业务种类</th>
-            <th style={thStyle}>当前份额</th>
-            <th style={thStyle}>上年同期间份额</th>
-            <th style={thStyle}>漂移</th>
+            <th style={numericThStyle}>当前份额</th>
+            <th style={numericThStyle}>上年同期间份额</th>
+            <th style={numericThStyle}>漂移</th>
             <th style={thStyle}>状态</th>
           </tr>
         </thead>
@@ -344,9 +351,9 @@ function ShareDriftTable({
           {sortedRows.map((row) => (
             <tr key={row.row_key}>
               <td style={tdStyle}>{row.business_type}</td>
-              <td style={tdStyle}>{formatPct(row.current_share_pct)}</td>
-              <td style={tdStyle}>{formatPct(row.baseline_share_pct)}</td>
-              <td style={tdStyle}>{formatSignedPp(row.drift_pp)}</td>
+              <td style={numericTdStyle}>{formatPct(row.current_share_pct)}</td>
+              <td style={numericTdStyle}>{formatPct(row.baseline_share_pct)}</td>
+              <td style={numericTdStyle}>{formatSignedPp(row.drift_pp)}</td>
               <td style={tdStyle}>{lifecycleLabel[row.lifecycle_status]}</td>
             </tr>
           ))}
@@ -405,6 +412,19 @@ export default function PnlByBusinessInsightsPage() {
     enabled: datesQuery.isSuccess && selectedDateIsAvailable,
     retry: false,
   });
+
+  // 结构分析接口无缓存、单次重算可达 1 分钟：加载超过 10s 时在骨架旁补一行
+  // 进度说明（§6 loading 态可感知），避免超长等待零沟通。
+  const insightsLoading = insightsQuery.isLoading;
+  const [slowLoading, setSlowLoading] = useState(false);
+  useEffect(() => {
+    if (!insightsLoading) {
+      setSlowLoading(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setSlowLoading(true), SLOW_INSIGHTS_LOADING_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [insightsLoading]);
 
   const meta = insightsQuery.data?.result_meta;
   const result = insightsQuery.data?.result;
@@ -490,6 +510,16 @@ export default function PnlByBusinessInsightsPage() {
             </FilterBar>
           </PageFilterTray>
         </PageDecisionHero>
+
+        {insightsLoading && slowLoading ? (
+          <p
+            className="pnl-by-business-insights-slow-loading-note"
+            data-testid="pnl-by-business-insights-slow-loading-note"
+            role="status"
+          >
+            正在计算年度结构分析，约需 1 分钟，请稍候。
+          </p>
+        ) : null}
 
         <PageAsyncSection
           title="正式结构分析"
@@ -580,7 +610,7 @@ export default function PnlByBusinessInsightsPage() {
 
               <PageSectionLead
                 eyebrow="相对位置"
-                title="规模—FTP后收益相对象限"
+                title="规模与FTP后收益相对象限"
                 description="规模轴使用日均余额份额，收益轴使用FTP后年化收益率；按当期中位数作描述性相对比较，不生成增配或压降建议。"
               />
               <CapitalEfficiencyQuadrantPanel summary={result.scale_yield_quadrant} />

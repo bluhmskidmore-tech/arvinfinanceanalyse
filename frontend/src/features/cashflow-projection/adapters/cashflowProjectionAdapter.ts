@@ -89,19 +89,19 @@ function deriveState(
   if (typeof meta.source_version === "string" && meta.source_version.includes("explicit_miss")) {
     return {
       kind: "explicit_miss",
-      requested_date: readFilterDate(meta.filters_applied),
+      requested_date: meta.requested_report_date ?? readFilterDate(meta.filters_applied),
     };
   }
   if (meta.fallback_mode === "latest_snapshot") {
     return {
       kind: "fallback",
-      effective_date: readFilterDate(meta.filters_applied),
+      effective_date: readEffectiveDate(meta),
     };
   }
   if (meta.vendor_status === "vendor_stale" || meta.quality_flag === "stale") {
     return {
       kind: "stale",
-      effective_date: readFilterDate(meta.filters_applied),
+      effective_date: readEffectiveDate(meta),
     };
   }
   const payload = envelope.result;
@@ -125,6 +125,15 @@ function readFilterDate(filters: Record<string, unknown> | undefined): string | 
   if (!filters) return undefined;
   const rd = filters["report_date"];
   return typeof rd === "string" ? rd : undefined;
+}
+
+function readEffectiveDate(meta: ResultMeta): string | undefined {
+  return (
+    meta.fallback_date ??
+    meta.resolved_report_date ??
+    meta.as_of_date ??
+    readFilterDate(meta.filters_applied)
+  );
 }
 
 export function adaptCashflowProjection(input: AdaptCashflowInput): CashflowAdapterOutput {

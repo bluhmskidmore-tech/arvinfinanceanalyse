@@ -29,12 +29,16 @@ import { TONE_DH_CSS_VAR, toneFromNumeric } from "../../utils/tone";
 import { KpiCard } from "../../components/KpiCard";
 import { pnlSurfaceQualityToTone } from "../workbench/components/kpiFormat";
 import { PnlRefreshStatus } from "./PnlRuntimePanels";
+import { PNL_GRID_LOCALE_TEXT } from "./PnlRuntimeSupport";
 import { adaptPnlBridge } from "./adapters/pnlBridgeAdapter";
 import {
+  bridgeYuanOriginalTitle,
+  buildBridgeWarningDisplays,
   buildCurveAvailabilityNotices,
   buildPnlBridgeFirstScreenMetaNotice,
   buildWaterfallOption,
   effectAvailabilityCellText,
+  formatBridgeYuanCompact,
 } from "./pnlBridgePageSupport";
 import "./PnlBridgePage.css";
 
@@ -99,7 +103,13 @@ function buildBridgeConclusion(summary: PnlBridgeSummary | undefined) {
 
 function PnlBridgeBalanceScopeHeader(props: IHeaderParams) {
   return (
-    <Tooltip title="仅资产端，人民币口径">
+    <Tooltip
+      title="仅资产端，人民币口径"
+      /* 弹层挂页根容器防 portal 主题逃逸（positions / bond-dashboard 同配方）。 */
+      getPopupContainer={(node) =>
+        (node.closest('[data-moss-theme-scope="pnl-bridge"]') as HTMLElement) ?? document.body
+      }
+    >
       <span className="pnl-bridge-balance-scope-header">{props.displayName}</span>
     </Tooltip>
   );
@@ -249,11 +259,12 @@ export default function PnlBridgePage() {
   const vm = adapterOutput.vm;
   const summary = vm?.summary;
   const rows = vm?.rows ?? [];
-  const warnings = vm?.warnings ?? [];
+  const warnings = useMemo(() => vm?.warnings ?? [], [vm?.warnings]);
 
   const chartOption = useMemo(() => (summary ? buildWaterfallOption(summary) : null), [summary]);
   const conclusion = useMemo(() => buildBridgeConclusion(summary), [summary]);
   const curveAvailabilityNotices = useMemo(() => buildCurveAvailabilityNotices(summary), [summary]);
+  const warningDisplays = useMemo(() => buildBridgeWarningDisplays(warnings), [warnings]);
 
   const summaryState = useMemo<DataSectionState>(() => {
     if (datesQuery.isLoading) return { kind: "loading" };
@@ -461,24 +472,33 @@ export default function PnlBridgePage() {
                   tone="warning"
                 />
                 <KpiCard title="质量错误" value={cellText(summary.error_count)} detail="错误行数" tone="error" />
-                <KpiCard
-                  title="合计解释损益"
-                  value={summary.total_explained_pnl.display}
-                  detail="合计解释损益"
-                  tone={kpiToneFromNumeric(summary.total_explained_pnl)}
-                />
-                <KpiCard
-                  title="合计实际损益"
-                  value={summary.total_actual_pnl.display}
-                  detail="合计实际损益"
-                  tone={kpiToneFromNumeric(summary.total_actual_pnl)}
-                />
-                <KpiCard
-                  title="合计残差"
-                  value={summary.total_residual.display}
-                  detail="实际损益 - 可解释损益"
-                  tone={kpiToneFromNumeric(summary.total_residual)}
-                />
+                {/* 金额 KPI 按亿/万缩写扫读（§3），后端原值经小注与 title 双通道保留。 */}
+                <div className="pnl-bridge-kpi-cell" title={bridgeYuanOriginalTitle(summary.total_explained_pnl)}>
+                  <KpiCard
+                    title="合计解释损益"
+                    value={formatBridgeYuanCompact(summary.total_explained_pnl)}
+                    detail={`${summary.total_explained_pnl.display} 元`}
+                    tone={kpiToneFromNumeric(summary.total_explained_pnl)}
+                  />
+                </div>
+                <div className="pnl-bridge-kpi-cell" title={bridgeYuanOriginalTitle(summary.total_actual_pnl)}>
+                  <KpiCard
+                    title="合计实际损益"
+                    value={formatBridgeYuanCompact(summary.total_actual_pnl)}
+                    detail={`${summary.total_actual_pnl.display} 元`}
+                    tone={kpiToneFromNumeric(summary.total_actual_pnl)}
+                  />
+                </div>
+                {/* 残差是闭合质量指标而非盈利读数：按后端质量标记取语义色（超阈红/预警琥珀、
+                    闭合中性），禁止机械"正数=绿"（§4，2026-07-19 正缺口禁绿同款决议逻辑）。 */}
+                <div className="pnl-bridge-kpi-cell" title={bridgeYuanOriginalTitle(summary.total_residual)}>
+                  <KpiCard
+                    title="合计残差"
+                    value={formatBridgeYuanCompact(summary.total_residual)}
+                    detail="实际损益 - 可解释损益"
+                    tone={pnlSurfaceQualityToTone(summary.quality_flag)}
+                  />
+                </div>
                 <KpiCard
                   title="校验状态"
                   value={qualityLabel(summary.quality_flag)}
@@ -502,13 +522,17 @@ export default function PnlBridgePage() {
                 </div>
               ) : null}
 
-              {warnings.length > 0 ? (
+              {warningDisplays.length > 0 ? (
                 <div data-testid="pnl-bridge-warnings" className="pnl-bridge-warnings">
                   <div className="pnl-bridge-warnings__title">预警</div>
                   <ul className="pnl-bridge-warnings__list">
-                    {warnings.map((warning) => (
-                      <li key={warning} className="pnl-bridge-warnings__item">
-                        {warning}
+                    {warningDisplays.map((warning) => (
+                      <li
+                        key={warning.key}
+                        className="pnl-bridge-warnings__item"
+                        title={warning.originalText ?? undefined}
+                      >
+                        {warning.text}
                       </li>
                     ))}
                   </ul>
@@ -533,7 +557,12 @@ export default function PnlBridgePage() {
           }}
         >
           <div className="ag-theme-alpine pnl-bridge-detail-table" data-testid="pnl-bridge-detail-table">
+            {/* theme="legacy"：走 ag-theme-alpine CSS 主题链（agGridInstitutional.css 的
+                theme-dh-api 深色块 + 页内 --ag-* 变量）。缺省的 v33+ Theming API 会注入
+                自带浅色皮肤，正是本页明暗拼接（§11.1）的根因；MossAgGrid 同款先例。 */}
             <AgGridReact<PnlBridgeRow>
+              theme="legacy"
+              localeText={PNL_GRID_LOCALE_TEXT}
               rowData={rows}
               columnDefs={bridgeColumnDefsBase}
               defaultColDef={bridgeGridDefaultColDef}

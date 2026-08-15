@@ -243,17 +243,19 @@ describe("CashflowProjectionPage", () => {
     expect(dv01).toHaveTextContent("利率上行 1bp → 权益减少");
   });
 
-  it("uses DataSection fallback banner when result_meta marks latest_snapshot fallback", async () => {
+  it("renders Chinese caveat summaries and collapses English originals into details", async () => {
+    const registered =
+      "Liability duration uses a remaining-term proxy (years to maturity), not a cashflow-weighted duration.";
+    const unregistered = "Some brand-new backend caveat that the frontend has not registered.";
     const client = createApiClient({ mode: "mock" });
     const orig = client.getCashflowProjection.bind(client);
     client.getCashflowProjection = async (reportDate: string) => {
       const envelope = await orig(reportDate);
       return {
         ...envelope,
-        result_meta: {
-          ...envelope.result_meta,
-          fallback_mode: "latest_snapshot",
-          filters_applied: { report_date: "2026-03-29" },
+        result: {
+          ...envelope.result,
+          warnings: [registered, unregistered],
         },
       };
     };
@@ -270,7 +272,55 @@ describe("CashflowProjectionPage", () => {
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByTestId("data-section-fallback-banner")).toHaveTextContent("已回退至最近可用日");
+    // 登记句显示中文摘要；未登记句原样透出。
+    expect(
+      await screen.findByText("负债久期为剩余期限（到期年限）代理，非现金流加权久期。"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(unregistered)).toBeInTheDocument();
+
+    // 英文原文收进默认折叠的 details，且只收登记句（未登记句不重复）。
+    const details = screen.getByTestId("cashflow-warning-originals");
+    expect(details.tagName).toBe("DETAILS");
+    expect(details).not.toHaveAttribute("open");
+    expect(details).toHaveTextContent("英文原文（1 条）");
+    expect(details).toHaveTextContent(registered);
+  });
+
+  it("uses DataSection fallback banner when result_meta marks latest_snapshot fallback", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const orig = client.getCashflowProjection.bind(client);
+    client.getCashflowProjection = async (reportDate: string) => {
+      const envelope = await orig(reportDate);
+      return {
+        ...envelope,
+        result_meta: {
+          ...envelope.result_meta,
+          fallback_mode: "latest_snapshot",
+          requested_report_date: "2026-03-31",
+          resolved_report_date: "2026-03-29",
+          as_of_date: "2026-03-29",
+          fallback_date: "2026-03-29",
+          filters_applied: { report_date: "2026-03-31" },
+        },
+      };
+    };
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <CashflowProjectionPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    const fallbackBanner = await screen.findByTestId("data-section-fallback-banner");
+    expect(fallbackBanner).toHaveTextContent("已回退至最近可用日");
+    expect(fallbackBanner).toHaveTextContent("回退日 2026-03-29");
+    expect(fallbackBanner).not.toHaveTextContent("回退日 2026-03-31");
   });
 
   it("surfaces candidate metric contract status and source evidence", async () => {
@@ -290,12 +340,17 @@ describe("CashflowProjectionPage", () => {
     const contractPanel = await screen.findByTestId("cashflow-contract-status");
 
     expect(contractPanel).toHaveTextContent("候选指标");
-    expect(contractPanel).toHaveTextContent("PAGE-CONTRACT-PENDING:/cashflow-projection");
+    expect(contractPanel).toHaveTextContent("PAGE-CFP-001");
+    expect(contractPanel).toHaveTextContent("临时例外");
     expect(contractPanel).toHaveTextContent("正式可用: 否");
     expect(contractPanel).toHaveTextContent("口径 analytical");
     expect(contractPanel).toHaveTextContent("质量 warning");
     expect(contractPanel).toHaveTextContent("cashflow_projection.overview");
     expect(contractPanel).toHaveTextContent("cashflow_projection_report_date");
+    expect(contractPanel).toHaveTextContent("回退 none");
+    expect(contractPanel).toHaveTextContent("请求日");
+    expect(contractPanel).toHaveTextContent("解析日");
+    expect(contractPanel).toHaveTextContent("数据截至日");
     expect(contractPanel).toHaveTextContent("fact_formal_zqtz_balance_daily");
     expect(contractPanel).toHaveTextContent("fact_formal_tyw_balance_daily");
     expect(contractPanel).toHaveTextContent("证据行 0");

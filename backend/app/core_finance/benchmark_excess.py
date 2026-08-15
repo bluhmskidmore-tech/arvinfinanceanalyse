@@ -1,4 +1,21 @@
 """
+[DEPRECATED / 已弃用 —— 危险死代码，勿在生产路径引用]（2026-08 PnL 归因审计 M3）
+
+本模块的 ``compute_benchmark_excess`` 当前无任何生产调用方。生产基准超额路径
+使用 ``bond_analytics/read_models.py`` 中的**同名**函数，两者入参形态与单位
+约定完全不同，极易误用：
+
+- 本模块：注入组合级标量（period_pnl / start_total_mv / portfolio_mod_duration
+  + 曲线快照），收益率输入为小数（0.012 = 1.2%），输出 pct / bp 的 float。
+- read_models 版：注入持仓行 rows + 分类曲线快照，输出 Decimal 小数分数
+  （portfolio_return / excess_return 等），由服务层换算展示单位。
+
+若把百分数当小数（或反之）注入本模块，会产生数量级的静默错误。保守处置：
+不直接删除；调用即抛 ``DeprecationWarning``。如需恢复使用，先与 read_models
+口径对齐并补黄金测试。
+
+--- 以下为原始文档 ---
+
 组合相对利率基准的超额收益（V1 benchmark_excess 的 DuckDB 可落地子集）。
 
 - 组合收益率：区间实际 PnL / 期初债券总市值（由调用方注入）。
@@ -10,6 +27,8 @@
 
 from __future__ import annotations
 
+# 别名导入：函数体内已有同名局部变量 `warnings`（业务警告代码列表），避免遮蔽。
+import warnings as _warnings_mod
 from collections.abc import Mapping
 from decimal import Decimal
 
@@ -75,7 +94,18 @@ def compute_benchmark_excess(
       (individual selection + first-order approximation error), NOT a reconciled factor.
     There is deliberately no always-zero recon field: excess = explained + residual holds
     by construction, so a separate recon term would be uninformative.
+
+    .. deprecated:: 2026-08 (审计 M3)
+       无生产调用方；生产路径使用 ``bond_analytics.read_models.compute_benchmark_excess``
+       （入参与单位约定不同，勿混用）。调用本函数会抛出 ``DeprecationWarning``。
     """
+    _warnings_mod.warn(
+        "core_finance.benchmark_excess.compute_benchmark_excess 已弃用（无生产调用方）；"
+        "生产路径使用 bond_analytics.read_models.compute_benchmark_excess"
+        "（入参形态与单位约定不同，勿混用）。",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     profile = BENCHMARK_PROFILES.get(benchmark_id) or BENCHMARK_PROFILES["CDB_INDEX"]
     bench_name = str(profile["name"])
     d_bench = safe_decimal(profile["target_duration"])

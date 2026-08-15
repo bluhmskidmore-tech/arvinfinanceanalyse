@@ -142,13 +142,20 @@ export function MetricTable({
             onPressEnter={() => void handleSaveEdit(metric)}
           />
           <Button
+            aria-label="保存编辑"
             type="text"
             size="small"
             loading={saving}
             icon={<CheckOutlined />}
             onClick={() => void handleSaveEdit(metric)}
           />
-          <Button type="text" size="small" icon={<CloseOutlined />} onClick={() => setEditing(null)} />
+          <Button
+            aria-label="取消编辑"
+            type="text"
+            size="small"
+            icon={<CloseOutlined />}
+            onClick={() => setEditing(null)}
+          />
         </div>
       );
     }
@@ -228,7 +235,6 @@ export function MetricTable({
     <section className="kpi-metric-table-card" data-testid="kpi-metric-table-panel">
       <div className="kpi-metric-table-card__header">
         <div>
-          <span className="kpi-metric-table-card__eyebrow">METRICS</span>
           <h2 className="kpi-metric-table-card__title">指标明细</h2>
         </div>
         <span className="kpi-metric-table-card__count">{metrics.length} 项</span>
@@ -302,6 +308,7 @@ export function MetricTable({
                             <span className="kpi-metric-table__metric-name">{metric.metric_name}</span>
                             {onEditMetricDef ? (
                               <Button
+                                aria-label="设置指标"
                                 type="text"
                                 size="small"
                                 icon={<SettingOutlined />}

@@ -95,13 +95,15 @@ class LedgerImportRepository:
         require_repository_task_write_scope("ledger_import.insert")
         duckdb_file = Path(self.path)
         duckdb_file.parent.mkdir(parents=True, exist_ok=True)
-        conn = duckdb.connect(str(duckdb_file), read_only=False)
-        try:
-            with acquire_lock(
-                LEDGER_IMPORT_LOCK,
-                base_dir=duckdb_file.parent,
-                timeout_seconds=30,
-            ):
+        # Acquire the named lock before opening the write connection so the
+        # DuckDB writer handle is never held while waiting for the lock.
+        with acquire_lock(
+            LEDGER_IMPORT_LOCK,
+            base_dir=duckdb_file.parent,
+            timeout_seconds=30,
+        ):
+            conn = duckdb.connect(str(duckdb_file), read_only=False)
+            try:
                 apply_pending_migrations_on_connection(conn)
                 ensure_ledger_import_tables(conn)
                 existing = self._find_success_batch_by_hash(conn, file_hash)
@@ -174,21 +176,21 @@ class LedgerImportRepository:
                     conn.execute("rollback")
                     raise
 
-            return {
-                "batch_id": batch_id,
-                "file_name": file_name,
-                "file_hash": file_hash,
-                "as_of_date": as_of_date,
-                "status": "success",
-                "row_count": len(rows),
-                "error_count": 0,
-                "source_version": source_version,
-                "rule_version": rule_version,
-                "duplicate_of_batch_id": None,
-                "created_at": created_at,
-            }
-        finally:
-            conn.close()
+                return {
+                    "batch_id": batch_id,
+                    "file_name": file_name,
+                    "file_hash": file_hash,
+                    "as_of_date": as_of_date,
+                    "status": "success",
+                    "row_count": len(rows),
+                    "error_count": 0,
+                    "source_version": source_version,
+                    "rule_version": rule_version,
+                    "duplicate_of_batch_id": None,
+                    "created_at": created_at,
+                }
+            finally:
+                conn.close()
 
     def attest_classification_rule_versions(
         self,

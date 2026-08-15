@@ -2,6 +2,7 @@ import type { EChartsOption } from "../../lib/echarts";
 
 import type { DataSectionState } from "../../components/DataSection.types";
 import type {
+  Numeric,
   PnlBridgeEffectAvailability,
   PnlBridgeEffectAvailabilityBlock,
   PnlBridgeEffectAvailabilityReason,
@@ -13,6 +14,63 @@ import type {
 // Nocturne scope，risk-tensor / stock-analysis 先例），替换原浅色 designTokens。
 import { nocturneTokens } from "../../theme/designSystem";
 import { EM_DASH } from "../../utils/format";
+
+const YUAN_PER_YI = 100_000_000;
+const YUAN_PER_WAN = 10_000;
+
+function formatCompactMagnitude(abs: number): string {
+  const unit = abs >= YUAN_PER_YI ? YUAN_PER_YI : YUAN_PER_WAN;
+  const suffix = abs >= YUAN_PER_YI ? "亿" : "万";
+  const scaled = (abs / unit).toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return `${scaled} ${suffix}`;
+}
+
+/**
+ * 汇总 KPI 的亿/万缩写（§3 金额缩写制度，attribution / ledger 同款）。
+ * 仅改变显示密度：万元以下保留后端 display 原样；原值由调用方经 title 保留。
+ */
+export function formatBridgeYuanCompact(value: Numeric): string {
+  const raw = value.raw;
+  if (raw === null || raw === undefined || !Number.isFinite(raw)) {
+    return value.display ?? EM_DASH;
+  }
+  const abs = Math.abs(raw);
+  if (abs < YUAN_PER_WAN) {
+    return value.display ?? EM_DASH;
+  }
+  const sign = raw < 0 ? "-" : value.sign_aware ? "+" : "";
+  return `${sign}${formatCompactMagnitude(abs)}`;
+}
+
+/** 悬停可见的原值披露：后端 display 一字不改，仅补单位说明。 */
+export function bridgeYuanOriginalTitle(value: Numeric): string | undefined {
+  if (value.raw === null || value.raw === undefined || !Number.isFinite(value.raw)) {
+    return undefined;
+  }
+  if (Math.abs(value.raw) < YUAN_PER_WAN) {
+    return undefined;
+  }
+  return `原值（元）：${value.display}`;
+}
+
+/** 瀑布图 y 轴刻度的亿/万缩写；刻度不是有符号读数，负号只随数值出现。 */
+export function formatBridgeAxisYuan(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "";
+  }
+  const abs = Math.abs(value);
+  const sign = value < 0 ? "-" : "";
+  if (abs < YUAN_PER_WAN) {
+    return `${sign}${abs.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}`;
+  }
+  const unit = abs >= YUAN_PER_YI ? YUAN_PER_YI : YUAN_PER_WAN;
+  const suffix = abs >= YUAN_PER_YI ? "亿" : "万";
+  const scaled = (abs / unit).toLocaleString("zh-CN", { maximumFractionDigits: 2 });
+  return `${sign}${scaled} ${suffix}`;
+}
 
 // 互斥分解口径（2026-08 审计 PNL-01）：未实现公允（516）是市场效应要解释的
 // 对象，不再作为解释分量进入瀑布；明细表仍保留该列作参照。
@@ -226,7 +284,12 @@ export function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
     yAxis: {
       type: "value",
       splitLine: { lineStyle: { type: "dashed" as const, color: nocturneTokens.color.lineSoft } },
-      axisLabel: { fontSize: 11, color: nocturneTokens.color.inkMuted },
+      axisLabel: {
+        fontSize: 11,
+        color: nocturneTokens.color.inkMuted,
+        // 轴刻度按亿/万缩写（§3 金额缩写制度）；tooltip 仍展示后端原值 display。
+        formatter: formatBridgeAxisYuan,
+      },
     },
     series: [
       {
@@ -249,6 +312,84 @@ export function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
       },
     ],
   };
+}
+
+/*
+ * 曲线回退告警的显示层中文化（§7 一页一语域）。
+ * 后端逐条曲线发一行英文日志：
+ *   "YIELD_CURVE_LATEST_FALLBACK: Using latest available cdb curve
+ *    from trade_date=2026-06-30 for requested_trade_date=2026-07-31."
+ * 页面把回退到同一日期的多条曲线合并为一行中文结论，原文经 title 全量保留。
+ * fail-closed：只改写与该模式精确匹配的行，其余告警一字不改原样透出。
+ */
+const YIELD_CURVE_FALLBACK_PATTERN =
+  /^YIELD_CURVE_LATEST_FALLBACK: Using latest available (\S+) curve from trade_date=(\d{4}-\d{2}-\d{2}) for requested_trade_date=(\d{4}-\d{2}-\d{2})\.?$/;
+
+const CURVE_TYPE_LABELS: Record<string, string> = {
+  cdb: "国开",
+  aaa_credit: "AAA信用",
+  treasury: "国债",
+  cn_treasury: "国债",
+};
+
+export type PnlBridgeWarningDisplay = {
+  key: string;
+  text: string;
+  /** 非空表示 text 为中文化结论，原始日志行经此字段进 title；空为原样透出。 */
+  originalText: string | null;
+};
+
+export function buildBridgeWarningDisplays(warnings: string[]): PnlBridgeWarningDisplay[] {
+  type FallbackEntry = {
+    kind: "fallback";
+    labels: string[];
+    originals: string[];
+    resolvedDate: string;
+    requestedDate: string;
+  };
+  type Entry = { kind: "raw"; warning: string } | FallbackEntry;
+
+  const entries: Entry[] = [];
+  const fallbackIndexByDates = new Map<string, number>();
+
+  for (const warning of warnings) {
+    const match = YIELD_CURVE_FALLBACK_PATTERN.exec(warning.trim());
+    if (!match) {
+      entries.push({ kind: "raw", warning });
+      continue;
+    }
+    const [, curveType, resolvedDate, requestedDate] = match;
+    const label = CURVE_TYPE_LABELS[curveType] ?? curveType;
+    const groupKey = `${resolvedDate}|${requestedDate}`;
+    const existingIndex = fallbackIndexByDates.get(groupKey);
+    if (existingIndex === undefined) {
+      fallbackIndexByDates.set(groupKey, entries.length);
+      entries.push({
+        kind: "fallback",
+        labels: [label],
+        originals: [warning],
+        resolvedDate,
+        requestedDate,
+      });
+      continue;
+    }
+    const entry = entries[existingIndex] as FallbackEntry;
+    if (!entry.labels.includes(label)) {
+      entry.labels.push(label);
+    }
+    entry.originals.push(warning);
+  }
+
+  return entries.map((entry, index) => {
+    if (entry.kind === "raw") {
+      return { key: `warning-${index}`, text: entry.warning, originalText: null };
+    }
+    return {
+      key: `curve-fallback-${index}`,
+      text: `${entry.labels.join("/")}曲线已回退至 ${entry.resolvedDate}（请求日 ${entry.requestedDate} 无当日快照）。`,
+      originalText: entry.originals.join("\n"),
+    };
+  });
 }
 
 function pickMetaEffectiveDate(state: DataSectionState, meta: ResultMeta | null): string | undefined {

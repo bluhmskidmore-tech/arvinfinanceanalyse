@@ -6,12 +6,34 @@
   输出展示值保持 float 以兼容既有 payload 序列化。
 - 缺键 / None / 非有限值不再按 0 参与比较（避免双缺键 0 vs 0 假平），
   而是显式标记为 missing：该维度 breached=True，并在行内透出 missing_keys。
+
+2026-08-12 审计 余额 M-5（能否升级为落库前门禁）：
+- position_vs_ledger_diff / pnl_vs_ledger_diff / completeness_check 三个函数
+  本身是纯诊断：它们只在返回值里挂 breached 标记，不影响调用方是否继续。
+- 现有 3 个调用点（product_category_pnl_service、pnl_service、attribution_core）
+  都发生在**读取时**，用来给 API payload 挂诊断字段，那里没有"落库"这一步，
+  就地改成门禁没有意义，也会把只读接口变成会抛错的接口。
+- 缺的是"把 breached 变成拒绝"的那一步。本文件因此补 enforce_reconciliation_gate：
+  纯函数、无副作用、与三个诊断函数的返回结构直接兼容，任何**写路径**在落库前
+  包一层即可获得预防型控制。首个接入方是
+  backend/app/tasks/accounting_asset_movement.py 的物化路径。
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from decimal import Decimal, InvalidOperation
-from typing import Any, Mapping
+from typing import Any
+
+GATE_MODES = ("off", "warn", "enforce")
+
+
+class ReconciliationGateError(RuntimeError):
+    """落库前门禁判定不通过。"""
+
+    def __init__(self, message: str, *, breaches: list[dict[str, Any]]) -> None:
+        super().__init__(message)
+        self.breaches = breaches
 
 
 def _comparison_decimal(value: object) -> Decimal | None:
@@ -26,6 +48,47 @@ def _comparison_decimal(value: object) -> Decimal | None:
         except (InvalidOperation, ValueError, TypeError):
             return None
     return result if result.is_finite() else None
+
+
+def collect_breaches(
+    *results: Mapping[str, Any] | Iterable[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """从任意数量的诊断结果里挑出 breached=True 的行。
+
+    直接吃 position_vs_ledger_diff（list[dict]）/ pnl_vs_ledger_diff（dict）/
+    completeness_check（dict）的返回值，也吃任何带 breached 键的 mapping。
+    """
+    breaches: list[dict[str, Any]] = []
+    for result in results:
+        rows = [result] if isinstance(result, Mapping) else list(result)
+        breaches.extend(dict(row) for row in rows if bool(row.get("breached")))
+    return breaches
+
+
+def enforce_reconciliation_gate(
+    *results: Mapping[str, Any] | Iterable[Mapping[str, Any]],
+    context: str,
+    mode: str = "enforce",
+) -> list[dict[str, Any]]:
+    """把诊断结果升级为落库前门禁；返回检出的 breach 行。
+
+    mode='enforce' 时任一 breach 都会抛 ReconciliationGateError，调用方应当在
+    写入事务提交前调用，让整批写入回滚。mode='warn' / 'off' 只返回 breach 行，
+    由调用方决定如何留痕——这样同一套判定逻辑可以先以检测型上线，再切成预防型，
+    不需要改判定口径。
+    """
+    normalized_mode = str(mode or "").strip().lower()
+    if normalized_mode not in GATE_MODES:
+        normalized_mode = "enforce"
+    if normalized_mode == "off":
+        return []
+    breaches = collect_breaches(*results)
+    if breaches and normalized_mode == "enforce":
+        raise ReconciliationGateError(
+            f"Reconciliation gate blocked {context}: {len(breaches)} breached check(s).",
+            breaches=breaches,
+        )
+    return breaches
 
 
 def position_vs_ledger_diff(

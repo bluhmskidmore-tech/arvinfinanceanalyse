@@ -19,6 +19,11 @@ const INDICATOR_CATEGORIES = [
 ];
 const UNITS = ["亿元", "万元", "%", "BP", "户", "个", "名", ""];
 
+/** 下拉弹层挂在弹窗内的字段容器（不挂 body），保持 Nocturne scope 命中。 */
+function resolveModalPopupContainer(trigger: HTMLElement): HTMLElement {
+  return trigger.parentElement ?? document.body;
+}
+
 export type MetricManageModalProps = {
   open: boolean;
   onClose: () => void;
@@ -250,6 +255,7 @@ export function MetricManageModal({
             <Text strong>大类</Text>
             <Select
               className="kpi-modal-v2__control"
+              getPopupContainer={resolveModalPopupContainer}
               value={form.major_category}
               options={MAJOR_CATEGORIES.map((c) => ({ label: c, value: c }))}
               onChange={(v) => setField("major_category", v)}
@@ -259,6 +265,7 @@ export function MetricManageModal({
             <Text strong>指标类别</Text>
             <Select
               className="kpi-modal-v2__control"
+              getPopupContainer={resolveModalPopupContainer}
               value={form.indicator_category}
               options={INDICATOR_CATEGORIES.map((c) => ({ label: c, value: c }))}
               onChange={(v) => setField("indicator_category", v)}
@@ -280,6 +287,7 @@ export function MetricManageModal({
             <Text strong>单位</Text>
             <Select
               className="kpi-modal-v2__control"
+              getPopupContainer={resolveModalPopupContainer}
               value={form.unit}
               options={UNITS.map((u) => ({ label: u || "无", value: u }))}
               onChange={(v) => setField("unit", v)}

@@ -24,9 +24,21 @@ class AccountingAssetMovementRowPayload(BaseModel):
     zqtz_amount: Decimal
     gl_amount: Decimal
     reconciliation_diff: Decimal
-    reconciliation_status: Literal["matched", "mismatch", "gl_only", "zqtz_only"]
+    # chain_broken：横截面对得上、但本月期初接不上上月期末。跨月勾稽不过的行
+    # 不得对外显示成已对平，所以它占用 reconciliation_status 而不是只作为附注。
+    reconciliation_status: Literal[
+        "matched",
+        "mismatch",
+        "gl_only",
+        "zqtz_only",
+        "chain_broken",
+    ]
     source_version: str
     rule_version: str
+    # 两列都可能为 None：迁移落地前写入的历史行没有记录过控制结论，读取端要把
+    # "未记录"和"已判定"分开，不能把 None 当成 no_prior_month / 无头寸源。
+    chain_status: Literal["continuous", "broken", "no_prior_month"] | None = None
+    position_source_basis: str | None = None
 
 
 class AccountingAssetMovementSummaryPayload(BaseModel):

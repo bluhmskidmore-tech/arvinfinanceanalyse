@@ -183,15 +183,32 @@ function interestSpreadPayload(input: {
 
 type ProductCategoryPnlPayloadFixture = Omit<
   ProductCategoryPnlPayload,
-  "interest_spread"
+  | "interest_spread"
+  | "interest_earning_spread"
+  | "liability_cost_decomposition"
 > &
-  Partial<Pick<ProductCategoryPnlPayload, "interest_spread">>;
+  Partial<
+    Pick<
+      ProductCategoryPnlPayload,
+      | "interest_spread"
+      | "interest_earning_spread"
+      | "liability_cost_decomposition"
+    >
+  >;
 
 function productCategoryPnlPayload(
   payload: ProductCategoryPnlPayloadFixture,
 ): ProductCategoryPnlPayload {
   return {
-    interest_spread: null,
+    interest_spread: interestSpreadPayload({}),
+    interest_earning_spread: interestSpreadPayload({}),
+    liability_cost_decomposition: {
+      liability_yield_pct: null,
+      liability_yield_ex_cln_pct: null,
+      cln_yield_pct: null,
+      cln_drag_bp: null,
+      cln_scale: null,
+    },
     ...payload,
   };
 }

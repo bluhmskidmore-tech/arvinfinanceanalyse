@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
+import { workbenchNavigation } from "../../../app/navigation";
 import { EM_DASH } from "../../../utils/format";
 import {
   buildLedgerKpiCards,
@@ -37,6 +38,18 @@ function queryCurrency(value: string | null) {
 function ledgerBoolLabel(value: boolean | undefined): string {
   return value ? "是" : "否";
 }
+
+/** 「无数据 否」双重否定难读：无数据回退按事件表述（发生/未发生）。 */
+function ledgerNoDataLabel(value: boolean | undefined): string {
+  return value ? "发生" : "未发生";
+}
+
+/**
+ * 英文治理记录原文（证据引用）：与外壳横幅共用 navigation 单一来源；
+ * 横幅已收敛为中文摘要（governanceBanner），原文在页内默认折叠展示。
+ */
+const LEDGER_GOVERNANCE_NOTE_ORIGINAL =
+  workbenchNavigation.find((section) => section.key === "bank-ledger-dashboard")?.readinessNote ?? "";
 
 function ledgerMissingValue<T>(value: T | null | undefined): T | typeof EM_DASH {
   if (value === null || value === undefined || value === "") {
@@ -160,6 +173,20 @@ export default function LedgerDashboardPage() {
     dashboard?.metadata ?? datesQuery.data?.metadata,
     pageError,
   );
+  const pageErrorMessage =
+    pageError instanceof Error && pageError.message ? pageError.message : null;
+  const positionsErrorMessage =
+    positionsQuery.error instanceof Error && positionsQuery.error.message
+      ? positionsQuery.error.message
+      : null;
+  const retryPageLoad = () => {
+    if (datesQuery.isError) {
+      void datesQuery.refetch();
+    }
+    if (selectedDate && dashboardQuery.isError) {
+      void dashboardQuery.refetch();
+    }
+  };
   const positionsState = ledgerDataState(positions?.metadata, positionsQuery.error);
   const actualDate = resolvedLedgerDate(dashboard?.trace, dashboard?.data.as_of_date);
   const requestedDate = dashboard?.trace.requested_as_of_date ?? selectedDate;
@@ -187,11 +214,16 @@ export default function LedgerDashboardPage() {
             {actualDate ? `数据日期 ${actualDate}` : "等待可用台账日期"}
           </p>
         </div>
+        {/* 候选未获批准：徽标走琥珀而非绿色，避免与治理语义相悖（§4）。 */}
         <div className="ledger-dashboard__mode">
-          {client.mode === "real" ? "真实传输（候选读模型）" : "本地演示（候选读模型）"}
+          {client.mode === "real" ? "候选读模型 · 真实链路" : "候选读模型 · 本地演示"}
         </div>
       </header>
 
+      {/*
+       * 候选口径/未批准/UNCLASSIFIED 已由外壳治理横幅（中文摘要）陈述，
+       * 本卡只保留口径与回填进度事实，英文治理记录原文默认折叠（证据引用）。
+       */}
       <section
         className="ledger-dashboard__governance-boundary"
         data-testid="ledger-dashboard-governance-boundary"
@@ -199,8 +231,14 @@ export default function LedgerDashboardPage() {
       >
         <strong>候选导入 position_snapshot（非正式口径）</strong>
         <span>
-          各币种桶为独立原币金额（亿元），不做外汇折算。分类 v2 仅在导入时生效；未匹配项标记为 UNCLASSIFIED，旧规则批次 fail closed。线上批次 1-8 历史回填已完成；golden sample 待审批。UNKNOWN 修复、负责人审批与授权真页 UAT 仍待完成。
+          各币种桶为独立原币金额（亿元），不做外汇折算。线上批次 1-8 历史回填已完成；golden sample 待审批，UNKNOWN 修复与授权真页 UAT 待完成。
         </span>
+        {LEDGER_GOVERNANCE_NOTE_ORIGINAL ? (
+          <details className="ledger-dashboard__governance-original">
+            <summary>治理记录原文（英文）</summary>
+            <p>{LEDGER_GOVERNANCE_NOTE_ORIGINAL}</p>
+          </details>
+        ) : null}
       </section>
       <div className="ledger-dashboard__toolbar">
         <label className="ledger-dashboard__field">
@@ -261,14 +299,22 @@ export default function LedgerDashboardPage() {
           <p>候选台账导入证据，不构成正式余额或正式 PnL。支持 .csv、.xls、.xlsx，最大 16 MiB。</p>
         </div>
         <div className="ledger-dashboard__import-controls">
+          {/* 原生 file input 控件文案随浏览器语言（Choose File 等）：视觉按钮改自绘中文，input 仅保留语义与焦点。 */}
           <label className="ledger-dashboard__file-field">
             <span>台账文件</span>
-            <input
-              type="file"
-              accept=".csv,.xls,.xlsx"
-              disabled={ledgerImport.isPending || ledgerImport.isSubmitting}
-              onChange={(event) => ledgerImport.chooseFile(event.target.files?.[0] ?? null)}
-            />
+            <span className="ledger-dashboard__file-control">
+              <input
+                type="file"
+                className="ledger-dashboard__file-input"
+                aria-label="台账文件"
+                accept=".csv,.xls,.xlsx"
+                disabled={ledgerImport.isPending || ledgerImport.isSubmitting}
+                onChange={(event) => ledgerImport.chooseFile(event.target.files?.[0] ?? null)}
+              />
+              <span className="ledger-dashboard__file-button" aria-hidden="true">
+                {ledgerImport.file ? "重新选择文件" : "选择文件"}
+              </span>
+            </span>
           </label>
           <button
             type="button"
@@ -338,16 +384,28 @@ export default function LedgerDashboardPage() {
           className={`ledger-dashboard__status ledger-dashboard__status--${state}`}
           data-testid="ledger-dashboard-status"
         >
-          {state === "loading_failure"
-            ? "加载失败"
-            : state === "no_data"
-              ? "暂无数据"
-              : state === "fallback"
-                ? `已回退到 ${actualDate ?? EM_DASH}`
-                : `数据截至 ${actualDate ?? EM_DASH}`}
-          {requestedDate && actualDate && requestedDate !== actualDate ? (
-            <span> 请求日期 {requestedDate}</span>
-          ) : null}
+          {state === "loading_failure" ? (
+            <div className="ledger-dashboard__status-failure" role="alert">
+              <strong>{pageErrorMessage ? `加载失败：${pageErrorMessage}` : "加载失败"}</strong>
+              <span className="ledger-dashboard__status-scope">
+                影响范围：KPI、分类质量与持仓明细暂不可用。
+              </span>
+              <button type="button" className="ledger-dashboard__status-retry" onClick={retryPageLoad}>
+                重试
+              </button>
+            </div>
+          ) : (
+            <>
+              {state === "no_data"
+                ? "暂无数据"
+                : state === "fallback"
+                  ? `已回退到 ${actualDate ?? EM_DASH}`
+                  : `数据截至 ${actualDate ?? EM_DASH}`}
+              {requestedDate && actualDate && requestedDate !== actualDate ? (
+                <span> 请求日期 {requestedDate}</span>
+              ) : null}
+            </>
+          )}
         </div>
       ) : null}
 
@@ -416,7 +474,7 @@ export default function LedgerDashboardPage() {
               data-testid="ledger-dashboard-positions-status"
             >
               {positionsState === "loading_failure"
-                ? "明细加载失败"
+                ? `明细加载失败${positionsErrorMessage ? `：${positionsErrorMessage}` : ""}`
                 : positionsState === "no_data"
                   ? "明细暂无数据"
                   : positionsState === "fallback"
@@ -429,8 +487,9 @@ export default function LedgerDashboardPage() {
           ) : null}
           <table data-testid="ledger-dashboard-positions-table">
             <thead>
+              {/* 列名中文化；接口字段名收进 title 作证据引用（§7）。 */}
               <tr>
-                <th>position_key</th>
+                <th title="position_key">持仓键</th>
                 <th>方向</th>
                 <th>债券代码</th>
                 <th>组合</th>
@@ -438,8 +497,8 @@ export default function LedgerDashboardPage() {
                 <th>账户类别</th>
                 <th>资产分类</th>
                 <th>面值（原币）</th>
-                <th>batch_id</th>
-                <th>row_no</th>
+                <th title="batch_id">批次号</th>
+                <th title="row_no">行号</th>
               </tr>
             </thead>
             <tbody>
@@ -483,8 +542,8 @@ export default function LedgerDashboardPage() {
             <dd>{ledgerBoolLabel(dashboard?.metadata.stale)}</dd>
             <dt>已回退</dt>
             <dd>{ledgerBoolLabel(dashboard?.metadata.fallback)}</dd>
-            <dt>无数据</dt>
-            <dd>{ledgerBoolLabel(dashboard?.metadata.no_data ?? datesQuery.data?.metadata.no_data)}</dd>
+            <dt title="no_data">无数据回退</dt>
+            <dd>{ledgerNoDataLabel(dashboard?.metadata.no_data ?? datesQuery.data?.metadata.no_data)}</dd>
           </dl>
         </article>
         <article>
@@ -513,8 +572,8 @@ export default function LedgerDashboardPage() {
             <dd>{ledgerBoolLabel(positions?.metadata.stale)}</dd>
             <dt>已回退</dt>
             <dd>{ledgerBoolLabel(positions?.metadata.fallback)}</dd>
-            <dt>无数据</dt>
-            <dd>{ledgerBoolLabel(positions?.metadata.no_data)}</dd>
+            <dt title="no_data">无数据回退</dt>
+            <dd>{ledgerNoDataLabel(positions?.metadata.no_data)}</dd>
           </dl>
         </article>
       </section>

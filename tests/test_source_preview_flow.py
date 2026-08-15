@@ -1,4 +1,5 @@
 ﻿import importlib
+import json
 import os
 import sys
 from datetime import datetime, timezone
@@ -2135,3 +2136,58 @@ def _grant_source_preview_scope(*, settings, user_id: str, action: str) -> None:
         resource="source_preview.source_foundation",
         action=action,
     )
+
+
+def test_source_preview_refresh_failure_restores_preview_tables_while_writer_lock_held(
+    tmp_path, monkeypatch
+):
+    """异常恢复 restore/cleanup 必须仍持有 materialize 写锁执行（B5 审计修复）。"""
+    import backend.app.tasks.source_preview_refresh as refresh_module
+    from backend.app.governance.locks import acquire_lock as real_acquire_lock
+
+    duckdb_path = tmp_path / "preview-restore-lock.duckdb"
+    governance_dir = tmp_path / "restore-lock-governance"
+    lock_probe: dict[str, bool] = {}
+
+    monkeypatch.setattr(
+        refresh_module,
+        "_run_source_preview_ingest",
+        lambda **_kwargs: {"ingest_batch_id": "batch-restore-lock"},
+    )
+    monkeypatch.setattr(refresh_module, "snapshot_preview_tables", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        refresh_module,
+        "materialize_source_previews",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("materialize failed")),
+    )
+    monkeypatch.setattr(refresh_module, "cleanup_preview_backups", lambda *_a, **_k: None)
+
+    def recording_restore(*_args, **_kwargs):
+        lock_definition = refresh_module.resolve_materialize_lock(duckdb_path)
+        try:
+            with real_acquire_lock(
+                lock_definition,
+                base_dir=duckdb_path.parent,
+                timeout_seconds=0.05,
+            ):
+                lock_probe["held_during_restore"] = False
+        except TimeoutError:
+            lock_probe["held_during_restore"] = True
+
+    monkeypatch.setattr(refresh_module, "restore_preview_tables", recording_restore)
+
+    with pytest.raises(RuntimeError, match="materialize failed"):
+        refresh_module._refresh_source_preview_cache(
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+            data_root=str(tmp_path / "input"),
+        )
+
+    assert lock_probe == {"held_during_restore": True}
+
+    build_runs = [
+        json.loads(line)
+        for line in (governance_dir / "cache_build_run.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert build_runs[-1]["status"] == "failed"

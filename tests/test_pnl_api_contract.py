@@ -3355,6 +3355,67 @@ def test_pnl_by_business_ytd_summary_aggregates_parent_amounts_before_rounding()
     assert payload.summary.total_pnl == Decimal("0.01")
 
 
+def test_pnl_by_business_ytd_avg_balance_distinguishes_unmatched_null_from_true_zero():
+    """未匹配日均数据的父级行 avg_balance 输出 null；匹配到且日均为 0 的父级行保持 0。"""
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    category_module = load_module(
+        "backend.app.core_finance.zqtz_asset_bond_category",
+        "backend/app/core_finance/zqtz_asset_bond_category.py",
+    )
+    row_defs = {str(row["row_key"]): row for row in category_module.ZQTZ_ASSET_BOND_ROWS}
+    matched_def = row_defs["asset_zqtz_policy_financial_bond"]
+    unmatched_def = row_defs["asset_zqtz_treasury_bond"]
+    groups = {}
+    for index, row_def in enumerate([matched_def, unmatched_def]):
+        group = pnl_service._new_balance_movement_pnl_group(row_def)
+        groups[str(row_def["row_key"])] = group
+        pnl_service._merge_balance_movement_business_record(
+            groups,
+            row_def,
+            {
+                "bond_code": f"PARENT-AVG-{index}",
+                "interest_income": Decimal("1.00"),
+                "fair_value_change": Decimal("0"),
+                "capital_gain": Decimal("0"),
+                "manual_adjustment": Decimal("0"),
+                "total_pnl": Decimal("1.00"),
+            },
+        )
+    balance_rows = [
+        {
+            "report_date": "2025-01-31",
+            "instrument_code": "TRUE-ZERO-ADB-1",
+            "bond_type": str(matched_def["match_keywords"][0]),
+            "avg_amount": Decimal("0"),
+            "current_amount": Decimal("0"),
+        }
+    ]
+
+    payload = pnl_service._build_pnl_by_business_ytd_payload_from_groups(
+        year=2025,
+        loaded_dates=["2025-01-31"],
+        total_pnl=Decimal("2.00"),
+        groups=groups,
+        duckdb_path="unused.duckdb",
+        source_tables=["test_source"],
+        ftp_rate_pct=Decimal("0"),
+        balance_rows=balance_rows,
+        unallocated_items=[],
+    )
+
+    items_by_key = {item.row_key: item for item in payload.items}
+    assert items_by_key["asset_zqtz_policy_financial_bond"].avg_balance == Decimal("0.00")
+    assert items_by_key["asset_zqtz_treasury_bond"].avg_balance is None
+    # 日均缺失与真零共用收益率守卫：两者的年化收益率均为 None。
+    assert items_by_key["asset_zqtz_treasury_bond"].annualized_yield_pct is None
+    # 汇总求和路径不受 None 影响（缺失按 0 参与合计）。
+    assert payload.summary.avg_balance == Decimal("0.00")
+
+    dumped_items = {row["row_key"]: row for row in payload.model_dump(mode="json")["items"]}
+    assert dumped_items["asset_zqtz_policy_financial_bond"]["avg_balance"] == "0.00"
+    assert dumped_items["asset_zqtz_treasury_bond"]["avg_balance"] is None
+
+
 def test_pnl_by_business_ytd_classifies_each_report_month_before_accumulating(tmp_path, monkeypatch):
     governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
     duckdb_path = tmp_path / "moss.duckdb"
@@ -4716,12 +4777,15 @@ def test_pnl_by_business_precompute_status_uses_selected_cutoff(
 def test_pnl_by_business_precompute_status_marks_stale_inflight_and_allows_rebuild(
     tmp_path,
     monkeypatch,
+    request,
 ):
     from backend.app.services import pnl_service
 
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     get_settings.cache_clear()
+    # teardown 兜底清缓存：断言中途失败也不会把 tmp_path Settings 泄漏给后续测试。
+    request.addfinalizer(get_settings.cache_clear)
     settings = get_settings()
     stale_record = CacheBuildRunRecord(
         run_id="pnl_by_business_precompute:stale",
@@ -4774,7 +4838,6 @@ def test_pnl_by_business_precompute_status_marks_stale_inflight_and_allows_rebui
     assert queued["status"] == "queued"
     assert len(dispatched) == 1
     assert dispatched[0]["as_of_date"] == "2025-12-31"
-    get_settings.cache_clear()
 
 
 def test_pnl_by_business_precompute_status_prioritizes_inflight_run_over_later_terminal_event(
@@ -4783,6 +4846,8 @@ def test_pnl_by_business_precompute_status_prioritizes_inflight_run_over_later_t
 ):
     from backend.app.services import pnl_service
 
+    # 防御：即使后续逻辑读到 settings.duckdb_path，也不落到默认真实库 data/moss.duckdb。
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     get_settings.cache_clear()
     settings = get_settings()
@@ -9242,6 +9307,10 @@ def _seed_pnl_by_business_month(duckdb_path: Path) -> None:
 
 
 def _seed_usd_pnl_bridge_balance_rows(duckdb_path: Path) -> None:
+    """Seed the real materialized shape: one native-basis row plus one CNY-basis row
+    per position/date (see tasks/balance_analysis_materialize.py). The bridge reads the
+    CNY rows (FX-converted amounts) and the service enriches native amounts from the
+    native rows for fx_translation."""
     repo_module = load_module(
         "backend.app.repositories.balance_analysis_repo",
         "backend/app/repositories/balance_analysis_repo.py",

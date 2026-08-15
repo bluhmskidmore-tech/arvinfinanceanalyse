@@ -679,8 +679,15 @@ def test_golden_fx_translation_matches_hand_computed_native_exposure_times_rate_
     assert row.fx_translation == Decimal("50000")
     assert row.explained_pnl == Decimal("50000")
     assert row.residual == Decimal("0")
-    assert row.quality_flag == "ok"
     assert not any("FX_RATE_MISSING" in message for message in row.balance_diagnostics)
+    # 残差闭合（ratio=0）本身给出 "ok"，但本用例没喂曲线，而这是一行 FVTPL、
+    # 剩余期限 5 年、久期 4 的可计算行：它的 treasury_curve=0 是"没有曲线"而不是
+    # "利率没动"，因此标记被升级为 warning 并附带原因。
+    assert row.residual_ratio == Decimal("0")
+    assert row.quality_flag == "warning"
+    assert any(
+        message.startswith("TREASURY_CURVE_UNAVAILABLE") for message in row.balance_diagnostics
+    )
 
 
 def test_golden_fx_translation_quantizes_to_eight_decimals_half_up():

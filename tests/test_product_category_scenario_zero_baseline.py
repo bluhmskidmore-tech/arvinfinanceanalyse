@@ -5,16 +5,19 @@ apply_scenario_to_rows 零基准（baseline_ftp_rate_pct=0）边界（2026-08 Pn
 新行为：按正式口径的 FTP 基线公式 scale × scenario_rate × days/365
 （_calculate_ftp，与 calculate_read_model 叶子行一致，days 由行内
 report_date/view 经 _days_for_view 推得）以情景利率直接重算；
-行内 scale 全为 0 的汇总行（如 grand_total）保持 0。
-
-范围：仅 Scenario 面（analysis_adapters 仅在 basis=scenario 时调用本函数），
-Formal 读模型不经过本函数，行为零变化。
+完整生产批次先按 children 自底向上汇总，再重建 side/grand totals；
+孤立零 scale 汇总行保持既有 fallback。
 """
 from __future__ import annotations
 
 from decimal import Decimal
 
-from backend.app.core_finance.product_category_pnl import apply_scenario_to_rows
+import pytest
+
+from backend.app.core_finance.product_category_pnl import (
+    apply_baseline_ftp_rate_to_rows,
+    apply_scenario_to_rows,
+)
 
 
 def _row(**overrides: object) -> dict[str, object]:
@@ -73,6 +76,156 @@ def test_zero_baseline_days_follow_row_view_and_report_date() -> None:
 
     assert adjusted["cny_ftp"] == Decimal("147.5")
     assert adjusted["foreign_ftp"] == Decimal("29.5")
+
+
+def test_zero_baseline_complete_rows_rebuild_side_totals_and_close_grand_total() -> None:
+    zero_fields = {
+        "cnx_scale": Decimal("0"),
+        "cny_scale": Decimal("0"),
+        "foreign_scale": Decimal("0"),
+        "cnx_cash": Decimal("0"),
+        "cny_cash": Decimal("0"),
+        "foreign_cash": Decimal("0"),
+        "cny_ftp": Decimal("0"),
+        "foreign_ftp": Decimal("0"),
+        "cny_net": Decimal("0"),
+        "foreign_net": Decimal("0"),
+        "business_net_income": Decimal("0"),
+    }
+    rows = [
+        _row(
+            category_id="asset_child",
+            metadata={"keep": True},
+        ),
+        _row(
+            category_id="asset_root",
+            category_name="债券投资",
+            side="asset",
+            level=0,
+            children=["asset_child"],
+            cnx_scale=Decimal("87600"),
+            cny_scale=Decimal("73000"),
+            foreign_scale=Decimal("14600"),
+            weighted_yield=Decimal("9.99"),
+            source_version="sv_zero_baseline",
+            rule_version="rv_zero_baseline",
+        ),
+        _row(
+            category_id="interest_earning_assets",
+            category_name="生息资产",
+            side="asset",
+            level=0,
+        ),
+        _row(
+            category_id="liability_root",
+            category_name="同业存放",
+            side="liability",
+            level=0,
+            **zero_fields,
+        ),
+        _row(
+            category_id="asset_total",
+            category_name="资产端合计",
+            side="asset",
+            level=0,
+            is_total=True,
+            children=["preserve_asset_children"],
+            cnx_scale=Decimal("87600"),
+            cny_scale=Decimal("73000"),
+            foreign_scale=Decimal("14600"),
+            weighted_yield=Decimal("9.99"),
+            source_version="sv_zero_baseline",
+            rule_version="rv_zero_baseline",
+        ),
+        _row(
+            category_id="liability_total",
+            category_name="负债端合计",
+            side="liability",
+            level=0,
+            is_total=True,
+            **zero_fields,
+        ),
+        _row(
+            category_id="grand_total",
+            category_name="grand_total",
+            side="all",
+            level=0,
+            is_total=True,
+            cnx_scale=Decimal("0"),
+            cny_scale=Decimal("0"),
+            foreign_scale=Decimal("0"),
+            cnx_cash=Decimal("120"),
+            cny_cash=Decimal("100"),
+            foreign_cash=Decimal("20"),
+            cny_net=Decimal("100"),
+            foreign_net=Decimal("20"),
+            business_net_income=Decimal("120"),
+            children=["preserve_grand_children"],
+            weighted_yield=Decimal("8.88"),
+            source_version="sv_zero_baseline",
+            rule_version="rv_zero_baseline",
+        ),
+    ]
+
+    adjusted = apply_scenario_to_rows(rows, Decimal("2.5"))
+    by_id = {str(row["category_id"]): row for row in adjusted}
+    assert {row["scenario_rate_pct"] for row in adjusted} == {Decimal("2.5")}
+    expected = (
+        Decimal("77.5"),
+        Decimal("15.5"),
+        Decimal("22.5"),
+        Decimal("4.5"),
+        Decimal("27"),
+    )
+    for category_id in ("asset_root", "asset_total", "grand_total"):
+        assert tuple(by_id[category_id][field] for field in (
+            "cny_ftp",
+            "foreign_ftp",
+            "cny_net",
+            "foreign_net",
+            "business_net_income",
+        )) == expected
+    assert by_id["asset_root"]["cny_ftp"] == by_id["asset_child"]["cny_ftp"]
+
+    changed_fields = {
+        "scenario_rate_pct",
+        "cny_ftp",
+        "foreign_ftp",
+        "cny_net",
+        "foreign_net",
+        "business_net_income",
+    }
+    for original, repriced in zip(rows, adjusted, strict=True):
+        assert {
+            key: value
+            for key, value in repriced.items()
+            if key not in changed_fields
+        } == {
+            key: value
+            for key, value in original.items()
+            if key not in changed_fields
+        }
+
+
+def test_mixed_zero_nonzero_baseline_always_fails_closed() -> None:
+    rows = [
+        _row(category_id="zero_baseline"),
+        _row(
+            category_id="nonzero_baseline",
+            baseline_ftp_rate_pct=Decimal("1.6"),
+            cny_ftp=Decimal("80"),
+            foreign_ftp=Decimal("8"),
+        ),
+    ]
+
+    for apply_rate, target in (
+        (apply_scenario_to_rows, Decimal("2.5")),
+        (apply_scenario_to_rows, Decimal("0")),
+        (apply_baseline_ftp_rate_to_rows, Decimal("1.6")),
+        (apply_baseline_ftp_rate_to_rows, Decimal("0")),
+    ):
+        with pytest.raises(ValueError, match="Cannot reprice mixed zero/nonzero baseline rates"):
+            apply_rate(rows, target)
 
 
 def test_zero_baseline_zero_scale_total_row_stays_zero_without_date_parsing() -> None:

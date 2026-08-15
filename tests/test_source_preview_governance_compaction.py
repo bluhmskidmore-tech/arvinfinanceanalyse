@@ -5,6 +5,12 @@ from pathlib import Path
 
 from tests.helpers import load_module
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_source_preview,
+]
 
 def _read_jsonl(path: Path) -> list[dict[str, object]]:
     return [
@@ -12,7 +18,6 @@ def _read_jsonl(path: Path) -> list[dict[str, object]]:
         for line in path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-
 
 def test_compact_cache_build_run_preserves_latest_record_per_source_preview_run_id(tmp_path):
     module = load_module(
@@ -61,7 +66,6 @@ def test_compact_cache_build_run_preserves_latest_record_per_source_preview_run_
         ("other", "running"),
     ]
     assert summary["removed_rows"] == 1
-
 
 def test_compact_cache_build_run_dry_run_leaves_file_unchanged(tmp_path):
     module = load_module(

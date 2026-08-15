@@ -121,7 +121,13 @@ class CampisiInputQuality(_StrictCampisiModel):
     duplicate_instrument_codes: CampisiDuplicateStat
     duplicate_position_keys: CampisiDuplicateStat
     missing_fields: CampisiMissingFields
-    market_curve_coverage: CampisiMarketCurveCoverage
+    # Emitted by the model path only, whose treasury/spread effects consume the
+    # treasury and credit-spread curves this block grades. The formal-bridge
+    # path decomposes from the ledger bridge without reading any curve, so it
+    # has no coverage verdict to report; its quality story lives in
+    # `formal_closure` (bridge_quality_flag / bridge_vendor_status /
+    # bridge_fallback_mode) instead.
+    market_curve_coverage: CampisiMarketCurveCoverage | None = None
     warnings: list[str]
 
 
@@ -130,12 +136,16 @@ class CampisiFormalClosure(_StrictCampisiModel):
     report_date: str
     status: str
     campisi_total_return: Number
-    formal_actual_pnl: Number
-    residual_to_formal_pnl: Number
-    residual_ratio: Number
-    bridge_quality_flag: str
-    bridge_vendor_status: str
-    bridge_fallback_mode: str
+    # The closure remains a valid warning envelope when the formal bridge is
+    # unavailable.  In that state the comparison amounts and bridge metadata
+    # are genuinely unknown, not numeric zero / "ok" placeholders.  A zero
+    # formal PnL with a non-zero residual also has an undefined ratio.
+    formal_actual_pnl: Number | None
+    residual_to_formal_pnl: Number | None
+    residual_ratio: Number | None
+    bridge_quality_flag: str | None
+    bridge_vendor_status: str | None
+    bridge_fallback_mode: str | None
     message: str
 
 
@@ -281,6 +291,9 @@ class CampisiMaturityBucketRow(_StrictCampisiModel):
 class CampisiMaturityBucketPayload(_StrictCampisiModel):
     period_start: str
     period_end: str
+    # Present when the maturity buckets are projected from the governed PnL
+    # bridge rather than the curve model; mirrors the four/enhanced payloads.
+    basis: str | None = None
     # Keyed by maturity bucket label (`0-1Y` … `10Y+`, plus `UNKNOWN` for
     # positions with no maturity date), which is data-driven.
     buckets: dict[str, CampisiMaturityBucketRow]

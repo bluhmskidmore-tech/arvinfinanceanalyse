@@ -24,6 +24,30 @@
   --ib-warn: var(--dh-api-amber);
   --ib-gold: var(--dh-api-amber);
   --ib-radius: var(--dh-api-radius);
+
+  /*
+   * 共享 PageSectionLead 消费 --moss-page-*：未定义时标题回退近黑 #16191d，
+   * 在深色底上呈 muted 灰、层级反转（§3）。桥接到 Nocturne 墨阶并把节题
+   * 收敛到 14px 节题制度（ledger-pnl 编号节题同档）。
+   */
+  --moss-page-ink: var(--dh-api-ink);
+  --moss-page-ink-secondary: var(--dh-api-soft);
+  --moss-page-ink-muted: var(--dh-api-muted);
+  --moss-page-section-title-size: 14px;
+}
+
+/* 节题字重对齐节题制度 14px/600（模块内写死 700；[class*=] 命中 CSS modules
+   hashed class，operations-analysis / cube-query 同款先例）。 */
+.pnl-by-business-insights-page h2[class*="sectionLeadTitle"] {
+  font-weight: 600;
+}
+
+/* 慢查询进度说明（§6 loading 可感知）：中性降权，不做警示色。 */
+.pnl-by-business-insights-slow-loading-note {
+  margin: 12px 0 0;
+  color: var(--ib-ink-muted);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .pnl-by-business-insights-filter-label {

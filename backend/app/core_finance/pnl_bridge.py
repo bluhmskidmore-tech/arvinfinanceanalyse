@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
@@ -44,6 +44,67 @@ CREDIT_SPREAD_CURVE_SAME_SOURCE_PREFIX = "CREDIT_SPREAD_CURVE_SAME_SOURCE"
 MARKET_VALUE_BASE_MISSING_PREFIX = "MARKET_VALUE_BASE_MISSING"
 ROLL_DOWN_WINDOW_MISSING_PREFIX = "ROLL_DOWN_WINDOW_MISSING"
 ROLL_DOWN_TENOR_OUTSIDE_CURVE_PREFIX = "ROLL_DOWN_TENOR_OUTSIDE_CURVE"
+CURVE_EFFECT_DEGRADED_PREFIXES = (
+    TREASURY_CURVE_UNAVAILABLE_PREFIX,
+    TREASURY_CURVE_SAME_SOURCE_PREFIX,
+    CREDIT_SPREAD_CURVE_UNAVAILABLE_PREFIX,
+    CREDIT_SPREAD_CURVE_SAME_SOURCE_PREFIX,
+)
+
+# 与上面的诊断前缀同源的结构化可用性取值。诊断字符串是给人读的一句话，可用性枚举
+# 是给页面分支用的判据；两者由 `_curve_effect_availability` 从同一个诊断派生，所以
+# 不可能出现"字符串说不可用、枚举说正常"的漂移。既有的文本匹配器不受影响：枚举是
+# 并行新增的通道，不替换任何一条诊断。
+CURVE_EFFECT_OK = "ok"
+CURVE_EFFECT_UNAVAILABLE = "unavailable"
+CURVE_EFFECT_NOT_APPLICABLE = "not_applicable"
+# 汇总级独有：部分行不可用时，合计既不是干净的观测值也不是完全缺失。
+CURVE_EFFECT_PARTIAL = "partial"
+
+CURVE_EFFECT_REASON_CURVE_UNAVAILABLE = "curve_unavailable"
+CURVE_EFFECT_REASON_SAME_SOURCE_CURVE = "same_source_curve"
+CURVE_EFFECT_REASON_MARKET_VALUE_BASE_MISSING = "market_value_base_missing"
+CURVE_EFFECT_REASON_ROLL_WINDOW_MISSING = "roll_window_missing"
+CURVE_EFFECT_REASON_TENOR_OUTSIDE_CURVE = "tenor_outside_curve_support"
+CURVE_EFFECT_REASON_NON_FVTPL_BASIS = "non_fvtpl_basis"
+CURVE_EFFECT_REASON_NOT_CREDIT_BOOK = "not_credit_book"
+CURVE_EFFECT_REASON_NO_CURVE_SENSITIVITY = "no_curve_sensitivity"
+CURVE_EFFECT_REASON_BALANCE_ROW_MISSING = "balance_row_missing"
+
+_CURVE_EFFECT_REASON_BY_PREFIX: tuple[tuple[str, str], ...] = (
+    (TREASURY_CURVE_UNAVAILABLE_PREFIX, CURVE_EFFECT_REASON_CURVE_UNAVAILABLE),
+    (TREASURY_CURVE_SAME_SOURCE_PREFIX, CURVE_EFFECT_REASON_SAME_SOURCE_CURVE),
+    (CREDIT_SPREAD_CURVE_UNAVAILABLE_PREFIX, CURVE_EFFECT_REASON_CURVE_UNAVAILABLE),
+    (CREDIT_SPREAD_CURVE_SAME_SOURCE_PREFIX, CURVE_EFFECT_REASON_SAME_SOURCE_CURVE),
+    (MARKET_VALUE_BASE_MISSING_PREFIX, CURVE_EFFECT_REASON_MARKET_VALUE_BASE_MISSING),
+    (ROLL_DOWN_WINDOW_MISSING_PREFIX, CURVE_EFFECT_REASON_ROLL_WINDOW_MISSING),
+    (ROLL_DOWN_TENOR_OUTSIDE_CURVE_PREFIX, CURVE_EFFECT_REASON_TENOR_OUTSIDE_CURVE),
+)
+
+
+@dataclass(slots=True, frozen=True)
+class CurveEffectAvailabilitySummary:
+    """汇总级可用性：合计里的 0 和行级的 0 一样需要能被判读。"""
+
+    status: str
+    unavailable_rows: int
+    applicable_rows: int
+    reasons: tuple[str, ...]
+
+
+@dataclass(slots=True, frozen=True)
+class _TreasuryCurveDiagnostic:
+    """基准曲线诊断：给人读的一句话，加上它对每个效应各自意味着什么。
+
+    ``treasury_curve`` 要把两端曲线相减，``roll_down`` 只沿当期曲线滚动，所以同一个
+    曲线状态对两者的后果并不相同（缺上期曲线只打掉前者，两端同源只打掉前者）。把
+    两个结论和字符串放在同一个分支里产出，是为了让它们不可能各说各话——如果各自
+    再判一次门控，总有一天会出现"字符串说不可用、枚举说正常"。
+    """
+
+    message: str | None = None
+    curve_shift_reason: str | None = None
+    roll_down_reason: str | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -71,6 +132,16 @@ class PnlBridgeRow:
     current_balance_found: bool
     prior_balance_found: bool
     balance_diagnostics: tuple[str, ...]
+    # 这六个字段回答"上面那三个 0 是观测值还是缺失值"，不参与任何金额计算。
+    # roll_down 与另外两项的门控并不相同：它只用当期曲线沿自身斜率滚动，却额外
+    # 需要一个有效的滚动窗口（上期余额行 + 正的天数），所以必须单独报，不能借用
+    # treasury_curve 的结论。
+    roll_down_availability: str
+    roll_down_availability_reason: str | None
+    treasury_curve_availability: str
+    treasury_curve_availability_reason: str | None
+    credit_spread_availability: str
+    credit_spread_availability_reason: str | None
 
 
 @dataclass(slots=True, frozen=True)
@@ -107,7 +178,7 @@ class _CurveRateLookup:
             self._curve_object_keys[object_id] = cached
         return cached
 
-    def rate(self, curve: dict[str, Decimal], target_years: float) -> Decimal:
+    def _fitted(self, curve: dict[str, Decimal]) -> FittedCurve:
         key = self._key(curve)
         fitted = self._fitted_curve_cache.get(key)
         if fitted is None:
@@ -120,7 +191,22 @@ class _CurveRateLookup:
             else:
                 fitted = FittedCurve(method=InterpolationMethod.LINEAR, points=points)
             self._fitted_curve_cache[key] = fitted
-        return _interpolate_fitted_curve(fitted, target_years)
+        return fitted
+
+    def rate(self, curve: dict[str, Decimal], target_years: float) -> Decimal:
+        return _interpolate_fitted_curve(self._fitted(curve), target_years)
+
+    def support(self, curve: dict[str, Decimal]) -> tuple[float, float] | None:
+        """拟合曲线真正覆盖的期限区间 ``[最短, 最长]``（年）。
+
+        取自实际拟合出来的节点而不是写死的期限表：``build_full_curve`` 目前把任何
+        原始曲线归一到 3M–30Y 网格，但这一点属于它的实现，不该在这里再抄一遍——
+        它哪天补上 1M 节点，这里就应该自动跟着放宽，而不是继续误报。
+        """
+        points = self._fitted(curve).points
+        if not points:
+            return None
+        return points[0].years, points[-1].years
 
 
 def build_pnl_bridge_rows(
@@ -198,7 +284,11 @@ def build_pnl_bridge_rows(
             # roll_down / curve_shift / credit_spread all key off the current balance row's
             # years-to-maturity and modified duration; compute them once per row instead of
             # once per effect (all three effects require a current benchmark curve).
-            if current_balance is not None and current_curve:
+            # Computed whenever a current balance row exists — including when the curve is
+            # missing — because the curve-unavailable diagnostics need to know whether the
+            # row was otherwise eligible for a non-zero effect. Numerically inert: every
+            # effect returns 0 early when the curve is falsy.
+            if current_balance is not None:
                 years_to_maturity = _years_to_maturity(report_date=report_date, row=current_balance)
                 modified_duration = (
                     _modified_duration(report_date=report_date, row=current_balance)
@@ -263,6 +353,78 @@ def build_pnl_bridge_rows(
                 years_to_maturity=years_to_maturity,
                 modified_duration=modified_duration,
             )
+            roll_down_flat_extrapolation_diagnostic = _roll_down_flat_extrapolation_diagnostic(
+                current_balance=current_balance,
+                prior_balance=prior_balance,
+                current_curve=current_curve,
+                curve_lookup=curve_lookup,
+                years_to_maturity=years_to_maturity,
+                modified_duration=modified_duration,
+            )
+            structural_exemption = _structural_exemption_reason(
+                current_balance=current_balance,
+                years_to_maturity=years_to_maturity,
+                modified_duration=modified_duration,
+            )
+            curve_effect_eligible = structural_exemption is None
+            treasury_curve_diagnostic = _treasury_curve_diagnostic(
+                curve_type=curve_type,
+                current_curve=current_curve,
+                prior_curve=prior_curve,
+                eligible=curve_effect_eligible,
+            )
+            credit_spread_curve_diagnostic = _credit_spread_curve_diagnostic(
+                current_balance=current_balance,
+                current_curve=current_curve,
+                prior_curve=prior_curve,
+                aaa_credit_curve_current=aaa_credit_curve_current,
+                aaa_credit_curve_prior=aaa_credit_curve_prior,
+                eligible=curve_effect_eligible,
+            )
+            # 市值基数全 NULL 会把三项效应一起顶成 0，而它既不是曲线问题也不是
+            # 结构性豁免（_structural_exemption_reason 明确不豁免这种行），此前
+            # 只有诊断字符串、没有结构化通道，枚举因此错报为 ok。
+            market_value_base_reason = _reason_from_diagnostic(
+                market_value_base_missing_diagnostic
+            )
+            (
+                roll_down_availability,
+                roll_down_availability_reason,
+            ) = _curve_effect_availability(
+                not_applicable_reason=structural_exemption,
+                unavailable_reasons=(
+                    treasury_curve_diagnostic.roll_down_reason,
+                    market_value_base_reason,
+                    _reason_from_diagnostic(roll_down_window_missing_diagnostic),
+                    _reason_from_diagnostic(roll_down_flat_extrapolation_diagnostic),
+                ),
+            )
+            (
+                treasury_curve_availability,
+                treasury_curve_availability_reason,
+            ) = _curve_effect_availability(
+                not_applicable_reason=structural_exemption,
+                unavailable_reasons=(
+                    treasury_curve_diagnostic.curve_shift_reason,
+                    market_value_base_reason,
+                ),
+            )
+            (
+                credit_spread_availability,
+                credit_spread_availability_reason,
+            ) = _curve_effect_availability(
+                # 口径豁免优先于敏感度豁免：对利率簿行说"没有信用利差可动"比说
+                # "这行不随曲线动"更贴近它为什么是 0。
+                not_applicable_reason=(
+                    CURVE_EFFECT_REASON_NOT_CREDIT_BOOK
+                    if current_balance is not None and not _is_credit_row(current_balance)
+                    else structural_exemption
+                ),
+                unavailable_reasons=(
+                    _reason_from_diagnostic(credit_spread_curve_diagnostic),
+                    market_value_base_reason,
+                ),
+            )
         else:
             roll_down = ZERO
             treasury_curve = ZERO
@@ -271,6 +433,17 @@ def build_pnl_bridge_rows(
             fx_rate_missing_diagnostic = None
             market_value_base_missing_diagnostic = None
             roll_down_window_missing_diagnostic = None
+            roll_down_flat_extrapolation_diagnostic = None
+            # 非 FVTPL 行的市场效应按口径整体不适用，其 0 是结构性的，
+            # 与"缺曲线"无关，因此不产生曲线诊断（与 FX 诊断同一门控）。
+            treasury_curve_diagnostic = _TreasuryCurveDiagnostic()
+            credit_spread_curve_diagnostic = None
+            roll_down_availability = CURVE_EFFECT_NOT_APPLICABLE
+            roll_down_availability_reason = CURVE_EFFECT_REASON_NON_FVTPL_BASIS
+            treasury_curve_availability = CURVE_EFFECT_NOT_APPLICABLE
+            treasury_curve_availability_reason = CURVE_EFFECT_REASON_NON_FVTPL_BASIS
+            credit_spread_availability = CURVE_EFFECT_NOT_APPLICABLE
+            credit_spread_availability_reason = CURVE_EFFECT_REASON_NON_FVTPL_BASIS
 
         # 互斥分解：516 不计入 explained。市场效应本身就是对 516 的解释，二者
         # 同时相加会使 residual 在代数上恒等于市场效应之和的相反数，质量标记
@@ -299,6 +472,9 @@ def build_pnl_bridge_rows(
             )
         )
 
+        curve_effect_degraded = bool(
+            treasury_curve_diagnostic.message or credit_spread_curve_diagnostic
+        )
         rows.append(
             PnlBridgeRow(
                 report_date=report_date,
@@ -320,7 +496,10 @@ def build_pnl_bridge_rows(
                 actual_pnl=actual_pnl,
                 residual=residual,
                 residual_ratio=residual_ratio,
-                quality_flag="warning" if actual_pnl_missing else _quality_flag(residual_ratio),
+                quality_flag=_escalate_quality_flag(
+                    "warning" if actual_pnl_missing else _quality_flag(residual_ratio),
+                    degraded=curve_effect_degraded,
+                ),
                 current_balance_found=current_balance is not None,
                 prior_balance_found=prior_balance is not None,
                 balance_diagnostics=_build_balance_diagnostics(
@@ -338,7 +517,18 @@ def build_pnl_bridge_rows(
                         market_value_base_missing_diagnostic
                     ),
                     roll_down_window_missing_diagnostic=roll_down_window_missing_diagnostic,
+                    roll_down_flat_extrapolation_diagnostic=(
+                        roll_down_flat_extrapolation_diagnostic
+                    ),
+                    treasury_curve_diagnostic=treasury_curve_diagnostic.message,
+                    credit_spread_curve_diagnostic=credit_spread_curve_diagnostic,
                 ),
+                roll_down_availability=roll_down_availability,
+                roll_down_availability_reason=roll_down_availability_reason,
+                treasury_curve_availability=treasury_curve_availability,
+                treasury_curve_availability_reason=treasury_curve_availability_reason,
+                credit_spread_availability=credit_spread_availability,
+                credit_spread_availability_reason=credit_spread_availability_reason,
             )
         )
     return rows
@@ -728,7 +918,7 @@ def _market_value_base_missing_diagnostic(
     if _first_available_value(current_balance, _MARKET_VALUE_KEYS) is not None:
         return None
     return (
-        "MARKET_VALUE_BASE_MISSING: current balance row has no usable market value "
+        f"{MARKET_VALUE_BASE_MISSING_PREFIX}: current balance row has no usable market value "
         f"({'/'.join(_MARKET_VALUE_KEYS)} all missing or NULL); "
         "roll_down / treasury_curve / credit_spread defaulted to 0."
     )
@@ -767,9 +957,290 @@ def _roll_down_window_missing_diagnostic(
         else "prior balance row shares the current report_date (period_days=0)"
     )
     return (
-        f"ROLL_DOWN_WINDOW_MISSING: {reason}; roll_down defaulted to 0 while "
+        f"{ROLL_DOWN_WINDOW_MISSING_PREFIX}: {reason}; roll_down defaulted to 0 while "
         "treasury_curve / credit_spread still computed from the current balance row."
     )
+
+
+def _roll_down_flat_extrapolation_diagnostic(
+    *,
+    current_balance: Mapping[str, object] | None,
+    prior_balance: Mapping[str, object] | None,
+    current_curve: dict[str, Decimal] | None,
+    curve_lookup: _CurveRateLookup,
+    years_to_maturity: float,
+    modified_duration: Decimal,
+) -> str | None:
+    """Flag roll_down that is 0 because the position sits outside the curve's tenor span.
+
+    ``roll_down`` is the only market effect that reads *two tenors off one curve*, so it
+    is the only one that dies when the position's remaining tenor falls outside the
+    curve's support: the interpolator clamps to the nearest node, both reads return the
+    same rate, and the effect is 0 by construction. On 2026-07-31 every governed curve
+    starts at 3M while sub-3M money-market paper (SCP / NCD) is a real part of the book,
+    so those rows publish a structural 0 that looks exactly like "this bond earned no
+    roll". ``treasury_curve`` / ``credit_spread`` are unaffected: they compare the *same*
+    tenor across two dates, so clamping still yields a genuine rate change.
+
+    Fires only when roll_down would otherwise have been computable, so a row already
+    reported as curve-less, base-less or window-less is not double-reported.
+    """
+    if current_balance is None or prior_balance is None or not current_curve:
+        return None
+    if years_to_maturity <= 0 or modified_duration == ZERO:
+        return None
+    if _curve_market_value(current_balance) == ZERO:
+        return None
+    period_days = _period_days(current_balance=current_balance, prior_balance=prior_balance)
+    if period_days <= 0:
+        return None
+    support = curve_lookup.support(current_curve)
+    if support is None:
+        return None
+    shortest, longest = support
+    rolled_years = max(0.0, years_to_maturity - (period_days / 365))
+    below = years_to_maturity < shortest and rolled_years < shortest
+    above = years_to_maturity > longest and rolled_years > longest
+    if not (below or above):
+        return None
+    edge = "shorter than" if below else "longer than"
+    bound = shortest if below else longest
+    return (
+        f"{ROLL_DOWN_TENOR_OUTSIDE_CURVE_PREFIX}: remaining tenor "
+        f"{years_to_maturity:.4f}y is {edge} the benchmark curve's {bound:.4f}y "
+        "boundary, so both roll points clamp to the same node and roll_down is 0 by "
+        "construction; this is missing curve coverage, not an observed absence of roll."
+    )
+
+
+def _structural_exemption_reason(
+    *,
+    current_balance: Mapping[str, object] | None,
+    years_to_maturity: float,
+    modified_duration: Decimal,
+) -> str | None:
+    """Why this row would show 0 even with a perfect curve — ``None`` if it would move.
+
+    Only a row that would move can turn a missing curve into a misleading zero. A
+    matured or zero-duration row, or a genuinely flat position (market-value column
+    present and equal to 0), yields 0 whatever the curve says, so reporting "curve
+    unavailable" there would be a false alarm — and counting it as an *observed* zero
+    would be just as wrong, because nothing about the curve was measured. Both the
+    diagnostic gate and the structured availability field key off this one answer.
+
+    A row whose market-value columns are all NULL is *not* exempt: we cannot claim it
+    is flat, and ``_market_value_base_missing_diagnostic`` only fires when a curve
+    exists, so the curve gap would otherwise go unreported.
+    """
+    if current_balance is None:
+        return CURVE_EFFECT_REASON_BALANCE_ROW_MISSING
+    if years_to_maturity <= 0 or modified_duration == ZERO:
+        return CURVE_EFFECT_REASON_NO_CURVE_SENSITIVITY
+    market_value_present = _first_available_value(current_balance, _MARKET_VALUE_KEYS) is not None
+    if market_value_present and _curve_market_value(current_balance) == ZERO:
+        return CURVE_EFFECT_REASON_NO_CURVE_SENSITIVITY
+    return None
+
+
+def _treasury_curve_diagnostic(
+    *,
+    curve_type: str,
+    current_curve: dict[str, Decimal] | None,
+    prior_curve: dict[str, Decimal] | None,
+    eligible: bool,
+) -> _TreasuryCurveDiagnostic:
+    """Separate "the benchmark did not move" from "there is no benchmark to compare".
+
+    ``_calculate_curve_shift`` returns 0 both when the period's rates were genuinely
+    flat and when a curve is missing or both period ends resolved to the *same*
+    snapshot (the 2026-07-31 reality: every date falls back to the 2026-06-30 curve, so
+    ``rate_delta`` is 0 by construction). Published as a bare 0 the two are
+    indistinguishable, and the page reads the second as the first.
+
+    The message is unchanged; what is new is that the same branch also states what the
+    condition means for each effect, so the structured fields never have to re-decide
+    (or re-parse) it.
+    """
+    if not eligible:
+        return _TreasuryCurveDiagnostic()
+    if not current_curve or not prior_curve:
+        missing = ", ".join(
+            side
+            for side, curve in (("current", current_curve), ("prior", prior_curve))
+            if not curve
+        )
+        return _TreasuryCurveDiagnostic(
+            message=(
+                f"{TREASURY_CURVE_UNAVAILABLE_PREFIX}: curve_type={curve_type}; no benchmark curve "
+                f"for the {missing} period end; roll_down / treasury_curve defaulted to 0. "
+                "This is a missing input, not an observed zero rate move."
+            ),
+            curve_shift_reason=CURVE_EFFECT_REASON_CURVE_UNAVAILABLE,
+            # roll_down 只沿当期曲线滚动，缺上期曲线不影响它；只有当期缺失才归零。
+            roll_down_reason=(
+                CURVE_EFFECT_REASON_CURVE_UNAVAILABLE if not current_curve else None
+            ),
+        )
+    if current_curve == prior_curve:
+        return _TreasuryCurveDiagnostic(
+            message=(
+                f"{TREASURY_CURVE_SAME_SOURCE_PREFIX}: curve_type={curve_type}; both period ends "
+                "resolved to an identical benchmark curve, so the curve shift is 0 by construction; "
+                "treasury_curve carries no information about the period."
+            ),
+            curve_shift_reason=CURVE_EFFECT_REASON_SAME_SOURCE_CURVE,
+            # 两端同源只让"两端相减"恒为 0；roll_down 仍是从一条真实（尽管陈旧）
+            # 曲线上读出来的观测值，标成不可用是假警报。曲线的陈旧性由
+            # YIELD_CURVE_LATEST_FALLBACK 与 result_meta 的 stale 标记负责披露。
+            roll_down_reason=None,
+        )
+    return _TreasuryCurveDiagnostic()
+
+
+def _credit_spread_curve_diagnostic(
+    *,
+    current_balance: Mapping[str, object] | None,
+    current_curve: dict[str, Decimal] | None,
+    prior_curve: dict[str, Decimal] | None,
+    aaa_credit_curve_current: dict[str, Decimal] | None,
+    aaa_credit_curve_prior: dict[str, Decimal] | None,
+    eligible: bool,
+) -> str | None:
+    """Same separation for ``credit_spread``, restricted to credit-book rows.
+
+    A rate-book row has no credit spread to move, so its 0 is structurally correct and
+    must not be flagged — mirroring how ``_fx_rate_missing_diagnostic`` stays silent on
+    domestic rows.
+    """
+    if not eligible or current_balance is None or not _is_credit_row(current_balance):
+        return None
+    legs = (
+        ("benchmark current", current_curve),
+        ("benchmark prior", prior_curve),
+        ("AAA current", aaa_credit_curve_current),
+        ("AAA prior", aaa_credit_curve_prior),
+    )
+    missing = [name for name, curve in legs if not curve]
+    if missing:
+        return (
+            f"{CREDIT_SPREAD_CURVE_UNAVAILABLE_PREFIX}: missing {', '.join(missing)} curve; "
+            "credit_spread defaulted to 0. This is a missing input, not an observed zero "
+            "spread move."
+        )
+    same_source = [
+        name
+        for name, is_same in (
+            ("benchmark", current_curve == prior_curve),
+            ("AAA", aaa_credit_curve_current == aaa_credit_curve_prior),
+        )
+        if is_same
+    ]
+    if same_source:
+        return (
+            f"{CREDIT_SPREAD_CURVE_SAME_SOURCE_PREFIX}: the {', '.join(same_source)} curve is "
+            "identical on both period ends, so that leg of the spread change is 0 by "
+            "construction; credit_spread understates the period."
+        )
+    return None
+
+
+def _reason_from_diagnostic(diagnostic: str | None) -> str | None:
+    """把一条诊断映射回它的成因码；无诊断或前缀不认识时返回 ``None``。
+
+    只有"触发条件与该效应归零条件完全重合"的诊断才配进这张表——
+    ``MARKET_VALUE_BASE_MISSING`` 与 ``ROLL_DOWN_WINDOW_MISSING`` 都是如此，所以
+    从字符串反查成因与重新判门控等价，且只有一处判定。基准曲线诊断不在此列：
+    同一条字符串对 roll_down 与 treasury_curve 的后果不同，由
+    ``_TreasuryCurveDiagnostic`` 分别给出。
+    """
+    if diagnostic is None:
+        return None
+    for prefix, reason in _CURVE_EFFECT_REASON_BY_PREFIX:
+        if diagnostic.startswith(prefix):
+            return reason
+    return None
+
+
+def _curve_effect_availability(
+    *,
+    not_applicable_reason: str | None,
+    unavailable_reasons: tuple[str | None, ...],
+) -> tuple[str, str | None]:
+    """把行级归零成因翻成 (状态, 成因) 二元组。
+
+    成因由产生诊断的那一处直接给出，而不是在这里重新判一遍门控条件：一旦两处各判
+    一次，就会有一天诊断说"缺曲线"而枚举说"正常"，而使用者只会看到其中一个。
+
+    ``not_applicable`` 留给"这一行本来就不会有这个效应"的事实（非 FVTPL 行、利率簿
+    的信用利差、到期/零久期/空仓行、缺当期余额行），它与 ``unavailable`` 的处置完全
+    不同：前者不需要补数据，后者需要。这类行也不能报 ``ok``——它们的 0 与曲线无关，
+    算进"有多少行观测到了曲线"会把缺曲线的占比稀释掉。
+
+    ``unavailable_reasons`` 按根因优先排列，取第一个非空。实际上这些成因互斥
+    （缺曲线时市值/窗口诊断根本不触发），排序只是把话说明白。
+
+    既不属于豁免、也没有任何归零成因的行返回 ``ok``：它的 0 是拿真曲线算出来的。
+    """
+    if not_applicable_reason is not None:
+        return CURVE_EFFECT_NOT_APPLICABLE, not_applicable_reason
+    for reason in unavailable_reasons:
+        if reason is not None:
+            return CURVE_EFFECT_UNAVAILABLE, reason
+    return CURVE_EFFECT_OK, None
+
+
+def summarize_curve_effect_availability(
+    entries: Iterable[tuple[str, str | None]],
+) -> CurveEffectAvailabilitySummary:
+    """把行级可用性折叠成汇总级判据。
+
+    ``not_applicable`` 行不进分母：非 FVTPL 行本来就不参与市场效应，把它们算进
+    "多少行不可用"会把占比稀释到看不出问题。反过来，当所有行都 ``not_applicable``
+    时汇总也是 ``not_applicable``——这一天根本没有可比的曲线效应，合计 0 不是
+    "曲线没动"。只要还有一行可用，合计就仍是一个（可能被低估的）观测量，因此报
+    ``partial`` 而不是 ``unavailable``。
+    """
+    applicable = 0
+    unavailable = 0
+    unavailable_reasons: list[str] = []
+    exempt_reasons: list[str] = []
+    total = 0
+    for status, reason in entries:
+        total += 1
+        if status == CURVE_EFFECT_NOT_APPLICABLE:
+            if reason is not None and reason not in exempt_reasons:
+                exempt_reasons.append(reason)
+            continue
+        applicable += 1
+        if status == CURVE_EFFECT_UNAVAILABLE:
+            unavailable += 1
+            if reason is not None and reason not in unavailable_reasons:
+                unavailable_reasons.append(reason)
+    if total == 0:
+        return CurveEffectAvailabilitySummary(CURVE_EFFECT_OK, 0, 0, ())
+    if applicable == 0:
+        return CurveEffectAvailabilitySummary(
+            CURVE_EFFECT_NOT_APPLICABLE, 0, 0, tuple(exempt_reasons)
+        )
+    if unavailable == 0:
+        return CurveEffectAvailabilitySummary(CURVE_EFFECT_OK, 0, applicable, ())
+    status = CURVE_EFFECT_UNAVAILABLE if unavailable == applicable else CURVE_EFFECT_PARTIAL
+    return CurveEffectAvailabilitySummary(
+        status, unavailable, applicable, tuple(unavailable_reasons)
+    )
+
+
+def _escalate_quality_flag(flag: str, *, degraded: bool) -> str:
+    """A row whose curve effects are unavailable can never be ``ok``.
+
+    ``_quality_flag`` only measures residual closure, and a structurally zeroed effect
+    closes the bridge just as well as a correct one — that is precisely how the missing
+    curve stayed invisible. Escalation is one-way: an existing ``error`` is never
+    softened.
+    """
+    if degraded and flag == "ok":
+        return "warning"
+    return flag
 
 
 def _is_credit_row(row: Mapping[str, object]) -> bool:
@@ -794,6 +1265,9 @@ def _build_balance_diagnostics(
     fx_rate_missing_diagnostic: str | None = None,
     market_value_base_missing_diagnostic: str | None = None,
     roll_down_window_missing_diagnostic: str | None = None,
+    roll_down_flat_extrapolation_diagnostic: str | None = None,
+    treasury_curve_diagnostic: str | None = None,
+    credit_spread_curve_diagnostic: str | None = None,
 ) -> tuple[str, ...]:
     diagnostics: list[str] = []
     if current_resolution_diagnostic:
@@ -808,6 +1282,12 @@ def _build_balance_diagnostics(
         diagnostics.append(market_value_base_missing_diagnostic)
     if roll_down_window_missing_diagnostic:
         diagnostics.append(roll_down_window_missing_diagnostic)
+    if roll_down_flat_extrapolation_diagnostic:
+        diagnostics.append(roll_down_flat_extrapolation_diagnostic)
+    if treasury_curve_diagnostic:
+        diagnostics.append(treasury_curve_diagnostic)
+    if credit_spread_curve_diagnostic:
+        diagnostics.append(credit_spread_curve_diagnostic)
     if current_balance is None:
         diagnostics.append("Missing current balance row; ending_dirty_mv defaults to 0.")
     if prior_balance is None:
@@ -926,4 +1406,31 @@ def _coerce_decimal(value: object) -> Decimal:
     return Decimal(str(value))
 
 
-__all__ = ["PnlBridgeRow", "build_pnl_bridge_rows", "required_curve_types_for_pnl_bridge"]
+__all__ = [
+    "CREDIT_SPREAD_CURVE_SAME_SOURCE_PREFIX",
+    "CREDIT_SPREAD_CURVE_UNAVAILABLE_PREFIX",
+    "CURVE_EFFECT_DEGRADED_PREFIXES",
+    "CURVE_EFFECT_NOT_APPLICABLE",
+    "CURVE_EFFECT_OK",
+    "CURVE_EFFECT_PARTIAL",
+    "CURVE_EFFECT_REASON_BALANCE_ROW_MISSING",
+    "CURVE_EFFECT_REASON_CURVE_UNAVAILABLE",
+    "CURVE_EFFECT_REASON_MARKET_VALUE_BASE_MISSING",
+    "CURVE_EFFECT_REASON_NO_CURVE_SENSITIVITY",
+    "CURVE_EFFECT_REASON_NON_FVTPL_BASIS",
+    "CURVE_EFFECT_REASON_NOT_CREDIT_BOOK",
+    "CURVE_EFFECT_REASON_ROLL_WINDOW_MISSING",
+    "CURVE_EFFECT_REASON_SAME_SOURCE_CURVE",
+    "CURVE_EFFECT_REASON_TENOR_OUTSIDE_CURVE",
+    "CURVE_EFFECT_UNAVAILABLE",
+    "CurveEffectAvailabilitySummary",
+    "MARKET_VALUE_BASE_MISSING_PREFIX",
+    "PnlBridgeRow",
+    "ROLL_DOWN_TENOR_OUTSIDE_CURVE_PREFIX",
+    "ROLL_DOWN_WINDOW_MISSING_PREFIX",
+    "TREASURY_CURVE_SAME_SOURCE_PREFIX",
+    "TREASURY_CURVE_UNAVAILABLE_PREFIX",
+    "build_pnl_bridge_rows",
+    "required_curve_types_for_pnl_bridge",
+    "summarize_curve_effect_availability",
+]

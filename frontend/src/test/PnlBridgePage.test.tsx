@@ -18,8 +18,11 @@ import { ApiClientProvider, createApiClient, type ApiClient } from "../api/clien
 import type { Numeric, PnlBridgePayload, PnlDatesPayload, ResultMeta } from "../api/contracts";
 import PnlBridgePage from "../features/pnl/PnlBridgePage";
 import {
+  buildBridgeWarningDisplays,
   buildCurveAvailabilityNotices,
   buildWaterfallOption,
+  formatBridgeAxisYuan,
+  formatBridgeYuanCompact,
 } from "../features/pnl/pnlBridgePageSupport";
 import { nocturneTokens } from "../theme/designSystem";
 
@@ -901,6 +904,138 @@ describe("PnlBridgePage", () => {
     expect((effectSeries?.data?.[treasuryIndex] as { value: number | null }).value).toBeNull();
     // 断点不推进累计值：下一步的基线仍是票息 + 骑乘。
     expect(helperSeries?.data?.[treasuryIndex + 1]).toBeCloseTo(1.1 + 2.2 - 0.5);
+  });
+
+  it("collapses yield-curve fallback log lines into one Chinese conclusion and keeps originals in title", async () => {
+    const base = createApiClient({ mode: "real" });
+    const payload = buildBridgePayload("2026-07-31", "IC-CURVE-FALLBACK", "100.00");
+    const fallbackLines = [
+      "YIELD_CURVE_LATEST_FALLBACK: Using latest available cdb curve from trade_date=2026-06-30 for requested_trade_date=2026-07-31.",
+      "YIELD_CURVE_LATEST_FALLBACK: Using latest available aaa_credit curve from trade_date=2026-06-30 for requested_trade_date=2026-07-31.",
+      "YIELD_CURVE_LATEST_FALLBACK: Using latest available treasury curve from trade_date=2026-06-30 for requested_trade_date=2026-07-31.",
+    ];
+
+    renderPnlBridgePage({
+      ...base,
+      getFormalPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.dates", "tr_bridge_dates_curve_fallback"),
+        result: {
+          report_dates: ["2026-07-31"],
+          formal_fi_report_dates: ["2026-07-31"],
+          nonstd_bridge_report_dates: [],
+        } satisfies PnlDatesPayload,
+      })),
+      getPnlBridge: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.bridge", "tr_bridge_curve_fallback"),
+        result: {
+          ...payload,
+          warnings: [...fallbackLines, "Residual spike on instrument IC-9"],
+        },
+      })),
+    });
+
+    const warnings = await screen.findByTestId("pnl-bridge-warnings");
+    // 三条英文日志合并为一行中文结论；原文只进 title，不再直出正文。
+    expect(warnings).toHaveTextContent("国开/AAA信用/国债曲线已回退至 2026-06-30");
+    expect(warnings).not.toHaveTextContent("YIELD_CURVE_LATEST_FALLBACK");
+    const conclusionItem = within(warnings)
+      .getAllByRole("listitem")
+      .find((item) => item.textContent?.includes("曲线已回退至"));
+    expect(conclusionItem).toBeDefined();
+    expect(conclusionItem?.getAttribute("title")).toContain(fallbackLines[0]);
+    expect(conclusionItem?.getAttribute("title")).toContain(fallbackLines[2]);
+    // 非该模式的告警原样透出（fail-closed）。
+    expect(warnings).toHaveTextContent("Residual spike on instrument IC-9");
+  });
+
+  it("keeps unmatched warnings verbatim and groups fallbacks by resolved/requested date", () => {
+    const displays = buildBridgeWarningDisplays([
+      "YIELD_CURVE_LATEST_FALLBACK: Using latest available cdb curve from trade_date=2026-06-30 for requested_trade_date=2026-07-31.",
+      "Some other backend warning",
+      "YIELD_CURVE_LATEST_FALLBACK: Using latest available treasury curve from trade_date=2026-06-30 for requested_trade_date=2026-07-31.",
+      "YIELD_CURVE_LATEST_FALLBACK: Using latest available cdb curve from trade_date=2026-05-31 for requested_trade_date=2026-06-30.",
+      "YIELD_CURVE_LATEST_FALLBACK: Using latest available cnh_swap curve from trade_date=2026-06-30 for requested_trade_date=2026-07-31.",
+    ]);
+
+    expect(displays.map((display) => display.text)).toEqual([
+      // cnh_swap 未登记中文名：原 token 原样并入，不发明业务名称。
+      "国开/国债/cnh_swap曲线已回退至 2026-06-30（请求日 2026-07-31 无当日快照）。",
+      "Some other backend warning",
+      "国开曲线已回退至 2026-05-31（请求日 2026-06-30 无当日快照）。",
+    ]);
+    expect(displays[0].originalText).toContain("cdb curve");
+    expect(displays[0].originalText).toContain("treasury curve");
+    expect(displays[1].originalText).toBeNull();
+  });
+
+  it("abbreviates summary amounts to 亿/万 while keeping backend display for small values", () => {
+    expect(
+      formatBridgeYuanCompact({
+        raw: 543028952.81,
+        unit: "yuan",
+        display: "+543,028,952.81",
+        precision: 2,
+        sign_aware: true,
+      }),
+    ).toBe("+5.43 亿");
+    expect(
+      formatBridgeYuanCompact({
+        raw: -4499756.45,
+        unit: "yuan",
+        display: "-4,499,756.45",
+        precision: 2,
+        sign_aware: true,
+      }),
+    ).toBe("-449.98 万");
+    // 万元以下保留后端 display 原样；null raw 不改写。
+    expect(
+      formatBridgeYuanCompact({ raw: 15.45, unit: "yuan", display: "15.45", precision: 2, sign_aware: true }),
+    ).toBe("15.45");
+    expect(
+      formatBridgeYuanCompact({ raw: null, unit: "yuan", display: "—", precision: 2, sign_aware: true }),
+    ).toBe("—");
+    // 轴刻度缩写：600,000,000 → 6 亿。
+    expect(formatBridgeAxisYuan(600_000_000)).toBe("6 亿");
+    expect(formatBridgeAxisYuan(-50_000)).toBe("-5 万");
+    expect(formatBridgeAxisYuan(0)).toBe("0");
+  });
+
+  it("colors the residual KPI by closure quality instead of profit sign", async () => {
+    const base = createApiClient({ mode: "real" });
+    const payload = buildBridgePayload("2025-12-31", "IC-RESIDUAL", "100.00");
+
+    renderPnlBridgePage({
+      ...base,
+      getFormalPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.dates", "tr_bridge_dates_residual_tone"),
+        result: {
+          report_dates: ["2025-12-31"],
+          formal_fi_report_dates: ["2025-12-31"],
+          nonstd_bridge_report_dates: [],
+        } satisfies PnlDatesPayload,
+      })),
+      getPnlBridge: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.bridge", "tr_bridge_residual_tone"),
+        result: {
+          ...payload,
+          summary: {
+            ...payload.summary,
+            // 正残差 + 质量错误：残差卡必须跟质量走红，不得因“正数”落盈利绿。
+            total_residual: bridgeYuan(1392005.22, "+1,392,005.22"),
+            quality_flag: "error" as const,
+          },
+        },
+      })),
+    });
+
+    const summary = await screen.findByTestId("pnl-bridge-summary-cards");
+    const residualValue = within(summary).getByText("+139.20 万");
+    const residualCard = residualValue.closest(".kpi-card");
+    expect(residualCard).not.toBeNull();
+    expect(residualCard).toHaveAttribute("data-tone", "error");
+    // 原值经悬停 title 保留（缩写只改显示密度，不动后端数值）。
+    const titleHost = residualValue.closest("[title]");
+    expect(titleHost?.getAttribute("title")).toContain("+1,392,005.22");
   });
 
   it("shows refresh error and preserves the last known bridge run snapshot", async () => {

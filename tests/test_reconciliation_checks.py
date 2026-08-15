@@ -5,8 +5,13 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import pytest
+
 from backend.app.core_finance.reconciliation_checks import (
+    ReconciliationGateError,
+    collect_breaches,
     completeness_check,
+    enforce_reconciliation_gate,
     pnl_vs_ledger_diff,
     position_vs_ledger_diff,
 )
@@ -91,3 +96,55 @@ def test_completeness_check_decimal_and_missing():
     assert missing["missing_keys"] == ["pnl_total"]
     assert missing["breached"] is True
     assert missing["diff"] is None
+
+
+def test_gate_collects_breaches_across_all_three_diagnostic_shapes():
+    breaches = collect_breaches(
+        position_vs_ledger_diff(
+            {"total_assets": Decimal("100"), "total_liabilities": Decimal("40"), "net_assets": Decimal("60")},
+            {"total_assets": Decimal("130"), "total_liabilities": Decimal("40"), "net_assets": Decimal("60")},
+            threshold_yuan=Decimal("0.01"),
+        ),
+        pnl_vs_ledger_diff(Decimal("1"), Decimal("1"), threshold_yuan=Decimal("0.01")),
+        completeness_check(Decimal("7"), None),
+    )
+
+    assert [row["dimension"] for row in breaches if "dimension" in row] == ["total_assets"]
+    assert any(row.get("missing_keys") == ["pnl_total"] for row in breaches)
+    assert len(breaches) == 2
+
+
+def test_gate_blocks_persistence_on_breach_and_carries_the_breached_rows():
+    with pytest.raises(ReconciliationGateError) as excinfo:
+        enforce_reconciliation_gate(
+            completeness_check(Decimal("7"), Decimal("9"), threshold_yuan=Decimal("0.01")),
+            context="unit test write",
+            mode="enforce",
+        )
+
+    assert "unit test write" in str(excinfo.value)
+    assert excinfo.value.breaches[0]["diff"] == -2.0
+
+
+def test_gate_passes_through_when_nothing_is_breached():
+    assert (
+        enforce_reconciliation_gate(
+            completeness_check(Decimal("7"), Decimal("7"), threshold_yuan=Decimal("0.01")),
+            pnl_vs_ledger_diff(Decimal("1"), Decimal("1"), threshold_yuan=Decimal("0.01")),
+            context="unit test write",
+            mode="enforce",
+        )
+        == []
+    )
+
+
+def test_gate_modes_let_a_control_ship_as_detective_before_preventive():
+    breached = completeness_check(Decimal("7"), Decimal("9"), threshold_yuan=Decimal("0.01"))
+
+    # warn：返回 breach 行供留痕，不抛错。
+    assert enforce_reconciliation_gate(breached, context="ctx", mode="warn") == [breached]
+    # off：完全跳过。
+    assert enforce_reconciliation_gate(breached, context="ctx", mode="off") == []
+    # 未知模式回退到 enforce，绝不静默放行。
+    with pytest.raises(ReconciliationGateError):
+        enforce_reconciliation_gate(breached, context="ctx", mode="nonsense")

@@ -7,12 +7,15 @@ module to keep older imports working without maintaining a second mapping.
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 from decimal import Decimal
 
 from backend.app.core_finance.config.classification_rules import (
     LEDGER_PNL_ACCOUNT_PREFIXES,
 )
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_FTP_RATE_PCT = Decimal("1.75")
 FTP_RATE_PCT_BY_REPORT_YEAR = {
@@ -247,7 +250,40 @@ def resolve_product_category_ftp_rate_pct(
     report_date: date,
     fallback_rate_pct: Decimal = DEFAULT_FTP_RATE_PCT,
 ) -> Decimal:
-    return FTP_RATE_PCT_BY_REPORT_YEAR.get(report_date.year, fallback_rate_pct)
+    """按报表年份解析 FTP 利率；年表是唯一权威。
+
+    未登记年份（典型场景：跨年后年表还没维护）过去会静默套用
+    ``fallback_rate_pct``（默认 ``DEFAULT_FTP_RATE_PCT`` = 1.75%），
+    与实际生效利率无关且无任何披露。改为回退"最近已登记年份"并告警：
+    未来年份沿用最后一个已登记年份（不前视），早于年表起点的年份沿用最早
+    已登记年份；年表为空时才退回 ``fallback_rate_pct``。
+    """
+    report_year = report_date.year
+    registered = FTP_RATE_PCT_BY_REPORT_YEAR.get(report_year)
+    if registered is not None:
+        return registered
+
+    if not FTP_RATE_PCT_BY_REPORT_YEAR:
+        logger.warning(
+            "resolve_product_category_ftp_rate_pct: FTP_RATE_PCT_BY_REPORT_YEAR is empty, "
+            "report_year=%s fell back to fallback_rate_pct=%s.",
+            report_year,
+            fallback_rate_pct,
+        )
+        return fallback_rate_pct
+
+    earlier_years = [year for year in FTP_RATE_PCT_BY_REPORT_YEAR if year <= report_year]
+    nearest_year = max(earlier_years) if earlier_years else min(FTP_RATE_PCT_BY_REPORT_YEAR)
+    nearest_rate = FTP_RATE_PCT_BY_REPORT_YEAR[nearest_year]
+    logger.warning(
+        "resolve_product_category_ftp_rate_pct: report_year=%s is not registered in "
+        "FTP_RATE_PCT_BY_REPORT_YEAR; carried forward nearest registered year=%s rate=%s "
+        "(register the year to remove this fallback).",
+        report_year,
+        nearest_year,
+        nearest_rate,
+    )
+    return nearest_rate
 
 
 def build_product_category_config_for_report_date(

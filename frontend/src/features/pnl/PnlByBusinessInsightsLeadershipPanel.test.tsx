@@ -15,7 +15,7 @@ const readyModel: PnlByBusinessInsightsLeadershipModel = {
     { key: "concentration", label: "结构集中度", value: "HHI 13.42% · Top3 50.50%", detail: "口径", rowKey: null },
     { key: "negative_ftp", label: "持续负 FTP", value: "同业存单 91.67%", detail: "连续9个月", rowKey: "cd" },
     { key: "share_drift", label: "日均份额同比漂移", value: "公募基金 -3.52pp", detail: "同期间", rowKey: "fund" },
-    { key: "scale_yield", label: "规模—FTP后收益", value: "政策性金融债", detail: "相对分类", rowKey: "policy" },
+    { key: "scale_yield", label: "规模与FTP后收益", value: "政策性金融债", detail: "相对分类", rowKey: "policy" },
   ],
 };
 

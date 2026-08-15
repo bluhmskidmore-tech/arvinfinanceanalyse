@@ -224,6 +224,14 @@ describe("LedgerDashboardPage", () => {
     expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent("历史回填已完成");
     expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent("golden sample 待审批");
     expect(screen.getByTestId("ledger-dashboard-governance-boundary")).not.toHaveTextContent("golden/backfill work remains pending");
+    // 外壳治理横幅收敛为中文摘要；英文治理记录原文默认折叠在「候选导入」卡内。
+    expect(screen.getByTestId("workbench-governance-banner")).toHaveTextContent("候选台账读模型，未获正式批准");
+    expect(screen.getByTestId("workbench-governance-banner")).not.toHaveTextContent("Candidate imported position_snapshot");
+    expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent("治理记录原文（英文）");
+    expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent("UNCLASSIFIED");
+    // 「无数据 否」直译修正为事件表述。
+    expect(screen.getByTestId("ledger-dashboard-evidence")).toHaveTextContent("无数据回退");
+    expect(screen.getByTestId("ledger-dashboard-evidence")).not.toHaveTextContent("无数据 否");
     await waitFor(() => expect(screen.getByLabelText("ledger-dashboard-currency")).toHaveValue("CNY"));
     expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 CNY/1亿");
     expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("1231.77 CNY/1亿");
@@ -413,6 +421,41 @@ describe("LedgerDashboardPage", () => {
     });
     expect(screen.queryByText("加载失败")).not.toBeInTheDocument();
     expect(client.getLedgerDashboard).toHaveBeenCalledWith("2026-03-17");
+  });
+
+  it("explains dashboard loading failure with reason, scope, and a retry action", async () => {
+    const user = userEvent.setup();
+    let dashboardReads = 0;
+    const client = buildClient({
+      dashboard: () => {
+        dashboardReads += 1;
+        if (dashboardReads === 1) {
+          throw new Error("LEDGER_READ_FAILED: 后端服务不可用(502)");
+        }
+        return envelope<LedgerDashboardData>({
+          as_of_date: "2026-03-17",
+          classification_status: "ready",
+          classification_rule_version: "rv_ledger_classification_v2",
+          currency_breakdown: [
+            { currency: "CNY", asset_face_amount: 3289.07, liability_face_amount: 1231.77, net_face_exposure: 2057.31, classification_total_row_count: 2, unclassified_row_count: 0, unclassified_face_amount: 0, classification_coverage_pct: 100 },
+          ],
+        });
+      },
+    });
+
+    renderWorkbenchApp(["/bank-ledger-dashboard?as_of_date=2026-03-17"], { client });
+
+    const status = await screen.findByTestId("ledger-dashboard-status");
+    expect(status).toHaveTextContent("加载失败：LEDGER_READ_FAILED: 后端服务不可用(502)");
+    expect(status).toHaveTextContent("影响范围：KPI、分类质量与持仓明细暂不可用。");
+
+    await user.click(within(status).getByRole("button", { name: "重试" }));
+
+    await waitFor(() => expect(client.getLedgerDashboard).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 CNY/1亿"),
+    );
+    expect(screen.queryByTestId("ledger-dashboard-status")).not.toBeInTheDocument();
   });
 
   it("surfaces positions loading failure independently from dashboard KPIs", async () => {

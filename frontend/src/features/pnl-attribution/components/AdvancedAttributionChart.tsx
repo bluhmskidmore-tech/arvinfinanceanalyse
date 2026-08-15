@@ -9,43 +9,17 @@ import type {
 } from "../../../api/contracts";
 import { PageDataSection } from "../../../components/page/PageDataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
-import { dhApiChartTheme } from "../../../components/charts/chartTheme";
+import { nocturneChartTheme } from "../../../components/charts/chartTheme";
 import { designTokens, nocturneTokens } from "../../../theme/designSystem";
 import { numericRaw } from "../../../pageModel";
 import { EM_DASH } from "../../../utils/format";
 import { formatYi } from "./pnlAttributionViewModel";
 import "./AdvancedAttributionChart.css";
 
-// 本图挂在暗色路由（theme-dh-api）下且页面已切首页 Nocturne 色板：基础 option
-// 仍走共享 dhApiChartTheme（结构性默认：grid/legend 形态、confine 等），但该
-// 主题内嵌钢蓝深色常量（调色板 / tooltip 背景 / 图例字色 / 轴线色），共享主题
-// 不改，统一在下方覆盖项与显式取色处压回 nocturneTokens 静态镜像（ECharts
-// canvas 读不到 CSS 变量，迁法同 TPLMarketChart / 组合工作台先例）。
-const { createBarChartOption, createBaseChartOption } = dhApiChartTheme;
-
-const NOCTURNE_CHART_PALETTE = [
-  nocturneTokens.color.blue,
-  nocturneTokens.color.green,
-  nocturneTokens.color.amber,
-  nocturneTokens.color.red,
-  nocturneTokens.color.inkSoft,
-  nocturneTokens.color.inkMuted,
-];
-
-const NOCTURNE_CHART_TEXT = { color: nocturneTokens.color.ink } as const;
-
-const NOCTURNE_TOOLTIP_STYLE = {
-  backgroundColor: nocturneTokens.color.panel2,
-  borderColor: nocturneTokens.color.lineSoft,
-  textStyle: { color: nocturneTokens.color.ink },
-  axisPointer: { lineStyle: { color: nocturneTokens.color.amber } },
-} as const;
-
-const NOCTURNE_LEGEND_TEXT_COLOR = nocturneTokens.color.inkMuted;
-
-const NOCTURNE_AXIS_LINE = {
-  lineStyle: { color: nocturneTokens.color.lineSoft },
-} as const;
+// 本图挂在 Nocturne scope 页面：基础 option 直接走共享 nocturneChartTheme
+// （调色板 / tooltip / 图例 / 轴线均为 nocturneTokens 静态镜像，ECharts canvas
+// 读不到 CSS 变量），组件内只保留业务系列色与网格等非主题覆盖。
+const { createBarChartOption } = nocturneChartTheme;
 
 const CONTRIBUTION_PCT_CALIBER_NOTE =
   "占比按各效应绝对值计算，方向相反时合计可能超过 100%";
@@ -145,16 +119,6 @@ export function AdvancedAttributionChart({
     }
     const rows = carryData.items.slice(0, 10);
     return createBarChartOption({
-      color: NOCTURNE_CHART_PALETTE,
-      textStyle: NOCTURNE_CHART_TEXT,
-      tooltip: { trigger: "axis", ...NOCTURNE_TOOLTIP_STYLE },
-      legend: {
-        bottom: 0,
-        textStyle: {
-          fontSize: designTokens.fontSize[12],
-          color: NOCTURNE_LEGEND_TEXT_COLOR,
-        },
-      },
       grid: {
         left: 48,
         right: designTokens.space[6],
@@ -162,27 +126,14 @@ export function AdvancedAttributionChart({
         bottom: 48,
       },
       xAxis: {
-        type: "category",
         data: rows.map((r) =>
           r.category.length > 8 ? `${r.category.slice(0, 8)}…` : r.category,
         ),
-        axisLine: NOCTURNE_AXIS_LINE,
-        axisLabel: {
-          fontSize: designTokens.fontSize[11],
-          rotate: 20,
-          color: nocturneTokens.color.inkSoft,
-        },
+        axisLabel: { rotate: 20 },
       },
       yAxis: {
-        type: "value",
-        axisLine: NOCTURNE_AXIS_LINE,
-        axisLabel: {
-          formatter: (v: number) => `${v.toFixed(1)}%`,
-          color: nocturneTokens.color.inkSoft,
-        },
-        splitLine: {
-          lineStyle: { type: "dashed", color: nocturneTokens.color.lineSoft },
-        },
+        axisLabel: { formatter: (v: number) => `${v.toFixed(1)}%` },
+        splitLine: { lineStyle: { type: "dashed" } },
       },
       series: [
         {
@@ -215,45 +166,18 @@ export function AdvancedAttributionChart({
     // 缺失贡献/收益率变动传 null，ECharts 留空不画 0 值柱/点。
     const contrib = krdData.buckets.map((b) => yiOrNull(b.duration_contribution));
     const ychg = krdData.buckets.map((b) => pctPoints(b.yield_change));
-    return createBaseChartOption({
-      color: NOCTURNE_CHART_PALETTE,
-      textStyle: NOCTURNE_CHART_TEXT,
-      tooltip: { trigger: "axis", ...NOCTURNE_TOOLTIP_STYLE },
-      legend: {
-        bottom: 0,
-        textStyle: {
-          fontSize: designTokens.fontSize[12],
-          color: NOCTURNE_LEGEND_TEXT_COLOR,
-        },
-      },
+    // 双轴柱线组合仍走 createBarChartOption：主题 mergeAxis 会给数组 yAxis
+    // 逐项补齐 value 轴默认（轴色/字号），此处只保留轴名与 splitLine 差异。
+    return createBarChartOption({
       grid: { left: 52, right: 52, top: designTokens.space[6], bottom: 48 },
-      xAxis: {
-        type: "category",
-        data: tenors,
-        axisLine: NOCTURNE_AXIS_LINE,
-        axisLabel: {
-          fontSize: designTokens.fontSize[11],
-          color: nocturneTokens.color.inkSoft,
-        },
-      },
+      xAxis: { data: tenors },
       yAxis: [
         {
-          type: "value",
           name: "久期贡献(亿)",
-          axisLine: NOCTURNE_AXIS_LINE,
-          axisLabel: { color: nocturneTokens.color.inkSoft },
-          splitLine: {
-            lineStyle: {
-              type: "dashed",
-              color: nocturneTokens.color.lineSoft,
-            },
-          },
+          splitLine: { lineStyle: { type: "dashed" } },
         },
         {
-          type: "value",
           name: "BP",
-          axisLine: NOCTURNE_AXIS_LINE,
-          axisLabel: { color: nocturneTokens.color.inkSoft },
           splitLine: { show: false },
         },
       ],
@@ -291,41 +215,15 @@ export function AdvancedAttributionChart({
       return null;
     }
     return createBarChartOption({
-      color: NOCTURNE_CHART_PALETTE,
-      textStyle: NOCTURNE_CHART_TEXT,
-      tooltip: { trigger: "axis", ...NOCTURNE_TOOLTIP_STYLE },
-      legend: {
-        bottom: 0,
-        textStyle: {
-          fontSize: designTokens.fontSize[12],
-          color: NOCTURNE_LEGEND_TEXT_COLOR,
-        },
-      },
       grid: {
         left: 48,
         right: designTokens.space[6],
         top: designTokens.space[6],
         bottom: 48,
       },
-      xAxis: {
-        type: "category",
-        data: krdData.buckets.map((b) => b.tenor),
-        axisLine: NOCTURNE_AXIS_LINE,
-        axisLabel: {
-          fontSize: designTokens.fontSize[11],
-          color: nocturneTokens.color.inkSoft,
-        },
-      },
+      xAxis: { data: krdData.buckets.map((b) => b.tenor) },
       yAxis: {
-        type: "value",
-        axisLine: NOCTURNE_AXIS_LINE,
-        axisLabel: {
-          formatter: (v: number) => `${v}%`,
-          color: nocturneTokens.color.inkSoft,
-        },
-        splitLine: {
-          lineStyle: { color: nocturneTokens.color.lineSoft },
-        },
+        axisLabel: { formatter: (v: number) => `${v}%` },
       },
       series: [
         {

@@ -12,8 +12,11 @@
 - HTTP status is `200`.
 - `result_meta.basis == "formal"`.
 - `result_meta.result_kind == "product_category_pnl.detail"`.
-- `result_meta.rule_version == "rv_product_category_pnl_v1"`.
-- `result_meta.cache_version == "cv_product_category_pnl_v1"`.
+- `result_meta.rule_version == "rv_product_category_pnl_v2"`.
+- Formal `result_meta.cache_version == "cv_product_category_pnl_formal__rv_product_category_pnl_v2"`;
+  scenario uses
+  `cv_product_category_pnl_scenario__rv_product_category_pnl_v2__ph_<12 hex chars>`,
+  whose profile hash includes the normalized `scenario_rate_pct`.
 - `result_meta.quality_flag == "ok"`.
 - `result_meta.fallback_mode == "none"`.
 - `result.report_date == "2026-02-28"`.
@@ -80,7 +83,8 @@ Structural assertions frozen by this sample and replayed by `tests/test_golden_s
 - `all_currency_spread_pct == all_currency_asset_yield_pct - all_currency_liability_yield_pct` within display precision, and likewise for the `cny_*` triple.
 - `result.interest_earning_spread.all_currency_liability_yield_pct` and `result.interest_spread.all_currency_liability_yield_pct` are same-source mirrors of `result.liability_total.weighted_yield` and must stay numerically identical.
 - The two spread sections use different asset-side sources: `interest_earning_spread` reads the `interest_earning_assets` row (no TPL, no derivatives, no intermediate-business income) and `interest_spread` reads `result.asset_total` (includes them). They must never be presented under the same series name.
-- A missing denominator or a missing `credit_linked_notes` row yields `null`, never `0`.
+- A missing/zero denominator, invalid liability-side scale sign topology, or a missing
+  `credit_linked_notes` row yields `null`, never `0`.
 - Scenario payloads do not change these sections; only FTP and net fields move.
 
 `result.liability_cost_decomposition` (`MTR-PCP-025`~`MTR-PCP-029`) landed on 2026-08-13, so

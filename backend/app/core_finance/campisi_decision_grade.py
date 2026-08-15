@@ -200,7 +200,11 @@ def compute_decision_grade_row(
     diagnostics: list[str] = []
     residual_reasons: list[str] = []
     if years_missing:
+        # 期限点是 3Y 代理，利率水平/曲线形态/信用利差/凸性都可能错位，未解释余额
+        # 因此不得计为选券能力；与 missing_analytics 等缺数据情形同调归入残差噪音。
         diagnostics.append("years_to_maturity_missing_fallback_3y")
+        residual_reasons.append("missing_years_to_maturity")
+        diagnostics.append("缺少剩余期限，曲线取点按 3Y 代理，未将剩余项计为能力。")
     dy_level = parallel_shift_decimal(treasury_start, treasury_end)
     dy_tenor = tenor_shift_decimal(treasury_start, treasury_end, years)
 

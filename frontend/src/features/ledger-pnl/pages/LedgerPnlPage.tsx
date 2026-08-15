@@ -174,7 +174,8 @@ function LedgerPnlSectionLead({
 
 function formatMoney(value: LedgerMoneyValue | null | undefined) {
   const yi = String(value?.yi ?? "").trim();
-  if (yi) {
+  // 契约外防御：yi 非有限数值串（如 "NaN"）视同缺失，走 yuan 回退链，不透传 NaN 字样。
+  if (yi && Number.isFinite(Number(yi))) {
     return `${yi} 亿元`;
   }
   const yuanRaw = String(value?.yuan ?? "").trim();

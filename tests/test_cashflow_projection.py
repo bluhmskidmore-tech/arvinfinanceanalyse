@@ -273,15 +273,76 @@ def test_monthly_bucket_aggregation():
         horizon_months=2,
     )
 
+    # horizon_end = 2026-03-15：事件纳入到 3/15，桶必须覆盖 2026-03 这个
+    # 部分月（修复前只建 horizon_months=2 个桶，3 月事件被静默丢弃）。
     assert [(bucket.year_month, bucket.net_cashflow, bucket.cumulative_net) for bucket in buckets] == [
         ("2026-01", Decimal("80"), Decimal("80")),
         ("2026-02", Decimal("20"), Decimal("100")),
+        ("2026-03", Decimal("0"), Decimal("100")),
     ]
 
     assert buckets[0].asset_inflow == Decimal("100")
     assert buckets[0].liability_outflow == Decimal("20")
     assert buckets[1].asset_inflow == Decimal("50")
     assert buckets[1].liability_outflow == Decimal("30")
+
+
+def test_monthly_buckets_keep_events_between_last_full_month_and_horizon_end():
+    """report 日非月初时，最后完整桶月末到 horizon_end 之间的事件不得丢弃。
+
+    report=2026-01-15、horizon=2 → horizon_end=2026-03-15：3/10 的事件在
+    horizon 内，修复前因为桶只建到 2026-02 而被 ``continue`` 静默吞掉；
+    3/16 的事件在 horizon 外，必须仍被拒绝。
+    """
+    module = _core_module()
+
+    def _event(day: date, amount: str) -> object:
+        return module.CashflowEvent(
+            event_date=day,
+            event_type="coupon",
+            instrument_code="A1",
+            instrument_name="Asset A1",
+            side="asset",
+            amount=Decimal(amount),
+            currency_code="CNY",
+        )
+
+    buckets = module.build_monthly_buckets(
+        [_event(date(2026, 3, 10), "70"), _event(date(2026, 3, 16), "999")],
+        report_date=date(2026, 1, 15),
+        horizon_months=2,
+    )
+
+    by_month = {bucket.year_month: bucket for bucket in buckets}
+    assert list(by_month) == ["2026-01", "2026-02", "2026-03"]
+    assert by_month["2026-03"].asset_inflow == Decimal("70")
+    assert by_month["2026-03"].cumulative_net == Decimal("70")
+
+
+def test_monthly_buckets_cover_horizon_end_on_first_of_month_report():
+    """report 日是月初时 horizon_end 恰落在第 N+1 个日历月的 1 号，
+    当天到期的事件同样必须有桶可归。"""
+    module = _core_module()
+
+    buckets = module.build_monthly_buckets(
+        [
+            module.CashflowEvent(
+                event_date=date(2026, 3, 1),
+                event_type="principal",
+                instrument_code="A1",
+                instrument_name="Asset A1",
+                side="asset",
+                amount=Decimal("40"),
+                currency_code="CNY",
+            )
+        ],
+        report_date=date(2026, 1, 1),
+        horizon_months=2,
+    )
+
+    by_month = {bucket.year_month: bucket for bucket in buckets}
+    assert list(by_month) == ["2026-01", "2026-02", "2026-03"]
+    assert by_month["2026-03"].asset_inflow == Decimal("40")
 
 
 def test_duration_gap_calculation_uses_full_scope_term_proxy():
@@ -908,6 +969,49 @@ def test_duration_fallback_uses_decimal_rates_and_semiannual_frequency():
     )
 
     assert service_mod._recompute_macaulay_duration(row) == expected
+
+
+def test_duration_fallback_uses_single_cashflow_path_for_bullet_bonds():
+    """bullet（到期一次还本付息）唯一现金流在到期日：Macaulay 恒等于剩余年限。
+
+    修复前该路径按年付多期贴现（coupon_frequency_per_year("bullet") == 1），
+    把 Macaulay 拉向虚构的中途票息时点、低估久期；现与 bond_analytics.engine
+    的 single_cashflow_at_maturity 口径对齐。
+    """
+    service_mod = load_module(
+        "backend.app.services.cashflow_projection_service",
+        "backend/app/services/cashflow_projection_service.py",
+    )
+    bond_duration_mod = load_module(
+        "backend.app.core_finance.bond_duration",
+        "backend/app/core_finance/bond_duration.py",
+    )
+    report_date = date(2026, 1, 1)
+    maturity_date = date(2031, 1, 1)
+    row = {
+        "report_date": report_date,
+        "maturity_date": maturity_date,
+        "instrument_code": "BOND-BULLET-001",
+        "coupon_rate": Decimal("0.03"),
+        "ytm": Decimal("0.035"),
+        "interest_mode": "到期一次还本付息",
+        "macaulay_duration": None,
+    }
+
+    expected_remaining_years = (
+        Decimal((maturity_date - report_date).days) / Decimal("365")
+    )
+    legacy_annual_multi_period = bond_duration_mod.estimate_duration(
+        maturity_date,
+        report_date,
+        coupon_rate=Decimal("0.03"),
+        ytm=Decimal("0.035"),
+        bond_code="BOND-BULLET-001",
+        coupon_frequency=1,
+    )
+
+    assert service_mod._recompute_macaulay_duration(row) == expected_remaining_years
+    assert legacy_annual_multi_period < expected_remaining_years
 
 
 def test_cashflow_quality_discloses_non_preceding_bullet_value_dates():

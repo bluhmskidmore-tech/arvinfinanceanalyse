@@ -5,6 +5,7 @@ import csv
 import importlib
 import os
 import sys
+from calendar import monthrange
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -681,23 +682,21 @@ def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch, seed_w
         for row in feb_monthly_payload["result"]["rows"]
         if row["category_id"] == "credit_linked_notes"
     )
-    assert (
-        feb_liability_cost_decomposition["liability_yield_pct"]
-        == feb_spread["all_currency_liability_yield_pct"]
-    )
-    assert feb_liability_cost_decomposition["cln_drag_bp"]["unit"] == "bp"
-    # The drag is derived from the unrounded rates, so reconstructing it from the two
-    # 8-decimal published rates amplifies their rounding by 100x.
-    assert abs(
-        Decimal(feb_liability_cost_decomposition["cln_drag_bp"]["raw"])
-        - (
-            Decimal(feb_liability_cost_decomposition["liability_yield_pct"]["raw"])
-            - Decimal(feb_liability_cost_decomposition["liability_yield_ex_cln_pct"]["raw"])
+    # This compact integration fixture carries liability scales with the asset-side
+    # positive sign. The formal CLN decomposition must fail closed instead of publishing
+    # a reversed-sign cost contribution; certified negative-sign math lives in the
+    # dedicated formula-boundary tests.
+    assert Decimal(str(feb_liability_total["cnx_scale"])) > 0
+    assert Decimal(str(feb_credit_linked_notes["cnx_scale"])) > 0
+    assert all(
+        feb_liability_cost_decomposition[field] is None
+        for field in (
+            "liability_yield_pct",
+            "liability_yield_ex_cln_pct",
+            "cln_yield_pct",
+            "cln_drag_bp",
+            "cln_scale",
         )
-        * Decimal("100")
-    ) <= Decimal("0.000001")
-    assert Decimal(feb_liability_cost_decomposition["cln_scale"]) == Decimal(
-        str(feb_credit_linked_notes["cnx_scale"])
     )
     assert feb_spread["all_currency_spread_pct"] == {
         "raw": "167.12821433",
@@ -929,8 +928,8 @@ def test_product_category_pnl_all_views_determinism_and_meta_contract(tmp_path, 
 
     assert len(version_triples) == 1
     sv, rv, cv = next(iter(version_triples))
-    assert rv == "rv_product_category_pnl_v1"
-    assert cv == "cv_product_category_pnl_v1"
+    assert rv == "rv_product_category_pnl_v2"
+    assert cv == "cv_product_category_pnl_formal__rv_product_category_pnl_v2"
     assert sv.startswith("sv_product_category_")
     get_settings.cache_clear()
 
@@ -1115,8 +1114,13 @@ def test_scenario_request_does_not_change_subsequent_formal_payload(tmp_path, mo
     get_settings.cache_clear()
 
 
+def _strip_view_labels(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    return [{key: value for key, value in row.items() if key != "view"} for row in rows]
+
+
 def test_monthly_and_qtd_views_produce_distinct_formal_results_when_multimonth_qtd(tmp_path, monkeypatch):
-    """同报告日下 monthly 与 qtd 使用不同行集合 / 现金列；应产生可区分的结果（非偶然全等）。"""
+    """同报告日下 monthly 与 qtd 使用不同期间行集合，应产生可区分的结果（非偶然全等）；
+    且 Q1 的 qtd 与 ytd 覆盖同一组月份，除 view 标签外读数必须完全一致（2026-08 B8）。"""
     data_root = tmp_path / "data_input"
     source_dir = data_root / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
     source_dir.mkdir(parents=True)
@@ -1152,10 +1156,83 @@ def test_monthly_and_qtd_views_produce_distinct_formal_results_when_multimonth_q
         "/ui/pnl/product-category",
         params={"report_date": report_date, "view": "qtd"},
     ).json()
+    ytd = client.get(
+        "/ui/pnl/product-category",
+        params={"report_date": report_date, "view": "ytd"},
+    ).json()
 
     assert monthly["result"] != qtd["result"]
     assert monthly["result"]["view"] == "monthly"
     assert qtd["result"]["view"] == "qtd"
+    # Q1（1+2 月）的 qtd 与 ytd 覆盖相同月份与相同天数分母：现金、规模、FTP、
+    # 净收入与加权收益率必须逐行一致（含一月规模的 annual_avg_balance 回退）。
+    assert _strip_view_labels(qtd["result"]["rows"]) == _strip_view_labels(ytd["result"]["rows"])
+    for total_key in ("asset_total", "liability_total", "grand_total"):
+        qtd_total = {k: v for k, v in qtd["result"][total_key].items() if k != "view"}
+        ytd_total = {k: v for k, v in ytd["result"][total_key].items() if k != "view"}
+        assert qtd_total == ytd_total, total_key
+    get_settings.cache_clear()
+
+
+def test_qtd_q3_multimonth_quarter_aggregates_monthly_pnl_and_day_weighted_scale(tmp_path, monkeypatch):
+    """Q3 多月季度黄金（2026-08 B8 口径修正）：qtd 现金=季度内各月 monthly 现金之和，
+    规模=各月规模按当月天数加权/季度天数；qtd 与 ytd 现金一致但年化分母不同。"""
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
+    source_dir.mkdir(parents=True)
+    # january 参数仅选择数值档位：7 月用档 A、8 月用档 B，保证两月发生额不同。
+    _write_month_pair(source_dir, "202607", january=True)
+    _write_month_pair(source_dir, "202608", january=False)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _grant_product_category_read(tmp_path, monkeypatch)
+    get_settings.cache_clear()
+
+    task_module = load_module(
+        "backend.app.tasks.product_category_pnl",
+        "backend/app/tasks/product_category_pnl.py",
+    )
+    task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    def _fetch(report_date: str, view: str) -> dict[str, object]:
+        response = client.get(
+            "/ui/pnl/product-category",
+            params={"report_date": report_date, "view": view},
+        )
+        assert response.status_code == 200
+        return response.json()["result"]
+
+    monthly_july = _fetch("2026-07-31", "monthly")
+    monthly_august = _fetch("2026-08-31", "monthly")
+    qtd = _fetch("2026-08-31", "qtd")
+    ytd = _fetch("2026-08-31", "ytd")
+
+    approx = pytest.approx
+    for total_key in ("asset_total", "liability_total", "grand_total"):
+        # 现金 = 季度内各月发生额之和（历史缺陷会取季末月期末余额的相反数）。
+        assert float(qtd[total_key]["cnx_cash"]) == approx(
+            float(monthly_july[total_key]["cnx_cash"]) + float(monthly_august[total_key]["cnx_cash"]),
+            rel=1e-9,
+        ), total_key
+        # 覆盖月份相同（无 1-6 月数据）时 qtd 与 ytd 现金必然一致。
+        assert float(qtd[total_key]["cnx_cash"]) == approx(float(ytd[total_key]["cnx_cash"]), rel=1e-9)
+
+    # 规模 = (7 月规模×31 + 8 月规模×31) / 62；ytd 同分子但分母为 243 天。
+    july_scale = float(monthly_july["asset_total"]["cnx_scale"])
+    august_scale = float(monthly_august["asset_total"]["cnx_scale"])
+    expected_qtd_scale = (july_scale * 31 + august_scale * 31) / 62
+    assert float(qtd["asset_total"]["cnx_scale"]) == approx(expected_qtd_scale, rel=1e-9)
+    assert float(ytd["asset_total"]["cnx_scale"]) == approx(expected_qtd_scale * 62 / 243, rel=1e-9)
     get_settings.cache_clear()
 
 
@@ -2983,7 +3060,9 @@ def _parse_adjustment_csv_sections(content: str) -> tuple[list[dict[str, str]], 
 
 
 def _write_month_pair(target_dir: Path, month_key: str, *, january: bool) -> None:
-    report_date = f"{month_key[:4]}-{month_key[4:]}-{'31' if january else '28'}"
+    # january 仅选择数值档位（档 A / 档 B），报告日恒为该月自然月末。
+    year, month = int(month_key[:4]), int(month_key[4:])
+    report_date = f"{year:04d}-{month:02d}-{monthrange(year, month)[1]:02d}"
     ledger_path = target_dir / f"{LEDGER_PREFIX}{month_key}.xlsx"
     avg_path = target_dir / f"{AVG_PREFIX}{month_key}.xlsx"
     _write_ledger_workbook(ledger_path, report_date, january=january)
@@ -3243,23 +3322,22 @@ def test_resolve_product_category_ytd_payload_canonical_fallback_matches_persist
         resolved.interest_earning_spread.cny_spread_pct.display
         == ref_interest_earning_spread["cny_spread_pct"]["display"]
     )
-    # The canonical-facts fallback must publish the CLN decomposition too, otherwise the
-    # degraded home path silently serves all-None where the read-model path serves values.
+    # The canonical-facts fallback must preserve the governed decomposition, including
+    # the all-null result produced by an invalid liability-side sign topology.
     resolved_decomposition = resolved.liability_cost_decomposition.model_dump(mode="json")
-    for field in ("liability_yield_pct", "liability_yield_ex_cln_pct", "cln_yield_pct"):
+    for field in ("liability_yield_pct", "liability_yield_ex_cln_pct", "cln_yield_pct", "cln_scale"):
         assert resolved_decomposition[field] == ref_liability_cost_decomposition[field]
-    assert resolved_decomposition["cln_scale"] == ref_liability_cost_decomposition["cln_scale"]
-    # cln_drag_bp scales a rate difference by 100, so it also scales the sub-1e-8 gap
-    # between the persisted read model and the canonical recompute by 100. The published
-    # 1-decimal display is identical; only the audit raw drifts, and only past 1e-6 bp.
-    assert resolved_decomposition["cln_drag_bp"]["unit"] == "bp"
-    assert (
-        resolved_decomposition["cln_drag_bp"]["display"]
-        == ref_liability_cost_decomposition["cln_drag_bp"]["display"]
-    )
-    assert abs(
-        Decimal(resolved_decomposition["cln_drag_bp"]["raw"])
-        - Decimal(ref_liability_cost_decomposition["cln_drag_bp"]["raw"])
-    ) <= Decimal("0.000001")
+    resolved_drag = resolved_decomposition["cln_drag_bp"]
+    reference_drag = ref_liability_cost_decomposition["cln_drag_bp"]
+    if reference_drag is None:
+        assert resolved_drag is None
+    else:
+        assert resolved_drag is not None
+        assert resolved_drag["unit"] == "bp"
+        assert resolved_drag["display"] == reference_drag["display"]
+        # The bp conversion scales sub-1e-8 rate recomputation drift by 100.
+        assert abs(
+            Decimal(resolved_drag["raw"]) - Decimal(reference_drag["raw"])
+        ) <= Decimal("0.000001")
 
     get_settings.cache_clear()

@@ -209,6 +209,8 @@ def create_kpi_metric(
         ensure_user_allowed(auth=auth, settings=settings, resource="kpi.metric", action="write")
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     try:
         return kpi_workbench_service.create_metric(dsn=_get_dsn(), data=_body_dict(body))
@@ -227,6 +229,8 @@ def update_kpi_metric(
         ensure_user_allowed(auth=auth, settings=settings, resource="kpi.metric", action="write")
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     try:
         return kpi_workbench_service.update_metric(dsn=_get_dsn(), metric_id=metric_id, data=_body_dict(body))
@@ -244,6 +248,8 @@ def delete_kpi_metric(
         ensure_user_allowed(auth=auth, settings=settings, resource="kpi.metric", action="delete")
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     try:
         kpi_workbench_service.delete_metric(dsn=_get_dsn(), metric_id=metric_id)
@@ -280,6 +286,8 @@ def create_kpi_value(
         ensure_user_allowed(auth=auth, settings=settings, resource="kpi.value", action="write")
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     try:
         return kpi_workbench_service.create_value(dsn=_get_dsn(), data=_body_dict(body))
@@ -298,6 +306,8 @@ def update_kpi_value(
         ensure_user_allowed(auth=auth, settings=settings, resource="kpi.value", action="write")
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     try:
         return kpi_workbench_service.update_value(dsn=_get_dsn(), value_id=value_id, data=_body_dict(body))
@@ -315,6 +325,8 @@ def batch_update_kpi_values(
         ensure_user_allowed(auth=auth, settings=settings, resource="kpi.value", action="write")
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     try:
         items = [_body_dict(item) for item in body.items]
@@ -346,6 +358,8 @@ def fetch_and_recalc_kpi(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     try:
         return kpi_workbench_service.fetch_and_recalc(

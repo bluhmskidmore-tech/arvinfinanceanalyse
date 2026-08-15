@@ -23,7 +23,8 @@ type Props = {
 
 function formatMoney(value: LedgerMoneyValue | null | undefined) {
   const yi = String(value?.yi ?? "").trim();
-  return yi ? `${yi} 亿元` : EM_DASH;
+  // 契约外防御：非有限数值串（如 "NaN"）按缺失占位，不把 NaN 字样透传到展示层。
+  return yi && Number.isFinite(Number(yi)) ? `${yi} 亿元` : EM_DASH;
 }
 
 function formatYuan(value: LedgerMoneyValue | null | undefined) {

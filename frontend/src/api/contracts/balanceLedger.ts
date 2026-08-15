@@ -281,6 +281,17 @@ export type BalancePageCalibration = {
 export type BalanceMovementPayload = {
   report_date: string;
   currency_basis: string;
+  /**
+   * 以下三字段后端必输出（`AccountingAssetMovementPayload`，extra=forbid）。
+   * 标记可选仅为兼容尚未补齐这三个字段的 mock/测试装置。
+   */
+  available_report_dates?: string[];
+  upstream_control_report_dates?: string[];
+  freshness_status?:
+    | "fresh"
+    | "read_model_lagging"
+    | "read_model_empty"
+    | "upstream_empty";
   rows: BalanceMovementRow[];
   summary: BalanceMovementSummary;
   trend_months: BalanceMovementTrendMonth[];
@@ -293,7 +304,6 @@ export type BalanceMovementPayload = {
   zqtz_concentration_analysis?: BalanceZqtzConcentrationAnalysis | null;
   accounting_controls: string[];
   excluded_controls: string[];
-  calibration?: BalancePageCalibration | null;
 };
 
 export type BalanceMovementDatesPayload = {
@@ -387,6 +397,11 @@ export type BalanceAnalysisOverviewPayload = {
   asset_total_accrued_interest_amount: DecimalLike;
   liability_total_accrued_interest_amount: DecimalLike;
   metric_definitions?: BalanceAnalysisMetricDefinition[];
+  /**
+   * 校准说明来自信封顶层（后端 `_with_balance_analysis_response_context` 注入；
+   * result payload 为 `extra=forbid` 不含该字段），由 `useBalanceAnalysisData`
+   * 读取信封后合并到 overview 上；直接读 `result.calibration` 恒为 undefined。
+   */
   calibration?: BalancePageCalibration | null;
 };
 

@@ -20,7 +20,7 @@
     "as_of_date": "2025-12-31",
     "date_basis": null,
     "fallback_date": null,
-    "generated_at": "2026-08-11T08:26:38.901020Z",
+    "generated_at": "2026-08-12T18:23:43.844867Z",
     "filters_applied": {},
     "tables_used": [],
     "evidence_rows": null,
@@ -137,7 +137,13 @@
         "quality_flag": "error",
         "current_balance_found": true,
         "prior_balance_found": true,
-        "balance_diagnostics": []
+        "balance_diagnostics": [],
+        "roll_down_availability": "not_applicable",
+        "roll_down_availability_reason": "no_curve_sensitivity",
+        "treasury_curve_availability": "not_applicable",
+        "treasury_curve_availability_reason": "no_curve_sensitivity",
+        "credit_spread_availability": "not_applicable",
+        "credit_spread_availability_reason": "not_credit_book"
       }
     ],
     "summary": {
@@ -236,7 +242,31 @@
         "precision": 2,
         "sign_aware": true
       },
-      "quality_flag": "error"
+      "quality_flag": "error",
+      "roll_down_availability": {
+        "status": "not_applicable",
+        "unavailable_rows": 0,
+        "applicable_rows": 0,
+        "reasons": [
+          "no_curve_sensitivity"
+        ]
+      },
+      "treasury_curve_availability": {
+        "status": "not_applicable",
+        "unavailable_rows": 0,
+        "applicable_rows": 0,
+        "reasons": [
+          "no_curve_sensitivity"
+        ]
+      },
+      "credit_spread_availability": {
+        "status": "not_applicable",
+        "unavailable_rows": 0,
+        "applicable_rows": 0,
+        "reasons": [
+          "not_credit_book"
+        ]
+      }
     },
     "warnings": [
       "Phase 3 partial delivery: roll_down / treasury_curve / credit_spread use governed curves when available.",

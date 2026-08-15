@@ -41,12 +41,13 @@
   font-size: 14px;
 }
 
+/* 候选读模型未获正式批准：徽标用琥珀而非绿色，避免「绿=已治理」误读（§4/§6）。 */
 .ledger-dashboard__mode {
   padding: var(--moss-space-2) var(--moss-space-3);
-  border: 1px solid color-mix(in srgb, var(--dh-api-green) 28%, var(--dh-api-line));
+  border: 1px solid color-mix(in srgb, var(--dh-api-amber) 35%, var(--dh-api-line));
   border-radius: var(--dh-api-radius);
-  background: color-mix(in srgb, var(--dh-api-green) 8%, var(--dh-api-panel));
-  color: var(--dh-api-green);
+  background: color-mix(in srgb, var(--dh-api-amber) 8%, var(--dh-api-panel));
+  color: var(--dh-api-amber);
   font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
@@ -69,6 +70,23 @@
   color: var(--dh-api-amber);
   font-size: 12px;
   letter-spacing: 0.02em;
+}
+
+/* 英文治理记录原文默认折叠（证据引用层，§6 溯源分层）。 */
+.ledger-dashboard__governance-original summary {
+  width: fit-content;
+  color: color-mix(in srgb, var(--dh-api-amber) 72%, var(--dh-api-soft));
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ledger-dashboard__governance-original p {
+  margin: var(--moss-space-2) 0 0;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
 }
 
 .ledger-dashboard__toolbar {
@@ -173,13 +191,52 @@
   font-weight: 700;
 }
 
-.ledger-dashboard__file-field input {
+/* 原生 file input 视觉隐藏（保留语义、焦点与 label 触发），按钮自绘中文。 */
+.ledger-dashboard__file-control {
+  position: relative;
+  display: block;
+}
+
+.ledger-dashboard__file-input {
+  position: absolute;
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.ledger-dashboard__file-button {
+  display: flex;
+  align-items: center;
   min-height: 38px;
-  padding: 7px;
+  padding: 7px var(--moss-space-3);
   border: 1px solid var(--dh-api-line);
   border-radius: var(--dh-api-radius);
   background: var(--dh-api-panel);
   color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ledger-dashboard__file-control:hover .ledger-dashboard__file-button {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, var(--dh-api-line));
+}
+
+.ledger-dashboard__file-input:focus-visible + .ledger-dashboard__file-button {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 1px;
+}
+
+.ledger-dashboard__file-input:disabled + .ledger-dashboard__file-button {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+  cursor: not-allowed;
 }
 
 .ledger-dashboard__import-submit,
@@ -274,6 +331,40 @@
   border-color: color-mix(in srgb, var(--dh-api-red) 28%, var(--dh-api-line));
   background: color-mix(in srgb, var(--dh-api-red) 8%, var(--dh-api-panel));
   color: var(--dh-api-red);
+}
+
+/* 失败态：原因 + 影响范围 + 重试同排（窄屏换行）。 */
+.ledger-dashboard__status-failure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--moss-space-2) var(--moss-space-3);
+}
+
+.ledger-dashboard__status-failure strong {
+  overflow-wrap: anywhere;
+}
+
+.ledger-dashboard__status .ledger-dashboard__status-scope {
+  margin-left: 0;
+  color: var(--dh-api-soft);
+  font-weight: 500;
+}
+
+.ledger-dashboard__status-retry {
+  margin-left: auto;
+  padding: 4px var(--moss-space-3);
+  border: 1px solid color-mix(in srgb, var(--dh-api-red) 40%, var(--dh-api-line));
+  border-radius: var(--dh-api-radius);
+  background: transparent;
+  color: var(--dh-api-red);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ledger-dashboard__status-retry:hover {
+  border-color: var(--dh-api-red);
+  background: color-mix(in srgb, var(--dh-api-red) 12%, transparent);
 }
 
 .ledger-dashboard__status--no_data {

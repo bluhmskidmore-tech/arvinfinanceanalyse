@@ -8,6 +8,9 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
+from backend.app.core_finance.config.product_category_contract import (
+    PRODUCT_CATEGORY_RULE_VERSION,
+)
 from backend.app.core_finance.product_category_pnl import (
     ZERO,
     CanonicalFactRow,
@@ -17,7 +20,7 @@ from backend.app.services.source_file_hash import sha256_file
 
 LEDGER_PREFIX = "\u603b\u8d26\u5bf9\u8d26"
 AVG_PREFIX = "\u65e5\u5747"
-RULE_VERSION = "rv_product_category_pnl_v1"
+RULE_VERSION = PRODUCT_CATEGORY_RULE_VERSION
 SUPPORTED_CURRENCIES = {"CNX", "CNY"}
 
 

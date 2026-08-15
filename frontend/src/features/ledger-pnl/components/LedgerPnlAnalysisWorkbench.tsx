@@ -20,7 +20,8 @@ export type LedgerPnlContributorSelection = {
 
 function formatMoney(value: LedgerMoneyValue | null | undefined) {
   const yi = String(value?.yi ?? "").trim();
-  return yi ? `${yi} 亿元` : EM_DASH;
+  // 契约外防御：非有限数值串（如 "NaN"）按缺失占位，不把 NaN 字样透传到展示层。
+  return yi && Number.isFinite(Number(yi)) ? `${yi} 亿元` : EM_DASH;
 }
 
 function formatBasisMoney(
@@ -372,11 +373,17 @@ export function LedgerPnlAnalysisWorkbench(props: Props) {
       (row) => row.availability.CNX === "ready" || row.availability.CNY === "ready",
     ),
   );
+  // data-state 与下方渲染分支同序：vendor_unavailable 整面替换为警示卡时，
+  // 机器可读钩子不得继续透传 payload.analysis_status="ready"，否则自动化监测会漏报降级。
   const dataState = props.isLoading
     ? "loading"
     : props.isError
       ? "error"
-      : payload?.analysis_status ?? "no_data";
+      : !props.envelope || !payload
+        ? "no_data"
+        : props.envelope.result_meta.vendor_status === "vendor_unavailable"
+          ? "vendor_unavailable"
+          : payload.analysis_status;
 
   return (
     <section

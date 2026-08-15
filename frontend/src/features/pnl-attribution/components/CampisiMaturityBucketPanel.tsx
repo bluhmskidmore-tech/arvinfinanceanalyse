@@ -1,18 +1,11 @@
 import type { CampisiMaturityBucketsPayload } from "../../../api/contracts";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { PageDataSection } from "../../../components/page/PageDataSection";
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import "./campisiPanels.css";
 
-// 本面板挂在 Nocturne 深色路由（theme-dh-api + pnl-attribution scope）下，
-// 面色/文字一律走主题感知 CSS 变量（--dh-api-*），禁止浅色 hex、designTokens
-// 浅色 neutral 或 --ib-*（路由边界已算成钢蓝字面值）直灌（迁法同
-// CampisiAttributionPanel / CampisiDecisionGradePanel）。
-const cardStyle = {
-  padding: designTokens.space[5],
-  borderRadius: "var(--dh-api-radius)",
-  border: "1px solid var(--dh-api-line)",
-  background: "var(--dh-api-panel)",
-} as const;
+// 本面板挂在 Nocturne 深色路由（theme-dh-api + pnl-attribution scope）下：
+// 布局与面色收敛到共享 campisiPanels.css（--dh-api-* var 链），禁止浅色 hex、
+// designTokens 浅色 neutral 或 --ib-*（路由边界已算成钢蓝字面值）直灌。
 
 function toYi(value: number) {
   return (value / 100_000_000).toFixed(2);
@@ -29,128 +22,38 @@ export function CampisiMaturityBucketPanel({ data, state, onRetry }: Props) {
 
   return (
     <PageDataSection title="Campisi 到期桶拆解" state={state} onRetry={onRetry}>
-      <div style={cardStyle}>
-        <p
-          style={{
-            margin: `0 0 ${designTokens.space[4]}px`,
-            fontSize: designTokens.fontSize[13],
-            color: "var(--dh-api-soft)",
-            lineHeight: designTokens.lineHeight.normal,
-          }}
-        >
+      <div className="campisi-panel">
+        <p className="campisi-panel__intro">
           按剩余期限桶查看票息、国债曲线、利差和选券效应的分布，便于和久期结构联读。
         </p>
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            fontSize: designTokens.fontSize[12],
-          }}
-        >
+        <table className="campisi-table">
           <thead>
-            <tr style={{ background: "var(--dh-api-panel-2)" }}>
-              <th style={{ textAlign: "left", padding: designTokens.space[2] }}>
-                到期桶
-              </th>
-              <th
-                style={{
-                  textAlign: "right",
-                  padding: designTokens.space[2],
-                  ...tabularNumsStyle,
-                }}
-              >
-                票息(亿)
-              </th>
-              <th
-                style={{
-                  textAlign: "right",
-                  padding: designTokens.space[2],
-                  ...tabularNumsStyle,
-                }}
-              >
-                国债(亿)
-              </th>
-              <th
-                style={{
-                  textAlign: "right",
-                  padding: designTokens.space[2],
-                  ...tabularNumsStyle,
-                }}
-              >
-                利差(亿)
-              </th>
-              <th
-                style={{
-                  textAlign: "right",
-                  padding: designTokens.space[2],
-                  ...tabularNumsStyle,
-                }}
-              >
-                剩余/选券(亿)
-              </th>
-              <th
-                style={{
-                  textAlign: "right",
-                  padding: designTokens.space[2],
-                  ...tabularNumsStyle,
-                }}
-              >
-                总收益(亿)
-              </th>
+            <tr>
+              <th>到期桶</th>
+              <th className="campisi-table__numeric-head">票息(亿)</th>
+              <th className="campisi-table__numeric-head">国债(亿)</th>
+              <th className="campisi-table__numeric-head">利差(亿)</th>
+              <th className="campisi-table__numeric-head">剩余/选券(亿)</th>
+              <th className="campisi-table__numeric-head">总收益(亿)</th>
             </tr>
           </thead>
           <tbody>
             {rows.map(([bucket, metrics]) => (
-              <tr
-                key={bucket}
-                style={{
-                  borderTop: "1px solid var(--dh-api-line-soft)",
-                }}
-              >
-                <td style={{ padding: designTokens.space[2] }}>{bucket}</td>
-                <td
-                  style={{
-                    textAlign: "right",
-                    padding: designTokens.space[2],
-                    ...tabularNumsStyle,
-                  }}
-                >
+              <tr key={bucket}>
+                <td>{bucket}</td>
+                <td className="campisi-table__numeric-cell">
                   {toYi(metrics.income_return)}
                 </td>
-                <td
-                  style={{
-                    textAlign: "right",
-                    padding: designTokens.space[2],
-                    ...tabularNumsStyle,
-                  }}
-                >
+                <td className="campisi-table__numeric-cell">
                   {toYi(metrics.treasury_effect)}
                 </td>
-                <td
-                  style={{
-                    textAlign: "right",
-                    padding: designTokens.space[2],
-                    ...tabularNumsStyle,
-                  }}
-                >
+                <td className="campisi-table__numeric-cell">
                   {toYi(metrics.spread_effect)}
                 </td>
-                <td
-                  style={{
-                    textAlign: "right",
-                    padding: designTokens.space[2],
-                    ...tabularNumsStyle,
-                  }}
-                >
+                <td className="campisi-table__numeric-cell">
                   {toYi(metrics.selection_effect)}
                 </td>
-                <td
-                  style={{
-                    textAlign: "right",
-                    padding: designTokens.space[2],
-                    ...tabularNumsStyle,
-                  }}
-                >
+                <td className="campisi-table__numeric-cell">
                   {toYi(metrics.total_return)}
                 </td>
               </tr>

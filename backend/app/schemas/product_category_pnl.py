@@ -67,6 +67,22 @@ class ProductCategoryLiabilityCostDecompositionPayload(BaseModel):
     cln_drag_bp: ProductCategoryMetricValue | None = None
     cln_scale: Decimal | None = None
 
+    @model_validator(mode="after")
+    def validate_metric_units(
+        self,
+    ) -> ProductCategoryLiabilityCostDecompositionPayload:
+        for field_name in (
+            "liability_yield_pct",
+            "liability_yield_ex_cln_pct",
+            "cln_yield_pct",
+        ):
+            metric = getattr(self, field_name)
+            if metric is not None and metric.unit != "percent":
+                raise ValueError(f"{field_name} must use unit='percent'")
+        if self.cln_drag_bp is not None and self.cln_drag_bp.unit != "bp":
+            raise ValueError("cln_drag_bp must use unit='bp'")
+        return self
+
 
 class ProductCategoryInterestSpreadPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -77,6 +93,21 @@ class ProductCategoryInterestSpreadPayload(BaseModel):
     cny_asset_yield_pct: ProductCategoryMetricValue | None = None
     cny_liability_yield_pct: ProductCategoryMetricValue | None = None
     cny_spread_pct: ProductCategoryMetricValue | None = None
+
+    @model_validator(mode="after")
+    def validate_metric_units(self) -> ProductCategoryInterestSpreadPayload:
+        for field_name in (
+            "all_currency_asset_yield_pct",
+            "all_currency_liability_yield_pct",
+            "all_currency_spread_pct",
+            "cny_asset_yield_pct",
+            "cny_liability_yield_pct",
+            "cny_spread_pct",
+        ):
+            metric = getattr(self, field_name)
+            if metric is not None and metric.unit != "percent":
+                raise ValueError(f"{field_name} must use unit='percent'")
+        return self
 
 
 class ProductCategoryPnlPayload(BaseModel):

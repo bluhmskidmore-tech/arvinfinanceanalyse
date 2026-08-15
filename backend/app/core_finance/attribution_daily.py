@@ -1,4 +1,14 @@
 """
+DORMANT: 无生产调用方（2026-08 B8 复核：除 tests/test_attribution_daily.py 外，
+仓库内无 compute_daily_attribution_row 调用点）。接线前必须：
+
+1. fx_pnl 可得性披露：fx_pnl 缺失（None）时本模块发布 fx_return=None（无观测），
+   而不是伪造 0 观测值；残差恒等式仍以 0 参与闭合（residual 吸收未观测 FX）。
+   接线方必须区分「fx_return=None（缺数据）」与「fx_return=0.0（观测为零）」，
+   禁止把 None 静默填 0 后落 fact 表。
+2. total_pnl 应传入 fact_pnl_daily.total_pnl 正式闭合值；None 回退到模型
+   total_return 仅供演算，正式链路不得依赖该回退。
+
 单日 fact_attribution_daily 行分解（纯函数）。
 
 与区间 Campisi 共用 bond_four_effects + 市场插值/利差变动逻辑（见 campisi.py）。
@@ -13,9 +23,9 @@
   rolldown = +MD × (y(T(report)) − y(T(report)−Δ)) / 100 × MV_end，
   向上倾斜的曲线产生正的 rolldown 收益；
   与 curve_return 相加近似于债券沿曲线的总基准价格效应（AC 类为 0，与四效应一致）
-- fx_return ← 来自 fact_pnl_daily.fx_pnl（若有）
+- fx_return ← 来自 fact_pnl_daily.fx_pnl；缺失时为 None（闭合按 0 参与，见上）
 - total_return ← fact_pnl_daily.total_pnl（正式闭合）
-- residual_return ← total - carry - rolldown - spread - curve - fx
+- residual_return ← total - carry - rolldown - spread - curve - (fx or 0)
 """
 
 from __future__ import annotations
@@ -46,7 +56,7 @@ def compute_daily_attribution_row(
     *,
     total_pnl: float | None,
     fx_pnl: float | None = None,
-) -> dict[str, float]:
+) -> dict[str, float | None]:
     """
     merged_position: 与 campisi_attribution 单条相同，需含
     market_value_start/end, face_value_start, coupon_rate_start,
@@ -117,6 +127,8 @@ def compute_daily_attribution_row(
                 * rate_delta
                 * safe_decimal(merged_position.get("market_value_end"))
             )
+    # fx_pnl 缺失是"无 FX 观测"，不是"FX 为 0"：闭合按 0 参与（residual 吸收
+    # 未观测 FX，数值行为与历史一致），但发布字段为 None，禁止伪造 0 观测值。
     fx_ret_dec = safe_decimal(fx_pnl)
     if total_pnl is not None:
         total_dec = safe_decimal(total_pnl)
@@ -128,7 +140,7 @@ def compute_daily_attribution_row(
         "rolldown_return": float(rolldown_dec),
         "spread_return": float(spread_ret_dec),
         "curve_return": float(curve_dec),
-        "fx_return": float(fx_ret_dec),
+        "fx_return": None if fx_pnl is None else float(fx_ret_dec),
         "total_return": float(total_dec),
         "residual_return": float(residual_dec),
     }

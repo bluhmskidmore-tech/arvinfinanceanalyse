@@ -8,7 +8,7 @@ vi.mock("../../lib/echarts", () => ({
 }));
 
 import type { PnlByBusinessUntracedTrendRow } from "../../api/contracts";
-import { ibTokens } from "../../theme/designSystem";
+import { nocturneTokens } from "../../theme/designSystem";
 import { UntracedReconciliationTrendPanel } from "./UntracedReconciliationTrendPanel";
 import { buildUntracedReconciliationTrendOption } from "./untracedReconciliationTrendOption";
 
@@ -53,7 +53,7 @@ describe("buildUntracedReconciliationTrendOption", () => {
     expect(series[0].connectNulls).toBe(false);
   });
 
-  it("only uses neutral IB ink/surface tones for the series styling (no warning/danger/KPI accent colors)", () => {
+  it("only uses neutral Nocturne ink tones for the series styling (no warning/danger/KPI accent colors)", () => {
     const rows = [buildRow({})];
     const option = buildUntracedReconciliationTrendOption(rows);
     const series = option.series as Array<{
@@ -62,20 +62,59 @@ describe("buildUntracedReconciliationTrendOption", () => {
       areaStyle?: { color?: string };
     }>;
 
+    // 深色页 canvas 取色走 nocturneTokens；本图为血缘完整性观察，仍限定中性墨阶，
+    // 禁止 warning/danger/accent（会被误读为业务预警）。
     const colors = [series[0].lineStyle?.color, series[0].itemStyle?.color, series[0].areaStyle?.color];
     const allowed = new Set<string>([
-      ibTokens.color.inkSecondary,
-      ibTokens.color.surfaceMuted,
-      ibTokens.color.inkMuted,
-      ibTokens.color.hairline,
+      nocturneTokens.color.inkSoft,
+      nocturneTokens.color.inkMuted,
+      nocturneTokens.color.lineSoft,
+      nocturneTokens.color.panel2,
+      nocturneTokens.color.panel3,
     ]);
     for (const color of colors) {
       expect(allowed.has(color ?? "")).toBe(true);
     }
-    expect(colors).not.toContain(ibTokens.color.down);
-    expect(colors).not.toContain(ibTokens.color.warn);
-    expect(colors).not.toContain(ibTokens.color.accent);
-    expect(colors).not.toContain(ibTokens.color.up);
+    expect(colors).not.toContain(nocturneTokens.color.red);
+    expect(colors).not.toContain(nocturneTokens.color.amber);
+    expect(colors).not.toContain(nocturneTokens.color.blue);
+    expect(colors).not.toContain(nocturneTokens.color.green);
+  });
+
+  it("reuses the normalized series values in the tooltip: missing/invalid strings read 无数据, never NaN%", () => {
+    const rows = [
+      buildRow({ report_date: "2025-12-31", untraced_share_pct: "12.5" }),
+      buildRow({ report_date: "2026-01-31", untraced_share_pct: null }),
+      buildRow({ report_date: "2026-02-28", untraced_share_pct: "not-a-number" }),
+      buildRow({ report_date: "2026-03-31", untraced_share_pct: "" }),
+    ];
+    const option = buildUntracedReconciliationTrendOption(rows);
+    const formatter = (option.tooltip as { formatter: (params: unknown) => string }).formatter;
+
+    // 合法数值：按两位小数展示。
+    expect(formatter([{ dataIndex: 0 }])).toContain("未追溯占比：12.50%");
+    // null：显示无数据（与折线断点一致）。
+    expect(formatter([{ dataIndex: 1 }])).toContain("未追溯占比：无数据");
+    // 非法字符串：原实现 Number("not-a-number").toFixed(2) 直出 "NaN%"；
+    // 现复用折线已归一的 values[dataIndex]，与断点口径一致。
+    const invalidTooltip = formatter([{ dataIndex: 2 }]);
+    expect(invalidTooltip).toContain("未追溯占比：无数据");
+    expect(invalidTooltip).not.toContain("NaN");
+    // 空串：原实现 Number("") 变 0 直出 "0.00%"（无中生有）；现同样显示无数据。
+    expect(formatter([{ dataIndex: 3 }])).toContain("未追溯占比：无数据");
+    // 行数证据仍原样透出。
+    expect(formatter([{ dataIndex: 1 }])).toContain("未追溯行数 / 总行数：0 / 2");
+    expect(formatter([])).toBe("");
+  });
+
+  it("maps invalid share strings to null data points in the series (no fabricated zeros)", () => {
+    const rows = [
+      buildRow({ report_date: "2026-02-28", untraced_share_pct: "not-a-number" }),
+      buildRow({ report_date: "2026-03-31", untraced_share_pct: "" }),
+    ];
+    const option = buildUntracedReconciliationTrendOption(rows);
+    const series = option.series as Array<{ data: unknown[] }>;
+    expect(series[0].data).toEqual([null, null]);
   });
 });
 

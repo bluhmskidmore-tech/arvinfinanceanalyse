@@ -6,11 +6,13 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from typing import TypedDict
 
+from backend.app.core_finance.bond_analytics.common import compute_macaulay_duration_and_convexity
 from backend.app.core_finance.bond_duration import estimate_duration
 from backend.app.core_finance.cashflow_projection import MonthlyBucket, compute_duration_gap
 from backend.app.core_finance.interest_mode import (
     classify_interest_rate_style,
     coupon_frequency_per_year,
+    is_bullet_repayment,
     resolve_interest_payment_frequency,
 )
 from backend.app.governance.settings import get_settings
@@ -208,7 +210,13 @@ def _build_top_maturing_assets_12m(
         maturity_date = _effective_tyw_maturity_date(row, report_date)
         if maturity_date is None or maturity_date <= report_date or maturity_date > horizon_end:
             continue
-        principal = _coerce_decimal(row.get("principal_amount") or row.get("principal_native"))
+        # 余额为 0 是合法业务值，而 ``principal_native`` 是换汇前的原币口径：用 ``or``
+        # 会在余额为 0 时静默改用原币金额，凭空造出到期现金流。只有字段缺失才回退。
+        # 口径与 ``core_finance/cashflow_projection.py`` 的 ``_get_value`` 一致。
+        principal_raw = row.get("principal_amount")
+        if principal_raw is None:
+            principal_raw = row.get("principal_native")
+        principal = _coerce_decimal(principal_raw)
         candidates.append(
             {
                 "instrument_code": str(row.get("position_id") or ""),
@@ -351,6 +359,20 @@ def _recompute_macaulay_duration(row: dict[str, object]) -> Decimal | None:
         if used_fallback and row.get("interest_payment_frequency") not in (None, "")
         else interest_mode
     )
+    if is_bullet_repayment(frequency_source):
+        # 与 bond_analytics.engine 的 bullet 口径对齐：到期一次还本付息的唯一现金流
+        # 落在到期日，不得按年付虚构中途票息（会把 Macaulay 拉向票息时点、低估久期）。
+        # 复用 core_finance 单笔现金流路径，Macaulay 恒等于剩余年限。
+        remaining_days = (maturity_date - report_date).days
+        if remaining_days <= 0:
+            return Decimal("0")
+        macaulay_duration, _convexity = compute_macaulay_duration_and_convexity(
+            coupon_rate=coupon_rate,
+            ytm=ytm,
+            years_to_maturity=Decimal(str(remaining_days)) / Decimal("365"),
+            single_cashflow_at_maturity=True,
+        )
+        return macaulay_duration
     return estimate_duration(
         maturity_date,
         report_date,

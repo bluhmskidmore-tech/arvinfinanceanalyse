@@ -8,6 +8,11 @@ import { EM_DASH } from "../../../utils/format";
 
 const { Paragraph, Text } = Typography;
 
+/** 单次批量粘贴的最大导入行数；超限拒绝解析，提示分批导入。 */
+export const BATCH_PASTE_MAX_ROWS = 500;
+/** 预览表分页大小，避免一次渲染全部行。 */
+const PREVIEW_PAGE_SIZE = 50;
+
 export type BatchPasteModalProps = {
   open: boolean;
   onClose: () => void;
@@ -38,6 +43,7 @@ export function BatchPasteModal({
   const client = useApiClient();
   const [pasteText, setPasteText] = React.useState("");
   const [parsedRows, setParsedRows] = React.useState<ParsedRow[]>([]);
+  const [parseError, setParseError] = React.useState<string | null>(null);
   const [importing, setImporting] = React.useState(false);
   const [importResult, setImportResult] = React.useState<{
     success: number;
@@ -56,9 +62,20 @@ export function BatchPasteModal({
   const handleParse = React.useCallback(() => {
     if (!pasteText.trim()) {
       setParsedRows([]);
+      setParseError(null);
       return;
     }
     const lines = pasteText.trim().split("\n");
+    const nonEmptyLineCount = lines.filter((line) => line.trim()).length;
+    if (nonEmptyLineCount > BATCH_PASTE_MAX_ROWS) {
+      setParsedRows([]);
+      setImportResult(null);
+      setParseError(
+        `共 ${nonEmptyLineCount} 行，超出单次最大导入 ${BATCH_PASTE_MAX_ROWS} 行，请分批粘贴导入。`,
+      );
+      return;
+    }
+    setParseError(null);
     const rows: ParsedRow[] = [];
     lines.forEach((line, index) => {
       const trimmedLine = line.trim();
@@ -162,6 +179,7 @@ export function BatchPasteModal({
   const handleClear = React.useCallback(() => {
     setPasteText("");
     setParsedRows([]);
+    setParseError(null);
     setImportResult(null);
   }, []);
 
@@ -221,7 +239,7 @@ export function BatchPasteModal({
             <li>
               格式：<Text code>指标代码 [Tab] 实际值 [Tab] 序时进度</Text>（序时进度可选）
             </li>
-            <li>点击「解析」预览，再「导入」</li>
+            <li>点击「解析」预览，再「导入」；单次最多 {BATCH_PASTE_MAX_ROWS} 行</li>
           </ul>
         }
       />
@@ -244,6 +262,15 @@ export function BatchPasteModal({
           </Button>
         </div>
       </div>
+      {parseError ? (
+        <Alert
+          type="error"
+          showIcon
+          className="kpi-modal-v2__alert"
+          message="超出导入行数上限"
+          description={parseError}
+        />
+      ) : null}
       {parsedRows.length > 0 ? (
         <>
           <div className="kpi-modal-v2__preview-header">
@@ -258,7 +285,11 @@ export function BatchPasteModal({
           <Table
             className="kpi-modal-v2__table"
             size="small"
-            pagination={false}
+            pagination={{
+              pageSize: PREVIEW_PAGE_SIZE,
+              hideOnSinglePage: true,
+              showSizeChanger: false,
+            }}
             scroll={{ y: 220 }}
             dataSource={parsedRows.map((r, i) => ({ ...r, key: i }))}
             columns={[

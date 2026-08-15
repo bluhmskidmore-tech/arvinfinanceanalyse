@@ -269,13 +269,25 @@ def build_monthly_buckets(
 ) -> list[MonthlyBucket]:
     """
     Aggregate cashflows by month and compute cumulative net cashflow.
+
+    Buckets run from the report month through the month containing
+    ``horizon_end`` (= report_date + horizon_months). Events are admitted up to
+    ``horizon_end`` inclusive, so the bucket range must cover that final —
+    possibly partial — calendar month; building exactly ``horizon_months``
+    buckets used to drop events between the last built month-end and
+    ``horizon_end`` silently.
     """
 
     month_start = date(report_date.year, report_date.month, 1)
     horizon_end = _add_months(report_date, horizon_months)
+    month_count = (
+        (horizon_end.year * 12 + horizon_end.month)
+        - (month_start.year * 12 + month_start.month)
+        + 1
+    )
     aggregates: dict[str, dict[str, Decimal]] = {}
     ordered_months: list[str] = []
-    for offset in range(horizon_months):
+    for offset in range(month_count):
         bucket_date = _add_months(month_start, offset)
         year_month = bucket_date.strftime("%Y-%m")
         ordered_months.append(year_month)

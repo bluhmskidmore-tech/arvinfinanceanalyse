@@ -18,13 +18,16 @@
  * 4. 表格单元格兜底层：components/LedgerPnlDataTable.tsx（`render(row) ?? EM_DASH`）。
  *    - render 返回 null/undefined → EM_DASH；返回数字 0 → "0"（?? 不吞 0）。
  *
- * 疑似缺陷登记（不放宽断言，以 it.skip 保留 gate 语义断言，详见专家报告）：
+ * 缺陷登记（均已闭环，保留追溯）：
  * - [缺陷A·已修复] LedgerPnlWorkbookTables.formatAnalysisValue 曾对 null/undefined/空串返回连字符 "-"；
  *   已改为 EM_DASH（Page.tsx 的同名重复实现一并修复），对应断言已解除 skip 转为常规契约测试。
- * - [缺陷B·契约外防御缺失] Workbench/Page/Drawer 的 formatMoney 对非空 yi 串直接透传：若上游违约送 yi="NaN"
- *   会渲染 "NaN 亿元"。契约内不可达（后端 fmt_yi 经 to_decimal 把 NaN/Inf 归 0），仅登记防御缺失。
- * - [缺陷C·契约外防御缺失] LedgerPnlDataTable 单元格 `render(row) ?? EM_DASH` 对 render 返回的原始 NaN
- *   数字（非 nullish）会经 React 渲染出 "NaN"。契约要求 render 返回已格式化串，页面各列均走 formatMoney，契约内不可达。
+ * - [缺陷B·已修复] Workbench/Page/Drawer 的 formatMoney 曾对非空 yi 串直接透传（yi="NaN" 会渲染
+ *   "NaN 亿元"）。契约内不可达（后端 fmt_yi 经 to_decimal 把 NaN/Inf 归 0），已补前端二次防御：
+ *   三处 formatMoney 对非有限数值串按缺失处理（Workbench/Drawer → EM_DASH；Page → 走 yuan 回退链），
+ *   对应断言已解除 skip。
+ * - [缺陷C·已修复] LedgerPnlDataTable 单元格兜底曾为 `render(row) ?? EM_DASH`，render 返回原始 NaN
+ *   数字（非 nullish）会经 React 渲染出 "NaN"。契约内不可达（页面各列均走 formatMoney），已补共享
+ *   表格组件二次防御：非有限数字（NaN/±Infinity）同样渲染 EM_DASH，对应断言已解除 skip。
  *
  * 先红后绿：临时把「模型层 "0" → "0.0000"」断言改为期望 EM_DASH、并解除缺陷A的 skip，可确认本探针会红；
  * 证据保存在专家报告中，此处恢复为契约断言。
@@ -345,7 +348,7 @@ describe("LedgerPnlNullMatrixContract / 表格单元格兜底层（LedgerPnlData
   });
 });
 
-describe("LedgerPnlNullMatrixContract / 疑似缺陷登记（skip 保留 gate 语义断言，详见专家报告）", () => {
+describe("LedgerPnlNullMatrixContract / 缺陷回归防护（缺陷A/B/C 已修复，断言防回归）", () => {
   // [缺陷A·可达] formatAnalysisValue（LedgerPnlWorkbookTables.tsx:66-69）对 null/undefined/"" 返回
   // 字面量连字符 "-"，违反 frontend/AGENTS.md（"missing values as EM_DASH；禁止 '-'"）与
   // DESIGN.md §6（format.ts 头注释登记）。总账月度工作簿空单元格真实可达该路径。
@@ -371,10 +374,11 @@ describe("LedgerPnlNullMatrixContract / 疑似缺陷登记（skip 保留 gate �
     expect(cells).toEqual(["利息净收入", EM_DASH]);
   });
 
-  // [缺陷B·契约外防御缺失] Workbench.formatMoney（Page/Drawer 同型）对非空 yi 串直接透传：
+  // [缺陷B·已修复] Workbench.formatMoney（Page/Drawer 同型）曾对非空 yi 串直接透传：
   // yi="NaN" 会渲染 "NaN 亿元"。契约内不可达：后端 fmt_yi 经 to_decimal 把 NaN/Inf/None 归 0
-  // （backend/app/core_finance/decimal_utils.py），JSON 亦无法携带数字 NaN。仅登记前端无二次防御。
-  it.skip("[缺陷B] 上游违约送 yi=\"NaN\" 时，NaN 字样不应透传到展示层", async () => {
+  // （backend/app/core_finance/decimal_utils.py），JSON 亦无法携带数字 NaN。
+  // 现三处 formatMoney 已对非有限数值串按缺失处理，此断言为常规二次防御契约。
+  it("上游违约送 yi=\"NaN\" 时，NaN 字样不透传到展示层，按缺失渲染 EM_DASH", async () => {
     const envelope = await loadReadyAnalysisEnvelope();
     envelope.result.pnl_bridge.total = { yuan: "NaN", yi: "NaN" };
     render(
@@ -386,19 +390,24 @@ describe("LedgerPnlNullMatrixContract / 疑似缺陷登记（skip 保留 gate �
         onRetry={vi.fn()}
       />,
     );
-    expect(screen.getByTestId("ledger-pnl-analysis-bridge")).not.toHaveTextContent("NaN");
+    const bridge = screen.getByTestId("ledger-pnl-analysis-bridge");
+    expect(bridge).not.toHaveTextContent("NaN");
+    const totalTerm = within(bridge).getByText("全量损益").closest("div");
+    expect(totalTerm).not.toBeNull();
+    expect(totalTerm).toHaveTextContent(EM_DASH);
   });
 
-  // [缺陷C·契约外防御缺失] DataTable 单元格 `render(row) ?? EM_DASH`：NaN 数字非 nullish，
-  // React 会渲染 String(NaN)="NaN"。契约要求 render 返回已格式化串（页面各列均走 formatMoney，
-  // 其 yuan 分支有 Number.isFinite 拦截），契约内不可达。仅登记共享表格组件无二次防御。
-  it.skip("[缺陷C] render 返回原始 NaN 数字时，单元格不应泄漏 NaN 字样", () => {
+  // [缺陷C·已修复] DataTable 单元格兜底曾为 `render(row) ?? EM_DASH`：NaN 数字非 nullish，
+  // React 会渲染 String(NaN)="NaN"。契约要求 render 返回已格式化串（页面各列均走 formatMoney），
+  // 契约内不可达。现兜底已拦截非有限数字（NaN/±Infinity → EM_DASH），此断言为常规二次防御契约。
+  it("render 返回原始 NaN 数字时，单元格不泄漏 NaN 字样，渲染 EM_DASH", () => {
     type ProbeRow = { id: string };
+    // 夹具标题/表头刻意不含 "NaN" 字样，使整表负断言只针对单元格渲染结果。
     render(
       <LedgerPnlDataTable<ProbeRow>
         testId="ledger-pnl-nan-probe-table"
-        title="NaN 防御探针"
-        columns={[{ key: "nan-cell", header: "NaN 输入", render: () => Number.NaN }]}
+        title="非有限数字防御探针"
+        columns={[{ key: "nan-cell", header: "非有限输入", render: () => Number.NaN }]}
         rows={[{ id: "row-1" }]}
         rowKey={(row) => row.id}
         loadingMessage="读取中"
@@ -408,5 +417,9 @@ describe("LedgerPnlNullMatrixContract / 疑似缺陷登记（skip 保留 gate �
     );
     const table = screen.getByTestId("ledger-pnl-nan-probe-table");
     expect(table).not.toHaveTextContent("NaN");
+    const cells = within(table)
+      .getAllByRole("cell")
+      .map((cell) => cell.textContent);
+    expect(cells).toEqual([EM_DASH]);
   });
 });

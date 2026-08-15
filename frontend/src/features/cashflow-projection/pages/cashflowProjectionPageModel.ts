@@ -18,10 +18,39 @@ export type CashflowProjectionRiskReadout = {
   missingCumulativeMonths: number;
   worstCumulativeMonth: string;
   worstCumulativeDisplay: string;
+  /** 后端原始精度串（收进 title）；无可缩写值时为 null。 */
+  worstCumulativeTitle: string | null;
   largestOutflowMonth: string;
   largestOutflowDisplay: string;
+  largestOutflowTitle: string | null;
   finalCumulativeDisplay: string;
+  finalCumulativeTitle: string | null;
 };
+
+export function toYi(raw: number): number {
+  return raw / 100_000_000;
+}
+
+/** 元 → “X.XX 亿” 展示串；null/undefined/"" 与非有限值一律回 EM_DASH，缺失桶不得画成 0.00 亿。 */
+export function tooltipYi(value: unknown): string {
+  if (value === null || value === undefined || value === "") return EM_DASH;
+  const raw = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(raw)) return EM_DASH;
+  return `${toYi(raw).toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} 亿`;
+}
+
+/** 亿元缩写主值 + 原始精度 title；非 yuan 或缺 raw 时回退后端 display、title 置空。 */
+function yuanReadout(value: Numeric | null | undefined): { display: string; title: string | null } {
+  if (!value) return { display: EM_DASH, title: null };
+  const raw = numericRaw(value);
+  if (raw === null || value.unit !== "yuan") {
+    return { display: value.display || EM_DASH, title: null };
+  }
+  return { display: tooltipYi(raw), title: value.display || null };
+}
 
 export type CashflowRateSensitivitySemantic = {
   tone: "default" | "positive" | "negative" | "warning";
@@ -137,6 +166,10 @@ export function selectCashflowProjectionRiskReadout(
     summaryParts.push(`${missingCumulativeMonths} 个月累计净现金流缺数`);
   }
 
+  const worstCumulativeReadout = yuanReadout(worstCumulative?.cumulativeNet);
+  const largestOutflowReadout = yuanReadout(largestOutflow?.liabilityOutflow);
+  const finalCumulativeReadout = yuanReadout(finalBucket.cumulativeNet);
+
   return {
     // A missing month can hide a negative month, so the readout must never claim "positive".
     tone:
@@ -149,9 +182,106 @@ export function selectCashflowProjectionRiskReadout(
     negativeCumulativeMonths,
     missingCumulativeMonths,
     worstCumulativeMonth: worstCumulative?.yearMonth ?? EM_DASH,
-    worstCumulativeDisplay: worstCumulative?.cumulativeNet.display ?? EM_DASH,
+    worstCumulativeDisplay: worstCumulativeReadout.display,
+    worstCumulativeTitle: worstCumulativeReadout.title,
     largestOutflowMonth: largestOutflow?.yearMonth ?? EM_DASH,
-    largestOutflowDisplay: largestOutflow?.liabilityOutflow.display ?? EM_DASH,
-    finalCumulativeDisplay: finalBucket.cumulativeNet.display,
+    largestOutflowDisplay: largestOutflowReadout.display,
+    largestOutflowTitle: largestOutflowReadout.title,
+    finalCumulativeDisplay: finalCumulativeReadout.display,
+    finalCumulativeTitle: finalCumulativeReadout.title,
   };
+}
+
+export type CashflowWarningDisplay = {
+  /** 面向阅读的中文摘要行；未登记句原样透出（此时 summary 即原文）。 */
+  summary: string;
+  /** 已登记句的英文原文（收进默认折叠区）；未登记时为 null，避免折叠区重复原样句。 */
+  original: string | null;
+};
+
+/** 后端 Decimal 串（含可选负号/科学计数）。 */
+const DECIMAL_TOKEN = String.raw`(-?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?)`;
+
+function warningAmountYi(text: string): string | null {
+  const value = Number(text);
+  if (!Number.isFinite(value)) return null;
+  return tooltipYi(value);
+}
+
+type CashflowWarningRule = {
+  pattern: RegExp;
+  /** 返回 null 表示金额解析失败，按未登记处理（fail-closed，原样透出）。 */
+  build: (match: RegExpExecArray) => string | null;
+};
+
+/**
+ * 现金流预测 warnings 的显示层映射（DESIGN §7：一页一语域）。
+ * 只翻译登记过的后端句式；登记句的英文原文收进默认折叠区作证据，
+ * 未登记句不猜测业务含义、原样透出。金额（元、8 位小数）缩写为亿元。
+ */
+const CASHFLOW_WARNING_RULES: CashflowWarningRule[] = [
+  {
+    pattern:
+      /^Liability duration uses a remaining-term proxy \(years to maturity\), not a cashflow-weighted duration\.$/,
+    build: () => "负债久期为剩余期限（到期年限）代理，非现金流加权久期。",
+  },
+  {
+    pattern: /^No liability rows were available; liability duration defaults to zero\.$/,
+    build: () => "无可用负债行，负债久期按 0 计。",
+  },
+  {
+    pattern: new RegExp(
+      `^(\\d+) floating-rate rows with market_value=${DECIMAL_TOKEN} use the current coupon rate as a frozen proxy for the full projection horizon; reset rates are not modeled\\.$`,
+    ),
+    build: (match) => {
+      const yi = warningAmountYi(match[2]);
+      return yi === null
+        ? null
+        : `${match[1]} 个浮息行按当前票息冻结推演全期，不建模利率重定价（市值 ${yi}）。`;
+    },
+  },
+  {
+    pattern: new RegExp(
+      `^(\\d+) rows with market_value=${DECIMAL_TOKEN} lack an explicit payment frequency; annual coupon frequency is used as a proxy\\.$`,
+    ),
+    build: (match) => {
+      const yi = warningAmountYi(match[2]);
+      return yi === null ? null : `${match[1]} 行缺付息频率，按年付代理（市值 ${yi}）。`;
+    },
+  },
+  {
+    pattern: new RegExp(
+      `^(\\d+) explicit bullet rows with market_value=${DECIMAL_TOKEN} lack a valid value_date; a one-year interest proxy is used\\.$`,
+    ),
+    build: (match) => {
+      const yi = warningAmountYi(match[2]);
+      return yi === null
+        ? null
+        : `${match[1]} 个一次性还本付息行缺有效起息日，按一年期利息代理（市值 ${yi}）。`;
+    },
+  },
+  {
+    pattern: new RegExp(
+      `^${DECIMAL_TOKEN} of ${DECIMAL_TOKEN} (asset market value|liability value) lacks duration information; the duration gap uses only the duration-covered balance and does not extrapolate the covered average duration onto the excluded balance\\.$`,
+    ),
+    build: (match) => {
+      const excludedYi = warningAmountYi(match[1]);
+      const totalYi = warningAmountYi(match[2]);
+      if (excludedYi === null || totalYi === null) return null;
+      const side = match[3] === "asset market value" ? "资产市值" : "负债价值";
+      return `${side} ${excludedYi}（合计 ${totalYi}）缺久期信息；久期缺口仅按久期覆盖余额计算，不向缺失部分外推。`;
+    },
+  },
+];
+
+/** 单条 warning 的显示层映射；登记句翻中文摘要并保留英文原文，未登记句原样透出。 */
+export function describeCashflowWarning(warning: string): CashflowWarningDisplay {
+  for (const rule of CASHFLOW_WARNING_RULES) {
+    const match = rule.pattern.exec(warning);
+    if (!match) continue;
+    const summary = rule.build(match);
+    if (summary === null) break;
+    return { summary, original: warning };
+  }
+  return { summary: warning, original: null };
 }

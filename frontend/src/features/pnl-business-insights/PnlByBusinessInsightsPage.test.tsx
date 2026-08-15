@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, waitFor } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -314,6 +314,29 @@ describe("PnlByBusinessInsightsPage", () => {
     expect(status).toHaveTextContent("降级 none");
     expect(status).toHaveTextContent("tr_pnl_business_insights_test");
     expect(document.querySelector('[data-testid="pnl-by-business-insights-disclaimer"]')).toBeNull();
+  });
+
+  it("adds a slow-loading note after 10s while the structural analysis is still computing", async () => {
+    // 结构分析接口无缓存、单次重算约 1 分钟：查询挂起超过 10s 时补一行进度说明。
+    const pending = new Promise<ApiEnvelope<PnlByBusinessInsightsPayload>>(() => {});
+    const getInsights = vi.fn(() => pending);
+    const client = buildClient(getInsights);
+    renderPage(client);
+
+    await waitFor(() => {
+      expect(getInsights).toHaveBeenCalledWith(2026, "2026-06-30");
+    });
+    expect(
+      document.querySelector('[data-testid="pnl-by-business-insights-slow-loading-note"]'),
+    ).toBeNull();
+
+    await act(async () => {
+      vi.advanceTimersByTime(10_500);
+    });
+
+    const note = document.querySelector('[data-testid="pnl-by-business-insights-slow-loading-note"]');
+    expect(note).not.toBeNull();
+    expect(note).toHaveTextContent("正在计算年度结构分析，约需 1 分钟");
   });
 
   it("renders the approved concentration, threshold, same-period drift and backend quadrant", async () => {

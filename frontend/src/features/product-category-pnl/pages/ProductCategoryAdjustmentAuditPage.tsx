@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/client";
@@ -403,7 +403,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
           >
             {client.mode === "real" ? "正式只读链路" : "本地离线契约回放"}
           </span>
-          <a href="/product-category-pnl">返回产品损益页</a>
+          <Link to="/product-category-pnl">返回产品损益页</Link>
           <button
             type="button"
             data-testid="audit-export-button"

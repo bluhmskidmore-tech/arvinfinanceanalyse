@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useApiClient } from "../../../api/client";
 import { FilterBar } from "../../../components/FilterBar";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import type {
   AdvancedAttributionSummary,
-  CampisiAttributionPayload,
   CampisiDecisionGradePayload,
   CampisiEnhancedPayload,
   CampisiFourEffectsPayload,
@@ -31,15 +30,20 @@ import {
   VolumeRateTabCharts,
 } from "./PnlAttributionVolumeRateTab";
 import { cx } from "./pnlAttributionClassNames";
-import { SectionLead } from "./pnlAttributionPrimitives";
+import {
+  PnlAttributionErrorRegion,
+  SectionLead,
+} from "./pnlAttributionPrimitives";
 import "./PnlAttributionView.css";
 import {
   buildVolumeRateBridgeSummary,
   type DualReportDateResolution,
   findProductCategoryReportDateForPeriod,
+  formatGeneratedAtDisplay,
   formatMetaDateLabel,
   resolveDualReportDates,
   selectProductCategoryTplRow,
+  summarizePnlAttributionError,
   type PnlAttributionTab,
 } from "./pnlAttributionViewModel";
 
@@ -114,12 +118,15 @@ function PnlAttributionSourceDateMessage(props: {
     );
   }
   if (props.dateError) {
+    // 中文结论正文；原始错误（含接口路径）收进 title（§6 证据层）。
+    const summary = summarizePnlAttributionError(props.dateError);
     return (
       <div
         data-testid="pnl-attribution-date-error"
         className="pnl-attribution-panel pnl-attribution-panel--compact"
+        title={summary?.detail}
       >
-        报告日来源加载失败：{props.dateError}
+        报告日来源加载失败：{summary?.message ?? props.dateError}
       </div>
     );
   }
@@ -204,18 +211,21 @@ function CurrentViewMetaStrip(props: {
   meta: ResultMeta;
   testId: string;
 }) {
-  const fields = [
-    [
-      "口径",
-      props.meta.basis === "formal"
-        ? "正式口径"
-        : compactMetaValue(props.meta.basis),
-    ],
-    ["结果类型", compactMetaValue(props.meta.result_kind)],
-    ["数据截至日", compactMetaValue(props.meta.as_of_date)],
-    ["生成时间", compactMetaValue(props.meta.generated_at)],
-    ["追踪编号", compactMetaValue(props.meta.trace_id)],
-    ["规则版本", compactMetaValue(props.meta.rule_version)],
+  // 生成时间收敛为 YYYY-MM-DD HH:mm，微秒级 ISO 原值只进 title（§6 证据层）。
+  const generatedAt = formatGeneratedAtDisplay(props.meta.generated_at);
+  const fields: Array<{ label: string; text: string; title?: string }> = [
+    {
+      label: "口径",
+      text:
+        props.meta.basis === "formal"
+          ? "正式口径"
+          : compactMetaValue(props.meta.basis),
+    },
+    { label: "结果类型", text: compactMetaValue(props.meta.result_kind) },
+    { label: "数据截至日", text: compactMetaValue(props.meta.as_of_date) },
+    { label: "生成时间", text: generatedAt.text, title: generatedAt.title },
+    { label: "追踪编号", text: compactMetaValue(props.meta.trace_id) },
+    { label: "规则版本", text: compactMetaValue(props.meta.rule_version) },
   ];
 
   return (
@@ -232,17 +242,19 @@ function CurrentViewMetaStrip(props: {
         </strong>
       </div>
       <div className="pnl-attribution-meta-strip__grid">
-        {fields.map(([label, value]) => (
+        {fields.map((field) => (
           <div
-            key={label}
+            key={field.label}
             className="pnl-attribution-meta-strip__field"
           >
-            <span className="pnl-attribution-meta-strip__label">{label}</span>
+            <span className="pnl-attribution-meta-strip__label">
+              {field.label}
+            </span>
             <span
-              title={value}
+              title={field.title || field.text}
               className="pnl-attribution-meta-strip__value"
             >
-              {value}
+              {field.text}
             </span>
           </div>
         ))}
@@ -450,8 +462,6 @@ export function PnlAttributionView({ reportDate }: Props) {
   const [krdData, setKrdData] = useState<KRDAttributionPayload | null>(null);
   const [advancedSummary, setAdvancedSummary] =
     useState<AdvancedAttributionSummary | null>(null);
-  const [campisiData, setCampisiData] =
-    useState<CampisiAttributionPayload | null>(null);
   const [campisiFourEffects, setCampisiFourEffects] =
     useState<CampisiFourEffectsPayload | null>(null);
   const [campisiEnhanced, setCampisiEnhanced] =
@@ -511,10 +521,17 @@ export function PnlAttributionView({ reportDate }: Props) {
     }
   }, [client, reportDate]);
 
+  // 请求序号守卫：loadData 一次要写十余个 setState；快速切换页签 /
+  // 环比同比 / 报告日时，只允许最新一次请求落地，防止先发后至的
+  // 响应用旧口径覆盖正式归因数据。
+  const loadDataRequestSeqRef = useRef(0);
+
   const loadData = useCallback(async () => {
     if (!effectiveReportDate) {
       return;
     }
+    const requestId = ++loadDataRequestSeqRef.current;
+    const isStale = () => requestId !== loadDataRequestSeqRef.current;
     setLoading(true);
     setError(null);
     setCampisiDecisionGradeError(null);
@@ -524,6 +541,7 @@ export function PnlAttributionView({ reportDate }: Props) {
           reportDate: effectiveReportDate,
           compareType,
         });
+        if (isStale()) return;
         setVolumeRateData(data.result);
         setVolumeRateMeta(data.result_meta);
       } else if (activeTab === "tpl-market") {
@@ -531,6 +549,7 @@ export function PnlAttributionView({ reportDate }: Props) {
           months: 12,
           reportDate: effectiveReportDate,
         });
+        if (isStale()) return;
         setTplMarketData(data.result);
         setTplMarketMeta(data.result_meta);
         const productCategoryDates = dateResolution?.productCategoryDates.length
@@ -562,6 +581,7 @@ export function PnlAttributionView({ reportDate }: Props) {
             };
           }),
         );
+        if (isStale()) return;
         setTplProductCategoryMonthlyPoints(productCategoryTplPoints);
       } else if (activeTab === "composition") {
         const data = await client.getPnlCompositionBreakdown({
@@ -569,6 +589,7 @@ export function PnlAttributionView({ reportDate }: Props) {
           includeTrend: true,
           trendMonths: 6,
         });
+        if (isStale()) return;
         setCompositionData(data.result);
         setCompositionMeta(data.result_meta);
       } else if (activeTab === "product-category") {
@@ -586,6 +607,7 @@ export function PnlAttributionView({ reportDate }: Props) {
             compare: compareType,
           }),
         ]);
+        if (isStale()) return;
         setProductCategoryMonthlyData(monthly.result);
         setProductCategoryMonthlyMeta(monthly.result_meta);
         setProductCategoryYtdData(ytd.result);
@@ -598,7 +620,6 @@ export function PnlAttributionView({ reportDate }: Props) {
           spread,
           krd,
           summary,
-          campisi,
           campisiFour,
           campisiEnhancedData,
           campisiBuckets,
@@ -613,10 +634,6 @@ export function PnlAttributionView({ reportDate }: Props) {
             lookbackDays: 30,
           }),
           client.getPnlAdvancedAttributionSummary(effectiveReportDate),
-          client.getPnlCampisiAttribution({
-            endDate: effectiveReportDate,
-            lookbackDays: 30,
-          }),
           client.getPnlCampisiFourEffects({
             endDate: effectiveReportDate,
             lookbackDays: 30,
@@ -630,6 +647,7 @@ export function PnlAttributionView({ reportDate }: Props) {
             lookbackDays: 30,
           }),
         ]);
+        if (isStale()) return;
         setCarryRollDownData(carry.result);
         setCarryMeta(carry.result_meta);
         setSpreadData(spread.result);
@@ -638,7 +656,6 @@ export function PnlAttributionView({ reportDate }: Props) {
         setKrdMeta(krd.result_meta);
         setAdvancedSummary(summary.result);
         setAdvancedSummaryMeta(summary.result_meta);
-        setCampisiData(campisi.result);
         setCampisiFourEffects(campisiFour.result);
         setCampisiFourMeta(campisiFour.result_meta);
         setCampisiEnhanced(campisiEnhancedData.result);
@@ -652,9 +669,11 @@ export function PnlAttributionView({ reportDate }: Props) {
             endDate: effectiveReportDate,
             lookbackDays: 30,
           });
+          if (isStale()) return;
           setCampisiDecisionGrade(campisiDecision.result);
           setCampisiDecisionGradeMeta(campisiDecision.result_meta);
         } catch (decisionError: unknown) {
+          if (isStale()) return;
           setCampisiDecisionGrade(null);
           setCampisiDecisionGradeMeta(null);
           setCampisiDecisionGradeError(
@@ -665,10 +684,13 @@ export function PnlAttributionView({ reportDate }: Props) {
         }
       }
     } catch (e: unknown) {
+      if (isStale()) return;
       const msg = e instanceof Error ? e.message : "加载失败";
       setError(msg);
     } finally {
-      setLoading(false);
+      if (!isStale()) {
+        setLoading(false);
+      }
     }
   }, [
     activeTab,
@@ -691,6 +713,9 @@ export function PnlAttributionView({ reportDate }: Props) {
     activeTab === "advanced"
       ? (advancedSummary?.key_insights ?? [])
       : [];
+  // 同一次 loadData 失败会打空整个页签：错误在区级收敛为一条横幅，
+  // 不再逐面板重复（§6 去重；§11.3 同一状态文案 3 处以上为一票否决项）。
+  const errorSummary = summarizePnlAttributionError(error);
   const volumeRateBridgeSummary = buildVolumeRateBridgeSummary(volumeRateData);
   const currentViewMeta =
     activeTab === "volume-rate"
@@ -890,72 +915,83 @@ export function PnlAttributionView({ reportDate }: Props) {
         />
       ) : null}
 
-      {activeTab === "advanced" ? (
-        <AdvancedAttributionTabPanels
-          carryData={carryRollDownData}
-          spreadData={spreadData}
-          krdData={krdData}
-          summaryData={advancedSummary}
-          campisiData={campisiData}
-          campisiFourEffects={campisiFourEffects}
-          campisiEnhanced={campisiEnhanced}
-          campisiMaturityBuckets={campisiMaturityBuckets}
-          campisiDecisionGrade={campisiDecisionGrade}
-          carryMeta={carryMeta}
-          spreadMeta={spreadMeta}
-          krdMeta={krdMeta}
-          summaryMeta={advancedSummaryMeta}
-          campisiFourMeta={campisiFourMeta}
-          campisiEnhancedMeta={campisiEnhancedMeta}
-          campisiMaturityMeta={campisiMaturityMeta}
-          campisiDecisionGradeMeta={campisiDecisionGradeMeta}
-          isLoading={loading}
-          errorMessage={error}
-          decisionGradeErrorMessage={campisiDecisionGradeError}
+      {errorSummary ? (
+        /* 错误态区级收敛：一条中文横幅 + 面板收缩，错误正文全页只出现一次（§6）。 */
+        <PnlAttributionErrorRegion
+          activeTab={activeTab}
+          summary={errorSummary}
           onRetry={() => void loadData()}
         />
-      ) : null}
+      ) : (
+        <>
+          {activeTab === "advanced" ? (
+            <AdvancedAttributionTabPanels
+              carryData={carryRollDownData}
+              spreadData={spreadData}
+              krdData={krdData}
+              summaryData={advancedSummary}
+              campisiData={null}
+              campisiFourEffects={campisiFourEffects}
+              campisiEnhanced={campisiEnhanced}
+              campisiMaturityBuckets={campisiMaturityBuckets}
+              campisiDecisionGrade={campisiDecisionGrade}
+              carryMeta={carryMeta}
+              spreadMeta={spreadMeta}
+              krdMeta={krdMeta}
+              summaryMeta={advancedSummaryMeta}
+              campisiFourMeta={campisiFourMeta}
+              campisiEnhancedMeta={campisiEnhancedMeta}
+              campisiMaturityMeta={campisiMaturityMeta}
+              campisiDecisionGradeMeta={campisiDecisionGradeMeta}
+              isLoading={loading}
+              errorMessage={error}
+              decisionGradeErrorMessage={campisiDecisionGradeError}
+              onRetry={() => void loadData()}
+            />
+          ) : null}
 
-      {activeTab === "product-category" ? (
-        <ProductCategoryTabPanels
-          monthlyData={productCategoryMonthlyData}
-          ytdData={productCategoryYtdData}
-          attributionData={productCategoryAttributionData}
-          monthlyMeta={productCategoryMonthlyMeta}
-          ytdMeta={productCategoryYtdMeta}
-          attributionMeta={productCategoryAttributionMeta}
-          isLoading={loading}
-          errorMessage={error}
-          onRetry={() => void loadData()}
-        />
-      ) : null}
+          {activeTab === "product-category" ? (
+            <ProductCategoryTabPanels
+              monthlyData={productCategoryMonthlyData}
+              ytdData={productCategoryYtdData}
+              attributionData={productCategoryAttributionData}
+              monthlyMeta={productCategoryMonthlyMeta}
+              ytdMeta={productCategoryYtdMeta}
+              attributionMeta={productCategoryAttributionMeta}
+              isLoading={loading}
+              errorMessage={error}
+              onRetry={() => void loadData()}
+            />
+          ) : null}
 
-      {activeTab === "volume-rate" ? (
-        <VolumeRateTabCharts
-          data={volumeRateData}
-          meta={volumeRateMeta}
-          isLoading={loading}
-          errorMessage={error}
-          onRetry={() => void loadData()}
-        />
-      ) : null}
+          {activeTab === "volume-rate" ? (
+            <VolumeRateTabCharts
+              data={volumeRateData}
+              meta={volumeRateMeta}
+              isLoading={loading}
+              errorMessage={error}
+              onRetry={() => void loadData()}
+            />
+          ) : null}
 
-      {activeTab === "tpl-market" ? (
-        <TPLMarketChart
-          data={tplMarketData}
-          state={tplMarketState}
-          onRetry={() => void loadData()}
-          productCategoryTplMonthlyPoints={tplProductCategoryMonthlyPoints}
-        />
-      ) : null}
+          {activeTab === "tpl-market" ? (
+            <TPLMarketChart
+              data={tplMarketData}
+              state={tplMarketState}
+              onRetry={() => void loadData()}
+              productCategoryTplMonthlyPoints={tplProductCategoryMonthlyPoints}
+            />
+          ) : null}
 
-      {activeTab === "composition" ? (
-        <PnLCompositionChart
-          data={compositionData}
-          state={compositionState}
-          onRetry={() => void loadData()}
-        />
-      ) : null}
+          {activeTab === "composition" ? (
+            <PnLCompositionChart
+              data={compositionData}
+              state={compositionState}
+              onRetry={() => void loadData()}
+            />
+          ) : null}
+        </>
+      )}
     </div>
   );
 }

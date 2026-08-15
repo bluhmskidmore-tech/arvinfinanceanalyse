@@ -45,8 +45,11 @@ export const VIEW_MODE_BUSINESS_QUESTIONS: Record<PnlByBusinessViewMode, string>
 /** 与共享 `PageHero` 同形；本页结论与日期字段全部必填。 */
 export type PnlHeroModel = Required<PageHero>;
 
-/** 状态面直接采用 `src/pageModel` 基元词汇（variant 联合与 PageStateSurface 对齐）。 */
-export type PnlStateSurfaceItem = StateSurfaceItem;
+/**
+ * 状态面直接采用 `src/pageModel` 基元词汇（variant 联合与 PageStateSurface 对齐）。
+ * `descriptionTitle` 承载 sample_filled/method 类技术 token（§7 收 tooltip，不占正文）。
+ */
+export type PnlStateSurfaceItem = StateSurfaceItem & { descriptionTitle?: string };
 
 const YUAN_PER_YI = 100_000_000;
 const YUAN_PER_WAN = 10_000;
@@ -65,7 +68,10 @@ type ZqtzBusinessDisplayRow = {
 export type PnlSummaryCard = Pick<
   KpiCardProps,
   "label" | "value" | "detail" | "tone" | "valueVariant"
->;
+> & {
+  /** 悬停可见的补充事实（如覆盖天数），正文小注按 §6 去重后经此保留。 */
+  detailTitle?: string;
+};
 
 export type PnlByBusinessInsightConfidence =
   | "可分析"
@@ -771,7 +777,12 @@ function buildPnlStateSurfaces(input: {
   // 与原 push 链等价：三类具体质量警告任一出现时抑制通用“质量预警”。
   const hasSpecificQualityWarning = hasPartialCoverage || hasUnallocated || hasReconciliationBreak;
 
-  return buildStateSurfaces([
+  // 技术 token 不进横幅正文（§7 中英混排技术微标签禁令），经 descriptionTitle 悬停保留。
+  const coverageSampleFillTitle = `sample_filled=${String(
+    diagnostics?.sample_filled ?? false,
+  )}，method=${diagnostics?.sample_fill_method ?? "none"}`;
+
+  const surfaces: PnlStateSurfaceItem[] = buildStateSurfaces([
     {
       key: "mock-mode",
       variant: "mock",
@@ -807,9 +818,7 @@ function buildPnlStateSurfaces(input: {
       key: "coverage-partial",
       variant: "stale",
       title: "日均余额样本覆盖不足",
-      description: `余额观测仅覆盖 ${coverageDays}/${expectedDays} 天；当前“日均”为已观测日的月度估算，不是完整自然月日均。月报收益率、FTP 成本及 FTP 后结果暂不作为汇报结论。（sample_filled=${String(
-        diagnostics?.sample_filled ?? false,
-      )}，method=${diagnostics?.sample_fill_method ?? "none"}）`,
+      description: `余额观测仅覆盖 ${coverageDays}/${expectedDays} 天；当前“日均”为已观测日的月度估算，不是完整自然月日均。月报收益率、FTP 成本及 FTP 后结果暂不作为汇报结论。`,
       when: hasPartialCoverage,
     },
     {
@@ -882,6 +891,12 @@ function buildPnlStateSurfaces(input: {
       when: meta?.vendor_status === "vendor_unavailable",
     },
   ]);
+
+  return surfaces.map((surface) =>
+    surface.key === "coverage-partial"
+      ? { ...surface, descriptionTitle: coverageSampleFillTitle }
+      : surface,
+  );
 }
 
 function buildStatusStrip(input: {
@@ -945,9 +960,10 @@ function buildMonthlySummaryCards(input: {
       value: coverageIncomplete
         ? "待核对"
         : formatAnalysisYieldPct(activeMonthlyBucket?.summary.annualized_yield_pct),
-      detail: coverageIncomplete
-        ? `日均仅覆盖 ${coverageDays}/${expectedDays} 天`
-        : "月度日均分母",
+      // 覆盖天数事实全页保留页顶横幅 + 表内警示两处（§6 去重）；KPI 小注只留结论，
+      // 具体天数经 detailTitle 悬停可见。
+      detail: coverageIncomplete ? "样本覆盖不足，详见页顶警示" : "月度日均分母",
+      detailTitle: coverageIncomplete ? `日均仅覆盖 ${coverageDays}/${expectedDays} 天` : undefined,
       valueVariant: coverageIncomplete ? "text" : undefined,
       tone: coverageIncomplete
         ? undefined

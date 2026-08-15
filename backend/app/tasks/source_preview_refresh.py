@@ -105,29 +105,34 @@ def _refresh_source_preview_cache(
         ingest_batch_id = str(ingest_summary.get("ingest_batch_id") or "")
         selected_ingest_batch_id = ingest_batch_id or None
         with acquire_lock(materialize_lock, base_dir=duckdb_file.parent):
-            snapshot_preview_tables(str(duckdb_file))
-            snapshot_ready = True
-            preview_summaries = materialize_source_previews(
-                duckdb_path=str(duckdb_file),
-                governance_dir=str(governance_path),
-                ingest_batch_id=selected_ingest_batch_id,
-                source_families=list(SOURCE_PREVIEW_REFRESH_SOURCE_FAMILIES),
-                archive_root=str(settings.local_archive_path),
-            )
+            try:
+                snapshot_preview_tables(str(duckdb_file))
+                snapshot_ready = True
+                preview_summaries = materialize_source_previews(
+                    duckdb_path=str(duckdb_file),
+                    governance_dir=str(governance_path),
+                    ingest_batch_id=selected_ingest_batch_id,
+                    source_families=list(SOURCE_PREVIEW_REFRESH_SOURCE_FAMILIES),
+                    archive_root=str(settings.local_archive_path),
+                )
+            except Exception:
+                # Restore/cleanup must run while the writer lock is still held;
+                # after release another writer could commit rows that a late
+                # restore would silently roll back.
+                if snapshot_ready:
+                    try:
+                        restore_preview_tables(str(duckdb_file))
+                    finally:
+                        try:
+                            cleanup_preview_backups(str(duckdb_file))
+                        except Exception:
+                            logger.warning("cleanup_preview_backups failed during error recovery", exc_info=True)
+                raise
             try:
                 cleanup_preview_backups(str(duckdb_file))
             except Exception:
                 logger.warning("cleanup_preview_backups failed after successful materialize", exc_info=True)
     except Exception as exc:
-        if snapshot_ready:
-            try:
-                restore_preview_tables(str(duckdb_file))
-            finally:
-                try:
-                    cleanup_preview_backups(str(duckdb_file))
-                except Exception:
-                    logger.warning("cleanup_preview_backups failed during error recovery", exc_info=True)
-
         governance_repo.append(
             CACHE_BUILD_RUN_STREAM,
             {

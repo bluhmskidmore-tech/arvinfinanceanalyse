@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from calendar import monthrange
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Literal, Mapping
+from typing import Literal
 
 from backend.app.core_finance.field_normalization import is_approved_status
 
@@ -22,6 +23,7 @@ PRODUCT_CATEGORY_RATE_DISPLAY_QUANT = Decimal("0.01")
 # rendered at 2 decimals would claim 0.01bp resolution the underlying rates do not
 # have, so bp displays stop at 1 decimal. The 8-decimal raw is kept for audit.
 PRODUCT_CATEGORY_BP_DISPLAY_QUANT = Decimal("0.1")
+FTP_RESULT_FIELDS = ("cny_ftp", "foreign_ftp", "cny_net", "foreign_net", "business_net_income")
 
 
 @dataclass(slots=True)
@@ -127,8 +129,9 @@ def calculate_product_category_liability_cost_decomposition(
 
     Liability rows carry negative `cnx_scale` / `cnx_cash`, so the negative-over-negative
     quotient stays positive and matches the existing `weighted_yield` convention. The
-    decomposition is meaningless without both sides, so a missing CLN row or a zero
-    ex-CLN denominator returns every field as None instead of falling back to 0.
+    decomposition is meaningful only when total, CLN, and ex-CLN scales all preserve
+    the liability-side negative sign. Missing rows or invalid denominators therefore
+    return every field as None instead of falling back to 0.
     """
     empty = ProductCategoryLiabilityCostDecomposition(
         liability_yield_pct=None,
@@ -148,7 +151,7 @@ def calculate_product_category_liability_cost_decomposition(
         return empty
 
     ex_cln_scale = liability_scale - cln_scale
-    if ex_cln_scale == ZERO:
+    if liability_scale >= ZERO or cln_scale >= ZERO or ex_cln_scale >= ZERO:
         return empty
 
     days_for_view = _days_for_view(_parse_report_date(report_date), view)
@@ -266,11 +269,13 @@ def calculate_read_model(
             cny_ftp = sum((Decimal(str(item["cny_ftp"])) for item in child_rows), ZERO)
             foreign_ftp = sum((Decimal(str(item["foreign_ftp"])) for item in child_rows), ZERO)
         else:
-            period_pnl_view = view in {"monthly", "ytd", "year_to_report_month_end"}
-            cash_field = "monthly_pnl" if period_pnl_view else "ending_balance"
-            sign = Decimal("1") if period_pnl_view else Decimal("-1")
-            cnx_cash = sign * _calculate_sum(report_rows, category["pnl_accounts"], cash_field, "CNX", exact=False)
-            cny_cash = sign * _calculate_sum(report_rows, category["pnl_accounts"], cash_field, "CNY", exact=False)
+            # 2026-08 B8 口径修正：所有受治理视图（monthly/qtd/ytd/year_to_report_month_end）
+            # 的现金均为期间发生额口径——monthly 取单月 monthly_pnl，qtd/ytd 由
+            # _build_report_rows 预先按期间内各月 monthly_pnl 累加。历史 qtd 曾走
+            # "季末月期末余额取负"路径，与期间收益率公式（cash/days*365/scale，
+            # docs/metric_dictionary.md §12.3.2）不自洽，已移除。
+            cnx_cash = _calculate_sum(report_rows, category["pnl_accounts"], "monthly_pnl", "CNX", exact=False)
+            cny_cash = _calculate_sum(report_rows, category["pnl_accounts"], "monthly_pnl", "CNY", exact=False)
             foreign_cash = cnx_cash - cny_cash
             cny_ftp = _calculate_ftp(scale_cny, ftp_rate, days_for_view)
             foreign_ftp = _calculate_ftp(scale_foreign, ftp_rate, days_for_view)
@@ -367,76 +372,152 @@ def calculate_read_model(
 
 
 def apply_scenario_to_rows(rows: list[dict[str, object]], scenario_rate_pct: Decimal) -> list[dict[str, object]]:
+    _validate_reprice_baselines(rows)
     adjusted: list[dict[str, object]] = []
+    used_direct_reprice = False
     for row in rows:
         baseline_rate = Decimal(str(row["baseline_ftp_rate_pct"]))
-
-        cny_ftp = Decimal(str(row["cny_ftp"]))
-        foreign_ftp = Decimal(str(row["foreign_ftp"]))
-        cny_cash = Decimal(str(row["cny_cash"]))
-        foreign_cash = Decimal(str(row["foreign_cash"]))
-
-        if baseline_rate == ZERO:
-            # 零基准行无法按比例缩放（ratio 无定义；旧行为静默保持 FTP=0，
-            # 情景利率被忽略——2026-08 审计 M6）。改按正式口径的 FTP 基线公式
-            # （_calculate_ftp：scale × rate × days/365，与 calculate_read_model
-            # 叶子行一致）以情景利率直接重算；行内 scale 全为 0 的汇总行
-            # （如 grand_total）结果仍为 0，且无需解析日期。
-            cny_scale = Decimal(str(row["cny_scale"]))
-            foreign_scale = Decimal(str(row["foreign_scale"]))
-            if cny_scale == ZERO and foreign_scale == ZERO:
-                cny_ftp_new = ZERO
-                foreign_ftp_new = ZERO
-            else:
-                days = _days_for_view(_parse_report_date(str(row["report_date"])), str(row["view"]))
-                scenario_rate = scenario_rate_pct / Decimal("100")
-                cny_ftp_new = _calculate_ftp(cny_scale, scenario_rate, days)
-                foreign_ftp_new = _calculate_ftp(foreign_scale, scenario_rate, days)
-        else:
-            ratio = scenario_rate_pct / baseline_rate
-            cny_ftp_new = cny_ftp * ratio
-            foreign_ftp_new = foreign_ftp * ratio
-
-        cny_net = cny_cash - cny_ftp_new
-        foreign_net = foreign_cash - foreign_ftp_new
-        business_net_income = cny_net + foreign_net
-
-        cloned = dict(row)
+        ftp_amounts = _reprice_ftp_amounts(
+            row,
+            current_rate_pct=baseline_rate,
+            target_rate_pct=scenario_rate_pct,
+        )
+        cloned = _with_ftp_amounts(row, *ftp_amounts)
+        used_direct_reprice = used_direct_reprice or baseline_rate == ZERO
         cloned["scenario_rate_pct"] = scenario_rate_pct
-        cloned["cny_ftp"] = cny_ftp_new
-        cloned["foreign_ftp"] = foreign_ftp_new
-        cloned["cny_net"] = cny_net
-        cloned["foreign_net"] = foreign_net
-        cloned["business_net_income"] = business_net_income
         adjusted.append(cloned)
-    return adjusted
+    return _roll_up_repriced_rows(adjusted) if used_direct_reprice else adjusted
 
 
 def apply_baseline_ftp_rate_to_rows(
     rows: list[dict[str, object]],
     baseline_rate_pct: Decimal,
 ) -> list[dict[str, object]]:
+    _validate_reprice_baselines(rows)
     adjusted: list[dict[str, object]] = []
+    used_direct_reprice = False
     for row in rows:
         current_rate = Decimal(str(row["baseline_ftp_rate_pct"]))
-        ratio = ZERO if current_rate == ZERO else baseline_rate_pct / current_rate
-
-        cny_ftp_new = Decimal(str(row["cny_ftp"])) * ratio
-        foreign_ftp_new = Decimal(str(row["foreign_ftp"])) * ratio
-        cny_cash = Decimal(str(row["cny_cash"]))
-        foreign_cash = Decimal(str(row["foreign_cash"]))
-        cny_net = cny_cash - cny_ftp_new
-        foreign_net = foreign_cash - foreign_ftp_new
-
-        cloned = dict(row)
+        ftp_amounts = _reprice_ftp_amounts(
+            row,
+            current_rate_pct=current_rate,
+            target_rate_pct=baseline_rate_pct,
+        )
+        cloned = _with_ftp_amounts(row, *ftp_amounts)
+        used_direct_reprice = used_direct_reprice or current_rate == ZERO
         cloned["baseline_ftp_rate_pct"] = baseline_rate_pct
-        cloned["cny_ftp"] = cny_ftp_new
-        cloned["foreign_ftp"] = foreign_ftp_new
-        cloned["cny_net"] = cny_net
-        cloned["foreign_net"] = foreign_net
-        cloned["business_net_income"] = cny_net + foreign_net
         adjusted.append(cloned)
+    return _roll_up_repriced_rows(adjusted) if used_direct_reprice else adjusted
+
+
+def _reprice_ftp_amounts(
+    row: Mapping[str, object],
+    *,
+    current_rate_pct: Decimal,
+    target_rate_pct: Decimal,
+) -> tuple[Decimal, Decimal]:
+    if current_rate_pct != ZERO:
+        ratio = target_rate_pct / current_rate_pct
+        return (
+            Decimal(str(row["cny_ftp"])) * ratio,
+            Decimal(str(row["foreign_ftp"])) * ratio,
+        )
+
+    cny_scale = Decimal(str(row["cny_scale"]))
+    foreign_scale = Decimal(str(row["foreign_scale"]))
+    if cny_scale == ZERO and foreign_scale == ZERO:
+        return ZERO, ZERO
+
+    days = _days_for_view(_parse_report_date(str(row["report_date"])), str(row["view"]))
+    target_rate = target_rate_pct / Decimal("100")
+    return (
+        _calculate_ftp(cny_scale, target_rate, days),
+        _calculate_ftp(foreign_scale, target_rate, days),
+    )
+
+
+def _with_ftp_amounts(
+    row: Mapping[str, object],
+    cny_ftp: Decimal,
+    foreign_ftp: Decimal,
+) -> dict[str, object]:
+    adjusted = dict(row)
+    cny_net = Decimal(str(row["cny_cash"])) - cny_ftp
+    foreign_net = Decimal(str(row["foreign_cash"])) - foreign_ftp
+    adjusted["cny_ftp"], adjusted["foreign_ftp"] = cny_ftp, foreign_ftp
+    adjusted["cny_net"], adjusted["foreign_net"] = cny_net, foreign_net
+    adjusted["business_net_income"] = cny_net + foreign_net
     return adjusted
+
+
+def _validate_reprice_baselines(rows: list[dict[str, object]]) -> None:
+    zero_markers = {Decimal(str(row["baseline_ftp_rate_pct"])) == ZERO for row in rows}
+    if len(zero_markers) > 1:
+        raise ValueError("Cannot reprice mixed zero/nonzero baseline rates")
+
+
+def _roll_up_repriced_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    by_id = {str(row["category_id"]): row for row in rows}
+    for row in sorted(rows, key=lambda item: int(item["level"]), reverse=True):
+        child_ids = [str(child_id) for child_id in row.get("children", [])]
+        if not child_ids or not all(child_id in by_id for child_id in child_ids):
+            continue
+        children = [by_id[child_id] for child_id in child_ids]
+        by_id[str(row["category_id"])] = _with_ftp_amounts(
+            row,
+            sum((Decimal(str(child["cny_ftp"])) for child in children), ZERO),
+            sum((Decimal(str(child["foreign_ftp"])) for child in children), ZERO),
+        )
+
+    root_rows = [
+        by_id[str(row["category_id"])]
+        for row in rows
+        if int(row["level"]) == 0
+        and not bool(row["is_total"])
+        and str(row["side"]) in {"asset", "liability"}
+    ]
+    asset_rows = [row for row in root_rows if str(row["side"]) == "asset"]
+    liability_rows = [row for row in root_rows if str(row["side"]) == "liability"]
+    required_total_ids = ("asset_total", "liability_total", "grand_total")
+    if not asset_rows or not liability_rows or not all(
+        category_id in by_id for category_id in required_total_ids
+    ):
+        return [by_id[str(row["category_id"])] for row in rows]
+
+    asset_total = by_id["asset_total"]
+    report_date = _parse_report_date(str(asset_total["report_date"]))
+    days_for_view = _days_for_view(report_date, str(asset_total["view"]))
+    rebuilt_totals = (
+        _build_total_row(
+            str(asset_total["category_name"]),
+            "asset",
+            asset_rows,
+            days_for_view,
+            scale_exclusions=ASSET_SCALE_EXCLUSIONS,
+            pnl_exclusions=ASSET_PNL_EXCLUSIONS,
+        ),
+        _build_total_row(
+            str(by_id["liability_total"]["category_name"]),
+            "liability",
+            liability_rows,
+            days_for_view,
+        ),
+    )
+    for category_id, rebuilt in zip(required_total_ids[:2], rebuilt_totals, strict=True):
+        total = dict(by_id[category_id])
+        total.update({field: rebuilt[field] for field in FTP_RESULT_FIELDS})
+        by_id[category_id] = total
+
+    grand_total = dict(by_id["grand_total"])
+    grand_total.update(
+        {
+            field: Decimal(str(by_id["asset_total"][field]))
+            + Decimal(str(by_id["liability_total"][field]))
+            for field in FTP_RESULT_FIELDS
+        }
+    )
+    by_id["grand_total"] = grand_total
+    return [by_id[str(row["category_id"])] for row in rows]
 
 
 def _build_report_rows(
@@ -460,9 +541,13 @@ def _build_report_rows(
     if not quarter_months:
         return facts_by_report_date[report_date]
 
+    # 2026-08 B8 口径修正：qtd 与 ytd 同法——现金按季度内各月 monthly_pnl 累加，
+    # 规模按各月 monthly 口径规模字段（一月回退 annual_avg_balance，见 _scale_field）
+    # 乘当月天数加权后除以季度天数。
     combined: dict[tuple[str, str], dict[str, Decimal | str | int | date]] = {}
     for item_date in quarter_months:
-        days = Decimal(monthrange(item_date.year, item_date.month)[1])
+        days = Decimal(_days_for_view(item_date, "monthly"))
+        scale_field = _scale_field(item_date, "monthly")
         for row in facts_by_report_date[item_date]:
             key = (row.account_code, row.currency)
             current = combined.setdefault(
@@ -473,21 +558,23 @@ def _build_report_rows(
                     "currency": row.currency,
                     "account_name": row.account_name,
                     "ending_balance": row.ending_balance,
+                    "monthly_pnl": ZERO,
                     "daily_avg_balance": ZERO,
                     "annual_avg_balance": row.annual_avg_balance,
-                    "weight": ZERO,
                     "days_in_period": _days_for_view(report_date, view),
                 },
             )
             current["account_name"] = row.account_name
             current["ending_balance"] = row.ending_balance
             current["annual_avg_balance"] = row.annual_avg_balance
-            current["daily_avg_balance"] = Decimal(str(current["daily_avg_balance"])) + (row.daily_avg_balance * days)
-            current["weight"] = Decimal(str(current["weight"])) + days
+            current["monthly_pnl"] = Decimal(str(current["monthly_pnl"])) + row.monthly_pnl
+            current["daily_avg_balance"] = Decimal(str(current["daily_avg_balance"])) + (
+                getattr(row, scale_field) * days
+            )
 
     result: list[CanonicalFactRow] = []
+    period_days = Decimal(_days_for_view(report_date, view))
     for data in combined.values():
-        weight = Decimal(str(data["weight"])) or Decimal("1")
         result.append(
             CanonicalFactRow(
                 report_date=report_date,
@@ -496,8 +583,8 @@ def _build_report_rows(
                 account_name=str(data["account_name"]),
                 beginning_balance=ZERO,
                 ending_balance=Decimal(str(data["ending_balance"])),
-                monthly_pnl=ZERO,
-                daily_avg_balance=Decimal(str(data["daily_avg_balance"])) / weight,
+                monthly_pnl=Decimal(str(data["monthly_pnl"])),
+                daily_avg_balance=Decimal(str(data["daily_avg_balance"])) / period_days,
                 annual_avg_balance=Decimal(str(data["annual_avg_balance"])),
                 days_in_period=int(data["days_in_period"]),
             )
@@ -536,7 +623,6 @@ def _build_ytd_report_rows(
                     "monthly_pnl": ZERO,
                     "daily_avg_balance": ZERO,
                     "annual_avg_balance": row.annual_avg_balance,
-                    "weight": ZERO,
                     "days_in_period": _days_for_view(report_date, view),
                 },
             )
@@ -547,11 +633,10 @@ def _build_ytd_report_rows(
                 getattr(row, scale_field) * days
             )
             current["annual_avg_balance"] = row.annual_avg_balance
-            current["weight"] = Decimal(str(current["weight"])) + days
 
     result: list[CanonicalFactRow] = []
+    period_days = Decimal(_days_for_view(report_date, view))
     for data in combined.values():
-        weight = Decimal(str(data["weight"])) or Decimal("1")
         result.append(
             CanonicalFactRow(
                 report_date=report_date,
@@ -561,7 +646,7 @@ def _build_ytd_report_rows(
                 beginning_balance=Decimal(str(data["beginning_balance"])),
                 ending_balance=Decimal(str(data["ending_balance"])),
                 monthly_pnl=Decimal(str(data["monthly_pnl"])),
-                daily_avg_balance=Decimal(str(data["daily_avg_balance"])) / weight,
+                daily_avg_balance=Decimal(str(data["daily_avg_balance"])) / period_days,
                 annual_avg_balance=Decimal(str(data["annual_avg_balance"])),
                 days_in_period=int(data["days_in_period"]),
             )

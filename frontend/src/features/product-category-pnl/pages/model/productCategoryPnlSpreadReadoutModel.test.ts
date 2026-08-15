@@ -12,7 +12,7 @@ function percent(raw: string) {
 }
 
 function bp(raw: string) {
-  return { raw, display: `${Number(raw).toFixed(1)}bp`, unit: "bp" as const };
+  return { raw, display: `${Number(raw).toFixed(1)} bp`, unit: "bp" as const };
 }
 
 function spreadSection(input: {
@@ -73,8 +73,8 @@ function liabilityMetricValue(
   surface: ProductCategorySpreadReadoutSurface,
   key: string,
 ): string {
-  if (surface.liability.state !== "ready") {
-    throw new Error("expected ready liability cost decomposition");
+  if (surface.liability.state === "unavailable") {
+    throw new Error("expected available liability cost decomposition");
   }
   const metric = surface.liability.metrics.find((item) => item.key === key);
   if (!metric) {
@@ -147,13 +147,67 @@ describe("selectProductCategorySpreadReadoutSurface", () => {
     );
     expect(liabilityMetricValue(surface, "cln_drag_bp")).toBe("1.4 bp");
     expect(liabilityMetricValue(surface, "cln_yield_pct")).toBe("2.79%");
-    if (surface.liability.state !== "ready") {
-      throw new Error("expected ready liability cost decomposition");
+    if (surface.liability.state === "unavailable") {
+      throw new Error("expected available liability cost decomposition");
     }
     expect(
       surface.liability.metrics.find((item) => item.key === "cln_yield_pct")
         ?.note,
     ).toBe("规模 19.47 亿元");
+  });
+
+  it("uses the authoritative backend BP display without JavaScript rerounding", () => {
+    const surface = selectProductCategorySpreadReadoutSurface({
+      payload: {
+        ...YTD_PAYLOAD,
+        liability_cost_decomposition: {
+          liability_yield_pct: percent("1.58"),
+          liability_yield_ex_cln_pct: percent("1.5655"),
+          cln_yield_pct: percent("2.79"),
+          cln_drag_bp: {
+            raw: "1.45",
+            display: "1.5 bp",
+            unit: "bp",
+          },
+          cln_scale: "-1947000000",
+        },
+      },
+      reportDate: "2026-07-31",
+      selectedView: "ytd",
+    });
+
+    expect(liabilityMetricValue(surface, "cln_drag_bp")).toBe("1.5 bp");
+  });
+
+  it("describes a negative CLN impact as cost reduction instead of drag", () => {
+    const surface = selectProductCategorySpreadReadoutSurface({
+      payload: {
+        ...YTD_PAYLOAD,
+        liability_cost_decomposition: {
+          liability_yield_pct: percent("1.57"),
+          liability_yield_ex_cln_pct: percent("1.60"),
+          cln_yield_pct: percent("0.50"),
+          cln_drag_bp: bp("-3.0"),
+          cln_scale: "-100000000",
+        },
+      },
+      reportDate: "2026-07-31",
+      selectedView: "ytd",
+    });
+
+    if (surface.liability.state === "unavailable") {
+      throw new Error("expected available liability cost decomposition");
+    }
+    const drag = surface.liability.metrics.find(
+      (item) => item.key === "cln_drag_bp",
+    );
+    expect(surface.liability.title).toBe("负债端 CLN 降本");
+    expect(surface.liability.description).toContain("降低");
+    expect(drag?.label).toBe("CLN 降本（bp）");
+    expect(drag?.note).toContain("降低");
+    expect(`${surface.liability.title}${surface.liability.description}${drag?.note}`).not.toContain(
+      "拖累",
+    );
   });
 
   it("degrades to a gap notice when liability_cost_decomposition is absent", () => {
@@ -166,7 +220,10 @@ describe("selectProductCategorySpreadReadoutSurface", () => {
     expect(surface.state).toBe("ready");
     expect(surface.liability).toEqual({
       state: "unavailable",
-      reason: "后端未返回负债成本拆解字段，CLN 拖累暂不可用。",
+      title: "负债端 CLN 影响",
+      description: "信用联结票据对负债端成本率的影响，后端直出",
+      reason: "后端未返回负债成本拆解字段，CLN 影响暂不可用。",
+      metrics: [],
     });
   });
 
@@ -205,18 +262,63 @@ describe("selectProductCategorySpreadReadoutSurface", () => {
       selectedView: "ytd",
     });
 
+    expect(surface.liability.state).toBe("partial");
     expect(liabilityMetricValue(surface, "cln_drag_bp")).toBe(EM_DASH);
     expect(liabilityMetricValue(surface, "liability_yield_ex_cln_pct")).toBe(
       EM_DASH,
     );
     expect(liabilityMetricValue(surface, "cln_yield_pct")).toBe(EM_DASH);
-    if (surface.liability.state !== "ready") {
-      throw new Error("expected ready liability cost decomposition");
+    if (surface.liability.state === "unavailable") {
+      throw new Error("expected available liability cost decomposition");
     }
     expect(
       surface.liability.metrics.find((item) => item.key === "cln_yield_pct")
         ?.note,
     ).toBe(`规模 ${EM_DASH}`);
+    expect(surface.liability.reason).toContain("不完整");
+  });
+
+  it("marks the liability decomposition partial when only CLN scale is missing", () => {
+    const surface = selectProductCategorySpreadReadoutSurface({
+      payload: {
+        ...YTD_PAYLOAD,
+        liability_cost_decomposition: {
+          liability_yield_pct: percent("1.58"),
+          liability_yield_ex_cln_pct: percent("1.57"),
+          cln_yield_pct: percent("2.79"),
+          cln_drag_bp: bp("1.4"),
+          cln_scale: null,
+        },
+      },
+      reportDate: "2026-07-31",
+      selectedView: "ytd",
+    });
+
+    expect(surface.liability.state).toBe("partial");
+    expect(surface.liability.reason).toContain("不完整");
+    expect(
+      surface.liability.metrics.find((item) => item.key === "cln_yield_pct")
+        ?.note,
+    ).toBe(`规模 ${EM_DASH}`);
+  });
+
+  it("marks a partially populated spread response as partial", () => {
+    const partialInterestEarning = {
+      ...YTD_PAYLOAD.interest_earning_spread,
+      all_currency_asset_yield_pct: null,
+    };
+    const surface = selectProductCategorySpreadReadoutSurface({
+      payload: {
+        ...YTD_PAYLOAD,
+        interest_earning_spread: partialInterestEarning,
+      },
+      reportDate: "2026-07-31",
+      selectedView: "ytd",
+    });
+
+    expect(surface.state).toBe("partial");
+    expect(surface.reason).toContain("不完整");
+    expect(metricValue(surface, "interest_earning_asset_yield")).toBe(EM_DASH);
   });
 
   it("degrades the whole readout when the backend returns no spread section", () => {

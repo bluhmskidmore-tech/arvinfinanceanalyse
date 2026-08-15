@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date
@@ -22,6 +23,8 @@ from backend.app.core_finance.pnl_constants import (
     PNL_514_VAT_EFFECTIVE_START_DATE,
     PNL_FORMAL_FACT_RULE_VERSION,
 )
+
+logger = logging.getLogger(__name__)
 
 InvestTypeStd = Literal["H", "A", "T"]
 AccountingBasis = Literal["AC", "FVOCI", "FVTPL"]
@@ -289,8 +292,23 @@ def build_formal_pnl_fi_fact_rows(
 ) -> list[FormalPnlFiFactRow]:
     """Project standardized FI records into the future formal FI fact shape."""
     rows: list[FormalPnlFiFactRow] = []
+    unrecognized_517_rows = 0
+    unrecognized_517_total = ZERO
+    unrecognized_517_dates: set[date] = set()
     for row in fi_records:
         recognized = _recognized_pnl_components(row)
+        # 2026-08 B8 fail-loud 披露：FI 源被标记为 517 累计事件、标准化金额非零，
+        # 却未获正式认定（典型场景：report_date 在 2026H1 增值税窗口之外，
+        # normalize_fi_pnl_records 不派生 realized_flag/event_semantics）。
+        # 数值行为保持不变（正式 capital_gain_517 归零），但归零不再是静默的。
+        if (
+            row.event_type == FI_CUMULATIVE_REALIZED_517_EVENT_TYPE
+            and row.capital_gain_517 != ZERO
+            and not _is_517_formal_allowed(row)
+        ):
+            unrecognized_517_rows += 1
+            unrecognized_517_total += row.capital_gain_517
+            unrecognized_517_dates.add(row.report_date)
         rows.append(
             FormalPnlFiFactRow(
                 report_date=row.report_date,
@@ -312,6 +330,20 @@ def build_formal_pnl_fi_fact_rows(
                 ingest_batch_id=row.ingest_batch_id,
                 trace_id=row.trace_id,
             )
+        )
+    if unrecognized_517_rows:
+        logger.warning(
+            "[formal-pnl-517] %d FI row(s) carry event_type=%s with nonzero standardized "
+            "capital_gain_517 but fail formal recognition (realized_flag/event_semantics "
+            "not derived; the 2026H1 VAT window is %s..%s). Their capital_gain_517 is "
+            "zeroed in formal facts: report_dates=%s, excluded_517_total=%s. Recognition "
+            "rules for post-window cumulative 517 events await a governance decision.",
+            unrecognized_517_rows,
+            FI_CUMULATIVE_REALIZED_517_EVENT_TYPE,
+            PNL_514_VAT_EFFECTIVE_START_DATE.isoformat(),
+            PNL_514_VAT_EFFECTIVE_END_DATE.isoformat(),
+            sorted(item.isoformat() for item in unrecognized_517_dates),
+            unrecognized_517_total,
         )
     return rows
 

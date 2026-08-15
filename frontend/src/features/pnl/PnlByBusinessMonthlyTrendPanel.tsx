@@ -2,9 +2,11 @@ import { useMemo, useState } from "react";
 
 import type { PnlByBusinessMonthlyBucket } from "../../api/contracts";
 import { BaseChart } from "../../components/charts/BaseChart";
-import { createLineChartOption, mossChartPalette } from "../../components/charts/chartTheme";
+// 本页为 Nocturne scope：显式走 nocturneChartTheme（canvas 不消费 CSS 变量），
+// 不再经共享别名 createLineChartOption/mossChartPalette（IB 浅色默认）取色。
+import { nocturneChartTheme } from "../../components/charts/chartTheme";
 import type { EChartsOption } from "../../lib/echarts";
-import { ibTokens } from "../../theme/designSystem";
+import { nocturneTokens } from "../../theme/designSystem";
 import { EM_DASH } from "../../utils/format";
 import {
   buildSelectedBusinessMonthlyTrend,
@@ -64,7 +66,7 @@ function buildTrendOption(
   unit: string,
   showZeroLine = false,
 ): EChartsOption {
-  return createLineChartOption({
+  return nocturneChartTheme.createLineChartOption({
     tooltip: {
       valueFormatter: (value) => {
         if (value === null || value === undefined || value === "") {
@@ -104,7 +106,7 @@ function buildTrendOption(
             silent: true,
             symbol: "none",
             label: { show: false },
-            lineStyle: { color: ibTokens.color.inkMuted, width: 1, type: "dashed" as const },
+            lineStyle: { color: nocturneTokens.color.inkMuted, width: 1, type: "dashed" as const },
             data: [{ yAxis: 0 }],
           }
         : undefined,
@@ -127,18 +129,20 @@ export function PnlByBusinessMonthlyTrendPanel({
   );
   const chartOptions = useMemo(() => {
     const points = trend.points;
+    // 系列取色制度：主读数 = accent 蓝，参照/成本系列 = inkSoft 虚线，
+    // FTP 后结果 = amber（跨三个视图保持同一映射，§4 色一致性锁）。
     return {
       balance: buildTrendOption(
         points,
         [
           {
             name: "日均余额",
-            color: mossChartPalette[0],
+            color: nocturneTokens.color.blue,
             values: points.map((point) => point.avgBalanceYi),
           },
           {
             name: "期末余额",
-            color: mossChartPalette[1],
+            color: nocturneTokens.color.inkSoft,
             values: points.map((point) => point.currentBalanceYi),
             lineType: "dashed",
           },
@@ -150,12 +154,12 @@ export function PnlByBusinessMonthlyTrendPanel({
         [
           {
             name: "合计损益",
-            color: mossChartPalette[0],
+            color: nocturneTokens.color.blue,
             values: points.map((point) => point.totalPnlWan),
           },
           {
             name: "FTP后收益",
-            color: mossChartPalette[5],
+            color: nocturneTokens.color.amber,
             values: points.map((point) => point.ftpNetPnlWan),
             lineType: "dashed",
           },
@@ -168,18 +172,18 @@ export function PnlByBusinessMonthlyTrendPanel({
         [
           {
             name: "年化收益率",
-            color: mossChartPalette[0],
+            color: nocturneTokens.color.blue,
             values: points.map((point) => point.annualizedYieldPct),
           },
           {
             name: "FTP年化利率",
-            color: mossChartPalette[2],
+            color: nocturneTokens.color.inkSoft,
             values: points.map((point) => point.ftpRatePct),
             lineType: "dashed",
           },
           {
             name: "FTP后年化收益率",
-            color: mossChartPalette[5],
+            color: nocturneTokens.color.amber,
             values: points.map((point) => point.ftpNetAnnualizedYieldPct),
           },
         ],

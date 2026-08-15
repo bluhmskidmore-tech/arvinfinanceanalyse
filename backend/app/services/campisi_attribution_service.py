@@ -1707,6 +1707,21 @@ def _meta_with_quality(
     as_of_date: str | None = None,
 ):
     has_closure_warning = formal_closure is not None and formal_closure.get("status") != "closed"
+    requested_report_date = (
+        str(filters_applied["requested_end_date"])
+        if filters_applied and filters_applied.get("requested_end_date")
+        else None
+    )
+    resolved_report_date = (
+        str(filters_applied["resolved_end_date"])
+        if filters_applied and filters_applied.get("resolved_end_date")
+        else None
+    )
+    report_date_fallback = bool(
+        requested_report_date
+        and resolved_report_date
+        and requested_report_date != resolved_report_date
+    )
     return build_formal_result_meta(
         trace_id=_trace_id(),
         result_kind=result_kind,
@@ -1718,7 +1733,11 @@ def _meta_with_quality(
         tables_used=tables_used,
         evidence_rows=evidence_rows,
         source_surface="formal_attribution",
+        requested_report_date=requested_report_date,
+        resolved_report_date=resolved_report_date,
         as_of_date=as_of_date,
+        fallback_mode="latest_snapshot" if report_date_fallback else "none",
+        fallback_date=resolved_report_date if report_date_fallback else None,
     )
 
 
@@ -2601,6 +2620,7 @@ def campisi_decision_grade_envelope(
                     "residual_noise 专门承接缺曲线、重复 key、估值噪音和数据质量问题。",
                 ],
             }
+            report_date_fallback = bool(end_date and anchor_end != end_date)
             return build_formal_result_envelope(
                 result_meta=build_formal_result_meta(
                     trace_id=_trace_id(),
@@ -2615,12 +2635,19 @@ def campisi_decision_grade_envelope(
                         if stale_curve_fallback_count or curve_alignment["discarded"]
                         else "ok"
                     ),
-                    fallback_mode="latest_snapshot" if stale_curve_fallback_count else "none",
+                    fallback_mode=(
+                        "latest_snapshot"
+                        if stale_curve_fallback_count or report_date_fallback
+                        else "none"
+                    ),
                     filters_applied=filters,
                     tables_used=TABLES_CAMPISI_DECISION_GRADE,
                     evidence_rows=len(pnl_rows) + len(analytics_rows) + len(balance_rows),
                     source_surface="formal_attribution",
+                    requested_report_date=end_date,
+                    resolved_report_date=anchor_end,
                     as_of_date=anchor_end,
+                    fallback_date=anchor_end if report_date_fallback else None,
                 ),
                 result_payload=payload,
             )

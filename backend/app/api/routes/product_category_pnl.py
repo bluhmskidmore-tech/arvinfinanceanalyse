@@ -208,6 +208,8 @@ def create_manual_adjustment(
         ensure_user_allowed(auth=auth, settings=settings, resource="product_category_pnl.adjustment", action="write")
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return create_product_category_manual_adjustment(settings, payload)
 
 
@@ -278,6 +280,8 @@ def revoke_manual_adjustment(
         ensure_user_allowed(auth=auth, settings=settings, resource="product_category_pnl.adjustment", action="write")
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
         return revoke_product_category_manual_adjustment(settings, adjustment_id=adjustment_id)
     except ValueError as exc:
@@ -321,6 +325,8 @@ def edit_manual_adjustment(
         ensure_user_allowed(auth=auth, settings=settings, resource="product_category_pnl.adjustment", action="write")
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
         return update_product_category_manual_adjustment(
             settings,
@@ -341,6 +347,8 @@ def restore_manual_adjustment(
         ensure_user_allowed(auth=auth, settings=settings, resource="product_category_pnl.adjustment", action="write")
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
         return restore_product_category_manual_adjustment(settings, adjustment_id=adjustment_id)
     except ValueError as exc:

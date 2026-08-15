@@ -195,12 +195,12 @@
   padding: 8px;
 }
 
+/* 表头对齐页内表格制度（11px muted，无宽字距）；--ib-* 变量按页面纪律清除。 */
 .advanced-attribution-chart__table th {
   border-bottom: 1px solid var(--dh-api-line);
   color: var(--dh-api-muted);
-  font-size: var(--ib-kicker-font-size);
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: var(--ib-kicker-letter-spacing);
 }
 
 .advanced-attribution-chart__table tbody tr:hover td {

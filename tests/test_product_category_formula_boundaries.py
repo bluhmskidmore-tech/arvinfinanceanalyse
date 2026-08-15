@@ -7,14 +7,14 @@ from pathlib import Path
 
 import pytest
 
+from backend.app.core_finance.config.product_category_mapping import (
+    build_default_product_category_config,
+)
 from backend.app.core_finance.product_category_pnl import (
     CanonicalFactRow,
     calculate_read_model,
     calculate_product_category_interest_spread_metrics,
     calculate_product_category_liability_cost_decomposition,
-)
-from backend.app.core_finance.config.product_category_mapping import (
-    build_default_product_category_config,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -174,6 +174,170 @@ def test_product_category_weighted_yield_is_decimal_core_finance_output():
     )
 
     assert lending["weighted_yield"] == Decimal("10.00000000000000000000000000")
+
+
+def _period_fact(
+    report_date: date,
+    account_code: str,
+    *,
+    monthly_pnl: Decimal = Decimal("0"),
+    daily_avg_balance: Decimal = Decimal("0"),
+    annual_avg_balance: Decimal = Decimal("0"),
+    ending_balance: Decimal = Decimal("0"),
+) -> CanonicalFactRow:
+    return CanonicalFactRow(
+        report_date=report_date,
+        account_code=account_code,
+        currency="CNX",
+        account_name=f"acct {account_code}",
+        beginning_balance=Decimal("0"),
+        ending_balance=ending_balance,
+        monthly_pnl=monthly_pnl,
+        daily_avg_balance=daily_avg_balance,
+        annual_avg_balance=annual_avg_balance,
+        days_in_period=report_date.day,
+    )
+
+
+_QTD_GOLDEN_CONFIG = [
+    {
+        "id": "qtd_golden_asset",
+        "name": "qtd golden asset",
+        "side": "asset",
+        "level": 0,
+        "children": [],
+        "scale_accounts": ["120"],
+        "pnl_accounts": ["502"],
+        "ftp_rate_pct": Decimal("1"),
+    }
+]
+
+
+def test_qtd_multimonth_quarter_sums_monthly_pnl_and_day_weights_scale():
+    """Q3 多月季度黄金（2026-08 B8 口径修正）：qtd 现金=季度内各月 monthly_pnl 之和，
+    规模=各月 monthly 口径规模×当月天数/季度天数；期末余额不得再充当 qtd 现金。"""
+    july = date(2026, 7, 31)
+    august = date(2026, 8, 31)
+    facts_by_date = {
+        july: [
+            _period_fact(july, "120", daily_avg_balance=Decimal("100"), annual_avg_balance=Decimal("777")),
+            # ending_balance=-500 是诱饵：历史 qtd 路径会取 -(ending_balance)=500 充当现金。
+            _period_fact(july, "502", monthly_pnl=Decimal("30"), ending_balance=Decimal("-500")),
+        ],
+        august: [
+            _period_fact(august, "120", daily_avg_balance=Decimal("200"), annual_avg_balance=Decimal("888")),
+            _period_fact(august, "502", monthly_pnl=Decimal("40"), ending_balance=Decimal("-700")),
+        ],
+    }
+
+    qtd = calculate_read_model(facts_by_date, august, "qtd", _QTD_GOLDEN_CONFIG)
+    ytd = calculate_read_model(facts_by_date, august, "ytd", _QTD_GOLDEN_CONFIG)
+    qtd_row = next(row for row in qtd["rows"] if row["category_id"] == "qtd_golden_asset")
+    ytd_row = next(row for row in ytd["rows"] if row["category_id"] == "qtd_golden_asset")
+
+    quant = Decimal("0.000000000000000001")
+    # 现金 = 30 + 40（季度内发生额），而不是 -(-700) = 700（季末月期末余额取负）。
+    assert qtd_row["cnx_cash"] == Decimal("70")
+    # 规模 = (100×31 + 200×31) / 62 = 150（7、8 月均为非一月，monthly 规模基础=daily_avg_balance）。
+    assert Decimal(str(qtd_row["cnx_scale"])).quantize(quant) == Decimal("150").quantize(quant)
+    # FTP = 150 × 1% × 62 / 365；加权收益率 = 70 / 62 × 365 / 150 × 100。
+    expected_ftp = Decimal("150") * Decimal("0.01") * Decimal("62") / Decimal("365")
+    expected_yield = Decimal("70") / Decimal("62") * Decimal("365") / Decimal("150") * Decimal("100")
+    assert Decimal(str(qtd_row["foreign_ftp"])).quantize(quant) == expected_ftp.quantize(quant)
+    assert Decimal(str(qtd_row["weighted_yield"])).quantize(quant) == expected_yield.quantize(quant)
+    # 与 ytd 对照：月份集合相同（本例无 1-6 月）故现金一致；分母天数不同（62 vs 243）故规模不同。
+    assert ytd_row["cnx_cash"] == Decimal("70")
+    assert Decimal(str(ytd_row["cnx_scale"])).quantize(quant) == (
+        Decimal("9300") / Decimal("243")
+    ).quantize(quant)
+
+
+def test_qtd_first_quarter_equals_ytd_including_january_annual_scale_fallback():
+    """Q1 的 qtd 与 ytd 覆盖同一组月份，除 view 标签外读数必须完全一致；
+    一月规模继承 monthly 口径的 annual_avg_balance 回退（2026-08 B8）。"""
+    january = date(2026, 1, 31)
+    february = date(2026, 2, 28)
+    facts_by_date = {
+        january: [
+            # 一月 daily_avg(55) 与 annual_avg(60) 不同：qtd 必须与 ytd 一样取 annual_avg。
+            _period_fact(january, "120", daily_avg_balance=Decimal("55"), annual_avg_balance=Decimal("60")),
+            _period_fact(january, "502", monthly_pnl=Decimal("10"), ending_balance=Decimal("-100")),
+        ],
+        february: [
+            # 二月 annual_avg(999) 是诱饵：非一月必须用 daily_avg。
+            _period_fact(february, "120", daily_avg_balance=Decimal("70"), annual_avg_balance=Decimal("999")),
+            _period_fact(february, "502", monthly_pnl=Decimal("20"), ending_balance=Decimal("-300")),
+        ],
+    }
+
+    qtd = calculate_read_model(facts_by_date, february, "qtd", _QTD_GOLDEN_CONFIG)
+    ytd = calculate_read_model(facts_by_date, february, "ytd", _QTD_GOLDEN_CONFIG)
+
+    def _strip_view(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+        return [{key: value for key, value in row.items() if key != "view"} for row in rows]
+
+    assert _strip_view(qtd["rows"]) == _strip_view(ytd["rows"])
+
+    qtd_row = next(row for row in qtd["rows"] if row["category_id"] == "qtd_golden_asset")
+    quant = Decimal("0.000000000000000001")
+    assert qtd_row["cnx_cash"] == Decimal("30")
+    # 规模 = (60×31 + 70×28) / 59：一月取 annual_avg=60，二月取 daily_avg=70。
+    expected_scale = (Decimal("60") * Decimal("31") + Decimal("70") * Decimal("28")) / Decimal("59")
+    assert Decimal(str(qtd_row["cnx_scale"])).quantize(quant) == expected_scale.quantize(quant)
+
+
+@pytest.mark.parametrize("view", ["qtd", "ytd", "year_to_report_month_end"])
+def test_partial_period_scale_and_ftp_use_the_full_view_denominator(view: str):
+    """A missing January is a zero-exposure day, not permission to annualize February twice."""
+    report_date = date(2026, 2, 28)
+    facts = [
+        CanonicalFactRow(
+            report_date=report_date,
+            account_code="120",
+            currency="CNX",
+            account_name="partial-period asset",
+            beginning_balance=Decimal("0"),
+            ending_balance=Decimal("100"),
+            monthly_pnl=Decimal("0"),
+            daily_avg_balance=Decimal("100"),
+            annual_avg_balance=Decimal("100"),
+            days_in_period=28,
+        ),
+        CanonicalFactRow(
+            report_date=report_date,
+            account_code="120",
+            currency="CNY",
+            account_name="partial-period asset",
+            beginning_balance=Decimal("0"),
+            ending_balance=Decimal("100"),
+            monthly_pnl=Decimal("0"),
+            daily_avg_balance=Decimal("100"),
+            annual_avg_balance=Decimal("100"),
+            days_in_period=28,
+        ),
+    ]
+    config = [
+        {
+            "id": "partial_period_asset",
+            "name": "partial-period asset",
+            "side": "asset",
+            "level": 0,
+            "children": [],
+            "scale_accounts": ["120"],
+            "pnl_accounts": ["120"],
+            "ftp_rate_pct": Decimal("1"),
+        }
+    ]
+
+    result = calculate_read_model({report_date: facts}, report_date, view, config)
+    row = next(item for item in result["rows"] if item["category_id"] == "partial_period_asset")
+
+    expected_scale = Decimal("100") * Decimal("28") / Decimal("59")
+    expected_ftp = Decimal("100") * Decimal("28") * Decimal("0.01") / Decimal("365")
+    quant = Decimal("0.000000000000000001")
+    assert Decimal(str(row["cnx_scale"])).quantize(quant) == expected_scale.quantize(quant)
+    assert Decimal(str(row["cny_scale"])).quantize(quant) == expected_scale.quantize(quant)
+    assert Decimal(str(row["cny_ftp"])).quantize(quant) == expected_ftp.quantize(quant)
 
 
 def test_product_category_interest_spread_metrics_are_decimal_core_finance_output():
@@ -464,6 +628,47 @@ def test_product_category_liability_cost_decomposition_returns_none_when_ex_cln_
             "weighted_yield": Decimal("2.81427057"),
             "cnx_cash": Decimal("-27000446.32000000"),
             "cnx_scale": Decimal("-1934725622.00187845"),
+        },
+    )
+
+    assert decomposition.liability_yield_pct is None
+    assert decomposition.liability_yield_ex_cln_pct is None
+    assert decomposition.cln_yield_pct is None
+    assert decomposition.cln_drag_bp is None
+    assert decomposition.cln_scale is None
+
+
+@pytest.mark.parametrize(
+    ("liability_scale", "cln_scale"),
+    [
+        (Decimal("-36500000000"), Decimal("0")),
+        (Decimal("-36500000000"), Decimal("365000000")),
+        (Decimal("-36500000000"), Decimal("-40000000000")),
+        (Decimal("36500000000"), Decimal("-365000000")),
+    ],
+    ids=[
+        "zero-cln-denominator",
+        "positive-cln-liability-scale",
+        "cln-exceeds-total-liability",
+        "positive-total-liability-scale",
+    ],
+)
+def test_product_category_liability_cost_decomposition_rejects_invalid_scale_topology(
+    liability_scale: Decimal,
+    cln_scale: Decimal,
+):
+    decomposition = calculate_product_category_liability_cost_decomposition(
+        report_date="2026-06-30",
+        view="ytd",
+        liability_row={
+            "weighted_yield": Decimal("1.50"),
+            "cnx_cash": Decimal("-49507000"),
+            "cnx_scale": liability_scale,
+        },
+        credit_linked_notes_row={
+            "weighted_yield": Decimal("1.30"),
+            "cnx_cash": Decimal("0"),
+            "cnx_scale": cln_scale,
         },
     )
 

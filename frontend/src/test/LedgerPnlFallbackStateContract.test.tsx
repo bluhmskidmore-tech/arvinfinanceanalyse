@@ -32,26 +32,28 @@
  * vendor_stale 两个触发通道分别验证，防止其中一个通道回归后被另一个掩盖）、
  * vendor_unavailable 整面替换、no_data×fallback 叠加、无响应卡，以及 ready 健康态反向断言。
  *
- * 疑似问题登记（不放宽断言，以 it.skip 保留语义断言，详见专家报告）：
- * - [观察A·低风险] vendor_unavailable 整面替换时，workbench 的 data-state 钩子仍透传
- *   payload.analysis_status（="ready"）：用户可见面正确（警示卡 + 无金额），但机器可读
- *   状态钩子宣称 ready，按 data-state 做自动化监测会漏报该降级。CSS 不消费该钩子，
- *   无用户可见影响，故仅登记不修改。
- * - [gap·页面级] LedgerPnlPage.tsx 的 collectSourceRiskSegments（候选分析证据条“来源状态”）
- *   仅被 LedgerPnlPage.test.tsx 验证了健康方向（“来源正常”），fallback/vendor 降级方向
- *   未覆盖；需整页渲染 harness，超出本组件级探针范围，登记为未覆盖形态。
+ * 历史问题登记（均已闭环，保留追溯）：
+ * - [观察A·已修复] vendor_unavailable 整面替换时，workbench 的 data-state 钩子曾透传
+ *   payload.analysis_status（="ready"）；已修复为如实报告 "vendor_unavailable"，
+ *   对应断言解除 skip 转为常规契约测试（见形态三）。
+ * - [gap·已补覆盖] LedgerPnlPage.tsx 的 collectSourceRiskSegments（候选分析证据条“来源状态”）
+ *   此前仅被 LedgerPnlPage.test.tsx 验证了健康方向（“来源正常”）；本文件已补整页渲染
+ *   harness 的 fallback 与 vendor_unavailable 两个降级方向断言（见“页面级来源状态”组）。
  *
  * 先红后绿：开发中曾临时把「形态一 fallback-only 必须渲染来源状态面」的断言反转为
  * expect(screen.queryByTestId("ledger-pnl-analysis-source-status")).toBeNull()
  * （模拟“回退横幅静默缺失”的回归方向），探针如期变红；证据保存在专家报告中，
  * 此处已恢复为契约断言。
  */
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
-import type { ApiEnvelope, LedgerPnlAnalysisPayload } from "../api/contracts";
-import { createApiClient } from "../api/client";
+import type { ApiEnvelope, LedgerPnlAnalysisPayload, ResultMeta } from "../api/contracts";
+import { createApiClient, type ApiClient } from "../api/client";
+import { AppProviders } from "../app/providers";
 import { LedgerPnlAnalysisWorkbench } from "../features/ledger-pnl/components/LedgerPnlAnalysisWorkbench";
+import LedgerPnlPage from "../features/ledger-pnl/pages/LedgerPnlPage";
 import { EM_DASH } from "../utils/format";
 
 /** mock 快照中唯一 ready 的总账分析报告日（src/mocks/ledgerPnlMocks.ts）。 */
@@ -199,17 +201,21 @@ describe("LedgerPnlFallbackStateContract / 形态三：上游不可用（vendor_
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
-  // [观察A·低风险] 可见面正确（上一用例已断言），但 data-state 钩子透传
-  // payload.analysis_status（="ready"）：按 data-state 做自动化监测会把“上游不可用”
-  // 误读为 ready。CSS 不消费该钩子、无用户可见影响，登记观察，不放宽可见面断言。
-  // 解除 skip 的实测输出：expected not to have attribute data-state="ready"，received ready。
-  it.skip("[观察A] 整面替换时 data-state 钩子不应仍宣称 ready", async () => {
+  // [观察A·已修复] 曾登记：data-state 钩子透传 payload.analysis_status（="ready"），
+  // 按 data-state 做自动化监测会把“上游不可用”误读为 ready（当时实测输出：
+  // expected not to have attribute data-state="ready"，received ready）。
+  // 调查确认该钩子其余取值（loading/error/no_data）均反映渲染面而非载荷字段，
+  // 无契约依据支持 vendor_unavailable 例外，属真实透传缺陷；已在
+  // LedgerPnlAnalysisWorkbench.tsx 的 dataState 组装处按渲染分支同序修复，
+  // 整面替换时报告 "vendor_unavailable"。CSS 不消费该钩子，修复无视觉影响。
+  it("整面替换时 data-state 钩子如实报告 vendor_unavailable，而非 ready", async () => {
     const envelope = await loadAnalysisEnvelope(READY_REPORT_DATE);
     envelope.result_meta.vendor_status = "vendor_unavailable";
 
     const workbench = renderWorkbench(envelope);
 
     expect(workbench).not.toHaveAttribute("data-state", "ready");
+    expect(workbench).toHaveAttribute("data-state", "vendor_unavailable");
   });
 });
 
@@ -234,6 +240,60 @@ describe("LedgerPnlFallbackStateContract / 形态四：no_data 与回退叠加",
     expect(screen.queryByTestId("ledger-pnl-analysis-conclusion")).not.toBeInTheDocument();
     expect(screen.queryByTestId("ledger-pnl-analysis-bridge")).not.toBeInTheDocument();
     expect(workbench.textContent).not.toMatch(MONEY_DISPLAY_PATTERN);
+  });
+});
+
+/**
+ * 整页渲染 harness：mock 客户端整体健康（healthy 反向断言组已守卫其元数据），
+ * 仅对 /analysis envelope 的 result_meta 注入降级字段，验证 LedgerPnlPage 的
+ * collectSourceRiskSegments 在降级方向如实透出分段，而非继续宣称“来源正常”。
+ */
+async function renderLedgerPnlPageWithAnalysisMeta(metaOverrides: Partial<ResultMeta>) {
+  const base = createApiClient({ mode: "mock" });
+  const client: ApiClient = {
+    ...base,
+    getLedgerPnlAnalysis: async (reportDate, currency) => {
+      const envelope = structuredClone(await base.getLedgerPnlAnalysis(reportDate, currency));
+      envelope.result_meta = { ...envelope.result_meta, ...metaOverrides };
+      return envelope;
+    },
+  };
+  render(
+    <AppProviders client={client}>
+      <MemoryRouter initialEntries={[`/ledger-pnl?report_date=${READY_REPORT_DATE}`]}>
+        <LedgerPnlPage />
+      </MemoryRouter>
+    </AppProviders>,
+  );
+  return screen.findByTestId("ledger-pnl-functional-audit-strip");
+}
+
+describe("LedgerPnlFallbackStateContract / 页面级来源状态：降级方向不得宣称“来源正常”", () => {
+  // 健康方向（“来源正常”）已由 LedgerPnlPage.test.tsx 覆盖；此处补 fallback / vendor 两个降级方向。
+  it("fallback 方向：fallback_mode=latest_snapshot 时证据条透出降级分段并给出处理路径", async () => {
+    const strip = await renderLedgerPnlPageWithAnalysisMeta({
+      fallback_mode: "latest_snapshot",
+    });
+
+    await waitFor(() => {
+      expect(strip).toHaveTextContent("来源状态候选分析 fallback=latest_snapshot");
+    });
+    expect(strip).toHaveTextContent("候选分析来源降级");
+    expect(strip).toHaveTextContent("来源处理路径先确认分析降级来源");
+    expect(strip).not.toHaveTextContent("来源正常");
+  });
+
+  it("vendor 方向：vendor_status=vendor_unavailable 时证据条透出降级分段并给出处理路径", async () => {
+    const strip = await renderLedgerPnlPageWithAnalysisMeta({
+      vendor_status: "vendor_unavailable",
+    });
+
+    await waitFor(() => {
+      expect(strip).toHaveTextContent("来源状态候选分析 vendor=vendor_unavailable");
+    });
+    expect(strip).toHaveTextContent("候选分析来源降级");
+    expect(strip).toHaveTextContent("来源处理路径先确认分析降级来源");
+    expect(strip).not.toHaveTextContent("来源正常");
   });
 });
 

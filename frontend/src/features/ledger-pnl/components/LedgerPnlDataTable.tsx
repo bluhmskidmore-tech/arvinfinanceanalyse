@@ -67,6 +67,14 @@ function columnAlignment<T>(column: LedgerPnlDataTableColumn<T>): "left" | "righ
   return column.align ?? (column.numeric ? "right" : "left");
 }
 
+/** 单元格兜底：nullish → EM_DASH；非有限数字（NaN/±Infinity）同样占位，不经 React 渲染出 "NaN"。 */
+function cellContentOrPlaceholder(content: ReactNode): ReactNode {
+  if (typeof content === "number" && !Number.isFinite(content)) {
+    return EM_DASH;
+  }
+  return content ?? EM_DASH;
+}
+
 export function LedgerPnlDataTable<T>(props: LedgerPnlDataTableProps<T>): JSX.Element {
   const {
     testId,
@@ -285,7 +293,7 @@ export function LedgerPnlDataTable<T>(props: LedgerPnlDataTableProps<T>): JSX.El
                           key={column.key}
                           className={`ledger-pnl-data-table__td ledger-pnl-data-table__td--${alignment}${numericClass}`}
                         >
-                          {column.render(row) ?? EM_DASH}
+                          {cellContentOrPlaceholder(column.render(row))}
                         </td>
                       );
                     })}

@@ -311,7 +311,7 @@ export function createDemoProductCategoryClient(delay: Delay): ProductCategoryCl
         cache_key: "product_category_pnl.formal",
         month_count: 2,
         report_dates: ["2026-01-31", "2026-02-28"],
-        rule_version: "rv_product_category_pnl_v1",
+        rule_version: "rv_product_category_pnl_v2",
         source_version: "sv_mock_dashboard_v2",
       };
     },

@@ -100,7 +100,7 @@ def test_balance_movement_refresh_api_returns_queued_payload_with_task_identity(
             "report_date": "2026-02-28",
             "currency_basis": "CNX",
             "source_version": "sv_accounting_asset_movement_pending",
-            "rule_version": "rv_accounting_asset_movement_v2",
+            "rule_version": "rv_accounting_asset_movement_v3",
             "movement_refreshed_dates": ["2026-01-31", "2026-02-28"],
         },
     )

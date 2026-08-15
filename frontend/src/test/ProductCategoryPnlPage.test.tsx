@@ -7040,7 +7040,7 @@ describe("ProductCategoryPnlPage", () => {
                       display: "2.79%",
                       unit: "percent",
                     },
-                    cln_drag_bp: { raw: "1.4", display: "1.4bp", unit: "bp" },
+                    cln_drag_bp: { raw: "1.4", display: "1.4 bp", unit: "bp" },
                     cln_scale: "-1947000000",
                   },
                 }
@@ -7079,7 +7079,12 @@ describe("ProductCategoryPnlPage", () => {
       ),
     ).toHaveTextContent("2.29%");
 
-    await user.click(screen.getByRole("button", { name: "汇总视图" }));
+    const monthlyView = screen.getByRole("button", { name: "月度视图" });
+    const summaryView = screen.getByRole("button", { name: "汇总视图" });
+    expect(monthlyView).toHaveAttribute("aria-pressed", "true");
+    expect(summaryView).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(summaryView);
 
     await waitFor(() => {
       expect(
@@ -7104,9 +7109,11 @@ describe("ProductCategoryPnlPage", () => {
     expect(
       screen.getByTestId("product-category-spread-readout-caliber"),
     ).toHaveTextContent("年初至今累计口径");
+    expect(monthlyView).toHaveAttribute("aria-pressed", "false");
+    expect(summaryView).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("hides the CLN drag block behind a gap notice until the backend returns the decomposition", async () => {
+  it("hides the CLN drag block when the decomposition fields are all empty", async () => {
     renderWorkbenchAppWithClient(
       createSpreadReadoutClient({ withDecomposition: false }),
     );
@@ -7115,7 +7122,7 @@ describe("ProductCategoryPnlPage", () => {
     const gap = await screen.findByTestId(
       "product-category-spread-readout-liability-gap",
     );
-    expect(gap).toHaveTextContent("后端未返回负债成本拆解字段");
+    expect(gap).toHaveTextContent("后端返回的负债成本拆解全部为空");
     expect(
       screen.queryByTestId("product-category-spread-readout-liability"),
     ).not.toBeInTheDocument();

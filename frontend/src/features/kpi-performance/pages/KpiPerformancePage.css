@@ -237,8 +237,10 @@
   font-size: 12px;
 }
 
+/* 空态收缩：跟随内容自然高度，只保底 120px，避免 300px+ 空白（主网格
+   已是 align-items: start，卡片不会被邻列拉高）。 */
 .kpi-performance-page__empty-card {
-  min-height: 420px;
+  min-height: 120px;
 }
 
 .kpi-performance-page__empty-state {
@@ -295,14 +297,6 @@
   gap: var(--moss-space-1);
   padding: var(--moss-space-3) var(--moss-space-4);
   border-bottom: 1px solid var(--ib-hairline);
-}
-
-.kpi-owner-list__eyebrow,
-.kpi-metric-table-card__eyebrow {
-  color: var(--ib-ink-muted);
-  font-size: var(--ib-kicker-font-size);
-  font-weight: 700;
-  letter-spacing: var(--ib-kicker-letter-spacing);
 }
 
 .kpi-owner-list__title,

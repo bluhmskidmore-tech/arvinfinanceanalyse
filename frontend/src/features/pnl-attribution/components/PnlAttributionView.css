@@ -193,9 +193,12 @@
   opacity: 0.6;
 }
 
+/* 激活态强化：accent 填充加深 + 底部 2px 指示条（inset 线承载激活语义，
+   与外壳 rail 激活制度同源），与未激活描边胶囊拉开对比。 */
 .pnl-attribution-tab-button--active {
-  border-color: color-mix(in srgb, var(--dh-api-blue) 45%, transparent);
-  background: color-mix(in srgb, var(--dh-api-blue) 16%, var(--dh-api-panel));
+  border-color: color-mix(in srgb, var(--dh-api-blue) 62%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 20%, var(--dh-api-panel));
+  box-shadow: inset 0 -2px 0 0 var(--dh-api-blue);
   color: var(--dh-api-ink);
 }
 
@@ -520,6 +523,13 @@
 
 .pnl-attribution-empty-note {
   color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+/* 错误态收缩面板：标题下只保留一行指引，错误正文收敛在区级横幅（§6 去重）。 */
+.pnl-attribution-collapsed-note {
+  margin: 0;
+  color: var(--dh-api-muted);
   font-size: 12px;
 }
 

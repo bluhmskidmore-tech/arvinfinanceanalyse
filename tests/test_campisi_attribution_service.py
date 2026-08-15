@@ -421,6 +421,10 @@ def test_four_effects_envelope_anchors_dates_aggregates_and_surfaces_warnings(
     assert any("does not close to formal PnL" in warning for warning in result["warnings"])
     assert envelope["result_meta"]["quality_flag"] == "warning"
     assert envelope["result_meta"]["as_of_date"] == "2026-01-31"
+    assert envelope["result_meta"]["requested_report_date"] == "2026-02-01"
+    assert envelope["result_meta"]["resolved_report_date"] == "2026-01-31"
+    assert envelope["result_meta"]["fallback_mode"] == "latest_snapshot"
+    assert envelope["result_meta"]["fallback_date"] == "2026-01-31"
     assert envelope["result_meta"]["evidence_rows"] == 5
     assert envelope["result_meta"]["filters_applied"] == {
         "requested_start_date": "2026-01-10",

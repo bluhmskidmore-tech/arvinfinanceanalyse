@@ -128,7 +128,13 @@ function PnlByBusinessPrecomputeStatusPanel({
           : status?.is_current
             ? "预计算已就绪"
             : "预计算未就绪，当前使用实时计算";
-  const tone = failed || isError ? "error" : inflight || servingLive ? "warning" : "ready";
+  // 「未就绪，使用实时计算」是降级中状态：左沿走琥珀而非就绪绿（§4 语义色承载状态）。
+  const tone =
+    failed || isError
+      ? "error"
+      : inflight || servingLive || !status?.is_current
+        ? "warning"
+        : "ready";
   const cutoff = status?.report_date ?? status?.latest_available_as_of_date ?? EM_DASH;
 
   return (
@@ -258,7 +264,7 @@ function PnlByBusinessInsightStrip({
           </span>
         </div>
         <div>
-          <small>formal 对账</small>
+          <small>正式对账</small>
           <strong className={formalToneClass}>{insight.formalUntracedValueDisplay}</strong>
           <span>{insight.formalUntracedDisplay}</span>
         </div>
@@ -338,6 +344,26 @@ function formatPnlWan(raw: string | number | null | undefined) {
   // 不做近零折叠：真实小值按两位小数如实四舍五入展示；仅规整 "-0" 符号噪声。
   const display = (value / 10_000).toLocaleString("zh-CN", { maximumFractionDigits: 2 });
   return display === "-0" ? "0" : display;
+}
+
+/** 月度表金额列的符号语义：负值统一 --dh-api-red（§4 色一致性锁，与 /pnl 汇总卡对齐）。 */
+function pnlWanCellTone(raw: string | number | null | undefined): "negative" | undefined {
+  const value = numeric(raw);
+  return value !== null && value < 0 ? "negative" : undefined;
+}
+
+function PnlWanCell({
+  raw,
+  className,
+}: {
+  raw: string | number | null | undefined;
+  className?: string;
+}) {
+  return (
+    <td className={className} data-pnl-tone={pnlWanCellTone(raw)}>
+      {formatPnlWan(raw)}
+    </td>
+  );
 }
 
 function formatAdbAvgYiCell(yuan: number): string {
@@ -801,6 +827,9 @@ function MonthlyBusinessRowsTable({ month }: { month: PnlByBusinessMonthlyBucket
     typeof month.coverage_days === "number" &&
     expectedCoverageDays > 0 &&
     month.coverage_days < expectedCoverageDays;
+  const coverageSummaryText = `余额覆盖 ${month.coverage_days ?? "待返回"}/${
+    month.expected_days ?? month.calendar_days ?? "待返回"
+  } 天${month.sample_filled ? "（样本填充）" : ""}`;
   return (
     <>
       {coverageIncomplete ? (
@@ -841,14 +870,14 @@ function MonthlyBusinessRowsTable({ month }: { month: PnlByBusinessMonthlyBucket
                 <td>{row.business_type}</td>
                 <td>{formatAvgBalanceYi(row.avg_balance)}</td>
                 <td>{formatYuanAsYiCell(row.current_balance)}</td>
-                <td>{formatPnlWan(row.interest_income)}</td>
-                <td>{formatPnlWan(row.fair_value_change)}</td>
-                <td>{formatPnlWan(row.capital_gain)}</td>
-                <td>{formatPnlWan(row.manual_adjustment)}</td>
-                <td>{formatPnlWan(row.total_pnl)}</td>
+                <PnlWanCell raw={row.interest_income} />
+                <PnlWanCell raw={row.fair_value_change} />
+                <PnlWanCell raw={row.capital_gain} />
+                <PnlWanCell raw={row.manual_adjustment} />
+                <PnlWanCell raw={row.total_pnl} />
                 <td>{formatAnalysisYieldPct(row.annualized_yield_pct)}</td>
-                <td>{formatPnlWan(row.ftp_cost)}</td>
-                <td>{formatPnlWan(row.ftp_net_pnl)}</td>
+                <PnlWanCell raw={row.ftp_cost} />
+                <PnlWanCell raw={row.ftp_net_pnl} />
                 <td>{formatAnalysisYieldPct(row.ftp_net_annualized_yield_pct)}</td>
                 <td>{formatRatioPct(row.proportion)}</td>
                 <td>{row.asset_count}</td>
@@ -860,16 +889,16 @@ function MonthlyBusinessRowsTable({ month }: { month: PnlByBusinessMonthlyBucket
               <td className="pnl-by-business-table-footer-cell">父级汇总</td>
               <td className="pnl-by-business-table-footer-cell">{formatAvgBalanceYi(month.summary.avg_balance)}</td>
               <td className="pnl-by-business-table-footer-cell">{formatYuanAsYiCell(month.summary.current_balance)}</td>
-              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(month.summary.interest_income)}</td>
-              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(month.summary.fair_value_change)}</td>
-              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(month.summary.capital_gain)}</td>
-              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(month.summary.manual_adjustment)}</td>
-              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(month.summary.total_pnl)}</td>
+              <PnlWanCell className="pnl-by-business-table-footer-cell" raw={month.summary.interest_income} />
+              <PnlWanCell className="pnl-by-business-table-footer-cell" raw={month.summary.fair_value_change} />
+              <PnlWanCell className="pnl-by-business-table-footer-cell" raw={month.summary.capital_gain} />
+              <PnlWanCell className="pnl-by-business-table-footer-cell" raw={month.summary.manual_adjustment} />
+              <PnlWanCell className="pnl-by-business-table-footer-cell" raw={month.summary.total_pnl} />
               <td className="pnl-by-business-table-footer-cell">
                 {formatAnalysisYieldPct(month.summary.annualized_yield_pct)}
               </td>
-              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(month.summary.ftp_cost)}</td>
-              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(month.summary.ftp_net_pnl)}</td>
+              <PnlWanCell className="pnl-by-business-table-footer-cell" raw={month.summary.ftp_cost} />
+              <PnlWanCell className="pnl-by-business-table-footer-cell" raw={month.summary.ftp_net_pnl} />
               <td className="pnl-by-business-table-footer-cell">
                 {formatAnalysisYieldPct(month.summary.ftp_net_annualized_yield_pct)}
               </td>
@@ -886,6 +915,7 @@ function MonthlyBusinessRowsTable({ month }: { month: PnlByBusinessMonthlyBucket
             : "pnl-by-business-monthly-reconciliation pnl-by-business-monthly-reconciliation--warning"
         }
         data-testid={`pnl-by-business-monthly-reconciliation-${month.month_key}`}
+        title={coverageIncomplete ? coverageSummaryText : undefined}
       >
         <span>
           源损益 {formatPnlWan(month.source_total_pnl)} 万元 = 父级 {formatPnlWan(month.classified_parent_total_pnl)} 万元 + 未分类{" "}
@@ -894,10 +924,9 @@ function MonthlyBusinessRowsTable({ month }: { month: PnlByBusinessMonthlyBucket
         <span>
           差异 {formatPnlWan(month.reconciliation_delta)} 万元 · {reconciliationClosed ? "已闭合" : "待核对"}
         </span>
-        <span>
-          余额覆盖 {month.coverage_days ?? "待返回"}/{month.expected_days ?? month.calendar_days ?? "待返回"} 天
-          {month.sample_filled ? " · 样本填充" : ""}
-        </span>
+        {/* 覆盖不足时该事实已由上方表内警示条承载，闭合条内收进 title 去重（§6 ≤2 处）；
+            覆盖完整或天数待返回时此处是唯一披露位，保持可见。 */}
+        {coverageIncomplete ? null : <span>{coverageSummaryText}</span>}
       </div>
       <UnallocatedPnlPanel
         breakdown={month.unallocated_breakdown}
@@ -949,14 +978,14 @@ function MonthlyBusinessRowsTable({ month }: { month: PnlByBusinessMonthlyBucket
                     <td>{row.business_type}</td>
                     <td>{formatAvgBalanceYi(row.avg_balance)}</td>
                     <td>{formatYuanAsYiCell(row.current_balance)}</td>
-                    <td>{formatPnlWan(row.interest_income)}</td>
-                    <td>{formatPnlWan(row.fair_value_change)}</td>
-                    <td>{formatPnlWan(row.capital_gain)}</td>
-                    <td>{formatPnlWan(row.manual_adjustment)}</td>
-                    <td>{formatPnlWan(row.total_pnl)}</td>
+                    <PnlWanCell raw={row.interest_income} />
+                    <PnlWanCell raw={row.fair_value_change} />
+                    <PnlWanCell raw={row.capital_gain} />
+                    <PnlWanCell raw={row.manual_adjustment} />
+                    <PnlWanCell raw={row.total_pnl} />
                     <td>{formatAnalysisYieldPct(row.annualized_yield_pct)}</td>
-                    <td>{formatPnlWan(row.ftp_cost)}</td>
-                    <td>{formatPnlWan(row.ftp_net_pnl)}</td>
+                    <PnlWanCell raw={row.ftp_cost} />
+                    <PnlWanCell raw={row.ftp_net_pnl} />
                     <td>{formatAnalysisYieldPct(row.ftp_net_annualized_yield_pct)}</td>
                     <td>{formatRatioPct(row.proportion)}</td>
                     <td>{row.asset_count}</td>
@@ -2785,7 +2814,13 @@ export default function PnlByBusinessPage() {
                         {card.value}
                       </span>
                     }
-                    footer={card.detail}
+                    footer={
+                      card.detailTitle ? (
+                        <span title={card.detailTitle}>{card.detail}</span>
+                      ) : (
+                        card.detail
+                      )
+                    }
                   />
                 </div>
               ))}
@@ -2915,7 +2950,13 @@ export default function PnlByBusinessPage() {
                     : undefined
                 }
                 title={surface.title}
-                description={surface.description}
+                description={
+                  surface.descriptionTitle ? (
+                    <span title={surface.descriptionTitle}>{surface.description}</span>
+                  ) : (
+                    surface.description
+                  )
+                }
               />
             ))}
             {viewMode === "ytd" && adbComparisonFallbackReason ? (
@@ -2965,8 +3006,10 @@ export default function PnlByBusinessPage() {
             {viewMode === "monthly" ? (
             <>
               <div className="pnl-by-business-section-lead">
+                {/* 英文大写眉标删除（§3 大写徽标仅限状态/口径、§7 一页一语域）；
+                    标题已含「YYYY 月报（截至 …）」信息，空眉标由页内 CSS 折叠。 */}
                 <PageSectionLead
-                  eyebrow="Monthly Report"
+                  eyebrow=""
                   title={`${selectedYear} 月报（截至 ${
                     activeMonthlyBucket?.month_key ?? selectedReportDate.slice(0, 7)
                   }）`}
@@ -2999,7 +3042,7 @@ export default function PnlByBusinessPage() {
           ) : viewMode === "ytd" ? (
             <>
               <PageSectionLead
-                eyebrow="Business Type"
+                eyebrow=""
                 title={`${selectedYear} 年累计明细`}
                 description="金额列为万元，日均为亿元；年化收益率、FTP 后结果及表末父级汇总均直接使用后端 YTD 字段。点击父级行查看月度趋势；父级与「其中项」存在重叠，不可简单相加。"
               />
@@ -3215,7 +3258,7 @@ export default function PnlByBusinessPage() {
           ) : (
             <>
               <PageSectionLead
-                eyebrow="Reconciliation"
+                eyebrow=""
                 title={`${selectedReportDate} primary 对账明细`}
                 description="这是对账证据，不是业务贡献主分析；与 GET /api/pnl/by-business 一致，来自 fact_formal_pnl_fi / fact_nonstd_pnl_bridge 与 fact_formal_zqtz_balance_daily 的 join 聚合。这里按 primary 分类展示，用于源数据追溯；月报和累计按 ZQTZ 管理披露分类展示，二者不要混加。"
               />

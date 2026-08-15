@@ -10,6 +10,10 @@ from pathlib import Path
 from uuid import uuid4
 
 from backend.app.core_finance import product_category_pnl_attribution as product_category_attribution
+from backend.app.core_finance.config.product_category_contract import (
+    PRODUCT_CATEGORY_FORMAL_CACHE_VERSION,
+    PRODUCT_CATEGORY_RULE_VERSION,
+)
 from backend.app.core_finance.reconciliation_checks import completeness_check
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import Settings
@@ -91,8 +95,8 @@ def product_category_pnl_payload_from_canonical_ytd_anchor(
 
 logger = logging.getLogger(__name__)
 
-RULE_VERSION = "rv_product_category_pnl_v1"
-CACHE_VERSION = "cv_product_category_pnl_v1"
+RULE_VERSION = PRODUCT_CATEGORY_RULE_VERSION
+CACHE_VERSION = PRODUCT_CATEGORY_FORMAL_CACHE_VERSION
 AVAILABLE_VIEWS = ["monthly", "qtd", "ytd", "year_to_report_month_end"]
 YTD_VIEWS = {"ytd", "year_to_report_month_end"}
 PENDING_SOURCE_VERSION = "sv_product_category_pending"

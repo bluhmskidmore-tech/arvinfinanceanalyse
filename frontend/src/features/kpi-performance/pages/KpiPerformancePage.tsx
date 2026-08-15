@@ -8,12 +8,14 @@ import {
   TeamOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
-import { Button, Select, Typography, message } from "antd";
+import { Button, DatePicker, Select, Typography, message } from "antd";
+import dayjs from "dayjs";
 
 import type {
   KpiFetchAndRecalcResponse,
   KpiMetricWithValue,
   KpiOwner,
+  KpiOwnerAuthorityMeta,
   KpiPeriodSummaryResponse,
 } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
@@ -34,12 +36,21 @@ const { Text } = Typography;
 
 type PeriodType = "DAILY" | "MONTH" | "QUARTER" | "YEAR";
 
+// 用本地日期分量而非 toISOString()：后者按 UTC 取日，会在 UTC+8 凌晨把
+// “今天”算成昨天，导致页头（本地日）与筛选器/请求日期差一天。
 function formatDate(d: Date): string {
-  return d.toISOString().split("T")[0];
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${month}-${day}`;
 }
 
 function formatDateCN(d: Date): string {
   return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+}
+
+/** 下拉弹层挂在页面容器内（不挂 body），保持 Nocturne scope 命中。 */
+function resolvePopupContainer(trigger: HTMLElement): HTMLElement {
+  return trigger.parentElement ?? document.body;
 }
 
 export default function KpiPerformancePage() {
@@ -47,6 +58,8 @@ export default function KpiPerformancePage() {
   const [year, setYear] = React.useState<number>(() => new Date().getFullYear());
   const [asOfDate, setAsOfDate] = React.useState<Date>(() => new Date());
   const [owners, setOwners] = React.useState<KpiOwner[]>([]);
+  const [ownersError, setOwnersError] = React.useState<Error | null>(null);
+  const [ownersMeta, setOwnersMeta] = React.useState<KpiOwnerAuthorityMeta | null>(null);
   const [selectedOwner, setSelectedOwner] = React.useState<KpiOwner | null>(null);
   const [metrics, setMetrics] = React.useState<KpiMetricWithValue[]>([]);
 
@@ -89,10 +102,19 @@ export default function KpiPerformancePage() {
     [],
   );
 
+  // 请求序号守卫：快速切换部室/期间时，只允许最新一次请求落地，
+  // 防止先发后至的响应覆盖新数据或提前复位 loading。
+  const ownersRequestSeqRef = React.useRef(0);
+  const metricsRequestSeqRef = React.useRef(0);
+
   const loadOwners = React.useCallback(async () => {
+    const requestId = ++ownersRequestSeqRef.current;
     setLoadingOwners(true);
     try {
       const response = await client.getKpiOwners({ year, is_active: true });
+      if (requestId !== ownersRequestSeqRef.current) return;
+      setOwnersError(null);
+      setOwnersMeta(response.meta ?? null);
       setOwners(response.owners);
       setSelectedOwner((prev) => {
         if (prev && !response.owners.some((o) => o.owner_id === prev.owner_id)) {
@@ -101,15 +123,21 @@ export default function KpiPerformancePage() {
         return prev;
       });
     } catch (e) {
+      if (requestId !== ownersRequestSeqRef.current) return;
       console.error(e);
       message.error("加载考核对象失败");
+      setOwnersError(e instanceof Error ? e : new Error(String(e)));
+      setOwnersMeta(null);
       setOwners([]);
     } finally {
-      setLoadingOwners(false);
+      if (requestId === ownersRequestSeqRef.current) {
+        setLoadingOwners(false);
+      }
     }
   }, [client, year]);
 
   const loadMetrics = React.useCallback(async () => {
+    const requestId = ++metricsRequestSeqRef.current;
     if (!selectedOwner) {
       setMetrics([]);
       setPeriodSummary(null);
@@ -123,6 +151,7 @@ export default function KpiPerformancePage() {
           as_of_date: formatDate(asOfDate),
           include_trace: true,
         });
+        if (requestId !== metricsRequestSeqRef.current) return;
         setMetrics(response.metrics);
         setPeriodSummary(null);
       } else {
@@ -132,6 +161,7 @@ export default function KpiPerformancePage() {
           period_type: periodType,
           period_value: periodType !== "YEAR" ? periodValue : undefined,
         });
+        if (requestId !== metricsRequestSeqRef.current) return;
         setPeriodSummary(response);
         const converted: KpiMetricWithValue[] = response.metrics.map((m) => ({
           metric_id: m.metric_id,
@@ -168,12 +198,15 @@ export default function KpiPerformancePage() {
         setMetrics(converted);
       }
     } catch (e) {
+      if (requestId !== metricsRequestSeqRef.current) return;
       console.error(e);
       message.error("加载指标失败");
       setMetrics([]);
       setPeriodSummary(null);
     } finally {
-      setLoadingMetrics(false);
+      if (requestId === metricsRequestSeqRef.current) {
+        setLoadingMetrics(false);
+      }
     }
   }, [client, selectedOwner, asOfDate, periodType, periodValue, year]);
 
@@ -273,6 +306,8 @@ export default function KpiPerformancePage() {
     ? `${selectedOwner.owner_name} · ${selectedOwner.org_unit}`
     : "未选择考核对象";
 
+  const ownerGateTitle = selectedOwner ? undefined : "请先在左侧选择考核对象";
+
   return (
     <div
       className="moss-page-v2-shell kpi-performance-page"
@@ -288,23 +323,34 @@ export default function KpiPerformancePage() {
         reportDateSlot={<span>当前口径：{currentOwnerLabel}</span>}
         actions={
           <div className="kpi-performance-page__hero-actions" data-testid="kpi-performance-action-row">
-            <Button icon={<PlusOutlined />} disabled={!selectedOwner} onClick={handleAddMetric}>
+            <Button
+              icon={<PlusOutlined aria-hidden="true" />}
+              disabled={!selectedOwner}
+              title={ownerGateTitle}
+              onClick={handleAddMetric}
+            >
               新增指标
             </Button>
-            <Button icon={<UploadOutlined />} disabled={!selectedOwner} onClick={() => setBatchPasteOpen(true)}>
+            <Button
+              icon={<UploadOutlined aria-hidden="true" />}
+              disabled={!selectedOwner}
+              title={ownerGateTitle}
+              onClick={() => setBatchPasteOpen(true)}
+            >
               批量导入
             </Button>
             <Button
               type="primary"
-              icon={<SyncOutlined />}
+              icon={<SyncOutlined aria-hidden="true" />}
               loading={fetchLoading}
               disabled={!selectedOwner}
+              title={ownerGateTitle}
               onClick={() => void handleFetchAndRecalc()}
             >
               抓取并重算
             </Button>
             <Button
-              icon={<CloudDownloadOutlined />}
+              icon={<CloudDownloadOutlined aria-hidden="true" />}
               loading={exportLoading}
               onClick={() => void handleExportCSV()}
             >
@@ -318,7 +364,6 @@ export default function KpiPerformancePage() {
           className="kpi-performance-page__status-strip"
         >
           <span>{year} 年度</span>
-          <span>{currentPeriodLabel}</span>
           <span>{currentOwnerLabel}</span>
         </DataStatusStrip>
       </PageDecisionHero>
@@ -331,6 +376,7 @@ export default function KpiPerformancePage() {
               <Select
                 aria-label="KPI assessment year"
                 className="kpi-performance-page__select kpi-performance-page__select--year"
+                getPopupContainer={resolvePopupContainer}
                 value={year}
                 options={yearOptions.map((y) => ({ label: `${y} 年`, value: y }))}
                 onChange={(v) => setYear(v)}
@@ -341,6 +387,7 @@ export default function KpiPerformancePage() {
               <Select
                 aria-label="KPI period type"
                 className="kpi-performance-page__select kpi-performance-page__select--period-type"
+                getPopupContainer={resolvePopupContainer}
                 value={periodType}
                 options={[
                   { label: "按日期", value: "DAILY" },
@@ -364,6 +411,7 @@ export default function KpiPerformancePage() {
                 <Select
                   aria-label="KPI month"
                   className="kpi-performance-page__select kpi-performance-page__select--month"
+                  getPopupContainer={resolvePopupContainer}
                   value={periodValue}
                   options={monthOptions}
                   onChange={(v) => setPeriodValue(v)}
@@ -376,6 +424,7 @@ export default function KpiPerformancePage() {
                 <Select
                   aria-label="KPI quarter"
                   className="kpi-performance-page__select kpi-performance-page__select--quarter"
+                  getPopupContainer={resolvePopupContainer}
                   value={periodValue}
                   options={quarterOptions}
                   onChange={(v) => setPeriodValue(v)}
@@ -385,15 +434,18 @@ export default function KpiPerformancePage() {
             {periodType === "DAILY" ? (
               <div className="kpi-performance-page__field">
                 <div className="kpi-performance-page__field-label">截止日期</div>
-                <input
+                {/* antd DatePicker 固定 YYYY-MM-DD 展示；原生 date input 跟随
+                    浏览器 locale（如 08/13/2026），与页头中文日期格式打架。 */}
+                <DatePicker
                   aria-label="KPI as-of date"
-                  type="date"
-                  value={formatDate(asOfDate)}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v) setAsOfDate(new Date(`${v}T12:00:00`));
-                  }}
                   className="kpi-performance-page__date-input"
+                  allowClear={false}
+                  format="YYYY-MM-DD"
+                  value={dayjs(formatDate(asOfDate))}
+                  getPopupContainer={resolvePopupContainer}
+                  onChange={(v) => {
+                    if (v) setAsOfDate(new Date(v.year(), v.month(), v.date(), 12));
+                  }}
                 />
               </div>
             ) : null}
@@ -426,6 +478,9 @@ export default function KpiPerformancePage() {
             setLastFetchResult(null);
           }}
           loading={loadingOwners}
+          error={ownersError}
+          onRetry={() => void loadOwners()}
+          meta={ownersMeta}
         />
         <div className="kpi-performance-page__detail-stack">
           {selectedOwner ? (
@@ -455,7 +510,7 @@ export default function KpiPerformancePage() {
                         </Text>
                       </div>
                     ) : null}
-                    <Button icon={<SettingOutlined />} onClick={handleAddMetric}>
+                    <Button icon={<SettingOutlined aria-hidden="true" />} onClick={handleAddMetric}>
                       管理指标
                     </Button>
                   </div>

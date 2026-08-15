@@ -81,11 +81,12 @@
   margin-bottom: 24px;
 }
 
+/* 页标题 §3 档位 18-20px（标杆页 20px/700）。 */
 .pnl-bridge-page-title {
   margin: 0;
-  font-size: 32px;
-  font-weight: 600;
-  letter-spacing: -0.03em;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   color: var(--dh-api-ink);
 }
 
@@ -247,6 +248,12 @@
   align-items: start;
 }
 
+/* 金额 KPI 的 title 载体：本身不产生视觉盒，内部卡片撑满格位。 */
+.pnl-bridge-kpi-cell {
+  display: grid;
+  min-width: 0;
+}
+
 .pnl-bridge-waterfall-card {
   margin-top: 24px;
   border-radius: var(--dh-api-radius);
@@ -347,7 +354,23 @@
   --ag-header-foreground-color: var(--dh-api-soft);
   --ag-row-hover-color: var(--dh-api-panel-2);
   --ag-border-color: var(--dh-api-line-soft);
+  /* alpine 内建 --ag-secondary-* 未被共享 theme-dh-api 块覆盖，行分隔线与
+     分页条文字在深底透浅；页内补齐（balance-analysis 先例）。 */
+  --ag-secondary-border-color: var(--dh-api-line-soft);
+  --ag-row-border-color: var(--dh-api-line-soft);
+  --ag-secondary-foreground-color: var(--dh-api-soft);
   --ag-font-family: "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", sans-serif;
   --ag-font-size: 13px;
   font-variant-numeric: tabular-nums;
+}
+
+/*
+ * 共享溯源面板长值（source_version 哈希串等）钳制 3 行，完整值经组件自身
+ * title/textContent 保留（ledger-pnl / positions 先例；§6 溯源标识分层）。
+ */
+[data-moss-theme-scope="pnl-bridge"] .formal-result-meta-panel__value {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
 }

@@ -544,7 +544,9 @@ describe("pnlByBusinessPageModel", () => {
     expect(model.stateSurfaces.map((surface) => surface.key)).toContain("definition-pending");
     const coverage = model.stateSurfaces.find((surface) => surface.key === "coverage-partial");
     expect(coverage?.description).toContain("152/181");
-    expect(coverage?.description).toContain("observed_days_scaled_to_calendar");
+    // 技术 token 移出正文（§7），经 descriptionTitle 悬停保留。
+    expect(coverage?.description).not.toContain("observed_days_scaled_to_calendar");
+    expect(coverage?.descriptionTitle).toContain("observed_days_scaled_to_calendar");
     const unallocated = model.stateSurfaces.find((surface) => surface.key === "unallocated");
     expect(unallocated?.description).toContain("400");
     expect(unallocated?.description).toContain("6.43 万元");
@@ -705,10 +707,13 @@ describe("pnlByBusinessPageModel", () => {
       value: "11,000 万元",
       detail: "含已批准调整 +1,000 万元",
     });
+    // 覆盖事实全页只保留两处正文（页顶横幅 + 表内警示，§6 去重）：KPI 小注收敛为
+    // 结论句，具体天数经 detailTitle 悬停可见。
     expect(model.summaryCards[3]).toMatchObject({
       label: "月报收益率",
       value: "待核对",
-      detail: "日均仅覆盖 1/31 天",
+      detail: "样本覆盖不足，详见页顶警示",
+      detailTitle: "日均仅覆盖 1/31 天",
     });
     const adjustment = model.stateSurfaces.find((surface) => surface.key === "manual-adjustment-included");
     expect(adjustment?.description).toContain("调整前源损益（含未分类）为 10,005 万元");
@@ -716,6 +721,11 @@ describe("pnlByBusinessPageModel", () => {
     const coverage = model.stateSurfaces.find((surface) => surface.key === "coverage-partial");
     expect(coverage?.description).toContain("不是完整自然月日均");
     expect(coverage?.description).toContain("暂不作为汇报结论");
+    // sample_filled/method 技术 token 不进横幅正文（§7），经 descriptionTitle 保留。
+    expect(coverage?.description).not.toContain("sample_filled");
+    expect(coverage?.descriptionTitle).toBe(
+      "sample_filled=true，method=observed_days_scaled_to_calendar",
+    );
   });
 
   it("keeps monthly top contribution separate from the largest drag row", () => {

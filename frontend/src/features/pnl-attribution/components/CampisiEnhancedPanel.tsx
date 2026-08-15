@@ -1,20 +1,13 @@
 import type { CampisiEnhancedPayload } from "../../../api/contracts";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { PageDataSection } from "../../../components/page/PageDataSection";
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 import { buildMetricCards } from "./campisiEnhancedPanelSupport";
+import "./campisiPanels.css";
 
-// 本面板挂在 Nocturne 深色路由（theme-dh-api + pnl-attribution scope）下，
-// 面色/文字一律走主题感知 CSS 变量（--dh-api-*），禁止浅色 hex、designTokens
-// 浅色 neutral 或 --ib-*（路由边界已算成钢蓝字面值）直灌（迁法同
-// CampisiAttributionPanel / CampisiDecisionGradePanel）。
-const cardStyle = {
-  padding: designTokens.space[5],
-  borderRadius: "var(--dh-api-radius)",
-  border: "1px solid var(--dh-api-line)",
-  background: "var(--dh-api-panel)",
-} as const;
+// 本面板挂在 Nocturne 深色路由（theme-dh-api + pnl-attribution scope）下：
+// 布局与面色收敛到共享 campisiPanels.css（--dh-api-* var 链），禁止浅色 hex、
+// designTokens 浅色 neutral 或 --ib-*（路由边界已算成钢蓝字面值）直灌。
 
 function toYi(value: number) {
   return (value / 100_000_000).toFixed(2);
@@ -44,15 +37,8 @@ export function CampisiEnhancedPanel({ data, state, onRetry }: Props) {
       state={state}
       onRetry={onRetry}
     >
-      <div style={cardStyle}>
-        <p
-          style={{
-            margin: `0 0 ${designTokens.space[4]}px`,
-            fontSize: designTokens.fontSize[13],
-            color: "var(--dh-api-soft)",
-            lineHeight: designTokens.lineHeight.normal,
-          }}
-        >
+      <div className="campisi-panel">
+        <p className="campisi-panel__intro">
           {isFormalBridge
             ? "formal-bridge 路径：凸性、交叉项与再投资不在本路径拆分，其贡献并入「剩余/选券」，三张卡以 — 标注未拆分；其余分量之和仍等于总收益。"
             : "将凸性、交叉项与再投资从选券残差中拆出，保留扩展归因的总量与资产类别分布。"}
@@ -60,52 +46,18 @@ export function CampisiEnhancedPanel({ data, state, onRetry }: Props) {
         {data?.decomposition_basis ? (
           <div
             data-testid="campisi-enhanced-decomposition-basis"
-            style={{
-              marginBottom: designTokens.space[4],
-              padding: `${designTokens.space[3]}px ${designTokens.space[4]}px`,
-              borderRadius: "var(--dh-api-radius)",
-              border: "1px solid var(--dh-api-line-soft)",
-              background: "var(--dh-api-panel-2)",
-              color: "var(--dh-api-soft)",
-              fontSize: designTokens.fontSize[12],
-              lineHeight: designTokens.lineHeight.normal,
-            }}
+            className="campisi-panel__note"
           >
             分解口径：{data.decomposition_basis}
           </div>
         ) : null}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-            gap: designTokens.space[3],
-          }}
-        >
+        <div className="campisi-metric-grid">
           {metricCards.map(({ key, label, value, notDecomposed }) => (
-            <div
-              key={key}
-              style={{
-                padding: designTokens.space[3],
-                borderRadius: "var(--dh-api-radius)",
-                background: "var(--dh-api-panel-2)",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: designTokens.fontSize[12],
-                  color: "var(--dh-api-muted)",
-                }}
-              >
-                {label}
-              </div>
+            <div key={key} className="campisi-metric">
+              <div className="campisi-field-label">{label}</div>
               <div
                 data-testid={`campisi-enhanced-amount-${key}`}
-                style={{
-                  marginTop: designTokens.space[2],
-                  fontWeight: 700,
-                  color: "var(--dh-api-ink)",
-                  ...tabularNumsStyle,
-                }}
+                className="campisi-field-value"
               >
                 {notDecomposed || value === undefined ? EM_DASH : `${toYi(Number(value))} 亿`}
               </div>
@@ -113,11 +65,7 @@ export function CampisiEnhancedPanel({ data, state, onRetry }: Props) {
                 <div
                   data-testid={`campisi-enhanced-not-decomposed-${key}`}
                   title={NOT_DECOMPOSED_HINT}
-                  style={{
-                    marginTop: designTokens.space[1],
-                    fontSize: designTokens.fontSize[11],
-                    color: "var(--dh-api-muted)",
-                  }}
+                  className="campisi-metric__flag"
                 >
                   {NOT_DECOMPOSED_BADGE_TEXT}
                 </div>

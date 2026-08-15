@@ -303,48 +303,6 @@ def _latest_candidate_for_family(
     )
 
 
-def _legacy_parse_fi_rows(snapshot: PnlSourceSnapshot) -> list[dict[str, object]]:
-    metadata = describe_source_file(snapshot.path.name)
-    report_date = snapshot.report_date or metadata.report_date
-    workbook = xlrd.open_workbook(str(snapshot.path))
-    sheet = workbook.sheet_by_index(0)
-    headers = [str(sheet.cell_value(0, column)).strip() for column in range(sheet.ncols)]
-    rows: list[dict[str, object]] = []
-
-    for row_index in range(1, sheet.nrows):
-        raw_row = {
-            headers[column]: sheet.cell_value(row_index, column)
-            for column in range(sheet.ncols)
-            if headers[column]
-        }
-        instrument_code = _cell_text(raw_row.get("债券代码"))
-        if not instrument_code:
-            continue
-
-        rows.append(
-            {
-                "report_date": report_date,
-                "instrument_code": instrument_code,
-                "portfolio_name": _cell_text(raw_row.get("投资组合")),
-                "cost_center": _cell_text(raw_row.get("成本中心")),
-                "invest_type_raw": _cell_text(raw_row.get("投资类型")),
-                "interest_income_514": _to_decimal(raw_row.get("利息514")),
-                # The FI source column is named T损益516; the formal thin slice uses the governed sign convention.
-                "fair_value_change_516": _to_decimal(raw_row.get("T损益516")) * Decimal("-1"),
-                "capital_gain_517": _to_decimal(raw_row.get("投资收益517")),
-                "manual_adjustment": Decimal("0"),
-                # The source file's 币种 describes instrument currency. The current formal PnL slice stores basis,
-                # so only explicit CNX markers stay CNX and all other rows land in the CNY fact partition.
-                "currency_basis": _resolve_currency_basis(_cell_text(raw_row.get("币种"))),
-                "source_version": snapshot.source_version,
-                "rule_version": PNL_SOURCE_RULE_VERSION,
-                "ingest_batch_id": snapshot.ingest_batch_id,
-                "trace_id": f"{snapshot.path.name}:fi:{len(rows) + 1}",
-            }
-        )
-    return rows
-
-
 def _parse_fi_rows(snapshot: PnlSourceSnapshot) -> list[dict[str, object]]:
     metadata = describe_source_file(snapshot.path.name)
     report_date = snapshot.report_date or metadata.report_date
@@ -475,13 +433,6 @@ def _parse_nonstd_worksheet_rows(
             parsed_row["fx_base_currency"] = "USD"
         rows.append(parsed_row)
     return rows
-
-
-def _resolve_currency_basis(raw_currency: str) -> str:
-    normalized = raw_currency.strip().upper()
-    if normalized in {"CNX", "综本"}:
-        return "CNX"
-    return "CNY"
 
 
 def _filter_nonstd_rows_for_report_month(

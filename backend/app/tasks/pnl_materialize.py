@@ -24,6 +24,12 @@ from backend.app.core_finance.pnl import (
 from backend.app.governance.locks import LockDefinition, acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
+from backend.app.repositories.fact_load_gates import (
+    NONSTD_PNL_BRIDGE_NATURAL_KEY,
+    commit_report_date_purge,
+    enforce_gate_outcome,
+    evaluate_natural_key_load,
+)
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     CACHE_MANIFEST_STREAM,
@@ -55,6 +61,7 @@ PNL_MATERIALIZE_LOCK = LockDefinition(
     ttl_seconds=900,
 )
 RULE_VERSION = PNL_FORMAL_FACT_RULE_VERSION
+NONSTD_PNL_BRIDGE_TABLE = "fact_nonstd_pnl_bridge"
 # API result_meta.cache_version: formal basis + materialize rule bundle (distinct from scenario/analytical).
 PNL_RESULT_CACHE_VERSION = f"cv_pnl_formal__{RULE_VERSION}"
 PNL_BY_BUSINESS_PRECOMPUTE_JOB_NAME = "pnl_by_business_precompute"
@@ -463,10 +470,36 @@ def _materialize_pnl_facts_under_writer_lock(
     if len(formal_fi_keys) != len(formal_fi_values):
         raise ValueError("Duplicate fact_formal_pnl_fi canonical grain in materialize input")
 
+    # Gate the bridge batch before anything is opened: a duplicate natural key
+    # must be named here rather than surfacing as an opaque constraint error
+    # after the report date has already been purged.
+    enforce_gate_outcome(
+        evaluate_natural_key_load(
+            bridge_rows,
+            table_name=NONSTD_PNL_BRIDGE_TABLE,
+            key_fields=NONSTD_PNL_BRIDGE_NATURAL_KEY,
+        ),
+        table_name=NONSTD_PNL_BRIDGE_TABLE,
+    )
+
     conn = duckdb.connect(str(duckdb_file), read_only=False)
     transaction_started = False
     try:
         _ensure_tables(conn)
+
+        # Purge and commit before re-inserting. DuckDB 1.5.1 holds deleted keys
+        # in a unique index until the deleting transaction commits, so once
+        # uq_fact_nonstd_pnl_bridge_natural_key exists the old single-transaction
+        # "delete this report date, insert it again" rerun collides with the very
+        # rows it just removed. fact_formal_pnl_fi below stays inside the
+        # transaction because it never deletes and reinserts the same key: it
+        # upserts, then removes only the keys the new batch dropped.
+        commit_report_date_purge(
+            conn,
+            tables=(NONSTD_PNL_BRIDGE_TABLE,),
+            report_date=report_date,
+        )
+
         conn.execute("begin transaction")
         transaction_started = True
         existing_formal_fi_keys = {
@@ -481,10 +514,6 @@ def _materialize_pnl_facts_under_writer_lock(
                 [report_date],
             ).fetchall()
         }
-        conn.execute(
-            "delete from fact_nonstd_pnl_bridge where report_date = ?",
-            [report_date],
-        )
 
         # Human: caliber-formal_scenario_gate-justified -- this branch persists an
         # already-governed formal fact batch; it does not choose formal vs scenario.
@@ -629,6 +658,7 @@ def _clear_pnl_page_runtime_caches() -> None:
 
         pnl_service.clear_pnl_by_business_ytd_cache()
         adb_analysis_service.clear_adb_comparison_cache()
+        adb_analysis_service.clear_adb_insights_cache()
     except Exception as exc:  # pragma: no cover - cache invalidation must not fail materialization
         logger.warning("failed to clear pnl page runtime caches: %s", exc)
 

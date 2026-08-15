@@ -250,6 +250,10 @@ export type PnlByBusinessManualAdjustmentPayload = {
   approval_status: string;
   manual_adjustment: string;
   reason: string;
+  /** 后端恒输出；默认空串表示未记录录入人。`?` 兼容尚未补齐该字段的 mock 装置。 */
+  created_by?: string;
+  /** 后端恒输出；默认空串表示未记录审批人。`?` 兼容尚未补齐该字段的 mock 装置。 */
+  approved_by?: string;
 };
 
 export type PnlByBusinessManualAdjustmentListPayload = {
@@ -788,7 +792,7 @@ export type ProductCategoryLiabilityCostDecomposition = {
   liability_yield_ex_cln_pct: ProductCategoryMetricValue | null;
   cln_yield_pct: ProductCategoryMetricValue | null;
   cln_drag_bp: ProductCategoryMetricValue | null;
-  cln_scale: string | null;
+  cln_scale: DecimalLike | null;
 };
 
 export type ProductCategoryInterestSpreadPayload = {
@@ -809,9 +813,9 @@ export type ProductCategoryPnlPayload = {
   asset_total: ProductCategoryPnlRow;
   liability_total: ProductCategoryPnlRow;
   grand_total: ProductCategoryPnlRow;
-  interest_spread: ProductCategoryInterestSpreadPayload | null;
-  interest_earning_spread?: ProductCategoryInterestSpreadPayload | null;
-  liability_cost_decomposition?: ProductCategoryLiabilityCostDecomposition | null;
+  interest_spread: ProductCategoryInterestSpreadPayload;
+  interest_earning_spread: ProductCategoryInterestSpreadPayload;
+  liability_cost_decomposition: ProductCategoryLiabilityCostDecomposition;
 };
 
 export type ProductCategoryAttributionPoint = {

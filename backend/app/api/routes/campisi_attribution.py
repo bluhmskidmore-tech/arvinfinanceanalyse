@@ -36,7 +36,7 @@ def campisi_four_effects(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     start_date: str | None = Query(None, description="期初日期 YYYY-MM-DD"),
     end_date: str | None = Query(None, description="期末日期 YYYY-MM-DD"),
-    lookback_days: int = Query(30, description="无 start_date 时的回溯天数"),
+    lookback_days: int = Query(30, ge=1, le=365, description="无 start_date 时的回溯天数"),
     detail: Literal["full", "summary"] = Query(
         "full",
         description="full includes per-bond details; summary omits them",
@@ -77,7 +77,7 @@ def campisi_enhanced(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     start_date: str | None = Query(None, description="期初日期 YYYY-MM-DD"),
     end_date: str | None = Query(None, description="期末日期 YYYY-MM-DD"),
-    lookback_days: int = Query(30, description="无 start_date 时的回溯天数"),
+    lookback_days: int = Query(30, ge=1, le=365, description="无 start_date 时的回溯天数"),
 ) -> dict[str, object]:
     _ensure_pnl_attribution_read_allowed(auth)
     return _svc().campisi_enhanced_envelope(
@@ -96,7 +96,7 @@ def campisi_maturity_buckets(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     start_date: str | None = Query(None, description="期初日期 YYYY-MM-DD"),
     end_date: str | None = Query(None, description="期末日期 YYYY-MM-DD"),
-    lookback_days: int = Query(30, description="无 start_date 时的回溯天数"),
+    lookback_days: int = Query(30, ge=1, le=365, description="无 start_date 时的回溯天数"),
 ) -> dict[str, object]:
     _ensure_pnl_attribution_read_allowed(auth)
     return _svc().campisi_maturity_bucket_envelope(
@@ -113,6 +113,8 @@ def campisi_decision_grade(
     end_date: str | None = Query(None, description="期末日期 YYYY-MM-DD"),
     lookback_days: int = Query(
         30,
+        ge=1,
+        le=365,
         description="已废弃：无 start_date 时期初固定对齐 PnL 报告月上月末（月度期间口径），该参数不再参与推导",
     ),
 ) -> dict[str, object]:

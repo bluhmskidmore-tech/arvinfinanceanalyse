@@ -1,8 +1,8 @@
 /*
  * 2026-08-13 Nocturne 换肤：/pnl 与 /pnl-bridge 页根均已声明 scope，
- * 浅色字面量收敛为 --dh-api-* 链（scope 内解析为 --nct-* 色板）；
- * 偏格圆角 14px 归一 var(--dh-api-radius)。下方 .pnl-debug-panel 无渲染方
- * （dead code），按“不动无关死代码”原则保持原样。
+ * 浅色字面量收敛为 --dh-api-* 链（scope 内解析为 --nct-* 色板）。
+ * 原 .pnl-debug-panel 段与 PnlDebugPanel 组件零调用，已随 2026-08-14
+ * 死代码清理一并删除。
  */
 .pnl-refresh-status {
   margin-bottom: 16px;
@@ -16,37 +16,4 @@
 .pnl-refresh-status--error {
   background: var(--dh-api-red-soft);
   color: var(--dh-api-red);
-}
-
-.pnl-debug-panel {
-  margin-top: 24px;
-  padding: 16px;
-  border-radius: 16px;
-  /* shellTokens.colorBorderSoft */
-  border: 1px solid #e2e0da;
-  background: #ffffff;
-}
-
-.pnl-debug-panel summary {
-  cursor: pointer;
-  font-weight: 600;
-  /* shellTokens.colorTextPrimary */
-  color: #16191d;
-}
-
-.pnl-debug-panel__body {
-  margin-top: 12px;
-}
-
-.pnl-debug-panel__pre {
-  margin: 0;
-  padding: 16px;
-  overflow-x: auto;
-  border-radius: 12px;
-  /* shellTokens.colorBgMuted */
-  background: #f7f6f3;
-  /* shellTokens.colorTextPrimary */
-  color: #16191d;
-  font-size: 12px;
-  line-height: 1.6;
 }

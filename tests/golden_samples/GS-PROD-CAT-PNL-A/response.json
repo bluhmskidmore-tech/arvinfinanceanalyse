@@ -4,8 +4,8 @@
     "result_kind": "product_category_pnl.detail",
     "formal_use_allowed": true,
     "vendor_version": "vv_none",
-    "rule_version": "rv_product_category_pnl_v1",
-    "cache_version": "cv_product_category_pnl_v1",
+    "rule_version": "rv_product_category_pnl_v2",
+    "cache_version": "cv_product_category_pnl_formal__rv_product_category_pnl_v2",
     "quality_flag": "ok",
     "vendor_status": "ok",
     "fallback_mode": "none",
@@ -622,27 +622,11 @@
       }
     },
     "liability_cost_decomposition": {
-      "liability_yield_pct": {
-        "raw": "-52.47841625",
-        "display": "-52.48%",
-        "unit": "percent"
-      },
-      "liability_yield_ex_cln_pct": {
-        "raw": "-54.22510102",
-        "display": "-54.23%",
-        "unit": "percent"
-      },
-      "cln_yield_pct": {
-        "raw": "2.74291726",
-        "display": "2.74%",
-        "unit": "percent"
-      },
-      "cln_drag_bp": {
-        "raw": "174.66847721",
-        "display": "174.7 bp",
-        "unit": "bp"
-      },
-      "cln_scale": "19.01000000"
+      "liability_yield_pct": null,
+      "liability_yield_ex_cln_pct": null,
+      "cln_yield_pct": null,
+      "cln_drag_bp": null,
+      "cln_scale": null
     }
   }
 }

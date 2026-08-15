@@ -118,6 +118,10 @@ _ZQTZ_NCD_ROW = {
     "sort_order": 60,
 }
 
+_MOVEMENT_FACT_TABLE = "fact_accounting_asset_movement_monthly"
+# registry slice 42 追加的落库控制结论列。
+_MOVEMENT_CONTROL_COLUMNS = ("chain_status", "position_source_basis")
+
 
 @dataclass
 class AccountingAssetMovementRepository:
@@ -331,6 +335,209 @@ class AccountingAssetMovementRepository:
             report_dates=[report_date],
             currency_basis=currency_basis,
         )
+
+    def fetch_reconciliation_breaches(
+        self,
+        *,
+        currency_basis: str = "CNX",
+        report_dates: list[str] | None = None,
+    ) -> list[dict[str, object]]:
+        """已落库的、reconciliation_status != 'matched' 的行。
+
+        对账控制的只读取证入口：全部返回 matched 说明控制没有在比对独立数据源，
+        或者两侧真的完全一致——两者可以用 fetch_position_source_coverage 区分。
+        """
+        date_filter = (
+            "and cast(report_date as varchar) in (select unnest(?))"
+            if report_dates
+            else ""
+        )
+        params: list[object] = [currency_basis]
+        if report_dates:
+            params.append(report_dates)
+        try:
+            with read_only_connection(self.path) as conn:
+                if not self._table_exists(conn, _MOVEMENT_FACT_TABLE):
+                    return []
+                control_columns = ", ".join(
+                    column
+                    if self._column_exists(conn, _MOVEMENT_FACT_TABLE, column)
+                    else f"cast(null as varchar) as {column}"
+                    for column in _MOVEMENT_CONTROL_COLUMNS
+                )
+                rows = conn.execute(
+                    f"""
+                    select
+                      cast(report_date as varchar),
+                      basis_bucket,
+                      reconciliation_status,
+                      coalesce(zqtz_amount, 0),
+                      coalesce(gl_amount, 0),
+                      coalesce(reconciliation_diff, 0),
+                      {control_columns}
+                    from fact_accounting_asset_movement_monthly
+                    where currency_basis = ?
+                      and coalesce(reconciliation_status, '') <> 'matched'
+                      {date_filter}
+                    order by cast(report_date as varchar), basis_bucket
+                    """,
+                    params,
+                ).fetchall()
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
+            return []
+        keys = (
+            "report_date",
+            "basis_bucket",
+            "reconciliation_status",
+            "zqtz_amount",
+            "gl_amount",
+            "reconciliation_diff",
+            *_MOVEMENT_CONTROL_COLUMNS,
+        )
+        numeric_keys = {"zqtz_amount", "gl_amount", "reconciliation_diff"}
+        return [
+            {
+                key: (
+                    Decimal(str(value or "0"))
+                    if key in numeric_keys
+                    # 控制结论列保留 None：迁移落地前写入的行"未记录"，不能被
+                    # str() 成 'None' 混进已判定的取值里。
+                    else (None if key in _MOVEMENT_CONTROL_COLUMNS and value is None else str(value))
+                )
+                for key, value in zip(keys, row, strict=True)
+            }
+            for row in rows
+        ]
+
+    def fetch_chain_continuity_gaps(
+        self,
+        *,
+        currency_basis: str = "CNX",
+        tolerance: Decimal = Decimal("0.01"),
+    ) -> list[dict[str, object]]:
+        """逐桶比较 previous_balance(M) 与 current_balance(M-1)，返回超容差的衔接。
+
+        行内的 balance_change := current - previous 在代数上必然闭合，对跨月
+        衔接零覆盖；这个方法是从读模型侧证伪该口径的唯一手段。
+        """
+        try:
+            with read_only_connection(self.path) as conn:
+                if not self._table_exists(conn, "fact_accounting_asset_movement_monthly"):
+                    return []
+                rows = conn.execute(
+                    """
+                    with ordered as (
+                      select
+                        cast(report_date as varchar) as report_date,
+                        basis_bucket,
+                        coalesce(previous_balance, 0) as previous_balance,
+                        coalesce(current_balance, 0) as current_balance,
+                        lag(cast(report_date as varchar)) over w as prior_report_date,
+                        lag(coalesce(current_balance, 0)) over w as prior_current_balance
+                      from fact_accounting_asset_movement_monthly
+                      where currency_basis = ?
+                      window w as (
+                        partition by basis_bucket
+                        order by cast(report_date as varchar)
+                      )
+                    )
+                    select
+                      report_date,
+                      basis_bucket,
+                      prior_report_date,
+                      prior_current_balance,
+                      previous_balance,
+                      previous_balance - prior_current_balance as gap
+                    from ordered
+                    where prior_report_date is not null
+                      and abs(previous_balance - prior_current_balance) > ?
+                    order by report_date, basis_bucket
+                    """,
+                    [currency_basis, tolerance],
+                ).fetchall()
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
+            return []
+        keys = (
+            "report_date",
+            "basis_bucket",
+            "prior_report_date",
+            "prior_current_balance",
+            "previous_balance",
+            "gap",
+        )
+        return [
+            {
+                key: Decimal(str(value or "0")) if key not in {"report_date", "basis_bucket", "prior_report_date"} else str(value)
+                for key, value in zip(keys, row, strict=True)
+            }
+            for row in rows
+        ]
+
+    def fetch_position_source_coverage(
+        self,
+        *,
+        report_dates: list[str],
+        currency_basis: str = "CNX",
+    ) -> dict[str, dict[str, object]]:
+        """每个报告日在独立头寸源里实际可用的 currency_basis 与行数。
+
+        总账用 CNX 标记本外币折人民币口径，fact_formal_zqtz_balance_daily 用
+        CNY 表示同一口径（native 才是原币），所以这里按 CNX -> CNY 的既有别名
+        回退。两个口径都没有行时 resolved_currency_basis 为 None，调用方必须把
+        该日视为"对账无对手方"，不能当成对平。
+        """
+        if not report_dates:
+            return {}
+        table = "fact_formal_zqtz_balance_daily"
+        candidates = ("CNX", "CNY") if currency_basis.upper() == "CNX" else (currency_basis,)
+        coverage: dict[str, dict[str, object]] = {
+            report_date: {
+                "resolved_currency_basis": None,
+                "row_count": 0,
+                "candidates": list(candidates),
+            }
+            for report_date in report_dates
+        }
+        try:
+            with read_only_connection(self.path) as conn:
+                if not self._table_exists(conn, table):
+                    return coverage
+                rows = conn.execute(
+                    f"""
+                    select
+                      cast(report_date as varchar),
+                      currency_basis,
+                      count(*)
+                    from {table}
+                    where cast(report_date as varchar) in (select unnest(?))
+                      and currency_basis in (select unnest(?))
+                      and position_scope = 'asset'
+                    group by 1, 2
+                    """,
+                    [report_dates, list(candidates)],
+                ).fetchall()
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
+            return coverage
+
+        counts_by_date: dict[str, dict[str, int]] = {}
+        for report_date, basis, row_count in rows:
+            counts_by_date.setdefault(str(report_date), {})[str(basis)] = int(row_count or 0)
+        for report_date, counts in counts_by_date.items():
+            for candidate in candidates:
+                if counts.get(candidate, 0) > 0:
+                    coverage[report_date] = {
+                        "resolved_currency_basis": candidate,
+                        "row_count": counts[candidate],
+                        "candidates": list(candidates),
+                    }
+                    break
+        return coverage
 
     def fetch_recent_rows(
         self,
@@ -677,8 +884,16 @@ class AccountingAssetMovementRepository:
             return []
         try:
             conn = self._connect()
+            # 控制结论列由 registry slice 42 追加。迁移应用前这两列不存在，读路径
+            # 必须继续供数（按未记录处理），不能因为一次尚未落地的迁移而 500。
+            control_columns = ", ".join(
+                column
+                if self._column_exists(conn, _MOVEMENT_FACT_TABLE, column)
+                else f"cast(null as varchar) as {column}"
+                for column in _MOVEMENT_CONTROL_COLUMNS
+            )
             rows = conn.execute(
-                """
+                f"""
                 select
                   report_date,
                   report_month,
@@ -695,7 +910,8 @@ class AccountingAssetMovementRepository:
                   reconciliation_diff,
                   reconciliation_status,
                   source_version,
-                  rule_version
+                  rule_version,
+                  {control_columns}
                 from fact_accounting_asset_movement_monthly
                 where report_date in (select unnest(?))
                   and currency_basis = ?
@@ -728,6 +944,7 @@ class AccountingAssetMovementRepository:
             "reconciliation_status",
             "source_version",
             "rule_version",
+            *_MOVEMENT_CONTROL_COLUMNS,
         ]
         return [dict(zip(keys, row, strict=True)) for row in rows]
 

@@ -508,7 +508,11 @@ def test_pnl_materialize_failed_terminal_preserves_computed_source_version(tmp_p
             "backend/app/repositories/governance_repo.py",
         )
 
-    original_append_many_atomic = governance_mod.GovernanceRepository.append_many_atomic
+    # Patch the class binding the worker actually uses: tests.helpers.load_module
+    # may have replaced backend.app.repositories.governance_repo in sys.modules
+    # after the task module bound GovernanceRepository, so patching the current
+    # sys.modules class would miss the class the worker instantiates.
+    original_append_many_atomic = task_module.GovernanceRepository.append_many_atomic
 
     def fail_completed_terminal_write(self, entries):
         if any(stream == governance_mod.CACHE_MANIFEST_STREAM for stream, _payload in entries):
@@ -516,7 +520,7 @@ def test_pnl_materialize_failed_terminal_preserves_computed_source_version(tmp_p
         return original_append_many_atomic(self, entries)
 
     monkeypatch.setattr(
-        governance_mod.GovernanceRepository,
+        task_module.GovernanceRepository,
         "append_many_atomic",
         fail_completed_terminal_write,
     )

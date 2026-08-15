@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from backend.app.core_finance.bond_analytics.common import (
@@ -9,15 +10,18 @@ from backend.app.core_finance.bond_analytics.common import (
     infer_curve_type,
 )
 from backend.app.core_finance.pnl_bridge import (
+    CurveEffectAvailabilitySummary,
     PnlBridgeRow,
     build_pnl_bridge_rows,
     required_curve_types_for_pnl_bridge,
+    summarize_curve_effect_availability,
 )
 from backend.app.governance.formal_compute_lineage import (
     resolve_completed_formal_build_lineage,
     resolve_formal_manifest_lineage_with_completed_build,
 )
 from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
+from backend.app.repositories.fact_load_gates import ZQTZ_BALANCE_NATURAL_KEY
 from backend.app.repositories.pnl_repo import PnlRepository
 
 try:
@@ -354,8 +358,36 @@ def _build_summary(rows: list[PnlBridgeRow]) -> PnlBridgeSummarySchema:
             "total_actual_pnl": sum((row.actual_pnl for row in rows), ZERO),
             "total_residual": sum((row.residual for row in rows), ZERO),
             "quality_flag": worst_quality,
+            # 汇总合计的金额不变；这三块只回答"合计里的 0 有多少行是没有可比输入"。
+            "roll_down_availability": _availability_block(
+                summarize_curve_effect_availability(
+                    (row.roll_down_availability, row.roll_down_availability_reason)
+                    for row in rows
+                )
+            ),
+            "treasury_curve_availability": _availability_block(
+                summarize_curve_effect_availability(
+                    (row.treasury_curve_availability, row.treasury_curve_availability_reason)
+                    for row in rows
+                )
+            ),
+            "credit_spread_availability": _availability_block(
+                summarize_curve_effect_availability(
+                    (row.credit_spread_availability, row.credit_spread_availability_reason)
+                    for row in rows
+                )
+            ),
         }
     )
+
+
+def _availability_block(summary: CurveEffectAvailabilitySummary) -> dict[str, object]:
+    return {
+        "status": summary.status,
+        "unavailable_rows": summary.unavailable_rows,
+        "applicable_rows": summary.applicable_rows,
+        "reasons": list(summary.reasons),
+    }
 
 
 def _row_diagnostic_warnings(rows: list[PnlBridgeRow]) -> list[str]:
@@ -387,15 +419,26 @@ def _bridge_fx_base_currencies(
     pnl_fi_rows: list[dict[str, object]],
     balance_rows: list[dict[str, object]],
 ) -> set[str]:
-    balance_lookup = {
-        (
+    """Foreign currencies the bridge must load FX rates for.
+
+    The PnL fact carries no maturity leg, so (instrument, portfolio, cost center,
+    accounting_basis) is the finest key the two sides share — and one PnL row can
+    therefore face several balance rows. Collect every currency they carry rather
+    than letting the last row of the group decide: a PnL row whose currency is
+    dropped here loses its rate and silently publishes ``fx_translation = 0`` with
+    only a row-level FX_RATE_MISSING diagnostic to show for it.
+    """
+    balance_currencies: dict[tuple[str, str, str, str], set[str]] = {}
+    for row in balance_rows:
+        key = (
             str(row.get("instrument_code") or ""),
             str(row.get("portfolio_name") or ""),
             str(row.get("cost_center") or ""),
             str(row.get("accounting_basis") or ""),
-        ): str(row.get("currency_code") or row.get("currency_basis") or "").upper().strip()
-        for row in balance_rows
-    }
+        )
+        currency = str(row.get("currency_code") or row.get("currency_basis") or "").upper().strip()
+        if currency:
+            balance_currencies.setdefault(key, set()).add(currency)
     required: set[str] = set()
     for row in pnl_fi_rows:
         key = (
@@ -404,9 +447,10 @@ def _bridge_fx_base_currencies(
             str(row.get("cost_center") or ""),
             str(row.get("accounting_basis") or ""),
         )
-        base = balance_lookup.get(key) or str(row.get("currency_basis") or "").upper().strip()
-        if base and base not in {"CNY", "CNX", "RMB"}:
-            required.add(base)
+        bases = balance_currencies.get(key) or {
+            str(row.get("currency_basis") or "").upper().strip()
+        }
+        required.update(base for base in bases if base and base not in {"CNY", "CNX", "RMB"})
     return required
 
 
@@ -758,6 +802,124 @@ def _resolve_pnl_lineage(*, governance_dir: str, report_date: str) -> dict[str, 
     )
 
 
+def normalize_natural_key_date(value: object) -> str:
+    """Canonical string form of a date-typed key column.
+
+    ``fact_formal_zqtz_balance_daily.maturity_date`` is stored as VARCHAR while
+    ``zqtz_bond_daily_snapshot.maturity_date`` is a DATE, so the same position
+    yields ``'2026-09-21'`` on one side and ``date(2026, 9, 21)`` on the other.
+    Both sides of every natural-key join must normalize through here or the join
+    silently degenerates into a miss.
+    """
+    if value in (None, ""):
+        return ""
+    if isinstance(value, date):
+        return value.isoformat()
+    return str(value).strip()
+
+
+def natural_key_component(row: Mapping[str, object], column: str) -> str:
+    if column == "currency_code":
+        return str(row.get(column) or "").upper()
+    if column.endswith("_date"):
+        return normalize_natural_key_date(row.get(column))
+    return str(row.get(column) or "")
+
+
+# ``fetch_formal_zqtz_rows`` is already sliced by report_date / position_scope /
+# currency_basis, so what remains of the fact's natural key is the intra-slice
+# identity. Derived from ``ZQTZ_BALANCE_NATURAL_KEY`` rather than restated, so the
+# read path and the load gate cannot drift apart. ``currency_code`` is appended as
+# the pre-existing currency guard: it is redundant given the rest of the key, and
+# keeping it means a CNY row can never pick up a foreign leg's amounts.
+_ZQTZ_SLICE_COLUMNS = frozenset({"report_date", "position_scope", "currency_basis"})
+_NATIVE_AMOUNT_KEY_COLUMNS: tuple[str, ...] = (
+    *(column for column in ZQTZ_BALANCE_NATURAL_KEY if column not in _ZQTZ_SLICE_COLUMNS),
+    "currency_code",
+)
+
+# ``zqtz_bond_daily_snapshot`` has no ``accounting_basis`` column; the formal
+# pipeline derives it from ``asset_class`` (持有至到期类资产/应收投资款项→AC,
+# 可供出售类资产→FVOCI, 交易性资产→FVTPL), and the fact table carries that raw
+# ``asset_class`` verbatim. It is the snapshot-side discriminator and is at least
+# as fine as ``accounting_basis``.
+_SNAPSHOT_FACE_VALUE_KEY_COLUMNS: tuple[str, ...] = tuple(
+    "asset_class" if column == "accounting_basis" else column
+    for column in _NATIVE_AMOUNT_KEY_COLUMNS
+)
+
+
+def _native_amount_key(row: Mapping[str, object]) -> tuple[str, ...]:
+    """Natural key of ``fact_formal_zqtz_balance_daily`` inside one fetched slice.
+
+    ``accounting_basis`` and ``maturity_date`` are load-bearing, not decoration: a
+    single bond is routinely booked into two accounting books at once (from
+    2025-09-30 onwards) and the same instrument_code can carry two maturity legs
+    during a reclass. Without them the key covers 1,555 duplicate groups per
+    currency_basis and the enrichment attaches another leg's native market value.
+    """
+    return tuple(natural_key_component(row, column) for column in _NATIVE_AMOUNT_KEY_COLUMNS)
+
+
+def _snapshot_face_value_key(row: Mapping[str, object]) -> tuple[str, ...]:
+    """The same position identity expressed in the raw snapshot's vocabulary."""
+    return tuple(
+        natural_key_component(row, column) for column in _SNAPSHOT_FACE_VALUE_KEY_COLUMNS
+    )
+
+
+def format_duplicate_natural_key_error(
+    *,
+    source: str,
+    report_date: str,
+    key_columns: tuple[str, ...],
+    duplicate_keys: list[tuple[str, ...]],
+) -> str:
+    sample = "; ".join("/".join(key) for key in sorted(duplicate_keys)[:5])
+    return (
+        f"Duplicate natural key in {source} for report_date={report_date}: "
+        f"{len(duplicate_keys)} key(s) on ({', '.join(key_columns)}) resolve to more than one row, "
+        f"so the native exposure base is ambiguous. Sample: {sample}."
+    )
+
+
+def _index_rows_by_natural_key(
+    rows: list[dict[str, object]],
+    *,
+    key_of,
+    key_columns: tuple[str, ...],
+    source: str,
+    report_date: str,
+) -> dict[tuple[str, ...], dict[str, object]]:
+    """Index enrichment rows by their natural key, refusing ambiguity.
+
+    The previous ``setdefault`` (and, on the snapshot side, a dict comprehension)
+    on a non-unique key let row order decide the winner and handed every other row
+    of the group another leg's amounts. A second row under a key that is supposed
+    to be unique is a fact integrity failure, not a tie to break: picking either
+    one silently is exactly the cross-assignment these joins have to stop
+    producing, so the caller is told instead.
+    """
+    indexed: dict[tuple[str, ...], dict[str, object]] = {}
+    duplicate_keys: list[tuple[str, ...]] = []
+    for row in rows:
+        key = key_of(row)
+        if key in indexed:
+            duplicate_keys.append(key)
+            continue
+        indexed[key] = row
+    if duplicate_keys:
+        raise RuntimeError(
+            format_duplicate_natural_key_error(
+                source=source,
+                report_date=report_date,
+                key_columns=key_columns,
+                duplicate_keys=duplicate_keys,
+            )
+        )
+    return indexed
+
+
 def _attach_native_exposure_fields(
     *,
     balance_repo: BalanceAnalysisRepository,
@@ -771,47 +933,44 @@ def _attach_native_exposure_fields(
     native dirty market value, so enrich each row with ``market_value_native`` /
     ``accrued_interest_native`` from the native-basis formal fact rows (same fact table,
     ``currency_basis='native'``), plus ``face_value_native`` from the raw snapshot as
-    the legacy fallback base. Enrichment keys mirror the CNY/native projection identity:
-    (instrument_code, portfolio_name, cost_center, currency_code).
+    the legacy fallback base.
+
+    Both joins key on the position's natural key, which needs the accounting book and
+    the maturity leg on top of (instrument_code, portfolio_name, cost_center,
+    currency_code) — see ``_native_amount_key`` / ``_snapshot_face_value_key``.
     """
     if not balance_rows:
         return balance_rows
-    native_face_values = balance_repo.fetch_zqtz_snapshot_native_face_values(report_date=report_date)
-    native_amounts: dict[tuple[str, str, str, str], tuple[object, object]] = {}
-    for native_row in balance_repo.fetch_formal_zqtz_rows(
+    native_face_values = _index_rows_by_natural_key(
+        balance_repo.fetch_zqtz_snapshot_native_face_value_rows(report_date=report_date),
+        key_of=_snapshot_face_value_key,
+        key_columns=_SNAPSHOT_FACE_VALUE_KEY_COLUMNS,
+        source="zqtz_bond_daily_snapshot",
         report_date=report_date,
-        position_scope="asset",
-        currency_basis="native",
-    ):
-        native_amounts.setdefault(
-            (
-                str(native_row.get("instrument_code") or ""),
-                str(native_row.get("portfolio_name") or ""),
-                str(native_row.get("cost_center") or ""),
-                str(native_row.get("currency_code") or "").upper(),
-            ),
-            (
-                native_row.get("market_value_amount"),
-                native_row.get("accrued_interest_amount"),
-            ),
-        )
+    )
+    native_amounts = _index_rows_by_natural_key(
+        balance_repo.fetch_formal_zqtz_rows(
+            report_date=report_date,
+            position_scope="asset",
+            currency_basis="native",
+        ),
+        key_of=_native_amount_key,
+        key_columns=_NATIVE_AMOUNT_KEY_COLUMNS,
+        source="fact_formal_zqtz_balance_daily (position_scope=asset, currency_basis=native)",
+        report_date=report_date,
+    )
     if not native_face_values and not native_amounts:
         return balance_rows
     enriched_rows: list[dict[str, object]] = []
     for row in balance_rows:
-        key = (
-            str(row.get("instrument_code") or ""),
-            str(row.get("portfolio_name") or ""),
-            str(row.get("cost_center") or ""),
-            str(row.get("currency_code") or "").upper(),
-        )
         enriched = row
-        face_value_native = native_face_values.get(key)
-        if face_value_native is not None:
-            enriched = {**enriched, "face_value_native": face_value_native}
-        native_amount = native_amounts.get(key)
-        if native_amount is not None:
-            market_value_native, accrued_interest_native = native_amount
+        face_value_row = native_face_values.get(_snapshot_face_value_key(row))
+        if face_value_row is not None and face_value_row.get("face_value_native") is not None:
+            enriched = {**enriched, "face_value_native": face_value_row["face_value_native"]}
+        native_row = native_amounts.get(_native_amount_key(row))
+        if native_row is not None:
+            market_value_native = native_row.get("market_value_amount")
+            accrued_interest_native = native_row.get("accrued_interest_amount")
             if market_value_native is not None:
                 enriched = {**enriched, "market_value_native": market_value_native}
             if accrued_interest_native is not None:

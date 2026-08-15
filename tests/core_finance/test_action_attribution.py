@@ -98,15 +98,15 @@ def test_build_action_attribution_success_payload_marks_missing_pnl_and_dedupes_
                     "pnl_economic": 0.0,
                     "pnl_accounting": 0.0,
                     "delta_duration": 3.2,
-                    "delta_dv01": 0.0,
-                    "delta_spread_dv01": 0.0,
+                    "delta_dv01": None,
+                    "delta_spread_dv01": None,
                 }
             ],
             "period_start_duration": 0.0,
             "period_end_duration": 3.2,
             "duration_change_from_actions": 3.2,
-            "period_start_dv01": 0.0,
-            "period_end_dv01": 0.0,
+            "period_start_dv01": None,
+            "period_end_dv01": None,
             "warnings": ["ACTION_ATTRIBUTION_HEURISTIC_NO_WIND", "ACTION_ATTRIBUTION_HEURISTIC_NO_WIND"],
         },
         prior_snapshot_date=None,
@@ -115,13 +115,22 @@ def test_build_action_attribution_success_payload_marks_missing_pnl_and_dedupes_
         computed_at="2026-03-31T10:00:00+00:00",
     )
 
-    assert payload["status"] == "ready"
+    assert payload["status"] == "partial"
     assert payload["available_components"] == ["snapshot_diff", "capital_gain_517_allocation"]
-    assert payload["missing_inputs"] == ["fact_formal_pnl_fi_capital_gain_517"]
-    assert payload["blocked_components"] == []
+    assert payload["missing_inputs"] == [
+        "action_level_dv01",
+        "fact_formal_pnl_fi_capital_gain_517",
+        "independent_accounting_pnl",
+    ]
+    assert payload["blocked_components"] == [
+        "dv01_attribution",
+        "independent_accounting_pnl_reconciliation",
+    ]
     assert payload["computed_at"] == "2026-03-31T10:00:00+00:00"
     assert payload["warnings"] == [
         "ACTION_ATTRIBUTION_HEURISTIC_NO_WIND",
+        "ACTION_ATTRIBUTION_DV01_UNAVAILABLE",
+        "ACTION_ATTRIBUTION_ACCOUNTING_PNL_DERIVED_COPY",
         "ACTION_ATTRIBUTION_NO_PRIOR_SNAPSHOT",
         "ACTION_ATTRIBUTION_PNL517_NO_FACT_DATES",
     ]
@@ -308,6 +317,11 @@ def test_compute_action_attribution_bonds_closes_totals_with_mixed_buy_sell_and_
     # 会计口径当前仍是经济口径的占位复制值（详见函数 docstring）。
     for detail in raw["action_details"]:
         assert detail["pnl_accounting"] == pytest.approx(detail["pnl_economic"])
+        assert detail["delta_dv01"] is None
+        assert detail["delta_spread_dv01"] is None
+
+    assert raw["period_start_dv01"] is None
+    assert raw["period_end_dv01"] is None
 
     by_type = {row["action_type"]: row for row in raw["by_action_type"]}
     assert "UNALLOCATED" in by_type

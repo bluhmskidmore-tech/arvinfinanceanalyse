@@ -8,7 +8,8 @@ Campisi 风格债券归因（纯函数）。
 
 市场字典约定：`treasury_1y`…`treasury_30y` 为**百分数**（如 2.55）；
 `credit_spread_aaa_3y` / `credit_spread_aa_plus_3y` / `credit_spread_aa_3y` 为 **BP**。
-若国债值均 < 2 且 > 0，视为小数形式并整体 ×100（兼容部分导入数据）。
+若国债非空正值的最大值 < 0.5，视为小数形式并整体 ×100（阈值见
+`rate_units.detect_percent_unit_from_curve`；兼容部分导入数据）。
 
 carry/income 天数口径：`num_days = (end_date - start_date).days`（不含头含尾；
 同日窗口下限 1 天），`income_return = coupon × face × num_days / 365`。

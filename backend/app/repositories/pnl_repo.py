@@ -923,6 +923,65 @@ class PnlRepository:
             conn.close()
         return dict(acc)
 
+    def merged_capital_gain_517_by_position_and_accounting_for_dates(
+        self,
+        report_dates: list[str],
+    ) -> dict[tuple[str, str, str, str], Decimal]:
+        """``capital_gain_517`` at the finest grain each PnL source actually reports.
+
+        ``fact_formal_pnl_fi`` is unique on (report_date, instrument_code,
+        portfolio_name, cost_center, accounting_basis, currency_basis), so its 517 is
+        already attributed per accounting book and is returned under that book.
+        ``fact_nonstd_pnl_bridge`` carries no accounting dimension at all, so its 517
+        is returned under an empty accounting basis — a deliberately different key,
+        because it belongs to the position as a whole and the caller has to decide
+        how to spread it rather than silently attach it to every book.
+
+        Keys are ``(instrument_code, portfolio_name, cost_center, accounting_basis)``.
+        Missing tables or unreadable DuckDB paths yield an empty map without raising.
+        """
+        if not report_dates:
+            return {}
+        dates = sorted({str(d) for d in report_dates})
+        placeholders = ",".join(["?" for _ in dates])
+        acc: dict[tuple[str, str, str, str], Decimal] = defaultdict(Decimal)
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+        except duckdb.Error:
+            return {}
+        try:
+            for table, inst_column, basis_expression in (
+                ("fact_formal_pnl_fi", "instrument_code", "coalesce(accounting_basis, '')"),
+                ("fact_nonstd_pnl_bridge", "bond_code", "''"),
+            ):
+                try:
+                    rows = conn.execute(
+                        f"""
+                        select {inst_column}, portfolio_name, cost_center, {basis_expression},
+                               coalesce(sum(cast(capital_gain_517 as decimal(24,8))), 0)
+                        from {table}
+                        where cast(report_date as varchar) in ({placeholders})
+                        group by 1, 2, 3, 4
+                        """,
+                        dates,
+                    ).fetchall()
+                except duckdb.Error:
+                    continue
+                for inst, pn, cc, basis, amt in rows:
+                    inst_code = str(inst or "").strip()
+                    if not inst_code:
+                        continue
+                    key = (
+                        inst_code,
+                        str(pn or "").strip(),
+                        str(cc or "").strip(),
+                        str(basis or "").strip(),
+                    )
+                    acc[key] += Decimal(str(amt))
+        finally:
+            conn.close()
+        return dict(acc)
+
     def overview_totals(self, report_date: str) -> dict[str, object]:
         formal_rows = self.fetch_formal_fi_rows(report_date)
         nonstd_rows = self.fetch_nonstd_bridge_rows(report_date)
@@ -1064,8 +1123,10 @@ class PnlRepository:
                   where report_date = ?
                     and position_scope = 'asset'
                 ), historical_balance as (
+                  -- 键取剥掉 BOND- 前缀后的规范化券码：X 与 BOND-X 是同一券的两种
+                  -- 拼写，若各留一行，旧 OR 匹配会让一条 PnL 行同时命中两行造成双计。
                   select
-                    trim(coalesce(instrument_code, '')) as instrument_code,
+                    regexp_replace(trim(coalesce(instrument_code, '')), '^BOND-', '') as instrument_code,
                     trim(coalesce(portfolio_name, '')) as portfolio_name,
                     trim(coalesce(currency_basis, '')) as currency_basis,
                     min(nullif(trim(coalesce(maturity_date, '')), '')) as maturity_date_hint,
@@ -1127,11 +1188,7 @@ class PnlRepository:
                     end as reason_code
                   from pnl p
                   left join historical_balance h
-                    on (
-                      h.instrument_code = p.instrument_code
-                      or h.instrument_code = replace(p.instrument_code, 'BOND-', '')
-                      or ('BOND-' || h.instrument_code) = p.instrument_code
-                    )
+                    on h.instrument_code = regexp_replace(p.instrument_code, '^BOND-', '')
                    and h.portfolio_name = p.portfolio_name
                    and h.currency_basis = p.currency_basis
                   left join trace_classification tc
@@ -1795,9 +1852,12 @@ class PnlRepository:
                 ), pnl_report_dates as (
                   select distinct report_date from pnl_rows
                 ), balance_by_position as (
+                  -- 键取剥掉 BOND- 前缀后的规范化券码：X 与 BOND-X 是同一券的两种
+                  -- 拼写；归到同一键后与 PnL 侧做等值匹配，旧 OR 匹配在两种拼写
+                  -- 并存时会让一条 PnL 行命中两条 balance 行造成双计。
                   select
                     cast(report_date as varchar) as report_date,
-                    instrument_code,
+                    regexp_replace(trim(coalesce(instrument_code, '')), '^BOND-', '') as instrument_code,
                     portfolio_name,
                     cost_center,
                     currency_basis,
@@ -1895,22 +1955,14 @@ class PnlRepository:
                   from pnl_aggregated p
                   left join balance_strict_choice bs
                     on bs.report_date = p.report_date
-                   and (
-                     trim(coalesce(bs.instrument_code, '')) = trim(coalesce(p.instrument_code, ''))
-                     or trim(coalesce(bs.instrument_code, '')) = replace(trim(coalesce(p.instrument_code, '')), 'BOND-', '')
-                     or ('BOND-' || trim(coalesce(bs.instrument_code, ''))) = trim(coalesce(p.instrument_code, ''))
-                   )
+                   and bs.instrument_code = regexp_replace(trim(coalesce(p.instrument_code, '')), '^BOND-', '')
                    and trim(coalesce(bs.portfolio_name, '')) = trim(coalesce(p.portfolio_name, ''))
                    and trim(coalesce(bs.cost_center, '')) = trim(coalesce(p.cost_center, ''))
                    and trim(coalesce(bs.currency_basis, '')) = trim(coalesce(p.currency_basis, ''))
                   left join balance_relaxed_choice br
                     on bs.business_type_primary is null
                    and br.report_date = p.report_date
-                   and (
-                     trim(coalesce(br.instrument_code, '')) = trim(coalesce(p.instrument_code, ''))
-                     or trim(coalesce(br.instrument_code, '')) = replace(trim(coalesce(p.instrument_code, '')), 'BOND-', '')
-                     or ('BOND-' || trim(coalesce(br.instrument_code, ''))) = trim(coalesce(p.instrument_code, ''))
-                   )
+                   and br.instrument_code = regexp_replace(trim(coalesce(p.instrument_code, '')), '^BOND-', '')
                    and trim(coalesce(br.portfolio_name, '')) = trim(coalesce(p.portfolio_name, ''))
                    and trim(coalesce(br.currency_basis, '')) = trim(coalesce(p.currency_basis, ''))
                 ), consumed_balance_positions as (
@@ -1929,11 +1981,7 @@ class PnlRepository:
                   from pnl_classified p
                   join balance_strict_choice b
                     on b.report_date = p.report_date
-                   and (
-                     trim(coalesce(b.instrument_code, '')) = trim(coalesce(p.instrument_code, ''))
-                     or trim(coalesce(b.instrument_code, '')) = replace(trim(coalesce(p.instrument_code, '')), 'BOND-', '')
-                     or ('BOND-' || trim(coalesce(b.instrument_code, ''))) = trim(coalesce(p.instrument_code, ''))
-                   )
+                   and b.instrument_code = regexp_replace(trim(coalesce(p.instrument_code, '')), '^BOND-', '')
                    and trim(coalesce(b.portfolio_name, '')) = trim(coalesce(p.portfolio_name, ''))
                    and trim(coalesce(b.currency_basis, '')) = trim(coalesce(p.currency_basis, ''))
                    and trim(coalesce(b.business_type_primary, '')) = trim(coalesce(p.business_type_primary, ''))
