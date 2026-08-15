@@ -103,7 +103,7 @@ function industryStats(): IndustryStatsResponse {
 
 /** 覆写债券 tab 首屏会触发的全部只读方法，保持用例与共享 mock 组合解耦。 */
 function buildBondsClient(bondItems: BondPositionItem[]) {
-  const client = createApiClient({ mode: "mock" });
+  const client = createApiClient({ mode: "real" });
   client.getBalanceAnalysisDates = vi.fn(async () =>
     envelope("balance_analysis.dates", { report_dates: ["2026-04-30"] }),
   );
