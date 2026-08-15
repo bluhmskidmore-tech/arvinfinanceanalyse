@@ -1,32 +1,31 @@
 import type { TooltipComponentOption } from "echarts";
 
-import {
-  mossChartAxisLabel,
-  mossChartAxisLine,
-} from "../../../../components/charts/chartTheme";
-import { designTokens, ibTokens } from "../../../../theme/designSystem";
+import { designTokens, nocturneTokens } from "../../../../theme/designSystem";
 
-const institutionalPalette = [
-  designTokens.color.primary[600],
-  designTokens.color.institutional.accentCyan,
-  designTokens.color.institutional.accentGold,
-  designTokens.color.cockpit.ink650,
-  designTokens.color.warm.slateBlue,
-  designTokens.color.success[500],
-  designTokens.color.cockpit.red700,
-  designTokens.color.neutral[500],
+/**
+ * Nocturne 多系列序（DESIGN.md §2.2：深色页只用去饱和色阶）：
+ * 强调蓝紫 → 绿 → 琥珀 → 强调-400 → 红 → 次级墨 → 强调-300 → muted。
+ */
+const nocturnePalette = [
+  nocturneTokens.color.blue,
+  nocturneTokens.color.green,
+  nocturneTokens.color.amber,
+  nocturneTokens.color.accent400,
+  nocturneTokens.color.red,
+  nocturneTokens.color.inkSoft,
+  nocturneTokens.color.accent300,
+  nocturneTokens.color.inkMuted,
 ] as const;
 
 const marketDataTooltipBase: TooltipComponentOption = {
   confine: true,
-  backgroundColor: designTokens.color.institutional.surfaceRaised,
-  borderColor: designTokens.color.cockpit.border175,
+  backgroundColor: nocturneTokens.color.panel3,
+  borderColor: nocturneTokens.color.line,
   borderWidth: 1,
   padding: [8, 10],
-  extraCssText:
-    "box-shadow: 0 10px 24px rgba(15, 35, 56, 0.10); border-radius: 6px; font-variant-numeric: tabular-nums;",
+  extraCssText: `box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28); border-radius: ${nocturneTokens.radius}px; font-variant-numeric: tabular-nums;`,
   textStyle: {
-    color: designTokens.color.cockpit.ink800,
+    color: nocturneTokens.color.ink,
     fontSize: designTokens.fontSize[12],
     fontFamily: designTokens.fontFamily.sans,
   },
@@ -47,48 +46,48 @@ export function buildMarketDataChartTooltip(
 
 /** Shared palette / axis styling for market-data ECharts option builders. */
 export const marketDataChartTheme = {
-  multiSeriesPalette: [...institutionalPalette] as string[],
+  multiSeriesPalette: [...nocturnePalette] as string[],
   axisLabel: {
-    ...mossChartAxisLabel,
-    color: designTokens.color.cockpit.ink600,
+    color: nocturneTokens.color.inkMuted,
     fontSize: designTokens.fontSize[11],
     fontFamily: designTokens.fontFamily.tabular,
   },
   axisLine: {
-    ...mossChartAxisLine,
     lineStyle: {
-      color: designTokens.color.cockpit.border150,
+      color: nocturneTokens.color.lineSoft,
     },
   },
   /** 更轻的分割线：虚线 + 半透明，减少视觉噪音 */
   splitLine: {
     lineStyle: {
-      color: designTokens.color.cockpit.border100,
+      color: nocturneTokens.color.lineSoft,
       type: "dashed" as const,
-      opacity: 0.78,
+      opacity: 0.6,
     },
   },
   axisPointerLine: {
     type: "line" as const,
-    lineStyle: { color: designTokens.color.institutional.accentGold, width: 1, type: "dashed" as const },
+    lineStyle: { color: nocturneTokens.color.blue, width: 1, type: "dashed" as const },
   },
   axisPointerShadow: {
     type: "shadow" as const,
-    shadowStyle: { color: "rgba(24, 80, 161, 0.07)" },
+    // blueSoft 自带 12% 透明度，再乘 0.4 得到 ~5% 的安静悬停带。
+    shadowStyle: { color: nocturneTokens.color.blueSoft, opacity: 0.4 },
   },
   gridCompact: { left: 52, right: 44, top: 20, bottom: 34, containLabel: true },
   gridWithTitle: { left: 52, right: 52, top: 36, bottom: 34, containLabel: true },
-  heatmapRange: [designTokens.color.cockpit.blueMist, designTokens.color.primary[600]] as const,
-  heatmapEmptyColor: designTokens.color.cockpit.surface40,
-  positiveBar: designTokens.color.success[500],
-  negativeBar: designTokens.color.danger[600],
-  neutralBar: designTokens.color.cockpit.ink450,
-  derivedSpreadColor: designTokens.color.institutional.accentCyan,
+  /** 深色阶：低值沉入 panel-2 深井，高值抬到强调蓝紫。 */
+  heatmapRange: [nocturneTokens.color.panel2, nocturneTokens.color.blue] as const,
+  heatmapEmptyColor: nocturneTokens.color.panel2,
+  positiveBar: nocturneTokens.color.green,
+  negativeBar: nocturneTokens.color.red,
+  neutralBar: nocturneTokens.color.inkMuted,
+  derivedSpreadColor: nocturneTokens.color.accent400,
   titleMuted: {
-    ...mossChartAxisLabel,
-    color: designTokens.color.cockpit.ink650,
+    color: nocturneTokens.color.inkSoft,
     fontSize: designTokens.fontSize[12],
+    fontFamily: designTokens.fontFamily.sans,
     fontWeight: 600 as const,
   },
-  chartSurface: ibTokens.color.surface,
+  chartSurface: nocturneTokens.color.panel,
 } as const;

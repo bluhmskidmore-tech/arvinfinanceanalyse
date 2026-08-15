@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useApiClient } from "../../../api/client";
@@ -64,6 +64,16 @@ export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshStatus, setRefreshStatus] = useState("");
   const [refreshError, setRefreshError] = useState("");
+
+  // 卸载时取消刷新任务轮询，避免离开页面后长任务继续请求并批量 refetch。
+  const unmountAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    unmountAbortRef.current = controller;
+    return () => {
+      controller.abort();
+    };
+  }, []);
 
   const catalogQuery = useQuery({
     queryKey: ["market-data", "macro-foundation", client.mode],
@@ -270,6 +280,7 @@ export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}
   }, [client, queryClient, resolveLinkageReportDate]);
 
   const handleRefresh = useCallback(async () => {
+    const signal = unmountAbortRef.current?.signal;
     setIsRefreshing(true);
     setRefreshError("");
     setRefreshStatus("正在刷新宏观数据（回填 30 天）…");
@@ -279,6 +290,7 @@ export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}
         getStatus: (runId) => client.getChoiceMacroRefreshStatus(runId),
         intervalMs: 3000,
         maxAttempts: 120,
+        signal,
         onUpdate: (p) => {
           setRefreshStatus([p.status, p.run_id].filter(Boolean).join(" · "));
         },
@@ -286,6 +298,7 @@ export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}
       if (payload.status !== "completed") {
         throw new Error(payload.error_message ?? `刷新未完成：${payload.status}`);
       }
+      if (signal?.aborted) return;
       await Promise.all([
         catalogQuery.refetch(nonCancellingRefetchOptions),
         latestQuery.refetch(nonCancellingRefetchOptions),
@@ -301,11 +314,14 @@ export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}
       await refreshMacroBondLinkage();
       setRefreshStatus("刷新完成");
     } catch (err) {
+      if (signal?.aborted) return;
       const msg = err instanceof Error ? err.message : String(err);
       setRefreshError(msg);
       setRefreshStatus("");
     } finally {
-      setIsRefreshing(false);
+      if (!signal?.aborted) {
+        setIsRefreshing(false);
+      }
     }
   }, [
     client,
@@ -350,6 +366,7 @@ export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}
         getStatus: (runId) => client.getLivermoreGateSupplementRefreshStatus(runId),
         intervalMs: 3_000,
         maxAttempts: 120,
+        signal: unmountAbortRef.current?.signal,
         isTerminal: (status) =>
           status === "completed"
           || status === "failed"

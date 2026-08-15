@@ -42,7 +42,9 @@ describe("adaptRateQuoteRowsToTermStructureCurves", () => {
     expect(curves).toHaveLength(2);
     expect(curves[0]?.curve_type).toBe("treasury");
     expect(curves[0]?.points[0]?.tenor).toBe("10Y");
-    expect(curves[0]?.points[0]?.yield_pct?.raw).toBe(1.71);
+    // unit="pct" 的 raw 按 Numeric 契约存小数分数：display "1.71%" ↔ raw 0.0171。
+    expect(curves[0]?.points[0]?.yield_pct?.raw).toBeCloseTo(0.0171, 10);
+    expect(curves[0]?.points[0]?.yield_pct?.display).toBe("1.71%");
     expect(curves[0]?.points[0]?.delta_bp_prev?.raw).toBe(-1);
     expect(curves[1]?.curve_type).toBe("cdb");
   });

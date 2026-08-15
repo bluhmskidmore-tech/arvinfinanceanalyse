@@ -1,8 +1,4 @@
-import { Card, Divider, Space, Spin, Tag, Typography } from "antd";
-
 import type { LiabilityKnowledgeNote } from "../../../api/liabilityAdbContracts";
-
-const { Text } = Typography;
 
 type LiabilityKnowledgePanelProps = {
   notes: LiabilityKnowledgeNote[];
@@ -11,33 +7,29 @@ type LiabilityKnowledgePanelProps = {
   statusNote?: string | null;
 };
 
+/** 业务资料正文：分区帧（编号 + 「业务资料」标题 + 状态位）由页面持有。 */
 export function LiabilityKnowledgePanel({
   notes,
   loading,
   errorText,
-  statusNote,
 }: LiabilityKnowledgePanelProps) {
   if (loading) {
     return (
-      <Card data-testid="liability-knowledge-panel" className="liability-knowledge-panel">
-        <div className="liability-knowledge-panel__stack--tight">
-          <Text strong>业务资料</Text>
-          <div className="liability-knowledge-panel__loading">
-            <Spin size="small" />
-          </div>
-        </div>
-      </Card>
+      <p
+        data-testid="liability-knowledge-panel"
+        className="liability-analytics-page__surface liability-analytics-page__surface--loading"
+      >
+        业务资料读取中…
+      </p>
     );
   }
 
   if (errorText) {
     return (
-      <Card data-testid="liability-knowledge-panel" className="liability-knowledge-panel">
-        <div className="liability-knowledge-panel__stack--tight">
-          <Text strong>业务资料</Text>
-          <Text type="secondary">{errorText}</Text>
-        </div>
-      </Card>
+      <div data-testid="liability-knowledge-panel" className="liability-notice liability-notice--warning">
+        <strong className="liability-notice__title">业务资料加载失败</strong>
+        <span className="liability-notice__description">{errorText}</span>
+      </div>
     );
   }
 
@@ -45,44 +37,45 @@ export function LiabilityKnowledgePanel({
     return null;
   }
 
+  /*
+   * 整区默认折叠：笔记正文约 1.5 屏，属参考资料不属首屏判断链路；
+   * 来源绝对路径只保留在 title（证据引用），不在正文暴露本机路径。
+   */
   return (
-    <Card data-testid="liability-knowledge-panel" className="liability-knowledge-panel">
-      <div className="liability-knowledge-panel__stack">
-        <Space align="center" wrap>
-          <Text strong className="liability-knowledge-panel__title">
-            业务资料
-          </Text>
-          {statusNote ? (
-            <Tag className="liability-ib-tag liability-ib-tag--accent">{statusNote}</Tag>
-          ) : null}
-        </Space>
-        <Text type="secondary">
-          这些材料来自本机 Obsidian 金融市场笔记，帮助把当前页的负债结构、流动性约束和管理层解释口径对齐。
-        </Text>
-        {notes.map((note, index) => (
-          <div key={`${note.id || note.source_path || note.title}-${index}`}>
-            {index > 0 ? <Divider className="liability-knowledge-divider" /> : null}
-            <Card size="small" className="liability-knowledge-note">
-              <div className="liability-knowledge-note__stack">
-                <Text strong className="liability-knowledge-note__title">
-                  {note.title}
-                </Text>
-                <Text>{note.summary}</Text>
-                <Text type="secondary">{note.why_it_matters}</Text>
+    <div data-testid="liability-knowledge-panel" className="liability-knowledge">
+      <details className="liability-knowledge__details">
+        <summary>{`业务笔记 ${notes.length} 篇（来自本机 Obsidian 金融市场笔记）`}</summary>
+        <div className="liability-knowledge__body">
+          <p className="liability-caption">
+            这些材料帮助把当前页的负债结构、流动性约束和管理层解释口径对齐。
+          </p>
+          <div className="liability-analytics-page__grid liability-analytics-page__grid--2">
+            {notes.map((note, index) => (
+              <article
+                key={`${note.id || note.source_path || note.title}-${index}`}
+                className="liability-panel liability-knowledge-note"
+              >
+                <h3 className="liability-panel__title">{note.title}</h3>
+                <p className="liability-knowledge-note__summary">{note.summary}</p>
+                <p className="liability-caption">{note.why_it_matters}</p>
                 {note.key_questions.length > 0 ? (
-                  <div className="liability-knowledge-note__stack">
-                    <Text strong>关键追问</Text>
-                    {note.key_questions.map((question, questionIndex) => (
-                      <Text key={`${question}-${questionIndex}`}>• {question}</Text>
-                    ))}
+                  <div className="liability-knowledge-note__questions">
+                    <strong>关键追问</strong>
+                    <ul>
+                      {note.key_questions.map((question, questionIndex) => (
+                        <li key={`${question}-${questionIndex}`}>{question}</li>
+                      ))}
+                    </ul>
                   </div>
                 ) : null}
-                <Text type="secondary">来源：{note.source_path}</Text>
-              </div>
-            </Card>
+                <p className="liability-caption liability-knowledge-note__source" title={note.source_path}>
+                  来源：本机 Obsidian 笔记
+                </p>
+              </article>
+            ))}
           </div>
-        ))}
-      </div>
-    </Card>
+        </div>
+      </details>
+    </div>
   );
 }

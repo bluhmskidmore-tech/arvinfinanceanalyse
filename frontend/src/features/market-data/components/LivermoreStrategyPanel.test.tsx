@@ -288,6 +288,124 @@ describe("LivermoreStrategyPanel", () => {
     consoleError.mockRestore();
   });
 
+  it("collapses a repeated gap sentence into one shared note with row references", () => {
+    const model = makeModel();
+    const sharedSentence =
+      "Choice stock materialized input coverage is incomplete for the resolved trade date.";
+    model.ruleBlocks = [
+      {
+        key: "stock_pivot",
+        title: "Stock pivot filters",
+        status: "blocked",
+        statusLabel: "受阻",
+        summary: sharedSentence,
+        requiredInputs: [],
+        missingInputs: [],
+      },
+      {
+        key: "risk_exit",
+        title: "Risk and exit rules",
+        status: "ready",
+        statusLabel: "可用",
+        summary: "Risk and exit output is available.",
+        requiredInputs: [],
+        missingInputs: [],
+      },
+    ];
+    model.dataGaps = [
+      {
+        inputFamily: "turnover_persistence",
+        status: "partial",
+        statusLabel: "部分",
+        evidence: sharedSentence,
+        input: null,
+        businessDate: null,
+        ageDays: null,
+        tier: null,
+        freshnessLabel: null,
+      },
+      {
+        inputFamily: "stock_universe",
+        status: "partial",
+        statusLabel: "部分",
+        evidence: sharedSentence,
+        input: null,
+        businessDate: null,
+        ageDays: null,
+        tier: null,
+        freshnessLabel: null,
+      },
+    ];
+
+    render(
+      <LivermoreStrategyPanel
+        model={model}
+        isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    // 完整原文只出现在共同说明一处，行内收敛为短引用（原文保留在 title）。
+    const sharedNotes = screen.getByTestId("livermore-shared-gap-notes");
+    expect(sharedNotes).toHaveTextContent(sharedSentence);
+    expect(screen.getAllByText(sharedSentence)).toHaveLength(1);
+    const rowReferences = screen.getAllByText("同上方共同缺口说明");
+    expect(rowReferences).toHaveLength(3);
+    expect(rowReferences[0]).toHaveAttribute("title", sharedSentence);
+    // 非重复说明保持原样。
+    expect(screen.getByTestId("livermore-rule-readiness")).toHaveTextContent(
+      "Risk and exit output is available.",
+    );
+  });
+
+  it("collapses the constant per-row market state into one batch line", () => {
+    const model = makeModel();
+    model.factorScreenCandidates = {
+      formulaVersion: "rv_factor_screen_candidates_v4",
+      marketState: "WARM",
+      coverageNote: "本次多因子评分池为 646 只，仅在该评分池内生成观察候选",
+      items: [
+        {
+          rank: 1,
+          stockCode: "600000.SH",
+          stockName: "Bank Alpha",
+          sectorName: "银行",
+          score: "0.812",
+        },
+        {
+          rank: 2,
+          stockCode: "600001.SH",
+          stockName: "Bank Beta",
+          sectorName: "银行",
+          score: "0.788",
+        },
+      ],
+    };
+
+    render(
+      <LivermoreStrategyPanel
+        model={model}
+        isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    const block = screen.getByTestId("livermore-factor-screen-candidates");
+    // 整列同值的 WARM 档位收敛为头部一句，行内不再重复。
+    expect(within(block).getAllByText(/WARM/)).toHaveLength(1);
+    expect(block).toHaveTextContent("本批 2 只均为 WARM 档");
+    expect(block).toHaveTextContent("因子得分 0.812");
+    expect(block).not.toHaveTextContent("factor score");
+    // 表名开头的口径版本收进 title，不占正文。
+    expect(block).not.toHaveTextContent("rv_factor_screen_candidates_v4");
+    // 个股候选块（HOT）同样只在头部发声一次。
+    const candidates = screen.getByTestId("livermore-stock-candidates");
+    expect(within(candidates).getAllByText(/HOT/)).toHaveLength(1);
+    expect(candidates).toHaveTextContent("本批 1 只均为 HOT 档");
+  });
+
   it("renders market gate macro overlay disclosure on the gate card", () => {
     render(
       <LivermoreStrategyPanel

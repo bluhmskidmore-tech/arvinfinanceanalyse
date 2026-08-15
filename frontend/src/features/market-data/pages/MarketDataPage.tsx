@@ -1,6 +1,7 @@
 ﻿import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Collapse, Select } from "antd";
+import { Collapse, DatePicker, Select } from "antd";
+import dayjs from "dayjs";
 import { flushSync } from "react-dom";
 import { useApiClient } from "../../../api/client";
 import {
@@ -34,13 +35,13 @@ import { MarketDataMacroSeriesDeck } from "../components/MarketDataMacroSeriesDe
 import { MarketDataSupplementarySeriesSection } from "../components/MarketDataSupplementarySeriesSection";
 import { MarketDataLinkageSection } from "../components/MarketDataLinkageSection";
 import { MarketDataLivermoreSection } from "../components/MarketDataLivermoreSection";
-import { MarketTerminalTicker } from "../components/MarketTerminalTicker";
 import { MoneyMarketTable } from "../components/MoneyMarketTable";
 import { NcdMatrix } from "../components/NcdMatrix";
 import { MarketDataSeriesCategoryCard } from "../components/MarketDataSeriesCategoryCard";
 import { MarketDataTushareSupplementSection } from "../components/MarketDataTushareSupplementSection";
 import { MarketDataTermStructureChart } from "../components/MarketDataTermStructureChart";
 import { marketCatalogRefreshTier } from "../lib/marketDataCategoryStore";
+import { formatGeneratedAtLocal } from "../lib/marketDataFormat";
 import {
   buildCatalogVendorNameMap,
   filterRateQuoteRows,
@@ -150,6 +151,7 @@ function coverageActionLabel(section: MarketDataCoverageSection): string {
   if (section.fallback_mode !== "none") return "查看数据延迟";
   return "查看详情";
 }
+
 
 function coverageFallbackMode(value: ResultMeta["fallback_mode"] | undefined): "none" | "latest_snapshot" {
   return value === "latest_snapshot" ? "latest_snapshot" : "none";
@@ -266,7 +268,9 @@ function MarketDataSupplyEvidenceRail({
         </div>
         <div>
           <span>生成时间</span>
-          <strong>{summary?.generated_at?.replace("T", " ").slice(0, 19) ?? EM_DASH}</strong>
+          <strong title={summary?.generated_at ? `原始时间戳（UTC）${summary.generated_at}` : undefined}>
+            {formatGeneratedAtLocal(summary?.generated_at)}
+          </strong>
         </div>
       </section>
       <section className="market-data-supply-panel">
@@ -277,7 +281,9 @@ function MarketDataSupplyEvidenceRail({
         <ol className="market-data-next-action-list">
           {nextActions.map((section) => (
             <li key={section.key}>
-              <span>{coverageActionLabel(section)}</span>
+              <span>
+                {coverageActionLabel(section)}：{section.label}
+              </span>
               <DataQualityPill raw={section.status} label={coverageStatusLabel(section.status)} />
             </li>
           ))}
@@ -392,13 +398,19 @@ function MarketDataFormalRatesBoard({
             <span>最新</span>
           </header>
           <div className="market-data-key-rate-list">
-            {keyMetrics.slice(0, 7).map((metric) => (
-              <article key={metric.testId} data-testid={`market-data-key-rate-${metric.testId}`}>
-                <span>{metric.title}</span>
-                <em>{metric.detail.split(" · ")[0]}</em>
-                <strong>{metric.value}</strong>
-              </article>
-            ))}
+            {keyMetrics.length > 0 ? (
+              keyMetrics.slice(0, 7).map((metric) => (
+                <article key={metric.testId} data-testid={`market-data-key-rate-${metric.testId}`}>
+                  <span>{metric.title}</span>
+                  <em>{metric.detail.split(" · ")[0]}</em>
+                  <strong>{metric.value}</strong>
+                </article>
+              ))
+            ) : (
+              <p className="market-data-key-rate-list__empty" data-testid="market-data-key-rate-empty">
+                关键利率序列已全部展示于首屏 KPI 带，无额外序列。
+              </p>
+            )}
           </div>
         </section>
       </div>
@@ -845,17 +857,21 @@ export default function MarketDataPage() {
     return () => window.removeEventListener("hashchange", applyHash);
   }, []);
 
+  const heroUsesTerminalMetrics = filteredTerminalKpiMetrics.length >= 4;
   const heroKpiMetrics = useMemo(() => {
-    const metrics = filteredTerminalKpiMetrics.length >= 4
-      ? filteredTerminalKpiMetrics
-      : pipelineOverviewMetrics;
+    const metrics = heroUsesTerminalMetrics ? filteredTerminalKpiMetrics : pipelineOverviewMetrics;
     return metrics.slice(0, 4).map((metric) => ({
       label: metric.title,
       value: <span className="market-data-hero-kpi-value">{metric.value}</span>,
-      footer: metric.detail,
+      footer: <span title={metric.detailTitle}>{metric.detail}</span>,
       testId: metric.testId,
     }));
-  }, [filteredTerminalKpiMetrics, pipelineOverviewMetrics]);
+  }, [heroUsesTerminalMetrics, filteredTerminalKpiMetrics, pipelineOverviewMetrics]);
+  // 关键利率卡只列 KPI 带未含的序列（§6 去重）；KPI 带走管线回退时保留全部序列。
+  const keyRateSupplementMetrics = useMemo(
+    () => (heroUsesTerminalMetrics ? filteredTerminalKpiMetrics.slice(4) : filteredTerminalKpiMetrics),
+    [heroUsesTerminalMetrics, filteredTerminalKpiMetrics],
+  );
 
   return (
     <MarketWorkbenchFrame
@@ -921,16 +937,18 @@ export default function MarketDataPage() {
           }
           actions={
             <div className="market-data-hero-actions">
-              <span className="market-data-hero-date-note">
+              <span className="market-data-hero-date-note" data-testid="market-data-hero-date-note">
                 {tickerStatusDate ? `数据日期 ${tickerStatusDate}` : ""}
               </span>
-              <input
-                type="date"
-                value={watchDate}
-                onChange={(e) => setWatchDate(e.target.value)}
+              <DatePicker
+                value={watchDate ? dayjs(watchDate) : null}
+                onChange={(date) => setWatchDate(date ? date.format("YYYY-MM-DD") : "")}
+                format="YYYY-MM-DD"
+                allowClear={false}
                 className="market-data-hero-date-input"
                 data-testid="market-data-date-picker"
                 aria-label="市场数据观察日期"
+                getPopupContainer={(trigger) => trigger.parentElement ?? document.body}
               />
               <Select
                 value={curveFilter}
@@ -969,22 +987,15 @@ export default function MarketDataPage() {
             </div>
           }
         >
-          {filteredTickerItems.length > 0 ? (
-            <MarketTerminalTicker
-              items={filteredTickerItems}
-              compact
-              statusDate={tickerStatusDate ?? undefined}
-              statusLabel={isFormalBasis ? "正式" : "分析"}
-              basisLabel={ratesBasisLabel}
-            />
-          ) : (
+          {/* 快捷行情 chips 与 KPI 带/正式利率表同源同值，按 §6 状态去重删除；空态由 KPI 带与 01 区表格各自披露。 */}
+          {filteredTickerItems.length === 0 ? (
             <div
               data-testid="market-data-terminal-ticker-empty"
               className="market-data-terminal-ticker-empty"
             >
               {terminalModel.rateQuotes.emptyReason ?? "正式利率读面暂无可用序列。"}
             </div>
-          )}
+          ) : null}
 
           <KpiBand testId="market-data-kpi-band">
             {heroKpiMetrics.map((metric) => (
@@ -1006,7 +1017,7 @@ export default function MarketDataPage() {
               curveFilter={curveFilter}
               sourceFilter={sourceFilter}
               catalogVendorNames={catalogVendorNames}
-              keyMetrics={filteredTerminalKpiMetrics}
+              keyMetrics={keyRateSupplementMetrics}
               ratesBasisLabel={ratesBasisLabel}
               formalUseBlocked={formalUseBlocked}
             />
@@ -1192,7 +1203,6 @@ export default function MarketDataPage() {
               macroBondLinkageWarnings={macroBondLinkageWarnings}
               hasPortfolioImpact={hasPortfolioImpact}
               spreadSlots={spreadSlots}
-              nonSpreadTopCorrelations={nonSpreadTopCorrelations}
               onExpandedChange={setLinkageCollapseExpanded}
               onOpenSpreads={openSpreadsTab}
             />

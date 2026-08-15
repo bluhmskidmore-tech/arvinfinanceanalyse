@@ -29,6 +29,7 @@ import {
   buildLivermoreStrategyModel,
   type LivermoreStrategyModel,
 } from "../lib/livermoreStrategyModel";
+import { isLinkageSelfCorrelation } from "../lib/marketDataLinkageFormat";
 import {
   buildMarketDataTerminalModel,
   buildTerminalTickerItems,
@@ -262,7 +263,16 @@ export function buildSpreadSlots(
   }));
 }
 
+/** 格式化后 ±0（如 "+0.0bp"）视为零变动：不给方向色（DESIGN §4 零变动归中性）。 */
+function formattedDeltaIsZero(delta: string): boolean {
+  const numeric = delta.match(/[-+]?\d+(?:\.\d+)?/);
+  return numeric != null && Number.parseFloat(numeric[0]) === 0;
+}
+
 function terminalKpiTone(delta: string): MarketOverviewMetric["tone"] {
+  if (formattedDeltaIsZero(delta)) {
+    return "default";
+  }
   if (delta.startsWith("+")) {
     return "negative";
   }
@@ -279,11 +289,13 @@ export function buildTerminalKpiMetricsFromTickerItems(
     testId: `market-data-terminal-kpi-${item.key}`,
     title: item.label,
     value: item.value,
-    detail: `${item.delta} · ${item.tradeDate} · ${item.seriesId}`,
+    // vendor 序列代码属技术标识，收进 title（DESIGN §7），正文单行保持 1 个 "·"。
+    detail: `${item.delta} · ${item.tradeDate}`,
+    detailTitle: `${item.delta} · ${item.tradeDate} · ${item.seriesId}`,
     tone: terminalKpiTone(item.delta),
     valueVariant: "metric",
     sparklineValues: item.sparklineValues,
-    sparklineTone: item.tone,
+    sparklineTone: formattedDeltaIsZero(item.delta) ? "flat" : item.tone,
   }));
 }
 
@@ -364,7 +376,9 @@ export function buildFxFormalStatusCollapseLabel(input: {
   if (!payload) {
     return "正式外汇中间价";
   }
-  return `正式外汇中间价 · 物化 ${payload.materialized_count}/${payload.candidate_count}（沿用 ${payload.carry_forward_count}）`;
+  const carryForwardNote =
+    payload.carry_forward_count > 0 ? `（沿用 ${payload.carry_forward_count}）` : "";
+  return `正式外汇中间价 · 已落地 ${payload.materialized_count}/${payload.candidate_count}${carryForwardNote}`;
 }
 
 function buildPipelineOverviewMetrics(input: {
@@ -578,7 +592,7 @@ export function buildMarketDataPageModel(input: BuildMarketDataPageModelInput): 
     hasPortfolioImpact: Object.keys(macroBondLinkage.portfolio_impact ?? {}).length > 0,
     spreadSlots,
     nonSpreadTopCorrelations: (macroBondLinkage.top_correlations ?? []).filter(
-      (item) => item.target_family !== "credit_spread",
+      (item) => item.target_family !== "credit_spread" && !isLinkageSelfCorrelation(item),
     ),
     macroMeta,
     formalRatesMeta,

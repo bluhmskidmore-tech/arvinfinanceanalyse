@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -46,6 +47,8 @@ from backend.app.schemas.macro_vendor import (
 from backend.app.services import market_data_ncd_proxy_service as ncd_proxy_service
 from backend.app.services.formal_result_runtime import build_result_envelope
 
+logger = logging.getLogger(__name__)
+
 RULE_VERSION = "rv_phase1_macro_vendor_v1"
 CACHE_VERSION = "cv_phase1_macro_vendor_v1"
 LIVE_RULE_VERSION = "rv_choice_macro_thin_slice_v1"
@@ -57,20 +60,51 @@ CHOICE_MACRO_REFRESH_JOB_NAME = "choice_macro_refresh"
 CHOICE_MACRO_REFRESH_CACHE_KEY = "choice_macro.latest"
 
 
+def _warn_duckdb_query_failure(
+    *,
+    surface: str,
+    table: str | None = None,
+    date: str | None = None,
+    exc: BaseException,
+) -> str:
+    """Log DuckDB read failure and return a stable warning string for result_meta."""
+    parts = [f"DuckDB query failed surface={surface}"]
+    if table:
+        parts.append(f"table={table}")
+    if date:
+        parts.append(f"date={date}")
+    parts.append(f"error={type(exc).__name__}: {exc}")
+    message = " ".join(parts)
+    logger.warning(message)
+    return message
+
+
 def load_macro_vendor_payload(duckdb_path: str) -> MacroVendorPayload:
+    payload, _warnings = _load_macro_vendor_payload_with_warnings(duckdb_path)
+    return payload
+
+
+def _load_macro_vendor_payload_with_warnings(
+    duckdb_path: str,
+) -> tuple[MacroVendorPayload, list[str]]:
     duckdb_file = Path(duckdb_path)
     if not duckdb_file.exists():
-        return MacroVendorPayload(series=[])
+        return MacroVendorPayload(series=[]), []
 
     try:
         conn = duckdb.connect(str(duckdb_file), read_only=True)
-    except duckdb.Error:
-        return MacroVendorPayload(series=[])
+    except duckdb.Error as exc:
+        warning = _warn_duckdb_query_failure(
+            surface="macro_vendor_catalog",
+            table="phase1_macro_vendor_catalog",
+            exc=exc,
+        )
+        return MacroVendorPayload(series=[]), [warning]
 
     try:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
         if "phase1_macro_vendor_catalog" not in tables:
-            return MacroVendorPayload(series=[])
+            return MacroVendorPayload(series=[]), []
 
         available_columns = {
             str(row[1])
@@ -99,8 +133,13 @@ def load_macro_vendor_payload(duckdb_path: str) -> MacroVendorPayload:
             """
         ).fetchall()
         category_by_series = _load_market_data_category_map(conn, tables)
-    except duckdb.Error:
-        return MacroVendorPayload(series=[])
+    except duckdb.Error as exc:
+        warning = _warn_duckdb_query_failure(
+            surface="macro_vendor_catalog",
+            table="phase1_macro_vendor_catalog",
+            exc=exc,
+        )
+        return MacroVendorPayload(series=[]), [warning]
     finally:
         conn.close()
 
@@ -140,15 +179,17 @@ def load_macro_vendor_payload(duckdb_path: str) -> MacroVendorPayload:
                 policy_note=_as_optional_string(category.get("policy_note") or policy_note),
             )
         )
-    return MacroVendorPayload(series=series)
+    return MacroVendorPayload(series=series), []
 
 
 def macro_vendor_envelope(duckdb_path: str) -> dict[str, object]:
-    payload = load_macro_vendor_payload(duckdb_path)
+    payload, warnings = _load_macro_vendor_payload_with_warnings(duckdb_path)
     source_version = _load_macro_vendor_source_version(
         duckdb_path,
         series_ids=[item.series_id for item in payload.series],
     )
+    if warnings and source_version == "sv_macro_vendor_empty":
+        source_version = "sv_macro_vendor_query_failed"
     vendor_version = _aggregate_lineage_value(
         [item.vendor_version for item in payload.series],
         empty_value="vv_none",
@@ -160,11 +201,12 @@ def macro_vendor_envelope(duckdb_path: str) -> dict[str, object]:
         cache_version=CACHE_VERSION,
         source_version=source_version,
         rule_version=RULE_VERSION,
-        quality_flag=_quality_flag_for_presence(payload.series),
+        quality_flag="warning" if warnings else _quality_flag_for_presence(payload.series),
         vendor_version=vendor_version,
         vendor_status=_vendor_status_for_presence(payload.series),
         fallback_mode="none",
         result_payload=payload.model_dump(mode="json"),
+        filters_applied={"warnings": warnings} if warnings else None,
     )
 
 
@@ -178,8 +220,13 @@ def _load_macro_vendor_source_version(duckdb_path: str, series_ids: list[str]) -
 
     try:
         conn = duckdb.connect(str(duckdb_file), read_only=True)
-    except duckdb.Error:
-        return "sv_macro_vendor_empty"
+    except duckdb.Error as exc:
+        _warn_duckdb_query_failure(
+            surface="macro_vendor_source_version",
+            table="choice_market_snapshot",
+            exc=exc,
+        )
+        return "sv_macro_vendor_query_failed"
 
     try:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
@@ -197,8 +244,13 @@ def _load_macro_vendor_source_version(duckdb_path: str, series_ids: list[str]) -
             """,
             series_ids,
         ).fetchall()
-    except duckdb.Error:
-        return "sv_macro_vendor_empty"
+    except duckdb.Error as exc:
+        _warn_duckdb_query_failure(
+            surface="macro_vendor_source_version",
+            table="choice_market_snapshot",
+            exc=exc,
+        )
+        return "sv_macro_vendor_query_failed"
     finally:
         conn.close()
 
@@ -212,29 +264,50 @@ def load_choice_macro_latest_payload(
     duckdb_path: str,
     category: ChoiceMacroRefreshTier | None = None,
 ) -> ChoiceMacroLatestPayload:
+    payload, _warnings = _load_choice_macro_latest_payload_with_warnings(
+        duckdb_path,
+        category=category,
+    )
+    return payload
+
+
+def _load_choice_macro_latest_payload_with_warnings(
+    duckdb_path: str,
+    category: ChoiceMacroRefreshTier | None = None,
+) -> tuple[ChoiceMacroLatestPayload, list[str]]:
     duckdb_file = Path(duckdb_path)
     if not duckdb_file.exists():
-        return ChoiceMacroLatestPayload(series=[])
+        return ChoiceMacroLatestPayload(series=[]), []
 
     try:
         conn = duckdb.connect(str(duckdb_file), read_only=True)
-    except duckdb.Error:
-        return ChoiceMacroLatestPayload(series=[])
+    except duckdb.Error as exc:
+        warning = _warn_duckdb_query_failure(
+            surface="choice_macro_latest",
+            table="fact_choice_macro_daily",
+            exc=exc,
+        )
+        return ChoiceMacroLatestPayload(series=[]), [warning]
 
     try:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
         if "fact_choice_macro_daily" not in tables:
-            return ChoiceMacroLatestPayload(series=[])
+            return ChoiceMacroLatestPayload(series=[]), []
 
         recent_rows = _load_choice_macro_recent_rows(conn, tables)
         catalog_by_series = _load_choice_macro_catalog_map(conn, tables)
-    except duckdb.Error:
-        return ChoiceMacroLatestPayload(series=[])
+    except duckdb.Error as exc:
+        warning = _warn_duckdb_query_failure(
+            surface="choice_macro_latest",
+            table="fact_choice_macro_daily",
+            exc=exc,
+        )
+        return ChoiceMacroLatestPayload(series=[]), [warning]
     finally:
         conn.close()
 
     if not recent_rows:
-        return ChoiceMacroLatestPayload(series=[])
+        return ChoiceMacroLatestPayload(series=[]), []
 
     grouped_rows: dict[str, list[dict[str, object]]] = {}
     for (
@@ -321,18 +394,25 @@ def load_choice_macro_latest_payload(
             )
         )
 
-    return ChoiceMacroLatestPayload(series=series)
+    return ChoiceMacroLatestPayload(series=series), []
 
 
 def choice_macro_latest_envelope(
     duckdb_path: str,
     category: ChoiceMacroRefreshTier | None = None,
 ) -> dict[str, object]:
-    payload = load_choice_macro_latest_payload(duckdb_path, category=category)
-    quality_flag = _aggregate_quality_flags([item.quality_flag for item in payload.series])
+    payload, warnings = _load_choice_macro_latest_payload_with_warnings(
+        duckdb_path,
+        category=category,
+    )
+    quality_flag = (
+        "warning"
+        if warnings
+        else _aggregate_quality_flags([item.quality_flag for item in payload.series])
+    )
     source_version = _aggregate_lineage_value(
         [item.source_version for item in payload.series],
-        empty_value="sv_choice_macro_empty",
+        empty_value="sv_choice_macro_query_failed" if warnings else "sv_choice_macro_empty",
     )
     vendor_version = _aggregate_lineage_value(
         [item.vendor_version for item in payload.series],
@@ -350,6 +430,7 @@ def choice_macro_latest_envelope(
         vendor_status=_vendor_status_for_macro_latest(payload, quality_flag),
         fallback_mode=_fallback_mode_for_macro_latest(payload, quality_flag),
         result_payload=payload.model_dump(mode="json"),
+        filters_applied={"warnings": warnings} if warnings else None,
     )
 
 
@@ -399,15 +480,20 @@ def _latest_point_as_recent(point: ChoiceMacroLatestPoint) -> ChoiceMacroRecentP
 
 def _load_formal_yield_curve_points(
     duckdb_path: str,
-) -> tuple[list[ChoiceMacroLatestPoint], str | None]:
+) -> tuple[list[ChoiceMacroLatestPoint], str | None, list[str]]:
     duckdb_file = Path(duckdb_path)
     if not duckdb_file.exists():
-        return [], None
+        return [], None, []
 
     try:
         conn = duckdb.connect(str(duckdb_file), read_only=True)
-    except duckdb.Error:
-        return [], None
+    except duckdb.Error as exc:
+        warning = _warn_duckdb_query_failure(
+            surface="formal_yield_curve",
+            table="fact_formal_yield_curve_daily",
+            exc=exc,
+        )
+        return [], None, [warning]
 
     table_name: str | None = None
     try:
@@ -417,7 +503,7 @@ def _load_formal_yield_curve_points(
                 table_name = candidate
                 break
         if table_name is None:
-            return [], None
+            return [], None, []
 
         curve_types = sorted({curve_type for curve_type, _tenor in FORMAL_YIELD_CURVE_SERIES})
         tenors = sorted({tenor for _curve_type, tenor in FORMAL_YIELD_CURVE_SERIES})
@@ -458,8 +544,13 @@ def _load_formal_yield_curve_points(
             """,
             [*curve_types, *tenors],
         ).fetchall()
-    except duckdb.Error:
-        return [], None
+    except duckdb.Error as exc:
+        warning = _warn_duckdb_query_failure(
+            surface="formal_yield_curve",
+            table=table_name or "fact_formal_yield_curve_daily",
+            exc=exc,
+        )
+        return [], None, [warning]
     finally:
         conn.close()
 
@@ -516,7 +607,7 @@ def _load_formal_yield_curve_points(
                 recent_points=recent_points,
             )
         )
-    return points, table_name
+    return points, table_name, []
 
 
 def _merge_formal_yield_curve_history(
@@ -572,18 +663,29 @@ def _merge_formal_yield_curve_payload(
 
 def choice_macro_formal_envelope(duckdb_path: str) -> dict[str, object]:
     """Formal-basis envelope: only stable-tier series for market-data page."""
-    payload = load_choice_macro_latest_payload(duckdb_path, category="stable")
+    payload, choice_warnings = _load_choice_macro_latest_payload_with_warnings(
+        duckdb_path,
+        category="stable",
+    )
     choice_series_count = len(payload.series)
-    formal_points, formal_table = _load_formal_yield_curve_points(duckdb_path)
+    formal_points, formal_table, formal_warnings = _load_formal_yield_curve_points(duckdb_path)
+    warnings = [*choice_warnings, *formal_warnings]
     payload = _merge_formal_yield_curve_payload(payload, formal_points)
-    quality_flag = _aggregate_quality_flags([item.quality_flag for item in payload.series])
+    latest_trade_date = _max_normalized_iso_date(
+        [item.trade_date for item in payload.series]
+    )
+    quality_flag = (
+        "warning"
+        if warnings
+        else _aggregate_quality_flags([item.quality_flag for item in payload.series])
+    )
     source_versions = [item.source_version for item in payload.series]
     source_versions.extend(item.source_version for item in formal_points)
     vendor_versions = [item.vendor_version for item in payload.series]
     vendor_versions.extend(item.vendor_version for item in formal_points)
     source_version = _aggregate_lineage_value(
         source_versions,
-        empty_value="sv_market_data_rates_empty",
+        empty_value="sv_market_data_rates_query_failed" if warnings else "sv_market_data_rates_empty",
     )
     vendor_version = _aggregate_lineage_value(
         vendor_versions,
@@ -604,15 +706,19 @@ def choice_macro_formal_envelope(duckdb_path: str) -> dict[str, object]:
         vendor_status=_vendor_status_for_macro_latest(payload, quality_flag),
         fallback_mode=_fallback_mode_for_macro_latest(payload, quality_flag),
         result_payload=payload.model_dump(mode="json"),
+        filters_applied={"warnings": warnings} if warnings else None,
         tables_used=tables_used,
         evidence_rows=len(payload.series),
         source_surface="market_data",
+        resolved_report_date=latest_trade_date,
+        as_of_date=latest_trade_date,
+        date_basis="latest_returned_series_trade_date" if latest_trade_date else None,
     )
 
 
 def macro_foundation_formal_envelope(duckdb_path: str) -> dict[str, object]:
     """Formal-basis envelope for the macro catalog (stable entries)."""
-    payload = load_macro_vendor_payload(duckdb_path)
+    payload, warnings = _load_macro_vendor_payload_with_warnings(duckdb_path)
     stable_payload = MacroVendorPayload(
         series=[item for item in payload.series if item.refresh_tier == "stable"]
     )
@@ -620,6 +726,8 @@ def macro_foundation_formal_envelope(duckdb_path: str) -> dict[str, object]:
         duckdb_path,
         series_ids=[item.series_id for item in stable_payload.series],
     )
+    if warnings and source_version == "sv_macro_vendor_empty":
+        source_version = "sv_macro_vendor_query_failed"
     vendor_version = _aggregate_lineage_value(
         [item.vendor_version for item in stable_payload.series],
         empty_value="vv_none",
@@ -631,11 +739,12 @@ def macro_foundation_formal_envelope(duckdb_path: str) -> dict[str, object]:
         cache_version=CACHE_VERSION,
         source_version=source_version,
         rule_version=RULE_VERSION,
-        quality_flag=_quality_flag_for_presence(stable_payload.series),
+        quality_flag="warning" if warnings else _quality_flag_for_presence(stable_payload.series),
         vendor_version=vendor_version,
         vendor_status=_vendor_status_for_presence(stable_payload.series),
         fallback_mode="none",
         result_payload=stable_payload.model_dump(mode="json"),
+        filters_applied={"warnings": warnings} if warnings else None,
         source_surface="market_data",
     )
 
@@ -956,7 +1065,12 @@ def _load_tushare_supplement_payload(
     try:
         conn = duckdb.connect(str(duckdb_file), read_only=True)
     except duckdb.Error as exc:
-        warnings.append(f"DuckDB read failed for Tushare supplement: {exc}")
+        warning = _warn_duckdb_query_failure(
+            surface="tushare_supplement",
+            table="tushare_money_supply/tushare_eco_cal",
+            exc=exc,
+        )
+        warnings.append(warning)
         payload["warnings"] = warnings
         return payload, source_versions, vendor_versions, None, warnings, tables_used
 
@@ -1387,7 +1501,13 @@ def _load_bond_futures_rankings_payload(
     try:
         conn = duckdb.connect(str(duckdb_file), read_only=True)
     except duckdb.Error as exc:
-        warnings.append(f"DuckDB is not readable for CFFEX member rankings: {exc}")
+        warning = _warn_duckdb_query_failure(
+            surface="cffex_member_rankings",
+            table=CFFEX_MEMBER_RANK_TABLE,
+            date=requested_trade_date,
+            exc=exc,
+        )
+        warnings.append(warning)
         payload["warnings"] = warnings
         return payload, source_versions, vendor_versions, None, warnings, []
 
@@ -1439,7 +1559,13 @@ def _load_bond_futures_rankings_payload(
             [resolved_trade_date, normalized_contract],
         ).fetchall()
     except duckdb.Error as exc:
-        warnings.append(f"CFFEX member-rank query failed: {exc}")
+        warning = _warn_duckdb_query_failure(
+            surface="cffex_member_rankings",
+            table=source_relation if "source_relation" in locals() else CFFEX_MEMBER_RANK_TABLE,
+            date=resolved_trade_date if "resolved_trade_date" in locals() else requested_trade_date,
+            exc=exc,
+        )
+        warnings.append(warning)
         payload["warnings"] = warnings
         return payload, source_versions, vendor_versions, None, warnings, []
     finally:
@@ -1856,20 +1982,30 @@ def _string_or_none(value: object) -> str | None:
 
 
 def load_fx_formal_status_payload(duckdb_path: str) -> FxFormalStatusPayload:
+    payload, _warnings = _load_fx_formal_status_payload_with_warnings(duckdb_path)
+    return payload
+
+
+def _load_fx_formal_status_payload_with_warnings(
+    duckdb_path: str,
+) -> tuple[FxFormalStatusPayload, list[str]]:
     settings = get_settings()
     try:
         candidates = discover_formal_fx_candidates(
             catalog_path=Path(settings.choice_macro_catalog_file)
         )
     except FileNotFoundError:
-        return FxFormalStatusPayload(
-            candidate_count=0,
-            materialized_count=0,
-            latest_trade_date=None,
-            carry_forward_count=0,
-            rows=[],
+        return (
+            FxFormalStatusPayload(
+                candidate_count=0,
+                materialized_count=0,
+                latest_trade_date=None,
+                carry_forward_count=0,
+                rows=[],
+            ),
+            [],
         )
-    rows_by_pair = _load_latest_fx_mid_rows(
+    rows_by_pair, warnings = _load_latest_fx_mid_rows(
         duckdb_path=duckdb_path,
         base_currencies=[candidate.base_currency for candidate in candidates],
     )
@@ -1909,29 +2045,36 @@ def load_fx_formal_status_payload(duckdb_path: str) -> FxFormalStatusPayload:
         )
 
     latest_trade_date = max(latest_trade_dates) if latest_trade_dates else None
-    return FxFormalStatusPayload(
-        candidate_count=len(candidates),
-        materialized_count=materialized_count,
-        latest_trade_date=latest_trade_date,
-        carry_forward_count=carry_forward_count,
-        rows=rows,
+    return (
+        FxFormalStatusPayload(
+            candidate_count=len(candidates),
+            materialized_count=materialized_count,
+            latest_trade_date=latest_trade_date,
+            carry_forward_count=carry_forward_count,
+            rows=rows,
+        ),
+        warnings,
     )
 
 
 def fx_formal_status_envelope(duckdb_path: str) -> dict[str, object]:
-    payload = load_fx_formal_status_payload(duckdb_path)
+    payload, warnings = _load_fx_formal_status_payload_with_warnings(duckdb_path)
     source_version = _aggregate_lineage_value(
         [row.source_version or "" for row in payload.rows if row.status == "ok"],
-        empty_value="sv_fx_formal_empty",
+        empty_value="sv_fx_formal_query_failed" if warnings else "sv_fx_formal_empty",
     )
     vendor_version = _aggregate_lineage_value(
         [row.vendor_version or "" for row in payload.rows if row.status == "ok"],
         empty_value="vv_none",
     )
     quality_flag = (
-        "ok"
-        if payload.candidate_count > 0 and payload.candidate_count == payload.materialized_count
-        else "warning"
+        "warning"
+        if warnings
+        else (
+            "ok"
+            if payload.candidate_count > 0 and payload.candidate_count == payload.materialized_count
+            else "warning"
+        )
     )
     return build_result_envelope(
         basis="formal",
@@ -1945,23 +2088,36 @@ def fx_formal_status_envelope(duckdb_path: str) -> dict[str, object]:
         vendor_status="ok" if payload.materialized_count and payload.candidate_count else "vendor_unavailable",
         fallback_mode="latest_snapshot" if payload.carry_forward_count else "none",
         result_payload=payload.model_dump(mode="json"),
+        filters_applied={"warnings": warnings} if warnings else None,
     )
 
 
 def load_fx_analytical_payload(duckdb_path: str) -> FxAnalyticalPayload:
+    payload, _warnings = _load_fx_analytical_payload_with_warnings(duckdb_path)
+    return payload
+
+
+def _load_fx_analytical_payload_with_warnings(
+    duckdb_path: str,
+) -> tuple[FxAnalyticalPayload, list[str]]:
     duckdb_file = Path(duckdb_path)
     if not duckdb_file.exists():
-        return FxAnalyticalPayload(groups=[])
+        return FxAnalyticalPayload(groups=[]), []
 
     try:
         conn = duckdb.connect(str(duckdb_file), read_only=True)
-    except duckdb.Error:
-        return FxAnalyticalPayload(groups=[])
+    except duckdb.Error as exc:
+        warning = _warn_duckdb_query_failure(
+            surface="fx_analytical",
+            table="fact_choice_macro_daily",
+            exc=exc,
+        )
+        return FxAnalyticalPayload(groups=[]), [warning]
 
     try:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
         if "fact_choice_macro_daily" not in tables or "phase1_macro_vendor_catalog" not in tables:
-            return FxAnalyticalPayload(groups=[])
+            return FxAnalyticalPayload(groups=[]), []
         recent_rows = _load_choice_macro_recent_rows(conn, tables)
         catalog_by_series = _load_choice_macro_catalog_map(conn, tables)
         name_by_series = {
@@ -1973,8 +2129,13 @@ def load_fx_analytical_payload(duckdb_path: str) -> FxAnalyticalPayload:
                 """
             ).fetchall()
         }
-    except duckdb.Error:
-        return FxAnalyticalPayload(groups=[])
+    except duckdb.Error as exc:
+        warning = _warn_duckdb_query_failure(
+            surface="fx_analytical",
+            table="fact_choice_macro_daily",
+            exc=exc,
+        )
+        return FxAnalyticalPayload(groups=[]), [warning]
     finally:
         conn.close()
 
@@ -2072,7 +2233,7 @@ def load_fx_analytical_payload(duckdb_path: str) -> FxAnalyticalPayload:
                 series=points,
             )
         )
-    return FxAnalyticalPayload(groups=ordered_groups)
+    return FxAnalyticalPayload(groups=ordered_groups), []
 
 
 def _resolve_fx_analytical_latest_row(rows: list[dict[str, object]]) -> dict[str, object]:
@@ -2102,7 +2263,7 @@ def _is_usd_cny_middle_rate(series_name: str) -> bool:
 
 
 def fx_analytical_envelope(duckdb_path: str) -> dict[str, object]:
-    payload = load_fx_analytical_payload(duckdb_path)
+    payload, warnings = _load_fx_analytical_payload_with_warnings(duckdb_path)
     points = [
         point
         for group in payload.groups
@@ -2110,13 +2271,13 @@ def fx_analytical_envelope(duckdb_path: str) -> dict[str, object]:
     ]
     source_version = _aggregate_lineage_value(
         [point.source_version for point in points],
-        empty_value="sv_fx_analytical_empty",
+        empty_value="sv_fx_analytical_query_failed" if warnings else "sv_fx_analytical_empty",
     )
     vendor_version = _aggregate_lineage_value(
         [point.vendor_version for point in points],
         empty_value="vv_none",
     )
-    quality_flag = _aggregate_quality_flags([point.quality_flag for point in points])
+    quality_flag = "warning" if warnings else _aggregate_quality_flags([point.quality_flag for point in points])
     return build_result_envelope(
         basis="analytical",
         trace_id="tr_fx_analytical",
@@ -2129,6 +2290,7 @@ def fx_analytical_envelope(duckdb_path: str) -> dict[str, object]:
         vendor_status=_vendor_status_for_presence(points),
         fallback_mode="latest_snapshot" if any(point.refresh_tier == "fallback" for point in points) else "none",
         result_payload=payload.model_dump(mode="json"),
+        filters_applied={"warnings": warnings} if warnings else None,
     )
 
 
@@ -2162,20 +2324,25 @@ def _load_latest_fx_mid_rows(
     *,
     duckdb_path: str,
     base_currencies: list[str],
-) -> dict[tuple[str, str], dict[str, object]]:
+) -> tuple[dict[tuple[str, str], dict[str, object]], list[str]]:
     if not base_currencies:
-        return {}
+        return {}, []
     duckdb_file = Path(duckdb_path)
     if not duckdb_file.exists():
-        return {}
+        return {}, []
     try:
         conn = duckdb.connect(str(duckdb_file), read_only=True)
-    except duckdb.Error:
-        return {}
+    except duckdb.Error as exc:
+        warning = _warn_duckdb_query_failure(
+            surface="fx_formal_mid",
+            table="fx_daily_mid",
+            exc=exc,
+        )
+        return {}, [warning]
     try:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
         if "fx_daily_mid" not in tables:
-            return {}
+            return {}, []
         placeholders = ", ".join(["?"] * len(base_currencies))
         rows = conn.execute(
             f"""
@@ -2217,8 +2384,13 @@ def _load_latest_fx_mid_rows(
             """,
             [item.upper() for item in base_currencies],
         ).fetchall()
-    except duckdb.Error:
-        return {}
+    except duckdb.Error as exc:
+        warning = _warn_duckdb_query_failure(
+            surface="fx_formal_mid",
+            table="fx_daily_mid",
+            exc=exc,
+        )
+        return {}, [warning]
     finally:
         conn.close()
 
@@ -2238,7 +2410,7 @@ def _load_latest_fx_mid_rows(
             "is_business_day": bool(row[9]) if row[9] is not None else None,
             "is_carry_forward": bool(row[10]) if row[10] is not None else None,
         }
-    return result
+    return result, []
 
 
 _CHOICE_MACRO_RECENT_POINT_LIMIT = 20

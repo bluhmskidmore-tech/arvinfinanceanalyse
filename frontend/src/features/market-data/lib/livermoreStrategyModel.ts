@@ -144,6 +144,9 @@ export type LivermoreStrategyModel = {
       status: LivermoreConditionStatus;
       statusLabel: string;
       evidence: string;
+      /** 展示层中文短句；原文与表名引用收 title。 */
+      evidenceDisplay: string;
+      evidenceSourceRef: string | null;
       sourceSeriesId: string | null;
     }>;
     macroDisclosure: MarketGateMacroDisclosure | null;
@@ -161,6 +164,8 @@ export type LivermoreStrategyModel = {
     severity: LivermoreDiagnosticSeverity;
     severityLabel: string;
     code: string;
+    /** 已登记诊断码的中文短语；未登记码原样透出，原始码收 title。 */
+    codeLabel: string;
     message: string;
     inputFamily: string | null;
   }>;
@@ -297,6 +302,72 @@ const conditionStatusLabels: Record<LivermoreConditionStatus, string> = {
   stale: "已陈旧",
 };
 
+/** 门控条件标签中文化（按稳定 key 映射；未登记 key 透出后端 label）。 */
+const gateConditionLabels: Record<string, string> = {
+  csi300_close_gt_ma60: "CSI300 收盘 > MA60",
+  csi300_ma20_gt_ma60: "CSI300 MA20 > MA60",
+  breadth_5d_positive: "5日广度 > 0",
+  limit_up_quality_positive: "涨停封板质量为正",
+};
+
+/** 诊断码中文短语（原始错误码收 title；未登记码原样透出，属证据引用）。 */
+const diagnosticCodeLabels: Record<string, string> = {
+  LIVERMORE_RISK_INPUTS_MISSING: "风险输入缺失",
+  LIVERMORE_INPUT_FRESHNESS_DEGRADED: "输入新鲜度降级",
+  LIVERMORE_STOCK_CANDIDATES_INSUFFICIENT_HISTORY: "个股历史长度不足",
+  LIVERMORE_THEME_BREAKOUT_CURRENT_OVERLAY: "题材口径为当期覆盖",
+};
+
+/** 证据句尾括注的物理表名（如 fact_livermore_gate_supplement_daily），剥出收 title。 */
+const EVIDENCE_TABLE_SUFFIX_PATTERN = /\s*\(((?:fact|dim|rv)_[a-z0-9_]+)\)\s*\.?\s*$/i;
+
+export type LivermoreEvidenceDisplay = {
+  /** 可见短句（已知英文模式中文化；未识别原样透出）。 */
+  text: string;
+  /** 剥离出的表名等来源引用；与原文一起收 title。 */
+  sourceRef: string | null;
+};
+
+/**
+ * 门控条件证据的展示层中文化：已知句式转中文短句、句尾表名括注剥出收 title；
+ * 未识别句式原样透出（fail-open，不吞证据）。
+ */
+export function translateLivermoreEvidence(evidence: string): LivermoreEvidenceDisplay {
+  let text = evidence.trim();
+  let sourceRef: string | null = null;
+  const tableMatch = text.match(EVIDENCE_TABLE_SUFFIX_PATTERN);
+  if (tableMatch) {
+    sourceRef = tableMatch[1];
+    text = text.replace(EVIDENCE_TABLE_SUFFIX_PATTERN, "").trim().replace(/\.$/, "").trim();
+  }
+
+  const vsMatch = text.match(
+    /^(Close|MA20) ([\d.]+) vs (MA\d+) ([\d.]+) on \d{4}-(\d{2})-(\d{2})\.?$/i,
+  );
+  if (vsMatch) {
+    const [, leftName, leftValue, rightName, rightValue, month, day] = vsMatch;
+    const relation = Number.parseFloat(leftValue) >= Number.parseFloat(rightValue) ? "高于" : "低于";
+    const leftLabel = leftName.toLowerCase() === "close" ? "收盘" : leftName;
+    return {
+      text: `${leftLabel} ${leftValue} ${relation} ${rightName} ${rightValue}（${month}-${day}）`,
+      sourceRef,
+    };
+  }
+
+  const breadthMatch = text.match(/^5-day breadth ([\d.+-]+) on \d{4}-(\d{2})-(\d{2})\.?$/i);
+  if (breadthMatch) {
+    return { text: `5日广度 ${breadthMatch[1]}（${breadthMatch[2]}-${breadthMatch[3]}）`, sourceRef };
+  }
+
+  const limitUpMatch = text.match(/^Limit-up quality (positive|negative) on \d{4}-(\d{2})-(\d{2})\.?$/i);
+  if (limitUpMatch) {
+    const direction = limitUpMatch[1].toLowerCase() === "positive" ? "为正" : "为负";
+    return { text: `涨停封板质量${direction}（${limitUpMatch[2]}-${limitUpMatch[3]}）`, sourceRef };
+  }
+
+  return { text: sourceRef ? text : evidence, sourceRef };
+}
+
 const readinessStatusLabels: Record<LivermoreRuleReadinessStatus, string> = {
   ready: "可用",
   partial: "部分",
@@ -413,14 +484,19 @@ export function buildLivermoreStrategyModel(input: {
       passedConditions: payload.market_gate.passed_conditions,
       availableConditions: payload.market_gate.available_conditions,
       requiredConditions: payload.market_gate.required_conditions,
-      conditions: payload.market_gate.conditions.map((condition) => ({
-        key: condition.key,
-        label: condition.label,
-        status: condition.status,
-        statusLabel: conditionStatusLabels[condition.status],
-        evidence: condition.evidence,
-        sourceSeriesId: condition.source_series_id ?? null,
-      })),
+      conditions: payload.market_gate.conditions.map((condition) => {
+        const evidenceDisplay = translateLivermoreEvidence(condition.evidence);
+        return {
+          key: condition.key,
+          label: gateConditionLabels[condition.key] ?? condition.label,
+          status: condition.status,
+          statusLabel: conditionStatusLabels[condition.status],
+          evidence: condition.evidence,
+          evidenceDisplay: evidenceDisplay.text,
+          evidenceSourceRef: evidenceDisplay.sourceRef,
+          sourceSeriesId: condition.source_series_id ?? null,
+        };
+      }),
       macroDisclosure: buildMarketGateMacroDisclosure(payload.market_gate, {
         exposureFormat: "percent",
       }),
@@ -438,6 +514,7 @@ export function buildLivermoreStrategyModel(input: {
       severity: item.severity,
       severityLabel: diagnosticSeverityLabels[item.severity],
       code: item.code,
+      codeLabel: diagnosticCodeLabels[item.code] ?? item.code,
       message: item.message,
       inputFamily: item.input_family ?? null,
     })),

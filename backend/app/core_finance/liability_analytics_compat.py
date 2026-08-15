@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -10,9 +11,15 @@ from backend.app.core_finance.config.classification_rules import infer_invest_ty
 from backend.app.core_finance.decimal_utils import to_decimal as shared_to_decimal
 from backend.app.core_finance.rate_units import pct_to_decimal
 
+logger = logging.getLogger(__name__)
+
 ZERO = Decimal("0")
 ONE_HUNDRED = Decimal("100")
 ONE_HUNDRED_MILLION = Decimal("100000000")
+
+# 低票息灰区上界：百分点口径下 (0, 0.5] 是真实的 0~0.5% 低票息券，
+# 旧启发式把这一段当成小数口径（0.3 → 30%），系统性高估负债成本 / 资产收益。
+LOW_COUPON_PERCENT_WARN_CEILING = Decimal("0.5")
 
 RISK_BUCKET_ORDER: tuple[str, ...] = (
     "已到期/逾期",
@@ -175,12 +182,40 @@ def zqtz_ncd_weight(row: dict[str, Any]) -> Decimal:
 
 
 def normalize_bond_rate_decimal(value: object | None) -> Decimal | None:
+    """把 ZQTZ 债券利率字段归一为小数（2.55 → 0.0255）。
+
+    输入单位是「百分点」，不是启发式推断出来的：本函数的全部调用方都读同一批
+    ZQTZ 行（``zqtz_bond_daily_snapshot`` 与 ``fact_formal_zqtz_balance_daily``
+    的 ``coupon_rate`` / ``ytm_value`` / ``interest_rate``），这些字段落库口径为
+    百分点，与 ``adb_rate_normalize.RATE_INPUT_OVERRIDES`` 的显式声明、
+    ``rate_units.normalize_percent_rate_to_decimal`` 的取证结论一致。
+    因此这里像 ``normalize_interbank_rate_decimal`` 一样直接走 ``pct_to_decimal``，
+    不再用 ``>0.5`` 的启发式区分小数 / 百分点。
+
+    - (0, 0.5]：低票息券（0.3 表示 0.3%），按百分点处理并记 warning；
+      旧启发式在这一段静默当小数，会把 0.3% 放大成 30%。
+    - > 100：百分点口径下代表 > 100% 的脏数据，保留 v1 的原样透出行为
+      （避免口径突变），但记 warning 暴露上游脏值。
+    """
     if value in (None, ""):
         return None
     rate = Decimal(str(value))
-    if rate > Decimal("0.5") and rate <= Decimal("100"):
-        return rate / ONE_HUNDRED
-    return rate
+    if rate > ONE_HUNDRED:
+        logger.warning(
+            "normalize_bond_rate_decimal: value %s > 100 percent points, "
+            "passing through unchanged (v1 compat); upstream unit is likely dirty",
+            rate,
+        )
+        return rate
+    if ZERO < rate <= LOW_COUPON_PERCENT_WARN_CEILING:
+        logger.warning(
+            "normalize_bond_rate_decimal: low-coupon value %s in (0, %s]; "
+            "treated as percent points (%s%%) per ZQTZ storage unit",
+            rate,
+            LOW_COUPON_PERCENT_WARN_CEILING,
+            rate,
+        )
+    return pct_to_decimal(rate)
 
 
 def normalize_interbank_rate_decimal(value: object | None) -> Decimal | None:
@@ -455,6 +490,10 @@ def compute_liability_risk_buckets(
     issued_terms: dict[str, Decimal] = defaultdict(lambda: ZERO)
     interbank_terms: dict[str, Decimal] = defaultdict(lambda: ZERO)
     total_terms: dict[str, Decimal] = defaultdict(lambda: ZERO)
+    # 缺到期日的行仍按 monthly_v1_bucket_name 归入最短桶（保留 v1 口径，
+    # 避免期限结构突变），但必须披露条数：最短桶被这些行虚增时，
+    # 下游的 1 年内到期压力指标会偏高，读数方需要知道其中有多少是缺失兜底。
+    missing_maturity_count = 0
 
     for row in zqtz_rows:
         if not bool(row.get("is_issuance_like")):
@@ -465,6 +504,8 @@ def compute_liability_risk_buckets(
         name = clean_text(row.get("bond_type"), "发行债券")
         issued_structure[name] += amount
         bucket_name = monthly_v1_bucket_name(report_dt, row.get("maturity_date"))
+        if coerce_date(row.get("maturity_date")) is None:
+            missing_maturity_count += 1
         issued_terms[bucket_name] += amount
         total_terms[bucket_name] += amount
 
@@ -477,6 +518,8 @@ def compute_liability_risk_buckets(
         name = clean_text(row.get("product_type"), "同业其他")
         interbank_structure[name] += amount
         bucket_name = monthly_v1_bucket_name(report_dt, row.get("maturity_date"))
+        if coerce_date(row.get("maturity_date")) is None:
+            missing_maturity_count += 1
         interbank_terms[bucket_name] += amount
         total_terms[bucket_name] += amount
 
@@ -505,6 +548,7 @@ def compute_liability_risk_buckets(
             preferred_order=V1_ISSUED_PRODUCT_ORDER,
         ),
         "issued_liabilities_term_buckets": build_v1_bucket_amount_payload(issued_terms),
+        "missing_maturity_count": missing_maturity_count,
     }
 
 
@@ -554,7 +598,12 @@ def compute_liability_yield_metrics(
 
     asset_yield = weighted_rate(asset_pairs)
     liability_cost = weighted_rate(liability_pairs)
-    market_liability_cost = weighted_rate(market_liability_pairs) or liability_cost
+    # 只有「算不出来」（无市场化负债或权重全为 0）才回退到整体负债成本。
+    # 用 `is None` 显式判断而非 `or`：全零息市场化负债的加权成本是真实的
+    # Decimal("0")，`or` 会把它当 falsy 换成 liability_cost，虚增市场化成本。
+    market_liability_cost = weighted_rate(market_liability_pairs)
+    if market_liability_cost is None:
+        market_liability_cost = liability_cost
     nim = (
         asset_yield - market_liability_cost
         if asset_yield is not None and market_liability_cost is not None
@@ -645,6 +694,17 @@ def compute_liability_counterparty(
 
 
 def compute_liabilities_monthly(year: int, zqtz_rows: list[dict[str, Any]], tyw_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """月度负债聚合（ZQTZ 发行类 + TYW 同业负债）。
+
+    输入契约：``zqtz_rows`` 只应包含发行类负债行。历史唯一调用方
+    （``liability_analytics_repo.fetch_zqtz_liability_rows_for_year``）在 SQL 侧以
+    ``coalesce(is_issuance_like, false)`` 预过滤，且其结果集不携带
+    ``is_issuance_like`` 列。因此本函数对「携带 ``is_issuance_like`` 键」的行
+    执行与 ``compute_liability_risk_buckets`` 一致的发行类过滤（falsy/None →
+    剔除，与 SQL ``coalesce(..., false)`` 同语义）；对不携带该键的行按预过滤
+    契约信任。这样预过滤输入行为不变（幂等），而新调用方直接传全量 ZQTZ 行
+    （含资产侧）时，资产债券行不会被静默计入发行负债。
+    """
     if not zqtz_rows and not tyw_rows:
         return {
             "year": year,
@@ -656,6 +716,10 @@ def compute_liabilities_monthly(year: int, zqtz_rows: list[dict[str, Any]], tyw_
     monthly: dict[str, MonthlyAggregate] = {}
 
     for row in zqtz_rows:
+        # 过滤须在 dates 记账之前：全量行输入时，资产侧快照日期不得进入
+        # 月度平均天数分母（与 SQL 预过滤路径的行为保持一致）。
+        if "is_issuance_like" in row and not bool(row["is_issuance_like"]):
+            continue
         report_dt = coerce_date(row.get("report_date"))
         if report_dt is None or report_dt.year != year:
             continue

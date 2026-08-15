@@ -51,6 +51,200 @@ from backend.app.services.formal_result_runtime import (
     build_result_envelope,
 )
 
+# 门面拆分：以下名字已按行为等价逐字迁移到同级子模块，
+# 此处显式逐名重导出，保证既有调用方与测试的属性访问不变。
+from backend.app.services.livermore_candidate_history_read_support import (
+    BENCHMARK_SERIES_ID,
+    TABLE_BENCHMARK_DAILY,
+    TABLE_BENCHMARK_SNAPSHOT,
+    TABLE_EXECUTION_HIST,
+    TABLE_HIST,
+    TABLE_OBS,
+    _COMPLETION_HORIZONS,
+    _EXECUTION_SELECT_COLUMNS,
+    _FORWARD_COVERAGE_COMPLETE,
+    _FORWARD_COVERAGE_MATURITY_FORWARD_BARS,
+    _FORWARD_COVERAGE_MISSING_BAR,
+    _FORWARD_COVERAGE_PARTIAL_HALT,
+    _FORWARD_COVERAGE_PENDING,
+    _FORWARD_COVERAGE_STATUSES,
+    _FORWARD_MATURITY_HORIZONS,
+    _FORWARD_MATURITY_STATUSES,
+    _FORWARD_RETURN_KEYS,
+    _MATCHED_BASELINE_SELECT_COLUMNS,
+    _SELECT_COLUMNS,
+    _all_filtered_forward_maturity_summary,
+    _all_filtered_summary_from_rows,
+    _annotate_forward_coverage,
+    _annotate_forward_maturity,
+    _available_columns,
+    _available_execution_columns,
+    _available_matched_baseline_columns,
+    _benchmark_table_sort_key,
+    _candidate_history_portfolio_has_adjustment_factor,
+    _candidate_history_repository_for_connection,
+    _derive_forward_coverage,
+    _derive_forward_maturity,
+    _empty_all_filtered_maturity_summary,
+    _execution_select_list,
+    _forward_coverage_counts,
+    _forward_coverage_of,
+    _forward_coverage_summary,
+    _forward_maturity_summary,
+    _latest_history_snapshot_date,
+    _load_benchmark_rows,
+    _load_benchmark_rows_for_nav_series,
+    _load_candidate_history_portfolio_close_rows,
+    _load_execution_window_rows,
+    _load_forward_maturity_observations,
+    _load_matched_baseline_window_rows,
+    _mask_unverified_forward_outcomes,
+    _matched_baseline_select_list,
+    _maturity_finite_float,
+    _maturity_positive_float,
+    _min_snapshot_date,
+    _missing_bar_count,
+    _normalize_date_text,
+    _normalize_execution_row,
+    _normalize_matched_baseline_row,
+    _normalize_row,
+    _resolve_evaluation_as_of_date,
+    _resolve_replay_trade_dates,
+    _safe_optional_date,
+    _select_list,
+    _strict_optional_date,
+    _table_columns_for_service,
+)
+from backend.app.services.livermore_candidate_history_window_stats import (
+    CHOICE_NATIVE_ERA_START,
+    _ADJUSTED_FORWARD_RETURN_KEYS,
+    _CYCLE_PROXY_SIGNAL_KIND,
+    _DEFAULT_SIGNAL_KINDS,
+    _EXECUTION_METRIC_BASIS,
+    _EXECUTION_RETURN_KEYS,
+    _HORIZON_LABELS,
+    _append_optional_table,
+    _avg_present,
+    _bool_value,
+    _build_entry_blocked_stats,
+    _build_execution_horizon_stats,
+    _build_execution_signal_kind_horizon_stats,
+    _build_execution_usable_stats,
+    _build_market_state_signal_kind_execution_stats,
+    _classification,
+    _classify_replay_date,
+    _count_by_execution_signal_kind,
+    _count_by_signal_kind,
+    _count_status,
+    _decision_excluded_dates,
+    _decision_usable_adjusted_item,
+    _decision_usable_dates,
+    _enrich_cycle_proxy_execution_returns,
+    _era_sample_generation,
+    _execution_executable_rows,
+    _execution_horizon_stat,
+    _execution_market_state,
+    _execution_rows_for_dates,
+    _execution_signal_kind,
+    _horizon_stat_from_values,
+    _horizon_usable_items,
+    _median_float,
+    _normalized_signal_kind,
+    _normalized_text,
+    _percentile_float,
+    _present_float_values,
+    _signal_kinds_for_rows,
+    _snapshot_row_dates,
+    _win_rate_present,
+)
+from backend.app.services.livermore_candidate_history_strategy_support import (
+    STRATEGY_FAMILY_READINESS_CONTRACT_VERSION,
+    _STRATEGY_FAMILY_FIELDS,
+    _STRATEGY_REVIEW_HORIZON,
+    _STRATEGY_REVIEW_LONG_HORIZON,
+    _STRATEGY_REVIEW_MIN_T5_SAMPLE,
+    _STRATEGY_REVIEW_MIN_T5_WIN_RATE,
+    _STRATEGY_REVIEW_OFFICIAL_T5_AVG_RETURN_FLOOR,
+    _STRATEGY_REVIEW_OFFICIAL_T5_AVG_RETURN_TARGET,
+    _abnormal_turnover_bucket,
+    _breakout_extension_bucket,
+    _candidate_rank,
+    _current_state_insufficient_reason,
+    _date_weighted_horizon_stat,
+    _date_weighted_horizon_stat_from_daily,
+    _dedupe_preserve_order,
+    _empty_horizon_stats_by_key,
+    _empty_maturity_diagnostics,
+    _empty_strategy_family_metadata,
+    _empty_strategy_score_diagnostics,
+    _float_value,
+    _format_optional_percent,
+    _gap_norm_bucket,
+    _horizon_stat,
+    _load_strategy_macro_context,
+    _movement_event_bucket,
+    _optimization_recommendation,
+    _optimization_score,
+    _rank_bucket_priority,
+    _rank_bucket_ranges,
+    _rank_strategy_score_rows,
+    _sample_insufficient_reason,
+    _score_reason,
+    _slug_text,
+    _snapshot_maturity_stat,
+    _sort_strategy_optimization_slices,
+    _sort_strategy_optimization_summaries,
+    _sort_strategy_score_rows,
+    _stock_movement_event_bucket,
+    _strategy_family_contract_for_recommendation_target,
+    _strategy_family_contract_from_row,
+    _strategy_family_contract_index,
+    _strategy_family_data_readiness,
+    _strategy_family_macro_compatibility,
+    _strategy_family_metadata_from_row,
+    _strategy_family_metadata_index,
+    _strategy_family_readiness,
+    _strategy_family_readiness_reasons,
+    _strategy_family_sample_maturity,
+    _strategy_macro_context,
+    _strategy_optimization_pending_summary,
+    _strategy_optimization_recommendation_sort_key,
+    _strategy_optimization_row_sort_key,
+    _strategy_optimization_sample_maturity,
+    _strategy_order_index,
+    _strategy_review_gate,
+    _strategy_review_thresholds,
+    _strategy_score_risk_flags,
+    _worst_snapshot_stat,
+)
+from backend.app.services.livermore_candidate_history_envelope_support import (
+    CACHE_VERSION,
+    CANDIDATE_HISTORY_PORTFOLIO_BACKTEST_CACHE_VERSION,
+    CANDIDATE_HISTORY_PORTFOLIO_BACKTEST_RESULT_KIND,
+    CANDIDATE_HISTORY_PORTFOLIO_BACKTEST_RULE_VERSION,
+    CYCLE_PROXY_BACKTEST_CACHE_VERSION,
+    CYCLE_PROXY_BACKTEST_RESULT_KIND,
+    CYCLE_PROXY_BACKTEST_RULE_VERSION,
+    EMPTY_SOURCE_VERSION,
+    EMPTY_VENDOR_VERSION,
+    RESULT_KIND,
+    RULE_VERSION,
+    STRATEGY_OPTIMIZATION_CACHE_VERSION,
+    STRATEGY_OPTIMIZATION_RESULT_KIND,
+    STRATEGY_OPTIMIZATION_RULE_VERSION,
+    STRATEGY_SCORE_CACHE_VERSION,
+    STRATEGY_SCORE_RESULT_KIND,
+    STRATEGY_SCORE_RULE_VERSION,
+    _default_snapshot_from,
+    _first_nonempty_source_version,
+    _first_nonempty_vendor_version,
+    _wrap_candidate_history_portfolio_backtest_envelope,
+    _wrap_cycle_proxy_backtest_envelope,
+    _wrap_empty_envelope,
+    _wrap_strategy_optimization_envelope,
+    _wrap_strategy_score_envelope,
+)
+
 if TYPE_CHECKING:
     from backend.app.tasks.choice_stock_materialize import ChoiceStockMaterializationCoverage
 
@@ -66,32 +260,7 @@ def load_choice_stock_materialization_coverage(**kwargs: Any) -> ChoiceStockMate
     return _load_coverage(**kwargs)
 
 
-EMPTY_SOURCE_VERSION = "sv_livermore_candidate_history_empty"
-EMPTY_VENDOR_VERSION = "vv_none"
-RESULT_KIND = "market_data.livermore.candidate_history"
-RULE_VERSION = "rv_livermore_candidate_history_v1"
-CACHE_VERSION = "cv_livermore_candidate_history_v2"
-STRATEGY_SCORE_RESULT_KIND = "market_data.livermore.strategy_score"
-STRATEGY_SCORE_RULE_VERSION = "rv_livermore_strategy_score_v1"
-STRATEGY_SCORE_CACHE_VERSION = "cv_livermore_strategy_score_v1"
-STRATEGY_OPTIMIZATION_RESULT_KIND = "market_data.livermore.strategy_optimization"
-STRATEGY_OPTIMIZATION_RULE_VERSION = "rv_livermore_strategy_optimization_v1"
-STRATEGY_OPTIMIZATION_CACHE_VERSION = "cv_livermore_strategy_optimization_v1"
-STRATEGY_FAMILY_READINESS_CONTRACT_VERSION = "rv_livermore_strategy_family_readiness_v1"
-CYCLE_PROXY_BACKTEST_RESULT_KIND = "market_data.livermore.cycle_proxy_backtest"
-CYCLE_PROXY_BACKTEST_RULE_VERSION = "rv_livermore_cycle_proxy_backtest_v1"
-CYCLE_PROXY_BACKTEST_CACHE_VERSION = "cv_livermore_cycle_proxy_backtest_v1"
-CANDIDATE_HISTORY_PORTFOLIO_BACKTEST_RESULT_KIND = "market_data.livermore.candidate_history_portfolio_backtest"
-CANDIDATE_HISTORY_PORTFOLIO_BACKTEST_RULE_VERSION = "rv_livermore_candidate_history_portfolio_backtest_v1"
-CANDIDATE_HISTORY_PORTFOLIO_BACKTEST_CACHE_VERSION = "cv_livermore_candidate_history_portfolio_backtest_v1"
-TABLE_HIST = RELATION_LIVERMORE_CANDIDATE_HISTORY
-TABLE_EXECUTION_HIST = RELATION_LIVERMORE_CANDIDATE_EXECUTION_HISTORY
-TABLE_OBS = RELATION_CHOICE_STOCK_DAILY_OBSERVATION
 TABLE_ADJ_FACTOR = RELATION_STOCK_ADJUSTMENT_FACTOR
-BENCHMARK_SERIES_ID = "CA.CSI300"
-TABLE_BENCHMARK_DAILY = RELATION_FACT_CHOICE_MACRO_DAILY
-TABLE_BENCHMARK_SNAPSHOT = RELATION_CHOICE_MARKET_SNAPSHOT
-_DEFAULT_SIGNAL_KINDS = ["hybrid_fusion", "stock_candidate", "theme_breakout", "factor_screen", "mean_reversion"]
 _STRATEGY_LABELS = {
     "hybrid_fusion": "融合策略",
     "stock_candidate": "趋势突破",
@@ -125,60 +294,7 @@ _STRATEGY_FAMILY_LABELS = {
     "fresh_trend_watchlist": "Fresh trend watchlist",
     "uptrend_momentum_observation": "Uptrend momentum observation",
 }
-_STRATEGY_FAMILY_FIELDS = (
-    "family_key",
-    "family_label",
-    "family_contract_version",
-    "primary_sample_size",
-)
-_HORIZON_LABELS = {
-    "return_1d": "T+1",
-    "return_5d": "T+5",
-    "return_10d": "T+10",
-    "return_20d": "T+20",
-}
-_STRATEGY_REVIEW_HORIZON = "return_5d"
-_STRATEGY_REVIEW_LONG_HORIZON = "return_20d"
-_STRATEGY_REVIEW_MIN_T5_SAMPLE = 30
-_STRATEGY_REVIEW_MIN_T5_WIN_RATE = 0.5
-_STRATEGY_REVIEW_OFFICIAL_T5_AVG_RETURN_FLOOR = 0.012
-_STRATEGY_REVIEW_OFFICIAL_T5_AVG_RETURN_TARGET = 0.024
 _ENTRY_ALLOWED_STATES = POLICY.entry_observation_states
-_COMPLETION_HORIZONS = ("return_1d", "return_5d", "return_20d")
-_FORWARD_COVERAGE_COMPLETE = "complete"
-_FORWARD_COVERAGE_PENDING = "pending"
-_FORWARD_COVERAGE_MISSING_BAR = "missing_bar"
-_FORWARD_COVERAGE_PARTIAL_HALT = "partial_halt"
-_FORWARD_COVERAGE_STATUSES = (
-    _FORWARD_COVERAGE_COMPLETE,
-    _FORWARD_COVERAGE_PENDING,
-    _FORWARD_COVERAGE_MISSING_BAR,
-    _FORWARD_COVERAGE_PARTIAL_HALT,
-)
-_FORWARD_COVERAGE_MATURITY_FORWARD_BARS = 20
-_FORWARD_MATURITY_HORIZONS = {"1d": 1, "5d": 5, "10d": 10, "20d": 20}
-_FORWARD_MATURITY_STATUSES = (
-    "natural_pending",
-    "complete",
-    "matured_missing_bar",
-    "raw_matured_adjustment_missing",
-    "partial_halt",
-)
-_FORWARD_RETURN_KEYS = ("return_1d", "return_5d", "return_10d", "return_20d")
-_ADJUSTED_FORWARD_RETURN_KEYS = {
-    "return_1d": "return_1d_adj",
-    "return_5d": "return_5d_adj",
-    "return_10d": "return_10d_adj",
-    "return_20d": "return_20d_adj",
-}
-_EXECUTION_RETURN_KEYS = {
-    "return_1d": "return_1d_net_adj",
-    "return_5d": "return_5d_net_adj",
-    "return_10d": "return_10d_net_adj",
-    "return_20d": "return_20d_net_adj",
-}
-_EXECUTION_METRIC_BASIS = "net_next_open_adj"
-_CYCLE_PROXY_SIGNAL_KIND = "stock_candidate"
 _CYCLE_PROXY_MAX_RANK = 6
 _CYCLE_PROXY_ALLOWED_MARKET_STATES = POLICY.entry_observation_states
 _PORTFOLIO_BACKTEST_SIGNAL_KIND = "stock_candidate"
@@ -196,9 +312,6 @@ _CYCLE_PROXY_MISSING_FULL_STRATEGY_INPUTS = [
     "valuation_percentile_history",
     "earnings_revision",
 ]
-# Vendor-era boundary for the caliber_disclosure sample_generation split;
-# mirrors CHOICE_NATIVE_ERA_START in scripts/run_portfolio_backtest.py.
-CHOICE_NATIVE_ERA_START = "2026-01-05"
 _CYCLE_PROXY_RETURN_PREFERENCE_NOTE = (
     "Executable next-open return_5d_net_adj is preferred and already includes formal transaction costs; "
     "when unavailable, the read side applies those costs to return_5d_adj (gross return_5d second fallback)."
@@ -212,11 +325,6 @@ _SAMPLE_GENERATION_ERA_NOTE = (
     "(earlier rows come from the tushare-era ingestion, later rows from the Choice-native ingestion), "
     "matching CHOICE_NATIVE_ERA_START in scripts/run_portfolio_backtest.py."
 )
-
-_SELECT_COLUMNS = CANDIDATE_HISTORY_SELECT_COLUMNS
-_EXECUTION_SELECT_COLUMNS = CANDIDATE_EXECUTION_SELECT_COLUMNS
-_MATCHED_BASELINE_SELECT_COLUMNS = MATCHED_BASELINE_SELECT_COLUMNS
-
 
 def livermore_candidate_history_envelope(
     *,
@@ -371,7 +479,6 @@ def livermore_candidate_history_envelope(
         "all_filtered_row_count": all_filtered_maturity["row_count"],
         "evaluation_as_of_date": resolved_evaluation_date,
     }
-
     return build_result_envelope(
         basis="analytical",
         trace_id=f"tr_livermore_candidate_history_{uuid.uuid4().hex[:12]}",
@@ -876,23 +983,6 @@ def livermore_candidate_history_portfolio_backtest_envelope(
     )
 
 
-def _candidate_history_repository_for_connection() -> LivermoreCandidateHistoryRepository:
-    """Build a repository facade for an already-open read-only connection."""
-    return LivermoreCandidateHistoryRepository("")
-
-
-def _available_columns(conn: duckdb.DuckDBPyConnection) -> set[str]:
-    return _candidate_history_repository_for_connection().table_columns(TABLE_HIST, conn=conn)
-
-
-def _available_execution_columns(conn: duckdb.DuckDBPyConnection) -> set[str]:
-    return _candidate_history_repository_for_connection().table_columns(TABLE_EXECUTION_HIST, conn=conn)
-
-
-def _available_matched_baseline_columns(conn: duckdb.DuckDBPyConnection) -> set[str]:
-    return _candidate_history_repository_for_connection().table_columns(MATCHED_BASELINE_TABLE, conn=conn)
-
-
 def livermore_candidate_history_backtest_window_summary(
     *,
     duckdb_path: str,
@@ -957,16 +1047,6 @@ def livermore_candidate_history_backtest_window_summary(
         trade_dates=trade_dates,
         history_table_present=history_table_present,
         base_summary=base_summary,
-    )
-
-
-def _snapshot_row_dates(rows: list[dict[str, Any]]) -> list[str]:
-    return sorted(
-        {
-            normalized
-            for row in rows
-            if (normalized := _safe_optional_date(str(row.get("snapshot_as_of_date") or "")))
-        }
     )
 
 
@@ -1059,18 +1139,6 @@ def _build_backtest_window_summary_from_rows(
     }
 
 
-def _select_list(available_columns: set[str]) -> str:
-    return LivermoreCandidateHistoryRepository.select_list(available_columns)
-
-
-def _execution_select_list(available_columns: set[str]) -> str:
-    return LivermoreCandidateHistoryRepository.execution_select_list(available_columns)
-
-
-def _matched_baseline_select_list(available_columns: set[str]) -> str:
-    return LivermoreCandidateHistoryRepository.matched_baseline_select_list(available_columns)
-
-
 def _load_backtest_window_rows(
     conn: duckdb.DuckDBPyConnection,
     *,
@@ -1104,70 +1172,6 @@ def _load_backtest_window_rows(
     )
 
 
-def _load_execution_window_rows(
-    conn: duckdb.DuckDBPyConnection,
-    *,
-    stock_code: str | None,
-    snapshot_from: str | None,
-    snapshot_to: str | None,
-) -> list[dict[str, Any]]:
-    repository = _candidate_history_repository_for_connection()
-    available_columns = _available_execution_columns(conn)
-    rows = repository.fetch_execution_window_rows(
-        stock_code=stock_code,
-        snapshot_from=snapshot_from,
-        snapshot_to=snapshot_to,
-        available_columns=available_columns,
-        conn=conn,
-    )
-    return [_normalize_execution_row(row) for row in rows]
-
-
-def _load_matched_baseline_window_rows(
-    conn: duckdb.DuckDBPyConnection,
-    *,
-    stock_code: str | None,
-    snapshot_from: str | None,
-    snapshot_to: str | None,
-) -> list[dict[str, Any]]:
-    repository = _candidate_history_repository_for_connection()
-    available_columns = _available_matched_baseline_columns(conn)
-    rows = repository.fetch_matched_baseline_window_rows(
-        stock_code=stock_code,
-        snapshot_from=snapshot_from,
-        snapshot_to=snapshot_to,
-        available_columns=available_columns,
-        conn=conn,
-    )
-    return [_normalize_matched_baseline_row(row) for row in rows]
-
-
-def _normalize_row(row: tuple[Any, ...]) -> dict[str, Any]:
-    item = {_SELECT_COLUMNS[i]: row[i] for i in range(len(_SELECT_COLUMNS))}
-    if not str(item.get("signal_kind") or "").strip():
-        item["signal_kind"] = "stock_candidate"
-    return item
-
-
-def _normalize_execution_row(row: tuple[Any, ...]) -> dict[str, Any]:
-    item = {_EXECUTION_SELECT_COLUMNS[i]: row[i] for i in range(len(_EXECUTION_SELECT_COLUMNS))}
-    if not str(item.get("signal_kind") or "").strip():
-        item["signal_kind"] = "stock_candidate"
-    return item
-
-
-def _normalize_matched_baseline_row(row: tuple[Any, ...]) -> dict[str, Any]:
-    item = {_MATCHED_BASELINE_SELECT_COLUMNS[i]: row[i] for i in range(len(_MATCHED_BASELINE_SELECT_COLUMNS))}
-    if not str(item.get("signal_kind") or "").strip():
-        item["signal_kind"] = "stock_candidate"
-    return item
-
-
-def _min_snapshot_date(items: list[dict[str, Any]]) -> str | None:
-    dates = [text for item in items if (text := str(item.get("snapshot_as_of_date") or "").strip()[:10])]
-    return min(dates) if dates else None
-
-
 def _load_observation_trade_dates(
     conn: duckdb.DuckDBPyConnection,
     *,
@@ -1186,557 +1190,6 @@ def _load_observation_trade_dates(
         conn=conn,
     )
     return sorted({str(row[0])[:10] for row in rows if str(row[0] or "").strip()})
-
-
-def _annotate_forward_coverage(
-    items: list[dict[str, Any]],
-    *,
-    observation_trade_dates: list[str],
-) -> list[dict[str, Any]]:
-    for item in items:
-        item["forward_coverage"] = _derive_forward_coverage(
-            item,
-            observation_trade_dates=observation_trade_dates,
-        )
-    return items
-
-
-def _derive_forward_coverage(
-    item: dict[str, Any],
-    *,
-    observation_trade_dates: list[str],
-) -> str:
-    """Read-time refinement of data_status: split 'pending' into pending vs missing_bar.
-
-    A pending row becomes missing_bar when the observation calendar already provides at least
-    _FORWARD_COVERAGE_MATURITY_FORWARD_BARS trade dates after the row's snapshot date, yet
-    forward returns are still absent: the forward window has matured, so the missing bars point
-    to a delisting / unresumed halt / ingestion gap rather than an immature window. The stored
-    data_status vocabulary is never rewritten; this marker is derived per read.
-    """
-    status = str(item.get("data_status") or "").strip()
-    if status and status != _FORWARD_COVERAGE_PENDING:
-        return status
-    if not status and all(item.get(horizon) is not None for horizon in _COMPLETION_HORIZONS):
-        return _FORWARD_COVERAGE_COMPLETE
-    if not any(item.get(key) is None for key in _FORWARD_RETURN_KEYS):
-        return _FORWARD_COVERAGE_PENDING
-    snapshot_date = str(item.get("snapshot_as_of_date") or "").strip()[:10]
-    if not snapshot_date or not observation_trade_dates:
-        return _FORWARD_COVERAGE_PENDING
-    forward_bar_count = len(observation_trade_dates) - bisect_right(observation_trade_dates, snapshot_date)
-    if forward_bar_count >= _FORWARD_COVERAGE_MATURITY_FORWARD_BARS:
-        return _FORWARD_COVERAGE_MISSING_BAR
-    return _FORWARD_COVERAGE_PENDING
-
-
-def _forward_coverage_of(item: dict[str, Any]) -> str:
-    value = str(item.get("forward_coverage") or "").strip()
-    if value:
-        return value
-    return _derive_forward_coverage(item, observation_trade_dates=[])
-
-
-def _forward_coverage_counts(items: list[dict[str, Any]]) -> dict[str, int]:
-    counts = {status: 0 for status in _FORWARD_COVERAGE_STATUSES}
-    for item in items:
-        key = _forward_coverage_of(item)
-        counts[key] = counts.get(key, 0) + 1
-    return counts
-
-
-def _missing_bar_count(items: list[dict[str, Any]]) -> int:
-    return sum(1 for item in items if _forward_coverage_of(item) == _FORWARD_COVERAGE_MISSING_BAR)
-
-
-def _forward_coverage_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
-    counts = _forward_coverage_counts(items)
-    return {
-        "row_count": len(items),
-        "counts": counts,
-        "missing_bar_row_count": counts[_FORWARD_COVERAGE_MISSING_BAR],
-        "maturity_forward_bars": _FORWARD_COVERAGE_MATURITY_FORWARD_BARS,
-        "maturity_reference": f"distinct forward trade dates in {TABLE_OBS}",
-    }
-
-
-def _annotate_forward_maturity(
-    conn: duckdb.DuckDBPyConnection,
-    *,
-    items: list[dict[str, Any]],
-    tables: set[str],
-    evaluation_as_of_date: str,
-    rewrite_legacy_status: bool,
-) -> list[dict[str, Any]]:
-    stock_observations, market_dates, source_issue = _load_forward_maturity_observations(
-        conn,
-        tables=tables,
-        min_snapshot_date=_min_snapshot_date(items),
-        evaluation_as_of_date=evaluation_as_of_date,
-        stock_codes={str(item.get("stock_code") or "").strip().upper() for item in items},
-    )
-    for item in items:
-        maturity = _derive_forward_maturity(
-            item,
-            stock_observations=stock_observations,
-            market_dates=market_dates,
-            evaluation_as_of_date=evaluation_as_of_date,
-            source_issue=source_issue,
-        )
-        item["forward_maturity"] = maturity
-        _mask_unverified_forward_outcomes(
-            item,
-            maturity=maturity,
-            rewrite_legacy_status=rewrite_legacy_status,
-        )
-    return items
-
-
-def _mask_unverified_forward_outcomes(
-    item: dict[str, Any],
-    *,
-    maturity: dict[str, Any],
-    rewrite_legacy_status: bool,
-) -> None:
-    raw_horizons = maturity.get("horizons")
-    horizons = raw_horizons if isinstance(raw_horizons, dict) else {}
-    statuses: dict[str, str] = {}
-    for horizon in _FORWARD_MATURITY_HORIZONS:
-        raw_horizon = horizons.get(horizon)
-        horizon_item = raw_horizon if isinstance(raw_horizon, dict) else {}
-        status = str(horizon_item.get("status") or "natural_pending")
-        statuses[horizon] = status
-        target_verified = bool(horizon_item.get("target_observation_verified"))
-        raw_return = _maturity_finite_float(item.get(f"return_{horizon}"))
-        adjusted_return = _maturity_finite_float(item.get(f"return_{horizon}_adj"))
-        if not target_verified:
-            item[f"forward_trade_date_{horizon}"] = None
-            item[f"return_{horizon}"] = None
-            item[f"return_{horizon}_adj"] = None
-        elif raw_return is None:
-            item[f"return_{horizon}"] = None
-            item[f"return_{horizon}_adj"] = None
-        elif adjusted_return is None:
-            item[f"return_{horizon}"] = raw_return
-            item[f"return_{horizon}_adj"] = None
-        else:
-            item[f"return_{horizon}"] = raw_return
-            item[f"return_{horizon}_adj"] = adjusted_return
-
-    if not rewrite_legacy_status:
-        stored_status = str(item.get("data_status") or "").strip()
-        item["forward_coverage"] = (
-            stored_status if stored_status in _FORWARD_COVERAGE_STATUSES else _FORWARD_COVERAGE_PENDING
-        )
-        return
-
-    if statuses and all(status == "complete" for status in statuses.values()):
-        item["data_status"] = "complete"
-    elif "partial_halt" in statuses.values():
-        item["data_status"] = "partial_halt"
-    else:
-        item["data_status"] = "pending"
-
-    long_status = statuses.get("20d", "natural_pending")
-    item["forward_coverage"] = {
-        "complete": _FORWARD_COVERAGE_COMPLETE,
-        "matured_missing_bar": _FORWARD_COVERAGE_MISSING_BAR,
-        "partial_halt": _FORWARD_COVERAGE_PARTIAL_HALT,
-    }.get(long_status, _FORWARD_COVERAGE_PENDING)
-
-
-def _load_forward_maturity_observations(
-    conn: duckdb.DuckDBPyConnection,
-    *,
-    tables: set[str],
-    min_snapshot_date: str | None,
-    evaluation_as_of_date: str,
-    stock_codes: set[str],
-) -> tuple[dict[str, dict[str, dict[str, Any]]], list[str], str | None]:
-    stock_codes = {code for code in stock_codes if code}
-    if TABLE_OBS not in tables:
-        return {}, [], "observation_table_missing"
-    repository = _candidate_history_repository_for_connection()
-    columns = repository.table_columns(TABLE_OBS, conn=conn)
-    missing_columns = sorted({"trade_date", "stock_code", "close_value"} - columns)
-    if missing_columns:
-        return {}, [], f"observation_required_columns_missing:{','.join(missing_columns)}"
-    if not min_snapshot_date or not stock_codes:
-        return {}, [], None
-    has_trade_status = "tradestatus" in columns
-    rows, market_rows = repository.fetch_forward_maturity_observation_rows(
-        min_snapshot_date=min_snapshot_date,
-        evaluation_as_of_date=evaluation_as_of_date,
-        stock_codes=stock_codes,
-        has_trade_status=has_trade_status,
-        conn=conn,
-    )
-    observations: dict[str, dict[str, dict[str, Any]]] = {}
-    market_dates = {
-        normalized
-        for row in market_rows
-        if (normalized := _safe_optional_date(str(row[0] or "")))
-    }
-    for trade_date_raw, stock_code_raw, close_raw, trade_status_raw in rows:
-        trade_date = _safe_optional_date(str(trade_date_raw or ""))
-        stock_code = str(stock_code_raw or "").strip().upper()
-        close_value = _maturity_positive_float(close_raw)
-        if not trade_date or not stock_code:
-            continue
-        trade_status = str(trade_status_raw or "").strip()
-        valid_close = close_value is not None and (
-            not has_trade_status or is_tradestatus_tradable(trade_status)
-        )
-        observations.setdefault(stock_code, {})[trade_date] = {
-            "close": close_value,
-            "trade_status": trade_status,
-            "valid_close": valid_close,
-        }
-    return observations, sorted(market_dates), None
-
-
-def _derive_forward_maturity(
-    item: dict[str, Any],
-    *,
-    stock_observations: dict[str, dict[str, dict[str, Any]]],
-    market_dates: list[str],
-    evaluation_as_of_date: str,
-    source_issue: str | None = None,
-) -> dict[str, Any]:
-    if source_issue:
-        return {
-            "evaluation_as_of_date": evaluation_as_of_date,
-            "horizons": {
-                horizon: {
-                    "status": "matured_missing_bar",
-                    "reason": "observation_source_unavailable",
-                    "horizon_bars": bar_count,
-                    "target_trade_date": None,
-                    "stock_valid_bar_count": 0,
-                    "market_trade_date_count": 0,
-                    "target_observation_verified": False,
-                }
-                for horizon, bar_count in _FORWARD_MATURITY_HORIZONS.items()
-            },
-            "maturity_clock": "individual_stock_valid_close_bars",
-            "diagnostic_clock": "market_trade_dates",
-            "source_status": "unavailable",
-            "source_issue": source_issue,
-            "classification_available": False,
-        }
-    snapshot_date = _safe_optional_date(str(item.get("snapshot_as_of_date") or ""))
-    stock_code = str(item.get("stock_code") or "").strip().upper()
-    stock_rows = stock_observations.get(stock_code, {})
-    valid_dates = [
-        trade_date
-        for trade_date, row in sorted(stock_rows.items())
-        if snapshot_date
-        and snapshot_date < trade_date <= evaluation_as_of_date
-        and bool(row.get("valid_close"))
-    ]
-    market_after_snapshot = [
-        trade_date
-        for trade_date in market_dates
-        if snapshot_date and snapshot_date < trade_date <= evaluation_as_of_date
-    ]
-    explicit_halt = any(
-        snapshot_date
-        and snapshot_date < trade_date <= evaluation_as_of_date
-        and not is_tradestatus_tradable(row.get("trade_status"))
-        for trade_date, row in stock_rows.items()
-    )
-    horizons: dict[str, dict[str, Any]] = {}
-    for horizon, bar_count in _FORWARD_MATURITY_HORIZONS.items():
-        expected_target_date = valid_dates[bar_count - 1] if len(valid_dates) >= bar_count else None
-        stored_target_date = _safe_optional_date(str(item.get(f"forward_trade_date_{horizon}") or ""))
-        target_is_actual = bool(
-            stored_target_date
-            and stored_target_date <= evaluation_as_of_date
-            and stored_target_date == expected_target_date
-        )
-        raw_return = _maturity_finite_float(item.get(f"return_{horizon}"))
-        adjusted_return = _maturity_finite_float(item.get(f"return_{horizon}_adj"))
-        if target_is_actual and raw_return is not None:
-            status = "complete" if adjusted_return is not None else "raw_matured_adjustment_missing"
-        elif len(market_after_snapshot) < bar_count:
-            status = "natural_pending"
-        elif explicit_halt and len(valid_dates) < bar_count:
-            status = "partial_halt"
-        else:
-            status = "matured_missing_bar"
-        horizons[horizon] = {
-            "status": status,
-            "horizon_bars": bar_count,
-            "target_trade_date": stored_target_date if target_is_actual else None,
-            "stock_valid_bar_count": len(valid_dates),
-            "market_trade_date_count": len(market_after_snapshot),
-            "target_observation_verified": target_is_actual,
-        }
-    return {
-        "evaluation_as_of_date": evaluation_as_of_date,
-        "horizons": horizons,
-        "maturity_clock": "individual_stock_valid_close_bars",
-        "diagnostic_clock": "market_trade_dates",
-        "source_status": "available",
-        "classification_available": True,
-    }
-
-
-def _forward_maturity_summary(
-    items: list[dict[str, Any]],
-    *,
-    evaluation_as_of_date: str,
-) -> dict[str, Any]:
-    source_issues = sorted(
-        {
-            str(maturity.get("source_issue"))
-            for item in items
-            if isinstance((maturity := item.get("forward_maturity")), dict)
-            and maturity.get("classification_available") is False
-            and maturity.get("source_issue")
-        }
-    )
-    classification_available = not source_issues
-    horizons: dict[str, dict[str, Any]] = {}
-    for horizon, bar_count in _FORWARD_MATURITY_HORIZONS.items():
-        counts = {status: 0 for status in _FORWARD_MATURITY_STATUSES}
-        mature_dates: list[str] = []
-        pending_dates: list[str] = []
-        for item in items:
-            maturity = item.get("forward_maturity")
-            maturity_horizons = maturity.get("horizons") if isinstance(maturity, dict) else None
-            horizon_item = maturity_horizons.get(horizon) if isinstance(maturity_horizons, dict) else None
-            status = str(horizon_item.get("status") if isinstance(horizon_item, dict) else "natural_pending")
-            if status not in counts:
-                status = "matured_missing_bar"
-            counts[status] += 1
-            snapshot_date = str(item.get("snapshot_as_of_date") or "")[:10]
-            if status == "natural_pending":
-                pending_dates.append(snapshot_date)
-            else:
-                mature_dates.append(snapshot_date)
-        horizons[horizon] = {
-            "horizon_bars": bar_count,
-            "row_count": len(items),
-            "counts": counts,
-            "window_matured_row_count": len(items) - counts["natural_pending"],
-            "natural_pending_row_count": counts["natural_pending"],
-            "latest_mature_snapshot_date": max(mature_dates) if mature_dates else None,
-            "latest_pending_snapshot_date": max(pending_dates) if pending_dates else None,
-            "counts_authoritative": classification_available,
-        }
-    return {
-        "scope": "returned_slice",
-        "row_count": len(items),
-        "evaluation_as_of_date": evaluation_as_of_date,
-        "horizons": horizons,
-        "maturity_clock": "individual_stock_valid_close_bars",
-        "diagnostic_clock": "market_trade_dates",
-        "source_status": "available" if classification_available else "unavailable",
-        "classification_available": classification_available,
-        "counts_authoritative": classification_available,
-        **({"source_issue": source_issues[0]} if source_issues else {}),
-    }
-
-
-def _all_filtered_forward_maturity_summary(
-    conn: duckdb.DuckDBPyConnection,
-    *,
-    tables: set[str],
-    available_columns: set[str],
-    sql_where: str,
-    filter_bindings: list[object],
-    evaluation_as_of_date: str,
-) -> dict[str, Any]:
-    repository = _candidate_history_repository_for_connection()
-    observation_columns = _table_columns_for_service(conn, TABLE_OBS) if TABLE_OBS in tables else set()
-    required_observation_columns = {"trade_date", "stock_code", "close_value"}
-    if not required_observation_columns.issubset(observation_columns):
-        row = repository.fetch_filtered_maturity_overview(
-            available_columns=available_columns,
-            sql_where=sql_where,
-            filter_bindings=filter_bindings,
-            conn=conn,
-        )
-        row_count = int(row[0] or 0) if row else 0
-        latest_snapshot = _safe_optional_date(str(row[1] if row else ""))
-        missing_observation_columns = sorted(required_observation_columns - observation_columns)
-        source_issue = (
-            "observation_table_missing"
-            if TABLE_OBS not in tables
-            else f"observation_required_columns_missing:{','.join(missing_observation_columns)}"
-        )
-        return _empty_all_filtered_maturity_summary(
-            row_count=row_count,
-            latest_snapshot_date=latest_snapshot,
-            evaluation_as_of_date=evaluation_as_of_date,
-            source_issue=source_issue,
-        )
-
-    rows = repository.fetch_all_filtered_maturity_rows(
-        available_columns=available_columns,
-        observation_columns=observation_columns,
-        sql_where=sql_where,
-        filter_bindings=filter_bindings,
-        evaluation_as_of_date=evaluation_as_of_date,
-        conn=conn,
-    )
-    return _all_filtered_summary_from_rows(rows, evaluation_as_of_date=evaluation_as_of_date)
-
-
-def _all_filtered_summary_from_rows(
-    rows: list[tuple[Any, ...]],
-    *,
-    evaluation_as_of_date: str,
-) -> dict[str, Any]:
-    horizons: dict[str, dict[str, Any]] = {}
-    row_count = 0
-    for horizon, bar_count in _FORWARD_MATURITY_HORIZONS.items():
-        counts = {status: 0 for status in _FORWARD_MATURITY_STATUSES}
-        latest_mature: str | None = None
-        latest_pending: str | None = None
-        for raw_horizon, raw_status, raw_count, raw_latest in rows:
-            if str(raw_horizon) != horizon:
-                continue
-            status = str(raw_status)
-            count = int(raw_count or 0)
-            counts[status] = count
-            latest = _safe_optional_date(str(raw_latest or ""))
-            if status == "natural_pending":
-                latest_pending = max(filter(None, [latest_pending, latest]), default=None)
-            else:
-                latest_mature = max(filter(None, [latest_mature, latest]), default=None)
-        horizon_row_count = sum(counts.values())
-        row_count = max(row_count, horizon_row_count)
-        horizons[horizon] = {
-            "horizon_bars": bar_count,
-            "row_count": horizon_row_count,
-            "counts": counts,
-            "window_matured_row_count": horizon_row_count - counts["natural_pending"],
-            "natural_pending_row_count": counts["natural_pending"],
-            "latest_mature_snapshot_date": latest_mature,
-            "latest_pending_snapshot_date": latest_pending,
-            "counts_authoritative": True,
-        }
-    return {
-        "scope": "all_filtered",
-        "row_count": row_count,
-        "evaluation_as_of_date": evaluation_as_of_date,
-        "horizons": horizons,
-        "maturity_clock": "individual_stock_valid_close_bars",
-        "diagnostic_clock": "market_trade_dates",
-        "source_status": "available",
-        "classification_available": True,
-        "counts_authoritative": True,
-    }
-
-
-def _empty_all_filtered_maturity_summary(
-    *,
-    row_count: int,
-    latest_snapshot_date: str | None,
-    evaluation_as_of_date: str,
-    source_issue: str,
-) -> dict[str, Any]:
-    rows = [
-        (horizon, "matured_missing_bar", row_count, latest_snapshot_date)
-        for horizon in _FORWARD_MATURITY_HORIZONS
-    ]
-    summary = _all_filtered_summary_from_rows(rows, evaluation_as_of_date=evaluation_as_of_date)
-    for horizon in summary["horizons"].values():
-        horizon["counts_authoritative"] = False
-    summary.update(
-        {
-            "source_status": "unavailable",
-            "source_issue": source_issue,
-            "classification_available": False,
-            "counts_authoritative": False,
-        }
-    )
-    return summary
-
-
-def _table_columns_for_service(conn: duckdb.DuckDBPyConnection, table_name: str) -> set[str]:
-    return _candidate_history_repository_for_connection().table_columns(table_name, conn=conn)
-
-
-def _resolve_evaluation_as_of_date(
-    conn: duckdb.DuckDBPyConnection,
-    *,
-    tables: set[str],
-    requested_evaluation_as_of_date: str | None,
-    fallback_date: str | None,
-) -> str:
-    if requested_evaluation_as_of_date:
-        return requested_evaluation_as_of_date
-    if TABLE_OBS in tables:
-        repository = _candidate_history_repository_for_connection()
-        columns = repository.table_columns(TABLE_OBS, conn=conn)
-        if "trade_date" in columns:
-            today = date.today().isoformat()
-            latest_trade_date = repository.latest_observation_trade_date(
-                on_or_before=today,
-                conn=conn,
-            )
-            resolved = _safe_optional_date(str(latest_trade_date or ""))
-            if resolved:
-                return resolved
-    return _safe_optional_date(fallback_date) or date.today().isoformat()
-
-
-def _strict_optional_date(value: str | None) -> str | None:
-    text = str(value or "").strip()
-    if not text:
-        return None
-    return date.fromisoformat(text[:10]).isoformat()
-
-
-def _safe_optional_date(value: str | None) -> str | None:
-    try:
-        return _strict_optional_date(value)
-    except ValueError:
-        return None
-
-
-def _maturity_finite_float(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return None
-    return number if math.isfinite(number) else None
-
-
-def _maturity_positive_float(value: Any) -> float | None:
-    number = _maturity_finite_float(value)
-    return number if number is not None and number > 0 else None
-
-
-def _resolve_replay_trade_dates(
-    conn: duckdb.DuckDBPyConnection,
-    *,
-    tables: set[str],
-    snapshot_from: str | None,
-    snapshot_to: str | None,
-    row_dates: list[str],
-) -> list[str]:
-    if TABLE_OBS not in tables:
-        return row_dates
-    if not snapshot_from and not snapshot_to:
-        return row_dates
-
-    rows = _candidate_history_repository_for_connection().fetch_replay_trade_dates(
-        snapshot_from=snapshot_from,
-        snapshot_to=snapshot_to,
-        conn=conn,
-    )
-    observed = [
-        str(row[0])[:10]
-        for row in rows
-        if str(row[0] or "").strip()
-    ]
-    return observed or row_dates
 
 
 _UNKNOWN_FORMULA_VERSION_KEY = "unknown"
@@ -1897,184 +1350,6 @@ def _build_decision_usable_stats(
     }
 
 
-def _decision_usable_adjusted_item(item: dict[str, Any]) -> dict[str, Any] | None:
-    adjusted_item = dict(item)
-    has_adjusted_return = False
-    for raw_key, adjusted_key in _ADJUSTED_FORWARD_RETURN_KEYS.items():
-        adjusted_value = item.get(adjusted_key)
-        adjusted_item[raw_key] = adjusted_value
-        if adjusted_value is not None:
-            has_adjusted_return = True
-    if not has_adjusted_return:
-        return None
-    return adjusted_item
-
-
-def _decision_usable_dates(backtest_window_summary: dict[str, Any]) -> set[str]:
-    return {
-        str(item)[:10]
-        for item in backtest_window_summary.get("included_completed_stats_dates", [])
-        if str(item or "").strip()
-    }
-
-
-def _horizon_usable_items(
-    items: list[dict[str, Any]],
-    *,
-    backtest_window_summary: dict[str, Any],
-) -> list[dict[str, Any]]:
-    usable_dates = _decision_usable_dates(backtest_window_summary)
-    for reason in backtest_window_summary.get("date_reasons", []):
-        if not isinstance(reason, dict):
-            continue
-        if str(reason.get("status") or "").strip() not in {"completed", "pending"}:
-            continue
-        trade_date = str(reason.get("trade_date") or "").strip()[:10]
-        if trade_date:
-            usable_dates.add(trade_date)
-    return [
-        item
-        for item in items
-        if str(item.get("snapshot_as_of_date") or "").strip()[:10] in usable_dates
-    ]
-
-
-def _classify_replay_date(
-    *,
-    trade_date: str,
-    coverage: Any,
-    rows: list[dict[str, Any]],
-    history_table_present: bool,
-) -> dict[str, Any]:
-    if not history_table_present:
-        return _classification(
-            trade_date=trade_date,
-            status="unsupported",
-            reason_code="missing_required_source_table",
-            message=f"{TABLE_HIST} table absent; cannot distinguish no-signal dates from missing candidate-history materialization for {trade_date}.",
-            affects_completed_stats=False,
-            signal_kinds=_DEFAULT_SIGNAL_KINDS,
-        )
-
-    missing_items = {str(item) for item in getattr(coverage, "missing_request_items", [])}
-    if not bool(getattr(coverage, "full_coverage", False)):
-        if missing_items == {"limit_up_quality:daily_limit_flags"}:
-            return _classification(
-                trade_date=trade_date,
-                status="unsupported",
-                reason_code="missing_daily_limit_flags",
-                message=f"daily_limit_flags absent; Livermore strategy replay unsupported for {trade_date}.",
-                affects_completed_stats=False,
-                signal_kinds=_DEFAULT_SIGNAL_KINDS,
-            )
-        missing_detail = ", ".join(sorted(missing_items)) or str(getattr(coverage, "status", "not_materialized"))
-        return _classification(
-            trade_date=trade_date,
-            status="unsupported",
-            reason_code="missing_required_source_table",
-            message=f"Required source coverage is incomplete for {trade_date}: {missing_detail}.",
-            affects_completed_stats=False,
-            signal_kinds=_DEFAULT_SIGNAL_KINDS,
-        )
-    if not rows:
-        return _classification(
-            trade_date=trade_date,
-            status="completed",
-            reason_code="no_strategy_signals",
-            message=f"Full replay coverage produced no Livermore strategy signal rows for {trade_date}.",
-            affects_completed_stats=True,
-            signal_kinds=_DEFAULT_SIGNAL_KINDS,
-        )
-
-    signal_kinds = _signal_kinds_for_rows(rows)
-    if any(str(row.get("data_status") or "").strip() == "pending" for row in rows):
-        return _classification(
-            trade_date=trade_date,
-            status="pending",
-            reason_code="forward_returns_pending",
-            message=f"Forward return bars are not available yet; exclude {trade_date} from completed forward-return statistics.",
-            affects_completed_stats=False,
-            signal_kinds=signal_kinds,
-            missing_bar_row_count=_missing_bar_count(rows),
-        )
-    if any(
-        str(row.get("signal_kind") or "").strip() == "theme_breakout"
-        and str(row.get("theme_source_kind") or "").strip() == "proxy"
-        for row in rows
-    ):
-        return _classification(
-            trade_date=trade_date,
-            status="proxy_only",
-            reason_code="proxy_theme_only",
-            message=f"Theme breakout replay for {trade_date} relies on proxy-only theme evidence.",
-            affects_completed_stats=False,
-            signal_kinds=signal_kinds,
-        )
-    return {
-        "status": "completed",
-        "affects_completed_stats": True,
-        "public_reason": None,
-    }
-
-
-def _classification(
-    *,
-    trade_date: str,
-    status: str,
-    reason_code: str,
-    message: str,
-    affects_completed_stats: bool,
-    signal_kinds: list[str],
-    missing_bar_row_count: int | None = None,
-) -> dict[str, Any]:
-    public_reason: dict[str, Any] = {
-        "trade_date": trade_date,
-        "status": status,
-        "reason_code": reason_code,
-        "message": message,
-        "affects_completed_stats": affects_completed_stats,
-        "signal_kinds": signal_kinds,
-    }
-    if missing_bar_row_count is not None:
-        public_reason["missing_bar_row_count"] = missing_bar_row_count
-    return {
-        "status": status,
-        "affects_completed_stats": affects_completed_stats,
-        "public_reason": public_reason,
-    }
-
-
-def _count_status(items: list[dict[str, Any]], status: str) -> int:
-    return sum(1 for item in items if str(item.get("data_status") or "").strip() == status)
-
-
-def _count_by_signal_kind(items: list[dict[str, Any]]) -> dict[str, int]:
-    by_signal_kind: dict[str, int] = {}
-    for item in items:
-        signal_kind = _normalized_signal_kind(item)
-        by_signal_kind[signal_kind] = by_signal_kind.get(signal_kind, 0) + 1
-    return by_signal_kind
-
-
-def _signal_kinds_for_rows(rows: list[dict[str, Any]]) -> list[str]:
-    signal_kinds = sorted({_normalized_signal_kind(row) for row in rows})
-    return signal_kinds or list(_DEFAULT_SIGNAL_KINDS)
-
-
-def _avg_present(items: list[dict[str, Any]], key: str) -> float | None:
-    values = _present_float_values(items, key)
-    if not values:
-        return None
-    return round(sum(values) / len(values), 6)
-
-
-def _win_rate_present(items: list[dict[str, Any]], key: str) -> float | None:
-    values = _present_float_values(items, key)
-    if not values:
-        return None
-    return round(sum(1 for value in values if value > 0) / len(values), 6)
-
-
 def _build_horizon_stats(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     values_by_key: dict[str, list[float]] = {key: [] for key in _HORIZON_LABELS}
     for item in items:
@@ -2093,151 +1368,12 @@ def _build_horizon_stats(items: list[dict[str, Any]]) -> dict[str, dict[str, Any
     }
 
 
-def _median_float(values: list[float]) -> float | None:
-    if not values:
-        return None
-    ordered = sorted(values)
-    midpoint = len(ordered) // 2
-    if len(ordered) % 2 == 1:
-        return round(ordered[midpoint], 6)
-    return round((ordered[midpoint - 1] + ordered[midpoint]) / 2, 6)
-
-
-def _horizon_stat_from_values(values: list[float], *, item_count: int) -> dict[str, Any]:
-    positive_count = sum(1 for value in values if value > 0)
-    return {
-        "available_count": len(values),
-        "missing_count": item_count - len(values),
-        "positive_count": positive_count,
-        "non_positive_count": len(values) - positive_count,
-        "avg_return": round(sum(values) / len(values), 6) if values else None,
-        "median_return": _median_float(values),
-        "win_rate": round(positive_count / len(values), 6) if values else None,
-    }
-
-
 def _build_signal_kind_horizon_stats(items: list[dict[str, Any]]) -> dict[str, dict[str, dict[str, Any]]]:
     grouped: dict[str, list[dict[str, Any]]] = {}
     for item in items:
         signal_kind = _normalized_signal_kind(item)
         grouped.setdefault(signal_kind, []).append(item)
     return {signal_kind: _build_horizon_stats(rows) for signal_kind, rows in sorted(grouped.items())}
-
-
-def _execution_rows_for_dates(rows: list[dict[str, Any]], included_dates: set[str]) -> list[dict[str, Any]]:
-    if not included_dates:
-        return []
-    return [row for row in rows if str(row.get("signal_date") or "").strip()[:10] in included_dates]
-
-
-def _execution_executable_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [row for row in rows if _bool_value(row.get("entry_executable")) is True]
-
-
-def _build_execution_usable_stats(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    executable_rows = _execution_executable_rows(rows)
-    signal_kind_stats = _build_execution_signal_kind_horizon_stats(executable_rows)
-    return {
-        "metric_basis": _EXECUTION_METRIC_BASIS,
-        "basis_label": "T+1\u5f00\u76d8\u6210\u4ea4\u00b7\u542b\u8d39\u00b7\u590d\u6743",
-        "row_count": len(executable_rows),
-        "execution_row_count": len(rows),
-        "entry_executable_count": len(executable_rows),
-        "horizon_usable_stats": _build_execution_horizon_stats(executable_rows),
-        "by_signal_kind": _count_by_execution_signal_kind(executable_rows),
-        "by_signal_kind_horizon_stats": signal_kind_stats,
-        "by_signal_kind_horizon_usable_stats": signal_kind_stats,
-        "included_signal_dates": sorted(
-            {date_text for row in executable_rows if (date_text := str(row.get("signal_date") or "").strip()[:10])}
-        ),
-    }
-
-
-def _build_execution_horizon_stats(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    return {
-        horizon: _execution_horizon_stat(rows, column)
-        for horizon, column in _EXECUTION_RETURN_KEYS.items()
-    }
-
-
-def _execution_horizon_stat(rows: list[dict[str, Any]], column: str) -> dict[str, Any]:
-    values = _present_float_values(rows, column)
-    positive_count = sum(1 for value in values if value > 0)
-    avg_return = round(sum(values) / len(values), 6) if values else None
-    median_return = _median_float(values)
-    win_rate = round(positive_count / len(values), 6) if values else None
-    missing_count = len(rows) - len(values)
-    return {
-        "available_count": len(values),
-        "missing_count": missing_count,
-        "positive_count": positive_count,
-        "non_positive_count": len(values) - positive_count,
-        "avg_return": avg_return,
-        "median_return": median_return,
-        "win_rate": win_rate,
-        "n": len(values),
-        "adj_missing_n": missing_count,
-        "win": win_rate,
-        "avg": avg_return,
-        "median": median_return,
-        "p10": _percentile_float(values, 0.1),
-        "p90": _percentile_float(values, 0.9),
-    }
-
-
-def _build_execution_signal_kind_horizon_stats(
-    rows: list[dict[str, Any]],
-) -> dict[str, dict[str, dict[str, Any]]]:
-    grouped: dict[str, list[dict[str, Any]]] = {}
-    for row in rows:
-        signal_kind = _execution_signal_kind(row)
-        grouped.setdefault(signal_kind, []).append(row)
-    return {signal_kind: _build_execution_horizon_stats(group_rows) for signal_kind, group_rows in sorted(grouped.items())}
-
-
-def _build_market_state_signal_kind_execution_stats(
-    rows: list[dict[str, Any]],
-) -> dict[str, dict[str, dict[str, dict[str, Any]]]]:
-    grouped: dict[str, dict[str, list[dict[str, Any]]]] = {}
-    for row in _execution_executable_rows(rows):
-        market_state = _execution_market_state(row)
-        signal_kind = _execution_signal_kind(row)
-        grouped.setdefault(market_state, {}).setdefault(signal_kind, []).append(row)
-    return {
-        market_state: {
-            signal_kind: _build_execution_horizon_stats(group_rows)
-            for signal_kind, group_rows in sorted(signal_groups.items())
-        }
-        for market_state, signal_groups in sorted(grouped.items())
-    }
-
-
-def _build_entry_blocked_stats(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    blocked_rows = [row for row in rows if _bool_value(row.get("entry_executable")) is False]
-    by_reason: dict[str, dict[str, Any]] = {}
-    for row in blocked_rows:
-        reason = str(row.get("entry_block_reason") or "unknown").strip() or "unknown"
-        current = by_reason.setdefault(reason, {"count": 0, "share": None})
-        current["count"] += 1
-    for reason in sorted(by_reason):
-        by_reason[reason]["share"] = round(by_reason[reason]["count"] / len(rows), 6) if rows else None
-    executable_count = len(_execution_executable_rows(rows))
-    return {
-        "metric_basis": _EXECUTION_METRIC_BASIS,
-        "total_row_count": len(rows),
-        "entry_executable_count": executable_count,
-        "blocked_row_count": len(blocked_rows),
-        "blocked_ratio": round(len(blocked_rows) / len(rows), 6) if rows else None,
-        "by_reason": dict(sorted(by_reason.items())),
-    }
-
-
-def _count_by_execution_signal_kind(rows: list[dict[str, Any]]) -> dict[str, int]:
-    by_signal_kind: dict[str, int] = {}
-    for row in rows:
-        signal_kind = _execution_signal_kind(row)
-        by_signal_kind[signal_kind] = by_signal_kind.get(signal_kind, 0) + 1
-    return by_signal_kind
 
 
 def _build_market_state_signal_kind_horizon_stats(
@@ -2558,23 +1694,6 @@ def _build_candidate_history_portfolio_backtest_payload(
     }
 
 
-def _era_sample_generation(items: list[dict[str, Any]]) -> dict[str, int]:
-    """Split replay rows at the Choice-native era boundary by signal date.
-
-    Mirrors ``_execution_vendor_era_counts`` in ``scripts/run_portfolio_backtest.py``;
-    candidate-history replay rows carry their signal date as ``snapshot_as_of_date``.
-    """
-    tushare_rows = 0
-    native_rows = 0
-    for row in items:
-        signal_date = str(row.get("snapshot_as_of_date") or "")[:10]
-        if signal_date and signal_date < CHOICE_NATIVE_ERA_START:
-            tushare_rows += 1
-        elif signal_date:
-            native_rows += 1
-    return {"tushare_era_rows": tushare_rows, "native_era_rows": native_rows}
-
-
 def _cycle_proxy_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     proxy_items: list[dict[str, Any]] = []
     for item in items:
@@ -2592,49 +1711,6 @@ def _cycle_proxy_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         proxy_items.append(item)
     return proxy_items
-
-
-def _enrich_cycle_proxy_execution_returns(
-    items: list[dict[str, Any]],
-    *,
-    execution_rows: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Attach point-in-time next-open returns by signal date and stock code."""
-    execution_by_key = {
-        (
-            str(row.get("signal_date") or "")[:10],
-            str(row.get("stock_code") or "").strip(),
-        ): row
-        for row in execution_rows
-        if str(row.get("signal_date") or "").strip()
-        and str(row.get("stock_code") or "").strip()
-        and _normalized_signal_kind(row) == _CYCLE_PROXY_SIGNAL_KIND
-    }
-    enriched: list[dict[str, Any]] = []
-    for item in items:
-        key = (
-            str(item.get("snapshot_as_of_date") or "")[:10],
-            str(item.get("stock_code") or "").strip(),
-        )
-        if _normalized_signal_kind(item) != _CYCLE_PROXY_SIGNAL_KIND:
-            enriched.append(item)
-            continue
-        execution = execution_by_key.get(key)
-        if execution is None:
-            enriched.append(item)
-            continue
-        enriched_item = dict(item)
-        if execution.get("entry_executable") is False:
-            enriched_item["execution_entry_blocked"] = True
-            enriched.append(enriched_item)
-            continue
-        if execution.get("entry_executable") is True:
-            enriched_item["execution_entry_date"] = execution.get("entry_date")
-            enriched_item["execution_exit_date_5d"] = execution.get("exit_date_5d")
-            enriched_item["return_5d_gross_adj"] = execution.get("return_5d_gross_adj")
-            enriched_item["return_5d_net_adj"] = execution.get("return_5d_net_adj")
-        enriched.append(enriched_item)
-    return enriched
 
 
 def _candidate_history_portfolio_rebalance_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -2677,117 +1753,6 @@ def _candidate_history_portfolio_rebalance_rows(items: list[dict[str, Any]]) -> 
     return rebalances
 
 
-def _load_candidate_history_portfolio_close_rows(
-    conn: duckdb.DuckDBPyConnection,
-    *,
-    rebalances: list[dict[str, Any]],
-    snapshot_to: str | None,
-    has_adjustment_factor: bool | None = None,
-) -> list[dict[str, Any]]:
-    stock_codes = sorted(
-        {
-            str(item.get("stock_code") or "").strip()
-            for rebalance in rebalances
-            for item in rebalance["items"]
-            if str(item.get("stock_code") or "").strip()
-        }
-    )
-    if not rebalances or not stock_codes:
-        return []
-    if has_adjustment_factor is None:
-        has_adjustment_factor = _candidate_history_portfolio_has_adjustment_factor(conn)
-    start_date = str(rebalances[0]["date"])
-    rows = _candidate_history_repository_for_connection().fetch_portfolio_close_rows(
-        stock_codes=stock_codes,
-        start_date=start_date,
-        snapshot_to=snapshot_to,
-        has_adjustment_factor=has_adjustment_factor,
-        conn=conn,
-    )
-    return [
-        {
-            "trade_date": str(trade_date)[:10],
-            "stock_code": str(stock_code),
-            "close_value": float(close_value),
-            "adj_close_value": float(adj_close_value) if adj_close_value is not None else None,
-            "adj_factor": float(adj_factor) if adj_factor is not None else None,
-        }
-        for trade_date, stock_code, close_value, adj_close_value, adj_factor in rows
-        if close_value is not None
-    ]
-
-
-def _candidate_history_portfolio_has_adjustment_factor(
-    conn: duckdb.DuckDBPyConnection,
-    *,
-    tables: set[str] | None = None,
-) -> bool:
-    return _candidate_history_repository_for_connection().has_adjustment_factor(
-        tables=tables,
-        conn=conn,
-    )
-
-
-def _load_benchmark_rows_for_nav_series(
-    conn: duckdb.DuckDBPyConnection,
-    *,
-    tables: set[str],
-    nav_series: list[dict[str, Any]],
-) -> tuple[list[dict[str, Any]], list[str]]:
-    if not nav_series:
-        return [], []
-    start_date = str(nav_series[0]["date"])[:10]
-    end_date = str(nav_series[-1].get("exit_date") or nav_series[-1]["date"])[:10]
-    return _load_benchmark_rows(conn, tables=tables, start_date=start_date, end_date=end_date)
-
-
-def _load_benchmark_rows(
-    conn: duckdb.DuckDBPyConnection,
-    *,
-    tables: set[str],
-    start_date: str,
-    end_date: str,
-) -> tuple[list[dict[str, Any]], list[str]]:
-    by_date: dict[str, dict[str, Any]] = {}
-    tables_used: list[str] = []
-    for table in (TABLE_BENCHMARK_SNAPSHOT, TABLE_BENCHMARK_DAILY):
-        if table not in tables:
-            continue
-        rows = _candidate_history_repository_for_connection().fetch_benchmark_rows(
-            table_name=table,
-            series_id=BENCHMARK_SERIES_ID,
-            start_date=start_date,
-            end_date=end_date,
-            conn=conn,
-        )
-        if not rows:
-            continue
-        tables_used.append(table)
-        for trade_date, value in rows:
-            if value is None:
-                continue
-            by_date[str(trade_date)[:10]] = {
-                "trade_date": str(trade_date)[:10],
-                "value": float(value),
-            }
-    return [by_date[key] for key in sorted(by_date)], sorted(tables_used, key=_benchmark_table_sort_key)
-
-
-def _benchmark_table_sort_key(table: str) -> int:
-    return (TABLE_BENCHMARK_DAILY, TABLE_BENCHMARK_SNAPSHOT).index(table)
-
-
-def _append_optional_table(tables: list[str], table: str | list[str] | None) -> list[str]:
-    if table is None:
-        return tables
-    optional_tables = table if isinstance(table, list) else [table]
-    out = [*tables]
-    for item in optional_tables:
-        if item not in out:
-            out.append(item)
-    return out
-
-
 def _strategy_primary_sample_size(
     *,
     stats: dict[str, dict[str, Any]],
@@ -2803,10 +1768,6 @@ def _strategy_primary_sample_size(
         return int(available_count)
     except (TypeError, ValueError):
         return None
-
-
-def _empty_strategy_family_metadata() -> dict[str, Any]:
-    return {field: None for field in _STRATEGY_FAMILY_FIELDS}
 
 
 def _strategy_family_metadata(
@@ -2832,32 +1793,6 @@ def _strategy_family_metadata(
     }
 
 
-def _strategy_family_metadata_from_row(row: dict[str, Any]) -> dict[str, Any]:
-    return {field: row.get(field) for field in _STRATEGY_FAMILY_FIELDS}
-
-
-def _strategy_family_metadata_index(
-    *,
-    rows: list[dict[str, Any]],
-    key_field: str,
-    target_type: str,
-) -> dict[tuple[str, str], dict[str, Any] | None]:
-    index: dict[tuple[str, str], dict[str, Any] | None] = {}
-    duplicate_keys: set[str] = set()
-    for row in rows:
-        target_key = str(row.get(key_field) or "")
-        if not target_key:
-            continue
-        index_key = (target_type, target_key)
-        if index_key in index:
-            duplicate_keys.add(target_key)
-            continue
-        index[index_key] = _strategy_family_metadata_from_row(row)
-    for target_key in duplicate_keys:
-        index[(target_type, target_key)] = None
-    return index
-
-
 def _strategy_family_metadata_for_recommendation_target(
     *,
     target_type: str,
@@ -2868,152 +1803,6 @@ def _strategy_family_metadata_for_recommendation_target(
     if source is None:
         return _empty_strategy_family_metadata()
     return {field: source.get(field) for field in _STRATEGY_FAMILY_FIELDS}
-
-
-def _load_strategy_macro_context(
-    loader: Callable[[str], dict[str, Any] | None] | None,
-    snapshot_to: str | None,
-) -> dict[str, Any] | None:
-    if loader is None or not snapshot_to:
-        return None
-    context = loader(snapshot_to)
-    return _strategy_macro_context(context)
-
-
-def _strategy_macro_context(context: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not isinstance(context, dict) or not context:
-        return None
-    return dict(context)
-
-
-def _strategy_family_sample_maturity(
-    *,
-    primary_sample_size: Any,
-    min_sample: int,
-) -> str:
-    if primary_sample_size is None:
-        return "unknown"
-    try:
-        sample_size = int(primary_sample_size)
-    except (TypeError, ValueError):
-        return "unknown"
-    return "sufficient" if sample_size >= min_sample else "insufficient"
-
-
-def _strategy_family_data_readiness(macro_context: dict[str, Any] | None) -> str:
-    if not macro_context:
-        return "missing"
-    data_state = _normalized_text(macro_context.get("data_state")) or "missing"
-    if data_state == "ready":
-        return "ready"
-    if data_state in {"degraded", "stale"}:
-        return "degraded"
-    return "missing"
-
-
-def _strategy_family_macro_compatibility(data_readiness: str) -> str:
-    if data_readiness == "ready":
-        return "compatible"
-    if data_readiness == "degraded":
-        return "degraded"
-    return "unknown"
-
-
-def _strategy_family_readiness_reasons(
-    *,
-    macro_context: dict[str, Any] | None,
-    sample_maturity: str,
-) -> list[str]:
-    reasons = ["OBSERVATION_ONLY_BOUNDARY"]
-    if not macro_context:
-        reasons.append("MACRO_CONTEXT_MISSING")
-    else:
-        raw_reasons = macro_context.get("readiness_reasons")
-        if isinstance(raw_reasons, list):
-            reasons.extend(str(reason) for reason in raw_reasons if str(reason or "").strip())
-    if sample_maturity != "sufficient":
-        reasons.append("SAMPLE_MATURITY_INSUFFICIENT")
-    return _dedupe_preserve_order(reasons)
-
-
-def _strategy_family_readiness(
-    *,
-    family_metadata: dict[str, Any],
-    macro_context: dict[str, Any] | None,
-    min_sample: int,
-) -> dict[str, Any] | None:
-    if not family_metadata.get("family_key"):
-        return None
-    sample_maturity = _strategy_family_sample_maturity(
-        primary_sample_size=family_metadata.get("primary_sample_size"),
-        min_sample=min_sample,
-    )
-    data_readiness = _strategy_family_data_readiness(macro_context)
-    readiness_state = (
-        "observation_ready"
-        if data_readiness == "ready" and sample_maturity == "sufficient"
-        else "degraded_observation"
-    )
-    return {
-        "readiness_contract_version": STRATEGY_FAMILY_READINESS_CONTRACT_VERSION,
-        "readiness_state": readiness_state,
-        "macro_context_id": (macro_context or {}).get("macro_context_id"),
-        "market_gate_context_id": None,
-        "macro_compatibility": _strategy_family_macro_compatibility(data_readiness),
-        "market_gate_compatibility": "unknown",
-        "data_readiness": data_readiness,
-        "sample_maturity": sample_maturity,
-        "readiness_reasons": _strategy_family_readiness_reasons(
-            macro_context=macro_context,
-            sample_maturity=sample_maturity,
-        ),
-        "observational_only": True,
-        "formal_use_allowed": False,
-    }
-
-
-def _strategy_family_contract_from_row(row: dict[str, Any]) -> dict[str, Any]:
-    return {
-        **_strategy_family_metadata_from_row(row),
-        "family_readiness": row.get("family_readiness"),
-    }
-
-
-def _strategy_family_contract_index(
-    *,
-    rows: list[dict[str, Any]],
-    key_field: str,
-    target_type: str,
-) -> dict[tuple[str, str], dict[str, Any] | None]:
-    index: dict[tuple[str, str], dict[str, Any] | None] = {}
-    duplicate_keys: set[str] = set()
-    for row in rows:
-        target_key = str(row.get(key_field) or "")
-        if not target_key:
-            continue
-        index_key = (target_type, target_key)
-        if index_key in index:
-            duplicate_keys.add(target_key)
-            continue
-        index[index_key] = _strategy_family_contract_from_row(row)
-    for target_key in duplicate_keys:
-        index[(target_type, target_key)] = None
-    return index
-
-
-def _strategy_family_contract_for_recommendation_target(
-    *,
-    target_type: str,
-    target_key: str,
-    family_by_target: dict[tuple[str, str], dict[str, Any] | None],
-) -> dict[str, Any]:
-    source = family_by_target.get((target_type, target_key))
-    if source is None:
-        return {**_empty_strategy_family_metadata(), "family_readiness": None}
-    return {
-        **{field: source.get(field) for field in _STRATEGY_FAMILY_FIELDS},
-        "family_readiness": source.get("family_readiness"),
-    }
 
 
 def _strategy_optimization_summary(
@@ -3356,145 +2145,6 @@ def _strategy_optimization_slice(
     }
 
 
-def _optimization_recommendation(
-    *,
-    stats: dict[str, dict[str, Any]],
-    min_sample: int,
-    primary_horizon: str,
-) -> dict[str, Any]:
-    review = _strategy_review_gate(stats=stats, min_sample=min_sample)
-    return {
-        "action": review["action"],
-        "priority_label": review["priority_label"],
-        "reason": review["reason"],
-        "primary_horizon": primary_horizon,
-        "review_horizon": _STRATEGY_REVIEW_HORIZON,
-        "available_count": review["available_count"],
-        "min_sample": review["min_sample"],
-        "avg_return": review["avg_return"],
-        "median_return": review["median_return"],
-        "t20_median_return": review["t20_median_return"],
-        "win_rate": review["win_rate"],
-        "score": review["score"],
-    }
-
-
-def _optimization_score(*, avg_return: Any, win_rate: Any) -> float | None:
-    if avg_return is None or win_rate is None:
-        return None
-    try:
-        return round(float(win_rate) * 100 + float(avg_return) * 100, 4)
-    except (TypeError, ValueError):
-        return None
-
-
-def _strategy_review_thresholds(min_sample: int) -> dict[str, Any]:
-    return {
-        "review_horizon": _STRATEGY_REVIEW_HORIZON,
-        "mature_min_sample": max(_STRATEGY_REVIEW_MIN_T5_SAMPLE, int(min_sample)),
-        "min_t5_win_rate": _STRATEGY_REVIEW_MIN_T5_WIN_RATE,
-        "official_t5_avg_return_band": {
-            "lower": _STRATEGY_REVIEW_OFFICIAL_T5_AVG_RETURN_FLOOR,
-            "upper": _STRATEGY_REVIEW_OFFICIAL_T5_AVG_RETURN_TARGET,
-        },
-        "long_horizon": _STRATEGY_REVIEW_LONG_HORIZON,
-        "long_horizon_median_rule": "not_below_t5_median",
-    }
-
-
-def _strategy_review_gate(*, stats: dict[str, dict[str, Any]], min_sample: int) -> dict[str, Any]:
-    required_sample = max(_STRATEGY_REVIEW_MIN_T5_SAMPLE, int(min_sample))
-    t5_stats = stats.get(_STRATEGY_REVIEW_HORIZON) or {}
-    t20_stats = stats.get(_STRATEGY_REVIEW_LONG_HORIZON) or {}
-    available_count = int(t5_stats.get("available_count") or 0)
-    avg_return = _float_value(t5_stats.get("avg_return"))
-    win_rate = _float_value(t5_stats.get("win_rate"))
-    median_return = _float_value(t5_stats.get("median_return"))
-    t20_median_return = _float_value(t20_stats.get("median_return"))
-    score = _optimization_score(avg_return=avg_return, win_rate=win_rate)
-
-    if available_count < required_sample or avg_return is None or win_rate is None:
-        return {
-            "action": "pending_more_history",
-            "priority_label": "样本不足",
-            "sample_status": "insufficient",
-            "reason": _sample_insufficient_reason(
-                available_count,
-                min_sample=required_sample,
-                primary_horizon=_STRATEGY_REVIEW_HORIZON,
-            ),
-            "available_count": available_count,
-            "min_sample": required_sample,
-            "avg_return": avg_return,
-            "median_return": median_return,
-            "t20_median_return": t20_median_return,
-            "win_rate": win_rate,
-            "score": score,
-            "passed": False,
-        }
-
-    issues: list[str] = []
-    metric_failed = False
-    if win_rate < _STRATEGY_REVIEW_MIN_T5_WIN_RATE:
-        metric_failed = True
-        issues.append(f"T+5 胜率低于 {_STRATEGY_REVIEW_MIN_T5_WIN_RATE * 100:.0f}%")
-    if avg_return < _STRATEGY_REVIEW_OFFICIAL_T5_AVG_RETURN_FLOOR:
-        metric_failed = True
-        issues.append("T+5 均值低于 official 1.20%-2.40% 区间下沿")
-
-    long_window_pending = t20_median_return is None
-    long_window_worse = median_return is not None and t20_median_return is not None and t20_median_return < median_return
-    if long_window_pending:
-        issues.append("T+20 中位数待成熟")
-    elif long_window_worse:
-        issues.append("T+20 中位数低于 T+5 中位数")
-
-    if metric_failed or long_window_worse:
-        action = "downgrade"
-        priority_label = "降权观察"
-    elif long_window_pending:
-        action = "observe"
-        priority_label = "继续观察"
-    else:
-        action = "promote"
-        priority_label = "优先复核"
-
-    base_reason = (
-        f"T+5 成熟样本 {available_count}/{required_sample}，胜率 {win_rate * 100:.1f}% ，"
-        f"均值 {avg_return * 100:+.2f}%（official 1.20%-2.40%），"
-        f"中位数 {_format_optional_percent(median_return)}，"
-        f"T+20 中位数 {_format_optional_percent(t20_median_return)}，评分 {score:.2f}。"
-    )
-    if action == "promote":
-        reason = base_reason + "通过 T+5 成熟样本、胜率、official 下沿和 T+20 中位数不恶化门槛，仅用于优先复核排序。"
-    elif action == "observe":
-        reason = base_reason + "；".join(issues) + "，继续观察。"
-    else:
-        reason = base_reason + "；".join(issues) + "，降权观察。"
-
-    return {
-        "action": action,
-        "priority_label": priority_label,
-        "sample_status": "sufficient",
-        "reason": reason,
-        "available_count": available_count,
-        "min_sample": required_sample,
-        "avg_return": avg_return,
-        "median_return": median_return,
-        "t20_median_return": t20_median_return,
-        "win_rate": win_rate,
-        "score": score,
-        "passed": action == "promote",
-    }
-
-
-def _format_optional_percent(value: Any) -> str:
-    numeric = _float_value(value)
-    if numeric is None:
-        return "待成熟"
-    return f"{numeric * 100:+.2f}%"
-
-
 def _build_date_weighted_horizon_stats(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     by_horizon_date: dict[str, dict[str, list[float]]] = {key: {} for key in _HORIZON_LABELS}
     for item in items:
@@ -3509,80 +2159,6 @@ def _build_date_weighted_horizon_stats(items: list[dict[str, Any]]) -> dict[str,
     return {
         key: _date_weighted_horizon_stat_from_daily(by_date)
         for key, by_date in by_horizon_date.items()
-    }
-
-
-def _date_weighted_horizon_stat(items: list[dict[str, Any]], key: str) -> dict[str, Any]:
-    by_date: dict[str, list[float]] = {}
-    for item in items:
-        snapshot_date = str(item.get("snapshot_as_of_date") or "").strip()[:10]
-        if not snapshot_date:
-            continue
-        value = _float_value(item.get(key))
-        if value is None:
-            continue
-        by_date.setdefault(snapshot_date, []).append(value)
-    return _date_weighted_horizon_stat_from_daily(by_date)
-
-
-def _date_weighted_horizon_stat_from_daily(by_date: dict[str, list[float]]) -> dict[str, Any]:
-    daily_returns = [sum(values) / len(values) for values in by_date.values() if values]
-    return {
-        "available_day_count": len(daily_returns),
-        "candidate_row_count": sum(len(values) for values in by_date.values()),
-        "avg_return": round(sum(daily_returns) / len(daily_returns), 6) if daily_returns else None,
-        "positive_day_rate": round(sum(1 for value in daily_returns if value > 0) / len(daily_returns), 6)
-        if daily_returns
-        else None,
-        "worst_day_return": round(min(daily_returns), 6) if daily_returns else None,
-        "best_day_return": round(max(daily_returns), 6) if daily_returns else None,
-    }
-
-
-def _strategy_optimization_pending_summary(items: list[dict[str, Any]], *, primary_horizon: str) -> dict[str, Any]:
-    pending_items = [item for item in items if item.get(primary_horizon) is None]
-    pending_dates = sorted(
-        {
-            str(item.get("snapshot_as_of_date") or "").strip()[:10]
-            for item in pending_items
-            if str(item.get("snapshot_as_of_date") or "").strip()
-        }
-    )
-    latest_pending_date = pending_dates[-1] if pending_dates else None
-    horizon_label = _HORIZON_LABELS[primary_horizon]
-    if pending_items:
-        message = (
-            f"{horizon_label} 仍有 {len(pending_items)} 条收益待成熟"
-            + (f"，最新 pending 日期 {latest_pending_date}" if latest_pending_date else "")
-            + "。"
-        )
-    else:
-        message = f"{horizon_label} 已成熟样本内暂无 pending 收益。"
-    return {
-        "primary_horizon": primary_horizon,
-        "pending_rows": len(pending_items),
-        "pending_dates": pending_dates,
-        "latest_pending_date": latest_pending_date,
-        "message": message,
-    }
-
-
-def _strategy_optimization_sample_maturity(
-    *,
-    strategy_summaries: list[dict[str, Any]],
-    slices: list[dict[str, Any]],
-    min_sample: int,
-    primary_horizon: str,
-) -> dict[str, Any]:
-    all_items = [*strategy_summaries, *slices]
-    sufficient_count = sum(1 for item in all_items if item.get("sample_status") == "sufficient")
-    insufficient_count = sum(1 for item in all_items if item.get("sample_status") != "sufficient")
-    return {
-        "status": "sufficient" if sufficient_count else "insufficient",
-        "primary_horizon": primary_horizon,
-        "min_sample": min_sample,
-        "sufficient_count": sufficient_count,
-        "insufficient_count": insufficient_count,
     }
 
 
@@ -3641,45 +2217,6 @@ def _strategy_optimization_recommendations(
     return sorted(recommendations, key=_strategy_optimization_recommendation_sort_key)
 
 
-def _sort_strategy_optimization_summaries(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return sorted(rows, key=_strategy_optimization_row_sort_key)
-
-
-def _sort_strategy_optimization_slices(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return sorted(rows, key=_strategy_optimization_row_sort_key)
-
-
-def _strategy_optimization_row_sort_key(row: dict[str, Any]) -> tuple[int, float, int, str]:
-    recommendation = cast(dict[str, Any], row.get("recommendation") or {})
-    score = recommendation.get("score")
-    signal_kind = str(row.get("signal_kind") or "")
-    return (
-        0 if score is not None else 1,
-        -(float(score) if score is not None else -1.0),
-        _strategy_order_index(signal_kind),
-        str(row.get("slice_key") or row.get("summary_key") or ""),
-    )
-
-
-def _strategy_optimization_recommendation_sort_key(row: dict[str, Any]) -> tuple[int, float, str]:
-    action_order = {
-        "promote": 0,
-        "downgrade": 1,
-        "observe": 2,
-        "pending_more_history": 3,
-    }
-    score = row.get("score")
-    return (
-        action_order.get(str(row.get("action") or ""), 9),
-        -(float(score) if score is not None else -1.0),
-        str(row.get("target_key") or ""),
-    )
-
-
-def _strategy_order_index(signal_kind: str) -> int:
-    return _DEFAULT_SIGNAL_KINDS.index(signal_kind) if signal_kind in _DEFAULT_SIGNAL_KINDS else 999
-
-
 def _fundamental_overlay_status(
     item: dict[str, Any],
     *,
@@ -3722,86 +2259,6 @@ def _integer_from_item_or_evidence(
         return int(raw)
     except (TypeError, ValueError):
         return None
-
-
-def _float_value(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _abnormal_turnover_bucket(value: float | None) -> str:
-    if value is None:
-        return "unknown"
-    if value < 1:
-        return "<1"
-    if value < 2:
-        return "1-2"
-    if value <= 3.5:
-        return "2-3.5"
-    return ">3.5"
-
-
-def _gap_norm_bucket(value: float | None) -> str:
-    if value is None:
-        return "unknown"
-    if value <= 0:
-        return "<=0"
-    if value <= 0.2:
-        return "0-0.2"
-    if value <= 0.45:
-        return "0.2-0.45"
-    return ">0.45"
-
-
-def _breakout_extension_bucket(value: float | None) -> str:
-    if value is None:
-        return "unknown"
-    if value <= 0.1:
-        return "<=0.1"
-    if value <= 0.25:
-        return "0.1-0.25"
-    if value <= 0.35:
-        return "0.25-0.35"
-    return ">0.35"
-
-
-def _movement_event_bucket(value: int | None) -> str:
-    if value is None:
-        return "unknown"
-    if value <= 0:
-        return "0"
-    if value <= 5:
-        return "1-5"
-    if value <= 10:
-        return "6-10"
-    return ">10"
-
-
-def _stock_movement_event_bucket(value: int | None) -> str:
-    if value is None:
-        return "unknown"
-    if value <= 0:
-        return "0"
-    if value == 1:
-        return "1"
-    return "2+"
-
-
-def _slug_text(value: str) -> str:
-    return (
-        str(value or "unknown")
-        .strip()
-        .replace(" ", "_")
-        .replace("<=", "lte")
-        .replace(">=", "gte")
-        .replace("<", "lt")
-        .replace(">", "gt")
-        .replace("+", "plus")
-    )
 
 
 def _strategy_score_row(
@@ -3906,48 +2363,6 @@ def _empty_strategy_score_row(
     }
 
 
-def _rank_strategy_score_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    rows_by_state: dict[str, list[dict[str, Any]]] = {}
-    for row in rows:
-        rows_by_state.setdefault(str(row["market_state"]), []).append(row)
-    ranked_rows: list[dict[str, Any]] = []
-    for state_rows in rows_by_state.values():
-        rank = 1
-        for row in _sort_strategy_score_rows(state_rows):
-            if row["sample_status"] == "sufficient" and row.get("priority_label") == "优先复核":
-                row = {**row, "priority_rank": rank}
-                rank += 1
-            ranked_rows.append(row)
-    return ranked_rows
-
-
-def _sort_strategy_score_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    def sort_key(row: dict[str, Any]) -> tuple[str, int, float, int, str]:
-        score = row.get("priority_score")
-        signal_kind = str(row.get("signal_kind") or "")
-        strategy_order = _DEFAULT_SIGNAL_KINDS.index(signal_kind) if signal_kind in _DEFAULT_SIGNAL_KINDS else 999
-        return (
-            str(row.get("market_state") or ""),
-            0 if score is not None else 1,
-            -(float(score) if score is not None else -1.0),
-            strategy_order,
-            signal_kind,
-        )
-
-    return sorted(rows, key=sort_key)
-
-
-def _empty_strategy_score_diagnostics() -> dict[str, Any]:
-    return {
-        "priority_scope": None,
-        "priority_scope_label": None,
-        "priority_scope_stats": None,
-        "maturity": _empty_maturity_diagnostics(),
-        "rank_buckets": [],
-        "risk_flags": [],
-    }
-
-
 def _strategy_score_diagnostics(
     *,
     market_state: str,
@@ -4027,83 +2442,6 @@ def _rank_bucket_diagnostics(
     return buckets
 
 
-def _rank_bucket_ranges(signal_kind: str) -> list[tuple[int, int | None, str]]:
-    if signal_kind == "factor_screen":
-        return [(1, 5, "1-5"), (6, 10, "6-10"), (11, 20, "11-20"), (21, None, "21+")]
-    if signal_kind == "stock_candidate":
-        return [(1, 3, "1-3"), (4, 6, "4-6"), (7, 10, "7-10"), (11, None, "11+")]
-    return []
-
-
-def _rank_bucket_priority(
-    *,
-    market_state: str,
-    signal_kind: str,
-    rank_from: int,
-    review: dict[str, Any],
-) -> tuple[str, bool, str]:
-    if review["sample_status"] == "insufficient":
-        return (str(review["priority_label"]), False, str(review["reason"]))
-    if market_state == "OVERHEAT" and signal_kind == "factor_screen" and rank_from > 10:
-        return (
-            "降权观察",
-            False,
-            "OVERHEAT 状态下 rank > 10 的多因子候选降权观察；优先复核仅覆盖前10名。",
-        )
-    if review["action"] != "promote":
-        return (str(review["priority_label"]), False, str(review["reason"]))
-    return (
-        "优先复核",
-        True,
-        str(review["reason"]),
-    )
-
-
-def _strategy_score_risk_flags(
-    *,
-    market_state: str,
-    signal_kind: str,
-    stats: dict[str, dict[str, Any]],
-    min_sample: int,
-) -> list[dict[str, Any]]:
-    if market_state != "OVERHEAT" or signal_kind != "stock_candidate":
-        return []
-    t5_stats = stats[_STRATEGY_REVIEW_HORIZON]
-    t20_stats = stats[_STRATEGY_REVIEW_LONG_HORIZON]
-    available_count = int(t20_stats["available_count"])
-    if available_count < min_sample:
-        return []
-    t5_median = _float_value(t5_stats.get("median_return"))
-    t20_median = _float_value(t20_stats.get("median_return"))
-    if t5_median is None or t20_median is None or t20_median >= t5_median:
-        return []
-    return [
-        {
-            "kind": "long_window_median_worse",
-            "label": "长窗口中位数恶化",
-            "horizon": _STRATEGY_REVIEW_LONG_HORIZON,
-            "reason": (
-                f"T+20 样本 {available_count}，中位数 {t20_median * 100:+.2f}% "
-                f"低于 T+5 中位数 {t5_median * 100:+.2f}%，仅按短窗口复核。"
-            ),
-            "stats": t20_stats,
-        }
-    ]
-
-
-def _empty_maturity_diagnostics() -> dict[str, Any]:
-    return {
-        "status": "narrow",
-        "label": "样本偏窄",
-        "reason": "T+5 已成熟快照 0/4，等待更多成熟日。",
-        "min_mature_snapshot_count": 4,
-        "mature_snapshot_count": 0,
-        "snapshot_stats": [],
-        "tracked_snapshots": [],
-        "worst_snapshot": None,
-    }
-
-
 def _maturity_diagnostics(
     items: list[dict[str, Any]],
     *,
@@ -4181,152 +2519,6 @@ def _tracked_snapshot_stat(snapshot_date: str, items: list[dict[str, Any]]) -> d
     }
 
 
-def _snapshot_maturity_stat(
-    snapshot_date: str,
-    items: list[dict[str, Any]],
-    *,
-    primary_horizon: str,
-) -> dict[str, Any]:
-    stat = _horizon_stat(items, primary_horizon)
-    return {
-        "snapshot_as_of_date": snapshot_date,
-        "available_count": stat["available_count"],
-        "positive_count": stat["positive_count"],
-        "non_positive_count": stat["non_positive_count"],
-        "avg_return": stat["avg_return"],
-        "median_return": stat["median_return"],
-        "win_rate": stat["win_rate"],
-    }
-
-
-def _worst_snapshot_stat(snapshot_stats: list[dict[str, Any]]) -> dict[str, Any] | None:
-    if not snapshot_stats:
-        return None
-    return min(
-        snapshot_stats,
-        key=lambda stat: (
-            float(stat["win_rate"]) if stat.get("win_rate") is not None else -1.0,
-            float(stat["avg_return"]) if stat.get("avg_return") is not None else -1.0,
-            str(stat.get("snapshot_as_of_date") or ""),
-        ),
-    )
-
-
-def _candidate_rank(item: dict[str, Any]) -> int | None:
-    try:
-        return int(item.get("candidate_rank"))
-    except (TypeError, ValueError):
-        return None
-
-
-def _empty_horizon_stats_by_key() -> dict[str, dict[str, Any]]:
-    return {
-        key: {
-            "available_count": 0,
-            "missing_count": 0,
-            "positive_count": 0,
-            "non_positive_count": 0,
-            "avg_return": None,
-            "median_return": None,
-            "win_rate": None,
-        }
-        for key in _HORIZON_LABELS
-    }
-
-
-def _sample_insufficient_reason(available_count: int, *, min_sample: int, primary_horizon: str) -> str:
-    return f"{_HORIZON_LABELS[primary_horizon]} 可用样本 {available_count}/{min_sample}，样本不足，仅作观察。"
-
-
-def _current_state_insufficient_reason(available_count: int, *, min_sample: int, primary_horizon: str) -> str:
-    return f"当前状态样本不足：{_HORIZON_LABELS[primary_horizon]} 可用样本 {available_count}/{min_sample}，仅作观察。"
-
-
-def _score_reason(
-    *,
-    available_count: int,
-    win_rate: float,
-    avg_return: float,
-    priority_score: float,
-    priority_label: str,
-    primary_horizon: str,
-) -> str:
-    horizon_label = _HORIZON_LABELS[primary_horizon]
-    base = (
-        f"{horizon_label} 样本 {available_count}，胜率 {win_rate * 100:.1f}%，"
-        f"均值 {avg_return * 100:+.2f}%，评分 {priority_score:.2f}。"
-    )
-    if priority_label == "降权观察":
-        return base + "胜率低于 50% 或均值不为正，降权观察。"
-    return base + "仅用于优先复核排序。"
-
-
-def _horizon_stat(items: list[dict[str, Any]], key: str) -> dict[str, Any]:
-    values = _present_float_values(items, key)
-    positive_count = sum(1 for value in values if value > 0)
-    return {
-        "available_count": len(values),
-        "missing_count": len(items) - len(values),
-        "positive_count": positive_count,
-        "non_positive_count": len(values) - positive_count,
-        "avg_return": round(sum(values) / len(values), 6) if values else None,
-        "median_return": _median_float(values),
-        "win_rate": round(positive_count / len(values), 6) if values else None,
-    }
-
-
-def _present_float_values(items: list[dict[str, Any]], key: str) -> list[float]:
-    values: list[float] = []
-    for item in items:
-        raw = item.get(key)
-        if raw is None:
-            continue
-        try:
-            values.append(float(raw))
-        except (TypeError, ValueError):
-            continue
-    return values
-
-
-def _percentile_float(values: list[float], percentile: float) -> float | None:
-    if not values:
-        return None
-    ordered = sorted(values)
-    if len(ordered) == 1:
-        return round(ordered[0], 6)
-    bounded = min(max(float(percentile), 0.0), 1.0)
-    position = bounded * (len(ordered) - 1)
-    lower_index = int(position)
-    upper_index = min(lower_index + 1, len(ordered) - 1)
-    weight = position - lower_index
-    return round(ordered[lower_index] * (1 - weight) + ordered[upper_index] * weight, 6)
-
-
-def _normalized_signal_kind(item: dict[str, Any]) -> str:
-    return str(item.get("signal_kind") or "stock_candidate").strip() or "stock_candidate"
-
-
-def _execution_signal_kind(row: dict[str, Any]) -> str:
-    return str(row.get("signal_kind") or "stock_candidate").strip() or "stock_candidate"
-
-
-def _execution_market_state(row: dict[str, Any]) -> str:
-    return _normalized_text(row.get("market_state")) or "unknown"
-
-
-def _bool_value(value: Any) -> bool | None:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return bool(value)
-    text = str(value or "").strip().lower()
-    if text in {"true", "t", "1", "yes", "y"}:
-        return True
-    if text in {"false", "f", "0", "no", "n"}:
-        return False
-    return None
-
-
 def _market_state_from_signal_evidence(
     item: dict[str, Any],
     *,
@@ -4391,51 +2583,6 @@ def _parse_signal_evidence_json(value: Any) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def _normalized_text(value: Any) -> str:
-    return str(value or "").strip()
-
-
-def _dedupe_preserve_order(values: list[str]) -> list[str]:
-    seen: set[str] = set()
-    deduped: list[str] = []
-    for value in values:
-        text = str(value or "").strip()
-        if not text or text in seen:
-            continue
-        seen.add(text)
-        deduped.append(text)
-    return deduped
-
-
-def _decision_excluded_dates(
-    items: list[dict[str, Any]],
-    *,
-    usable_items: list[dict[str, Any]],
-    included_dates: set[str],
-) -> list[str]:
-    usable_keys = {
-        (
-            str(item.get("snapshot_as_of_date") or "")[:10],
-            str(item.get("stock_code") or "").strip(),
-            str(item.get("signal_kind") or "stock_candidate").strip() or "stock_candidate",
-        )
-        for item in usable_items
-    }
-    excluded_dates: set[str] = set()
-    for item in items:
-        snapshot_date = str(item.get("snapshot_as_of_date") or "")[:10]
-        if not snapshot_date:
-            continue
-        row_key = (
-            snapshot_date,
-            str(item.get("stock_code") or "").strip(),
-            str(item.get("signal_kind") or "stock_candidate").strip() or "stock_candidate",
-        )
-        if snapshot_date not in included_dates or row_key not in usable_keys:
-            excluded_dates.add(snapshot_date)
-    return sorted(excluded_dates)
-
-
 def _empty_backtest_window_summary(
     *,
     snapshot_from: str | None,
@@ -4459,190 +2606,3 @@ def _empty_backtest_window_summary(
         "excluded_from_completed_stats_dates": [],
         "date_reasons": [],
     }
-
-
-def _first_nonempty_source_version(items: list[dict[str, Any]]) -> str:
-    for row in items:
-        text = str(row.get("source_version") or "").strip()
-        if text:
-            return text
-    return EMPTY_SOURCE_VERSION
-
-
-def _normalize_date_text(value: str | None) -> str | None:
-    text = str(value or "").strip()
-    if not text:
-        return None
-    return text[:10]
-
-
-def _default_snapshot_from(snapshot_to: str) -> str:
-    try:
-        parsed = date.fromisoformat(snapshot_to[:10])
-    except ValueError:
-        parsed = date.today()
-    return (parsed - timedelta(days=180)).isoformat()
-
-
-def _latest_history_snapshot_date(conn: duckdb.DuckDBPyConnection) -> str | None:
-    value = _candidate_history_repository_for_connection().latest_history_snapshot_date(conn=conn)
-    return _normalize_date_text(value)
-
-
-def _first_nonempty_vendor_version(items: list[dict[str, Any]]) -> str | None:
-    for row in items:
-        text = str(row.get("vendor_version") or "").strip()
-        if text:
-            return text
-    return None
-
-
-def _wrap_empty_envelope(*, payload: dict[str, object]) -> dict[str, object]:
-    return build_result_envelope(
-        basis="analytical",
-        trace_id=f"tr_livermore_candidate_history_{uuid.uuid4().hex[:12]}",
-        result_kind=RESULT_KIND,
-        cache_version=CACHE_VERSION,
-        source_version=EMPTY_SOURCE_VERSION,
-        rule_version=RULE_VERSION,
-        quality_flag=cast(QualityFlag, "warning"),
-        vendor_version=EMPTY_VENDOR_VERSION,
-        vendor_status=cast(VendorStatus, "ok"),
-        fallback_mode=cast(FallbackMode, "none"),
-        filters_applied={
-            "stock_code": payload.get("stock_code"),
-            "snapshot_from": payload.get("snapshot_from"),
-            "snapshot_to": payload.get("snapshot_to"),
-            "limit": payload.get("limit"),
-        },
-        tables_used=[TABLE_HIST],
-        evidence_rows=0,
-        result_payload=payload,
-    )
-
-
-def _wrap_strategy_score_envelope(
-    *,
-    payload: dict[str, object],
-    source_version: str,
-    vendor_version: str,
-    evidence_rows: int,
-    quality_flag: str,
-) -> dict[str, object]:
-    return build_result_envelope(
-        basis="analytical",
-        trace_id=f"tr_livermore_strategy_score_{uuid.uuid4().hex[:12]}",
-        result_kind=STRATEGY_SCORE_RESULT_KIND,
-        cache_version=STRATEGY_SCORE_CACHE_VERSION,
-        source_version=source_version,
-        rule_version=STRATEGY_SCORE_RULE_VERSION,
-        quality_flag=cast(QualityFlag, quality_flag),
-        vendor_version=vendor_version or EMPTY_VENDOR_VERSION,
-        vendor_status=cast(VendorStatus, "ok"),
-        fallback_mode=cast(FallbackMode, "none"),
-        filters_applied={
-            "snapshot_from": payload.get("snapshot_from"),
-            "snapshot_to": payload.get("snapshot_to"),
-            "current_market_state": payload.get("current_market_state"),
-            "min_sample": payload.get("min_sample"),
-            "primary_horizon": payload.get("primary_horizon"),
-        },
-        tables_used=[TABLE_HIST],
-        evidence_rows=evidence_rows,
-        result_payload=payload,
-    )
-
-
-def _wrap_strategy_optimization_envelope(
-    *,
-    payload: dict[str, object],
-    source_version: str,
-    vendor_version: str,
-    evidence_rows: int,
-    quality_flag: str,
-) -> dict[str, object]:
-    return build_result_envelope(
-        basis="analytical",
-        trace_id=f"tr_livermore_strategy_optimization_{uuid.uuid4().hex[:12]}",
-        result_kind=STRATEGY_OPTIMIZATION_RESULT_KIND,
-        cache_version=STRATEGY_OPTIMIZATION_CACHE_VERSION,
-        source_version=source_version,
-        rule_version=STRATEGY_OPTIMIZATION_RULE_VERSION,
-        quality_flag=cast(QualityFlag, quality_flag),
-        vendor_version=vendor_version or EMPTY_VENDOR_VERSION,
-        vendor_status=cast(VendorStatus, "ok"),
-        fallback_mode=cast(FallbackMode, "none"),
-        filters_applied={
-            "snapshot_from": payload.get("snapshot_from"),
-            "snapshot_to": payload.get("snapshot_to"),
-            "current_market_state": payload.get("current_market_state"),
-            "min_sample": payload.get("min_sample"),
-            "primary_horizon": payload.get("primary_horizon"),
-        },
-        tables_used=[TABLE_HIST],
-        evidence_rows=evidence_rows,
-        result_payload=payload,
-    )
-
-
-def _wrap_cycle_proxy_backtest_envelope(
-    *,
-    payload: dict[str, object],
-    source_version: str,
-    vendor_version: str,
-    evidence_rows: int,
-    quality_flag: str,
-    tables_used: list[str] | None = None,
-) -> dict[str, object]:
-    return build_result_envelope(
-        basis="analytical",
-        trace_id=f"tr_livermore_cycle_proxy_backtest_{uuid.uuid4().hex[:12]}",
-        result_kind=CYCLE_PROXY_BACKTEST_RESULT_KIND,
-        cache_version=CYCLE_PROXY_BACKTEST_CACHE_VERSION,
-        source_version=source_version,
-        rule_version=CYCLE_PROXY_BACKTEST_RULE_VERSION,
-        quality_flag=cast(QualityFlag, quality_flag),
-        vendor_version=vendor_version or EMPTY_VENDOR_VERSION,
-        vendor_status=cast(VendorStatus, "ok"),
-        fallback_mode=cast(FallbackMode, "none"),
-        filters_applied={
-            "snapshot_from": payload.get("snapshot_from"),
-            "snapshot_to": payload.get("snapshot_to"),
-            "proxy_signal_kind": payload.get("proxy_signal_kind"),
-        },
-        tables_used=tables_used or [TABLE_HIST],
-        evidence_rows=evidence_rows,
-        result_payload=payload,
-    )
-
-
-def _wrap_candidate_history_portfolio_backtest_envelope(
-    *,
-    payload: dict[str, object],
-    source_version: str,
-    vendor_version: str,
-    evidence_rows: int,
-    quality_flag: str,
-    tables_used: list[str] | None = None,
-) -> dict[str, object]:
-    return build_result_envelope(
-        basis="analytical",
-        trace_id=f"tr_livermore_candidate_history_portfolio_backtest_{uuid.uuid4().hex[:12]}",
-        result_kind=CANDIDATE_HISTORY_PORTFOLIO_BACKTEST_RESULT_KIND,
-        cache_version=CANDIDATE_HISTORY_PORTFOLIO_BACKTEST_CACHE_VERSION,
-        source_version=source_version,
-        rule_version=CANDIDATE_HISTORY_PORTFOLIO_BACKTEST_RULE_VERSION,
-        quality_flag=cast(QualityFlag, quality_flag),
-        vendor_version=vendor_version or EMPTY_VENDOR_VERSION,
-        vendor_status=cast(VendorStatus, "ok"),
-        fallback_mode=cast(FallbackMode, "none"),
-        filters_applied={
-            "snapshot_from": payload.get("snapshot_from"),
-            "snapshot_to": payload.get("snapshot_to"),
-            "signal_kind": payload.get("signal_kind"),
-            "rebalance_rule": payload.get("rebalance_rule"),
-        },
-        tables_used=tables_used or [TABLE_HIST, TABLE_OBS],
-        evidence_rows=evidence_rows,
-        result_payload=payload,
-    )

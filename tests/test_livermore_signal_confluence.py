@@ -6,6 +6,12 @@ import pytest
 
 from tests.helpers import load_module
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def _service_module():
     return load_module(
@@ -395,16 +401,17 @@ def test_build_livermore_signal_confluence_reports_missing_inputs_and_stays_obse
 
     strategy_context = cast(dict[str, Any], result["strategy_context"])
     assert strategy_context["market_gate_state"] == "UNKNOWN"
-    assert strategy_context["market_gate_exposure"] == pytest.approx(0.0)
+    assert strategy_context["market_gate_exposure"] is None
     assert strategy_context["allows_new_entry_observations"] is False
 
-    assert result["position_size_hint"] == pytest.approx(0.0)
+    assert result["position_size_hint"] is None
     assert result["entry_observations"] == []
     assert result["exit_observations"] == []
 
     diagnostics = cast(list[str], result["diagnostics"])
     assert "Missing macro composite score; macro context is unknown." in diagnostics
     assert "Missing Livermore market gate; entry observations are blocked." in diagnostics
+    assert "Missing Livermore market gate exposure; position size hint is unavailable." in diagnostics
     assert "No stock candidates available for observation." in diagnostics
     assert "No risk exit watch items or triggered exit items available." in diagnostics
     assert diagnostics[-1] == (
@@ -495,6 +502,34 @@ def test_build_livermore_signal_confluence_falls_back_to_triggered_exit_items_wh
     ]
     closed_loop_state = cast(dict[str, Any], result["closed_loop_state"])
     assert closed_loop_state["exit_gate"] == "triggered"
+
+
+def test_build_livermore_signal_confluence_keeps_position_size_hint_unavailable_when_exposure_is_null() -> None:
+    result = _build_livermore_signal_confluence(
+        as_of_date="2026-05-02",
+        livermore_payload={
+            "market_gate": {
+                "state": "WARM",
+                "exposure": None,
+            },
+            "stock_candidates": {"items": []},
+            "risk_exit": {"watch_items": []},
+        },
+        macro_payload={
+            "environment_score": {
+                "composite_score": 0.0,
+            }
+        },
+    )
+
+    strategy_context = cast(dict[str, Any], result["strategy_context"])
+    assert strategy_context["market_gate_state"] == "WARM"
+    assert strategy_context["market_gate_exposure"] is None
+    assert result["position_size_hint"] is None
+
+    diagnostics = cast(list[str], result["diagnostics"])
+    assert "Missing Livermore market gate exposure; position size hint is unavailable." in diagnostics
+    assert "Missing Livermore market gate; entry observations are blocked." not in diagnostics
 
 
 @pytest.mark.parametrize("composite_score", [-0.3, 0.3])

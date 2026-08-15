@@ -22,17 +22,21 @@ import {
 import { MarketDataLinkageSummaryBand } from "../components/MarketDataLinkageSummaryBand";
 import { MarketDataChartShell } from "../components/MarketDataChartShell";
 import { KpiCard } from "../../../components/KpiCard";
-import { toneFromSignedDisplayString, toneFromSignedNumber } from "../../workbench/components/kpiFormat";
+import { toneFromSignedDisplayString } from "../../workbench/components/kpiFormat";
 import { EM_DASH } from "../../../utils/format";
-import { formatSignedNumber } from "../lib/marketDataFormat";
+import { formatSignedCompactAmount } from "../lib/marketDataFormat";
+import {
+  LIQUIDITY_COMPOSITE_POLARITY_NOTE,
+  LIQUIDITY_SCORE_POLARITY_TITLE,
+  formatRateDirectionLabel,
+  linkageScoreTone,
+} from "../lib/marketDataLinkageFormat";
 import { buildMarketDataMultiSeriesTimeChartOption } from "../lib/charts/marketDataSeriesTimeChartOption";
 import { RATE_TREND_DEFINITIONS } from "./marketDataMacroConstants";
 import "./MarketDataPage.css";
 
 const MARKET_DATA_SHOW_CURVE_META_STRIP = false;
 const MAX_EXTRA_SERIES = 5;
-const LIQUIDITY_COMPOSITE_POLARITY_NOTE =
-  "流动性正值=宽松；综合分正值=对债偏紧，综合计算中流动性取反。";
 
 type MacroDepthTabKey = "curve" | "spreads" | "linkage";
 
@@ -253,11 +257,8 @@ export function MarketDataMacroDepthTabs({
           />
           <MarketDataLinkageSummaryBand
             compositeScore={macroBondLinkage.environment_score?.composite_score}
-            compositeDetail={
-              macroBondLinkage.environment_score?.signal_description
-                ? `${macroBondLinkage.environment_score.signal_description} ${LIQUIDITY_COMPOSITE_POLARITY_NOTE}`
-                : LIQUIDITY_COMPOSITE_POLARITY_NOTE
-            }
+            compositeDetail={macroBondLinkage.environment_score?.signal_description}
+            compositeDetailTitle={LIQUIDITY_COMPOSITE_POLARITY_NOTE}
             topCorrelation={correlationRows[0] ?? null}
             onOpenSpreads={openSpreadsTab}
             onOpenLinkage={openLinkageTab}
@@ -313,54 +314,57 @@ export function MarketDataMacroDepthTabs({
             derivedSpreads={derivedSpreads}
           />
           <div className="market-data-summary-grid">
-            <KpiCard
-              title="环境综合分"
-              value={
-                macroBondLinkage.environment_score?.composite_score != null
-                  ? String(macroBondLinkage.environment_score.composite_score.toFixed(2))
-                  : EM_DASH
-              }
-              detail={`${
-                macroBondLinkage.environment_score?.signal_description ?? "缺少环境评分。"
-              } ${LIQUIDITY_COMPOSITE_POLARITY_NOTE}`}
-              tone={
-                macroBondLinkage.environment_score?.composite_score != null
-                  ? toneFromSignedNumber(macroBondLinkage.environment_score.composite_score)
-                  : "default"
-              }
-            />
-            <KpiCard
-              title="流动性分项"
-              value={
-                macroBondLinkage.environment_score?.liquidity_score != null
-                  ? macroBondLinkage.environment_score.liquidity_score.toFixed(2)
-                  : EM_DASH
-              }
-              detail="流动性正值偏松、负值偏紧；进入综合分时取反。"
-              tone={
-                macroBondLinkage.environment_score?.liquidity_score != null
-                  ? toneFromSignedNumber(macroBondLinkage.environment_score.liquidity_score)
-                  : "default"
-              }
-            />
+            <div title={LIQUIDITY_COMPOSITE_POLARITY_NOTE} data-testid="market-data-linkage-tab-composite">
+              <KpiCard
+                title="环境综合分"
+                value={
+                  macroBondLinkage.environment_score?.composite_score != null
+                    ? String(macroBondLinkage.environment_score.composite_score.toFixed(2))
+                    : EM_DASH
+                }
+                detail={macroBondLinkage.environment_score?.signal_description ?? "缺少环境评分。"}
+                tone={linkageScoreTone(macroBondLinkage.environment_score?.composite_score)}
+              />
+            </div>
+            <div title={LIQUIDITY_SCORE_POLARITY_TITLE} data-testid="market-data-linkage-tab-liquidity">
+              <KpiCard
+                title="流动性分项"
+                value={
+                  macroBondLinkage.environment_score?.liquidity_score != null
+                    ? macroBondLinkage.environment_score.liquidity_score.toFixed(2)
+                    : EM_DASH
+                }
+                detail="流动性正值偏松、负值偏紧。"
+                tone={linkageScoreTone(macroBondLinkage.environment_score?.liquidity_score)}
+              />
+            </div>
             <KpiCard
               title="利率方向"
-              value={macroBondLinkage.environment_score?.rate_direction ?? EM_DASH}
+              value={formatRateDirectionLabel(macroBondLinkage.environment_score?.rate_direction ?? null)}
               detail={
                 macroBondLinkage.environment_score?.rate_direction_score != null
                   ? `方向评分 ${macroBondLinkage.environment_score.rate_direction_score.toFixed(2)}`
                   : "缺少方向评分。"
               }
               valueVariant="text"
+              tone={linkageScoreTone(macroBondLinkage.environment_score?.rate_direction_score)}
             />
-            <KpiCard
-              title="组合影响合计"
-              value={formatSignedNumber(macroBondLinkage.portfolio_impact?.total_estimated_impact)}
-              detail="结构化情景下的总影响估计（展示字段，不在前端重算）。"
-              tone={toneFromSignedDisplayString(
-                formatSignedNumber(macroBondLinkage.portfolio_impact?.total_estimated_impact),
-              )}
-            />
+            <div
+              title={
+                macroBondLinkage.portfolio_impact?.total_estimated_impact != null
+                  ? `原值 ${macroBondLinkage.portfolio_impact.total_estimated_impact}`
+                  : undefined
+              }
+            >
+              <KpiCard
+                title="组合影响合计"
+                value={formatSignedCompactAmount(macroBondLinkage.portfolio_impact?.total_estimated_impact)}
+                detail="结构化情景下的总影响估计（展示字段，不在前端重算）。"
+                tone={toneFromSignedDisplayString(
+                  formatSignedCompactAmount(macroBondLinkage.portfolio_impact?.total_estimated_impact),
+                )}
+              />
+            </div>
           </div>
         </div>
       ) : null}

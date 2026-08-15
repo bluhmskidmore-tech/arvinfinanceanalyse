@@ -431,3 +431,73 @@ def test_materialize_livermore_position_snapshot_rejects_unknown_position_status
             csv_path=str(csv_path),
             duckdb_path=str(duckdb_path),
         )
+
+
+def test_write_livermore_position_rows_holds_writer_lock_across_connect_and_close(
+    tmp_path, monkeypatch
+) -> None:
+    """写连接 open→close 全程必须持有 resolve_duckdb_writer_lock（B5 审计修复）。"""
+    from contextlib import contextmanager
+
+    from backend.app.governance.locks import resolve_duckdb_writer_lock
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    events: list[str] = []
+    real_acquire_lock = materialize_module.acquire_lock
+    real_connect = duckdb.connect
+
+    @contextmanager
+    def recording_acquire_lock(definition, *args, **kwargs):
+        events.append(f"lock_enter:{definition.key}")
+        with real_acquire_lock(definition, *args, **kwargs) as handle:
+            try:
+                yield handle
+            finally:
+                events.append(f"lock_exit:{definition.key}")
+
+    class _RecordingConn:
+        def __init__(self, inner) -> None:
+            self._inner = inner
+
+        def close(self) -> None:
+            events.append("connection_closed")
+            self._inner.close()
+
+        def __getattr__(self, name: str):
+            return getattr(self._inner, name)
+
+    def recording_connect(*args, **kwargs):
+        events.append("connection_opened")
+        return _RecordingConn(real_connect(*args, **kwargs))
+
+    monkeypatch.setattr(materialize_module, "acquire_lock", recording_acquire_lock)
+    monkeypatch.setattr(materialize_module.duckdb, "connect", recording_connect)
+
+    payload = materialize_module._materialize_livermore_position_snapshot_rows(
+        as_of_date="2026-04-29",
+        rows=[
+            {
+                "stock_code": "600000.SH",
+                "stock_name": "Alpha",
+                "entry_cost": "10.5",
+                "bars_since_entry": "3",
+            }
+        ],
+        duckdb_path=str(duckdb_path),
+    )
+
+    assert payload["status"] == "completed"
+    writer_lock_key = resolve_duckdb_writer_lock(duckdb_path).key
+    assert events == [
+        f"lock_enter:{writer_lock_key}",
+        "connection_opened",
+        "connection_closed",
+        f"lock_exit:{writer_lock_key}",
+    ]
+
+    conn = real_connect(str(duckdb_path), read_only=True)
+    try:
+        row_count = conn.execute("select count(*) from livermore_position_snapshot").fetchone()[0]
+    finally:
+        conn.close()
+    assert int(row_count) == 1

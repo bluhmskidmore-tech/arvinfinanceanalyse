@@ -4082,6 +4082,15 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   font-style: normal;
 }
 
+/* 关键利率卡与首屏 KPI 带去重后的空态：安静一句说明，不占等高格。 */
+.market-data-key-rate-list__empty {
+  margin: 0;
+  padding: 8px 0;
+  color: var(--t-ink-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 /* --- 工具条 --- */
 
 /* 分区 Tab */

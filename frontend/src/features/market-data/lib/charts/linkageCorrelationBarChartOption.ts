@@ -1,5 +1,9 @@
 import type { MacroBondLinkageTopCorrelation } from "../../../../api/contracts";
 import type { EChartsOption } from "../../../../lib/echarts";
+import {
+  LINKAGE_BAR_MAX_WIDTH,
+  truncateLinkageCategoryLabel,
+} from "./linkageEnvironmentBarChartOption";
 import { buildMarketDataChartTooltip, marketDataChartTheme } from "./marketDataChartTheme";
 
 const CORR_WINDOWS = [
@@ -10,7 +14,7 @@ const CORR_WINDOWS = [
 
 function corrColor(value: number | null): string {
   if (value == null) {
-    return marketDataChartTheme.axisLabel.color as string;
+    return marketDataChartTheme.neutralBar;
   }
   if (value >= 0) {
     return marketDataChartTheme.positiveBar;
@@ -49,6 +53,7 @@ export function buildLinkageCorrelationBarOption(
         ...marketDataChartTheme.axisLabel,
         interval: 0,
         rotate: categories.length > 4 ? 24 : 0,
+        formatter: (value: string) => truncateLinkageCategoryLabel(value, 10),
       },
       axisLine: marketDataChartTheme.axisLine,
       axisTick: { show: false },
@@ -57,6 +62,7 @@ export function buildLinkageCorrelationBarOption(
       type: "value",
       min: -1,
       max: 1,
+      splitNumber: 4,
       axisLabel: marketDataChartTheme.axisLabel,
       splitLine: marketDataChartTheme.splitLine,
       axisLine: marketDataChartTheme.axisLine,
@@ -66,7 +72,7 @@ export function buildLinkageCorrelationBarOption(
       type: "bar" as const,
       barGap: "12%",
       barCategoryGap: "34%",
-      barMaxWidth: 18,
+      barMaxWidth: LINKAGE_BAR_MAX_WIDTH,
       data: correlations.map((item) => {
         const value = item[window.key];
         return {
@@ -74,7 +80,10 @@ export function buildLinkageCorrelationBarOption(
           itemStyle: {
             color: corrColor(value),
             opacity: value == null ? 0.35 : 0.82,
-            borderRadius: [3, 3, 0, 0],
+            borderRadius:
+              value != null && value < 0
+                ? ([0, 0, 2, 2] as [number, number, number, number])
+                : ([2, 2, 0, 0] as [number, number, number, number]),
           },
         };
       }),

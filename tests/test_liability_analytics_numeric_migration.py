@@ -13,6 +13,12 @@ from backend.app.schemas.liability_analytics import (
     LiabilityYieldMetricsPayload,
 )
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_liability_analytics,
+]
 
 class TestLiabilityRiskBucketsNumericMigration:
     def test_name_amount_item_accepts_legacy_float(self) -> None:
@@ -32,7 +38,6 @@ class TestLiabilityRiskBucketsNumericMigration:
         assert isinstance(dumped["liabilities_structure"][0]["amount"], dict)
         restored = LiabilityRiskBucketsPayload.model_validate(dumped)
         assert restored.liabilities_term_buckets[0].amount_yi is not None
-
 
 class TestLiabilityYieldNumericMigration:
     def test_kpi_accepts_legacy_float(self) -> None:
@@ -73,7 +78,6 @@ class TestLiabilityYieldNumericMigration:
         assert payload.kpi.liability_cost is not None
         assert payload.kpi.liability_cost.raw == 0.018
 
-
 class TestLiabilityCounterpartyNumericMigration:
     def test_payload_accepts_legacy_float_nested_items(self) -> None:
         payload = LiabilityCounterpartyPayload(
@@ -99,7 +103,6 @@ class TestLiabilityCounterpartyNumericMigration:
         assert isinstance(dumped["top_10"][0]["value"], dict)
         restored = LiabilityCounterpartyPayload.model_validate(dumped)
         assert restored.by_type[0].value is not None
-
 
 class TestLiabilitiesMonthlyNumericMigration:
     def test_month_rows_accept_legacy_float(self) -> None:

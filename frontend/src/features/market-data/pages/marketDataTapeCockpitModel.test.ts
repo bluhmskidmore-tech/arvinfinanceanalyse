@@ -891,6 +891,134 @@ describe("buildMarketDataTapeCockpitModel", () => {
     );
   });
 
+  it("keeps FX and NCD fixed precision while rendering missing and NaN values as em dash", () => {
+    const fxRow = (
+      seriesId: string,
+      midRate: number | null,
+    ): FxFormalStatusPayload["rows"][number] => ({
+      base_currency: "USD",
+      quote_currency: "CNY",
+      pair_label: seriesId,
+      series_id: seriesId,
+      series_name: seriesId,
+      vendor_series_code: seriesId,
+      trade_date: "2026-06-18",
+      observed_trade_date: "2026-06-18",
+      mid_rate: midRate,
+      source_name: "Choice",
+      vendor_name: "Choice",
+      vendor_version: "test",
+      source_version: "test",
+      is_business_day: true,
+      is_carry_forward: false,
+      status: midRate === null ? "missing" : "ok",
+    });
+    const ncdRow = (
+      rowKey: string,
+      threeMonth: number | null,
+      oneYear: number | null,
+    ): NcdFundingProxyPayload["rows"][number] => ({
+      row_key: rowKey,
+      label: rowKey,
+      "1M": null,
+      "3M": threeMonth,
+      "6M": null,
+      "9M": null,
+      "1Y": oneYear,
+      quote_count: null,
+    });
+    const model = buildMarketDataTapeCockpitModel(baseInput({
+      fxFormalStatus: {
+        read_target: "duckdb",
+        vendor_priority: ["Choice"],
+        candidate_count: 3,
+        materialized_count: 3,
+        latest_trade_date: "2026-06-18",
+        carry_forward_count: 0,
+        rows: [
+          fxRow("finite", 1234.5),
+          fxRow("missing", null),
+          fxRow("nan", Number.NaN),
+        ],
+      },
+      ncdFundingProxy: {
+        as_of_date: "2026-06-18",
+        proxy_label: "Shibor proxy",
+        is_actual_ncd_matrix: false,
+        rows: [
+          ncdRow("finite", 1234.5, 0),
+          ncdRow("missing", null, null),
+          ncdRow("nan", Number.NaN, Number.NaN),
+        ],
+        warnings: [],
+      },
+    }));
+
+    expect(model.fxRows.map((row) => row.rateText)).toEqual(["1234.5000", EM_DASH, EM_DASH]);
+    expect(model.ncdProxyRows.map((row) => ({
+      threeMonthText: row.threeMonthText,
+      oneYearText: row.oneYearText,
+    }))).toEqual([
+      { threeMonthText: "1234.500", oneYearText: "0.000" },
+      { threeMonthText: EM_DASH, oneYearText: EM_DASH },
+      { threeMonthText: EM_DASH, oneYearText: EM_DASH },
+    ]);
+  });
+
+  it("keeps signed pp formatting and generated-at text semantics exact", () => {
+    const model = buildMarketDataTapeCockpitModel(baseInput({
+      formalRatesMeta: resultMeta({ generated_at: "2026-06-18T09:30:00Z" }),
+      tushareSupplement: {
+        money_supply_rows: [
+          {
+            month: "2026-04-01",
+            m0: null,
+            m0_yoy: null,
+            m0_mom: null,
+            m1: null,
+            m1_yoy: 0,
+            m1_mom: null,
+            m2: null,
+            m2_yoy: 1234.5,
+            m2_mom: null,
+          },
+        ],
+        eco_cal_rows: [],
+        warnings: [],
+      },
+    }));
+    const missingModel = buildMarketDataTapeCockpitModel(baseInput());
+    const nanModel = buildMarketDataTapeCockpitModel(baseInput({
+      tushareSupplement: {
+        money_supply_rows: [
+          {
+            month: "2026-04-01",
+            m0: null,
+            m0_yoy: null,
+            m0_mom: null,
+            m1: null,
+            m1_yoy: 0,
+            m1_mom: null,
+            m2: null,
+            m2_yoy: Number.NaN,
+            m2_mom: null,
+          },
+        ],
+        eco_cal_rows: [],
+        warnings: [],
+      },
+    }));
+    const signalValue = (candidate: typeof model, key: string) =>
+      candidate.tushareSignalTiles.find((tile) => tile.key === key)?.value;
+
+    expect(model.topbarUpdatedAt).toBe("2026-06-18 09:30");
+    expect(signalValue(model, "m2-yoy")).toBe("1234.50%");
+    expect(signalValue(model, "m2-m1-spread")).toBe("+1234.50pp");
+    expect(signalValue(missingModel, "m2-m1-spread")).toBe(EM_DASH);
+    expect(signalValue(nanModel, "m2-yoy")).toBe(EM_DASH);
+    expect(signalValue(nanModel, "m2-m1-spread")).toBe(EM_DASH);
+  });
+
   it("uses the canonical em dash for missing cockpit values", () => {
     const model = buildMarketDataTapeCockpitModel(baseInput({
       latestSeries: [macroPoint({ series_id: "macro-stable", latest_change: undefined })],

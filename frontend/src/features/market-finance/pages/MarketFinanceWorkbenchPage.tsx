@@ -28,7 +28,7 @@ import "./MarketFinanceWorkbenchPage.css";
 
 const MISSING_VALUE = EM_DASH;
 const MARKET_REPRESENTATIVE_BOUNDARY_NOTE =
-  "这是页面配置白名单展示，不等于独立 PAGE contract、跨域正式结论或 owner signoff。";
+  "这是页面配置白名单展示，不等于独立页面契约、跨域正式结论或业主签核。";
 const PRODUCT_CATEGORY_VIEW = "monthly";
 const COMPLETE_EVIDENCE_COUNT = 3;
 
@@ -37,6 +37,8 @@ type EvidenceTone = "ready" | "review" | "error" | "loading" | "empty";
 type EvidenceAssessment = {
   tone: EvidenceTone;
   label: string;
+  /** 徽标/状态列只承载的状态短词；完整原因仅在状态条与数据状态卡披露。 */
+  shortLabel: string;
   flags: string[];
   usable: boolean;
   healthy: boolean;
@@ -139,6 +141,7 @@ function assessEvidence(input: EvidenceInput): EvidenceAssessment {
     return {
       tone: "loading",
       label: "加载中",
+      shortLabel: "加载中",
       flags: ["加载中"],
       usable: false,
       healthy: false,
@@ -150,6 +153,7 @@ function assessEvidence(input: EvidenceInput): EvidenceAssessment {
     return {
       tone: "error",
       label: "查询失败",
+      shortLabel: "查询失败",
       flags: ["查询失败"],
       usable: false,
       healthy: false,
@@ -168,6 +172,7 @@ function assessEvidence(input: EvidenceInput): EvidenceAssessment {
     return {
       tone: "error",
       label: flags.length > 0 ? flags.join(" / ") : "元信息缺失",
+      shortLabel: "质量阻断",
       flags,
       usable: false,
       healthy: false,
@@ -180,6 +185,7 @@ function assessEvidence(input: EvidenceInput): EvidenceAssessment {
     return {
       tone: "empty",
       label: "无数据",
+      shortLabel: "无数据",
       flags: ["无数据"],
       usable: false,
       healthy: false,
@@ -192,6 +198,7 @@ function assessEvidence(input: EvidenceInput): EvidenceAssessment {
   return {
     tone,
     label: flags.length > 0 ? flags.join(" / ") : "已有证据",
+    shortLabel: tone === "review" ? "待复核" : "已有证据",
     flags,
     usable: true,
     healthy: tone === "ready",
@@ -221,10 +228,12 @@ function marketRepresentativeUnavailableLabel(
 function notExecutedAssessment(
   tone: EvidenceTone,
   label: string,
+  shortLabel: string,
 ): EvidenceAssessment {
   return {
     tone,
     label,
+    shortLabel,
     flags: [label],
     usable: false,
     healthy: false,
@@ -239,18 +248,29 @@ function assessDependentEvidence(
   input: EvidenceInput,
 ): EvidenceAssessment {
   if (parent.tone === "loading") {
-    return notExecutedAssessment("loading", "等待日期目录");
+    return notExecutedAssessment("loading", "等待日期目录", "等待日期目录");
   }
   if (parent.queryError) {
-    return notExecutedAssessment("error", "未执行：日期目录查询异常");
+    return notExecutedAssessment("error", "未执行：日期目录查询异常", "未执行");
   }
   if (parent.metadataBlocked) {
-    return notExecutedAssessment("error", "未执行：日期目录受质量阻断");
+    return notExecutedAssessment("error", "未执行：日期目录受质量阻断", "未执行");
   }
   if (parent.tone === "empty") {
-    return notExecutedAssessment("empty", "未执行：日期目录为空");
+    return notExecutedAssessment("empty", "未执行：日期目录为空", "未执行");
   }
   return assessEvidence(input);
+}
+
+function statusWordForCombined(
+  tone: EvidenceTone,
+  queryError: boolean,
+): string {
+  if (tone === "loading") return "加载中";
+  if (tone === "error") return queryError ? "查询失败" : "质量阻断";
+  if (tone === "empty") return "无数据";
+  if (tone === "review") return "待复核";
+  return "已有证据";
 }
 
 function combineEvidence(
@@ -264,6 +284,7 @@ function combineEvidence(
     "ready",
   );
   const flags = unique(assessments.flatMap((assessment) => assessment.flags));
+  const queryError = assessments.some((assessment) => assessment.queryError);
   return {
     tone,
     label:
@@ -272,10 +293,11 @@ function combineEvidence(
         : tone === "ready"
           ? "已有证据"
           : "待复核",
+    shortLabel: statusWordForCombined(tone, queryError),
     flags,
     usable: assessments.every((assessment) => assessment.usable),
     healthy: assessments.every((assessment) => assessment.healthy),
-    queryError: assessments.some((assessment) => assessment.queryError),
+    queryError,
     metadataBlocked: assessments.some(
       (assessment) => assessment.metadataBlocked,
     ),
@@ -359,6 +381,29 @@ function MetricValue({
 
 function PanelHeading({ children }: { children: string }) {
   return <h2 className="market-finance-workbench__panel-heading">{children}</h2>;
+}
+
+/**
+ * 证据列查询状态：依赖查询的“未执行：…”整句收进 title，可见文本只留
+ * 状态短词，避免同一失败原因在证据列再度展开（完整披露在状态条与数据状态卡）。
+ */
+function EvidenceQueryStatus({
+  assessment,
+  testId,
+}: {
+  assessment: EvidenceAssessment;
+  testId: string;
+}) {
+  const collapsed = assessment.label.startsWith("未执行：");
+  return (
+    <span
+      data-testid={testId}
+      data-tone={assessment.tone}
+      title={collapsed ? assessment.label : undefined}
+    >
+      {collapsed ? assessment.shortLabel : assessment.label}
+    </span>
+  );
 }
 
 export default function MarketFinanceWorkbenchPage() {
@@ -690,11 +735,12 @@ export default function MarketFinanceWorkbenchPage() {
     : marketAssessment.usable
       ? "review"
       : marketAssessment.tone;
+  // 徽标只承载状态短词；完整原因保留在状态条 / 数据状态卡与徽标 title。
   const marketBusinessLabel = governmentTenYear && !hasMissingMarketRepresentative
-    ? marketAssessment.label
+    ? marketAssessment.shortLabel
     : marketAssessment.usable
       ? "待复核"
-      : marketAssessment.label;
+      : marketAssessment.shortLabel;
 
   const marketTransmissionDetail = marketAssessment.usable
     ? hasMarketRepresentativeData
@@ -708,6 +754,7 @@ export default function MarketFinanceWorkbenchPage() {
       title: "市场变化",
       tone: marketBusinessTone,
       status: marketBusinessLabel,
+      statusTitle: marketAssessment.label,
       detail: marketTransmissionDetail,
       to: "/market-data",
       action: "查看市场证据",
@@ -716,7 +763,8 @@ export default function MarketFinanceWorkbenchPage() {
       key: "funding",
       title: "资金 / FTP",
       tone: productAssessment.tone,
-      status: productAssessment.label,
+      status: productAssessment.shortLabel,
+      statusTitle: productAssessment.label,
       detail: productPnl
         ? `资产端基准 FTP 率 ${valueWithUnit(ftpValue, "%")}，经营报告日 ${productReportDate ?? MISSING_VALUE}`
         : "产品分类损益未返回基准 FTP 读数。",
@@ -727,7 +775,8 @@ export default function MarketFinanceWorkbenchPage() {
       key: "alm",
       title: "ALM 约束",
       tone: balanceAssessment.tone,
-      status: balanceAssessment.label,
+      status: balanceAssessment.shortLabel,
+      statusTitle: balanceAssessment.label,
       detail: balanceOverview
         ? `资产负债读面可用，报告日 ${balanceReportDate ?? MISSING_VALUE}`
         : "资产负债读面暂无可核验结果。",
@@ -742,7 +791,8 @@ export default function MarketFinanceWorkbenchPage() {
         : productAssessment.tone,
       status: productAssessment.usable
         ? "部分可用"
-        : productAssessment.label,
+        : productAssessment.shortLabel,
+      statusTitle: productAssessment.label,
       detail: productPnl
         ? `经营净收入 ${valueWithUnit(netIncomeValue, "亿元")}；资本 / RWA 暂无可核验读数`
         : "经营损益、资本与 RWA 尚未形成完整协同证据。",
@@ -754,19 +804,33 @@ export default function MarketFinanceWorkbenchPage() {
       title: "管理动作",
       tone: "review" as const,
       status: "待复核",
+      statusTitle: "待复核",
       detail: "不自动生成建议。待日期、传导与资本口径对齐后进入协同复核。",
       to: "/decision-items",
       action: "进入决策事项",
     },
   ];
 
+  /**
+   * 对照表状态列：证据不可用时统一收敛为中性 “—”，具体失败原因不在此列
+   * 重复（完整披露只保留在状态条与数据状态卡两处）。
+   */
+  function matrixState(assessment: EvidenceAssessment): {
+    state: string;
+    tone: EvidenceTone;
+  } {
+    return assessment.usable
+      ? { state: assessment.shortLabel, tone: assessment.tone }
+      : { state: MISSING_VALUE, tone: "empty" };
+  }
+
   const matrixRows = [
     {
       dimension: "利率 / 资金",
       market: marketRepresentativeSummary,
       finance: "尚未建立与资金成本的正式传导口径",
-      state: marketBusinessLabel,
-      tone: marketBusinessTone,
+      state: marketAssessment.usable ? marketBusinessLabel : MISSING_VALUE,
+      tone: marketAssessment.usable ? marketBusinessTone : ("empty" as const),
       to: "/market-data",
       action: "市场数据",
     },
@@ -776,8 +840,7 @@ export default function MarketFinanceWorkbenchPage() {
       finance: productPnl
         ? `资产端基准 FTP 率 ${valueWithUnit(ftpValue, "%")}`
         : MISSING_VALUE,
-      state: productAssessment.label,
-      tone: productAssessment.tone,
+      ...matrixState(productAssessment),
       to: "/product-category-pnl",
       action: "产品分类损益",
     },
@@ -787,8 +850,7 @@ export default function MarketFinanceWorkbenchPage() {
       finance: balanceOverview
         ? `资产端市值 ${valueWithUnit(assetMarketValue, "亿元")}；负债端市值 ${valueWithUnit(liabilityMarketValue, "亿元")}`
         : MISSING_VALUE,
-      state: balanceAssessment.label,
-      tone: balanceAssessment.tone,
+      ...matrixState(balanceAssessment),
       to: "/balance-analysis",
       action: "资产负债分析",
     },
@@ -798,12 +860,8 @@ export default function MarketFinanceWorkbenchPage() {
       finance: productPnl
         ? `经营净收入 ${valueWithUnit(netIncomeValue, "亿元")}`
         : MISSING_VALUE,
-      state: productPnl
-        ? "损益可读，OCI 待复核"
-        : productAssessment.label,
-      tone: productPnl
-        ? ("review" as const)
-        : productAssessment.tone,
+      state: productPnl ? "损益可读，OCI 待复核" : MISSING_VALUE,
+      tone: productPnl ? ("review" as const) : ("empty" as const),
       to: "/product-category-pnl",
       action: "经营损益",
     },
@@ -825,6 +883,99 @@ export default function MarketFinanceWorkbenchPage() {
     productPnlQuery,
     balanceOverviewQuery,
   ].filter((query) => query.isError);
+
+  // 读数缺口原因只在 KPI 带头部披露一次，卡内值位统一 “—”，不逐卡重复。
+  const kpiMissingCount = [
+    marketKpiValue,
+    ftpValue,
+    netIncomeValue,
+    assetMarketValue,
+  ].filter((value) => value === MISSING_VALUE).length;
+  const kpiBandNote =
+    kpiMissingCount > 0
+      ? isLoading
+        ? "读数加载中，未就绪值位以 — 占位。"
+        : `${kpiMissingCount} 项读数暂无可核验值（${statusTitle}），值位以 — 占位。`
+      : null;
+
+  // 证据列内的元信息说明：同一列两条查询说明完全一致时只保留一次。
+  const productDatesMetaLine = describeMeta(
+    productDatesQuery.data?.result_meta,
+    isDemo,
+  );
+  const productPnlMetaLine = describeMeta(
+    productPnlQuery.data?.result_meta,
+    isDemo,
+  );
+  const productMetaShared = productDatesMetaLine === productPnlMetaLine;
+  const productDatesDateLine = metaDateEvidence(
+    productDatesQuery.data?.result_meta,
+  );
+  const productPnlDateLine = metaDateEvidence(
+    productPnlQuery.data?.result_meta,
+  );
+  const productDateShared = productDatesDateLine === productPnlDateLine;
+  const balanceDatesMetaLine = describeMeta(
+    balanceDatesQuery.data?.result_meta,
+    isDemo,
+  );
+  const balanceOverviewMetaLine = describeMeta(
+    balanceOverviewQuery.data?.result_meta,
+    isDemo,
+  );
+  const balanceMetaShared = balanceDatesMetaLine === balanceOverviewMetaLine;
+  const balanceDatesDateLine = metaDateEvidence(
+    balanceDatesQuery.data?.result_meta,
+  );
+  const balanceOverviewDateLine = metaDateEvidence(
+    balanceOverviewQuery.data?.result_meta,
+  );
+  const balanceDateShared = balanceDatesDateLine === balanceOverviewDateLine;
+
+  // KPI 卡 footer 只保留仍有信息量的行：读数说明 / 已返回口径 / 日期。
+  // 元信息未返回、暂无读数等缺口原因不在卡内逐卡重复（见 kpiBandNote）。
+  const onlyLines = (lines: Array<string | null>): string[] =>
+    lines.filter((line): line is string => Boolean(line));
+  const marketFooterLines = onlyLines([
+    governmentTenYear
+      ? `较前值 ${formatChoiceMacroDelta(governmentTenYear, {
+          spaceBeforeUnit: false,
+          emptyDisplay: MISSING_VALUE,
+        })}`
+      : marketAssessment.usable
+        ? `已返回 ${marketSeriesCount} 条序列，业务代表序列待复核`
+        : null,
+    marketRatesQuery.data?.result_meta
+      ? `口径：${metricBasisLabel(marketRatesQuery.data?.result_meta, isDemo)}`
+      : null,
+    (governmentTenYear?.trade_date ?? marketDate)
+      ? `行情日 ${governmentTenYear?.trade_date ?? marketDate}`
+      : null,
+  ]);
+  const ftpFooterLines = onlyLines([
+    productPnl ? "资产端基准 FTP" : null,
+    productPnlQuery.data?.result_meta
+      ? `口径：${metricBasisLabel(productPnlQuery.data?.result_meta, isDemo)}`
+      : null,
+    productReportDate ? `经营报告日 ${productReportDate}` : null,
+  ]);
+  const netIncomeFooterLines = onlyLines([
+    productPnl ? "产品分类损益合计" : null,
+    productPnlQuery.data?.result_meta
+      ? `口径：${metricBasisLabel(productPnlQuery.data?.result_meta, isDemo)}`
+      : null,
+    productReportDate ? `经营报告日 ${productReportDate}` : null,
+  ]);
+  const assetFooterLines = onlyLines([
+    balanceOverview ? "资产负债既有读面" : null,
+    balanceOverviewQuery.data?.result_meta
+      ? `口径：${metricBasisLabel(
+          balanceOverviewQuery.data?.result_meta,
+          isDemo,
+        )}`
+      : null,
+    balanceReportDate ? `资产负债报告日 ${balanceReportDate}` : null,
+  ]);
 
   function retryFailedQueries() {
     if (isRetrying || failedRetryTargets.length === 0) {
@@ -971,7 +1122,15 @@ export default function MarketFinanceWorkbenchPage() {
                   <span className="market-finance-workbench__spine-index">
                     {String(index + 1).padStart(2, "0")}
                   </span>
-                  <span className="market-finance-workbench__status-chip" data-tone={node.tone}>
+                  <span
+                    className="market-finance-workbench__status-chip"
+                    data-tone={node.tone}
+                    title={
+                      node.statusTitle !== node.status
+                        ? node.statusTitle
+                        : undefined
+                    }
+                  >
                     {node.status}
                   </span>
                 </div>
@@ -983,6 +1142,15 @@ export default function MarketFinanceWorkbenchPage() {
           </div>
         </section>
 
+        {kpiBandNote ? (
+          <p
+            className="market-finance-workbench__kpi-note"
+            data-testid="market-finance-kpi-note"
+            role="status"
+          >
+            {kpiBandNote}
+          </p>
+        ) : null}
         <KpiBand
           testId="market-finance-kpis"
           className="market-finance-workbench__kpis"
@@ -992,34 +1160,13 @@ export default function MarketFinanceWorkbenchPage() {
             label={governmentTenYearSlot?.label ?? "市场证据状态"}
             value={<MetricValue value={marketKpiValue} />}
             footer={
-              <div className="market-finance-workbench__metric-footer">
-                <span>
-                  {governmentTenYear
-                    ? `较前值 ${formatChoiceMacroDelta(
-                        governmentTenYear,
-                        {
-                          spaceBeforeUnit: false,
-                          emptyDisplay: MISSING_VALUE,
-                        },
-                      )}`
-                    : marketAssessment.usable
-                      ? `已返回 ${marketSeriesCount} 条序列，业务代表序列待复核`
-                    : "暂无可核验读数"}
-                </span>
-                <span>
-                  口径：
-                  {metricBasisLabel(
-                    marketRatesQuery.data?.result_meta,
-                    isDemo,
-                  )}
-                </span>
-                <span>
-                  行情日{" "}
-                  {governmentTenYear?.trade_date ??
-                    marketDate ??
-                    MISSING_VALUE}
-                </span>
-              </div>
+              marketFooterLines.length > 0 ? (
+                <div className="market-finance-workbench__metric-footer">
+                  {marketFooterLines.map((line) => (
+                    <span key={line}>{line}</span>
+                  ))}
+                </div>
+              ) : undefined
             }
           />
           <KpiBandMetric
@@ -1027,17 +1174,13 @@ export default function MarketFinanceWorkbenchPage() {
             label="基准 FTP 率"
             value={<MetricValue value={ftpValue} unit="%" />}
             footer={
-              <div className="market-finance-workbench__metric-footer">
-                <span>{productPnl ? "资产端基准 FTP" : "暂无可核验读数"}</span>
-                <span>
-                  口径：
-                  {metricBasisLabel(
-                    productPnlQuery.data?.result_meta,
-                    isDemo,
-                  )}
-                </span>
-                <span>经营报告日 {productReportDate ?? MISSING_VALUE}</span>
-              </div>
+              ftpFooterLines.length > 0 ? (
+                <div className="market-finance-workbench__metric-footer">
+                  {ftpFooterLines.map((line) => (
+                    <span key={line}>{line}</span>
+                  ))}
+                </div>
+              ) : undefined
             }
           />
           <KpiBandMetric
@@ -1045,17 +1188,13 @@ export default function MarketFinanceWorkbenchPage() {
             label="经营净收入"
             value={<MetricValue value={netIncomeValue} unit="亿元" />}
             footer={
-              <div className="market-finance-workbench__metric-footer">
-                <span>{productPnl ? "产品分类损益合计" : "暂无可核验读数"}</span>
-                <span>
-                  口径：
-                  {metricBasisLabel(
-                    productPnlQuery.data?.result_meta,
-                    isDemo,
-                  )}
-                </span>
-                <span>经营报告日 {productReportDate ?? MISSING_VALUE}</span>
-              </div>
+              netIncomeFooterLines.length > 0 ? (
+                <div className="market-finance-workbench__metric-footer">
+                  {netIncomeFooterLines.map((line) => (
+                    <span key={line}>{line}</span>
+                  ))}
+                </div>
+              ) : undefined
             }
           />
           <KpiBandMetric
@@ -1063,19 +1202,13 @@ export default function MarketFinanceWorkbenchPage() {
             label="资产端市值"
             value={<MetricValue value={assetMarketValue} unit="亿元" />}
             footer={
-              <div className="market-finance-workbench__metric-footer">
-                <span>
-                  {balanceOverview ? "资产负债既有读面" : "暂无可核验读数"}
-                </span>
-                <span>
-                  口径：
-                  {metricBasisLabel(
-                    balanceOverviewQuery.data?.result_meta,
-                    isDemo,
-                  )}
-                </span>
-                <span>资产负债报告日 {balanceReportDate ?? MISSING_VALUE}</span>
-              </div>
+              assetFooterLines.length > 0 ? (
+                <div className="market-finance-workbench__metric-footer">
+                  {assetFooterLines.map((line) => (
+                    <span key={line}>{line}</span>
+                  ))}
+                </div>
+              ) : undefined
             }
           />
         </KpiBand>
@@ -1087,7 +1220,7 @@ export default function MarketFinanceWorkbenchPage() {
                 <p>核心对照</p>
                 <PanelHeading>市场信号 × 财务约束</PanelHeading>
               </div>
-              <span>不制造一致、冲突或影响评分</span>
+              <span>不生成一致性、冲突或影响评分</span>
             </div>
             <div
               className="market-finance-workbench__table-wrap"
@@ -1186,7 +1319,7 @@ export default function MarketFinanceWorkbenchPage() {
                         ? "其他市场与财务证据不受影响，可单独重试此处。"
                         : decisionItemsAssessment.tone === "empty"
                           ? "当前报告日没有状态为待处理的决策事项。"
-                          : decisionItemsAssessment.label
+                          : "依赖的日期目录或结果元信息不可用，本次未读取待协调事项。"
                   }
                   actions={
                     decisionItemsQuery.isError ? (
@@ -1284,45 +1417,41 @@ export default function MarketFinanceWorkbenchPage() {
                   ? `产品分类损益，经营报告日 ${productReportDate ?? MISSING_VALUE}`
                   : "查询未返回产品分类损益。"}
               </p>
+              {productMetaShared ? <span>{productDatesMetaLine}</span> : null}
+              {productDateShared ? (
+                <p className="market-finance-workbench__date-evidence">
+                  {productDatesDateLine}
+                </p>
+              ) : null}
               <div className="market-finance-workbench__query-evidence">
                 <strong>日期目录</strong>
-                <span
-                  data-testid="market-finance-query-status-product-dates"
-                  data-tone={productDatesAssessment.tone}
-                >
-                  {productDatesAssessment.label}
-                </span>
-                <span>
-                  {describeMeta(
-                    productDatesQuery.data?.result_meta,
-                    isDemo,
-                  )}
-                </span>
-                <p className="market-finance-workbench__date-evidence">
-                  {metaDateEvidence(
-                    productDatesQuery.data?.result_meta,
-                  )}
-                </p>
+                <EvidenceQueryStatus
+                  testId="market-finance-query-status-product-dates"
+                  assessment={productDatesAssessment}
+                />
+                {productMetaShared ? null : (
+                  <span>{productDatesMetaLine}</span>
+                )}
+                {productDateShared ? null : (
+                  <p className="market-finance-workbench__date-evidence">
+                    {productDatesDateLine}
+                  </p>
+                )}
               </div>
               <div className="market-finance-workbench__query-evidence">
                 <strong>损益读数</strong>
-                <span
-                  data-testid="market-finance-query-status-product-pnl"
-                  data-tone={productPnlAssessment.tone}
-                >
-                  {productPnlAssessment.label}
-                </span>
-                <span>
-                  {describeMeta(
-                    productPnlQuery.data?.result_meta,
-                    isDemo,
-                  )}
-                </span>
-                <p className="market-finance-workbench__date-evidence">
-                  {metaDateEvidence(
-                    productPnlQuery.data?.result_meta,
-                  )}
-                </p>
+                <EvidenceQueryStatus
+                  testId="market-finance-query-status-product-pnl"
+                  assessment={productPnlAssessment}
+                />
+                {productMetaShared ? null : (
+                  <span>{productPnlMetaLine}</span>
+                )}
+                {productDateShared ? null : (
+                  <p className="market-finance-workbench__date-evidence">
+                    {productPnlDateLine}
+                  </p>
+                )}
               </div>
               <code>/ui/pnl/product-category</code>
             </article>
@@ -1333,45 +1462,41 @@ export default function MarketFinanceWorkbenchPage() {
                   ? `全头寸 CNY 既有读面，报告日 ${balanceReportDate ?? MISSING_VALUE}`
                   : "查询未返回资产负债读面。"}
               </p>
+              {balanceMetaShared ? <span>{balanceDatesMetaLine}</span> : null}
+              {balanceDateShared ? (
+                <p className="market-finance-workbench__date-evidence">
+                  {balanceDatesDateLine}
+                </p>
+              ) : null}
               <div className="market-finance-workbench__query-evidence">
                 <strong>日期目录</strong>
-                <span
-                  data-testid="market-finance-query-status-balance-dates"
-                  data-tone={balanceDatesAssessment.tone}
-                >
-                  {balanceDatesAssessment.label}
-                </span>
-                <span>
-                  {describeMeta(
-                    balanceDatesQuery.data?.result_meta,
-                    isDemo,
-                  )}
-                </span>
-                <p className="market-finance-workbench__date-evidence">
-                  {metaDateEvidence(
-                    balanceDatesQuery.data?.result_meta,
-                  )}
-                </p>
+                <EvidenceQueryStatus
+                  testId="market-finance-query-status-balance-dates"
+                  assessment={balanceDatesAssessment}
+                />
+                {balanceMetaShared ? null : (
+                  <span>{balanceDatesMetaLine}</span>
+                )}
+                {balanceDateShared ? null : (
+                  <p className="market-finance-workbench__date-evidence">
+                    {balanceDatesDateLine}
+                  </p>
+                )}
               </div>
               <div className="market-finance-workbench__query-evidence">
                 <strong>资产负债读数</strong>
-                <span
-                  data-testid="market-finance-query-status-balance-overview"
-                  data-tone={balanceOverviewAssessment.tone}
-                >
-                  {balanceOverviewAssessment.label}
-                </span>
-                <span>
-                  {describeMeta(
-                    balanceOverviewQuery.data?.result_meta,
-                    isDemo,
-                  )}
-                </span>
-                <p className="market-finance-workbench__date-evidence">
-                  {metaDateEvidence(
-                    balanceOverviewQuery.data?.result_meta,
-                  )}
-                </p>
+                <EvidenceQueryStatus
+                  testId="market-finance-query-status-balance-overview"
+                  assessment={balanceOverviewAssessment}
+                />
+                {balanceMetaShared ? null : (
+                  <span>{balanceOverviewMetaLine}</span>
+                )}
+                {balanceDateShared ? null : (
+                  <p className="market-finance-workbench__date-evidence">
+                    {balanceOverviewDateLine}
+                  </p>
+                )}
               </div>
               <code>/ui/balance-analysis/overview</code>
             </article>

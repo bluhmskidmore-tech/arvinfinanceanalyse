@@ -9,7 +9,6 @@ from datetime import date, timedelta
 from io import StringIO
 from pathlib import Path
 
-import dramatiq
 import duckdb
 import requests
 from backend.app.config.choice_runtime import _init_runtime
@@ -39,6 +38,7 @@ from backend.app.schemas.macro_vendor import (
     ChoiceMacroSnapshot,
 )
 from backend.app.schemas.materialize import CacheBuildRunRecord, CacheManifestRecord
+from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.build_runs import BuildRunRecord
 
 logger = logging.getLogger(__name__)
@@ -354,8 +354,7 @@ def _choice_warning(
     return warning
 
 
-@dramatiq.actor
-def refresh_choice_macro_snapshot(
+def _refresh_choice_macro_snapshot(
     duckdb_path: str | None = None,
     governance_dir: str | None = None,
     backfill_days: int = 0,
@@ -738,6 +737,12 @@ def refresh_choice_macro_snapshot(
     if refresh_warnings:
         result["warnings"] = refresh_warnings
     return result
+
+
+refresh_choice_macro_snapshot = register_actor_once(
+    "refresh_choice_macro_snapshot",
+    _refresh_choice_macro_snapshot,
+)
 
 
 def _delete_fact_rows_in_fetched_window(

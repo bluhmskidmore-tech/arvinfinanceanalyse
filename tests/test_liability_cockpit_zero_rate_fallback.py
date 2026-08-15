@@ -1,5 +1,10 @@
-# 回归：liability_cockpit 中 ytm=0 时必须视为"未采集"，回退到 coupon/interest_rate 下一候选，
-# 与 liability_analytics_compat.compute_liability_yield_metrics 的显式回退链语义保持一致。
+# 回归：liability_cockpit 中 ytm=0 时必须视为"未采集"，回退到 coupon/interest_rate 下一候选。
+# B10-3（2026-08 审计）后，cockpit 的 NIM/负债成本直接复用
+# liability_analytics_compat.compute_liability_yield_metrics（calc_rules §12.6 正式 KPI 口径：
+# NIM = 资产收益率 − 市场化负债成本，市场化负债缺失时回退整体负债成本），
+# 回退链与缺失剔除语义因此与页面 KPI 完全同源。
+# 注意：正式 KPI 口径会剔除无 maturity_date 的资产行（is_asset_without_maturity），
+# 因此 fixture 资产行必须带 maturity_date，否则断言会因 NIM=None 而空转。
 #
 # 同时固化 H/A 账户判定的数据来源语义（对齐 liability_analytics_repo.fetch_zqtz_rows 的真实输出）：
 # - formal 表可用时，asset_type 字段来自 fact_formal_zqtz_balance_daily.invest_type_std（"H"/"A"/"T"）。
@@ -8,6 +13,9 @@
 # fixture 不再手工塞入生产不会出现的 asset_type，而是用真实两种取值路径建模。
 from __future__ import annotations
 
+from backend.app.core_finance.liability_analytics_compat import (
+    compute_liability_yield_metrics,
+)
 from backend.app.core_finance.liability_cockpit import (
     compute_cockpit_warnings,
     compute_contribution_split,
@@ -24,14 +32,28 @@ def _asset_row(*, ytm_value, coupon_rate, asset_type=None) -> dict:
         "market_value_native": "100000000",
         "ytm_value": ytm_value,
         "coupon_rate": coupon_rate,
+        # 正式 KPI 口径剔除无到期日资产行，fixture 必须带 maturity_date。
+        "maturity_date": "2027-06-30",
     }
 
 
-def _liability_row(*, coupon_rate) -> dict:
+def _liability_row(*, coupon_rate, bond_type="商业银行债") -> dict:
     return {
         "is_issuance_like": True,
         "amortized_cost_native": "100000000",
         "coupon_rate": coupon_rate,
+        "bond_type": bond_type,
+        "maturity_date": "2026-09-30",
+    }
+
+
+def _tyw_liability_row(*, funding_cost_rate, principal="100000000") -> dict:
+    return {
+        "is_asset_side": False,
+        "principal_native": principal,
+        "funding_cost_rate": funding_cost_rate,
+        "maturity_date": "2026-09-30",
+        "counterparty_name": "银行B",
     }
 
 
@@ -50,6 +72,58 @@ def test_cockpit_warnings_ytm_zero_falls_back_to_coupon_not_zero_rate() -> None:
     # NIM 会跌到 -0.02 并触发"净息差为负"告警。
     assert "alert_nim_negative" not in alert_ids
     assert "watch_nim_thin" not in watch_ids
+
+
+def test_cockpit_nim_thin_watch_proves_fallback_rate_reaches_alert_path() -> None:
+    # 正向锁定：coupon 回退链真实生效时 NIM = 0.05 − 0.046 = 0.004 ≤ 50bp，
+    # 必须触发"净息差偏窄"关注。若资产行被整体剔除（NIM=None）或 ytm=0 被
+    # 当真实零利率（NIM<0 → 告警），本断言都会失败，防止负向断言空转。
+    asset_row = _asset_row(ytm_value="0", coupon_rate="5")
+    liability_row = _liability_row(coupon_rate="4.6")
+
+    result = compute_cockpit_warnings("2026-06-30", [asset_row, liability_row], [])
+
+    alert_ids = {item["id"] for item in result["alert_events"]}
+    watch_ids = {item["id"] for item in result["watch_items"]}
+    assert "watch_nim_thin" in watch_ids
+    assert "alert_nim_negative" not in alert_ids
+
+
+def test_cockpit_nim_alert_uses_market_liability_cost_kpi_caliber() -> None:
+    # B10-3：资产收益 2%、发行类（非同业存单）成本 5%、TYW 市场化负债成本 1%。
+    # 正式 KPI（compute_liability_yield_metrics）：market_liability_cost=1%，
+    # NIM = 2% − 1% = +1% > 0 → 不得触发"净息差为负"。
+    # 修复前 cockpit 用整体负债成本 weighted(5%,1%)=3%，NIM=-1% 会误报告警，
+    # 与同页 KPI（NIM 为正）直接矛盾。
+    asset_row = _asset_row(ytm_value="2", coupon_rate="2")
+    issuance_row = _liability_row(coupon_rate="5")
+    tyw_row = _tyw_liability_row(funding_cost_rate="1")
+
+    result = compute_cockpit_warnings("2026-06-30", [asset_row, issuance_row], [tyw_row])
+
+    alert_ids = {item["id"] for item in result["alert_events"]}
+    watch_ids = {item["id"] for item in result["watch_items"]}
+    assert "alert_nim_negative" not in alert_ids
+    assert "watch_nim_thin" not in watch_ids
+
+    # 告警口径必须与正式 KPI 同符号：KPI NIM 为正 ⇔ 无净息差告警。
+    kpi = compute_liability_yield_metrics("2026-06-30", [asset_row, issuance_row], [tyw_row])["kpi"]
+    assert kpi["nim"] is not None and kpi["nim"] > 0
+
+
+def test_cockpit_nim_falls_back_to_overall_cost_when_no_market_liabilities() -> None:
+    # 市场化负债（同业存单/TYW）缺失时，正式 KPI 回退整体负债成本：
+    # NIM = 2% − 5% = −3% ≤ 0 → 必须触发"净息差为负"（回退逻辑同样生效）。
+    asset_row = _asset_row(ytm_value="2", coupon_rate="2")
+    issuance_row = _liability_row(coupon_rate="5")
+
+    result = compute_cockpit_warnings("2026-06-30", [asset_row, issuance_row], [])
+
+    alert_ids = {item["id"] for item in result["alert_events"]}
+    assert "alert_nim_negative" in alert_ids
+
+    kpi = compute_liability_yield_metrics("2026-06-30", [asset_row, issuance_row], [])["kpi"]
+    assert kpi["nim"] is not None and kpi["nim"] <= 0
 
 
 def test_contribution_split_ytm_zero_falls_back_to_coupon_not_zero_rate() -> None:

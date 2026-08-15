@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from copy import deepcopy
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -39,6 +40,18 @@ from backend.app.schemas.liability_analytics import (
 from backend.app.services.explicit_numeric import promote_payload_numerics
 from backend.app.services.formal_result_runtime import build_result_envelope
 from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
+
+logger = logging.getLogger(__name__)
+
+
+def _degraded_log_level(exc: BaseException) -> int:
+    """与 dashboard_service 同款分级：程序缺陷类异常与预期数据缺口在日志流中可区分。"""
+    return (
+        logging.WARNING
+        if isinstance(exc, (TypeError, KeyError, AttributeError))
+        else logging.DEBUG
+    )
+
 
 LIABILITY_ANALYTICS_CACHE_VERSION = "cv_liability_analytics_v1"
 LIABILITY_ANALYTICS_RULE_VERSION = "rv_liability_analytics_compat_v1"
@@ -149,6 +162,7 @@ def _envelope(
     result_payload: dict[str, object],
     source_rows: list[dict[str, object]],
     quality_flag: str = "ok",
+    filters_applied: dict[str, object] | None = None,
 ) -> dict[str, object]:
     source_version, rule_version = _merge_lineage(source_rows)
     return build_result_envelope(
@@ -161,6 +175,7 @@ def _envelope(
         quality_flag=quality_flag,
         vendor_version="vv_none",
         source_surface="formal_liability",
+        filters_applied=filters_applied,
         result_payload=result_payload,
     )
 
@@ -271,15 +286,33 @@ def build_nim_stress_percent_points(nim: object) -> dict[str, float | None]:
     return _build_nim_stress_fields(nim, shock=NIM_STRESS_SHOCK_PERCENT)
 
 
+class _YieldHistorySeries(list[dict[str, object]]):
+    """形状兼容的历史序列，附带 fail-visible 的跳过日期元数据。
+
+    与 executive_service 的 `_HomeCacheBuildRunRows` / `_ProductCategoryHeadlineValues`
+    同款模式：既有消费端把它当普通 list 用，信封构建端读 ``skipped_dates`` 披露缺口，
+    让趋势图缺口与"当日无数据"可区分。
+    """
+
+    def __init__(
+        self,
+        points: list[dict[str, object]] | None = None,
+        *,
+        skipped_dates: list[str] | None = None,
+    ) -> None:
+        super().__init__(points or [])
+        self.skipped_dates: list[str] = list(skipped_dates or [])
+
+
 def _build_yield_history_series(
     repo: LiabilityAnalyticsRepository,
     anchor_date: str,
     *,
     max_points: int = 72,
-) -> list[dict[str, object]]:
+) -> _YieldHistorySeries:
     all_dates = repo.list_report_dates()
     if anchor_date not in all_dates:
-        return []
+        return _YieldHistorySeries()
     idx = all_dates.index(anchor_date)
     slice_desc = all_dates[idx : idx + max_points]
     slice_asc = list(reversed(slice_desc))
@@ -289,9 +322,19 @@ def _build_yield_history_series(
     if callable(fetch_yield_rows):
         try:
             zqtz_rows_by_date, tyw_rows_by_date = fetch_yield_rows(slice_desc)
-        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
             zqtz_rows_by_date, tyw_rows_by_date = {}, {}
+            logger.log(
+                _degraded_log_level(exc),
+                "degraded: liability yield history batch prefetch falls back to per-date reads"
+                " [anchor_date=%r dates=%d] %s: %s",
+                anchor_date,
+                len(slice_desc),
+                type(exc).__name__,
+                exc,
+            )
     history: list[dict[str, object]] = []
+    skipped_dates: list[str] = []
     for d in slice_asc:
         if d in zqtz_rows_by_date:
             zq = zqtz_rows_by_date[d]
@@ -303,10 +346,28 @@ def _build_yield_history_series(
             ty = repo.fetch_tyw_rows(d)
         try:
             m = compute_liability_yield_metrics(d, zq, ty)
-        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+            skipped_dates.append(d)
+            logger.log(
+                _degraded_log_level(exc),
+                "degraded: liability yield history skips one date"
+                " [report_date=%r anchor_date=%r] %s: %s",
+                d,
+                anchor_date,
+                type(exc).__name__,
+                exc,
+            )
             continue
         kpi = m.get("kpi") if isinstance(m, dict) else None
         if not isinstance(kpi, dict):
+            skipped_dates.append(d)
+            logger.warning(
+                "degraded: liability yield history skips one date without kpi dict"
+                " [report_date=%r anchor_date=%r payload_type=%s]",
+                d,
+                anchor_date,
+                type(m).__name__,
+            )
             continue
         history.append(
             {
@@ -317,7 +378,7 @@ def _build_yield_history_series(
                 "nim": kpi.get("nim"),
             }
         )
-    return history
+    return _YieldHistorySeries(history, skipped_dates=skipped_dates)
 
 
 def _build_yield_scatter_points(zqtz_rows: list[dict[str, Any]], report_date: str) -> list[dict[str, object]]:
@@ -371,6 +432,7 @@ def liability_risk_buckets_payload(*, duckdb_path: str, report_date: str | None)
                 interbank_liabilities_term_buckets=[],
                 issued_liabilities_structure=[],
                 issued_liabilities_term_buckets=[],
+                missing_maturity_count=0,
             ).model_dump(mode="json"),
         )
     payload = compute_liability_risk_buckets(
@@ -378,9 +440,16 @@ def liability_risk_buckets_payload(*, duckdb_path: str, report_date: str | None)
         zqtz_rows,
         tyw_rows,
     )
+    missing_maturity_count = int(payload.get("missing_maturity_count") or 0)
     return _envelope(
         result_kind="liability_analytics.risk_buckets",
         source_rows=[*zqtz_rows, *tyw_rows],
+        quality_flag="warning" if missing_maturity_count > 0 else "ok",
+        filters_applied=(
+            {"missing_maturity_count": missing_maturity_count}
+            if missing_maturity_count > 0
+            else None
+        ),
         result_payload=LiabilityRiskBucketsPayload.model_validate(
             _promote_liability_payload(payload, LiabilityRiskBucketsPayload)
         ).model_dump(mode="json"),
@@ -429,6 +498,7 @@ def _compute_liability_yield_metrics_payload(*, duckdb_path: str, report_date: s
         kpi["nim_stress"] = _build_nim_stress(kpi.get("nim"))
         payload = {**payload, "kpi": kpi}
     history_dicts = _build_yield_history_series(repo, resolved_date, max_points=72)
+    history_skipped = list(getattr(history_dicts, "skipped_dates", []) or [])
     scatter_dicts = _build_yield_scatter_points(zqtz_rows, resolved_date)
     merged: dict[str, object] = {
         **payload,
@@ -438,6 +508,15 @@ def _compute_liability_yield_metrics_payload(*, duckdb_path: str, report_date: s
     return _envelope(
         result_kind="liability_analytics.yield_metrics",
         source_rows=[*zqtz_rows, *tyw_rows],
+        quality_flag="warning" if history_skipped else "ok",
+        filters_applied=(
+            {
+                "history_skipped_date_count": len(history_skipped),
+                "history_skipped_dates": history_skipped,
+            }
+            if history_skipped
+            else None
+        ),
         result_payload=LiabilityYieldMetricsPayload.model_validate(
             _promote_liability_payload(merged, LiabilityYieldMetricsPayload)
         ).model_dump(mode="json"),

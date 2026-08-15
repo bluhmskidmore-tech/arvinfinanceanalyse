@@ -147,6 +147,19 @@ async function expandMarketDataLinkageCollapse() {
   fireEvent.click(header);
 }
 
+/** antd DatePicker：向内部 input 输入并以 Enter 提交（format=YYYY-MM-DD）。 */
+function changeMarketDataWatchDate(value: string) {
+  const picker = screen.getByTestId("market-data-date-picker");
+  const input = picker instanceof HTMLInputElement ? picker : picker.querySelector("input");
+  if (!(input instanceof HTMLInputElement)) {
+    throw new Error("date picker input missing");
+  }
+  fireEvent.mouseDown(input);
+  fireEvent.change(input, { target: { value } });
+  fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+  fireEvent.blur(input);
+}
+
 function buildResultMeta(partial: Partial<ResultMeta> = {}): ResultMeta {
   return {
     trace_id: "tr_market_data_test",
@@ -698,7 +711,8 @@ describe("MarketDataPage", () => {
     expect(liquidityDeck).toContainElement(screen.getByTestId("market-data-money-market-card"));
     expect(liquidityDeck).toContainElement(screen.getByTestId("market-data-ncd-card"));
     expect(screen.getByTestId("market-data-money-market-table")).toBeInTheDocument();
-    expect(screen.getByTestId("market-data-ncd-view-toggle")).toBeInTheDocument();
+    // mock NCD 为单行矩阵：无对比维度，热力视图与切换按约定隐藏，仅保留表格。
+    expect(screen.queryByTestId("market-data-ncd-view-toggle")).not.toBeInTheDocument();
     expect(screen.getByTestId("market-data-rate-trend-chart")).toHaveTextContent("无法绘制走势图");
 
     await waitFor(() => {
@@ -874,10 +888,15 @@ describe("MarketDataPage", () => {
 
     await expandMarketDataLinkageCollapse();
     expect(await screen.findByTestId("market-data-linkage-caveat")).toBeInTheDocument();
-    expect(await screen.findByTestId("market-data-linkage-composite-score")).toHaveTextContent(
-      "综合计算中流动性取反",
+    // 极性/取反等实现细节按 DESIGN §7 收进 title，不占正文。
+    expect(await screen.findByTestId("market-data-linkage-composite-score")).toHaveAttribute(
+      "title",
+      expect.stringContaining("综合计算中流动性取反"),
     );
-    expect(screen.getByTestId("market-data-linkage-liquidity-score")).toHaveTextContent("进入综合分时取反");
+    expect(screen.getByTestId("market-data-linkage-liquidity-score")).toHaveAttribute(
+      "title",
+      expect.stringContaining("进入综合分时取反"),
+    );
   });
 
   it("loads Livermore when explicitly expanded before its viewport observer activates", async () => {
@@ -910,8 +929,16 @@ describe("MarketDataPage", () => {
 
     fireEvent.click(screen.getByTestId("market-data-macro-tab-trigger-linkage"));
     const linkageTab = await screen.findByTestId("market-data-macro-tab-linkage");
-    expect(linkageTab).toHaveTextContent("综合计算中流动性取反");
-    expect(linkageTab).toHaveTextContent("进入综合分时取反");
+    // 极性/取反等实现细节按 DESIGN §7 收进 title，不占正文。
+    expect(screen.getByTestId("market-data-linkage-tab-composite")).toHaveAttribute(
+      "title",
+      expect.stringContaining("综合计算中流动性取反"),
+    );
+    expect(screen.getByTestId("market-data-linkage-tab-liquidity")).toHaveAttribute(
+      "title",
+      expect.stringContaining("进入综合分时取反"),
+    );
+    expect(linkageTab).not.toHaveTextContent("综合计算中流动性取反");
   });
 
   it("drives terminal market panels from formal/latest data and source-pending states", async () => {
@@ -1041,11 +1068,12 @@ describe("MarketDataPage", () => {
       getMarketDataCoverageSummary,
     } as ApiClient);
 
-    const ticker = await screen.findByTestId("market-data-terminal-ticker");
-    expect(ticker).toHaveTextContent("10年国债");
-    expect(ticker).toHaveTextContent("1.94%");
-    expect(ticker).toHaveTextContent("-1bp");
-    expect(screen.getByTestId("market-data-terminal-kpi-cgb10y")).toHaveTextContent("1.94%");
+    // 快捷行情 chips 与 KPI 带同源同值，已按 §6 去重删除；行情读数由 KPI 带承载。
+    const kpiCgb10y = await screen.findByTestId("market-data-terminal-kpi-cgb10y");
+    expect(kpiCgb10y).toHaveTextContent("10年国债");
+    expect(kpiCgb10y).toHaveTextContent("1.94%");
+    expect(kpiCgb10y).toHaveTextContent("-1bp");
+    expect(screen.queryByTestId("market-data-terminal-ticker")).not.toBeInTheDocument();
     expect(screen.getByTestId("market-data-kpi-band")).toBeInTheDocument();
     expect(screen.queryByTestId("market-data-terminal-kpi-strip")).not.toBeInTheDocument();
 
@@ -1484,12 +1512,18 @@ describe("MarketDataPage", () => {
     expect(await screen.findByTestId("livermore-market-state")).toHaveTextContent("WARM");
     expect(screen.getByTestId("market-data-livermore-panel")).toHaveTextContent("801001");
     expect(screen.getByTestId("market-data-livermore-panel")).toHaveTextContent("000001.SZ");
-    expect(screen.getByTestId("market-data-livermore-panel")).toHaveTextContent(
+    // 口径版本（rv_*）按 DESIGN §7 收进 title，不占正文。
+    expect(screen.getByTestId("market-data-livermore-panel")).not.toHaveTextContent(
       "rv_livermore_stock_candidates_bundle_v1",
     );
-    expect(screen.getByTestId("market-data-livermore-panel")).toHaveTextContent(
-      "rv_livermore_risk_exit_ema10_mvp_v1",
+    expect(screen.getByTestId("livermore-stock-candidates")).toContainElement(
+      screen.getByTitle("口径版本 rv_livermore_stock_candidates_bundle_v1"),
     );
+    expect(screen.getByTestId("livermore-risk-exit")).toContainElement(
+      screen.getByTitle("口径版本 rv_livermore_risk_exit_ema10_mvp_v1"),
+    );
+    expect(screen.getByTestId("livermore-risk-exit")).toHaveTextContent("风险退出");
+    expect(screen.getByTestId("livermore-risk-exit")).toHaveTextContent("持仓 2 · 信号 1");
     expect(screen.getByTestId("livermore-mean-reversion-candidates")).toHaveTextContent("Gamma");
     expect(screen.getByTestId("livermore-factor-screen-candidates")).toHaveTextContent("Factor Delta");
     expect(screen.getByTestId("livermore-theme-breakout")).toHaveTextContent("AI proxy");
@@ -1761,7 +1795,9 @@ describe("MarketDataPage", () => {
       "仅为分析信号",
     );
     expect(screen.getByTestId("market-data-linkage-composite-score")).toHaveTextContent("-0.11");
-    expect(screen.getByTestId("market-data-linkage-rate-direction")).toHaveTextContent("falling");
+    // rate_direction 后端枚举中文化：falling → 下行。
+    expect(screen.getByTestId("market-data-linkage-rate-direction")).toHaveTextContent("下行");
+    expect(screen.getByTestId("market-data-linkage-rate-direction")).not.toHaveTextContent("falling");
     expect(screen.getByTestId("market-data-linkage-portfolio-impact")).toHaveTextContent(
       "组合影响估算",
     );
@@ -1843,13 +1879,15 @@ describe("MarketDataPage", () => {
     });
 
     expect(await screen.findByTestId("market-data-hero")).toBeInTheDocument();
+    // 全量套件并行负载下 refetch 调度可超过 RTL 默认 1s 超时，显式放宽消除时序抖动。
+    const REFRESH_WAIT = { timeout: 5000 } as const;
     await waitFor(() => {
       expect(getMacroFoundation).toHaveBeenCalledTimes(1);
       expect(getChoiceMacroLatest).toHaveBeenCalledTimes(1);
       expect(getFxAnalytical).toHaveBeenCalledTimes(1);
       expect(getNcdFundingProxy).toHaveBeenCalledTimes(1);
       expect(getMacroBondLinkageAnalysis).not.toHaveBeenCalled();
-    });
+    }, REFRESH_WAIT);
 
     fireEvent.click(screen.getByTestId("market-data-refresh-btn"));
 
@@ -1857,7 +1895,7 @@ describe("MarketDataPage", () => {
       expect(refreshChoiceMacro).toHaveBeenCalledWith(30);
       expect(screen.getByTestId("market-data-refresh-btn")).toBeDisabled();
       expect(screen.getByText("queued · run-market-data-1")).toBeInTheDocument();
-    });
+    }, REFRESH_WAIT);
 
     const finishRefresh = completeRefresh as (() => void) | null;
     expect(finishRefresh).not.toBeNull();
@@ -1869,7 +1907,7 @@ describe("MarketDataPage", () => {
     await waitFor(() => {
       expect(getChoiceMacroRefreshStatus).toHaveBeenCalledWith("run-market-data-1");
       expect(screen.getByTestId("market-data-refresh-btn")).not.toBeDisabled();
-    });
+    }, REFRESH_WAIT);
 
     await waitFor(() => {
       expect(getMacroFoundation).toHaveBeenCalledTimes(2);
@@ -1877,7 +1915,7 @@ describe("MarketDataPage", () => {
       expect(getFxAnalytical).toHaveBeenCalledTimes(2);
       expect(getNcdFundingProxy).toHaveBeenCalledTimes(2);
       expect(getMacroBondLinkageAnalysis).toHaveBeenCalledTimes(1);
-    });
+    }, REFRESH_WAIT);
   });
 
   it("registers section-level refresh policy without pulling stable/date-slice sections into fallback polling", async () => {
@@ -2065,8 +2103,7 @@ describe("MarketDataPage", () => {
       expect(getChoiceMacroLatest).toHaveBeenCalledTimes(1);
     });
 
-    fireEvent.change(screen.getByTestId("market-data-date-picker"), { target: { value: "2026-03-01" } });
-    expect(screen.getByTestId("market-data-date-picker")).toHaveValue("2026-03-01");
+    changeMarketDataWatchDate("2026-03-01");
 
     const curveFilter = screen.getByTestId("market-data-curve-filter");
     const curveSelector = curveFilter.querySelector(".ant-select-selector");
@@ -2112,7 +2149,7 @@ describe("MarketDataPage", () => {
     });
   });
 
-  it("keeps the compact ticker status date tied to the formal rates result date instead of the selected watch date", async () => {
+  it("keeps the hero data date tied to the formal rates result date instead of the selected watch date", async () => {
     const base = createApiClient({ mode: "mock" });
     const getMarketDataRates = vi.fn(async () => ({
       result_meta: buildResultMeta({
@@ -2149,13 +2186,16 @@ describe("MarketDataPage", () => {
     await waitFor(() => {
       expect(getMarketDataRates).toHaveBeenCalledTimes(1);
     });
+    // 先等正式利率结果日同步落定，再改观察日，避免受控输入在提交间隙被回写。
+    await waitFor(() => {
+      expect(screen.getByTestId("market-data-hero-date-note")).toHaveTextContent("2026-04-30");
+    });
 
-    fireEvent.change(screen.getByTestId("market-data-date-picker"), { target: { value: "2026-03-01" } });
-    expect(screen.getByTestId("market-data-date-picker")).toHaveValue("2026-03-01");
+    changeMarketDataWatchDate("2026-03-01");
 
     await waitFor(() => {
-      expect(screen.getByTestId("market-data-terminal-ticker-status")).toHaveTextContent("2026-04-30");
-      expect(screen.getByTestId("market-data-terminal-ticker-status")).not.toHaveTextContent("2026-03-01");
+      expect(screen.getByTestId("market-data-hero-date-note")).toHaveTextContent("2026-04-30");
+      expect(screen.getByTestId("market-data-hero-date-note")).not.toHaveTextContent("2026-03-01");
     });
   });
 
@@ -2329,9 +2369,10 @@ describe("MarketDataPage", () => {
     });
     expect(within(ncdPanel).getByText("Shibor fixing")).toBeInTheDocument();
     expect(screen.queryByText("Quote median")).not.toBeInTheDocument();
+    // 两条警示各自成行（中文化 + 原文 title），逐条可见。
     expect(
-      await screen.findByText(/报价中位数不可用|不是真实存单发行矩阵/),
-    ).toBeInTheDocument();
+      (await screen.findAllByText(/报价中位数不可用|不是真实存单发行矩阵/)).length,
+    ).toBeGreaterThanOrEqual(1);
     expect(await screen.findByText("1.427")).toBeInTheDocument();
     expect(await screen.findByText(/回退日期 2026-05-28/)).toBeInTheDocument();
     const evidenceRail = screen.getByTestId("market-data-macro-evidence-rail");
@@ -2341,13 +2382,15 @@ describe("MarketDataPage", () => {
     expect(screen.queryByTestId("market-data-ncd-live-meta")).not.toBeInTheDocument();
   });
 
-  it("exposes chart view toggles for rate quotes and ncd proxy", async () => {
+  it("exposes chart view toggles for rate quotes and hides the ncd heatmap for single-row proxies", async () => {
     renderPage(createApiClient({ mode: "mock" }));
 
     expect(await screen.findByTestId("market-data-rate-quote-view-toggle")).toBeInTheDocument();
-    expect(await screen.findByTestId("market-data-ncd-view-toggle")).toBeInTheDocument();
     expect(await screen.findByTestId("market-data-term-structure-chart")).toBeInTheDocument();
-    expect(await screen.findByTestId("market-data-ncd-heatmap")).toBeInTheDocument();
     expect(await screen.findByTestId("market-data-rate-trend-chart")).toBeInTheDocument();
+    // mock NCD 为单行矩阵：热力无对比维度，视图切换与热力图收敛，仅保留表格。
+    await screen.findByTestId("market-data-ncd-matrix");
+    expect(screen.queryByTestId("market-data-ncd-view-toggle")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("market-data-ncd-heatmap")).not.toBeInTheDocument();
   });
 });

@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-import hashlib
+import hashlib  # noqa: F401
 import json
 import logging
 import math
-import re
+import re  # noqa: F401
 import time
 import uuid
-from calendar import monthrange
+from calendar import monthrange  # noqa: F401
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
-from datetime import date, datetime
+from datetime import date, datetime  # noqa: F401
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -27,9 +27,9 @@ from backend.app.core_finance.cycle_macro_score import (
     build_cycle_macro_snapshot,
 )
 from backend.app.core_finance.data_freshness import (
-    FRESHNESS_TIER_EXPIRED,
-    FRESHNESS_TIER_FRESH,
-    FRESHNESS_TIER_STALE,
+    FRESHNESS_TIER_EXPIRED,  # noqa: F401
+    FRESHNESS_TIER_FRESH,  # noqa: F401
+    FRESHNESS_TIER_STALE,  # noqa: F401
     assess_freshness,
 )
 from backend.app.core_finance.factor_screen_candidates import (
@@ -51,7 +51,7 @@ from backend.app.core_finance.hybrid_fusion_config import (
     load_hybrid_fusion_thresholds,
 )
 from backend.app.core_finance.livermore_risk_exit import (
-    MVP_RULE_LABEL,
+    MVP_RULE_LABEL,  # noqa: F401
     RiskExitSnapshot,
     compute_risk_exit,
 )
@@ -67,7 +67,7 @@ from backend.app.core_finance.livermore_stock_candidates import (
     StockCandidateSnapshot,
     compute_stock_candidates,
     is_stock_candidate_policy_active,
-    stock_candidate_policy_active_market_states,
+    stock_candidate_policy_active_market_states,  # noqa: F401
 )
 from backend.app.core_finance.livermore_strategy import (
     BroadIndexObservation,
@@ -113,12 +113,163 @@ from backend.app.services.formal_result_runtime import (
     VendorStatus,
     build_result_envelope,
 )
+from backend.app.services.market_data_livermore_service_input_freshness import (
+    _INPUT_FRESHNESS_NOTE_CATEGORY_BY_FAMILY,  # noqa: F401
+    _INPUT_FRESHNESS_TIER_RANK,  # noqa: F401
+    INPUT_FRESHNESS_DEGRADED_DIAGNOSTIC_CODE,  # noqa: F401
+    INPUT_FRESHNESS_DEGRADED_TIERS,  # noqa: F401
+    INPUT_FRESHNESS_LOOK_AHEAD_STATUS,  # noqa: F401
+    _cycle_input_freshness_date,
+    _degrade_quality_flag_for_input_freshness,
+    _input_freshness_degradation_notes,
+    _input_freshness_severity,  # noqa: F401
+    _merge_input_freshness_into_data_gaps,
+)
+from backend.app.services.market_data_livermore_service_module_status import (
+    STOCK_CANDIDATE_POLICY_INACTIVE_INPUT_FAMILY,
+    STOCK_CANDIDATE_POLICY_INACTIVE_REASON_PREFIX,  # noqa: F401
+    STOCK_MODULE_FRESHNESS_THRESHOLD_DAYS,  # noqa: F401
+    STOCK_MODULE_PARTIAL_COVERAGE_THRESHOLD,  # noqa: F401
+    STOCK_MODULE_PRIMARY_COVERAGE_THRESHOLD,
+    _choice_stock_dependency_summary,
+    _choice_stock_missing_inputs,
+    _ChoiceStockOutputs,
+    _coverage_degradation_reason,
+    _coverage_gap_status,
+    _coverage_ratio,
+    _coverage_state,
+    _DualStockHistoryInputs,
+    _factor_screen_payload_is_inactive,
+    _fresh_trend_watchlist_unavailable_reason,
+    _FreshTrendWatchlistLoadResult,
+    _has_hybrid_fusion_candidate_source,
+    _hybrid_fusion_is_factor_only,
+    _hybrid_fusion_unavailable_reason_from_payloads,
+    _is_stock_candidate_policy_inactive_reason,
+    _lifecourt_available_inputs,
+    _lifecourt_missing_inputs,
+    _LoadedObservation,
+    _mean_reversion_unavailable_reason,
+    _missing_families_from_request_items,
+    _module_lag_days,
+    _module_payload,
+    _module_source_date,
+    _module_threshold_days,
+    _movement_for_concept,
+    _payload_item_count,
+    _payload_text,
+    _query_failure_reason_for_stage,  # noqa: F401
+    _risk_unavailable_reason,
+    _sector_missing_inputs,
+    _sector_status,
+    _sector_unavailable_reason,
+    _stock_candidate_policy_inactive_reason,
+    _stock_status,
+    _stock_unavailable_input_family,
+    _stock_unavailable_reason,
+    _theme_breakout_evidence_entries,
+    _theme_breakout_evidence_entry,
+    _theme_breakout_evidence_message,  # noqa: F401
+    _theme_breakout_evidence_ready,
+    _theme_breakout_stock_item_count,  # noqa: F401
+    _theme_breakout_unavailable_reason,
+    _theme_breakout_uses_current_overlay,
+    _uptrend_momentum_unavailable_reason,
+)
+from backend.app.services.market_data_livermore_service_official_evidence import (
+    _BACKFILL_RUN_ID_PATTERN,
+    _CYCLE_INPUT_ROW_CONTRACTS,
+    _FULL_SHA256_PATTERN,
+    _OFFICIAL_AVAILABILITY_MANIFEST_VERSION,
+    _OFFICIAL_BACKFILL_RULE_VERSION,
+    _OFFICIAL_MAPPING_VERSION_BY_SOURCE,
+    _OFFICIAL_VENDOR_VERSION_PATTERN,
+    _livermore_business_input_signature,
+    _nbs_release_evidence_latest_available_date,  # noqa: F401
+    _official_release_evidence_latest_available_date,
+    _pbc_release_evidence_latest_available_date,  # noqa: F401
+    _strict_manifest_date,
+    _strict_manifest_timestamp_date,  # noqa: F401
+    livermore_data_version,
+)
+from backend.app.services.market_data_livermore_service_support import (
+    MAINBOARD_RISK_WARNING_LIMIT_RATIO_10_START,  # noqa: F401
+    _aggregate_lineage,
+    _date_before,  # noqa: F401
+    _is_risk_warning_stock_name,  # noqa: F401
+    _latest_common_trade_date_pair,
+    _parse_optional_date,
+    _quality_flag_for_market_gate,
+    _rule_derived_limit_ratio,
+    _truthy,
+    _unique_preserving_order,
+    _vendor_status_for_state,
+)
 from backend.app.services.runtime_cache import get_runtime_cache
 
 if TYPE_CHECKING:
     from backend.app.tasks.choice_stock_materialize import ChoiceStockMaterializationCoverage
 
 logger = logging.getLogger(__name__)
+
+DUCKDB_QUERY_FAILED_PREFIX = "DuckDB query failed"
+LIVERMORE_DUCKDB_QUERY_FAILED_CODE = "LIVERMORE_DUCKDB_QUERY_FAILED"
+
+
+def _warn_duckdb_query_failed(
+    stage: str,
+    *,
+    exc: BaseException,
+    tables: object = None,
+    as_of_date: str | date | None = None,
+) -> str:
+    """Log a DuckDB failure and return a stable reason string for diagnostics.
+
+    Distinguishes query/connection failure from genuine empty result sets so
+    operators can tell corrupted lineage apart from "no rows for this date".
+    """
+    if isinstance(tables, (list, tuple, set, frozenset)):
+        table_text = ",".join(str(item) for item in tables) or "-"
+    elif tables:
+        table_text = str(tables)
+    else:
+        table_text = "-"
+    date_text = (
+        as_of_date.isoformat()
+        if isinstance(as_of_date, date)
+        else (str(as_of_date) if as_of_date else "-")
+    )
+    summary = str(exc).strip().replace("\n", " ")[:300] or exc.__class__.__name__
+    logger.warning(
+        "livermore_duckdb_query_failed stage=%s tables=%s as_of_date=%s error=%s",
+        stage,
+        table_text,
+        date_text,
+        summary,
+    )
+    return (
+        f"{DUCKDB_QUERY_FAILED_PREFIX} stage={stage} tables={table_text} "
+        f"as_of_date={date_text} error={summary}"
+    )
+
+
+def _record_duckdb_query_failure(
+    query_failures: list[str] | None,
+    stage: str,
+    *,
+    exc: BaseException,
+    tables: object = None,
+    as_of_date: str | date | None = None,
+) -> str:
+    reason = _warn_duckdb_query_failed(
+        stage,
+        exc=exc,
+        tables=tables,
+        as_of_date=as_of_date,
+    )
+    if query_failures is not None:
+        query_failures.append(reason)
+    return reason
 
 
 def load_choice_stock_materialization_coverage(**kwargs: Any) -> ChoiceStockMaterializationCoverage:
@@ -144,7 +295,11 @@ def theme_overlay_reader_from_settings(settings: object) -> StockAnalysisThemeOv
             sql_dsn=str(getattr(settings, "governance_sql_dsn", "") or ""),
             backend_mode=str(getattr(settings, "governance_backend", "jsonl") or "jsonl"),
         )
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "livermore_theme_overlay_reader_unavailable error=%s",
+            str(exc).strip().replace("\n", " ")[:300] or exc.__class__.__name__,
+        )
         return None
     return StockAnalysisThemeOverlayReader(
         archive_root=archive_root,
@@ -171,9 +326,6 @@ CHOICE_STOCK_HISTORY_WINDOW = 130
 STOCK_CANDIDATE_LIMIT_RATIO_BLOCK_REASON = (
     "No price-field or rule-derived limit_ratio source is available for Livermore stock pivot filters."
 )
-STOCK_CANDIDATE_POLICY_INACTIVE_INPUT_FAMILY = "stock_candidate_policy"
-STOCK_CANDIDATE_POLICY_INACTIVE_REASON_PREFIX = "Stock candidate policy "
-MAINBOARD_RISK_WARNING_LIMIT_RATIO_10_START = date(2026, 7, 6)
 SECTOR_REQUIRED_ITEMS: tuple[tuple[str, str], ...] = (
     ("sector_membership", "sw2021_industry_membership"),
     ("sector_strength", "daily_return_turnover_amplitude"),
@@ -193,9 +345,6 @@ LIVERMORE_OUTPUT_KEYS: tuple[str, ...] = (
     "hybrid_fusion",
     "risk_exit",
 )
-STOCK_MODULE_FRESHNESS_THRESHOLD_DAYS = 3
-STOCK_MODULE_PRIMARY_COVERAGE_THRESHOLD = 0.8
-STOCK_MODULE_PARTIAL_COVERAGE_THRESHOLD = 0.5
 # factor_screen v3 流动性治理：候选近 20 日均成交额(元)通过率低于该阈值时降级为
 # 观察名单(evidence_only)。阈值口径同 MonitoringThresholds,不另写字面量。
 FACTOR_SCREEN_LIQUIDITY_PASS_THRESHOLD = POLICY.monitoring_thresholds.factor_screen_liquidity_pass_threshold
@@ -203,23 +352,8 @@ FACTOR_SCREEN_LIQUIDITY_PASS_THRESHOLD = POLICY.monitoring_thresholds.factor_scr
 # 写入的 coverage_note 均含以下关键词之一（无数据/缺少字段/必填字段缺失或全部未通过筛选
 # 导致评分池为空）；成功路径的 coverage_note 只说明评分池规模，不含这些关键词。
 FACTOR_SCREEN_ERROR_NOTE_KEYWORDS = ("无数据", "缺少", "缺失", "为空", "失败")
-INPUT_FRESHNESS_DEGRADED_DIAGNOSTIC_CODE = "LIVERMORE_INPUT_FRESHNESS_DEGRADED"
-INPUT_FRESHNESS_LOOK_AHEAD_STATUS = "look_ahead"
-INPUT_FRESHNESS_DEGRADED_TIERS = frozenset({FRESHNESS_TIER_STALE, FRESHNESS_TIER_EXPIRED})
-_INPUT_FRESHNESS_TIER_RANK = {
-    FRESHNESS_TIER_EXPIRED: 3,
-    FRESHNESS_TIER_STALE: 2,
-    FRESHNESS_TIER_FRESH: 1,
-}
 # Cycle-input families forwarded into the market-gate macro_context disclosure block.
 _MACRO_CONTEXT_INPUT_FAMILIES = frozenset({"PMI", "credit_impulse", "price_spread"})
-_INPUT_FRESHNESS_NOTE_CATEGORY_BY_FAMILY = {
-    "PMI": "宏观输入",
-    "credit_impulse": "宏观输入",
-    "price_spread": "宏观输入",
-    "turnover_persistence": "股票日线输入",
-    "valuation_percentile_history": "因子快照输入",
-}
 
 
 def livermore_strategy_envelope(
@@ -413,6 +547,7 @@ def _load_livermore_strategy_payload_uncached(
         duckdb_path=duckdb_path,
         as_of_date=effective_as_of_date,
         market_state=str(market_gate["state"]),
+        market_gate_exposure=_safe_float(market_gate.get("exposure")),
         stock_readiness=resolved_stock_readiness,
         backfill_mode=backfill_mode,
         stock_candidate_policy=stock_candidate_policy,
@@ -569,12 +704,6 @@ def _livermore_strategy_payload_cache_key(
     )
 
 
-def _parse_optional_date(value: str | None) -> date | None:
-    if value is None:
-        return None
-    return date.fromisoformat(str(value))
-
-
 @contextmanager
 def _shared_read_only_connection(duckdb_path: str) -> Iterator[duckdb.DuckDBPyConnection | None]:
     """Open one read-only connection for a request and reuse it across loaders.
@@ -623,7 +752,14 @@ def _load_broad_index_history(
             include_market_snapshot=include_market_snapshot,
             conn=conn,
         )
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        _record_duckdb_query_failure(
+            None,
+            "broad_index_history",
+            exc=exc,
+            tables=tables_used if "tables_used" in locals() else ["fact_choice_macro_daily", "choice_market_snapshot"],
+            as_of_date=as_of_date.isoformat() if as_of_date is not None else None,
+        )
         return [], tables_used if "tables_used" in locals() else []
     finally:
         if owns_conn:
@@ -643,30 +779,6 @@ def _load_broad_index_history(
     return ordered, tables_used
 
 
-def _latest_common_trade_date_pair(
-    left_points: list[tuple[str, float]],
-    right_points: list[tuple[str, float]],
-) -> tuple[str, float, float] | None:
-    """Return (trade_date, left_value, right_value) for the latest trade_date landed in both series.
-
-    Guards against pairing a stale point from one series with a fresher point from the other
-    (e.g. lagging PE with the latest CN10Y) when the two series' most recent landed dates differ.
-    """
-    right_by_date = {trade_date: value for trade_date, value in right_points}
-    for trade_date, left_value in sorted(left_points, key=lambda row: row[0], reverse=True):
-        if trade_date in right_by_date:
-            return trade_date, left_value, right_by_date[trade_date]
-    return None
-
-
-_CYCLE_INPUT_ROW_CONTRACTS: dict[str, tuple[str, str, bool]] = {
-    PMI_SERIES_ID: ("monthly", "index", True),
-    SOCIAL_FINANCING_YOY_SERIES_ID: ("monthly", "%", True),
-    M2_YOY_SERIES_ID: ("monthly", "%", True),
-    CSI300_PE_SERIES_ID: ("daily", "x", False),
-    CN10Y_SERIES_ID: ("daily", "%", False),
-}
-_BACKFILL_RUN_ID_PATTERN = re.compile(r"^backfill_macro_v1:(\d{8})T\d{6}Z$")
 _OFFICIAL_AVAILABILITY_MANIFEST_PATH = (
     Path(__file__).resolve().parents[3]
     / "config"
@@ -677,202 +789,6 @@ _OFFICIAL_RELEASES_MANIFEST_PATH = (
     / "config"
     / "cycle_rotation_macro_official_releases.json"
 )
-_OFFICIAL_AVAILABILITY_MANIFEST_VERSION = "cycle_macro_official_availability.v1"
-_OFFICIAL_BACKFILL_RULE_VERSION = "rv_backfill_macro_v1"
-_OFFICIAL_MAPPING_VERSION_BY_SOURCE = {
-    "nbs_pmi_release": "rv_nbs_pmi_release_v1",
-    "pbc_financial_statistics_release": "rv_pbc_financial_statistics_release_v1",
-}
-_OFFICIAL_VENDOR_VERSION_PATTERN = re.compile(
-    r"^vv_backfill_macro_"
-    r"(nbs_pmi_release|pbc_financial_statistics_release)_"
-    r"\d{8}_([0-9a-f]{16})_[0-9a-f]{16}$"
-)
-_FULL_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
-
-
-def _strict_manifest_date(value: object) -> date | None:
-    text = str(value or "").strip()
-    try:
-        parsed = date.fromisoformat(text)
-    except ValueError:
-        return None
-    return parsed if parsed.isoformat() == text else None
-
-
-def _strict_manifest_timestamp_date(value: object) -> date | None:
-    text = str(value or "").strip()
-    try:
-        parsed = datetime.fromisoformat(text)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None or parsed.utcoffset() is None:
-        return None
-    return parsed.date()
-
-
-def _pbc_release_evidence_latest_available_date(
-    *,
-    releases: list[object],
-    series_id: str,
-    covered_period_start: date,
-    covered_period_end: date,
-    artifact_manifest_sha256: str,
-    artifact_record: dict[str, object],
-) -> date | None:
-    if covered_period_start.day != 1 or covered_period_end.day != 1:
-        return None
-    canonical_artifacts: list[dict[str, str]] = []
-    observed_months: list[date] = []
-    available_dates: list[date] = []
-    for raw in releases:
-        if not isinstance(raw, dict):
-            continue
-        if raw.get("source") != "pbc_financial_statistics_release":
-            continue
-        if raw.get("series_id") != series_id:
-            continue
-        report_month = str(raw.get("report_month") or "")
-        if re.fullmatch(r"\d{4}-\d{2}", report_month) is None:
-            return None
-        report_date = _strict_manifest_date(f"{report_month}-01")
-        if report_date is None:
-            return None
-        if not covered_period_start <= report_date <= covered_period_end:
-            continue
-        release_url = str(raw.get("release_url") or "")
-        published_at = str(raw.get("published_at") or "")
-        available_at = str(raw.get("available_at") or published_at)
-        artifact_sha256 = str(raw.get("artifact_sha256") or "")
-        published_date = _strict_manifest_timestamp_date(published_at)
-        available_date = _strict_manifest_timestamp_date(available_at)
-        if (
-            not release_url
-            or published_date is None
-            or available_date is None
-            or available_date < published_date
-            or _FULL_SHA256_PATTERN.fullmatch(artifact_sha256) is None
-        ):
-            return None
-        observed_months.append(report_date)
-        available_dates.append(available_date)
-        canonical_artifacts.append(
-            {
-                "report_month": report_month,
-                "release_url": release_url,
-                "published_at": published_at,
-                "available_at": available_at,
-                "artifact_sha256": artifact_sha256,
-            }
-        )
-    if not canonical_artifacts:
-        return None
-    canonical_artifacts.sort(key=lambda row: row["report_month"])
-    observed_months.sort()
-    expected_month_count = (
-        (covered_period_end.year - covered_period_start.year) * 12
-        + covered_period_end.month
-        - covered_period_start.month
-        + 1
-    )
-    if (
-        len(set(observed_months)) != len(observed_months)
-        or len(observed_months) != expected_month_count
-        or observed_months[0] != covered_period_start
-        or observed_months[-1] != covered_period_end
-    ):
-        return None
-    artifacts_json = json.dumps(
-        canonical_artifacts,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    expected_artifact_manifest_sha256 = hashlib.sha256(
-        artifacts_json.encode("utf-8")
-    ).hexdigest()
-    if artifact_manifest_sha256 != expected_artifact_manifest_sha256:
-        return None
-    if artifact_record.get("artifact_kind") != "artifact_set_manifest":
-        return None
-    component_hashes = artifact_record.get("component_artifact_sha256s")
-    expected_component_hashes = [row["artifact_sha256"] for row in canonical_artifacts]
-    if component_hashes != expected_component_hashes:
-        return None
-    return max(available_dates)
-
-
-def _nbs_release_evidence_latest_available_date(
-    *,
-    releases: list[object],
-    series_id: str,
-    covered_period_start: date,
-    covered_period_end: date,
-    artifact_manifest_sha256: str,
-    artifact_record: dict[str, object],
-) -> date | None:
-    matching_releases = [
-        row
-        for row in releases
-        if isinstance(row, dict)
-        and row.get("source") == "nbs_pmi_release"
-        and row.get("series_id") == series_id
-        and row.get("artifact_sha256") == artifact_manifest_sha256
-        and row.get("covered_period_start") == covered_period_start.isoformat()
-        and row.get("covered_period_end") == covered_period_end.isoformat()
-    ]
-    if len(matching_releases) != 1:
-        return None
-    if artifact_record.get("artifact_kind") != "official_release_artifact":
-        return None
-    release = matching_releases[0]
-    published_at = str(release.get("published_at") or "")
-    available_at = str(release.get("available_at") or published_at)
-    published_date = _strict_manifest_timestamp_date(published_at)
-    available_date = _strict_manifest_timestamp_date(available_at)
-    if (
-        published_date is None
-        or available_date is None
-        or available_date < published_date
-    ):
-        return None
-    return available_date
-
-
-def _official_release_evidence_latest_available_date(
-    *,
-    payload: object,
-    source: str,
-    series_id: str,
-    covered_period_start: date,
-    covered_period_end: date,
-    artifact_manifest_sha256: str,
-    artifact_record: dict[str, object],
-) -> date | None:
-    if not isinstance(payload, dict):
-        return None
-    releases = payload.get("releases")
-    if not isinstance(releases, list):
-        return None
-    if source == "pbc_financial_statistics_release":
-        return _pbc_release_evidence_latest_available_date(
-            releases=releases,
-            series_id=series_id,
-            covered_period_start=covered_period_start,
-            covered_period_end=covered_period_end,
-            artifact_manifest_sha256=artifact_manifest_sha256,
-            artifact_record=artifact_record,
-        )
-    if source == "nbs_pmi_release":
-        return _nbs_release_evidence_latest_available_date(
-            releases=releases,
-            series_id=series_id,
-            covered_period_start=covered_period_start,
-            covered_period_end=covered_period_end,
-            artifact_manifest_sha256=artifact_manifest_sha256,
-            artifact_record=artifact_record,
-        )
-    return None
 
 
 def _official_availability_binding_allows(
@@ -1060,7 +976,24 @@ def _load_cycle_input_evidence(
     if owns_conn:
         conn = open_livermore_read_connection(str(path))
         if conn is None:
-            return _CycleInputEvidence()
+            reason = (
+                f"{DUCKDB_QUERY_FAILED_PREFIX} stage=cycle_input_evidence "
+                "tables=- as_of_date="
+                f"{as_of_date.isoformat() if as_of_date is not None else '-'} "
+                "error=connection_unavailable"
+            )
+            logger.warning(
+                "livermore_duckdb_query_failed stage=cycle_input_evidence tables=- as_of_date=%s error=connection_unavailable",
+                as_of_date.isoformat() if as_of_date is not None else "-",
+            )
+            return _CycleInputEvidence(
+                price_spread_evidence=reason,
+                pmi_evidence=reason,
+                credit_impulse_evidence=reason,
+                macro_score_evidence=reason,
+                turnover_persistence_evidence=reason,
+                valuation_percentile_history_evidence=reason,
+            )
     tables_used: list[str] = []
     source_versions: list[str] = []
     vendor_versions: list[str] = []
@@ -1304,44 +1237,24 @@ def _load_cycle_input_evidence(
             vendor_versions=tuple(_unique_preserving_order(vendor_versions)),
             evidence_rows=evidence_rows,
         )
-    except duckdb.Error:
-        return _CycleInputEvidence()
+    except duckdb.Error as exc:
+        reason = _warn_duckdb_query_failed(
+            "cycle_input_evidence",
+            exc=exc,
+            tables=tables_used if tables_used else ["fact_choice_macro_daily", "choice_stock_daily_observation"],
+            as_of_date=as_of_date,
+        )
+        return _CycleInputEvidence(
+            price_spread_evidence=reason,
+            pmi_evidence=reason,
+            credit_impulse_evidence=reason,
+            macro_score_evidence=reason,
+            turnover_persistence_evidence=reason,
+            valuation_percentile_history_evidence=reason,
+        )
     finally:
         if owns_conn:
             conn.close()
-
-
-class _LoadedObservation(BroadIndexObservation):
-    pass
-
-
-@dataclass(frozen=True)
-class _ChoiceStockOutputs:
-    sector_coverage: ChoiceStockMaterializationCoverage | None
-    stock_coverage: ChoiceStockMaterializationCoverage | None
-    sector_rank_payload: dict[str, object] | None
-    stock_candidates_payload: dict[str, object] | None
-    uptrend_momentum_payload: dict[str, object] | None
-    fresh_trend_watchlist_payload: dict[str, object] | None
-    mean_reversion_payload: dict[str, object] | None
-    factor_screen_payload: dict[str, object] | None
-    factor_screen_block_reason: str
-    theme_breakout_payload: dict[str, object] | None
-    hybrid_fusion_payload: dict[str, object] | None
-    hybrid_fusion_block_reason: str
-    risk_exit_payload: dict[str, object] | None
-    risk_exit_block_reason: str
-    stock_candidate_block_reason: str
-    tables_used: list[str]
-    source_versions: list[str]
-    vendor_versions: list[str]
-    evidence_rows: int
-
-
-@dataclass(frozen=True)
-class _FreshTrendWatchlistLoadResult:
-    snapshots: list[FreshTrendWatchlistSnapshot]
-    tables_used: list[str]
 
 
 @dataclass(frozen=True)
@@ -1366,12 +1279,7 @@ class _TradingStockSnapshotInputs:
     concepts_by_code: dict[str, list[object]]
     hlimitedays_by_code: dict[str, object]
     tables_used: list[str]
-
-
-@dataclass(frozen=True)
-class _DualStockHistoryInputs:
-    candidate_history_by_code: dict[str, dict[str, list[float]]]
-    trading_history_by_code: dict[str, dict[str, list[object]]]
+    query_failed_reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -1404,6 +1312,8 @@ class _ThemeBreakoutEvidenceProvenance:
     concept_date_row_count: int = 0
     concept_matched_row_count: int = 0
     concept_fallback_row_count: int = 0
+    concept_interval_used: bool = False
+    concept_interval_covering_row_count: int = 0
     movement_date_row_count: int = 0
     movement_matched_row_count: int = 0
     concept_source_kind: str = ""
@@ -1424,28 +1334,6 @@ class _FactorScreenLoadResult:
     unavailable_reason: str = ""
     coverage_denominator: int | None = None
     coverage_denominator_as_of_date: str | None = None
-
-
-def _choice_stock_dependency_summary(
-    *,
-    stock_readiness: ChoiceStockReadiness,
-    families: list[str],
-    ready_summary: str,
-) -> str:
-    if stock_readiness.ready:
-        return ready_summary
-
-    relevant = [family for family in families if family in stock_readiness.missing_input_families]
-    if not relevant:
-        relevant = list(stock_readiness.missing_input_families)
-    formatted = ", ".join(relevant) if relevant else "stock input families"
-    status_text = "missing" if stock_readiness.status == "missing_catalog" else "incomplete"
-    return f"Choice stock catalog is {status_text}; missing or unconfirmed required input families: {formatted}."
-
-
-def _choice_stock_missing_inputs(*, stock_readiness: ChoiceStockReadiness, families: list[str]) -> list[str]:
-    relevant = [family for family in families if family in stock_readiness.missing_input_families]
-    return [str(family) for family in relevant] or list(families)
 
 
 def _project_sector_materialization_coverage(
@@ -1498,6 +1386,7 @@ def _load_choice_stock_outputs(
     duckdb_path: str,
     as_of_date: str | None,
     market_state: str,
+    market_gate_exposure: float | None = None,
     stock_readiness: ChoiceStockReadiness,
     backfill_mode: bool = False,
     stock_candidate_policy: str | None = None,
@@ -1538,6 +1427,7 @@ def _load_choice_stock_outputs(
                     duckdb_path=duckdb_path,
                     as_of_date=as_of_date,
                     market_state=market_state,
+                    market_gate_exposure=market_gate_exposure,
                     stock_readiness=stock_readiness,
                     backfill_mode=backfill_mode,
                     stock_candidate_policy=stock_candidate_policy,
@@ -1579,6 +1469,7 @@ def _load_choice_stock_outputs(
             duckdb_path=duckdb_path,
             as_of_date=as_of_date,
             market_state=market_state,
+            market_gate_exposure=market_gate_exposure,
             stock_readiness=stock_readiness,
             backfill_mode=backfill_mode,
             stock_candidate_policy=stock_candidate_policy,
@@ -1595,6 +1486,7 @@ def _load_choice_stock_outputs(
             duckdb_path=duckdb_path,
             as_of_date=as_of_date,
             market_state=market_state,
+            market_gate_exposure=market_gate_exposure,
             stock_readiness=stock_readiness,
             backfill_mode=backfill_mode,
             stock_candidate_policy=stock_candidate_policy,
@@ -1611,6 +1503,7 @@ def _load_choice_stock_outputs_on_conn(
     duckdb_path: str,
     as_of_date: str,
     market_state: str,
+    market_gate_exposure: float | None = None,
     stock_readiness: ChoiceStockReadiness,
     backfill_mode: bool,
     stock_candidate_policy: str | None,
@@ -1623,6 +1516,7 @@ def _load_choice_stock_outputs_on_conn(
     source_versions: list[str] = []
     vendor_versions: list[str] = []
     evidence_rows = 0
+    query_failures: list[str] = []
     trading_snapshot_inputs: _TradingStockSnapshotInputs | None = None
     dual_stock_history_inputs: _DualStockHistoryInputs | None = None
 
@@ -1635,6 +1529,7 @@ def _load_choice_stock_outputs_on_conn(
             include_limit_quality=True,
             load_history=load_history,
             conn=stock_conn,
+            query_failures=query_failures,
         )
         logger.info(
             "livermore_stock_loader_timing stage=trading_snapshot_inputs ms=%d rows=%d history_codes=%d",
@@ -1656,6 +1551,7 @@ def _load_choice_stock_outputs_on_conn(
             duckdb_path=duckdb_path,
             as_of_date=as_of_date,
             conn=stock_conn,
+            query_failures=query_failures,
         )
         evidence_rows += len(sector_rows)
         tables_used.extend(sector_tables)
@@ -1707,9 +1603,16 @@ def _load_choice_stock_outputs_on_conn(
                                 candidate_stock_codes=candidate_stock_codes,
                                 trading_stock_codes=trading_stock_codes,
                             )
-                        except duckdb.Error:
+                        except duckdb.Error as exc:
+                            reason = _warn_duckdb_query_failed(
+                                "dual_stock_history_inputs",
+                                exc=exc,
+                                tables=["choice_stock_daily_observation"],
+                                as_of_date=as_of_date,
+                            )
                             logger.exception(
-                                "livermore_stock_loader_fallback stage=dual_stock_history_inputs"
+                                "livermore_stock_loader_fallback stage=dual_stock_history_inputs reason=%s",
+                                reason,
                             )
                             return None
                         trading_snapshot_inputs = replace(
@@ -1733,6 +1636,7 @@ def _load_choice_stock_outputs_on_conn(
                 sector_rank_payload=sector_rank_payload,
                 history_loader=candidate_history_loader,
                 conn=stock_conn,
+                query_failures=query_failures,
             )
             if (
                 candidate_history_loader is not None
@@ -1764,7 +1668,8 @@ def _load_choice_stock_outputs_on_conn(
                         cast(
                             "list[dict[str, object]]",
                             stock_candidates_payload.get("items") or [],
-                        )
+                        ),
+                        market_gate_exposure=market_gate_exposure,
                     )
                 )
 
@@ -1822,6 +1727,8 @@ def _load_choice_stock_outputs_on_conn(
     factor_screen_payload: dict[str, object] | None = None
     factor_screen_block_reason = ""
     factor_load = _load_factor_screen_rows(duckdb_path=duckdb_path, as_of_date=as_of_date, conn=stock_conn)
+    if factor_load.unavailable_reason.startswith(DUCKDB_QUERY_FAILED_PREFIX):
+        query_failures.append(factor_load.unavailable_reason)
     if factor_load.rows and factor_load.snapshot_as_of_date is not None:
         fs_result = compute_factor_screen_candidates(
             as_of_date=factor_load.snapshot_as_of_date,
@@ -1856,6 +1763,7 @@ def _load_choice_stock_outputs_on_conn(
             sector_rank_payload=sector_rank_payload,
             conn=stock_conn,
             theme_overlay_result=theme_overlay_result,
+            query_failures=query_failures,
         )
         evidence_rows += len(theme_snapshots)
         tables_used.extend(theme_tables)
@@ -1950,6 +1858,7 @@ def _load_choice_stock_outputs_on_conn(
             duckdb_path=duckdb_path,
             as_of_date=as_of_date,
             conn=stock_conn,
+            query_failures=query_failures,
         )
         if risk_snapshots:
             evidence_rows += len(risk_snapshots)
@@ -1961,11 +1870,19 @@ def _load_choice_stock_outputs_on_conn(
                 snapshots=risk_snapshots,
             ).payload
         else:
-            risk_exit_block_reason = _risk_exit_input_block_reason(
-                duckdb_path=duckdb_path,
-                as_of_date=as_of_date,
-                conn=stock_conn,
-            )
+            risk_query_failures = [
+                reason for reason in query_failures if "stage=risk_exit_snapshots" in reason
+            ]
+            if risk_query_failures:
+                risk_exit_block_reason = risk_query_failures[-1]
+            else:
+                risk_exit_block_reason = _risk_exit_input_block_reason(
+                    duckdb_path=duckdb_path,
+                    as_of_date=as_of_date,
+                    conn=stock_conn,
+                )
+                if risk_exit_block_reason.startswith(DUCKDB_QUERY_FAILED_PREFIX):
+                    query_failures.append(risk_exit_block_reason)
 
     return _ChoiceStockOutputs(
         sector_coverage=sector_coverage,
@@ -1987,6 +1904,7 @@ def _load_choice_stock_outputs_on_conn(
         source_versions=source_versions,
         vendor_versions=vendor_versions,
         evidence_rows=evidence_rows,
+        query_failed_reasons=tuple(_unique_preserving_order(query_failures)),
     )
 
 
@@ -1995,6 +1913,7 @@ def _load_sector_rank_inputs(
     duckdb_path: str,
     as_of_date: str,
     conn: duckdb.DuckDBPyConnection | None = None,
+    query_failures: list[str] | None = None,
 ) -> tuple[list[SectorRankConstituent], list[str], list[str], list[str]]:
     path = Path(duckdb_path)
     if not path.exists():
@@ -2003,6 +1922,13 @@ def _load_sector_rank_inputs(
     if owns_conn:
         conn = open_livermore_read_connection(str(path))
         if conn is None:
+            _record_duckdb_query_failure(
+                query_failures,
+                "sector_rank_inputs",
+                exc=RuntimeError("connection_unavailable"),
+                tables=["choice_stock_sector_membership", "choice_stock_daily_observation"],
+                as_of_date=as_of_date,
+            )
             return [], [], [], []
     try:
         tables = _list_table_names(conn)
@@ -2031,7 +1957,14 @@ def _load_sector_rank_inputs(
             universe_snapshot_date=universe_snapshot_date,
             conn=conn,
         )
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        _record_duckdb_query_failure(
+            query_failures,
+            "sector_rank_inputs",
+            exc=exc,
+            tables=["choice_stock_sector_membership", "choice_stock_daily_observation"],
+            as_of_date=as_of_date,
+        )
         return [], ["choice_stock_sector_membership", "choice_stock_daily_observation"], [], []
     finally:
         if owns_conn:
@@ -2157,6 +2090,7 @@ def _load_stock_candidate_snapshots(
         Callable[[list[str]], dict[str, dict[str, list[float]]] | None] | None
     ) = None,
     conn: duckdb.DuckDBPyConnection | None = None,
+    query_failures: list[str] | None = None,
 ) -> tuple[list[StockCandidateSnapshot], list[str], list[str], list[str]]:
     path = Path(duckdb_path)
     if not path.exists():
@@ -2165,6 +2099,13 @@ def _load_stock_candidate_snapshots(
     if owns_conn:
         conn = open_livermore_read_connection(str(path))
         if conn is None:
+            _record_duckdb_query_failure(
+                query_failures,
+                "stock_candidate_snapshots",
+                exc=RuntimeError("connection_unavailable"),
+                tables=["choice_stock_universe", "choice_stock_sector_membership", "choice_stock_daily_observation"],
+                as_of_date=as_of_date,
+            )
             return [], [], [], []
     history_rows: list[tuple[object, ...]] = []
     history_by_code: dict[str, dict[str, list[float]]] | None = None
@@ -2255,8 +2196,15 @@ def _load_stock_candidate_snapshots(
             )
         else:
             history_by_code = loaded_history
-    except duckdb.Error:
-        return [], list(required_tables), [], []
+    except duckdb.Error as exc:
+        _record_duckdb_query_failure(
+            query_failures,
+            "stock_candidate_snapshots",
+            exc=exc,
+            tables=sorted(required_tables) if "required_tables" in locals() else ["choice_stock_daily_observation"],
+            as_of_date=as_of_date,
+        )
+        return [], list(required_tables) if "required_tables" in locals() else [], [], []
     finally:
         if owns_conn:
             conn.close()
@@ -2382,6 +2330,7 @@ def _load_trading_stock_snapshot_inputs(
     include_limit_quality: bool = False,
     load_history: bool = True,
     conn: duckdb.DuckDBPyConnection | None = None,
+    query_failures: list[str] | None = None,
 ) -> _TradingStockSnapshotInputs:
     empty = _TradingStockSnapshotInputs(
         current_rows=[],
@@ -2479,8 +2428,22 @@ def _load_trading_stock_snapshot_inputs(
                     conn=conn,
                 )
                 tables_used.append("choice_stock_limit_quality")
-    except duckdb.Error:
-        return empty
+    except duckdb.Error as exc:
+        reason = _record_duckdb_query_failure(
+            query_failures,
+            "trading_stock_snapshot_inputs",
+            exc=exc,
+            tables=["choice_stock_universe", "choice_stock_sector_membership", "choice_stock_daily_observation"],
+            as_of_date=as_of_date,
+        )
+        return _TradingStockSnapshotInputs(
+            current_rows=[],
+            history_by_code={},
+            concepts_by_code={},
+            hlimitedays_by_code={},
+            tables_used=[],
+            query_failed_reason=reason,
+        )
     finally:
         if owns_conn:
             conn.close()
@@ -2663,7 +2626,13 @@ def _load_mean_reversion_snapshots(
             as_of_date=as_of_date,
             conn=conn,
         )
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        _warn_duckdb_query_failed(
+            "mean_reversion_snapshots",
+            exc=exc,
+            tables=["choice_stock_universe", "choice_stock_sector_membership", "choice_stock_daily_observation"],
+            as_of_date=as_of_date,
+        )
         return []
     finally:
         conn.close()
@@ -2755,7 +2724,13 @@ def _load_uptrend_momentum_snapshots(
             as_of_date=as_of_date,
             conn=conn,
         )
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        _warn_duckdb_query_failed(
+            "uptrend_momentum_snapshots",
+            exc=exc,
+            tables=["choice_stock_universe", "choice_stock_sector_membership", "choice_stock_daily_observation"],
+            as_of_date=as_of_date,
+        )
         return []
     finally:
         conn.close()
@@ -2882,8 +2857,14 @@ def _load_fresh_trend_watchlist_snapshots(
                     conn=conn,
                 )
                 tables_used.append("choice_stock_limit_quality")
-    except duckdb.Error:
-        return _FreshTrendWatchlistLoadResult(snapshots=[], tables_used=[])
+    except duckdb.Error as exc:
+        reason = _warn_duckdb_query_failed(
+            "fresh_trend_watchlist_snapshots",
+            exc=exc,
+            tables=["choice_stock_universe", "choice_stock_sector_membership", "choice_stock_daily_observation"],
+            as_of_date=as_of_date,
+        )
+        return _FreshTrendWatchlistLoadResult(snapshots=[], tables_used=[], query_failed_reason=reason)
     finally:
         conn.close()
 
@@ -3111,12 +3092,18 @@ def _load_factor_screen_rows(
             coverage_denominator=coverage_denominator,
             coverage_denominator_as_of_date=str(universe_snapshot_date) if universe_snapshot_date is not None else None,
         )
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        reason = _warn_duckdb_query_failed(
+            "factor_screen_rows",
+            exc=exc,
+            tables=["choice_stock_factor_snapshot"],
+            as_of_date=as_of_date,
+        )
         return _FactorScreenLoadResult(
             rows=[],
             snapshot_as_of_date=None,
             tables_used=["choice_stock_factor_snapshot"],
-            unavailable_reason="DuckDB query failed while reading choice_stock_factor_snapshot.",
+            unavailable_reason=reason,
         )
     finally:
         if owns_conn:
@@ -3166,7 +3153,13 @@ def _load_candidate_close_histories(
             history_window=CHOICE_STOCK_HISTORY_WINDOW,
             conn=conn,
         )
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        _warn_duckdb_query_failed(
+            "candidate_close_histories",
+            exc=exc,
+            tables=["choice_stock_daily_observation"],
+            as_of_date=as_of_date,
+        )
         return {}, {}, []
     finally:
         if owns_conn:
@@ -3242,6 +3235,7 @@ def _load_theme_breakout_snapshots(
     sector_rank_payload: dict[str, object],
     conn: duckdb.DuckDBPyConnection | None = None,
     theme_overlay_result: ThemeOverlayReadResult | None = None,
+    query_failures: list[str] | None = None,
 ) -> tuple[list[ThemeBreakoutSnapshot], list[str], list[str], list[str], _ThemeBreakoutEvidenceProvenance]:
     path = Path(duckdb_path)
     if not path.exists():
@@ -3257,6 +3251,7 @@ def _load_theme_breakout_snapshots(
         "choice_stock_daily_observation",
     }
     concept_rows: list[tuple[object, ...]] = []
+    concept_interval_rows: list[tuple[object, ...]] = []
     movement_rows: list[tuple[object, ...]] = []
     try:
         tables = _list_table_names(conn)
@@ -3264,6 +3259,7 @@ def _load_theme_breakout_snapshots(
             return [], [], [], [], _ThemeBreakoutEvidenceProvenance()
         has_limit_quality = "choice_stock_limit_quality" in tables
         has_concept_membership = "choice_stock_concept_membership" in tables
+        has_concept_interval = "choice_stock_concept_membership_interval" in tables
         has_intraday_movement = "choice_stock_intraday_movement_event" in tables
         universe_snapshot_date = _latest_table_date_on_or_before(
             conn,
@@ -3303,13 +3299,25 @@ def _load_theme_breakout_snapshots(
                 as_of_date=as_of_date,
                 conn=conn,
             )
+        if has_concept_interval:
+            concept_interval_rows = LIVERMORE_STRATEGY_READS.fetch_theme_concept_interval_rows(
+                as_of_date=as_of_date,
+                conn=conn,
+            )
         if has_intraday_movement:
             movement_rows = LIVERMORE_STRATEGY_READS.fetch_intraday_movement_rows(
                 as_of_date=as_of_date,
                 conn=conn,
             )
-    except duckdb.Error:
-        return [], sorted(required_tables | {"choice_stock_limit_quality"}), [], [], _ThemeBreakoutEvidenceProvenance()
+    except duckdb.Error as exc:
+        _record_duckdb_query_failure(
+            query_failures,
+            "theme_breakout_snapshots",
+            exc=exc,
+            tables=sorted(required_tables | {"choice_stock_limit_quality"}) if "required_tables" in locals() else ["choice_stock_daily_observation"],
+            as_of_date=as_of_date,
+        )
+        return [], sorted(required_tables | {"choice_stock_limit_quality"}) if "required_tables" in locals() else [], [], [], _ThemeBreakoutEvidenceProvenance()
     finally:
         if owns_conn:
             conn.close()
@@ -3335,23 +3343,43 @@ def _load_theme_breakout_snapshots(
         if str(row[3] or "").strip().lower() == "choice" and bool(str(row[1] or "") or str(row[2] or ""))
     ]
     usable_choice_rows = [row for row in point_in_time_choice_rows if str(row[0] or "") in universe_codes]
-    overlay_status = (
-        "choice_exact_precedence"
-        if usable_choice_rows
-        else (theme_overlay_result.status if theme_overlay_result is not None else "not_configured")
-    )
-    overlay_reason = (
-        "Exact request-date Choice concept membership takes precedence over current overlay."
-        if usable_choice_rows
-        else (
+    # SCD interval as-of rows (valid_from <= as_of_date < valid_to) are
+    # point-in-time by construction; they rank below exact request-date Choice
+    # rows and above the non-point-in-time current overlay. Dates before the
+    # first snapshot match no intervals, so the historical replay path stays
+    # fail-closed on the existing proxy fallback.
+    usable_interval_rows = [
+        row
+        for row in concept_interval_rows
+        if str(row[0] or "") in universe_codes and bool(str(row[1] or "") or str(row[2] or ""))
+    ]
+    concept_interval_used = bool(usable_interval_rows) and not usable_choice_rows
+    if usable_choice_rows:
+        overlay_status = "choice_exact_precedence"
+        overlay_reason = "Exact request-date Choice concept membership takes precedence over current overlay."
+    elif concept_interval_used:
+        overlay_status = "interval_asof_precedence"
+        overlay_reason = (
+            "Point-in-time concept membership intervals cover the request date "
+            "and take precedence over current overlay."
+        )
+    else:
+        overlay_status = theme_overlay_result.status if theme_overlay_result is not None else "not_configured"
+        overlay_reason = (
             theme_overlay_result.reason
             if theme_overlay_result is not None
             else "Current theme overlay reader is not configured."
         )
-    )
-    concept_input_rows = point_in_time_choice_rows if usable_choice_rows else []
-    concept_source_kind = "real_concept" if usable_choice_rows else ""
-    if not usable_choice_rows and theme_overlay_result is not None and theme_overlay_result.available:
+    if usable_choice_rows:
+        concept_input_rows = point_in_time_choice_rows
+        concept_source_kind = "real_concept"
+    elif concept_interval_used:
+        concept_input_rows = concept_interval_rows
+        concept_source_kind = "real_concept"
+    else:
+        concept_input_rows = []
+        concept_source_kind = ""
+    if not concept_input_rows and theme_overlay_result is not None and theme_overlay_result.available:
         concept_source_kind = theme_overlay_result.concept_source_kind
         concept_input_rows = [
             (
@@ -3471,6 +3499,8 @@ def _load_theme_breakout_snapshots(
         tables_used.append("choice_stock_limit_quality")
     if has_concept_membership:
         tables_used.append("choice_stock_concept_membership")
+    if has_concept_interval:
+        tables_used.append("choice_stock_concept_membership_interval")
     if has_intraday_movement:
         tables_used.append("choice_stock_intraday_movement_event")
     return (
@@ -3482,6 +3512,8 @@ def _load_theme_breakout_snapshots(
             concept_date_row_count=concept_date_row_count,
             concept_matched_row_count=concept_matched_row_count,
             concept_fallback_row_count=concept_fallback_row_count,
+            concept_interval_used=concept_interval_used,
+            concept_interval_covering_row_count=len(usable_interval_rows),
             movement_date_row_count=movement_date_row_count,
             movement_matched_row_count=movement_matched_row_count,
             concept_source_kind=concept_source_kind,
@@ -3518,6 +3550,19 @@ def _build_theme_breakout_evidence_state(
             "overlay_reason": provenance.overlay_reason,
         }
     )
+    if provenance.concept_interval_used:
+        concept_membership.update(
+            {
+                "interval_table": "choice_stock_concept_membership_interval",
+                "interval_covering_row_count": provenance.concept_interval_covering_row_count,
+                "point_in_time": True,
+                "message": (
+                    "Concept memberships come from the SCD interval read model "
+                    "(as-of join on the request date); dates before the first "
+                    "snapshot fall back to the proxy path fail-closed."
+                ),
+            }
+        )
     if provenance.concept_source_kind == "tushare_current_overlay":
         concept_membership.update(
             {
@@ -3550,95 +3595,12 @@ def _build_theme_breakout_evidence_state(
     }
 
 
-def _theme_breakout_evidence_entry(
-    *,
-    input_family: str,
-    catalog_status: str,
-    table_name: str,
-    tables_used: list[str],
-    date_row_count: int,
-    matched_row_count: int,
-    fallback_row_count: int = 0,
-) -> dict[str, object]:
-    if catalog_status == "catalog_unconfirmed" and fallback_row_count <= 0:
-        state = "catalog_unconfirmed"
-    elif table_name not in tables_used:
-        state = "table_missing"
-    elif matched_row_count > 0:
-        state = "matched_rows"
-    else:
-        state = "landed_no_rows"
-    return {
-        "input_family": input_family,
-        "status": state,
-        "state": state,
-        "table": table_name,
-        "table_name": table_name,
-        "row_count": date_row_count,
-        "date_row_count": date_row_count,
-        "matched_row_count": matched_row_count,
-        "fallback_row_count": fallback_row_count,
-        "message": _theme_breakout_evidence_message(
-            input_family=input_family,
-            state=state,
-            table_name=table_name,
-            date_row_count=date_row_count,
-            matched_row_count=matched_row_count,
-        ),
-    }
-
-
-def _theme_breakout_evidence_message(
-    *,
-    input_family: str,
-    state: str,
-    table_name: str,
-    date_row_count: int,
-    matched_row_count: int,
-) -> str:
-    if state == "catalog_unconfirmed":
-        return f"{input_family} is optional and not confirmed in the Choice stock catalog."
-    if state == "table_missing":
-        return f"{input_family} is confirmed, but {table_name} is not landed in DuckDB."
-    if state == "matched_rows":
-        return f"{input_family} has {matched_row_count} date-matched rows from {table_name}."
-    return f"{input_family} table {table_name} is landed with {date_row_count} date rows but no matched usable rows."
-
-
-def _movement_for_concept(
-    *,
-    movement_by_key: dict[tuple[str, str, str], dict[str, object]],
-    stock_code: str,
-    concept_code: str,
-    concept_name: str,
-) -> dict[str, object]:
-    empty = {
-        "count": 0,
-        "latest_event_time": "",
-        "latest_event_title": "",
-    }
-    if not movement_by_key:
-        return empty
-    candidates = [
-        value
-        for (code, row_concept_code, row_concept_name), value in movement_by_key.items()
-        if code == stock_code and row_concept_code == concept_code and row_concept_name == concept_name
-    ]
-    if not candidates:
-        return empty
-    latest = max(candidates, key=lambda row: str(row["latest_event_time"]))
-    return {
-        "count": sum(int(row["count"]) for row in candidates),
-        "latest_event_time": latest["latest_event_time"],
-        "latest_event_title": latest["latest_event_title"],
-    }
-
-
 def _load_risk_exit_snapshots(
     *,
     duckdb_path: str,
     as_of_date: str,
     conn: duckdb.DuckDBPyConnection | None = None,
+    query_failures: list[str] | None = None,
 ) -> tuple[list[RiskExitSnapshot], list[str], list[str], list[str]]:
     path = Path(duckdb_path)
     if not path.exists():
@@ -3665,8 +3627,15 @@ def _load_risk_exit_snapshots(
             as_of_date=as_of_date,
             conn=conn,
         )
-    except duckdb.Error:
-        return [], list(required_tables), [], []
+    except duckdb.Error as exc:
+        _record_duckdb_query_failure(
+            query_failures,
+            "risk_exit_snapshots",
+            exc=exc,
+            tables=["livermore_position_snapshot", "choice_stock_daily_observation"],
+            as_of_date=as_of_date,
+        )
+        return [], list(required_tables) if "required_tables" in locals() else [], [], []
     finally:
         if owns_conn:
             conn.close()
@@ -3755,86 +3724,16 @@ def _risk_exit_input_block_reason(
                 f"has no close history through {as_of_date} for those stock_codes."
             )
         return ""
-    except duckdb.Error:
-        return "DuckDB query failed while checking Livermore position and close-history inputs."
+    except duckdb.Error as exc:
+        return _warn_duckdb_query_failed(
+            "risk_exit_input_block_reason",
+            exc=exc,
+            tables=["livermore_position_snapshot", "choice_stock_daily_observation"],
+            as_of_date=as_of_date,
+        )
     finally:
         if owns_conn:
             conn.close()
-
-
-def _mean_reversion_unavailable_reason(
-    *,
-    market_state: str,
-    stock_readiness: ChoiceStockReadiness,
-    stock_outputs: _ChoiceStockOutputs,
-) -> str:
-    if market_state in {"HOT", "OVERHEAT"}:
-        return (
-            "Mean reversion watchlist is paused when the market gate is HOT or OVERHEAT "
-            "because the defended-trend candidate bundle already covers overheated tape."
-        )
-    if not stock_readiness.ready:
-        return _choice_stock_dependency_summary(
-            stock_readiness=stock_readiness,
-            families=["stock_universe", "stock_ohlcv", "stock_status"],
-            ready_summary="",
-        )
-    if stock_outputs.stock_coverage is None or stock_outputs.stock_coverage.status == "not_materialized":
-        return "Choice stock catalog is confirmed, but mean reversion daily inputs are not materialized yet."
-    if not stock_outputs.stock_coverage.full_coverage:
-        return stock_outputs.stock_coverage.message
-    return (
-        "Mean reversion inputs are landed, but no Trading-status A-share rows produced "
-        "watchlist snapshots for this as_of_date."
-    )
-
-
-def _uptrend_momentum_unavailable_reason(
-    *,
-    market_state: str,
-    stock_readiness: ChoiceStockReadiness,
-    stock_outputs: _ChoiceStockOutputs,
-) -> str:
-    if market_state not in {"WARM", "HOT"}:
-        return "Uptrend momentum watchlist is paused unless the market gate is WARM or HOT."
-    if not stock_readiness.ready:
-        return _choice_stock_dependency_summary(
-            stock_readiness=stock_readiness,
-            families=["stock_universe", "stock_ohlcv", "stock_status"],
-            ready_summary="",
-        )
-    if stock_outputs.stock_coverage is None or stock_outputs.stock_coverage.status == "not_materialized":
-        return "Choice stock catalog is confirmed, but uptrend momentum daily inputs are not materialized yet."
-    if not stock_outputs.stock_coverage.full_coverage:
-        return stock_outputs.stock_coverage.message
-    return (
-        "Uptrend momentum inputs are landed, but no Trading-status A-share rows produced "
-        "watchlist snapshots for this as_of_date."
-    )
-
-
-def _fresh_trend_watchlist_unavailable_reason(
-    *,
-    market_state: str,
-    stock_readiness: ChoiceStockReadiness,
-    stock_outputs: _ChoiceStockOutputs,
-) -> str:
-    if market_state not in {"WARM", "HOT", "OVERHEAT"}:
-        return "Fresh trend watchlist is observation-only and runs only when the market gate is WARM, HOT, or OVERHEAT."
-    if not stock_readiness.ready:
-        return _choice_stock_dependency_summary(
-            stock_readiness=stock_readiness,
-            families=["stock_universe", "stock_ohlcv", "stock_status", "sector_membership"],
-            ready_summary="",
-        )
-    if stock_outputs.stock_coverage is None or stock_outputs.stock_coverage.status == "not_materialized":
-        return "Choice stock catalog is confirmed, but fresh trend daily inputs are not materialized yet."
-    if not stock_outputs.stock_coverage.full_coverage:
-        return stock_outputs.stock_coverage.message
-    return (
-        "Fresh trend inputs are landed, but no growth-board Trading rows passed "
-        "the new-trend and old-economy exclusion filters for this as_of_date."
-    )
 
 
 def _build_supported_outputs(
@@ -4050,83 +3949,6 @@ def _build_module_states(
     return states
 
 
-def _module_payload(*, key: str, stock_outputs: _ChoiceStockOutputs) -> dict[str, object] | None:
-    if key == "sector_rank":
-        return stock_outputs.sector_rank_payload
-    if key == "stock_candidates":
-        return stock_outputs.stock_candidates_payload
-    if key == "uptrend_momentum_candidates":
-        return stock_outputs.uptrend_momentum_payload
-    if key == "fresh_trend_watchlist":
-        return stock_outputs.fresh_trend_watchlist_payload
-    if key == "mean_reversion_candidates":
-        return stock_outputs.mean_reversion_payload
-    if key == "factor_screen_candidates":
-        return stock_outputs.factor_screen_payload
-    if key == "theme_breakout":
-        return stock_outputs.theme_breakout_payload
-    if key == "hybrid_fusion":
-        return stock_outputs.hybrid_fusion_payload
-    if key == "risk_exit":
-        return stock_outputs.risk_exit_payload
-    return None
-
-
-def _module_source_date(
-    *,
-    key: str,
-    payload: dict[str, object] | None,
-    stock_outputs: _ChoiceStockOutputs,
-    page_as_of_date: str | None,
-) -> str | None:
-    if key == "market_gate":
-        return page_as_of_date
-    if key == "factor_screen_candidates":
-        return _payload_text(payload, "factor_snapshot_as_of_date") or _payload_text(payload, "as_of_date")
-    if key == "hybrid_fusion" and _hybrid_fusion_is_factor_only(payload):
-        return _module_source_date(
-            key="factor_screen_candidates",
-            payload=stock_outputs.factor_screen_payload,
-            stock_outputs=stock_outputs,
-            page_as_of_date=page_as_of_date,
-        )
-    return _payload_text(payload, "as_of_date")
-
-
-def _payload_text(payload: dict[str, object] | None, key: str) -> str | None:
-    value = payload.get(key) if isinstance(payload, dict) else None
-    text = str(value).strip() if value is not None else ""
-    return text or None
-
-
-def _module_threshold_days(key: str) -> int | None:
-    if key in {"factor_screen_candidates", "hybrid_fusion", "risk_exit"}:
-        return STOCK_MODULE_FRESHNESS_THRESHOLD_DAYS
-    return None
-
-
-def _module_lag_days(*, page_as_of_date: str | None, source_date: str | None, market_dates: list[date]) -> int | None:
-    if not page_as_of_date or not source_date:
-        return None
-    try:
-        page_date = date.fromisoformat(page_as_of_date)
-        source = date.fromisoformat(source_date)
-    except ValueError:
-        return None
-    if page_date <= source:
-        return 0
-    trading_dates = {market_date for market_date in market_dates if source < market_date <= page_date}
-    if trading_dates:
-        return len(trading_dates)
-    return max(0, (page_date - source).days)
-
-
-def _coverage_ratio(count: int | None, denominator: int | None) -> float | None:
-    if count is None or denominator is None or denominator <= 0:
-        return None
-    return round(count / denominator, 6)
-
-
 def _module_coverage(
     *,
     key: str,
@@ -4147,39 +3969,6 @@ def _module_coverage(
         coverage_ratio_raw if coverage_ratio_raw is not None else _coverage_ratio(coverage_count, coverage_denominator)
     )
     return coverage_count, coverage_denominator, coverage_ratio
-
-
-def _coverage_state(*, coverage_denominator: int | None, coverage_ratio: float | None) -> str | None:
-    if coverage_denominator is None or coverage_denominator <= 0 or coverage_ratio is None:
-        return "blocked"
-    if coverage_ratio < STOCK_MODULE_PARTIAL_COVERAGE_THRESHOLD:
-        return "blocked"
-    if coverage_ratio < STOCK_MODULE_PRIMARY_COVERAGE_THRESHOLD:
-        return "partial"
-    return None
-
-
-def _coverage_degradation_reason(
-    *,
-    label: str,
-    coverage_count: int | None,
-    coverage_denominator: int | None,
-    coverage_ratio: float | None,
-) -> str | None:
-    if coverage_denominator is None or coverage_denominator <= 0 or coverage_ratio is None:
-        count_text = "unknown" if coverage_count is None else str(coverage_count)
-        return (
-            f"{label} active A-share universe denominator is unavailable; "
-            f"coverage count is {count_text}, so primary eligibility cannot be certified."
-        )
-    if coverage_ratio < STOCK_MODULE_PRIMARY_COVERAGE_THRESHOLD:
-        percent = coverage_ratio * 100
-        threshold = STOCK_MODULE_PRIMARY_COVERAGE_THRESHOLD * 100
-        return (
-            f"{label} covers {coverage_count}/{coverage_denominator} active A-share stocks "
-            f"({percent:.1f}%); primary threshold is {threshold:.0f}%."
-        )
-    return None
 
 
 def _factor_screen_degradation_reasons(
@@ -4264,11 +4053,6 @@ def _is_factor_screen_error_note(note: str) -> bool:
     return any(keyword in note for keyword in FACTOR_SCREEN_ERROR_NOTE_KEYWORDS)
 
 
-def _factor_screen_payload_is_inactive(payload: dict[str, object] | None) -> bool:
-    market_state = _payload_text(payload, "market_state")
-    return bool(market_state and market_state not in POLICY.factor_screen_active_states)
-
-
 def _hybrid_fusion_degradation_reasons(
     *,
     payload: dict[str, object] | None,
@@ -4314,25 +4098,6 @@ def _hybrid_fusion_degradation_reasons(
     ):
         reasons.append("Hybrid fusion has no attention or burst evidence.")
     return reasons
-
-
-def _hybrid_fusion_is_factor_only(payload: dict[str, object] | None) -> bool:
-    if not isinstance(payload, dict):
-        return False
-    items = payload.get("items")
-    if not isinstance(items, list) or not items:
-        return False
-    source_kinds: set[str] = set()
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        evidence = item.get("evidence")
-        if not isinstance(evidence, dict):
-            continue
-        raw_kinds = evidence.get("source_kinds")
-        if isinstance(raw_kinds, list):
-            source_kinds.update(str(kind) for kind in raw_kinds if kind)
-    return source_kinds == {"factor_screen"}
 
 
 def _build_cycle_rotation_framework(
@@ -4548,32 +4313,6 @@ def _build_cycle_rotation_framework(
             "proxy reconstruction until social/text pipelines are landed."
         ),
     }
-
-
-def _lifecourt_available_inputs(stock_outputs: _ChoiceStockOutputs) -> list[str]:
-    available: list[str] = []
-    if stock_outputs.stock_candidates_payload is not None:
-        available.append("stock_candidates")
-    if stock_outputs.theme_breakout_payload is not None:
-        available.append("theme_breakout")
-    if stock_outputs.factor_screen_payload is not None:
-        available.append("factor_screen_candidates")
-    if stock_outputs.hybrid_fusion_payload is not None:
-        available.append("hybrid_fusion")
-    return available
-
-
-def _lifecourt_missing_inputs(stock_outputs: _ChoiceStockOutputs) -> list[str]:
-    missing = [
-        "social_text_raw",
-        "ocr_asr_pipeline",
-        "bot_spam_detection",
-        "margin_balance",
-        "unlock_event_panel",
-    ]
-    if stock_outputs.sector_rank_payload is None:
-        missing.append("sector_rank_for_regime")
-    return missing
 
 
 def _gate_supplement_breadth_limit(
@@ -4886,19 +4625,6 @@ def _build_data_gaps(
     return gaps
 
 
-def _cycle_input_freshness_date(business_date: str, *, cadence: str) -> str:
-    """Use month-end for provider rows keyed to the first day of their statistical month."""
-    if cadence != "monthly":
-        return business_date
-    try:
-        parsed = date.fromisoformat(business_date)
-    except ValueError:
-        return business_date
-    if parsed.day != 1:
-        return business_date
-    return parsed.replace(day=monthrange(parsed.year, parsed.month)[1]).isoformat()
-
-
 def _assess_input_freshness(
     *,
     cycle_input_evidence: _CycleInputEvidence,
@@ -4923,85 +4649,6 @@ def _assess_input_freshness(
     return entries
 
 
-def _input_freshness_severity(entry: dict[str, object]) -> tuple[int, int]:
-    tier_rank = _INPUT_FRESHNESS_TIER_RANK.get(str(entry.get("tier") or ""), 0)
-    age_days = entry.get("age_days")
-    return tier_rank, age_days if isinstance(age_days, int) else -(10**9)
-
-
-def _merge_input_freshness_into_data_gaps(
-    *,
-    data_gaps: list[dict[str, object]],
-    input_freshness: list[dict[str, object]],
-) -> None:
-    """Extend existing data_gaps entries with freshness evidence; flag look-ahead-dated inputs."""
-    worst_by_family: dict[str, dict[str, object]] = {}
-    for entry in input_freshness:
-        family = str(entry.get("input_family") or "")
-        current = worst_by_family.get(family)
-        if current is None or _input_freshness_severity(entry) > _input_freshness_severity(current):
-            worst_by_family[family] = entry
-    for gap in data_gaps:
-        entry = worst_by_family.get(str(gap.get("input_family") or ""))
-        if entry is None:
-            continue
-        gap["input"] = str(entry.get("input") or "")
-        gap["business_date"] = str(entry.get("business_date") or "")
-        gap["age_days"] = entry.get("age_days")
-        gap["tier"] = str(entry.get("tier") or "")
-    for entry in input_freshness:
-        age_days = entry.get("age_days")
-        if isinstance(age_days, int) and age_days < 0:
-            data_gaps.append(
-                {
-                    "input_family": str(entry.get("input_family") or ""),
-                    "input": str(entry.get("input") or ""),
-                    "status": INPUT_FRESHNESS_LOOK_AHEAD_STATUS,
-                    "evidence": (
-                        f"{entry.get('input')} business_date {entry.get('business_date')} is later than the "
-                        f"resolved trade_date (age_days={age_days}); flagged as a look-ahead risk."
-                    ),
-                    "business_date": str(entry.get("business_date") or ""),
-                    "age_days": age_days,
-                    "tier": str(entry.get("tier") or ""),
-                }
-            )
-
-
-def _input_freshness_degradation_notes(
-    input_freshness: list[dict[str, object]],
-) -> list[dict[str, str | None]]:
-    notes: list[dict[str, str | None]] = []
-    for entry in input_freshness:
-        tier = str(entry.get("tier") or "")
-        if tier not in INPUT_FRESHNESS_DEGRADED_TIERS:
-            continue
-        family = str(entry.get("input_family") or "")
-        category = _INPUT_FRESHNESS_NOTE_CATEGORY_BY_FAMILY.get(family, "关键输入")
-        notes.append(
-            {
-                "severity": "warning",
-                "code": INPUT_FRESHNESS_DEGRADED_DIAGNOSTIC_CODE,
-                "message": (
-                    f"{category} {entry.get('input')} 数据滞后 {entry.get('age_days')} 天（{tier}），信号质量降级"
-                ),
-                "input_family": family,
-            }
-        )
-    return notes
-
-
-def _degrade_quality_flag_for_input_freshness(
-    quality_flag: str,
-    input_freshness: list[dict[str, object]],
-) -> str:
-    """Any stale/expired key input downgrades an otherwise-ok result to warning; never upgrades."""
-    if quality_flag != "ok":
-        return quality_flag
-    has_lagging_input = any(str(entry.get("tier") or "") in INPUT_FRESHNESS_DEGRADED_TIERS for entry in input_freshness)
-    return "warning" if has_lagging_input else quality_flag
-
-
 def _build_diagnostics(
     *,
     requested_as_of_date: str | None,
@@ -5014,6 +4661,15 @@ def _build_diagnostics(
     latest_trade_date: date | None = None,
 ) -> list[dict[str, str | None]]:
     diagnostics: list[dict[str, str | None]] = []
+    for reason in stock_outputs.query_failed_reasons:
+        diagnostics.append(
+            {
+                "severity": "warning",
+                "code": LIVERMORE_DUCKDB_QUERY_FAILED_CODE,
+                "message": reason,
+                "input_family": "duckdb_query",
+            }
+        )
     breadth_landed, limit_up_landed = _gate_supplement_breadth_limit(
         supplement=supplement,
         latest_trade_date=latest_trade_date,
@@ -5190,78 +4846,6 @@ def _build_diagnostics(
     return diagnostics
 
 
-def _sector_unavailable_reason(
-    *,
-    stock_readiness: ChoiceStockReadiness,
-    stock_outputs: _ChoiceStockOutputs,
-) -> str:
-    if not stock_readiness.ready:
-        return _choice_stock_dependency_summary(
-            stock_readiness=stock_readiness,
-            families=["sector_membership", "sector_strength"],
-            ready_summary="",
-        )
-    if stock_outputs.sector_coverage is None or stock_outputs.sector_coverage.status == "not_materialized":
-        return "Choice stock catalog is confirmed, but sector ranking inputs are not materialized yet."
-    if not stock_outputs.sector_coverage.full_coverage:
-        return stock_outputs.sector_coverage.message
-    return "Choice sector inputs are landed, but fewer than three rankable sectors are available."
-
-
-def _stock_unavailable_reason(
-    *,
-    market_state: str,
-    stock_readiness: ChoiceStockReadiness,
-    stock_outputs: _ChoiceStockOutputs,
-) -> str:
-    if stock_outputs.stock_candidate_block_reason:
-        return stock_outputs.stock_candidate_block_reason
-    if not stock_readiness.ready:
-        return _choice_stock_dependency_summary(
-            stock_readiness=stock_readiness,
-            families=["stock_universe", "stock_ohlcv", "stock_status", "limit_up_quality"],
-            ready_summary="",
-        )
-    if stock_outputs.stock_coverage is None or stock_outputs.stock_coverage.status == "not_materialized":
-        return "Choice stock catalog is confirmed, but stock candidate inputs are not materialized yet."
-    if not stock_outputs.stock_coverage.full_coverage:
-        return stock_outputs.stock_coverage.message
-    if stock_outputs.sector_rank_payload is None:
-        return "Sector rank is unavailable, so stock candidates remain blocked."
-    if market_state in {"NO_DATA", "PENDING_DATA", "STALE"}:
-        return "Market gate is unavailable or stale, so stock candidates cannot be evaluated."
-    return ""
-
-
-def _stock_candidate_policy_inactive_reason(*, policy_name: str, market_state: str) -> str:
-    active_states = "/".join(sorted(stock_candidate_policy_active_market_states(policy_name)))
-    return (
-        f"{STOCK_CANDIDATE_POLICY_INACTIVE_REASON_PREFIX}{policy_name} is inactive in {market_state}; "
-        f"active market states are {active_states}."
-    )
-
-
-def _is_stock_candidate_policy_inactive_reason(reason: str) -> bool:
-    return reason.startswith(STOCK_CANDIDATE_POLICY_INACTIVE_REASON_PREFIX)
-
-
-def _theme_breakout_evidence_entries(payload: dict[str, object]) -> list[dict[str, object]]:
-    evidence_state = payload.get("evidence_state")
-    if not isinstance(evidence_state, dict):
-        return []
-    entries: list[dict[str, object]] = []
-    for input_family in ("concept_membership", "intraday_movement"):
-        entry = evidence_state.get(input_family)
-        if isinstance(entry, dict):
-            entries.append(cast(dict[str, object], entry))
-    return entries
-
-
-def _theme_breakout_evidence_ready(payload: dict[str, object]) -> bool:
-    entries = _theme_breakout_evidence_entries(payload)
-    return bool(entries) and all(str(entry.get("status") or entry.get("state")) == "matched_rows" for entry in entries)
-
-
 def _theme_breakout_evidence_summary(payload: dict[str, object]) -> str:
     parts: list[str] = []
     for entry in _theme_breakout_evidence_entries(payload):
@@ -5288,187 +4872,6 @@ def _theme_breakout_gap_evidence(payload: dict[str, object]) -> str:
             "real concept and intraday movement input state is unavailable."
         )
     return "Theme breakout radar is using landed concept membership and intraday movement evidence."
-
-
-def _theme_breakout_uses_current_overlay(payload: dict[str, object]) -> bool:
-    raw_themes = payload.get("items")
-    if isinstance(raw_themes, list) and any(
-        isinstance(theme, dict) and theme.get("source_kind") == "tushare_current_overlay" for theme in raw_themes
-    ):
-        return True
-    evidence_state = payload.get("evidence_state")
-    if not isinstance(evidence_state, dict):
-        return False
-    concept_evidence = evidence_state.get("concept_membership")
-    return isinstance(concept_evidence, dict) and (
-        concept_evidence.get("status") == "current_overlay"
-        or concept_evidence.get("concept_source_kind") == "tushare_current_overlay"
-    )
-
-
-def _theme_breakout_unavailable_reason(
-    *,
-    market_state: str,
-    stock_readiness: ChoiceStockReadiness,
-    stock_outputs: _ChoiceStockOutputs,
-) -> str:
-    if not stock_readiness.ready:
-        return _choice_stock_dependency_summary(
-            stock_readiness=stock_readiness,
-            families=["stock_universe", "sector_membership", "sector_strength", "stock_ohlcv", "stock_status"],
-            ready_summary="",
-        )
-    if stock_outputs.stock_coverage is None or stock_outputs.stock_coverage.status == "not_materialized":
-        return "Choice stock catalog is confirmed, but theme breakout inputs are not materialized yet."
-    if not stock_outputs.stock_coverage.full_coverage:
-        return stock_outputs.stock_coverage.message
-    if stock_outputs.sector_rank_payload is None:
-        return "Sector rank is unavailable, so the theme breakout proxy is blocked."
-    if market_state in {"NO_DATA", "PENDING_DATA", "STALE"}:
-        return "Market gate is unavailable or stale, so theme breakout observations cannot be evaluated."
-    if market_state == "OVERHEAT":
-        return "Theme breakout execution is paused in OVERHEAT; historical replay showed this bucket is draggy."
-    return "Theme breakout proxy produced no payload for the resolved inputs."
-
-
-def _has_hybrid_fusion_candidate_source(
-    *,
-    stock_candidates_payload: dict[str, object] | None,
-    factor_screen_payload: dict[str, object] | None,
-    theme_breakout_payload: dict[str, object] | None,
-) -> bool:
-    return any(
-        (
-            _payload_item_count(stock_candidates_payload) > 0,
-            _payload_item_count(factor_screen_payload) > 0,
-            _theme_breakout_stock_item_count(theme_breakout_payload) > 0,
-        )
-    )
-
-
-def _hybrid_fusion_unavailable_reason_from_payloads(
-    *,
-    market_state: str,
-    stock_candidates_payload: dict[str, object] | None,
-    factor_screen_payload: dict[str, object] | None,
-    theme_breakout_payload: dict[str, object] | None,
-) -> str:
-    missing_sources: list[str] = []
-    if _payload_item_count(stock_candidates_payload) <= 0:
-        missing_sources.append("stock_candidates")
-    if _payload_item_count(factor_screen_payload) <= 0:
-        missing_sources.append("factor_screen_candidates")
-    if _theme_breakout_stock_item_count(theme_breakout_payload) <= 0:
-        missing_sources.append("theme_breakout")
-    if len(missing_sources) == 3:
-        return (
-            "Hybrid fusion requires at least one landed candidate source: "
-            "stock_candidates, factor_screen_candidates, or theme_breakout. "
-            f"Missing candidate source rows: {', '.join(missing_sources)}."
-        )
-    if market_state not in {"WARM", "HOT"}:
-        return f"Hybrid fusion is observation-only and only emits candidates in WARM/HOT market states; current state is {market_state}."
-    return ""
-
-
-def _payload_item_count(payload: dict[str, object] | None) -> int:
-    raw = payload.get("items") if isinstance(payload, dict) else None
-    return len(raw) if isinstance(raw, list) else 0
-
-
-def _theme_breakout_stock_item_count(payload: dict[str, object] | None) -> int:
-    raw_themes = payload.get("items") if isinstance(payload, dict) else None
-    if not isinstance(raw_themes, list):
-        return 0
-    count = 0
-    for raw_theme in raw_themes:
-        if not isinstance(raw_theme, dict):
-            continue
-        raw_items = raw_theme.get("items")
-        if isinstance(raw_items, list):
-            count += sum(1 for raw_item in raw_items if isinstance(raw_item, dict))
-    return count
-
-
-def _stock_unavailable_input_family(stock_outputs: _ChoiceStockOutputs) -> str:
-    if stock_outputs.stock_candidate_block_reason:
-        if _is_stock_candidate_policy_inactive_reason(stock_outputs.stock_candidate_block_reason):
-            return STOCK_CANDIDATE_POLICY_INACTIVE_INPUT_FAMILY
-        return "limit_up_quality"
-    return "stock_universe"
-
-
-def _risk_unavailable_reason(specific_reason: str = "") -> str:
-    reason = (
-        f"The defended-bundle {MVP_RULE_LABEL} MVP remains blocked. Existing formal ledger "
-        "position_snapshot/position_snapshot_agg are not accepted for Livermore A-share risk_exit "
-        "because their governed schema is bond/ledger-shaped and lacks proven stock_code, "
-        "Livermore entry_cost, and bars_since_entry semantics. Current accepted stock holding "
-        "fact source remains livermore_position_snapshot plus choice_stock_daily_observation close_history."
-    )
-    if specific_reason:
-        return f"{reason} Current blocker: {specific_reason}"
-    return reason
-
-
-def _coverage_gap_status(coverage: ChoiceStockMaterializationCoverage | None) -> str:
-    if coverage is None:
-        return "missing"
-    if coverage.status == "partial":
-        return "partial"
-    return "missing"
-
-
-def _sector_status(
-    *,
-    stock_readiness: ChoiceStockReadiness,
-    stock_outputs: _ChoiceStockOutputs,
-) -> str:
-    if stock_outputs.sector_rank_payload is not None:
-        return "ready"
-    if not stock_readiness.ready:
-        return "missing"
-    if stock_outputs.sector_coverage is None or stock_outputs.sector_coverage.status == "not_materialized":
-        return "missing"
-    if not stock_outputs.sector_coverage.full_coverage:
-        return "partial"
-    return "blocked"
-
-
-def _stock_status(
-    *,
-    market_state: str,
-    stock_readiness: ChoiceStockReadiness,
-    stock_outputs: _ChoiceStockOutputs,
-) -> str:
-    if stock_outputs.stock_candidates_payload is not None:
-        return "ready"
-    if not stock_readiness.ready:
-        return "blocked"
-    if stock_outputs.stock_coverage is None or stock_outputs.stock_coverage.status == "not_materialized":
-        return "blocked"
-    if not stock_outputs.stock_coverage.full_coverage:
-        return "partial"
-    if stock_outputs.sector_rank_payload is None or market_state in {"NO_DATA", "PENDING_DATA", "STALE"}:
-        return "blocked"
-    return "blocked"
-
-
-def _sector_missing_inputs(
-    *,
-    stock_readiness: ChoiceStockReadiness,
-    stock_outputs: _ChoiceStockOutputs,
-) -> list[str]:
-    if stock_outputs.sector_rank_payload is not None:
-        return []
-    if not stock_readiness.ready:
-        return _choice_stock_missing_inputs(
-            stock_readiness=stock_readiness,
-            families=["sector_membership", "sector_strength"],
-        )
-    if stock_outputs.sector_coverage is None or stock_outputs.sector_coverage.full_coverage:
-        return []
-    return _missing_families_from_request_items(stock_outputs.sector_coverage.missing_request_items)
 
 
 def _stock_missing_inputs(
@@ -5502,11 +4905,6 @@ def _stock_missing_inputs(
     return _unique_preserving_order(missing_inputs)
 
 
-def _missing_families_from_request_items(items: list[str]) -> list[str]:
-    families = [str(item).split(":", 1)[0] for item in items if item]
-    return _unique_preserving_order(families)
-
-
 def _limit_ratio(
     *,
     highlimit: object,
@@ -5535,38 +4933,6 @@ def _limit_ratio(
     )
 
 
-def _rule_derived_limit_ratio(*, stock_code: str, stock_name: str, as_of_date: str) -> float | None:
-    code = stock_code.strip().upper()
-    if not code:
-        return None
-    if code.endswith(".BJ") or code.startswith(("8", "4", "920")):
-        return 0.30
-    if code.endswith(".SH") and code.startswith(("688", "689")):
-        return 0.20
-    if code.endswith(".SZ") and code.startswith(("300", "301")):
-        return 0.20
-    if _is_risk_warning_stock_name(stock_name) and _date_before(
-        as_of_date, MAINBOARD_RISK_WARNING_LIMIT_RATIO_10_START
-    ):
-        return 0.05
-    if code.endswith((".SH", ".SZ")):
-        return 0.10
-    return None
-
-
-def _is_risk_warning_stock_name(stock_name: str) -> bool:
-    normalized = stock_name.strip().upper()
-    return normalized.startswith("*ST") or normalized.startswith("ST")
-
-
-def _date_before(value: str, threshold: date) -> bool:
-    try:
-        parsed = date.fromisoformat(value)
-    except ValueError:
-        return False
-    return parsed < threshold
-
-
 def _safe_float(value: object) -> float | None:
     # 口径：0 / 0.0 是有效数值（例如停牌日换手率为 0）；仅 None、空白串和
     # 不可解析文本视为缺失。不得用真值判断把 0 静默当缺失，否则历史序列
@@ -5590,64 +4956,6 @@ def _safe_int(value: object) -> int | None:
 
 def _safe_int_or_none(value: object) -> int | None:
     return _safe_int(value)
-
-
-def _truthy(value: object) -> bool:
-    return str(value or "").strip().lower() in {"1", "true", "t", "yes", "y", "是"}
-
-
-def _unique_preserving_order(values: list[str]) -> list[str]:
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for value in values:
-        if value in seen:
-            continue
-        seen.add(value)
-        ordered.append(value)
-    return ordered
-
-
-def _quality_flag_for_market_gate(state: str) -> str:
-    if state == "STALE":
-        return "stale"
-    if state in {"NO_DATA", "PENDING_DATA"}:
-        return "warning"
-    return "ok"
-
-
-def _vendor_status_for_state(state: str) -> str:
-    if state == "STALE":
-        return "vendor_stale"
-    if state == "NO_DATA":
-        return "vendor_unavailable"
-    return "ok"
-
-
-def _aggregate_lineage(values: list[str], *, empty_value: str) -> str:
-    distinct = sorted({value for value in values if value})
-    if not distinct:
-        return empty_value
-    if len(distinct) == 1:
-        return distinct[0]
-    return "__".join(distinct)
-
-
-def livermore_data_version(duckdb_path: str) -> str:
-    """Stable cross-process version fingerprint for persisted Livermore data."""
-    path = Path(duckdb_path)
-    try:
-        stat = path.stat()
-    except OSError:
-        return "missing"
-    return f"{stat.st_mtime_ns}:{stat.st_size}"
-
-
-def _livermore_business_input_signature(path: Path) -> str:
-    try:
-        payload = path.read_bytes()
-    except OSError:
-        return "missing"
-    return f"sha256:{hashlib.sha256(payload).hexdigest()}"
 
 
 def livermore_business_inputs_version() -> str:

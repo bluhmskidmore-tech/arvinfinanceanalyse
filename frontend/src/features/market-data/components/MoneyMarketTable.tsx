@@ -4,7 +4,7 @@ import type { ColumnsType } from "antd/es/table";
 
 import type { ChoiceMacroLatestPoint } from "../../../api/contracts";
 import { EM_DASH } from "../../../utils/format";
-import { TONE_CSS_VAR } from "../../../utils/tone";
+import { TONE_DH_CSS_VAR } from "../../../utils/tone";
 import type {
   MarketDataMoneyMarketRow,
   MarketDataMoneyMarketSection,
@@ -15,15 +15,16 @@ import { MarketDataSeriesTimeChart } from "./MarketDataSeriesTimeChart";
 import { MarketTerminalSparkline } from "./MarketTerminalSparkline";
 import { marketDataBlockTitleStyle, marketDataPanelStyle } from "./marketDataPanelStyle";
 
-// 资金利率下行=偏多（positive）、上行=偏空（negative）；着色走主题感知 CSS 变量。
+// 资金利率下行=偏多（positive）、上行=偏空（negative）；着色走 Nocturne 主题链
+// （TONE_CSS_VAR 的 --ib-* 在本页 scope 内解析为边界钢蓝值，须用 --dh-api-* 入口）。
 function deltaTextColor(value: string) {
   if (value.startsWith("-")) {
-    return TONE_CSS_VAR.positive;
+    return TONE_DH_CSS_VAR.positive;
   }
   if (value.startsWith("+")) {
-    return TONE_CSS_VAR.negative;
+    return TONE_DH_CSS_VAR.negative;
   }
-  return TONE_CSS_VAR.neutral;
+  return TONE_DH_CSS_VAR.neutral;
 }
 
 function sparkToneFromDelta(delta: string): "up" | "down" | "flat" {

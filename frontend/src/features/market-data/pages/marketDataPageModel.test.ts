@@ -589,7 +589,7 @@ describe("marketDataPageModel", () => {
         isLoading: false,
         isError: false,
       }),
-    ).toContain("物化 2/3");
+    ).toContain("已落地 2/3（沿用 1）");
   });
 
   it("prefers spread_tenor_correlations over top_correlations filtering", () => {

@@ -7,7 +7,7 @@ import { externalDataQueryOptions } from "../../../app/externalDataRefreshPolicy
 import type { TushareEcoCalEventRow, TushareMoneySupplyRow } from "../../../api/contracts";
 import { tabularNumsStyle } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
-import { formatPct } from "../lib/marketDataFormat";
+import { formatGeneratedAtLocal, formatPct } from "../lib/marketDataFormat";
 import { LiveResultMetaStrip } from "./LiveResultMetaStrip";
 
 type MoneySummaryItem = {
@@ -556,8 +556,14 @@ export function MarketDataTushareSupplementSection() {
               : "ok"
           }
         >
-          数据截至 {resultMeta.as_of_date ?? EM_DASH}
-          {resultMeta.generated_at ? ` · 生成 ${resultMeta.generated_at}` : ""}
+          <span
+            title={
+              resultMeta.generated_at ? `原始时间戳（UTC）${resultMeta.generated_at}` : undefined
+            }
+          >
+            数据截至 {resultMeta.as_of_date ?? EM_DASH}
+            {resultMeta.generated_at ? `（生成 ${formatGeneratedAtLocal(resultMeta.generated_at)}）` : ""}
+          </span>
           {resultMeta.quality_flag === "stale" ||
           resultMeta.vendor_status === "vendor_unavailable" ||
           resultMeta.vendor_status === "vendor_stale"

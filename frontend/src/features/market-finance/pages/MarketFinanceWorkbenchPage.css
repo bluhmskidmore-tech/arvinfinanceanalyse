@@ -354,6 +354,11 @@
   gap: var(--moss-space-2);
 }
 
+/* 步骤卡徽标只承载状态短词，禁止整句失败文案折行成多行 pill。 */
+.market-finance-workbench__spine-node-top .market-finance-workbench__status-chip {
+  white-space: nowrap;
+}
+
 .market-finance-workbench__spine-index {
   color: var(--ib-ink-muted);
   font-family: var(--moss-font-mono);
@@ -394,6 +399,19 @@
 .market-finance-workbench__matrix-panel a:hover {
   color: var(--ib-accent-hover);
   text-decoration: underline;
+}
+
+/* 读数缺口原因只在 KPI 带头部披露一次（卡内值位为 —，不逐卡重复）。 */
+.market-finance-workbench__kpi-note {
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--ib-hairline);
+  border-left: 2px solid var(--ib-warn);
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  color: var(--ib-ink-secondary);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .market-finance-workbench .market-finance-workbench__kpis {

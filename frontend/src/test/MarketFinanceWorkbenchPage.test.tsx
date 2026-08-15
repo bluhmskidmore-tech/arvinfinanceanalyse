@@ -412,8 +412,10 @@ describe("MarketFinanceWorkbenchPage", () => {
 
     const evidence = screen.getByTestId("market-finance-evidence");
     expect(evidence).toHaveTextContent("页面配置白名单");
-    expect(evidence).toHaveTextContent("PAGE contract");
-    expect(evidence).toHaveTextContent("owner signoff");
+    expect(evidence).toHaveTextContent("页面契约");
+    expect(evidence).toHaveTextContent("业主签核");
+    expect(evidence).not.toHaveTextContent("PAGE contract");
+    expect(evidence).not.toHaveTextContent("owner signoff");
     for (const query of [
       "market-rates",
       "product-dates",
@@ -731,9 +733,17 @@ describe("MarketFinanceWorkbenchPage", () => {
     );
     expect(productDatesStatus).toHaveTextContent("供应商不可用");
     expect(productDatesStatus).not.toHaveTextContent("无数据");
-    expect(
-      screen.getByTestId("market-finance-query-status-product-pnl"),
-    ).toHaveTextContent("未执行：日期目录受质量阻断");
+    const blockedDependentStatus = screen.getByTestId(
+      "market-finance-query-status-product-pnl",
+    );
+    expect(blockedDependentStatus).toHaveTextContent("未执行");
+    expect(blockedDependentStatus).not.toHaveTextContent(
+      "未执行：日期目录受质量阻断",
+    );
+    expect(blockedDependentStatus).toHaveAttribute(
+      "title",
+      "未执行：日期目录受质量阻断",
+    );
     expect(
       screen.getByTestId("market-finance-state-surface"),
     ).toHaveTextContent("数据质量阻断");
@@ -1004,13 +1014,25 @@ describe("MarketFinanceWorkbenchPage", () => {
     expect(marketNode).not.toHaveTextContent(
       "页面配置白名单暂无命中代表序列",
     );
+    for (const dependentQuery of ["product-pnl", "balance-overview"]) {
+      const dependentStatus = screen.getByTestId(
+        `market-finance-query-status-${dependentQuery}`,
+      );
+      expect(dependentStatus).toHaveTextContent("未执行");
+      expect(dependentStatus).not.toHaveTextContent(
+        "未执行：日期目录查询异常",
+      );
+      expect(dependentStatus).toHaveAttribute(
+        "title",
+        "未执行：日期目录查询异常",
+      );
+    }
+    // 完整失败原因仅在状态条与数据状态卡两处完整披露。
     expect(
-      screen.getByTestId("market-finance-query-status-product-pnl"),
+      screen.getByTestId("market-finance-degradation-flags"),
     ).toHaveTextContent("未执行：日期目录查询异常");
     expect(
-      screen.getByTestId(
-        "market-finance-query-status-balance-overview",
-      ),
+      screen.getByTestId("market-finance-state-surface"),
     ).toHaveTextContent("未执行：日期目录查询异常");
     expect(client.getProductCategoryPnl).not.toHaveBeenCalled();
     expect(client.getBalanceAnalysisOverview).not.toHaveBeenCalled();
@@ -1046,14 +1068,17 @@ describe("MarketFinanceWorkbenchPage", () => {
     expect(marketNode).not.toHaveTextContent(
       "页面配置白名单暂无命中代表序列",
     );
-    expect(
-      screen.getByTestId("market-finance-query-status-product-pnl"),
-    ).toHaveTextContent("未执行：日期目录为空");
-    expect(
-      screen.getByTestId(
-        "market-finance-query-status-balance-overview",
-      ),
-    ).toHaveTextContent("未执行：日期目录为空");
+    for (const dependentQuery of ["product-pnl", "balance-overview"]) {
+      const dependentStatus = screen.getByTestId(
+        `market-finance-query-status-${dependentQuery}`,
+      );
+      expect(dependentStatus).toHaveTextContent("未执行");
+      expect(dependentStatus).not.toHaveTextContent("未执行：日期目录为空");
+      expect(dependentStatus).toHaveAttribute(
+        "title",
+        "未执行：日期目录为空",
+      );
+    }
     expect(client.getProductCategoryPnl).not.toHaveBeenCalled();
     expect(client.getBalanceAnalysisOverview).not.toHaveBeenCalled();
   });

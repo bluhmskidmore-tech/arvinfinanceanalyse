@@ -663,6 +663,225 @@ def test_theme_breakout_loader_enriches_snapshots_with_real_concept_and_movement
     assert provenance.movement_matched_row_count == 3
 
 
+def _create_theme_base_tables(conn: duckdb.DuckDBPyConnection) -> None:
+    conn.execute(
+        """
+        create table choice_stock_universe (
+          stock_code varchar,
+          stock_name varchar,
+          as_of_date varchar,
+          source_version varchar,
+          vendor_version varchar
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table choice_stock_sector_membership (
+          stock_code varchar,
+          as_of_date varchar,
+          sw2021code varchar,
+          sw2021 varchar,
+          source_version varchar,
+          vendor_version varchar
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table choice_stock_daily_observation (
+          stock_code varchar,
+          trade_date varchar,
+          open_value double,
+          high_value double,
+          low_value double,
+          close_value double,
+          pctchange double,
+          turn double,
+          amplitude double,
+          source_version varchar,
+          vendor_version varchar
+        )
+        """
+    )
+
+
+_THEME_TEST_STOCK_CODES = ("688001.SH", "688002.SH", "688003.SH")
+
+
+def _insert_theme_base_rows(conn: duckdb.DuckDBPyConnection, *, trade_date: str) -> None:
+    for index, stock_code in enumerate(_THEME_TEST_STOCK_CODES, start=1):
+        conn.execute(
+            "insert into choice_stock_universe values (?, ?, ?, ?, ?)",
+            (stock_code, f"Alpha Member {index}", trade_date, "sv_u", "vv_u"),
+        )
+        conn.execute(
+            "insert into choice_stock_sector_membership values (?, ?, ?, ?, ?, ?)",
+            (stock_code, trade_date, "801080", "Electronic", "sv_s", "vv_s"),
+        )
+        conn.execute(
+            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (stock_code, trade_date, 9.6, 10.1, 9.4, 10.0, 12.1 - index * 0.5, 4.2, 7.0, "sv_d", "vv_d"),
+        )
+
+
+_SECTOR_RANK_PAYLOAD = {
+    "items": [{"rank": 9, "sector_code": "801080", "sector_name": "Electronic"}]
+}
+
+
+def test_theme_breakout_loader_uses_interval_asof_rows_inside_coverage(tmp_path) -> None:
+    from backend.app.tasks.concept_membership_intervalize import (
+        ensure_concept_membership_interval_schema,
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        _create_theme_base_tables(conn)
+        _insert_theme_base_rows(conn, trade_date="2026-06-15")
+        ensure_concept_membership_interval_schema(conn)
+        conn.executemany(
+            "insert into choice_stock_concept_membership_interval values "
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                # open intervals covering the request date (three members so the
+                # concept clears the cluster-strength gate)
+                *[
+                    (
+                        stock_code, "885001.TI", "Robotics", "tushare_ths_current",
+                        "2026-05-13", None, "2026-05-13", "fk", "sv_i", "vv_i", "rv", "run",
+                    )
+                    for stock_code in _THEME_TEST_STOCK_CODES
+                ],
+                # closed interval that ended before the request date -> excluded
+                (
+                    "688001.SH", "885002.TI", "Exited Concept", "tushare_ths_current",
+                    "2026-05-13", "2026-06-01", "2026-05-13", "fk", "sv_i", "vv_i", "rv", "run",
+                ),
+            ],
+        )
+    finally:
+        conn.close()
+
+    snapshots, tables_used, _, _, provenance = _load_theme_breakout_snapshots(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-06-15",
+        sector_rank_payload=_SECTOR_RANK_PAYLOAD,
+    )
+
+    assert provenance.concept_interval_used is True
+    assert provenance.concept_interval_covering_row_count == 3
+    assert provenance.concept_source_kind == "real_concept"
+    assert provenance.overlay_status == "interval_asof_precedence"
+    concept_codes = {snapshot.concept_code for snapshot in snapshots}
+    assert "885001.TI" in concept_codes
+    assert "885002.TI" not in concept_codes
+    concept_snapshot = next(item for item in snapshots if item.concept_code == "885001.TI")
+    assert concept_snapshot.concept_source_kind == "real_concept"
+    assert "choice_stock_concept_membership_interval" in tables_used
+
+    payload = compute_theme_breakout(as_of_date="2026-06-15", snapshots=snapshots).payload
+    assert payload["is_proxy"] is False
+    assert [item["theme_key"] for item in payload["items"]] == ["concept:885001.TI"]
+    assert payload["items"][0]["source_kind"] == "real_concept"
+
+
+def test_theme_breakout_loader_fails_closed_to_proxy_before_first_snapshot(tmp_path) -> None:
+    from backend.app.tasks.concept_membership_intervalize import (
+        ensure_concept_membership_interval_schema,
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        _create_theme_base_tables(conn)
+        # replay date sits before the first snapshot / valid_from
+        _insert_theme_base_rows(conn, trade_date="2026-04-01")
+        ensure_concept_membership_interval_schema(conn)
+        conn.execute(
+            "insert into choice_stock_concept_membership_interval values "
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "688001.SH", "885001.TI", "Robotics", "tushare_ths_current",
+                "2026-05-13", None, "2026-05-13", "fk", "sv_i", "vv_i", "rv", "run",
+            ),
+        )
+    finally:
+        conn.close()
+
+    snapshots, _, _, _, provenance = _load_theme_breakout_snapshots(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-04-01",
+        sector_rank_payload=_SECTOR_RANK_PAYLOAD,
+    )
+
+    assert provenance.concept_interval_used is False
+    assert provenance.concept_interval_covering_row_count == 0
+    assert all(not snapshot.concept_code for snapshot in snapshots)
+
+    payload = compute_theme_breakout(as_of_date="2026-04-01", snapshots=snapshots).payload
+    assert payload["is_proxy"] is True
+
+
+def test_theme_breakout_loader_prefers_exact_choice_rows_over_interval_rows(tmp_path) -> None:
+    from backend.app.tasks.concept_membership_intervalize import (
+        ensure_concept_membership_interval_schema,
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        _create_theme_base_tables(conn)
+        _insert_theme_base_rows(conn, trade_date="2026-05-13")
+        conn.execute(
+            """
+            create table choice_stock_concept_membership (
+              as_of_date varchar,
+              stock_code varchar,
+              concept_code varchar,
+              concept_name varchar,
+              concept_source varchar,
+              field_key varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            "insert into choice_stock_concept_membership values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "2026-05-13", "688001.SH", "C001", "Chiplet", "choice",
+                "choice_concept_membership", "sv_c", "vv_c", "rv", "run",
+            ),
+        )
+        ensure_concept_membership_interval_schema(conn)
+        conn.execute(
+            "insert into choice_stock_concept_membership_interval values "
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "688001.SH", "885001.TI", "Robotics", "tushare_ths_current",
+                "2026-05-13", None, "2026-05-13", "fk", "sv_i", "vv_i", "rv", "run",
+            ),
+        )
+    finally:
+        conn.close()
+
+    snapshots, _, _, _, provenance = _load_theme_breakout_snapshots(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-05-13",
+        sector_rank_payload=_SECTOR_RANK_PAYLOAD,
+    )
+
+    assert provenance.concept_interval_used is False
+    assert provenance.overlay_status == "choice_exact_precedence"
+    concept_codes = {snapshot.concept_code for snapshot in snapshots}
+    assert "C001" in concept_codes
+    assert "885001.TI" not in concept_codes
+
+
 def test_theme_breakout_evidence_state_prefers_catalog_unconfirmed_over_table_state(
     tmp_path,
 ) -> None:

@@ -8,8 +8,15 @@ from types import SimpleNamespace
 import duckdb
 import pytest
 
+from backend.app.core_finance.field_normalization import tradable_status_sql_condition
 from backend.app.services import market_data_livermore_service as service
 from backend.app.repositories.choice_stock_adapter import ChoiceStockReadiness
+
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_livermore,
+]
+
 
 
 AS_OF_DATE = "2026-06-30"
@@ -148,7 +155,7 @@ def _trading_history_oracle(
           from choice_stock_daily_observation
           where stock_code in ({placeholders})
             and cast(trade_date as date) <= cast(? as date)
-            and trim(coalesce(tradestatus, '')) = 'Trading'
+            and {tradable_status_sql_condition('tradestatus')}
         )
         select stock_code, close_value, amount, volume
         from ranked_history
@@ -342,8 +349,10 @@ def test_dual_stock_history_scan_matches_both_legacy_windows() -> None:
     assert len(candidate_both["close"]) == 128
     assert candidate_both["close"][0] == 1129.0
     assert candidate_both["close"][-1] == 1000.0
+    # 可交易口径（契约 §4.10）：NULL/空白 tradestatus 视为正常交易日，
+    # 仅 Suspended 两行被剔除，130 行窗口的最旧一行落在 offset 131。
     assert len(trading_both["close"]) == 130
-    assert trading_both["close"][0] == 1132.0
+    assert trading_both["close"][0] == 1131.0
     assert trading_both["close"][-1] == 1000.0
     assert None in trading_both["close"]
     assert None in trading_both["amount"]
@@ -381,7 +390,10 @@ def test_dual_stock_history_scan_uses_bounded_query_shape_for_full_universe() ->
     assert "unnest(?::varchar[])" in normalized_query
     assert "base_history as" in normalized_query
     assert normalized_query.count("cast(daily.trade_date as date)") == 2
-    assert normalized_query.count("trim(coalesce(daily.tradestatus, ''))") == 1
+    normalized_tradable_condition = " ".join(
+        tradable_status_sql_condition("daily.tradestatus").lower().split()
+    )
+    assert normalized_query.count(normalized_tradable_condition) == 1
     assert conn.parameters[0] == stock_codes
     assert conn.parameters[1] == [True] * len(stock_codes)
     assert conn.parameters[2] == [True] * len(stock_codes)

@@ -19,12 +19,12 @@ import type {
   TushareSupplementPayload,
 } from "../../../api/contracts";
 import type { MacroToolkitAnalysisPayload } from "../../../api/macroToolkitClient";
+import { EM_DASH, fixedOrDash, signedFixedOrDash, textOrDash } from "../../../pageModel";
 import { marketCatalogRefreshTier, marketSeriesRefreshTier } from "../lib/marketDataCategoryStore";
 import { formatPct } from "../lib/marketDataFormat";
 import type { LivermoreStrategyModel } from "../lib/livermoreStrategyModel";
 import type { MarketDataTerminalModel } from "../lib/marketDataTerminalModel";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
-import { EM_DASH } from "../../../utils/format";
 
 type Tone = "formal" | "analytical" | "proxy" | "gap" | "neutral";
 
@@ -327,23 +327,20 @@ function resultMetaBusinessDate(meta: ResultMeta | undefined): string {
 }
 
 function formatGeneratedAt(value: string | null | undefined): string {
-  return value ? value.replace("T", " ").slice(0, 16) : EM_DASH;
+  return textOrDash(value?.replace("T", " ").slice(0, 16));
 }
 
 function formatFxPreviewRate(value: number | null | undefined) {
-  if (value == null || Number.isNaN(value)) return EM_DASH;
-  return value.toFixed(4);
+  return fixedOrDash(value, 4);
 }
 
 function formatNcdProxyRate(value: number | null | undefined): string {
-  if (value == null || Number.isNaN(value)) return EM_DASH;
-  return value.toFixed(3);
+  return fixedOrDash(value, 3);
 }
 
 function formatTusharePp(value: number | null | undefined): string {
-  if (value == null || Number.isNaN(value)) return EM_DASH;
-  const sign = value > 0 ? "+" : "";
-  return `${sign}${value.toFixed(2)}pp`;
+  const formatted = signedFixedOrDash(value, 2);
+  return formatted === EM_DASH ? EM_DASH : `${formatted}pp`;
 }
 
 function findLatestSeriesPoint(

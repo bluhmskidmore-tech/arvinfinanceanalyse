@@ -1,12 +1,9 @@
-import { Card, Col, Row, Typography } from "antd";
-
 import type { LiabilityYieldKpi } from "../../../api/liabilityAdbContracts";
 import { EM_DASH } from "../../../utils/format";
 import { dailyNimStressFromKpi } from "../utils/nimStress";
+import { LiabilitySectionLead } from "./LiabilitySectionLead";
 
-const { Text } = Typography;
-
-/** 有意对齐 DESIGN IB 语义色（涨绿跌红），不再使用旧 A股红涨绿跌。 */
+/** 有意对齐 DESIGN 语义色（涨绿跌红），不再使用旧 A股红涨绿跌。 */
 function deltaTone(deltaBp: number | null): "up" | "down" | "muted" | "ink" {
   if (deltaBp === null || !Number.isFinite(deltaBp)) {
     return "muted";
@@ -22,8 +19,11 @@ function deltaTone(deltaBp: number | null): "up" | "down" | "muted" | "ink" {
 
 export function LiabilityNimStressPanel({
   yieldKpi,
+  gapNote,
 }: {
   yieldKpi: LiabilityYieldKpi | null;
+  /** 负债收益读面整组缺失时的区头一次性披露（§6），由页面统一判定后传入。 */
+  gapNote?: string | null;
 }) {
   const stress = dailyNimStressFromKpi(yieldKpi);
   const deltaBpRaw = stress.deltaBp?.raw ?? null;
@@ -36,60 +36,41 @@ export function LiabilityNimStressPanel({
     stress.projected.raw < 0;
 
   return (
-    <Card size="small" title="压力测试：NIM 敏感性（+50bps）">
-      <Text type="secondary" className="liability-panel-caption">
+    <section className="liability-section">
+      <LiabilitySectionLead
+        title="压力测试：NIM 敏感性（+50bps）"
+        actions={<span className="liability-status-pill">候选情景</span>}
+      />
+      {gapNote ? <p className="liability-caption liability-caption--gap">{gapNote}</p> : null}
+      <p className="liability-caption">
         口径：资产收益率减金融市场同业负债成本（全口径同业往来 + 发行同业存单）；冲击为负债成本 +50bps。
-      </Text>
-      <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} lg={6}>
-          <Card size="small" className="liability-metric-tile">
-            <Text type="secondary">资产收益率</Text>
-            <div className="liability-metric-value">{stress.ay?.display ?? EM_DASH}</div>
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card size="small" className="liability-metric-tile">
-            <Text type="secondary">金融市场同业负债成本</Text>
-            <div className="liability-metric-value">{stress.mlc?.display ?? EM_DASH}</div>
-            <Text type="secondary" className="liability-panel-caption--tight">
-              （增值税前）
-            </Text>
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card size="small" className="liability-metric-tile">
-            <Text type="secondary">当前 NIM</Text>
-            <div
-              className={`liability-metric-value${nimNegative ? " liability-metric-value--down" : ""}`}
-            >
-              {stress.nim?.display ?? EM_DASH}
-            </div>
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card size="small">
-            <div className="liability-stress-head">
-              <div>
-                <Text strong className="liability-stress-title">
-                  压力后 NIM（+50bps）
-                </Text>
-                {stress.isCritical ? (
-                  <span className="liability-status-pill liability-status-pill--inline">NIM 预警</span>
-                ) : null}
-              </div>
-            </div>
-            <div
-              className={`liability-metric-value${projectedNegative ? " liability-metric-value--down" : ""}`}
-              style={{ marginTop: 8 }}
-            >
-              {stress.projected?.display ?? EM_DASH}
-            </div>
-            <div className={`liability-metric-delta liability-metric-delta--${deltaTone(deltaBpRaw)}`}>
-              变化 {bpText}
-            </div>
-          </Card>
-        </Col>
-      </Row>
-    </Card>
+      </p>
+      <div className="liability-kpi-band" data-cols="4">
+        <div className="liability-kpi-cell">
+          <span className="liability-kpi-cell__label">资产收益率</span>
+          <span className="liability-kpi-cell__value">{stress.ay?.display ?? EM_DASH}</span>
+        </div>
+        <div className="liability-kpi-cell">
+          <span className="liability-kpi-cell__label">金融市场同业负债成本</span>
+          <span className="liability-kpi-cell__value">{stress.mlc?.display ?? EM_DASH}</span>
+          <span className="liability-kpi-cell__note">（增值税前）</span>
+        </div>
+        <div className="liability-kpi-cell">
+          <span className="liability-kpi-cell__label">当前 NIM</span>
+          <span className="liability-kpi-cell__value" data-tone={nimNegative ? "down" : undefined}>
+            {stress.nim?.display ?? EM_DASH}
+          </span>
+        </div>
+        <div className="liability-kpi-cell">
+          <span className="liability-kpi-cell__label">压力后 NIM（+50bps）</span>
+          <span className="liability-kpi-cell__value" data-tone={projectedNegative ? "down" : undefined}>
+            {stress.projected?.display ?? EM_DASH}
+          </span>
+          <span className="liability-kpi-cell__note" data-tone={deltaTone(deltaBpRaw)}>
+            变化 {bpText}
+          </span>
+        </div>
+      </div>
+    </section>
   );
 }

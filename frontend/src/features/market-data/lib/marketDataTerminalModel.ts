@@ -207,6 +207,11 @@ const TERMINAL_TICKER_MONEY_SPECS: Array<{ key: string; label: string; name: str
 ];
 
 function tickerToneFromDelta(delta: string): MarketTerminalTickerItem["tone"] {
+  // 格式化后 ±0（如 "+0.0bp" / "-0.00%"）视为零变动，归中性（DESIGN §4）。
+  const numeric = delta.match(/[-+]?\d+(?:\.\d+)?/);
+  if (numeric && Number.parseFloat(numeric[0]) === 0) {
+    return "flat";
+  }
   if (delta.startsWith("+")) {
     return "up";
   }

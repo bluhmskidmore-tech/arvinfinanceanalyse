@@ -48,6 +48,11 @@ function formatNcdWarning(value: string): string {
   if (fallbackMatch) {
     return `使用已接入的 Choice Shibor，并以 Tushare 回退补 ${fallbackMatch[1]}；回退日期 ${fallbackMatch[2]}；报价中位数不可用。`;
   }
+  const landedMatch = value.match(/^Using landed (.+?) Shibor; quote medians unavailable\.$/);
+  if (landedMatch) {
+    const vendor = landedMatch[1] === "external warehouse" ? "外部仓库" : landedMatch[1];
+    return `使用已接入的 ${vendor} Shibor；报价中位数不可用。`;
+  }
   if (value === "Proxy only; not actual NCD issuance matrix.") {
     return "仅代理口径；不是真实存单发行矩阵。";
   }
@@ -113,6 +118,9 @@ export function NcdMatrix({
   const hasRows = dataSource.length > 0;
   // 0 行成功态收缩为一句话空态（DESIGN §6），不再渲染空表格与空热力占满等高格。
   const hasBody = hasRows || isLoading;
+  // 单行矩阵没有对比维度，热力图无信息量：只保留表格形态，隐藏视图切换。
+  const heatmapAvailable = dataSource.length >= 2;
+  const effectiveViewMode = heatmapAvailable ? viewMode : "table";
 
   return (
     <section
@@ -124,20 +132,22 @@ export function NcdMatrix({
       <div className="market-data-ncd-head">
         <p className="market-data-ncd-proxy-note">
           {payload?.proxy_label ?? "Shibor 资金 proxy"}
-          {payload?.is_actual_ncd_matrix === false ? " · proxy 非正式发行矩阵" : ""}
+          {payload?.is_actual_ncd_matrix === false ? "（代理口径，非正式发行矩阵）" : ""}
           {payload?.as_of_date ? ` · 截至 ${payload.as_of_date}` : ""}
         </p>
-        <Segmented
-          size="small"
-          value={viewMode}
-          onChange={(value) => setViewMode(value as "both" | "table" | "heatmap")}
-          options={[
-            { label: "并列", value: "both" },
-            { label: "表格", value: "table" },
-            { label: "热力", value: "heatmap" },
-          ]}
-          data-testid="market-data-ncd-view-toggle"
-        />
+        {heatmapAvailable ? (
+          <Segmented
+            size="small"
+            value={viewMode}
+            onChange={(value) => setViewMode(value as "both" | "table" | "heatmap")}
+            options={[
+              { label: "并列", value: "both" },
+              { label: "表格", value: "table" },
+              { label: "热力", value: "heatmap" },
+            ]}
+            data-testid="market-data-ncd-view-toggle"
+          />
+        ) : null}
       </div>
       {showResultMeta ? (
         <LiveResultMetaStrip
@@ -148,7 +158,14 @@ export function NcdMatrix({
       ) : null}
       {payload?.warnings?.length ? (
         <div className="market-data-ncd-proxy-warning">
-          {payload.warnings.map(formatNcdWarning).join(" ")}
+          {payload.warnings.map((warning) => {
+            const display = formatNcdWarning(warning);
+            return (
+              <span key={warning} title={display === warning ? undefined : warning}>
+                {display}
+              </span>
+            );
+          })}
         </div>
       ) : null}
       {isError ? (
@@ -179,7 +196,7 @@ export function NcdMatrix({
           当前未返回存单 proxy 数据。
         </div>
       ) : null}
-      {hasBody && (viewMode === "both" || viewMode === "table") ? (
+      {hasBody && (effectiveViewMode === "both" || effectiveViewMode === "table") ? (
         <Table<MatrixRow>
           size="small"
           loading={isLoading}
@@ -193,9 +210,11 @@ export function NcdMatrix({
           }}
         />
       ) : null}
-      {hasBody && (viewMode === "both" || viewMode === "heatmap") ? (
+      {hasBody && heatmapAvailable && (effectiveViewMode === "both" || effectiveViewMode === "heatmap") ? (
         <div className="market-data-rate-quote-chart-block">
-          {viewMode === "both" ? <h3 className="market-data-chart-block-title">矩阵热力</h3> : null}
+          {effectiveViewMode === "both" ? (
+            <h3 className="market-data-chart-block-title">矩阵热力</h3>
+          ) : null}
           <MarketDataNcdHeatmap
             payload={payload}
             isLoading={isLoading}

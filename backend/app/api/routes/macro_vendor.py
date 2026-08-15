@@ -11,6 +11,13 @@ from backend.app.api.response_cache import (
 from backend.app.governance.settings import get_settings
 from backend.app.schemas.macro_vendor import ChoiceMacroRefreshTier
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
+from backend.app.services.macro_vendor_refresh_service import (
+    _refresh_payload_succeeded,  # noqa: F401 - preserved route-level test contract
+    refresh_choice_macro_snapshot,
+    refresh_public_cross_asset_headlines,
+    refresh_tushare_ncd_shibor_proxy,
+    run_choice_macro_refresh,
+)
 from backend.app.services.macro_vendor_service import (
     choice_macro_formal_envelope,
     choice_macro_latest_envelope,
@@ -22,11 +29,6 @@ from backend.app.services.macro_vendor_service import (
     market_data_bond_futures_rankings_envelope,
     market_data_coverage_summary_envelope,
     tushare_supplement_envelope,
-)
-from backend.app.tasks.choice_macro import (
-    refresh_choice_macro_snapshot,
-    refresh_public_cross_asset_headlines,
-    refresh_tushare_ncd_shibor_proxy,
 )
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -156,116 +158,19 @@ def choice_series_refresh(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
-    choice_refresh = getattr(refresh_choice_macro_snapshot, "fn", refresh_choice_macro_snapshot)
-    try:
-        choice_payload = choice_refresh(backfill_days=backfill_days)
     except RuntimeError as exc:
-        choice_payload = _choice_macro_refresh_failure_payload(exc)
-    public_payload = _run_public_cross_asset_headline_refresh()
-    tushare_ncd_shibor_payload = None
-    if str(choice_payload.get("status") or "") == "failed":
-        tushare_ncd_shibor_payload = _run_tushare_ncd_shibor_refresh()
-    # Fresh upstream snapshot just landed; drop cached market reads so the next
-    # page load reflects it instead of waiting out the TTL.
-    if _refresh_payload_succeeded(choice_payload, public_payload, tushare_ncd_shibor_payload):
-        market_home_response_cache.invalidate()
-    return _merge_choice_and_public_refresh_payloads(choice_payload, public_payload, tushare_ncd_shibor_payload)
-
-
-def _choice_macro_refresh_failure_payload(exc: RuntimeError) -> dict[str, object]:
-    error_text = str(exc) or exc.__class__.__name__
-    return {
-        "status": "failed",
-        "error_message": error_text,
-        "warnings": [f"Choice macro refresh failed: {error_text}"],
-    }
-
-
-def _run_public_cross_asset_headline_refresh() -> dict[str, object]:
-    try:
-        public_refresh = getattr(refresh_public_cross_asset_headlines, "fn", refresh_public_cross_asset_headlines)
-        return public_refresh()
-    except RuntimeError as exc:
-        error_text = str(exc)
-        return {
-            "status": "failed",
-            "error_message": error_text,
-            "warnings": [f"public_cross_asset refresh failed: {error_text}"],
-        }
-
-
-def _run_tushare_ncd_shibor_refresh() -> dict[str, object]:
-    try:
-        tushare_refresh = getattr(refresh_tushare_ncd_shibor_proxy, "fn", refresh_tushare_ncd_shibor_proxy)
-        return tushare_refresh()
-    except RuntimeError as exc:
-        error_text = str(exc)
-        return {
-            "status": "failed",
-            "error_message": error_text,
-            "warnings": [f"tushare_ncd_shibor refresh failed: {error_text}"],
-        }
-
-
-def _refresh_payload_succeeded(*payloads: dict[str, object] | None) -> bool:
-    # "degraded" means data was written successfully but a non-fatal warning was
-    # raised (see backend/app/tasks/choice_macro.py); it must count as a success
-    # so the response cache is invalidated and the refreshed data is served.
-    return any(
-        str(payload.get("status") or "") in {"completed", "partial", "degraded"} for payload in payloads if payload
+        # Scope-store unavailability is a service failure, not a denial
+        # (same mapping as api/deps.py::ensure_read_allowed).
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    payload, refresh_succeeded = run_choice_macro_refresh(
+        backfill_days=backfill_days,
+        choice_refresh_task=refresh_choice_macro_snapshot,
+        public_refresh_task=refresh_public_cross_asset_headlines,
+        tushare_ncd_shibor_refresh_task=refresh_tushare_ncd_shibor_proxy,
     )
-
-
-def _format_refresh_warning(item: object) -> str:
-    # Task-level warnings (backend/app/tasks/choice_macro.py) are structured
-    # {"code", "message"} dicts; flatten them to "code: message" instead of the
-    # raw dict repr so the merged top-level warnings list is display-ready.
-    if isinstance(item, dict):
-        code = str(item.get("code") or "").strip()
-        message = str(item.get("message") or "").strip()
-        if code and message:
-            return f"{code}: {message}"
-        return code or message
-    return str(item).strip()
-
-
-def _merge_choice_and_public_refresh_payloads(
-    choice_payload: dict[str, object],
-    public_payload: dict[str, object],
-    tushare_ncd_shibor_payload: dict[str, object] | None = None,
-) -> dict[str, object]:
-    warnings: list[str] = []
-    backup_payloads = [public_payload]
-    if tushare_ncd_shibor_payload is not None:
-        backup_payloads.append(tushare_ncd_shibor_payload)
-    for payload in (choice_payload, *backup_payloads):
-        payload_warnings = payload.get("warnings")
-        if isinstance(payload_warnings, list):
-            warnings.extend(
-                text for text in (_format_refresh_warning(item) for item in payload_warnings) if text
-            )
-
-    result = {
-        **choice_payload,
-        "choice_macro": choice_payload,
-        "public_cross_asset": public_payload,
-        "warnings": warnings,
-    }
-    if tushare_ncd_shibor_payload is not None:
-        result["tushare_ncd_shibor"] = tushare_ncd_shibor_payload
-    if str(choice_payload.get("status") or "") == "failed":
-        backup_succeeded = _refresh_payload_succeeded(*backup_payloads)
-        result["status"] = "partial" if backup_succeeded else "failed"
-        if backup_succeeded and not result.get("run_id"):
-            result["run_id"] = next(
-                (
-                    payload.get("run_id")
-                    for payload in backup_payloads
-                    if str(payload.get("status") or "") == "completed" and payload.get("run_id")
-                ),
-                None,
-            )
-    return result
+    if refresh_succeeded:
+        market_home_response_cache.invalidate()
+    return payload
 
 
 @router.get("/ui/macro/choice-series/refresh-status")

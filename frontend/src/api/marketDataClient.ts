@@ -104,6 +104,12 @@ export type MarketDataClientMethods = {
     limit: number;
     offset: number;
   }) => Promise<ApiEnvelope<SourcePreviewTracesPayload>>;
+  /**
+   * @deprecated 名字暗示 preview 宏观基础口径，实际请求 `/ui/market-data/catalog`，
+   * 与 {@link MarketDataClientMethods.getMarketDataCatalog} 同端点同返回类型。
+   * 新代码请使用 `getMarketDataCatalog`；`/ui/preview/macro-foundation` 为无前端
+   * 调用方的死端点，是否下线待后端裁决。
+   */
   getMacroFoundation: () => Promise<ApiEnvelope<MarketDataCatalogPayload>>;
   getChoiceMacroLatest: () => Promise<ApiEnvelope<ChoiceMacroLatestPayload>>;
   getExternalDataWatermarks: () => Promise<ExternalDataWatermarkLedger>;

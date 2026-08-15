@@ -7,7 +7,7 @@ interpret holiday-period lag with that limitation in mind.
 
 from __future__ import annotations
 
-from contextlib import suppress
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -17,6 +17,7 @@ from backend.app.core_finance.cycle_macro_score import (
     CN10Y_SERIES_ID,
     CSI300_PE_SERIES_ID,
 )
+from backend.app.repositories.duckdb_repo import read_only_connection
 from backend.app.repositories.stock_analysis_theme_overlay_reader import (
     THEME_OVERLAY_CACHE_KEY,
     ThemeOverlayManifestAccessor,
@@ -223,32 +224,29 @@ def _read_duckdb_series(
     stale_after_trading_days: int,
     critical_after_trading_days: int,
 ) -> list[dict[str, object]]:
-    conn = connection
-    owns_connection = False
-    if conn is None:
-        if duckdb_path is None:
-            return _all_duckdb_unavailable(
-                expected_date=expected_date,
-                reason="duckdb_path_not_configured",
-            )
-        path = Path(duckdb_path)
-        if not path.is_file():
-            return _all_duckdb_unavailable(
-                expected_date=expected_date,
-                reason="duckdb_path_missing",
-            )
-        try:
-            conn = duckdb.connect(database=str(path), read_only=True)
-            owns_connection = True
-        except Exception as exc:  # noqa: BLE001 - lock/unavailability is report data
-            return _all_duckdb_unavailable(
-                expected_date=expected_date,
-                reason=_duckdb_error_reason(exc, fallback="duckdb_unavailable"),
-                detail=_error_detail(exc),
-            )
+    with ExitStack() as stack:
+        conn = connection
+        if conn is None:
+            if duckdb_path is None:
+                return _all_duckdb_unavailable(
+                    expected_date=expected_date,
+                    reason="duckdb_path_not_configured",
+                )
+            path = Path(duckdb_path)
+            if not path.is_file():
+                return _all_duckdb_unavailable(
+                    expected_date=expected_date,
+                    reason="duckdb_path_missing",
+                )
+            try:
+                conn = stack.enter_context(read_only_connection(str(path)))
+            except Exception as exc:  # noqa: BLE001 - lock/unavailability is report data
+                return _all_duckdb_unavailable(
+                    expected_date=expected_date,
+                    reason=_duckdb_error_reason(exc, fallback="duckdb_unavailable"),
+                    detail=_error_detail(exc),
+                )
 
-    assert conn is not None
-    try:
         try:
             tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
         except Exception as exc:  # noqa: BLE001 - query failure must not crash the sentinel
@@ -305,10 +303,6 @@ def _read_duckdb_series(
                 )
             )
         return records
-    finally:
-        if owns_connection:
-            with suppress(Exception):
-                conn.close()
 
 
 def _read_theme_overlay_series(

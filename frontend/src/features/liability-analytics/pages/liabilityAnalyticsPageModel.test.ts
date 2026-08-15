@@ -151,8 +151,8 @@ describe("buildLiabilityAnalyticsPageReadModel", () => {
     const model = buildLiabilityAnalyticsPageReadModel({
       mode: "real",
       activeTab: "monthly",
-      requestedReportDate: "",
-      resolvedReportDate: "",
+      requestedReportDate: "2026-04-30",
+      resolvedReportDate: "2026年4月",
       selectedYear: 2026,
       selectedMonthLabel: "2026-04",
       yieldKpi: null,
@@ -169,6 +169,8 @@ describe("buildLiabilityAnalyticsPageReadModel", () => {
     });
 
     expect(model.reportLine).toBe("2026 年 · 2026-04（月度日均）");
+    expect(model.statusBadges.find((badge) => badge.key === "date")?.label).toBe("月份 2026-04");
+    expect(model.stateSurfaces.map((surface) => surface.key)).not.toContain("date-mismatch");
     expect(model.evidenceCards.map((card) => card.title)).toEqual(["负债月度日均", "ADB 月度日均"]);
     expect(model.kpis).toEqual([
       { key: "year", label: "统计年份", value: "2026", detail: "月度日均口径" },

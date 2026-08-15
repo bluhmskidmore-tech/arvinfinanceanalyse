@@ -8,7 +8,11 @@ import type {
   LivermoreStrategyPayload,
   ResultMeta,
 } from "../../../api/contracts";
-import { buildLivermoreStrategyModel, buildMarketGateMacroDisclosure } from "./livermoreStrategyModel";
+import {
+  buildLivermoreStrategyModel,
+  buildMarketGateMacroDisclosure,
+  translateLivermoreEvidence,
+} from "./livermoreStrategyModel";
 
 const LIVERMORE_OUTPUT_KEYS: LivermoreOutputKey[] = [
   "market_gate",
@@ -920,5 +924,86 @@ describe("livermoreStrategyModel", () => {
     expect(disclosure).toMatchObject({
       statusMarker: "宏观背景过期",
     });
+  });
+});
+
+describe("translateLivermoreEvidence", () => {
+  it("translates gate comparison evidence into Chinese short sentences", () => {
+    expect(translateLivermoreEvidence("Close 4649.19 vs MA60 4843.24 on 2026-07-24.")).toEqual({
+      text: "收盘 4649.19 低于 MA60 4843.24（07-24）",
+      sourceRef: null,
+    });
+    expect(translateLivermoreEvidence("MA20 4848.51 vs MA60 4793.12 on 2026-08-11.")).toEqual({
+      text: "MA20 4848.51 高于 MA60 4793.12（08-11）",
+      sourceRef: null,
+    });
+  });
+
+  it("strips the physical table reference into sourceRef", () => {
+    expect(
+      translateLivermoreEvidence(
+        "5-day breadth 3002.0000 on 2026-08-11 (fact_livermore_gate_supplement_daily).",
+      ),
+    ).toEqual({
+      text: "5日广度 3002.0000（08-11）",
+      sourceRef: "fact_livermore_gate_supplement_daily",
+    });
+    expect(
+      translateLivermoreEvidence(
+        "Limit-up quality positive on 2026-08-11 (fact_livermore_gate_supplement_daily).",
+      ),
+    ).toEqual({
+      text: "涨停封板质量为正（08-11）",
+      sourceRef: "fact_livermore_gate_supplement_daily",
+    });
+  });
+
+  it("passes through unrecognized evidence verbatim (fail-open)", () => {
+    expect(translateLivermoreEvidence("Breadth inputs are not landed for the Phase 1 slice.")).toEqual({
+      text: "Breadth inputs are not landed for the Phase 1 slice.",
+      sourceRef: null,
+    });
+    expect(translateLivermoreEvidence("收盘价 3950，高于 MA60 3920。")).toEqual({
+      text: "收盘价 3950，高于 MA60 3920。",
+      sourceRef: null,
+    });
+  });
+});
+
+describe("display-layer register mappings", () => {
+  it("maps registered gate condition keys and diagnostic codes to Chinese labels", () => {
+    const model = buildLivermoreStrategyModel({
+      envelope: makeEnvelope({
+        diagnostics: [
+          {
+            severity: "error",
+            code: "LIVERMORE_RISK_INPUTS_MISSING",
+            message: "Position inputs missing.",
+            input_family: "position_risk",
+          },
+        ],
+      }),
+    });
+
+    expect(model.marketGate.conditions[0]?.label).toBe("CSI300 收盘 > MA60");
+    expect(model.diagnostics[0]?.codeLabel).toBe("风险输入缺失");
+    expect(model.diagnostics[0]?.code).toBe("LIVERMORE_RISK_INPUTS_MISSING");
+  });
+
+  it("passes through unregistered diagnostic codes as evidence references", () => {
+    const model = buildLivermoreStrategyModel({
+      envelope: makeEnvelope({
+        diagnostics: [
+          {
+            severity: "info",
+            code: "LIVERMORE_SOME_NEW_CODE",
+            message: "New diagnostic.",
+            input_family: null,
+          },
+        ],
+      }),
+    });
+
+    expect(model.diagnostics[0]?.codeLabel).toBe("LIVERMORE_SOME_NEW_CODE");
   });
 });

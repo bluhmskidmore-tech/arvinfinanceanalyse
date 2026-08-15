@@ -380,7 +380,7 @@
 }
 
 /* 折叠头：标题 + 门控状态徽标 + 展开提示（由 MarketDataLivermoreSection 渲染）。
-   antd darkAlgorithm 的 header 色是钢蓝 ink，这里以 0-4-0 特异度压到页面 Nocturne ink；
+   全局 AntD 已切 Nocturne；这里以 0-4-0 特异度固定页面 ink，防注入顺序漂移；
    borderless item 自带的 colorBorder 底线与容器描边重叠，一并去除。 */
 .market-data-livermore-collapse.ant-collapse > .ant-collapse-item > .ant-collapse-header {
   color: var(--dh-api-ink);
@@ -441,6 +441,26 @@
   color: var(--dh-api-muted);
   font-size: 11px;
   font-weight: 500;
+}
+
+/* 共同缺口说明：同段说明多行重复时收敛为区块头部一处（DESIGN §6 状态去重）。 */
+.livermore-strategy-panel__shared-notes {
+  display: grid;
+  gap: var(--moss-space-1);
+  padding: var(--moss-space-2) var(--moss-space-3);
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.livermore-strategy-panel__shared-note-label {
+  margin-right: var(--moss-space-2);
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 @media (max-width: 1180px) {

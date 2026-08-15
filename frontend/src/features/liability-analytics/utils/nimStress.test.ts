@@ -32,7 +32,7 @@ describe("dailyNimStressFromKpi", () => {
     expect(out.projected?.raw).toBeCloseTo(0.005, 8);
     expect(out.deltaBp?.unit).toBe("bp");
     expect(out.deltaBp?.raw).toBeCloseTo(-50, 8);
-    expect(out.isCritical).toBe(false);
+    expect(out).not.toHaveProperty("isCritical");
   });
 
   it("uses backend nim stress instead of re-deriving projected nim from ay minus mlc", () => {

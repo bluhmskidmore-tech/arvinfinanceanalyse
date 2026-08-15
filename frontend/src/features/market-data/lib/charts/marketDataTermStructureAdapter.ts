@@ -21,11 +21,19 @@ function parseRatePercentText(rateText: string): Numeric | null {
   if (!match) {
     return null;
   }
-  const raw = Number.parseFloat(match[1]!);
-  if (!Number.isFinite(raw)) {
+  const percentPoints = Number.parseFloat(match[1]!);
+  if (!Number.isFinite(percentPoints)) {
     return null;
   }
-  return { raw, unit: "pct", display: rateText, precision: 2, sign_aware: false };
+  // Numeric 契约中 unit="pct" 的 raw 是小数分数（后端 0.011217 ↔ display "+1.12%"），
+  // 行情文本是百分点，需除以 100 归一，否则图表按契约 ×100 会画出 bp 量级。
+  return {
+    raw: percentPoints / 100,
+    unit: "pct",
+    display: rateText,
+    precision: 2,
+    sign_aware: false,
+  };
 }
 
 function parseDeltaBpText(deltaText: string): Numeric | null {

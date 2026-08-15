@@ -5,6 +5,8 @@ import { formatCorrelation } from "../lib/marketDataLinkageFormat";
 type MarketDataLinkageSummaryBandProps = {
   compositeScore: number | null | undefined;
   compositeDetail?: string;
+  /** 口径/极性等实现细节说明，收进 title 不占正文。 */
+  compositeDetailTitle?: string;
   topCorrelation?: MacroBondLinkageTopCorrelation | null;
   onOpenSpreads: () => void;
   onOpenLinkage: () => void;
@@ -13,6 +15,7 @@ type MarketDataLinkageSummaryBandProps = {
 export function MarketDataLinkageSummaryBand({
   compositeScore,
   compositeDetail,
+  compositeDetailTitle,
   topCorrelation,
   onOpenSpreads,
   onOpenLinkage,
@@ -29,7 +32,10 @@ export function MarketDataLinkageSummaryBand({
           <span className="market-data-dim-label">环境综合分</span>
           <strong className="market-data-linkage-summary-score">{scoreText}</strong>
           {compositeDetail ? (
-            <span className="market-data-linkage-summary-detail" title={compositeDetail}>
+            <span
+              className="market-data-linkage-summary-detail"
+              title={compositeDetailTitle ? `${compositeDetail}\n${compositeDetailTitle}` : compositeDetail}
+            >
               {compositeDetail}
             </span>
           ) : null}
@@ -44,7 +50,7 @@ export function MarketDataLinkageSummaryBand({
               {topCorrelation.series_name}
             </strong>
             <span className="market-data-linkage-summary-detail">
-              1Y {formatCorrelation(topCorrelation.correlation_1y)} · lag {topCorrelation.lead_lag_days}d
+              1Y {formatCorrelation(topCorrelation.correlation_1y)} · 滞后 {topCorrelation.lead_lag_days} 天
             </span>
           </div>
         ) : null}

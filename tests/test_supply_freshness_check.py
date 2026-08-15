@@ -177,10 +177,10 @@ def test_supply_freshness_duckdb_lock_degrades_without_hiding_governance(
     _write_theme_overlay_manifest(governance_path, "2026-08-12")
     duckdb_path = tmp_path / "locked.duckdb"
     duckdb_path.write_bytes(b"locked fixture")
-    connect_calls: list[dict[str, object]] = []
+    connect_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
 
-    def locked_connect(*_args, **kwargs):
-        connect_calls.append(kwargs)
+    def locked_connect(*args, **kwargs):
+        connect_calls.append((args, kwargs))
         raise duckdb.IOException("File is already open in another process")
 
     monkeypatch.setattr(freshness.duckdb, "connect", locked_connect)
@@ -199,7 +199,9 @@ def test_supply_freshness_duckdb_lock_degrades_without_hiding_governance(
     assert {
         (item["status"], item["reason"]) for item in duckdb_series
     } == {("unavailable", "duckdb_locked")}
-    assert connect_calls == [{"database": str(duckdb_path), "read_only": True}]
+    # read_only_connection retries transient open failures 3 times before the
+    # service degrades the whole DuckDB section to "unavailable".
+    assert connect_calls == [((str(duckdb_path),), {"read_only": True})] * 3
     assert by_name["stock_analysis_theme_overlay"]["status"] == "fresh"
     assert report["status"] == "unavailable"
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import builtins
+import inspect
 import logging
 import sqlite3
 import sys
@@ -5140,6 +5141,21 @@ def test_livermore_position_snapshot_endpoint_dispatches_async_materialization(
     assert queued_messages[0]["as_of_date"] == "2026-04-30"
     assert queued_messages[0]["csv_path"] == str(csv_path)
     get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "handler_name",
+    ["materialize_position_snapshot", "materialize_manual_position_snapshot"],
+)
+def test_livermore_position_snapshot_routes_delegate_task_dispatch_to_service(
+    handler_name: str,
+) -> None:
+    from backend.app.api.routes import market_data_livermore as route_module
+
+    handler_source = inspect.getsource(getattr(route_module, handler_name))
+
+    assert "backend.app.tasks" not in handler_source
+    assert ".send(" not in handler_source
 
 
 def test_livermore_position_snapshot_endpoint_rejects_csv_outside_input_root(

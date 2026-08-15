@@ -264,6 +264,7 @@ class LiabilityRiskBucketsPayload(BaseModel):
     interbank_liabilities_term_buckets: list[LiabilityBucketAmountItem] = Field(default_factory=list)
     issued_liabilities_structure: list[LiabilityNameAmountItem] = Field(default_factory=list)
     issued_liabilities_term_buckets: list[LiabilityBucketAmountItem] = Field(default_factory=list)
+    missing_maturity_count: int = Field(default=0, ge=0)
 
 
 class LiabilityYieldHistoryPoint(BaseModel):

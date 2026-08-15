@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from backend.app.core_finance.liability_analytics_compat import (
+
     compute_liabilities_monthly,
     compute_liability_counterparty,
 )
@@ -15,8 +16,12 @@ from backend.app.schemas.liability_analytics import (
 from backend.app.services import liability_analytics_service as service
 from tests.test_liability_analytics_api import _build_client
 
-GOLDEN_BALANCES = [40, 20, 10, 10, 5, 5, 3, 2, 2, 1, 1, 1]
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_liability_analytics,
+]
 
+GOLDEN_BALANCES = [40, 20, 10, 10, 5, 5, 3, 2, 2, 1, 1, 1]
 
 def _counterparty_rows(*, report_date: str | None = None) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
@@ -33,7 +38,6 @@ def _counterparty_rows(*, report_date: str | None = None) -> list[dict[str, obje
         rows.append(row)
     return rows
 
-
 def test_daily_concentration_uses_full_population_when_rows_are_truncated() -> None:
     payload = compute_liability_counterparty(
         "2026-01-31",
@@ -46,7 +50,6 @@ def test_daily_concentration_uses_full_population_when_rows_are_truncated() -> N
     assert payload["top10_share"] == pytest.approx(0.98)
     assert payload["hhi"] == pytest.approx(2270.0)
     assert payload["is_truncated"] is True
-
 
 def test_daily_concentration_reports_untruncated_full_population() -> None:
     payload = compute_liability_counterparty(
@@ -61,7 +64,6 @@ def test_daily_concentration_reports_untruncated_full_population() -> None:
     assert payload["hhi"] == pytest.approx(2270.0)
     assert payload["is_truncated"] is False
 
-
 def test_daily_concentration_keeps_empty_metrics_null() -> None:
     payload = compute_liability_counterparty("2026-01-31", [], top_n=10)
 
@@ -69,7 +71,6 @@ def test_daily_concentration_keeps_empty_metrics_null() -> None:
     assert payload["hhi"] is None
     assert payload["population_count"] == 0
     assert payload["is_truncated"] is False
-
 
 def test_monthly_concentration_uses_full_population_but_exposes_fixed_top10() -> None:
     payload = compute_liabilities_monthly(
@@ -85,7 +86,6 @@ def test_monthly_concentration_uses_full_population_but_exposes_fixed_top10() ->
     assert month["top10_share"] == pytest.approx(0.98)
     assert month["hhi"] == pytest.approx(2270.0)
     assert month["is_truncated"] is True
-
 
 def test_monthly_issued_only_liabilities_keep_concentration_unknown() -> None:
     payload = compute_liabilities_monthly(
@@ -111,7 +111,6 @@ def test_monthly_issued_only_liabilities_keep_concentration_unknown() -> None:
     assert month["population_count"] == 0
     assert month["is_truncated"] is False
 
-
 def test_counterparty_schema_promotes_authoritative_concentration_units() -> None:
     payload = LiabilityCounterpartyPayload(
         report_date="2026-01-31",
@@ -133,7 +132,6 @@ def test_counterparty_schema_promotes_authoritative_concentration_units() -> Non
     assert payload.population_count == 12
     assert payload.is_truncated is True
 
-
 def test_monthly_schema_promotes_authoritative_concentration_units() -> None:
     month = LiabilityMonthlyItem(
         month="2026-01",
@@ -151,7 +149,6 @@ def test_monthly_schema_promotes_authoritative_concentration_units() -> None:
     assert month.hhi is not None
     assert month.hhi.unit == "count"
     assert month.hhi.raw == pytest.approx(2270)
-
 
 def test_service_no_report_date_returns_explicit_null_concentration(monkeypatch) -> None:
     class EmptyRepo:
@@ -174,7 +171,6 @@ def test_service_no_report_date_returns_explicit_null_concentration(monkeypatch)
     assert envelope["result"]["population_count"] == 0
     assert envelope["result"]["is_truncated"] is False
 
-
 def test_empty_counterparty_api_returns_null_concentration(
     tmp_path: Path,
     monkeypatch,
@@ -193,7 +189,6 @@ def test_empty_counterparty_api_returns_null_concentration(
     assert result["population_count"] == 0
     assert result["is_truncated"] is False
 
-
 def test_counterparty_population_count_must_be_nonnegative() -> None:
     with pytest.raises(ValueError):
         LiabilityCounterpartyPayload(
@@ -206,7 +201,6 @@ def test_counterparty_population_count_must_be_nonnegative() -> None:
             top_10=[],
             by_type=[],
         )
-
 
 def test_monthly_population_count_must_be_nonnegative() -> None:
     with pytest.raises(ValueError):

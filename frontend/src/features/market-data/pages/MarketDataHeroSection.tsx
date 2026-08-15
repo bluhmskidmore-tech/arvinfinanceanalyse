@@ -20,6 +20,8 @@ export type MarketOverviewMetric = {
   title: string;
   value: string;
   detail: string;
+  /** 供 title 使用的完整元信息（vendor 序列代码等技术标识收进 title，不占正文）。 */
+  detailTitle?: string;
   tone?: MarketOverviewTone;
   valueVariant?: "metric" | "text";
   sparklineValues?: readonly number[];
@@ -91,7 +93,9 @@ function MarketOverviewMetricCard({
       >
         {metric.value}
       </div>
-      <p className="market-data-overview-card__detail">{metric.detail}</p>
+      <p className="market-data-overview-card__detail" title={metric.detailTitle}>
+        {metric.detail}
+      </p>
     </article>
   );
 }

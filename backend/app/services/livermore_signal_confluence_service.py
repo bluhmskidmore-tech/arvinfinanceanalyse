@@ -185,7 +185,11 @@ def build_livermore_signal_confluence(
     if market_gate is None:
         diagnostics.append("Missing Livermore market gate; entry observations are blocked.")
     market_gate_state = str((market_gate or {}).get("state") or "UNKNOWN").upper()
-    market_gate_exposure = _safe_float((market_gate or {}).get("exposure"))
+    market_gate_exposure = _float_or_none((market_gate or {}).get("exposure"))
+    if market_gate_exposure is None:
+        diagnostics.append(
+            "Missing Livermore market gate exposure; position size hint is unavailable."
+        )
 
     macro_multiplier = MACRO_MULTIPLIERS[macro_status]
     allows_new_entry_observations = (
@@ -193,7 +197,9 @@ def build_livermore_signal_confluence(
         and market_gate_state in ENTRY_OBSERVATION_STATES
         and macro_status in {"supportive", "neutral"}
     )
-    position_size_hint = round(market_gate_exposure * macro_multiplier, 4)
+    position_size_hint = (
+        None if market_gate_exposure is None else round(market_gate_exposure * macro_multiplier, 4)
+    )
     adversarial_context = _build_adversarial_context(
         adversarial_payload=adversarial_payload,
         allows_new_entry_observations=allows_new_entry_observations,
@@ -299,7 +305,7 @@ def _build_adversarial_context(
             "missing" if status == "missing" else "macro_adversarial_crowding"
         ),
         "risk_gate": risk_gate,
-        "position_scale": _safe_optional_float((payload or {}).get("position_scale")),
+        "position_scale": _float_or_none((payload or {}).get("position_scale")),
         "strongest_block_reason": _optional_text((payload or {}).get("strongest_block_reason")),
         "blocks_new_entry_observations": blocks_new_entry_observations,
         "diagnostics": payload_diagnostics,
@@ -578,7 +584,7 @@ def _security_label(item: Mapping[str, object]) -> str:
 
 
 def _extract_composite_score(payload: Mapping[str, object]) -> float | None:
-    direct_score = _safe_optional_float(payload.get("composite_score"))
+    direct_score = _float_or_none(payload.get("composite_score"))
     if direct_score is not None:
         return direct_score
 
@@ -586,7 +592,7 @@ def _extract_composite_score(payload: Mapping[str, object]) -> float | None:
         macro_environment = _mapping(payload.get(key))
         if macro_environment is None:
             continue
-        score = _safe_optional_float(macro_environment.get("composite_score"))
+        score = _float_or_none(macro_environment.get("composite_score"))
         if score is not None:
             return score
     return None
@@ -685,7 +691,7 @@ def _safe_int(value: object) -> int:
         return 0
 
 
-def _safe_optional_float(value: object) -> float | None:
+def _float_or_none(value: object) -> float | None:
     if value is None:
         return None
     try:
@@ -694,13 +700,6 @@ def _safe_optional_float(value: object) -> float | None:
         return None
     if not math.isfinite(parsed):
         return None
-    return parsed
-
-
-def _safe_float(value: object) -> float:
-    parsed = _safe_optional_float(value)
-    if parsed is None:
-        return 0.0
     return parsed
 
 

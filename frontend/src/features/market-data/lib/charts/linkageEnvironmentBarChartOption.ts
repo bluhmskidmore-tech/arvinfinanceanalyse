@@ -1,5 +1,4 @@
 import type { MacroBondLinkageEnvironmentScore } from "../../../../api/contracts";
-import { createBarChartOption } from "../../../../components/charts/chartTheme";
 import type { EChartsOption } from "../../../../lib/echarts";
 import { buildMarketDataChartTooltip, marketDataChartTheme } from "./marketDataChartTheme";
 
@@ -12,6 +11,23 @@ const ENVIRONMENT_FIELDS: Array<{ key: keyof EnvironmentScoreInput; label: strin
   { key: "rate_direction_score", label: "利率方向" },
   { key: "composite_score", label: "综合" },
 ];
+
+export const LINKAGE_BAR_MAX_WIDTH = 14;
+
+/** 类目轴超长名称截断；tooltip 仍然展示完整类目名。 */
+export function truncateLinkageCategoryLabel(value: string, maxChars = 10): string {
+  return value.length > maxChars ? `${value.slice(0, maxChars)}…` : value;
+}
+
+/** 纵向柱：正值圆角在顶端，负值圆角在底端（零线一侧保持直角）。 */
+function verticalBarBorderRadius(value: number): [number, number, number, number] {
+  return value >= 0 ? [2, 2, 0, 0] : [0, 0, 2, 2];
+}
+
+/** 横向条：正值圆角在右端，负值圆角在左端。 */
+function horizontalBarBorderRadius(value: number): [number, number, number, number] {
+  return value >= 0 ? [0, 2, 2, 0] : [2, 0, 0, 2];
+}
 
 export function buildLinkageEnvironmentBarOption(
   environmentScore: EnvironmentScoreInput | undefined,
@@ -36,14 +52,13 @@ export function buildLinkageEnvironmentBarOption(
     return null;
   }
 
-  return createBarChartOption({
+  return {
     color: [marketDataChartTheme.positiveBar],
     tooltip: buildMarketDataChartTooltip({
       trigger: "axis",
       axisPointer: marketDataChartTheme.axisPointerShadow,
       valueFormatter: (value: unknown) => (typeof value === "number" ? value.toFixed(2) : String(value)),
     }),
-    legend: undefined,
     grid: marketDataChartTheme.gridCompact,
     xAxis: {
       type: "category",
@@ -55,6 +70,7 @@ export function buildLinkageEnvironmentBarOption(
     yAxis: {
       type: "value",
       scale: true,
+      splitNumber: 3,
       axisLabel: marketDataChartTheme.axisLabel,
       splitLine: marketDataChartTheme.splitLine,
     },
@@ -62,19 +78,19 @@ export function buildLinkageEnvironmentBarOption(
       {
         name: "环境分项",
         type: "bar",
-        barMaxWidth: 30,
+        barMaxWidth: LINKAGE_BAR_MAX_WIDTH,
         barCategoryGap: "42%",
         data: values.map((value) => ({
           value,
           itemStyle: {
             color: value >= 0 ? marketDataChartTheme.positiveBar : marketDataChartTheme.negativeBar,
             opacity: 0.84,
-            borderRadius: [3, 3, 0, 0],
+            borderRadius: verticalBarBorderRadius(value),
           },
         })),
       },
     ],
-  });
+  };
 }
 
 export function buildDerivedSpreadsBarOption(
@@ -101,6 +117,7 @@ export function buildDerivedSpreadsBarOption(
     grid: { left: 120, right: 24, top: 10, bottom: 28, containLabel: true },
     xAxis: {
       type: "value",
+      splitNumber: 3,
       axisLabel: marketDataChartTheme.axisLabel,
       splitLine: marketDataChartTheme.splitLine,
       axisLine: marketDataChartTheme.axisLine,
@@ -108,7 +125,10 @@ export function buildDerivedSpreadsBarOption(
     yAxis: {
       type: "category",
       data: entries.map(([key]) => key),
-      axisLabel: marketDataChartTheme.axisLabel,
+      axisLabel: {
+        ...marketDataChartTheme.axisLabel,
+        formatter: (value: string) => truncateLinkageCategoryLabel(value, 14),
+      },
       axisLine: marketDataChartTheme.axisLine,
       axisTick: { show: false },
     },
@@ -121,10 +141,10 @@ export function buildDerivedSpreadsBarOption(
           itemStyle: {
             color: value >= 0 ? marketDataChartTheme.derivedSpreadColor : marketDataChartTheme.negativeBar,
             opacity: 0.84,
-            borderRadius: [0, 3, 3, 0],
+            borderRadius: horizontalBarBorderRadius(value),
           },
         })),
-        barMaxWidth: 18,
+        barMaxWidth: LINKAGE_BAR_MAX_WIDTH,
       },
     ],
   };

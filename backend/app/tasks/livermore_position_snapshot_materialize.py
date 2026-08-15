@@ -9,6 +9,7 @@ from datetime import date
 from pathlib import Path
 
 import duckdb
+from backend.app.governance.locks import acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
 from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text
 from backend.app.tasks.broker import register_actor_once
@@ -192,60 +193,61 @@ def _write_livermore_position_rows(
 
     duckdb_file = Path(str(duckdb_path or get_settings().duckdb_path))
     duckdb_file.parent.mkdir(parents=True, exist_ok=True)
-    conn = duckdb.connect(str(duckdb_file), read_only=False)
-    transaction_started = False
-    try:
-        ensure_livermore_position_snapshot_schema(conn)
-        rows = [_resolve_bars_since_entry(conn, row) for row in rows if row["position_status"] == ACTIVE_POSITION_STATUS]
-        if not rows:
-            raise ValueError(
-                f"Livermore position snapshot {input_label} has no active rows for as_of_date {as_of_date}."
-            )
-        source_version = _build_source_version(
-            {
-                "as_of_date": as_of_date,
-                "fact_source": FACT_SOURCE,
-                "source_file_hash": source_file_hash,
-                "rows": rows,
-            }
-        )
-        vendor_version = (
-            f"vv_livermore_position_{input_mode}_"
-            f"{source_version.removeprefix('sv_livermore_position_')}"
-        )
-        run_id = run_id or f"livermore_position_snapshot:{as_of_date}:{uuid.uuid4().hex[:12]}"
-        conn.execute("begin transaction")
-        transaction_started = True
-        conn.execute(
-            "delete from livermore_position_snapshot where as_of_date = ?",
-            [as_of_date],
-        )
-        placeholders = ", ".join("?" for _ in _INSERT_COLUMNS)
-        conn.executemany(
-            f"""
-            insert into livermore_position_snapshot ({", ".join(_INSERT_COLUMNS)})
-            values ({placeholders})
-            """,
-            [
-                tuple(
-                    source_version if column == "source_version"
-                    else vendor_version if column == "vendor_version"
-                    else RULE_VERSION if column == "rule_version"
-                    else run_id if column == "run_id"
-                    else row[column]
-                    for column in _INSERT_COLUMNS
-                )
-                for row in rows
-            ],
-        )
-        conn.execute("commit")
+    with acquire_lock(resolve_duckdb_writer_lock(duckdb_file), base_dir=duckdb_file.parent):
+        conn = duckdb.connect(str(duckdb_file), read_only=False)
         transaction_started = False
-    except Exception:
-        if transaction_started:
-            conn.execute("rollback")
-        raise
-    finally:
-        conn.close()
+        try:
+            ensure_livermore_position_snapshot_schema(conn)
+            rows = [_resolve_bars_since_entry(conn, row) for row in rows if row["position_status"] == ACTIVE_POSITION_STATUS]
+            if not rows:
+                raise ValueError(
+                    f"Livermore position snapshot {input_label} has no active rows for as_of_date {as_of_date}."
+                )
+            source_version = _build_source_version(
+                {
+                    "as_of_date": as_of_date,
+                    "fact_source": FACT_SOURCE,
+                    "source_file_hash": source_file_hash,
+                    "rows": rows,
+                }
+            )
+            vendor_version = (
+                f"vv_livermore_position_{input_mode}_"
+                f"{source_version.removeprefix('sv_livermore_position_')}"
+            )
+            run_id = run_id or f"livermore_position_snapshot:{as_of_date}:{uuid.uuid4().hex[:12]}"
+            conn.execute("begin transaction")
+            transaction_started = True
+            conn.execute(
+                "delete from livermore_position_snapshot where as_of_date = ?",
+                [as_of_date],
+            )
+            placeholders = ", ".join("?" for _ in _INSERT_COLUMNS)
+            conn.executemany(
+                f"""
+                insert into livermore_position_snapshot ({", ".join(_INSERT_COLUMNS)})
+                values ({placeholders})
+                """,
+                [
+                    tuple(
+                        source_version if column == "source_version"
+                        else vendor_version if column == "vendor_version"
+                        else RULE_VERSION if column == "rule_version"
+                        else run_id if column == "run_id"
+                        else row[column]
+                        for column in _INSERT_COLUMNS
+                    )
+                    for row in rows
+                ],
+            )
+            conn.execute("commit")
+            transaction_started = False
+        except Exception:
+            if transaction_started:
+                conn.execute("rollback")
+            raise
+        finally:
+            conn.close()
 
     return {
         "status": "completed",

@@ -428,9 +428,14 @@ class MarketReadRepository(DuckDBRepository):
         self,
         *,
         stock_code: str,
+        as_of_date: str,
         sql_executed: list[str],
         conn: duckdb.DuckDBPyConnection | None = None,
     ) -> list[dict[str, Any]]:
+        # as_of 截止对齐同链路 daily/factor/sector 的 <= as_of_date 口径，避免历史锚定
+        # 请求注入未来新闻（前视偏差）。received_at 是 varchar 时间戳，按日期前缀截断
+        # 比较（与 choice_news_repo 的未来行排除口径一致），无法解析的 received_at 在
+        # 锚定时 fail-closed 排除。
         with self._connection(conn) as scoped:
             return self._fetch_all(
                 scoped,
@@ -438,12 +443,13 @@ class MarketReadRepository(DuckDBRepository):
                 select event_key, received_at, group_id, content_type, topic_code,
                        item_index, payload_text, payload_json, error_code, error_msg
                 from choice_news_event
-                where topic_code = ?
-                   or payload_text ilike ?
+                where coalesce(error_code, 0) = 0
+                  and (topic_code = ? or payload_text ilike ?)
+                  and (? = '' or try_cast(substr(cast(received_at as varchar), 1, 10) as date) <= try_cast(? as date))
                 order by received_at desc, item_index asc
                 limit 5
                 """,
-                [stock_code, f"%{stock_code}%"],
+                [stock_code, f"%{stock_code}%", as_of_date, as_of_date],
                 sql_executed=sql_executed,
             )
 

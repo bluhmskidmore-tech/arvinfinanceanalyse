@@ -156,6 +156,7 @@ export function buildLiabilityAnalyticsPageReadModel(
   const resolved = input.resolvedReportDate || EM_DASH;
   const isMock = input.mode !== "real";
   const hasDateMismatch =
+    input.activeTab === "daily" &&
     Boolean(input.requestedReportDate) &&
     Boolean(input.resolvedReportDate) &&
     input.requestedReportDate !== input.resolvedReportDate;
@@ -192,8 +193,13 @@ export function buildLiabilityAnalyticsPageReadModel(
     },
     {
       key: "date",
-      label: hasDateMismatch ? `请求 ${requested} · 返回 ${resolved}` : `报告日 ${resolved}`,
-      tone: hasDateMismatch ? "warning" : "ok",
+      label:
+        input.activeTab === "daily"
+          ? hasDateMismatch
+            ? `请求 ${requested} · 返回 ${resolved}`
+            : `报告日 ${resolved}`
+          : `月份 ${input.selectedMonthLabel ?? EM_DASH}`,
+      tone: input.activeTab === "daily" && hasDateMismatch ? "warning" : "ok",
     },
   ];
 
@@ -234,7 +240,8 @@ export function buildLiabilityAnalyticsPageReadModel(
             label: "市场负债",
             value: fixedOrDash(input.liabilityTotalYi, 2),
             unit: "亿",
-            detail: "对手方总额 / 期限桶回退",
+            // 口径：TYWL 同业对手方总额（不含发行负债）；缺失时回退期限桶合计。
+            detail: "同业对手方口径（不含发行负债）；缺失时回退期限桶合计",
           },
           {
             key: "liability-cost",
@@ -253,7 +260,10 @@ export function buildLiabilityAnalyticsPageReadModel(
             label: "1年内到期",
             value: fixedOrDash(input.firstYearPressureYi, 2),
             unit: "亿",
-            detail: "按期限桶展示汇总",
+            // 口径经后端 compute_liability_risk_buckets 确证：同业负债 + 发行负债的
+            // 1 年内到期桶合计（含已到期/逾期桶），比「市场负债」的同业对手方口径宽，
+            // 因此本格可以大于「市场负债」。
+            detail: "同业+发行负债到期合计（含已到期），口径宽于「市场负债」",
           },
           {
             key: "top-counterparty",
@@ -327,7 +337,7 @@ export function buildLiabilityAnalyticsPageReadModel(
         key: "synthetic-sections",
         variant: "definition-pending",
         title: "合成/预留区块已显式降级",
-        description: `${input.syntheticSections.map((section) => section.title).join("、")} 的详情保留在对应区块，不混入首屏正式判断。`,
+        description: `${input.syntheticSections.map((section) => section.title).join("、")} 已收敛为对应区块的一行说明，不展示示意数据，不混入首屏正式判断。`,
       },
     ],
     {

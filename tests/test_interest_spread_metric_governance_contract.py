@@ -31,6 +31,7 @@ import re
 import types
 import typing
 
+import pytest
 from pydantic import BaseModel
 
 from backend.app.schemas import product_category_pnl as schemas
@@ -41,6 +42,25 @@ PAGE_CONTRACTS = ROOT / "docs" / "page_contracts.md"
 GOLDEN_ASSERTIONS = ROOT / "tests" / "golden_samples" / "GS-PROD-CAT-PNL-A" / "assertions.md"
 
 SPREAD_METRIC_IDS = tuple(f"MTR-PCP-{index:03d}" for index in range(13, 30))
+EXPECTED_ID_TO_PATH = {
+    "MTR-PCP-013": "ProductCategoryPnlPayload.interest_earning_spread.all_currency_asset_yield_pct",
+    "MTR-PCP-014": "ProductCategoryPnlPayload.interest_earning_spread.all_currency_liability_yield_pct",
+    "MTR-PCP-015": "ProductCategoryPnlPayload.interest_earning_spread.all_currency_spread_pct",
+    "MTR-PCP-016": "ProductCategoryPnlPayload.interest_earning_spread.cny_asset_yield_pct",
+    "MTR-PCP-017": "ProductCategoryPnlPayload.interest_earning_spread.cny_liability_yield_pct",
+    "MTR-PCP-018": "ProductCategoryPnlPayload.interest_earning_spread.cny_spread_pct",
+    "MTR-PCP-019": "ProductCategoryPnlPayload.interest_spread.all_currency_asset_yield_pct",
+    "MTR-PCP-020": "ProductCategoryPnlPayload.interest_spread.all_currency_liability_yield_pct",
+    "MTR-PCP-021": "ProductCategoryPnlPayload.interest_spread.all_currency_spread_pct",
+    "MTR-PCP-022": "ProductCategoryPnlPayload.interest_spread.cny_asset_yield_pct",
+    "MTR-PCP-023": "ProductCategoryPnlPayload.interest_spread.cny_liability_yield_pct",
+    "MTR-PCP-024": "ProductCategoryPnlPayload.interest_spread.cny_spread_pct",
+    "MTR-PCP-025": "ProductCategoryPnlPayload.liability_cost_decomposition.liability_yield_pct",
+    "MTR-PCP-026": "ProductCategoryPnlPayload.liability_cost_decomposition.liability_yield_ex_cln_pct",
+    "MTR-PCP-027": "ProductCategoryPnlPayload.liability_cost_decomposition.cln_yield_pct",
+    "MTR-PCP-028": "ProductCategoryPnlPayload.liability_cost_decomposition.cln_drag_bp",
+    "MTR-PCP-029": "ProductCategoryPnlPayload.liability_cost_decomposition.cln_scale",
+}
 
 # Payload sections promoted to formal metrics on 2026-08-13. Row-level detail fields stay governed by
 # `MTR-PCP-004`..`MTR-PCP-012` and are deliberately out of scope here.
@@ -91,13 +111,23 @@ def _resolve_payload_path(path: str) -> object | None:
     return current
 
 
-def _dictionary_spread_rows() -> dict[str, list[str]]:
+def _dictionary_spread_rows(text: str | None = None) -> dict[str, list[str]]:
     rows: dict[str, list[str]] = {}
-    for line in METRIC_DICTIONARY.read_text(encoding="utf-8").splitlines():
+    duplicate_ids: set[str] = set()
+    source = METRIC_DICTIONARY.read_text(encoding="utf-8") if text is None else text
+    for line in source.splitlines():
         if not DICTIONARY_ROW_RE.match(line):
             continue
         columns = [column.strip() for column in line.strip().strip("|").split("|")]
-        rows[columns[0].strip("`")] = columns
+        metric_id = columns[0].strip("`")
+        if metric_id in rows:
+            duplicate_ids.add(metric_id)
+        else:
+            rows[metric_id] = columns
+    assert not duplicate_ids, (
+        "Duplicate metric ids in docs/metric_dictionary.md section 12.3.2: "
+        f"{sorted(duplicate_ids)}"
+    )
     return rows
 
 
@@ -139,6 +169,34 @@ def _pending_paths() -> set[str]:
         for metric_id in _pending_backend_landing_ids()
         if metric_id in rows
     }
+
+
+def _assert_metric_and_path_share_one_binding(
+    text: str,
+    *,
+    metric_id: str,
+    outward_path: str,
+    source_name: str,
+) -> None:
+    metric_lines = [line for line in text.splitlines() if f"`{metric_id}`" in line]
+    assert metric_lines, f"{metric_id} missing from {source_name}"
+    exact_bindings = [
+        line for line in metric_lines if f"`{outward_path}`" in line
+    ]
+    assert len(exact_bindings) == 1, (
+        f"{metric_id} must bind {outward_path} on exactly one line in {source_name}; "
+        f"found {len(exact_bindings)}"
+    )
+
+
+def test_dictionary_spread_row_parser_rejects_duplicate_metric_ids() -> None:
+    dictionary = METRIC_DICTIONARY.read_text(encoding="utf-8")
+    duplicate_row = next(
+        line for line in dictionary.splitlines() if DICTIONARY_ROW_RE.match(line)
+    )
+
+    with pytest.raises(AssertionError, match="Duplicate metric ids"):
+        _dictionary_spread_rows(f"{dictionary}\n{duplicate_row}")
 
 
 def test_promoted_payload_sections_are_all_governed() -> None:
@@ -197,6 +255,14 @@ def test_dictionary_spread_rows_bind_fields_the_backend_actually_produces() -> N
 
 def test_every_landed_payload_field_has_exactly_one_dictionary_row() -> None:
     rows = _dictionary_spread_rows()
+    actual_id_to_path = {
+        metric_id: _declared_authority_path(columns)
+        for metric_id, columns in rows.items()
+    }
+    assert actual_id_to_path == EXPECTED_ID_TO_PATH, (
+        "MTR-PCP metric ids and payload paths are an immutable binding; coordinated swaps across "
+        "the dictionary, page contract, and golden assertions are not allowed."
+    )
     declared_paths = [_declared_authority_path(columns) for columns in rows.values()]
     expected_paths = set(_section_field_paths())
 
@@ -230,19 +296,23 @@ def test_spread_metrics_are_bound_in_page_contract_and_golden_sample() -> None:
     ].split("## 14.1 PAGE-AGENT-001", maxsplit=1)[0]
     golden_assertions = GOLDEN_ASSERTIONS.read_text(encoding="utf-8")
 
-    for metric_id, columns in _dictionary_spread_rows().items():
+    for metric_id, declared_path in EXPECTED_ID_TO_PATH.items():
         # Page contract and golden sample use the outward `result.<section>.<field>` path.
-        outward_path = _declared_authority_path(columns).replace(
+        outward_path = declared_path.replace(
             "ProductCategoryPnlPayload.", "result."
         )
-        assert metric_id in product_category_section, f"{metric_id} missing from PAGE-PROD-CAT-PNL-001"
-        assert (
-            f"`{outward_path}`" in product_category_section
-        ), f"{metric_id} field path {outward_path} missing from PAGE-PROD-CAT-PNL-001"
-        assert metric_id in golden_assertions, f"{metric_id} missing from GS-PROD-CAT-PNL-A assertions"
-        assert (
-            f"`{outward_path}`" in golden_assertions
-        ), f"{metric_id} field path {outward_path} missing from GS-PROD-CAT-PNL-A assertions"
+        _assert_metric_and_path_share_one_binding(
+            product_category_section,
+            metric_id=metric_id,
+            outward_path=outward_path,
+            source_name="PAGE-PROD-CAT-PNL-001",
+        )
+        _assert_metric_and_path_share_one_binding(
+            golden_assertions,
+            metric_id=metric_id,
+            outward_path=outward_path,
+            source_name="GS-PROD-CAT-PNL-A assertions",
+        )
 
 
 def test_cln_drag_bp_unit_contract_is_documented_and_supported() -> None:
@@ -287,7 +357,8 @@ def test_two_spread_calibers_stay_explicitly_distinguished() -> None:
 
     for required in (
         "They must never be presented under the same series name.",
-        "A missing denominator or a missing `credit_linked_notes` row yields `null`, never `0`.",
+        "invalid liability-side scale sign topology",
+        "yields `null`, never `0`.",
         "do not recompute and\n  overwrite them from a local run",
     ):
         assert required in golden_assertions, f"missing statement in golden assertions: {required}"

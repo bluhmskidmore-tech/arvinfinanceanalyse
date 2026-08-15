@@ -28,16 +28,19 @@ function buildAdbMonth(overrides: Partial<AdbMonthlyDataItem> = {}): AdbMonthlyD
 }
 
 describe("LiabilityNimStressMonthlyPanel", () => {
-  it("renders the backend official nim_stress instead of a frontend derivation", () => {
+  it("renders the backend analytical nim_stress without promoting it to formal", () => {
     render(<LiabilityNimStressMonthlyPanel adbMonth={buildAdbMonth()} />);
 
     expect(screen.getByText("压力测试：NIM 敏感性（+50bps）")).toBeInTheDocument();
     expect(
-      screen.queryByTestId("liability-nim-monthly-unofficial-note"),
+      screen.queryByTestId("liability-nim-monthly-official-note"),
     ).not.toBeInTheDocument();
-    const note = screen.getByTestId("liability-nim-monthly-official-note");
-    expect(note.textContent).toContain("后端正式口径");
+    const note = screen.getByTestId("liability-nim-monthly-analysis-note");
+    expect(note.textContent).toContain("后端分析口径");
+    expect(note.textContent).not.toContain("正式口径");
     expect(note.textContent).toContain("−50bp");
+    expect(screen.getByText("候选情景")).toBeInTheDocument();
+    expect(screen.queryByText("NIM 预警")).not.toBeInTheDocument();
 
     // 后端字段 0.35 而非前端演算 1.1 - 0.5 = 0.60。
     expect(screen.getByText("0.35%")).toBeInTheDocument();
