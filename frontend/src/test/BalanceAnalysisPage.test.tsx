@@ -2177,9 +2177,14 @@ describe("BalanceAnalysisPage", () => {
         exportBalanceAnalysisWorkbookXlsx: exportSpy,
       });
 
-      await screen.findByTestId("balance-analysis-workbook-export-button");
+      const workbookExportButton = await screen.findByTestId(
+        "balance-analysis-workbook-export-button",
+      );
+      await waitFor(() => {
+        expect(workbookExportButton).toBeEnabled();
+      });
       await user.selectOptions(screen.getByLabelText("balance-position-scope"), "asset");
-      await user.click(screen.getByTestId("balance-analysis-workbook-export-button"));
+      await user.click(workbookExportButton);
 
       await waitFor(() => {
         expect(exportSpy).toHaveBeenCalledWith({
