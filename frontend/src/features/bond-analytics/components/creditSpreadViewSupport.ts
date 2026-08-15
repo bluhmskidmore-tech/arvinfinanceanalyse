@@ -55,6 +55,8 @@ export const migrationColumns = [
     title: "涉及债券",
     dataIndex: "affected_bonds",
     key: "affected_bonds",
+    /* 缺失 ≠ 0：client 对字段缺失透传 null，这里渲染 —，不显示假「0 只」。 */
+    render: (v: number | null) => (v === null || v === undefined ? EM_DASH : v),
     onCell: () => ({ style: tabularNumsStyle }),
   },
   {

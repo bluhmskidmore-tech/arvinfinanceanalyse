@@ -18,7 +18,9 @@ import { useCrossAssetViewModel } from "../hooks/useCrossAssetViewModel";
 
 import { CrossAssetDecisionZone } from "../components/CrossAssetDecisionZone";
 import {
+  formatEstimatedImpactCny,
   formatSignedNumber,
+  impactTone,
 } from "../components/utils";
 
 import {
@@ -72,6 +74,15 @@ const CROSS_ASSET_FINAL_DEFERRED_CONTENT_STAGE = 3;
 const CROSS_ASSET_FINAL_DEFERRED_CHART_STAGE = 2;
 type CrossAssetDeferredContentStage = 0 | 1 | 2 | 3;
 type CrossAssetDeferredChartStage = 0 | 1 | 2;
+
+/**
+ * 综合分/方向分/增长分的符号语义（backend core_finance/macro_bond_linkage.py）：
+ * 正值 = 债市不利压力（偏紧）→ 警示红；负值 = 偏松 → 绿。
+ * 与 hero 评分、贡献因子明细、驱动力瀑布同一判据；流动性评分（正=偏松）不走本映射。
+ */
+function bondAdverseScoreTone(score: number | null | undefined) {
+  return toneFromSignedNumber(score != null ? -score : null);
+}
 
 export default function CrossAssetDriversPage() {
   const [deferredContentStage, setDeferredContentStage] =
@@ -350,7 +361,7 @@ export default function CrossAssetDriversPage() {
                           value={env.composite_score != null ? String(env.composite_score.toFixed(2)) : "不可用"}
                           detail={env.signal_description ?? "缺少环境评分数据。"}
                           valueVariant="text"
-                          tone={toneFromSignedNumber(env.composite_score != null ? env.composite_score : null)}
+                          tone={bondAdverseScoreTone(env.composite_score)}
                         />
                       </div>
                       <div data-testid="cross-asset-linkage-rate-direction">
@@ -363,7 +374,7 @@ export default function CrossAssetDriversPage() {
                             "缺少方向评分。",
                           )}
                           valueVariant="text"
-                          tone={toneFromSignedNumber(env.rate_direction_score != null ? env.rate_direction_score : null)}
+                          tone={bondAdverseScoreTone(env.rate_direction_score)}
                         />
                       </div>
                       <div data-testid="cross-asset-linkage-liquidity-score">
@@ -379,9 +390,9 @@ export default function CrossAssetDriversPage() {
                         <KpiCard
                           title="增长评分"
                           value={env.growth_score != null ? env.growth_score.toFixed(2) : "不可用"}
-                          detail="宏观增长方向的简化分值。"
+                          detail="宏观增长方向的简化分值；正值计入偏紧压力。"
                           valueVariant="text"
-                          tone={toneFromSignedNumber(env.growth_score != null ? env.growth_score : null)}
+                          tone={bondAdverseScoreTone(env.growth_score)}
                         />
                       </div>
                     </div>
@@ -414,7 +425,16 @@ export default function CrossAssetDriversPage() {
                           </div>
                           <div>
                             <div className="cross-asset-linkage-portfolio-impact__label">合计估算</div>
-                            <div className="cross-asset-linkage-portfolio-impact__value">{formatSignedNumber(macroBondLinkage.portfolio_impact?.total_estimated_impact)}</div>
+                            <div
+                              className={`cross-asset-linkage-portfolio-impact__value cross-asset-linkage-portfolio-impact__value--${impactTone(macroBondLinkage.portfolio_impact?.total_estimated_impact)}`}
+                              title={
+                                macroBondLinkage.portfolio_impact?.total_estimated_impact != null
+                                  ? `${macroBondLinkage.portfolio_impact.total_estimated_impact} 元`
+                                  : undefined
+                              }
+                            >
+                              {formatEstimatedImpactCny(macroBondLinkage.portfolio_impact?.total_estimated_impact)}
+                            </div>
                           </div>
                         </div>
                       ) : (
@@ -528,7 +548,8 @@ export default function CrossAssetDriversPage() {
                             const indicator = splitLinkageIndicator(row.indicator);
                             return (
                               <tr key={row.id}>
-                                <td className="cross-asset-linkage-heatmap-ledger__pair">
+                                {/* 可见位中文业务名；原始序列/目标 token 收进 title（证据引用）。 */}
+                                <td className="cross-asset-linkage-heatmap-ledger__pair" title={row.id}>
                                   <strong>{indicator.source}</strong>
                                   {indicator.target ? <span>→ {indicator.target}</span> : null}
                                 </td>

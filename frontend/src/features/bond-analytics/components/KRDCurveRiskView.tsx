@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Card, Statistic, Row, Col, Table, Alert, Spin } from "antd";
+import { Card, Statistic, Row, Col, Table, Alert } from "antd";
 import { type EChartsOption } from "../../../lib/echarts";
 import { BaseChart } from "../../../components/charts/BaseChart";
+import { nocturneChartTheme } from "../../../components/charts/chartTheme";
 import { useApiClient } from "../../../api/client";
 import type { KRDScenarioResult, Numeric } from "../../../api/contracts";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
@@ -9,6 +10,13 @@ import type { AssetClassRiskSummary, BondAnalyticsScenarioSetFilter, KRDCurveRis
 import { nocturneTokens } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 import { formatDv01Wan, formatWan, formatYi } from "../utils/formatters";
+import {
+  DetailEmptyNote,
+  DetailPanelSkeleton,
+  formatDetailComputedAt,
+  withNumericColumns,
+} from "./BondAnalyticsDetailPrimitives";
+import detailStyles from "./BondAnalyticsDetailPrimitives.module.css";
 import { SectionLead } from "./SectionLead";
 
 function formatScenarioShocks(shocks: Record<string, number>): string {
@@ -24,32 +32,35 @@ interface Props {
   scenarioSet?: BondAnalyticsScenarioSetFilter;
 }
 
-const scenarioColumns = [
-  { title: "情景键", dataIndex: "scenario_name", key: "scenario_name" },
-  { title: "情景", dataIndex: "scenario_description", key: "scenario_description" },
-  {
-    title: "冲击参数",
-    dataIndex: "shocks",
-    key: "shocks",
-    ellipsis: true,
-    render: (shocks: Record<string, number>) => formatScenarioShocks(shocks),
-  },
-  { title: "经济口径影响", dataIndex: "pnl_economic", key: "pnl_economic", render: formatWan },
-  { title: "OCI影响", dataIndex: "pnl_oci", key: "pnl_oci", render: formatWan },
-  { title: "TPL影响", dataIndex: "pnl_tpl", key: "pnl_tpl", render: formatWan },
-  {
-    title: "利率贡献",
-    dataIndex: "rate_contribution",
-    key: "rate_contribution",
-    render: formatWan,
-  },
-  {
-    title: "凸性贡献",
-    dataIndex: "convexity_contribution",
-    key: "convexity_contribution",
-    render: formatWan,
-  },
-];
+const scenarioColumns = withNumericColumns(
+  [
+    { title: "情景键", dataIndex: "scenario_name", key: "scenario_name" },
+    { title: "情景", dataIndex: "scenario_description", key: "scenario_description" },
+    {
+      title: "冲击参数",
+      dataIndex: "shocks",
+      key: "shocks",
+      ellipsis: true,
+      render: (shocks: Record<string, number>) => formatScenarioShocks(shocks),
+    },
+    { title: "经济口径影响", dataIndex: "pnl_economic", key: "pnl_economic", render: formatWan },
+    { title: "OCI影响", dataIndex: "pnl_oci", key: "pnl_oci", render: formatWan },
+    { title: "TPL影响", dataIndex: "pnl_tpl", key: "pnl_tpl", render: formatWan },
+    {
+      title: "利率贡献",
+      dataIndex: "rate_contribution",
+      key: "rate_contribution",
+      render: formatWan,
+    },
+    {
+      title: "凸性贡献",
+      dataIndex: "convexity_contribution",
+      key: "convexity_contribution",
+      render: formatWan,
+    },
+  ],
+  ["pnl_economic", "pnl_oci", "pnl_tpl", "rate_contribution", "convexity_contribution"],
+);
 
 const SCENARIO_BY_AC_CORE_KEYS = new Set(["pnl_economic", "pnl_oci", "pnl_tpl"]);
 
@@ -82,38 +93,41 @@ function renderScenarioAssetClassBreakdown(record: KRDScenarioResult) {
     }
     return row;
   });
-  const scenarioByAssetClassColumns = [
-    { title: "资产类别", dataIndex: "asset_class", key: "asset_class" },
-    {
-      title: "经济口径",
-      dataIndex: "pnl_economic",
-      key: "pnl_economic",
-      render: (v: Numeric | undefined) => (v ? formatWan(v) : EM_DASH),
-    },
-    {
-      title: "OCI 影响",
-      dataIndex: "pnl_oci",
-      key: "pnl_oci",
-      render: (v: Numeric | undefined) => (v ? formatWan(v) : EM_DASH),
-    },
-    {
-      title: "TPL 影响",
-      dataIndex: "pnl_tpl",
-      key: "pnl_tpl",
-      render: (v: Numeric | undefined) => (v ? formatWan(v) : EM_DASH),
-    },
-    ...extraKeys.map((ek) => ({
-      title: ek,
-      dataIndex: ek,
-      key: ek,
-      render: (v: Numeric | undefined) => (v ? formatWan(v) : EM_DASH),
-    })),
-  ];
+  const scenarioByAssetClassColumns = withNumericColumns(
+    [
+      { title: "资产类别", dataIndex: "asset_class", key: "asset_class" },
+      {
+        title: "经济口径",
+        dataIndex: "pnl_economic",
+        key: "pnl_economic",
+        render: (v: Numeric | undefined) => (v ? formatWan(v) : EM_DASH),
+      },
+      {
+        title: "OCI 影响",
+        dataIndex: "pnl_oci",
+        key: "pnl_oci",
+        render: (v: Numeric | undefined) => (v ? formatWan(v) : EM_DASH),
+      },
+      {
+        title: "TPL 影响",
+        dataIndex: "pnl_tpl",
+        key: "pnl_tpl",
+        render: (v: Numeric | undefined) => (v ? formatWan(v) : EM_DASH),
+      },
+      ...extraKeys.map((ek) => ({
+        title: ek,
+        dataIndex: ek,
+        key: ek,
+        render: (v: Numeric | undefined) => (v ? formatWan(v) : EM_DASH),
+      })),
+    ],
+    ["pnl_economic", "pnl_oci", "pnl_tpl", ...extraKeys],
+  );
   if (rows.length === 0) {
     return (
-      <div style={{ color: "var(--dh-api-muted)", fontSize: 12 }} data-testid="krd-scenario-by-asset-class-empty">
+      <DetailEmptyNote testId="krd-scenario-by-asset-class-empty">
         暂无按资产类别的情景拆分
-      </div>
+      </DetailEmptyNote>
     );
   }
   return (
@@ -138,28 +152,31 @@ function renderScenarioAssetClassBreakdown(record: KRDScenarioResult) {
   );
 }
 
-const assetClassColumns = [
-  { title: "资产类别", dataIndex: "asset_class", key: "asset_class" },
-  { title: "市值", dataIndex: "market_value", key: "market_value", render: formatYi },
-  {
-    title: "久期",
-    dataIndex: "duration",
-    key: "duration",
-    render: (v: Numeric) => v.display,
-  },
-  {
-    title: "DV01",
-    dataIndex: "dv01",
-    key: "dv01",
-    render: (v: Numeric) => v.display,
-  },
-  {
-    title: "权重",
-    dataIndex: "weight",
-    key: "weight",
-    render: (v: Numeric) => v.display,
-  },
-];
+const assetClassColumns = withNumericColumns(
+  [
+    { title: "资产类别", dataIndex: "asset_class", key: "asset_class" },
+    { title: "市值", dataIndex: "market_value", key: "market_value", render: formatYi },
+    {
+      title: "久期",
+      dataIndex: "duration",
+      key: "duration",
+      render: (v: Numeric) => v.display,
+    },
+    {
+      title: "DV01（元/bp）",
+      dataIndex: "dv01",
+      key: "dv01",
+      render: (v: Numeric) => v.display,
+    },
+    {
+      title: "权重",
+      dataIndex: "weight",
+      key: "weight",
+      render: (v: Numeric) => v.display,
+    },
+  ],
+  ["market_value", "duration", "dv01", "weight"],
+);
 
 /* ECharts canvas 不消费 CSS 变量：切片色取 Nocturne 常量组（与页面 scope 同源）。 */
 const ASSET_CLASS_SLICE_COLORS: Record<string, string> = {
@@ -184,7 +201,8 @@ function buildAssetStructurePieOption(rows: AssetClassRiskSummary[]): EChartsOpt
     itemStyle: { color: sliceColorForAssetClass(row.asset_class) },
   }));
 
-  return {
+  return nocturneChartTheme.createBaseChartOption({
+    legend: { show: false },
     tooltip: {
       trigger: "item" as const,
       formatter: (params: unknown) => {
@@ -225,7 +243,7 @@ function buildAssetStructurePieOption(rows: AssetClassRiskSummary[]): EChartsOpt
         data: pieData,
       },
     ],
-  };
+  });
 }
 
 export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props) {
@@ -262,7 +280,7 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
     const buckets = data.krd_buckets;
     const bucketAvgMd = (b: (typeof buckets)[number]) =>
       b.avg_modified_duration ?? b.krd;
-    return {
+    return nocturneChartTheme.createBarChartOption({
       grid: { left: 52, right: 16, top: 36, bottom: 28, containLabel: false },
       tooltip: {
         trigger: "axis",
@@ -280,7 +298,7 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
           return [
             `<div style="font-weight:600;margin-bottom:4px">${b.tenor}</div>`,
             `桶内平均修正久期：${md === null ? mdField.display : md.toFixed(3)}`,
-            `DV01：${dv01 === null ? b.dv01.display : dv01.toFixed(6)}`,
+            `DV01（元/bp）：${dv01 === null ? b.dv01.display : dv01.toFixed(6)}`,
             `market_value_weight：${w === null ? b.market_value_weight.display : w.toFixed(6)}`,
           ].join("<br/>");
         },
@@ -330,7 +348,8 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
           }),
         },
       ],
-    };
+      legend: { show: false },
+    });
   }, [data]);
 
   const assetStructurePieOption = useMemo(
@@ -338,12 +357,12 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
     [data?.by_asset_class],
   );
 
-  if (loading) return <Spin style={{ display: "block", margin: "40px auto" }} />;
+  if (loading) return <DetailPanelSkeleton testId="krd-curve-risk-loading" />;
   if (error) return <Alert type="error" message={`加载失败：${error}`} />;
   if (!data) return null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className={detailStyles.view}>
       <SectionLead
         eyebrow="KRD 曲线风险"
         title="曲线风险概览"
@@ -352,10 +371,10 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
       />
       {data.computed_at ? (
         <div style={{ fontSize: 12, color: "var(--dh-api-muted)" }} data-testid="krd-computed-at">
-          计算时间：{data.computed_at}
+          计算时间：{formatDetailComputedAt(data.computed_at)}
         </div>
       ) : null}
-      <Row gutter={16}>
+      <Row gutter={[12, 12]} className={detailStyles.kpiGrid}>
         <Col span={6}>
           <Card size="small">
             <Statistic title="组合久期" value={data.portfolio_duration.display} />
@@ -384,13 +403,17 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
         description="期限桶展示桶内平均修正久期与 DV01；情景冲击沿用后端返回数据，前端仅做图表和表格展示。"
         testId="krd-curve-risk-buckets-lead"
       />
-      {data.krd_buckets.length > 0 && krdChartOption && (
+      {data.krd_buckets.length > 0 && krdChartOption ? (
         <Card title="期限桶平均修正久期" size="small" data-testid="krd-avg-md-distribution">
           <BaseChart option={krdChartOption} height={240} />
         </Card>
+      ) : (
+        <DetailEmptyNote testId="krd-buckets-empty">
+          暂无期限桶平均修正久期序列
+        </DetailEmptyNote>
       )}
 
-      {data.scenarios.length > 0 && (
+      {data.scenarios.length > 0 ? (
         <Card title="情景冲击" size="small">
           <Table
             data-testid="krd-scenarios-table"
@@ -403,6 +426,8 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
             expandable={{ expandedRowRender: renderScenarioAssetClassBreakdown }}
           />
         </Card>
+      ) : (
+        <DetailEmptyNote testId="krd-scenarios-empty">暂无情景冲击明细</DetailEmptyNote>
       )}
 
       <SectionLead
@@ -411,7 +436,7 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
         description="资产结构饼图和按资产类别表格保留后端语义，不调整市值、久期、DV01 或权重。"
         testId="krd-curve-risk-asset-lead"
       />
-      {data.by_asset_class.length > 0 && (
+      {data.by_asset_class.length > 0 ? (
         <Card title="按资产类别拆分" size="small">
           <BaseChart option={assetStructurePieOption} height={220} />
           <Table
@@ -423,6 +448,10 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
             scroll={{ y: 400 }}
           />
         </Card>
+      ) : (
+        <DetailEmptyNote testId="krd-asset-class-empty">
+          暂无资产类别风险拆分
+        </DetailEmptyNote>
       )}
 
       {data.warnings.length > 0 && (

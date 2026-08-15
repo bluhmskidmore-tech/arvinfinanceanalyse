@@ -1,4 +1,5 @@
 import { EM_DASH } from "../../../utils/format";
+import { FrontendAnalyticsChip } from "./MomentumAndVolatilityPanels";
 import "./CrossAssetHeroPanel.css";
 
 export type CrossAssetHeroPanelProps = {
@@ -24,7 +25,7 @@ const UI = {
   regimeChipPrefix: "体制",
   rateChipPrefix: "利率方向",
   scoreLabel: "环境综合评分",
-  scoreHint: "正值偏松 · 负值偏紧",
+  scoreHint: "正值偏紧（不利债市），负值偏松",
   loadingConclusion: "正在加载联动分析…",
   fallbackConclusion: "暂无首屏结论，等待联动链路或市场体制判断。",
 } as const;
@@ -37,11 +38,16 @@ function formatCompositeScore(score: number | null): string {
   return `${sign}${score.toFixed(2)}`;
 }
 
-function scoreTone(score: number | null): "positive" | "negative" | "neutral" {
+/**
+ * 综合分符号语义（backend core_finance/macro_bond_linkage.py::composite_score）：
+ * 正值 = 宏观偏紧（bond-unfavorable pressure，警示红），负值 = 偏松（利好债市，绿）。
+ * 与贡献因子明细、驱动力瀑布的「正值偏紧」判据一致。
+ */
+function scoreTone(score: number | null): "tightening" | "easing" | "neutral" {
   if (score == null || Number.isNaN(score) || score === 0) {
     return "neutral";
   }
-  return score > 0 ? "positive" : "negative";
+  return score > 0 ? "tightening" : "easing";
 }
 
 export function CrossAssetHeroPanel({
@@ -73,6 +79,8 @@ export function CrossAssetHeroPanel({
           <span className="cross-asset-hero-panel__chip" title={regimeDescription}>
             {UI.regimeChipPrefix} {regimeLabel}
           </span>
+          {/* 体制由前端 identifyMarketRegime 派生：复用同页统一披露章，不再只靠 title 提示。 */}
+          <FrontendAnalyticsChip />
           <span className="cross-asset-hero-panel__chip">
             {UI.rateChipPrefix} {rateDirectionLabel}
           </span>

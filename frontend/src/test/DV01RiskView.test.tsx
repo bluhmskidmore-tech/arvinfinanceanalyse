@@ -602,7 +602,7 @@ describe("DV01RiskView", () => {
     expect(screen.getByText("105.00 亿")).toBeInTheDocument();
     expect(screen.getByText("面值加权修正久期")).toBeInTheDocument();
     expect(screen.getByText("3.43 年")).toBeInTheDocument();
-    expect(screen.getByText("总 DV01")).toBeInTheDocument();
+    expect(screen.getByText("总 DV01（元/bp）")).toBeInTheDocument();
     expect(screen.getByText("3,546,830")).toBeInTheDocument();
     expect(screen.getAllByText("持仓数").length).toBeGreaterThan(0);
     expect(screen.getByText("574")).toBeInTheDocument();
@@ -612,7 +612,7 @@ describe("DV01RiskView", () => {
     expect(within(shockTable).getByText("-0.35 亿")).toBeInTheDocument();
     expect(within(shockTable).getByText("+0.35 亿")).toBeInTheDocument();
 
-    expect(screen.getByText("期限桶 DV01")).toBeInTheDocument();
+    expect(screen.getByText("期限桶 DV01（元/bp）")).toBeInTheDocument();
     const tenorTable = screen.getByTestId("dv01-risk-tenor-table");
     expect(within(tenorTable).getByText("3-5Y")).toBeInTheDocument();
     expect(within(tenorTable).getByText("3.80 年")).toBeInTheDocument();
@@ -1002,10 +1002,10 @@ describe("DV01RiskView", () => {
     // A zero here would read as "0% used" / "nothing left to reduce".
     expect(kpiValue(panel, "使用率")).toBe("不适用");
     expect(kpiValue(panel, "剩余额度")).toBe("不适用");
-    expect(kpiValue(panel, "需压降 DV01")).toBe("不适用");
+    expect(kpiValue(panel, "需压降 DV01（元/bp）")).toBe("不适用");
     expect(kpiValue(panel, "建议对冲手数")).toBe("不适用");
-    expect(kpiValue(panel, "限额 DV01")).toBe("未配置");
-    expect(kpiValue(panel, "预警 DV01")).toBe("未配置");
+    expect(kpiValue(panel, "限额 DV01（元/bp）")).toBe("未配置");
+    expect(kpiValue(panel, "预警 DV01（元/bp）")).toBe("未配置");
     // breach_count is 0 because nothing was graded, not because the book is clean.
     expect(panel).toHaveTextContent("触发 不适用");
     expect(panel).not.toHaveTextContent("触发 0 项");
@@ -1075,10 +1075,10 @@ describe("DV01RiskView", () => {
     expect(panel).toHaveTextContent("面值 30.00 亿");
     expect(panel).toHaveTextContent("市值 30.80 亿");
     expect(panel).toHaveTextContent("久期 3.20 年");
-    expect(panel).toHaveTextContent("DV01 880,000");
+    expect(panel).toHaveTextContent("DV01（元/bp） 880,000");
     expect(panel).toHaveTextContent("当前筛选 2 / 2");
     expect(panel).toHaveTextContent("搜索只改变明细可见行");
-    expect(screen.getByText("总 DV01")).toBeInTheDocument();
+    expect(screen.getByText("总 DV01（元/bp）")).toBeInTheDocument();
     expect(screen.getByText("3,546,830")).toBeInTheDocument();
     const table = within(panel).getByTestId("dv01-reconciliation-table");
     expect(within(table).getByText("BOND-1")).toBeInTheDocument();
@@ -1091,7 +1091,7 @@ describe("DV01RiskView", () => {
     expect(panel).toHaveTextContent("面值 30.00 亿");
     expect(panel).toHaveTextContent("市值 30.80 亿");
     expect(panel).toHaveTextContent("久期 3.20 年");
-    expect(panel).toHaveTextContent("DV01 880,000");
+    expect(panel).toHaveTextContent("DV01（元/bp） 880,000");
     expect(screen.getByText("3,546,830")).toBeInTheDocument();
     expect(within(table).getByText("BOND-2")).toBeInTheDocument();
     expect(within(table).queryByText("BOND-1")).not.toBeInTheDocument();

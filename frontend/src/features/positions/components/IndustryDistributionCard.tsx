@@ -60,7 +60,8 @@ const INDUSTRY_COLUMNS: TableColumnsType<IndustryRow> = [
     render: (v: string) => formatPercentValue(v),
   },
   {
-    title: "只数",
+    /* bond_count 是区间内 bond-days 累计，不是组合持券只数（与评级卡同口径）。 */
+    title: <span title="区间内逐日持仓记录累计">笔数(区间)</span>,
     dataIndex: "bond_count",
     align: "right",
     className: "positions-view__num-cell",

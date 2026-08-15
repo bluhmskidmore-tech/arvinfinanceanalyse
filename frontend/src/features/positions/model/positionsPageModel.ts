@@ -52,7 +52,8 @@ export function coverageQualityDisplay(
   const value = formatPercentValue(coverage.coverage_ratio);
   if (coverage.missing_count > 0) {
     return {
-      value,
+      /* 两位舍入会把 >99.995% 顶成 100.00%，与「缺 N 笔」并显矛盾：改 ≈100%。 */
+      value: value === "100.00%" ? "≈100%" : value,
       note: `缺 ${coverage.missing_count} 笔 / ${formatAmountYi(coverage.missing_amount)}`,
     };
   }
@@ -341,11 +342,20 @@ export function buildPositionsFirstScreenStatus({
   return null;
 }
 
+/**
+ * 最高评级集中项：先剔除 percentage 非有限数值的项（空串/非法串/null），
+ * 再做数值最大比较；无有效项返回 null。裸 reduce 在首项 NaN 时会因
+ * `x > NaN === false` 永远锁定首项，把异常评级当成最高集中。
+ */
 export function topRatingItem(items: RatingStatsResponse["items"] | undefined) {
-  if (!items?.length) {
+  const valid = (items ?? []).filter((item) => {
+    const text = typeof item.percentage === "string" ? item.percentage.trim() : "";
+    return text.length > 0 && Number.isFinite(Number(text));
+  });
+  if (!valid.length) {
     return null;
   }
-  return items.reduce((best, item) =>
+  return valid.reduce((best, item) =>
     Number(item.percentage) > Number(best.percentage) ? item : best,
   );
 }
@@ -404,7 +414,12 @@ export function buildPositionsBondsKpiBand(input: {
       ...(stats.num_days != null ? { note: `分母 ${stats.num_days} 天` } : {}),
     },
     /* 区间累计是全页最大读数（真实数据 70 万亿量级），超阈值切万亿避免 KPI 格折行。 */
-    { ...rangeTotal, value: formatAmountYiAuto(stats.total_amount) },
+    {
+      ...rangeTotal,
+      value: formatAmountYiAuto(stats.total_amount),
+      /* 余额×天数量纲与「日均合计」差 num_days 倍，缺口径注释易被误读为规模。 */
+      note: "区间内逐日余额加总（余额×天数量纲）",
+    },
     {
       ...weightedRate,
       value: stats.total_weighted_rate ? formatRatePercent(stats.total_weighted_rate) : EM_DASH,

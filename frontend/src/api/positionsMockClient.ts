@@ -4,6 +4,10 @@
  * trading-desk drill fixtures out of the real-mode bundle that imports
  * positionsClient.ts.
  *
+ * 与真实契约对齐：positions 快照全部端点（列表与聚合）在后端
+ * positions_service.py 统一为 analytical（formal_use_allowed=false，
+ * quality_flag 默认 warning），mock 信封 basis 同步该形状。
+ *
  * 演示数据（编造但自洽，口径依据 D 节审计与 backend/app/repositories/positions_repo.py）：
  * - 金额一律「元」整数字符串；利率为小数字符串（0.0282 → 2.82%）；
  *   percentage / coverage_ratio 为百分数字符串（50.0000 → 50.00%）；
@@ -301,7 +305,7 @@ export function createDemoPositionsClient(
       return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "positions.bonds.sub_types",
         { sub_types: ["利率债", "信用债"] },
-        { basis: "formal", formal_use_allowed: true },
+        { basis: "analytical", formal_use_allowed: false, quality_flag: "warning" },
       );
     },
     async getPositionsBondsList(options: {
@@ -383,7 +387,7 @@ export function createDemoPositionsClient(
           // CR10 = Top10 区间累计 / 全书区间累计 = 46.8 / 52 = 90.00%。
           cr10_ratio: `${((top10AvgDailyYuan / DEMO_BOND_BOOK_AVG_DAILY_YUAN) * 100).toFixed(2)}%`,
         },
-        { basis: "formal", formal_use_allowed: true },
+        { basis: "analytical", formal_use_allowed: false, quality_flag: "warning" },
       );
     },
     async getPositionsInterbankProductTypes(_reportDate?: string | null) {
@@ -391,7 +395,7 @@ export function createDemoPositionsClient(
       return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "positions.interbank.product_types",
         { product_types: ["拆借", "存放"] },
-        { basis: "formal", formal_use_allowed: true },
+        { basis: "analytical", formal_use_allowed: false, quality_flag: "warning" },
       );
     },
     async getPositionsInterbankList(options: {
@@ -474,7 +478,7 @@ export function createDemoPositionsClient(
           asset_items: buildDemoCounterpartyItems(DEMO_INTERBANK_ASSET_SEEDS),
           liability_items: buildDemoCounterpartyItems(DEMO_INTERBANK_LIABILITY_SEEDS),
         },
-        { basis: "formal", formal_use_allowed: true },
+        { basis: "analytical", formal_use_allowed: false, quality_flag: "warning" },
       );
     },
     async getPositionsStatsRating(options: {
@@ -501,7 +505,7 @@ export function createDemoPositionsClient(
           total_avg_daily: toAmount(DEMO_BOND_BOOK_AVG_DAILY_YUAN),
           ytm_rate_coverage: buildDemoCoverage(DEMO_YTM_COVERAGE),
         },
-        { basis: "formal", formal_use_allowed: true },
+        { basis: "analytical", formal_use_allowed: false, quality_flag: "warning" },
       );
     },
     async getPositionsStatsIndustry(options: {
@@ -530,7 +534,7 @@ export function createDemoPositionsClient(
           total_avg_daily: toAmount(DEMO_BOND_BOOK_AVG_DAILY_YUAN),
           ytm_rate_coverage: buildDemoCoverage(DEMO_YTM_COVERAGE),
         },
-        { basis: "formal", formal_use_allowed: true },
+        { basis: "analytical", formal_use_allowed: false, quality_flag: "warning" },
       );
     },
     async getPositionsCustomerDetails(options: {
@@ -547,7 +551,7 @@ export function createDemoPositionsClient(
           bond_count: DEMO_CUSTOMER_BOND_ITEMS.length,
           items: DEMO_CUSTOMER_BOND_ITEMS,
         },
-        { basis: "formal", formal_use_allowed: true },
+        { basis: "analytical", formal_use_allowed: false, quality_flag: "warning" },
       );
     },
     async getPositionsCustomerTrend(options: {
@@ -568,7 +572,7 @@ export function createDemoPositionsClient(
           days,
           items: buildDemoCustomerTrendItems(endDate, days),
         },
-        { basis: "formal", formal_use_allowed: true },
+        { basis: "analytical", formal_use_allowed: false, quality_flag: "warning" },
       );
     },
   };

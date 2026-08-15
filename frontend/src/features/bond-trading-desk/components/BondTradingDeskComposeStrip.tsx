@@ -22,12 +22,22 @@ export function BondTradingDeskComposeStrip({
             item.status === "ready" &&
             ((item.qualityFlag && item.qualityFlag !== "ok") ||
               (item.fallbackMode && item.fallbackMode !== "none"));
+          // 0 条属中性事实，不配正向绿色；治理 token 只进 title 不直出 chip。
+          const zeroRows = item.status === "ready" && item.rowCount === 0;
+          const chipColor =
+            item.status === "failed"
+              ? "error"
+              : qualityWarning
+                ? "warning"
+                : zeroRows
+                  ? "default"
+                  : "success";
           return (
             <Tag
               key={item.key}
               data-testid={`bond-trading-desk-compose-${item.key}`}
-              color={item.status === "failed" ? "error" : qualityWarning ? "warning" : "success"}
-              title={item.detail}
+              color={chipColor}
+              title={`${item.detail}${item.governanceNote}`}
             >
               {item.label}：{item.status === "ready" ? item.detail : "失败"}
             </Tag>

@@ -353,7 +353,8 @@ export function computeSparklinePercentile(sparkline: number[]): PercentileInfo 
   else if (clamped >= 70) zone = "high";
   else zone = "mid";
 
-  return { percentile: clamped, label: `${clamped}th`, zone };
+  // 分位标签用百分数形态（"21%"），避免英文序数词在窄 chip 内折行（§7 语域）。
+  return { percentile: clamped, label: `${clamped}%`, zone };
 }
 
 /**

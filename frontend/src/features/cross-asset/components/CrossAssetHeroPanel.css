@@ -102,12 +102,13 @@
   font-variant-numeric: tabular-nums;
 }
 
-.cross-asset-hero-panel__score-value--positive {
-  color: var(--dh-api-green);
+/* tone 判据：偏紧（正值，不利债市）= 红；偏松（负值，利好债市）= 绿。 */
+.cross-asset-hero-panel__score-value--tightening {
+  color: var(--dh-api-red);
 }
 
-.cross-asset-hero-panel__score-value--negative {
-  color: var(--dh-api-red);
+.cross-asset-hero-panel__score-value--easing {
+  color: var(--dh-api-green);
 }
 
 .cross-asset-hero-panel__score-hint {

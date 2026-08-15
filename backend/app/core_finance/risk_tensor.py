@@ -1,7 +1,6 @@
 """Portfolio risk tensor from formal bond analytics fact rows (pure calculations)."""
 from __future__ import annotations
 
-import calendar
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
@@ -597,74 +596,6 @@ def _is_credit(value: object) -> bool:
     if isinstance(value, bool):
         return value
     return str(value).strip().lower() in {"1", "true", "t", "yes", "y"}
-
-
-def _estimate_coupon_cashflows(
-    *,
-    report_date: date,
-    maturity_date: date,
-    face_value: Decimal,
-    coupon_rate: Decimal,
-    interest_mode: str,
-) -> tuple[Decimal, Decimal]:
-    if coupon_rate == ZERO or face_value == ZERO:
-        return ZERO, ZERO
-
-    if interest_mode == "bullet":
-        coupon_amount = face_value * coupon_rate
-        coupon_30d = coupon_amount if _is_within_window(report_date, maturity_date, window_days=30) else ZERO
-        coupon_90d = coupon_amount if _is_within_window(report_date, maturity_date, window_days=90) else ZERO
-        return coupon_30d, coupon_90d
-
-    coupon_frequency = {
-        "annual": Decimal("1"),
-        "semi-annual": Decimal("2"),
-        "quarterly": Decimal("4"),
-    }.get(interest_mode, Decimal("1"))
-    next_coupon_date = _find_next_coupon_date(
-        report_date=report_date,
-        maturity_date=maturity_date,
-        interval_months=int(Decimal("12") / coupon_frequency),
-    )
-    if next_coupon_date is None:
-        return ZERO, ZERO
-
-    coupon_amount = face_value * coupon_rate / coupon_frequency
-    coupon_30d = coupon_amount if _is_within_window(report_date, next_coupon_date, window_days=30) else ZERO
-    coupon_90d = coupon_amount if _is_within_window(report_date, next_coupon_date, window_days=90) else ZERO
-    return coupon_30d, coupon_90d
-
-
-def _find_next_coupon_date(
-    *,
-    report_date: date,
-    maturity_date: date,
-    interval_months: int,
-) -> date | None:
-    if interval_months <= 0 or maturity_date < report_date:
-        return None
-
-    periods_back = 0
-    next_coupon_date: date | None = None
-    while True:
-        candidate = _shift_months(maturity_date, -(periods_back * interval_months))
-        if candidate < report_date:
-            return next_coupon_date
-        next_coupon_date = candidate
-        periods_back += 1
-
-
-def _shift_months(value: date, months: int) -> date:
-    month_index = (value.year * 12 + (value.month - 1)) + months
-    year = month_index // 12
-    month = month_index % 12 + 1
-    day = min(value.day, calendar.monthrange(year, month)[1])
-    return date(year, month, day)
-
-
-def _is_within_window(report_date: date, cashflow_date: date, *, window_days: int) -> bool:
-    days = (cashflow_date - report_date).days
-    return 0 <= days <= window_days
 
 
 def _normalize_interest_mode(

@@ -1,5 +1,6 @@
 import type { EChartsOption } from "../../../lib/echarts";
 import type { ChoiceMacroLatestPoint } from "../../../api/contracts";
+import { nocturneChartTheme } from "../../../components/charts/chartTheme";
 import { nocturneTokens } from "../../../theme/designSystem";
 import { BOND_ANALYTICS_OVERVIEW_RATE_CHART_SERIES } from "./bondAnalyticsMacroSeries";
 
@@ -46,19 +47,21 @@ export function buildBondAnalyticsOverviewRateChartOption(
     connectNulls: true,
     data: categories.map((d) => timelines[i]!.get(d) ?? null),
   }));
-  return {
+  return nocturneChartTheme.createLineChartOption({
     /* 三条宏观利率线区分色：ECharts canvas 走 Nocturne 常量（accent / red / amber）。 */
     color: [nct.blue, nct.red, nct.amber],
-    tooltip: { trigger: "axis" },
     legend: { bottom: 0 },
     grid: { left: 52, right: 20, top: 28, bottom: 52 },
-    xAxis: { type: "category", boundaryGap: false, data: categories },
+    xAxis: {
+      data: categories,
+      axisTick: { show: false },
+      axisLabel: { hideOverlap: true },
+    },
     yAxis: {
-      type: "value",
       scale: true,
       name: unit || undefined,
       axisLabel: { formatter: "{value}" },
     },
     series: lineSeries,
-  };
+  } as EChartsOption);
 }

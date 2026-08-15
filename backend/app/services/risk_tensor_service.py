@@ -436,7 +436,12 @@ def _risk_tensor_history_envelope_uncached(
     if stale_reason is not None:
         raise RuntimeError(stale_reason)
 
-    rows_desc = repo.fetch_risk_tensor_history(report_date_text, periods_value)
+    history_rule_version = str(latest_row.get("rule_version") or RULE_VERSION)
+    rows_desc = repo.fetch_risk_tensor_history(
+        report_date_text,
+        periods_value,
+        rule_version=history_rule_version,
+    )
     if not rows_desc:
         raise ValueError(f"No risk tensor history found for report_date={report_date_text}.")
 

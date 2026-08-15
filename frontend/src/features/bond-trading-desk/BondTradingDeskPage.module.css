@@ -125,11 +125,6 @@
   color: var(--ib-ink-muted);
 }
 
-.gapList {
-  display: grid;
-  gap: 10px;
-}
-
 .gapItem {
   border: 1px dashed var(--ib-hairline);
   border-radius: var(--ib-radius);
@@ -204,6 +199,40 @@
 .identityMeta {
   font-size: 13px;
   color: var(--ib-ink-secondary);
+}
+
+/* 身份条徽标：中文枚举展示，色走 --dh-api-* soft 链（原文 token 收 title）。 */
+.identityTag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 1px 8px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--ib-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.identityTagAccent {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 40%, transparent);
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-blue);
+}
+
+/* 工具条控件左置，避免右对齐悬空失衡。 */
+.toolbarRow {
+  display: flex;
+  justify-content: flex-start;
+}
+
+/* 加载 / 入口态收缩到消息自身高度，不再产生整屏空白。 */
+.loadingBlock {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
 }
 
 .scopeNote {

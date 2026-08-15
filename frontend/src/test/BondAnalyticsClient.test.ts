@@ -69,7 +69,24 @@ describe("BondAnalyticsClient", () => {
                 tpl_impact: "-39278727.02554200",
               },
             ],
-            migration_scenarios: [],
+            migration_scenarios: [
+              {
+                scenario_name: "AA→A（缺计数）",
+                from_rating: "AA",
+                to_rating: "A",
+                /* affected_bonds 缺失：client 必须透传 null，不得补 0（缺失 ≠ 影响 0 只）。 */
+                affected_market_value: "200000000.00000000",
+                pnl_impact: "-5000000.00000000",
+              },
+              {
+                scenario_name: "AA→A（有计数）",
+                from_rating: "AA",
+                to_rating: "A",
+                affected_bonds: 12,
+                affected_market_value: "300000000.00000000",
+                pnl_impact: "-8000000.00000000",
+              },
+            ],
             concentration_by_rating: {
               dimension: "rating",
               hhi: "0.58416106",
@@ -102,6 +119,9 @@ describe("BondAnalyticsClient", () => {
     expect(envelope.result.rating_aa_and_below_weight?.raw).toBeCloseTo(0.00627209);
     expect(envelope.result.spread_scenarios[0]?.spread_change_bp).toEqual(shock25);
     expect(envelope.result.spread_scenarios[0]?.pnl_impact.raw).toBeCloseTo(-677_931_223.044133);
+    /* 缺失 ≠ 0：affected_bonds 缺失透传 null，有值原样保留。 */
+    expect(envelope.result.migration_scenarios[0]?.affected_bonds).toBeNull();
+    expect(envelope.result.migration_scenarios[1]?.affected_bonds).toBe(12);
     expect(envelope.result.concentration_by_rating?.top_items[0]?.market_value.raw).toBeCloseTo(
       74_417_839_294.38654,
     );

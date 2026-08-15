@@ -188,6 +188,74 @@ def test_compute_bond_analytics_rows_preserves_annual_frequency_fallback_provena
     assert rows[0].interest_payment_frequency_fallback_used is True
 
 
+def test_bullet_bond_macaulay_equals_remaining_term() -> None:
+    """bullet（到期一次还本付息）唯一现金流落在到期日：Macaulay = 剩余年限。
+
+    修复前 ``coupon_frequency_per_year("bullet") == 1`` 被 engine 当成年付跑
+    多期 Macaulay，虚构了中途票息现金流、把久期拉向票息时点（5Y/3% 券
+    低估约 5.7%）。``cashflow_projection`` 的 bullet 建模（单笔
+    ``_bullet_coupon_amount`` 落在到期日）一直是单笔口径，两处必须一致。
+    """
+    module = _module()
+    report_date = date(2026, 3, 31)
+
+    rows = module.compute_bond_analytics_rows(
+        [
+            {
+                "report_date": report_date,
+                "instrument_code": "BOND-BULLET",
+                "currency_code": "CNY",
+                "face_value_native": Decimal("100"),
+                "market_value_native": Decimal("100"),
+                "coupon_rate": Decimal("3.0"),
+                "ytm_value": Decimal("3.5"),
+                "maturity_date": date(2031, 3, 31),
+                "interest_mode": "到期一次还本付息",
+                "is_issuance_like": False,
+            }
+        ],
+        report_date,
+    )
+
+    row = rows[0]
+    years = Decimal("1826") / Decimal("365")
+    assert row.interest_payment_frequency == "bullet"
+    assert row.years_to_maturity == years
+    # 单笔现金流：Macaulay 恒等于剩余年限（不再被虚构的年付票息拉短）。
+    assert row.macaulay_duration == years
+    assert row.modified_duration == common.estimate_modified_duration(
+        years, Decimal("0.035"), coupon_frequency=1
+    )
+    # 凸性取同一时点的单笔闭式解 t(t + 1/f)/(1 + y/f)²。
+    assert row.convexity == common._single_cashflow_convexity(years, Decimal("0.035"), 1)
+
+
+def test_compute_macaulay_single_cashflow_at_maturity_flag() -> None:
+    """common 层入口：single_cashflow_at_maturity=True 走单笔路径。
+
+    同参数不带标志时（多期年付）Macaulay 必须严格小于剩余年限——
+    这就是修复前 bullet 券被低估的差值来源。
+    """
+    years = Decimal("5")
+    bullet_duration, bullet_convexity = common.compute_macaulay_duration_and_convexity(
+        coupon_rate=Decimal("0.03"),
+        ytm=Decimal("0.035"),
+        years_to_maturity=years,
+        coupon_frequency=1,
+        single_cashflow_at_maturity=True,
+    )
+    coupon_duration, _ = common.compute_macaulay_duration_and_convexity(
+        coupon_rate=Decimal("0.03"),
+        ytm=Decimal("0.035"),
+        years_to_maturity=years,
+        coupon_frequency=1,
+    )
+
+    assert bullet_duration == years
+    assert bullet_convexity == common._single_cashflow_convexity(years, Decimal("0.035"), 1)
+    assert coupon_duration < years
+
+
 def _par_fallback_snapshot_row(**overrides: object) -> dict[str, object]:
     row: dict[str, object] = {
         "report_date": date(2026, 1, 1),
@@ -799,16 +867,19 @@ def test_compute_bond_analytics_rows_uses_payment_frequency_for_duration_and_con
 
 
 @pytest.mark.parametrize(
-    ("interest_mode", "expected_payment_frequency", "expected_coupon_frequency"),
+    ("interest_mode", "expected_payment_frequency", "single_cashflow_at_maturity"),
     [
-        ("unknown-mode", "annual", 1),
-        ("bullet", "bullet", 1),
+        # 未知取值：回退年付多期口径（保持既有行为）。
+        ("unknown-mode", "annual", False),
+        # bullet（到期一次还本付息）：唯一现金流在到期日，走单笔口径，
+        # 不再按年付虚构中途票息（B7 审计第 3② 项）。
+        ("bullet", "bullet", True),
     ],
 )
-def test_compute_bond_analytics_rows_uses_annual_frequency_for_unknown_and_bullet_modes(
+def test_compute_bond_analytics_rows_frequency_convention_for_unknown_and_bullet_modes(
     interest_mode: str,
     expected_payment_frequency: str,
-    expected_coupon_frequency: int,
+    single_cashflow_at_maturity: bool,
 ) -> None:
     module = _module()
     report_date = date(2026, 3, 31)
@@ -846,11 +917,12 @@ def test_compute_bond_analytics_rows_uses_annual_frequency_for_unknown_and_bulle
 
     row = module.compute_bond_analytics_rows(snapshot_rows, report_date)[0]
     years_to_maturity = Decimal(str((maturity_date - report_date).days)) / Decimal("365")
-    expected_macaulay = common.compute_macaulay_duration(
+    expected_macaulay, _ = common.compute_macaulay_duration_and_convexity(
         Decimal("0.03"),
         Decimal("0.04"),
         years_to_maturity,
-        coupon_frequency=expected_coupon_frequency,
+        coupon_frequency=1,
+        single_cashflow_at_maturity=single_cashflow_at_maturity,
     )
 
     assert row.interest_payment_frequency == expected_payment_frequency

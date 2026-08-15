@@ -51,6 +51,19 @@ export function formatDv01Wan(value: NumericLike, digits = 2): string {
   });
 }
 
+/**
+ * result_meta 时间戳（微秒 ISO，如 2026-08-13T19:24:06.752770Z）→ 本地
+ * YYYY-MM-DD HH:mm:ss；不可解析时原样返回，不伪造时间。
+ */
+export function formatEvidenceTimestamp(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const date = `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}`;
+  const time = `${pad(parsed.getHours())}:${pad(parsed.getMinutes())}:${pad(parsed.getSeconds())}`;
+  return `${date} ${time}`;
+}
+
 export function formatYears(value: NumericLike, digits = 2): string {
   const raw = nativeToNumber(value);
   if (raw === null) return EM_DASH;

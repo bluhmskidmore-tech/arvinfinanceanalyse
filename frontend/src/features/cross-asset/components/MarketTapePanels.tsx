@@ -187,7 +187,7 @@ export function CrossAssetEvidenceGroups({ kpis }: { kpis: ResolvedCrossAssetKpi
                         return (
                           <tr key={`${group.key}-${kpi.key}`}>
                             <td>
-                              <strong>{kpi.label}</strong>
+                              <strong title={kpi.label}>{kpi.label}</strong>
                               <span>{kpi.tag || group.digest}</span>
                             </td>
                             <td className="cross-asset-evidence-factor__value">{kpi.valueLabel}</td>

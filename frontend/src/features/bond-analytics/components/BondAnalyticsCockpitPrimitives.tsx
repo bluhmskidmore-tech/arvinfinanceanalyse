@@ -1,7 +1,44 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useMemo, type CSSProperties, type ReactNode } from "react";
 
-import { DONUT_CHART_COLORS, IB_ACCENT_BAR } from "./bondAnalyticsCockpitTokens";
+import { BaseChart } from "../../../components/charts/BaseChart";
+import { nocturneChartTheme } from "../../../components/charts/chartTheme";
+import type { EChartsOption } from "../../../lib/echarts";
+import { nocturneTokens } from "../../../theme/designSystem";
+import { DONUT_CHART_COLORS } from "./bondAnalyticsCockpitTokens";
 import styles from "./BondAnalyticsInstitutionalCockpit.module.css";
+
+/** 分布/结构图元共用行模型：value 为原始金额或面值，caption/detail 已在页面模型侧格式化。 */
+export type DistributionItem = {
+  key: string;
+  label: string;
+  value: number;
+  caption: string;
+  detail?: string;
+  color?: string;
+};
+
+const DONUT_HEIGHT = 150;
+const MATURITY_CHART_HEIGHT = 168;
+const MATURITY_BAR_LIMIT = 7;
+const DONUT_SLICE_LIMIT = 5;
+
+/**
+ * 金额轴刻度缩写（图表语法基线 §4）：亿 / 万 两档，禁止直出 700,000,000 级原始数字。
+ * 只服务于坐标轴刻度，正文金额仍走 `utils/formatters` 的 formatYi / formatWan。
+ */
+function formatAmountAxisTick(value: number): string {
+  if (!Number.isFinite(value) || value === 0) {
+    return "0";
+  }
+  const abs = Math.abs(value);
+  if (abs >= 1e8) {
+    return `${(value / 1e8).toFixed(abs >= 1e9 ? 0 : 1)} 亿`;
+  }
+  if (abs >= 1e4) {
+    return `${(value / 1e4).toFixed(0)} 万`;
+  }
+  return `${value}`;
+}
 
 export function SectionCardTitle({
   eyebrow,
@@ -55,18 +92,16 @@ export function PendingReadModelPanel({
   );
 }
 
-export function ProgressStack({
+/**
+ * 分布行条（首页 distributionRow 语言）：行底 2px 微条兼作发丝分隔线，
+ * 数值 12px 等宽右对齐。合并了旧 ProgressStack 与 RegionDistributionPanel
+ * 两套同构实现（同为「标签 + 4px 轨道条 + 数值」）。
+ */
+export function DistributionRows({
   items,
   emptyText,
 }: {
-  items: Array<{
-    key: string;
-    label: string;
-    value: number;
-    caption: string;
-    detail?: string;
-    color?: string;
-  }>;
+  items: DistributionItem[];
   emptyText: string;
 }) {
   const maxValue = Math.max(...items.map((item) => Math.abs(item.value)), 1);
@@ -76,81 +111,125 @@ export function ProgressStack({
   }
 
   return (
-    <div className={styles.progressList}>
+    <div className={styles.distributionRows}>
       {items.map((item) => (
-        <div key={item.key} className={styles.referenceProgressRow}>
-          <div className={styles.progressHeader}>
-            <span>{item.label}</span>
-            <span className={styles.progressCaption}>{item.caption}</span>
-          </div>
-          <div className={styles.referenceProgressTrack}>
-            <div
-              className={styles.referenceProgressBar}
-              style={{
-                width: `${Math.max(8, (Math.abs(item.value) / maxValue) * 100)}%`,
-                background: item.color ?? IB_ACCENT_BAR,
-              }}
-            />
-          </div>
-          {item.detail ? <div className={styles.progressDetail}>{item.detail}</div> : null}
+        <div key={item.key} className={styles.distributionRow}>
+          <span>{item.label}</span>
+          <strong>{item.caption}</strong>
+          {item.detail ? <em>{item.detail}</em> : null}
+          <i
+            className={styles.distributionRowBar}
+            style={{ width: `${Math.max(2, (Math.abs(item.value) / maxValue) * 100)}%` }}
+            aria-hidden="true"
+          />
         </div>
       ))}
     </div>
   );
+}
+
+/* 单序列柱体统一强调单色（基线 §5）：不按期限桶轮播分类色。 */
+function buildMaturityBarOption(items: DistributionItem[]): EChartsOption {
+  const visible = items.slice(0, MATURITY_BAR_LIMIT);
+  const captionByLabel = new Map(visible.map((item) => [item.label, item.caption]));
+
+  return nocturneChartTheme.createBarChartOption({
+    legend: { show: false },
+    grid: { left: 4, right: 8, top: 14, bottom: 0, containLabel: true },
+    tooltip: {
+      formatter: (params: unknown) => {
+        const list = (Array.isArray(params) ? params : [params]) as Array<{
+          name?: string;
+          marker?: string;
+        }>;
+        const head = list[0];
+        if (!head?.name) {
+          return "";
+        }
+        return `${head.marker ?? ""}${head.name}&nbsp;&nbsp;<strong>${captionByLabel.get(head.name) ?? ""}</strong>`;
+      },
+    },
+    xAxis: {
+      data: visible.map((item) => item.label),
+      axisTick: { show: false },
+      axisLabel: { interval: 0, hideOverlap: true },
+    },
+    yAxis: {
+      axisLine: { show: false },
+      axisLabel: { formatter: formatAmountAxisTick },
+    },
+    series: [
+      {
+        type: "bar",
+        name: "期限桶市值",
+        barMaxWidth: 34,
+        itemStyle: { color: nocturneTokens.color.blue, borderRadius: [3, 3, 0, 0] },
+        data: visible.map((item) => item.value),
+      },
+    ],
+  } as EChartsOption);
 }
 
 export function MaturityColumnChart({
   items,
   emptyText,
 }: {
-  items: Array<{
-    key: string;
-    label: string;
-    value: number;
-    caption: string;
-    color?: string;
-  }>;
+  items: DistributionItem[];
   emptyText: string;
 }) {
-  const maxValue = Math.max(...items.map((item) => Math.abs(item.value)), 1);
+  const option = useMemo(() => buildMaturityBarOption(items), [items]);
 
   if (items.length === 0) {
     return <EmptyEvidencePanel text={emptyText} />;
   }
 
   return (
-    <div className={styles.maturityChart}>
-      {items.slice(0, 7).map((item) => (
-        <div key={item.key} className={styles.maturityColumn}>
-          <span>{item.caption}</span>
-          <div
-            style={{
-              height: `${Math.max(10, (Math.abs(item.value) / maxValue) * 118)}px`,
-              background: item.color ?? IB_ACCENT_BAR,
-            }}
-          />
-          <small>{item.label}</small>
-        </div>
-      ))}
+    <div className={styles.maturityChart} aria-label="期限桶市值柱状图">
+      <BaseChart option={option} height={MATURITY_CHART_HEIGHT} />
     </div>
   );
 }
 
-function buildDonutGradient(items: Array<{ value: number; color?: string }>) {
-  const total = items.reduce((sum, item) => sum + Math.max(item.value, 0), 0);
-  if (total <= 0) {
-    return "conic-gradient(var(--moss-color-neutral-200) 0 100%)";
-  }
+function buildDistributionDonutOption(items: DistributionItem[]): EChartsOption {
+  const slices = items.slice(0, DONUT_SLICE_LIMIT);
 
-  let cursor = 0;
-  const stops = items.map((item, index) => {
-    const start = cursor;
-    cursor += (Math.max(item.value, 0) / total) * 100;
-    const color = item.color ?? DONUT_CHART_COLORS[index % DONUT_CHART_COLORS.length];
-    return `${color} ${start.toFixed(2)}% ${cursor.toFixed(2)}%`;
-  });
-
-  return `conic-gradient(${stops.join(", ")})`;
+  return nocturneChartTheme.createBaseChartOption({
+    /* 图例只留左侧 DOM 行（信息量更高：标签 + 规模），不与 echarts legend 双份。 */
+    legend: { show: false },
+    tooltip: {
+      trigger: "item",
+      formatter: (params: unknown) => {
+        const point = params as {
+          marker?: string;
+          name?: string;
+          data?: { caption?: string; detail?: string };
+        };
+        const caption = point.data?.caption ?? "";
+        const detail = point.data?.detail ? ` · ${point.data.detail}` : "";
+        return `${point.marker ?? ""}${point.name ?? ""}<br/><strong>${caption}</strong>${detail}`;
+      },
+    },
+    series: [
+      {
+        type: "pie",
+        radius: ["58%", "82%"],
+        center: ["50%", "50%"],
+        avoidLabelOverlap: true,
+        label: { show: false },
+        labelLine: { show: false },
+        itemStyle: { borderWidth: 1, borderColor: nocturneTokens.color.panel },
+        data: slices.map((item, index) => ({
+          name: item.label,
+          value: Math.max(item.value, 0),
+          caption: item.caption,
+          detail: item.detail,
+          itemStyle: {
+            color: item.color ?? DONUT_CHART_COLORS[index % DONUT_CHART_COLORS.length],
+          },
+        })),
+      },
+    ],
+  } as EChartsOption);
 }
 
 export function DistributionDonut({
@@ -158,18 +237,13 @@ export function DistributionDonut({
   center,
   emptyText,
 }: {
-  items: Array<{
-    key: string;
-    label: string;
-    value: number;
-    caption: string;
-    detail?: string;
-    color?: string;
-  }>;
+  items: DistributionItem[];
   center: string;
   emptyText: string;
 }) {
+  const option = useMemo(() => buildDistributionDonutOption(items), [items]);
   const total = items.reduce((sum, item) => sum + Math.max(item.value, 0), 0);
+
   if (items.length === 0 || total <= 0) {
     return <EmptyEvidencePanel text={emptyText} />;
   }
@@ -177,67 +251,23 @@ export function DistributionDonut({
   return (
     <div className={styles.referenceDonutPanel}>
       <div className={styles.referenceDonutLegend}>
-        {items.slice(0, 5).map((item, index) => (
+        {items.slice(0, DONUT_SLICE_LIMIT).map((item, index) => (
           <div key={item.key} className={styles.referenceDonutLegendRow}>
-            <span style={{ background: item.color ?? DONUT_CHART_COLORS[index % DONUT_CHART_COLORS.length] }} />
+            <span
+              style={
+                {
+                  background: item.color ?? DONUT_CHART_COLORS[index % DONUT_CHART_COLORS.length],
+                } as CSSProperties
+              }
+            />
             <strong>{item.label}</strong>
             <em>{item.caption}</em>
           </div>
         ))}
       </div>
-      <div
-        className={styles.referenceDonut}
-        style={{ "--donut": buildDonutGradient(items) } as CSSProperties}
-      >
-        <span>{center}</span>
-      </div>
-    </div>
-  );
-}
-
-export function RegionDistributionPanel({
-  items,
-  emptyText,
-}: {
-  items: Array<{
-    key: string;
-    label: string;
-    value: number;
-    caption: string;
-    color?: string;
-  }>;
-  emptyText: string;
-}) {
-  const topItems = items.slice(0, 8);
-  const maxValue = Math.max(...topItems.map((item) => Math.abs(item.value)), 1);
-
-  if (topItems.length === 0) {
-    return (
-      <div className={styles.regionConcentrationPanel}>
-        <EmptyEvidencePanel text={emptyText} />
-      </div>
-    );
-  }
-
-  return (
-    <div className={styles.regionConcentrationPanel}>
-      <div className={styles.regionList}>
-        {topItems.map((item) => (
-          <div key={item.key} className={styles.regionRow}>
-            <div className={styles.regionRowHeader}>
-              <strong>{item.label}</strong>
-              <span>{item.caption}</span>
-            </div>
-            <div className={styles.regionTrack}>
-              <i
-                style={{
-                  width: `${Math.max(7, (Math.abs(item.value) / maxValue) * 100)}%`,
-                  background: item.color ?? "var(--dh-api-blue)",
-                }}
-              />
-            </div>
-          </div>
-        ))}
+      <div className={styles.referenceDonut} aria-label="资产结构环形图">
+        <BaseChart option={option} height={DONUT_HEIGHT} />
+        <span className={styles.referenceDonutCenter}>{center}</span>
       </div>
     </div>
   );

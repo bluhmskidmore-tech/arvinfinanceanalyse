@@ -14,6 +14,11 @@ from backend.app.core_finance.bond_analytics.read_models import (
 )
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.repositories.duckdb_repo import catalog_presence_cached, read_only_connection
+from backend.app.repositories.fact_load_gates import (
+    commit_report_date_purge,
+    enforce_gate_outcome,
+    evaluate_bond_analytics_load,
+)
 from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 
 FACT_TABLE = "fact_formal_bond_analytics_daily"
@@ -209,7 +214,11 @@ class BondAnalyticsRepository:
                     rating_key,
                     is_issuance_like_key,
                     currency_code_key,
-                    max(accounting_basis) as accounting_basis,
+                    maturity_date_key,
+                    case
+                      when count(distinct accounting_basis) = 1 then max(accounting_basis)
+                      else null
+                    end as accounting_basis,
                     case
                       when count(*) = count(face_value_amount)
                        and count(*) = count(market_value_amount)
@@ -258,6 +267,7 @@ class BondAnalyticsRepository:
                       trim(coalesce(rating, '')) as rating_key,
                       coalesce(is_issuance_like, false) as is_issuance_like_key,
                       upper(trim(coalesce(currency_code, ''))) as currency_code_key,
+                      cast(maturity_date as varchar) as maturity_date_key,
                       nullif(trim(accounting_basis), '') as accounting_basis,
                       face_value_amount,
                       market_value_amount,
@@ -281,7 +291,8 @@ class BondAnalyticsRepository:
                     industry_name_key,
                     rating_key,
                     is_issuance_like_key,
-                    currency_code_key
+                    currency_code_key,
+                    maturity_date_key
                 ) b
                   on cast(s.report_date as varchar) = b.report_date
                  and trim(coalesce(s.instrument_code, '')) = b.instrument_code_key
@@ -297,6 +308,11 @@ class BondAnalyticsRepository:
                  and trim(coalesce(s.rating, '')) = b.rating_key
                  and coalesce(s.is_issuance_like, false) = b.is_issuance_like_key
                  and upper(trim(coalesce(s.currency_code, ''))) = b.currency_code_key
+                 -- maturity_date 是连接键的一部分：同券展期/重分类会以两个到期日
+                 -- 各出一腿（面值一正一负，其余键完全相同），缺了它每条腿会拿到
+                 -- 两腿合计的 CNY 金额（模式与 sync_zqtz_snapshot_market_value_cny_
+                 -- from_formal 的连接条件一致；balance fact 天然键含 maturity_date）。
+                 and cast(s.maturity_date as varchar) is not distinct from b.maturity_date_key
                 """
                 accounting_basis_expr = "b.accounting_basis"
                 face_value_cny_expr = "b.face_value_amount"
@@ -333,16 +349,28 @@ class BondAnalyticsRepository:
         rows: list[BondAnalyticsRow],
     ) -> None:
         require_repository_task_write_scope("replace_bond_analytics_rows")
+        # Gate the batch before the delete/insert pair: a duplicate natural key
+        # must never reach storage, and the amount-impacting patterns must be on
+        # the record even when they are individually legal.
+        enforce_gate_outcome(
+            evaluate_bond_analytics_load(rows, table_name=FACT_TABLE),
+            table_name=FACT_TABLE,
+        )
         conn = duckdb.connect(self.path, read_only=False)
         transaction_started = False
         try:
             conn.execute("begin transaction")
             transaction_started = True
             ensure_bond_analytics_tables(conn)
-            conn.execute(
-                f"delete from {FACT_TABLE} where report_date = ?",
-                [report_date],
+            conn.execute("commit")
+            transaction_started = False
+
+            commit_report_date_purge(
+                conn, tables=(FACT_TABLE,), report_date=report_date
             )
+
+            conn.execute("begin transaction")
+            transaction_started = True
             if rows:
                 conn.executemany(
                     f"""
@@ -840,10 +868,10 @@ class BondAnalyticsRepository:
                   sum(modified_duration * market_value)
                     / nullif(sum(case when modified_duration is not null then market_value else 0 end), 0)
                     as weighted_avg_duration,
-                  sum(case when ytm is not null then market_value else 0 end)
-                    / nullif(sum(market_value), 0) as weighted_avg_ytm_coverage_ratio,
-                  sum(case when modified_duration is not null then market_value else 0 end)
-                    / nullif(sum(market_value), 0) as weighted_avg_duration_coverage_ratio
+                  sum(case when ytm is not null then abs(coalesce(market_value, 0)) else 0 end)
+                    / nullif(sum(abs(coalesce(market_value, 0))), 0) as weighted_avg_ytm_coverage_ratio,
+                  sum(case when modified_duration is not null then abs(coalesce(market_value, 0)) else 0 end)
+                    / nullif(sum(abs(coalesce(market_value, 0))), 0) as weighted_avg_duration_coverage_ratio
                 from {FACT_TABLE}
                 where cast(report_date as varchar) = ?
                   and bond_type is not null
@@ -1116,11 +1144,9 @@ class BondAnalyticsRepository:
                     then sum(case when years_to_maturity <= 1 then face_value else 0 end) / sum(face_value)
                     else 0
                   end as reinvestment_ratio_1y,
-                  case
-                    when coalesce(sum(market_value), 0) > 0
-                    then sum(case when convexity is not null then market_value else 0 end) / sum(market_value)
-                    else 0
-                  end as weighted_convexity_coverage_ratio
+                  sum(case when convexity is not null then abs(coalesce(market_value, 0)) else 0 end)
+                    / nullif(sum(abs(coalesce(market_value, 0))), 0)
+                    as weighted_convexity_coverage_ratio
                 from {FACT_TABLE}
                 where cast(report_date as varchar) = ?
                 """,
@@ -1320,8 +1346,8 @@ def _empty_dashboard_headline_kpis_row() -> dict[str, object]:
         "unrealized_pnl": z,
         "total_amortized_cost": z,
         "total_accrued_interest": z,
-        "weighted_ytm": z,
-        "weighted_duration": z,
+        "weighted_ytm": None,
+        "weighted_duration": None,
         "weighted_coupon": z,
         "credit_spread_median": None,
         "total_dv01": z,
@@ -1383,7 +1409,7 @@ def _fetch_one_period_headline_kpis(
 def _fetch_one_period_weighted_rate_duration_kpis(
     conn: duckdb.DuckDBPyConnection,
     report_date: str,
-) -> dict[str, Decimal]:
+) -> dict[str, Decimal | None]:
     row = conn.execute(
         f"""
         select
@@ -1392,14 +1418,14 @@ def _fetch_one_period_weighted_rate_duration_kpis(
             then sum(
               case when {_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL} then ytm * market_value else 0 end
             ) / sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL})
-            else 0
+            else null
           end as weighted_ytm,
           case
             when coalesce(sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL}), 0) > 0
             then sum(
               case when {_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL} then modified_duration * market_value else 0 end
             ) / sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL})
-            else 0
+            else null
           end as weighted_duration
         from {FACT_TABLE}
         where cast(report_date as varchar) = ?
@@ -1408,10 +1434,10 @@ def _fetch_one_period_weighted_rate_duration_kpis(
         [report_date],
     ).fetchone()
     if row is None:
-        return {"weighted_ytm": Decimal("0"), "weighted_duration": Decimal("0")}
+        return {"weighted_ytm": None, "weighted_duration": None}
     return {
-        "weighted_ytm": _decimal(row[0]),
-        "weighted_duration": _decimal(row[1]),
+        "weighted_ytm": None if row[0] is None else _decimal(row[0]),
+        "weighted_duration": None if row[1] is None else _decimal(row[1]),
     }
 
 

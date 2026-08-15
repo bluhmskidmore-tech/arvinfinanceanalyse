@@ -150,7 +150,9 @@ function formatIsoMoment(value: string | null | undefined): string {
     return value;
   }
 
-  return date.toISOString().slice(0, 16).replace("T", " ");
+  // UTC 口径是登记过的决策（同页时间戳统一 UTC，不转本地时区），
+  // 但必须显式标注 "UTC"，避免 UTC+8 用户把它误读成本地时间（慢 8 小时）。
+  return `${date.toISOString().slice(0, 16).replace("T", " ")} UTC`;
 }
 
 function buildTruthStrip(

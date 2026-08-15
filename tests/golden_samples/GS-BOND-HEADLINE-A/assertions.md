@@ -18,9 +18,9 @@
 - `result_meta.formal_use_allowed == false`.
 - `result_meta.source_version == "sv"`.
 - `result_meta.vendor_version == "vv_none"`.
-- `result_meta.rule_version == "rv_bond_analytics_formal_materialize_v1"`.
-- `result_meta.cache_version == "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1"`.
-- `result_meta.quality_flag == "warning"`.
+- `result_meta.rule_version == "rv_bond_analytics_formal_materialize_v2"`.
+- `result_meta.cache_version == "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v2"`.
+- `result_meta.quality_flag == "ok"` for this non-empty three-row fixture; candidate status remains expressed separately by `basis == "analytical"` and `formal_use_allowed == false`.
 - `result_meta.vendor_status == "ok"`.
 - `result_meta.fallback_mode == "none"`.
 - `result_meta.scenario_flag == false`.

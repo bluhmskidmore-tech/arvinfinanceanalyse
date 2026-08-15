@@ -1,4 +1,22 @@
 """
+DORMANT: 无生产调用方（2026-08 复核：除 tests/test_bootstrapper.py 与
+curve_engine/__init__.py 的再导出外，仓库内无 bootstrap_zero_curve /
+direct_spot_result / cross_validate_spot_curve 调用点）。接线前必须：
+
+1. 单位与复利约定先对齐来源：入参 par、出参 zero 均为**百分数**（2.50 = 2.50%），
+   贴现按**年有效复利** D(t) = (1+r)^-t，既不是连续复利也不是半年复利。
+   与 Choice 直供 spot 曲线互换前必须确认对方口径，否则长端会系统性偏移。
+2. 输入必须是**平价收益率（par yield）**曲线；混入到期收益率或即期报价不会报错，
+   只会静默给出错误的零息曲线。
+3. ``cross_validate_spot_curve`` 在无重叠期限时返回 ``is_consistent=None``（不可比），
+   调用方不得把 ``None`` 当作"一致"处理。
+4. 补 vendor 交叉对照：当前仅有自洽性测试，没有对实盘 Choice spot 曲线的黄金对照。
+
+已知实现边界（不是缺陷，接线时按此理解）：
+- 半年付首节点已在提交 ``47b9d552`` 修正为从贴现票息中剥离（``has_intermediate_coupons``
+  分支），不得回退为"首节点 par == spot"。
+- 中间贴现因子按**对数线性**插值；超出最后观测期限时按最后一段的零息率平坦外推。
+
 Bootstrapper — derive zero-coupon (spot) rates from par yield curves.
 
 Two modes of operation:

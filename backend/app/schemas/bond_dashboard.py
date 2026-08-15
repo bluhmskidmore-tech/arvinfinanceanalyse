@@ -278,6 +278,9 @@ class BondDashboardRiskIndicatorsPayload(BaseModel):
     weighted_convexity: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=False))
     total_spread_dv01: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=False))
     reinvestment_ratio_1y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=False))
+    # 凸性覆盖率（承载凸性字段的市值占比）：解释加权凸性口径的质量披露字段，
+    # repo L1136-1140 一直在算，此前被服务层丢弃未进 API。
+    weighted_convexity_coverage_ratio: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=False))
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "total_market_value": ("yuan", False),
@@ -287,6 +290,7 @@ class BondDashboardRiskIndicatorsPayload(BaseModel):
         "weighted_convexity": ("ratio", False),
         "total_spread_dv01": ("dv01", False),
         "reinvestment_ratio_1y": ("ratio", False),
+        "weighted_convexity_coverage_ratio": ("ratio", False),
     }
 
     @model_validator(mode="before")
@@ -301,6 +305,21 @@ class BondDashboardBusinessTypeMetricItem(BaseModel):
     weighted_avg_ytm_pct: str
     weighted_avg_duration: str
     duration_source: str = ""
+    # 加权指标覆盖率（承载该字段的市值占比，0-1 比率）：解释「加权值为缺值/低覆盖」
+    # 的质量披露，repo 聚合一直在算，此前被服务层丢弃未进 API。
+    # 该组市值合计为零时分母不存在，输出 null。
+    weighted_avg_ytm_coverage_ratio: Numeric | None = None
+    weighted_avg_duration_coverage_ratio: Numeric | None = None
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
+        "weighted_avg_ytm_coverage_ratio": ("ratio", False),
+        "weighted_avg_duration_coverage_ratio": ("ratio", False),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
 
 
 class BondDashboardBusinessTypeMetricsPayload(BaseModel):

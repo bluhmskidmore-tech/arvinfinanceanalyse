@@ -185,18 +185,6 @@ def test_chinese_semiannual_interest_mode_uses_half_year_coupon():
     assert tensor.liquidity_gap_90d == Decimal("8")
 
 
-def test_month_end_coupon_schedule_preserves_anchor_day():
-    mod = _risk_tensor_module()
-
-    next_coupon_date = mod._find_next_coupon_date(
-        report_date=date(2026, 3, 31),
-        maturity_date=date(2028, 8, 31),
-        interval_months=6,
-    )
-
-    assert next_coupon_date == date(2026, 8, 31)
-
-
 def test_no_cashflow_outside_window():
     mod = _risk_tensor_module()
     report_date = date(2026, 3, 31)

@@ -72,10 +72,11 @@ describe("bond analytics formatters", () => {
   });
 
   describe("toneColor", () => {
-    it("uses China convention via theme-aware CSS vars: nonnegative red, negative green", () => {
-      expect(toneColor(0)).toBe(TONE_CSS_VAR.negative);
-      expect(toneColor(1)).toBe(TONE_CSS_VAR.negative);
-      expect(toneColor(-0.01)).toBe(TONE_CSS_VAR.positive);
+    // 2026-08-11 全站决议（DESIGN §4）：绿涨红跌——非负取 positive（绿）通道、负取 negative（红）通道。
+    it("maps nonnegative to positive (green) and negative to negative (red) per 2026-08-11 decision", () => {
+      expect(toneColor(0)).toBe(TONE_CSS_VAR.positive);
+      expect(toneColor(1)).toBe(TONE_CSS_VAR.positive);
+      expect(toneColor(-0.01)).toBe(TONE_CSS_VAR.negative);
     });
   });
 });

@@ -1042,15 +1042,15 @@ describe("RiskTensorPage", () => {
       expect(reviewAction).toHaveTextContent("1 个陈旧日期已拦截");
       expect(reviewAction).toHaveTextContent("估值曲线 vendor stale");
       expect(tracePriority).toHaveTextContent("证据优先级");
-      expect(tracePriority).toHaveTextContent("source/rule");
+      expect(tracePriority).toHaveTextContent("来源/规则");
       expect(tracePriority).toHaveTextContent("sv_tensor_test");
       expect(tracePriority).toHaveTextContent("rv_tensor_test");
-      expect(tracePriority).toHaveTextContent("fallback");
+      expect(tracePriority).toHaveTextContent("降级");
       expect(tracePriority).toHaveTextContent("latest snapshot fallback");
       expect(tracePriority).toHaveTextContent("fallback_date 2026-02-27");
       expect(tracePriority).toHaveTextContent("陈旧日期");
       expect(tracePriority).toHaveTextContent("risk tensor source lineage is stale");
-      expect(tracePriority).toHaveTextContent("warning");
+      expect(tracePriority).toHaveTextContent("预警");
       expect(tracePriority).toHaveTextContent("估值曲线 vendor stale");
 
       await user.click(reviewAction);
@@ -1268,7 +1268,8 @@ describe("RiskTensorPage", () => {
       expect(within(tracePriority).queryByRole("button", { name: "确认业务复核" })).not.toBeInTheDocument();
       expect(qualityDetail).toHaveTextContent("basis formal");
       expect(qualityDetail).toHaveTextContent("cache_version cv_tensor_test");
-      expect(qualityDetail).toHaveTextContent("generated_at 2026-04-12T08:00:00Z");
+      // 生成时间展示层归一为 YYYY-MM-DD HH:mm:ss（原始 ISO 收进 title），复制文本仍保留原值。
+      expect(qualityDetail).toHaveTextContent("generated_at 2026-04-12 08:00:00");
 
       await user.click(copyEvidence);
 

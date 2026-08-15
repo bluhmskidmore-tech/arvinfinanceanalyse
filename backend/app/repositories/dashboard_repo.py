@@ -16,9 +16,21 @@ _BOND_YTM_NORM = (
     "(case when ytm is null then null "
     "when ytm > 1 and ytm <= 100 then ytm / 100.0 else ytm end)"
 )
+# zqtz 余额事实的 ytm_value 为百分数口径：无条件 /100；负值与 >20%（年利率 20%）
+# 视为脏数据置 NULL。对齐 core_finance.rate_units.normalize_percent_rate_to_decimal
+# 的权威口径（旧 `>1 and <=100` 启发式会把 ≤1% 低票息券当小数直通放大百倍）。
 _ZQTZ_YTM_NORM = (
     "(case when ytm_value is null then null "
-    "when ytm_value > 1 and ytm_value <= 100 then ytm_value / 100.0 else ytm_value end)"
+    "when ytm_value < 0 or ytm_value > 20 then null "
+    "else ytm_value / 100.0 end)"
+)
+# 加权 YTM 分母只计入「归一后利率非 NULL」的行：缺失≠0，缺失/脏值市值不得稀释
+# 加权收益率（与 _TYW_RATE_WEIGHT、positions_repo 的 rate_den 同一模式）。
+_ZQTZ_YTM_WEIGHT = (
+    f"(case when {_ZQTZ_YTM_NORM} is null then 0 else coalesce(market_value_amount, 0) end)"
+)
+_BOND_YTM_WEIGHT = (
+    f"(case when {_BOND_YTM_NORM} is null then 0 else coalesce(market_value, 0) end)"
 )
 _TYW_RATE_NORM = (
     "(case when funding_cost_rate is null then null "
@@ -232,7 +244,7 @@ class DashboardRepository(DuckDBRepository):
                           count(*),
                           coalesce(sum(market_value_amount), 0),
                           sum(({_ZQTZ_YTM_NORM}) * market_value_amount)
-                            / nullif(sum(market_value_amount), 0)
+                            / nullif(sum({_ZQTZ_YTM_WEIGHT}), 0)
                         from {ZQTZ_FACT}
                         where cast(report_date as varchar) = ?
                           and currency_basis = 'CNY'
@@ -250,7 +262,7 @@ class DashboardRepository(DuckDBRepository):
                           cast(bond_type as varchar) as bt,
                           coalesce(sum(market_value_amount), 0) as smv,
                           sum(({_ZQTZ_YTM_NORM}) * market_value_amount)
-                            / nullif(sum(market_value_amount), 0) as wytm
+                            / nullif(sum({_ZQTZ_YTM_WEIGHT}), 0) as wytm
                         from {ZQTZ_FACT}
                         where cast(report_date as varchar) = ?
                           and currency_basis = 'CNY'
@@ -282,7 +294,7 @@ class DashboardRepository(DuckDBRepository):
                   count(*),
                   coalesce(sum(market_value), 0),
                   sum(({_BOND_YTM_NORM}) * market_value)
-                    / nullif(sum(market_value), 0)
+                    / nullif(sum({_BOND_YTM_WEIGHT}), 0)
                 from {FACT_TABLE}
                 where cast(report_date as varchar) = ?
                 """,
@@ -297,7 +309,7 @@ class DashboardRepository(DuckDBRepository):
                 select
                   cast(bond_type as varchar) as bt,
                   coalesce(sum(market_value), 0) as smv,
-                  sum(({_BOND_YTM_NORM}) * market_value) / nullif(sum(market_value), 0) as wytm
+                  sum(({_BOND_YTM_NORM}) * market_value) / nullif(sum({_BOND_YTM_WEIGHT}), 0) as wytm
                 from {FACT_TABLE}
                 where cast(report_date as varchar) = ?
                   and bond_type is not null
@@ -348,7 +360,7 @@ class DashboardRepository(DuckDBRepository):
                           count(*) as row_count,
                           coalesce(sum(market_value_amount), 0) as smv,
                           sum(({_ZQTZ_YTM_NORM}) * market_value_amount)
-                            / nullif(sum(market_value_amount), 0) as wytm
+                            / nullif(sum({_ZQTZ_YTM_WEIGHT}), 0) as wytm
                         from {ZQTZ_FACT}
                         where cast(report_date as varchar) in ({placeholders})
                           and currency_basis = 'CNY'
@@ -375,7 +387,7 @@ class DashboardRepository(DuckDBRepository):
                             cast(bond_type as varchar) as bt,
                             coalesce(sum(market_value_amount), 0) as smv,
                             sum(({_ZQTZ_YTM_NORM}) * market_value_amount)
-                              / nullif(sum(market_value_amount), 0) as wytm
+                              / nullif(sum({_ZQTZ_YTM_WEIGHT}), 0) as wytm
                           from {ZQTZ_FACT}
                           where cast(report_date as varchar) in ({placeholders})
                             and currency_basis = 'CNY'
@@ -427,7 +439,7 @@ class DashboardRepository(DuckDBRepository):
                   cast(report_date as varchar) as d,
                   count(*) as row_count,
                   coalesce(sum(market_value), 0) as smv,
-                  sum(({_BOND_YTM_NORM}) * market_value) / nullif(sum(market_value), 0) as wytm
+                  sum(({_BOND_YTM_NORM}) * market_value) / nullif(sum({_BOND_YTM_WEIGHT}), 0) as wytm
                 from {FACT_TABLE}
                 where cast(report_date as varchar) in ({placeholders})
                 group by cast(report_date as varchar)
@@ -451,7 +463,7 @@ class DashboardRepository(DuckDBRepository):
                     cast(report_date as varchar) as d,
                     cast(bond_type as varchar) as bt,
                     coalesce(sum(market_value), 0) as smv,
-                    sum(({_BOND_YTM_NORM}) * market_value) / nullif(sum(market_value), 0) as wytm
+                    sum(({_BOND_YTM_NORM}) * market_value) / nullif(sum({_BOND_YTM_WEIGHT}), 0) as wytm
                   from {FACT_TABLE}
                   where cast(report_date as varchar) in ({placeholders})
                     and bond_type is not null

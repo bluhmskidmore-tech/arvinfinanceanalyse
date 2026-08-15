@@ -123,7 +123,9 @@ export function BondAnalyticsViewContent() {
   const datesQuery = useQuery({
     queryKey: [...bondAnalyticsQueryKeyRoot, "dates", client.mode],
     queryFn: () => client.getBondAnalyticsDates(),
-    retry: false,
+    // 报告日决定整页可用性：后端闪断（如重启窗口内的 502）先按 TanStack 默认退避重试，
+    // 重试仍失败才翻转到日期兜底工作台。
+    retry: 2,
   });
   const dateOptions = useMemo(() => {
     const reportDates = datesQuery.data?.result.report_dates ?? [];
@@ -183,6 +185,7 @@ export function BondAnalyticsViewContent() {
     queryFn: async (): Promise<ApiEnvelope<ActionAttributionResponse>> =>
       client.getBondAnalyticsActionAttribution(effectiveReportDate, periodType),
     enabled: Boolean(effectiveReportDate),
+    // 失败不决定整页可用性：工作台保持可见，错误经 overviewModel 显式呈现，保持快速失败。
     retry: false,
   });
 
@@ -195,6 +198,7 @@ export function BondAnalyticsViewContent() {
     ],
     queryFn: () => client.getResearchCalendarEvents({ reportDate: effectiveReportDate }),
     enabled: Boolean(effectiveReportDate),
+    // 纯展示性日历条：失败仅降级为空列表，保持快速失败。
     retry: false,
   });
 
@@ -324,6 +328,7 @@ export function BondAnalyticsViewContent() {
               showSearch
               optionFilterProp="label"
               virtual
+              getPopupContainer={(trigger) => trigger.parentElement ?? document.body}
             />
           </label>
           <label className="dashboard-home-control">
@@ -343,7 +348,7 @@ export function BondAnalyticsViewContent() {
           </label>
           <span aria-hidden="true" className="dashboard-home-actions__divider" />
           <Link
-            to="/source-preview"
+            to="/reports"
             className="dashboard-home-action-button dashboard-home-action-button--secondary"
           >
             报表中心
@@ -409,6 +414,9 @@ export function BondAnalyticsViewContent() {
               spreadScenarios={spreadScenarios}
               onSpreadScenariosChange={setSpreadScenarios}
               actionAttributionResult={actionAttributionQuery.data?.result ?? null}
+              actionAttributionPending={
+                actionAttributionQuery.isPending && !actionAttributionQuery.isError
+              }
               overviewModel={overviewModel}
               onOpenModuleDetail={openModuleDetail}
               onRefreshAnalytics={() => void handleBondAnalyticsRefresh()}
@@ -416,6 +424,8 @@ export function BondAnalyticsViewContent() {
               analyticsRefreshError={bondAnalyticsRefreshError}
               lastAnalyticsRefreshRunId={lastBondAnalyticsRefreshRunId}
               calendarItems={calendarItems}
+              calendarLoading={researchCalendarQuery.isPending}
+              calendarError={researchCalendarQuery.isError}
             />
           </Suspense>
         </>
@@ -429,7 +439,8 @@ export function BondAnalyticsViewContent() {
       >
         <summary className={`dashboard-detail-drilldown__header dashboard-progressive-disclosure__summary ${styles.detailDrilldownSummary}`}>
           <div className="dashboard-home-section-heading">
-            <span className="dashboard-home-section-eyebrow">复核入口</span>
+            {/* 上方参数条眉标已用「复核入口」：连续两条横带不重复同名眉标（§6 去重）。 */}
+            <span className="dashboard-home-section-eyebrow">明细下钻</span>
             <h2 className="dashboard-detail-drilldown__title">下钻证据与参数</h2>
           </div>
           <span className={`dashboard-progressive-disclosure__description ${styles.detailDrilldownDescription}`}>

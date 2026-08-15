@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
@@ -14,6 +15,7 @@ import { AssetStructurePie } from "../features/bond-dashboard/components/AssetSt
 import { CreditRatingBlocks } from "../features/bond-dashboard/components/CreditRatingBlocks";
 import { IndustryTable } from "../features/bond-dashboard/components/IndustryTable";
 import { MaturityStructureChart } from "../features/bond-dashboard/components/MaturityStructureChart";
+import { RiskIndicatorsPanel } from "../features/bond-dashboard/components/RiskIndicatorsPanel";
 import BondDashboardPage from "../features/bond-dashboard/pages/BondDashboardPage";
 import { formatRawAsNumeric } from "../utils/format";
 import {
@@ -115,7 +117,9 @@ describe("BondDashboardPage", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <ApiClientProvider client={client}>
-          <BondDashboardPage />
+          <MemoryRouter>
+            <BondDashboardPage />
+          </MemoryRouter>
         </ApiClientProvider>
       </QueryClientProvider>,
     );
@@ -144,7 +148,9 @@ describe("BondDashboardPage", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <ApiClientProvider client={client}>
-          <BondDashboardPage />
+          <MemoryRouter>
+            <BondDashboardPage />
+          </MemoryRouter>
         </ApiClientProvider>
       </QueryClientProvider>,
     );
@@ -157,8 +163,9 @@ describe("BondDashboardPage", () => {
     const reportDateSelect = reportDateInput.closest(".ant-select");
     expect(reportDateSelect).not.toBeNull();
     fireEvent.mouseDown(reportDateSelect!.querySelector(".ant-select-selector")!);
-    const listbox = await screen.findByRole("listbox");
-    await user.click(within(listbox).getByText("2026-02-28"));
+    // 弹层改挂 parentElement（getPopupContainer）后，a11y listbox 里的隐藏
+    // option 不再可点；按仓库既有写法点带 title 的真实选项节点。
+    await user.click(await screen.findByTitle("2026-02-28"));
 
     await waitFor(() => {
       expect(spy.mock.calls.length).toBeGreaterThan(initial);
@@ -192,7 +199,9 @@ describe("BondDashboardPage", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <ApiClientProvider client={client}>
-          <BondDashboardPage />
+          <MemoryRouter>
+            <BondDashboardPage />
+          </MemoryRouter>
         </ApiClientProvider>
       </QueryClientProvider>,
     );
@@ -259,7 +268,9 @@ describe("BondDashboardPage", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <ApiClientProvider client={client}>
-          <BondDashboardPage />
+          <MemoryRouter>
+            <BondDashboardPage />
+          </MemoryRouter>
         </ApiClientProvider>
       </QueryClientProvider>,
     );
@@ -347,7 +358,9 @@ describe("BondDashboardPage", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <ApiClientProvider client={client}>
-          <BondDashboardPage />
+          <MemoryRouter>
+            <BondDashboardPage />
+          </MemoryRouter>
         </ApiClientProvider>
       </QueryClientProvider>,
     );
@@ -408,7 +421,9 @@ describe("BondDashboardPage", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <ApiClientProvider client={client}>
-          <BondDashboardPage />
+          <MemoryRouter>
+            <BondDashboardPage />
+          </MemoryRouter>
         </ApiClientProvider>
       </QueryClientProvider>,
     );
@@ -476,13 +491,19 @@ describe("BondDashboardPage", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <ApiClientProvider client={client}>
-          <BondDashboardPage />
+          <MemoryRouter>
+            <BondDashboardPage />
+          </MemoryRouter>
         </ApiClientProvider>
       </QueryClientProvider>,
     );
 
+    // 证据面板随分区信封渐进渲染（dates 先到，headline/risk 随 bundle 后到），
+    // 降级字段要等 bundle 信封落地后再断言。
     const metaPanel = await screen.findByTestId("bond-dashboard-first-screen-result-meta");
-    expect(metaPanel).toHaveTextContent("供应商陈旧");
+    await waitFor(() => {
+      expect(metaPanel).toHaveTextContent("供应商陈旧");
+    });
     expect(metaPanel).toHaveTextContent("最新快照降级");
     expect(metaPanel).toHaveTextContent("2026-04-29");
   });
@@ -526,7 +547,9 @@ describe("BondDashboardPage", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <ApiClientProvider client={client}>
-          <BondDashboardPage />
+          <MemoryRouter>
+            <BondDashboardPage />
+          </MemoryRouter>
         </ApiClientProvider>
       </QueryClientProvider>,
     );
@@ -594,7 +617,9 @@ describe("BondDashboardPage", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <ApiClientProvider client={client}>
-          <BondDashboardPage />
+          <MemoryRouter>
+            <BondDashboardPage />
+          </MemoryRouter>
         </ApiClientProvider>
       </QueryClientProvider>,
     );
@@ -624,7 +649,9 @@ describe("BondDashboardPage", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <ApiClientProvider client={client}>
-          <BondDashboardPage />
+          <MemoryRouter>
+            <BondDashboardPage />
+          </MemoryRouter>
         </ApiClientProvider>
       </QueryClientProvider>,
     );
@@ -650,7 +677,9 @@ describe("BondDashboardPage", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <ApiClientProvider client={client}>
-          <BondDashboardPage />
+          <MemoryRouter>
+            <BondDashboardPage />
+          </MemoryRouter>
         </ApiClientProvider>
       </QueryClientProvider>,
     );
@@ -684,6 +713,38 @@ describe("BondDashboardPage", () => {
 
     expect(screen.getByText("99.50%")).toBeInTheDocument();
     expect(screen.getByText("0.50%")).toBeInTheDocument();
+  });
+
+  it("keeps the risk panel free of KPI-band duplicates and shows 2dp convexity with a full-precision title", () => {
+    render(
+      <RiskIndicatorsPanel
+        loading={false}
+        data={{
+          report_date: "2026-04-30",
+          total_market_value: yuan(343_822_795_478.69),
+          total_dv01: dv01(106_155_944.31),
+          weighted_duration: ratio(4.13678311),
+          credit_ratio: ratio(0.29250449),
+          weighted_convexity: ratio(28.80084028),
+          total_spread_dv01: dv01(31_000_000),
+          reinvestment_ratio_1y: ratio(0.12),
+        }}
+      />,
+    );
+
+    // 组合市值 / DV01 / 加权久期与 01 区 KPI 带逐字同值，面板已去重。
+    expect(screen.queryByTestId("bond-dashboard-risk-row-total_market_value")).toBeNull();
+    expect(screen.queryByTestId("bond-dashboard-risk-row-total_dv01")).toBeNull();
+    expect(screen.queryByTestId("bond-dashboard-risk-row-weighted_duration")).toBeNull();
+    expect(screen.getByTestId("bond-dashboard-risk-row-credit_ratio")).toHaveTextContent("29.25%");
+    const spreadDv01Row = screen.getByTestId("bond-dashboard-risk-row-total_spread_dv01");
+    expect(spreadDv01Row).toHaveTextContent("利差 DV01（万元/bp）");
+    expect(spreadDv01Row).toHaveTextContent("3,100.00");
+
+    const convexityRow = screen.getByTestId("bond-dashboard-risk-row-weighted_convexity");
+    expect(convexityRow).toHaveTextContent("28.80");
+    expect(convexityRow).not.toHaveTextContent("28.8008");
+    expect(within(convexityRow).getByTitle("原值 28.80084028")).toBeInTheDocument();
   });
 
   it("renders industry percentages from ratio Numeric values", () => {
@@ -815,7 +876,9 @@ describe("BondDashboardPage", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <ApiClientProvider client={client}>
-          <BondDashboardPage />
+          <MemoryRouter>
+            <BondDashboardPage />
+          </MemoryRouter>
         </ApiClientProvider>
       </QueryClientProvider>,
     );
@@ -825,5 +888,116 @@ describe("BondDashboardPage", () => {
     });
     expect(bundleSpy).toHaveBeenCalledTimes(1);
     expect(await screen.findByTestId("bond-dashboard-conclusion")).toHaveTextContent("当前结论");
+  });
+
+  it("adopts a valid report_date deep-link param instead of the latest date", async () => {
+    const client = createApiClient({ mode: "mock" });
+    client.getBondDashboardDates = async () => ({
+      result_meta: resultMeta("bond_dashboard.dates"),
+      result: { report_dates: ["2026-05-31", "2026-04-30"] },
+    });
+    const bundleSpy = mockBondDashboardBundleFromClient(client);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <MemoryRouter initialEntries={["/bond-dashboard?report_date=2026-04-30"]}>
+            <BondDashboardPage />
+          </MemoryRouter>
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(bundleSpy).toHaveBeenCalledWith(
+        "2026-04-30",
+        BOND_DASHBOARD_PAGE_BUNDLE_SECTIONS,
+        { industryTopN: 10 },
+      );
+    });
+    expect(bundleSpy).not.toHaveBeenCalledWith(
+      "2026-05-31",
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  it("falls back to the latest report date when the report_date param is not an available date", async () => {
+    // 覆盖旧版深链的 report_date=- 伪参数：不采用、不发伪日期请求，回退最新报告日。
+    const client = createApiClient({ mode: "mock" });
+    client.getBondDashboardDates = async () => ({
+      result_meta: resultMeta("bond_dashboard.dates"),
+      result: { report_dates: ["2026-05-31", "2026-04-30"] },
+    });
+    const bundleSpy = mockBondDashboardBundleFromClient(client);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <MemoryRouter initialEntries={["/bond-dashboard?report_date=-"]}>
+            <BondDashboardPage />
+          </MemoryRouter>
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(bundleSpy).toHaveBeenCalledWith(
+        "2026-05-31",
+        BOND_DASHBOARD_PAGE_BUNDLE_SECTIONS,
+        { industryTopN: 10 },
+      );
+    });
+    expect(bundleSpy).not.toHaveBeenCalledWith("-", expect.anything(), expect.anything());
+  });
+
+  it("scrolls to the deep-linked dashboard section anchor after mount", async () => {
+    const originalScrollIntoView = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollIntoView",
+    );
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+
+    try {
+      const client = createApiClient({ mode: "mock" });
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+      });
+
+      render(
+        <QueryClientProvider client={queryClient}>
+          <ApiClientProvider client={client}>
+            <MemoryRouter
+              initialEntries={["/bond-dashboard#bond-dashboard-section-portfolio-risk"]}
+            >
+              <BondDashboardPage />
+            </MemoryRouter>
+          </ApiClientProvider>
+        </QueryClientProvider>,
+      );
+
+      await waitFor(() => {
+        expect(scrollIntoView).toHaveBeenCalledWith({ block: "start" });
+      });
+      expect(scrollIntoView.mock.instances.at(-1)).toBe(
+        document.getElementById("bond-dashboard-section-portfolio-risk"),
+      );
+    } finally {
+      if (originalScrollIntoView) {
+        Object.defineProperty(HTMLElement.prototype, "scrollIntoView", originalScrollIntoView);
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+      }
+    }
   });
 });

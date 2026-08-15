@@ -15,6 +15,7 @@ import type {
   DV01MovementPayload,
   DV01ReconciliationPayload,
   DV01RiskPayload,
+  ResultMeta,
 } from "./contracts";
 import { formatRawAsNumeric } from "../utils/format";
 import {
@@ -34,6 +35,64 @@ import type {
 type Delay = () => Promise<void>;
 
 type DashboardWorkbenchSamples = typeof import("../fixtures/dashboardCoreWorkbenchSamples");
+
+const MOCK_BOND_DASHBOARD_REPORT_DATES = ["2026-03-31", "2026-02-28", "2025-12-31"];
+const MOCK_BOND_DASHBOARD_EVIDENCE_ROWS = 428;
+const BOND_DASHBOARD_FACT_TABLE = "fact_formal_bond_analytics_daily";
+const YIELD_CURVE_FACT_TABLE = "fact_formal_yield_curve_daily";
+const BOND_DASHBOARD_NULL_CURRENCY_META = {
+  amount_currency_basis: null,
+  amount_currency_basis_note: null,
+} as const;
+// The live dates envelope emits an explicit not-applicable null. The shared
+// frontend ResultMeta contract still models evidence_rows as number-only.
+const BOND_DASHBOARD_DATES_NULL_EVIDENCE_META: object = { evidence_rows: null };
+
+function buildMockBondDashboardAnalyticalMeta(
+  reportDate: string,
+  evidenceRows = MOCK_BOND_DASHBOARD_EVIDENCE_ROWS,
+): Partial<ResultMeta> {
+  return {
+    ...BOND_DASHBOARD_NULL_CURRENCY_META,
+    basis: "analytical",
+    formal_use_allowed: false,
+    cache_key: null,
+    quality_flag: evidenceRows > 0 ? "ok" : "warning",
+    requested_report_date: reportDate,
+    resolved_report_date: reportDate,
+    as_of_date: reportDate,
+    date_basis: "bond_dashboard_report_date",
+    fallback_date: null,
+    filters_applied: { report_date: reportDate },
+    tables_used: [BOND_DASHBOARD_FACT_TABLE],
+    evidence_rows: evidenceRows,
+    next_drill: [],
+  };
+}
+
+function buildMockBondDashboardDatesMeta(): Partial<ResultMeta> {
+  return {
+    ...BOND_DASHBOARD_NULL_CURRENCY_META,
+    basis: "formal",
+    formal_use_allowed: true,
+    cache_key: null,
+    quality_flag: "ok",
+    requested_report_date: null,
+    resolved_report_date: null,
+    as_of_date: null,
+    date_basis: null,
+    fallback_date: null,
+    filters_applied: {},
+    tables_used: [],
+    ...BOND_DASHBOARD_DATES_NULL_EVIDENCE_META,
+    next_drill: [],
+  };
+}
+
+function mockPreviousBondDashboardReportDate(reportDate: string): string | null {
+  const index = MOCK_BOND_DASHBOARD_REPORT_DATES.indexOf(reportDate);
+  return index >= 0 ? (MOCK_BOND_DASHBOARD_REPORT_DATES[index + 1] ?? null) : null;
+}
 
 // Demo-only fixtures load lazily so sample data stays out of the production bundle.
 let dashboardWorkbenchSamplesPromise: Promise<DashboardWorkbenchSamples> | null = null;
@@ -117,7 +176,35 @@ async function fetchDemoBondDashboardBundleSection(
     return [section, await client.getBondDashboardMaturityStructure(rd)];
   }
   if (section === "industry-distribution") {
-    return [section, await client.getBondDashboardIndustryDistribution(rd)];
+    const envelope = await client.getBondDashboardIndustryDistribution(rd);
+    const topN = opts?.industryTopN ?? 10;
+    if (topN >= envelope.result.items.length) {
+      return [section, envelope];
+    }
+    const items = envelope.result.items.slice(0, topN);
+    const totalMarketValue = items.reduce(
+      (sum, item) => sum + (item.total_market_value.raw ?? 0),
+      0,
+    );
+    return [
+      section,
+      {
+        ...envelope,
+        result: {
+          ...envelope.result,
+          items: items.map((item) => ({
+            ...item,
+            percentage: formatRawAsNumeric({
+              raw: totalMarketValue > 0
+                ? (item.total_market_value.raw ?? 0) / totalMarketValue
+                : 0,
+              unit: "pct",
+              sign_aware: false,
+            }),
+          })),
+        },
+      },
+    ];
   }
   if (section === "risk-indicators") {
     return [section, await client.getBondDashboardRiskIndicators(rd)];
@@ -177,7 +264,7 @@ async function fetchDemoBondDashboardBundleSection(
           report_date: rd,
           items: sampleBondBusinessTypeMetricRows,
         },
-        { basis: "formal", formal_use_allowed: true },
+        buildMockBondDashboardAnalyticalMeta(rd),
       ),
       data_source: "bond_analytics_facts",
     },
@@ -812,8 +899,8 @@ export function createDemoBondDashboardClient(
       return {
         ...(await ensureMockClientBundle()).buildMockApiEnvelope(
           "bond_dashboard.dates",
-          { report_dates: ["2026-03-31", "2026-02-28", "2025-12-31"] },
-          { basis: "formal", formal_use_allowed: true },
+          { report_dates: [...MOCK_BOND_DASHBOARD_REPORT_DATES] },
+          buildMockBondDashboardDatesMeta(),
         ),
         data_source: "bond_analytics_facts",
       };
@@ -824,12 +911,13 @@ export function createDemoBondDashboardClient(
       const zp = (raw: number, sign_aware = true) => formatRawAsNumeric({ raw, unit: "pct", sign_aware });
       const zr = (raw: number, sign_aware = false) => formatRawAsNumeric({ raw, unit: "ratio", sign_aware });
       const zd = (raw: number) => formatRawAsNumeric({ raw, unit: "dv01", sign_aware: false });
+      const prevReportDate = mockPreviousBondDashboardReportDate(reportDate);
       return {
         ...(await ensureMockClientBundle()).buildMockApiEnvelope(
           "bond_dashboard.headline_kpis",
           {
             report_date: reportDate,
-            prev_report_date: "2026-02-28",
+            prev_report_date: prevReportDate,
             kpis: {
               total_market_value: zy(328_709_000_000),
               unrealized_pnl: zy(1_850_000_000, true),
@@ -840,18 +928,20 @@ export function createDemoBondDashboardClient(
               total_dv01: zd(-125_430.5),
               bond_count: 428,
             },
-            prev_kpis: {
-              total_market_value: zy(320_000_000_000),
-              unrealized_pnl: zy(1_600_000_000, true),
-              weighted_ytm: zp(0.0281),
-              weighted_duration: zr(3.52),
-              weighted_coupon: zp(0.0308),
-              credit_spread_median: zp(0.0089),
-              total_dv01: zd(-128_900),
-              bond_count: 415,
-            },
+            prev_kpis: prevReportDate
+              ? {
+                  total_market_value: zy(320_000_000_000),
+                  unrealized_pnl: zy(1_600_000_000, true),
+                  weighted_ytm: zp(0.0281),
+                  weighted_duration: zr(3.52),
+                  weighted_coupon: zp(0.0308),
+                  credit_spread_median: zp(0.0089),
+                  total_dv01: zd(-128_900),
+                  bond_count: 415,
+                }
+              : null,
           },
-          { basis: "analytical", formal_use_allowed: false, quality_flag: "warning" },
+          buildMockBondDashboardAnalyticalMeta(reportDate),
         ),
         data_source: "bond_analytics_facts",
       };
@@ -899,7 +989,7 @@ export function createDemoBondDashboardClient(
               items: sampleBondBusinessTypeMetricRows,
             },
           },
-          { basis: "analytical", formal_use_allowed: false, quality_flag: "warning" },
+          buildMockBondDashboardAnalyticalMeta(reportDate),
         ),
         data_source: "bond_analytics_facts",
       };
@@ -909,22 +999,34 @@ export function createDemoBondDashboardClient(
       const zy = (raw: number) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware: false });
       const zp = (raw: number) => formatRawAsNumeric({ raw, unit: "pct", sign_aware: false });
       const totalMarketValue = 328_709_000_000;
-      const rows =
-        groupBy === "rating"
+      const rows = groupBy === "rating"
+        ? [
+            { category: "利率债默认 AAA", marketValue: 128_500_000_000, bondCount: 118 },
+            { category: "AAA", marketValue: 92_000_000_000, bondCount: 106 },
+            { category: "AA+", marketValue: 51_000_000_000, bondCount: 92 },
+            { category: "AA", marketValue: 36_209_000_000, bondCount: 68 },
+            { category: "未评级", marketValue: 21_000_000_000, bondCount: 44 },
+          ]
+        : groupBy === "portfolio_name"
           ? [
-              { category: "利率债默认 AAA", marketValue: 128_500_000_000, bondCount: 118 },
-              { category: "AAA", marketValue: 92_000_000_000, bondCount: 106 },
-              { category: "AA+", marketValue: 51_000_000_000, bondCount: 92 },
-              { category: "AA", marketValue: 36_209_000_000, bondCount: 68 },
-              { category: "未评级", marketValue: 21_000_000_000, bondCount: 44 },
+              { category: "银行账户", marketValue: 185_000_000_000, bondCount: 220 },
+              { category: "交易账户", marketValue: 98_000_000_000, bondCount: 128 },
+              { category: "OCI 账户", marketValue: 45_709_000_000, bondCount: 80 },
             ]
-          : [
-              { category: "政策性金融债", marketValue: 98_500_000_000, bondCount: 42 },
-              { category: "地方政府债", marketValue: 82_000_000_000, bondCount: 56 },
-              { category: "同业存单", marketValue: 71_000_000_000, bondCount: 120 },
-              { category: "信用债-企业", marketValue: 49_209_000_000, bondCount: 150 },
-              { category: "其他", marketValue: 28_000_000_000, bondCount: 60 },
-            ];
+          : groupBy === "tenor_bucket"
+            ? [
+                { category: "1年以内", marketValue: 91_500_000_000, bondCount: 155 },
+                { category: "1-3年", marketValue: 128_000_000_000, bondCount: 145 },
+                { category: "3-5年", marketValue: 72_000_000_000, bondCount: 78 },
+                { category: "5年以上", marketValue: 37_209_000_000, bondCount: 50 },
+              ]
+            : [
+                { category: "政策性金融债", marketValue: 98_500_000_000, bondCount: 42 },
+                { category: "地方政府债", marketValue: 82_000_000_000, bondCount: 56 },
+                { category: "同业存单", marketValue: 71_000_000_000, bondCount: 120 },
+                { category: "信用债-企业", marketValue: 49_209_000_000, bondCount: 150 },
+                { category: "其他", marketValue: 28_000_000_000, bondCount: 60 },
+              ];
       return {
         ...(await ensureMockClientBundle()).buildMockApiEnvelope(
           "bond_dashboard.asset_structure",
@@ -939,7 +1041,7 @@ export function createDemoBondDashboardClient(
               percentage: zp(row.marketValue / totalMarketValue),
             })),
           },
-          { basis: "formal", formal_use_allowed: true },
+          buildMockBondDashboardAnalyticalMeta(reportDate),
         ),
         data_source: "bond_analytics_facts",
       };
@@ -964,7 +1066,7 @@ export function createDemoBondDashboardClient(
               { yield_bucket: ">4.0%", total_market_value: zy(6_709_000_000), bond_count: 5 },
             ],
           },
-          { basis: "formal", formal_use_allowed: true },
+          buildMockBondDashboardAnalyticalMeta(reportDate),
         ),
         data_source: "bond_analytics_facts",
       };
@@ -1007,7 +1109,7 @@ export function createDemoBondDashboardClient(
               },
             ],
           },
-          { basis: "formal", formal_use_allowed: true },
+          buildMockBondDashboardAnalyticalMeta(reportDate),
         ),
         data_source: "bond_analytics_facts",
       };
@@ -1046,9 +1148,15 @@ export function createDemoBondDashboardClient(
                 bond_count: 130,
                 total_market_value: zy(87_000_000_000),
               },
+              {
+                bond_type: "无收益率覆盖样例",
+                median_yield: null,
+                bond_count: 3,
+                total_market_value: zy(0),
+              },
             ],
           },
-          { basis: "formal", formal_use_allowed: true },
+          buildMockBondDashboardAnalyticalMeta(reportDate),
         ),
         data_source: "bond_analytics_facts",
       };
@@ -1080,7 +1188,7 @@ export function createDemoBondDashboardClient(
               percentage: zp(row.total_market_value / totalMarketValue),
             })),
           },
-          { basis: "formal", formal_use_allowed: true },
+          buildMockBondDashboardAnalyticalMeta(reportDate),
         ),
         data_source: "bond_analytics_facts",
       };
@@ -1110,7 +1218,7 @@ export function createDemoBondDashboardClient(
               percentage: zp(row.total_market_value / totalMarketValue),
             })),
           },
-          { basis: "formal", formal_use_allowed: true },
+          buildMockBondDashboardAnalyticalMeta(reportDate),
         ),
         data_source: "bond_analytics_facts",
       };
@@ -1132,15 +1240,23 @@ export function createDemoBondDashboardClient(
             weighted_convexity: zr(0.085),
             total_spread_dv01: zd(-45_200),
             reinvestment_ratio_1y: zr(0.18),
+            weighted_convexity_coverage_ratio: zr(0.91),
           },
-          { basis: "formal", formal_use_allowed: true },
+          buildMockBondDashboardAnalyticalMeta(reportDate),
         ),
         data_source: "bond_analytics_facts",
       };
     },
     async fetchBondDashboardBundle(this: DemoBondDashboardBundleClient | undefined, reportDate, sections, opts) {
       await delay();
-      const requestedSections = [...sections];
+      const requestedSections = [...new Set(sections)];
+      if (requestedSections.length === 0) {
+        throw new Error("sections must include at least one supported section id");
+      }
+      const normalizedReportDate = reportDate?.trim() || null;
+      if (requestedSections.some((section) => section !== "dates") && !normalizedReportDate) {
+        throw new Error("report_date is required for the requested bundle sections");
+      }
       const bundleClient =
         this && typeof this.getBondDashboardHeadlineKpis === "function"
           ? this
@@ -1151,47 +1267,68 @@ export function createDemoBondDashboardClient(
       const entries = await Promise.all(
         requestedSections.map(async (section) => {
           try {
-            return await fetchDemoBondDashboardBundleSection(
+            const [, envelope] = await fetchDemoBondDashboardBundleSection(
               bundleClient,
               section,
-              reportDate,
+              normalizedReportDate,
               ensureMockClientBundle,
               opts,
             );
+            return { ok: true as const, section, envelope };
           } catch (error) {
-            failedSections.push(section);
-            sectionStatuses[section] = {
-              status: "error",
-              message: error instanceof Error ? error.message : String(error),
-              duration_ms: 0,
-            };
-            return null;
+            return { ok: false as const, section, error };
           }
         }),
       );
       for (const entry of entries) {
-        if (!entry) {
+        if (!entry.ok) {
+          failedSections.push(entry.section);
+          sectionStatuses[entry.section] = {
+            status: "error",
+            message: entry.error instanceof Error ? entry.error.message : String(entry.error),
+            duration_ms: 0,
+          };
           continue;
         }
-        const [section, envelope] = entry;
-        (sectionEnvelopes as Record<BondDashboardBundleSectionId, ApiEnvelope<unknown>>)[section] =
-          envelope as ApiEnvelope<unknown>;
-        sectionStatuses[section] = { status: "ok", message: null, duration_ms: 0 };
+        (sectionEnvelopes as Record<BondDashboardBundleSectionId, ApiEnvelope<unknown>>)[entry.section] =
+          entry.envelope as ApiEnvelope<unknown>;
+        sectionStatuses[entry.section] = { status: "ok", message: null, duration_ms: 0 };
       }
-      return buildMockBondDashboardBundleEnvelope({
+      const bundle = buildMockBondDashboardBundleEnvelope({
         buildMockApiEnvelope: (await ensureMockClientBundle()).buildMockApiEnvelope,
-        reportDate: reportDate?.trim() || null,
+        reportDate: normalizedReportDate,
         requestedSections,
         sections: sectionEnvelopes,
-        industryTopN: opts?.industryTopN,
-        analyticsTopN: opts?.analyticsTopN,
-        dv01TopN: opts?.dv01TopN,
-        dv01ShockBps: opts?.dv01ShockBps,
-        dv01AccountingClass: opts?.dv01AccountingClass,
-        curveTypes: opts?.curveTypes,
+        industryTopN: opts?.industryTopN ?? 10,
+        analyticsTopN: opts?.analyticsTopN ?? 10,
+        dv01TopN: opts?.dv01TopN ?? 1,
+        dv01ShockBps: opts?.dv01ShockBps ?? "1",
+        dv01AccountingClass: opts?.dv01AccountingClass ?? "all",
+        curveTypes: opts?.curveTypes ?? "treasury,cdb",
         sectionStatuses,
         failedSections,
       });
+      const tablesUsed = normalizedReportDate
+        ? [
+            BOND_DASHBOARD_FACT_TABLE,
+            ...(requestedSections.includes("yield-curve-term-structure")
+              ? [YIELD_CURVE_FACT_TABLE]
+              : []),
+          ]
+        : [];
+      return {
+        ...bundle,
+        result_meta: {
+          ...bundle.result_meta,
+          ...BOND_DASHBOARD_NULL_CURRENCY_META,
+          cache_key: null,
+          formal_use_allowed: normalizedReportDate ? false : true,
+          fallback_date: null,
+          tables_used: tablesUsed,
+          evidence_rows: normalizedReportDate ? MOCK_BOND_DASHBOARD_EVIDENCE_ROWS : 0,
+          next_drill: [],
+        },
+      };
     },
   };
   return methods;

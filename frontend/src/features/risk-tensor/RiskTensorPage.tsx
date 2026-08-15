@@ -348,7 +348,7 @@ function qualityFlagLabel(flag: string | undefined) {
   if (flag === "missing") {
     return "缺失";
   }
-  return flag || "未提供";
+  return flag || EM_DASH;
 }
 
 function qualityTone(flag: string | undefined) {
@@ -377,12 +377,27 @@ function fallbackModeLabel(mode: ResultMeta["fallback_mode"] | string | undefine
   if (mode === "degraded") {
     return "降级";
   }
-  return mode || "未提供";
+  return mode || EM_DASH;
+}
+
+/**
+ * 后端 generated_at 为带微秒/时区的 ISO 串，展示层收敛为 YYYY-MM-DD HH:mm:ss
+ * （纯字符串归一，不做时区换算，保持后端时钟读数）；原值由调用方收进 title。
+ */
+function formatTimestampDisplay(value: string | undefined) {
+  if (!value) {
+    return EM_DASH;
+  }
+  const match = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})/.exec(value);
+  if (!match) {
+    return value;
+  }
+  return `${match[1]} ${match[2]}`;
 }
 
 function compactVersion(value: string | undefined) {
   if (!value) {
-    return "未提供";
+    return EM_DASH;
   }
   if (value.length <= 42) {
     return value;
@@ -635,7 +650,7 @@ function RiskScenarioStressPanel({
           <div className="risk-tensor-scenario-stress__footer">
             <span>scenario_set_id {payload.scenario_set_id}</span>
             <span>rule_version {payload.rule_version}</span>
-            <span>source_trace_id {payload.source.trace_id ?? "未提供"}</span>
+            <span>source_trace_id {payload.source.trace_id ?? EM_DASH}</span>
           </div>
         </>
       ) : (
@@ -752,7 +767,7 @@ export default function RiskTensorPage() {
   const tensorErrorReportDate = reportDate || explicitReportDate || "未选择";
   const datesErrorReportDate = explicitReportDate || "未选择";
   const datesGovernanceMeta = datesQuery.data?.result_meta;
-  const datesEmptyTraceId = datesGovernanceMeta?.trace_id ?? "未提供";
+  const datesEmptyTraceId = datesGovernanceMeta?.trace_id ?? EM_DASH;
 
   const krdChartOption = useMemo((): EChartsOption | null => {
     if (!result) {
@@ -889,9 +904,9 @@ export default function RiskTensorPage() {
       }`
     : blockedReportDateSummary;
   const qualityTraceWarningDetail = result?.warnings.filter(Boolean).join(" / ") || "无预警";
-  const qualityTraceMetadataDetail = `trace_id ${tensorMeta?.trace_id ?? "未提供"}；evidence_rows ${
-    typeof tensorMeta?.evidence_rows === "number" ? tensorMeta.evidence_rows : "未提供"
-  }；tables_used ${metadataTablesUsed || "未提供"}；filters_applied ${metadataFiltersApplied || "未提供"}`;
+  const qualityTraceMetadataDetail = `trace_id ${tensorMeta?.trace_id ?? EM_DASH}；evidence_rows ${
+    typeof tensorMeta?.evidence_rows === "number" ? tensorMeta.evidence_rows : EM_DASH
+  }；tables_used ${metadataTablesUsed || EM_DASH}；filters_applied ${metadataFiltersApplied || EM_DASH}`;
   const payloadQualityIssues = result ? riskTensorPayloadQualityIssues(result) : [];
   const durationCoverageQualityIssues = payloadQualityIssues.filter((item) =>
     item.key === "duration_excluded_count" || REQUIRED_DURATION_SCOPE_FIELDS.some((field) => field.key === item.key),
@@ -1702,11 +1717,14 @@ export default function RiskTensorPage() {
       </div>
     ) : null;
 
+  const mainReadBlocked = tensorBlockedByReportDate || tensorQuery.isError || datesBlockingError;
+
   return (
     <section
       className="risk-tensor-page theme-dh-api"
       data-moss-theme-scope="risk-tensor"
       data-testid="risk-tensor-page"
+      data-read-state={mainReadBlocked ? "blocked" : undefined}
     >
       <div className="risk-tensor-page__hero">
         <h1>风险张量</h1>
@@ -1775,7 +1793,7 @@ export default function RiskTensorPage() {
           <span>
             报告日 {selectedBlockedReportDate.report_date}；原因{" "}
             {selectedBlockedReportDate.reason || "后端未返回原因"}。trace_id{" "}
-            {datesQuery.data?.result_meta.trace_id ?? "未提供"}。主读面未读取；请切换到可用报告日。
+            {datesQuery.data?.result_meta.trace_id ?? EM_DASH}。主读面未读取；请切换到可用报告日。
           </span>
           <div className="risk-tensor-quality-detail__trace-actions">
             <button
@@ -1826,14 +1844,17 @@ export default function RiskTensorPage() {
           <span>
             报告日 {tensorErrorReportDate}；HTTP 状态{" "}
             {tensorErrorStatusCode || "未知"}。日期治理 trace_id{" "}
-            {datesGovernanceMeta?.trace_id ?? "未提供"}；主读面 trace_id 未提供。请先核对正式风险张量物化和
+            {datesGovernanceMeta?.trace_id ?? EM_DASH}；主读面 trace_id {EM_DASH}。请先核对正式风险张量物化和
             lineage 新鲜度；页面不会使用缓存或前端补算替代正式主读结果。
           </span>
           <span>
-            日期治理元数据：basis {datesGovernanceMeta?.basis ?? "未提供"}；cache_version{" "}
-            {datesGovernanceMeta?.cache_version ?? "未提供"}；generated_at{" "}
-            {datesGovernanceMeta?.generated_at ?? "未提供"}；source_version{" "}
-            {datesGovernanceMeta?.source_version ?? "未提供"}；rule_version {datesGovernanceMeta?.rule_version ?? "未提供"}。
+            日期治理元数据：basis {datesGovernanceMeta?.basis ?? EM_DASH}；cache_version{" "}
+            {datesGovernanceMeta?.cache_version ?? EM_DASH}；generated_at{" "}
+            <span title={datesGovernanceMeta?.generated_at}>
+              {formatTimestampDisplay(datesGovernanceMeta?.generated_at)}
+            </span>
+            ；source_version {datesGovernanceMeta?.source_version ?? EM_DASH}；rule_version{" "}
+            {datesGovernanceMeta?.rule_version ?? EM_DASH}。
           </span>
           <div className="risk-tensor-quality-detail__trace-actions">
             <button
@@ -1960,7 +1981,7 @@ export default function RiskTensorPage() {
           <div className="risk-tensor-empty-state" data-testid="risk-tensor-empty-state">
             <strong>当前报告日无风险张量持仓</strong>
             <span>报告日 {result.report_date}</span>
-            <span>trace_id {tensorMeta?.trace_id ?? "未提供"}</span>
+            <span>trace_id {tensorMeta?.trace_id ?? EM_DASH}</span>
             <span>质量标记：{qualityFlagLabel(result.quality_flag)}</span>
             <span>{qualityTraceMetadataDetail}</span>
             <p>后端返回 bond_count 为 0，页面不会在前端补算正式指标；请核对持仓快照、风险张量物化任务和元数据证据。</p>
@@ -2141,7 +2162,7 @@ export default function RiskTensorPage() {
               <div className="risk-tensor-payload-quality" data-testid="risk-tensor-payload-quality-warning">
                 <strong>主读 payload 字段待核对</strong>
                 <span>报告日 {result.report_date}</span>
-                <span>trace_id {tensorMeta?.trace_id ?? "未提供"}</span>
+                <span>trace_id {tensorMeta?.trace_id ?? EM_DASH}</span>
                 <span>字段 {payloadQualityIssueSummary}</span>
                 <span>{qualityTraceMetadataDetail}</span>
                 <p>
@@ -2625,18 +2646,20 @@ export default function RiskTensorPage() {
               </div>
               <div className="risk-tensor-quality-detail__evidence" data-testid="risk-tensor-quality-evidence">
                 <strong>证据范围</strong>
-                <span>trace_id {tensorMeta?.trace_id ?? "未提供"}</span>
-                <span>basis {tensorMeta?.basis ?? "未提供"}</span>
-                <span>cache_version {tensorMeta?.cache_version ?? "未提供"}</span>
-                <span>generated_at {tensorMeta?.generated_at ?? "未提供"}</span>
+                <span>trace_id {tensorMeta?.trace_id ?? EM_DASH}</span>
+                <span>basis {tensorMeta?.basis ?? EM_DASH}</span>
+                <span>cache_version {tensorMeta?.cache_version ?? EM_DASH}</span>
+                <span title={tensorMeta?.generated_at}>
+                  generated_at {formatTimestampDisplay(tensorMeta?.generated_at)}
+                </span>
                 <span>来源 {compactVersion(tensorMeta?.source_version)}</span>
                 <span>规则 {compactVersion(tensorMeta?.rule_version)}</span>
                 <span>{fallbackStatus}</span>
                 {tensorMeta?.fallback_date ? <span>fallback_date {tensorMeta.fallback_date}</span> : null}
                 <span>{blockedReportDateSummary}</span>
-                <span>evidence_rows {typeof tensorMeta?.evidence_rows === "number" ? tensorMeta.evidence_rows : "未提供"}</span>
-                <span>tables_used {metadataTablesUsed || "未提供"}</span>
-                <span>filters_applied {metadataFiltersApplied || "未提供"}</span>
+                <span>evidence_rows {typeof tensorMeta?.evidence_rows === "number" ? tensorMeta.evidence_rows : EM_DASH}</span>
+                <span>tables_used {metadataTablesUsed || EM_DASH}</span>
+                <span>filters_applied {metadataFiltersApplied || EM_DASH}</span>
               </div>
               <div className="risk-tensor-quality-detail__trace" data-testid="risk-tensor-quality-trace-priority">
                 <strong>证据优先级</strong>
@@ -2645,13 +2668,13 @@ export default function RiskTensorPage() {
                 </div>
                 <ol>
                   <li>
-                    <span>source/rule</span>
+                    <span>来源/规则</span>
                     <p>
                       来源 {compactVersion(tensorMeta?.source_version)}；规则 {compactVersion(tensorMeta?.rule_version)}
                     </p>
                   </li>
                   <li>
-                    <span>fallback</span>
+                    <span>降级</span>
                     <p>{qualityTraceFallbackDetail}</p>
                   </li>
                   <li>
@@ -2659,7 +2682,7 @@ export default function RiskTensorPage() {
                     <p>{qualityTraceBlockedDetail}</p>
                   </li>
                   <li>
-                    <span>warning</span>
+                    <span>预警</span>
                     <p>{qualityTraceWarningDetail}</p>
                   </li>
                   <li>
@@ -2774,7 +2797,7 @@ export default function RiskTensorPage() {
                         data-testid="risk-tensor-quality-payload-checklist"
                       >
                         <strong>主读 payload 字段复核</strong>
-                        <p>trace_id {tensorMeta?.trace_id ?? "未提供"}；不会在前端补算正式指标。</p>
+                        <p>trace_id {tensorMeta?.trace_id ?? EM_DASH}；不会在前端补算正式指标。</p>
                         <ul>
                           {payloadQualityIssues.map((item) => (
                             <li key={item.key}>

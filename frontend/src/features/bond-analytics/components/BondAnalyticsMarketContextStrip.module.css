@@ -1,61 +1,157 @@
-.strip {
-  display: grid;
-  gap: 12px;
+/* 真值与证据条：单框横带（首页 productCategoryStrip / 页内 referenceMarketTicker 语言），
+   不再用 antd Card + panelStyle 内联面。 */
+.contextPanel {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
 }
 
-.stripHeader {
+/* 分区头对齐首页 panelHeader：14px/600 标题 + 左沿 2px 强调条 + 发丝底线。 */
+.panelHeader {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
+  align-items: baseline;
+  gap: 2px 12px;
+  min-height: 34px;
+  padding: 6px 12px 6px 16px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.panelHeader::before {
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: 0;
+  width: 2px;
+  background: var(--dh-api-blue);
+  content: "";
+}
+
+.panelTitle {
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
 }
 
 .leadModule {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 10px;
+  gap: 2px 8px;
   align-items: baseline;
-  color: var(--moss-color-neutral-600);
-  font-size: 12px;
+  min-width: 0;
+  color: var(--dh-api-muted);
+  font-size: 11px;
   font-weight: 400;
-  line-height: 1.4;
+  line-height: 16px;
 }
 
 .leadModule strong {
-  color: var(--moss-color-neutral-900);
-  font-size: 14px;
-  font-weight: 600;
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .leadModule span {
-  color: var(--moss-color-neutral-500);
+  color: var(--dh-api-muted);
   font-size: 11px;
   font-weight: 400;
 }
 
+/* 四槽真值等宽排布，发丝竖缝分隔，不逐格铺 tone 底色。 */
 .truthStrip {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
-  gap: 12px;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  min-width: 0;
 }
 
-.truthItem {
+.truthCell {
   display: grid;
-  gap: 4px;
-  padding: 8px 12px;
-  border-radius: var(--dh-api-radius, 6px);
+  gap: 2px;
+  align-content: center;
+  min-width: 0;
+  min-height: 46px;
+  padding: 6px 12px;
+  border-right: 1px solid var(--dh-api-line-soft);
+  box-sizing: border-box;
+}
+
+.truthCell:last-child {
+  border-right: 0;
 }
 
 .truthLabel {
+  overflow: hidden;
+  color: var(--dh-api-muted);
   font-size: 11px;
   font-weight: 400;
-  letter-spacing: 0;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
+/* 语义色只落在读数上（§5 色块减负）。 */
 .truthValue {
+  overflow: hidden;
+  color: var(--dh-api-ink);
   font-size: 14px;
   font-weight: 600;
-  letter-spacing: 0;
   font-variant-numeric: tabular-nums;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.truthCell[data-tone="positive"] .truthValue {
+  color: var(--dh-api-green);
+}
+
+.truthCell[data-tone="warning"] .truthValue {
+  color: var(--dh-api-amber);
+}
+
+.truthCell[data-tone="negative"] .truthValue {
+  color: var(--dh-api-red);
+}
+
+@media (max-width: 1180px) {
+  .truthStrip {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .truthCell {
+    border-bottom: 1px solid var(--dh-api-line-soft);
+  }
+
+  .truthCell:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .truthCell:nth-last-child(-n + 2) {
+    border-bottom: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .truthStrip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .truthCell {
+    border-right: 0;
+  }
+
+  .truthCell:nth-last-child(-n + 2) {
+    border-bottom: 1px solid var(--dh-api-line-soft);
+  }
+
+  .truthCell:last-child {
+    border-bottom: 0;
+  }
 }

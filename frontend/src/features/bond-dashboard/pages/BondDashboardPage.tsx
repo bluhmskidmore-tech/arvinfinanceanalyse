@@ -1,155 +1,66 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { InfoCircleOutlined } from "@ant-design/icons";
-import { Alert, Col, Row, Select, Tooltip, Table } from "antd";
-import type { TableColumnsType } from "antd";
+import { Select } from "antd";
+import { useLocation, useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
-import type {
-  BondBusinessTypeMetricItem,
-  BondDashboardHeadlinePayload,
-  Numeric,
-  ResultMeta,
-  RiskIndicatorsPayload,
-} from "../../../api/contracts";
-import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
-import { EvidencePanel, PageStateSurface } from "../../../components/page/PagePrimitives";
-import { EM_DASH, numericRaw } from "../../../pageModel";
 import {
   BOND_DASHBOARD_PAGE_BUNDLE_SECTIONS,
   bondDashboardAssetSectionForGroup,
   selectBondDashboardBundleSection,
 } from "../bondDashboardBundleModel";
-import { AssetStructurePie, type AssetGroupBy } from "../components/AssetStructurePie";
-import { CreditRatingBlocks } from "../components/CreditRatingBlocks";
-import { HeadlineKpis } from "../components/HeadlineKpis";
-import { IndustryTable } from "../components/IndustryTable";
-import { MaturityStructureChart } from "../components/MaturityStructureChart";
-import { PortfolioTable } from "../components/PortfolioTable";
-import { RiskIndicatorsPanel } from "../components/RiskIndicatorsPanel";
-import { SpreadTable } from "../components/SpreadTable";
-import { YieldDistributionBar } from "../components/YieldDistributionBar";
+import { type AssetGroupBy } from "../components/AssetStructurePie";
+import BondDashboardKpiBand from "../components/BondDashboardKpiBand";
+import BondDashboardSectionLead, {
+  type BondDashboardSectionState,
+} from "../components/BondDashboardSectionLead";
 import { useBondDashboardBundleQuery } from "../hooks/useBondDashboardBundleQuery";
-import { formatRatePercent, formatYi, formatYears } from "../utils/format";
+import {
+  buildBondDashboardCaliberItems,
+  buildBondDashboardKpiBand,
+  buildBondDashboardScreenNotices,
+  buildBondDashboardSectionStatusItems,
+  buildDashboardConclusion,
+  describeFirstScreenMetaFallback,
+  type BondDashboardScreenNotice,
+} from "../model/bondDashboardPageModel";
+import BondStructureSection from "../sections/BondStructureSection";
+import BusinessTypeSection from "../sections/BusinessTypeSection";
+import EvidenceSection from "../sections/EvidenceSection";
+import MaturityIndustrySection from "../sections/MaturityIndustrySection";
+import PortfolioRiskSection from "../sections/PortfolioRiskSection";
 import "./BondDashboardPage.css";
 
-type BusinessTypeMetricRow = BondBusinessTypeMetricItem & { key: string };
-
 /**
- * `Number("")` and `Number(null)` are both 0, so a blank cell would render as a real zero.
- * Known residual risk: the backend still emits "0.00000000" for some unavailable business-type
- * metrics, which arrives here as a genuine zero and cannot be told apart on the frontend.
+ * notice key → 既有测试锚点：dates error 与 dates empty 两个状态块共用
+ * `bond-dashboard-page-state`（互斥出现），与旧 antd Alert 时代逐字一致。
  */
-function businessTypeMetricNumber(value: unknown): number | null {
-  if (value === null || value === undefined) return null;
-  if (typeof value === "string" && value.trim() === "") return null;
-  const raw = Number(value);
-  return Number.isFinite(raw) ? raw : null;
-}
+const NOTICE_TEST_IDS: Record<BondDashboardScreenNotice["key"], string> = {
+  "dates-error": "bond-dashboard-page-state",
+  "dates-empty": "bond-dashboard-page-state",
+  "bundle-error": "bond-dashboard-bundle-state",
+  stale: "bond-dashboard-stale-banner",
+};
 
-const BUSINESS_TYPE_METRIC_COLUMNS: TableColumnsType<BusinessTypeMetricRow> = [
-  { title: "业务类型", dataIndex: "name", ellipsis: true },
-  {
-    title: "市值（亿）",
-    dataIndex: "market_value",
-    align: "right",
-    render: (v: string) => formatYi(businessTypeMetricNumber(v)),
-  },
-  {
-    title: "加权 YTM",
-    dataIndex: "weighted_avg_ytm_pct",
-    align: "right",
-    render: (v: string) => {
-      const pct = businessTypeMetricNumber(v);
-      return pct === null ? EM_DASH : `${formatRatePercent(pct / 100)}%`;
-    },
-  },
-  {
-    title: "加权久期",
-    dataIndex: "weighted_avg_duration",
-    align: "right",
-    render: (v: string) => formatYears(businessTypeMetricNumber(v)),
-  },
-];
-
-function formatYiOrNoData(value: Numeric | null | undefined): string {
-  return numericRaw(value) === null ? EM_DASH : formatYi(value);
-}
-
-function formatYearsOrNoData(value: Numeric | null | undefined): string {
-  return numericRaw(value) === null ? EM_DASH : formatYears(value);
-}
-
-function formatCreditRatioDetail(value: Numeric | null | undefined): string {
-  return numericRaw(value) === null
-    ? `当前信用占比 ${EM_DASH}`
-    : `当前信用占比 ${formatRatePercent(value, 1)}%`;
-}
-
-/**
- * 首屏 stale/fallback 警示：quality_flag 非 ok、fallback_date 非空、
- * 或 resolved_report_date 与请求日不一致时，返回该信封的降级说明；否则返回 null。
- */
-function describeFirstScreenMetaFallback(
-  label: string,
-  meta: ResultMeta | undefined,
-  pageRequestedReportDate: string | null,
-): string | null {
-  if (!meta) return null;
-  const requestedDate = meta.requested_report_date?.trim() || pageRequestedReportDate?.trim() || "";
-  const resolvedDate = meta.resolved_report_date?.trim() ?? "";
-  const fallbackDate = meta.fallback_date?.trim() ?? "";
-  const qualityDegraded = meta.quality_flag !== "ok";
-  const dateFallback = Boolean(requestedDate && resolvedDate && resolvedDate !== requestedDate);
-  if (!qualityDegraded && !fallbackDate && !dateFallback) return null;
-
-  const parts: string[] = [];
-  if (qualityDegraded) parts.push(`供数质量 ${meta.quality_flag}`);
-  if (dateFallback) parts.push(`请求日 ${requestedDate} 回退至 ${resolvedDate}`);
-  if (fallbackDate) parts.push(`回退日期 ${fallbackDate}`);
-  const actualDate = resolvedDate || meta.as_of_date?.trim() || "";
-  if (actualDate && !dateFallback) parts.push(`实际数据日期 ${actualDate}`);
-  return `${label}：${parts.join("；")}`;
-}
-
-function buildDashboardConclusion(
-  headline: BondDashboardHeadlinePayload | undefined,
-  risk: RiskIndicatorsPayload | undefined,
-) {
-  if (!headline || !risk) {
-    return {
-      title: "当前结论",
-      body: "债券驾驶舱结论待载入，先确认报告日与正式读链路状态。",
-      detail: "首屏结论会基于持仓规模、久期和信用占比同步更新。",
-    };
-  }
-
-  const totalMarketValue = numericRaw(headline.kpis.total_market_value);
-  const creditRatio = numericRaw(risk.credit_ratio);
-  const creditTone =
-    creditRatio === null
-      ? "信用仓位 —"
-      : creditRatio >= 0.5
-        ? "信用仓位偏高"
-        : creditRatio >= 0.3
-          ? "信用仓位适中"
-          : "利率债占比更高";
-  const investmentState =
-    totalMarketValue === null
-      ? "不形成投放状态结论"
-      : totalMarketValue > 0
-        ? "处于已投放状态"
-        : "尚未形成有效持仓";
-
-  return {
-    title: "当前结论",
-    body: `组合规模约 ${formatYiOrNoData(headline.kpis.total_market_value)}，久期约 ${formatYearsOrNoData(headline.kpis.weighted_duration)}，${creditTone}。`,
-    detail: `${formatCreditRatioDetail(risk.credit_ratio)}，总市值${investmentState}。`,
-  };
+/** 01 区分区头状态位：loading/error/empty 三态露一句话，正常返回 null。 */
+function verdictLeadState(
+  loading: boolean,
+  error: boolean,
+  isEmpty: boolean,
+): BondDashboardSectionState {
+  if (loading) return { label: "读取中", tone: "loading" };
+  if (error) return { label: "读取失败", tone: "error" };
+  if (isEmpty) return { label: "暂无数据", tone: "empty" };
+  return null;
 }
 
 export default function BondDashboardPage() {
   const client = useApiClient();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  // 深链（如组合首页「去债券总览复核」）可携带 report_date；仅当该值出现在
+  // 可用报告日集合中才采用，非法/伪参数回退最新日，三态处理保持不变。
+  const requestedReportDate = searchParams.get("report_date")?.trim() ?? "";
   const [reportDate, setReportDate] = useState<string | null>(null);
   const [assetGroupBy, setAssetGroupBy] = useState<AssetGroupBy>("bond_type");
 
@@ -161,9 +72,20 @@ export default function BondDashboardPage() {
   useEffect(() => {
     const dates = datesQuery.data?.result.report_dates;
     if (reportDate === null && dates && dates.length > 0) {
-      setReportDate(dates[0]);
+      setReportDate(
+        requestedReportDate && dates.includes(requestedReportDate)
+          ? requestedReportDate
+          : dates[0],
+      );
     }
-  }, [datesQuery.data, reportDate]);
+  }, [datesQuery.data, reportDate, requestedReportDate]);
+
+  // react-router 数据路由不会自动滚到 hash 锚点；挂载后对分区 id 做一次定位。
+  useEffect(() => {
+    const anchorId = location.hash.startsWith("#") ? location.hash.slice(1) : "";
+    if (!anchorId) return;
+    document.getElementById(anchorId)?.scrollIntoView?.({ block: "start" });
+  }, [location.hash]);
 
   const rd = reportDate ?? "";
 
@@ -173,76 +95,64 @@ export default function BondDashboardPage() {
   });
   const bundleLoading = bundleQuery.isLoading;
   const bundleError = bundleQuery.isError;
-  const headlineQuery = {
-    data: selectBondDashboardBundleSection(bundleQuery.data, "headline-kpis"),
-    isLoading: bundleLoading,
-  };
-  const riskQuery = {
-    data: selectBondDashboardBundleSection(bundleQuery.data, "risk-indicators"),
-    isLoading: bundleLoading,
-  };
-  const assetQuery = {
-    data: selectBondDashboardBundleSection(
-      bundleQuery.data,
-      bondDashboardAssetSectionForGroup(assetGroupBy),
-    ),
-    isLoading: bundleLoading,
-  };
-  const ratingQuery = {
-    data: selectBondDashboardBundleSection(bundleQuery.data, "asset-structure-rating"),
-    isLoading: bundleLoading,
-  };
-  const tenorBarQuery = {
-    data: selectBondDashboardBundleSection(bundleQuery.data, "asset-structure-tenor-bucket"),
-    isLoading: bundleLoading,
-  };
-  const yieldQuery = {
-    data: selectBondDashboardBundleSection(bundleQuery.data, "yield-distribution"),
-    isLoading: bundleLoading,
-  };
-  const portfolioQuery = {
-    data: selectBondDashboardBundleSection(bundleQuery.data, "portfolio-comparison"),
-    isLoading: bundleLoading,
-  };
-  const spreadQuery = {
-    data: selectBondDashboardBundleSection(bundleQuery.data, "spread-analysis"),
-    isLoading: bundleLoading,
-  };
-  const maturityQuery = {
-    data: selectBondDashboardBundleSection(bundleQuery.data, "maturity-structure"),
-    isLoading: bundleLoading,
-  };
-  const industryQuery = {
-    data: selectBondDashboardBundleSection(bundleQuery.data, "industry-distribution"),
-    isLoading: bundleLoading,
-  };
-  const businessTypeMetricsQuery = {
-    data: selectBondDashboardBundleSection(bundleQuery.data, "business-type-metrics"),
-    isLoading: bundleLoading,
-    isError: bundleError,
-  };
 
-  const businessTypeMetricItems = businessTypeMetricsQuery.data?.result.items;
-  const businessTypeMetricRows = useMemo<BusinessTypeMetricRow[]>(
-    () =>
-      (businessTypeMetricItems ?? []).map((row) => ({
-        key: row.name,
-        ...row,
-      })),
-    [businessTypeMetricItems],
+  const headlineEnvelope = selectBondDashboardBundleSection(bundleQuery.data, "headline-kpis");
+  const riskEnvelope = selectBondDashboardBundleSection(bundleQuery.data, "risk-indicators");
+  const assetEnvelope = selectBondDashboardBundleSection(
+    bundleQuery.data,
+    bondDashboardAssetSectionForGroup(assetGroupBy),
+  );
+  const ratingEnvelope = selectBondDashboardBundleSection(bundleQuery.data, "asset-structure-rating");
+  const tenorEnvelope = selectBondDashboardBundleSection(
+    bundleQuery.data,
+    "asset-structure-tenor-bucket",
+  );
+  const yieldEnvelope = selectBondDashboardBundleSection(bundleQuery.data, "yield-distribution");
+  const portfolioEnvelope = selectBondDashboardBundleSection(bundleQuery.data, "portfolio-comparison");
+  const spreadEnvelope = selectBondDashboardBundleSection(bundleQuery.data, "spread-analysis");
+  const maturityEnvelope = selectBondDashboardBundleSection(bundleQuery.data, "maturity-structure");
+  const industryEnvelope = selectBondDashboardBundleSection(bundleQuery.data, "industry-distribution");
+  const businessTypeEnvelope = selectBondDashboardBundleSection(
+    bundleQuery.data,
+    "business-type-metrics",
   );
 
   const dateOptions = datesQuery.data?.result.report_dates ?? [];
-  const hasFirstScreenMeta = Boolean(headlineQuery.data?.result_meta || riskQuery.data?.result_meta);
-  const firstScreenFallbackNotices = [
-    describeFirstScreenMetaFallback("首屏指标", headlineQuery.data?.result_meta, rd || null),
-    describeFirstScreenMetaFallback("风险指标", riskQuery.data?.result_meta, rd || null),
-  ].filter((notice): notice is string => notice !== null);
-  const conclusion =
-    headlineQuery.data?.result && riskQuery.data?.result
-      ? buildDashboardConclusion(headlineQuery.data.result, riskQuery.data.result)
-      : null;
   const datesEmpty = !datesQuery.isLoading && !datesQuery.isError && dateOptions.length === 0;
+
+  const firstScreenFallbackNotices = [
+    describeFirstScreenMetaFallback("首屏指标", headlineEnvelope?.result_meta, rd || null),
+    describeFirstScreenMetaFallback("风险指标", riskEnvelope?.result_meta, rd || null),
+  ].filter((notice): notice is string => notice !== null);
+  const notices = buildBondDashboardScreenNotices({
+    datesError: datesQuery.isError,
+    datesEmpty,
+    bundleError,
+    fallbackNotices: firstScreenFallbackNotices,
+  });
+  const conclusion =
+    headlineEnvelope?.result && riskEnvelope?.result
+      ? buildDashboardConclusion(headlineEnvelope.result, riskEnvelope.result)
+      : null;
+  const kpiBand = buildBondDashboardKpiBand({
+    headline: headlineEnvelope?.result,
+    loading: bundleLoading,
+  });
+  const caliberItems = buildBondDashboardCaliberItems({
+    reportDate: rd,
+    prevReportDate: headlineEnvelope?.result.prev_report_date ?? null,
+    dataSource: datesQuery.data?.data_source,
+  });
+  const sectionStatusItems = buildBondDashboardSectionStatusItems(bundleQuery.data);
+  /*
+   * KPI 横带渲染门：首屏未 settle（dates 在途、默认报告日尚未落地、bundle 在途）
+   * 时渲染无 testid 的载入块，与旧 HeadlineKpis「无数据不出格子」的时序语义一致
+   * （测试 findByTestId 等待的是带真实数据的格子）；占位 EM_DASH 格只在终态披露
+   * （dates 失败 / 无可用报告日 / bundle 失败或分区缺失）。
+   */
+  const firstScreenSettled =
+    datesQuery.isError || datesEmpty || bundleQuery.isError || bundleQuery.isSuccess;
+  const kpiBandPending = !firstScreenSettled;
 
   /*
    * 深色 owner 由外层 ThemedRouteBoundary 的 data-moss-theme="dark" 承担；
@@ -254,20 +164,25 @@ export default function BondDashboardPage() {
       data-moss-theme-scope="bond-dashboard"
       className="bond-dashboard-page theme-dh-api"
     >
-      <div className="bond-dashboard-page__toolbar">
-        <div className="bond-dashboard-page__title-row">
-          <h2 className="bond-dashboard-page__title">债券总览</h2>
-          {datesQuery.data?.data_source === "bond_analytics_facts" ? (
-            <Tooltip title="数据来源：债券分析事实表（与余额分析页可能存在口径差异）">
-              <InfoCircleOutlined
-                aria-label="债券驾驶舱数据来源说明"
-                className="bond-dashboard-page__title-icon"
-              />
-            </Tooltip>
-          ) : null}
+      <header className="bond-dashboard-page__header">
+        <div className="bond-dashboard-page__header-copy">
+          <h1 className="bond-dashboard-page__title">债券总览</h1>
+          <p className="bond-dashboard-page__subtitle">
+            正式债券分析事实的组合读数：规模、收益率、久期与结构分布。
+          </p>
         </div>
-        <div className="bond-dashboard-page__toolbar-controls">
-          <span className="bond-dashboard-page__report-label">报告日</span>
+        <span
+          className={`bond-dashboard-page__mode-badge bond-dashboard-page__mode-badge--${
+            client.mode === "real" ? "real" : "mock"
+          }`}
+        >
+          {client.mode === "real" ? "真实 API 只读链路" : "演示数据链路"}
+        </span>
+      </header>
+
+      <div className="bond-dashboard-page__toolbar" data-testid="bond-dashboard-toolbar">
+        <label className="bond-dashboard-page__toolbar-field">
+          <span className="bond-dashboard-page__toolbar-label">报告日</span>
           <Select
             aria-label="bond-dashboard-report-date"
             className="bond-dashboard-page__report-select"
@@ -277,161 +192,110 @@ export default function BondDashboardPage() {
             options={dateOptions.map((date) => ({ label: date, value: date }))}
             onChange={(value) => setReportDate(value)}
             placeholder="选择日期"
+            getPopupContainer={(t) => t.parentElement ?? document.body}
           />
-        </div>
+        </label>
+        <button
+          type="button"
+          className="bond-dashboard-page__refresh"
+          onClick={() => {
+            void datesQuery.refetch();
+            // refetch 会绕过 enabled 门；报告日未定时不发空参 bundle 请求。
+            if (rd) void bundleQuery.refetch();
+          }}
+        >
+          刷新
+        </button>
       </div>
 
-      {datesQuery.isError ? (
-        <Alert
-          data-testid="bond-dashboard-page-state"
-          type="error"
-          showIcon
-          message="报告日加载失败"
-          description="当前无法获取债券驾驶舱可用报告日，请稍后重试。"
+      {/* 01 当日结论：readiness 锚点（bond-dashboard-conclusion）必须留在本文件。 */}
+      <section className="bond-dashboard-section" id="bond-dashboard-section-verdict">
+        <BondDashboardSectionLead
+          title="当日结论"
+          state={verdictLeadState(
+            datesQuery.isLoading || bundleLoading,
+            datesQuery.isError || bundleError,
+            datesEmpty,
+          )}
         />
-      ) : null}
-
-      {datesEmpty ? (
-        <Alert
-          data-testid="bond-dashboard-page-state"
-          type="info"
-          showIcon
-          message="暂无可用报告日"
-          description="债券驾驶舱当前没有可读的正式报告日，因此首屏模块不展示业务结论。"
-        />
-      ) : null}
-
-      {bundleError ? (
-        <Alert
-          data-testid="bond-dashboard-bundle-state"
-          type="error"
-          showIcon
-          message="债券总览数据加载失败"
-          description="当前无法获取债券总览聚合数据，请稍后重试。"
-        />
-      ) : null}
-
-      {firstScreenFallbackNotices.length > 0 ? (
-        <Alert
-          data-testid="bond-dashboard-stale-banner"
-          role="status"
-          type="warning"
-          showIcon
-          message="首屏数据为回退/降级口径"
-          description={`${firstScreenFallbackNotices.join("。")}。下方 KPI 与结论基于上述回退数据，请以实际数据日期为准。`}
-        />
-      ) : null}
-
-      {!datesEmpty && conclusion ? (
-        <section data-testid="bond-dashboard-conclusion" className="bond-dashboard-page__conclusion">
-          <div className="bond-dashboard-page__conclusion-stack">
+        {notices.map((notice) => (
+          <div
+            key={notice.key}
+            data-testid={NOTICE_TEST_IDS[notice.key]}
+            role={notice.key === "stale" ? "status" : undefined}
+            className={`bond-dashboard-notice bond-dashboard-notice--${notice.kind}`}
+          >
+            <strong className="bond-dashboard-notice__title">{notice.title}</strong>
+            <span className="bond-dashboard-notice__description">{notice.description}</span>
+          </div>
+        ))}
+        {!datesEmpty && conclusion ? (
+          <section
+            data-testid="bond-dashboard-conclusion"
+            className="bond-dashboard-page__conclusion"
+          >
             <span className="bond-dashboard-page__conclusion-kicker">{conclusion.title}</span>
             <div className="bond-dashboard-page__conclusion-body">{conclusion.body}</div>
             <div className="bond-dashboard-page__conclusion-detail">{conclusion.detail}</div>
-          </div>
-        </section>
-      ) : null}
-
-      <HeadlineKpis data={headlineQuery.data?.result} loading={headlineQuery.isLoading} />
-
-      {hasFirstScreenMeta ? (
-        <FormalResultMetaPanel
-          testId="bond-dashboard-first-screen-result-meta"
-          title="债券首页首屏证据"
-          sections={[
-            {
-              key: "headline",
-              title: "首屏指标",
-              meta: headlineQuery.data?.result_meta,
-            },
-            {
-              key: "risk",
-              title: "风险指标",
-              meta: riskQuery.data?.result_meta,
-            },
-          ]}
-        />
-      ) : null}
-
-      {!datesEmpty ? (
-        <details className="bond-dashboard-page__governance-notes">
-          <summary>口径与指标边界（证据层）</summary>
-          <p data-testid="bond-dashboard-headline-candidate-boundary">
-            MTR-BOND-001~004 仍为 candidate，pending_confirmation=true；GS-BOND-HEADLINE-A 是页面样本，非字典级批准。
+          </section>
+        ) : null}
+        {kpiBandPending ? (
+          <p className="bond-dashboard-page__surface bond-dashboard-page__surface--loading">
+            载入中…
           </p>
-          <p data-testid="bond-dashboard-risk-source-boundary">
-            GAP-BOND-DASH-RISK 尚未冻结 MTR-RSK-* 同源关系；风险指标面板不自动继承 GS-RISK-A。
-          </p>
-        </details>
-      ) : null}
-
-      <EvidencePanel
-        testId="bond-dashboard-business-type-metrics"
-        heading="业务类型加权指标"
-      >
-        {businessTypeMetricsQuery.isLoading ? (
-          <PageStateSurface variant="loading" description="载入中…" />
-        ) : businessTypeMetricsQuery.isError ? (
-          <PageStateSurface variant="error" description="指标暂不可用" />
-        ) : !(businessTypeMetricsQuery.data?.result.items.length ?? 0) ? (
-          <PageStateSurface variant="empty" description="暂无数据" />
         ) : (
-          <Table
-            size="small"
-            pagination={false}
-            scroll={{ x: "max-content" }}
-            dataSource={businessTypeMetricRows}
-            columns={BUSINESS_TYPE_METRIC_COLUMNS}
-          />
+          <BondDashboardKpiBand cells={kpiBand.cells} loading={kpiBand.loading} />
         )}
-      </EvidencePanel>
+        <div className="bond-dashboard-page__caliber" data-testid="bond-dashboard-caliber">
+          {caliberItems.map((item, index) => (
+            <span key={`${index}-${item}`} className="bond-dashboard-page__caliber-item">
+              {item}
+            </span>
+          ))}
+        </div>
+      </section>
 
-      <Row gutter={[16, 16]}>
-        <Col xs={24} lg={8}>
-          <AssetStructurePie
-            data={assetQuery.data?.result}
-            loading={assetQuery.isLoading}
-            groupBy={assetGroupBy}
-            onGroupByChange={setAssetGroupBy}
-          />
-        </Col>
-        <Col xs={24} lg={8}>
-          <YieldDistributionBar
-            yieldData={yieldQuery.data?.result}
-            tenorData={tenorBarQuery.data?.result}
-            loadingYield={yieldQuery.isLoading}
-            loadingTenor={tenorBarQuery.isLoading}
-          />
-        </Col>
-        <Col xs={24} lg={8}>
-          <CreditRatingBlocks data={ratingQuery.data?.result} loading={ratingQuery.isLoading} />
-        </Col>
-      </Row>
-
-      <Row gutter={[16, 16]}>
-        <Col xs={24} lg={8}>
-          <PortfolioTable
-            data={portfolioQuery.data?.result}
-            headline={headlineQuery.data?.result}
-            loading={portfolioQuery.isLoading}
-          />
-        </Col>
-        <Col xs={24} lg={8}>
-          <SpreadTable data={spreadQuery.data?.result} loading={spreadQuery.isLoading} />
-        </Col>
-        <Col xs={24} lg={8}>
-          <RiskIndicatorsPanel data={riskQuery.data?.result} loading={riskQuery.isLoading} />
-        </Col>
-      </Row>
-
-      <Row gutter={[16, 16]}>
-        <Col xs={24} lg={12}>
-          <MaturityStructureChart data={maturityQuery.data?.result} loading={maturityQuery.isLoading} />
-        </Col>
-        <Col xs={24} lg={12}>
-          <IndustryTable data={industryQuery.data?.result} loading={industryQuery.isLoading} />
-        </Col>
-      </Row>
+      {/* 02-06 编号分区：分区帧与 lead 由各 section 文件渲染。 */}
+      <BondStructureSection
+        assetData={assetEnvelope?.result}
+        assetLoading={bundleLoading}
+        groupBy={assetGroupBy}
+        onGroupByChange={setAssetGroupBy}
+        ratingData={ratingEnvelope?.result}
+        ratingLoading={bundleLoading}
+        yieldData={yieldEnvelope?.result}
+        tenorData={tenorEnvelope?.result}
+        yieldLoading={bundleLoading}
+        tenorLoading={bundleLoading}
+      />
+      <MaturityIndustrySection
+        maturityData={maturityEnvelope?.result}
+        maturityLoading={bundleLoading}
+        industryData={industryEnvelope?.result}
+        industryLoading={bundleLoading}
+      />
+      <PortfolioRiskSection
+        portfolioData={portfolioEnvelope?.result}
+        portfolioLoading={bundleLoading}
+        headline={headlineEnvelope?.result}
+        spreadData={spreadEnvelope?.result}
+        spreadLoading={bundleLoading}
+        riskData={riskEnvelope?.result}
+        riskLoading={bundleLoading}
+      />
+      <BusinessTypeSection
+        items={businessTypeEnvelope?.result.items}
+        loading={bundleLoading}
+        error={bundleError}
+      />
+      <EvidenceSection
+        datesMeta={datesQuery.data?.result_meta}
+        bundleMeta={bundleQuery.data?.result_meta}
+        headlineMeta={headlineEnvelope?.result_meta}
+        riskMeta={riskEnvelope?.result_meta}
+        datesEmpty={datesEmpty}
+        sectionStatusItems={sectionStatusItems}
+      />
     </div>
   );
 }

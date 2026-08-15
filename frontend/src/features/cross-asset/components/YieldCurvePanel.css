@@ -93,6 +93,12 @@
   background: var(--ca-card-mute);
 }
 
+/* 空态按 §5 空态收缩规则呈中性安静态：无虚线告警框，仅居中一句话。 */
+.yield-curve-panel__empty {
+  border: 0;
+  background: transparent;
+}
+
 .yield-curve-panel__spinner {
   width: 14px;
   height: 14px;

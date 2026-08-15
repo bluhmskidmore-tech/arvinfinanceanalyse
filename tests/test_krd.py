@@ -316,8 +316,9 @@ class TestSteepeningScenario:
         - A short-duration (1Y) portfolio should gain money (positive PnL).
 
         Note: BOND_SHORT matures in ~5 months and lands in the '6M' tenor bucket,
-        which is not covered by the steepening shocks dict (1Y–30Y only).  We use
-        BOND_2Y instead, which lands in the '2Y' bucket (shock = -15bp → positive PnL).
+        which the steepening shocks dict (1Y–30Y) covers only via the short-end
+        merge fallback (6M → 1Y).  We use BOND_2Y instead, which lands in the '2Y'
+        bucket directly (shock = -15bp → positive PnL).
         """
         steepening = next(
             s for s in STANDARD_KRD_SCENARIOS if s["name"] == "steepening_50bp"

@@ -23,13 +23,51 @@ export function formatLinkageEnvironmentScoreDetail(
   return `${label} ${score.toFixed(2)}`;
 }
 
+/** target_family 取值域来自后端 yield_curve_daily curve_type + 派生 credit_spread；未登记原样透出。 */
+const CORRELATION_TARGET_FAMILY_LABELS: Record<string, string> = {
+  treasury: "国债",
+  gov: "国债",
+  cdb: "国开",
+  aaa_credit: "AAA 信用债",
+  credit_spread: "信用利差",
+};
+
+/** 后端 series_name_map 中已知的英文序列名；未登记原样透出（证据引用保留在 title）。 */
+const CORRELATION_SERIES_NAME_PATTERNS: ReadonlyArray<{ pattern: RegExp; text: string }> = [
+  { pattern: /^10y treasury yield$/i, text: "10Y 国债收益率" },
+  { pattern: /^cpi yoy$/i, text: "CPI 同比" },
+  { pattern: /^liquidity proxy$/i, text: "流动性代理" },
+  { pattern: /^rate proxy$/i, text: "利率代理" },
+];
+
+export function formatLinkageCorrelationSeriesName(seriesName: string): string {
+  const trimmed = seriesName.trim();
+  const matched = CORRELATION_SERIES_NAME_PATTERNS.find((entry) => entry.pattern.test(trimmed));
+  if (matched) {
+    return matched.text;
+  }
+  const shiborMatch = trimmed.match(/^SHIBOR:(.+)$/i);
+  if (shiborMatch) {
+    return `Shibor ${shiborMatch[1]}`;
+  }
+  return trimmed;
+}
+
+export function formatLinkageCorrelationFamilyLabel(
+  targetFamily: string,
+  targetTenor?: string | null,
+): string {
+  const familyKey = targetFamily.trim().toLowerCase();
+  const familyLabel = CORRELATION_TARGET_FAMILY_LABELS[familyKey] ?? targetFamily;
+  return `${familyLabel}${targetTenor ? ` ${targetTenor}` : ""}`.trim();
+}
+
 export function formatLinkageCorrelationTarget(
   seriesName: string,
   targetFamily: string,
   targetTenor?: string | null,
 ): string {
-  const target = `${targetFamily}${targetTenor ? ` ${targetTenor}` : ""}`.trim();
-  return `${seriesName} → ${target}`;
+  return `${formatLinkageCorrelationSeriesName(seriesName)} → ${formatLinkageCorrelationFamilyLabel(targetFamily, targetTenor)}`;
 }
 
 const WATERFALL_FACTOR_CATEGORY_LABEL: Record<string, string> = {

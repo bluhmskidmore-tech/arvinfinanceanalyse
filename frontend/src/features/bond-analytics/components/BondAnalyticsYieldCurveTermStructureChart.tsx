@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Card, Spin } from "antd";
+import { Alert, Card } from "antd";
 
 import { useApiClient } from "../../../api/client";
 import type { ApiEnvelope, YieldCurveTermStructurePayload } from "../../../api/contracts";
@@ -15,6 +15,10 @@ import {
   type BundleSectionQuery,
 } from "../lib/bondAnalyticsCockpitBundleQuery";
 import { buildYieldCurveTermStructureChartOption } from "../lib/yieldCurveTermStructureChartOption";
+import {
+  DetailChartSkeleton,
+  DetailEmptyNote,
+} from "./BondAnalyticsDetailPrimitives";
 import styles from "./BondAnalyticsYieldCurveTermStructureChart.module.css";
 
 export type BondAnalyticsYieldCurveTermStructureChartProps = {
@@ -85,15 +89,18 @@ export function BondAnalyticsYieldCurveTermStructureChart({
           description={q.error instanceof Error ? q.error.message : "加载失败"}
         />
       ) : q.isPending ? (
-        <div className={styles.spinWrap}>
-          <Spin />
-        </div>
+        <DetailChartSkeleton
+          height={280}
+          testId="bond-analytics-yield-curve-loading"
+        />
       ) : option && (q.data?.result.curves.length ?? 0) > 0 ? (
         <div className={styles.chart}>
           <BaseChart option={option} height={280} />
         </div>
       ) : (
-        <div className={styles.empty}>暂无正式曲线截面（或全部期限缺失）</div>
+        <DetailEmptyNote testId="bond-analytics-yield-curve-empty">
+          暂无正式曲线截面（或全部期限缺失）
+        </DetailEmptyNote>
       )}
     </Card>
   );

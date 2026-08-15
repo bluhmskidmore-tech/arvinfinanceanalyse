@@ -170,7 +170,7 @@ describe("BondAnalyticsView", () => {
     expect(within(topCockpit).getByTestId("bond-analysis-market-ticker")).toHaveTextContent("10年国债");
     expect(within(topCockpit).getByTestId("bond-analysis-daily-judgment")).toHaveTextContent("核心读面");
     expect(within(topCockpit).getByTestId("bond-analysis-yield-curve-panel")).toHaveTextContent(
-      "曲线 / KRD 观察",
+      "收益率曲线 / KRD",
     );
     expect(within(topCockpit).getByTestId("bond-analysis-evidence-boundary-panel")).toHaveTextContent("证据边界");
     expect(within(topCockpit).getByTestId("bond-analysis-judgment-matrix")).toHaveTextContent("利率证据");
@@ -179,7 +179,7 @@ describe("BondAnalyticsView", () => {
     expect(within(topCockpit).getAllByTestId("bond-analysis-kpi-ribbon")).toHaveLength(1);
     expect(within(topCockpit).getByTestId("bond-analysis-kpi-ribbon")).toHaveTextContent("久期");
     expect(within(topCockpit).getByTestId("bond-analysis-kpi-ribbon")).toHaveTextContent("组合到期收益率");
-    expect(within(topCockpit).getByTestId("bond-analysis-kpi-ribbon")).toHaveTextContent("信用利差");
+    expect(within(topCockpit).getByTestId("bond-analysis-kpi-ribbon")).toHaveTextContent("信用债收益率中位数");
     expect(within(topCockpit).getByTestId("bond-analysis-today-focus")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-summary-card")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-asset-structure")).toBeInTheDocument();
@@ -310,8 +310,8 @@ describe("BondAnalyticsView", () => {
 
       expect(topCockpit).toBeInTheDocument();
 
-      const truthStrip = await within(topCockpit).findByTestId(
-        "bond-analysis-truth-strip",
+      const focus = await within(topCockpit).findByTestId(
+        "bond-analysis-today-focus",
         {},
         { timeout: BOND_ANALYTICS_FIND_TIMEOUT },
       );
@@ -319,8 +319,7 @@ describe("BondAnalyticsView", () => {
       await waitFor(
         () => {
           expect(client.getBondAnalyticsActionAttribution).toHaveBeenCalled();
-          expect(truthStrip).toHaveTextContent("仅驾驶舱快照");
-          expect(truthStrip).toHaveTextContent("动作归因不可用");
+          expect(focus).toHaveTextContent("动作归因不可用");
           expect(within(topCockpit).getByTestId("bond-analysis-decision-rail")).toBeInTheDocument();
         },
         { timeout: BOND_ANALYTICS_FIND_TIMEOUT },
@@ -630,7 +629,10 @@ describe("BondAnalyticsView", () => {
     renderBondAnalyticsView(createApiClient({ mode: "real" }));
     expect(await screen.findByTestId("bond-analysis-toolbar")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "债券分析", level: 1 })).toBeInTheDocument();
-    const fallback = await screen.findByTestId("bond-analysis-date-fallback-workbench");
+    // datesQuery retry: 2 — 兜底工作台要等 3 次尝试全部失败后才出现。
+    const fallback = await screen.findByTestId("bond-analysis-date-fallback-workbench", {}, {
+      timeout: BOND_ANALYTICS_FIND_TIMEOUT,
+    });
     expect(fallback).toHaveTextContent("债券分析日期载入失败");
     expect(fallback).toHaveTextContent("核心读面");
     expect(fallback).toHaveTextContent("收益率曲线与日变动");
@@ -658,7 +660,9 @@ describe("BondAnalyticsView", () => {
 
         if (url.includes("/api/bond-analytics/dates")) {
           datesAttempts += 1;
-          if (datesAttempts === 1) {
+          // datesQuery retry: 2 — 初始加载共 3 次尝试全部失败才进入错误兜底，
+          // 第 4 次（点击“重试日期载入”）成功。
+          if (datesAttempts <= 3) {
             return {
               ok: false,
               status: 503,
@@ -696,11 +700,21 @@ describe("BondAnalyticsView", () => {
     );
 
     renderBondAnalyticsView(createApiClient({ mode: "real" }));
-    expect(await screen.findByRole("button", { name: "重试日期载入" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole(
+        "button",
+        { name: "重试日期载入" },
+        { timeout: BOND_ANALYTICS_FIND_TIMEOUT },
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("bond-analysis-date-fallback-workbench")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "重试日期载入" }));
-    expect(await screen.findByTestId("bond-analysis-top-cockpit")).toBeInTheDocument();
-    expect(datesAttempts).toBe(2);
+    expect(
+      await screen.findByTestId("bond-analysis-top-cockpit", {}, {
+        timeout: BOND_ANALYTICS_FIND_TIMEOUT,
+      }),
+    ).toBeInTheDocument();
+    expect(datesAttempts).toBe(4);
   });
 
   it("shows an explicit empty state when bond-analysis dates return no available report dates", async () => {

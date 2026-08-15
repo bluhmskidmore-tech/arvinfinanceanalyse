@@ -308,6 +308,32 @@ describe("ConcentrationMonitorPage", () => {
       "breach",
     ]);
 
+    // 限额列与当前值列同为百分比制；限额使用率列 = 当前值 / 限额。
+    const limitRows = Array.from(
+      document.querySelectorAll(".concentration-monitor-page__limit-cell"),
+    ).map((cell) => (cell as HTMLElement).closest("tr") as HTMLTableRowElement);
+    expect(limitRows.map((row) => row.cells[2]?.textContent)).toEqual([
+      "10.00%",
+      "40.00%",
+      "15.00%",
+      "20.00%",
+    ]);
+    const usageCells = Array.from(
+      document.querySelectorAll(".concentration-monitor-page__limit-usage"),
+    ) as HTMLElement[];
+    expect(usageCells.map((cell) => cell.textContent)).toEqual([
+      "120.0%",
+      "87.5%",
+      "66.7%",
+      "125.0%",
+    ]);
+    expect(usageCells.map((cell) => cell.dataset.tone)).toEqual([
+      "breach",
+      "near",
+      "ok",
+      "breach",
+    ]);
+
     const kpiGrid = document.querySelector(
       '[data-testid="concentration-monitor-kpi-grid"]',
     ) as HTMLElement;
@@ -354,6 +380,14 @@ describe("ConcentrationMonitorPage", () => {
     ) as HTMLElement[];
     expect(statusCells[3].textContent).toBe("暂无数据");
     expect(statusCells[3].dataset.missing).toBe("true");
+
+    // 缺当前值时限额使用率同样缺值展示，并带 missing 标记。
+    const usageCells = Array.from(
+      document.querySelectorAll(".concentration-monitor-page__limit-usage"),
+    ) as HTMLElement[];
+    expect(usageCells[0].textContent).toBe(EM_DASH);
+    expect(usageCells[3].textContent).toBe(EM_DASH);
+    expect(usageCells[3].dataset.missing).toBe("true");
   });
 
   it("shows a limits-not-delivered empty state instead of falling back to frontend constants", async () => {

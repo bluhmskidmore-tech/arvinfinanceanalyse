@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Numeric } from "../../../api/contracts";
 import {
   formatDv01Wan,
+  formatEvidenceTimestamp,
   formatMomChange,
   formatMomRatio,
   formatRatePercent,
@@ -47,6 +48,19 @@ describe("bond dashboard numeric formatters", () => {
     expect(formatMomRatio(num(100), num(0))).toBeNull();
     expect(formatMomRatio(null, num(-100))).toBeNull();
     expect(formatMomRatio(num(null), num(-100))).toBeNull();
+  });
+});
+
+describe("formatEvidenceTimestamp", () => {
+  it("collapses microsecond ISO timestamps to second precision", () => {
+    // 无时区标记的 ISO 按本地时间解析，格式化结果与输入同钟面（跨 TZ 稳定）。
+    expect(formatEvidenceTimestamp("2026-08-13T21:05:33.123456")).toBe("2026-08-13 21:05:33");
+    expect(formatEvidenceTimestamp("2026-08-13T00:00:00")).toBe("2026-08-13 00:00:00");
+  });
+
+  it("returns unparseable values unchanged instead of fabricating a time", () => {
+    expect(formatEvidenceTimestamp("")).toBe("");
+    expect(formatEvidenceTimestamp("not-a-timestamp")).toBe("not-a-timestamp");
   });
 });
 

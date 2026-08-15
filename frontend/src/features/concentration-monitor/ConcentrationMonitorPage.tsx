@@ -15,7 +15,13 @@ import { SkeletonBarStack } from "../../components/SkeletonBars";
 import type { CreditSpreadMigrationResponse } from "../bond-analytics/types";
 import { limitTone, limitToneToKpi, type LimitTone } from "../workbench/components/kpiFormat";
 import { EM_DASH } from "../../utils/format";
-import { displayStr, formatConcentrationPercent, parseRatio } from "./concentrationFormat";
+import {
+  displayStr,
+  formatConcentrationPercent,
+  formatLimitThresholdPercent,
+  formatLimitUsagePercent,
+  parseRatio,
+} from "./concentrationFormat";
 import styles from "./concentrationMonitor.module.css";
 
 import "./ConcentrationMonitorPage.css";
@@ -74,7 +80,7 @@ function ConcentrationTable({
       <h3 className="concentration-monitor-page__panel-title">{title}</h3>
       {m ? (
         <p className="concentration-monitor-page__panel-meta concentration-monitor-page__tabular">
-          HHI {displayStr(m.hhi)} · 前五 {displayStr(m.top5_concentration)}
+          HHI {formatConcentrationPercent(m.hhi)} · 前五 {formatConcentrationPercent(m.top5_concentration)}
         </p>
       ) : null}
       <div className={styles.tableShell}>
@@ -94,17 +100,23 @@ function ConcentrationTable({
                 </td>
               </tr>
             ) : (
-              rows.map((row) => (
-                <tr key={`${metricsKey}-${row.name}`}>
-                  <td>{row.name}</td>
-                  <td className="concentration-monitor-page__tabular">
-                    {displayStr(row.weight)}
-                  </td>
-                  <td className="concentration-monitor-page__tabular">
-                    {displayStr(row.market_value)}
-                  </td>
-                </tr>
-              ))
+              rows.map((row) => {
+                const displayName =
+                  metricsKey === "concentration_by_rating" && row.name === "unknown"
+                    ? "未知评级"
+                    : row.name;
+                return (
+                  <tr key={`${metricsKey}-${row.name}`}>
+                    <td title={displayName === row.name ? undefined : row.name}>{displayName}</td>
+                    <td className="concentration-monitor-page__tabular">
+                      {formatConcentrationPercent(row.weight)}
+                    </td>
+                    <td className="concentration-monitor-page__tabular">
+                      {displayStr(row.market_value)}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
@@ -178,21 +190,24 @@ export default function ConcentrationMonitorPage() {
         label: "单一发行人占比",
         currentDisplay: top1w ? formatConcentrationPercent(top1w) : EM_DASH,
         currentNum: maxSingleWeight,
-        limitDisplay: String(displayLimits.issuer_single_max),
+        limitDisplay: formatLimitThresholdPercent(displayLimits.issuer_single_max),
+        usageDisplay: formatLimitUsagePercent(maxSingleWeight, displayLimits.issuer_single_max),
         tone: limitTone(maxSingleWeight, displayLimits.issuer_single_max),
       },
       {
         label: "发行人前五集中度",
         currentDisplay: formatConcentrationPercent(issuer?.top5_concentration),
         currentNum: top5,
-        limitDisplay: String(displayLimits.issuer_top5_max),
+        limitDisplay: formatLimitThresholdPercent(displayLimits.issuer_top5_max),
+        usageDisplay: formatLimitUsagePercent(top5, displayLimits.issuer_top5_max),
         tone: limitTone(top5, displayLimits.issuer_top5_max),
       },
       {
         label: "发行人 HHI",
         currentDisplay: formatConcentrationPercent(issuer?.hhi),
         currentNum: hhi,
-        limitDisplay: String(displayLimits.hhi_warning),
+        limitDisplay: formatLimitThresholdPercent(displayLimits.hhi_warning),
+        usageDisplay: formatLimitUsagePercent(hhi, displayLimits.hhi_warning),
         tone: limitTone(hhi, displayLimits.hhi_warning),
       },
       {
@@ -202,7 +217,8 @@ export default function ConcentrationMonitorPage() {
             ? formatConcentrationPercent(credit.rating_aa_and_below_weight)
             : EM_DASH,
         currentNum: belowAa,
-        limitDisplay: String(displayLimits.below_aa_max),
+        limitDisplay: formatLimitThresholdPercent(displayLimits.below_aa_max),
+        usageDisplay: formatLimitUsagePercent(belowAa, displayLimits.below_aa_max),
         tone: belowAaMissing ? ("ok" as const) : limitTone(belowAa, displayLimits.below_aa_max),
         missingData: belowAaMissing,
       },
@@ -336,48 +352,55 @@ export default function ConcentrationMonitorPage() {
             ) : null}
 
             <div data-testid="concentration-monitor-kpi-grid" className="concentration-monitor-page__summary-grid">
-              <KpiCard
-                title="发行人 HHI 指数"
-                value={formatConcentrationPercent(issuer?.hhi)}
-                detail="concentration_by_issuer.hhi"
-                tone={
-                  displayLimits
-                    ? limitToneToKpi(limitTone(parseRatio(issuer?.hhi), displayLimits.hhi_warning))
-                    : "default"
-                }
-              />
-              <KpiCard
-                title="发行人前五集中度"
-                value={formatConcentrationPercent(issuer?.top5_concentration)}
-                detail="concentration_by_issuer.top5_concentration"
-                tone={
-                  displayLimits
-                    ? limitToneToKpi(
-                        limitTone(parseRatio(issuer?.top5_concentration), displayLimits.issuer_top5_max),
-                      )
-                    : "default"
-                }
-              />
-              <KpiCard
-                title="信用债占比"
-                value={formatConcentrationPercent(credit.credit_weight)}
-                detail="credit_weight"
-                tone={
-                  displayLimits
-                    ? limitToneToKpi(limitTone(parseRatio(credit.credit_weight), displayLimits.credit_weight_max))
-                    : "default"
-                }
-              />
-              <KpiCard
-                title="评级 AA 及以下占比"
-                value={formatConcentrationPercent(credit.rating_aa_and_below_weight)}
-                detail="rating_aa_and_below_weight"
-                tone={
-                  displayLimits && !belowAaMissing
-                    ? limitToneToKpi(limitTone(belowAa, displayLimits.below_aa_max))
-                    : "default"
-                }
-              />
+              <div className="concentration-monitor-page__kpi-cell" title="口径字段 concentration_by_issuer.hhi">
+                <KpiCard
+                  title="发行人 HHI 指数"
+                  value={formatConcentrationPercent(issuer?.hhi)}
+                  tone={
+                    displayLimits
+                      ? limitToneToKpi(limitTone(parseRatio(issuer?.hhi), displayLimits.hhi_warning))
+                      : "default"
+                  }
+                />
+              </div>
+              <div
+                className="concentration-monitor-page__kpi-cell"
+                title="口径字段 concentration_by_issuer.top5_concentration"
+              >
+                <KpiCard
+                  title="发行人前五集中度"
+                  value={formatConcentrationPercent(issuer?.top5_concentration)}
+                  tone={
+                    displayLimits
+                      ? limitToneToKpi(
+                          limitTone(parseRatio(issuer?.top5_concentration), displayLimits.issuer_top5_max),
+                        )
+                      : "default"
+                  }
+                />
+              </div>
+              <div className="concentration-monitor-page__kpi-cell" title="口径字段 credit_weight">
+                <KpiCard
+                  title="信用债占比"
+                  value={formatConcentrationPercent(credit.credit_weight)}
+                  tone={
+                    displayLimits
+                      ? limitToneToKpi(limitTone(parseRatio(credit.credit_weight), displayLimits.credit_weight_max))
+                      : "default"
+                  }
+                />
+              </div>
+              <div className="concentration-monitor-page__kpi-cell" title="口径字段 rating_aa_and_below_weight">
+                <KpiCard
+                  title="评级 AA 及以下占比"
+                  value={formatConcentrationPercent(credit.rating_aa_and_below_weight)}
+                  tone={
+                    displayLimits && !belowAaMissing
+                      ? limitToneToKpi(limitTone(belowAa, displayLimits.below_aa_max))
+                      : "default"
+                  }
+                />
+              </div>
             </div>
 
             <h2 className="concentration-monitor-page__block-title">分项集中度（前列市值）</h2>
@@ -404,6 +427,7 @@ export default function ConcentrationMonitorPage() {
                         <th>指标</th>
                         <th>当前值</th>
                         <th>限额</th>
+                        <th>限额使用率</th>
                         <th>状态</th>
                       </tr>
                     </thead>
@@ -423,6 +447,13 @@ export default function ConcentrationMonitorPage() {
                             </td>
                             <td className="concentration-monitor-page__tabular">
                               {row.limitDisplay}
+                            </td>
+                            <td
+                              className="concentration-monitor-page__limit-usage concentration-monitor-page__tabular"
+                              data-tone={missing ? undefined : row.tone}
+                              data-missing={missing ? "true" : undefined}
+                            >
+                              {row.usageDisplay}
                             </td>
                             <td
                               className="concentration-monitor-page__limit-status"

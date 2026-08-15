@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 
-import { mossChartCategoricalPalette } from "../../../components/charts/chartTheme";
-import { designTokens, dhApiTokens, ibTokens } from "../../../theme/designSystem";
+import { nocturneChartTheme } from "../../../components/charts/chartTheme";
+import { designTokens, dhApiTokens } from "../../../theme/designSystem";
 import type {
   BondAnalyticsPromotionDestination,
   BondAnalyticsTruthTone,
@@ -9,9 +9,10 @@ import type {
 
 const { color, fontSize, shadow } = designTokens;
 
-export const IB_ACCENT_BAR = "var(--ib-accent)";
-export const DONUT_CHART_COLORS = mossChartCategoricalPalette.slice(0, 5);
-export const DISTRIBUTION_CHART_COLORS = [...DONUT_CHART_COLORS, ibTokens.color.gold];
+/* canvas 分类色板走页面 scope 同源的 Nocturne 常量（DESIGN §2）：本页是 Nocturne
+   深色 scope，旧的 IB 浅色分类板（mossChartCategoricalPalette）在深底上失真。 */
+export const DONUT_CHART_COLORS = nocturneChartTheme.categoricalPalette.slice(0, 5);
+export const DISTRIBUTION_CHART_COLORS = [...nocturneChartTheme.categoricalPalette];
 export const cardBodyStyle = { padding: 14 } as const;
 
 export const PERIOD_OPTIONS = [
@@ -63,7 +64,7 @@ export const FIELD: CSSProperties = {
 };
 
 export function panelStyle(background?: string): CSSProperties {
-  // Shape Lock: bond-analytics cockpit is dark-terminal (--dh-api-radius = 6px).
+  // dhApiTokens.radius 是 legacy 6px 静态回退；canonical Nocturne Shape Lock 为 8px。
   return { borderRadius: dhApiTokens.radius, border: "none", boxShadow: SHADOW, background };
 }
 

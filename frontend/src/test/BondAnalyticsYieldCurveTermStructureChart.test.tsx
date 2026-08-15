@@ -11,7 +11,10 @@ import { ApiClientProvider, createApiClient, useApiClient } from "../api/client"
 import { apiQueryKeys } from "../api/queryKeys";
 import { BondAnalyticsOverviewMidCharts } from "../features/bond-analytics/components/BondAnalyticsOverviewMidCharts";
 import { BondAnalyticsYieldCurveTermStructureChart } from "../features/bond-analytics/components/BondAnalyticsYieldCurveTermStructureChart";
-import { useBondAnalyticsCockpitBundleQuery } from "../features/bond-analytics/lib/bondAnalyticsCockpitBundleQuery";
+import {
+  BOND_ANALYTICS_COCKPIT_YIELD_CURVE_TYPES,
+  useBondAnalyticsCockpitBundleQuery,
+} from "../features/bond-analytics/lib/bondAnalyticsCockpitBundleQuery";
 
 /**
  * Stands in for `BondAnalyticsInstitutionalCockpit`'s yield-curve query, which already used
@@ -22,9 +25,15 @@ import { useBondAnalyticsCockpitBundleQuery } from "../features/bond-analytics/l
 function SiblingYieldCurveConsumer({ reportDate }: { reportDate: string }) {
   const client = useApiClient();
   useQuery({
-    queryKey: apiQueryKeys.bondAnalyticsYieldCurveTermStructure(client.mode, reportDate, "treasury,cdb"),
+    queryKey: apiQueryKeys.bondAnalyticsYieldCurveTermStructure(
+      client.mode,
+      reportDate,
+      BOND_ANALYTICS_COCKPIT_YIELD_CURVE_TYPES,
+    ),
     queryFn: () =>
-      client.getBondAnalyticsYieldCurveTermStructure(reportDate, { curveTypes: "treasury,cdb" }),
+      client.getBondAnalyticsYieldCurveTermStructure(reportDate, {
+        curveTypes: BOND_ANALYTICS_COCKPIT_YIELD_CURVE_TYPES,
+      }),
     enabled: Boolean(reportDate),
   });
   return null;
@@ -60,7 +69,7 @@ describe("BondAnalyticsYieldCurveTermStructureChart", () => {
       expect(getBondAnalyticsYieldCurveTermStructure).toHaveBeenCalledTimes(1);
     });
     expect(getBondAnalyticsYieldCurveTermStructure).toHaveBeenCalledWith("2026-03-31", {
-      curveTypes: "treasury,cdb",
+      curveTypes: "treasury,cdb,aaa_credit",
     });
   });
 
@@ -205,7 +214,7 @@ describe("BondAnalyticsYieldCurveTermStructureChart", () => {
     await waitFor(() => {
       expect(fetchBondDashboardBundle).toHaveBeenCalledTimes(1);
     });
-    expect(fetchBondDashboardBundle.mock.calls[0]?.[2]?.curveTypes).toBe("treasury,cdb");
+    expect(fetchBondDashboardBundle.mock.calls[0]?.[2]?.curveTypes).toBe("treasury,cdb,aaa_credit");
     expect(getBondAnalyticsYieldCurveTermStructure).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(getBondAnalyticsReturnDecomposition).toHaveBeenCalledTimes(1);

@@ -1,9 +1,8 @@
 import { test, expect } from "@playwright/test";
 
 const DESKTOP_VIEWPORTS = [
+  { label: "1280", width: 1280, height: 900 },
   { label: "1440", width: 1440, height: 900 },
-  { label: "1728", width: 1728, height: 1000 },
-  { label: "1920", width: 1920, height: 1080 },
 ];
 
 const READY_SELECTOR = '[data-testid="bond-analysis-cockpit-conclusion"]';
@@ -18,27 +17,36 @@ async function openBondAnalysisDesktop(page, viewport) {
 
 test.describe("bond analysis desktop first-screen layout", () => {
   for (const viewport of DESKTOP_VIEWPORTS) {
-    test(`keeps conclusion left and decision rail right at ${viewport.label}px`, async ({ page }) => {
+    test(`keeps the conclusion and KPI ribbon in the primary flow at ${viewport.label}px`, async ({ page }) => {
       await openBondAnalysisDesktop(page, viewport);
 
+      const hero = page.getByTestId("bond-analysis-reference-topbar");
       const conclusion = page.getByTestId("bond-analysis-cockpit-conclusion");
+      const kpiRibbon = page.getByTestId("bond-analysis-kpi-ribbon");
       const decisionRail = page.getByTestId("bond-analysis-decision-rail");
       const decisionTrust = page.getByTestId("bond-analysis-decision-trust");
       const nextAction = page.getByTestId("bond-analysis-decision-next-action");
 
+      await expect(hero).toBeVisible();
       await expect(conclusion).toBeVisible();
+      await expect(kpiRibbon).toBeVisible();
       await expect(decisionRail).toBeVisible();
       await expect(decisionTrust).toBeVisible();
       await expect(nextAction).toBeVisible();
 
-      const heroAside = page.getByTestId("bond-analysis-hero-aside");
+      const heroBox = await hero.boundingBox();
       const conclusionBox = await conclusion.boundingBox();
-      const asideBox = await heroAside.boundingBox();
+      const kpiBox = await kpiRibbon.boundingBox();
+      expect(heroBox).not.toBeNull();
       expect(conclusionBox).not.toBeNull();
-      expect(asideBox).not.toBeNull();
+      expect(kpiBox).not.toBeNull();
 
-      expect(conclusionBox.x).toBeLessThan(asideBox.x);
-      expect(Math.abs(conclusionBox.y - asideBox.y)).toBeLessThan(24);
+      expect(conclusionBox.x).toBeGreaterThanOrEqual(heroBox.x);
+      expect(conclusionBox.x + conclusionBox.width).toBeLessThanOrEqual(heroBox.x + heroBox.width);
+      expect(conclusionBox.width).toBeGreaterThan(heroBox.width * 0.9);
+      expect(kpiBox.y).toBeGreaterThan(heroBox.y + heroBox.height);
+      expect(Math.abs(kpiBox.x - heroBox.x)).toBeLessThan(2);
+      expect(Math.abs(kpiBox.width - heroBox.width)).toBeLessThanOrEqual(2);
 
       const headline = conclusion.locator(".heroHeadline, [class*='heroHeadline']").first();
       if ((await headline.count()) > 0) {

@@ -27,34 +27,52 @@ const SERIES_PALETTE = [
   nocturneTokens.color.accent300,
 ] as const;
 
-/** 未评级/违约是风险语义，固定用去饱和红，不参与色板轮换。 */
+/** 违约与 B 档及以下是风险警戒语义，固定去饱和红，不参与色板轮换。 */
 const NEGATIVE_COLOR = nocturneTokens.color.red;
 
-const NEGATIVE_RATINGS = new Set(["未评级", "违约"]);
+/** 未评级/未知档不伪装成任何评级档位，走中性灰（bond-dashboard 同制度）。 */
+const UNRATED_COLOR = nocturneTokens.color.inkMuted;
 
+/*
+ * 评级色阶对齐 bond-dashboard CreditRatingBlocks：高评级沿 accent 冷色阶
+ * 渐进（AAA 最深），AA- 中性过渡；A 档进入琥珀警戒。评级恶化是警戒语义
+ * （琥珀/红），不占用涨跌绿/红。索引指向 SERIES_PALETTE。
+ */
 const RATING_PALETTE_INDEX: Record<string, number> = {
-  AAA: 0,
-  "AA+": 1,
-  AA: 2,
-  "AA-": 3,
-  "A+": 4,
-  A: 5,
-  "A-": 5,
+  AAA: 0, // blue
+  "AA+": 3, // accent400
+  AA: 5, // accent300
+  "AA-": 4, // inkSoft（中性过渡）
+  "A+": 2, // amber
+  A: 2,
+  "A-": 2,
 };
 
-type PaletteKey = "neg" | `p${number}`;
+type PaletteKey = "neg" | "unrated" | `p${number}`;
 
-function ratingPaletteKey(rating: string, index: number): PaletteKey {
-  if (NEGATIVE_RATINGS.has(rating)) {
+function ratingPaletteKey(rating: string): PaletteKey {
+  const raw = rating.trim();
+  if (raw === "未评级" || raw === "") {
+    return "unrated";
+  }
+  const key = raw.toUpperCase();
+  if (raw === "违约" || /^[BCD]/.test(key)) {
     return "neg";
   }
-  const idx = RATING_PALETTE_INDEX[rating] ?? index % SERIES_PALETTE.length;
-  return `p${idx}`;
+  const idx = RATING_PALETTE_INDEX[key];
+  if (idx != null) {
+    return `p${idx}`;
+  }
+  // 未登记的 A 系变体按琥珀警戒兜底，其余未知档位走中性灰。
+  return key.includes("A") ? "p2" : "unrated";
 }
 
 function paletteColor(key: PaletteKey): string {
   if (key === "neg") {
     return NEGATIVE_COLOR;
+  }
+  if (key === "unrated") {
+    return UNRATED_COLOR;
   }
   return SERIES_PALETTE[Number(key.slice(1)) % SERIES_PALETTE.length];
 }
@@ -89,7 +107,8 @@ const RATING_COLUMNS: TableColumnsType<RatingRow> = [
     render: (v: string) => formatPercentValue(v),
   },
   {
-    title: "只数",
+    /* bond_count 是区间内 bond-days 累计（AAA 可达 22 万+），不是组合持券只数。 */
+    title: <span title="区间内逐日持仓记录累计">笔数(区间)</span>,
     dataIndex: "bond_count",
     align: "right",
     className: "positions-view__num-cell",
@@ -135,10 +154,10 @@ export default function RatingDistributionCard({ startDate, endDate, subType }: 
 
   const rows = useMemo<RatingRow[]>(
     () =>
-      (data?.items ?? []).map((row, idx) => ({
+      (data?.items ?? []).map((row) => ({
         key: row.rating,
         ...row,
-        paletteKey: ratingPaletteKey(row.rating, idx),
+        paletteKey: ratingPaletteKey(row.rating),
       })),
     [data?.items],
   );

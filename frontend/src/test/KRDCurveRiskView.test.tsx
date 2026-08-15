@@ -162,7 +162,7 @@ describe("KRDCurveRiskView", () => {
     expect(screen.getByText("parallel_10bp")).toBeInTheDocument();
     expect(screen.getByText("收益率曲线平行 +10bp")).toBeInTheDocument();
     expect(screen.getByTestId("krd-computed-at")).toHaveTextContent(
-      "计算时间：2026-04-10T00:00:00Z",
+      "计算时间：2026-04-10 00:00",
     );
     expect(screen.getByText("parallel_shift_bp 10")).toBeInTheDocument();
     expect(screen.getAllByText("利率贡献").length).toBeGreaterThan(0);

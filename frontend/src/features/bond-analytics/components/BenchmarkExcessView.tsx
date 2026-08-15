@@ -1,21 +1,29 @@
 import { useEffect, useMemo, useState } from "react";
-import { Card, Statistic, Row, Col, Alert, Spin, Select, Space } from "antd";
+import { Card, Statistic, Row, Col, Alert, Select, Space } from "antd";
 import { type EChartsOption } from "../../../lib/echarts";
 import { BaseChart } from "../../../components/charts/BaseChart";
+import { nocturneChartTheme } from "../../../components/charts/chartTheme";
 import { FilterBar } from "../../../components/FilterBar";
 import { useApiClient } from "../../../api/client";
 import type { Numeric } from "../../../api/contracts";
-import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
+import { bondNumericDisplay, bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { PeriodType, BenchmarkExcessResponse } from "../types";
 import { designTokens, nocturneTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 import { formatBp, formatPct } from "../utils/formatters";
+import {
+  DetailEmptyNote,
+  DetailLoadErrorAlert,
+  DetailPanelSkeleton,
+  formatDetailComputedAt,
+} from "./BondAnalyticsDetailPrimitives";
+import detailStyles from "./BondAnalyticsDetailPrimitives.module.css";
 import { SectionLead } from "./SectionLead";
 
-/* 中国市场惯例方向不变（红涨绿跌），色值收敛到 Nocturne 去饱和语义常量（§2.2）；
-   常量同时喂 ECharts canvas 与 DOM style，统一走 TS 镜像 token。 */
-const CN_MARKET_UP = nocturneTokens.color.red;
-const CN_MARKET_DOWN = nocturneTokens.color.green;
+/* 2026-08-11 全站决议（DESIGN §4）：绿涨红跌。正效应/正超额=绿、负效应/负超额=红；
+   色值收敛到 Nocturne 去饱和语义常量（§2.2），常量同时喂 ECharts canvas 与 DOM style。 */
+const POSITIVE_CONTRIBUTION = nocturneTokens.color.green;
+const NEGATIVE_CONTRIBUTION = nocturneTokens.color.red;
 const CHART_ACCENT = nocturneTokens.color.blue;
 
 interface Props {
@@ -38,20 +46,38 @@ const WATERFALL_CATEGORIES = [
   "超额收益",
 ] as const;
 
-const CHART_TEXT = { fontSize: designTokens.fontSize[13], color: nocturneTokens.color.inkSoft } as const;
-
 const TRANSPARENT_BAR = {
   borderColor: "transparent",
-  color: "rgba(0,0,0,0)",
+  color: "transparent",
   borderWidth: 0,
 } as const;
 
-function formatDurationDisplay(value: Numeric): string {
-  return value.display;
+/**
+ * 后端 benchmark-excess 载荷的数值字段实测为裸字符串（如 "3.69579661"，未经 Numeric
+ * 归一化），直接取 `.display` 得 undefined、antd Statistic 兜底渲染成假「0」。
+ * 统一经 bondNumericRaw 解析（兼容 Numeric 与字符串），缺失 —，展示收敛 2 位小数。
+ */
+function formatDurationCell(value: Numeric | string | null | undefined): string {
+  const raw = bondNumericRaw(value);
+  if (raw === null) return EM_DASH;
+  return `${raw.toFixed(2)} 年`;
 }
 
-function hasDisplayMetric(value: Numeric | null | undefined): value is Numeric {
-  return value != null && value.display !== "";
+function hasDisplayMetric(value: Numeric | string | null | undefined): boolean {
+  return bondNumericRaw(value) !== null;
+}
+
+/** 缺失效应项标签（瀑布断开 + 区头 partial 披露用），与 WATERFALL_CATEGORIES 前五项对齐。 */
+function missingBenchmarkEffectLabels(d: BenchmarkExcessResponse): string[] {
+  return [
+    { label: "久期效应", value: d.duration_effect },
+    { label: "曲线效应", value: d.curve_effect },
+    { label: "利差效应", value: d.spread_effect },
+    { label: "选券效应", value: d.selection_effect },
+    { label: "配置效应", value: d.allocation_effect },
+  ]
+    .filter((item) => bondNumericRaw(item.value) === null)
+    .map((item) => item.label);
 }
 
 function buildBenchmarkExcessWaterfallOption(d: BenchmarkExcessResponse): EChartsOption {
@@ -62,35 +88,42 @@ function buildBenchmarkExcessWaterfallOption(d: BenchmarkExcessResponse): EChart
   const allocationEffect = bondNumericRaw(d.allocation_effect);
   const excessReturn = bondNumericRaw(d.excess_return);
 
-  const stepValues = [
+  /* 缺失效应不再补 0 画假柱：保留 null，该柱断开，缺口在区头 partial 注记披露。 */
+  const stepValues: Array<number | null> = [
     durationEffect,
     curveEffect,
     spreadEffect,
     selectionEffect,
     allocationEffect,
-  ].map((v) => v ?? 0);
+  ];
 
-  const helperRaw: number[] = [];
-  const valueRaw: number[] = [];
+  const helperRaw: Array<number | null> = [];
+  const valueRaw: Array<number | null> = [];
   const barColors: string[] = [];
 
   let running = 0;
   for (const v of stepValues) {
+    if (v === null) {
+      helperRaw.push(null);
+      valueRaw.push(null);
+      barColors.push("transparent");
+      continue;
+    }
     if (v >= 0) {
       helperRaw.push(running);
       valueRaw.push(v);
-      barColors.push(CN_MARKET_UP);
+      barColors.push(POSITIVE_CONTRIBUTION);
       running += v;
     } else {
       helperRaw.push(running + v);
       valueRaw.push(-v);
-      barColors.push(CN_MARKET_DOWN);
+      barColors.push(NEGATIVE_CONTRIBUTION);
       running += v;
     }
   }
 
   helperRaw.push(0);
-  valueRaw.push(excessReturn ?? 0);
+  valueRaw.push(excessReturn);
   barColors.push(CHART_ACCENT);
 
   const displayStrings = [
@@ -102,12 +135,11 @@ function buildBenchmarkExcessWaterfallOption(d: BenchmarkExcessResponse): EChart
     d.excess_return.display,
   ];
 
-  return {
+  return nocturneChartTheme.createBarChartOption({
     backgroundColor: "transparent",
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "shadow" },
-      textStyle: CHART_TEXT,
       formatter: (items: unknown) => {
         const list = Array.isArray(items) ? items : [items];
         const bar = list.find((x: { seriesName?: string }) => x.seriesName === "效应");
@@ -120,12 +152,16 @@ function buildBenchmarkExcessWaterfallOption(d: BenchmarkExcessResponse): EChart
     xAxis: {
       type: "category",
       data: [...WATERFALL_CATEGORIES],
-      axisLabel: { interval: 0, rotate: 0, ...CHART_TEXT },
+      axisLabel: { ...nocturneChartTheme.axisLabel, interval: 0, rotate: 0 },
     },
     yAxis: {
       type: "value",
-      axisLabel: CHART_TEXT,
+      axisLabel: {
+        ...nocturneChartTheme.axisLabel,
+        formatter: (value: number) => `${value} bp`,
+      },
     },
+    legend: { show: false },
     series: [
       {
         name: "辅助",
@@ -146,7 +182,7 @@ function buildBenchmarkExcessWaterfallOption(d: BenchmarkExcessResponse): EChart
         })),
       },
     ],
-  };
+  });
 }
 
 export function BenchmarkExcessView({ reportDate, periodType }: Props) {
@@ -181,16 +217,39 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
   }, [benchmarkId, client, periodType, reportDate]);
 
   const waterfallOption = useMemo(
-    () => (data ? buildBenchmarkExcessWaterfallOption(data) : null),
+    () => {
+      if (!data) return null;
+      const hasSeries = [
+        data.duration_effect,
+        data.curve_effect,
+        data.spread_effect,
+        data.selection_effect,
+        data.allocation_effect,
+        data.excess_return,
+      ].some((value) => bondNumericRaw(value) !== null);
+      return hasSeries ? buildBenchmarkExcessWaterfallOption(data) : null;
+    },
     [data],
   );
 
-  if (loading) return <Spin style={{ display: "block", margin: `${designTokens.space[8]}px auto` }} />;
-  if (error) return <Alert type="error" message={`加载失败：${error}`} />;
+  if (loading) return <DetailPanelSkeleton testId="benchmark-excess-loading" />;
+  if (error) return <DetailLoadErrorAlert error={error} testId="benchmark-excess-error" />;
   if (!data) return null;
 
   const excessNum = bondNumericRaw(data.excess_return);
-  const excessColor = excessNum === null ? nocturneTokens.color.ink : excessNum >= 0 ? CN_MARKET_UP : CN_MARKET_DOWN;
+  const excessColor =
+    excessNum === null ? nocturneTokens.color.ink : excessNum >= 0 ? POSITIVE_CONTRIBUTION : NEGATIVE_CONTRIBUTION;
+
+  /* 组合/基准/差三项久期同时严格为 0 是后端缺失补零的占位形态（真实组合久期不可能
+     恰为 0 且与驾驶舱读数矛盾）：按缺值 — 处理并显式注记，不当真零展示。 */
+  const durationAllZero =
+    [data.portfolio_duration, data.benchmark_duration, data.duration_diff].every(
+      (value) => bondNumericRaw(value) === 0,
+    );
+  const durationCell = (value: Numeric): string =>
+    durationAllZero ? EM_DASH : formatDurationCell(value);
+
+  const missingEffects = missingBenchmarkEffectLabels(data);
 
   const decomp = [
     { label: "久期效应", value: data.duration_effect },
@@ -205,7 +264,7 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
     hasDisplayMetric(data.information_ratio);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: designTokens.space[4] }}>
+    <div className={detailStyles.view}>
       <div
         style={{
           display: "flex",
@@ -237,6 +296,7 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
             options={BENCHMARK_OPTIONS}
             style={{ width: 200 }}
             size="small"
+            getPopupContainer={(trigger) => trigger.parentElement ?? document.body}
           />
         </FilterBar>
       </div>
@@ -247,7 +307,7 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
         description="先阅读组合收益、基准收益、超额收益和久期差，再进入下方效果分解和来源明细。"
         testId="benchmark-excess-summary-lead"
       />
-      <Row gutter={16}>
+      <Row gutter={[12, 12]} className={detailStyles.kpiGrid}>
         <Col xs={24} sm={12} md={8}>
           <Card size="small">
             <Statistic title="组合收益" value={formatPct(data.portfolio_return)} />
@@ -269,23 +329,31 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
         </Col>
         <Col xs={24} sm={12} md={8}>
           <Card size="small">
-            <Statistic title="组合久期" value={formatDurationDisplay(data.portfolio_duration)} />
+            <Statistic title="组合久期" value={durationCell(data.portfolio_duration)} />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={8}>
           <Card size="small">
-            <Statistic title="基准久期" value={formatDurationDisplay(data.benchmark_duration)} />
+            <Statistic title="基准久期" value={durationCell(data.benchmark_duration)} />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={8}>
           <Card size="small">
-            <Statistic title="久期差" value={formatDurationDisplay(data.duration_diff)} />
+            <Statistic title="久期差" value={durationCell(data.duration_diff)} />
           </Card>
         </Col>
       </Row>
+      {durationAllZero ? (
+        <div
+          data-testid="benchmark-excess-duration-gap-note"
+          style={{ fontSize: designTokens.fontSize[12], color: "var(--dh-api-amber)" }}
+        >
+          久期读数未返回：组合久期、基准久期与久期差按 — 展示（后端本次返回全 0 占位，不作真实久期）。
+        </div>
+      ) : null}
 
       {hasRiskMetrics && (
-        <Row gutter={16}>
+        <Row gutter={[12, 12]} className={detailStyles.kpiGrid}>
           {hasDisplayMetric(data.tracking_error) && (
             <Col xs={24} sm={12} md={8}>
               <Card size="small">
@@ -296,7 +364,7 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
           {hasDisplayMetric(data.information_ratio) && (
             <Col xs={24} sm={12} md={8}>
               <Card size="small">
-                <Statistic title="信息比率" value={data.information_ratio.display} />
+                <Statistic title="信息比率" value={bondNumericDisplay(data.information_ratio)} />
               </Card>
             </Col>
           )}
@@ -309,20 +377,27 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
         description="分解、对账和来源明细沿用后端返回字段，保留解释项与对账差异的边界。"
         testId="benchmark-excess-attribution-lead"
       />
+      {missingEffects.length > 0 ? (
+        <div
+          data-testid="benchmark-excess-partial-note"
+          style={{ fontSize: designTokens.fontSize[12], color: "var(--dh-api-amber)" }}
+        >
+          归因部分缺失：{missingEffects.join(" / ")} 未返回，瀑布图对应柱断开，不补 0。
+        </div>
+      ) : null}
       <Card title="超额收益分解" size="small">
-        <div style={{ display: "flex", gap: designTokens.space[3], flexWrap: "wrap" }}>
+        <div className={detailStyles.effectGrid}>
           {decomp.map((d) => {
             const num = bondNumericRaw(d.value);
-            const color = num === null ? nocturneTokens.color.ink : num >= 0 ? CN_MARKET_UP : CN_MARKET_DOWN;
+            const color =
+              num === null ? nocturneTokens.color.ink : num >= 0 ? POSITIVE_CONTRIBUTION : NEGATIVE_CONTRIBUTION;
             return (
-              <div key={d.label} style={{ textAlign: "center", minWidth: 100 }}>
-                <div style={{ fontSize: designTokens.fontSize[12], color: "var(--dh-api-muted)" }}>{d.label}</div>
+              <div key={d.label} className={detailStyles.effectMetric}>
+                <div className={detailStyles.effectLabel}>{d.label}</div>
                 <div
+                  className={detailStyles.effectValue}
                   style={{
-                    fontSize: designTokens.fontSize[18],
-                    fontWeight: 600,
                     color,
-                    ...tabularNumsStyle,
                   }}
                 >
                   {formatBp(d.value)}
@@ -331,10 +406,14 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
             );
           })}
         </div>
-        {waterfallOption && (
-          <div style={{ marginTop: designTokens.space[4] }}>
+        {waterfallOption ? (
+          <div className={detailStyles.chartStage}>
             <BaseChart option={waterfallOption} height={280} />
           </div>
+        ) : (
+          <DetailEmptyNote testId="benchmark-excess-chart-empty">
+            暂无超额收益归因序列
+          </DetailEmptyNote>
         )}
       </Card>
 
@@ -347,11 +426,24 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
             <Statistic title="对账残差" value={formatBp(data.recon_error)} />
           </Col>
         </Row>
+        {/* 口径依据 backend/app/core_finance/bond_analytics/read_models.py：selection_effect 为
+            配平残差（plug），explained_excess 因而与超额收益恒等闭合；recon_error 为剔除该配平项
+            后的未解释残差（数值上等于选券效应），故可大于可解释超额，不代表对账错误。 */}
+        <div
+          data-testid="benchmark-excess-recon-basis-note"
+          style={{
+            marginTop: designTokens.space[2],
+            fontSize: designTokens.fontSize[12],
+            color: "var(--dh-api-muted)",
+          }}
+        >
+          口径：可解释超额含选券配平项，与超额收益恒等闭合；对账残差为剔除选券配平后的未解释部分（数值上等于选券效应），可大于可解释超额。
+        </div>
       </Card>
 
-      {data.excess_sources && data.excess_sources.length > 0 && (
-        <Card title="超额来源明细" size="small">
-          {data.excess_sources.map((s) => (
+      <Card title="超额来源明细" size="small">
+        {data.excess_sources && data.excess_sources.length > 0 ? (
+          data.excess_sources.map((s) => (
             <div
               key={s.source}
               style={{
@@ -364,7 +456,7 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                 <span>{s.source}</span>
-                <span style={{ fontVariantNumeric: "tabular-nums" }}>{formatBp(s.contribution)}</span>
+                <span style={tabularNumsStyle}>{formatBp(s.contribution)}</span>
               </div>
               {s.description ? (
                 <span style={{ fontSize: designTokens.fontSize[12], color: "var(--dh-api-muted)" }}>
@@ -372,9 +464,13 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
                 </span>
               ) : null}
             </div>
-          ))}
-        </Card>
-      )}
+          ))
+        ) : (
+          <DetailEmptyNote testId="benchmark-excess-sources-empty">
+            暂无超额来源明细
+          </DetailEmptyNote>
+        )}
+      </Card>
 
       {data.warnings.length > 0 && (
         <Alert
@@ -389,7 +485,7 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
 
       {data.computed_at ? (
         <div style={{ fontSize: designTokens.fontSize[12], color: "var(--dh-api-muted)" }}>
-          计算时间：{data.computed_at}
+          计算时间：{formatDetailComputedAt(data.computed_at)}
         </div>
       ) : null}
     </div>

@@ -37,3 +37,22 @@ export function formatConcentrationPercent(value: string | Numeric | undefined):
   }
   return `${(ratio * 100).toFixed(2)}%`;
 }
+
+/** 展示限额阈值（后端下发 ratio 小数）与当前值列同制：两位小数百分比。 */
+export function formatLimitThresholdPercent(limit: number): string {
+  if (!Number.isFinite(limit)) {
+    return EM_DASH;
+  }
+  return `${(limit * 100).toFixed(2)}%`;
+}
+
+/**
+ * 限额使用率 = 当前值 / 限额（两者均为 ratio 小数，仅展示对照，不参与重算）；
+ * 缺当前值或限额非正时返回 EM_DASH。
+ */
+export function formatLimitUsagePercent(value: number | null, limit: number): string {
+  if (value === null || !Number.isFinite(limit) || limit <= 0) {
+    return EM_DASH;
+  }
+  return `${((value / limit) * 100).toFixed(1)}%`;
+}

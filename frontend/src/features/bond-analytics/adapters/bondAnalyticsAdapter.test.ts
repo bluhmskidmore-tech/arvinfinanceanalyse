@@ -6,7 +6,6 @@ import {
   bondNumericDisplay,
   bondNumericRaw,
   bondNumericRawOrNull,
-  chartValueOrZero,
   returnDecompositionWaterfallDisplayStrings,
   returnDecompositionWaterfallRawSteps,
 } from "./bondAnalyticsAdapter";
@@ -121,26 +120,6 @@ describe("bondChartMagnitude", () => {
   });
 });
 
-// chartValueOrZero 仅供瀑布图等需要累计求和的图表填充使用；null/0 在这里被刻意合并，
-// 不代表业务语义——业务展示与聚合路径必须走 bondNumericDisplay / EM_DASH 或直接排除缺失项。
-describe("chartValueOrZero (chart cumulative-fill only, not for business display/aggregation)", () => {
-  it("passes through finite numbers untouched", () => {
-    expect(chartValueOrZero(12.5)).toBe(12.5);
-  });
-
-  it("substitutes the default 0 fill for missing chart input so the running total stays computable", () => {
-    expect(chartValueOrZero(null)).toBe(0);
-  });
-
-  it("honors an explicit fallback override for missing chart input", () => {
-    expect(chartValueOrZero(undefined, -1)).toBe(-1);
-  });
-
-  it("falls back for non-finite chart input (e.g. NaN)", () => {
-    expect(chartValueOrZero(Number.NaN, 7)).toBe(7);
-  });
-});
-
 describe("returnDecompositionWaterfall helpers", () => {
   it("builds raw steps including final explained bar", () => {
     const d = rd({
@@ -156,7 +135,8 @@ describe("returnDecompositionWaterfall helpers", () => {
     expect(returnDecompositionWaterfallRawSteps(d)).toEqual([1, 2, 3, 4, 5, 6, 7, 28]);
   });
 
-  it("uses chart-safe zeroes for missing values while preserving signed finite values", () => {
+  // 缺失 ≠ 0：缺失/非有限效应保留 null（柱断开 + 区头 partial 披露），真实 0 与负值原样保留。
+  it("keeps missing/non-finite effects as null instead of fake zeroes", () => {
     const d = rd({
       carry: num({ raw: null }),
       roll_down: num({ raw: 0 }),
@@ -168,7 +148,7 @@ describe("returnDecompositionWaterfall helpers", () => {
       explained_pnl: num({ raw: Number.NaN }),
     });
 
-    expect(returnDecompositionWaterfallRawSteps(d)).toEqual([0, 0, -3, 0, 4, 0, -2, 0]);
+    expect(returnDecompositionWaterfallRawSteps(d)).toEqual([null, 0, -3, null, 4, null, -2, null]);
   });
 
   it("builds display strings aligned to waterfall categories", () => {

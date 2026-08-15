@@ -1,4 +1,4 @@
-"""Positions read service — snapshot aggregations with formal result envelopes."""
+"""Positions read service — snapshot aggregations exposed as analytical candidates."""
 from __future__ import annotations
 
 import uuid
@@ -9,7 +9,6 @@ from pathlib import Path
 
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.positions_repo import PositionsRepository
-from backend.app.services.runtime_cache import get_runtime_cache
 from backend.app.schemas.positions import (
     BondPositionItem,
     BondPositionsPageResponse,
@@ -27,8 +26,8 @@ from backend.app.schemas.positions import (
 from backend.app.services.formal_result_runtime import (
     build_analytical_result_meta,
     build_formal_result_envelope,
-    build_formal_result_meta,
 )
+from backend.app.services.runtime_cache import get_runtime_cache
 
 CACHE_VERSION = "cv_positions_read_v1"
 RULE_VERSION = "rv_positions_read_v1"
@@ -107,7 +106,13 @@ def _resolve_report_date(repo: PositionsRepository, report_date: str) -> str:
 
 
 def _meta(*, result_kind: str, src: list[str], rule: list[str]) -> object:
-    return build_formal_result_meta(
+    # 快照聚合面（sub_types/counterparty/rating/industry/customer 等）读的是
+    # zqtz/tyw 每日快照——backend/app/AGENTS.md 明确快照是"标准化输入而非对外
+    # 正式 source-of-truth"；docs/metric_dictionary.md 中 positions 仅有两条
+    # candidate 指标（MTR-POS-001/002，列表记录数）且写明"列表与统计 DTO 未升为
+    # MTR-*"（GAP-POS-LIST 开放）。无正式化批准记录，故与列表端点一致降为
+    # analytical（formal_use_allowed=false）。
+    return build_analytical_result_meta(
         trace_id=_trace_id(),
         result_kind=result_kind,
         cache_version=CACHE_VERSION,

@@ -387,7 +387,9 @@ describe("BondAnalyticsViewContent", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(toolbar.compareDocumentPosition(overview)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(overview.compareDocumentPosition(detail)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(detail).toHaveTextContent("复核入口");
+    /* 眉标去重（C16）：上方参数条已用「复核入口」，明细横带改「明细下钻」。 */
+    expect(detail).toHaveTextContent("明细下钻");
+    expect(detail).not.toHaveTextContent("复核入口");
     expect(detail).toHaveTextContent("下钻证据与参数");
     expect(detail).toHaveTextContent("不在底部生成新的方向性结论");
     expect(detail).not.toHaveTextContent("分析师解读");
@@ -443,6 +445,39 @@ describe("BondAnalyticsViewContent", () => {
       expect(client.getBondAnalyticsActionAttribution).not.toHaveBeenCalled();
     });
     expect(screen.queryByTestId("bond-analysis-decision-cockpit")).not.toBeInTheDocument();
+  });
+
+  it("recovers from a single dates failure without flipping to the fallback workbench", async () => {
+    let datesAttempts = 0;
+    const getBondAnalyticsDates = vi.fn(async () => {
+      datesAttempts += 1;
+      if (datesAttempts === 1) {
+        throw new Error("502 bad gateway during backend restart");
+      }
+      return {
+        result_meta: createResultMeta({ result_kind: "bond_analytics.dates" }),
+        result: { report_dates: ["2026-03-31"] },
+      };
+    });
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsDates,
+      getBondAnalyticsActionAttribution: vi.fn(async () => createActionAttributionEnvelope()),
+    };
+
+    renderViewContent(client);
+
+    // retry: 2 且首次失败后按默认退避（~1s）重试成功，页面不应翻转到日期兜底工作台。
+    await waitFor(
+      () => {
+        expect(latestOverviewProps?.reportDate).toBe("2026-03-31");
+      },
+      { timeout: 10_000 },
+    );
+    expect(datesAttempts).toBe(2);
+    expect(
+      screen.queryByTestId("bond-analysis-date-fallback-workbench"),
+    ).not.toBeInTheDocument();
   });
 
   it("loads research calendar events for the effective report date and passes them to the overview panels", async () => {

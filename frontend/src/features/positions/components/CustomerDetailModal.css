@@ -7,14 +7,13 @@
  */
 
 /*
- * CN equity convention (A-share 红涨绿跌): intentional page-local exception.
- * Do NOT map these to --ib-up/--ib-down (IB is 绿涨红跌).
- * 语义锚点收敛为深色去饱和链（原浅色高饱和红绿字面量已删除）；趋势线
- * canvas 取色走 nocturneTokens 常量，与本链数值同源。
+ * 客户余额趋势是持仓规模方向而非行情涨跌：对齐全站绿涨红跌语义
+ * （DESIGN.md §2.2/§4，旧 A 股红涨绿跌行情例外已废弃）。趋势线 canvas
+ * 取色走 nocturneTokens 常量，与本链数值同源。
  */
 .positions-customer-detail {
-  --cn-equity-up: var(--dh-api-red);
-  --cn-equity-down: var(--dh-api-green);
+  --balance-trend-up: var(--dh-api-green);
+  --balance-trend-down: var(--dh-api-red);
 }
 
 /* ---------------------------------------------------- Modal 铬件收敛 */

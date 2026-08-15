@@ -506,6 +506,20 @@ class ConcentrationMetrics(BaseModel):
         return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
 
 
+class ConcentrationDisplayLimits(BaseModel):
+    """集中度展示限额（非风控正式限额）。
+
+    仅用于前端展示对照的阈值配置，字段名与集中度监控页对照项一一对应。
+    值为普通比例数（JSON number），不是治理 Numeric 指标，不参与 Q8 折叠。
+    """
+
+    issuer_single_max: float = Field(description="单一发行人占比上限（展示对照）")
+    issuer_top5_max: float = Field(description="发行人前五集中度上限（展示对照）")
+    hhi_warning: float = Field(description="发行人 HHI 预警阈值（展示对照）")
+    below_aa_max: float = Field(description="评级 AA 及以下占比上限（展示对照）")
+    credit_weight_max: float = Field(description="信用债占比上限（展示对照）")
+
+
 class CreditSpreadMigrationResponse(BaseModel):
     """Credit spread sensitivity and migration risk response."""
 
@@ -532,6 +546,10 @@ class CreditSpreadMigrationResponse(BaseModel):
     concentration_by_industry: ConcentrationMetrics | None = None
     concentration_by_rating: ConcentrationMetrics | None = None
     concentration_by_tenor: ConcentrationMetrics | None = None
+    display_limits: ConcentrationDisplayLimits | None = Field(
+        default=None,
+        description="展示限额（后端下发，非风控正式限额）；正式风控限额接入前的过渡口径。",
+    )
     oci_credit_exposure: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=False))
     oci_spread_dv01: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=False))
     oci_sensitivity_25bp: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=True))
@@ -572,8 +590,8 @@ class ActionDetail(BaseModel):
     pnl_economic: Numeric
     pnl_accounting: Numeric
     delta_duration: Numeric
-    delta_dv01: Numeric
-    delta_spread_dv01: Numeric
+    delta_dv01: Numeric | None
+    delta_spread_dv01: Numeric | None
     opportunity_cost: Numeric | None = None
     opportunity_cost_method: str | None = None
 
@@ -628,8 +646,8 @@ class ActionAttributionResponse(BaseModel):
     period_start_duration: Numeric
     period_end_duration: Numeric
     duration_change_from_actions: Numeric
-    period_start_dv01: Numeric
-    period_end_dv01: Numeric
+    period_start_dv01: Numeric | None
+    period_end_dv01: Numeric | None
     status: str = "ready"
     available_components: list[str] = Field(default_factory=list)
     missing_inputs: list[str] = Field(default_factory=list)

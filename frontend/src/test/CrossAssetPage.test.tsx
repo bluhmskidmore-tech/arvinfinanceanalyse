@@ -683,7 +683,8 @@ describe("CrossAssetPage", () => {
     expect(heroPanel).toHaveTextContent("利率方向");
     expect(heroPanel).toHaveTextContent("报告日 2026-04-10");
     expect(score).toHaveTextContent("-0.11");
-    expect(score).toHaveClass("cross-asset-hero-panel__score-value--negative");
+    // 综合分负值 = 偏松（利好债市）→ easing 绿（backend composite_score 符号语义）。
+    expect(score).toHaveClass("cross-asset-hero-panel__score-value--easing");
     expect(screen.queryByTestId("cross-asset-dominant-driver-chain")).not.toBeInTheDocument();
     expect(screen.queryByTestId("cross-asset-first-screen-judgment-bond")).not.toBeInTheDocument();
     expect(screen.queryByTestId("cross-asset-first-screen-judgment-stock")).not.toBeInTheDocument();
@@ -730,10 +731,13 @@ describe("CrossAssetPage", () => {
     expect(evidenceMatrix).toHaveTextContent("权益风险偏好");
     expect(sourceAudit).toHaveTextContent("来源与审计");
     expect(actionRail).toHaveTextContent("动作约束");
-    expect(actionRail).toHaveTextContent("仅分析，不替代指令");
+    // 执行口径免责声明收敛到待复核队列一处（§11.3），动作清单不再复读。
+    expect(actionRail).toHaveTextContent("动作清单");
+    expect(actionRail).not.toHaveTextContent("仅分析，不替代指令");
     expect(reviewQueue).toHaveTextContent("待复核队列");
-    expect(reviewQueue).toHaveTextContent("宏观质量");
-    expect(reviewQueue).toHaveTextContent("联动质量");
+    // 质量正文只在来源审计与数据状态明细各一次（§6 去重），复核队列降为指引。
+    expect(reviewQueue).toHaveTextContent("数据质量");
+    expect(reviewQueue).toHaveTextContent("见数据状态");
     expect(screen.queryByTestId("cross-asset-fusion-layout")).not.toBeInTheDocument();
   });
 
@@ -1368,7 +1372,7 @@ describe("CrossAssetPage", () => {
     renderPage(createApiClient({ mode: "mock" }));
 
     const candidateActions = await screen.findByTestId("cross-asset-candidate-actions");
-    const header = within(candidateActions).getByText("Action Queue");
+    const header = within(candidateActions).getByText("行动队列");
     const queue = within(candidateActions).getByRole("list", { name: "市场候选动作队列" });
     const actionItems = within(queue).getAllByRole("listitem");
 
@@ -2616,7 +2620,12 @@ describe("CrossAssetPage", () => {
     });
     expect(heroPanel).not.toHaveTextContent("资金面维持宽松");
     const statusStrip = screen.getByTestId("cross-asset-status-strip");
-    expect(statusStrip).toHaveTextContent("加载失败 · macro_bond_linkage.analysis");
+    // 端点 token 收进 title（§6 溯源分层），状态条芯片正文只留业务结论。
+    expect(statusStrip).toHaveTextContent("加载失败");
+    expect(statusStrip).not.toHaveTextContent("macro_bond_linkage.analysis");
+    expect(
+      statusStrip.querySelector('[title*="macro_bond_linkage.analysis"]'),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-reference-source-audit")).toHaveTextContent(
       "不要把兜底卡片当作完整跨资产判断",
     );
@@ -2675,7 +2684,9 @@ describe("CrossAssetPage", () => {
       expect(statusFlags).toHaveTextContent("权限受限");
       expect(statusFlags).toHaveTextContent("macro_bond_linkage.analysis");
       expect(statusFlags).toHaveTextContent("market_data_ncd_proxy");
-      expect(statusStrip).toHaveTextContent("权限受限 · macro_bond_linkage.analysis, market_data_ncd_proxy");
+      // 端点 token 收进 title（§6 溯源分层），状态条芯片正文只留业务结论。
+      expect(statusStrip).toHaveTextContent("权限受限");
+      expect(statusStrip).not.toHaveTextContent("macro_bond_linkage.analysis");
       expect(judgment).toHaveTextContent("权限受限");
     });
     expect(heroPanel).not.toHaveTextContent("资金面维持宽松");

@@ -17,15 +17,6 @@ export function bondNumericRawOrNull(n: Numeric | string | null | undefined): nu
   return bondNumericRaw(n);
 }
 
-/**
- * 仅用于瀑布图等需要累计求和的堆叠图表填充（如 `returnDecompositionWaterfallRawSteps`）。
- * 缺失/非有限值在这里退化为 0 只是为了让运行总和继续可算，绝不代表业务上的真实零值。
- * 禁止用于业务数值显示或聚合统计——那些路径必须保留 null 并走 EM_DASH / 排除缺失项语义。
- */
-export function chartValueOrZero(value: number | null | undefined, fallback = 0): number {
-  return value !== null && value !== undefined && Number.isFinite(value) ? value : fallback;
-}
-
 export function bondNumericDisplay(n: Numeric | string | null | undefined): string {
   if (n === null || n === undefined) {
     return EM_DASH;
@@ -41,19 +32,29 @@ export function bondChartMagnitude(value: Numeric | string): number | null {
   return bondNumericRaw(value);
 }
 
-export function returnDecompositionWaterfallRawSteps(d: ReturnDecompositionPayload): number[] {
-  const carry = chartValueOrZero(bondNumericRaw(d.carry));
-  const rollDown = chartValueOrZero(bondNumericRaw(d.roll_down));
-  const rateEffect = chartValueOrZero(bondNumericRaw(d.rate_effect));
-  const spreadEffect = chartValueOrZero(bondNumericRaw(d.spread_effect));
-  const trading = chartValueOrZero(bondNumericRaw(d.trading));
-  const fxEffect = chartValueOrZero(bondNumericRaw(d.fx_effect));
-  const convexityEffect = chartValueOrZero(bondNumericRaw(d.convexity_effect));
-  const explained = chartValueOrZero(bondNumericRaw(d.explained_pnl));
-  const stepValues = [carry, rollDown, rateEffect, spreadEffect, fxEffect, convexityEffect, trading].map((v) =>
-    chartValueOrZero(v),
-  );
-  return [...stepValues, explained];
+/** 非有限值（NaN/Infinity）与缺失统一收敛为 null：瀑布图按缺口断开，不再补 0 画假柱。 */
+function finiteOrNull(value: number | null): number | null {
+  return value !== null && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * 瀑布图原始步值：缺失/非有限效应保留 `null`（该柱断开、由消费方在区头披露 partial），
+ * 不得补 0 —— 0 在归因语义里是「效应恰好为零」，与「未返回」是两回事。
+ * 末位为合计（解释损益），同样可为 null。
+ */
+export function returnDecompositionWaterfallRawSteps(
+  d: ReturnDecompositionPayload,
+): Array<number | null> {
+  const stepValues = [
+    d.carry,
+    d.roll_down,
+    d.rate_effect,
+    d.spread_effect,
+    d.fx_effect,
+    d.convexity_effect,
+    d.trading,
+  ].map((value) => finiteOrNull(bondNumericRaw(value)));
+  return [...stepValues, finiteOrNull(bondNumericRaw(d.explained_pnl))];
 }
 
 export function returnDecompositionWaterfallDisplayStrings(d: ReturnDecompositionPayload): string[] {

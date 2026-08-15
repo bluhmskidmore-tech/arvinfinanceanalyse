@@ -1,18 +1,26 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card, Statistic, Row, Col, Table, Alert, Spin } from "antd";
+import { Card, Statistic, Row, Col, Table, Alert } from "antd";
 import { type EChartsOption } from "../../../lib/echarts";
 import { useApiClient } from "../../../api/client";
 import { apiQueryKeys } from "../../../api/queryKeys";
 import { BaseChart } from "../../../components/charts/BaseChart";
+import { nocturneChartTheme } from "../../../components/charts/chartTheme";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
-import type { CreditSpreadDetailBondRow } from "../types";
+import type { ConcentrationMetrics, CreditSpreadDetailBondRow } from "../types";
 import { designTokens, nocturneTokens } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 import { formatDv01Wan, formatWan, formatYi, formatBp } from "../utils/formatters";
+import { formatMoneyAxisTick } from "../lib/returnDecompositionWaterfallOption";
+import {
+  DetailEmptyNote,
+  DetailLoadErrorAlert,
+  DetailPanelSkeleton,
+  withNumericColumns,
+} from "./BondAnalyticsDetailPrimitives";
+import detailStyles from "./BondAnalyticsDetailPrimitives.module.css";
 import { SectionLead } from "./SectionLead";
-import { ConcentrationPieCell } from "./ConcentrationPieCell";
 import {
   buildIssuerConcentrationPieOption,
   buildRatingTenorHeatmapData,
@@ -38,6 +46,47 @@ interface Props {
 }
 
 const DEFAULT_SPREAD_SCENARIOS = "10,25,50";
+const numericSpreadColumns = withNumericColumns(spreadColumns);
+const numericSpreadDetailColumns = withNumericColumns(spreadDetailColumns);
+const numericIssuerConcentrationColumns = withNumericColumns(issuerConcentrationColumns);
+const numericMigrationColumns = withNumericColumns(migrationColumns);
+
+function renderConcentrationChart(metrics: ConcentrationMetrics | undefined) {
+  if (!metrics?.top_items?.length) {
+    return <DetailEmptyNote>暂无数据</DetailEmptyNote>;
+  }
+  const option = nocturneChartTheme.createBaseChartOption({
+    title: {
+      text: `${metrics.dimension}  HHI ${metrics.hhi.display}  前五 ${metrics.top5_concentration.display}`,
+      left: "center",
+      top: dt.space[1],
+      textStyle: {
+        fontSize: dt.fontSize[11],
+        color: nocturneTokens.color.inkMuted,
+      },
+    },
+    tooltip: {
+      trigger: "item",
+      formatter: (params: unknown) => {
+        const item = params as { name?: string; value?: number; percent?: number };
+        return `${item.name ?? ""}: ${formatYi(item.value)} (${item.percent ?? 0}%)`;
+      },
+    },
+    legend: { show: false },
+    series: [
+      {
+        type: "pie",
+        radius: "55%",
+        center: ["50%", "56%"],
+        data: metrics.top_items.map((item) => ({
+          name: item.name,
+          value: bondNumericRaw(item.market_value) ?? undefined,
+        })),
+      },
+    ],
+  });
+  return <BaseChart option={option} height={200} />;
+}
 
 export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_SCENARIOS }: Props) {
   const client = useApiClient();
@@ -73,7 +122,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
   const spreadChartOption = useMemo((): EChartsOption | null => {
     if (!data?.spread_scenarios?.length) return null;
     const scenarios = data.spread_scenarios;
-    return {
+    return nocturneChartTheme.createBarChartOption({
       grid: {
         left: dt.space[9] + dt.space[1],
         right: dt.space[4],
@@ -108,9 +157,13 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
       },
       yAxis: {
         type: "value",
-        axisLabel: { color: nocturneTokens.color.inkMuted, fontSize: dt.fontSize[11] },
+        axisLabel: {
+          ...nocturneChartTheme.axisLabel,
+          formatter: formatMoneyAxisTick,
+        },
         splitLine: { lineStyle: { color: nocturneTokens.color.lineSoft, type: "dashed", opacity: 0.35 } },
       },
+      legend: { show: false },
       series: [
         {
           type: "bar",
@@ -134,18 +187,21 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
           }),
         },
       ],
-    };
+    });
   }, [data]);
 
   const issuerConcentrationPieOption = useMemo((): EChartsOption | null => {
     if (!data?.concentration_by_issuer?.top_items?.length) return null;
-    return buildIssuerConcentrationPieOption(data.concentration_by_issuer);
+    return nocturneChartTheme.createBaseChartOption({
+      ...buildIssuerConcentrationPieOption(data.concentration_by_issuer),
+      legend: { show: false },
+    });
   }, [data]);
 
-  const termStructureOption = useMemo(
-    () => spreadTermStructureOption(detailData?.spread_term_structure ?? []),
-    [detailData],
-  );
+  const termStructureOption = useMemo(() => {
+    const option = spreadTermStructureOption(detailData?.spread_term_structure ?? []);
+    return option ? nocturneChartTheme.createLineChartOption(option) : null;
+  }, [detailData]);
 
   const creditDistributionView = useMemo(() => {
     if (!data) return { kind: "empty" as const };
@@ -156,21 +212,31 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
     if (heat) {
       return {
         kind: "heatmap" as const,
-        option: ratingTenorHeatmapOption(heat.seriesData, heat.maxPct),
+        option: nocturneChartTheme.createBaseChartOption(
+          ratingTenorHeatmapOption(heat.seriesData, heat.maxPct),
+        ),
       };
     }
     const ratingOpt = concentrationBarOption(data.concentration_by_rating, nocturneTokens.color.blue, "市值占比");
     const tenorOpt = concentrationBarOption(data.concentration_by_tenor, nocturneTokens.color.amber, "市值占比");
     if (ratingOpt || tenorOpt) {
-      return { kind: "bars" as const, ratingOption: ratingOpt, tenorOption: tenorOpt };
+      return {
+        kind: "bars" as const,
+        ratingOption: ratingOpt
+          ? nocturneChartTheme.createBarChartOption(ratingOpt)
+          : null,
+        tenorOption: tenorOpt
+          ? nocturneChartTheme.createBarChartOption(tenorOpt)
+          : null,
+      };
     }
     return { kind: "empty" as const };
   }, [data]);
 
-  if (summaryQuery.isLoading) return <Spin style={{ display: "block", margin: `${dt.space[8]}px auto` }} />;
+  if (summaryQuery.isLoading) return <DetailPanelSkeleton testId="credit-spread-loading" />;
   if (summaryQuery.isError) {
     const message = summaryQuery.error instanceof Error ? summaryQuery.error.message : String(summaryQuery.error);
-    return <Alert type="error" message={`加载失败：${message}`} />;
+    return <DetailLoadErrorAlert error={message} testId="credit-spread-error" />;
   }
   if (!data) return null;
 
@@ -178,9 +244,9 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
     new Set([
       ...data.warnings,
       ...(detailData?.warnings ?? []),
-          ...(detailError ? [`深度利差明细暂不可用：${normalizeClientError(detailError)}`] : []),
-        ]),
-      );
+      ...(detailError ? [`深度利差明细暂不可用：${normalizeClientError(detailError)}`] : []),
+    ]),
+  );
   const displayCreditBondCount = detailData?.credit_bond_count ?? data.credit_bond_count;
   const displayCreditMarketValue = detailData?.total_credit_market_value ?? data.credit_market_value;
   const displayWeightedAvgSpread = detailData
@@ -189,14 +255,14 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
   const historicalContext = detailData?.historical_context;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: dt.space[4] }}>
+    <div className={detailStyles.view}>
       <SectionLead
         eyebrow="信用利差"
         title="信用利差概览"
         description="按报告日读取后端信用利差读模型；页面只展示利差、DV01、OCI 敏感度与明细，不在前端补算正式风险指标。"
         testId="credit-spread-shell-lead"
       />
-      <Row gutter={16}>
+      <Row gutter={[12, 12]} className={detailStyles.kpiGrid}>
         <Col span={6}>
           <Card size="small">
             <Statistic title="信用债数量" value={displayCreditBondCount} />
@@ -228,12 +294,12 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
       </Row>
 
       <Card title="OCI敏感度" size="small">
-        <Row gutter={16}>
+        <Row gutter={[12, 12]} className={detailStyles.kpiGrid}>
           <Col span={8}>
             <Statistic title="OCI信用债敞口" value={formatYi(data.oci_credit_exposure)} />
           </Col>
           <Col span={8}>
-            <Statistic title="OCI 利差 DV01" value={formatDv01Wan(data.oci_spread_dv01)} />
+            <Statistic title="OCI 利差 DV01（万元/bp）" value={formatDv01Wan(data.oci_spread_dv01)} />
           </Col>
           <Col span={8}>
             <Statistic title="利差走阔25bp影响" value={formatWan(data.oci_sensitivity_25bp)} />
@@ -256,7 +322,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
           )}
           <Table
             dataSource={data.spread_scenarios}
-            columns={spreadColumns}
+            columns={numericSpreadColumns}
             rowKey="scenario_name"
             pagination={false}
             size="small"
@@ -285,17 +351,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
               {creditDistributionView.ratingOption ? (
                 <BaseChart option={creditDistributionView.ratingOption} height={300} />
               ) : (
-                <div
-                  style={{
-                    height: 300,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "var(--dh-api-muted)",
-                  }}
-                >
-                  暂无评级分布
-                </div>
+                <DetailEmptyNote>暂无评级分布</DetailEmptyNote>
               )}
             </Col>
             <Col xs={24} lg={12}>
@@ -312,33 +368,15 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
               {creditDistributionView.tenorOption ? (
                 <BaseChart option={creditDistributionView.tenorOption} height={300} />
               ) : (
-                <div
-                  style={{
-                    height: 300,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "var(--dh-api-muted)",
-                  }}
-                >
-                  暂无期限分布
-                </div>
+                <DetailEmptyNote>暂无期限分布</DetailEmptyNote>
               )}
             </Col>
           </Row>
         )}
         {creditDistributionView.kind === "empty" && (
-          <div
-            style={{
-              minHeight: 120,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "var(--dh-api-muted)",
-            }}
-          >
+          <DetailEmptyNote testId="credit-spread-distribution-empty">
             暂无评级×期限明细或集中度数据，无法展示分布图
-          </div>
+          </DetailEmptyNote>
         )}
       </Card>
 
@@ -348,28 +386,23 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
         description="深度明细端点可用时展示期限结构、历史分位和高低利差个券；不可用时保留汇总并显示提示。"
         testId="credit-spread-detail-lead"
       />
+      {detailQuery.isLoading && !detailData ? (
+        <DetailPanelSkeleton testId="credit-spread-detail-loading" />
+      ) : null}
       {detailData && (
         <>
           <Card title="利差期限结构" size="small">
             {termStructureOption ? (
               <BaseChart option={termStructureOption} height={320} />
             ) : (
-              <div
-                style={{
-                  minHeight: 120,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--dh-api-muted)",
-                }}
-              >
+              <DetailEmptyNote testId="credit-spread-term-structure-empty">
                 暂无期限结构数据
-              </div>
+              </DetailEmptyNote>
             )}
           </Card>
 
           <Card title="历史分位" size="small">
-            <Row gutter={16}>
+            <Row gutter={[12, 12]} className={detailStyles.kpiGrid}>
               <Col span={6}>
                 <Statistic
                   title="当前利差"
@@ -402,7 +435,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
               <Card title="高利差债券" size="small">
                 <Table<CreditSpreadDetailBondRow>
                   dataSource={detailData.top_spread_bonds}
-                  columns={spreadDetailColumns}
+                  columns={numericSpreadDetailColumns}
                   rowKey={(row) => `${row.instrument_code}-${row.tenor_bucket}-top`}
                   pagination={false}
                   size="small"
@@ -414,7 +447,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
               <Card title="低利差债券" size="small">
                 <Table<CreditSpreadDetailBondRow>
                   dataSource={detailData.bottom_spread_bonds}
-                  columns={spreadDetailColumns}
+                  columns={numericSpreadDetailColumns}
                   rowKey={(row) => `${row.instrument_code}-${row.tenor_bucket}-bottom`}
                   pagination={false}
                   size="small"
@@ -447,7 +480,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
                     <Col xs={24} md={12}>
                       <Table
                         dataSource={data.concentration_by_issuer.top_items}
-                        columns={issuerConcentrationColumns}
+                        columns={numericIssuerConcentrationColumns}
                         rowKey={(r) => r.name}
                         pagination={false}
                         size="small"
@@ -464,17 +497,17 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
                   </Row>
                 </>
               ) : (
-                <ConcentrationPieCell metrics={data.concentration_by_issuer} />
+                renderConcentrationChart(data.concentration_by_issuer)
               )}
             </Col>
             <Col span={12}>
-              <ConcentrationPieCell metrics={data.concentration_by_industry} />
+              {renderConcentrationChart(data.concentration_by_industry)}
             </Col>
             <Col span={12}>
-              <ConcentrationPieCell metrics={data.concentration_by_rating} />
+              {renderConcentrationChart(data.concentration_by_rating)}
             </Col>
             <Col span={12}>
-              <ConcentrationPieCell metrics={data.concentration_by_tenor} />
+              {renderConcentrationChart(data.concentration_by_tenor)}
             </Col>
           </Row>
         </Card>
@@ -484,7 +517,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
         <Card title="评级迁徙情景" size="small">
           <Table
             dataSource={data.migration_scenarios}
-            columns={migrationColumns}
+            columns={numericMigrationColumns}
             rowKey="scenario_name"
             pagination={false}
             size="small"

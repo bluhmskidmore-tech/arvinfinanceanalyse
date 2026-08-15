@@ -1,4 +1,3 @@
-import { designTokens } from "../../../theme/designSystem";
 import type { CalendarItem } from "../../../components/CalendarList";
 import type { BondAnalyticsOverviewModel } from "../lib/bondAnalyticsOverviewModel";
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
@@ -12,11 +11,6 @@ import type {
 import { BondAnalyticsFilterActionStrip } from "./BondAnalyticsFilterActionStrip";
 import { BondAnalyticsInstitutionalCockpit } from "./BondAnalyticsInstitutionalCockpit";
 import { BondAnalyticsMarketContextStrip } from "./BondAnalyticsMarketContextStrip";
-import { BondAnalyticsOverviewMidCharts } from "./BondAnalyticsOverviewMidCharts";
-import RiskTrendChart from "./RiskTrendChart";
-import BondEventCalendar from "./BondEventCalendar";
-
-const dt = designTokens;
 
 export interface BondAnalyticsOverviewPanelsProps {
   dateOptions: Array<{ value: string; label: string }>;
@@ -33,6 +27,7 @@ export interface BondAnalyticsOverviewPanelsProps {
   spreadScenarios: string;
   onSpreadScenariosChange: (value: string) => void;
   actionAttributionResult?: ActionAttributionResponse | null;
+  actionAttributionPending?: boolean;
   overviewModel: BondAnalyticsOverviewModel;
   onOpenModuleDetail: (key: BondAnalyticsModuleKey) => void;
   onRefreshAnalytics?: () => void;
@@ -40,6 +35,8 @@ export interface BondAnalyticsOverviewPanelsProps {
   analyticsRefreshError?: string | null;
   lastAnalyticsRefreshRunId?: string | null;
   calendarItems?: CalendarItem[];
+  calendarLoading?: boolean;
+  calendarError?: boolean;
 }
 
 export function BondAnalyticsOverviewPanels({
@@ -57,6 +54,7 @@ export function BondAnalyticsOverviewPanels({
   spreadScenarios,
   onSpreadScenariosChange,
   actionAttributionResult = null,
+  actionAttributionPending = false,
   overviewModel,
   onOpenModuleDetail,
   onRefreshAnalytics,
@@ -64,6 +62,8 @@ export function BondAnalyticsOverviewPanels({
   analyticsRefreshError = null,
   lastAnalyticsRefreshRunId = null,
   calendarItems = [],
+  calendarLoading = false,
+  calendarError = false,
 }: BondAnalyticsOverviewPanelsProps) {
   const activeReadinessItem =
     overviewModel.readinessItems.find((item) => item.key === overviewModel.activeModuleContext.key) ??
@@ -74,10 +74,24 @@ export function BondAnalyticsOverviewPanels({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div
+        data-testid="bond-analysis-candidate-boundary"
+        style={{ fontSize: 12, lineHeight: 1.6, color: "var(--dh-api-muted)" }}
+      >
+        PAGE-BOND-ANALYSIS-001 · candidate · formal_use_allowed=false · owner approval pending；
+        页面结果仅供候选分析，不代表公式或正式批准。
+      </div>
+      <BondAnalyticsMarketContextStrip
+        leadModuleLabel={overviewModel.activeModuleContext.label}
+        leadPromotionLabel="candidate"
+        truthStrip={overviewModel.truthStrip}
+      />
       <div style={{ display: "grid", gap: 8 }} data-testid="bond-analysis-top-cockpit">
         <BondAnalyticsInstitutionalCockpit
           reportDate={reportDate}
+          periodType={periodType}
           actionAttribution={actionAttributionResult}
+          actionAttributionPending={actionAttributionPending}
           topAnomalies={overviewModel.topAnomalies}
           decisionRail={{
             activeModuleContext: overviewModel.activeModuleContext,
@@ -85,32 +99,10 @@ export function BondAnalyticsOverviewPanels({
             watchlistItems: decisionWatchlistItems,
           }}
           onOpenModuleDetail={onOpenModuleDetail}
+          calendarItems={calendarItems}
+          calendarLoading={calendarLoading}
+          calendarError={calendarError}
         />
-
-        <BondAnalyticsMarketContextStrip
-          leadModuleLabel={overviewModel.activeModuleContext.label}
-          leadPromotionLabel="可进入下钻"
-          truthStrip={overviewModel.truthStrip}
-        />
-
-        <BondAnalyticsOverviewMidCharts
-          reportDate={reportDate}
-          periodType={periodType}
-          assetClass={assetClass}
-          accountingClass={accountingClass}
-        />
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-            gap: dt.space[3],
-            alignItems: "start",
-          }}
-        >
-          <RiskTrendChart />
-          <BondEventCalendar items={calendarItems} />
-        </div>
 
         <BondAnalyticsFilterActionStrip
           assetClass={assetClass}

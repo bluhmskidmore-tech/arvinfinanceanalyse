@@ -21,8 +21,14 @@ describe("crossAssetLinkageLabels", () => {
     expect(formatLinkageEnvironmentScoreDetail("方向分值", null, "缺少方向评分。")).toBe("缺少方向评分。");
   });
 
-  it("formats correlation target summaries with an arrow", () => {
-    expect(formatLinkageCorrelationTarget("DR007", "cdb", "7Y")).toBe("DR007 → cdb 7Y");
+  it("formats correlation target summaries with an arrow and localized families", () => {
+    expect(formatLinkageCorrelationTarget("DR007", "cdb", "7Y")).toBe("DR007 → 国开 7Y");
+    expect(formatLinkageCorrelationTarget("10Y treasury yield", "credit_spread", "5Y")).toBe(
+      "10Y 国债收益率 → 信用利差 5Y",
+    );
+    expect(formatLinkageCorrelationTarget("CPI YoY", "aaa_credit", "3Y")).toBe("CPI 同比 → AAA 信用债 3Y");
+    // 未登记 family / 序列名原样透出
+    expect(formatLinkageCorrelationTarget("PMI", "ncd", "1Y")).toBe("PMI → ncd 1Y");
   });
 
   it("localizes waterfall contributing factor proxy names", () => {

@@ -102,6 +102,17 @@ export function formatAmountWan(amountYuan: string | null | undefined, decimals:
   return `${s} 万元`;
 }
 
+/** Decimal string 定精度裸数展示（估值净价等）：half-up 舍入，不带单位不分组换算。 */
+export function formatDecimalFixed(
+  v: string | null | undefined,
+  decimals: number = 4,
+): string {
+  if (!v) return EM_DASH;
+  const { value, scale } = decimalToIntegerAndScale(v);
+  const scaled = divideRoundHalfUp(value * pow10(decimals), pow10(scale));
+  return scaledBigIntToDecimalString(scaled, decimals, decimals);
+}
+
 /** 利率小数（如 0.0255）→ 百分比展示（2.55%） */
 export function formatRatePercent(rateDecimal: string | null | undefined, decimals: number = 2): string {
   if (!rateDecimal) return EM_DASH;

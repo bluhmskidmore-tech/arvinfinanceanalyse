@@ -20,6 +20,7 @@ from backend.app.schemas.bond_dashboard import (
     BondDashboardAssetStructurePayload,
     BondDashboardBundlePayload,
     BondDashboardBusinessTypeMetricsPayload,
+    BondDashboardDatesPayload,
     BondDashboardHeadlinePayload,
     BondDashboardHomeSummaryPayload,
     BondDashboardIndustryDistributionPayload,
@@ -29,6 +30,7 @@ from backend.app.schemas.bond_dashboard import (
     BondDashboardSpreadAnalysisPayload,
     BondDashboardYieldDistributionPayload,
 )
+from backend.app.schemas.common_numeric import null_numeric
 from backend.app.services.bond_analytics_service import (
     get_dv01_risk,
     get_portfolio_headlines,
@@ -50,7 +52,7 @@ from pydantic import BaseModel
 # Mirrors `FormalComputeModuleDescriptor` for bond_analytics materialize (avoid importing tasks module).
 BOND_ANALYTICS_JOB_NAME = "bond_analytics_materialize"
 BOND_ANALYTICS_CACHE_KEY = "bond_analytics:materialize:formal"
-BOND_ANALYTICS_RULE_VERSION = "rv_bond_analytics_formal_materialize_v1"
+BOND_ANALYTICS_RULE_VERSION = "rv_bond_analytics_formal_materialize_v2"
 BOND_ANALYTICS_CACHE_VERSION = f"cv_bond_analytics_formal__{BOND_ANALYTICS_RULE_VERSION}"
 EMPTY_SOURCE_VERSION = "sv_bond_analytics_empty"
 BOND_DASHBOARD_BUNDLE_MAX_WORKERS = 6
@@ -266,7 +268,11 @@ def _analytical_envelope_from_lineage(
         source_version=str(lineage["source_version"]),
         rule_version=str(lineage["rule_version"]),
         vendor_version=str(lineage.get("vendor_version") or "vv_none"),
-        quality_flag="warning",
+        # quality_flag 反映数据质量而非口径基准（口径由 basis=analytical +
+        # formal_use_allowed=false 表达）。与 home-summary 及 bundle 外层同规则：
+        # 有证据行为 ok、空数据为 warning。此前硬编码 "warning" 使前端首屏
+        # 在数据健康时也常挂降级横幅。
+        quality_flag="ok" if evidence_rows > 0 else "warning",
         source_surface="bond_analytics",
         requested_report_date=report_date,
         resolved_report_date=report_date,
@@ -418,13 +424,27 @@ def _pct_str(part: Decimal, whole: Decimal) -> str:
 
 def _kpi_block_from_row(row: dict[str, Any]) -> dict[str, object]:
     med = row.get("credit_spread_median")
+    weighted_ytm = row.get("weighted_ytm")
+    weighted_duration = row.get("weighted_duration")
     return {
         "total_market_value": _amt(row["total_market_value"]),
         "unrealized_pnl": _amt(row.get("unrealized_pnl", Decimal("0"))),
-        "weighted_ytm": _rate(row["weighted_ytm"]),
-        "weighted_duration": _rate(row["weighted_duration"]),
+        "weighted_ytm": (
+            _rate(weighted_ytm)
+            if weighted_ytm is not None
+            else null_numeric(unit="pct", sign_aware=True).model_dump(mode="json")
+        ),
+        "weighted_duration": (
+            _rate(weighted_duration)
+            if weighted_duration is not None
+            else null_numeric(unit="ratio", sign_aware=False).model_dump(mode="json")
+        ),
         "weighted_coupon": _rate(row["weighted_coupon"]),
-        "credit_spread_median": _rate(med) if med is not None else "0.00000000",
+        "credit_spread_median": (
+            _rate(med)
+            if med is not None
+            else null_numeric(unit="pct", sign_aware=True).model_dump(mode="json")
+        ),
         "total_dv01": _amt(row["total_dv01"]),
         "bond_count": int(row["bond_count"]),
     }
@@ -436,16 +456,20 @@ def get_bond_dashboard_dates() -> dict[str, object]:
         build_formal_result_envelope_from_lineage(
             trace_id=_trace_id(),
             result_kind="bond_dashboard.dates",
-            lineage=_dates_lineage(),
+            lineage=_dates_lineage(report_dates),
             default_cache_version=BOND_ANALYTICS_CACHE_VERSION,
+            quality_flag="ok" if report_dates else "warning",
             source_surface="bond_analytics",
-            result_payload={"report_dates": report_dates},
+            result_payload=_typed_payload(
+                BondDashboardDatesPayload,
+                {"report_dates": report_dates},
+            ),
         )
     )
 
 
-def _dates_lineage() -> dict[str, str]:
-    report_dates = _report_dates()
+def _dates_lineage(report_dates: list[str] | None = None) -> dict[str, str]:
+    report_dates = _report_dates() if report_dates is None else report_dates
     return resolve_formal_dates_lineage(
         governance_dir=str(get_settings().governance_path),
         cache_key=BOND_ANALYTICS_CACHE_KEY,
@@ -467,22 +491,10 @@ def get_bond_dashboard_headline_kpis(report_date: date) -> dict[str, object]:
     fact_rows = _fact_rows(rd)
     lineage = _facts_lineage(rd, fact_rows)
     return _with_bond_dashboard_data_source(
-        build_result_envelope(
-            basis="analytical",
-            trace_id=_trace_id(),
+        _analytical_envelope_from_lineage(
             result_kind="bond_dashboard.headline_kpis",
-            cache_version=str(lineage["cache_version"]),
-            source_version=str(lineage["source_version"]),
-            rule_version=str(lineage["rule_version"]),
-            vendor_version=str(lineage.get("vendor_version") or "vv_none"),
-            quality_flag="warning",
-            source_surface="bond_analytics",
-            requested_report_date=rd,
-            resolved_report_date=rd,
-            as_of_date=rd,
-            date_basis="bond_dashboard_report_date",
-            filters_applied={"report_date": rd},
-            tables_used=["fact_formal_bond_analytics_daily"],
+            report_date=rd,
+            lineage=lineage,
             evidence_rows=len(fact_rows),
             result_payload=_bond_dashboard_headline_payload(rd, prior, raw),
         )
@@ -514,27 +526,7 @@ def _bond_dashboard_headline_payload(
 def get_bond_dashboard_business_type_metrics(report_date: date) -> dict[str, object]:
     """Analytical envelope: weighted metrics by bond_type / business bucket."""
     rd = report_date.isoformat()
-    rows = _repo().fetch_business_type_metrics(rd)
-    items: list[dict[str, object]] = []
-    for r in rows:
-        mv = r.get("market_value")
-        w_ytm = r.get("weighted_avg_ytm")
-        w_dur = r.get("weighted_avg_duration")
-        ytm_pct_str = (
-            format((_to_dec(w_ytm) * Decimal("100")).quantize(Q8, rounding=ROUND_HALF_UP), "f")
-            if w_ytm is not None
-            else "0.00000000"
-        )
-        items.append(
-            {
-                "name": str(r.get("name") or ""),
-                "market_value": _amt(mv),
-                "weighted_avg_ytm_pct": ytm_pct_str,
-                "weighted_avg_duration": _rate(w_dur) if w_dur is not None else "0.00000000",
-                "duration_source": "",
-            }
-        )
-    payload: dict[str, object] = {"report_date": rd, "items": items}
+    payload = _bond_dashboard_business_type_payload(rd)
     return _with_bond_dashboard_data_source(
         _analytical_envelope(
             result_kind="bond_dashboard.business_type_metrics",
@@ -550,18 +542,25 @@ def _bond_dashboard_business_type_payload(report_date: str) -> dict[str, object]
     for r in rows:
         w_ytm = r.get("weighted_avg_ytm")
         w_dur = r.get("weighted_avg_duration")
+        # 缺失≠0（repo 聚合以 nullif 输出 NULL 表示零覆盖）：无覆盖的指标输出空串，
+        # 前端按缺值渲染 EM_DASH；此前硬编码 "0.00000000" 会被当成真实零展示。
         ytm_pct_str = (
             format((_to_dec(w_ytm) * Decimal("100")).quantize(Q8, rounding=ROUND_HALF_UP), "f")
             if w_ytm is not None
-            else "0.00000000"
+            else ""
         )
+        ytm_cov = r.get("weighted_avg_ytm_coverage_ratio")
+        dur_cov = r.get("weighted_avg_duration_coverage_ratio")
         items.append(
             {
                 "name": str(r.get("name") or ""),
                 "market_value": _amt(r.get("market_value")),
                 "weighted_avg_ytm_pct": ytm_pct_str,
-                "weighted_avg_duration": _rate(w_dur) if w_dur is not None else "0.00000000",
+                "weighted_avg_duration": _rate(w_dur) if w_dur is not None else "",
                 "duration_source": "",
+                # 覆盖率为质量披露：组市值为零时分母不存在（repo nullif 输出 NULL）→ null。
+                "weighted_avg_ytm_coverage_ratio": _rate(ytm_cov) if ytm_cov is not None else None,
+                "weighted_avg_duration_coverage_ratio": _rate(dur_cov) if dur_cov is not None else None,
             }
         )
     return _typed_payload(
@@ -766,7 +765,9 @@ def _bond_dashboard_spread_payload(report_date: str) -> dict[str, object]:
     items = [
         {
             "bond_type": r["bond_type"],
-            "median_yield": _rate(r["median_yield"]) if r["median_yield"] is not None else "0.00000000",
+            # 缺失≠0：无 YTM 覆盖的券种中位数输出 null（schema 本就可空），
+            # 此前硬编码 "0.00000000" 会被当成真实零展示。
+            "median_yield": _rate(r["median_yield"]) if r["median_yield"] is not None else None,
             "bond_count": r["bond_count"],
             "total_market_value": _amt(r["total_market_value"]),
         }
@@ -856,15 +857,23 @@ def get_bond_dashboard_risk_indicators(report_date: date) -> dict[str, object]:
 
 def _bond_dashboard_risk_payload(report_date: str) -> dict[str, object]:
     row = _repo().fetch_dashboard_risk_indicators(report_date)
+    convexity_coverage = row["weighted_convexity_coverage_ratio"]
     payload = {
         "report_date": report_date,
         "total_market_value": _amt(row["total_market_value"]),
         "total_dv01": _amt(row["total_dv01"]),
         "weighted_duration": _rate(row["weighted_duration"]),
         "credit_ratio": _rate(row["credit_ratio"]),
-        "weighted_convexity": _rate(row["weighted_convexity"]),
+        # 覆盖率为 0 时 repo 的聚合兜底值 0 不是业务观测值；用 Numeric.raw=null
+        # 保留「无覆盖」语义。显式零凸性且有覆盖时仍按真实 0 输出。
+        "weighted_convexity": (
+            null_numeric(unit="ratio", sign_aware=False).model_dump(mode="json")
+            if _to_dec(convexity_coverage) == 0
+            else _rate(row["weighted_convexity"])
+        ),
         "total_spread_dv01": _amt(row["total_spread_dv01"]),
         "reinvestment_ratio_1y": _rate(row["reinvestment_ratio_1y"]),
+        "weighted_convexity_coverage_ratio": _rate(convexity_coverage),
     }
     return _typed_payload(BondDashboardRiskIndicatorsPayload, payload)
 

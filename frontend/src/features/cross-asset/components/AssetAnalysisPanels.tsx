@@ -58,19 +58,17 @@ export function CrossAssetReviewQueue({
         <span>复核队列</span>
         <h2>待复核队列</h2>
       </div>
+      {/* 宏观/联动质量正文只在来源审计与数据状态明细各出现一次（§6 去重），此处降为指引。 */}
       <dl className="cross-asset-review-queue__list">
         <div>
-          <dt>宏观质量</dt>
+          <dt>数据质量</dt>
           <dd>
-            <strong>{resultMetaQualityLabel(latestMeta?.quality_flag)}</strong>
-            <span>{compactGeneratedAt(latestMeta?.generated_at)}</span>
-          </dd>
-        </div>
-        <div>
-          <dt>联动质量</dt>
-          <dd>
-            <strong>{resultMetaQualityLabel(linkageMeta?.quality_flag)}</strong>
-            <span>{compactGeneratedAt(linkageMeta?.generated_at)}</span>
+            <strong>见数据状态</strong>
+            <span
+              title={`宏观质量 ${resultMetaQualityLabel(latestMeta?.quality_flag)} · 联动质量 ${resultMetaQualityLabel(linkageMeta?.quality_flag)}`}
+            >
+              {compactGeneratedAt(latestMeta?.generated_at)}
+            </span>
           </dd>
         </div>
         <div>
@@ -221,6 +219,9 @@ export function AssetClassAnalysisPanel({
                 <span>{UI.readyJudgment}</span>
                 <span>{readyRows.length}/{rows.length}</span>
               </div>
+              {primaryRows.length === 0 ? (
+                <p className="cross-asset-class-analysis__cards-empty">暂无已形成判断，待接入项见右列。</p>
+              ) : null}
               <div className="cross-asset-class-analysis__cards">
                 {primaryRows.map((row) => (
                   <article key={row.key} data-testid={`cross-asset-asset-analysis-${row.key}`} className="cross-asset-class-analysis__card">
@@ -262,9 +263,18 @@ export function AssetClassAnalysisPanel({
                             title={item.sourceLabel}
                           >
                             <span>{item.label}</span>
-                            <strong>{item.valueLabel}</strong>
+                            <strong>
+                              {item.valueLabel}
+                              {item.unitLabel !== EM_DASH && !item.valueLabel.endsWith(item.unitLabel)
+                                ? ` ${item.unitLabel}`
+                                : ""}
+                            </strong>
+                            {/* §7 `·` 配额：状态/变化一行，日期/来源一行。 */}
                             <small>
-                              {evidenceStatusLabel(item.status)} · {item.changeLabel} · {item.unitLabel} · {item.tradeDate ?? EM_DASH} · {item.sourceLabel}
+                              {evidenceStatusLabel(item.status)} · {item.changeLabel}
+                            </small>
+                            <small>
+                              {item.tradeDate ?? EM_DASH} · {item.sourceLabel}
                             </small>
                           </div>
                         ))}

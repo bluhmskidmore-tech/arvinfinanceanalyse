@@ -29,14 +29,21 @@ describe("crossAssetStatusStrip", () => {
       flag({ id: "dual-source", tone: "normal", label: "双源就绪" }),
     ]);
     expect(flags).toEqual([
-      { tone: "stale", label: "可能陈旧" },
-      { tone: "info", label: "双源就绪" },
+      { tone: "stale", label: "可能陈旧", title: "测试明细" },
+      { tone: "info", label: "双源就绪", title: "测试明细" },
     ]);
   });
 
-  it("label 取自 CrossAssetStatusFlag.label", () => {
+  it("label 取自 CrossAssetStatusFlag.label，detail 收进 title（token 不占正文）", () => {
     const flags = buildStatusStripFlags([flag({ id: "no-data", tone: "danger", label: "暂无数据" })]);
-    expect(flags).toEqual([{ tone: "error", label: "暂无数据" }]);
+    expect(flags).toEqual([{ tone: "error", label: "暂无数据", title: "测试明细" }]);
+  });
+
+  it("detail 与 label 相同或为空时不产生 title", () => {
+    const flags = buildStatusStripFlags([
+      flag({ id: "no-data", tone: "danger", label: "暂无数据", detail: "暂无数据" }),
+    ]);
+    expect(flags).toEqual([{ tone: "error", label: "暂无数据", title: undefined }]);
   });
 
   it("空态：undefined / null / 空数组 → []", () => {
@@ -51,6 +58,6 @@ describe("crossAssetStatusStrip", () => {
       flag({ id: "linkage-quality-warning", tone: "warning", label: "仅分析口径" }),
       flag({ id: "blank", tone: "warning", label: "   " }),
     ]);
-    expect(flags).toEqual([{ tone: "warn", label: "仅分析口径" }]);
+    expect(flags).toEqual([{ tone: "warn", label: "仅分析口径", title: "测试明细" }]);
   });
 });

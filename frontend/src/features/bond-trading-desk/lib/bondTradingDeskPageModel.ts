@@ -74,6 +74,8 @@ export interface BondTradingDeskPageModel {
   gapSections: BondTradingDeskGapSection[];
   decisionItems: BondTradingDeskDecisionItem[];
   lookupScopeNote: string;
+  /** 查询参数原文（top_n / page_size），只进 title 不直出正文。 */
+  lookupScopeDetail: string;
 }
 
 const GAP_SECTIONS: Array<Omit<BondTradingDeskGapSection, "status" | "reason">> = [
@@ -103,13 +105,14 @@ export function buildBondTradingDeskPath(bondCode: string, reportDate: string): 
   return `/bond-trading-desk?${params.toString()}`;
 }
 
+/** 缺值统一 EM_DASH 占值位；“待返回”等原因只进卡片 note，不占值位。 */
 function formatOptionalYi(value: Numeric | string | null | undefined): string {
-  if (value == null || value === "") return "待返回";
+  if (value == null || value === "") return EM_DASH;
   return formatYi(value);
 }
 
 function formatOptionalPct(value: Numeric | string | null | undefined): string {
-  if (value == null || value === "") return "待返回";
+  if (value == null || value === "") return EM_DASH;
   if (typeof value === "string") {
     const parsed = Number.parseFloat(value);
     if (!Number.isFinite(parsed)) return value;
@@ -119,9 +122,9 @@ function formatOptionalPct(value: Numeric | string | null | undefined): string {
 }
 
 function formatOptionalDisplay(value: Numeric | string | null | undefined): string {
-  if (value == null || value === "") return "待返回";
+  if (value == null || value === "") return EM_DASH;
   if (typeof value === "string") return value;
-  return value.display || "待返回";
+  return value.display || EM_DASH;
 }
 
 function mergeTopHolding(
@@ -323,13 +326,13 @@ export function buildBondTradingDeskMetricTiles(
     {
       key: "credit_spread",
       label: "信用利差",
-      value: snapshot.creditSpread ?? "待返回",
+      value: snapshot.creditSpread ?? EM_DASH,
       caption: snapshot.creditSpread ? "利差分析" : "未在利差子集",
     },
     {
       key: "net_price",
       label: "估值净价",
-      value: snapshot.valuationNetPrice ?? "待返回",
+      value: snapshot.valuationNetPrice ?? EM_DASH,
       caption: snapshot.valuationNetPrice ? "持仓列表" : "待返回",
     },
   ];
@@ -385,7 +388,12 @@ export type BondTradingDeskComposeSourceStatus = {
   key: BondTradingDeskComposeSourceKey;
   label: string;
   status: "ready" | "failed";
+  /** 中文状态词（条数 / 失败），chip 可见文本只用它。 */
   detail: string;
+  /** 治理 token（quality=… / fallback=… / formal_use_allowed=…），只进 title。 */
+  governanceNote: string;
+  /** ready 时的行数；用于 0 条时把 chip 色降为中性。 */
+  rowCount: number | null;
   qualityFlag?: string | null;
   fallbackMode?: string | null;
 };
@@ -429,6 +437,7 @@ export function formatComposeMetaNote(meta: ResultMeta | null | undefined): stri
 function composeSourceStatus(
   key: BondTradingDeskComposeSourceKey,
   settled: PromiseSettledResult<unknown>,
+  rowCount: number,
   readyDetail: string,
 ): BondTradingDeskComposeSourceStatus {
   if (settled.status === "fulfilled") {
@@ -437,14 +446,23 @@ function composeSourceStatus(
       key,
       label: COMPOSE_SOURCE_LABELS[key],
       status: "ready",
-      detail: `${readyDetail}${formatComposeMetaNote(meta)}`,
+      detail: readyDetail,
+      governanceNote: formatComposeMetaNote(meta),
+      rowCount,
       qualityFlag: meta?.quality_flag ?? null,
       fallbackMode: meta?.fallback_mode ?? null,
     };
   }
   const reason =
     settled.reason instanceof Error ? settled.reason.message : String(settled.reason ?? "unknown");
-  return { key, label: COMPOSE_SOURCE_LABELS[key], status: "failed", detail: reason };
+  return {
+    key,
+    label: COMPOSE_SOURCE_LABELS[key],
+    status: "failed",
+    detail: reason,
+    governanceNote: "",
+    rowCount: null,
+  };
 }
 
 export function buildBondTradingDeskComposeResult(input: {
@@ -465,21 +483,25 @@ export function buildBondTradingDeskComposeResult(input: {
     composeSourceStatus(
       "top_holdings",
       input.sourceSettled.topHoldings,
+      input.topHoldings.length,
       `${input.topHoldings.length} 条`,
     ),
     composeSourceStatus(
       "positions",
       input.sourceSettled.positions,
+      input.positions.length,
       `${input.positions.length} 条（前 500）`,
     ),
     composeSourceStatus(
       "credit_spread",
       input.sourceSettled.creditSpread,
+      input.creditSpreadRows.length,
       `${input.creditSpreadRows.length} 条（top/bottom）`,
     ),
     composeSourceStatus(
       "position_changes",
       input.sourceSettled.positionChanges,
+      input.positionChanges.length,
       `${input.positionChanges.length} 条`,
     ),
   ];
@@ -525,6 +547,8 @@ export function buildBondTradingDeskPageModel(input: {
     gapSections: buildBondTradingDeskGapSections(snapshot),
     decisionItems: buildBondTradingDeskDecisionItems(input.reportDate),
     lookupScopeNote:
-      "查找范围：重仓券 top_n≤500、持仓 bonds 第 1 页 page_size≤500、信用利差 top/bottom 列表。",
+      "查找范围：重仓券与持仓列表各取前 500 条、信用利差 top/bottom 列表。",
+    lookupScopeDetail:
+      "查询参数：重仓券 top_n≤500；持仓 bonds 第 1 页 page_size≤500；信用利差 top/bottom 列表。",
   };
 }

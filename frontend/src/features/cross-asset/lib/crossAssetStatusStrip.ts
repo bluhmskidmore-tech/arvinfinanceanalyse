@@ -5,6 +5,8 @@ export type CrossAssetStatusStripTone = "ok" | "warn" | "stale" | "error" | "inf
 export type CrossAssetStatusStripFlag = {
   tone: CrossAssetStatusStripTone;
   label: string;
+  /** 模块/端点 token 等证据细节收进 title（§6 溯源分层），不占芯片正文。 */
+  title?: string;
 };
 
 /**
@@ -54,7 +56,8 @@ export function buildStatusStripFlags(
       continue;
     }
     seen.add(dedupeKey);
-    flags.push({ tone, label });
+    const detail = flag.detail?.trim();
+    flags.push({ tone, label, title: detail && detail !== label ? detail : undefined });
   }
   return flags;
 }

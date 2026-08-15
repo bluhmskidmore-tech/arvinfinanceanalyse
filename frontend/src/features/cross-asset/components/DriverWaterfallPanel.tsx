@@ -111,19 +111,20 @@ export function DriverWaterfallPanel({
   }, null);
   const netValue = totalRow?.bar.value ?? 0;
   const netSign = netValue > 0 ? "+" : "";
-  const netTone = netValue > 0.005 ? "positive" : netValue < -0.005 ? "negative" : "neutral";
+  // 综合分符号语义（backend core_finance/macro_bond_linkage.py）：正值=偏紧（不利债市），负值=偏松（利好债市）。
+  const netTone = netValue > 0.005 ? "tightening" : netValue < -0.005 ? "easing" : "neutral";
 
   return (
     <section className="ca-waterfall" data-testid="cross-asset-driver-waterfall">
       <h2 className="ca-waterfall__title">驱动力归因瀑布</h2>
       <p className="ca-waterfall__subtitle">
-        环境综合评分由后端贡献项累加构成，正值偏紧，负值偏松。
+        环境综合评分由后端贡献项累加构成，正值偏紧（不利债市），负值偏松。
       </p>
       <div className="ca-waterfall__decision" data-testid="cross-asset-driver-waterfall-decision">
         <div className={`ca-waterfall__decision-card ca-waterfall__decision-card--${netTone}`}>
           <span>综合方向</span>
           <strong>{`${netSign}${netValue.toFixed(2)}`}</strong>
-          <small>{netTone === "positive" ? "偏紧/不利债市" : netTone === "negative" ? "偏松/利好债市" : "方向中性"}</small>
+          <small>{netTone === "tightening" ? "偏紧/不利债市" : netTone === "easing" ? "偏松/利好债市" : "方向中性"}</small>
         </div>
         <div className="ca-waterfall__decision-card">
           <span>主导因子</span>

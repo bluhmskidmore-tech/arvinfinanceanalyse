@@ -42,7 +42,7 @@ export function LivermoreSectorRankPanel({
   limit?: number;
 }) {
   const { rows, meta } = buildLivermoreSectorRankRows(payload, limit);
-  const hint = `${meta.sectorCount} 个行业 · as-of ${meta.asOfDate}${meta.isProvisional ? " · 暂定公式" : ""}`;
+  const hint = `${meta.sectorCount} 个行业${meta.isProvisional ? "（暂定公式）" : ""} · 截至 ${meta.asOfDate}`;
 
   return (
     <section data-testid="cross-asset-livermore-sector-rank" className={`${crossAssetPanelClass} cross-asset-livermore-rank`}>
@@ -66,9 +66,7 @@ export function LivermoreSectorRankPanel({
           行业排名加载失败。
         </div>
       ) : !payload || rows.length === 0 ? (
-        <div className="cross-asset-livermore-rank__message cross-asset-livermore-rank__message--warning">
-          暂无可展示的行业排名。
-        </div>
+        <div className="cross-asset-livermore-rank__message">暂无可展示的行业排名。</div>
       ) : (
         <>
           <div className="cross-asset-livermore-rank__table-wrap">
@@ -107,9 +105,6 @@ export function LivermoreSectorRankPanel({
               </tbody>
             </table>
           </div>
-          <div className="cross-asset-livermore-rank__footer">
-            <span>仅观察 · 不构成交易指令</span>
-          </div>
         </>
       )}
     </section>
@@ -128,7 +123,7 @@ export function LivermoreFactorCandidatesPanel({
   limit?: number;
 }) {
   const { rows, meta } = buildLivermoreFactorCandidateRows(payload, limit);
-  const hint = `${meta.candidateCount} 只候选 / 样本 ${formatPlainNumber(meta.inputStockCount)} 只 · as-of ${meta.asOfDate}`;
+  const hint = `${meta.candidateCount} 只候选 / 样本 ${formatPlainNumber(meta.inputStockCount)} 只 · 截至 ${meta.asOfDate}`;
 
   return (
     <section data-testid="cross-asset-livermore-factor-candidates" className={`${crossAssetPanelClass} cross-asset-livermore-rank`}>
@@ -157,9 +152,7 @@ export function LivermoreFactorCandidatesPanel({
           因子筛选候选股加载失败。
         </div>
       ) : !payload || rows.length === 0 ? (
-        <div className="cross-asset-livermore-rank__message cross-asset-livermore-rank__message--warning">
-          暂无可展示的候选股。
-        </div>
+        <div className="cross-asset-livermore-rank__message">暂无可展示的候选股。</div>
       ) : (
         <>
           <div className="cross-asset-livermore-rank__table-wrap">
@@ -197,9 +190,6 @@ export function LivermoreFactorCandidatesPanel({
                 })}
               </tbody>
             </table>
-          </div>
-          <div className="cross-asset-livermore-rank__footer">
-            <span>仅观察 · 不构成交易指令</span>
           </div>
         </>
       )}

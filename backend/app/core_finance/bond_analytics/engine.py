@@ -308,11 +308,15 @@ def compute_bond_analytics_rows(
             # 保证两者恒基于同一组 (时点, 金额)。此处不再走 estimate_duration
             # 外壳：缺到期日/已到期已由上面的 years_to_maturity == 0 分支处理，
             # 且 years_to_maturity 与该外壳内部的 (到期日-报告日)/365 同式同值。
+            # bullet（到期一次还本付息）唯一现金流落在到期日：不得按年付虚构
+            # 中途票息现金流（那会把 Macaulay 拉向票息时点、低估久期），
+            # 与 cashflow_projection 的 bullet 单笔建模同口径。
             macaulay_duration, convexity = compute_macaulay_duration_and_convexity(
                 coupon_rate=coupon_rate_for_math,
                 ytm=effective_ytm,
                 years_to_maturity=years_to_maturity,
                 coupon_frequency=coupon_frequency,
+                single_cashflow_at_maturity=interest_payment_frequency == "bullet",
             )
             modified_duration = estimate_modified_duration(
                 macaulay_duration,

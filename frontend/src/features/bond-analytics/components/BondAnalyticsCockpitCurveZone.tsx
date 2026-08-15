@@ -9,18 +9,22 @@ import { nocturneTokens } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 import {
   MaturityColumnChart,
-  ProgressStack,
   SectionCardTitle,
+  type DistributionItem,
 } from "./BondAnalyticsCockpitPrimitives";
 import { cardBodyStyle } from "./bondAnalyticsCockpitTokens";
 import { curveHasReadout, curvePointHasReadout } from "./bondAnalyticsCockpitCurveZoneSupport";
 import styles from "./BondAnalyticsInstitutionalCockpit.module.css";
+import zone from "./BondAnalyticsCockpitCurveZone.module.css";
 
 const HOME_CURVE_LABELS: Record<string, string> = {
   treasury: "国债",
   cdb: "国开",
   aaa_credit: "AAA 信用",
 };
+
+/* 三列决策区中的主图高度：保留曲线形态可读性，同时避免单卡拖长整行。 */
+const CURVE_CHART_HEIGHT = 210;
 
 function formatCurveNumeric(value: Numeric | null | undefined): string {
   return bondNumericRawOrNull(value) === null ? EM_DASH : value?.display || EM_DASH;
@@ -117,6 +121,20 @@ function curveLabel(curveType: string): string {
   return HOME_CURVE_LABELS[curveType] ?? curveType;
 }
 
+/* source_version / vendor 原始 ID 属证据层（DESIGN §6 溯源分层）：只进 title 供复核，不进正文。 */
+function buildCurveSourceReviewTitle(curves: YieldCurveTermStructureCurvePayload[]): string {
+  const sourceParts = curves.map(
+    (curve) => `${curveLabel(curve.curve_type)} 来源版本 ${curve.source_version || "待返回"}`,
+  );
+  const vendorNames = Array.from(
+    new Set(curves.map((curve) => curve.vendor_name).filter(Boolean)),
+  );
+  return [
+    ...sourceParts,
+    vendorNames.length ? `vendor ${vendorNames.join(" / ")}` : "vendor 待返回",
+  ].join("；");
+}
+
 function buildCurveComparisonTenors(curves: YieldCurveTermStructureCurvePayload[]) {
   return Array.from(
     new Set(
@@ -147,13 +165,23 @@ function buildCompactYieldCurveChartOption(curves: YieldCurveTermStructureCurveP
     return null;
   }
 
-  const lineSeries = base.series.filter(
-    (series) =>
-      series &&
-      typeof series === "object" &&
-      "type" in series &&
-      series.type === "line",
-  );
+  const lineSeries = base.series
+    .filter(
+      (series) =>
+        series &&
+        typeof series === "object" &&
+        "type" in series &&
+        series.type === "line",
+    )
+    /* 紧凑卡图例只留曲线名（「国债 收益率」→「国债」）：纵轴已标注收益率 (%)，
+       后缀在窄图例里是冗余；仅改本紧凑视图，不动下钻完整图的序列名。 */
+    .map((series) => ({
+      ...series,
+      name:
+        "name" in series && typeof series.name === "string"
+          ? series.name.replace(/ 收益率$/, "")
+          : (series as { name?: string }).name,
+    }));
   if (!lineSeries.length) {
     return null;
   }
@@ -194,17 +222,24 @@ function ReferenceCurveCompactChart({
       className={styles.curveCompactChart}
       aria-label="正式收益率曲线折线图"
     >
-      <BaseChart option={option} height={132} />
+      <BaseChart option={option} height={CURVE_CHART_HEIGHT} />
     </div>
   );
 }
 
 function ReferenceCurveReadout({
   curves,
+  krdBucketCount = null,
+  krdPending = false,
 }: {
   curves: YieldCurveTermStructureCurvePayload[];
+  krdBucketCount?: number | null;
+  krdPending?: boolean;
 }) {
-  const readableCurves = curves.filter(curveHasReadout).slice(0, 3);
+  const readableCurves = useMemo(
+    () => curves.filter(curveHasReadout).slice(0, 3),
+    [curves],
+  );
 
   if (readableCurves.length === 0) {
     const pendingRows = [
@@ -215,8 +250,16 @@ function ReferenceCurveReadout({
       },
       {
         label: "正式 KRD",
-        value: "待返回",
-        detail: "不由期限桶推导",
+        value:
+          krdBucketCount !== null && krdBucketCount > 0
+            ? `已返回 ${krdBucketCount} 桶`
+            : krdPending
+              ? "读取中"
+              : "待返回",
+        detail:
+          krdBucketCount !== null && krdBucketCount > 0
+            ? "明细见下钻 KRD 标签页"
+            : "不由期限桶推导",
       },
       {
         label: "期限桶观察",
@@ -231,14 +274,14 @@ function ReferenceCurveReadout({
     ];
 
     return (
-      <div data-testid="bond-analysis-yield-curve-empty" className={styles.curvePendingPanel}>
-        <div className={styles.curvePendingHeader}>
+      <div data-testid="bond-analysis-yield-curve-empty" className={zone.pendingPanel}>
+        <div className={zone.pendingHeader}>
           <strong>正式曲线 / KRD 读面待返回</strong>
           <span>当前未返回正式收益率曲线期限点与日变动，不用期限桶冒充 KRD，也不前端补造缺失点。</span>
         </div>
-        <div className={styles.curvePendingLedger}>
+        <div className={zone.pendingList}>
           {pendingRows.map((row) => (
-            <div key={row.label} className={styles.curvePendingRow}>
+            <div key={row.label} className={zone.pendingRow}>
               <span>{row.label}</span>
               <strong>{row.value}</strong>
               <small>{row.detail}</small>
@@ -252,44 +295,43 @@ function ReferenceCurveReadout({
   const tenors = buildCurveComparisonTenors(readableCurves);
   const largestDeltaReadout = pickLargestCurveDeltaReadout(readableCurves);
   const largestDeltaTone = curveDeltaTone(largestDeltaReadout?.point.delta_bp_prev);
-  const firstResolvedDate = readableCurves.find((curve) => curve.trade_date_resolved)?.trade_date_resolved;
-  const vendorSummary = Array.from(
-    new Set(readableCurves.map((curve) => curve.vendor_name).filter(Boolean)),
-  ).join(" / ");
-  const sourceSummary = readableCurves
-    .map((curve) => `${curveLabel(curve.curve_type)} ${curve.source_version || "待返回"}`)
-    .join(" · ");
   const returnedPointCount = readableCurves.reduce(
     (total, curve) => total + curve.points.filter(curvePointHasReadout).length,
     0,
   );
 
   return (
-    <div data-testid="bond-analysis-yield-curve-readout" className={styles.curveReadoutStack}>
-      <div className={styles.curveReadoutBlock}>
-        <div className={styles.curveReadoutHeader}>
-          <div className={styles.curveReadoutIdentity}>
-            <strong>{readableCurves.map((curve) => curveLabel(curve.curve_type)).join(" / ")}</strong>
-            <span>
-              交易日 {firstResolvedDate ?? readableCurves[0]?.trade_date_requested ?? EM_DASH} · vendor {vendorSummary || "待返回"}
-            </span>
-            <small>{sourceSummary}</small>
-          </div>
-          <div className={styles.curveEvidenceTag} data-tone={largestDeltaTone}>
-            <span>最大日变动</span>
-            <strong>
-              {largestDeltaReadout
-                ? `${curveLabel(largestDeltaReadout.curve.curve_type)} ${largestDeltaReadout.point.tenor} ${formatCurveNumeric(largestDeltaReadout.point.delta_bp_prev)}`
-                : "待返回"}
-            </strong>
-            <small>
-              {largestDeltaReadout
-                ? `${formatCurveNumeric(largestDeltaReadout.point.yield_pct)} · 全部返回点扫描`
-                : "未返回可判读的日变动"}
-            </small>
-          </div>
-        </div>
-        <ReferenceCurveCompactChart curves={readableCurves} />
+    <div data-testid="bond-analysis-yield-curve-readout" className={zone.readout}>
+      <div className={zone.readoutLead}>
+        <strong className={zone.leadNames} title={buildCurveSourceReviewTitle(readableCurves)}>
+          {readableCurves.map((curve) => curveLabel(curve.curve_type)).join(" / ")}
+        </strong>
+        <span className={zone.leadDelta} data-tone={largestDeltaTone}>
+          <span>最大日变动</span>
+          <strong>
+            {largestDeltaReadout
+              ? `${curveLabel(largestDeltaReadout.curve.curve_type)} ${largestDeltaReadout.point.tenor} ${formatCurveNumeric(largestDeltaReadout.point.delta_bp_prev)}`
+              : "待返回"}
+          </strong>
+          <small>
+            {largestDeltaReadout
+              ? `${formatCurveNumeric(largestDeltaReadout.point.yield_pct)} · 全部返回点扫描`
+              : "未返回可判读的日变动"}
+          </small>
+        </span>
+      </div>
+      <ReferenceCurveCompactChart curves={readableCurves} />
+      <div className={zone.footerRow}>
+        <span>返回曲线：<strong>{readableCurves.length} 条</strong></span>
+        <span>展示期限点：<strong>{tenors.length} / {returnedPointCount}</strong></span>
+        <small>只列后端返回可读点；空缺期限保持 —</small>
+      </div>
+      {/* 期限矩阵与曲线图信息重复：降级为折叠明细，主视觉留给曲线形态。 */}
+      <details className={styles.curveMatrixDisclosure}>
+        <summary className={styles.curveMatrixSummary}>
+          <span>期限点明细</span>
+          <small>收益率与日变动</small>
+        </summary>
         <div data-testid="bond-analysis-curve-tenor-matrix" className={styles.curveTenorMatrix}>
           <div className={`${styles.curveMatrixRow} ${styles.curveMatrixHead}`}>
             <span className={styles.curveMatrixLabel}>曲线 / 期限</span>
@@ -332,14 +374,7 @@ function ReferenceCurveReadout({
             ];
           })}
         </div>
-        <div className={styles.curvePointCount}>
-          <span>返回曲线：</span>
-          <strong>{readableCurves.length} 条</strong>
-          <span>展示期限点：</span>
-          <strong>{tenors.length} / {returnedPointCount}</strong>
-          <small>只列后端返回可读点；空缺期限保持 —</small>
-        </div>
-      </div>
+      </details>
     </div>
   );
 }
@@ -350,76 +385,111 @@ export function ReferenceYieldCurvePanel({
   curves,
   isLoading,
   hasError,
+  krdBucketCount = null,
+  krdPending = false,
 }: {
   reportDate: string;
-  maturityRows: Array<{
-    key: string;
-    label: string;
-    value: number;
-    caption: string;
-    detail?: string;
-    color?: string;
-  }>;
+  maturityRows: DistributionItem[];
   curves: YieldCurveTermStructureCurvePayload[];
   isLoading: boolean;
   hasError: boolean;
+  /** 正式 KRD 读面：null=未返回，数字=已返回桶数（明细见下钻 KRD 曲线风险标签页）。 */
+  krdBucketCount?: number | null;
+  krdPending?: boolean;
 }) {
   const resolvedDate = curves.find((curve) => curve.trade_date_resolved)?.trade_date_resolved;
   const hasCurveData = curves.some(curveHasReadout);
-  const readableCurveCount = curves.filter(curveHasReadout).length;
-  const curveStatusText = isLoading
-    ? "正式曲线读取中"
+  /* 曲线快照日落后报告日属 stale 形态（§6）：琥珀小徽标显式披露，不静默当作当日曲线。
+     两值均为 ISO 日期串，字典序比较即日期序。 */
+  const isCurveSnapshotStale = Boolean(
+    resolvedDate && reportDate && resolvedDate < reportDate,
+  );
+  /* 已返回部分曲线时，逐条点名仍待返回的曲线（如 aaa_credit），缺口不静默。 */
+  const pendingCurveLabels = hasCurveData
+    ? curves.filter((curve) => !curveHasReadout(curve)).map((curve) => curveLabel(curve.curve_type))
+    : [];
+  const curveStatus: { text: string; tone: "ok" | "pending" | "warn" } = isLoading
+    ? { text: "曲线期限点读取中", tone: "pending" }
     : hasError
-      ? "正式曲线接口暂未返回"
+      ? { text: "曲线接口暂未返回", tone: "warn" }
       : hasCurveData
-        ? "正式 KRD 待读面，仅展示曲线期限点"
-        : "正式曲线 / KRD 读面待返回";
+        ? { text: "曲线期限点已返回", tone: "ok" }
+        : { text: "曲线期限点待返回", tone: "pending" };
 
   return (
     <Card
       variant="borderless"
       size="small"
-      title={<SectionCardTitle eyebrow="主视区" title="曲线 / KRD 观察" />}
+      title={<SectionCardTitle eyebrow="曲线" title="收益率曲线 / KRD" />}
       data-testid="bond-analysis-yield-curve-panel"
       className={`${styles.referencePanelCard} ${styles.referenceCurveCard}`}
       styles={{ body: cardBodyStyle }}
     >
       <div className={styles.referenceCurveLayout}>
         <div className={styles.referenceCurveHero}>
-          <div className={styles.referenceCurveBanner}>
-            <div className={styles.referenceCurveBannerText}>
-              <div className={styles.referenceCurveKicker}>正式曲线期限点主视图</div>
-              <strong>{curveStatusText}</strong>
-              <span>
-                报告日 {reportDate || EM_DASH} · 曲线交易日 {resolvedDate ?? "待解析"}
-                {isLoading ? " · 正在读取正式曲线" : null}
-                {hasError ? " · 曲线接口暂未返回" : null}
+          <div className={zone.statusHeader}>
+            <div className={zone.statusTags}>
+              <span className={zone.statusTag} data-tone={curveStatus.tone}>
+                {curveStatus.text}
               </span>
+              {isCurveSnapshotStale ? (
+                <span
+                  className={zone.statusTag}
+                  data-tone="warn"
+                  data-testid="bond-analysis-curve-stale-badge"
+                  title={`曲线交易日 ${resolvedDate} 早于报告日 ${reportDate}：展示可得的最近快照，非报告日当日曲线`}
+                >
+                  快照滞后 {resolvedDate}
+                </span>
+              ) : null}
+              {pendingCurveLabels.map((label) => (
+                <span key={label} className={zone.statusTag} data-tone="pending">
+                  {label} 待返回
+                </span>
+              ))}
+              {hasCurveData ? (
+                krdBucketCount !== null && krdBucketCount > 0 ? (
+                  <span
+                    className={zone.statusTag}
+                    data-tone="ok"
+                    title="正式 KRD 读面已返回，期限桶明细见下钻「KRD 曲线风险」标签页"
+                  >
+                    正式 KRD 已返回（{krdBucketCount} 桶）
+                  </span>
+                ) : (
+                  <span
+                    className={zone.statusTag}
+                    data-tone="pending"
+                    title="正式 KRD 不由期限桶推导，待后端返回读面"
+                  >
+                    {krdPending ? "正式 KRD 读取中" : "正式 KRD 待返回"}
+                  </span>
+                )
+              ) : null}
             </div>
-            <div className={styles.referenceCurveBannerStats}>
-              <div>
-                <span>已返回曲线</span>
-                <strong>{readableCurveCount} 条</strong>
-              </div>
-              <div>
-                <span>正式 KRD</span>
-                <strong>待返回</strong>
-              </div>
+            <div className={zone.statusMeta}>
+              报告日 {reportDate || EM_DASH} · 曲线交易日 {resolvedDate ?? "待解析"}
             </div>
           </div>
-          <div className={styles.referenceCurveMeta}>
-            首屏只展示后端返回的收益率曲线期限点与前日变动；KRD 读面待后端正式返回，不在前端推导或补造。
-          </div>
-          <ReferenceCurveReadout curves={curves} />
+          <ReferenceCurveReadout
+            curves={curves}
+            krdBucketCount={krdBucketCount}
+            krdPending={krdPending}
+          />
         </div>
-        <div className={styles.curveFallbackBlock}>
-          <div className={styles.curveFallbackHeader}>
-            <strong>{hasCurveData ? "期限桶校验 / 暴露观察" : "期限桶占位 / 不冒充 KRD"}</strong>
-            <span>{hasCurveData ? "期限桶只用于校验组合期限暴露，不等同于正式 KRD。" : "正式曲线缺口下，只保留期限桶观察，不把 maturity bucket 说成 KRD。"}</span>
+        <details className={styles.curveFallbackDisclosure}>
+          <summary>
+            <span>期限桶校验</span>
+            <small>{hasCurveData ? "仅作组合暴露观察" : "正式曲线待返回"}</small>
+          </summary>
+          <div className={styles.curveFallbackBlock}>
+            <div className={styles.curveFallbackHeader}>
+              <strong>{hasCurveData ? "期限桶校验 / 暴露观察" : "期限桶占位 / 不冒充 KRD"}</strong>
+              <span>{hasCurveData ? "期限桶只用于校验组合期限暴露，不等同于正式 KRD。" : "正式曲线缺口下，只保留期限桶观察，不把 maturity bucket 说成 KRD。"}</span>
+            </div>
+            <MaturityColumnChart items={maturityRows} emptyText="暂无期限结构" />
           </div>
-          <MaturityColumnChart items={maturityRows} emptyText="暂无期限结构" />
-          <ProgressStack items={maturityRows.slice(0, 4)} emptyText="暂无期限结构" />
-        </div>
+        </details>
       </div>
     </Card>
   );

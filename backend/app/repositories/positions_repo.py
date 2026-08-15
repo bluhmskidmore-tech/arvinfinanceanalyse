@@ -69,6 +69,13 @@ def _rate_coverage(
     }
 
 
+# zqtz 快照利率（ytm_value / coupon_rate）为百分数口径：无条件 /100；负值与 >20%
+# 视为脏数据置 None。对齐 core_finance.rate_units.normalize_percent_rate_to_decimal
+# 与 bond_analytics/engine.py 的权威口径（旧 `>1 and <=100` 启发式会把 ≤1% 的
+# 低票息券当成小数直通，按几十倍计入加权收益率）。
+RATE_DIRTY_MAX_PERCENT = Decimal("20")
+
+
 def _normalize_rate_decimal(val: object | None, *, is_interbank: bool) -> Decimal | None:
     if val is None:
         return None
@@ -76,9 +83,9 @@ def _normalize_rate_decimal(val: object | None, *, is_interbank: bool) -> Decima
     if is_interbank:
         rate = rate / ONE_HUNDRED
         return rate.quantize(Q8, rounding=ROUND_HALF_UP)
-    if rate > 1 and rate <= ONE_HUNDRED:
-        rate = rate / ONE_HUNDRED
-    return rate.quantize(Q8, rounding=ROUND_HALF_UP)
+    if not rate.is_finite() or rate < 0 or rate > RATE_DIRTY_MAX_PERCENT:
+        return None
+    return (rate / ONE_HUNDRED).quantize(Q8, rounding=ROUND_HALF_UP)
 
 
 def _fmt_rate(val: object | None, *, is_interbank: bool) -> str | None:
@@ -96,8 +103,8 @@ def _normalized_rate_sql(column: str, *, is_interbank: bool) -> str:
         )
     return (
         f"(case when {column} is null then null "
-        f"when {column} > 1 and {column} <= 100 then {column} / 100 "
-        f"else {column} end)"
+        f"when {column} < 0 or {column} > 20 then null "
+        f"else {column} / 100 end)"
     )
 
 
@@ -801,6 +808,8 @@ class PositionsRepository(DuckDBRepository):
                 "bond_count": 0,
                 "items": [],
             }
+        # 与 aggregate_counterparty_bonds(exclude_issued=True) 同口径：发行腿属负债
+        # 口径，不得计入资产对手方钻取明细。
         rows = self._fetch_rows(
             """
             select instrument_code, bond_type, asset_class, market_value_native,
@@ -808,6 +817,7 @@ class PositionsRepository(DuckDBRepository):
             from zqtz_bond_daily_snapshot
             where report_date = ?::date
               and issuer_name = ?
+              and NOT COALESCE(is_issuance_like, FALSE)
             order by instrument_code
             """,
             [report_date, customer_name],
@@ -857,12 +867,14 @@ class PositionsRepository(DuckDBRepository):
                 "days": d,
                 "items": [],
             }
+        # 与 aggregate_counterparty_bonds(exclude_issued=True) 同口径排除发行腿。
         rows = self._fetch_rows(
             """
             select report_date, sum(market_value_native) as bal
             from zqtz_bond_daily_snapshot
             where issuer_name = ?
               and report_date between (?::date - (CAST(? AS INTEGER) - 1)) and ?::date
+              and NOT COALESCE(is_issuance_like, FALSE)
             group by report_date
             order by report_date asc
             """,

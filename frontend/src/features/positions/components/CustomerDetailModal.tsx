@@ -25,13 +25,13 @@ type Props = {
 };
 
 /*
- * CN equity convention（A 股红涨绿跌）：本弹窗余额趋势线的既定页面级例外，
- * 禁止映射 --ib-up/--ib-down（IB 是绿涨红跌）。canvas 不能消费 CSS 变量，
+ * 客户余额是持仓规模方向而非行情涨跌，不适用 A 股红涨绿跌行情惯例；
+ * 对齐全站绿涨红跌语义（DESIGN.md §2.2/§4）。canvas 不能消费 CSS 变量，
  * 取色走 nocturneTokens 常量（数值源 = tokens.css Nocturne scope 的去饱和
- * 红/绿），与 CustomerDetailModal.css 的 --cn-equity-* 语义锚点同源。
+ * 红/绿），与 CustomerDetailModal.css 的 --balance-trend-* 语义锚点同源。
  */
-const CN_EQUITY_UP = nocturneTokens.color.red;
-const CN_EQUITY_DOWN = nocturneTokens.color.green;
+const BALANCE_TREND_UP = nocturneTokens.color.green;
+const BALANCE_TREND_DOWN = nocturneTokens.color.red;
 
 function ratingToneClass(rating: string): string {
   if (rating === "AAA") {
@@ -170,7 +170,7 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
     const balances = items.map((it) => parseFloat(it.balance));
     const first = balances[0] ?? 0;
     const last = balances[balances.length - 1] ?? 0;
-    const stroke = last >= first ? CN_EQUITY_UP : CN_EQUITY_DOWN;
+    const stroke = last >= first ? BALANCE_TREND_UP : BALANCE_TREND_DOWN;
 
     const dates = items.map((it) => it.date.slice(5));
     const yi = items.map((it) => parseFloat(it.balance) / 1e8);

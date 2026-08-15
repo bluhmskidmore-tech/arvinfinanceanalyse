@@ -17,7 +17,7 @@ export function CrossAssetEventCalendar({ items }: CrossAssetEventCalendarProps)
           <p
             style={{
               margin: 0,
-              color: t.color.neutral[500],
+              color: "var(--dh-api-muted)",
               fontSize: t.fontSize[13],
               lineHeight: t.lineHeight.normal,
             }}
@@ -25,7 +25,16 @@ export function CrossAssetEventCalendar({ items }: CrossAssetEventCalendarProps)
             当前没有可用事件流；这里只保留数据驱动结果，不再展示静态示例日历。
           </p>
         ) : (
-          <CalendarList items={items} />
+          <div className="cross-asset-event-calendar__table">
+            <div className="cross-asset-event-calendar__head" aria-hidden="true">
+              <span>日期</span>
+              <span>事件</span>
+              <span>规模</span>
+              <span>级别</span>
+              <span>说明</span>
+            </div>
+            <CalendarList items={items} />
+          </div>
         )}
       </EvidencePanel>
     </div>

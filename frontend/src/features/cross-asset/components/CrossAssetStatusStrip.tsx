@@ -23,6 +23,7 @@ export function CrossAssetStatusStrip({ flags }: CrossAssetStatusStripProps) {
             <li
               key={`${flag.tone}|${flag.label}|${index}`}
               className={`cross-asset-status-strip__chip cross-asset-status-strip__chip--${flag.tone}`}
+              title={flag.title}
             >
               {flag.label}
             </li>

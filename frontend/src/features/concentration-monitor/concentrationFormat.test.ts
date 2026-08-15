@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { Numeric } from "../../api/contracts";
-import { formatConcentrationPercent, parseRatio } from "./concentrationFormat";
+import {
+  formatConcentrationPercent,
+  formatLimitThresholdPercent,
+  formatLimitUsagePercent,
+  parseRatio,
+} from "./concentrationFormat";
 
 function ratioNumeric(raw: number | null, display = "—"): Numeric {
   return { raw, unit: "ratio", display, precision: 2, sign_aware: false };
@@ -35,5 +40,25 @@ describe("parseRatio", () => {
     expect(parseRatio("0.15")).toBe(0.15);
     expect(parseRatio(ratioNumeric(null))).toBeNull();
     expect(parseRatio(undefined)).toBeNull();
+  });
+});
+
+describe("formatLimitThresholdPercent", () => {
+  it("formats backend ratio limits with the same two-decimal percent scale as current values", () => {
+    expect(formatLimitThresholdPercent(0.1)).toBe("10.00%");
+    expect(formatLimitThresholdPercent(0.85)).toBe("85.00%");
+    expect(formatLimitThresholdPercent(Number.NaN)).toBe("—");
+  });
+});
+
+describe("formatLimitUsagePercent", () => {
+  it("computes current/limit as a one-decimal percent for scanability", () => {
+    expect(formatLimitUsagePercent(0.0374, 0.1)).toBe("37.4%");
+    expect(formatLimitUsagePercent(0.12, 0.1)).toBe("120.0%");
+  });
+
+  it("returns EM_DASH when current value missing or limit non-positive", () => {
+    expect(formatLimitUsagePercent(null, 0.1)).toBe("—");
+    expect(formatLimitUsagePercent(0.1, 0)).toBe("—");
   });
 });

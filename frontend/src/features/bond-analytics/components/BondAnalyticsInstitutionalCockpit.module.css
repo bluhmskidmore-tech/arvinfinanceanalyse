@@ -1,21 +1,21 @@
 ﻿.phaseSection {
   display: grid;
-  gap: 8px;
+  gap: var(--moss-space-2);
 }
 
+/* 区块间距统一走 tokens（首页密度：区块缝 8px 一档）。 */
 .referenceDashboard {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 376px;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
-    "hero hero"
-    "market market"
-    "kpi kpi"
-    "analysis analysis"
-    "accounting accounting"
-    "distribution distribution"
-    "bottom side"
-    "footer footer";
-  gap: 12px;
+    "market"
+    "hero"
+    "kpi"
+    "analysis"
+    "accounting"
+    "distribution"
+    "bottom";
+  gap: var(--moss-space-2);
 }
 
 .holdingsKpiRail {
@@ -26,9 +26,30 @@
   background: var(--moss-color-card-bg);
 }
 
+/* KPI 瓦片密度覆盖：瓦片样式在共享 institutionalWorkbench.module.css（仅本页消费，
+   所有权不在本页），按页内后代选择器只收几何——内衬 10/12→8/12、行距 4→2、
+   min-height 68→64，对齐首页 kpiItem 密度；色彩与状态语义不动。
+   主值维持 18px：DV01 长读数（万元/bp）在 7 列 1440 下已贴边，放大到 20px 会加剧截断。 */
+.holdingsKpiRail [data-testid="bond-analysis-kpi-ribbon"] > article {
+  gap: 2px;
+  min-height: 64px;
+  padding: 8px 12px;
+}
+
+/* 2026-08-11 全站决议（DESIGN §4）：绿涨红跌。共享瓦片（institutionalWorkbench.module.css，
+   所有权不在本页）的 tone 映射仍是历史红涨绿跌，这里按同款后代选择器先例在页内翻正：
+   正值/盈利=绿、负值/亏损=红；命中瓦片主值与 detail 两个 data-tone 挂点。 */
+.holdingsKpiRail [data-testid="bond-analysis-kpi-ribbon"] > article div[data-tone="positive"] {
+  color: var(--moss-color-success-600);
+}
+
+.holdingsKpiRail [data-testid="bond-analysis-kpi-ribbon"] > article div[data-tone="negative"] {
+  color: var(--moss-color-danger-600);
+}
+
 /* 口径句降噪为安静脚注：发丝顶线 + muted 11px（首页状态去重制度，说明只出现一次）。 */
 .currencyBasisBanner {
-  padding: 6px 14px 8px;
+  padding: 4px 14px 6px;
   border-top: 1px solid var(--moss-color-neutral-100);
   background: transparent;
   color: var(--moss-color-neutral-500);
@@ -68,7 +89,7 @@
 }
 
 .accountingDv01Header {
-  padding: 8px 12px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--moss-color-neutral-100);
   background: var(--moss-color-neutral-50);
   color: var(--moss-color-neutral-500);
@@ -80,14 +101,14 @@
   position: sticky;
   left: 0;
   z-index: 2;
-  margin: -8px 0 -8px -12px;
-  padding: 8px 12px 8px 12px;
+  margin: -6px 0 -6px -12px;
+  padding: 6px 12px 6px 12px;
   border-right: 1px solid var(--moss-color-neutral-100);
   background: var(--moss-color-neutral-50);
 }
 
 .accountingDv01Row {
-  padding: 8px 12px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--moss-color-neutral-100);
   color: var(--moss-color-neutral-700);
   font-size: 12px;
@@ -101,8 +122,8 @@
   position: sticky;
   left: 0;
   z-index: 1;
-  margin: -8px 0 -8px -12px;
-  padding: 8px 12px 8px 12px;
+  margin: -6px 0 -6px -12px;
+  padding: 6px 12px 6px 12px;
   border-right: 1px solid var(--moss-color-neutral-100);
   background: var(--moss-color-card-bg);
   color: var(--moss-color-neutral-900);
@@ -117,7 +138,7 @@
 }
 
 .accountingDv01Note {
-  padding: 8px 12px;
+  padding: 6px 12px;
   border-top: 1px solid var(--moss-color-neutral-100);
   color: var(--moss-color-neutral-600);
   font-size: 12px;
@@ -232,7 +253,7 @@
   display: grid;
   align-content: center;
   min-height: 24px;
-  margin-top: 8px;
+  margin-top: 6px;
   padding: 4px 0 0;
   border-top: 1px solid var(--moss-color-neutral-100);
   color: var(--moss-color-neutral-500);
@@ -248,14 +269,15 @@
   letter-spacing: 0;
 }
 
-/* 与 institutionalWorkbench.module.css 的瓦片制度保持同值镜像（结构锁测试读本文件）。
+/* 与 institutionalWorkbench.module.css 的瓦片制度保持同值镜像（结构锁测试读本文件）；
+   实际生效几何由上方 .holdingsKpiRail 后代覆盖收紧到同值（gap 2 / 64 / 8px 12px）。
    首页 kpiItem 语言：标签 11px 常规体、主值 18px/600、常态零徽标零装饰底。 */
 .referenceKpiTile {
   display: grid;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
-  min-height: 68px;
-  padding: 10px 12px;
+  min-height: 64px;
+  padding: 8px 12px;
   background: var(--ib-surface);
 }
 
@@ -324,12 +346,13 @@
   color: var(--ib-ink-muted);
 }
 
+/* 2026-08-11 全站决议（DESIGN §4）：绿涨红跌（正值/盈利=绿、负值/亏损=红）。 */
 .referenceKpiValue[data-tone="positive"] {
-  color: var(--moss-color-danger-600);
+  color: var(--moss-color-success-600);
 }
 
 .referenceKpiValue[data-tone="negative"] {
-  color: var(--moss-color-success-600);
+  color: var(--moss-color-danger-600);
 }
 
 .referenceKpiDetail {
@@ -342,12 +365,13 @@
 .heroSection {
   display: grid;
   grid-area: hero;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 376px);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto;
   grid-template-areas:
-    "identity identity"
-    "main governance";
-  gap: 10px;
-  padding: 8px 12px 12px;
+    "identity"
+    "main";
+  gap: 6px;
+  padding: 8px 12px;
   border-radius: var(--dh-api-radius, 6px);
   background: var(--moss-color-card-bg);
 }
@@ -380,24 +404,34 @@
   white-space: nowrap;
 }
 
-/* 左列＝结论面板（拉伸补齐左右栏高差，DESIGN §5）＋底部读数横带。 */
+/* 左列＝结论面板 + 读数横带（自然高度，不再被右栏拉出空板）。 */
 .heroMain {
   grid-area: main;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: 6px;
+  align-content: start;
   min-width: 0;
 }
 
+.heroConclusionMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 /* 结论块对齐首页 overviewNarrative：panel-2 平底 + 2px 左沿；
-   高度随右栏拉伸（§5 卡面补齐），文案垂直居中让留白对称。 */
+   高度收紧到首屏密度（min-height 64→48、内衬 10/14→8/12）。 */
 .heroConclusion {
   display: grid;
   gap: 4px;
   align-content: center;
   min-width: 0;
-  padding: 10px 14px;
+  min-height: 48px;
+  padding: 8px 12px;
   border-left: 2px solid var(--moss-color-neutral-200);
   border-radius: var(--dh-api-radius, 6px);
   background: var(--moss-color-neutral-50);
@@ -476,12 +510,13 @@
   white-space: nowrap;
 }
 
+/* 2026-08-11 全站决议（DESIGN §4）：绿涨红跌。 */
 .heroMetricValue[data-tone="positive"] {
-  color: var(--moss-color-danger-600);
+  color: var(--moss-color-success-600);
 }
 
 .heroMetricValue[data-tone="negative"] {
-  color: var(--moss-color-success-600);
+  color: var(--moss-color-danger-600);
 }
 
 .heroMetricDelta {
@@ -494,38 +529,45 @@
 }
 
 .heroMetricDelta[data-tone="positive"] {
-  color: var(--moss-color-danger-600);
-}
-
-.heroMetricDelta[data-tone="negative"] {
   color: var(--moss-color-success-600);
 }
 
+.heroMetricDelta[data-tone="negative"] {
+  color: var(--moss-color-danger-600);
+}
+
+/* 右栏只留决策侧栏：跨两行拉伸，卡面补齐（§5），不再堆叠证据盒。 */
 .heroAside {
   grid-area: governance;
   display: grid;
-  gap: 10px;
-  align-content: start;
   min-width: 0;
 }
 
-/* 右侧证据盒对齐首页 overviewStatus：panel-2 平底、字段化行，无独立描边。 */
-.heroGovernance {
+.heroAside > aside {
   display: grid;
-  gap: 6px;
-  padding: 9px 12px;
+  min-width: 0;
+}
+
+/* 证据拆解＝结论下方的横向字段条（首页 01 决策条语言）：
+   引导 | 读数 | 状态 | 核验字段（2×2），panel-2 平底、无独立描边。 */
+.heroGovernance {
+  grid-area: judgment;
+  display: grid;
+  grid-template-columns: minmax(150px, 0.72fr) minmax(180px, 0.82fr) minmax(0, 2fr);
+  gap: 8px 12px;
+  align-items: start;
+  align-self: stretch;
+  padding: 8px 10px;
   border-radius: var(--dh-api-radius, 6px);
   background: var(--moss-color-neutral-50);
+  box-sizing: border-box;
 }
 
 .heroGovernanceLead {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
-  align-items: baseline;
+  display: grid;
+  gap: 2px;
   min-width: 0;
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--moss-color-neutral-100);
+  align-content: start;
 }
 
 .heroGovernanceHeading {
@@ -545,9 +587,12 @@
 
 .heroGovernanceMetrics,
 .heroGovernanceStatus {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
+  display: grid;
+  gap: 3px;
+  align-content: start;
+  min-width: 0;
+  padding-left: 14px;
+  border-left: 1px solid var(--moss-color-neutral-100);
   color: var(--moss-color-neutral-600);
   font-size: 11px;
   font-weight: 400;
@@ -555,12 +600,20 @@
   line-height: 16px;
 }
 
+.heroGovernanceMetrics > span,
+.heroGovernanceStatus > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .heroVerdictRow {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  padding-top: 6px;
-  border-top: 1px solid var(--moss-color-neutral-100);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px 8px;
+  min-width: 0;
+  padding-left: 14px;
+  border-left: 1px solid var(--moss-color-neutral-100);
 }
 
 .heroVerdictField {
@@ -607,14 +660,14 @@
   background: var(--moss-color-card-bg);
 }
 
-/* 行情带对齐首页产品分类摘要条：11px 常规标签 + 14px/600 等宽读数。 */
+/* 行情带对齐首页产品分类摘要条（50px 档）：11px 常规标签 + 14px/600 等宽读数。 */
 .referenceTickerCell {
   display: grid;
   gap: 2px;
   min-width: 0;
-  padding: 6px 12px;
+  padding: 4px 12px;
   align-content: center;
-  min-height: 52px;
+  min-height: 46px;
   border-right: 1px solid var(--moss-color-neutral-100);
   box-sizing: border-box;
 }
@@ -653,32 +706,33 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* 2026-08-11 全站决议（DESIGN §4）：绿涨红跌。宏观带日变动与首页宏观条同语义。 */
 .referenceTickerCell small[data-tone="up"] {
-  color: var(--moss-color-danger-600);
-}
-
-.referenceTickerCell small[data-tone="down"] {
   color: var(--moss-color-success-700);
 }
 
+.referenceTickerCell small[data-tone="down"] {
+  color: var(--moss-color-danger-600);
+}
+
+/* 左右栏齐底（§5）：证据卡随曲线卡拉伸补齐，不留裸空白断层。 */
 .referenceAnalysisGrid {
   grid-area: analysis;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 372px;
-  grid-template-areas:
-    "curve evidence"
-    "attribution attribution";
-  gap: 8px;
-  align-items: start;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-areas: "curve evidence attribution";
+  gap: var(--moss-space-2);
+  align-items: stretch;
 }
 
+/* 卡头对齐首页分区头高度 28px。 */
 .referenceAnalysisGrid :global(.ant-card-head) {
-  min-height: 32px;
+  min-height: 28px;
   padding: 0 12px 0 16px;
 }
 
 .referenceAnalysisGrid :global(.ant-card-head-title) {
-  padding: 8px 0;
+  padding: 4px 0;
 }
 
 .referencePanelCard,
@@ -693,20 +747,48 @@
   box-shadow: none;
 }
 
-.referenceCurveCard .progressList {
-  display: none;
-}
-
 .referenceCurveCard {
   grid-area: curve;
-  align-self: start;
+  align-self: stretch;
+}
+
+.referenceCurveCard,
+.referenceAttributionCard,
+.referenceAnalysisSideStack > :global(.ant-card) {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  flex-direction: column;
+}
+
+.referenceCurveCard :global(.ant-card-body),
+.referenceAttributionCard :global(.ant-card-body),
+.referenceAnalysisSideStack > :global(.ant-card) :global(.ant-card-body) {
+  flex: 1 1 auto;
 }
 
 .referenceAnalysisSideStack {
   grid-area: evidence;
   display: grid;
+  grid-template-rows: minmax(0, 1fr);
   gap: 8px;
   min-width: 0;
+}
+
+/* 证据卡纵向填满右列：卡体弹性伸展，底部由卡面收口。
+   卡体本身也转 flex 列，让内容面板（证据矩阵/归因面板）吃满卡体高度，
+   消除等高拉伸后中、右面板下半部的空底（§5）。 */
+.referenceAnalysisSideStack :global(.ant-card) {
+  display: flex;
+  flex-direction: column;
+}
+
+.referenceAnalysisSideStack :global(.ant-card-body),
+.referenceAttributionCard :global(.ant-card-body) {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
 }
 
 .referenceCurveMeta {
@@ -718,7 +800,7 @@
 .referenceCurveLayout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
+  gap: 6px;
   align-items: stretch;
 }
 
@@ -885,16 +967,18 @@
   line-height: 1.3;
 }
 
+/* 2026-08-11 全站决议（DESIGN §4）：绿涨红跌。 */
 .curveEvidenceTag[data-tone="up"] strong {
-  color: var(--moss-color-danger-600);
-}
-
-.curveEvidenceTag[data-tone="down"] strong {
   color: var(--moss-color-success-700);
 }
 
+.curveEvidenceTag[data-tone="down"] strong {
+  color: var(--moss-color-danger-600);
+}
+
+/* 三列决策区曲线维持 210px：可读形态，同时不让单卡拖长整行。 */
 .curveCompactChart {
-  height: 132px;
+  height: 210px;
   width: 100%;
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--dh-api-radius, 6px);
@@ -907,17 +991,53 @@
   width: 100% !important;
 }
 
-.curveTenorMatrix {
-  display: grid;
+/* 期限矩阵降级为折叠明细：默认收起，主视觉留给曲线。 */
+.curveMatrixDisclosure {
   overflow: hidden;
-  border: 1px solid var(--moss-color-neutral-200);
+  border: 1px solid var(--moss-color-neutral-100);
   border-radius: var(--dh-api-radius, 6px);
-  background: var(--moss-color-card-bg);
+  background: var(--moss-color-neutral-50);
 }
 
+.curveMatrixSummary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 26px;
+  padding: 4px 8px;
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.curveMatrixSummary small {
+  overflow: hidden;
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.curveMatrixDisclosure[open] .curveMatrixSummary {
+  border-bottom: 1px solid var(--moss-color-neutral-100);
+}
+
+/* 折叠容器已提供边框与圆角，矩阵自身只保留底面，避免双层框。 */
+/* 滚动挂在矩阵而非单行：逐行滚动会让表头与数据行错位。 */
+.curveTenorMatrix {
+  display: grid;
+  overflow-x: auto;
+  background: var(--moss-color-card-bg);
+  scrollbar-gutter: stable;
+}
+
+/* 三列布局下每格净宽不足 15px，收益率会被截成一两个字符，故设 56px 下限。 */
 .curveMatrixRow {
   display: grid;
-  grid-template-columns: 88px repeat(8, minmax(0, 1fr));
+  grid-template-columns: 88px repeat(8, minmax(56px, 1fr));
+  min-width: 536px;
   min-height: 24px;
   border-top: 1px solid var(--moss-color-neutral-100);
 }
@@ -983,12 +1103,13 @@
   color: var(--moss-color-neutral-500);
 }
 
+/* 2026-08-11 全站决议（DESIGN §4）：绿涨红跌。矩阵日变动与曲线卡「最大日变动」同语义。 */
 .curveMatrixValue[data-tone="up"] {
-  color: var(--moss-color-danger-600);
+  color: var(--moss-color-success-700);
 }
 
 .curveMatrixValue[data-tone="down"] {
-  color: var(--moss-color-success-700);
+  color: var(--moss-color-danger-600);
 }
 
 .curvePointCount {
@@ -1092,13 +1213,52 @@
 
 .curveFallbackBlock {
   display: grid;
-  grid-template-columns: minmax(160px, 0.36fr) minmax(0, 1fr);
+  grid-template-columns: minmax(120px, 0.36fr) minmax(0, 1fr);
   gap: 8px;
   align-content: start;
   padding: 8px 8px;
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--dh-api-radius, 6px);
   background: var(--moss-color-neutral-50);
+}
+
+.curveFallbackDisclosure {
+  overflow: hidden;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--moss-color-neutral-50);
+}
+
+.curveFallbackDisclosure > summary {
+  display: flex;
+  min-height: 28px;
+  padding: 0 8px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--moss-color-neutral-700);
+  font-size: 11px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.curveFallbackDisclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.curveFallbackDisclosure > summary small {
+  color: var(--moss-color-neutral-500);
+  /* small 默认 0.8em 在 11px summary 下缩到 8.8px（低于 §3 辅助字号下限）：显式锁 11px。 */
+  font-size: 11px;
+}
+
+.curveFallbackDisclosure[open] > summary {
+  border-bottom: 1px solid var(--moss-color-neutral-100);
+}
+
+.curveFallbackDisclosure .curveFallbackBlock {
+  border: 0;
+  border-radius: 0;
 }
 
 .curveFallbackHeader {
@@ -1118,9 +1278,14 @@
   line-height: 1.4;
 }
 
+/* 证据面板吃满卡体（卡体为 flex 列）：头行固定、矩阵行吃剩余高度，
+   等高行内不再留空底（首页支撑带「行均分」制度）。 */
 .referenceJudgmentPanel {
   display: grid;
+  flex: 1 1 auto;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 8px;
+  min-height: 0;
 }
 
 .referenceEvidenceNotice {
@@ -1146,17 +1311,23 @@
   line-height: 1.35;
 }
 
+/* 四类证据由 2×2 卡阵改单列 4 行均分：整列填满面板高度，
+   长「返回字段/缺失项」文案获得整行宽度，不再挤在半宽卡里。 */
 .referenceJudgmentMatrix {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: minmax(0, 1fr);
+  gap: 6px;
+  min-height: 0;
 }
 
+/* 行内容顶部对齐、缺失项贴底（等高拉伸时空隙落在语义分组之间）。 */
 .referenceJudgmentCard {
-  display: grid;
-  gap: 4px;
-  min-height: 72px;
-  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 56px;
+  padding: 6px 10px;
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--dh-api-radius, 6px);
   background: var(--moss-color-card-bg);
@@ -1214,6 +1385,7 @@
 
 .referenceJudgmentCard em {
   overflow: hidden;
+  margin-top: auto;
   color: var(--moss-color-neutral-500);
   font-size: 11px;
   font-style: normal;
@@ -1222,56 +1394,19 @@
   white-space: nowrap;
 }
 
-.strategyTagGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1px;
-  overflow: hidden;
-  border: 1px solid var(--moss-color-neutral-100);
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--moss-color-neutral-100);
-}
-
-.strategyTagGrid div {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-  padding: 8px 8px;
-  background: var(--moss-color-card-bg);
-}
-
-.strategyTagGrid div:last-child {
-  grid-column: 1 / -1;
-  background: var(--moss-color-neutral-50);
-}
-
-.strategyTagGrid span {
-  overflow: hidden;
-  color: var(--moss-color-neutral-500);
-  font-size: 11px;
-  font-weight: 400;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.strategyTagGrid strong {
-  overflow: hidden;
-  color: var(--moss-color-neutral-900);
-  font-family: var(--moss-font-mono);
-  font-size: 12px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
+/* 归因面板吃满卡体（卡体为 flex 列）：全部区块跨双列成行，等高拉伸时
+   余量均摊进各行、由行内底面补齐，不在面板底部留裸空白（§5）。 */
 .referenceAttributionPanel {
   display: grid;
-  grid-template-columns: minmax(210px, 0.75fr) minmax(180px, 0.62fr) minmax(280px, 1fr) minmax(180px, 0.65fr);
+  flex: 1 1 auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   align-items: stretch;
+  min-height: 0;
+}
+
+.referenceAttributionPanel > .footerChangeSplit {
+  grid-column: 1 / -1;
 }
 
 .referenceAttributionCard {
@@ -1280,6 +1415,7 @@
 
 .attributionLead {
   display: grid;
+  grid-column: 1 / -1;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 4px 8px;
   align-items: center;
@@ -1304,12 +1440,13 @@
   line-height: 1.2;
 }
 
+/* 2026-08-11 全站决议（DESIGN §4）：绿涨红跌（正损益=绿、负损益=红）。 */
 .attributionLead strong[data-tone="positive"] {
-  color: var(--moss-color-danger-600);
+  color: var(--moss-color-success-700);
 }
 
 .attributionLead strong[data-tone="negative"] {
-  color: var(--moss-color-success-700);
+  color: var(--moss-color-danger-600);
 }
 
 .attributionLead small,
@@ -1326,6 +1463,7 @@
 
 .attributionLedger {
   display: grid;
+  grid-column: 1 / -1;
   gap: 1px;
   overflow: hidden;
   border: 1px solid var(--moss-color-neutral-100);
@@ -1361,6 +1499,7 @@
 
 .attributionEvidenceGrid {
   display: grid;
+  grid-column: 1 / -1;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
   overflow: hidden;
@@ -1371,6 +1510,7 @@
 
 .attributionEvidenceGrid div {
   display: grid;
+  align-content: center;
   gap: 2px;
   min-width: 0;
   padding: 4px 8px;
@@ -1398,12 +1538,9 @@
 }
 
 .attributionBoundaryNote {
-  grid-column: 1 / 4;
-  align-self: stretch;
-  padding: 8px 8px;
-  border: 1px solid var(--moss-color-neutral-100);
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--moss-color-neutral-50);
+  display: grid;
+  grid-column: 1 / -1;
+  align-content: center;
   color: var(--moss-color-neutral-500);
   font-size: 11px;
   line-height: 1.35;
@@ -1411,7 +1548,7 @@
 }
 
 .referenceAttributionPanel :global(.ant-btn) {
-  grid-column: 4 / 5;
+  grid-column: 1 / -1;
   align-self: center;
   justify-self: start;
 }
@@ -1419,8 +1556,8 @@
 .referenceDistributionGrid {
   grid-area: distribution;
   display: grid;
-  grid-template-columns: minmax(440px, 1.4fr) minmax(300px, 0.88fr) minmax(300px, 0.88fr);
-  gap: 12px;
+  grid-template-columns: minmax(360px, 1.18fr) repeat(2, minmax(280px, 0.91fr));
+  gap: var(--moss-space-2);
   align-items: stretch;
 }
 
@@ -1428,7 +1565,7 @@
 .referenceBottomGrid :global(.ant-card-head),
 .referenceSideStack :global(.ant-card-head),
 .referenceFooterGrid :global(.ant-card-head) {
-  min-height: 32px;
+  min-height: 28px;
   padding: 0 12px 0 16px;
 }
 
@@ -1436,15 +1573,24 @@
 .referenceBottomGrid :global(.ant-card-head-title),
 .referenceSideStack :global(.ant-card-head-title),
 .referenceFooterGrid :global(.ant-card-head-title) {
-  padding: 8px 0;
-}
-
-.referenceMaturityCard .progressList {
-  display: none;
+  padding: 4px 0;
 }
 
 .referenceStructureLeadCard {
   min-width: 0;
+}
+
+.structureConcentration {
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--moss-color-neutral-100);
+}
+
+.structureConcentration > span {
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
 }
 
 .referenceDistributionSupportCard {
@@ -1454,7 +1600,7 @@
 .referenceDonutPanel {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 150px;
-  gap: 16px;
+  gap: 12px;
   align-items: center;
   min-height: 132px;
 }
@@ -1495,36 +1641,34 @@
   white-space: nowrap;
 }
 
+/* ECharts 环形宿主（旧 conic-gradient 手搓环已下线）：中心读数走 DOM 叠层，
+   避免 canvas 文本，同时保持读数留在 DOM 里可被读屏与测试取到。 */
 .referenceDonut {
   position: relative;
   display: grid;
   place-items: center;
-  width: 116px;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: var(--donut);
+  width: 150px;
+  height: 150px;
 }
 
-.referenceDonut::after {
-  content: "";
+/* ECharts 内层会保留初始化时的固有宽度；grid item 默认 min-width:auto 时，
+   容器重排后可能把 150px 轨道撑到整页宽，圆环被画到卡外。 */
+.referenceDonut > div {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.referenceDonutCenter {
   position: absolute;
-  width: 64%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: var(--moss-color-card-bg);
-  box-shadow: inset 0 0 0 1px var(--moss-color-neutral-100);
-}
-
-.referenceDonut span {
-  position: relative;
   z-index: 1;
-  max-width: 74px;
+  max-width: 82px;
   color: var(--moss-color-neutral-900);
   font-family: var(--moss-font-mono);
   font-size: 13px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
+  pointer-events: none;
   text-align: center;
 }
 
@@ -1546,148 +1690,113 @@
   font-variant-numeric: tabular-nums;
 }
 
-.progressHeader {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--moss-space-3);
-  color: var(--moss-color-neutral-700);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.progressCaption {
-  font-family: var(--moss-font-mono);
-  font-variant-numeric: tabular-nums;
-}
-
-.progressList {
+/* 分布行条（首页 distributionRow 语言）：单行 18px，标签左、数值右对齐等宽，
+   行底 2px 微条兼作分隔发丝线。合并旧 progress* 与 region* 两套同构实现。 */
+.distributionRows {
   display: grid;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.referenceProgressRow {
-  display: grid;
-  gap: 4px;
-}
-
-.referenceProgressTrack {
-  height: 4px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--moss-color-neutral-100);
-}
-
-.referenceProgressBar {
-  height: 100%;
-  border-radius: inherit;
-}
-
-.progressDetail {
-  color: var(--moss-color-neutral-600);
-  font-size: 11px;
-}
-
-.maturityChart {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 8px;
-  align-items: end;
-  min-height: 116px;
-  margin-top: 8px;
-  padding: 8px 4px 0;
-  border-top: 1px solid var(--moss-color-neutral-100);
-}
-
-.maturityColumn {
-  display: grid;
-  grid-template-rows: 24px minmax(10px, 86px) 24px;
-  justify-items: center;
-  align-items: end;
-  gap: 4px;
+  gap: 0;
   min-width: 0;
 }
 
-.maturityColumn span {
-  color: var(--moss-color-neutral-700);
-  font-family: var(--moss-font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  text-align: center;
-}
-
-.maturityColumn div {
-  width: min(34px, 70%);
-  border-radius: var(--dh-api-radius, 6px) var(--dh-api-radius, 6px) 0 0;
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--dh-api-ink) 35%, transparent);
-}
-
-.maturityColumn small {
-  color: var(--moss-color-neutral-500);
-  font-size: 11px;
-  line-height: 1.2;
-  text-align: center;
-}
-
-.regionConcentrationPanel {
-  min-height: 124px;
-}
-
-.regionList {
+.distributionRow {
+  position: relative;
   display: grid;
+  grid-template-columns: minmax(72px, 1fr) auto auto;
   gap: 8px;
-}
-
-.regionRow {
-  display: grid;
-  gap: 4px;
+  align-items: center;
+  height: 22px;
   min-width: 0;
-}
-
-.regionRowHeader {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
   color: var(--moss-color-neutral-700);
   font-size: 12px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
 }
 
-.regionRowHeader strong {
+.distributionRow > span {
   overflow: hidden;
-  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.regionRowHeader span {
+.distributionRow strong,
+.distributionRow em {
+  overflow: hidden;
   color: var(--moss-color-neutral-900);
   font-family: var(--moss-font-mono);
+  font-size: 12px;
+  font-style: normal;
   font-weight: 500;
-  font-variant-numeric: tabular-nums;
+  text-align: right;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.regionTrack {
-  height: 4px;
-  overflow: hidden;
+.distributionRow em {
+  color: var(--moss-color-neutral-600);
+}
+
+/* 轨道兼作行分隔发丝线，不额外占行高；填充条压在轨道之上。 */
+.distributionRow::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
   border-radius: 999px;
   background: var(--moss-color-neutral-100);
 }
 
-.regionTrack i {
+.distributionRowBar {
+  position: absolute;
+  z-index: 1;
+  bottom: 0;
+  left: 0;
   display: block;
-  height: 100%;
-  border-radius: inherit;
+  height: 2px;
+  min-width: 2px;
+  border-radius: 999px;
+  background: var(--ib-accent);
 }
 
+/* ECharts 期限桶柱状宿主（旧 div 柱已下线）。 */
+.maturityChart {
+  min-height: 168px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--moss-color-neutral-100);
+}
+
+/* 右列须容下持仓表 700px 硬底：1440 下右列 ≈730px，权重列不再默认落在横向滚动区外。 */
 .referenceBottomGrid {
   grid-area: bottom;
+  display: grid;
+  grid-template-columns: minmax(340px, 0.76fr) minmax(0, 1.24fr);
+  gap: var(--moss-space-2);
+  align-items: stretch;
   min-width: 0;
 }
 
 .referenceBottomGrid .referenceHoldingsCard {
-  min-height: 200px;
+  min-width: 0;
+  height: 100%;
+}
+
+.referenceCalendarPanel {
+  min-width: 0;
+}
+
+.referenceCalendarPanel > * {
+  height: 100%;
+  box-sizing: border-box;
+}
+
+/* 金额/说明列 CJK 词内断行修复（如「发 行利率」）：keep-all 只在空格/标点处折行；
+   金额列数值段落短，keep-all 下整词换行即可，不再逐字竖排。 */
+.referenceCalendarPanel :global(.calendar-list__amount),
+.referenceCalendarPanel :global(.calendar-list__detail) {
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 
 .holdingsEvidenceStrip {
@@ -1701,9 +1810,9 @@
 
 .holdingsEvidenceStrip div {
   display: grid;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
-  padding: 8px 12px;
+  padding: 6px 12px;
   background: var(--moss-color-neutral-50);
 }
 
@@ -1737,12 +1846,13 @@
   box-shadow: inset -18px 0 18px -22px color-mix(in srgb, var(--dh-api-bg) 48%, transparent);
 }
 
+/* 表体硬底 704px。右列在 1181–1396px 之间窄于该值才真的可滚，其余宽度提示角标是噪声。 */
 .holdingsScrollCue {
   position: sticky;
   top: 8px;
   right: 8px;
   z-index: 4;
-  display: grid;
+  display: none;
   place-items: center;
   width: 24px;
   height: 24px;
@@ -1750,8 +1860,13 @@
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: 999px;
   background: color-mix(in srgb, var(--moss-color-card-bg) 92%, transparent);
-  box-shadow: 0 6px 12px color-mix(in srgb, var(--dh-api-bg) 12%, transparent);
   pointer-events: none;
+}
+
+@media (min-width: 1181px) and (max-width: 1396px) {
+  .holdingsScrollCue {
+    display: grid;
+  }
 }
 
 .holdingsScrollCue span {
@@ -1783,7 +1898,7 @@
 }
 
 .holdingsTableHeader {
-  padding: 8px 12px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--moss-color-neutral-100);
   background: var(--moss-color-neutral-50);
   color: var(--moss-color-neutral-500);
@@ -1795,14 +1910,14 @@
   position: sticky;
   left: 0;
   z-index: 2;
-  margin: -8px 0 -8px -12px;
-  padding: 8px 12px 8px 12px;
+  margin: -6px 0 -6px -12px;
+  padding: 6px 12px 6px 12px;
   border-right: 1px solid var(--moss-color-neutral-100);
   background: var(--moss-color-neutral-50);
 }
 
 .holdingsTableRow {
-  padding: 8px 12px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--moss-color-neutral-100);
   color: var(--moss-color-neutral-700);
   font-size: 12px;
@@ -1825,8 +1940,8 @@
   display: grid;
   gap: 2px;
   min-width: 0;
-  margin: -8px 0 -8px -12px;
-  padding: 8px 12px 8px 12px;
+  margin: -6px 0 -6px -12px;
+  padding: 6px 12px 6px 12px;
   border-right: 1px solid var(--moss-color-neutral-100);
   background: var(--moss-color-card-bg);
 }
@@ -1909,13 +2024,22 @@
   background: var(--moss-color-neutral-100);
 }
 
+/* 来源状态上收卡头一处（§6 状态去重）：行内不再逐行重复「风险指标读面」样板。 */
+.riskEvidenceSource {
+  padding: 5px 8px;
+  background: var(--moss-color-card-bg);
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .riskEvidenceRow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 4px 8px;
+  gap: 2px 8px;
   align-items: start;
   min-width: 0;
-  padding: 8px 8px;
+  padding: 6px 8px;
   background: var(--moss-color-card-bg);
 }
 
@@ -1943,11 +2067,106 @@
 }
 
 .riskEvidenceBoundary {
-  padding: 8px 8px;
+  padding: 6px 8px;
   background: var(--moss-color-neutral-50);
   color: var(--moss-color-neutral-500);
   font-size: 11px;
   line-height: 1.4;
+}
+
+.riskEvidenceGuardrail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.todayFocusPanel {
+  display: grid;
+  gap: 6px;
+}
+
+.todayFocusMetric,
+.todayFocusAction {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  align-items: baseline;
+  padding: 6px 8px;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--moss-color-neutral-50);
+}
+
+.todayFocusMetric span,
+.todayFocusAction span {
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+}
+
+.todayFocusMetric strong,
+.todayFocusAction strong {
+  color: var(--moss-color-neutral-900);
+  font-family: var(--moss-font-mono);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.todayFocusDecision {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border-left: 2px solid var(--moss-color-info-500);
+  background: var(--moss-color-neutral-50);
+}
+
+.todayFocusDecision > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.todayFocusDecision span,
+.todayFocusDecision small {
+  overflow: hidden;
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.todayFocusDecision strong {
+  overflow: hidden;
+  color: var(--moss-color-neutral-900);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.todayFocusMetric small,
+.todayFocusAction small {
+  grid-column: 1 / -1;
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+}
+
+.todayFocusList {
+  display: grid;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--moss-color-neutral-100);
+}
+
+.todayFocusList span {
+  padding: 6px 8px;
+  background: var(--moss-color-card-bg);
+  color: var(--moss-color-neutral-700);
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .riskGuardrailRow {
@@ -1984,15 +2203,31 @@
   white-space: nowrap;
 }
 
+/* 侧栏与持仓表齐底：末卡吃掉剩余高度（空态文案在其中居中），不留容器底空板。 */
 .referenceSideStack {
   grid-area: side;
   display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 1px;
-  align-content: start;
   overflow: hidden;
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--dh-api-radius, 6px);
   background: var(--moss-color-neutral-200);
+}
+
+.referenceSideStack :global(.ant-card:last-of-type) {
+  display: flex;
+  flex-direction: column;
+}
+
+.referenceSideStack :global(.ant-card:last-of-type .ant-card-body) {
+  display: grid;
+  flex: 1 1 auto;
+}
+
+.referenceSideStack :global(.ant-card:last-of-type .ant-card-body) > * {
+  height: 100%;
+  box-sizing: border-box;
 }
 
 /* 侧栏头对齐首页 panelHeader：2px 强调条 + 14px/600 标题。 */
@@ -2032,26 +2267,27 @@
 }
 
 .referenceSideStack :global(.ant-card-head) {
-  min-height: 32px;
+  min-height: 28px;
   padding: 0 8px 0 16px;
   border-bottom: 1px solid var(--moss-color-neutral-100);
   background: var(--moss-color-neutral-50);
 }
 
 .referenceSideStack :global(.ant-card-head-title) {
-  padding: 8px 0;
+  padding: 4px 0;
 }
 
 .referenceSideStack :global(.ant-card-body) {
   padding: 8px 8px !important;
 }
 
+/* 页脚马赛克网格改等高拉伸：左主卡卡面补齐右侧支撑栈高度（§5）。 */
 .referenceFooterGrid {
   grid-area: footer;
   display: grid;
   grid-template-columns: minmax(0, 1.36fr) minmax(320px, 0.84fr);
   gap: 1px;
-  align-items: start;
+  align-items: stretch;
   overflow: hidden;
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--dh-api-radius, 6px);
@@ -2065,14 +2301,14 @@
 }
 
 .referenceFooterGrid :global(.ant-card-head) {
-  min-height: 32px;
+  min-height: 28px;
   padding: 0 8px 0 16px;
   border-bottom: 1px solid var(--moss-color-neutral-100);
   background: var(--moss-color-neutral-50);
 }
 
 .referenceFooterGrid :global(.ant-card-head-title) {
-  padding: 8px 0;
+  padding: 4px 0;
 }
 
 .referenceFooterGrid :global(.ant-card-body) {
@@ -2085,6 +2321,7 @@
 
 .footerSupportStack {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 1px;
   min-width: 0;
   background: var(--moss-color-neutral-200);
@@ -2208,6 +2445,8 @@
 }
 
 .footerChangeSplit span {
+  display: grid;
+  align-content: center;
   padding: 4px 8px;
   border: 1px solid var(--moss-color-neutral-100);
   border-radius: var(--dh-api-radius, 6px);
@@ -2217,25 +2456,28 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* 1280 仍有约 1,000px 主列空间，7 个读数可稳定保持单行；避免共享组件
+   的三列断点产生「3 + 3 + 1」孤格与整行空底。 */
+@media (min-width: 1181px) and (max-width: 1280px) {
+  .holdingsKpiRail [data-testid="bond-analysis-kpi-ribbon"] {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+}
+
+/* 1280 下事件日历双列区先折单列：340px 日历栏放不下五列事件行，先于 1180 主断点折行。 */
+@media (max-width: 1280px) {
+  .referenceBottomGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 1180px) {
   .heroSection {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
     grid-template-areas:
       "identity"
-      "main"
-      "governance";
-  }
-
-  .heroAside {
-    gap: 12px;
-  }
-
-  .heroGovernance {
-    padding: 12px 0 0;
-    border: 0;
-    border-top: 1px solid var(--moss-color-neutral-100);
-    border-radius: 0;
-    background: transparent;
+      "main";
   }
 
   .referenceDashboard,
@@ -2245,15 +2487,13 @@
 
   .referenceDashboard {
     grid-template-areas:
-      "hero"
       "market"
+      "hero"
       "kpi"
       "analysis"
       "accounting"
       "distribution"
-      "bottom"
-      "side"
-      "footer";
+      "bottom";
   }
 
   .holdingsKpiGrid,
@@ -2289,10 +2529,6 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .curveMatrixRow {
-    grid-template-columns: 88px repeat(8, minmax(56px, 1fr));
-    overflow-x: auto;
-  }
 }
 
 @media (max-width: 720px) {
@@ -2315,6 +2551,17 @@
 
   .heroMetric:nth-last-child(-n + 2) {
     border-bottom: 0;
+  }
+
+  .heroGovernance {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .heroGovernanceMetrics,
+  .heroGovernanceStatus,
+  .heroVerdictRow {
+    padding-left: 0;
+    border-left: 0;
   }
 
   .heroVerdictRow {

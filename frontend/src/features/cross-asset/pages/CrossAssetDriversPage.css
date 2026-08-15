@@ -114,6 +114,17 @@
   grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
   gap: 14px;
   padding-top: 10px;
+  /* 左列无已形成判断时不被右列待接入清单拉出整列空白（§5 不等高网格 start）。 */
+  align-items: start;
+}
+
+/* 已形成判断空态：收缩为一句 muted 说明，不留空列。 */
+.cross-asset-class-analysis__cards-empty {
+  margin: 0;
+  padding: 12px 0;
+  color: var(--ca-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
 }
 
 .cross-asset-class-analysis__details:not([open]) > .cross-asset-class-analysis__details-body {
@@ -274,11 +285,18 @@
   background: var(--ca-negative-bg);
 }
 
-.cross-asset-class-analysis__direction--conflicted,
-.cross-asset-class-analysis__direction--pending {
+.cross-asset-class-analysis__direction--conflicted {
   border-color: var(--ca-warning-border);
   color: var(--ca-warning-text);
   background: var(--ca-warning-bg);
+}
+
+/* 中性与待接入按页内统一 tone 映射走 muted 灰（待接入是状态不是风险告警）。 */
+.cross-asset-class-analysis__direction--neutral,
+.cross-asset-class-analysis__direction--pending {
+  border-color: var(--ca-neutral-border);
+  color: var(--ca-muted);
+  background: var(--ca-neutral-bg);
 }
 
 .cross-asset-class-analysis__summary {
@@ -1017,14 +1035,19 @@
   white-space: nowrap;
 }
 
+/*
+ * tone 判据统一：changeTone=positive 恒为利好语义（kpi 模型已内置债市视角，
+ * bp 利差走阔=negative），与关键因子矩阵 .cross-asset-evidence-tape__delta--* 同映射。
+ * 旧版此处反转（positive→红）导致同值同 tone 在两张矩阵一红一绿。
+ */
 .cross-asset-reference-tone--positive,
 .cross-asset-reference-direction--up {
-  color: var(--ca-negative-text);
+  color: var(--ca-positive-text);
 }
 
 .cross-asset-reference-tone--negative,
 .cross-asset-reference-direction--down {
-  color: var(--ca-positive-text);
+  color: var(--ca-negative-text);
 }
 
 .cross-asset-reference-tone--warning {
@@ -1316,11 +1339,28 @@
   white-space: nowrap;
 }
 
+/* 传导主线值按页内统一 tone 映射取色（旧版恒绿）。 */
 .cross-asset-reference-transmission__steps span {
-  color: var(--ca-positive-text);
+  color: var(--ca-muted);
   font-size: 12px;
   font-weight: 820;
   white-space: nowrap;
+}
+
+.cross-asset-reference-transmission__stance--positive {
+  color: var(--ca-positive-text);
+}
+
+.cross-asset-reference-transmission__stance--negative {
+  color: var(--ca-negative-text);
+}
+
+.cross-asset-reference-transmission__stance--warning {
+  color: var(--ca-warning-text);
+}
+
+.cross-asset-reference-transmission__stance--neutral {
+  color: var(--ca-muted);
 }
 
 .cross-asset-reference-judgments__grid {
@@ -1348,20 +1388,79 @@
   font-weight: 850;
 }
 
+/* 环色随判断 tone（偏多绿/偏空红/中性灰/策略词次级墨）；环内只放单字置信度。 */
 .cross-asset-reference-judgment__ring {
   display: grid;
   place-items: center;
-  width: 52px;
-  height: 52px;
-  border: 5px solid color-mix(in srgb, var(--ca-positive-text) 78%, var(--ib-hairline));
-  border-left-color: var(--ib-hairline);
+  width: 44px;
+  height: 44px;
+  border: 4px solid var(--ca-border-muted);
   border-radius: 50%;
 }
 
 .cross-asset-reference-judgment__ring span {
+  color: var(--ca-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.cross-asset-reference-judgment__ring--bull {
+  border-color: color-mix(in srgb, var(--ca-positive-text) 66%, var(--ca-border-muted));
+}
+
+.cross-asset-reference-judgment__ring--bull span {
   color: var(--ca-positive-text);
-  font-size: 14px;
-  font-weight: 900;
+}
+
+.cross-asset-reference-judgment__ring--bear {
+  border-color: color-mix(in srgb, var(--ca-negative-text) 66%, var(--ca-border-muted));
+}
+
+.cross-asset-reference-judgment__ring--bear span {
+  color: var(--ca-negative-text);
+}
+
+.cross-asset-reference-judgment__ring--conflict {
+  border-color: color-mix(in srgb, var(--ca-warning-text) 66%, var(--ca-border-muted));
+}
+
+.cross-asset-reference-judgment__ring--conflict span {
+  color: var(--ca-warning-text);
+}
+
+.cross-asset-reference-judgment__ring--stance {
+  border-color: color-mix(in srgb, var(--ca-sub) 52%, var(--ca-border-muted));
+}
+
+.cross-asset-reference-judgment__ring--stance span {
+  color: var(--ca-sub);
+}
+
+/* 判断词移出环外：单行不折字，超长省略并保留完整判断在下方摘要。 */
+.cross-asset-reference-judgment__stance {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--ca-text);
+  font-size: 12px;
+  font-weight: 850;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cross-asset-reference-judgment__stance--bull {
+  color: var(--ca-positive-text);
+}
+
+.cross-asset-reference-judgment__stance--bear {
+  color: var(--ca-negative-text);
+}
+
+.cross-asset-reference-judgment__stance--conflict {
+  color: var(--ca-warning-text);
+}
+
+.cross-asset-reference-judgment__stance--neutral {
+  color: var(--ca-muted);
 }
 
 .cross-asset-reference-judgment p {
@@ -2977,6 +3076,24 @@
 
 .cross-asset-evidence-tape__delta {
   font-weight: 820;
+  white-space: nowrap;
+}
+
+/* 变化/方向/来源列不折字、不被右缘裁切（表壳 overflow-x: auto 承接超宽）。 */
+.cross-asset-evidence-tape__table th:nth-child(3),
+.cross-asset-evidence-tape__table td:nth-child(3) {
+  min-width: 88px;
+}
+
+.cross-asset-evidence-tape__table th:nth-child(4),
+.cross-asset-evidence-tape__table td:nth-child(4) {
+  min-width: 60px;
+  white-space: nowrap;
+}
+
+.cross-asset-evidence-tape__table th:nth-child(5),
+.cross-asset-evidence-tape__table td:nth-child(5) {
+  min-width: 76px;
 }
 
 .cross-asset-evidence-tape__delta--positive {
@@ -3898,6 +4015,45 @@
   min-width: 0;
 }
 
+/*
+ * 事件与风险线索表（共享 CalendarList 的页面作用域覆盖）：
+ * 固定级别列宽让新增 11px 表头与行网格对齐；发行人 pill / 事件标题的浅色
+ * 字面量在深色终端页重映射为 --ca-* 链。
+ */
+.cross-asset-event-calendar__table {
+  display: grid;
+  gap: 6px;
+}
+
+.cross-asset-event-calendar__head,
+.cross-asset-event-calendar__table .calendar-list__item {
+  grid-template-columns: 88px minmax(0, 1.1fr) 96px 44px minmax(0, 1fr);
+}
+
+.cross-asset-event-calendar__head {
+  display: grid;
+  gap: 8px 12px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--ca-border-soft);
+  color: var(--ca-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.cross-asset-event-calendar__table .calendar-list__event-title {
+  color: var(--ca-text);
+}
+
+.cross-asset-event-calendar__table .calendar-list__issuer {
+  border-color: var(--ca-border-soft);
+  background: var(--ca-card-mute);
+  color: var(--ca-sub);
+}
+
+.cross-asset-event-calendar__table .calendar-list__source-link {
+  color: var(--ca-accent);
+}
+
 .cross-asset-risk-snapshot-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -3935,6 +4091,7 @@
   color: var(--ca-text);
 }
 
+/* 状态点承载 tone 语义即可，无限脉冲装饰动效按 §8 移除。 */
 .cross-asset-trend-panel__summary-dot {
   display: inline-block;
   width: 8px;
@@ -3942,12 +4099,6 @@
   border-radius: 50%;
   background: var(--ca-muted);
   flex-shrink: 0;
-  animation: ca-pulse 2s ease-in-out infinite;
-}
-
-@keyframes ca-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
 }
 
 .cross-asset-trend-panel__summary-text {
@@ -4091,6 +4242,7 @@
   to { transform: rotate(360deg); }
 }
 
+/* 空态按 §5 收缩为中性一句话：无虚线告警框（告警语义只留给真实失败态）。 */
 .cross-asset-trend-panel__empty {
   min-height: 120px;
   display: flex;
@@ -4098,9 +4250,6 @@
   justify-content: center;
   color: var(--ca-muted);
   font-size: 0.8125rem;
-  border: 1px dashed var(--ca-border);
-  border-radius: var(--ca-radius);
-  background: var(--ca-card-mute);
 }
 
 .cross-asset-trend-chart {
@@ -4727,17 +4876,48 @@
 
 .cross-asset-ncd-proxy__warning {
   margin: 0;
-  color: var(--moss-color-warning-800);
+  /* 浅色 warning-800 深棕在深色终端不可读，改走页内琥珀语义链。 */
+  color: var(--ca-warning-text);
   font-size: 0.75rem;
   line-height: 1.5;
 }
 
 .cross-asset-ncd-proxy__rows {
   margin: 0;
-  padding-left: 16px;
+  padding-left: 0;
   color: var(--ca-text-muted);
   font-size: 0.75rem;
   line-height: 1.45;
+  list-style: none;
+}
+
+/* 行 caption 拆分为「标签 + 期限单元格」（§7 `·` 配额：不再单行串 4 个分隔符）。 */
+.cross-asset-ncd-proxy__rows li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 8px;
+}
+
+.cross-asset-ncd-proxy__row-label {
+  color: var(--ca-sub);
+  font-weight: 750;
+}
+
+.cross-asset-ncd-proxy__row-cells {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+.cross-asset-ncd-proxy__row-cell {
+  padding: 1px 7px;
+  border: 1px solid var(--ca-border-soft);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ca-card-mute);
+  color: var(--ca-text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .cross-asset-drivers-page__drivers-grid {
@@ -4771,19 +4951,20 @@
   font-weight: 800;
 }
 
+/* 页内统一 tone 映射：偏多=绿、偏空=红、中性=muted 灰（§4 同页同语义单色值）。 */
 .cross-asset-drivers-page__driver-stance--bull {
-  background: var(--moss-color-success-50);
-  color: var(--moss-color-success-600);
+  background: var(--ca-positive-bg);
+  color: var(--ca-positive-text);
 }
 
 .cross-asset-drivers-page__driver-stance--bear {
-  background: var(--moss-color-danger-50);
-  color: var(--moss-color-danger-600);
+  background: var(--ca-negative-bg);
+  color: var(--ca-negative-text);
 }
 
 .cross-asset-drivers-page__driver-stance--neutral {
-  background: var(--moss-color-warning-50);
-  color: var(--moss-color-warning-600);
+  background: var(--ca-neutral-bg);
+  color: var(--ca-muted);
 }
 
 .cross-asset-drivers-page__driver-list {
@@ -4830,15 +5011,15 @@
 }
 
 .cross-asset-drivers-page__eval-tone--bull {
-  color: var(--moss-color-success-600);
+  color: var(--ca-positive-text);
 }
 
 .cross-asset-drivers-page__eval-tone--bear {
-  color: var(--moss-color-danger-600);
+  color: var(--ca-negative-text);
 }
 
 .cross-asset-drivers-page__eval-tone--warning {
-  color: var(--moss-color-warning-500);
+  color: var(--ca-warning-text);
 }
 
 .cross-asset-drivers-page__heatmap td:nth-child(2),
@@ -5407,14 +5588,23 @@
   font-variant-numeric: tabular-nums;
 }
 
-.ca-waterfall__decision-card--positive {
+/* 综合方向卡按统一判据取色：偏紧（正值，不利债市）= 红系，偏松（负值，利好债市）= 绿系。 */
+.ca-waterfall__decision-card--tightening {
+  border-color: var(--ca-negative-border);
+  background: var(--ca-negative-bg);
+}
+
+.ca-waterfall__decision-card--tightening strong {
+  color: var(--ca-negative-text);
+}
+
+.ca-waterfall__decision-card--easing {
   border-color: var(--ca-positive-border);
   background: var(--ca-positive-bg);
 }
 
-.ca-waterfall__decision-card--negative {
-  border-color: var(--ca-negative-border);
-  background: var(--ca-negative-bg);
+.ca-waterfall__decision-card--easing strong {
+  color: var(--ca-positive-text);
 }
 
 .ca-waterfall__decision-card--neutral {
@@ -5429,7 +5619,7 @@
   min-width: 0;
   margin: -4px 0 10px;
   padding: 7px 9px;
-  border: 1px dashed var(--ca-warning-border);
+  border: 1px solid var(--ca-warning-border);
   border-radius: var(--ib-radius, 2px);
   background: color-mix(in srgb, var(--ca-warning-bg) 64%, var(--ca-card));
 }
@@ -5491,13 +5681,26 @@
   padding-bottom: 28px;
 }
 
+/* 零基准线实线加重并带 0 刻度标签，正负贡献方向可读（§图表语法）。 */
 .ca-waterfall__zero-line {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 88px;
-  border-top: 1px dashed var(--ca-border);
+  border-top: 1px solid var(--ca-border-strong);
+  opacity: 0.55;
   pointer-events: none;
+}
+
+.ca-waterfall__zero-line::after {
+  content: "0";
+  position: absolute;
+  right: 0;
+  bottom: 2px;
+  color: var(--ca-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 .ca-waterfall__chart--compact-gaps .ca-waterfall__zero-line {
@@ -5688,6 +5891,15 @@
 
 .cross-asset-linkage-portfolio-impact__value {
   font-variant-numeric: tabular-nums;
+}
+
+/* 合计估算 tone：正=估算增益（绿）、负=估算损失（红）、缺失=中性。 */
+.cross-asset-linkage-portfolio-impact__value--positive {
+  color: var(--ca-positive-text);
+}
+
+.cross-asset-linkage-portfolio-impact__value--negative {
+  color: var(--ca-negative-text);
 }
 
 .cross-asset-linkage-portfolio-impact__empty {
@@ -6142,6 +6354,16 @@
   min-width: 0;
 }
 
+/*
+ * 四列因子卡在 ≤1560 视口只剩 ~150px/卡，5 列迷你表数值逐字符竖排；
+ * 先收 2 列（≤900 已有单列规则），保证数值列不折行。
+ */
+@media (max-width: 1560px) {
+  .cross-asset-reference-depth .cross-asset-evidence-ledger__matrix-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .cross-asset-reference-depth .cross-asset-evidence-ledger .cross-asset-evidence-factor {
   --factor-accent: var(--ca-accent);
   display: grid;
@@ -6260,24 +6482,37 @@
 
 .cross-asset-evidence-factor__table th:nth-child(1),
 .cross-asset-evidence-factor__table td:nth-child(1) {
-  width: 31%;
+  width: 28%;
 }
 
 .cross-asset-evidence-factor__table th:nth-child(2),
 .cross-asset-evidence-factor__table td:nth-child(2) {
-  width: 22%;
+  width: 20%;
 }
 
 .cross-asset-evidence-factor__table th:nth-child(3),
-.cross-asset-evidence-factor__table td:nth-child(3),
+.cross-asset-evidence-factor__table td:nth-child(3) {
+  width: 22%;
+}
+
 .cross-asset-evidence-factor__table th:nth-child(4),
 .cross-asset-evidence-factor__table td:nth-child(4) {
-  width: 17%;
+  width: 16%;
 }
 
 .cross-asset-evidence-factor__table th:nth-child(5),
 .cross-asset-evidence-factor__table td:nth-child(5) {
-  width: 13%;
+  width: 14%;
+}
+
+/* 数值列（当前/变化）等宽右对齐且永不折行；指标名列 ellipsis + title 兜底。 */
+.cross-asset-evidence-factor__table th:nth-child(2),
+.cross-asset-evidence-factor__table td:nth-child(2),
+.cross-asset-evidence-factor__table th:nth-child(3),
+.cross-asset-evidence-factor__table td:nth-child(3) {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .cross-asset-evidence-factor__table td strong,

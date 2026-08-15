@@ -474,7 +474,12 @@ describe("buildPositionsBondsKpiBand", () => {
   it("formats the six business readouts from full stats", () => {
     expect(buildPositionsBondsKpiBand({ stats: bondsStats(), loading: false })).toEqual([
       { key: "avg-daily", label: "日均合计", value: "2.00 亿元", note: "分母 30 天" },
-      { key: "range-total", label: "区间累计", value: "600.00 亿元" },
+      {
+        key: "range-total",
+        label: "区间累计",
+        value: "600.00 亿元",
+        note: "区间内逐日余额加总（余额×天数量纲）",
+      },
       { key: "weighted-rate", label: "加权收益率", value: "2.55%" },
       { key: "coupon-rate", label: "加权付息率", value: "3.00%" },
       { key: "customers", label: "客户数", value: "12 户" },
@@ -687,6 +692,28 @@ describe("coverageQualityDisplay", () => {
       ),
     ).toEqual({ value: "84.48%", note: "缺 37018 笔 / 110,688.95 亿元" });
   });
+
+  it("shows ≈100% instead of a rounded 100.00% when records are still missing", () => {
+    expect(
+      coverageQualityDisplay(
+        coverage({ missing_count: 4, missing_amount: "12000000", coverage_ratio: "99.99823456" }),
+      ),
+    ).toEqual({ value: "≈100%", note: "缺 4 笔 / 0.12 亿元" });
+  });
+
+  it("keeps the plain 100.00% readout when nothing is missing", () => {
+    expect(coverageQualityDisplay(coverage({ coverage_ratio: "100.00" }))).toEqual({
+      value: "100.00%",
+    });
+  });
+
+  it("keeps sub-threshold ratios unchanged even with missing records", () => {
+    expect(
+      coverageQualityDisplay(
+        coverage({ missing_count: 4, missing_amount: "12000000", coverage_ratio: "99.99" }),
+      ),
+    ).toEqual({ value: "99.99%", note: "缺 4 笔 / 0.12 亿元" });
+  });
 });
 
 describe("rateCoveragePolicyLabel", () => {
@@ -717,5 +744,34 @@ describe("topRatingItem", () => {
     ];
     // "7.2" 字典序大于 "30.1"；数值比较必须选 30.1。
     expect(topRatingItem(items)).toBe(items[1]);
+  });
+
+  it("skips a leading empty-string percentage instead of locking onto it", () => {
+    const items: RatingStatsResponse["items"] = [
+      ratingItem("未评级", ""),
+      ratingItem("AAA", "30.1"),
+      ratingItem("AA", "7.2"),
+    ];
+    // 裸 reduce 下首项 NaN 会永远当选；必须跳过无效项选 AAA。
+    expect(topRatingItem(items)).toBe(items[1]);
+  });
+
+  it("skips non-numeric percentages anywhere in the list", () => {
+    const items: RatingStatsResponse["items"] = [
+      ratingItem("违约", "n/a"),
+      ratingItem("AA+", "12.5"),
+      ratingItem("AAA", "abc"),
+    ];
+    expect(topRatingItem(items)).toBe(items[1]);
+  });
+
+  it("returns null when no item has a finite percentage", () => {
+    expect(
+      topRatingItem([
+        ratingItem("未评级", ""),
+        ratingItem("违约", "NaN"),
+        ratingItem("AAA", "  "),
+      ]),
+    ).toBeNull();
   });
 });

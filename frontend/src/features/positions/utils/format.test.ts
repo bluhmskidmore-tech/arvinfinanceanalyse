@@ -7,6 +7,7 @@ import {
   formatAmountYi,
   formatAmountYiAuto,
   formatAmountYiNumber,
+  formatDecimalFixed,
   formatPercentValue,
   formatRatePercent,
 } from "./format";
@@ -52,5 +53,16 @@ describe("positions formatters", () => {
     expect(formatPercentValue("99.995")).toBe("100.00%");
     expect(formatPercentValue("0")).toBe("0.00%");
     expect(formatPercentValue(null)).toBe(EM_DASH);
+  });
+
+  it("rounds decimal strings to a fixed display precision without units", () => {
+    // 估值净价 8 位原始精度收敛 4 位（half-up），真实零保留为 0.0000。
+    expect(formatDecimalFixed("100.00000000")).toBe("100.0000");
+    expect(formatDecimalFixed("99.12345678")).toBe("99.1235");
+    expect(formatDecimalFixed("99.12344999")).toBe("99.1234");
+    expect(formatDecimalFixed("-1.00005000")).toBe("-1.0001");
+    expect(formatDecimalFixed("0.00000000")).toBe("0.0000");
+    expect(formatDecimalFixed(null)).toBe(EM_DASH);
+    expect(formatDecimalFixed(undefined)).toBe(EM_DASH);
   });
 });

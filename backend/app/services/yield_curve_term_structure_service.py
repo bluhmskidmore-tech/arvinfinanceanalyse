@@ -92,7 +92,7 @@ def _with_fresh_trace(envelope: dict) -> dict:
 
 
 def _trace_id() -> str:
-    return str(uuid.uuid4())
+    return f"tr_{uuid.uuid4().hex[:12]}"
 
 
 def _merge_lineage_str(*values: str) -> str:

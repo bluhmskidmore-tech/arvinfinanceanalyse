@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from calendar import monthrange
 from datetime import date
 from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 
@@ -299,6 +300,8 @@ def compute_macaulay_duration_and_convexity(
     ytm: Decimal,
     years_to_maturity: Decimal,
     coupon_frequency: int = 1,
+    *,
+    single_cashflow_at_maturity: bool = False,
 ) -> tuple[Decimal, Decimal]:
     """一次遍历现金流，同时产出 Macaulay 久期（年）与标准现金流凸性（年²）。
 
@@ -315,13 +318,20 @@ def compute_macaulay_duration_and_convexity(
 
     ``coupon_frequency`` 同时决定现金流时点（每 1/f 年一笔，末笔落在到期日，首期为
     残期）与折现除数，这与源 ytm 的报价惯例一致，不拆分。
+
+    ``single_cashflow_at_maturity=True`` 声明该券的全部现金流（本金+利息）一次性落在
+    到期日（bullet / 到期一次还本付息）：即使票息为正也不得虚构中途付息现金流，
+    Macaulay 恒等于剩余年限，凸性取同一时点的单笔闭式解。这与
+    ``cashflow_projection`` 的 bullet 建模（单笔 ``_bullet_coupon_amount`` 落在
+    到期日）保持同一口径。
     """
     if years_to_maturity <= 0:
         return Decimal("0"), Decimal("0")
     # 零息/无票息：唯一现金流落在到期日，D 恒等于剩余年限，C 有闭式解。
     # ytm <= 0 时同样走这里：与 ``estimate_duration`` 的零息代理口径一致
     # （久期退化为剩余年限），凸性随之取同一时点的标准值而非 D² 特判。
-    if coupon_rate <= 0 or ytm <= 0:
+    # bullet（到期一次还本付息）与零息同构：唯一现金流在到期日。
+    if single_cashflow_at_maturity or coupon_rate <= 0 or ytm <= 0:
         return years_to_maturity, _single_cashflow_convexity(
             years_to_maturity, ytm, coupon_frequency
         )
@@ -644,7 +654,10 @@ def resolve_period(report_date: date, period_type: str) -> tuple[date, date]:
     if period_type == "YTD":
         return date(report_date.year, 1, 1), report_date
     if period_type == "TTM":
-        start = date(report_date.year - 1, report_date.month, report_date.day)
+        # 闰日报告日（2/29）在上一年不存在，直接 date(year-1, 2, 29) 会抛
+        # ValueError 并让当天全部 TTM 视图 500；回退到目标月最后一天（2/28）。
+        start_day = min(report_date.day, monthrange(report_date.year - 1, report_date.month)[1])
+        start = date(report_date.year - 1, report_date.month, start_day)
         return start, report_date
     # MoM default
     first_of_month = report_date.replace(day=1)

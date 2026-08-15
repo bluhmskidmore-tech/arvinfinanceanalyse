@@ -1,16 +1,35 @@
 {
   "result_meta": {
+    "trace_id": "tr_43b2d7bab90d",
     "basis": "analytical",
     "result_kind": "bond_analytics.action_attribution",
     "formal_use_allowed": false,
+    "amount_currency_basis": "CNY",
+    "amount_currency_basis_note": "Amount fields in this response are disclosed on a CNY/RMB basis. CNY-identity rows use native CNY amounts; foreign-currency rows require complete formal CNY closure during current materialization.",
     "source_version": "sv_bond_analysis_action_attr_gs_a",
     "vendor_version": "vv_none",
-    "rule_version": "rv_bond_analytics_formal_materialize_v1",
-    "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1",
+    "rule_version": "rv_bond_analytics_formal_materialize_v2",
+    "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v2",
+    "cache_key": null,
     "quality_flag": "warning",
     "vendor_status": "ok",
     "fallback_mode": "none",
+    "requested_report_date": "2026-03-31",
+    "resolved_report_date": "2026-03-31",
     "scenario_flag": false,
+    "as_of_date": "2026-03-31",
+    "date_basis": "bond_analytics_report_date",
+    "fallback_date": null,
+    "generated_at": "2026-08-13T12:23:07.948970Z",
+    "filters_applied": {
+      "report_date": "2026-03-31",
+      "period_type": "MoM"
+    },
+    "tables_used": [
+      "fact_formal_bond_analytics_daily"
+    ],
+    "evidence_rows": null,
+    "next_drill": [],
     "source_surface": "bond_analytics"
   },
   "result": {
@@ -20,20 +39,74 @@
     "period_end": "2026-03-31",
     "total_actions": 1,
     "total_pnl_from_actions": "1250000.00000000",
+    "by_action_type": [
+      {
+        "action_type": "TIMING_BUY",
+        "action_type_name": "\u62e9\u65f6\u4e70\u5165",
+        "action_count": 1,
+        "total_pnl_economic": "1250000.00000000",
+        "total_pnl_accounting": "1250000.00000000",
+        "avg_pnl_per_action": "1250000.00000000"
+      }
+    ],
+    "action_details": [
+      {
+        "action_id": "1",
+        "action_type": "TIMING_BUY",
+        "action_date": "2026-03-31",
+        "bonds_involved": [
+          "BOND-A"
+        ],
+        "description": "BOND-A \u5e02\u503c\u53d8\u52a8 20.0%",
+        "pnl_economic": "1250000.00000000",
+        "pnl_accounting": "1250000.00000000",
+        "delta_duration": "0.20000000",
+        "delta_dv01": null,
+        "delta_spread_dv01": null,
+        "opportunity_cost": null,
+        "opportunity_cost_method": null
+      }
+    ],
     "period_start_duration": "3.00000000",
     "period_end_duration": "3.20000000",
     "duration_change_from_actions": "0.20000000",
-    "period_start_dv01": "0.00000000",
-    "period_end_dv01": "0.00000000",
-    "status": "ready",
+    "period_start_dv01": null,
+    "period_end_dv01": null,
+    "status": "partial",
     "available_components": [
       "snapshot_diff",
       "capital_gain_517_allocation"
     ],
-    "missing_inputs": [],
-    "blocked_components": [],
+    "missing_inputs": [
+      "action_level_dv01",
+      "independent_accounting_pnl"
+    ],
+    "blocked_components": [
+      "dv01_attribution",
+      "independent_accounting_pnl_reconciliation"
+    ],
+    "computed_at": "2026-08-13T12:23:07.948970+00:00",
     "warnings": [
-      "ACTION_ATTRIBUTION_HEURISTIC_NO_WIND"
+      "ACTION_ATTRIBUTION_HEURISTIC_NO_WIND",
+      "ACTION_ATTRIBUTION_DV01_UNAVAILABLE",
+      "ACTION_ATTRIBUTION_ACCOUNTING_PNL_DERIVED_COPY"
+    ],
+    "warnings_detail": [
+      {
+        "code": "ACTION_ATTRIBUTION_HEURISTIC_NO_WIND",
+        "level": "warning",
+        "message": "ACTION_ATTRIBUTION_HEURISTIC_NO_WIND"
+      },
+      {
+        "code": "ACTION_ATTRIBUTION_DV01_UNAVAILABLE",
+        "level": "warning",
+        "message": "ACTION_ATTRIBUTION_DV01_UNAVAILABLE"
+      },
+      {
+        "code": "ACTION_ATTRIBUTION_ACCOUNTING_PNL_DERIVED_COPY",
+        "level": "warning",
+        "message": "ACTION_ATTRIBUTION_ACCOUNTING_PNL_DERIVED_COPY"
+      }
     ]
   }
 }

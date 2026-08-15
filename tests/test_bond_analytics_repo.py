@@ -78,7 +78,12 @@ def test_load_snapshot_rows_reads_value_date(tmp_path):
 
 
 def test_load_snapshot_rows_fails_closed_for_duplicate_formal_cny_with_partial_null(tmp_path):
-    """A complete duplicate must not mask a partial formal-CNY row via SUM(NULL)."""
+    """Two formal-CNY rows in one aggregation group must not mask a partial row via SUM(NULL).
+
+    The two rows differ only by accounting basis, which is the real shape of this
+    collision: one bond is carried in two books at once, and the snapshot join key
+    does not carry accounting_basis, so both land in the same aggregation group.
+    """
 
     from tests.test_bond_analytics_materialize_flow import (
         _seed_bond_snapshot_rows,
@@ -101,7 +106,7 @@ def test_load_snapshot_rows_fails_closed_for_duplicate_formal_cny_with_partial_n
         face_value_amount=Decimal("2001"),
         amortized_cost_amount=Decimal("1881"),
         accrued_interest_amount=Decimal("21"),
-        accounting_basis="FVOCI",
+        accounting_basis="AC",
     )
 
     conn = duckdb.connect(path, read_only=False)
@@ -129,6 +134,144 @@ def test_load_snapshot_rows_fails_closed_for_duplicate_formal_cny_with_partial_n
     assert row["market_value_cny"] is None
     assert row["amortized_cost_cny"] is None
     assert row["accrued_interest_cny"] is None
+
+
+_BALANCE_FACT_DDL = """
+    create table if not exists fact_formal_zqtz_balance_daily (
+      report_date varchar,
+      instrument_code varchar,
+      instrument_name varchar,
+      portfolio_name varchar,
+      cost_center varchar,
+      account_category varchar,
+      asset_class varchar,
+      bond_type varchar,
+      sub_type varchar,
+      business_type_primary varchar,
+      issuer_name varchar,
+      industry_name varchar,
+      rating varchar,
+      invest_type_std varchar,
+      accounting_basis varchar,
+      position_scope varchar,
+      currency_basis varchar,
+      currency_code varchar,
+      face_value_amount decimal(24, 8),
+      market_value_amount decimal(24, 8),
+      amortized_cost_amount decimal(24, 8),
+      accrued_interest_amount decimal(24, 8),
+      coupon_rate decimal(18, 8),
+      ytm_value decimal(18, 8),
+      maturity_date varchar,
+      interest_mode varchar,
+      is_issuance_like boolean,
+      source_version varchar,
+      rule_version varchar,
+      ingest_batch_id varchar,
+      trace_id varchar
+    )
+"""
+
+
+def test_load_snapshot_rows_keeps_cny_amounts_per_maturity_leg(tmp_path):
+    """展期/重分类的同券两腿仅 maturity_date 不同：每腿只对上自己的 balance CNY 金额。
+
+    balance fact 天然键含 maturity_date（fact_load_gates.ZQTZ_BALANCE_NATURAL_KEY）；
+    分组与连接若缺它，每条腿会拿到两腿合计（本例互相抵消为 0）。
+    """
+    path = str(tmp_path / "multi-leg.duckdb")
+    conn = duckdb.connect(path, read_only=False)
+    try:
+        ensure_snapshot_tables(conn)
+        conn.executemany(
+            """
+            insert into zqtz_bond_daily_snapshot (
+              report_date, instrument_code, portfolio_name, cost_center, account_category,
+              asset_class, bond_type, issuer_name, industry_name, rating, currency_code,
+              face_value_native, market_value_native, maturity_date, is_issuance_like
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, false)
+            """,
+            [
+                (
+                    REPORT_DATE, "ROLL-001", "P1", "CC1", "持有至到期投资",
+                    "利率债", "国债", "发行人展期", "政府", "AAA", "USD",
+                    Decimal("100"), Decimal("99"), "2026-10-31",
+                ),
+                (
+                    REPORT_DATE, "ROLL-001", "P1", "CC1", "持有至到期投资",
+                    "利率债", "国债", "发行人展期", "政府", "AAA", "USD",
+                    Decimal("-100"), Decimal("-99"), "2026-12-31",
+                ),
+            ],
+        )
+        conn.execute(_BALANCE_FACT_DDL)
+        conn.executemany(
+            """
+            insert into fact_formal_zqtz_balance_daily (
+              report_date, instrument_code, portfolio_name, cost_center, account_category,
+              asset_class, bond_type, issuer_name, industry_name, rating, accounting_basis,
+              position_scope, currency_basis, currency_code, face_value_amount,
+              market_value_amount, amortized_cost_amount, accrued_interest_amount,
+              maturity_date, is_issuance_like
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'asset', 'CNY', 'USD', ?, ?, ?, ?, ?, false)
+            """,
+            [
+                (
+                    REPORT_DATE, "ROLL-001", "P1", "CC1", "持有至到期投资",
+                    "利率债", "国债", "发行人展期", "政府", "AAA", "AC",
+                    Decimal("700"), Decimal("696.5"), Decimal("686"), Decimal("7"),
+                    "2026-10-31",
+                ),
+                (
+                    REPORT_DATE, "ROLL-001", "P1", "CC1", "持有至到期投资",
+                    "利率债", "国债", "发行人展期", "政府", "AAA", "AC",
+                    Decimal("-700"), Decimal("-696.5"), Decimal("-686"), Decimal("-7"),
+                    "2026-12-31",
+                ),
+            ],
+        )
+    finally:
+        conn.close()
+
+    rows = {
+        str(row["maturity_date"]): row
+        for row in BondAnalyticsRepository(path).load_snapshot_rows(REPORT_DATE)
+        if row["instrument_code"] == "ROLL-001"
+    }
+
+    assert set(rows) == {"2026-10-31", "2026-12-31"}
+    assert rows["2026-10-31"]["market_value_cny"] == Decimal("696.5")
+    assert rows["2026-10-31"]["face_value_cny"] == Decimal("700")
+    assert rows["2026-12-31"]["market_value_cny"] == Decimal("-696.5")
+    assert rows["2026-12-31"]["face_value_cny"] == Decimal("-700")
+    assert rows["2026-10-31"]["accounting_basis"] == "AC"
+
+
+def test_load_snapshot_rows_nulls_accounting_basis_when_dual_books_disagree(tmp_path):
+    """同键双账簿（仅 accounting_basis 不同）合入一组：金额求和，basis 不再跨腿任取一。"""
+    from tests.test_bond_analytics_materialize_flow import (
+        _seed_bond_snapshot_rows,
+        _seed_formal_zqtz_balance_for_cb001,
+    )
+
+    path = str(tmp_path / "dual-book-basis.duckdb")
+    _seed_bond_snapshot_rows(path)
+    _seed_formal_zqtz_balance_for_cb001(
+        path, market_value_amount=Decimal("1900"), accounting_basis="FVOCI"
+    )
+    _seed_formal_zqtz_balance_for_cb001(
+        path, market_value_amount=Decimal("1901"), accounting_basis="AC"
+    )
+
+    cb001_rows = [
+        row
+        for row in BondAnalyticsRepository(path).load_snapshot_rows(REPORT_DATE)
+        if row["instrument_code"] == "CB-001"
+    ]
+
+    assert len(cb001_rows) == 1
+    assert cb001_rows[0]["market_value_cny"] == Decimal("3801")
+    assert cb001_rows[0]["accounting_basis"] is None
 
 
 def test_invalidate_report_date_facts_removes_only_target_bond_and_risk_rows(tmp_path):

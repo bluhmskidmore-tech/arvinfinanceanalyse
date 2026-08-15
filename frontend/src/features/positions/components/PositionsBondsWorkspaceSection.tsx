@@ -7,7 +7,7 @@ import type { BondPositionItem } from "../../../api/contracts";
 import { buildBondTradingDeskPath } from "../../bond-trading-desk/lib/bondTradingDeskPageModel";
 import type { PositionsPrimaryListTableState } from "../model/positionsPageModel";
 import { EM_DASH } from "../../../utils/format";
-import { formatAmountYiNumber, formatRatePercent } from "../utils/format";
+import { formatAmountYiNumber, formatDecimalFixed, formatRatePercent } from "../utils/format";
 
 const ALL_BOND_SUBTYPE = "__all_bond_subtypes__";
 
@@ -88,7 +88,9 @@ export default function PositionsBondsWorkspaceSection({
         dataIndex: "valuation_net_price",
         align: "right",
         className: "positions-view__num-cell",
-        render: (v: string | null) => (v ? `${v}` : EM_DASH),
+        /* 后端 8 位原始精度不直出：展示收敛 4 位，原值收进 title。 */
+        render: (v: string | null) =>
+          v ? <span title={v}>{formatDecimalFixed(v, 4)}</span> : EM_DASH,
       },
       {
         title: "收益率",
@@ -134,6 +136,8 @@ export default function PositionsBondsWorkspaceSection({
             onChange={(next: string) =>
               onSubTypeChange(next === ALL_BOND_SUBTYPE ? "" : next)
             }
+            /* 弹层挂页内容器防 portal 主题逃逸（bond-dashboard 同配方）。 */
+            getPopupContainer={(t) => t.parentElement ?? document.body}
           />
         </label>
       </div>

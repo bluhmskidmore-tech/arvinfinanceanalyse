@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Alert, Button, Card } from "antd";
 
 import { useApiClient } from "../../../api/client";
+import type { CalendarItem } from "../../../components/CalendarList";
 import type {
   AssetStructureItem,
   BondDashboardBundleSectionId,
@@ -17,10 +18,9 @@ import type {
   BondAnalyticsReadinessItem,
 } from "../lib/bondAnalyticsOverviewModel";
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
-import { BondAnalyticsDecisionRail } from "./BondAnalyticsDecisionRail";
 import type { ActionAttributionResponse } from "../types";
 import { EM_DASH } from "../../../utils/format";
-import { formatPct, formatWan, formatYi } from "../utils/formatters";
+import { formatDv01Wan, formatPct, formatWan, formatYi } from "../utils/formatters";
 import { BOND_HOLDINGS_COCKPIT_SCOPE_NOTE } from "../lib/bondHoldingsEvidenceCopy";
 import {
   bundleSectionQuery,
@@ -32,25 +32,24 @@ import {
 } from "../../workbench/shared/InstitutionalKpiTile";
 import {
   buildCockpitConclusion,
-  buildDeskVerdictFields,
   formatDurationDisplay,
   formatNumericDisplay,
   formatSignedPct,
-  formatSpreadBpDisplay,
+  formatSpreadYtmPctDisplay,
   normalizeSpreadBp,
   numOr,
   numOrNullAware,
+  stripLeadingPlus,
 } from "./bondAnalyticsCockpitFormat";
 import {
   DistributionDonut,
-  PendingReadModelPanel,
-  ProgressStack,
-  RegionDistributionPanel,
+  DistributionRows,
   SectionCardTitle,
 } from "./BondAnalyticsCockpitPrimitives";
-import { DISTRIBUTION_CHART_COLORS, cardBodyStyle } from "./bondAnalyticsCockpitTokens";
+import { DISTRIBUTION_CHART_COLORS, PERIOD_OPTIONS, cardBodyStyle } from "./bondAnalyticsCockpitTokens";
 import { ReferenceYieldCurvePanel } from "./BondAnalyticsCockpitCurveZone";
 import { curveHasReadout } from "./bondAnalyticsCockpitCurveZoneSupport";
+import BondEventCalendar from "./BondEventCalendar";
 import {
   AccountingDv01SummaryPanel,
   HoldingRows,
@@ -91,15 +90,26 @@ export interface BondAnalyticsInstitutionalCockpitDecisionRailProps {
 
 export interface BondAnalyticsInstitutionalCockpitProps {
   reportDate: string;
+  periodType?: string;
   topAnomalies?: string[];
+  calendarItems?: CalendarItem[];
+  calendarLoading?: boolean;
+  calendarError?: boolean;
   actionAttribution?: ActionAttributionResponse | null;
+  actionAttributionPending?: boolean;
   decisionRail?: BondAnalyticsInstitutionalCockpitDecisionRailProps;
   onOpenModuleDetail?: (key: BondAnalyticsModuleKey) => void;
 }
 
 export function BondAnalyticsInstitutionalCockpit({
   reportDate,
+  periodType = "MoM",
+  topAnomalies = [],
+  calendarItems = [],
+  calendarLoading = false,
+  calendarError = false,
   actionAttribution = null,
+  actionAttributionPending = false,
   decisionRail,
   onOpenModuleDetail,
 }: BondAnalyticsInstitutionalCockpitProps) {
@@ -147,6 +157,31 @@ export function BondAnalyticsInstitutionalCockpit({
   const queryReportDate = dashboardReportDate || reportDate;
 
   const cockpitBundleQ = useBondAnalyticsCockpitBundleQuery(queryReportDate);
+  /* Carry+Roll KPI 读收益分解（formal）：carry + roll_down 现成返回，不再标"接口未返回"。 */
+  const returnDecompQ = useQuery({
+    queryKey: [
+      "bond-analytics-institutional",
+      "return-decomposition-summary",
+      client.mode,
+      queryReportDate,
+      periodType,
+    ],
+    queryFn: () =>
+      client.getBondAnalyticsReturnDecomposition(queryReportDate, periodType, {
+        detail: "summary",
+      }),
+    enabled: Boolean(queryReportDate),
+    retry: false,
+    staleTime: 60_000,
+  });
+  /* 正式 KRD 读面：接口数据齐备（桶 DV01 与组合 DV01 勾稽），驾驶舱只点亮状态，明细看下钻 KRD 标签页。 */
+  const krdQ = useQuery({
+    queryKey: ["bond-analytics-institutional", "krd-curve-risk", client.mode, queryReportDate],
+    queryFn: () => client.getBondAnalyticsKrdCurveRisk(queryReportDate),
+    enabled: Boolean(queryReportDate),
+    retry: false,
+    staleTime: 60_000,
+  });
   const headlineQ = bundleSectionQuery(cockpitBundleQ, "headline-kpis");
   const maturityQ = bundleSectionQuery(cockpitBundleQ, "maturity-structure");
   const holdingsQ = bundleSectionQuery(cockpitBundleQ, "top-holdings");
@@ -200,6 +235,7 @@ export function BondAnalyticsInstitutionalCockpit({
   const dv01Mom = currentDv01Raw !== null && previousDv01Raw !== null ? currentDv01Raw - previousDv01Raw : Number.NaN;
 
   const maturityItems = useMemo(() => {
+    // 单序列（市值）条形不再按桶轮播分类色（§4 无语义彩色装饰）：统一走强调单色。
     return [...(maturityQ.data?.result.items ?? [])]
       .flatMap((item) => {
         const rawMarketValue = bondNumericRawOrNull(item.total_market_value);
@@ -207,19 +243,18 @@ export function BondAnalyticsInstitutionalCockpit({
       })
       .sort((left, right) => right.rawMarketValue - left.rawMarketValue)
       .slice(0, 7)
-      .map(({ item, rawMarketValue }, index) => ({
+      .map(({ item, rawMarketValue }) => ({
         key: item.maturity_bucket,
         label: item.maturity_bucket,
         value: rawMarketValue,
         caption: formatYi(item.total_market_value),
-        color: DISTRIBUTION_CHART_COLORS[index % DISTRIBUTION_CHART_COLORS.length],
       }));
   }, [maturityQ.data]);
 
   const leadMaturity = maturityItems[0];
-  const assetClassItems = (portfolioHl?.by_asset_class ?? []).slice(0, 4);
   const dashboardAssetItems = useMemo(() => {
     const palette = DISTRIBUTION_CHART_COLORS;
+    const assetClassItems = (portfolioHl?.by_asset_class ?? []).slice(0, 4);
     const dashboardItems = [...(assetStructureQ.data?.result.items ?? [])]
       .flatMap((item: AssetStructureItem, index) => {
         const rawMarketValue = bondNumericRawOrNull(item.total_market_value);
@@ -255,47 +290,24 @@ export function BondAnalyticsInstitutionalCockpit({
             },
           ];
     });
-  }, [assetClassItems, assetStructureQ.data]);
+  }, [portfolioHl?.by_asset_class, assetStructureQ.data]);
   const industryItems = useMemo(() => {
-    const palette = DISTRIBUTION_CHART_COLORS;
+    // 单序列（市值）行条不按行业轮播分类色：统一强调单色（首页分布行制度）。
     return [...(industryQ.data?.result.items ?? [])]
-      .flatMap((item, index) => {
+      .flatMap((item) => {
         const rawMarketValue = bondNumericRawOrNull(item.total_market_value);
-        return rawMarketValue === null ? [] : [{ item, index, rawMarketValue }];
+        return rawMarketValue === null ? [] : [{ item, rawMarketValue }];
       })
       .sort((left, right) => right.rawMarketValue - left.rawMarketValue)
       .slice(0, 8)
-      .map(({ item, index, rawMarketValue }) => ({
+      .map(({ item, rawMarketValue }) => ({
         key: item.industry_name,
         label: item.industry_name || "未分类",
         value: rawMarketValue,
         caption: formatYi(item.total_market_value),
-        color: palette[index % palette.length],
       }));
   }, [industryQ.data]);
   const topHoldings = (holdingsQ.data?.result.items ?? []).slice(0, 10);
-  const ratingDistribution = useMemo(() => {
-    const buckets = new Map<string, { count: number; faceValue: number }>();
-    for (const item of holdingsQ.data?.result.items ?? []) {
-      const rawFaceValue = bondNumericRawOrNull(item.face_value);
-      if (rawFaceValue === null) {
-        continue;
-      }
-      const key = item.rating?.trim() || "Unrated";
-      const next = buckets.get(key) ?? { count: 0, faceValue: 0 };
-      next.count += 1;
-      next.faceValue += rawFaceValue;
-      buckets.set(key, next);
-    }
-    return Array.from(buckets.entries())
-      .map(([rating, stats]) => ({
-        rating,
-        count: stats.count,
-        faceValue: stats.faceValue,
-      }))
-      .sort((left, right) => right.faceValue - left.faceValue)
-      .slice(0, 6);
-  }, [holdingsQ.data?.result.items]);
   const totalActionPnl = bondNumericRaw(actionAttribution?.total_pnl_from_actions ?? null);
   const durationDisplay = Number.isFinite(dur) ? `${dur.toFixed(2)} 年` : EM_DASH;
   const creditWeightDisplay = Number.isFinite(creditWeight) ? `${(creditWeight * 100).toFixed(2)}%` : EM_DASH;
@@ -303,7 +315,17 @@ export function BondAnalyticsInstitutionalCockpit({
   const unrealizedPnlDisplay = k ? formatYi(k.unrealized_pnl) : EM_DASH;
   const dv01Source = riskQ.data?.result?.total_dv01 ?? portfolioHl?.total_dv01 ?? k?.total_dv01 ?? null;
   const hasDv01Readout = bondNumericRawOrNull(dv01Source) !== null;
-  const dv01Display = hasDv01Readout ? formatWan(dv01Source) : EM_DASH;
+  /* KPI 瓦片单行放不下带单位的读数，值只出数字，单位交给 detail；证据位仍用带单位形态。 */
+  const dv01Value = hasDv01Readout ? formatDv01Wan(dv01Source) : EM_DASH;
+  const dv01Display = hasDv01Readout ? `${dv01Value} 万元/bp` : EM_DASH;
+  /* 三源兜底时如实标注实际命中源，避免回退值仍宣称来自风险指标读面。 */
+  const dv01SourceLabel = riskQ.data?.result?.total_dv01
+    ? "风险指标读面"
+    : portfolioHl?.total_dv01
+      ? "风险指标未返回，取组合摘要读数"
+      : k?.total_dv01
+        ? "风险指标未返回，取 headline 读数"
+        : "风险指标读面未返回";
   const unrealizedPnlTone =
     k && numOr(k.unrealized_pnl) !== 0 ? (numOr(k.unrealized_pnl) > 0 ? "positive" : "negative") : "default";
   const actionPnlDisplay = actionAttribution ? formatWan(actionAttribution.total_pnl_from_actions) : EM_DASH;
@@ -313,6 +335,25 @@ export function BondAnalyticsInstitutionalCockpit({
         ? "positive"
         : "negative"
       : "default";
+  const periodLabel = PERIOD_OPTIONS.find((option) => option.value === periodType)?.label ?? periodType;
+  /* Carry+Roll = 收益分解（formal）的票息 carry + 骑乘 roll_down，单位元，合计后按万展示。 */
+  const returnDecomp = returnDecompQ.data?.result ?? null;
+  const carryRaw = returnDecomp ? bondNumericRawOrNull(returnDecomp.carry) : null;
+  const rollDownRaw = returnDecomp ? bondNumericRawOrNull(returnDecomp.roll_down) : null;
+  const carryRollRaw = carryRaw !== null && rollDownRaw !== null ? carryRaw + rollDownRaw : null;
+  const carryRollDisplay = carryRollRaw !== null ? formatWan(carryRollRaw) : EM_DASH;
+  const carryRollTone =
+    carryRollRaw !== null && carryRollRaw !== 0
+      ? carryRollRaw > 0
+        ? "positive"
+        : "negative"
+      : "default";
+  const carryRollDetail =
+    carryRollRaw !== null
+      ? `${periodLabel} · 票息+骑乘（收益分解读面）`
+      : returnDecompQ.isPending
+        ? "收益分解读面加载中"
+        : "收益分解读面未返回";
   const macroSeries = macroLatestQ.data?.result.series ?? [];
   const macroUnavailable = macroLatestQ.isError || macroSeries.length === 0;
   const yieldCurveCurves = yieldCurveQ.data?.result.curves ?? [];
@@ -327,44 +368,23 @@ export function BondAnalyticsInstitutionalCockpit({
       (bondNumericRawOrNull(item.weight) === null ? 1 : 0)
     );
   }, 0);
-  const deskVerdictFields = buildDeskVerdictFields({
-    duration: dur,
-    creditWeight,
-    spreadMedianBp,
-    dv01Display,
-    reportDate,
-    dashboardReportDate,
-    isDashboardDateFallback,
-    headlinePending: headlineQ.isPending,
-    hasHeadline: Boolean(headline),
-    hasCurveReadout: hasYieldCurveReadout,
-    curvePending: yieldCurveQ.isLoading,
-  });
-  const maturityRows = maturityItems.map((item) => ({
-    ...item,
-    detail: `规模 ${item.caption}`,
-  }));
-  const ratingRows = ratingDistribution.map((item, index) => ({
-    key: item.rating,
-    label: item.rating,
-    value: item.faceValue,
-    caption: `${item.count} 只`,
-    detail: formatYi(item.faceValue),
-    color: DISTRIBUTION_CHART_COLORS[index % DISTRIBUTION_CHART_COLORS.length],
-  }));
-  const durationRows = maturityItems.slice(0, 3).map((item) => ({
-    ...item,
-    detail: `市值 ${item.caption}`,
-  }));
+  /* caption 已经是「x.xx 亿」市值读数，行条不再挂重复的「规模/市值 …」尾巴。 */
+  const maturityRows = maturityItems;
+  /* 来源状态上收卡头一处（DESIGN §6 状态去重）：主源可用时行内只留口径词；
+     回退/缺失时该行保留如实的回退标注（dv01 三源兜底语义不丢）。 */
+  const riskSourceReady = Boolean(riskQ.data?.result);
+  const riskSourceNote = riskSourceReady
+    ? "来源：风险指标读面"
+    : "风险指标读面未返回，以下行按实际命中源标注";
   const durationRiskRow = {
     label: "组合久期",
     value: riskQ.data?.result ? formatDurationDisplay(riskQ.data.result.weighted_duration) : durationDisplay,
-    detail: "来自风险指标读面",
+    detail: riskSourceReady ? "市值加权" : "风险指标未返回，取 headline 读数",
   };
   const dv01RiskRow = {
-    label: "组合 DV01",
+    label: "组合 DV01（万元/bp）",
     value: dv01Display,
-    detail: "利率敏感度",
+    detail: riskQ.data?.result?.total_dv01 ? "利率敏感度" : dv01SourceLabel,
   };
   const creditRatioRiskRow = {
     label: "信用占比",
@@ -372,12 +392,11 @@ export function BondAnalyticsInstitutionalCockpit({
     detail: "信用债市值占比",
   };
   const spreadDv01RiskRow = {
-    label: "利差 DV01",
-    value: riskQ.data?.result ? formatWan(riskQ.data.result.total_spread_dv01) : EM_DASH,
+    label: "利差 DV01（万元/bp）",
+    value: riskQ.data?.result ? `${formatDv01Wan(riskQ.data.result.total_spread_dv01)} 万元/bp` : EM_DASH,
     detail: "信用利差敏感度",
   };
   const riskRows = [durationRiskRow, dv01RiskRow, creditRatioRiskRow, spreadDv01RiskRow];
-  const footerRiskRows = [durationRiskRow, dv01RiskRow, creditRatioRiskRow];
   const topbarReportDate = dashboardReportDate || reportDate || EM_DASH;
   const topbarReportStatus = isDashboardDateFallback
     ? `快照回退 ${dashboardReportDate || EM_DASH}`
@@ -390,15 +409,30 @@ export function BondAnalyticsInstitutionalCockpit({
     : headline
       ? "核心读面可用"
       : "核心读面未返回";
+  /* 技术告警码（全 ASCII）不直接示人，但必须计数披露，不能静默丢弃。 */
+  const readableAnomalies = topAnomalies.filter((item) => /[\u3400-\u9fff]/u.test(item));
+  const shownAnomalies = readableAnomalies.slice(0, 2);
+  const hiddenAnomalyCount = topAnomalies.length - shownAnomalies.length;
+  const todayFocusItems = actionAttributionPending
+    ? ["异常信号读取中，暂不下无异常结论。"]
+    : shownAnomalies.length > 0
+      ? hiddenAnomalyCount > 0
+        ? [...shownAnomalies, `另有 ${hiddenAnomalyCount} 条信号未在此列示，见证据下钻。`]
+        : shownAnomalies
+      : topAnomalies.length > 0
+        ? [`${topAnomalies.length} 条技术告警未在此列示，见证据下钻。`]
+        : ["暂无新增异常"];
 
   return (
     <section data-testid="bond-analysis-phase3-cockpit" className={styles.phaseSection}>
       {err ? <Alert type="warning" showIcon message="部分驾驶舱指标未就绪" description={err} /> : null}
 
       <section data-testid="bond-analysis-reference-dashboard" className={styles.referenceDashboard}>
+        <ReferenceMarketTicker series={macroSeries} unavailable={macroUnavailable} />
+
         <section data-testid="bond-analysis-reference-topbar" className={styles.heroSection}>
           <div className={styles.heroIdentity}>
-            <h2 className={styles.heroTitle}>固定收益交易台</h2>
+            <h2 className={styles.heroTitle}>01 本日判断</h2>
             <span className={styles.heroReportDate}>报告日 {topbarReportDate}</span>
           </div>
 
@@ -407,85 +441,31 @@ export function BondAnalyticsInstitutionalCockpit({
               <strong className={styles.heroHeadline}>{conclusion.body}</strong>
               <p className={styles.heroDetail}>{conclusion.detail}</p>
             </div>
-            <div className={styles.heroMetrics}>
-              <div className={styles.heroMetric}>
-                <span>久期</span>
-                <strong>{durationDisplay}</strong>
-              </div>
-              <div className={styles.heroMetric}>
-                <span>信用利差</span>
-                <strong>{formatSpreadBpDisplay(spreadMedian)}</strong>
-              </div>
-              <div className={styles.heroMetric}>
-                <span>信用占比</span>
-                <strong>{creditWeightDisplay}</strong>
-              </div>
-              <div className={styles.heroMetric}>
-                <span>总收益</span>
-                <strong className={styles.heroMetricValue} data-tone={unrealizedPnlTone}>
-                  {unrealizedPnlDisplay}
-                </strong>
-                <small className={styles.heroMetricDelta} data-tone={unrealizedPnlTone}>
-                  {formatSignedPct(unrealizedPnlMomPct)}
-                </small>
-              </div>
+            <div
+              data-testid="bond-analysis-daily-judgment"
+              className={styles.heroConclusionMeta}
+            >
+              <span>
+                报告日 {topbarReportStatus} · {topbarReportDate}
+              </span>
+              <span>
+                核心读面 {topbarReadoutStatus} · {topbarReadoutDetail}
+              </span>
             </div>
-          </div>
-          <div className={styles.heroAside} data-testid="bond-analysis-hero-aside">
-            <div data-testid="bond-analysis-daily-judgment" className={styles.heroGovernance}>
-              <div className={styles.heroGovernanceLead}>
-                <span className={styles.conclusionKicker}>证据展开 · 固定收益读面</span>
-                <span className={styles.heroGovernanceHeading}>首屏读面拆解</span>
-                <span className={styles.heroGovernanceDetail}>只展示后端返回事实，不补造读面。</span>
-              </div>
-              <div className={styles.heroGovernanceMetrics}>
-                <span>久期 {durationDisplay}</span>
-                <span>信用利差 {formatSpreadBpDisplay(spreadMedian)}</span>
-                <span>信用占比 {creditWeightDisplay}</span>
-              </div>
-              <div className={styles.heroGovernanceStatus} data-testid="bond-analysis-daily-judgment-status">
-                <span>
-                  报告日 {topbarReportStatus} · {topbarReportDate}
-                </span>
-                <span>
-                  首屏 KPI {topbarReadoutStatus} · {topbarReadoutDetail}
-                </span>
-              </div>
-              <div className={styles.heroVerdictRow}>
-                {deskVerdictFields.map((field) => (
-                  <div key={field.label} className={styles.heroVerdictField}>
-                    <span>{field.label}</span>
-                    <strong>{field.value}</strong>
-                    <small>{field.detail}</small>
-                  </div>
-                ))}
-              </div>
-            </div>
-            {decisionRail && onOpenModuleDetail ? (
-              <aside>
-                <BondAnalyticsDecisionRail
-                  activeModuleContext={decisionRail.activeModuleContext}
-                  activeReadinessItem={decisionRail.activeReadinessItem}
-                  watchlistItems={decisionRail.watchlistItems}
-                  onOpenModuleDetail={onOpenModuleDetail}
-                />
-              </aside>
-            ) : null}
           </div>
         </section>
-
-        <ReferenceMarketTicker series={macroSeries} unavailable={macroUnavailable} />
 
         <div className={styles.holdingsKpiRail}>
           {/* 常态零徽标（首页 2026-08-13 降噪制度）：就绪读数不再挂「已读」，仅缺口/待读面发声。 */}
           <InstitutionalKpiRail testId="bond-analysis-kpi-ribbon" columns={7} flush>
             <InstitutionalKpiTile label="久期" value={durationDisplay} detail={leadMaturity ? `最重期限桶 ${leadMaturity.label}` : "期限结构待读面"} status={Number.isFinite(dur) ? undefined : "待读面"} priority="primary" />
-            <InstitutionalKpiTile label="组合到期收益率" value={k ? formatPct(k.weighted_ytm) : EM_DASH} detail={previousK ? `上期 ${formatPct(previousK.weighted_ytm)}` : "收益率待读面"} status={k ? undefined : "待读面"} priority="primary" />
-            <InstitutionalKpiTile label="信用利差" value={formatSpreadBpDisplay(spreadMedian)} detail="信用利差中位数" status={Number.isFinite(spreadMedianBp) ? undefined : "待读面"} priority="primary" />
-            <InstitutionalKpiTile label="DV01" value={dv01Display} detail="风险指标读面" status={hasDv01Readout ? undefined : "待读面"} priority="primary" />
-            <InstitutionalKpiTile label="Carry+Roll" value={EM_DASH} detail="接口未返回 / 待读面" status="缺口" priority="gap" />
-            <InstitutionalKpiTile label="月度收益" value={actionPnlDisplay} detail={actionAttribution ? `${actionAttribution.total_actions} 笔动作` : "动作归因待读面"} status={actionAttribution ? undefined : "待读面"} tone={actionPnlTone} />
-            <InstitutionalKpiTile label="总收益" value={unrealizedPnlDisplay} detail={`较上期 ${formatSignedPct(unrealizedPnlMomPct)}`} status={k ? undefined : "待读面"} tone={unrealizedPnlTone} />
+            {/* 收益率是水平值非变动量：去前导 +（变动量读数仍走 formatSignedPct 保符号）。 */}
+            <InstitutionalKpiTile label="组合到期收益率" value={k ? stripLeadingPlus(formatPct(k.weighted_ytm)) : EM_DASH} detail={previousK ? `上期 ${stripLeadingPlus(formatPct(previousK.weighted_ytm))}` : "收益率待读面"} status={k ? undefined : "待读面"} priority="primary" />
+            <InstitutionalKpiTile label="信用债收益率中位数" value={formatSpreadYtmPctDisplay(spreadMedian)} detail="信用债 YTM 中位数，非对基准利差" status={Number.isFinite(spreadMedianBp) ? undefined : "待读面"} priority="primary" />
+            <InstitutionalKpiTile label="DV01（万元/bp）" value={dv01Value} detail={dv01SourceLabel} status={hasDv01Readout ? undefined : "待读面"} priority="primary" />
+            <InstitutionalKpiTile label="Carry+Roll" value={carryRollDisplay} detail={carryRollDetail} status={carryRollRaw !== null ? undefined : "待读面"} tone={carryRollTone} />
+            <InstitutionalKpiTile label="动作归因损益" value={actionPnlDisplay} detail={actionAttribution ? `${periodLabel} · ${actionAttribution.total_actions} 笔动作` : "动作归因待读面"} status={actionAttribution ? undefined : "待读面"} tone={actionPnlTone} />
+            <InstitutionalKpiTile label="未实现损益" value={unrealizedPnlDisplay} detail={`存量浮盈（非本期损益）· 较上期 ${formatSignedPct(unrealizedPnlMomPct)}`} status={k ? undefined : "待读面"} tone={unrealizedPnlTone} />
           </InstitutionalKpiRail>
           <div
             data-testid="bond-analysis-currency-basis-banner"
@@ -502,6 +482,8 @@ export function BondAnalyticsInstitutionalCockpit({
             curves={yieldCurveCurves}
             isLoading={yieldCurveQ.isLoading}
             hasError={yieldCurveQ.isError}
+            krdBucketCount={krdQ.data?.result?.krd_buckets?.length ?? null}
+            krdPending={krdQ.isPending}
           />
           <div className={styles.referenceAnalysisSideStack}>
             <Card
@@ -509,17 +491,15 @@ export function BondAnalyticsInstitutionalCockpit({
               size="small"
               title={<SectionCardTitle eyebrow="证据边界" title="利率 / 曲线 / 信用 / 资金" />}
               data-testid="bond-analysis-evidence-boundary-panel"
-              className={`${styles.dashboardCard} ${styles.referencePanelCard} ${styles.referenceEvidenceBoundaryCard}`}
+              className={`${styles.dashboardCard} ${styles.referencePanelCard}`}
               styles={{ body: cardBodyStyle }}
             >
               <ReferenceJudgmentMatrix
                 duration={dur}
                 creditWeight={creditWeight}
                 spreadMedianBp={spreadMedianBp}
-                dv01Display={dv01Display}
                 hasDv01Readout={hasDv01Readout}
                 hasCurveReadout={hasYieldCurveReadout}
-                marketValueMomPct={marketValueMomPct}
               />
             </Card>
           </div>
@@ -562,7 +542,12 @@ export function BondAnalyticsInstitutionalCockpit({
             styles={{ body: cardBodyStyle }}
           >
             <DistributionDonut items={dashboardAssetItems} center={marketValueDisplay} emptyText="暂无资产结构" />
+            <div className={styles.structureConcentration}>
+              <span>行业集中度</span>
+              <DistributionRows items={industryItems.slice(0, 4)} emptyText="暂无发行人/行业读面" />
+            </div>
             {portfolioHeadlinesUnavailable ? <div className={styles.moduleNote}>{PORTFOLIO_HEADLINES_STRUCTURE_NOTE}</div> : null}
+            {portfolioHeadlinesUnavailable ? <div className={styles.moduleNote}>{PORTFOLIO_HEADLINES_CREDIT_NOTE}</div> : null}
           </Card>
 
           <Card
@@ -570,10 +555,13 @@ export function BondAnalyticsInstitutionalCockpit({
             size="small"
             title={<SectionCardTitle eyebrow="风险切片" title="久期 / DV01 / 信用" />}
             data-testid="bond-analysis-risk-monitor"
-            className={`${styles.dashboardCard} ${styles.referenceMaturityCard} ${styles.referenceDistributionSupportCard}`}
+            className={`${styles.dashboardCard} ${styles.referenceDistributionSupportCard}`}
             styles={{ body: cardBodyStyle }}
           >
-            <div className={styles.riskEvidenceList}>
+            <div data-testid="bond-analysis-risk-slice-stack" className={styles.riskEvidenceList}>
+              <div data-testid="bond-analysis-risk-source-note" className={styles.riskEvidenceSource}>
+                {riskSourceNote}
+              </div>
               {riskRows.map((row) => (
                 <div key={row.label} className={styles.riskEvidenceRow}>
                   <span>{row.label}</span>
@@ -581,27 +569,88 @@ export function BondAnalyticsInstitutionalCockpit({
                   <small>{row.detail}</small>
                 </div>
               ))}
-              <div className={styles.riskEvidenceBoundary}>
-                只列后端返回风险字段；缺失保持占位，不生成阈值判断。
+              <div data-testid="bond-analysis-risk-guardrails" className={styles.riskEvidenceGuardrail}>
+                <div className={styles.riskEvidenceBoundary}>
+                  只列后端返回风险字段；缺失保持证据缺口，不延伸为审批或阈值结论。
+                </div>
+                <Button size="small" type="text" data-testid="bond-analysis-home-open-credit-spread" onClick={() => onOpenModuleDetail?.("credit-spread")}>
+                  打开信用利差
+                </Button>
               </div>
-              <Button size="small" type="text" data-testid="bond-analysis-home-open-credit-spread" onClick={() => onOpenModuleDetail?.("credit-spread")}>
-                打开信用利差
-              </Button>
             </div>
           </Card>
 
           <Card
             variant="borderless"
             size="small"
-            title={<SectionCardTitle eyebrow="集中度证据" title="发行人/行业分布" />}
+            title={<SectionCardTitle eyebrow="今日焦点" title="动作与异常" />}
+            data-testid="bond-analysis-today-focus"
             className={`${styles.dashboardCard} ${styles.referenceDistributionSupportCard}`}
             styles={{ body: cardBodyStyle }}
           >
-            <RegionDistributionPanel items={industryItems} emptyText="暂无发行人/行业读面" />
+            <div className={styles.todayFocusPanel}>
+              {/* 读数去重（DESIGN §6 ≤2 处）：估值收益/动作归因金额已在 KPI 带与归因面板可见，
+                  本卡改增量信息（环比 / 笔数），完整金额收进 title 供复核。 */}
+              <div
+                data-testid="bond-analysis-summary-card"
+                className={styles.todayFocusMetric}
+                title={`本期估值收益 ${unrealizedPnlDisplay}`}
+              >
+                <span>本期估值收益</span>
+                <strong>{Number.isFinite(unrealizedPnlMomPct) ? `较上期 ${formatSignedPct(unrealizedPnlMomPct)}` : EM_DASH}</strong>
+                <small>{Number.isFinite(unrealizedPnlMomPct) ? "存量浮盈环比" : "收益时序证据待返回"}</small>
+              </div>
+              <div
+                className={styles.todayFocusAction}
+                title={actionAttribution ? `动作归因损益 ${actionPnlDisplay}` : undefined}
+              >
+                <span>动作归因</span>
+                <strong>{actionAttribution ? `${actionAttribution.total_actions} 笔动作` : EM_DASH}</strong>
+                <small>{actionAttribution ? "本期动作数" : "动作归因待返回"}</small>
+              </div>
+              {decisionRail && onOpenModuleDetail ? (
+                <div data-testid="bond-analysis-decision-rail" className={styles.todayFocusDecision}>
+                  <div data-testid="bond-analysis-decision-trust">
+                    <span>当前下钻</span>
+                    <strong>{decisionRail.activeModuleContext.label}</strong>
+                    <small>{decisionRail.activeModuleContext.description}</small>
+                  </div>
+                  <Button
+                    size="small"
+                    type="text"
+                    data-testid="bond-analysis-decision-next-action"
+                    onClick={() => onOpenModuleDetail(decisionRail.activeModuleContext.key)}
+                  >
+                    打开
+                  </Button>
+                </div>
+              ) : null}
+              <div className={styles.todayFocusList}>
+                {todayFocusItems.map((item) => (
+                  <span key={item}>{item}</span>
+                ))}
+              </div>
+              <div data-testid="bond-analysis-return-trend-boundary" className={styles.footerEvidenceNote}>
+                收益时序未返回：不绘制趋势占位。
+              </div>
+              <div className={styles.footerActionBar}>
+                <span>保留返回事实与缺口，不补造趋势。</span>
+                <Button size="small" type="text" data-testid="bond-analysis-home-open-return-decomposition" onClick={() => onOpenModuleDetail?.("return-decomposition")}>
+                  打开收益拆解
+                </Button>
+              </div>
+            </div>
           </Card>
         </section>
 
         <div className={styles.referenceBottomGrid}>
+          <div data-testid="bond-analysis-event-calendar" className={styles.referenceCalendarPanel}>
+            <BondEventCalendar
+              items={calendarItems}
+              isLoading={calendarLoading}
+              hasError={calendarError}
+            />
+          </div>
           <Card
             variant="borderless"
             size="small"
@@ -625,6 +674,7 @@ export function BondAnalyticsInstitutionalCockpit({
               unavailable={topHoldingsUnavailable}
               reportDate={dashboardReportDate}
             />
+            {topHoldingsUnavailable ? <div className={styles.moduleNote}>{TOP_HOLDINGS_RATING_NOTE}</div> : null}
             <div data-testid="bond-analysis-holdings-evidence-strip" className={styles.holdingsEvidenceStrip}>
               <div>
                 <span>{TOP_HOLDINGS_COUNT_LABEL}</span>
@@ -669,154 +719,6 @@ export function BondAnalyticsInstitutionalCockpit({
               />
             </div>
           </Card>
-
-
-        </div>
-
-        <aside className={styles.referenceSideStack}>
-            <div data-testid="bond-analysis-risk-slice-stack" className={styles.sideStackHeader}>
-              <span>风险切片</span>
-              <strong>评级 / 期限 / 流动性</strong>
-              <small>侧栏只汇总返回切片；接口缺口直接显示。</small>
-            </div>
-            <Card
-              variant="borderless"
-              size="small"
-              title={<SectionCardTitle eyebrow="评级证据" title="按市值" />}
-              className={styles.dashboardCard}
-              styles={{ body: cardBodyStyle }}
-            >
-              <ProgressStack items={ratingRows} emptyText={topHoldingsUnavailable ? TOP_HOLDINGS_RATING_NOTE : "暂无评级分布"} />
-              {portfolioHeadlinesUnavailable ? <div className={styles.moduleNote}>{PORTFOLIO_HEADLINES_CREDIT_NOTE}</div> : null}
-            </Card>
-
-            <Card
-              variant="borderless"
-              size="small"
-              title={<SectionCardTitle eyebrow="期限证据" title="按市值" />}
-              className={styles.dashboardCard}
-              styles={{ body: cardBodyStyle }}
-            >
-              <ProgressStack items={durationRows} emptyText="暂无久期分布" />
-            </Card>
-
-            <Card
-              variant="borderless"
-              size="small"
-              title={<SectionCardTitle eyebrow="流动性缺口" title="按读面状态" />}
-              className={styles.dashboardCard}
-              styles={{ body: cardBodyStyle }}
-            >
-              <PendingReadModelPanel
-                title="流动性读面待返回"
-                detail="当前接口未提供流动性分布，不在前端补造。"
-              />
-            </Card>
-        </aside>
-
-        <div data-testid="bond-analysis-footer-evidence-grid" className={styles.referenceFooterGrid}>
-          <Card
-            variant="borderless"
-            size="small"
-            title={<SectionCardTitle eyebrow="收益证据" title="本期估值收益" />}
-            data-testid="bond-analysis-summary-card"
-            className={`${styles.dashboardCard} ${styles.referenceFooterPrimaryCard}`}
-            styles={{ body: cardBodyStyle }}
-          >
-            <div className={styles.footerMetricPanel}>
-              <strong>{unrealizedPnlDisplay}</strong>
-              <span>{Number.isFinite(unrealizedPnlMomPct) ? `较上期 ${formatSignedPct(unrealizedPnlMomPct)}` : "收益时序证据待返回"}</span>
-              <div className={styles.footerReturnLedger}>
-                <div>
-                  <span>估值收益</span>
-                  <strong>{unrealizedPnlDisplay}</strong>
-                </div>
-                <div>
-                  <span>较上期</span>
-                  <strong>{Number.isFinite(unrealizedPnlMomPct) ? formatSignedPct(unrealizedPnlMomPct) : EM_DASH}</strong>
-                </div>
-                <div>
-                  <span>收益时序</span>
-                  <strong>待返回</strong>
-                </div>
-                <div>
-                  <span>处理边界</span>
-                  <strong>不补造趋势</strong>
-                </div>
-              </div>
-              <div data-testid="bond-analysis-footer-primary-evidence" className={styles.footerEvidenceBlock}>
-                <div data-testid="bond-analysis-return-trend-boundary" className={styles.footerEvidenceNote}>
-                  收益时序未返回：不绘制趋势占位。
-                </div>
-                <div className={styles.footerActionBar}>
-                  <span>收益证据缺口保留在当前读面上下文中。</span>
-                  <Button size="small" type="text" data-testid="bond-analysis-home-open-return-decomposition" onClick={() => onOpenModuleDetail?.("return-decomposition")}>
-                    打开收益拆解
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </Card>
-
-          <div data-testid="bond-analysis-footer-support-stack" className={styles.footerSupportStack}>
-            <Card
-              variant="borderless"
-              size="small"
-              title={<SectionCardTitle eyebrow="动作证据" title="动作归因" />}
-              data-testid="bond-analysis-today-focus"
-              className={styles.dashboardCard}
-              styles={{ body: cardBodyStyle }}
-            >
-              <div className={styles.footerMetricPanel}>
-                <strong>{actionPnlDisplay}</strong>
-                <span>{actionAttribution ? `${actionAttribution.total_actions} 笔动作` : "动作归因待返回"}</span>
-                <div className={styles.footerEvidenceBlock}>
-                  <div className={styles.footerChangeSplit}>
-                    <span>市值 {formatSignedPct(marketValueMomPct)}</span>
-                    <span>DV01 {Number.isFinite(dv01Mom) ? `${dv01Mom >= 0 ? "+" : ""}${(dv01Mom / 10000).toFixed(2)} 万` : EM_DASH}</span>
-                  </div>
-                  <div className={styles.footerActionBar}>
-                    <span>市值变动与 DV01 变动用于核对动作归因字段返回范围。</span>
-                    <Button
-                      size="small"
-                      type="text"
-                      data-testid="bond-analysis-footer-open-action-attribution"
-                      onClick={() => onOpenModuleDetail?.("action-attribution")}
-                    >
-                      打开动作归因
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </Card>
-
-            <Card
-              variant="borderless"
-              size="small"
-              title={<SectionCardTitle eyebrow="风险读面" title="返回字段" />}
-              data-testid="bond-analysis-risk-guardrails"
-              className={styles.dashboardCard}
-              styles={{ body: cardBodyStyle }}
-            >
-              <div className={styles.footerRiskList}>
-                {footerRiskRows.map((row) => (
-                  <div key={row.label} className={styles.footerRiskRow}>
-                    <span>{row.label}</span>
-                    <strong>{row.value}</strong>
-                  </div>
-                ))}
-                <div className={styles.footerEvidenceNote}>
-                  只列已返回风险字段；缺失保持证据缺口，不延伸为审批或阈值结论。
-                </div>
-                <div className={styles.footerActionBar}>
-                  <span>信用利差字段以下钻返回为准；缺失继续保留证据缺口。</span>
-                  <Button size="small" type="text" data-testid="bond-analysis-home-open-credit-spread-footer" onClick={() => onOpenModuleDetail?.("credit-spread")}>
-                    打开信用利差
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          </div>
         </div>
       </section>
     </section>

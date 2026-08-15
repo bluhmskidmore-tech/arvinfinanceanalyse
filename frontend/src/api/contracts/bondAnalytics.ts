@@ -70,6 +70,10 @@ export type ReturnDecompositionPayload = {
   bond_count: number;
   total_market_value: Numeric;
   warnings: string[];
+  /** 后端为 None 时整个字段从 JSON 排除（不会输出 null）。 */
+  warning_codes?: string[];
+  /** 结构化告警（带稳定 code），后端恒输出；`?` 兼容未升级的历史响应。 */
+  warnings_detail?: Array<Record<string, string>>;
   computed_at: string;
 };
 
@@ -103,6 +107,8 @@ export type BenchmarkExcessPayload = {
   benchmark_id: string;
   benchmark_name: string;
   warnings: string[];
+  /** 后端为 None 时整个字段从 JSON 排除（不会输出 null）。 */
+  warning_codes?: string[];
   computed_at: string;
 };
 
@@ -146,6 +152,8 @@ export type KRDCurveRiskPayload = {
   scenarios: KRDScenarioResult[];
   by_asset_class: AssetClassRiskSummary[];
   warnings: string[];
+  /** 后端为 None 时整个字段从 JSON 排除（不会输出 null）。 */
+  warning_codes?: string[];
   computed_at: string;
 };
 
@@ -187,6 +195,8 @@ export type BondTopHoldingsPayload = {
   items: BondTopHoldingItem[];
   total_market_value: Numeric;
   warnings: string[];
+  /** 后端为 None 时整个字段从 JSON 排除（不会输出 null）。 */
+  warning_codes?: string[];
   computed_at: string;
 };
 
@@ -216,6 +226,8 @@ export type BondPositionChangesPayload = {
   total_market_value: Numeric;
   prev_total_market_value: Numeric;
   warnings: string[];
+  /** 后端为 None 时整个字段从 JSON 排除（不会输出 null）。 */
+  warning_codes?: string[];
   computed_at: string;
 };
 
@@ -274,6 +286,8 @@ export type DV01RiskPayload = {
   top_bonds: DV01TopBondItem[];
   top_issuers: DV01TopIssuerItem[];
   warnings: string[];
+  /** 后端为 None 时整个字段从 JSON 排除（不会输出 null）。 */
+  warning_codes?: string[];
   computed_at: string;
 };
 
@@ -305,6 +319,8 @@ export type DV01ReconciliationPayload = {
   position_count: number;
   rows: DV01ReconciliationRow[];
   warnings: string[];
+  /** 后端为 None 时整个字段从 JSON 排除（不会输出 null）。 */
+  warning_codes?: string[];
   computed_at: string;
 };
 
@@ -356,6 +372,8 @@ export type DV01MovementPayload = {
   anomaly_bonds: DV01MovementBondItem[];
   methodology_checks: DV01MovementBondItem[];
   warnings: string[];
+  /** 后端为 None 时整个字段从 JSON 排除（不会输出 null）。 */
+  warning_codes?: string[];
   computed_at: string;
 };
 
@@ -435,6 +453,8 @@ export type DV01ActionPlanPayload = {
   issuer_actions: DV01ActionIssuerItem[];
   bond_actions: DV01ActionBondItem[];
   warnings: string[];
+  /** 后端为 None 时整个字段从 JSON 排除（不会输出 null）。 */
+  warning_codes?: string[];
   computed_at: string;
 };
 
@@ -472,6 +492,8 @@ export type DV01LimitConfigStatusPayload = {
   rows: DV01LimitConfigStatusRow[];
   computed_at: string;
   warnings: string[];
+  /** 后端为 None 时整个字段从 JSON 排除（不会输出 null）。 */
+  warning_codes?: string[];
 };
 
 export type SpreadScenarioResult = {
@@ -486,7 +508,8 @@ export type MigrationScenarioResult = {
   scenario_name: string;
   from_rating: string;
   to_rating: string;
-  affected_bonds: number;
+  /** 缺失 ≠ 0：后端未返回时为 null（渲染 —），不得补 0 冒充「影响 0 只债券」。 */
+  affected_bonds: number | null;
   affected_market_value: Numeric;
   pnl_impact: Numeric;
   oci_impact?: Numeric;
@@ -637,8 +660,8 @@ export type ActionDetail = {
   pnl_economic: Numeric;
   pnl_accounting: Numeric;
   delta_duration: Numeric;
-  delta_dv01: Numeric;
-  delta_spread_dv01: Numeric;
+  delta_dv01: Numeric | null;
+  delta_spread_dv01: Numeric | null;
   opportunity_cost?: Numeric;
   opportunity_cost_method?: string;
 };
@@ -655,14 +678,16 @@ export type ActionAttributionPayload = {
   period_start_duration: Numeric;
   period_end_duration: Numeric;
   duration_change_from_actions: Numeric;
-  period_start_dv01: Numeric;
-  period_end_dv01: Numeric;
+  period_start_dv01: Numeric | null;
+  period_end_dv01: Numeric | null;
   status?: string;
   available_components?: string[];
   missing_inputs?: string[];
   blocked_components?: string[];
   warnings: string[];
   warning_codes?: string[];
+  /** 结构化告警（带稳定 code），后端恒输出；`?` 兼容未升级的历史响应。 */
+  warnings_detail?: Array<Record<string, string>>;
   computed_at: string;
 };
 
@@ -694,6 +719,8 @@ export type AccountingClassAuditPayload = {
   map_unclassified_market_value: Numeric;
   rows: AccountingClassAuditItem[];
   warnings: string[];
+  /** 后端为 None 时整个字段从 JSON 排除（不会输出 null）。 */
+  warning_codes?: string[];
   computed_at: string;
 };
 

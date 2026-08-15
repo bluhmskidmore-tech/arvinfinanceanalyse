@@ -145,8 +145,23 @@ describe("BondTradingDeskPage", () => {
       expect(conclusion).toHaveTextContent("23国开10");
       expect(conclusion).toHaveTextContent("单券读面结论");
     });
-    expect(screen.getByTestId("bond-trading-desk-identity")).toHaveTextContent("230210.IB");
-    expect(screen.getByTestId("bond-trading-desk-gaps")).toBeInTheDocument();
+    const identity = screen.getByTestId("bond-trading-desk-identity");
+    expect(identity).toHaveTextContent("230210.IB");
+    // 英文枚举 token 中文化，原始 token 收 title。
+    expect(identity).toHaveTextContent("利率债");
+    expect(identity).toHaveTextContent("重仓来源");
+    expect(identity).not.toHaveTextContent("top_holdings");
+    // 五个待返回模块合并为一张收缩卡：模块名列一次 + 原因一次。
+    const gaps = screen.getByTestId("bond-trading-desk-gaps");
+    expect(gaps).toHaveTextContent("五档盘口 / 报价、约束校验、相似券对比、情景压力、组合冲击");
+    expect(
+      gaps.textContent?.match(/后端尚无单券专用契约/g)?.length ?? 0,
+    ).toBe(1);
+    // 0 条属中性事实：chip 不再配正向绿色。
+    const creditChip = screen.getByTestId("bond-trading-desk-compose-credit_spread");
+    expect(creditChip).toHaveTextContent("信用利差：0 条");
+    expect(creditChip).not.toHaveClass("ant-tag-success");
+    expect(creditChip).not.toHaveClass("ant-tag-error");
   });
 
   it("shows empty state when bond not found in lookup scope", async () => {
@@ -308,10 +323,16 @@ describe("BondTradingDeskPage", () => {
 
     expect(await screen.findByTestId("bond-trading-desk-compose-strip")).toBeInTheDocument();
     expect(screen.getByTestId("bond-trading-desk-compose-positions")).toHaveTextContent("失败");
-    expect(screen.getByTestId("bond-trading-desk-compose-top_holdings")).toHaveTextContent(
-      "quality=warning",
-    );
+    // 治理 token 不再直出 chip 文本，只保留在 title；chip 文本只留中文状态词。
+    const topHoldingsChip = screen.getByTestId("bond-trading-desk-compose-top_holdings");
+    expect(topHoldingsChip).not.toHaveTextContent("quality=warning");
+    expect(topHoldingsChip).toHaveTextContent("重仓券：1 条");
+    expect(topHoldingsChip.getAttribute("title")).toContain("quality=warning");
+    expect(topHoldingsChip.getAttribute("title")).toContain("fallback=latest_snapshot");
     expect(screen.getByTestId("bond-trading-desk-error")).toHaveTextContent("部分拼装来源失败");
+    expect(
+      screen.getByTestId("bond-trading-desk-retry"),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("bond-trading-desk-conclusion")).toHaveTextContent("23国开10");
   });
 

@@ -579,7 +579,7 @@ def test_bond_analytics_return_decomposition_aggregates_carry_and_buckets(tmp_pa
     )
 
     assert payload["result_meta"]["source_version"] == "sv_bond_snap_1"
-    assert payload["result_meta"]["rule_version"] == "rv_bond_analytics_formal_materialize_v1"
+    assert payload["result_meta"]["rule_version"] == "rv_bond_analytics_formal_materialize_v2"
     assert result["bond_count"] == 3
     assert _numeric_raw(result["total_market_value"]) == Decimal("429")
     assert _numeric_raw(result["carry"]).quantize(Decimal("0.00000001")) == expected_carry.quantize(Decimal("0.00000001"))
@@ -2407,6 +2407,14 @@ def test_bond_analytics_credit_spread_migration_uses_credit_subset_and_concentra
     assert len(result["spread_scenarios"]) == 4
     assert _numeric_raw(result["oci_credit_exposure"]) == Decimal("190")
     assert result["concentration_by_issuer"]["dimension"] == "issuer"
+    # 展示限额（后端下发，非风控正式限额）：字段存在且数值与过渡口径常量一致。
+    assert result["display_limits"] == {
+        "issuer_single_max": 0.1,
+        "issuer_top5_max": 0.4,
+        "hhi_warning": 0.15,
+        "below_aa_max": 0.2,
+        "credit_weight_max": 0.85,
+    }
     assert any("No aaa_credit curve available" in warning or "No treasury curve available" in warning for warning in result["warnings"])
     assert any("Spread level input unavailable" in warning for warning in result["warnings"])
     get_settings.cache_clear()
@@ -2485,7 +2493,7 @@ def test_overlay_return_decomposition_trading_pnl517_mom_single_report_date(tmp_
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
     )
-    key = "TB-001::组合利率::CC-RATE"
+    key = ("TB-001", "组合利率", "CC-RATE", "AC")
 
     class FakePnl:
         def __init__(self, _path: str) -> None:
@@ -2494,7 +2502,7 @@ def test_overlay_return_decomposition_trading_pnl517_mom_single_report_date(tmp_
         def list_union_report_dates(self) -> list[str]:
             return ["2026-03-31"]
 
-        def merged_capital_gain_517_by_position_for_dates(self, dates: list[str]) -> dict[str, Decimal]:
+        def merged_capital_gain_517_by_position_and_accounting_for_dates(self, dates: list[str]) -> dict:
             assert dates == ["2026-03-31"]
             return {key: Decimal("2.5")}
 
@@ -2522,7 +2530,7 @@ def test_overlay_return_decomposition_trading_pnl517_ytd_sums_multiple_report_da
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
     )
-    key = "TB-001::组合利率::CC-RATE"
+    key = ("TB-001", "组合利率", "CC-RATE", "AC")
 
     class FakePnl:
         def __init__(self, _path: str) -> None:
@@ -2531,7 +2539,7 @@ def test_overlay_return_decomposition_trading_pnl517_ytd_sums_multiple_report_da
         def list_union_report_dates(self) -> list[str]:
             return ["2026-03-31", "2026-02-28", "2026-01-31", "2025-12-31"]
 
-        def merged_capital_gain_517_by_position_for_dates(self, dates: list[str]) -> dict[str, Decimal]:
+        def merged_capital_gain_517_by_position_and_accounting_for_dates(self, dates: list[str]) -> dict:
             assert set(dates) == {"2026-01-31", "2026-02-28", "2026-03-31"}
             return {key: Decimal("9")}
 
@@ -2556,7 +2564,7 @@ def test_overlay_return_decomposition_trading_pnl517_ttm_sums_multiple_report_da
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
     )
-    key = "TB-001::组合利率::CC-RATE"
+    key = ("TB-001", "组合利率", "CC-RATE", "AC")
 
     class FakePnl:
         def __init__(self, _path: str) -> None:
@@ -2565,7 +2573,7 @@ def test_overlay_return_decomposition_trading_pnl517_ttm_sums_multiple_report_da
         def list_union_report_dates(self) -> list[str]:
             return ["2026-03-31", "2025-03-31"]
 
-        def merged_capital_gain_517_by_position_for_dates(self, dates: list[str]) -> dict[str, Decimal]:
+        def merged_capital_gain_517_by_position_and_accounting_for_dates(self, dates: list[str]) -> dict:
             assert set(dates) == {"2025-03-31", "2026-03-31"}
             return {key: Decimal("4")}
 
@@ -2597,7 +2605,7 @@ def test_overlay_return_decomposition_trading_pnl517_ytd_degrades_when_no_report
         def list_union_report_dates(self) -> list[str]:
             return ["2025-12-31"]
 
-        def merged_capital_gain_517_by_position_for_dates(self, dates: list[str]) -> dict[str, Decimal]:
+        def merged_capital_gain_517_by_position_and_accounting_for_dates(self, dates: list[str]) -> dict:
             raise AssertionError("merge should not run when date list is empty")
 
     monkeypatch.setattr(service_mod, "PnlRepository", FakePnl)
@@ -2613,3 +2621,147 @@ def test_overlay_return_decomposition_trading_pnl517_ytd_degrades_when_no_report
     assert out["trading_total"] == Decimal("0")
     codes = {d.get("code") for d in wd}
     assert "return_decomposition_trading_pnl517_no_fact_dates_in_period" in codes
+
+
+def test_bond_analytics_dv01_action_plan_without_any_limit_reports_no_limit_configured(tmp_path, monkeypatch):
+    """No governed limit and no caller threshold: disclose exposure, grade nothing.
+
+    Guards the production state where ``bond_dv01_limit_config`` is empty. The
+    previous page fallback graded every accounting class as ``breach`` against a
+    hardcoded 5,000,000 元/bp placeholder and sized hedges off that placeholder.
+    """
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    rows = [
+        {
+            "report_date": "2026-07-31",
+            "instrument_code": "A-001",
+            "instrument_name": "Alpha Bond",
+            "issuer_name": "Issuer A",
+            "rating": "AAA",
+            "tenor_bucket": "7-10Y",
+            "accounting_class": "OCI",
+            "face_value": Decimal("40000000000"),
+            "market_value": Decimal("40500000000"),
+            "modified_duration": Decimal("8"),
+            "dv01": Decimal("31393687"),
+            "source_version": "sv",
+            "rule_version": "rv",
+            "trace_id": "tr_a",
+        },
+    ]
+
+    class FakeRepo:
+        def fetch_bond_analytics_rows(self, *, report_date, accounting_class="all", **_kwargs):
+            return rows
+
+    monkeypatch.setattr(service_mod, "_repo", lambda: FakeRepo())
+    monkeypatch.setattr(
+        service_mod,
+        "_lineage",
+        lambda _report_date, _rows: {
+            "source_version": "sv_test",
+            "rule_version": "rv_test",
+            "cache_version": "cv_test",
+            "vendor_version": "vv_test",
+        },
+    )
+
+    payload = service_mod.get_dv01_action_plan(date(2026, 7, 31), accounting_class="OCI")
+    result = payload["result"]
+
+    assert result["risk_level"] == "no_limit_configured"
+    assert result["policy_basis"] == "no_limit_configured"
+    assert result["limit_source"] == "unconfigured"
+    assert result["limit_rule_version"] == "rv_dv01_no_limit_configured_v1"
+    assert result["breach_count"] == 0
+    assert result["scenario_breaches"] == []
+    # Exposure is still disclosed in full.
+    assert _numeric_raw(result["total_dv01"]) == Decimal("31393687")
+    assert result["position_count"] == 1
+    # Nothing derived from a placeholder limit may carry a number.
+    assert _numeric_raw(result["limit_dv01"]) == Decimal("0")
+    assert _numeric_raw(result["warning_dv01"]) == Decimal("0")
+    assert _numeric_raw(result["limit_usage"]) == Decimal("0")
+    assert _numeric_raw(result["remaining_limit_dv01"]) == Decimal("0")
+    assert _numeric_raw(result["dv01_to_reduce"]) == Decimal("0")
+    assert _numeric_raw(result["suggested_hedge_units"]) == Decimal("0")
+    for section in ("tenor_actions", "issuer_actions", "bond_actions"):
+        assert result[section], f"{section} should still disclose exposure"
+        for row in result[section]:
+            assert _numeric_raw(row["suggested_reduction_dv01"]) == Decimal("0")
+    assert any("未接入正式 DV01 限额" in warning for warning in result["warnings"])
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_dv01_action_plan_keeps_caller_supplied_threshold(tmp_path, monkeypatch):
+    """A caller-stated threshold is still honoured; only the invented default is gone."""
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    rows = [
+        {
+            "report_date": "2026-03-31",
+            "instrument_code": "A-001",
+            "instrument_name": "Alpha Bond",
+            "issuer_name": "Issuer A",
+            "rating": "AAA",
+            "tenor_bucket": "7-10Y",
+            "accounting_class": "OCI",
+            "face_value": Decimal("1000000"),
+            "market_value": Decimal("1005000"),
+            "modified_duration": Decimal("8"),
+            "dv01": Decimal("1150"),
+            "source_version": "sv",
+            "rule_version": "rv",
+            "trace_id": "tr_a",
+        },
+    ]
+
+    class FakeRepo:
+        def fetch_bond_analytics_rows(self, *, report_date, accounting_class="all", **_kwargs):
+            return rows
+
+    monkeypatch.setattr(service_mod, "_repo", lambda: FakeRepo())
+    monkeypatch.setattr(
+        service_mod,
+        "_lineage",
+        lambda _report_date, _rows: {
+            "source_version": "sv_test",
+            "rule_version": "rv_test",
+            "cache_version": "cv_test",
+            "vendor_version": "vv_test",
+        },
+    )
+
+    payload = service_mod.get_dv01_action_plan(
+        date(2026, 3, 31),
+        accounting_class="OCI",
+        limit_dv01="1000",
+    )
+    result = payload["result"]
+
+    assert result["policy_basis"] == "page_threshold_fallback"
+    assert result["risk_level"] == "breach"
+    assert _numeric_raw(result["limit_dv01"]) == Decimal("1000")
+    # warning_dv01 falls back to the stated limit rather than an invented 4,000,000.
+    assert _numeric_raw(result["warning_dv01"]) == Decimal("1000")
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_service_exposes_no_hardcoded_dv01_limit_default():
+    """The 5,000,000 元/bp placeholder must not come back."""
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    assert not hasattr(service_mod, "DEFAULT_DV01_LIMIT")
+    assert not hasattr(service_mod, "DEFAULT_DV01_WARNING")
+    assert not hasattr(service_mod, "DEFAULT_DV01_HEDGE_TARGET")

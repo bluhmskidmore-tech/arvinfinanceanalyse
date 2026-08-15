@@ -1,15 +1,17 @@
 import { useMemo } from "react";
 import { type EChartsOption } from "../../../lib/echarts";
 import { BaseChart } from "../../../components/charts/BaseChart";
+import { nocturneChartTheme } from "../../../components/charts/chartTheme";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { ConcentrationMetrics } from "../types";
 import { designTokens, nocturneTokens } from "../../../theme/designSystem";
 import { formatYi } from "../utils/formatters";
+import { DetailEmptyNote } from "./BondAnalyticsDetailPrimitives";
 
 const dt = designTokens;
 
 function concentrationPieOption(metrics: ConcentrationMetrics): EChartsOption {
-  return {
+  return nocturneChartTheme.createBaseChartOption({
     title: {
       text: `${metrics.dimension}  HHI ${metrics.hhi.display}  前五 ${metrics.top5_concentration.display}`,
       left: "center",
@@ -23,6 +25,7 @@ function concentrationPieOption(metrics: ConcentrationMetrics): EChartsOption {
         return `${item.name}: ${formatYi(item.value)} (${item.percent}%)`;
       },
     },
+    legend: { show: false },
     series: [
       {
         type: "pie",
@@ -34,7 +37,7 @@ function concentrationPieOption(metrics: ConcentrationMetrics): EChartsOption {
         })),
       },
     ],
-  };
+  });
 }
 
 export function ConcentrationPieCell({ metrics }: { metrics: ConcentrationMetrics | undefined }) {
@@ -44,19 +47,7 @@ export function ConcentrationPieCell({ metrics }: { metrics: ConcentrationMetric
   }, [metrics]);
 
   if (!option) {
-    return (
-      <div
-        style={{
-          height: 200,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "var(--dh-api-muted)",
-        }}
-      >
-        暂无数据
-      </div>
-    );
+    return <DetailEmptyNote>暂无数据</DetailEmptyNote>;
   }
 
   return <BaseChart option={option} height={200} />;

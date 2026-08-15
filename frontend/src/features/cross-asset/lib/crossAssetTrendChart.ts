@@ -469,10 +469,12 @@ export function buildCrossAssetTrendSummary(kpis: ResolvedCrossAssetKpi[]): Tren
   const bondFriendly = bond ? bond.direction === "falling" : true;
   const liquidityFriendly = money ? money.direction !== "rising" : true;
   const externalFriendly = usBond ? usBond.direction !== "rising" : true;
+  // 三条核心序列全缺时不给「偏友好」结论：缺数据不是利好证据（§6 不用演示语气冒充口径）。
+  const hasCoreEvidence = Boolean(bond || money || usBond);
 
   let tone: TrendSummaryTone;
   let toneLabel: string;
-  if (bondFriendly && liquidityFriendly && externalFriendly) {
+  if (hasCoreEvidence && bondFriendly && liquidityFriendly && externalFriendly) {
     tone = "friendly";
     toneLabel = "整体环境偏友好";
   } else if (!bondFriendly && !liquidityFriendly) {
@@ -480,7 +482,8 @@ export function buildCrossAssetTrendSummary(kpis: ResolvedCrossAssetKpi[]): Tren
     toneLabel = "整体环境偏紧";
   } else if (parts.length === 0) {
     tone = "neutral";
-    toneLabel = "各资产波动不大";
+    const hasAnySeries = Boolean(bond || money || usBond || equity || brent || steel || usdcny);
+    toneLabel = hasAnySeries ? "各资产波动不大" : "历史序列不足，暂不判定整体环境";
   } else {
     tone = "mixed";
     toneLabel = "环境信号分化";

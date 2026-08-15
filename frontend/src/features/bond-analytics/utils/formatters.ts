@@ -79,10 +79,10 @@ export const formatBp = (value: Numeric | string | number | null | undefined): s
 };
 
 /**
- * Color for positive/negative values (China standard: red=up, green=down).
+ * Color for positive/negative values（2026-08-11 全站决议：绿涨红跌，DESIGN §4）。
  * 主题感知入口：走 `TONE_CSS_VAR` CSS 变量（深色路由 `.theme-dh-api` 自动重映射），
  * 仅供 DOM style/CSS 消费；canvas/ECharts 场景请改用主题 TS 镜像 token。
- * 中国惯例方向不变：非负取红（`--ib-down` 红色通道）、负取绿（`--ib-up` 绿色通道）。
+ * 非负取绿（positive 通道）、负取红（negative 通道）。
  */
 export const toneColor = (value: number): string =>
-  value >= 0 ? TONE_CSS_VAR.negative : TONE_CSS_VAR.positive;
+  value >= 0 ? TONE_CSS_VAR.positive : TONE_CSS_VAR.negative;

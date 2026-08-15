@@ -13,11 +13,14 @@ import {
   BOND_ANALYTICS_MACRO_BAR_SERIES,
   buildMacroPointForDeltaDisplay,
   coalesceMacroSeriesDelta,
+  resolveMacroSeriesPoint,
 } from "../lib/bondAnalyticsMacroSeries";
 import { BOND_HOLDINGS_EMPTY_NOTE } from "../lib/bondHoldingsEvidenceCopy";
 import { buildBondTradingDeskPath } from "../../bond-trading-desk/lib/bondTradingDeskPageModel";
 import { EM_DASH } from "../../../utils/format";
+import { formatDv01Wan } from "../utils/formatters";
 import {
+  assetClassLabel,
   buildReadoutFacts,
   formatDurationDisplay,
   formatMoneyDisplay,
@@ -26,8 +29,8 @@ import {
   formatNumericString,
   formatPctEvidenceDisplay,
   formatSignedPct,
+  formatDv01EvidenceDisplay,
   formatTextEvidenceDisplay,
-  formatWanEvidenceDisplay,
 } from "./bondAnalyticsCockpitFormat";
 import {
   MobileReadoutField,
@@ -73,7 +76,7 @@ function AccountingDv01MobileReadout({
   const largestRow = pickLargestDv01Row(rows);
   const stateLabel = hasError ? "读面暂未返回" : isLoading ? "读取中" : "移动摘要";
   const largestDv01Display = largestRow
-    ? formatWanEvidenceDisplay(largestRow.payload?.total_dv01)
+    ? `${formatDv01EvidenceDisplay(largestRow.payload?.total_dv01)} 万元/bp`
     : hasError
       ? "读面暂未返回"
       : isLoading
@@ -100,7 +103,7 @@ function AccountingDv01MobileReadout({
           value={formatDurationDisplay(largestRow?.payload?.face_weighted_modified_duration)}
         />
         <MobileReadoutField
-          label="DV01"
+          label="DV01（万元/bp）"
           value={largestDv01Display}
         />
         <MobileReadoutField
@@ -154,7 +157,7 @@ export function AccountingDv01SummaryPanel({
         <div className={styles.accountingDv01Header}>
           <span>分类</span>
           <span>面值加权久期</span>
-          <span>DV01</span>
+          <span>DV01（万元/bp）</span>
           <span>面值</span>
           <span>持仓数</span>
         </div>
@@ -162,7 +165,7 @@ export function AccountingDv01SummaryPanel({
           <div className={styles.accountingDv01Row} key={row.value}>
             <strong>{row.label}</strong>
             <span className={styles.accountingDv01Number}>{formatDurationDisplay(row.payload?.face_weighted_modified_duration)}</span>
-            <span className={styles.accountingDv01Number}>{formatWanEvidenceDisplay(row.payload?.total_dv01)}</span>
+            <span className={styles.accountingDv01Number}>{formatDv01EvidenceDisplay(row.payload?.total_dv01)}</span>
             <span className={styles.accountingDv01Number}>{formatMoneyDisplay(row.payload?.total_face_value)}</span>
             <span className={styles.accountingDv01Number}>
               {row.payload ? formatNumericString(row.payload.position_count) : EM_DASH}
@@ -227,12 +230,14 @@ export function ReferenceMarketTicker({
   unavailable: boolean;
 }) {
   const byId = new Map(series.map((point) => [point.series_id, point]));
-  const hasAnyLevel = BOND_ANALYTICS_MACRO_BAR_SERIES.some((item) => byId.has(item.series_id));
+  const hasAnyLevel = BOND_ANALYTICS_MACRO_BAR_SERIES.some(
+    (item) => resolveMacroSeriesPoint(byId, item.series_ids) !== undefined,
+  );
 
   return (
     <div data-testid="bond-analysis-market-ticker" className={styles.referenceMarketTicker}>
       {BOND_ANALYTICS_MACRO_BAR_SERIES.map((item) => {
-        const point = byId.get(item.series_id);
+        const point = resolveMacroSeriesPoint(byId, item.series_ids);
         const delta = coalesceMacroSeriesDelta(point);
         const displayPoint = point ? buildMacroPointForDeltaDisplay(point, delta) : null;
         const tone =
@@ -245,7 +250,7 @@ export function ReferenceMarketTicker({
                 : "flat";
 
         return (
-          <div key={item.series_id} className={styles.referenceTickerCell}>
+          <div key={item.shortLabel} className={styles.referenceTickerCell}>
             <span>{item.shortLabel}</span>
             <strong>{point ? formatChoiceMacroValue(point, { spaceBeforeUnit: false }) : EM_DASH}</strong>
             <small data-tone={tone}>
@@ -269,21 +274,17 @@ export function ReferenceJudgmentMatrix({
   duration,
   creditWeight,
   spreadMedianBp,
-  dv01Display,
   hasDv01Readout,
   hasCurveReadout,
-  marketValueMomPct,
 }: {
   duration: number;
   creditWeight: number;
   spreadMedianBp: number;
-  dv01Display: string;
   hasDv01Readout: boolean;
   hasCurveReadout: boolean;
-  marketValueMomPct: number | null;
 }) {
   const creditMissing = [
-    Number.isFinite(spreadMedianBp) ? null : "信用利差",
+    Number.isFinite(spreadMedianBp) ? null : "信用债收益率中位数",
     Number.isFinite(creditWeight) ? null : "信用占比",
   ].filter(Boolean);
   const rows = [
@@ -311,7 +312,8 @@ export function ReferenceJudgmentMatrix({
     {
       label: "资金证据",
       value: hasDv01Readout ? "DV01已返回" : "DV01待返回",
-      detail: `返回字段：组合 DV01 ${dv01Display}`,
+      /* DV01 数值已在 KPI 带与风险切片卡可见（§6 ≤2 处）：证据矩阵只报字段事实，数值不再第三次直出。 */
+      detail: hasDv01Readout ? "返回字段：组合 DV01" : `返回字段：${EM_DASH}`,
       missing: hasDv01Readout ? `缺失项：${EM_DASH}` : "缺失项：DV01",
       isReturned: hasDv01Readout,
     },
@@ -336,28 +338,6 @@ export function ReferenceJudgmentMatrix({
             <em>{row.missing}</em>
           </div>
         ))}
-      </div>
-      <div className={styles.strategyTagGrid}>
-        <div>
-          <span>组合久期</span>
-          <strong>{Number.isFinite(duration) ? `${duration.toFixed(2)} 年` : EM_DASH}</strong>
-        </div>
-        <div>
-          <span>市值环比</span>
-          <strong>{formatSignedPct(marketValueMomPct)}</strong>
-        </div>
-        <div>
-          <span>曲线状态</span>
-          <strong>{hasCurveReadout ? "已返回" : "待返回"}</strong>
-        </div>
-        <div>
-          <span>风险锚点</span>
-          <strong>DV01事实</strong>
-        </div>
-        <div>
-          <span>前端边界</span>
-          <strong>只展示返回事实</strong>
-        </div>
       </div>
     </div>
   );
@@ -397,22 +377,14 @@ export function ReferenceReturnAttributionPanel({
           <strong data-tone={actionPnlTone}>{actionPnlDisplay}</strong>
           <small>{actionCount !== null ? `${actionCount} 笔动作` : "动作归因待返回"}</small>
         </div>
-        <div className={styles.footerChangeSplit}>
-          <span>市值 {formatSignedPct(marketValueMomPct)}</span>
-          <span>DV01 {Number.isFinite(dv01Mom) ? `${dv01Mom >= 0 ? "+" : ""}${(dv01Mom / 10000).toFixed(2)} 万` : EM_DASH}</span>
-        </div>
         <div className={styles.attributionEvidenceGrid}>
           <div>
-            <span>归因状态</span>
-            <strong>{actionCount !== null ? "已返回" : "待返回"}</strong>
-          </div>
-          <div>
-            <span>动作数</span>
-            <strong>{actionCount !== null ? `${actionCount} 笔` : EM_DASH}</strong>
-          </div>
-          <div>
-            <span>DV01变动</span>
-            <strong>{Number.isFinite(dv01Mom) ? `${dv01Mom >= 0 ? "+" : ""}${(dv01Mom / 10000).toFixed(2)} 万` : EM_DASH}</strong>
+            <span>DV01变动（万元/bp）</span>
+            <strong>
+              {Number.isFinite(dv01Mom)
+                ? `${dv01Mom >= 0 ? "+" : ""}${formatDv01Wan(dv01Mom)} 万元/bp`
+                : EM_DASH}
+            </strong>
           </div>
           <div>
             <span>市值环比</span>
@@ -470,7 +442,7 @@ export function HoldingRows({
               {item.instrument_code}
             </Link>
           </div>
-          <span>{item.asset_class}</span>
+          <span>{assetClassLabel(item.asset_class)}</span>
           <span>{formatTextEvidenceDisplay(item.rating)}</span>
           <span className={styles.holdingNumericCell}>{formatMoneyEvidenceDisplay(item.market_value)}</span>
           <span className={styles.holdingNumericCell}>{formatPctEvidenceDisplay(item.ytm)}</span>

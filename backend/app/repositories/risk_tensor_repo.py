@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any
 from dataclasses import dataclass
+from typing import Any
 
 import duckdb
 from backend.app.core_finance.risk_tensor import PortfolioRiskTensor
@@ -11,6 +11,7 @@ from backend.app.repositories.duckdb_migrations import (
     ensure_risk_tensor_legacy_columns,
 )
 from backend.app.repositories.duckdb_repo import read_only_connection
+from backend.app.repositories.fact_load_gates import commit_report_date_purge
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
 from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 
@@ -161,10 +162,15 @@ class RiskTensorRepository:
             conn.execute("begin transaction")
             transaction_started = True
             ensure_risk_tensor_table(conn)
-            conn.execute(
-                f"delete from {FACT_TABLE} where report_date = ?",
-                [report_date],
+            conn.execute("commit")
+            transaction_started = False
+
+            commit_report_date_purge(
+                conn, tables=(FACT_TABLE,), report_date=report_date
             )
+
+            conn.execute("begin transaction")
+            transaction_started = True
             conn.execute(
                 f"""
                 insert into {FACT_TABLE} (
@@ -285,6 +291,8 @@ class RiskTensorRepository:
         self,
         report_date: str,
         periods: int,
+        *,
+        rule_version: str | None = None,
     ) -> list[dict[str, object]]:
         conn = _connect_read_only(self.path)
         if conn is None:
@@ -293,11 +301,19 @@ class RiskTensorRepository:
             if not _table_exists(conn, FACT_TABLE):
                 return []
             table_columns = _table_columns(conn, FACT_TABLE)
+            if rule_version is not None and "rule_version" not in table_columns:
+                return []
             regulatory_dv01 = _column_or_default(
                 table_columns,
                 "regulatory_dv01",
                 "cast(null as decimal(24, 8))",
             )
+            where_clauses = ["cast(report_date as varchar) <= ?"]
+            parameters: list[object] = [report_date]
+            if rule_version is not None:
+                where_clauses.append("rule_version = ?")
+                parameters.append(rule_version)
+            parameters.append(periods)
             rows = conn.execute(
                 f"""
                 select cast(report_date as varchar) as report_date,
@@ -310,11 +326,11 @@ class RiskTensorRepository:
                        issuer_top5_weight,
                        liquidity_gap_30d
                 from {FACT_TABLE}
-                where cast(report_date as varchar) <= ?
+                where {' and '.join(where_clauses)}
                 order by cast(report_date as varchar) desc
                 limit ?
                 """,
-                [report_date, periods],
+                parameters,
             ).fetchall()
             columns = [
                 "report_date",

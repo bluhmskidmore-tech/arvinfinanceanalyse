@@ -1,37 +1,46 @@
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Card, Col, Row, Spin, Statistic, Table } from "antd";
+import { Alert, Card, Col, Row, Statistic, Table } from "antd";
 import type { BondPortfolioHeadlinesPayload, Numeric } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
 import { apiQueryKeys } from "../../../api/queryKeys";
 import { EM_DASH } from "../../../utils/format";
-import { formatPct, formatYi } from "../utils/formatters";
+import { formatDv01Wan, formatPct, formatYi } from "../utils/formatters";
+import {
+  DetailEmptyNote,
+  DetailPanelSkeleton,
+  withNumericColumns,
+} from "./BondAnalyticsDetailPrimitives";
+import detailStyles from "./BondAnalyticsDetailPrimitives.module.css";
 
 interface Props {
   reportDate: string;
 }
 
-const assetClassColumns = [
-  { title: "资产类别", dataIndex: "asset_class", key: "asset_class" },
-  { title: "市值", dataIndex: "market_value", key: "market_value", render: formatYi },
-  {
-    title: "久期",
-    dataIndex: "duration",
-    key: "duration",
-    render: (v: Numeric) => v.display,
-  },
-  {
-    title: "DV01",
-    dataIndex: "dv01",
-    key: "dv01",
-    render: (v: Numeric) => v.display,
-  },
-  {
-    title: "权重",
-    dataIndex: "weight",
-    key: "weight",
-    render: (v: Numeric) => v.display,
-  },
-];
+const assetClassColumns = withNumericColumns(
+  [
+    { title: "资产类别", dataIndex: "asset_class", key: "asset_class" },
+    { title: "市值", dataIndex: "market_value", key: "market_value", render: formatYi },
+    {
+      title: "久期",
+      dataIndex: "duration",
+      key: "duration",
+      render: (v: Numeric) => v.display,
+    },
+    {
+      title: "DV01（万元/bp）",
+      dataIndex: "dv01",
+      key: "dv01",
+      render: (v: Numeric) => formatDv01Wan(v),
+    },
+    {
+      title: "权重",
+      dataIndex: "weight",
+      key: "weight",
+      render: (v: Numeric) => v.display,
+    },
+  ],
+  ["market_value", "duration", "dv01", "weight"],
+);
 
 function formatHhi(value: import("../../../api/contracts").Numeric | string): string {
   const n = typeof value === "string" ? Number.parseFloat(value) : (value.raw ?? Number.NaN);
@@ -50,11 +59,7 @@ export function PortfolioHeadlinesView({ reportDate }: Props) {
   const data: BondPortfolioHeadlinesPayload | null = query.data?.result ?? null;
 
   if (query.isLoading && !data) {
-    return (
-      <div data-testid="portfolio-headlines-loading" style={{ padding: 24 }}>
-        <Spin />
-      </div>
-    );
+    return <DetailPanelSkeleton testId="portfolio-headlines-loading" />;
   }
 
   if (query.isError) {
@@ -66,11 +71,11 @@ export function PortfolioHeadlinesView({ reportDate }: Props) {
   }
 
   return (
-    <div data-testid="portfolio-headlines-view" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div data-testid="portfolio-headlines-view" className={detailStyles.view}>
       {data.warnings.length > 0 ? (
         <Alert type="warning" showIcon message={data.warnings.join(" ")} />
       ) : null}
-      <Row gutter={[12, 12]}>
+      <Row gutter={[12, 12]} className={detailStyles.kpiGrid}>
         <Col xs={24} sm={12} md={8}>
           <Card size="small">
             <Statistic title="总市值（亿元）" value={formatYi(data.total_market_value)} />
@@ -88,7 +93,7 @@ export function PortfolioHeadlinesView({ reportDate }: Props) {
         </Col>
         <Col xs={24} sm={12} md={8}>
           <Card size="small">
-            <Statistic title="组合 DV01" value={data.total_dv01.display} />
+            <Statistic title="组合 DV01（万元/bp）" value={formatDv01Wan(data.total_dv01)} />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={8}>
@@ -118,13 +123,19 @@ export function PortfolioHeadlinesView({ reportDate }: Props) {
         </Col>
       </Row>
       <Card size="small" title="资产类别分布">
-        <Table
-          size="small"
-          rowKey={(row) => row.asset_class}
-          columns={assetClassColumns}
-          dataSource={data.by_asset_class}
-          pagination={false}
-        />
+        {data.by_asset_class.length > 0 ? (
+          <Table
+            size="small"
+            rowKey={(row) => row.asset_class}
+            columns={assetClassColumns}
+            dataSource={data.by_asset_class}
+            pagination={false}
+          />
+        ) : (
+          <DetailEmptyNote testId="portfolio-headlines-asset-class-empty">
+            暂无资产类别分布
+          </DetailEmptyNote>
+        )}
       </Card>
     </div>
   );

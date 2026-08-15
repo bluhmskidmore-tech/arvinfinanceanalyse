@@ -213,9 +213,17 @@ export type KpiOwner = {
   updated_at: string;
 };
 
+export type KpiOwnerAuthorityMeta = {
+  authority_status: string;
+  reason: string;
+  owner_count: number;
+  year: number | null;
+};
+
 export type KpiOwnerListResponse = {
   owners: KpiOwner[];
   total: number;
+  meta?: KpiOwnerAuthorityMeta | null;
 };
 
 export type KpiScoringRuleParams = {

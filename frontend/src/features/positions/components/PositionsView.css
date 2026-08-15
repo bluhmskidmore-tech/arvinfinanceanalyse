@@ -112,6 +112,27 @@
   cursor: not-allowed;
 }
 
+/* 刷新钮：32px 深色描边，hover 走 accent（bond-dashboard 工具条同配方），
+   贴托盘右端与控件行基线对齐。 */
+.positions-view__refresh {
+  align-self: end;
+  min-height: 32px;
+  margin-left: auto;
+  padding: 5px 14px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: transparent;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.positions-view__refresh:hover {
+  border-color: var(--dh-api-blue);
+  color: var(--dh-api-blue);
+}
+
 /* 报告日回退说明放控件行尾，避免塞进 label 错开基线。 */
 .positions-view__filters-note {
   display: flex;
@@ -549,13 +570,11 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 资产/负债语义色：深色终端去饱和绿涨红跌（DESIGN.md §4）。 */
-.positions-view__side-value--asset {
-  color: var(--dh-api-green);
-}
-
+/* 侧别不是涨跌语义：读数统一中性 ink，资产/负债身份由面板标题与语义圆点
+   表达；红绿只留真正涨跌/预警（DESIGN.md §4 语义色统一）。 */
+.positions-view__side-value--asset,
 .positions-view__side-value--liability {
-  color: var(--dh-api-red);
+  color: var(--dh-api-ink);
 }
 
 .positions-view__side-note {

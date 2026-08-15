@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+from datetime import date, timedelta
 from decimal import Decimal
 
 import duckdb
@@ -38,6 +39,7 @@ _INSERT_COLUMNS = (
     "accrued_interest",
     "coupon_rate",
     "ytm",
+    "maturity_date",
     "years_to_maturity",
     "modified_duration",
     "convexity",
@@ -55,10 +57,28 @@ def _seed(db_path: str, rows: list[dict[str, object]]) -> None:
         conn.executemany(
             f"insert into fact_formal_bond_analytics_daily "
             f"({', '.join(_INSERT_COLUMNS)}) values ({placeholders})",
-            [tuple(row.get(column) for column in _INSERT_COLUMNS) for row in rows],
+            [
+                tuple(row.get(column) for column in _INSERT_COLUMNS)
+                for row in _with_distinct_maturity_dates(rows)
+            ],
         )
     finally:
         conn.close()
+
+
+def _with_distinct_maturity_dates(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Separate the seeded rows on maturity date so they clear the v43 natural key.
+
+    Every case here deliberately puts several rows of one instrument into one
+    group, which is the shape the unique index rejects unless a key column
+    differs. Maturity date is the right one to vary: it is the only key column
+    the Campisi decision aggregation does not group on, so the rows stay in a
+    single group and every asserted weighted average is unchanged.
+    """
+    return [
+        {**row, "maturity_date": date(2030, 1, 1) + timedelta(days=index)}
+        for index, row in enumerate(rows)
+    ]
 
 
 def _position(**overrides: object) -> dict[str, object]:

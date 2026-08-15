@@ -122,14 +122,6 @@ class _CurveRateLookup:
             self._fitted_curve_cache[key] = fitted
         return _interpolate_fitted_curve(fitted, float(years_to_maturity))
 
-    def tenor_rate(self, curve: dict[str, Decimal] | None, tenor_bucket: str) -> Decimal | None:
-        if not tenor_bucket:
-            return None
-        value = self.full_curve(curve).get(tenor_bucket)
-        if value is None:
-            return None
-        return safe_decimal(value)
-
 
 def summarize_return_decomposition(
     rows: list[dict[str, Any]],
@@ -193,6 +185,7 @@ def summarize_return_decomposition(
             row=row,
             current_curve=current_curve,
             prior_curve=prior_curve,
+            years_to_maturity=years_to_maturity,
             market_value=market_value,
             curve_lookup=curve_lookup,
         )
@@ -423,28 +416,62 @@ def _duration_denominator_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any
     return eligible
 
 
+def _duration_excluded_rows(
+    rows: list[dict[str, Any]],
+    duration_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Rows removed from the duration denominator that still carry market value.
+
+    Mirrors ``risk_tensor._duration_excluded_rows``: disclosure covers only rows
+    with non-zero market value (missing maturity_date — engine flags them
+    ``duration_quality_flag=maturity_unavailable`` — matured-but-outstanding, or
+    non-positive modified duration); zero-MV rows contribute nothing either way.
+    """
+    duration_row_ids = {id(row) for row in duration_rows}
+    return [
+        row
+        for row in rows
+        if id(row) not in duration_row_ids and safe_decimal(row.get("market_value")) != ZERO
+    ]
+
+
 def build_krd_distribution(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Bucket-level duration summary for the curve-risk page.
 
-    ``avg_modified_duration`` is MV-weighted average modified duration in the
-    tenor bucket. It is **not** key-rate duration contribution (``krd.py``) and
-    **not** bucket ΣDV01 (``risk_tensor``). ``krd`` is retained as a deprecated
-    alias of the same value for one release of API/clients.
+    Rows without a usable duration (missing maturity_date — e.g. funds/ETFs the
+    engine tags ``duration_quality_flag=maturity_unavailable`` and lands in the
+    "6M" bucket via ``years_to_maturity=0`` — or matured-but-outstanding rows)
+    must not fabricate tenor-bucket rate exposure: per the
+    ``common.DURATION_UNAVAILABLE`` contract they are removed from the bucket
+    entirely (``market_value`` / ``avg_modified_duration``) and disclosed via
+    ``duration_excluded_market_value`` / ``duration_excluded_count``, following
+    the ``risk_tensor.duration_excluded_*`` pattern. ``dv01`` stays a whole-bucket
+    sum (excluded rows carry dv01=0 by construction).
+
+    ``avg_modified_duration`` is MV-weighted average modified duration over the
+    bucket's duration-denominator rows. It is **not** key-rate duration
+    contribution (``krd.py``) and **not** bucket ΣDV01 (``risk_tensor``).
+    ``krd`` is retained as a deprecated alias of the same value for one release
+    of API/clients.
     """
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
         grouped[str(row["tenor_bucket"])].append(row)
     out: list[dict[str, Any]] = []
     for tenor_bucket, bucket_rows in sorted(grouped.items()):
-        avg_modified_duration = _weighted(bucket_rows, "modified_duration")
+        duration_rows = _duration_denominator_rows(bucket_rows)
+        excluded_rows = _duration_excluded_rows(bucket_rows, duration_rows)
+        avg_modified_duration = _weighted(duration_rows, "modified_duration")
         out.append(
             {
                 "tenor_bucket": tenor_bucket,
-                "market_value": _sum(bucket_rows, "market_value"),
+                "market_value": _sum(duration_rows, "market_value"),
                 "dv01": _sum(bucket_rows, "dv01"),
                 "avg_modified_duration": avg_modified_duration,
                 # Deprecated alias — same value as avg_modified_duration.
                 "krd": avg_modified_duration,
+                "duration_excluded_market_value": _sum(excluded_rows, "market_value"),
+                "duration_excluded_count": len(excluded_rows),
             }
         )
     return out
@@ -455,20 +482,35 @@ def build_curve_scenarios(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def build_asset_class_risk_summary(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Asset-class allocation plus duration summary.
+
+    ``market_value`` / ``weight`` / ``dv01`` stay allocation facts over all rows
+    of the asset class (funds without maturity are genuinely part of the class).
+    ``duration`` is MV-weighted over duration-denominator rows only: rows
+    without a usable duration would otherwise dilute the average toward 0
+    (``common.DURATION_UNAVAILABLE`` is a marker, not an observed zero). They
+    are disclosed via ``duration_excluded_market_value`` / ``duration_excluded_count``.
+    """
     total_market_value = _sum(rows, "market_value")
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
         grouped[str(row["asset_class_std"])].append(row)
-    return [
-        {
-            "asset_class": asset_class,
-            "market_value": _sum(asset_rows, "market_value"),
-            "duration": _weighted(asset_rows, "macaulay_duration"),
-            "dv01": _sum(asset_rows, "dv01"),
-            "weight": _ratio(_sum(asset_rows, "market_value"), total_market_value),
-        }
-        for asset_class, asset_rows in sorted(grouped.items())
-    ]
+    out: list[dict[str, Any]] = []
+    for asset_class, asset_rows in sorted(grouped.items()):
+        duration_rows = _duration_denominator_rows(asset_rows)
+        excluded_rows = _duration_excluded_rows(asset_rows, duration_rows)
+        out.append(
+            {
+                "asset_class": asset_class,
+                "market_value": _sum(asset_rows, "market_value"),
+                "duration": _weighted(duration_rows, "macaulay_duration"),
+                "dv01": _sum(asset_rows, "dv01"),
+                "weight": _ratio(_sum(asset_rows, "market_value"), total_market_value),
+                "duration_excluded_market_value": _sum(excluded_rows, "market_value"),
+                "duration_excluded_count": len(excluded_rows),
+            }
+        )
+    return out
 
 
 def summarize_credit(
@@ -485,13 +527,20 @@ def summarize_credit(
         aaa_credit_curve_current=aaa_credit_curve_current,
         treasury_curve_current=treasury_curve_current,
     )
+    # Spread-duration is undefined for rows without a usable duration (missing
+    # maturity_date / matured-but-outstanding). Per the common.DURATION_UNAVAILABLE
+    # contract they leave the weighted denominator and are disclosed separately.
+    duration_rows = _duration_denominator_rows(rows)
+    excluded_rows = _duration_excluded_rows(rows, duration_rows)
     return {
         "total_market_value": total_market_value,
         "credit_bond_count": len(rows),
         "credit_market_value": credit_market_value,
         "credit_weight": _ratio(credit_market_value, total_market_value),
         "spread_dv01": _sum(rows, "spread_dv01"),
-        "weighted_avg_spread_duration": _weighted(rows, "modified_duration"),
+        "weighted_avg_spread_duration": _weighted(duration_rows, "modified_duration"),
+        "duration_excluded_market_value": _sum(excluded_rows, "market_value"),
+        "duration_excluded_count": len(excluded_rows),
         "weighted_avg_spread": weighted_avg_spread,
         "oci_credit_exposure": _sum([row for row in rows if str(row["accounting_class"]) == "OCI"], "market_value"),
         "oci_spread_dv01": _sum([row for row in rows if str(row["accounting_class"]) == "OCI"], "spread_dv01"),
@@ -730,33 +779,31 @@ def _convexity_effect(
     row: dict[str, Any],
     current_curve: dict[str, Decimal] | None,
     prior_curve: dict[str, Decimal] | None,
+    years_to_maturity: Decimal,
     market_value: Decimal,
     curve_lookup: _CurveRateLookup | None = None,
 ) -> Decimal:
+    """Second-order (convexity) term of the curve move.
+
+    Δy must be interpolated at the row's actual ``years_to_maturity`` — the
+    same lookup ``_curve_rate_effect`` uses for the first-order term. Reading
+    Δy off the ``tenor_bucket`` label instead (pre-2026-08 behaviour) gave the
+    first- and second-order terms of the same bond two different Δy inputs.
+    """
     convexity_val = safe_decimal(row.get("convexity"))
-    if not current_curve or not prior_curve or convexity_val == ZERO or market_value == ZERO:
+    if (
+        not current_curve
+        or not prior_curve
+        or years_to_maturity <= ZERO
+        or convexity_val == ZERO
+        or market_value == ZERO
+    ):
         return ZERO
-    tenor = str(row.get("tenor_bucket") or "")
     lookup = curve_lookup or _CurveRateLookup()
-    current_y = _interpolate_from_curve(current_curve, tenor, curve_lookup=lookup)
-    prior_y = _interpolate_from_curve(prior_curve, tenor, curve_lookup=lookup)
-    if current_y is None or prior_y is None:
-        return ZERO
+    current_y = _curve_rate(current_curve, years_to_maturity, curve_lookup=lookup)
+    prior_y = _curve_rate(prior_curve, years_to_maturity, curve_lookup=lookup)
     delta_y = (current_y - prior_y) / Decimal("100")
     return Decimal("0.5") * convexity_val * delta_y * delta_y * market_value
-
-
-def _interpolate_from_curve(
-    curve: dict[str, Decimal],
-    tenor_bucket: str,
-    *,
-    curve_lookup: _CurveRateLookup | None = None,
-) -> Decimal | None:
-    """Return the tenor-bucket rate from a curve after filling standard buckets."""
-    if not curve or not tenor_bucket:
-        return None
-    lookup = curve_lookup or _CurveRateLookup()
-    return lookup.tenor_rate(curve, tenor_bucket)
 
 
 def _spread_effect(
@@ -804,6 +851,13 @@ def _fx_effect(
     ``missing_fx_currency`` distinguishes "no FX exposure" (CNY-family rows,
     returns (0, None)) from "FX input missing" (non-CNY row without a usable
     current/prior rate, returns (0, currency_code) so callers can surface it).
+
+    The translation base is the native **dirty** value (``market_value_native``
+    + ``accrued_interest_native``), aligned with ``pnl_bridge._fx_exposure_native``
+    and ``docs/calc_rules.md`` ("FX translation base"): accrued coupon carries
+    the same FX exposure as the clean price. Rows that do not materialize
+    ``accrued_interest_native`` contribute 0 for that term (no behaviour change
+    until the column is populated upstream).
     """
     currency_code = str(row.get("currency_code") or "CNY").upper().strip()
     if currency_code in {"", "CNY", "CNX", "RMB"}:
@@ -812,10 +866,12 @@ def _fx_effect(
     prior_rate = safe_decimal((fx_rates_prior or {}).get(currency_code))
     if current_rate == ZERO or prior_rate == ZERO:
         return ZERO, currency_code
-    market_value_native = safe_decimal(row.get("market_value_native"))
-    if market_value_native == ZERO:
+    exposure_native = safe_decimal(row.get("market_value_native")) + safe_decimal(
+        row.get("accrued_interest_native")
+    )
+    if exposure_native == ZERO:
         return ZERO, None
-    return market_value_native * (current_rate - prior_rate), None
+    return exposure_native * (current_rate - prior_rate), None
 
 
 def _curve_rate(

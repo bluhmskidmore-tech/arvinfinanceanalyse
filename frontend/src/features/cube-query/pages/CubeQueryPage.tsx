@@ -24,6 +24,7 @@ import {
   PageHeader,
   PageStateSurface,
 } from "../../../components/page/PagePrimitives";
+import { tabularNumsStyle } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 
 import styles from "./CubeQueryPage.module.css";
@@ -58,10 +59,25 @@ const nextKey = () => `k${++seq}`;
 
 const EMPTY_STRINGS: string[] = [];
 
+/**
+ * 数值列固定两位小数（min=max）：此前 min 2/max 4 会让同一列出现
+ * 1,234.50 与 1,234.5678 混排，列内小数位漂移（DESIGN.md §3 对比性数字纪律）。
+ */
 const numberFmt = new Intl.NumberFormat("zh-CN", {
   minimumFractionDigits: 2,
-  maximumFractionDigits: 4,
+  maximumFractionDigits: 2,
 });
+
+/** 与 formatCellValue 同一数值判据：number 或可解析为数值的字符串（后端 Decimal 序列化形态）。 */
+function isNumericCellValue(value: unknown): boolean {
+  if (typeof value === "number") {
+    return Number.isFinite(value);
+  }
+  if (typeof value === "string" && value.trim() !== "" && /^-?\d/.test(value.trim())) {
+    return !Number.isNaN(Number(value));
+  }
+  return false;
+}
 
 function formatCellValue(value: unknown): string {
   if (value === null || value === undefined) {
@@ -336,6 +352,8 @@ export default function CubeQueryPage() {
   };
 
   const tableColumns: ColumnsType<Record<string, unknown>> = useMemo(() => {
+    /** 数值单元格统一等宽 + tabular-nums（DESIGN.md §3：所有对比性数字必须 tabular）。 */
+    const numericCellProps = () => ({ style: tabularNumsStyle });
     if (!lastResult?.rows?.length) {
       const keys = [
         ...(lastResult?.dimensions ?? selectedDimensions),
@@ -347,28 +365,41 @@ export default function CubeQueryPage() {
           dataIndex: m.agg === "count" ? "count" : m.field,
           key: `${m.agg}-${m.field}`,
           align: "right" as const,
+          onCell: numericCellProps,
           render: (v: unknown) => formatCellValue(v),
         }));
       }
-      return keys.map((k) => ({
-        title: String(k) === "count" ? "计数" : k,
-        dataIndex: k,
-        key: k,
-        align:
-          measureFields.includes(String(k)) || String(k) === "count"
-            ? ("right" as const)
-            : ("left" as const),
-        render: (v: unknown) => formatCellValue(v),
-      }));
+      return keys.map((k) => {
+        const numeric = measureFields.includes(String(k)) || String(k) === "count";
+        return {
+          title: String(k) === "count" ? "计数" : k,
+          dataIndex: k,
+          key: k,
+          align: numeric ? ("right" as const) : ("left" as const),
+          onCell: numeric ? numericCellProps : undefined,
+          render: (v: unknown) => formatCellValue(v),
+        };
+      });
     }
-    const sample = lastResult.rows[0]!;
-    return Object.keys(sample).map((key) => ({
-      title: key === "count" ? "计数" : key,
-      dataIndex: key,
-      key,
-      align: typeof sample[key] === "number" ? ("right" as const) : ("left" as const),
-      render: (v: unknown) => formatCellValue(v),
-    }));
+    const rows = lastResult.rows;
+    const measureKeys = new Set(lastResult.measures ?? []);
+    return Object.keys(rows[0]!).map((key) => {
+      // 列级对齐判据：度量/计数列恒为数值列；其余列扫全部行样本，任意一行是
+      // 数值（含字符串化 Decimal）即右对齐。此前只看首行，首行 null 或后端
+      // Decimal 字符串会让整列数值左对齐。
+      const numeric =
+        measureKeys.has(key) ||
+        key === "count" ||
+        rows.some((row) => isNumericCellValue(row[key]));
+      return {
+        title: key === "count" ? "计数" : key,
+        dataIndex: key,
+        key,
+        align: numeric ? ("right" as const) : ("left" as const),
+        onCell: numeric ? numericCellProps : undefined,
+        render: (v: unknown) => formatCellValue(v),
+      };
+    });
   }, [lastResult, selectedDimensions, measureRows, measureFields]);
 
   const onDrillValue = (dimension: string, value: string) => {

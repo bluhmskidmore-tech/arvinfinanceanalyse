@@ -461,6 +461,52 @@ def test_risk_tensor_history_envelope_returns_window_points(tmp_path, monkeypatc
     get_settings.cache_clear()
 
 
+def test_risk_tensor_history_envelope_does_not_mix_rule_versions(tmp_path, monkeypatch):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+    core_mod = load_module(
+        "backend.app.core_finance.risk_tensor",
+        "backend/app/core_finance/risk_tensor.py",
+    )
+    repo = service_mod.RiskTensorRepository(str(duckdb_path))
+    for prior_date in ("2026-01-31", "2026-02-28"):
+        _replace_test_risk_tensor_row(
+            repo=repo,
+            core_mod=core_mod,
+            report_date=prior_date,
+            source_version=f"sv_{prior_date}",
+            upstream_source_version=f"sv_upstream_{prior_date}",
+        )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_formal_risk_tensor_daily
+            set rule_version = ?, cache_version = ?
+            where cast(report_date as varchar) = ?
+            """,
+            ["rv_risk_tensor_formal_materialize_v5", "cv_risk_tensor_formal__v5", "2026-02-28"],
+        )
+    finally:
+        conn.close()
+
+    payload = service_mod.risk_tensor_history_envelope(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        report_date=REPORT_DATE,
+        periods=24,
+    )
+
+    assert payload["result_meta"]["rule_version"] == "rv_risk_tensor_formal_materialize_v6"
+    assert [point["report_date"] for point in payload["result"]["points"]] == ["2026-01-31", REPORT_DATE]
+    assert payload["result_meta"]["evidence_rows"] == 2
+    get_settings.cache_clear()
+
+
 def test_formal_risk_tensor_excludes_unapproved_derivatives_even_when_prior_exists(tmp_path, monkeypatch):
     duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
     core_mod = load_module(

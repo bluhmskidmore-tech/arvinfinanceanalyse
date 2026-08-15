@@ -318,6 +318,26 @@ def test_resolve_period_mom_ytd_ttm(
 
 
 @pytest.mark.parametrize(
+    ("period_type", "start_expect"),
+    [
+        # 闰日报告日：上一年 2/29 不存在，回退到目标月最后一天（2/28），
+        # 不得抛 ValueError（修复前当天全部 TTM 视图 500）。
+        ("TTM", date(2027, 2, 28)),
+        ("YTD", date(2028, 1, 1)),
+        ("MoM", date(2028, 2, 1)),
+    ],
+)
+def test_resolve_period_on_leap_day_does_not_raise(
+    period_type: str,
+    start_expect: date,
+) -> None:
+    leap_day = date(2028, 2, 29)
+    start, end = common.resolve_period(leap_day, period_type)
+    assert start == start_expect
+    assert end == leap_day
+
+
+@pytest.mark.parametrize(
     ("years", "bucket"),
     [
         (0.25, "6M"),
@@ -488,6 +508,52 @@ def test_convexity_effect_without_curve_data_is_zero() -> None:
     assert summary["bond_details"][0]["convexity_effect"] == Decimal("0")
 
 
+def test_convexity_effect_uses_same_delta_y_as_rate_effect() -> None:
+    """一阶（rate_effect）与二阶（convexity_effect）必须用同一套 Δy。
+
+    行的实际剩余年限 2 年，tenor_bucket 故意标成 "10Y"：曲线在 2Y 处
+    下移 50bp、10Y 处不变。修复前 convexity_effect 按 tenor_bucket 标签取
+    Δy=0 而 rate_effect 按 years_to_maturity 插值取 Δy=50bp——同一只债的
+    一阶/二阶项吃两套 Δy。修复后两者同源（years_to_maturity 插值）。
+    """
+    rm = _read_models_module()
+    current_curve = {"1Y": Decimal("3.0"), "2Y": Decimal("3.0"), "10Y": Decimal("3.0")}
+    prior_curve = {"1Y": Decimal("2.5"), "2Y": Decimal("2.5"), "10Y": Decimal("3.0")}
+    summary = rm.summarize_return_decomposition(
+        [
+            {
+                "instrument_code": "B1",
+                "instrument_name": "Treasury 2Y",
+                "asset_class_raw": "利率债",
+                "asset_class_std": "rate",
+                "bond_type": "国债",
+                "accounting_class": "AC",
+                "face_value": Decimal("100"),
+                "market_value": Decimal("1000"),
+                "coupon_rate": Decimal("0"),
+                "years_to_maturity": Decimal("2"),
+                "tenor_bucket": "10Y",
+                "modified_duration": Decimal("4"),
+                "convexity": Decimal("8"),
+            }
+        ],
+        period_start=date(2026, 3, 1),
+        period_end=date(2026, 3, 31),
+        treasury_curve_current=current_curve,
+        treasury_curve_prior=prior_curve,
+    )
+
+    delta_y = (
+        rm._curve_rate(current_curve, Decimal("2")) - rm._curve_rate(prior_curve, Decimal("2"))
+    ) / Decimal("100")
+    detail = summary["bond_details"][0]
+    # 同一 Δy 同时驱动一阶与二阶项。
+    assert detail["rate_effect"] == -(delta_y * Decimal("4") * Decimal("1000"))
+    assert detail["convexity_effect"] == Decimal("0.5") * Decimal("8") * delta_y * delta_y * Decimal("1000")
+    # 旧实现按 "10Y" 标签取 Δy=0，凸性项恒为 0；修复后必须非零。
+    assert detail["convexity_effect"] > Decimal("0")
+
+
 def test_fx_effect_zero_for_cny_bonds() -> None:
     summary = _read_models_module().summarize_return_decomposition(
         [
@@ -547,6 +613,46 @@ def test_fx_effect_positive_when_usd_appreciates() -> None:
 
     assert summary["fx_effect_total"] == Decimal("41.35000000")
     assert summary["bond_details"][0]["fx_effect"] == Decimal("41.35000000")
+
+
+def test_fx_effect_base_includes_native_accrued_interest() -> None:
+    """FX 折算基数是原币脏价（market_value_native + accrued_interest_native）。
+
+    与 ``pnl_bridge._fx_exposure_native`` 及 ``docs/calc_rules.md`` 的
+    「FX translation base」对齐：应计票息与净价承担同样的汇率敞口。
+    修复前 read_models 只用净市值，同一持仓在桥接与收益分解两条路径上
+    拿到两个不同的 fx_effect。
+    """
+    summary = _read_models_module().summarize_return_decomposition(
+        [
+            {
+                "instrument_code": "B1",
+                "instrument_name": "USD Credit 5Y",
+                "asset_class_raw": "信用债",
+                "asset_class_std": "credit",
+                "bond_type": "企业债",
+                "accounting_class": "OCI",
+                "currency_code": "USD",
+                "face_value": Decimal("1000"),
+                "market_value_native": Decimal("1000"),
+                "accrued_interest_native": Decimal("100"),
+                "market_value": Decimal("7082.70000000"),
+                "coupon_rate": Decimal("0"),
+                "years_to_maturity": Decimal("5"),
+                "tenor_bucket": "5Y",
+                "modified_duration": Decimal("4"),
+                "convexity": Decimal("2"),
+            }
+        ],
+        period_start=date(2026, 3, 1),
+        period_end=date(2026, 3, 31),
+        fx_rates_current={"USD": Decimal("7.0827")},
+        fx_rates_prior={"USD": Decimal("7.04135")},
+    )
+
+    # (1000 + 100) × (7.0827 − 7.04135) = 1100 × 0.04135
+    assert summary["fx_effect_total"] == Decimal("45.4850")
+    assert summary["bond_details"][0]["fx_effect"] == Decimal("45.4850")
 
 
 def test_fx_effect_missing_rate_emits_fx_rate_missing_warning() -> None:

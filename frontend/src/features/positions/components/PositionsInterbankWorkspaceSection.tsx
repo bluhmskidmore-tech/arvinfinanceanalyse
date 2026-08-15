@@ -18,6 +18,12 @@ const DIRECTION_OPTIONS: { value: InterbankDirectionFilter; label: string }[] = 
   { value: "Liability", label: "负债" },
 ];
 
+/** 明细「方向」列后端枚举中文化；未登记枚举原样透出（证据引用不猜译）。 */
+const DIRECTION_CELL_LABELS: Record<string, string> = {
+  Asset: "拆出(资产)",
+  Liability: "拆入(负债)",
+};
+
 type InterbankListRow = InterbankPositionItem & { key: string };
 
 const INTERBANK_LIST_COLUMNS: TableColumnsType<InterbankListRow> = [
@@ -29,7 +35,11 @@ const INTERBANK_LIST_COLUMNS: TableColumnsType<InterbankListRow> = [
     render: (v: string | null) => v || EM_DASH,
   },
   { title: "产品类型", dataIndex: "product_type", render: (v: string | null) => v || EM_DASH },
-  { title: "方向", dataIndex: "direction", render: (v: string | null) => v || EM_DASH },
+  {
+    title: "方向",
+    dataIndex: "direction",
+    render: (v: string | null) => (v ? DIRECTION_CELL_LABELS[v] ?? v : EM_DASH),
+  },
   {
     title: "金额(亿元)",
     dataIndex: "amount",
@@ -124,6 +134,8 @@ export default function PositionsInterbankWorkspaceSection({
             onChange={(next: string) =>
               onProductTypeChange(next === ALL_INTERBANK_PRODUCT ? "" : next)
             }
+            /* 弹层挂页内容器防 portal 主题逃逸（bond-dashboard 同配方）。 */
+            getPopupContainer={(t) => t.parentElement ?? document.body}
           />
         </label>
         <label className="positions-view__field">
@@ -134,6 +146,7 @@ export default function PositionsInterbankWorkspaceSection({
             value={direction}
             options={DIRECTION_OPTIONS}
             onChange={(v) => onDirectionChange(v as InterbankDirectionFilter)}
+            getPopupContainer={(t) => t.parentElement ?? document.body}
           />
         </label>
       </div>

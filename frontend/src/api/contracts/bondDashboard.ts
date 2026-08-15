@@ -204,6 +204,11 @@ export type RiskIndicatorsPayload = {
   weighted_convexity: Numeric;
   total_spread_dv01: Numeric;
   reinvestment_ratio_1y: Numeric;
+  /**
+   * 凸性覆盖率（承载凸性字段的市值占比，0-1 比率）：解释加权凸性口径的质量披露。
+   * 2026-08-13 后端补出（此前 repo 已算未进 API）；标可选以兼容旧信封与既有测试夹具。
+   */
+  weighted_convexity_coverage_ratio?: Numeric;
 };
 
 export type BondDashboardHomeSummaryPayload = {
@@ -331,6 +336,12 @@ export type BondBusinessTypeMetricItem = {
   weighted_avg_ytm_pct: string;
   weighted_avg_duration: string;
   duration_source: string;
+  /**
+   * 加权指标覆盖率（承载该字段的市值占比，0-1 比率）：该组市值合计为零时为 null。
+   * 2026-08-13 后端补出（此前 repo 已算未进 API）；标可选以兼容旧信封与既有测试夹具。
+   */
+  weighted_avg_ytm_coverage_ratio?: Numeric | null;
+  weighted_avg_duration_coverage_ratio?: Numeric | null;
 };
 
 export type BondBusinessTypeMetricsResult = {

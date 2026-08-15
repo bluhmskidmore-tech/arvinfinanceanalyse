@@ -56,6 +56,7 @@ function InterbankSidePanel({
   emptyLabel,
   sourceCount,
   loading,
+  isError,
   rows,
 }: {
   tone: "asset" | "liability";
@@ -68,6 +69,7 @@ function InterbankSidePanel({
   emptyLabel: string;
   sourceCount: number;
   loading: boolean;
+  isError: boolean;
   rows: CounterpartyRow[];
 }) {
   const valueClass = `positions-view__side-value positions-view__side-value--${tone}`;
@@ -87,7 +89,12 @@ function InterbankSidePanel({
       </div>
       <div className="positions-interbank__side-metrics">
         <div className="positions-view__side-metric">
-          <span className="positions-view__quality-label">区间累计</span>
+          <span
+            className="positions-view__quality-label"
+            title="区间内逐日余额加总（余额×天数量纲）"
+          >
+            区间累计
+          </span>
           <span className={valueClass}>{formatAmountYi(totalAmount)}</span>
         </div>
         <div className="positions-view__side-metric">
@@ -103,6 +110,9 @@ function InterbankSidePanel({
         <div className="positions-view__table-state positions-view__table-state--loading">
           <Spin />
         </div>
+      ) : isError ? (
+        /* 读取失败是错误态不是空态：与分区头「读取失败」一致，不画空态框。 */
+        <p className="positions-view__table-state">读取失败，请稍后重试</p>
       ) : rows.length > 0 ? (
         <Table
           size="small"
@@ -128,11 +138,13 @@ function InterbankSidePanel({
 export default function PositionsInterbankSplitSection({
   split,
   loading,
+  isError = false,
   searchText,
   onSearchTextChange,
 }: {
   split: InterbankCounterpartySplitResponse | undefined;
   loading: boolean;
+  isError?: boolean;
   searchText: string;
   onSearchTextChange: (next: string) => void;
 }) {
@@ -167,6 +179,7 @@ export default function PositionsInterbankSplitSection({
           emptyLabel="暂无资产端数据"
           sourceCount={split?.asset_items.length ?? 0}
           loading={loading}
+          isError={isError}
           rows={assetRows}
         />
         <InterbankSidePanel
@@ -180,6 +193,7 @@ export default function PositionsInterbankSplitSection({
           emptyLabel="暂无负债端数据"
           sourceCount={split?.liability_items.length ?? 0}
           loading={loading}
+          isError={isError}
           rows={liabilityRows}
         />
       </div>

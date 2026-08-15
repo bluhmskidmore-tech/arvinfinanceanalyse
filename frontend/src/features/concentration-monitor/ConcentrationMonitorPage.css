@@ -102,6 +102,7 @@
   font-family: var(--moss-font-mono);
   font-size: 12px;
   font-weight: 650;
+  overflow-wrap: anywhere;
 }
 
 .concentration-monitor-page__contract-grid {
@@ -113,10 +114,26 @@
   line-height: 1.6;
 }
 
+/* 候选指标披露值列含长 token（result_kind / 表名等），任意断行防截断粘连。 */
+.concentration-monitor-page__contract-grid span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .concentration-monitor-page__summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 16px;
+}
+
+/* KPI 包装层：口径字段收进 title；卡片填满网格单元保持同排等高。 */
+.concentration-monitor-page__kpi-cell {
+  display: grid;
+  min-width: 0;
+}
+
+.concentration-monitor-page__kpi-cell .kpi-card {
+  height: 100%;
 }
 
 .concentration-monitor-page__block-title {
@@ -190,6 +207,20 @@
 }
 
 .concentration-monitor-page__limit-status[data-missing="true"] {
+  color: var(--ib-ink-secondary);
+}
+
+/* 限额使用率：≥100% 红、>80% 琥珀（与 limitTone 阈值一致）。 */
+.concentration-monitor-page__limit-usage[data-tone="breach"] {
+  color: var(--ib-down);
+  font-weight: 600;
+}
+
+.concentration-monitor-page__limit-usage[data-tone="near"] {
+  color: var(--ib-warn);
+}
+
+.concentration-monitor-page__limit-usage[data-missing="true"] {
   color: var(--ib-ink-secondary);
 }
 

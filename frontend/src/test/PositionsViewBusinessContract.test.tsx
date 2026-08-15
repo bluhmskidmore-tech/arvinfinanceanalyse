@@ -192,6 +192,7 @@ describe("PositionsView business contract", () => {
     // 行内逐格断言：市值元→亿元裸数（150,000,000 元 = 1.50）；
     // 收益率小数→百分比，half-up 舍入（0.03125 → 3.13%）。
     const cells = Array.from(row!.querySelectorAll("td")).map((td) => td.textContent);
+    // 估值净价 8 位原始精度收敛 4 位展示（原值收进单元格 title）。
     expect(cells).toEqual([
       "UNIT-001",
       "契约测试主体",
@@ -199,10 +200,14 @@ describe("PositionsView business contract", () => {
       "HTM",
       "1.50",
       "1.00",
-      "100.00000000",
+      "100.0000",
       "3.13%",
       "打开",
     ]);
+    const netPriceCell = Array.from(row!.querySelectorAll("td [title]")).find(
+      (el) => el.getAttribute("title") === "100.00000000",
+    );
+    expect(netPriceCell).toBeDefined();
 
     // KPI 横带与列表使用同一套单位换算（区间累计 / 日均 / 加权收益率 / 加权付息率 / 客户数）
     const kpiBand = screen.getByTestId("positions-kpi-band");
@@ -257,7 +262,7 @@ describe("PositionsView business contract", () => {
       "HTM",
       "0.00",
       "1.00",
-      "0.00000000",
+      "0.0000",
       "0.00%",
       "打开",
     ]);

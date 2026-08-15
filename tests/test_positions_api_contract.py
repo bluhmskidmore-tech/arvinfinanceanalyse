@@ -172,6 +172,8 @@ def _insert_tyw(
 
 
 def _seed_positions_db(path: Path) -> None:
+    # zqtz 快照的 ytm_value / coupon_rate 落库为百分数口径（3.0 = 3%），与
+    # rate_units.normalize_percent_rate_to_decimal 的取证裁决一致。
     conn = duckdb.connect(str(path), read_only=False)
     try:
         _ensure_tables(conn)
@@ -184,8 +186,8 @@ def _seed_positions_db(path: Path) -> None:
             bond_type="GOV",
             issuer_name="发行人甲",
             market_value=Decimal("100"),
-            ytm=Decimal("0.03"),
-            coupon=Decimal("0.025"),
+            ytm=Decimal("3.0"),
+            coupon=Decimal("2.5"),
             is_issuance_like=False,
         )
         _insert_zqtz(
@@ -195,8 +197,8 @@ def _seed_positions_db(path: Path) -> None:
             bond_type="GOV",
             issuer_name="发行人甲",
             market_value=Decimal("120"),
-            ytm=Decimal("0.031"),
-            coupon=Decimal("0.025"),
+            ytm=Decimal("3.1"),
+            coupon=Decimal("2.5"),
             is_issuance_like=False,
         )
         _insert_zqtz(
@@ -206,8 +208,8 @@ def _seed_positions_db(path: Path) -> None:
             bond_type="CREDIT",
             issuer_name="发行人乙",
             market_value=Decimal("200"),
-            ytm=Decimal("0.04"),
-            coupon=Decimal("0.035"),
+            ytm=Decimal("4.0"),
+            coupon=Decimal("3.5"),
             is_issuance_like=True,
         )
         _insert_zqtz(
@@ -217,8 +219,8 @@ def _seed_positions_db(path: Path) -> None:
             bond_type="CREDIT",
             issuer_name="发行人乙",
             market_value=Decimal("50"),
-            ytm=Decimal("0.045"),
-            coupon=Decimal("0.04"),
+            ytm=Decimal("4.5"),
+            coupon=Decimal("4.0"),
             is_issuance_like=False,
         )
         _insert_tyw(
@@ -252,7 +254,13 @@ def _assert_envelope(payload: dict[str, Any], *, result_kind: str) -> None:
     for key in ("trace_id", "basis", "source_version", "rule_version", "cache_version", "result_kind"):
         assert key in meta, f"result_meta missing {key!r}"
         assert meta[key] not in (None, ""), f"result_meta.{key} must be non-empty"
-    assert meta["basis"] == "formal"
+    # 快照聚合面无正式化批准记录（docs/metric_dictionary.md：positions 仅
+    # MTR-POS-001/002 candidate，"列表与统计 DTO 未升为 MTR-*"，GAP-POS-LIST 开放），
+    # 与列表端点一致锁定 analytical 候选语义。
+    assert meta["basis"] == "analytical"
+    assert meta["formal_use_allowed"] is False
+    assert meta["scenario_flag"] is False
+    assert meta["quality_flag"] == "warning"
     assert meta["result_kind"] == result_kind
 
 
@@ -592,7 +600,8 @@ def test_positions_stats_rating_industry_customer(tmp_path, monkeypatch) -> None
         params={"customer_name": "发行人乙", "report_date": "2026-01-10"},
     )
     assert det.status_code == 200
-    assert det.json()["result"]["bond_count"] == 2
+    # B002 是发行腿（is_issuance_like），与聚合口径一致地从资产对手方钻取中排除。
+    assert det.json()["result"]["bond_count"] == 1
 
     tr = client.get(
         "/api/positions/customer/trend",
@@ -855,8 +864,8 @@ def test_positions_bond_weighted_rates_exclude_missing_rate_denominator(
             bond_type="Gov",
             issuer_name="Issuer-Gov",
             market_value=Decimal("100"),
-            ytm=Decimal("0.03"),
-            coupon=Decimal("0.04"),
+            ytm=Decimal("3.0"),
+            coupon=Decimal("4.0"),
             is_issuance_like=False,
         )
         _insert_zqtz(
@@ -979,6 +988,115 @@ def test_positions_interbank_rates_treat_low_values_as_percent(tmp_path, monkeyp
     split_result = ib_split_response.json()["result"]
     assert split_result["asset_total_weighted_rate"] == "0.00800000"
     assert split_result["liability_total_weighted_rate"] == "0.00720000"
+
+
+def test_positions_bond_rates_low_percent_not_passthrough_and_dirty_values_rejected(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """百分数口径无条件 /100：0.5（=0.5%）→ 0.005；>20% 与负值按脏数据置空并从加权分母剔除。
+
+    旧 `>1 and <=100` 启发式会把 0.5 当作小数 50% 直通，使低票息券按百倍计入
+    加权收益率；权威口径见 rate_units.normalize_percent_rate_to_decimal。
+    """
+    db = tmp_path / "pos-low-percent-rate.duckdb"
+    conn = duckdb.connect(str(db), read_only=False)
+    try:
+        _ensure_tables(conn)
+        _insert_zqtz(
+            conn,
+            report_date="2026-01-10",
+            instrument_code="LOW-PCT",
+            bond_type="Conv",
+            issuer_name="Issuer-Conv",
+            market_value=Decimal("100"),
+            ytm=Decimal("0.5"),
+            coupon=Decimal("0.2"),
+            is_issuance_like=False,
+        )
+        _insert_zqtz(
+            conn,
+            report_date="2026-01-10",
+            instrument_code="DIRTY-HIGH",
+            bond_type="Conv",
+            issuer_name="Issuer-Conv",
+            market_value=Decimal("100"),
+            ytm=Decimal("20720.93"),
+            coupon=Decimal("25.0"),
+            is_issuance_like=False,
+        )
+        _insert_zqtz(
+            conn,
+            report_date="2026-01-10",
+            instrument_code="DIRTY-NEG",
+            bond_type="Conv",
+            issuer_name="Issuer-Conv",
+            market_value=Decimal("100"),
+            ytm=Decimal("-3.0"),
+            coupon=Decimal("-1.0"),
+            is_issuance_like=False,
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
+    client = _authorized_positions_client(tmp_path, monkeypatch)
+
+    bond_response = client.get(
+        "/api/positions/bonds",
+        params={"report_date": "2026-01-10", "sub_type": "Conv", "page": 1, "page_size": 10},
+    )
+    assert bond_response.status_code == 200
+    items = {item["bond_code"]: item for item in bond_response.json()["result"]["items"]}
+    assert items["LOW-PCT"]["yield_rate"] == "0.00500000"
+    assert items["DIRTY-HIGH"]["yield_rate"] is None
+    assert items["DIRTY-NEG"]["yield_rate"] is None
+
+    counterparty_response = client.get(
+        "/api/positions/counterparty/bonds",
+        params={
+            "start_date": "2026-01-10",
+            "end_date": "2026-01-10",
+            "sub_type": "Conv",
+            "top_n": 10,
+            "page": 1,
+            "page_size": 10,
+        },
+    )
+    assert counterparty_response.status_code == 200
+    counterparty_body = counterparty_response.json()["result"]
+    assert counterparty_body["total_weighted_rate"] == "0.00500000"
+    assert counterparty_body["total_weighted_coupon_rate"] == "0.00200000"
+    assert counterparty_body["ytm_rate_coverage"]["covered_amount"] == "100.00000000"
+    assert counterparty_body["ytm_rate_coverage"]["missing_amount"] == "200.00000000"
+    assert counterparty_body["ytm_rate_coverage"]["missing_count"] == 2
+    assert counterparty_body["coupon_rate_coverage"]["missing_count"] == 2
+
+
+def test_positions_customer_drilldowns_exclude_issuance_like_rows(tmp_path, monkeypatch) -> None:
+    """customer/details 与 customer/trend 与聚合口径一致：发行腿属负债口径不计入资产对手方。"""
+    db = tmp_path / "pos.duckdb"
+    _seed_positions_db(db)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
+    client = _authorized_positions_client(tmp_path, monkeypatch)
+
+    details = client.get(
+        "/api/positions/customer/details",
+        params={"customer_name": "发行人乙", "report_date": "2026-01-10"},
+    )
+    assert details.status_code == 200
+    details_body = details.json()["result"]
+    assert details_body["bond_count"] == 1
+    assert details_body["items"][0]["bond_code"] == "B003"
+    assert details_body["total_market_value"] == "50.00000000"
+
+    trend = client.get(
+        "/api/positions/customer/trend",
+        params={"customer_name": "发行人乙", "end_date": "2026-01-10", "days": 5},
+    )
+    assert trend.status_code == 200
+    trend_items = trend.json()["result"]["items"]
+    assert trend_items == [{"date": "2026-01-10", "balance": "50.00000000"}]
 
 
 def test_positions_optional_report_date_routes_fall_back_to_latest_snapshot_date(tmp_path, monkeypatch) -> None:

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
@@ -28,6 +29,20 @@ def _strip_volatile_envelope_fields(envelope: dict) -> dict:
         meta.pop("trace_id", None)
         meta.pop("generated_at", None)
     return out
+
+
+def _live_bond_dashboard_service():
+    """Return the bond_dashboard_service module fresh routes and patches must share.
+
+    ``tests.helpers.load_module`` replaces ``sys.modules`` entries without
+    refreshing parent package attributes, so ``import backend.app.services.
+    bond_dashboard_service as service_mod`` can return a stale module object while
+    a freshly built app resolves the current one; patches on the stale module (or
+    on a class the stale module no longer binds) would then silently miss.
+    """
+    import backend.app.services.bond_dashboard_service  # noqa: F401
+
+    return sys.modules["backend.app.services.bond_dashboard_service"]
 
 
 def _bond_dashboard_client_with_bundle_scopes(tmp_path, monkeypatch) -> TestClient:
@@ -111,7 +126,9 @@ def test_bond_dashboard_bundle_matches_individual_section_envelopes(tmp_path, mo
 
     client = _bond_dashboard_client_with_read_scope(tmp_path, monkeypatch)
     requested_sections = [
+        "dates",
         "headline-kpis",
+        "home-summary",
         "risk-indicators",
         "yield-distribution",
         "portfolio-comparison",
@@ -121,6 +138,8 @@ def test_bond_dashboard_bundle_matches_individual_section_envelopes(tmp_path, mo
         "business-type-metrics",
         "asset-structure",
         "asset-structure-rating",
+        "asset-structure-portfolio-name",
+        "asset-structure-tenor-bucket",
     ]
     bundle_response = client.get(
         "/api/bond-dashboard/bundle",
@@ -144,9 +163,16 @@ def test_bond_dashboard_bundle_matches_individual_section_envelopes(tmp_path, mo
     assert bundle_result["report_date"] == REPORT_DATE
     assert bundle_result["requested_sections"] == requested_sections
     assert set(bundle_result["sections"]) == set(requested_sections)
+    assert bundle_result["failed_sections"] == []
+    assert {
+        section: envelope["result_meta"]["quality_flag"]
+        for section, envelope in bundle_result["sections"].items()
+    } == {section: "ok" for section in requested_sections}
 
     single_endpoints = {
+        "dates": ("/api/bond-dashboard/dates", {}),
         "headline-kpis": ("/api/bond-dashboard/headline-kpis", {"report_date": REPORT_DATE}),
+        "home-summary": ("/api/bond-dashboard/home-summary", {"report_date": REPORT_DATE}),
         "risk-indicators": ("/api/bond-dashboard/risk-indicators", {"report_date": REPORT_DATE}),
         "yield-distribution": ("/api/bond-dashboard/yield-distribution", {"report_date": REPORT_DATE}),
         "portfolio-comparison": ("/api/bond-dashboard/portfolio-comparison", {"report_date": REPORT_DATE}),
@@ -168,6 +194,14 @@ def test_bond_dashboard_bundle_matches_individual_section_envelopes(tmp_path, mo
             "/api/bond-dashboard/asset-structure",
             {"report_date": REPORT_DATE, "group_by": "rating"},
         ),
+        "asset-structure-portfolio-name": (
+            "/api/bond-dashboard/asset-structure",
+            {"report_date": REPORT_DATE, "group_by": "portfolio_name"},
+        ),
+        "asset-structure-tenor-bucket": (
+            "/api/bond-dashboard/asset-structure",
+            {"report_date": REPORT_DATE, "group_by": "tenor_bucket"},
+        ),
     }
 
     for section, (path, params) in single_endpoints.items():
@@ -180,9 +214,62 @@ def test_bond_dashboard_bundle_matches_individual_section_envelopes(tmp_path, mo
     get_settings.cache_clear()
 
 
+def test_bond_dashboard_bundle_page_sections_warn_on_empty_facts(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "dash-bundle-empty.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+
+    client = _bond_dashboard_client_with_read_scope(tmp_path, monkeypatch)
+    requested_sections = [
+        "dates",
+        "headline-kpis",
+        "home-summary",
+        "risk-indicators",
+        "asset-structure",
+        "asset-structure-rating",
+        "asset-structure-portfolio-name",
+        "asset-structure-tenor-bucket",
+        "yield-distribution",
+        "portfolio-comparison",
+        "spread-analysis",
+        "maturity-structure",
+        "industry-distribution",
+        "business-type-metrics",
+    ]
+    response = client.get(
+        "/api/bond-dashboard/bundle",
+        params={
+            "report_date": REPORT_DATE,
+            "sections": ",".join(requested_sections),
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    result = payload["result"]
+    assert result["failed_sections"] == []
+    assert set(result["sections"]) == set(requested_sections)
+    assert {
+        section: envelope["result_meta"]["quality_flag"]
+        for section, envelope in result["sections"].items()
+    } == {section: "warning" for section in requested_sections}
+    assert {
+        section: status["status"]
+        for section, status in result["section_statuses"].items()
+    } == {section: "ok" for section in requested_sections}
+    risk_result = result["sections"]["risk-indicators"]["result"]
+    assert risk_result["weighted_convexity"]["raw"] is None
+    assert risk_result["weighted_convexity_coverage_ratio"]["raw"] == 0
+    assert result["sections"]["business-type-metrics"]["result"]["items"] == []
+    get_settings.cache_clear()
+
+
 def test_bond_dashboard_bundle_reuses_headline_snapshot_for_yield_distribution(tmp_path, monkeypatch) -> None:
     from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
-    import backend.app.services.bond_dashboard_service as service_mod
+
+    service_mod = _live_bond_dashboard_service()
 
     duckdb_path = tmp_path / "dash-bundle-shared-headline.duckdb"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -215,7 +302,10 @@ def test_bond_dashboard_bundle_reuses_headline_snapshot_for_yield_distribution(t
     ]
     _replace_bond_dashboard_rows(repo, report_date=REPORT_DATE, rows=rows)
 
-    original_fetch = BondAnalyticsRepository.fetch_dashboard_headline_kpis
+    # Count fetches on the repository class the service module actually binds;
+    # the class imported at the top of this test can be a forked instance after
+    # tests.helpers.load_module replaced bond_analytics_repo in sys.modules.
+    original_fetch = service_mod.BondAnalyticsRepository.fetch_dashboard_headline_kpis
     calls = 0
 
     def counting_fetch(self, *args, **kwargs):
@@ -223,7 +313,11 @@ def test_bond_dashboard_bundle_reuses_headline_snapshot_for_yield_distribution(t
         calls += 1
         return original_fetch(self, *args, **kwargs)
 
-    monkeypatch.setattr(BondAnalyticsRepository, "fetch_dashboard_headline_kpis", counting_fetch)
+    monkeypatch.setattr(
+        service_mod.BondAnalyticsRepository,
+        "fetch_dashboard_headline_kpis",
+        counting_fetch,
+    )
 
     payload = service_mod.get_bond_dashboard_bundle(
         sections=["headline-kpis", "yield-distribution"],
@@ -272,6 +366,7 @@ def test_bond_dashboard_bundle_includes_cockpit_analytics_sections(tmp_path, mon
     requested_sections = [
         "top-holdings",
         "portfolio-headlines",
+        "dv01-risk",
         "dv01-risk-ac",
         "dv01-risk-oci",
         "dv01-risk-tpl",
@@ -304,6 +399,7 @@ def test_bond_dashboard_bundle_includes_cockpit_analytics_sections(tmp_path, mon
     )
     assert result["sections"]["top-holdings"]["result"]["top_n"] == 5
     assert result["sections"]["portfolio-headlines"]["result_meta"]["result_kind"] == "bond_analytics.portfolio_headlines"
+    assert result["sections"]["dv01-risk"]["result"]["accounting_class"] == "all"
     assert result["sections"]["dv01-risk-ac"]["result"]["accounting_class"] == "AC"
     assert result["sections"]["dv01-risk-all"]["result"]["accounting_class"] == "all"
     assert (
@@ -315,7 +411,8 @@ def test_bond_dashboard_bundle_includes_cockpit_analytics_sections(tmp_path, mon
 
 def test_bond_dashboard_bundle_isolates_section_failure(tmp_path, monkeypatch) -> None:
     from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
-    import backend.app.services.bond_dashboard_service as service_mod
+
+    service_mod = _live_bond_dashboard_service()
 
     duckdb_path = tmp_path / "dash-bundle-isolation.duckdb"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -400,7 +497,12 @@ def test_bond_dashboard_bundle_dates_only_without_report_date(tmp_path, monkeypa
     bundle_payload = bundle_response.json()
     assert bundle_payload["result_meta"]["result_kind"] == "bond_dashboard.bundle"
     assert bundle_payload["result_meta"]["basis"] == "formal"
+    assert bundle_payload["result_meta"]["quality_flag"] == "warning"
     assert bundle_payload["result"]["report_date"] is None
+    assert (
+        bundle_payload["result"]["sections"]["dates"]["result_meta"]["quality_flag"]
+        == "warning"
+    )
     assert _strip_volatile_envelope_fields(bundle_payload["result"]["sections"]["dates"]) == _strip_volatile_envelope_fields(
         dates_response.json()
     )

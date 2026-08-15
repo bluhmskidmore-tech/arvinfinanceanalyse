@@ -23,7 +23,7 @@ export function MarketCandidateActions({ rows }: MarketCandidateActionsProps) {
   return (
     <section className="cross-asset-candidate-actions" data-testid="cross-asset-candidate-actions">
       <div className="cross-asset-candidate-actions__header">
-        <span>Action Queue</span>
+        <span>行动队列</span>
         <strong>市场候选动作</strong>
         <em>只保留可执行的讨论、配置与风控线索。</em>
       </div>

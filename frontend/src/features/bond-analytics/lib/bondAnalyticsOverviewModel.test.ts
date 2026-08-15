@@ -110,7 +110,7 @@ describe("buildBondAnalyticsOverviewModel", () => {
     );
     expect(
       model.truthStrip.items.find((item) => item.key === "freshness")?.value,
-    ).toBe("2026-04-10 00:00");
+    ).toBe("2026-04-10 00:00 UTC");
     expect(
       model.truthStrip.items.find((item) => item.key === "quality")?.value,
     ).toBe("正常");

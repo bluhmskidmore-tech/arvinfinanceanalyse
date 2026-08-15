@@ -380,7 +380,8 @@
   display: grid;
   align-content: start;
   grid-auto-rows: max-content;
-  gap: 12px;
+  /* 页级区块缝统一 tokens（--moss-space-3 = 12px，首页同档）。 */
+  gap: var(--moss-space-3);
   /* 参照首页（dashboardHomeOptionTwo .layout）：满幅平底，不再使用 1178px 工作纸容器。 */
   width: 100%;
   min-height: calc(100vh - 48px);
@@ -410,6 +411,31 @@
 .bondWorkbenchPage [data-testid="bond-analysis-market-ticker"],
 .bondWorkbenchPage [data-testid="bond-analysis-kpi-ribbon"] {
   box-shadow: none;
+}
+
+/* 下钻图表行左右卡等高（曲线卡与瀑布卡卡面齐底，§5）。 */
+.bondWorkbenchPage [data-testid="bond-analytics-overview-mid-charts"] :global(.ant-row) {
+  align-items: stretch;
+}
+
+.bondWorkbenchPage
+  [data-testid="bond-analytics-overview-mid-charts"]
+  :global(.ant-col)
+  > :global(.ant-card) {
+  height: 100%;
+  box-sizing: border-box;
+}
+
+/* 页头识别栏防挤压（C21）：identity 容器 min-width: 0 在 1440 以下被右侧 actions 组挤到
+   标题断字竖排——页题锁 nowrap、左栏给最小宽度保底，副题保持既有 ellipsis。 */
+.bondWorkbenchPage :global(.dashboard-home-toolbar__identity) {
+  min-width: 200px;
+  flex-shrink: 0;
+}
+
+.bondWorkbenchPage :global(.dashboard-home-toolbar__title) {
+  white-space: nowrap;
+  word-break: keep-all;
 }
 
 .toolbarSelect {

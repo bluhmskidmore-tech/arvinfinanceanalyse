@@ -9,6 +9,7 @@ import type {
   ResultMeta,
 } from "../api/contracts";
 import { resolveCrossAssetKpis } from "../features/cross-asset/lib/crossAssetKpiModel";
+import { EM_DASH } from "../pageModel";
 import {
   buildCrossAssetCandidateActions,
   buildCrossAssetDriversViewModel,
@@ -21,6 +22,7 @@ import {
   buildCrossAssetStatusFlags,
   buildTransmissionAxisRows,
   buildCrossAssetWatchList,
+  formatLinkageCorrelationDisplay,
   type CrossAssetClassAnalysisRow,
 } from "../features/cross-asset/lib/crossAssetDriversPageModel";
 
@@ -170,6 +172,29 @@ function makeFirstScreenAssetRows(): CrossAssetClassAnalysisRow[] {
 }
 
 describe("crossAssetDriversPageModel", () => {
+  it("preserves page-specific missing and zero display semantics", () => {
+    expect(formatLinkageCorrelationDisplay(null)).toBe("不可用");
+    expect(formatLinkageCorrelationDisplay(undefined)).toBe("不可用");
+    expect(formatLinkageCorrelationDisplay(Number.NaN)).toBe("不可用");
+    expect(formatLinkageCorrelationDisplay(0)).toBe("0.00");
+
+    const missingEvidence = buildCrossAssetEquityEvidenceItems([]);
+    expect(missingEvidence[0]).toMatchObject({
+      valueLabel: EM_DASH,
+      changeLabel: EM_DASH,
+      unitLabel: "指数",
+      tradeDate: null,
+    });
+
+    const zeroKpis = resolveCrossAssetKpis([
+      makePoint("CA.CSI300", "CSI 300", 0, { latest_change: 0 }),
+    ]);
+    expect(buildCrossAssetEquityEvidenceItems(zeroKpis)[0]).toMatchObject({
+      valueLabel: "0.0点",
+      changeLabel: "0点",
+    });
+  });
+
   it("surfaces analytical-only, fallback, stale, and no-data flags from result meta and series tiers", () => {
     const flags = buildCrossAssetStatusFlags({
       latestMeta: makeResultMeta({
@@ -261,12 +286,12 @@ describe("crossAssetDriversPageModel", () => {
       ],
     });
 
-    expect(flags.find((flag) => flag.id === "access-denied")?.label).toContain(
-      "macro_bond_linkage.analysis",
-    );
-    expect(flags.find((flag) => flag.id === "loading-failure")?.label).toContain(
-      "choice_macro.latest",
-    );
+    const accessDenied = flags.find((flag) => flag.id === "access-denied");
+    expect(accessDenied?.label).toBe("权限受限");
+    expect(accessDenied?.detail).toContain("macro_bond_linkage.analysis");
+    const loadFailure = flags.find((flag) => flag.id === "loading-failure");
+    expect(loadFailure?.label).toBe("加载失败");
+    expect(loadFailure?.detail).toContain("choice_macro.latest");
   });
 
   it("puts failed module ids on the loading-failure flag label for header-only pill visibility", () => {
@@ -277,10 +302,10 @@ describe("crossAssetDriversPageModel", () => {
       loadingFailures: ["choice_macro.latest", "macro_bond_linkage.analysis"],
     });
     const loadFail = flags.find((f) => f.id === "loading-failure");
-    expect(loadFail?.label).toBe(
-      "加载失败 · choice_macro.latest, macro_bond_linkage.analysis",
-    );
-    expect(loadFail?.label).toContain("choice_macro.latest");
+    // 端点 token 收进 detail（证据层），label 只留业务结论供状态条多处复用。
+    expect(loadFail?.label).toBe("加载失败");
+    expect(loadFail?.detail).toContain("choice_macro.latest");
+    expect(loadFail?.detail).toContain("macro_bond_linkage.analysis");
   });
 
   it("does not synthesize fallback research conclusions when macro-bond linkage failed", () => {
@@ -302,7 +327,7 @@ describe("crossAssetDriversPageModel", () => {
       loadingFailures: ["macro_bond_linkage.analysis"],
     });
 
-    expect(vm.statusFlags.find((flag) => flag.id === "loading-failure")?.label).toContain(
+    expect(vm.statusFlags.find((flag) => flag.id === "loading-failure")?.detail).toContain(
       "macro_bond_linkage.analysis",
     );
     expect(vm.researchCards.every((card) => card.status === "pending_signal")).toBe(true);
@@ -340,7 +365,8 @@ describe("crossAssetDriversPageModel", () => {
 
     expect(rows).not.toHaveLength(0);
     expect(rows[0].evidence).toContain("流动性评分");
-    expect(rows.some((row) => row.evidence.includes("credit_spread"))).toBe(true);
+    // 相关性证据行可见位为中文业务名（token 保留在热力表 title 证据层）。
+    expect(rows.some((row) => row.evidence.includes("信用利差"))).toBe(true);
   });
 
   it("marks heuristic fallback research views as pending_signal when backend omits them", () => {
@@ -545,10 +571,14 @@ describe("crossAssetDriversPageModel", () => {
     expect(rows[2].lines.every((line) => line.stateLabel === "pending_definition")).toBe(true);
     expect(rows[2].lines.every((line) => line.dataLabel.includes("Choice"))).toBe(true);
     expect(rows[2].lines.every((line) => line.dataLabel.includes("治理源"))).toBe(true);
-    expect(rows[2].lines[0].dataLabel).toContain("equity_option.iv");
-    expect(rows[2].lines[0].dataLabel).toContain("equity_option.put_call_ratio");
-    expect(rows[2].lines[1].dataLabel).toContain("commodity_option.iv");
-    expect(rows[2].lines[2].dataLabel).toContain("rates_option.implied_vol");
+    // 可见位中文业务名；序列 token 保留在 sourceLabel（title 证据层）。
+    expect(rows[2].lines[0].dataLabel).toContain("隐含波动率");
+    expect(rows[2].lines[0].dataLabel).toContain("认沽认购比");
+    expect(rows[2].lines[1].dataLabel).toContain("尾部风险");
+    expect(rows[2].lines[2].dataLabel).toContain("曲线波动率");
+    expect(rows[2].lines[0].sourceLabel).toContain("equity_option.iv");
+    expect(rows[2].lines[1].sourceLabel).toContain("commodity_option.iv");
+    expect(rows[2].lines[2].sourceLabel).toContain("rates_option.implied_vol");
     expect(rows[2].lines.every((line) => line.sourceLabel.includes("phase1_macro_vendor_catalog"))).toBe(true);
     expect(rows[2].lines.every((line) => line.sourceLabel.includes("choice_market_snapshot"))).toBe(true);
     expect(rows[2].lines.every((line) => line.sourceLabel.includes("fact_choice_macro_daily"))).toBe(true);
@@ -747,7 +777,9 @@ describe("crossAssetDriversPageModel", () => {
 
     const broadIndex = rows[0].lines.find((line) => line.key === "broad_index");
     expect(broadIndex?.stateLabel).toBe("missing_dependency");
-    expect(broadIndex?.dataLabel).toContain("CA.CSI300");
+    // 可见位中文业务名，序列 token 保留在 sourceLabel（title 证据层）。
+    expect(broadIndex?.dataLabel).toContain("沪深300指数");
+    expect(broadIndex?.sourceLabel).toContain("CA.CSI300");
     expect(broadIndex?.dataLabel).not.toContain("EMM01843735");
   });
 
@@ -770,6 +802,49 @@ describe("crossAssetDriversPageModel", () => {
     expect(items[0].amount).toBe("180 亿元");
     expect(items[0].level).toBe("high");
     expect(items[0].note).toContain("7Y");
+  });
+
+  it("localizes registered English calendar captions and bn CNY amounts", () => {
+    const items = buildCrossAssetEventItems({
+      events: [
+        {
+          id: "cal-en-1",
+          date: "2026-04-24",
+          title: "Government bond net financing",
+          kind: "supply",
+          severity: "low",
+          amount_label: "180bn CNY",
+          note: "Supply rhythm",
+        },
+        {
+          id: "cal-en-2",
+          date: "2026-04-24",
+          title: "Policy bank bond auction",
+          kind: "auction",
+          severity: "high",
+          amount_label: "42bn CNY",
+          issuer: "CDB",
+        },
+        {
+          id: "cal-en-3",
+          date: "2026-04-24",
+          title: "Unregistered caption keeps original",
+          kind: "macro",
+          severity: "medium",
+          amount_label: "USD 3bn",
+        },
+      ],
+    });
+
+    expect(items[0].event).toBe("国债净融资");
+    expect(items[0].amount).toBe("1800 亿元");
+    expect(items[0].note).toBe("供给节奏");
+    expect(items[1].event).toBe("政金债招标");
+    expect(items[1].amount).toBe("420 亿元");
+    expect(items[1].issuerLabel).toBe("国开行");
+    // 未登记 caption / 规模形态原样透出
+    expect(items[2].event).toBe("Unregistered caption keeps original");
+    expect(items[2].amount).toBe("USD 3bn");
   });
 
   it("converts recent news events and linkage warnings into data-driven event rows", () => {

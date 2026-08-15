@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Tabs } from "antd";
 import { useSearchParams } from "react-router-dom";
 
@@ -50,6 +50,7 @@ function positionsSectionState(
 
 export default function PositionsView() {
   const client = useApiClient();
+  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const explicitReportDate = searchParams.get("report_date")?.trim() || "";
 
@@ -177,7 +178,8 @@ export default function PositionsView() {
     queryKey: ["positions", "bonds-list", client.mode, reportDate, selectedSubType, page],
     queryFn: () =>
       client.getPositionsBondsList({
-        reportDate: reportDate || null,
+        // enabled 守卫保证 reportDate 非空；后端 report_date 为必填 Query 参数。
+        reportDate,
         subType: selectedSubType || null,
         page,
         pageSize: PAGE_SIZE,
@@ -200,7 +202,8 @@ export default function PositionsView() {
     ],
     queryFn: () =>
       client.getPositionsInterbankList({
-        reportDate: reportDate || null,
+        // enabled 守卫保证 reportDate 非空；后端 report_date 为必填 Query 参数。
+        reportDate,
         productType: selectedProductType || null,
         direction,
         page,
@@ -410,6 +413,18 @@ export default function PositionsView() {
           {explicitReportDate ? (
             <p className="positions-view__filters-note">已由地址栏报告日参数固定</p>
           ) : null}
+          <button
+            type="button"
+            className="positions-view__refresh"
+            data-testid="positions-refresh"
+            onClick={() => {
+              /* 失效本页全部只读查询（前缀 ["positions"]），仅活跃查询重发；
+                 与 bond-dashboard 刷新钮同语义（绕过 5 分钟 staleTime）。 */
+              void queryClient.invalidateQueries({ queryKey: ["positions"] });
+            }}
+          >
+            刷新
+          </button>
         </FilterBar>
       </div>
 
@@ -511,6 +526,7 @@ export default function PositionsView() {
             subType={selectedSubType || null}
             stats={bondsCp}
             statsLoading={bondsCpQuery.isLoading}
+            statsError={bondsCpQuery.isError}
             searchText={searchText}
             onSearchTextChange={setSearchText}
             onCustomerOpen={(customerName) => {
@@ -532,6 +548,7 @@ export default function PositionsView() {
           <PositionsInterbankSplitSection
             split={interbankCpSplit}
             loading={interbankSplitQuery.isLoading}
+            isError={interbankSplitQuery.isError}
             searchText={searchText}
             onSearchTextChange={setSearchText}
           />

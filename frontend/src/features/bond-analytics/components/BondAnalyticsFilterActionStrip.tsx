@@ -1,4 +1,4 @@
-import { Button, Card, Select } from "antd";
+import { Button, Select } from "antd";
 
 import type {
   BondAnalyticsAccountingClassFilter,
@@ -12,6 +12,9 @@ import {
   BOND_ANALYTICS_SPREAD_SCENARIO_PRESETS,
 } from "./bondAnalyticsCockpitTokens";
 import styles from "./BondAnalyticsFilterActionStrip.module.css";
+
+/** 弹层锚在条内，避免 portal 落到 body 后逃出本页深色主题。 */
+const popupContainer = (trigger: HTMLElement) => trigger.parentElement ?? document.body;
 
 export interface BondAnalyticsFilterActionStripProps {
   assetClass: BondAnalyticsAssetClassFilter;
@@ -65,11 +68,7 @@ export function BondAnalyticsFilterActionStrip({
         : "尚未捕获刷新运行。");
 
   return (
-    <Card
-      size="small"
-      data-testid="bond-analysis-filter-action-strip"
-      className={styles.actionStrip}
-    >
+    <section data-testid="bond-analysis-filter-action-strip" className={styles.actionStrip}>
       <div data-testid="bond-analysis-command-bar" className={styles.commandBar}>
         <div className={styles.commandIntro}>
           <span className={styles.fieldLabel}>复核入口</span>
@@ -112,6 +111,7 @@ export function BondAnalyticsFilterActionStrip({
                 options={[...BOND_ANALYTICS_ASSET_CLASS_FILTER_OPTIONS]}
                 className={styles.filterSelect}
                 size="small"
+                getPopupContainer={popupContainer}
               />
             </div>
             <div className={styles.filterField}>
@@ -122,6 +122,7 @@ export function BondAnalyticsFilterActionStrip({
                 options={[...BOND_ANALYTICS_ACCOUNTING_CLASS_FILTER_OPTIONS]}
                 className={styles.filterSelect}
                 size="small"
+                getPopupContainer={popupContainer}
               />
             </div>
             <div className={styles.filterField}>
@@ -132,6 +133,7 @@ export function BondAnalyticsFilterActionStrip({
                 options={[...BOND_ANALYTICS_SCENARIO_SET_OPTIONS]}
                 className={styles.filterSelect}
                 size="small"
+                getPopupContainer={popupContainer}
               />
             </div>
             <div className={styles.filterField}>
@@ -142,11 +144,12 @@ export function BondAnalyticsFilterActionStrip({
                 options={[...BOND_ANALYTICS_SPREAD_SCENARIO_PRESETS]}
                 className={styles.filterSelect}
                 size="small"
+                getPopupContainer={popupContainer}
               />
             </div>
           </div>
         </details>
       </div>
-    </Card>
+    </section>
   );
 }

@@ -10,61 +10,6 @@
   margin-bottom: 12px;
 }
 
-.kpiLoading {
-  padding: 48px;
-  text-align: center;
-}
-
-.kpiCard {
-  height: 100%;
-  padding: 12px 10px;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel);
-  box-shadow: var(--moss-shadow-card, var(--ib-shadow));
-}
-
-.kpiLabel {
-  margin-bottom: 8px;
-  color: var(--dh-api-soft);
-  font-size: 13px;
-}
-
-.kpiValue {
-  color: var(--dh-api-blue);
-  font-family: var(--moss-font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: 24px;
-  font-weight: 700;
-  line-height: 1.15;
-}
-
-.kpiUnit {
-  margin-left: 4px;
-  color: var(--dh-api-muted);
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.kpiMom {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 8px;
-  color: var(--dh-api-muted);
-  font-family: var(--moss-font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: 12px;
-}
-
-.kpiMom[data-tone="up"] {
-  color: var(--dh-api-green);
-}
-
-.kpiMom[data-tone="down"] {
-  color: var(--dh-api-red);
-}
-
 .riskList {
   display: flex;
   flex-direction: column;

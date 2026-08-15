@@ -23,6 +23,13 @@ export function FrontendAnalyticsChip() {
   );
 }
 
+/** 方向枚举中文映射（up/down/flat 为前端派生方向，非后端枚举）。 */
+const MOMENTUM_DIRECTION_LABELS: Record<MomentumRow["direction"], string> = {
+  up: "上行",
+  down: "下行",
+  flat: "持平",
+};
+
 export function MomentumScoreboardPanel({ rows }: { rows: MomentumRow[] }) {
   return (
     <section className="ca-momentum" data-testid="cross-asset-momentum-scoreboard">
@@ -38,7 +45,7 @@ export function MomentumScoreboardPanel({ rows }: { rows: MomentumRow[] }) {
               <tr key={row.key}>
                 <td>{row.label}</td>
                 <td>{row.chg5d == null ? EM_DASH : `${row.chg5d.toFixed(2)}%`}</td>
-                <td>{row.direction}</td>
+                <td>{MOMENTUM_DIRECTION_LABELS[row.direction] ?? row.direction}</td>
               </tr>
             ))}
           </tbody>

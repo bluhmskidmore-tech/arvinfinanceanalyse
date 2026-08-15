@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
 
 import { EM_DASH } from "../../../utils/format";
 import { LightIcon } from "../../../components/LightIcon";
@@ -412,6 +413,7 @@ function CrossAssetActionRail({
         <span>下一步</span>
         <strong>{primaryAction}</strong>
       </div>
+      {/* 执行口径免责声明收敛到待复核队列一处（§11.3），动作清单不再复读。 */}
       <div className="cross-asset-action-ledger" data-testid="cross-asset-action-ledger" aria-label="组合动作清单">
         <div className="cross-asset-action-ledger__title">动作清单</div>
         <dl>
@@ -422,10 +424,6 @@ function CrossAssetActionRail({
           <div>
             <dt>证据约束</dt>
             <dd>{confidenceLabel}</dd>
-          </div>
-          <div>
-            <dt>执行口径</dt>
-            <dd>仅分析，不替代指令</dd>
           </div>
         </dl>
       </div>
@@ -477,18 +475,11 @@ function CrossAssetTrustPanel({
         </div>
         <em>{badgeLabel}</em>
       </div>
+      {/* 宏观/联动质量已由下方数据状态明细（children）承载，此处不再重复（§6 状态去重）。 */}
       <dl className="cross-asset-trust-panel__grid">
         <div>
           <dt>报告日</dt>
           <dd>{reportDate || "待定"}</dd>
-        </div>
-        <div>
-          <dt>宏观质量</dt>
-          <dd>{resultMetaQualityLabel(latestMeta?.quality_flag)}</dd>
-        </div>
-        <div>
-          <dt>联动质量</dt>
-          <dd>{resultMetaQualityLabel(linkageMeta?.quality_flag)}</dd>
         </div>
         <div>
           <dt>下一步</dt>
@@ -507,8 +498,9 @@ function compactStatusFlagDetail(flag: CrossAssetStatusFlag): string {
   if (flag.id === "stale") return "确认日期";
   if (flag.id === "source-blocked") return "来源受限";
   if (flag.id === "choice-source-missing") return "Choice 缺口";
-  if (flag.id === "loading-failure") return "加载失败";
-  if (flag.id === "access-denied") return "权限受限";
+  // 证据区是失败模块清单唯一可见位（token 属证据引用）：取 detail 的模块段。
+  if (flag.id === "loading-failure") return flag.detail.split("；")[0] ?? flag.detail;
+  if (flag.id === "access-denied") return flag.detail.split("；")[0] ?? flag.detail;
   if (flag.id === "linkage-quality-warning") return "联动预警";
   if (flag.id === "no-data") return "暂无数据";
   return flag.detail;
@@ -532,19 +524,22 @@ function CrossAssetStatusEvidenceRows({
       {statusFlags.length > 0 ? (
         <DataStatusStrip testId="cross-asset-alert-status-strip" className="cross-asset-data-status-strip">
           <div className="cross-asset-data-status-strip__kv" data-testid="cross-asset-status-flags">
-            {statusFlags.map((flag) =>
-              crossAssetStatusFlagUsesAlertChip(flag) ? (
+            {statusFlags.map((flag) => {
+              const compactDetail = compactStatusFlagDetail(flag);
+              // 摘要与徽标同文时不重复渲染（修「加载失败 加载失败」「暂无数据 暂无数据」自我重复）。
+              const showDetail = compactDetail !== flag.label;
+              return crossAssetStatusFlagUsesAlertChip(flag) ? (
                 <div key={flag.id} className="cross-asset-data-status-strip__flag cross-asset-data-status-strip__flag--alert" title={flag.detail}>
                   <StatusPill status={flag.tone} label={flag.label} />
-                  <span>{compactStatusFlagDetail(flag)}</span>
+                  {showDetail ? <span>{compactDetail}</span> : null}
                 </div>
               ) : (
                 <div key={flag.id} className="cross-asset-data-status-strip__kv-row" title={flag.detail}>
                   <span className="cross-asset-data-status-strip__kv-label">{flag.label}</span>
-                  <span className="cross-asset-data-status-strip__kv-value">{compactStatusFlagDetail(flag)}</span>
+                  {showDetail ? <span className="cross-asset-data-status-strip__kv-value">{compactDetail}</span> : null}
                 </div>
-              ),
-            )}
+              );
+            })}
           </div>
         </DataStatusStrip>
       ) : null}
@@ -607,14 +602,14 @@ export function CrossAssetReferenceSourceAudit({
           <dt>数据源</dt>
           <dd>
             <strong>{sourceCount}</strong>
-            <a href="/market-data">查看清单</a>
+            <Link to="/market-data">查看清单</Link>
           </dd>
         </div>
         <div>
           <dt>口径版本</dt>
           <dd>
             <strong>v2.4（宏观 & 联动）</strong>
-            <a href="/market-data">版本说明</a>
+            <Link to="/market-data">版本说明</Link>
           </dd>
         </div>
         <div>
@@ -625,7 +620,7 @@ export function CrossAssetReferenceSourceAudit({
               {resultMetaQualityLabel(latestMeta?.quality_flag)}
             </strong>
             <span>{compactGeneratedAt(latestMeta?.generated_at)}</span>
-            <a href="/market-data">明细</a>
+            <Link to="/market-data">明细</Link>
           </dd>
         </div>
         <div>
@@ -636,7 +631,7 @@ export function CrossAssetReferenceSourceAudit({
               {resultMetaQualityLabel(linkageMeta?.quality_flag)}
             </strong>
             <span>{compactGeneratedAt(linkageMeta?.generated_at)}</span>
-            <a href="/market-data">明细</a>
+            <Link to="/market-data">明细</Link>
           </dd>
         </div>
         <div>
@@ -681,6 +676,14 @@ export function CrossAssetReferenceSourceAudit({
   );
 }
 
+/** 传导主线值 tone：偏有利=绿、偏紧=红、有冲突=琥珀、中性/待定=muted（页内统一映射）。 */
+function transmissionStanceToneClass(label: string): "positive" | "negative" | "warning" | "neutral" {
+  if (label.includes("偏有利")) return "positive";
+  if (label.includes("偏紧")) return "negative";
+  if (label.includes("冲突")) return "warning";
+  return "neutral";
+}
+
 export function CrossAssetReferenceTransmission({ rows }: { rows: CrossAssetTransmissionAxisRow[] }) {
   const referenceSteps = [
     { label: "利率", row: rows[0], fallback: "全球利率下行，期限溢价回落，是久期判断的主线。" },
@@ -704,6 +707,7 @@ export function CrossAssetReferenceTransmission({ rows }: { rows: CrossAssetTran
           <ol className="cross-asset-reference-transmission__steps">
             {referenceSteps.map((step, index) => {
               const row = step.row;
+              const stanceLabel = row?.stanceLabel ?? (index === referenceSteps.length - 1 ? "待复核" : "待定");
               return (
                 <li key={step.label}>
                   <em>{String(index + 1).padStart(2, "0")}</em>
@@ -711,7 +715,9 @@ export function CrossAssetReferenceTransmission({ rows }: { rows: CrossAssetTran
                     <strong>{step.label}</strong>
                     <small>{row?.summary ?? step.fallback}</small>
                   </div>
-                  <span>{row?.stanceLabel ?? (index === referenceSteps.length - 1 ? "待复核" : "待定")}</span>
+                  <span className={`cross-asset-reference-transmission__stance--${transmissionStanceToneClass(stanceLabel)}`}>
+                    {stanceLabel}
+                  </span>
                 </li>
               );
             })}
@@ -782,6 +788,23 @@ export function CrossAssetReferenceCorrelation({ matrix }: { matrix: Correlation
   );
 }
 
+/** 判断环 tone：偏多=绿、偏空=红、有冲突=琥珀、中性/待信号=muted 灰、策略形态词（短端优先等）=次级墨。 */
+function judgmentRingTone(card: CrossAssetResearchViewCard): "bull" | "bear" | "conflict" | "neutral" | "stance" {
+  if (card.status !== "ready" || card.stance === "中性" || card.stance === "待信号") {
+    return "neutral";
+  }
+  if (card.stance === "偏多") {
+    return "bull";
+  }
+  if (card.stance === "偏空") {
+    return "bear";
+  }
+  if (card.stance === "有冲突") {
+    return "conflict";
+  }
+  return "stance";
+}
+
 export function CrossAssetReferenceJudgments({ cards }: { cards: CrossAssetResearchViewCard[] }) {
   const visibleCards = cards.slice(0, 4);
   return (
@@ -792,14 +815,21 @@ export function CrossAssetReferenceJudgments({ cards }: { cards: CrossAssetResea
       </header>
       <div className="cross-asset-reference-judgments__grid">
         {visibleCards.map((card) => {
-          const ringTone = card.status === "ready" ? "ready" : "pending";
+          const ringTone = judgmentRingTone(card);
 
           return (
             <article className="cross-asset-reference-judgment" data-testid={`cross-asset-research-card-${card.key}`} key={card.key}>
               <strong>{card.label}</strong>
-              <div className={`cross-asset-reference-judgment__ring cross-asset-reference-judgment__ring--${ringTone}`}>
-                <span>{card.stance}</span>
+              {/* 环内只放单字置信度；判断词移到环外单行，避免「短端优先」环内折行。 */}
+              <div
+                className={`cross-asset-reference-judgment__ring cross-asset-reference-judgment__ring--${ringTone}`}
+                title={`置信度 ${card.confidence}`}
+              >
+                <span>{card.confidence}</span>
               </div>
+              <span className={`cross-asset-reference-judgment__stance cross-asset-reference-judgment__stance--${ringTone}`}>
+                {card.stance}
+              </span>
               <p>{card.summary}</p>
             </article>
           );

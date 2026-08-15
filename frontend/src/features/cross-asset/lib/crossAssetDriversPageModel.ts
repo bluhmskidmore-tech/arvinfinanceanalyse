@@ -11,7 +11,7 @@ import type {
 } from "../../../api/contracts";
 import type { CalendarItem } from "../../../components/CalendarList";
 import { mapResearchCalendarEventToCalendarItem } from "../../../lib/researchCalendarToCalendarItem";
-import { EM_DASH } from "../../../utils/format";
+import { EM_DASH, textOrDash } from "../../../pageModel";
 import type { ResolvedCrossAssetKpi } from "./crossAssetKpiModel";
 import {
   linkageUnavailableEvidence,
@@ -19,7 +19,10 @@ import {
   type CrossAssetModuleFailure,
   type CrossAssetQueryFailureKind,
 } from "./crossAssetQueryFailure";
-import { formatLinkageCorrelationTarget } from "./crossAssetLinkageLabels";
+import {
+  formatLinkageCorrelationFamilyLabel,
+  formatLinkageCorrelationTarget,
+} from "./crossAssetLinkageLabels";
 import {
   formatCrossAssetLinkageEvidence,
   formatCrossAssetLinkageSummary,
@@ -28,6 +31,7 @@ import { summarizeCrossAssetLinkageWarnings } from "./crossAssetLinkageWarnings"
 import type { MarketRegimeInfo } from "./crossAssetAnalytics";
 import type { DriverColumn, EnvironmentTags } from "./crossAssetDriversModel";
 
+// Component-facing vocabularies intentionally differ from shared MetricTone.
 type StatusTone = "normal" | "caution" | "warning" | "danger";
 type ActionTone = "bull" | "warning" | "bear";
 type WatchSignal = "green" | "yellow" | "red";
@@ -111,6 +115,7 @@ export type CrossAssetClassAnalysisRow = {
   lines: CrossAssetClassAnalysisLine[];
 };
 
+/** Evidence-specific fields and statuses intentionally differ from shared LabeledValue. */
 export type CrossAssetEquityEvidenceItem = {
   key: "broad_index" | "csi300_pe" | "mega_cap_weight" | "mega_cap_top5_weight";
   label: string;
@@ -347,6 +352,7 @@ export function buildCrossAssetNcdProxyEvidence(input: {
   };
 }
 
+/** Fallback-score copy requires "暂无"; shared fixedOrDash uses EM_DASH for missing values. */
 function formatScore(value: number | null | undefined) {
   if (value == null || Number.isNaN(value)) {
     return "暂无";
@@ -354,7 +360,7 @@ function formatScore(value: number | null | undefined) {
   return value.toFixed(2);
 }
 
-/** Macro–bond correlation cells: align with market-data `formatCorrelation` ("不可用" when missing). */
+/** Correlation cells require "不可用"; shared fixedOrDash uses EM_DASH for missing values. */
 export function formatLinkageCorrelationDisplay(value: number | null | undefined) {
   if (value == null || Number.isNaN(value)) {
     return "不可用";
@@ -821,7 +827,9 @@ function stanceTone(stance: string): ActionTone {
     lowered.includes("bull") ||
     lowered.includes("support") ||
     lowered.includes("constructive") ||
-    lowered.includes("prefer")
+    lowered.includes("prefer") ||
+    // normalizeLabel 已把 supportive/restrictive 中文化，这里保持同一 tone 推导。
+    stance.includes("偏有利")
   ) {
     return "bull";
   }
@@ -829,7 +837,8 @@ function stanceTone(stance: string): ActionTone {
     lowered.includes("bear") ||
     lowered.includes("restrict") ||
     lowered.includes("tight") ||
-    lowered.includes("caution")
+    lowered.includes("caution") ||
+    stance.includes("偏紧")
   ) {
     return "bear";
   }
@@ -1065,7 +1074,8 @@ function viewCardFromSource(
   return {
     key: view.key,
     label: typedKey ? RESEARCH_VIEW_LABEL[typedKey] : normalizeLabel(view.key),
-    stance: normalizeLabel(view.stance),
+    // 判断词展示走传导轴同一张中文表（conflicted/supportive 等），未登记回落 normalizeLabel。
+    stance: transmissionStanceLabel(view.stance),
     confidence: normalizeLabel(view.confidence),
     summary: formatCrossAssetLinkageSummary(view.summary),
     status: view.status,
@@ -1234,9 +1244,10 @@ const CROSS_ASSET_EVIDENCE_UNIT_ZH: Record<string, string> = {
   x: "倍",
 };
 
+/** Cross-asset unit aliases stay local; only the empty-text fallback is shared. */
 function formatCrossAssetEvidenceUnitLabel(unit: string | null | undefined, fallback: string) {
-  const raw = unit?.trim() || fallback.trim();
-  if (!raw) {
+  const raw = textOrDash(unit?.trim() || fallback.trim());
+  if (raw === EM_DASH) {
     return EM_DASH;
   }
   return CROSS_ASSET_EVIDENCE_UNIT_ZH[raw.toLowerCase()] ?? raw;
@@ -1369,8 +1380,8 @@ export function buildCrossAssetClassAnalysisRows(input: {
       status: hasUsableKpi(broadIndex) ? "ready" : "pending_signal",
       stateLabel: stateLabelFromKpi(broadIndex, input.latestMeta),
       direction: directionFromKpi(broadIndex),
-      dataLabel: dataLabelFromKpi(broadIndex, "等待 CA.CSI300 / Tushare CSI300"),
-      sourceLabel: sourceLabelFromKpi(broadIndex, "需登记 Tushare 沪深300指数输入"),
+      dataLabel: dataLabelFromKpi(broadIndex, "等待沪深300指数序列"),
+      sourceLabel: sourceLabelFromKpi(broadIndex, "需登记 Tushare 沪深300指数输入（CA.CSI300）"),
       explanation: explanationFromKpi(
         broadIndex,
         "治理后的宽基指数输入待接入，不转成选股或行业轮动结论。",
@@ -1392,10 +1403,10 @@ export function buildCrossAssetClassAnalysisRows(input: {
       direction: equityAxis?.stance ?? directionFromKpi(csi300Pe),
       dataLabel: combinedDataLabel(
         [compactKpiData(csi300Pe), equityAxis?.status === "ready" ? "股债利差轴已就绪" : null],
-        "等待 CA.CSI300_PE / 股债利差轴",
+        "等待沪深300市盈率与股债利差轴",
       ),
       sourceLabel: [
-        combinedSourceLabel([csi300Pe], "需登记 Tushare index_dailybasic"),
+        combinedSourceLabel([csi300Pe], "需登记 Tushare index_dailybasic（CA.CSI300_PE）"),
         equityAxis?.status === "ready" ? `双源轴(${normalizeLabel(equityAxis.source)}): ${equityAxis.requiredSeriesIds.join(", ")}` : null,
       ]
         .filter(Boolean)
@@ -1423,7 +1434,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
       direction: megaCapAxis?.stance ?? directionFromKpi(megaCapTop10),
       dataLabel: combinedDataLabel(
         [compactKpiData(megaCapTop10), compactKpiData(megaCapTop5)],
-        "双源待补：Choice 大市值权重码 / Tushare index_weight",
+        "双源待补：大市值权重（Choice 与 Tushare）",
       ),
       sourceLabel: [
         combinedSourceLabel([megaCapTop10, megaCapTop5], "需登记 Choice 大市值权重码 / Tushare index_weight"),
@@ -1441,8 +1452,8 @@ export function buildCrossAssetClassAnalysisRows(input: {
       status: hasUsableKpi(energy) ? "ready" : "pending_signal",
       stateLabel: stateLabelFromKpi(energy, input.latestMeta),
       direction: directionFromKpi(energy),
-      dataLabel: dataLabelFromKpi(energy, "等待 CA.BRENT"),
-      sourceLabel: sourceLabelFromKpi(energy, "需登记能源 Choice 接入码或公共补充源"),
+      dataLabel: dataLabelFromKpi(energy, "等待布伦特原油序列"),
+      sourceLabel: sourceLabelFromKpi(energy, "需登记能源 Choice 接入码或公共补充源（CA.BRENT）"),
       explanation: explanationFromKpi(energy, "治理后的能源链输入待接入。"),
     },
     {
@@ -1451,8 +1462,8 @@ export function buildCrossAssetClassAnalysisRows(input: {
       status: hasUsableKpi(ferrous) ? "ready" : "pending_signal",
       stateLabel: stateLabelFromKpi(ferrous, input.latestMeta),
       direction: directionFromKpi(ferrous),
-      dataLabel: dataLabelFromKpi(ferrous, "等待 CA.STEEL"),
-      sourceLabel: sourceLabelFromKpi(ferrous, "需登记黑色系 Choice 接入码或公共补充源"),
+      dataLabel: dataLabelFromKpi(ferrous, "等待钢材现货序列"),
+      sourceLabel: sourceLabelFromKpi(ferrous, "需登记黑色系 Choice 接入码或公共补充源（CA.STEEL）"),
       explanation: explanationFromKpi(ferrous, "治理后的黑色链输入待接入。"),
     },
     {
@@ -1491,7 +1502,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
       stateLabel: "pending_definition",
       direction: "待接入",
       dataLabel:
-        "待治理: equity_option.iv, equity_option.skew, equity_option.put_call_ratio；需登记 Choice 接入码或期权治理源（单位/频率/日期口径待确认）",
+        "待治理：隐含波动率、偏度、认沽认购比；需登记 Choice 接入码或期权治理源（单位/频率/日期口径待确认）",
       sourceLabel:
         `${OPTION_LOCAL_EVIDENCE_NOTE}：equity_option.iv, equity_option.skew, equity_option.put_call_ratio`,
       explanation:
@@ -1504,7 +1515,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
       stateLabel: "pending_definition",
       direction: "待接入",
       dataLabel:
-        "待治理: commodity_option.iv, commodity_option.skew, commodity_option.tail_risk；需登记 Choice 接入码或期权治理源（单位/频率/日期口径待确认）",
+        "待治理：隐含波动率、偏度、尾部风险；需登记 Choice 接入码或期权治理源（单位/频率/日期口径待确认）",
       sourceLabel:
         `${OPTION_LOCAL_EVIDENCE_NOTE}：commodity_option.iv, commodity_option.skew, commodity_option.tail_risk`,
       explanation:
@@ -1517,7 +1528,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
       stateLabel: "pending_definition",
       direction: "待接入",
       dataLabel:
-        "待治理: rates_option.implied_vol, rates_option.curve_vol；需登记 Choice 接入码或利率期权治理源（单位/期限/日期口径待确认）",
+        "待治理：隐含波动率、曲线波动率；需登记 Choice 接入码或利率期权治理源（单位/期限/日期口径待确认）",
       sourceLabel:
         `${OPTION_LOCAL_EVIDENCE_NOTE}：rates_option.implied_vol, rates_option.curve_vol`,
       explanation:
@@ -1683,9 +1694,10 @@ export function buildCrossAssetStatusFlags(input: {
     const modules = permissionFailures.map((failure) => failure.module).join(", ");
     flags.push({
       id: "access-denied",
-      label: `权限受限 · ${modules}`,
+      // 与 loading-failure 同制度：label 只留业务结论，模块 token 收进 detail（证据区/title）。
+      label: "权限受限",
       tone: "danger",
-      detail: "当前账号无权读取上述模块；四维判断与 NCD 代理不可用，请联系管理员开通读取权限。",
+      detail: `${modules} 无读取权限；四维判断与 NCD 代理不可用，请联系管理员开通读取权限。`,
     });
   }
 
@@ -1693,7 +1705,8 @@ export function buildCrossAssetStatusFlags(input: {
     const modules = loadFailures.map((failure) => failure.module).join(", ");
     flags.push({
       id: "loading-failure",
-      label: `加载失败 · ${modules}`,
+      // 端点 token 属证据层：label 只留业务结论（状态条多处复用），模块清单收进 detail（证据区/ title 展示）。
+      label: "加载失败",
       tone: "danger",
       detail: `${modules} 加载失败；不要把兜底卡片当作完整跨资产判断。`,
     });
@@ -1942,6 +1955,45 @@ export function buildCrossAssetCandidateActions(input: {
   return rows.slice(0, 5);
 }
 
+/** 研究日历事件的整句英文 caption 中文化（§7 语域）；未登记原样透出。 */
+const CALENDAR_EVENT_TITLE_ZH: Record<string, string> = {
+  "government bond net financing": "国债净融资",
+  "policy bank bond auction": "政金债招标",
+};
+
+const CALENDAR_EVENT_NOTE_ZH: Record<string, string> = {
+  "supply rhythm": "供给节奏",
+};
+
+const CALENDAR_EVENT_ISSUER_ZH: Record<string, string> = {
+  cdb: "国开行",
+};
+
+/** "180bn CNY" 型规模标签换算为亿元（1bn = 10 亿）；未登记形态原样透出。 */
+function localizeCalendarAmountLabel(amount: string | undefined): string | undefined {
+  if (!amount) {
+    return amount;
+  }
+  const match = amount.trim().match(/^(\d+(?:\.\d+)?)\s*bn\s*CNY$/i);
+  if (!match) {
+    return amount;
+  }
+  const yi = Number.parseFloat(match[1]) * 10;
+  return `${Number.isInteger(yi) ? yi : yi.toFixed(1)} 亿元`;
+}
+
+function localizeCalendarItem(item: CalendarItem): CalendarItem {
+  return {
+    ...item,
+    event: CALENDAR_EVENT_TITLE_ZH[item.event.trim().toLowerCase()] ?? item.event,
+    note: item.note ? CALENDAR_EVENT_NOTE_ZH[item.note.trim().toLowerCase()] ?? item.note : item.note,
+    issuerLabel: item.issuerLabel
+      ? CALENDAR_EVENT_ISSUER_ZH[item.issuerLabel.trim().toLowerCase()] ?? item.issuerLabel
+      : item.issuerLabel,
+    amount: localizeCalendarAmountLabel(item.amount),
+  };
+}
+
 export function buildCrossAssetEventItems(input: {
   events?: ResearchCalendarEvent[];
   reportDate?: string;
@@ -1953,7 +2005,7 @@ export function buildCrossAssetEventItems(input: {
       .slice()
       .sort((left, right) => right.date.localeCompare(left.date))
       .slice(0, 4)
-      .map(mapResearchCalendarEventToCalendarItem);
+      .map((event) => localizeCalendarItem(mapResearchCalendarEventToCalendarItem(event)));
   }
 
   const warningRows = (input.linkageWarnings ?? []).map((warning, index) => ({
@@ -2015,7 +2067,7 @@ export function buildCrossAssetWatchList(input: {
       const axisRow = readyAxes[index % Math.max(readyAxes.length, 1)];
       const correlationNote =
         topCorr && index === 0
-          ? `相关 ${topCorr.target_family}${topCorr.target_tenor ? ` ${topCorr.target_tenor}` : ""}`
+          ? `相关 ${formatLinkageCorrelationFamilyLabel(topCorr.target_family, topCorr.target_tenor)}`
           : "";
       return {
         name: kpi.label,
@@ -2024,11 +2076,12 @@ export function buildCrossAssetWatchList(input: {
           ? `${kpi.tag} · ${researchCard.label}: ${researchCard.summary}`
           : `${kpi.tag} · ${kpi.changeLabel}`,
         signal: signalFromTone(kpi.changeTone),
+        // §7 `·` 配额：多段说明改分号衔接，单行至多一个 `·`（note 已用掉配额）。
         signalText: warningText && index === 0
           ? `先检查来源链路。${axisRow ? `${axisRow.label}: ${axisRow.summary}` : ""}`.trim()
           : [signalTextFromTone(kpi.changeTone), axisRow ? `${axisRow.label}: ${axisRow.summary}` : "", correlationNote]
               .filter(Boolean)
-              .join(" · "),
+              .join("；"),
       };
     });
 }

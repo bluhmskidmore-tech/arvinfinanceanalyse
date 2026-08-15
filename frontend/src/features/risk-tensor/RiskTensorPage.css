@@ -64,6 +64,17 @@
   --formal-meta-badge-danger-line: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
 }
 
+/*
+ * 页级主读被拦截/失败（data-read-state="blocked"）时，溯源面板的
+ * 「正常 / 未降级」ok 徽章降为中性，避免绿徽章与页级失败并立造成误读；
+ * warn / danger 徽章语义保留。
+ */
+.risk-tensor-page[data-read-state="blocked"] .formal-result-meta-panel {
+  --formal-meta-badge-ok-bg: var(--dh-api-panel-2);
+  --formal-meta-badge-ok-ink: var(--dh-api-muted);
+  --formal-meta-badge-ok-line: var(--dh-api-line);
+}
+
 .risk-tensor-brief {
   display: grid;
   gap: 12px;

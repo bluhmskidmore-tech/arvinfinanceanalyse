@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
-from typing import Any, Literal, TypedDict
+from typing import Any, Final, Literal, TypedDict
 
 from backend.app.core_finance.action_attribution import (
     bond_analytics_action_line_payload,
@@ -22,6 +22,7 @@ from backend.app.core_finance.bond_analytics import dv01 as dv01_core
 from backend.app.core_finance.bond_analytics.common import (
     STANDARD_SCENARIOS,
     infer_curve_type,
+    map_accounting_basis_to_risk_class,
     resolve_period,
     safe_decimal,
 )
@@ -95,8 +96,6 @@ except ImportError:
             f"from trade_date={resolved_trade_date} for requested_trade_date={requested_trade_date}."
         )
 
-from pydantic import BaseModel
-
 from backend.app.schemas.analysis_service import AnalysisQuery
 from backend.app.schemas.bond_analytics import (
     DV01_BASIS,
@@ -157,11 +156,12 @@ from backend.app.services.formal_result_runtime import (
     build_formal_result_meta_from_lineage,
     build_result_envelope,
 )
+from pydantic import BaseModel
 
 # 与 tasks 模块对齐的身份常量；只读路径不得 import tasks（broker/actor 注册）。
 CACHE_KEY = "bond_analytics:materialize:formal"
-CACHE_VERSION = "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1"
-RULE_VERSION = "rv_bond_analytics_formal_materialize_v1"
+CACHE_VERSION = "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v2"
+RULE_VERSION = "rv_bond_analytics_formal_materialize_v2"
 BOND_ANALYTICS_LOCK = LockDefinition(
     key="lock:duckdb:formal:bond-analytics:materialize",
     ttl_seconds=900,
@@ -234,6 +234,11 @@ RETURN_TRADING_PNL517_PARTIAL_DETAIL = {
     "level": "warning",
     "message": "some_positions_have_no_matching_pnl517_row_same_instrument_book",
 }
+RETURN_TRADING_PNL517_ALLOCATED_DETAIL = {
+    "code": "return_decomposition_trading_pnl517_allocated_across_books",
+    "level": "warning",
+    "message": "pnl517_bucket_coarser_than_bond_rows_split_pro_rata_by_market_value",
+}
 RETURN_TRADING_PNL517_PERIOD_DETAIL = {
     "code": "return_decomposition_trading_pnl517_multi_month_aggregate",
     "level": "warning",
@@ -263,6 +268,17 @@ BENCHMARK_WARNING_CODE = "benchmark_excess_benchmark_data_unavailable"
 SPREAD_WARNING_CODE = "credit_spread_weighted_avg_spread_input_unavailable"
 Q8 = Decimal("0.00000001")
 ZERO = Decimal("0")
+
+# 展示限额，正式风控限额接入前的过渡口径。
+# 仅供集中度监控页展示对照使用，非风控正式限额；键名与
+# ConcentrationDisplayLimits schema / 前端集中度监控页对照项一一对应。
+CONCENTRATION_DISPLAY_LIMITS: Final[dict[str, float]] = {
+    "issuer_single_max": 0.1,
+    "issuer_top5_max": 0.4,
+    "hhi_warning": 0.15,
+    "below_aa_max": 0.2,
+    "credit_weight_max": 0.85,
+}
 
 
 class _CurveSlots(TypedDict):
@@ -529,11 +545,111 @@ def _repo() -> BondAnalyticsRepository:
     return BondAnalyticsRepository(str(get_settings().duckdb_path))
 
 
-def _pnl_position_key_from_bond_row(row: dict[str, object]) -> str:
-    inst = str(row.get("instrument_code") or "").strip()
-    pn = str(row.get("portfolio_name") or "").strip()
-    cc = str(row.get("cost_center") or "").strip()
-    return f"{inst}::{pn}::{cc}"
+_PnlPositionKey = tuple[str, str, str, str]
+
+
+def _normalized_accounting_class(value: object) -> str:
+    """Fold either accounting vocabulary onto the shared AC / OCI / TPL tokens.
+
+    ``fact_formal_bond_analytics_daily.accounting_class`` speaks AC / OCI / TPL while
+    ``fact_formal_pnl_fi.accounting_basis`` speaks AC / FVOCI / FVTPL, so the two
+    sides can only be joined through one canonical mapping. Reusing the existing
+    ``map_accounting_basis_to_risk_class`` keeps that mapping in one place instead
+    of restating a translation table here. An unrecognized or absent value folds to
+    ``""``, which is also the token the account-less nonstd PnL bucket carries.
+    """
+    return map_accounting_basis_to_risk_class(str(value or "")) or ""
+
+
+def _pnl_position_key_from_bond_row(row: dict[str, object]) -> _PnlPositionKey:
+    """Identity a bond-analytics row shares with the PnL facts.
+
+    (instrument_code, portfolio_name, cost_center) alone is not that identity: since
+    2025-09-30 one bond is routinely held in both the AC and the OCI book of the same
+    cost center, which is 935 duplicate groups over 100 report dates. The PnL facts
+    report ``capital_gain_517`` per accounting book, so without the book in the key
+    every leg of the position claims the whole position's 517: on 2026-02-28 that
+    published a trading total of 67,839,687.13 instead of 66,158,328.64 (+1,681,358.49,
+    +2.5%), and on 2026-05-31 68,936,696.40 instead of 67,936,111.12 (+1,000,585.27,
+    +1.5%).
+    """
+    return (
+        str(row.get("instrument_code") or "").strip(),
+        str(row.get("portfolio_name") or "").strip(),
+        str(row.get("cost_center") or "").strip(),
+        _normalized_accounting_class(row.get("accounting_class")),
+    )
+
+
+def _allocate_amount(amount: Decimal, weights: list[Decimal]) -> list[Decimal]:
+    """Split ``amount`` across ``weights``, summing back to ``amount`` exactly.
+
+    Used only where a PnL bucket is genuinely coarser than the bond rows it covers
+    (the nonstd bridge has no accounting dimension at all). Weights are absolute
+    market values; a bucket whose rows are all flat splits evenly. The last share
+    absorbs the division remainder so the allocation closes to the cent.
+    """
+    if len(weights) == 1:
+        return [amount]
+    total = sum((abs(weight) for weight in weights), ZERO)
+    if total == ZERO:
+        shares = [amount / Decimal(len(weights))] * len(weights)
+    else:
+        shares = [amount * abs(weight) / total for weight in weights]
+    shares[-1] = amount - sum(shares[:-1], ZERO)
+    return shares
+
+
+def _capital_gain_517_buckets(
+    pnl_repo: PnlRepository,
+    dates: list[str],
+) -> dict[_PnlPositionKey, Decimal]:
+    """PnL 517 keyed the way the bond rows are keyed, with both vocabularies folded."""
+    buckets: dict[_PnlPositionKey, Decimal] = {}
+    raw = pnl_repo.merged_capital_gain_517_by_position_and_accounting_for_dates(dates)
+    for (inst, portfolio_name, cost_center, accounting_basis), amount in raw.items():
+        key = (inst, portfolio_name, cost_center, _normalized_accounting_class(accounting_basis))
+        buckets[key] = buckets.get(key, ZERO) + amount
+    return buckets
+
+
+def _distribute_capital_gain_517(
+    bond_rows: list[Any],
+    buckets: dict[_PnlPositionKey, Decimal],
+) -> tuple[list[Decimal], int]:
+    """Assign each 517 bucket to the bond rows it covers — once, never per row.
+
+    A bucket carrying an accounting book matches the rows of that book; the
+    account-less nonstd bucket matches every row of the position. Handing the full
+    bucket to each matching row (what a plain ``pnl_map.get(key)`` per row does)
+    multiplies it by the number of legs, so a bucket that covers several rows is
+    split instead. The overwhelmingly common case is one row per bucket, where the
+    split is the identity and nothing about the published number changes.
+    """
+    trading_by_row: list[Decimal] = [ZERO] * len(bond_rows)
+    rows_by_book: dict[_PnlPositionKey, list[int]] = {}
+    rows_by_position: dict[tuple[str, str, str], list[int]] = {}
+    for index, row in enumerate(bond_rows):
+        if not isinstance(row, dict):
+            continue
+        key = _pnl_position_key_from_bond_row(row)
+        rows_by_book.setdefault(key, []).append(index)
+        rows_by_position.setdefault(key[:3], []).append(index)
+
+    split_buckets = 0
+    for key, amount in buckets.items():
+        indices = rows_by_position.get(key[:3]) if key[3] == "" else rows_by_book.get(key)
+        if not indices:
+            # Unmatched 517 keeps its existing treatment: the row stays at 0 and the
+            # caller's coverage warning reports the gap. Inventing a home for it here
+            # would hide a real reconciliation break.
+            continue
+        if len(indices) > 1 and amount != ZERO:
+            split_buckets += 1
+        weights = [safe_decimal(bond_rows[index].get("market_value")) for index in indices]
+        for index, share in zip(indices, _allocate_amount(amount, weights), strict=True):
+            trading_by_row[index] += share
+    return trading_by_row, split_buckets
 
 
 def _resolve_prior_bond_snapshot_date(repo: BondAnalyticsRepository, period_end: str) -> str | None:
@@ -615,16 +731,16 @@ def _overlay_return_decomposition_trading_pnl517(
         return summary, extra_warnings, details
 
     multi_month = len(dates) > 1
-    pnl_map = pnl_repo.merged_capital_gain_517_by_position_for_dates(dates)
+    pnl_map = _capital_gain_517_buckets(pnl_repo, dates)
     bond_rows = list(summary.get("bond_details") or [])
+    trading_by_row, split_buckets = _distribute_capital_gain_517(bond_rows, pnl_map)
     matched_mv = ZERO
     total_mv = ZERO
-    for row in bond_rows:
+    for index, row in enumerate(bond_rows):
         if not isinstance(row, dict):
             continue
-        key = _pnl_position_key_from_bond_row(row)
         econ = safe_decimal(row.get("total"))
-        tv = pnl_map.get(key, ZERO)
+        tv = trading_by_row[index]
         mv = safe_decimal(row.get("market_value"))
         total_mv += mv
         if tv != ZERO:
@@ -636,6 +752,13 @@ def _overlay_return_decomposition_trading_pnl517(
     summary["trading_total"] = sum((safe_decimal(r.get("trading")) for r in bond_rows if isinstance(r, dict)), ZERO)
     matched_coverage_pct = float(matched_mv / total_mv * 100) if total_mv > ZERO else 0.0
     summary["matched_coverage_pct"] = round(matched_coverage_pct, 2)
+    if split_buckets:
+        extra_warnings.append(
+            f"{split_buckets} capital_gain_517 bucket(s) are reported at a coarser grain than the "
+            "bond rows they cover and were split pro-rata by market value; per-bond trading is an "
+            "allocation, the position total is exact."
+        )
+        details.append({k: str(v) for k, v in RETURN_TRADING_PNL517_ALLOCATED_DETAIL.items()})
     try:
         by_ac, by_acc = rebucket_return_decomposition(bond_rows)
         summary["by_asset_class"] = by_ac
@@ -2700,6 +2823,7 @@ def _build_credit_spread_payload(
                 "concentration_by_industry": _to_concentration_model(build_concentration(credit_rows, field_name="industry_name", dimension="industry")),
                 "concentration_by_rating": _to_concentration_model(build_concentration(credit_rows, field_name="rating", dimension="rating")),
                 "concentration_by_tenor": _to_concentration_model(build_concentration(credit_rows, field_name="tenor_bucket", dimension="tenor")),
+                "display_limits": CONCENTRATION_DISPLAY_LIMITS,
                 "oci_credit_exposure": summary["oci_credit_exposure"],
                 "oci_spread_dv01": summary["oci_spread_dv01"],
                 "oci_sensitivity_25bp": -(summary["oci_spread_dv01"] * Decimal("25")),
@@ -3173,10 +3297,7 @@ def get_dv01_movement(report_date: date, accounting_class: str = "OCI", top_n: i
     )
 
 
-DEFAULT_DV01_LIMIT = Decimal("5000000")
-DEFAULT_DV01_WARNING = Decimal("4000000")
 DEFAULT_DV01_HEDGE_UNIT = Decimal("100000")
-DEFAULT_DV01_HEDGE_TARGET = Decimal("4000000")
 DV01_ACTION_SHOCKS = (Decimal("10"), Decimal("25"))
 DV01_LIMIT_CONFIG_STREAM = "bond_dv01_limit_config"
 DV01_LIMIT_CONFIG_REQUIRED_FIELDS = (
@@ -3191,7 +3312,12 @@ DV01_LIMIT_CONFIG_REQUIRED_FIELDS = (
 )
 DV01_ACTION_FORMAL_LIMIT_NOTE = "已接入正式 DV01 限额；按限额配置计算使用率、剩余额度和动作建议。"
 DV01_ACTION_THRESHOLD_NOTE = "页面预警阈值，不代表正式限额；未接入正式限额源时仅作参考。"
+DV01_ACTION_NO_LIMIT_NOTE = (
+    "未接入正式 DV01 限额，调用方也未提供页面阈值；"
+    "本次仅披露 DV01 敞口，不判定限额突破，不输出减仓/对冲建议。"
+)
 DV01_PAGE_THRESHOLD_RULE_VERSION = "rv_dv01_page_threshold_v3"
+DV01_NO_LIMIT_RULE_VERSION = "rv_dv01_no_limit_configured_v1"
 
 
 def get_dv01_action_plan(
@@ -3214,39 +3340,65 @@ def get_dv01_action_plan(
         report_date=report_date,
         accounting_class=normalized_class,
     )
+    page_limit = safe_decimal(limit_dv01)
+    page_warning = safe_decimal(warning_dv01)
     if limit_config is not None:
         limit = limit_config.limit_dv01
         warning = limit_config.warning_dv01
         hedge_target = limit_config.hedge_target_dv01
+        limit_configured = True
         policy_basis = "formal_limit"
         threshold_note = DV01_ACTION_FORMAL_LIMIT_NOTE
         limit_source = limit_config.limit_source
         limit_source_version = limit_config.limit_source_version
         limit_rule_version = limit_config.limit_rule_version
         limit_effective_date = limit_config.limit_effective_date
-    else:
-        limit = _positive_decimal_or_default(limit_dv01, DEFAULT_DV01_LIMIT)
-        warning = _positive_decimal_or_default(warning_dv01, DEFAULT_DV01_WARNING)
+    elif page_limit > ZERO or page_warning > ZERO:
+        # Caller-supplied what-if thresholds stay supported, but only because the
+        # caller stated them; nothing is invented on their behalf.
+        limit = page_limit if page_limit > ZERO else page_warning
+        warning = min(page_warning, limit) if page_warning > ZERO else limit
         hedge_target = _positive_decimal_or_default(hedge_target_dv01, min(warning, limit))
+        limit_configured = True
         policy_basis = "page_threshold_fallback"
         threshold_note = DV01_ACTION_THRESHOLD_NOTE
         limit_source = "page_threshold"
         limit_source_version = "unconfigured"
         limit_rule_version = DV01_PAGE_THRESHOLD_RULE_VERSION
         limit_effective_date = None
+    else:
+        # No governed limit and no caller threshold: there is no yardstick, so the
+        # plan degrades to exposure disclosure only. Never grade a breach or size a
+        # hedge against a placeholder limit.
+        limit = ZERO
+        warning = ZERO
+        hedge_target = ZERO
+        limit_configured = False
+        policy_basis = "no_limit_configured"
+        threshold_note = DV01_ACTION_NO_LIMIT_NOTE
+        limit_source = "unconfigured"
+        limit_source_version = "unconfigured"
+        limit_rule_version = DV01_NO_LIMIT_RULE_VERSION
+        limit_effective_date = None
     total_dv01 = sum((safe_decimal(row.get("dv01")) for row in rows), ZERO)
     total_abs_dv01 = dv01_core.total_abs_dv01(rows)
-    dv01_to_reduce = max(total_dv01 - hedge_target, ZERO)
+    dv01_to_reduce = max(total_dv01 - hedge_target, ZERO) if limit_configured else ZERO
     limit_usage = (total_dv01 / limit) if limit > ZERO else ZERO
-    remaining_limit_dv01 = limit - total_dv01
+    remaining_limit_dv01 = (limit - total_dv01) if limit_configured else ZERO
     suggested_hedge_units = (dv01_to_reduce / hedge_unit) if hedge_unit > ZERO else ZERO
     risk_level = dv01_core.dv01_action_risk_level(
         total_dv01=total_dv01,
         warning_dv01=warning,
         limit_dv01=limit,
         has_rows=bool(rows),
+        limit_configured=limit_configured,
     )
-    warnings = [] if limit_config is not None else [DV01_ACTION_THRESHOLD_NOTE]
+    if limit_config is not None:
+        warnings = []
+    elif limit_configured:
+        warnings = [DV01_ACTION_THRESHOLD_NOTE]
+    else:
+        warnings = [DV01_ACTION_NO_LIMIT_NOTE]
     if not rows:
         warnings.append(EMPTY_WARNING)
 
@@ -3257,6 +3409,7 @@ def get_dv01_action_plan(
             limit_dv01=limit,
             has_rows=bool(rows),
             shocks=DV01_ACTION_SHOCKS,
+            limit_configured=limit_configured,
         ),
         DV01ActionScenarioBreach,
     )
@@ -3968,8 +4121,13 @@ def _build_action_attribution_placeholder_response(
     *,
     report_date: date,
     period_type: str,
+    warnings_override: list[dict[str, str]] | None = None,
 ) -> dict:
-    """Build placeholder response when no data or computation fails."""
+    """Build placeholder response when no data or computation fails.
+
+    ``warnings_override`` 供计算失败分支复用占位结构但替换 warning 语义：
+    默认的"trade records 未接入"文案只适用于无数据占位，不得掩盖计算缺陷。
+    """
     analysis_envelope = build_bond_action_attribution_placeholder_envelope(
         AnalysisQuery(
             consumer="bond_analytics.action_attribution",
@@ -3980,11 +4138,16 @@ def _build_action_attribution_placeholder_response(
         )
     )
     summary = analysis_envelope.result.summary
+    warnings = (
+        warnings_override
+        if warnings_override is not None
+        else [warning.model_dump(mode="python") for warning in analysis_envelope.result.warnings]
+    )
     payload = build_action_attribution_placeholder_payload(
         report_date=report_date,
         summary=summary,
         facets=analysis_envelope.result.facets,
-        warnings=[warning.model_dump(mode="python") for warning in analysis_envelope.result.warnings],
+        warnings=warnings,
         generated_at=analysis_envelope.result_meta.generated_at.isoformat(),
         default_status=str(ActionAttributionResponse.model_fields["status"].default),
     )
@@ -4113,13 +4276,26 @@ def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
             positions_end=[bond_analytics_action_line_payload(r) for r in rows_end],
             pnl_by_key=pnl_by_key,
         )
-    except Exception:
+    except Exception as exc:
         logger.exception(
             "Action attribution computation failed for report_date=%s period_type=%s, returning placeholder",
             report_date, period_type,
         )
         return _build_action_attribution_placeholder_response(
-            report_date=report_date, period_type=period_type
+            report_date=report_date,
+            period_type=period_type,
+            warnings_override=[
+                {
+                    "code": "bond_action_attribution_computation_failed",
+                    "level": "error",
+                    "message": (
+                        f"Action attribution computation failed ({type(exc).__name__}); "
+                        "no attribution result is available for this request. "
+                        "This is a computation error, not missing trade-record integration; "
+                        "see server logs for the stack trace."
+                    ),
+                }
+            ],
         )
 
     result = _build_action_attribution_success_response(

@@ -7,7 +7,6 @@ from decimal import Decimal
 import duckdb
 import pytest
 
-from backend.app.schemas.formal_compute_runtime import FormalComputeMaterializeFailure
 from tests.helpers import load_module
 
 REPORT_DATE = "2026-03-31"
@@ -355,8 +354,18 @@ def _seed_formal_zqtz_balance_for_cb001(
 
 
 def _seed_duplicate_formal_zqtz_balance_for_cb001(duckdb_path: str) -> None:
-    _seed_formal_zqtz_balance_for_cb001(duckdb_path, market_value_amount=Decimal("1900"))
-    _seed_formal_zqtz_balance_for_cb001(duckdb_path, market_value_amount=Decimal("-1900"))
+    """An offsetting pair that collapses into one snapshot join group.
+
+    The two rows sit in different books, which is how the real offsetting pairs
+    look and what keeps them distinct under the v43 natural key. The snapshot
+    join key carries no accounting basis, so both still land in one group.
+    """
+    _seed_formal_zqtz_balance_for_cb001(
+        duckdb_path, market_value_amount=Decimal("1900"), accounting_basis="FVOCI"
+    )
+    _seed_formal_zqtz_balance_for_cb001(
+        duckdb_path, market_value_amount=Decimal("-1900"), accounting_basis="AC"
+    )
 
 
 BOND_ANALYTICS_TEST_YIELD_ANCHORS = ("2026-01-20", "2026-03-01", "2026-03-30", "2026-03-31")
@@ -661,6 +670,8 @@ def test_bond_analytics_materialize_krd_distribution_has_expected_bucket_shape_a
             "dv01": Decimal("0.12054196"),
             "avg_modified_duration": Decimal("8.03613072"),
             "krd": Decimal("8.03613072"),
+            "duration_excluded_market_value": Decimal("0"),
+            "duration_excluded_count": 0,
         },
         {
             "tenor_bucket": "1Y",
@@ -668,6 +679,8 @@ def test_bond_analytics_materialize_krd_distribution_has_expected_bucket_shape_a
             "dv01": Decimal("0.00982318"),
             "avg_modified_duration": Decimal("0.98231827"),
             "krd": Decimal("0.98231827"),
+            "duration_excluded_market_value": Decimal("0"),
+            "duration_excluded_count": 0,
         },
         {
             "tenor_bucket": "5Y",
@@ -675,6 +688,8 @@ def test_bond_analytics_materialize_krd_distribution_has_expected_bucket_shape_a
             "dv01": Decimal("0.09138735"),
             "avg_modified_duration": Decimal("4.56936732"),
             "krd": Decimal("4.56936732"),
+            "duration_excluded_market_value": Decimal("0"),
+            "duration_excluded_count": 0,
         },
     ]
     assert sum((row["market_value"] for row in krd), Decimal("0")) == risk["total_market_value"]
@@ -931,8 +946,14 @@ def test_bond_analytics_materialize_fails_closed_clears_target_facts_and_preserv
     }[missing_field]
     assert loaded_row[loaded_field] is None
 
+    # Catch the exception class binding the task actually raises: earlier tests
+    # (e.g. tests/test_formal_compute_runtime_contract.py) may have replaced
+    # backend.app.schemas.formal_compute_runtime in sys.modules via
+    # tests.helpers.load_module, forking a module-level import of
+    # FormalComputeMaterializeFailure in this file away from the class that the
+    # freshly loaded task_mod re-imported and raises.
     with pytest.raises(
-        FormalComputeMaterializeFailure,
+        task_mod.FormalComputeMaterializeFailure,
         match=rf"formal CNY closure unavailable:.*instrument_code=USD-CB-CLOSURE.*{loaded_field}",
     ):
         task_mod.materialize_bond_analytics_facts.fn(

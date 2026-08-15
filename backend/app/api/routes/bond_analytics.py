@@ -5,6 +5,11 @@ from datetime import date
 from typing import Annotated, Literal
 
 from backend.app.api.perf_logging import timed_api_call
+from backend.app.api.response_cache import (
+    bond_analytics_credit_spread_migration_cache_key,
+    bond_analytics_position_changes_cache_key,
+    market_home_response_cache,
+)
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.bond_analytics_service import (
@@ -64,7 +69,7 @@ def dates(
 def return_decomposition(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
-    period_type: str = Query("MoM", description="MoM / YTD / TTM"),
+    period_type: Literal["MoM", "YTD", "TTM"] = Query("MoM", description="MoM / YTD / TTM"),
     asset_class: str = Query("all", description="all / rate / credit"),
     accounting_class: str = Query("all", description="all / AC / OCI / TPL"),
     detail: Literal["full", "summary"] = Query(
@@ -82,7 +87,7 @@ def return_decomposition(
 def benchmark_excess(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
-    period_type: str = Query("MoM", description="MoM / YTD / TTM"),
+    period_type: Literal["MoM", "YTD", "TTM"] = Query("MoM", description="MoM / YTD / TTM"),
     benchmark_id: str = Query("CDB_INDEX", description="TREASURY_INDEX / CDB_INDEX / AAA_CREDIT_INDEX"),
 ):
     _ensure_bond_analytics_read_allowed(auth)
@@ -188,9 +193,17 @@ def credit_spread_migration(
     spread_scenarios: str = Query("10,25,50", description="Comma-separated bp values"),
 ):
     _ensure_bond_analytics_read_allowed(auth)
+    cache_key = bond_analytics_credit_spread_migration_cache_key(
+        str(get_settings().duckdb_path),
+        report_date=report_date.isoformat(),
+        spread_scenarios=spread_scenarios,
+    )
     return timed_api_call(
         "/api/bond-analytics/credit-spread-migration",
-        lambda: get_credit_spread_migration(report_date, spread_scenarios),
+        lambda: market_home_response_cache.get_or_build(
+            cache_key,
+            lambda: get_credit_spread_migration(report_date, spread_scenarios),
+        ),
     )
 
 
@@ -237,14 +250,23 @@ def position_changes(
     top_n: int = Query(5, ge=1, le=100, description="Number of largest position changes by absolute MV delta"),
 ):
     _ensure_bond_analytics_read_allowed(auth)
-    return get_position_changes(report_date, top_n=top_n)
+    cache_key = bond_analytics_position_changes_cache_key(
+        str(get_settings().duckdb_path),
+        report_date=report_date.isoformat(),
+        top_n=top_n,
+    )
+    return market_home_response_cache.get_or_build(
+        cache_key,
+        lambda: get_position_changes(report_date, top_n=top_n),
+    )
 
 
 @router.get("/action-attribution")
 def action_attribution(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
-    period_type: str = Query("MoM", description="MoM / YTD"),
+    # 合法集与 resolve_period 及前端期间选择器一致（MoM/YTD/TTM）；此前描述漏写 TTM。
+    period_type: Literal["MoM", "YTD", "TTM"] = Query("MoM", description="MoM / YTD / TTM"),
 ):
     _ensure_bond_analytics_read_allowed(auth)
     return get_action_attribution(report_date, period_type)
@@ -273,11 +295,13 @@ def refresh(
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
-        return refresh_bond_analytics(
+        result = refresh_bond_analytics(
             settings,
             report_date=report_date,
             idempotency_key=idempotency_key,
         )
+        market_home_response_cache.invalidate()
+        return result
     except BondAnalyticsRefreshConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except BondAnalyticsRefreshServiceError as exc:

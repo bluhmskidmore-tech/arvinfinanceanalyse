@@ -216,12 +216,18 @@ def _assert_formal_envelope(payload: dict[str, Any]) -> None:
     _assert_result_envelope(payload)
 
 
-def _assert_bond_dashboard_headline_candidate_envelope(payload: dict[str, Any]) -> None:
+def _assert_bond_dashboard_headline_candidate_envelope(
+    payload: dict[str, Any],
+    *,
+    quality_flag: str = "warning",
+) -> None:
     _assert_result_envelope(payload, basis="analytical", formal_use_allowed=False)
     meta = payload["result_meta"]
     assert meta["result_kind"] == "bond_dashboard.headline_kpis"
     assert meta["source_surface"] == "bond_analytics"
-    assert meta["quality_flag"] == "warning"
+    # quality_flag 反映数据质量（有证据行 ok / 空数据 warning），口径基准由
+    # basis=analytical + formal_use_allowed=false 表达。
+    assert meta["quality_flag"] == quality_flag
     assert meta["scenario_flag"] is False
     assert meta["requested_report_date"] == REPORT_DATE
     assert meta["resolved_report_date"] == REPORT_DATE
@@ -256,7 +262,7 @@ def _assert_bond_dashboard_candidate_envelope(
     meta = payload["result_meta"]
     assert meta["result_kind"] == result_kind
     assert meta["source_surface"] == "bond_analytics"
-    assert meta["quality_flag"] == "warning"
+    assert meta["quality_flag"] == ("ok" if evidence_rows > 0 else "warning")
     assert meta["scenario_flag"] is False
     assert meta["requested_report_date"] == REPORT_DATE
     assert meta["resolved_report_date"] == REPORT_DATE
@@ -290,6 +296,7 @@ def _check_all_on_empty_db(tmp_path, monkeypatch) -> None:
         result = payload["result"]
         if path.endswith("/dates"):
             assert result.get("report_dates") == []
+            assert payload["result_meta"]["quality_flag"] == "warning"
         elif path.endswith("/home-summary"):
             assert result.get("report_date") == REPORT_DATE
             assert result["headline"].get("report_date") == REPORT_DATE
@@ -304,15 +311,28 @@ def _check_all_on_empty_db(tmp_path, monkeypatch) -> None:
             assert result["business_type"].get("items") == []
             cur = result["headline"]["kpis"]
             _assert_numeric(cur["total_market_value"], unit="yuan", raw=0)
+            _assert_numeric(cur["credit_spread_median"], unit="pct")
+            assert cur["credit_spread_median"]["raw"] is None
             _assert_numeric(result["risk"]["credit_ratio"], unit="ratio", raw=0)
+            _assert_numeric(result["risk"]["weighted_convexity"], unit="ratio")
+            assert result["risk"]["weighted_convexity"]["raw"] is None
+            _assert_numeric(
+                result["risk"]["weighted_convexity_coverage_ratio"],
+                unit="ratio",
+                raw=0,
+            )
         elif path.endswith("/headline-kpis"):
             assert result.get("report_date") == REPORT_DATE
             assert result.get("kpis") is not None
             cur = result["kpis"]
             assert cur["bond_count"] == 0
             _assert_numeric(cur["total_market_value"], unit="yuan", raw=0)
-            _assert_numeric(cur["weighted_ytm"], unit="pct", raw=0)
-            _assert_numeric(cur["weighted_duration"], unit="ratio", raw=0)
+            _assert_numeric(cur["weighted_ytm"], unit="pct")
+            assert cur["weighted_ytm"]["raw"] is None
+            _assert_numeric(cur["weighted_duration"], unit="ratio")
+            assert cur["weighted_duration"]["raw"] is None
+            _assert_numeric(cur["credit_spread_median"], unit="pct")
+            assert cur["credit_spread_median"]["raw"] is None
             _assert_numeric(cur["total_dv01"], unit="dv01", raw=0)
             assert result.get("prev_report_date") is None
             assert result.get("prev_kpis") is None
@@ -332,7 +352,14 @@ def _check_all_on_empty_db(tmp_path, monkeypatch) -> None:
             _assert_numeric(result["total_dv01"], unit="dv01", raw=0)
             _assert_numeric(result["weighted_duration"], unit="ratio", raw=0)
             _assert_numeric(result["credit_ratio"], unit="ratio", raw=0)
+            _assert_numeric(result["weighted_convexity"], unit="ratio")
+            assert result["weighted_convexity"]["raw"] is None
             _assert_numeric(result["total_spread_dv01"], unit="dv01", raw=0)
+            _assert_numeric(
+                result["weighted_convexity_coverage_ratio"],
+                unit="ratio",
+                raw=0,
+            )
         elif path.endswith("/business-type-metrics"):
             assert result.get("report_date") == REPORT_DATE
             assert result.get("items") == []
@@ -427,6 +454,7 @@ def test_bond_dashboard_service_reuses_formal_fact_rows_for_same_report_date(tmp
                 "weighted_convexity": Decimal("0.1"),
                 "total_spread_dv01": Decimal("0.2"),
                 "reinvestment_ratio_1y": Decimal("0.1"),
+                "weighted_convexity_coverage_ratio": Decimal("0.9"),
             }
 
         def fetch_dashboard_portfolio_comparison(self, report_date):
@@ -572,6 +600,7 @@ def test_bond_dashboard_home_summary_builds_child_payloads_without_child_envelop
                 "weighted_convexity": Decimal("0.1"),
                 "total_spread_dv01": Decimal("0.2"),
                 "reinvestment_ratio_1y": Decimal("0.1"),
+                "weighted_convexity_coverage_ratio": Decimal("0.9"),
             }
 
         def fetch_dashboard_asset_structure(self, report_date, group_by):
@@ -745,6 +774,7 @@ def test_bond_dashboard_dates_falls_back_to_facts_lineage_when_manifest_missing(
     assert payload["result_meta"]["source_version"] == "sv_dash_row"
     assert payload["result_meta"]["rule_version"] == "rv_bond_analytics_formal_materialize_v2"
     assert payload["result_meta"]["cache_version"] == "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v2"
+    assert payload["result_meta"]["quality_flag"] == "ok"
     assert payload["result"]["report_dates"] == [REPORT_DATE]
     assert payload["data_source"] == "bond_analytics_facts"
     get_settings.cache_clear()
@@ -949,7 +979,7 @@ def test_bond_dashboard_headline_kpis_shape_with_seeded_facts(tmp_path, monkeypa
     response = client.get("/api/bond-dashboard/headline-kpis", params={"report_date": d2})
     assert response.status_code == 200
     payload = response.json()
-    _assert_bond_dashboard_headline_candidate_envelope(payload)
+    _assert_bond_dashboard_headline_candidate_envelope(payload, quality_flag="ok")
     res = payload["result"]
     assert res["prev_report_date"] == d1
     assert res["kpis"]["bond_count"] == 1
@@ -1072,12 +1102,154 @@ def test_bond_dashboard_main_endpoints_return_numeric_payloads_with_seeded_facts
     _assert_numeric(risk_result["weighted_duration"], unit="ratio", raw=Decimal("5"))
     _assert_numeric(risk_result["credit_ratio"], unit="ratio", raw=Decimal("0.3"))
     _assert_numeric(risk_result["total_spread_dv01"], unit="dv01", raw=Decimal("0.6"))
+    # 质量披露字段：凸性覆盖率（承载凸性的市值占比）随信封透传。
+    _assert_numeric(risk_result["weighted_convexity_coverage_ratio"], unit="ratio")
 
     business_type = client.get("/api/bond-dashboard/business-type-metrics", params={"report_date": REPORT_DATE})
     assert business_type.status_code == 200, business_type.text
     business_item = business_type.json()["result"]["items"][0]
     assert isinstance(business_item["market_value"], str)
     assert isinstance(business_item["weighted_avg_ytm_pct"], str)
+    # 质量披露字段：加权 YTM/久期覆盖率（0-1 比率，市值占比口径）。
+    _assert_numeric(business_item["weighted_avg_ytm_coverage_ratio"], unit="ratio")
+    _assert_numeric(business_item["weighted_avg_duration_coverage_ratio"], unit="ratio")
+    get_settings.cache_clear()
+
+
+def test_bond_dashboard_zero_metric_coverage_preserves_missing_values_across_surfaces(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+
+    duckdb_path = tmp_path / "dash-zero-coverage-contract.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+
+    repo = BondAnalyticsRepository(str(duckdb_path))
+    _replace_bond_dashboard_rows(
+        repo,
+        report_date=REPORT_DATE,
+        rows=[
+            _make_bond_analytics_row(
+                report_date=REPORT_DATE,
+                instrument_code="NO-COVERAGE",
+                portfolio_name="P1",
+                asset_class_std="rate",
+                market_value=Decimal("100"),
+                ytm=Decimal("0.02"),
+                modified_duration=Decimal("2"),
+                bond_type_label="NoCoverage",
+            )
+        ],
+    )
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_formal_bond_analytics_daily
+            set ytm = null, modified_duration = null, convexity = null
+            where cast(report_date as varchar) = ?
+              and instrument_code = 'NO-COVERAGE'
+            """,
+            [REPORT_DATE],
+        )
+    finally:
+        conn.close()
+
+    client = _bond_dashboard_client_with_read_scope(tmp_path, monkeypatch)
+
+    headline_response = client.get(
+        "/api/bond-dashboard/headline-kpis",
+        params={"report_date": REPORT_DATE},
+    )
+    assert headline_response.status_code == 200, headline_response.text
+    headline_kpis = headline_response.json()["result"]["kpis"]
+    _assert_numeric(headline_kpis["weighted_ytm"], unit="pct")
+    assert headline_kpis["weighted_ytm"]["raw"] is None
+    _assert_numeric(headline_kpis["weighted_duration"], unit="ratio")
+    assert headline_kpis["weighted_duration"]["raw"] is None
+
+    risk_response = client.get(
+        "/api/bond-dashboard/risk-indicators",
+        params={"report_date": REPORT_DATE},
+    )
+    assert risk_response.status_code == 200, risk_response.text
+    risk_payload = risk_response.json()
+    assert risk_payload["result_meta"]["quality_flag"] == "ok"
+    risk_result = risk_payload["result"]
+    _assert_numeric(risk_result["weighted_convexity"], unit="ratio")
+    assert risk_result["weighted_convexity"]["raw"] is None
+    _assert_numeric(
+        risk_result["weighted_convexity_coverage_ratio"],
+        unit="ratio",
+        raw=0,
+    )
+
+    business_response = client.get(
+        "/api/bond-dashboard/business-type-metrics",
+        params={"report_date": REPORT_DATE},
+    )
+    assert business_response.status_code == 200, business_response.text
+    assert business_response.json()["result_meta"]["quality_flag"] == "ok"
+    business_item = business_response.json()["result"]["items"][0]
+    assert business_item["weighted_avg_ytm_pct"] == ""
+    assert business_item["weighted_avg_duration"] == ""
+    _assert_numeric(
+        business_item["weighted_avg_ytm_coverage_ratio"],
+        unit="ratio",
+        raw=0,
+    )
+    _assert_numeric(
+        business_item["weighted_avg_duration_coverage_ratio"],
+        unit="ratio",
+        raw=0,
+    )
+
+    spread_response = client.get(
+        "/api/bond-dashboard/spread-analysis",
+        params={"report_date": REPORT_DATE},
+    )
+    assert spread_response.status_code == 200, spread_response.text
+    assert spread_response.json()["result"]["items"][0]["median_yield"] is None
+
+    home_response = client.get(
+        "/api/bond-dashboard/home-summary",
+        params={"report_date": REPORT_DATE},
+    )
+    assert home_response.status_code == 200, home_response.text
+    home_payload = home_response.json()
+    assert home_payload["result_meta"]["quality_flag"] == "ok"
+    assert home_payload["result"]["risk"]["weighted_convexity"]["raw"] is None
+    assert home_payload["result"]["business_type"]["items"][0]["weighted_avg_ytm_pct"] == ""
+    assert home_payload["result"]["spread"]["items"][0]["median_yield"] is None
+
+    bundle_response = client.get(
+        "/api/bond-dashboard/bundle",
+        params={
+            "report_date": REPORT_DATE,
+            "sections": "risk-indicators,business-type-metrics,spread-analysis",
+        },
+    )
+    assert bundle_response.status_code == 200, bundle_response.text
+    bundle_payload = bundle_response.json()
+    assert bundle_payload["result_meta"]["quality_flag"] == "ok"
+    sections = bundle_payload["result"]["sections"]
+    assert sections["risk-indicators"]["result"]["weighted_convexity"]["raw"] is None
+    assert (
+        sections["business-type-metrics"]["result"]["items"][0]["weighted_avg_duration"]
+        == ""
+    )
+    assert sections["spread-analysis"]["result"]["items"][0]["median_yield"] is None
+    assert {
+        section: envelope["result_meta"]["quality_flag"]
+        for section, envelope in sections.items()
+    } == {
+        "risk-indicators": "ok",
+        "business-type-metrics": "ok",
+        "spread-analysis": "ok",
+    }
     get_settings.cache_clear()
 
 

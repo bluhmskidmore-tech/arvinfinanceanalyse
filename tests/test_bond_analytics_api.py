@@ -297,6 +297,15 @@ async def _check_all_endpoints() -> None:
             )
             payload = response.json()
             _assert_envelope(payload)
+            if path == "/api/bond-analytics/credit-spread-migration":
+                # 展示限额（后端下发，非风控正式限额）：route 透传存在性与数值。
+                assert payload["result"]["display_limits"] == {
+                    "issuer_single_max": 0.1,
+                    "issuer_top5_max": 0.4,
+                    "hhi_warning": 0.15,
+                    "below_aa_max": 0.2,
+                    "credit_weight_max": 0.85,
+                }
 
 
 def test_bond_analytics_endpoints_envelope_and_result_shape() -> None:
@@ -401,6 +410,64 @@ def test_bond_analytics_return_decomposition_summary_detail_uses_summary_project
     assert response.status_code == 200, response.text
     assert called["args"] == (REPORT_DATE, "MoM", "rate", "AC")
     assert response.json()["result"]["bond_details"] == []
+
+
+@pytest.mark.parametrize(
+    "path,params",
+    [
+        ("/api/bond-analytics/return-decomposition", {"report_date": REPORT_DATE, "period_type": "ytd"}),
+        ("/api/bond-analytics/return-decomposition", {"report_date": REPORT_DATE, "period_type": "YoY"}),
+        ("/api/bond-analytics/benchmark-excess", {"report_date": REPORT_DATE, "period_type": "mom"}),
+        ("/api/bond-analytics/action-attribution", {"report_date": REPORT_DATE, "period_type": "quarterly"}),
+    ],
+)
+def test_bond_analytics_period_type_rejects_unknown_values_with_422(path, params, monkeypatch):
+    """非法 period_type 必须 422 快速失败，不得静默按 MoM 计算后回显请求口径。"""
+    route_module = load_module(
+        "backend.app.api.routes.bond_analytics",
+        "backend/app/api/routes/bond_analytics.py",
+    )
+
+    def _must_not_run(*_args, **_kwargs):
+        raise AssertionError("service must not run for invalid period_type")
+
+    for name in ("get_return_decomposition", "get_return_decomposition_summary", "get_benchmark_excess", "get_action_attribution"):
+        monkeypatch.setattr(route_module, name, _must_not_run)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    response = client.get(path, params=params, headers=BOND_ANALYTICS_READ_HEADERS)
+
+    assert response.status_code == 422, f"{path} {params}: {response.status_code} {response.text}"
+    assert "period_type" in response.text
+
+
+def test_bond_analytics_action_attribution_accepts_ttm_period(monkeypatch):
+    """TTM 属于 resolve_period 与前端期间选择器的合法集，收紧枚举不得误伤。"""
+    route_module = load_module(
+        "backend.app.api.routes.bond_analytics",
+        "backend/app/api/routes/bond_analytics.py",
+    )
+    called: dict[str, object] = {}
+
+    def _stub(report_date, period_type):
+        called["args"] = (report_date.isoformat(), period_type)
+        return {"result_meta": {"result_kind": "bond_analytics.action_attribution"}, "result": {}}
+
+    monkeypatch.setattr(route_module, "get_action_attribution", _stub)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/bond-analytics/action-attribution",
+        params={"report_date": REPORT_DATE, "period_type": "TTM"},
+        headers=BOND_ANALYTICS_READ_HEADERS,
+    )
+
+    assert response.status_code == 200, response.text
+    assert called["args"] == (REPORT_DATE, "TTM")
 
 
 def test_bond_analytics_dates_returns_available_report_dates(tmp_path, monkeypatch):

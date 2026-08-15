@@ -65,7 +65,12 @@
   background: var(--nct-accent-300, var(--dh-api-blue));
 }
 
-/* 未评级/违约的风险语义色，不参与色板轮换。 */
+/* 违约与 B 档及以下的风险警戒色，不参与色板轮换。 */
 .positions-bonds-dist__dot--neg {
   background: var(--dh-api-red);
+}
+
+/* 未评级/未知档中性灰（bond-dashboard 同制度）：不伪装评级档位也不当警戒。 */
+.positions-bonds-dist__dot--unrated {
+  background: var(--dh-api-muted);
 }

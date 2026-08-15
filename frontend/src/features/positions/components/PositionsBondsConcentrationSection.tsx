@@ -179,8 +179,12 @@ function PositionsQualityPanel({
           </div>
         ))}
       </div>
-      {/* 来源/规则版本哈希不再入带底（与证据区重复且必然截断）；只留口径一句。 */}
-      <p className="positions-view__quality-note">口径：{policy}</p>
+      {/* 来源/规则版本哈希不再入带底（与证据区重复且必然截断）；只留口径一句。
+          零票息说明有真实链路证据：付息率为 0 的主体均为基金/资管类（源数据登记
+          零票息），与缺失票息（剔除分母、显示 EM_DASH）语义不同。 */}
+      <p className="positions-view__quality-note">
+        口径：{policy}；付息率 0.00% 为源数据登记的零票息（基金类等无票息计 0），票息缺失剔除分母并显示 {EM_DASH}
+      </p>
     </div>
   );
 }
@@ -195,6 +199,7 @@ export default function PositionsBondsConcentrationSection({
   subType,
   stats,
   statsLoading,
+  statsError = false,
   searchText,
   onSearchTextChange,
   onCustomerOpen,
@@ -204,6 +209,7 @@ export default function PositionsBondsConcentrationSection({
   subType: string | null;
   stats: CounterpartyStatsResponse | undefined;
   statsLoading: boolean;
+  statsError?: boolean;
   searchText: string;
   onSearchTextChange: (next: string) => void;
   onCustomerOpen: (customerName: string) => void;
@@ -257,6 +263,9 @@ export default function PositionsBondsConcentrationSection({
           <div className="positions-view__table-state positions-view__table-state--loading">
             <Spin />
           </div>
+        ) : statsError ? (
+          /* 读取失败是错误态不是空态：与分区头「读取失败」一致，不画空态框。 */
+          <p className="positions-view__table-state">读取失败，请稍后重试</p>
         ) : stats && filteredItems.length > 0 ? (
           <Table
             size="small"

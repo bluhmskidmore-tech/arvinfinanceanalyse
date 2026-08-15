@@ -25,7 +25,8 @@ export type PositionsClientMethods = {
     reportDate?: string | null,
   ) => Promise<ApiEnvelope<SubTypesResponse>>;
   getPositionsBondsList: (options: {
-    reportDate?: string | null;
+    /** 后端 `/api/positions/bonds` 的 `report_date` 为必填 Query 参数（缺失即 422）。 */
+    reportDate: string;
     subType?: string | null;
     page: number;
     pageSize: number;
@@ -43,7 +44,8 @@ export type PositionsClientMethods = {
     reportDate?: string | null,
   ) => Promise<ApiEnvelope<ProductTypesResponse>>;
   getPositionsInterbankList: (options: {
-    reportDate?: string | null;
+    /** 后端 `/api/positions/interbank` 的 `report_date` 为必填 Query 参数（缺失即 422）。 */
+    reportDate: string;
     productType?: string | null;
     direction?: PositionDirection | "ALL" | null;
     page: number;
@@ -131,9 +133,7 @@ export function createRealPositionsClient(
       includeIssued,
     }) => {
       const params = new URLSearchParams();
-      if (reportDate?.trim()) {
-        params.set("report_date", reportDate.trim());
-      }
+      params.set("report_date", reportDate.trim());
       if (subType?.trim()) {
         params.set("sub_type", subType.trim());
       }
@@ -194,9 +194,7 @@ export function createRealPositionsClient(
       pageSize,
     }) => {
       const params = new URLSearchParams();
-      if (reportDate?.trim()) {
-        params.set("report_date", reportDate.trim());
-      }
+      params.set("report_date", reportDate.trim());
       if (productType?.trim()) {
         params.set("product_type", productType.trim());
       }

@@ -150,6 +150,16 @@ export default function BondTradingDeskPage() {
     return null;
   }, [composeQuery.isError, composeResult?.partialFailure, datesQuery.isError]);
 
+  const retryFailedReads = () => {
+    if (datesQuery.isError) {
+      void datesQuery.refetch();
+    }
+    if (composeQuery.isError || composeResult?.partialFailure) {
+      void composeQuery.refetch();
+    }
+  };
+  const isRetryingReads = datesQuery.isFetching || composeQuery.isFetching;
+
   const applyBondCode = () => {
     const next = new URLSearchParams(searchParams);
     const code = bondCodeInput.trim();
@@ -192,29 +202,31 @@ export default function BondTradingDeskPage() {
         description="只读拼装既有重仓券、持仓与利差列表；盘口、约束与相似券等待后端契约。"
         badgeLabel="契约对齐 MVP"
         badgeTone="accent"
-        actions={
-          <Space wrap>
-            <DatePicker
-              data-testid="bond-trading-desk-report-date"
-              value={effectiveReportDate ? dayjs(effectiveReportDate) : null}
-              onChange={onReportDateChange}
-              disabled={!hasDates}
-              allowClear={false}
-            />
-            <Input
-              data-testid="bond-trading-desk-bond-code"
-              placeholder="bond_code，如 230210.IB"
-              value={bondCodeInput}
-              onChange={(event) => setBondCodeInput(event.target.value)}
-              onPressEnter={applyBondCode}
-              style={{ width: 220 }}
-            />
-            <Button data-testid="bond-trading-desk-apply-bond" onClick={applyBondCode}>
-              查询
-            </Button>
-          </Space>
-        }
       />
+
+      <div className={styles.toolbarRow}>
+        <Space wrap>
+          <DatePicker
+            data-testid="bond-trading-desk-report-date"
+            placeholder="选择报告日"
+            value={effectiveReportDate ? dayjs(effectiveReportDate) : null}
+            onChange={onReportDateChange}
+            disabled={!hasDates}
+            allowClear={false}
+          />
+          <Input
+            data-testid="bond-trading-desk-bond-code"
+            placeholder="bond_code，如 230210.IB"
+            value={bondCodeInput}
+            onChange={(event) => setBondCodeInput(event.target.value)}
+            onPressEnter={applyBondCode}
+            style={{ width: 220 }}
+          />
+          <Button data-testid="bond-trading-desk-apply-bond" onClick={applyBondCode}>
+            查询
+          </Button>
+        </Space>
+      </div>
 
       {pageError ? (
         <Alert
@@ -222,6 +234,16 @@ export default function BondTradingDeskPage() {
           showIcon
           message={pageError}
           data-testid="bond-trading-desk-error"
+          action={
+            <Button
+              size="small"
+              data-testid="bond-trading-desk-retry"
+              loading={isRetryingReads}
+              onClick={retryFailedReads}
+            >
+              重试
+            </Button>
+          }
         />
       ) : null}
 
@@ -235,10 +257,16 @@ export default function BondTradingDeskPage() {
         />
       ) : null}
 
-      {normalizedBondCode && composeQuery.isPending ? (
-        <div data-testid="bond-trading-desk-loading">
+      {normalizedBondCode && effectiveReportDate && composeQuery.isPending ? (
+        <div data-testid="bond-trading-desk-loading" className={styles.loadingBlock}>
           <Spin />
         </div>
+      ) : null}
+
+      {normalizedBondCode && !effectiveReportDate && !datesQuery.isLoading ? (
+        <p className={styles.scopeNote} data-testid="bond-trading-desk-waiting-date">
+          报告日不可用，暂无法拼装单券读面；请重试报告日列表或手动指定日期。
+        </p>
       ) : null}
 
       {pageModel ? (
@@ -252,7 +280,11 @@ export default function BondTradingDeskPage() {
             />
           ) : null}
 
-          <p className={styles.scopeNote} data-testid="bond-trading-desk-scope-note">
+          <p
+            className={styles.scopeNote}
+            data-testid="bond-trading-desk-scope-note"
+            title={pageModel.lookupScopeDetail}
+          >
             {pageModel.lookupScopeNote}
           </p>
 
@@ -298,18 +330,25 @@ export default function BondTradingDeskPage() {
                 className={styles.sectionBlock}
               >
                 <div className={styles.sectionTitle}>待返回模块</div>
-                <div className={styles.gapList}>
-                  {pageModel.gapSections.map((gap) => (
-                    <div key={gap.key} className={styles.gapItem}>
-                      <div className={styles.gapLabel}>
-                        {gap.label}{" "}
-                        <Tag color={gap.status === "api_pending" ? "orange" : "default"}>
-                          {gap.status === "api_pending" ? "API 待返回" : "未命中持仓"}
-                        </Tag>
-                      </div>
-                      <div className={styles.gapReason}>{gap.reason}</div>
-                    </div>
-                  ))}
+                {/* 五个模块共用同一等待原因，合并为一张收缩卡，原因只出现一次。 */}
+                <div className={styles.gapItem}>
+                  <div className={styles.gapLabel}>
+                    {pageModel.gapSections.map((gap) => gap.label).join("、")}{" "}
+                    <Tag
+                      color={
+                        pageModel.gapSections[0]?.status === "api_pending"
+                          ? "orange"
+                          : "default"
+                      }
+                    >
+                      {pageModel.gapSections[0]?.status === "api_pending"
+                        ? "API 待返回"
+                        : "未命中持仓"}
+                    </Tag>
+                  </div>
+                  <div className={styles.gapReason}>
+                    {pageModel.gapSections[0]?.reason}
+                  </div>
                 </div>
               </section>
             </div>

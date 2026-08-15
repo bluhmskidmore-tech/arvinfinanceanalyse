@@ -1,5 +1,6 @@
 import { Suspense, useMemo } from "react";
 
+import { EM_DASH } from "../../../utils/format";
 import { buildYieldCurveOption, type YieldCurveSeriesResult } from "../lib/crossAssetYieldCurve";
 import { LazyCrossAssetECharts } from "./CrossAssetECharts";
 
@@ -44,11 +45,11 @@ export function YieldCurvePanel({
         <div className="yield-curve-panel__title-row">
           <h3 className="yield-curve-panel__title">{UI.title}</h3>
           <span className="yield-curve-panel__meta">
-            {curves.families.length} 族 · {totalPoints} 点
+            {totalPoints > 0 ? `${curves.families.length} 族 · ${totalPoints} 点` : EM_DASH}
           </span>
         </div>
         <p className="yield-curve-panel__hint" data-testid="yield-curve-panel-hint">
-          {dateHint}；{UI.mixedNote}
+          {totalPoints > 0 ? `${dateHint}；${UI.mixedNote}` : dateHint}
         </p>
       </div>
       {loading ? (

@@ -192,6 +192,25 @@ function normalizeConfluenceDisclaimer(
   return raw;
 }
 
+/** 市场门控枚举中文映射（与 /stock-analysis localizeMarketDataStatus 同语义家族）；未登记枚举原样透出。 */
+function livermoreMarketGateStateLabel(state: string | null | undefined) {
+  const normalized = (state ?? "").trim().toUpperCase();
+  const labels: Record<string, string> = {
+    OVERHEAT: "过热",
+    HOT: "偏热",
+    WARM: "偏暖",
+    OFF: "关闭",
+    STALE: "数据陈旧",
+    NO_DATA: "暂无数据",
+    PENDING_DATA: "数据待补",
+    UNKNOWN: "待确认",
+  };
+  if (!normalized) {
+    return "待定";
+  }
+  return labels[normalized] ?? state!.trim();
+}
+
 function livermoreConfluenceStatusLabel(status: string | null | undefined) {
   if (status === "supportive") return "偏支持";
   if (status === "neutral") return "中性";
@@ -388,18 +407,18 @@ export function LivermoreStrategyStatusPanel({
           Livermore 策略状态加载失败。
         </div>
       ) : !payload ? (
-        <div className="cross-asset-livermore__message cross-asset-livermore__message--warning">
-          暂无 Livermore 策略状态。
-        </div>
+        <div className="cross-asset-livermore__message">暂无 Livermore 策略状态。</div>
       ) : (
         <>
           <div className="cross-asset-livermore__grid">
             <div className="cross-asset-livermore__metric">
               <span className="cross-asset-livermore__label">市场门控</span>
-              <strong className="cross-asset-livermore__value">{payload.market_gate.state}</strong>
+              <strong className="cross-asset-livermore__value" title={payload.market_gate.state}>
+                {livermoreMarketGateStateLabel(payload.market_gate.state)}
+              </strong>
               <small className="cross-asset-livermore__detail">
                 {payload.market_gate.passed_conditions}/{payload.market_gate.required_conditions} 条通过 · 暴露{" "}
-                {formatLivermoreExposure(payload.market_gate.exposure)} ·{" "}
+                {formatLivermoreExposure(payload.market_gate.exposure)}；
                 {formatLivermoreReadinessSummary(gateReadiness?.summary, gateReadiness?.key) || "门控状态待定"}
               </small>
             </div>
@@ -426,7 +445,6 @@ export function LivermoreStrategyStatusPanel({
           </div>
           <div className="cross-asset-livermore__footer">
             <span>日期 {requestedDate}</span>
-            <span>分析口径 · 不生成交易指令</span>
             <span>输出 {payload.supported_outputs.length}/{payload.supported_outputs.length + payload.unsupported_outputs.length}</span>
           </div>
           <LivermoreManualPositionForm
@@ -458,7 +476,8 @@ export function LivermoreSignalConfluencePanel({
   const disclaimer = normalizeConfluenceDisclaimer(payload?.disclaimer, diagnostics);
   const macroStatus = livermoreConfluenceStatusLabel(payload?.macro_context?.status);
   const compositeScore = parseOptionalNumeric(payload?.macro_context?.composite_score);
-  const marketGateState = payload?.strategy_context?.market_gate_state?.trim() || "待定";
+  const marketGateStateRaw = payload?.strategy_context?.market_gate_state?.trim() || "";
+  const marketGateState = livermoreMarketGateStateLabel(marketGateStateRaw);
   const strategyPositionSizeHint =
     parseOptionalNumeric(payload?.strategy_context?.position_size_hint) ?? parseOptionalNumeric(payload?.position_size_hint);
   const newEntryObservationAllowed =
@@ -513,9 +532,7 @@ export function LivermoreSignalConfluencePanel({
           宏观 × 策略观察点位加载失败。
         </div>
       ) : !payload ? (
-        <div className="cross-asset-livermore-confluence__message cross-asset-livermore-confluence__message--warning">
-          暂无宏观 × 策略观察点位。
-        </div>
+        <div className="cross-asset-livermore-confluence__message">暂无宏观 × 策略观察点位。</div>
       ) : (
         <>
           <div className="cross-asset-livermore-confluence__summary">
@@ -528,7 +545,9 @@ export function LivermoreSignalConfluencePanel({
             </article>
             <article className="cross-asset-livermore-confluence__summary-card">
               <span className="cross-asset-livermore-confluence__summary-label">市场门控</span>
-              <strong className="cross-asset-livermore-confluence__summary-value">{marketGateState}</strong>
+              <strong className="cross-asset-livermore-confluence__summary-value" title={marketGateStateRaw || undefined}>
+                {marketGateState}
+              </strong>
               <small className="cross-asset-livermore-confluence__summary-detail">
                 {newEntryObservationAllowed ? "允许保留入场观察" : "仅保留观察，不追加新动作"}
               </small>
@@ -538,7 +557,8 @@ export function LivermoreSignalConfluencePanel({
               <strong className="cross-asset-livermore-confluence__summary-value">
                 {formatLivermoreExposure(strategyPositionSizeHint)}
               </strong>
-              <small className="cross-asset-livermore-confluence__summary-detail">{disclaimer}</small>
+              {/* 免责声明只保留页头 meta 一处（§6 去重），此处改为仓位提示口径说明。 */}
+              <small className="cross-asset-livermore-confluence__summary-detail">观察仓位为策略提示值</small>
             </article>
           </div>
 

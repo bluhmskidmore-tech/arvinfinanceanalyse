@@ -9,7 +9,8 @@ import type {
 } from "../../../api/contracts";
 import { apiQueryKeys } from "../../../api/queryKeys";
 
-export const BOND_ANALYTICS_COCKPIT_YIELD_CURVE_TYPES = "treasury,cdb";
+/* aaa_credit 后端数据齐备（1Y-10Y，choice vendor），一并请求供信用读面；20Y/30Y 空点由渲染层过滤。 */
+export const BOND_ANALYTICS_COCKPIT_YIELD_CURVE_TYPES = "treasury,cdb,aaa_credit";
 export const BOND_ANALYTICS_COCKPIT_DV01_TOP_N = 1;
 export const BOND_ANALYTICS_COCKPIT_DV01_SHOCK_BPS = "1";
 export const BOND_ANALYTICS_COCKPIT_BUNDLE_INDUSTRY_TOP_N = 10;

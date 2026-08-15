@@ -6,6 +6,8 @@ logger = logging.getLogger(__name__)
 
 # 每个进程内对同一原始取值只披露一次，避免大批量行情/余额行刷屏。
 _FALLBACK_DISCLOSED_VALUES: set[str] = set()
+# 空值没有可去重的原始字面量，用一个不会与真实取值冲突的哨兵占位。
+_EMPTY_VALUE_DISCLOSURE_KEY = "<empty>"
 
 
 def classify_interest_payment_frequency(value: object) -> str:
@@ -40,14 +42,19 @@ def resolve_interest_payment_frequency(value: object) -> tuple[str, bool]:
         return frequency, False
     # 多数调用方（coupon_frequency_per_year / coupon_interval_months /
     # is_bullet_repayment / engine）会丢弃 fallback 标志，因此在源头做一次
-    # 去重披露。"固定"/"浮动"是仅声明利率风格的合法遗留取值，按既有口径
-    # 静默回退年付，不告警（与 risk_tensor 的 unsupported 判定一致）。
+    # 去重披露。"固定"/"浮动" 只声明利率风格、同样推不出付息频率，回退年付
+    # 与任何未知取值等价，因此不再豁免告警：正式表 1750/1750 行都走这条分支，
+    # 豁免会让 100% 的回退看起来像"没有回退"（2026-08 审计）。
     raw = str(value or "").strip()
-    if raw and classify_interest_rate_style(raw) == "unknown" and raw not in _FALLBACK_DISCLOSED_VALUES:
-        _FALLBACK_DISCLOSED_VALUES.add(raw)
+    disclosure_key = raw or _EMPTY_VALUE_DISCLOSURE_KEY
+    if disclosure_key not in _FALLBACK_DISCLOSED_VALUES:
+        _FALLBACK_DISCLOSED_VALUES.add(disclosure_key)
         logger.warning(
-            "resolve_interest_payment_frequency: unrecognized interest_mode=%r fell back to annual coupon frequency (first occurrence per process).",
+            "resolve_interest_payment_frequency: interest_mode=%r carries no payment frequency "
+            "(rate_style=%s) and fell back to annual coupon frequency; the annual result is a "
+            "fallback, not an observed frequency (first occurrence per process per value).",
             raw,
+            classify_interest_rate_style(raw),
         )
     return "annual", True
 
