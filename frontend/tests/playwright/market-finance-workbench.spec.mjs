@@ -22,7 +22,11 @@ async function openMarketFinance(page) {
   await expect(page.locator(rootSelector)).toBeVisible();
   await expect(page.locator('[data-testid="market-finance-data-status"]')).toBeVisible();
   await expect(page.locator(kpiSelector)).toBeVisible();
+  await expect(page.getByTestId("market-finance-kpi-market")).toContainText("%");
+  await expect(page.getByTestId("market-finance-kpi-ftp")).toContainText("%");
+  await expect(page.getByTestId("market-finance-kpi-net-income")).toContainText("亿元");
   await expect(page.getByTestId("market-finance-kpi-asset-market-value")).toContainText("亿元");
+  await expect(page.getByTestId("market-finance-kpi-note")).toHaveCount(0);
   await page.waitForLoadState("load").catch(() => undefined);
 }
 
