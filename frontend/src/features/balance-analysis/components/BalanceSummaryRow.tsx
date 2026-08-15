@@ -1,8 +1,7 @@
 import { SummaryBlock } from "../../../components/SummaryBlock";
 import { BaseChart } from "../../../components/charts/BaseChart";
 import { type EChartsOption } from "../../../lib/echarts";
-import { designTokens } from "../../../theme/designSystem";
-import dhStyles from "../../workbench/dashboard-home/dashboardHome.module.css";
+import { designTokens, nocturneTokens } from "../../../theme/designSystem";
 import type { BalanceStageSummaryModel } from "../pages/balanceAnalysisPageModel";
 import { BalanceStageTerminalPanel } from "./BalanceStageTerminalPanel";
 import rowStyles from "./balanceAnalysisStageRow.module.css";
@@ -13,12 +12,15 @@ type BalanceSummaryRowProps = {
   variant?: "default" | "terminal";
 };
 
-function riskBadgeClass(level: "low" | "mid" | "high") {
+function riskBadgeClass(level: "low" | "mid" | "high" | "neutral") {
   if (level === "low") {
     return rowStyles.riskBadgeLow;
   }
   if (level === "high") {
     return rowStyles.riskBadgeHigh;
+  }
+  if (level === "neutral") {
+    return rowStyles.riskBadgeNeutral;
   }
   return rowStyles.riskBadgeMid;
 }
@@ -27,26 +29,36 @@ function buildAllocationChartOption(
   model: BalanceStageSummaryModel,
   includeTitle: boolean,
 ): EChartsOption {
+  const nct = nocturneTokens.color;
   const items = model.allocationItems.length
     ? model.allocationItems
-    : [{ label: "无真实数据", value: 0, color: designTokens.color.cockpit.ink450 }];
+    : [{ label: "无真实数据", value: 0, color: nct.inkMuted }];
   return {
     title: includeTitle
       ? {
           text: "资产负债净头寸（真实数据）",
           left: 0,
           top: 0,
-          /* 图表标题墨色无同值 token，保留字面量（echarts 读不到 CSS 变量）。 */
-          textStyle: { fontSize: 14, fontWeight: 700, color: "#162033" },
+          /* canvas 读不到 CSS 变量，取 nocturneTokens 常量（数值源=tokens.css Nocturne scope）。 */
+          textStyle: { fontSize: 14, fontWeight: 700, color: nct.ink },
         }
       : undefined,
-    grid: { left: 8, right: 8, top: includeTitle ? 40 : 16, bottom: 24 },
+    grid: { left: 8, right: 8, top: includeTitle ? 40 : 16, bottom: 24, containLabel: true },
     tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
-    xAxis: { type: "value", axisLabel: { formatter: "{value}" } },
+    xAxis: {
+      type: "value",
+      axisLabel: {
+        formatter: "{value}",
+        color: nct.inkMuted,
+        fontSize: designTokens.fontSize[11],
+      },
+      splitLine: { lineStyle: { color: nct.lineSoft } },
+    },
     yAxis: {
       type: "category",
       data: items.map((item) => item.label),
-      axisLabel: { width: 72, overflow: "truncate", fontSize: 10 },
+      axisLabel: { width: 72, overflow: "truncate", fontSize: 10, color: nct.inkSoft },
+      axisLine: { lineStyle: { color: nct.line } },
     },
     series: [
       {
@@ -85,7 +97,7 @@ export function BalanceSummaryRow({ model, variant = "default" }: BalanceSummary
   );
 
   const riskBlock = (
-    <table className={dhStyles.dhTerminalTable}>
+    <table className="balance-analysis-table">
       <thead>
         <tr>
           <th>维度</th>

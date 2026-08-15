@@ -40,12 +40,6 @@ import { EM_DASH, formatYuanAmountAsYiPlain } from "../../../utils/format";
 import "./BalanceMovementAnalysisPage.css";
 import "./BalanceMovementAnalysisFigma.css";
 
-const bucketLabels: Record<string, string> = {
-  AC: "AC",
-  OCI: "OCI",
-  TPL: "TPL",
-};
-
 const balanceMovementBuckets: BalanceMovementRow["basis_bucket"][] = ["AC", "OCI", "TPL"];
 
 function normalizeMovementCurrencyBasis(_value: string | null): "CNX" {
@@ -1325,24 +1319,24 @@ function FreshnessStrip({
       aria-label="余额变动分析数据新鲜度"
     >
       <header className="balance-movement-data-trust__header">
-        <span>DATA TRUST</span>
+        <span>数据可信度</span>
         <strong title={freshnessStatusDetail(status)}>{freshnessStatusLabel(status)}</strong>
       </header>
       <dl className="balance-movement-data-trust__facts">
         <div>
-          <dt>Read model</dt>
+          <dt>读模型</dt>
           <dd>{selectedDate || latestReadModelDate || "未生成"}</dd>
         </div>
         <div>
-          <dt>Upstream control</dt>
+          <dt>上游控制</dt>
           <dd>{latestUpstreamDate ?? "未发现"}</dd>
         </div>
         <div>
-          <dt>Reconciliation</dt>
-          <dd>{reconciliationLabel === "三桶一致" ? "3 / 3 matched" : reconciliationLabel}</dd>
+          <dt>对账</dt>
+          <dd>{reconciliationLabel === "三桶一致" ? "3 / 3 一致" : reconciliationLabel}</dd>
         </div>
         <div>
-          <dt>Currency basis</dt>
+          <dt>币种口径</dt>
           <dd>{currencyBasis}</dd>
         </div>
       </dl>
@@ -1365,34 +1359,32 @@ function EvidenceStrip({
       data-testid="balance-movement-analysis-evidence-strip"
       aria-label="余额变动分析证据与出处"
     >
-      <header className="balance-movement-section-heading">
+      <header className="balance-movement-section-heading balance-movement-sec-no">
         <div>
-          <span>05 / EVIDENCE &amp; PROVENANCE</span>
           <h2>证据与数据出处</h2>
         </div>
-        <p>traceable · exportable · reviewable</p>
       </header>
       <div className="balance-movement-provenance__grid">
         <article>
-          <span>FRESHNESS</span>
+          <span>新鲜度</span>
           <strong>{reportDate || meta.resolved_report_date || EM_DASH}</strong>
           <p>当前视图严格锚定读模型报告日，不在浏览器端补算其他月份。</p>
         </article>
         <article>
-          <span>LINEAGE</span>
+          <span>血缘</span>
           <strong>{meta.source_version || EM_DASH}</strong>
-          <p>{formatMetaList(meta.tables_used)} · 规则 {meta.rule_version || EM_DASH} · quality {meta.quality_flag}</p>
+          <p>{formatMetaList(meta.tables_used)}；规则 {meta.rule_version || EM_DASH}；质量 {meta.quality_flag}</p>
         </article>
         <article>
-          <span>CONTROL SCOPE</span>
+          <span>控制口径</span>
           <strong>{currencyBasis} · 141 / 142 / 143 / 1440101</strong>
           <p>总账控制口径；排除 144020 股权 OCI，ZQTZ 仅用于诊断核对。</p>
         </article>
       </div>
       <div className="balance-movement-provenance__export-note">
-        <span>CSV BOUNDARY</span>
+        <span>导出边界</span>
         <p>导出仅包含当前报告日与当前页面证据快照。</p>
-        <strong>{meta.trace_id || EM_DASH} · {meta.evidence_rows ?? 0} rows</strong>
+        <strong>{meta.trace_id || EM_DASH} · {meta.evidence_rows ?? 0} 行</strong>
       </div>
     </section>
   );
@@ -1432,7 +1424,7 @@ function FigmaDecisionHero({
     >
       <article className="balance-movement-decision-hero" data-testid="balance-movement-analysis-conclusion">
         <header>
-          <span>DECISION SIGNAL</span>
+          <span>决策信号</span>
           <strong>{reconciliationLabel === "三桶一致" ? `${topDriver.bucket} 结构${structureDirection}` : reconciliationHeadline}</strong>
         </header>
         <h2>
@@ -1483,7 +1475,7 @@ function FigmaEmptyHero({
         data-testid="balance-movement-analysis-conclusion"
       >
         <header>
-          <span>DECISION SIGNAL</span>
+          <span>决策信号</span>
           <strong>等待物化</strong>
         </header>
         <h2>当前没有可发布的余额变动读模型，首屏仅保留状态与证据说明。</h2>
@@ -1522,7 +1514,7 @@ function FigmaLoadingHero({
         role="status"
       >
         <header>
-          <span>DECISION SIGNAL</span>
+          <span>决策信号</span>
           <strong>读取中</strong>
         </header>
         <h2>正在读取余额变动分析</h2>
@@ -1558,38 +1550,33 @@ function FigmaKpiRibbon({
   reconciliationLabel: string;
   balanceChangePct: number | null;
 }) {
-  const currentBalanceValue = finiteMetric(summary.current_balance_total);
   const balanceChangePctAvailable =
     balanceChangePct !== null && Number.isFinite(balanceChangePct);
   const topDriverContributionValue = finiteMetric(topDriver.contributionPct);
+  // 方向色按数值符号取向：负值不得渲染 up 绿（余额下降不是利好）。
+  const balanceChangeValue = finiteMetric(summary.balance_change_total);
+  const changeTone =
+    balanceChangeValue === null || balanceChangeValue === 0
+      ? undefined
+      : balanceChangeValue > 0
+        ? "green"
+        : "red";
   const reconciliationState =
     reconciliationLabel === "三桶一致"
       ? "matched"
       : reconciliationLabel === "待数据"
         ? "unavailable"
         : "review";
+  const reconciliationTone =
+    reconciliationState === "matched" ? "green" : reconciliationState === "review" ? "amber" : undefined;
   return (
     <section className="balance-movement-kpi-ribbon" data-testid="balance-movement-analysis-summary">
       <article>
         <span>期末余额</span>
         <strong>{formatYiFixed(summary.current_balance_total)} 亿</strong>
         <small>上期 {formatYiFixed(summary.previous_balance_total)} 亿</small>
-        <div
-          className="balance-movement-kpi-ribbon__signal"
-          data-state={currentBalanceValue === null ? "unavailable" : "available"}
-          data-tone="blue"
-          data-testid="balance-movement-kpi-signal"
-          role="img"
-          aria-label={currentBalanceValue === null ? "期末余额信号数据不可用" : "期末余额信号可用"}
-        >
-          {currentBalanceValue === null ? (
-            <span>{EM_DASH} / 数据不可用</span>
-          ) : (
-            <progress max={100} value={100} />
-          )}
-        </div>
       </article>
-      <article data-accent="green">
+      <article data-accent={changeTone}>
         <span>本月净增</span>
         <strong>{hasBalanceChangeTotal ? formatSignedYi(summary.balance_change_total) : EM_DASH}</strong>
         <small>环比 {balanceChangePct === null ? EM_DASH : `${balanceChangePct > 0 ? "+" : ""}${balanceChangePct.toFixed(2)}%`}</small>
@@ -1597,8 +1584,9 @@ function FigmaKpiRibbon({
           className="balance-movement-kpi-ribbon__signal"
           data-direction="trailing"
           data-state={balanceChangePctAvailable ? "available" : "unavailable"}
-          data-tone="green"
+          data-tone={changeTone}
           data-testid="balance-movement-kpi-signal"
+          title="信号条长度为环比变动幅度绝对值（上限 100%）"
           role="img"
           aria-label={balanceChangePctAvailable ? "环比变动信号可用" : "环比变动信号数据不可用"}
         >
@@ -1618,6 +1606,7 @@ function FigmaKpiRibbon({
           data-state={topDriverContributionValue === null ? "unavailable" : "available"}
           data-tone="amber"
           data-testid="balance-movement-kpi-signal"
+          title="信号条长度为最大驱动贡献占比（上限 100%）"
           role="img"
           aria-label={
             topDriverContributionValue === null
@@ -1632,7 +1621,7 @@ function FigmaKpiRibbon({
           )}
         </div>
       </article>
-      <article data-accent="green">
+      <article data-accent={reconciliationTone}>
         <span>对账状态</span>
         <strong>{reconciliationLabel === "三桶一致" ? "3 / 3 匹配" : reconciliationLabel}</strong>
         <small>差异 {formatPlainNumber(summary.reconciliation_diff_total, 2)} 元</small>
@@ -1640,6 +1629,7 @@ function FigmaKpiRibbon({
           className="balance-movement-kpi-ribbon__signal balance-movement-kpi-ribbon__signal--reconciliation"
           data-state={reconciliationState}
           data-testid="balance-movement-kpi-signal"
+          title="三格对应 AC / OCI / TPL 三桶对账状态：绿=全部一致，琥珀=存在待关注项"
           role="img"
           aria-label={
             reconciliationState === "matched"
@@ -1928,7 +1918,7 @@ function FigmaMaturityAndConcentration({
             width="100%"
             height="34"
             role="img"
-            aria-label={`KNOWN ${formatPct(knownShare)}，UNMAPPED ${formatPct(unmappedShare)}`}
+            aria-label={`已映射 ${formatPct(knownShare)}，未映射 ${formatPct(unmappedShare)}`}
           >
             <title>已映射与未映射期限构成</title>
             <rect className="balance-movement-band-track" x="0" y="0" width="100%" height="34" />
@@ -1936,7 +1926,7 @@ function FigmaMaturityAndConcentration({
               <rect x="0" y="0" width={`${knownShare}%`} height="34" />
               {knownShare >= 18 ? (
                 <text x={`${knownShare / 2}%`} y="22" textAnchor="middle">
-                  KNOWN · {formatPct(maturityCoverage)}
+                  已映射 · {formatPct(maturityCoverage)}
                 </text>
               ) : null}
             </g>
@@ -1955,7 +1945,7 @@ function FigmaMaturityAndConcentration({
             data-testid="balance-movement-maturity-coverage-band"
             data-state="unavailable"
             role="img"
-            aria-label="KNOWN / UNMAPPED：数据不可用"
+            aria-label="已映射 / 未映射：数据不可用"
           >
             <span>{EM_DASH} / 数据不可用</span>
           </div>
@@ -1988,11 +1978,11 @@ function FigmaMaturityAndConcentration({
               role="img"
               aria-label={
                 top5GaugeShare === null
-                  ? "Top 5 Share 数据不可用"
-                  : `Top 5 Share ${formatPct(issuerDimension?.top5_share_pct)}`
+                  ? "Top5 占比数据不可用"
+                  : `Top5 占比 ${formatPct(issuerDimension?.top5_share_pct)}`
               }
             >
-              <title>Top 5 Share</title>
+              <title>Top5 占比</title>
               <circle className="balance-movement-concentration-compact__gauge-track" cx="56" cy="56" r="42" />
               {top5GaugeShare === null ? null : (
                 <circle
@@ -2005,7 +1995,7 @@ function FigmaMaturityAndConcentration({
                 />
               )}
             </svg>
-            <span>Top 5 Share</span>
+            <span>Top5 占比</span>
             <strong>{formatPct(issuerDimension?.top5_share_pct)}</strong>
             {top5GaugeShare === null ? <em>数据不可用</em> : null}
           </div>
@@ -2014,7 +2004,7 @@ function FigmaMaturityAndConcentration({
           className="balance-movement-concentration-compact__unknown"
           data-testid="balance-movement-concentration-unknown-strip"
         >
-          <span>Unknown</span>
+          <span title="unknown_total">未知金额</span>
           <strong>{formatYiFixed(issuerDimension?.unknown_total)} 亿</strong>
         </div>
         <p className="balance-movement-compact-panel__note">主体覆盖 {formatPct(issuerDimension?.coverage_pct)}；完整主体、评级与行业明细保留在下方。</p>
@@ -2026,12 +2016,10 @@ function FigmaMaturityAndConcentration({
 function FigmaAccountingBuckets({ rows }: { rows: BalanceMovementRow[] }) {
   return (
     <section className="balance-movement-accounting-buckets" data-testid="balance-movement-analysis-accounting-buckets">
-      <header className="balance-movement-section-heading">
+      <header className="balance-movement-section-heading balance-movement-sec-no">
         <div>
-          <span>06 / ACCOUNTING BUCKETS</span>
           <h2>AC / OCI / TPL 核心对账</h2>
         </div>
-        <p>previous · current · change · reconciliation</p>
       </header>
       <div className="balance-movement-accounting-buckets__scroll">
         <table>
@@ -2086,12 +2074,10 @@ function SixMonthStructurePanel({
       className="balance-movement-six-month balance-movement-figma-panel"
       data-testid="balance-movement-analysis-six-month-structure"
     >
-      <header className="balance-movement-figma-header">
+      <header className="balance-movement-figma-header balance-movement-sec-no">
         <div>
-          <span>02 / SIX-MONTH ACCOUNTING STRUCTURE</span>
-          <h2>六个月会计分类矩阵与结构演变</h2>
+          <h2 title="trend_months">六个月会计分类矩阵与结构演变</h2>
         </div>
-        <p>trend_months · AC / OCI / TPL · balance basis</p>
       </header>
 
       <div className="balance-movement-six-month__matrix">
@@ -2288,12 +2274,11 @@ function BusinessBalanceMatrixSection({
       className="balance-movement-business-matrix balance-movement-figma-panel"
       data-testid="balance-movement-analysis-business-balance-matrix"
     >
-      <header className="balance-movement-figma-header">
+      <header className="balance-movement-figma-header balance-movement-sec-no">
         <div>
-          <span>09 / BUSINESS BALANCE MONTHLY MATRIX</span>
           <h2>业务口径余额矩阵与 AC / OCI / TPL 对账</h2>
         </div>
-        <p>report {currentMonth} · current vs prior / Jan</p>
+        <p>报告月 {currentMonth} / 较上月与较年初</p>
       </header>
 
       <div className="balance-movement-business-matrix__scope">
@@ -2388,7 +2373,7 @@ function BusinessBalanceMatrixSection({
             <tbody>
               {balanceRows.map((row) => (
                 <tr key={row.basis_bucket}>
-                  <td>{bucketLabels[row.basis_bucket] ?? row.basis_bucket}</td>
+                  <td>{row.basis_bucket}</td>
                   <td>{formatBalanceAmountToYiFromYuan(row.previous_balance)}</td>
                   <td>{formatPct(row.previous_balance_pct)}</td>
                   <td>{formatBalanceAmountToYiFromYuan(row.current_balance)}</td>
@@ -2496,12 +2481,10 @@ function StructureBridgeStage({
       className="balance-movement-structure-bridge balance-movement-figma-panel"
       data-testid="balance-movement-analysis-structure-bridge"
     >
-      <header className="balance-movement-figma-header">
+      <header className="balance-movement-figma-header balance-movement-sec-no">
         <div>
-          <span>03 / STRUCTURE MIGRATION &amp; RECONCILIATION BRIDGE</span>
-          <h2>结构迁移与差异归因</h2>
+          <h2 title="structure_migration_analysis / difference_attribution_waterfall">结构迁移与差异归因</h2>
         </div>
-        <p>structure_migration_analysis · difference_attribution_waterfall</p>
       </header>
 
       <div className="balance-movement-structure-bridge__columns">
@@ -2542,7 +2525,7 @@ function StructureBridgeStage({
             </div>
           ))}
           <aside>
-            <strong>INTERPRETATION BOUNDARY</strong>
+            <strong>解释边界</strong>
             <p>{analysis?.caveat ?? "这是汇总分类桶的结构信号，不代表单只资产分类迁移。"}</p>
             {latestPair ? (
               <small className="balance-movement-structure-bridge__signals">
@@ -2746,14 +2729,13 @@ function LiveBasisDecompositionStage({
         data-testid="balance-movement-analysis-basis-decomposition"
       >
         <span className="balance-movement-sr-only">AC / OCI / TPL 驱动拆解</span>
-        <header className="balance-movement-figma-header">
+        <header className="balance-movement-figma-header balance-movement-sec-no">
           <div>
-            <span>04 / DRIVER DECOMPOSITION · LIVE</span>
             <h2>会计分类驱动拆解与口径状态</h2>
           </div>
           <p>
-            report {decomposition.meta.report_date} · prior{" "}
-            {decomposition.meta.prior_report_date ?? EM_DASH} · {decomposition.meta.currency_basis}
+            报告日 {decomposition.meta.report_date} / 上期{" "}
+            {decomposition.meta.prior_report_date ?? EM_DASH} / {decomposition.meta.currency_basis}
           </p>
         </header>
 
@@ -2771,7 +2753,7 @@ function LiveBasisDecompositionStage({
             <strong>{formatSignedYiCell(residualTotal)} 亿</strong>
           </article>
           <article className="balance-movement-live-decomposition__metric balance-movement-live-decomposition__metric--positive">
-            <span>closing_check</span>
+            <span title="closing_check">期末校验</span>
             <strong>{formatSignedYiCell(closingTotal)} 亿</strong>
           </article>
         </div>
@@ -2806,21 +2788,22 @@ function LiveBasisDecompositionStage({
                   </li>
                 ))}
               </ul>
-              <footer>
-                residual {formatSignedYiCell(bucket.residual_amount)} 亿 · closing_check{" "}
+              <footer title="residual / closing_check">
+                残差 {formatSignedYiCell(bucket.residual_amount)} 亿 · 期末校验{" "}
                 {formatSignedYiCell(bucket.closing_check)} 亿
               </footer>
             </article>
           ))}
         </div>
 
-        <div className="balance-movement-live-decomposition__availability">
-          口径状态：{drilldownStatusLabel(decomposition.meta.status)} · {decomposition.meta.caveat} ·{" "}
-          {decomposition.meta.source_scope} ·{" "}
-          zqtz_calibration_analysis = {hasCalibration ? "available" : "null"} ·{" "}
+        <div
+          className="balance-movement-live-decomposition__availability"
+          title={`${decomposition.meta.caveat} / ${decomposition.meta.source_scope} / zqtz_calibration_analysis = ${hasCalibration ? "available" : "null"}`}
+        >
+          口径状态：{drilldownStatusLabel(decomposition.meta.status)}；数据源与口径原文见本行悬浮提示。
           {hasCalibration
-            ? "校准 payload 已返回，完整核对卡保留在数据治理区。"
-            : "本期无校准 payload，页面不生成校准结论；仅展示正式分解与 closing_check。"}
+            ? "校准结果已返回，完整核对卡保留在数据治理区。"
+            : "本期无校准结果，页面不生成校准结论。"}
         </div>
       </div>
     </section>
@@ -2884,7 +2867,7 @@ function DataStatesGovernancePanel({
     {
       label: "加载 / 刷新失败",
       value: hasError ? "是" : "否",
-      note: hasError ? refreshMessage ?? "显示错误，不回填 demo rows" : "当前没有加载或刷新错误",
+      note: hasError ? refreshMessage ?? "显示错误，不回填演示数据" : "当前没有加载或刷新错误",
     },
   ];
   const sourceVersion =
@@ -2916,27 +2899,17 @@ function DataStatesGovernancePanel({
       className="balance-movement-data-states"
       data-testid="balance-movement-analysis-data-states"
     >
-      <header className="balance-movement-figma-header">
+      <header className="balance-movement-figma-header balance-movement-sec-no">
         <div>
-          <span>10 / DATA STATES &amp; GOVERNANCE</span>
           <h2>数据状态、回退语义与证据闭环</h2>
         </div>
-        <p>
-          quality {resultMeta?.quality_flag ?? EM_DASH} · freshness{" "}
-          {freshnessStatusLabel(freshnessStatus)} · fallback{" "}
-          {resultMeta?.fallback_mode ?? EM_DASH} · fail-closed
-        </p>
+        <dl className="balance-movement-data-states__meta">
+          <div><dt>质量</dt><dd>{resultMeta?.quality_flag ?? EM_DASH}</dd></div>
+          <div><dt>新鲜度</dt><dd>{freshnessStatusLabel(freshnessStatus)}</dd></div>
+          <div><dt>回退</dt><dd>{resultMeta?.fallback_mode ?? EM_DASH}</dd></div>
+          <div><dt>策略</dt><dd>fail-closed</dd></div>
+        </dl>
       </header>
-
-      <div className="balance-movement-data-states__states">
-        {states.map((state) => (
-          <article key={state.label} className="balance-movement-data-states__state">
-            <strong>{state.label}</strong>
-            <span>{state.value}</span>
-            <small>{state.note}</small>
-          </article>
-        ))}
-      </div>
 
       <div className="balance-movement-data-states__evidence">
         <header>
@@ -2951,6 +2924,19 @@ function DataStatesGovernancePanel({
             </div>
           ))}
         </div>
+      </div>
+
+      <details className="balance-movement-data-states__glossary">
+        <summary>字段与状态语义说明</summary>
+        <div className="balance-movement-data-states__states">
+          {states.map((state) => (
+            <article key={state.label} className="balance-movement-data-states__state">
+              <strong>{state.label}</strong>
+              <span>{state.value}</span>
+              <small>{state.note}</small>
+            </article>
+          ))}
+        </div>
         <div className="balance-movement-data-states__rules">
           {rules.map(([label, value]) => (
             <div key={label}>
@@ -2959,12 +2945,12 @@ function DataStatesGovernancePanel({
             </div>
           ))}
         </div>
-      </div>
+      </details>
 
       {supplementary ? (
         <details className="balance-movement-data-states__pass">
           <summary>
-            <strong>CONTRACT PASS CONDITION</strong>
+            <strong>契约通过条件</strong>
             <span>
               所有状态均在正文可见；展开查看完整校准、控制科目与历史异常证据。
             </span>
@@ -2975,7 +2961,7 @@ function DataStatesGovernancePanel({
         </details>
       ) : (
         <div className="balance-movement-data-states__pass">
-          <strong>CONTRACT PASS CONDITION</strong>
+          <strong>契约通过条件</strong>
           <span>
             所有无数据、过期、回退日期、失败和口径待确认状态均在页面正文可见；不依赖调试工具。
           </span>
@@ -3000,7 +2986,7 @@ function DrilldownUnavailablePanel({
       className="balance-movement-derived-panel balance-movement-derived-panel--unavailable"
       data-testid={testId}
     >
-      <div className="balance-movement-derived-panel__header">
+      <div className="balance-movement-derived-panel__header balance-movement-sec-no">
         <div>
           <span>{eyebrow}</span>
           <h2>{title}</h2>
@@ -3047,14 +3033,13 @@ function ZqtzMaturityStructurePanel({
       className="balance-movement-figma-panel balance-movement-maturity-panel"
       data-testid="balance-movement-analysis-zqtz-maturity"
     >
-      <div className="balance-movement-figma-panel__header">
+      <div className="balance-movement-figma-panel__header balance-movement-sec-no">
         <div>
-          <span>05 / ZQTZ MATURITY STRUCTURE</span>
-          <h2>期限 / 到期结构完整明细</h2>
+          <h2 title="zqtz_maturity_structure">期限 / 到期结构完整明细</h2>
         </div>
         <p>
-          zqtz_maturity_structure · {structure.meta.report_date}
-          {structure.meta.prior_report_date ? ` / ${structure.meta.prior_report_date}` : ""}
+          报告日 {structure.meta.report_date}
+          {structure.meta.prior_report_date ? ` / 上期 ${structure.meta.prior_report_date}` : ""}
         </p>
       </div>
 
@@ -3077,19 +3062,19 @@ function ZqtzMaturityStructurePanel({
         <div>
           <span>口径</span>
           <strong>CNX 页面 / CNY ZQTZ</strong>
-          <small>unit = yuan</small>
+          <small>后端单位为元</small>
         </div>
       </div>
 
       <div className="balance-movement-maturity-ladder" data-testid="balance-movement-analysis-maturity-ladder">
         <div className="balance-movement-maturity-ladder__heading">
           <div>
-            <strong>期限分布 / Maturity Ladder</strong>
+            <strong>期限分布</strong>
             <span>
-              {largestMappedBucket?.bucket_label ?? EM_DASH}为最大期限桶 · {formatYiCell(largestMappedBucket?.current_amount)} 亿 · {formatPct(largestMappedBucket?.share_pct)}
+              {largestMappedBucket?.bucket_label ?? EM_DASH}为最大期限桶（{formatYiCell(largestMappedBucket?.current_amount)} 亿 · {formatPct(largestMappedBucket?.share_pct)}）
             </span>
           </div>
-          <p>期末余额（亿元） · 较上期 · linear scale</p>
+          <p>期末余额（亿元）· 较上期</p>
         </div>
         <div className="balance-movement-maturity-ladder__plot">
           {structure.buckets.map((bucket) => {
@@ -3110,7 +3095,7 @@ function ZqtzMaturityStructurePanel({
                     <rect className={isUnknown ? "balance-movement-maturity-ladder__bar-value balance-movement-maturity-ladder__bar-value--unknown" : "balance-movement-maturity-ladder__bar-value"} x="0" y={100 - barHeight} width="40" height={barHeight} rx="2" />
                   </svg>
                 </div>
-                <strong>{isUnknown ? "Unknown" : bucket.bucket_label}</strong>
+                <strong>{bucket.bucket_label}</strong>
               </div>
             );
           })}
@@ -3118,7 +3103,7 @@ function ZqtzMaturityStructurePanel({
       </div>
 
       <p className="balance-movement-figma-callout">
-        <span>SCOPE</span>金融投资资产一级明细；到期日缺失进入 Unknown，且不并入其他期限桶。{structure.meta.caveat}
+        <span>口径</span>金融投资资产一级明细；到期日缺失进入未映射桶，不并入其他期限桶。{structure.meta.caveat}
       </p>
       <div className="balance-movement-derived-table-wrap">
         <table className="balance-movement-figma-table">
@@ -3147,9 +3132,9 @@ function ZqtzMaturityStructurePanel({
         </table>
       </div>
       <div className="balance-movement-maturity-footer">
-        <span>eligible_total · {formatYiCell(structure.meta.eligible_total)} 亿</span>
-        <span className="balance-movement-tone--positive">covered_total · {formatYiCell(structure.meta.covered_total)} 亿</span>
-        <span className="balance-movement-tone--warning">unknown_total · {formatYiCell(structure.meta.unknown_total)} 亿</span>
+        <span title="eligible_total">应映射合计 {formatYiCell(structure.meta.eligible_total)} 亿</span>
+        <span className="balance-movement-tone--positive" title="covered_total">已映射合计 {formatYiCell(structure.meta.covered_total)} 亿</span>
+        <span className="balance-movement-tone--warning" title="unknown_total">未映射合计 {formatYiCell(structure.meta.unknown_total)} 亿</span>
       </div>
     </section>
   );
@@ -3187,19 +3172,21 @@ function ConcentrationRow({
 function ConcentrationDistribution({
   dimension,
   variant,
+  sharedCaveat,
 }: {
   dimension: ConcentrationDimension;
   variant: "issuer" | "rating" | "industry";
+  sharedCaveat?: string | null;
 }) {
   const isIssuer = variant === "issuer";
   return (
     <article className={`balance-movement-concentration-card balance-movement-concentration-card--${variant}`}>
       <div className="balance-movement-concentration-card__header">
         <div>
-          <h3>{concentrationDimensionLabel(dimension.dimension)} / {variant === "issuer" ? "Issuer" : variant === "rating" ? "Rating" : "Industry"}</h3>
+          <h3>{concentrationDimensionLabel(dimension.dimension)}</h3>
           {isIssuer ? <p>Top 10 以本期金额排序；Other 与 Unknown 独立保留。</p> : null}
         </div>
-        <strong>{drilldownStatusLabel(dimension.status)} · {isIssuer ? `coverage ${formatPct(dimension.coverage_pct)}` : variant === "rating" ? `${dimension.items.length} buckets` : `Top ${dimension.items.filter((item) => item.rank > 0).length}`}</strong>
+        <strong>{drilldownStatusLabel(dimension.status)} · {isIssuer ? `覆盖 ${formatPct(dimension.coverage_pct)}` : variant === "rating" ? `${dimension.items.length} 档` : `Top ${dimension.items.filter((item) => item.rank > 0).length}`}</strong>
       </div>
       {isIssuer ? (
         <div className="balance-movement-concentration-card__metrics">
@@ -3209,7 +3196,7 @@ function ConcentrationDistribution({
         </div>
       ) : (
         <p className="balance-movement-concentration-card__meta">
-          coverage {formatPct(dimension.coverage_pct)} · HHI {formatPlainNumber(dimension.hhi)} · Top5 {formatPct(dimension.top5_share_pct)}
+          覆盖 {formatPct(dimension.coverage_pct)} / HHI {formatPlainNumber(dimension.hhi)} / Top5 {formatPct(dimension.top5_share_pct)}
         </p>
       )}
       {dimension.items.length > 0 ? (
@@ -3225,7 +3212,7 @@ function ConcentrationDistribution({
       ) : (
         <div className="balance-movement-concentration-empty">当前维度无可展示排名</div>
       )}
-      {dimension.caveat ? (
+      {dimension.caveat && dimension.caveat !== sharedCaveat ? (
         <p className="balance-movement-concentration-card__caveat">{dimension.caveat}</p>
       ) : null}
     </article>
@@ -3243,34 +3230,46 @@ function ZqtzConcentrationAnalysisPanel({
   const coverageText = analysis.meta.coverage_pct === null || analysis.meta.coverage_pct === undefined
     ? "各维度见分区"
     : formatPct(analysis.meta.coverage_pct);
+  // 三个维度返回同一句口径提示时只在区头保留一次；任一差异则各卡原文保留（fail-closed）。
+  const dimensionCaveats = analysis.dimensions
+    .map((dimension) => dimension.caveat)
+    .filter((caveat): caveat is string => Boolean(caveat && caveat.trim()));
+  const sharedCaveat =
+    dimensionCaveats.length === analysis.dimensions.length &&
+    dimensionCaveats.length > 1 &&
+    dimensionCaveats.every((caveat) => caveat === dimensionCaveats[0])
+      ? dimensionCaveats[0]
+      : null;
 
   return (
     <section
       className="balance-movement-figma-panel balance-movement-concentration-panel"
       data-testid="balance-movement-analysis-zqtz-concentration"
     >
-      <div className="balance-movement-figma-panel__header">
+      <div className="balance-movement-figma-panel__header balance-movement-sec-no">
         <div>
-          <span>06 / ZQTZ CONCENTRATION ANALYSIS</span>
-          <h2>主体 / 评级 / 行业集中度完整视图</h2>
+          <h2 title="zqtz_concentration_analysis">主体 / 评级 / 行业集中度完整视图</h2>
         </div>
-        <p>report {analysis.meta.report_date} · top_n 10 · Other / Unknown 分列</p>
+        <p>报告日 {analysis.meta.report_date} / Top 10 / Other 与 Unknown 分列</p>
       </div>
       <div className="balance-movement-concentration-signal" aria-label="集中度关键指标">
-        <div><span>最低维度覆盖</span><strong className="balance-movement-tone--warning">{coverageText} · Rating</strong></div>
+        <div><span>最低维度覆盖</span><strong className="balance-movement-tone--warning">{coverageText}</strong></div>
         <div><span>期末合计</span><strong>{formatYiCell(analysis.meta.eligible_total)} 亿</strong></div>
         <div><span>未知维度金额</span><strong className="balance-movement-tone--warning">{formatYiCell(analysis.meta.unknown_total)} 亿</strong></div>
-        <div><span>数据日期</span><strong className="balance-movement-tone--positive">{analysis.meta.report_date} · fresh</strong></div>
+        <div><span>数据日期</span><strong>{analysis.meta.report_date}</strong></div>
       </div>
+      {sharedCaveat ? (
+        <p className="balance-movement-concentration-shared-caveat">各维度共同口径提示：{sharedCaveat}</p>
+      ) : null}
       <div className="balance-movement-concentration-layout">
-        {issuer ? <ConcentrationDistribution dimension={issuer} variant="issuer" /> : null}
+        {issuer ? <ConcentrationDistribution dimension={issuer} variant="issuer" sharedCaveat={sharedCaveat} /> : null}
         <div className="balance-movement-concentration-layout__secondary">
-          {rating ? <ConcentrationDistribution dimension={rating} variant="rating" /> : null}
-          {industry ? <ConcentrationDistribution dimension={industry} variant="industry" /> : null}
+          {rating ? <ConcentrationDistribution dimension={rating} variant="rating" sharedCaveat={sharedCaveat} /> : null}
+          {industry ? <ConcentrationDistribution dimension={industry} variant="industry" sharedCaveat={sharedCaveat} /> : null}
         </div>
       </div>
       <p className="balance-movement-concentration-governance">
-        <span>HHI GOVERNANCE</span>{analysis.meta.caveat} 接口返回 HHI 数值；页面不自行定义风险等级，未知维度必须显式保留。<strong>NO LOCAL RISK BAND</strong>
+        <span>口径</span>{analysis.meta.caveat} 接口返回 HHI 数值；页面不自行定义风险等级，未知维度必须显式保留。
       </p>
     </section>
   );
@@ -4269,12 +4268,11 @@ export default function BalanceMovementAnalysisPage() {
           data-testid="balance-movement-analysis-business-summary"
           className="balance-movement-figma-panel balance-movement-business-panel"
         >
-          <header className="balance-movement-figma-header">
+          <header className="balance-movement-figma-header balance-movement-sec-no">
             <div>
-              <span>07 / BUSINESS LINE MOVERS</span>
-              <h2>业务行 Top 变动与余额驱动</h2>
+              <h2 title="business_trend_months">业务行 Top 变动与余额驱动</h2>
             </div>
-            <p>business_trend_months · MoM / {businessMatrixMonths.length}M</p>
+            <p>覆盖近 {businessMatrixMonths.length} 个月</p>
           </header>
 
           <div className="balance-movement-business-lead">
@@ -4318,14 +4316,14 @@ export default function BalanceMovementAnalysisPage() {
                 moves={businessTopMomMoves}
                 testId="balance-movement-analysis-business-top-moves-mom"
                 title="本月变动 · 发散视图"
-                subtitle="current vs prior"
+                subtitle="本月对上月"
               />
               {businessTopSixMonthMoves.length > 0 ? (
                 <BusinessMoverPanel
                   moves={businessTopSixMonthMoves}
                   testId="balance-movement-analysis-business-top-moves-sixmonth"
                   title={`近 ${businessMatrixMonths.length} 月变动`}
-                  subtitle="first → current"
+                  subtitle="首月对本月"
                 />
               ) : null}
             </div>
@@ -4334,7 +4332,6 @@ export default function BalanceMovementAnalysisPage() {
           <div data-testid="balance-movement-analysis-driver-chart" className="balance-movement-contribution">
             <div className="balance-movement-contribution__header">
               <h3>变动贡献构成</h3>
-              <span>balance change contribution</span>
             </div>
             <div className="balance-movement-contribution__band" aria-label="余额变动贡献带">
               {movementDrivers.map((driver) => (
@@ -4362,13 +4359,12 @@ export default function BalanceMovementAnalysisPage() {
           data-testid="balance-movement-analysis-zqtz-detail"
           className="balance-movement-zqtz-detail-page balance-movement-figma-panel"
         >
-          <header className="balance-movement-zqtz-detail-page__header balance-movement-figma-header">
+          <header className="balance-movement-zqtz-detail-page__header balance-movement-figma-header balance-movement-sec-no">
             <div>
-              <span>08 / FINANCIAL INVESTMENT MONTHLY DETAIL</span>
               <h2>金融投资资产明细变动（6个月）</h2>
             </div>
             <p>
-              report {businessMatrixMonths.at(-1)?.report_month ?? EM_DASH} · unit 亿元 · {zqtzAssetDetailRows.length + (zqtzAssetDetailSummaryRow ? 1 : 0)} rows
+              报告月 {businessMatrixMonths.at(-1)?.report_month ?? EM_DASH} / 单位 亿元 / {zqtzAssetDetailRows.length + (zqtzAssetDetailSummaryRow ? 1 : 0)} 行
             </p>
           </header>
           <div className="balance-movement-zqtz-detail-page__scope">

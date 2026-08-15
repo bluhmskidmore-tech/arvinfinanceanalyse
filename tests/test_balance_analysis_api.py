@@ -34,6 +34,33 @@ from tests.test_balance_analysis_materialize_flow import (
 pytestmark = [pytest.mark.integration, pytest.mark.materialize]
 
 
+def _assert_balance_read_result_meta(
+    payload: dict[str, object],
+    *,
+    evidence_rows: int,
+    extra_filters: dict[str, object] | None = None,
+) -> None:
+    result_meta = payload["result_meta"]
+    assert isinstance(result_meta, dict)
+    assert result_meta["requested_report_date"] == "2025-12-31"
+    assert result_meta["resolved_report_date"] == "2025-12-31"
+    assert result_meta["as_of_date"] == "2025-12-31"
+    assert result_meta["date_basis"] == "balance_analysis_report_date"
+    assert result_meta["filters_applied"] == {
+        "report_date": "2025-12-31",
+        "position_scope": "all",
+        "currency_basis": "CNY",
+        **(extra_filters or {}),
+    }
+    assert result_meta["tables_used"] == [
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+    ]
+    assert result_meta["evidence_rows"] == evidence_rows
+    assert result_meta["fallback_mode"] == "none"
+    assert result_meta["formal_use_allowed"] is True
+
+
 def _perf_records(caplog, endpoint: str):
     return [
         record
@@ -458,6 +485,7 @@ def test_balance_analysis_dates_and_detail_api_flow(
     assert detail_payload["result_meta"]["result_kind"] == "balance-analysis.detail"
     assert detail_payload["result_meta"]["source_version"] == "sv-fx-1__sv-t-1__sv-z-1"
     assert detail_payload["result_meta"]["cache_version"] == "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1"
+    _assert_balance_read_result_meta(detail_payload, evidence_rows=2)
     assert detail_payload["result"]["report_date"] == "2025-12-31"
     assert detail_payload["result"]["position_scope"] == "all"
     assert detail_payload["result"]["currency_basis"] == "CNY"
@@ -482,6 +510,7 @@ def test_balance_analysis_dates_and_detail_api_flow(
     assert overview_payload["result_meta"]["cache_version"] == (
         "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1"
     )
+    _assert_balance_read_result_meta(overview_payload, evidence_rows=2)
     assert overview_payload["result"] == {
         "report_date": "2025-12-31",
         "position_scope": "all",
@@ -577,6 +606,7 @@ def test_balance_analysis_dates_and_detail_api_flow(
     )
     assert workbook_response.status_code == 200
     workbook_payload = workbook_response.json()
+    _assert_balance_read_result_meta(workbook_payload, evidence_rows=2)
     operational_map = {
         section["key"]: section for section in workbook_payload["result"]["operational_sections"]
     }
@@ -686,6 +716,7 @@ def test_balance_analysis_decision_items_api_returns_generated_items_with_pendin
     assert payload["result_meta"]["basis"] == "formal"
     assert payload["result_meta"]["result_kind"] == "balance-analysis.decision-items"
     assert payload["result_meta"]["source_version"] == "sv-fx-1__sv-t-1__sv-z-1"
+    _assert_balance_read_result_meta(payload, evidence_rows=2)
     assert payload["result"]["report_date"] == "2025-12-31"
     assert payload["result"]["position_scope"] == "all"
     assert payload["result"]["currency_basis"] == "CNY"
@@ -1359,6 +1390,11 @@ def test_balance_analysis_summary_api_returns_paginated_rows(tmp_path, monkeypat
     assert payload["result_meta"]["result_kind"] == "balance-analysis.summary"
     assert payload["result_meta"]["source_version"] == "sv-fx-1__sv-t-1__sv-z-1"
     assert payload["result_meta"]["rule_version"] == "rv_balance_analysis_formal_materialize_v1"
+    _assert_balance_read_result_meta(
+        payload,
+        evidence_rows=2,
+        extra_filters={"limit": 1, "offset": 1},
+    )
     assert payload["result"] == {
         "report_date": "2025-12-31",
         "position_scope": "all",
@@ -1408,6 +1444,7 @@ def test_balance_analysis_summary_by_basis_api_aggregates_zqtz_and_tyw(tmp_path,
     assert payload["result_meta"]["result_kind"] == "balance-analysis.basis-breakdown"
     assert payload["result_meta"]["source_version"] == "sv-fx-1__sv-t-1__sv-z-1"
     assert payload["result_meta"]["rule_version"] == "rv_balance_analysis_formal_materialize_v1"
+    _assert_balance_read_result_meta(payload, evidence_rows=2)
     assert payload["result"] == {
         "report_date": "2025-12-31",
         "position_scope": "all",

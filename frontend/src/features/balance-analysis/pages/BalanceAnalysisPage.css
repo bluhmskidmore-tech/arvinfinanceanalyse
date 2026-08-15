@@ -5,8 +5,16 @@
 }
 
 .balance-analysis-page {
+  display: grid;
+  width: 100%;
+  min-width: 0;
   padding: 0;
-  gap: var(--dh-space-2, 12px);
+  gap: 16px;
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-sans);
+  font-feature-settings: "tnum" 1, "ss01" 1;
+  /* 编号分区（首页标准包）：编号按已渲染分区自动生成。 */
+  counter-reset: ba-section;
   /*
    * --ib-* 在 ThemedRouteBoundary 上已被算成钢蓝字面值再继承（ledger-pnl
    * 2026-08-12 结论），页根重声明令其在 Nocturne scope 内重新解析；
@@ -59,6 +67,648 @@
   --moss-page-ink: var(--ib-ink);
   --moss-page-ink-secondary: var(--ib-ink-secondary);
   --moss-page-ink-muted: var(--ib-ink-muted);
+}
+
+/* ------------------------------------------------------------------ 页头
+   首页标准包：20px 页题 + 12px 副题 + 模式徽标（无胶囊/大写宽字距）+ 32px 控件。 */
+.balance-analysis-topbar {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.balance-analysis-topbar__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.balance-analysis-topbar__copy {
+  min-width: 0;
+}
+
+.balance-analysis-topbar__title {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.balance-analysis-topbar__subtitle {
+  max-width: 720px;
+  margin: 4px 0 0;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.balance-analysis-topbar__badges {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.balance-analysis-topbar__mode-badge {
+  padding: 4px 8px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.balance-analysis-topbar__mode-badge[data-tone="success"] {
+  background: var(--dh-api-green-soft);
+  color: var(--dh-api-green);
+}
+
+.balance-analysis-topbar__mode-badge[data-tone="mock"] {
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-blue);
+}
+
+.balance-analysis-topbar__mode-badge[data-tone="neutral"] {
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+}
+
+.balance-analysis-topbar__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+}
+
+.balance-analysis-topbar__field {
+  display: grid;
+  gap: 4px;
+}
+
+.balance-analysis-topbar__field-label {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.balance-analysis-topbar__select {
+  min-width: 132px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-ink);
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.balance-analysis-topbar__select:focus-visible {
+  outline: none;
+  border-color: var(--dh-api-blue);
+  box-shadow: 0 0 0 3px var(--dh-api-blue-soft);
+}
+
+.balance-analysis-topbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* 32px 操作钮：描边默认、accent 主操作。 */
+.balance-analysis-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 12px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: transparent;
+  color: var(--dh-api-soft);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.balance-analysis-btn:hover:not(:disabled) {
+  border-color: var(--dh-api-blue);
+  color: var(--dh-api-blue);
+}
+
+.balance-analysis-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.balance-analysis-btn--primary {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 44%, transparent);
+  background: var(--dh-api-blue);
+  /* accent 中亮紫底上近白 ink 对比不足，取深墨 bg（AA），与页内 --balance-on-accent 同策略。 */
+  color: var(--dh-api-bg);
+}
+
+.balance-analysis-btn--primary:hover:not(:disabled) {
+  border-color: var(--dh-api-blue);
+  color: var(--dh-api-bg);
+  opacity: 0.92;
+}
+
+/* ------------------------------------------------------------ 编号分区骨架 */
+.balance-analysis-stack {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.balance-analysis-sec {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  counter-increment: ba-section;
+  scroll-margin-top: 52px;
+}
+
+.balance-analysis-sec-head {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.balance-analysis-sec-head__row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 20px;
+}
+
+.balance-analysis-sec-head__row::before {
+  content: counter(ba-section, decimal-leading-zero);
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.balance-analysis-sec-head__title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.balance-analysis-sec-head__meta {
+  overflow: hidden;
+  max-width: 46vw;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.balance-analysis-sec-head__actions {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.balance-analysis-sec-head__hint {
+  margin: 0 0 0 32px;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* -------------------------------------------------------- 结论块（01） */
+.balance-analysis-conclusion {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--dh-api-line);
+  border-left: 2px solid var(--dh-api-blue);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.balance-analysis-conclusion__body {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+/* ---------------------------------------------------- KPI 单框横带（01）
+   发丝竖缝走 gap:1px 露底色（average-balance 先例），断点折行免 nth-child 补缝。 */
+.balance-analysis-kpi-band {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-line-soft);
+}
+
+.balance-analysis-kpi-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  min-height: 84px;
+  padding: 12px 14px;
+  background: var(--dh-api-panel);
+}
+
+/* 标签 2 行 clamp + 固定 min-height，防同排数值错位（DESIGN.md §3）。 */
+.balance-analysis-kpi-cell__label {
+  display: -webkit-box;
+  overflow: hidden;
+  min-height: 32px;
+  color: var(--dh-api-soft);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* 主值下限 20px（§3）；keep-all 禁止把单位拆行。 */
+.balance-analysis-kpi-cell__value {
+  margin-top: auto;
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-mono);
+  font-size: clamp(20px, 1.5vw, 22px);
+  font-weight: 700;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+
+.balance-analysis-kpi-cell__value small {
+  margin-left: 4px;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* 1440/1920 基准视口保持单行 7 格等分（不再 4+3 折行）；窄于 1280 才降 4 列。 */
+@media (max-width: 1280px) {
+  .balance-analysis-kpi-band {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  /* 7 格在 4 列网格尾行差 1 格，末格跨 2 列补满，避免露出底色空洞。 */
+  .balance-analysis-kpi-cell:last-child {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 860px) {
+  .balance-analysis-kpi-band {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ------------------------------------------------ 运营读数窄条（01） */
+.balance-analysis-ops-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  padding: 8px 14px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+}
+
+.balance-analysis-ops-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 16px;
+  border-left: 1px solid var(--dh-api-line-soft);
+}
+
+.balance-analysis-ops-item:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.balance-analysis-ops-item__label {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.balance-analysis-ops-item__value {
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.balance-analysis-ops-item__value small {
+  margin-left: 3px;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* ---------------------------------------------------- 读面平卡（02） */
+.balance-analysis-stage-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.balance-analysis-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.balance-analysis-panel:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, var(--dh-api-line));
+}
+
+.balance-analysis-panel__title {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+/* ------------------------------------------------------ 页内密度表格
+   表头 11px / 表体 12px / 发丝底边 / 数值右对齐等宽（首页表格纪律）。 */
+.balance-analysis-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+.balance-analysis-table th {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.balance-analysis-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.balance-analysis-table th:first-child,
+.balance-analysis-table td:first-child {
+  text-align: left;
+}
+
+.balance-analysis-table td:first-child b {
+  color: var(--dh-api-ink);
+  font-weight: 600;
+}
+
+.balance-analysis-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* -------------------------------------------------- 工作簿入口（03） */
+.balance-analysis-quicknav {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.balance-analysis-quicknav__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  color: var(--dh-api-soft);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.balance-analysis-quicknav__item:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, var(--dh-api-line));
+  color: var(--dh-api-ink);
+}
+
+.balance-analysis-quicknav__icon {
+  display: inline-flex;
+  color: var(--dh-api-muted);
+  font-size: 14px;
+}
+
+.balance-analysis-quicknav__item b {
+  color: var(--dh-api-ink);
+  font-weight: 600;
+}
+
+@media (max-width: 1280px) {
+  .balance-analysis-quicknav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .balance-analysis-quicknav {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ------------------------------------------------ 折叠分区（统一 details）
+   顶级 --sec 参与编号；--sub 为分区内底稿折叠，不编号。 */
+.balance-analysis-details {
+  overflow: hidden;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  min-width: 0;
+}
+
+.balance-analysis-details--sec {
+  counter-increment: ba-section;
+  scroll-margin-top: 52px;
+}
+
+.balance-analysis-details__summary {
+  display: grid;
+  grid-template-columns: 22px minmax(0, auto) minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.balance-analysis-details__summary::-webkit-details-marker {
+  display: none;
+}
+
+.balance-analysis-details__summary::before {
+  content: counter(ba-section, decimal-leading-zero);
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 非编号子折叠：编号位收起，改画折叠角标。 */
+.balance-analysis-details--sub .balance-analysis-details__summary {
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) 14px;
+}
+
+.balance-analysis-details--sub .balance-analysis-details__summary::before {
+  content: none;
+}
+
+.balance-analysis-details__summary::after {
+  content: "";
+  justify-self: end;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--dh-api-muted);
+  border-bottom: 1.5px solid var(--dh-api-muted);
+  transform: rotate(45deg);
+  transition: transform 150ms ease;
+}
+
+.balance-analysis-details[open] > .balance-analysis-details__summary::after {
+  transform: rotate(-135deg);
+}
+
+.balance-analysis-details__title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.balance-analysis-details__meta {
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.balance-analysis-details__hint {
+  grid-column: 2 / -1;
+  margin: 0;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.balance-analysis-details--sub .balance-analysis-details__hint {
+  grid-column: 1 / -1;
+}
+
+.balance-analysis-details[open] > .balance-analysis-details__summary {
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.balance-analysis-details__content,
+.balance-analysis-details > .balance-analysis-ledger-grid,
+.balance-analysis-details > .balance-analysis-workbook-secondary-grid {
+  padding: 14px;
+}
+
+.balance-analysis-details__content {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* ---------------------------------------------------------- 空态收缩 */
+.balance-analysis-empty {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  min-height: 96px;
+  padding: 16px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+  align-content: center;
+}
+
+.balance-analysis-empty b {
+  color: var(--dh-api-ink);
+  font-size: 13px;
+}
+
+.balance-analysis-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .balance-analysis-topbar__actions {
+    margin-left: 0;
+  }
+
+  .balance-analysis-sec-head__meta {
+    display: none;
+  }
 }
 
 .balance-analysis-abnormal-sentinels {
@@ -567,59 +1217,6 @@
   margin-top: var(--moss-space-2);
 }
 
-.balance-analysis-evidence-details {
-  overflow: hidden;
-  border: 1px solid var(--dh-api-line-soft);
-  border-radius: var(--ib-radius, 2px);
-  background:
-    linear-gradient(180deg, var(--dh-api-panel), var(--dh-api-panel-2));
-  box-shadow: 0 6px 16px rgba(15, 37, 68, 0.035);
-}
-
-.balance-analysis-evidence-details__summary {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: var(--moss-space-2) var(--moss-space-3);
-  align-items: center;
-  min-height: 44px;
-  padding: var(--moss-space-2) var(--moss-space-3);
-  cursor: pointer;
-  color: var(--dh-api-ink);
-}
-
-.balance-analysis-evidence-details__summary strong {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  color: var(--dh-api-blue);
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.balance-analysis-evidence-details__summary span:last-child {
-  min-width: 0;
-  color: var(--dh-api-soft);
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-.balance-analysis-evidence-details__eyebrow {
-  color: var(--dh-api-muted);
-  font-size: 11px;
-  font-weight: 760;
-}
-
-.balance-analysis-evidence-details[open] {
-  background: var(--dh-api-panel);
-}
-
-.balance-analysis-evidence-details[open] .balance-analysis-evidence-details__summary {
-  border-bottom: 1px solid var(--dh-api-line-soft);
-}
-
-.balance-analysis-evidence-details > .balance-analysis-ledger-grid {
-  padding: 0 var(--moss-space-3) var(--moss-space-3);
-}
-
 .balance-analysis-ledger-panel {
   min-height: 100%;
   border-color: var(--dh-api-line-soft);
@@ -1016,47 +1613,9 @@
   }
 }
 
-.balance-analysis-supplemental {
-  margin-top: var(--moss-space-6);
-  border: 1px solid var(--dh-api-line-soft);
-  border-radius: var(--moss-radius-lg);
-  background: var(--balance-home-card);
-  box-shadow: var(--moss-shadow-panel);
-  overflow: hidden;
-}
-
-.balance-analysis-supplemental__summary {
-  display: grid;
-  gap: var(--moss-space-1);
-  padding: var(--moss-space-4) var(--moss-space-5);
-  cursor: pointer;
-  color: var(--dh-api-ink);
-}
-
-.balance-analysis-supplemental__eyebrow {
-  color: var(--dh-api-muted); /* 原 #7a8795。 */
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.balance-analysis-supplemental__title {
-  font-size: 18px;
-  line-height: 1.35;
-}
-
-.balance-analysis-supplemental__description {
-  color: var(--dh-api-soft); /* 原 #586575。 */
-  font-size: 13px;
-  line-height: 1.7;
-}
-
+/* 辅助分析三面板：列宽/间距沿用，容器 padding 由统一 details__content 提供。 */
 .balance-analysis-supplemental__grid {
-  display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
-  gap: var(--moss-space-4);
-  padding: 0 var(--moss-space-5) var(--moss-space-5);
   align-items: start;
 }
 
@@ -1118,34 +1677,6 @@
 
 .balance-analysis-workbook-main-details {
   order: 2;
-  min-width: 0;
-  border: 1px solid var(--dh-api-line-soft);
-  border-radius: var(--moss-radius-sm);
-  background: var(--dh-api-panel);
-  overflow: hidden;
-}
-
-.balance-analysis-workbook-main-details__summary {
-  display: grid;
-  gap: var(--moss-space-1);
-  padding: var(--moss-space-3);
-  cursor: pointer;
-  color: var(--moss-color-text-primary);
-}
-
-.balance-analysis-workbook-main-details__summary strong {
-  font-size: 16px;
-  line-height: 1.35;
-}
-
-.balance-analysis-workbook-main-details__summary span:last-child {
-  color: var(--moss-color-text-secondary);
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.balance-analysis-workbook-main-details[open] .balance-analysis-workbook-main-details__summary {
-  border-bottom: 1px solid var(--dh-api-line-soft);
 }
 
 .balance-analysis-workbook-main {
@@ -1427,14 +1958,8 @@
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
-.balance-analysis-right-rail__panel::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 3px;
-  background: var(--dh-api-blue);
-}
-
+/* 治理三卡的彩色顶条（accent/琥珀 3px ::before）为无语义装饰（§4），已删除；
+   面板层级由既有 line-soft 描边承担。 */
 .balance-analysis-right-rail__panel--decision {
   grid-area: decision;
 }
@@ -1449,11 +1974,6 @@
 
 .balance-analysis-right-rail__panel--drilldown {
   grid-area: drilldown;
-}
-
-.balance-analysis-right-rail__panel--risk::before,
-.balance-analysis-right-rail__panel--decision::before {
-  background: var(--dh-api-amber);
 }
 
 .balance-analysis-governance-panel__header {
@@ -1680,18 +2200,14 @@
   overflow: hidden;
 }
 
-[data-testid^="balance-analysis-workbook-panel-"]::before,
-[data-testid="balance-analysis-right-rail-drilldown"]::before {
+/* 治理右栏三卡（decision/risk/drilldown）的彩色顶条按 §4 删除；
+   工作簿分布面板的顶条不属治理三卡，保持原制度。 */
+[data-testid^="balance-analysis-workbook-panel-"]::before {
   content: "";
   position: absolute;
   inset: 0 0 auto;
   height: 3px;
   background: var(--dh-api-blue);
-}
-
-[data-testid="balance-analysis-right-rail-panel-decision_items"]::before,
-[data-testid="balance-analysis-right-rail-panel-risk_alerts"]::before {
-  background: var(--dh-api-amber);
 }
 
 [data-testid="balance-analysis-workbook-panel-maturity_gap"]::before,

@@ -20,6 +20,13 @@ from backend.app.repositories.duckdb_migrations import (
     ensure_balance_zqtz_legacy_columns,
 )
 from backend.app.repositories.duckdb_repo import DuckDBRepository, read_only_connection
+from backend.app.repositories.fact_load_gates import (
+    TYW_BALANCE_NATURAL_KEY,
+    ZQTZ_BALANCE_NATURAL_KEY,
+    commit_report_date_purge,
+    enforce_gate_outcome,
+    evaluate_natural_key_load,
+)
 from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 
 
@@ -340,67 +347,52 @@ class BalanceAnalysisRepository(DuckDBRepository):
             ).rate
         return resolved or None
 
-    def fetch_zqtz_snapshot_native_face_values(
+    def fetch_zqtz_snapshot_native_face_value_rows(
         self,
         *,
         report_date: str,
-    ) -> dict[tuple[str, str, str, str], Decimal]:
-        """Face values from raw zqtz snapshot (for pnl.bridge native column enrichment)."""
+    ) -> list[dict[str, object]]:
+        """Face values from raw zqtz snapshot (for pnl.bridge native column enrichment).
+
+        Returns rows rather than a pre-keyed map: the snapshot's position identity
+        needs ``asset_class`` (the snapshot-side stand-in for the fact's
+        ``accounting_basis``) and ``maturity_date`` on top of instrument / portfolio /
+        cost center / currency, and the caller that joins these rows is the one that
+        must own that key — a map keyed here would silently drop whichever row lost
+        the race, which is the defect this shape removes.
+        """
         if not self._table_exists("zqtz_bond_daily_snapshot"):
-            return {}
+            return []
         rows = self._fetch_rows(
             """
-            select instrument_code, portfolio_name, cost_center, currency_code, face_value_native
+            select instrument_code, portfolio_name, cost_center, asset_class, maturity_date,
+                   currency_code, face_value_native
             from zqtz_bond_daily_snapshot
             where report_date = ?
             """,
             [report_date],
         )
-        return {
-            (
-                str(instrument_code or ""),
-                str(portfolio_name or ""),
-                str(cost_center or ""),
-                str(currency_code or "").upper(),
-            ): Decimal(str(face_value_native))
-            for instrument_code, portfolio_name, cost_center, currency_code, face_value_native in rows
+        return [
+            {
+                "instrument_code": str(instrument_code or ""),
+                "portfolio_name": str(portfolio_name or ""),
+                "cost_center": str(cost_center or ""),
+                "asset_class": str(asset_class or ""),
+                "maturity_date": maturity_date,
+                "currency_code": str(currency_code or ""),
+                "face_value_native": Decimal(str(face_value_native)),
+            }
+            for (
+                instrument_code,
+                portfolio_name,
+                cost_center,
+                asset_class,
+                maturity_date,
+                currency_code,
+                face_value_native,
+            ) in rows
             if face_value_native is not None
-        }
-
-    def resolve_fx_mid_rates_map(self, *, report_date: str) -> dict[str, Decimal] | None:
-        """Map upper currency code to CNY mid rate for ``report_date`` (with trade_date LOCF fallback)."""
-        if not self._table_exists("fx_daily_mid"):
-            return None
-        rows = self._fetch_rows(
-            """
-            select base_currency, mid_rate
-            from fx_daily_mid
-            where trade_date = ?
-              and quote_currency = 'CNY'
-            """,
-            [report_date],
-        )
-        if not rows:
-            rows = self._fetch_rows(
-                """
-                select base_currency, mid_rate
-                from fx_daily_mid
-                where trade_date <= ?
-                  and quote_currency = 'CNY'
-                order by trade_date desc
-                limit 10
-                """,
-                [report_date],
-            )
-        if not rows:
-            return None
-        resolved: dict[str, Decimal] = {}
-        for base_currency, mid_rate in rows:
-            base = str(base_currency or "").upper().strip()
-            if not base or base in resolved:
-                continue
-            resolved[base] = Decimal(str(mid_rate))
-        return resolved or None
+        ]
 
     def replace_formal_balance_rows(
         self,
@@ -410,18 +402,36 @@ class BalanceAnalysisRepository(DuckDBRepository):
         tyw_rows: list[FormalTywBalanceFactRow],
     ) -> None:
         require_repository_task_write_scope("replace_formal_balance_rows")
+        for gated_rows, gated_table, gated_key in (
+            (zqtz_rows, "fact_formal_zqtz_balance_daily", ZQTZ_BALANCE_NATURAL_KEY),
+            (tyw_rows, "fact_formal_tyw_balance_daily", TYW_BALANCE_NATURAL_KEY),
+        ):
+            enforce_gate_outcome(
+                evaluate_natural_key_load(
+                    gated_rows, table_name=gated_table, key_fields=gated_key
+                ),
+                table_name=gated_table,
+            )
         conn = duckdb.connect(self.path, read_only=False)
+        transaction_started = False
         try:
             conn.execute("begin transaction")
+            transaction_started = True
             ensure_balance_analysis_tables(conn)
-            conn.execute(
-                "delete from fact_formal_zqtz_balance_daily where report_date = ?",
-                [report_date],
+            conn.execute("commit")
+            transaction_started = False
+
+            commit_report_date_purge(
+                conn,
+                tables=(
+                    "fact_formal_zqtz_balance_daily",
+                    "fact_formal_tyw_balance_daily",
+                ),
+                report_date=report_date,
             )
-            conn.execute(
-                "delete from fact_formal_tyw_balance_daily where report_date = ?",
-                [report_date],
-            )
+
+            conn.execute("begin transaction")
+            transaction_started = True
             if zqtz_rows:
                 conn.executemany(
                     """
@@ -562,8 +572,15 @@ class BalanceAnalysisRepository(DuckDBRepository):
                 )
             sync_zqtz_snapshot_market_value_cny_from_formal(conn, report_date)
             conn.execute("commit")
+            transaction_started = False
         except Exception:
-            conn.execute("rollback")
+            # 只有确有活动事务才回滚：无事务时 rollback 自身抛错会掩盖原始异常
+            # （与 bond_analytics_repo.replace_bond_analytics_rows 同一模式）。
+            if transaction_started:
+                try:
+                    conn.execute("rollback")
+                except Exception:  # noqa: S110  # 回滚失败不得掩盖随后 raise 的原始写入异常
+                    pass
             raise
         finally:
             conn.close()
@@ -1563,6 +1580,14 @@ def sync_zqtz_snapshot_market_value_cny_from_formal(conn: duckdb.DuckDBPyConnect
 
     便于只读 snapshot 的报表/对账与 formal CNY 对照；ADB 等分析应以 ``fact_formal_*`` 的
     ``currency_basis = 'CNY'`` 为准，不依赖本列。
+
+    ``maturity_date`` 是连接条件的一部分，不是可省的描述列：同一只券在展期/重分类
+    期间会以两个到期日各出一行（面值一正一负），其余连接列完全相同。少了它，
+    ``update ... from`` 会形成 2×2 笛卡尔积，DuckDB 任取其一，把一条腿的 CNY 市值
+    写到另一条腿上——库里已经留下的 5 行 ``currency_code='CNY'`` 却
+    ``market_value_cny = -market_value_native`` 就是这么来的（031800572.IB，
+    2025-10-31 / 2025-12-31 / 2026-01-31 / 2026-02-28）。加上它之后两侧在全表
+    578 个 report_date 上均无重复键。
     """
     if not _zqtz_snapshot_table_exists(conn):
         return
@@ -1584,6 +1609,7 @@ def sync_zqtz_snapshot_market_value_cny_from_formal(conn: duckdb.DuckDBPyConnect
           and trim(coalesce(s.instrument_code, '')) = trim(coalesce(f.instrument_code, ''))
           and trim(coalesce(s.portfolio_name, '')) = trim(coalesce(f.portfolio_name, ''))
           and trim(coalesce(s.cost_center, '')) = trim(coalesce(f.cost_center, ''))
+          and cast(s.maturity_date as varchar) is not distinct from cast(f.maturity_date as varchar)
           and trim(coalesce(s.account_category, '')) = trim(coalesce(f.account_category, ''))
           and trim(coalesce(s.asset_class, '')) = trim(coalesce(f.asset_class, ''))
           and trim(coalesce(s.bond_type, '')) = trim(coalesce(f.bond_type, ''))

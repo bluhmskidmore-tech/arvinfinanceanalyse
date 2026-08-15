@@ -173,8 +173,13 @@ def build_rate_map(
         if frame.empty:
             continue
         for row in frame.itertuples(index=False):
+            balance_valid = getattr(row, "balance_valid", True)
+            if pd.isna(balance_valid) or not bool(balance_valid):
+                continue
             category = _clean_cat_local(getattr(row, "category", None))
-            balance = float(getattr(row, "balance", 0) or 0)
+            balance = _finite_float(getattr(row, "balance", 0) or 0)
+            if balance is None:
+                continue
             rate = _finite_float(getattr(row, "rate_decimal", None))
             weighted = balance * rate if rate is not None else 0.0
             rate_balance = balance if rate is not None else 0.0

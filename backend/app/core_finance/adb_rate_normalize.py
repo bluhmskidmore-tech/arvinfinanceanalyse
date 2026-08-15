@@ -75,9 +75,23 @@ def _coerce_rate_number(value: object) -> float | None:
     return number
 
 
+# 与 rate_units.normalize_percent_rate_to_decimal 一致的脏数据上界（百分数口径，>20 即年利率>20%）。
+_PERCENT_DIRTY_MAX = 20.0
+
+
 def _normalize_percent_value(value: object) -> float | None:
     number = _coerce_rate_number(value)
     if number is None:
+        return None
+    if number < 0:
+        return None
+    if number > _PERCENT_DIRTY_MAX:
+        logger.warning(
+            "_normalize_percent_value: value %s > %s (i.e. rate > 20%%), "
+            "treating as dirty data, returning None",
+            number,
+            _PERCENT_DIRTY_MAX,
+        )
         return None
     return number / 100.0
 

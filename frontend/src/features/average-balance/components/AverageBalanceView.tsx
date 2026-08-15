@@ -10,13 +10,18 @@ import { FilterBar } from "../../../components/FilterBar";
 import type {
   AdbCategoryItem,
   AdbComparisonResponse,
+  AdbInsightItem,
   AdbMonthlyBreakdownItem,
   AdbMonthlyDataItem,
   ResultMeta,
 } from "../../../api/contracts";
 import AdbComparisonChart, { type AdbComparisonChartRow } from "./AdbComparisonChart";
-import { computeComparisonDeviationPct } from "./adbComparisonMetrics";
+import {
+  computeComparisonDeviationPct,
+  isComparisonDeviationAlert,
+} from "./adbComparisonMetrics";
 import AdbDailyTrendChart from "./AdbDailyTrendChart";
+import AdbDeepAnalysisSection from "./AdbDeepAnalysisSection";
 import AdbDenominatorSummary from "./AdbDenominatorSummary";
 import AdbAccountingBasisSection from "./AdbAccountingBasisSection";
 import AdbCoverageDiagnostics from "./AdbCoverageDiagnostics";
@@ -65,6 +70,35 @@ function isIncompleteRateCoverage(value: number | null | undefined): boolean {
   return value !== null && value !== undefined && Number.isFinite(value) && value < 0.9999;
 }
 
+/**
+ * 偏离预警按绝对值双侧判定：正偏离（期末冲高）与负偏离（期末压降）
+ * 同样偏离日均口径；阈值与对比图标签着色同源（adbComparisonMetrics）。
+ */
+function exceedsDeviationThreshold(pct: number | null): boolean {
+  return isComparisonDeviationAlert(pct);
+}
+
+const AVG_UNAVAILABLE_LABELS: Record<"insufficient_window" | "no_data", string> = {
+  insufficient_window: "观测窗口不足，日均不可用",
+  no_data: "区间内无可用余额数据，日均不可用",
+};
+
+const SPOT_UNAVAILABLE_LABELS: Record<"no_data", string> = {
+  no_data: "期末无可用余额数据",
+};
+
+function describeAvgUnavailable(
+  reason: AdbComparisonResponse["avg_unavailable_reason"] | undefined,
+): string | undefined {
+  return reason ? AVG_UNAVAILABLE_LABELS[reason] : undefined;
+}
+
+function describeSpotUnavailable(
+  reason: AdbComparisonResponse["spot_unavailable_reason"] | undefined,
+): string | undefined {
+  return reason ? SPOT_UNAVAILABLE_LABELS[reason] : undefined;
+}
+
 function buildRateCoverageWarning(data: AdbComparisonResponse | null | undefined): string | null {
   if (!data) return null;
   const warnings = [
@@ -81,6 +115,13 @@ function buildRateCoverageWarning(data: AdbComparisonResponse | null | undefined
 
 const ADB_SNAPSHOT_FALLBACK_WARNING =
   "部分日期由快照补数（原币、未经 FX 中间价转换），非正式口径。";
+
+/** 后端 insights severity 映射到 antd Alert：notice/info 同归 info，info 再用 CSS 降权。 */
+const INSIGHT_ALERT_TYPES: Record<AdbInsightItem["severity"], "warning" | "info"> = {
+  warning: "warning",
+  notice: "info",
+  info: "info",
+};
 
 function shouldShowSnapshotFallbackWarning(
   adbDenominatorBasis: string | null | undefined,
@@ -173,8 +214,9 @@ function formatSignedYiBillions(deltaYuan: number): string {
   return `${sign}${yi.toFixed(2)}`;
 }
 
+/** 缺去年同期按 §6 用安静的 EM_DASH；整列缺失的原因说明只在区块头出现一次。 */
 function formatYoyPriorYi(value: number | null): string {
-  return value === null ? "缺去年同期" : (value / YI).toFixed(2);
+  return value === null ? EM_DASH : (value / YI).toFixed(2);
 }
 
 function formatYoyDeltaYi(current: number | null, prior: number | null): string {
@@ -561,11 +603,23 @@ export default function AverageBalanceView() {
     retry: false,
   });
 
+  /* 深度分析（规模归因/NIM 量价/波动异常/结构集中度/结论）跟在 comparison 之后发起，
+     避免区间还没确定就打后端三窗口加载。 */
+  const insightsQuery = useQuery({
+    queryKey: ["average-balance", "insights", client.mode, startDate, endDate],
+    queryFn: () => client.getAdbInsights(startDate, endDate),
+    enabled: activeTab === "daily" && Boolean(startDate && endDate && comparisonQuery.data),
+    retry: false,
+  });
+
   const monthlyQuery = useQuery({
     queryKey: ["average-balance", "monthly", client.mode, selectedYear],
     queryFn: () => client.getAdbMonthly(selectedYear),
     enabled: activeTab === "monthly",
     retry: false,
+    /* Tabs destroyOnHidden 会在切换时卸载并重挂本查询；月度读模型真实链路
+       可达数十秒，5 分钟内切回直接吃缓存，不再整板重查。 */
+    staleTime: 5 * 60 * 1000,
   });
 
   useEffect(() => {
@@ -582,14 +636,14 @@ export default function AverageBalanceView() {
   const dailyData = comparisonQuery.data;
   const dailyBootstrapBlocked = !explicitReportDate && datesQuery.isError;
   const canRunDailyQuery = Boolean(startDate && endDate) && !dailyBootstrapBlocked;
-  const assetDeviationPct =
-    dailyData && dailyData.total_avg_assets > 0
-      ? ((dailyData.total_spot_assets - dailyData.total_avg_assets) / dailyData.total_avg_assets) * 100
-      : 0;
-  const liabilityDeviationPct =
-    dailyData && dailyData.total_avg_liabilities > 0
-      ? ((dailyData.total_spot_liabilities - dailyData.total_avg_liabilities) / dailyData.total_avg_liabilities) * 100
-      : 0;
+  const assetDeviationPct = computeComparisonDeviationPct(
+    dailyData?.total_spot_assets ?? null,
+    dailyData?.total_avg_assets ?? null,
+  );
+  const liabilityDeviationPct = computeComparisonDeviationPct(
+    dailyData?.total_spot_liabilities ?? null,
+    dailyData?.total_avg_liabilities ?? null,
+  );
 
   const { comparisonAssetRows, comparisonLiabilityRows } = useMemo(() => {
     if (!dailyData) {
@@ -656,6 +710,14 @@ export default function AverageBalanceView() {
     [dailyData?.liabilities_breakdown, priorYearComparisonQuery.data?.liabilities_breakdown],
   );
   const yoyAmountColumns = useMemo(() => buildYoYAmountColumns(), []);
+  /* 整列缺失判定：去年同期查询已成功返回、但所有行都取不到去年值时，
+     行内是安静的 EM_DASH，缺失原因只在区块头说明一次（§6）。 */
+  const yoyPriorMissingEntirely = useMemo(() => {
+    if (!priorYearComparisonQuery.data) return false;
+    const allRows = [...yoyAdbRows, ...yoyAssetCategoryRows, ...yoyLiabilityCategoryRows];
+    return allRows.length > 0 && allRows.every((row) => row.prior === null);
+  }, [priorYearComparisonQuery.data, yoyAdbRows, yoyAssetCategoryRows, yoyLiabilityCategoryRows]);
+  const priorYearLabel = priorYearRange?.startDate.slice(0, 4) ?? "";
 
   const dailyAssetColumns = useMemo(() => buildDetailColumns("asset"), []);
   const dailyLiabilityColumns = useMemo(() => buildDetailColumns("liability"), []);
@@ -741,8 +803,8 @@ export default function AverageBalanceView() {
   };
 
   const deviationWarning =
-    assetDeviationPct > 5 || liabilityDeviationPct > 5
-      ? "偏离度 > 5%，存在“窗口粉饰”风险，请结合实际头寸变化核查。"
+    exceedsDeviationThreshold(assetDeviationPct) || exceedsDeviationThreshold(liabilityDeviationPct)
+      ? "偏离度绝对值 > 5%，存在“窗口粉饰”或期末压降风险，请结合实际头寸变化核查。"
       : null;
   const dailyErrorMessage = dailyBootstrapBlocked
     ? "可用报告日加载失败，请先恢复报告日列表后再查看日均分析。"
@@ -755,23 +817,65 @@ export default function AverageBalanceView() {
   /* 以下均为展示层派生（不改数值来源）：KPI 横带条目与 01 区警示可见性。 */
   const dailyScaleKpis: AdbKpiStripItem[] = dailyData
     ? [
-        { key: "spot-assets", label: "期末时点总资产", value: formatYi(dailyData.total_spot_assets) },
-        { key: "avg-assets", label: "日均总资产", value: formatYi(dailyData.total_avg_assets) },
+        {
+          key: "spot-assets",
+          label: "期末时点总资产",
+          value: formatYi(dailyData.total_spot_assets),
+          detail:
+            dailyData.total_spot_assets === null
+              ? describeSpotUnavailable(dailyData.spot_unavailable_reason)
+              : undefined,
+        },
+        {
+          key: "avg-assets",
+          label: "日均总资产",
+          value: formatYi(dailyData.total_avg_assets),
+          detail:
+            dailyData.total_avg_assets === null
+              ? describeAvgUnavailable(dailyData.avg_unavailable_reason)
+              : undefined,
+        },
         {
           key: "deviation-assets",
           label: "偏离度（资产）",
           value: formatSignedPct(assetDeviationPct),
-          tone: assetDeviationPct > 5 ? "down" : undefined,
-          warn: assetDeviationPct > 5,
+          tone: exceedsDeviationThreshold(assetDeviationPct) ? "down" : undefined,
+          warn: exceedsDeviationThreshold(assetDeviationPct),
+          detail:
+            assetDeviationPct === null
+              ? (describeSpotUnavailable(dailyData.spot_unavailable_reason) ??
+                describeAvgUnavailable(dailyData.avg_unavailable_reason))
+              : undefined,
         },
-        { key: "spot-liabilities", label: "期末时点总负债", value: formatYi(dailyData.total_spot_liabilities) },
-        { key: "avg-liabilities", label: "日均总负债", value: formatYi(dailyData.total_avg_liabilities) },
+        {
+          key: "spot-liabilities",
+          label: "期末时点总负债",
+          value: formatYi(dailyData.total_spot_liabilities),
+          detail:
+            dailyData.total_spot_liabilities === null
+              ? describeSpotUnavailable(dailyData.spot_unavailable_reason)
+              : undefined,
+        },
+        {
+          key: "avg-liabilities",
+          label: "日均总负债",
+          value: formatYi(dailyData.total_avg_liabilities),
+          detail:
+            dailyData.total_avg_liabilities === null
+              ? describeAvgUnavailable(dailyData.avg_unavailable_reason)
+              : undefined,
+        },
         {
           key: "deviation-liabilities",
           label: "偏离度（负债）",
           value: formatSignedPct(liabilityDeviationPct),
-          tone: liabilityDeviationPct > 5 ? "down" : undefined,
-          warn: liabilityDeviationPct > 5,
+          tone: exceedsDeviationThreshold(liabilityDeviationPct) ? "down" : undefined,
+          warn: exceedsDeviationThreshold(liabilityDeviationPct),
+          detail:
+            liabilityDeviationPct === null
+              ? (describeSpotUnavailable(dailyData.spot_unavailable_reason) ??
+                describeAvgUnavailable(dailyData.avg_unavailable_reason))
+              : undefined,
         },
       ]
     : [];
@@ -820,12 +924,14 @@ export default function AverageBalanceView() {
   const dailySnapshotFallbackVisible =
     dailyData != null &&
     shouldShowSnapshotFallbackWarning(dailyData.adb_denominator_basis, dailyData.result_meta);
+  const dailyInsightItems = insightsQuery.data?.insights ?? [];
   const hasDailyNotices = Boolean(
     dailyData?.simulated ||
       dailyLowCoverageVisible ||
       dailySnapshotFallbackVisible ||
       deviationWarning ||
-      rateCoverageWarning,
+      rateCoverageWarning ||
+      dailyInsightItems.length > 0,
   );
   const dailyHasAccountingBasis = Boolean(
     dailyData &&
@@ -877,9 +983,9 @@ export default function AverageBalanceView() {
       </header>
 
       <p className="adb-analysis-brief" data-testid="average-balance-analysis-brief">
-        <span className="adb-brief-label">日均分析回答什么</span>
+        <span className="adb-brief-label">口径边界</span>
         <span className="adb-brief-text">
-          期末是否偏离日均，偏离由资产/负债哪类驱动，以及月度日均结构和 NIM 是否变化。
+          规模与分类明细仅覆盖债券投资（ZQTZ）与同业（TYW）读模型；期末与日均的分母口径见「口径与证据」分区。
         </span>
       </p>
 
@@ -988,6 +1094,17 @@ export default function AverageBalanceView() {
                               message={rateCoverageWarning}
                             />
                           ) : null}
+                          {dailyInsightItems.map((insight) => (
+                            <Alert
+                              key={insight.id}
+                              data-testid={`adb-insight-${insight.id}`}
+                              className={insight.severity === "info" ? "adb-insight-muted" : undefined}
+                              type={INSIGHT_ALERT_TYPES[insight.severity]}
+                              showIcon
+                              message={insight.title}
+                              description={insight.detail}
+                            />
+                          ))}
                         </div>
                       ) : (
                         <p className="adb-note">区间内未触发覆盖/降级/偏离警示。</p>
@@ -1081,6 +1198,14 @@ export default function AverageBalanceView() {
                               message="去年同期区间加载失败，同比表不可用。"
                             />
                           ) : null}
+                          {yoyPriorMissingEntirely ? (
+                            <Alert
+                              data-testid="adb-yoy-prior-missing-notice"
+                              type="warning"
+                              showIcon
+                              message={`${priorYearLabel} 年同期读模型未覆盖，本表「去年同期」与「同比」列整列缺失。`}
+                            />
+                          ) : null}
                           {yoyAdbRows.length > 0 ? (
                             <div className="adb-table-group">
                               <div className="adb-subhead">债券与同业 · 区间日均总规模</div>
@@ -1145,6 +1270,12 @@ export default function AverageBalanceView() {
                         </div>
                       </div>
                     </section>
+
+                    <AdbDeepAnalysisSection
+                      data={insightsQuery.data}
+                      isLoading={insightsQuery.isLoading}
+                      isError={insightsQuery.isError}
+                    />
                   </>
                 ) : null}
               </div>

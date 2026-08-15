@@ -26,12 +26,6 @@ def is_valid_fx_mid_rate(value: Decimal | None) -> bool:
     return value is not None and value.is_finite() and value > 0
 
 
-def is_weekend_non_business_day(target_date: date | str) -> bool:
-    if isinstance(target_date, str):
-        target_date = date.fromisoformat(target_date)
-    return target_date.weekday() >= 5
-
-
 def get_usd_cny_rate(
     rows: list[tuple[date, Decimal | None]],
     target_date: date,

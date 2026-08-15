@@ -22,14 +22,13 @@ import {
   AnalysisGrid,
   DataStatusStrip,
   EvidencePanel,
-  PageSectionLead,
   PageStateSurface,
 } from "../../../components/page/PagePrimitives";
 import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import AdbAnalyticalPreview from "../components/AdbAnalyticalPreview";
 import BalanceAnalysisCockpit from "../cockpit/BalanceAnalysisCockpit";
 import { BalanceAnalysisToolbar } from "../cockpit/BalanceAnalysisToolbar";
-import dhStyles from "../../workbench/dashboard-home/dashboardHome.module.css";
+import { BalanceSectionHead } from "../components/BalanceSectionHead";
 import { DeferredBalanceAnalysisGrid } from "../components/DeferredBalanceAnalysisGrid";
 import { useBalanceAnalysisData } from "../hooks/useBalanceAnalysisData";
 import { tabularNumsStyle } from "../../../theme/designSystem";
@@ -1140,7 +1139,11 @@ function renderRiskAlertsPanel(
                 {formatBalanceGovernedSeverityDisplay(row.severity)}
               </span>
             </div>
-            <div className="balance-analysis-ledger-copy-text balance-analysis-ledger-copy-text--warning">
+            {/* title 保留后端原文（含源字段名），正文走显示层中文化。 */}
+            <div
+              className="balance-analysis-ledger-copy-text balance-analysis-ledger-copy-text--warning"
+              title={row.reason}
+            >
               {formatBalanceBusinessTextDisplay(row.reason)}
             </div>
             <div className="balance-analysis-ledger-meta-row balance-analysis-ledger-meta-row--warning">
@@ -1194,7 +1197,6 @@ export default function BalanceAnalysisPage() {
     currencyBasis,
     setSelectedReportDate,
     setPositionScope,
-    setCurrencyBasis,
     datesQuery,
     overviewQuery,
     detailQuery,
@@ -1217,6 +1219,7 @@ export default function BalanceAnalysisPage() {
     decisionRows,
     workbook,
     summaryTable,
+    detailSummaryRows,
     workbookTables,
     primaryWorkbookTables,
     secondaryWorkbookPanelTables,
@@ -1287,7 +1290,7 @@ export default function BalanceAnalysisPage() {
     summary: summaryTable,
     decisionItems: decisionItemsQuery.data?.result,
     workbook,
-    summaryRows: detailQuery.data?.result.summary ?? [],
+    summaryRows: detailSummaryRows,
     decisionRows,
     workbookDecisionRows,
     eventCalendarRows,
@@ -1608,13 +1611,12 @@ export default function BalanceAnalysisPage() {
     <section
       data-testid="balance-analysis-page"
       data-moss-theme-scope="balance-analysis"
-      className={`${dhStyles.dhLightPage} balance-analysis-page`}
+      className="balance-analysis-page"
     >
       <BalanceAnalysisToolbar
         reportDates={availableReportDates}
         selectedReportDate={selectedReportDate}
         positionScope={positionScope}
-        currencyBasis={currencyBasis}
         sourceBadge={pageReadModel.sourceBadge}
         calibration={overview?.calibration}
         isRefreshing={isRefreshing}
@@ -1622,7 +1624,6 @@ export default function BalanceAnalysisPage() {
         isExportingWorkbook={isExportingWorkbook}
         onReportDateChange={setSelectedReportDate}
         onPositionScopeChange={setPositionScope}
-        onCurrencyBasisChange={setCurrencyBasis}
         onRefresh={() => void handleRefresh()}
         onExportCsv={() => void handleExport()}
         onExportWorkbook={() => void handleWorkbookExport()}
@@ -1653,17 +1654,14 @@ export default function BalanceAnalysisPage() {
       {reportDateUnavailable ? (
         <section
           data-testid="balance-analysis-report-date-empty"
-          className={`${dhStyles.dhCard} ${dhStyles.dhTerminalStateSurface}`}
+          className="balance-analysis-empty"
           data-state="empty"
         >
-          <span className={dhStyles.dhTerminalStateIcon}>
-            <ReloadOutlined aria-hidden />
-          </span>
           <b>{reportDateUnavailableTitle}</b>
           <small>{reportDateUnavailableDescription}</small>
           <button
             type="button"
-            className={dhStyles.dhRefreshBtn}
+            className="balance-analysis-btn"
             onClick={() => void datesQuery.refetch()}
           >
             <ReloadOutlined aria-hidden />
@@ -1704,14 +1702,16 @@ export default function BalanceAnalysisPage() {
           ) : null}
 
           <details
-            className="balance-analysis-evidence-details"
+            className="balance-analysis-details balance-analysis-details--sec balance-analysis-evidence-details"
             data-testid="balance-analysis-evidence-details"
             open={evidenceLedgerNeedsAttention}
           >
-        <summary className="balance-analysis-evidence-details__summary">
-          <span className="balance-analysis-evidence-details__eyebrow">证据链路</span>
-          <strong>{evidenceLedgerSummary}</strong>
-          <span>常规校验默认收起，需处理事项、降级或日期不一致时自动展开。</span>
+        <summary className="balance-analysis-details__summary">
+          <h2 className="balance-analysis-details__title">证据链路</h2>
+          <strong className="balance-analysis-details__meta">{evidenceLedgerSummary}</strong>
+          <span className="balance-analysis-details__hint">
+            常规校验默认收起，需处理事项、降级或日期不一致时自动展开。
+          </span>
         </summary>
         <AnalysisGrid columns={2} className="balance-analysis-ledger-grid">
           <EvidencePanel heading="读面证据" className="balance-analysis-ledger-panel">
@@ -1779,16 +1779,15 @@ export default function BalanceAnalysisPage() {
 
       <details
         data-testid="balance-analysis-formal-summary-details"
-        className="balance-analysis-stage-details balance-analysis-stage-details--summary"
+        className="balance-analysis-details balance-analysis-details--sec"
       >
-        <summary className="balance-analysis-stage-details__summary">
-          <span className="balance-analysis-stage-details__eyebrow">汇总</span>
-          <h2 className="balance-analysis-stage-details__heading">正式汇总驾驶舱</h2>
-          <span>
+        <summary className="balance-analysis-details__summary">
+          <h2 className="balance-analysis-details__title">正式汇总驾驶舱</h2>
+          <span className="balance-analysis-details__hint">
             分页汇总、明细汇总和明细下钻默认收起；首屏先保留缺口判断、规模证据和治理行动。
           </span>
         </summary>
-        <div className="balance-analysis-stage-details__content">
+        <div className="balance-analysis-details__content">
         <PageAsyncSection
           title="资产负债汇总"
           isLoading={
@@ -1852,7 +1851,7 @@ export default function BalanceAnalysisPage() {
               <div>明细下钻等待首屏数据完成…</div>
             ) : !detailQuery.isLoading &&
             !detailQuery.isError &&
-            (detailQuery.data?.result.summary?.length ?? 0) > 0 ? (
+            detailSummaryGridRows.length > 0 ? (
               <div className="balance-analysis-detail-drilldown__summary">
                 <div className="balance-analysis-detail-drilldown__eyebrow">
                   明细底稿返回的汇总切片
@@ -1889,16 +1888,15 @@ export default function BalanceAnalysisPage() {
 
       <details
         data-testid="balance-analysis-supplemental-panels"
-        className="balance-analysis-supplemental"
+        className="balance-analysis-details balance-analysis-details--sec"
       >
-        <summary className="balance-analysis-supplemental__summary">
-          <span className="balance-analysis-supplemental__eyebrow">分析口径</span>
-          <strong className="balance-analysis-supplemental__title">辅助分析口径</strong>
-          <span className="balance-analysis-supplemental__description">
+        <summary className="balance-analysis-details__summary">
+          <h2 className="balance-analysis-details__title">辅助分析口径</h2>
+          <span className="balance-analysis-details__hint">
             日均预览、会计口径拆解和高阶归因默认收起，作为解释正式结果的辅助材料，不替代正式结论。
           </span>
         </summary>
-        <div className="balance-analysis-supplemental__grid">
+        <div className="balance-analysis-details__content balance-analysis-supplemental__grid">
           <PageAsyncSection
             title="日均分析预览"
             isLoading={deferredAnalysisQueriesPending || adbComparisonQuery.isLoading}
@@ -1981,11 +1979,10 @@ export default function BalanceAnalysisPage() {
         </div>
       </details>
 
-      <div className="balance-analysis-governance-workbench-section">
-        <PageSectionLead
-          eyebrow="工作台"
+      <div className="balance-analysis-sec balance-analysis-governance-workbench-section">
+        <BalanceSectionHead
           title="治理闭环与工作簿底稿"
-          description="先处理决策事项、事件日历和风险预警；工作簿结构默认收起，作为下方可展开底稿。"
+          hint="先处理决策事项、事件日历和风险预警；工作簿结构默认收起，作为下方可展开底稿。"
         />
         <PageAsyncSection
           title="治理闭环"
@@ -2010,11 +2007,12 @@ export default function BalanceAnalysisPage() {
           }}
         >
           <div data-testid="balance-analysis-workbook-cockpit" className="balance-analysis-workbook-cockpit">
-            <details className="balance-analysis-workbook-main-details">
-              <summary className="balance-analysis-workbook-main-details__summary">
-                <span className="balance-analysis-workbook-full-details__eyebrow">工作簿图谱</span>
-                <strong>工作簿结构与分布面板</strong>
-                <span>默认收起，治理行动保持常驻；展开后查看债券分类、评级、期限缺口和支持面板。</span>
+            <details className="balance-analysis-details balance-analysis-details--sub balance-analysis-workbook-main-details">
+              <summary className="balance-analysis-details__summary">
+                <h3 className="balance-analysis-details__title">工作簿结构与分布面板</h3>
+                <span className="balance-analysis-details__hint">
+                  默认收起，治理行动保持常驻；展开后查看债券分类、评级、期限缺口和支持面板。
+                </span>
               </summary>
               <div className="balance-analysis-workbook-main">
                 {renderBalanceReconciliationLinkPanel(reconciliationLinkModel)}
@@ -2340,12 +2338,13 @@ export default function BalanceAnalysisPage() {
 
           <details
             data-testid="balance-analysis-workbook-full-details"
-            className="balance-analysis-workbook-full-details"
+            className="balance-analysis-details balance-analysis-details--sub balance-analysis-workbook-full-details"
           >
-            <summary className="balance-analysis-workbook-full-details__summary">
-              <span className="balance-analysis-workbook-full-details__eyebrow">完整明细</span>
-              <strong>完整工作簿明细</strong>
-              <span>展开查看工作簿宽表，默认收起以保持结论和治理证据优先。</span>
+            <summary className="balance-analysis-details__summary">
+              <h3 className="balance-analysis-details__title">完整工作簿明细</h3>
+              <span className="balance-analysis-details__hint">
+                展开查看工作簿宽表，默认收起以保持结论和治理证据优先。
+              </span>
             </summary>
             <div
               data-testid="balance-analysis-workbook-secondary-grid"
@@ -2371,15 +2370,18 @@ export default function BalanceAnalysisPage() {
         </PageAsyncSection>
       </div>
 
-      <details data-testid="balance-analysis-stage-details" className="balance-analysis-stage-details">
-        <summary className="balance-analysis-stage-details__summary">
-          <span className="balance-analysis-stage-details__eyebrow">场景核对</span>
-          <strong>完整场景阅读（与首屏同源）</strong>
-          <span>
+      <details
+        data-testid="balance-analysis-stage-details"
+        className="balance-analysis-details balance-analysis-details--sec"
+      >
+        <summary className="balance-analysis-details__summary">
+          <h2 className="balance-analysis-details__title">场景核对</h2>
+          <strong className="balance-analysis-details__meta">完整场景阅读（与首屏同源）</strong>
+          <span className="balance-analysis-details__hint">
             首屏已展示摘要、贡献、期限与风险读面；此处保留口径说明与核对提示，不再重复渲染同一组区块。
           </span>
         </summary>
-        <div className="balance-analysis-stage-details__content">
+        <div className="balance-analysis-details__content">
           <div className="balance-analysis-stage-warning">
             当前区块与首屏驾驶舱共用同一 stageModel 读面，报告日为{" "}
             {pageModel.stageModel.summary.tags[0]?.label ?? EM_DASH}；仍以页面上方正式总览、汇总、明细和受治理信号作为正式判断来源。
@@ -2395,7 +2397,7 @@ export default function BalanceAnalysisPage() {
               items={[
                 {
                   key: "result-meta",
-                  label: "开发调试：结果元信息",
+                  label: "结果元信息（运维排障）",
                   forceRender: true,
                   children: (
                     <FormalResultMetaPanel

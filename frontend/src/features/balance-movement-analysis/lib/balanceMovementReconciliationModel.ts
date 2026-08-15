@@ -62,9 +62,11 @@ const chainStatusLabels: Record<NonNullable<ChainStatus>, string> = {
 /**
  * 列值为 null = 该行写于控制结论落库之前。它和"已判定为无上月基准"不是一回事，
  * 合并显示会让未覆盖的历史行看起来像已经检查过。
+ * 真实链路可能整体省略该字段（undefined），同样按"未记录"处理，
+ * 否则勾稽汇总会把字面量 "undefined" 透出到页面。
  */
-export function chainStatusLabel(status: ChainStatus): string {
-  return status === null ? CHAIN_STATUS_UNRECORDED_TEXT : chainStatusLabels[status];
+export function chainStatusLabel(status: ChainStatus | undefined): string {
+  return status == null ? CHAIN_STATUS_UNRECORDED_TEXT : chainStatusLabels[status];
 }
 
 /**

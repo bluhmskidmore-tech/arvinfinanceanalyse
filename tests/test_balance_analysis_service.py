@@ -168,6 +168,20 @@ def test_balance_analysis_overview_envelope_uses_shared_completed_build_lineage_
     assert payload["result_meta"]["cache_version"] == "cv_balance_analysis_test"
     assert payload["result_meta"]["source_version"] == "sv_balance_analysis_test"
     assert payload["result_meta"]["rule_version"] == "rv_balance_analysis_test"
+    assert payload["result_meta"]["requested_report_date"] == "2025-12-31"
+    assert payload["result_meta"]["resolved_report_date"] == "2025-12-31"
+    assert payload["result_meta"]["as_of_date"] == "2025-12-31"
+    assert payload["result_meta"]["date_basis"] == "balance_analysis_report_date"
+    assert payload["result_meta"]["filters_applied"] == {
+        "report_date": "2025-12-31",
+        "position_scope": "all",
+        "currency_basis": "CNY",
+    }
+    assert payload["result_meta"]["tables_used"] == [
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+    ]
+    assert payload["result_meta"]["evidence_rows"] == 2
     assert payload["result"]["detail_row_count"] == 2
     definitions = {item["key"]: item for item in payload["result"]["metric_definitions"]}
     assert definitions["asset_total_market_value_amount"] == {
@@ -224,6 +238,9 @@ def test_balance_analysis_summary_envelope_uses_shared_completed_build_lineage_h
                 ],
             }
 
+        def fetch_formal_overview(self, **_kwargs):
+            return {"detail_row_count": 3}
+
     calls: list[dict[str, str]] = []
 
     monkeypatch.setattr(service_mod, "BalanceAnalysisRepository", FakeRepo)
@@ -261,6 +278,14 @@ def test_balance_analysis_summary_envelope_uses_shared_completed_build_lineage_h
     assert payload["result_meta"]["cache_version"] == "cv_balance_analysis_test"
     assert payload["result_meta"]["source_version"] == "sv_balance_analysis_test"
     assert payload["result_meta"]["rule_version"] == "rv_balance_analysis_test"
+    assert payload["result_meta"]["filters_applied"] == {
+        "report_date": "2025-12-31",
+        "position_scope": "all",
+        "currency_basis": "CNY",
+        "limit": 10,
+        "offset": 0,
+    }
+    assert payload["result_meta"]["evidence_rows"] == 3
     assert payload["result"]["total_rows"] == 1
     assert isinstance(payload["calibration"], dict)
     assert payload["data_source"] == "balance_analysis_facts"
@@ -330,6 +355,7 @@ def test_balance_analysis_basis_breakdown_envelope_uses_shared_completed_build_l
     assert payload["result_meta"]["cache_version"] == "cv_balance_analysis_test"
     assert payload["result_meta"]["source_version"] == "sv_balance_analysis_test"
     assert payload["result_meta"]["rule_version"] == "rv_balance_analysis_test"
+    assert payload["result_meta"]["evidence_rows"] == 1
     assert payload["result"]["rows"][0]["source_family"] == "zqtz"
 
 
@@ -462,6 +488,16 @@ def test_balance_analysis_decision_items_envelope_reads_generated_rows_from_work
                 "cards": [],
                 "tables": [
                     {
+                        "key": "ifrs9_source_family",
+                        "title": "IFRS9 Source Family",
+                        "section_kind": "table",
+                        "columns": [],
+                        "rows": [
+                            {"source_family": "zqtz", "row_count": 1},
+                            {"source_family": "tyw", "row_count": 1},
+                        ],
+                    },
+                    {
                         "key": "decision_items",
                         "title": "Decision Items",
                         "section_kind": "decision_items",
@@ -517,6 +553,7 @@ def test_balance_analysis_decision_items_envelope_reads_generated_rows_from_work
     )
 
     assert payload["result_meta"]["result_kind"] == "balance-analysis.decision-items"
+    assert payload["result_meta"]["evidence_rows"] == 2
     assert payload["result"]["columns"] == [
         {"key": "title", "label": "标题"},
         {"key": "action_label", "label": "动作"},

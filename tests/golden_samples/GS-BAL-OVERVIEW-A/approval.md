@@ -12,6 +12,9 @@
 - `request.json` is frozen.
 - `response.json` has been captured from a deterministic fixture-backed run.
 - Approval is still pending.
+- 2026-08-14 metadata-only deterministic fixture recapture added explicit report-date,
+  filter, source-table, and evidence-row fields; no business metric value changed.
+- Approval boundary is unchanged: owner and approver remain pending.
 
 ## Truth note
 

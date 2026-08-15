@@ -22,7 +22,7 @@
     "style:audit": "node ../scripts/audit_frontend_style_diff.mjs",
     "style:inventory": "node ../scripts/audit_frontend_style_inventory.mjs",
     "lint": "eslint .",
-    "lint:openapi": "spectral lint ../.codex-tmp/openapi.json -r ../.spectral.yaml",
+    "lint:openapi": "node -e \"if(!require('fs').existsSync('../.codex-tmp/openapi.json')){console.error('missing ../.codex-tmp/openapi.json - run from repo root (repo venv): python scripts/api_contract_check.py export-openapi --surface default --output .codex-tmp/openapi.json');process.exit(1)}\" && spectral lint ../.codex-tmp/openapi.json -r ../.spectral.yaml",
     "test": "node scripts/vitest-safe.mjs run",
     "test:a11y-smoke": "playwright test -c playwright.config.mjs",
     "test:a11y-smoke:headed": "playwright test -c playwright.config.mjs --headed",
@@ -31,6 +31,7 @@
   },
   "dependencies": {
     "@ant-design/icons": "^5.0.0",
+    "@assistant-ui/react": "0.15.14",
     "@heroui/styles": "^3.2.1",
     "@tanstack/react-query": "^5.0.0",
     "ag-grid-community": "^35.2.1",

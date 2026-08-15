@@ -1,5 +1,4 @@
 import { AlertList } from "../../../components/AlertList";
-import dhStyles from "../../workbench/dashboard-home/dashboardHome.module.css";
 import { useBalanceAnalysisThreeColumnGridStyle } from "./balanceAnalysisLayout";
 import { BalanceStageTerminalPanel } from "./BalanceStageTerminalPanel";
 import rowStyles from "./balanceAnalysisStageRow.module.css";
@@ -48,7 +47,7 @@ export function BalanceContributionRow({
   const tablePanel = (
     <div className={rowStyles.contributionTableShell}>
       <table
-        className={`${dhStyles.dhTerminalTable} ${rowStyles.contributionTable}`}
+        className={`balance-analysis-table ${rowStyles.contributionTable}`}
         data-testid="balance-analysis-contribution-table"
       >
         <thead>

@@ -21,6 +21,10 @@ _MATURITY_BUCKETS = (
     ("5-10年", Decimal("5"), Decimal("10")),
     ("10年以上", Decimal("10"), None),
 )
+# 缺失 maturity_date 的行（典型为活期类同业）不落"已到期/逾期"：与单体权威实现
+# balance_analysis_workbook.py（B10-1）及负债分析兼容链的缺失兜底口径统一，
+# 归入最短真实期限桶；条数由 bal_wb_risk_maturity_missing_001 风险预警显式披露。
+_MISSING_MATURITY_FALLBACK_BUCKET = "3个月以内"
 _RATE_BUCKETS = (
     ("零息/无息", None, Decimal("0")),
     ("1.5%以下", Decimal("0"), Decimal("1.5")),
@@ -127,6 +131,20 @@ def _match_bucket(value: Decimal, lower: Decimal | None, upper: Decimal | None) 
     if upper is None:
         return value > lower
     return value > lower and value <= upper
+
+
+def _matches_maturity_bucket(
+    report_date: date,
+    maturity_date: date | None,
+    label: str,
+    lower: Decimal | None,
+    upper: Decimal | None,
+) -> bool:
+    # "已到期/逾期"只收真实 maturity_date <= report_date 的行；缺失到期日的行
+    # 归入 _MISSING_MATURITY_FALLBACK_BUCKET（见常量处注释，与单体权威实现统一）。
+    if maturity_date is None:
+        return label == _MISSING_MATURITY_FALLBACK_BUCKET
+    return _match_bucket(_remaining_years(report_date, maturity_date), lower, upper)
 
 
 def _safe_ratio(numerator: Decimal, denominator: Decimal) -> Decimal:

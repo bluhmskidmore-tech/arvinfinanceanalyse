@@ -18,6 +18,25 @@ type Row = {
   daily_avg_pct: number | null;
 };
 
+const SQL_LIKE_PREFIX_PATTERN = /^\d+%$/;
+
+/**
+ * 控制项显示层清洗：后端把 SQL LIKE 前缀模式（如 "142%"）直出，
+ * 尾部 % 是通配符而非百分比。全部条目均为前缀模式时读作「科目前缀 142 / …」，
+ * 原始模式收进 title；出现未知形态则整组原样透出（不猜业务含义）。
+ */
+function describeAccountingControls(controls: string[]): { text: string; title?: string } {
+  const allPrefixPatterns =
+    controls.length > 0 && controls.every((item) => SQL_LIKE_PREFIX_PATTERN.test(item));
+  if (!allPrefixPatterns) {
+    return { text: `控制项：${controls.join("；")}` };
+  }
+  return {
+    text: `控制项：科目前缀 ${controls.map((item) => item.replace(/%$/, "")).join(" / ")}`,
+    title: `原始匹配模式（SQL LIKE）：${controls.join("；")}`,
+  };
+}
+
 function buildSnapshotRows(snapshot: AdbAccountingBasisDailyAvg): Row[] {
   return snapshot.rows.map((r, i) => ({
     key: `${r.basis_bucket}-${i}`,
@@ -84,7 +103,9 @@ export default function AdbAccountingBasisSection({
             {snapshot.currency_basis ? ` · ${snapshot.currency_basis}` : ""}
           </div>
           {snapshot.accounting_controls.length > 0 ? (
-            <div className="adb-note">控制项：{snapshot.accounting_controls.join("；")}</div>
+            <div className="adb-note" title={describeAccountingControls(snapshot.accounting_controls).title}>
+              {describeAccountingControls(snapshot.accounting_controls).text}
+            </div>
           ) : null}
           <Table<Row>
             size="small"

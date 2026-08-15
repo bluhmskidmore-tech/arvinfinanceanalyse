@@ -1,5 +1,12 @@
 /* Figma node 20:2 — page-local implementation layer. */
 .balance-movement-page {
+  /*
+   * AC/OCI/TPL 会计分类唯一色映射（visual-only）：全页两处堆叠条、驱动条、
+   * 六月结构柱与分桶卡共用；分类色不占用绿/红涨跌语义位（DESIGN §4）。
+   */
+  --bm-cat-ac: var(--dh-api-blue);
+  --bm-cat-oci: var(--dh-api-soft);
+  --bm-cat-tpl: var(--dh-api-amber);
   --ib-surface: var(--dh-api-panel);
   --ib-surface-muted: var(--dh-api-panel-2);
   --ib-ink: var(--dh-api-ink);
@@ -173,6 +180,26 @@
   min-width: 0;
   gap: 20px;
   padding: 20px 20px 68px;
+  counter-reset: bm-section;
+}
+
+/*
+ * 分区编号按已渲染顺序由 CSS counter 生成（ledger-pnl / average-balance 先例）：
+ * 模块缺席时编号自动连续，不再出现硬编码错序或重号。
+ */
+.balance-movement-sec-no {
+  counter-increment: bm-section;
+}
+
+.balance-movement-sec-no h2::before {
+  content: counter(bm-section, decimal-leading-zero);
+  margin-right: 8px;
+  color: var(--dh-api-muted);
+  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
 }
 
 .balance-movement-page-body > * {
@@ -377,7 +404,7 @@
 }
 
 .balance-movement-decision-hero__chips [data-bucket="tpl"] {
-  border-color: color-mix(in srgb, var(--dh-api-amber) 40%, var(--dh-api-line-soft));
+  border-color: color-mix(in srgb, var(--bm-cat-tpl) 40%, var(--dh-api-line-soft));
 }
 
 .balance-movement-data-trust {
@@ -488,6 +515,10 @@
   color: var(--dh-api-amber);
 }
 
+.balance-movement-kpi-ribbon > article[data-accent="red"] strong {
+  color: var(--dh-api-red);
+}
+
 .balance-movement-kpi-ribbon span,
 .balance-movement-kpi-ribbon small {
   overflow: hidden;
@@ -558,6 +589,11 @@
 .balance-movement-kpi-ribbon__signal[data-tone="amber"] progress::-webkit-progress-value,
 .balance-movement-kpi-ribbon__signal[data-tone="amber"] progress::-moz-progress-bar {
   background: var(--dh-api-amber);
+}
+
+.balance-movement-kpi-ribbon__signal[data-tone="red"] progress::-webkit-progress-value,
+.balance-movement-kpi-ribbon__signal[data-tone="red"] progress::-moz-progress-bar {
+  background: var(--dh-api-red);
 }
 
 .balance-movement-kpi-ribbon__signal--reconciliation {
@@ -689,9 +725,9 @@
 }
 
 .balance-movement-driver-list > div[data-bucket="tpl"] {
-  border-bottom-color: color-mix(in srgb, var(--dh-api-amber) 35%, var(--dh-api-line-soft));
-  border-left: 2px solid var(--dh-api-amber);
-  background: color-mix(in srgb, var(--dh-api-amber) 14%, var(--dh-api-panel-2));
+  border-bottom-color: color-mix(in srgb, var(--bm-cat-tpl) 35%, var(--dh-api-line-soft));
+  border-left: 2px solid var(--bm-cat-tpl);
+  background: color-mix(in srgb, var(--bm-cat-tpl) 14%, var(--dh-api-panel-2));
 }
 
 .balance-movement-driver-list span,
@@ -773,17 +809,17 @@
 
 .balance-movement-driver-composition g[data-bucket="tpl"] rect,
 .balance-movement-structure-mix g[data-bucket="tpl"] rect {
-  fill: color-mix(in srgb, var(--dh-api-amber) 38%, var(--dh-api-panel-2));
+  fill: color-mix(in srgb, var(--bm-cat-tpl) 38%, var(--dh-api-panel-2));
 }
 
 .balance-movement-driver-composition g[data-bucket="oci"] rect,
 .balance-movement-structure-mix g[data-bucket="oci"] rect {
-  fill: color-mix(in srgb, var(--dh-api-blue) 34%, var(--dh-api-panel-2));
+  fill: color-mix(in srgb, var(--bm-cat-oci) 34%, var(--dh-api-panel-2));
 }
 
 .balance-movement-driver-composition g[data-bucket="ac"] rect,
 .balance-movement-structure-mix g[data-bucket="ac"] rect {
-  fill: color-mix(in srgb, var(--dh-api-green) 30%, var(--dh-api-panel-2));
+  fill: color-mix(in srgb, var(--bm-cat-ac) 34%, var(--dh-api-panel-2));
 }
 
 .balance-movement-driver-composition text,
@@ -798,17 +834,17 @@
 
 .balance-movement-driver-composition g[data-bucket="tpl"] text,
 .balance-movement-structure-mix g[data-bucket="tpl"] text {
-  fill: var(--dh-api-amber);
+  fill: var(--bm-cat-tpl);
 }
 
 .balance-movement-driver-composition g[data-bucket="oci"] text,
 .balance-movement-structure-mix g[data-bucket="oci"] text {
-  fill: var(--dh-api-blue);
+  fill: var(--bm-cat-oci);
 }
 
 .balance-movement-driver-composition g[data-bucket="ac"] text,
 .balance-movement-structure-mix g[data-bucket="ac"] text {
-  fill: var(--dh-api-green);
+  fill: var(--bm-cat-ac);
 }
 
 .balance-movement-driver-list progress::-webkit-progress-bar {
@@ -822,15 +858,15 @@
 }
 
 .balance-movement-driver-list [data-bucket="tpl"] progress::-webkit-progress-value {
-  background: var(--dh-api-amber);
+  background: var(--bm-cat-tpl);
 }
 
 .balance-movement-driver-list [data-bucket="oci"] progress::-webkit-progress-value {
-  background: var(--dh-api-blue);
+  background: var(--bm-cat-oci);
 }
 
 .balance-movement-driver-list [data-bucket="ac"] progress::-webkit-progress-value {
-  background: var(--dh-api-green);
+  background: var(--bm-cat-ac);
 }
 
 .balance-movement-driver-list progress::-moz-progress-bar {
@@ -1802,6 +1838,14 @@
   font-size: 10px;
 }
 
+/* 三维度同句口径提示的区头收敛位（各卡差异时仍在卡内原文保留）。 */
+.balance-movement-concentration-shared-caveat {
+  margin: 0;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .balance-movement-concentration-governance {
   min-height: 42px;
 }
@@ -2094,15 +2138,15 @@
 }
 
 .balance-movement-contribution__segment--ac {
-  background: var(--dh-api-blue);
+  background: var(--bm-cat-ac);
 }
 
 .balance-movement-contribution__segment--oci {
-  background: var(--dh-api-green);
+  background: var(--bm-cat-oci);
 }
 
 .balance-movement-contribution__segment--tpl {
-  background: var(--dh-api-amber);
+  background: var(--bm-cat-tpl);
 }
 
 .balance-movement-contribution__labels {
@@ -2116,15 +2160,15 @@
   min-width: 0;
   gap: 3px;
   padding-left: 9px;
-  border-left: 2px solid var(--dh-api-blue);
+  border-left: 2px solid var(--bm-cat-ac);
 }
 
 .balance-movement-contribution__label--oci {
-  border-left-color: var(--dh-api-green);
+  border-left-color: var(--bm-cat-oci);
 }
 
 .balance-movement-contribution__label--tpl {
-  border-left-color: var(--dh-api-amber);
+  border-left-color: var(--bm-cat-tpl);
 }
 
 .balance-movement-contribution__labels span,
@@ -2304,19 +2348,23 @@
   line-height: 1;
 }
 
+/* 三个分类色均为中高亮度，段内占比文字统一翻深色保证可读。 */
 .balance-movement-six-month__segment[data-bucket="AC"],
 .balance-movement-six-month__segment--ac {
-  background: var(--dh-api-green);
+  background: var(--bm-cat-ac);
+  color: var(--dh-api-bg);
 }
 
 .balance-movement-six-month__segment[data-bucket="OCI"],
 .balance-movement-six-month__segment--oci {
-  background: var(--dh-api-blue);
+  background: var(--bm-cat-oci);
+  color: var(--dh-api-bg);
 }
 
 .balance-movement-six-month__segment[data-bucket="TPL"],
 .balance-movement-six-month__segment--tpl {
-  background: var(--dh-api-amber);
+  background: var(--bm-cat-tpl);
+  color: var(--dh-api-bg);
 }
 
 .balance-movement-six-month__insight {
@@ -2443,7 +2491,7 @@
 .balance-movement-structure-bridge__bucket strong,
 .balance-movement-structure-bridge__bucket small,
 .balance-movement-structure-bridge__bucket > em {
-  color: var(--dh-api-green);
+  color: var(--bm-cat-ac);
   font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
   font-size: 11px;
   font-style: normal;
@@ -2463,12 +2511,12 @@
 
 .balance-movement-structure-bridge__bucket[data-bucket="OCI"] strong,
 .balance-movement-structure-bridge__bucket[data-bucket="OCI"] > em {
-  color: var(--dh-api-blue);
+  color: var(--bm-cat-oci);
 }
 
 .balance-movement-structure-bridge__bucket[data-bucket="TPL"] strong,
 .balance-movement-structure-bridge__bucket[data-bucket="TPL"] > em {
-  color: var(--dh-api-amber);
+  color: var(--bm-cat-tpl);
 }
 
 .balance-movement-structure-bridge__migration aside {
@@ -2574,8 +2622,9 @@
   font-size: 9px;
 }
 
+/* 瀑布组件金额是带符号读数，恒绿即方向色谎言；未支持/残差仍走琥珀。 */
 .balance-movement-structure-bridge .balance-movement-waterfall__component strong {
-  color: var(--dh-api-green);
+  color: var(--dh-api-ink);
   font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
   font-variant-numeric: tabular-nums;
   font-weight: 500;
@@ -2612,7 +2661,7 @@
 }
 
 .balance-movement-structure-bridge__closure strong {
-  color: var(--dh-api-green);
+  color: var(--dh-api-ink);
   font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
@@ -2721,17 +2770,17 @@
 }
 
 .balance-movement-live-decomposition__bucket header strong {
-  color: var(--dh-api-green);
+  color: var(--bm-cat-ac);
   font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
   font-size: 13px;
 }
 
 .balance-movement-live-decomposition__bucket[data-bucket="OCI"] header strong {
-  color: var(--dh-api-blue);
+  color: var(--bm-cat-oci);
 }
 
 .balance-movement-live-decomposition__bucket[data-bucket="TPL"] header strong {
-  color: var(--dh-api-amber);
+  color: var(--bm-cat-tpl);
 }
 
 .balance-movement-live-decomposition__bucket header small,
@@ -2748,8 +2797,9 @@
   letter-spacing: 0.08em;
 }
 
+/* 残差/期末校验行是证据读数，不承载好坏语义，保持安静中性。 */
 .balance-movement-live-decomposition__bucket > footer {
-  color: var(--dh-api-green);
+  color: var(--dh-api-muted);
 }
 
 .balance-movement-live-decomposition__bucket > ul,
@@ -2795,9 +2845,10 @@
   white-space: nowrap;
 }
 
+/* 科目组件变动是带符号读数：恒绿会把负值渲染成利好，改中性墨色。 */
 .balance-movement-live-decomposition__component strong,
 .balance-movement-live-decomposition__component small {
-  color: var(--dh-api-green);
+  color: var(--dh-api-ink);
   font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
   font-size: 9px;
   font-variant-numeric: tabular-nums;
@@ -2832,21 +2883,46 @@
   box-sizing: border-box;
   display: grid;
   min-width: 0;
-  min-height: 456px;
-  height: 456px;
-  grid-template-rows: 44px 76px 204px auto;
   gap: 16px;
   padding: 20px;
-  overflow: hidden;
   border: 1px solid var(--dh-api-line);
   border-radius: var(--ib-radius);
   background: var(--dh-api-panel);
   color: var(--dh-api-ink);
 }
 
-.balance-movement-data-states:has(.balance-movement-data-states__pass[open]) {
-  height: auto;
-  overflow: visible;
+/* 区头右侧治理读数：键值网格取代单行 3 个「·」的元信息串。 */
+.balance-movement-data-states__meta {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(2, minmax(0, auto));
+  gap: 2px 18px;
+  margin: 0;
+}
+
+.balance-movement-data-states__meta > div {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.balance-movement-data-states__meta dt {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.balance-movement-data-states__meta dd {
+  margin: 0;
+  overflow: hidden;
+  color: var(--dh-api-soft);
+  font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-size: 11px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .balance-movement-data-states__states {
@@ -2914,14 +2990,53 @@
 .balance-movement-data-states__evidence {
   display: grid;
   min-width: 0;
-  height: 204px;
-  grid-template-rows: 20px 50px 62px;
+  grid-template-rows: 20px auto;
   gap: 10px;
   padding: 14px;
   overflow: hidden;
   border: 1px solid var(--dh-api-line-soft);
   border-radius: var(--ib-radius);
   background: var(--dh-api-panel-2);
+}
+
+/* 五态字典与语义说明属开发口径文档，默认折叠收纳（DESIGN §6 状态去重）。 */
+.balance-movement-data-states__glossary {
+  min-width: 0;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--ib-radius);
+  background: var(--dh-api-panel-2);
+}
+
+.balance-movement-data-states__glossary > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 11px 14px;
+  color: var(--dh-api-soft);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 16px;
+}
+
+.balance-movement-data-states__glossary > summary::-webkit-details-marker {
+  display: none;
+}
+
+.balance-movement-data-states__glossary > summary::before {
+  content: "▸";
+  margin-right: 8px;
+  color: var(--dh-api-muted);
+}
+
+.balance-movement-data-states__glossary[open] > summary::before {
+  content: "▾";
+}
+
+.balance-movement-data-states__glossary[open] > summary {
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.balance-movement-data-states__glossary > div {
+  margin: 12px 14px;
 }
 
 .balance-movement-data-states__evidence > header {
@@ -3320,6 +3435,20 @@
   background: color-mix(in srgb, var(--dh-api-blue) 4%, var(--dh-api-panel-2));
   color: var(--dh-api-ink);
   font-weight: 700;
+}
+
+/*
+ * 余额水平列保持中性，红绿只标注「较上月 / 较年初」变动列：
+ * 表格基础规则的 color: inherit 特异性更高，这里以更高特异性拉回方向色。
+ */
+.balance-movement-business-matrix__table td.balance-movement-matrix__delta--up,
+.balance-movement-zqtz-detail-page__table td.balance-movement-matrix__delta--up {
+  color: var(--dh-api-green);
+}
+
+.balance-movement-business-matrix__table td.balance-movement-matrix__delta--down,
+.balance-movement-zqtz-detail-page__table td.balance-movement-matrix__delta--down {
+  color: var(--dh-api-red);
 }
 
 .balance-movement-business-matrix__reconciliation {

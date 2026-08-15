@@ -6,9 +6,15 @@ import { EM_DASH } from "../../../utils/format";
 
 export type AdbMonthlyHorizontalChartRow = {
   category: string;
-  avgYi: number;
+  /** null 表示上游缺数（区间日均/期末时点不可用）：不画柱，tooltip/标签显示 EM_DASH */
+  avgYi: number | null;
   weightedRate: number | null;
 };
+
+function formatYi(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return EM_DASH;
+  return value.toFixed(2);
+}
 
 export type AdbMonthlyHorizontalChartVariant = "asset" | "liability";
 
@@ -42,7 +48,7 @@ function buildHorizontalOption(rows: AdbMonthlyHorizontalChartRow[], title: stri
         const row = rows[items[0].dataIndex];
         return [
           row.category,
-          `日均：${row.avgYi.toFixed(2)} 亿元`,
+          `日均：${formatYi(row.avgYi)} 亿元`,
           `加权利率：${formatPct(row.weightedRate)}`,
         ].join("<br/>");
       },
@@ -65,8 +71,7 @@ function buildHorizontalOption(rows: AdbMonthlyHorizontalChartRow[], title: stri
         label: {
           show: true,
           position: "right",
-          formatter: ({ dataIndex }: { dataIndex: number }) =>
-            rows[dataIndex]?.avgYi.toFixed(2) ?? "0.00",
+          formatter: ({ dataIndex }: { dataIndex: number }) => formatYi(rows[dataIndex]?.avgYi),
           color: nocturneChartTheme.axisLabel.color,
         },
       },

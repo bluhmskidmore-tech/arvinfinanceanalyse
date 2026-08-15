@@ -224,7 +224,12 @@ def test_asset_scope_maturity_gap_exposes_liability_columns_not_zero():
     assert issuance_total == Decimal("4000")  # 40,000,000 元 -> 万元
 
 
-def test_missing_maturity_is_disclosed_without_changing_existing_table_semantics():
+def test_missing_maturity_falls_into_shortest_bucket_with_disclosure():
+    # B10-1（2026-08 审计）：缺失 maturity_date 的行（典型为活期类同业）不得落
+    # "已到期/逾期"桶——与负债分析兼容链（maturity_bucket → "3个月以内"、
+    # monthly_v1_bucket_name → "0-3M"）的缺失兜底口径统一，归入"3个月以内"，
+    # 并保留 bal_wb_risk_maturity_missing_001 披露。旧锁定（落"已到期/逾期"、
+    # "按 0 年处理"）属跨模块矛盾口径，在本测试中被有意修正。
     missing_zqtz = [
         replace(_zqtz_asset(), maturity_date=None),
         replace(_zqtz_issuance(), maturity_date=None),
@@ -248,11 +253,17 @@ def test_missing_maturity_is_disclosed_without_changing_existing_table_semantics
     )
 
     maturity_gap = _table(payload, "maturity_gap")
+    shortest = next(row for row in maturity_gap["rows"] if row["bucket"] == "3个月以内")
+    assert shortest["bond_assets_amount"] == Decimal("10000")
+    assert shortest["issuance_amount"] == Decimal("4000")
+    assert shortest["interbank_assets_amount"] == Decimal("3000")
+    assert shortest["interbank_liabilities_amount"] == Decimal("5000")
+
     expired = next(row for row in maturity_gap["rows"] if row["bucket"] == "已到期/逾期")
-    assert expired["bond_assets_amount"] == Decimal("10000")
-    assert expired["issuance_amount"] == Decimal("4000")
-    assert expired["interbank_assets_amount"] == Decimal("3000")
-    assert expired["interbank_liabilities_amount"] == Decimal("5000")
+    assert expired["bond_assets_amount"] == Decimal("0")
+    assert expired["issuance_amount"] == Decimal("0")
+    assert expired["interbank_assets_amount"] == Decimal("0")
+    assert expired["interbank_liabilities_amount"] == Decimal("0")
 
     duration_proxy = next(
         row
@@ -290,9 +301,52 @@ def test_missing_maturity_is_disclosed_without_changing_existing_table_semantics
     assert "发行类负债 1" in alert["reason"]
     assert "同业资产 1" in alert["reason"]
     assert "同业负债 1" in alert["reason"]
-    assert "四类行在期限缺口中按 0 年处理" in alert["reason"]
+    assert "四类行在期限缺口中归入「3个月以内」桶" in alert["reason"]
+    assert "不落「已到期/逾期」" in alert["reason"]
     assert "债券投资资产和同业资产同时按 0 年进入组合剩余期限 proxy" in alert["reason"]
     assert "加权期限及现金流、事件日历剔除缺失值" in alert["reason"]
+
+
+def test_missing_maturity_caliber_package_copies_match_monolith():
+    # B10-1 双实现钉住：休眠副本（balance_workbook/_bond_tables、_risk_tables）
+    # 与单体权威实现对缺失 maturity_date 的行必须同口径——归入"3个月以内"桶
+    # 并输出 bal_wb_risk_maturity_missing_001 披露，不落"已到期/逾期"。
+    from backend.app.core_finance.balance_analysis_workbook import (
+        _build_maturity_gap_table as monolith_maturity_gap,
+    )
+    from backend.app.core_finance.balance_analysis_workbook import (
+        _build_risk_alerts_table as monolith_risk_alerts,
+    )
+    from backend.app.core_finance.balance_workbook._bond_tables import (
+        _build_maturity_gap_table as package_maturity_gap,
+    )
+    from backend.app.core_finance.balance_workbook._risk_tables import (
+        _build_risk_alerts_table as package_risk_alerts,
+    )
+
+    missing_zqtz = [
+        replace(_zqtz_asset(), maturity_date=None),
+        replace(_zqtz_issuance(), maturity_date=None),
+    ]
+    missing_tyw = [
+        replace(_tyw_asset(), maturity_date=None),
+        replace(_tyw_liability(), maturity_date=None),
+    ]
+
+    monolith_gap_rows = monolith_maturity_gap(RD, missing_zqtz, missing_tyw)["rows"]
+    package_gap_rows = package_maturity_gap(RD, missing_zqtz, missing_tyw)["rows"]
+    assert package_gap_rows == monolith_gap_rows
+    shortest = next(row for row in package_gap_rows if row["bucket"] == "3个月以内")
+    assert shortest["bond_assets_amount"] == Decimal("10000")
+    expired = next(row for row in package_gap_rows if row["bucket"] == "已到期/逾期")
+    assert expired["bond_assets_amount"] == Decimal("0")
+
+    monolith_alert_rows = monolith_risk_alerts(RD, missing_zqtz, missing_tyw)["rows"]
+    package_alert_rows = package_risk_alerts(RD, missing_zqtz, missing_tyw)["rows"]
+    assert package_alert_rows == monolith_alert_rows
+    assert any(
+        row["rule_id"] == "bal_wb_risk_maturity_missing_001" for row in package_alert_rows
+    )
 
 
 def test_complete_maturity_dates_do_not_emit_missing_maturity_alert():

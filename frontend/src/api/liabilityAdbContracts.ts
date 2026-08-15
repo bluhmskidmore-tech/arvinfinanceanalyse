@@ -21,6 +21,7 @@ export type LiabilityRiskBucketsPayload = {
   interbank_liabilities_term_buckets?: LiabilityBucketAmountItem[];
   issued_liabilities_structure?: LiabilityNameAmountItem[];
   issued_liabilities_term_buckets?: LiabilityBucketAmountItem[];
+  missing_maturity_count?: number;
 };
 
 export type LiabilityNimStress = {

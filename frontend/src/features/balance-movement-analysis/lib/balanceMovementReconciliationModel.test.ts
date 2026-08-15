@@ -99,6 +99,15 @@ describe("balanceMovementReconciliationModel", () => {
     expect(chainStatusLabel(null)).toBe("未记录");
     expect(chainStatusLabel("no_prior_month")).toBe("无上月基准");
     expect(chainStatusLabel(null)).not.toBe(chainStatusLabel("no_prior_month"));
+    // 真实链路可能整体省略该字段：undefined 同样按未记录处理，
+    // 不得把字面量 "undefined" 透出到勾稽汇总。
+    expect(chainStatusLabel(undefined)).toBe("未记录");
+    const summary = reconciliationTieoutSummary(
+      [row({ chain_status: undefined as unknown as BalanceMovementRow["chain_status"] })],
+      signedYi,
+    );
+    expect(summary).toContain("跨月勾稽 未记录 1");
+    expect(summary).not.toContain("undefined");
   });
 
   it("excludes rows without a counterparty from the comparable difference total", () => {

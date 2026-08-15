@@ -2,8 +2,9 @@
 日均资产负债（ADB）分析 — DuckDB 读模型。
 
 ADB 优先读 `fact_formal_zqtz_balance_daily` / `fact_formal_tyw_balance_daily` 的 `currency_basis = 'CNY'` 行。
-当 formal 表缺少某些日期时，自动从 `zqtz_bond_daily_snapshot` / `tyw_interbank_daily_snapshot` 补充（原币，
-不做 FX 转换——国内业务绝大多数 CNY 原币即 CNY，偏差可接受）。
+当 formal 表缺少某些日期时，自动从 `zqtz_bond_daily_snapshot` / `tyw_interbank_daily_snapshot` 补充：
+人民币口径行（CNY/CNX）原样并入；外币行按当日 formal FX 中间价折算为 CNY 后并入（calc_rules §12.4），
+缺当日中间价的外币行剔除，折算/剔除情况通过 payload `snapshot_fx_conversion` 与 calibration 披露（§14）。
 
 期末时点与区间日均对比：若某分类在 ``end_date`` 当天无任何快照行，但区间内曾有余额，则该分类期末时点取
 区间内**不晚于** ``end_date`` 的**最近观测日**的同类合计（LOCF），避免「时点=0、日均>0」的伪偏离。
@@ -17,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from functools import lru_cache
@@ -24,13 +26,6 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from backend.app.repositories.adb_analysis_repo import (
-    AdbAnalysisRepository,
-    RELATION_FACT_FORMAL_TYW_BALANCE_DAILY,
-    RELATION_FACT_FORMAL_ZQTZ_BALANCE_DAILY,
-    RELATION_TYW_INTERBANK_DAILY_SNAPSHOT,
-    RELATION_ZQTZ_BOND_DAILY_SNAPSHOT,
-)
 from backend.app.core_finance.adb_analytics import (
     aggregate_daily_totals,
     build_comparison_rows,
@@ -49,6 +44,7 @@ from backend.app.core_finance.adb_deep_analytics import (
     build_adb_insights_payload,
     build_side_input,
     compute_comparison_windows,
+    sample_fill_side_balances,
 )
 from backend.app.core_finance.adb_interbank_labels import map_ib_category
 from backend.app.core_finance.adb_rate_normalize import normalize_rate_values
@@ -58,6 +54,14 @@ from backend.app.core_finance.balance_calibration import (
 )
 from backend.app.core_finance.zqtz_asset_bond_category import classify_zqtz_asset_bond_label
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.adb_analysis_repo import (
+    RELATION_FACT_FORMAL_TYW_BALANCE_DAILY,
+    RELATION_FACT_FORMAL_ZQTZ_BALANCE_DAILY,
+    RELATION_TYW_INTERBANK_DAILY_SNAPSHOT,
+    RELATION_ZQTZ_BOND_DAILY_SNAPSHOT,
+    AdbAnalysisRepository,
+)
+from backend.app.repositories.currency_codes import normalize_currency_code
 from backend.app.services.formal_result_runtime import build_result_envelope
 from backend.app.services.liability_analytics_service import build_nim_stress_percent_points
 
@@ -301,6 +305,7 @@ def _build_bonds_df(
         date_columns=("report_date",),
         numeric_columns=("market_value", "yield_to_maturity", "coupon_rate", "interest_rate"),
         nullable_numeric_columns=("yield_to_maturity", "coupon_rate"),
+        validity_numeric_columns=("market_value",),
     )
 
 
@@ -325,6 +330,7 @@ def _build_ib_df(
         date_columns=("report_date",),
         numeric_columns=("amount", "interest_rate"),
         nullable_numeric_columns=("interest_rate",),
+        validity_numeric_columns=("amount",),
     )
 
 
@@ -533,13 +539,128 @@ def _frame_report_dates(frame: pd.DataFrame) -> set[str]:
     )
 
 
+# normalize_currency_code 归一后视为人民币口径的币种。
+_CNY_EQUIVALENT_CURRENCY_CODES = frozenset({"", "CNY", "CNX", "RMB"})
+
+
+def _empty_snapshot_fx_summary() -> dict[str, Any]:
+    return {
+        "converted_rows": 0,
+        "dropped_rows": 0,
+        "converted_by_currency": {},
+        "dropped_by_currency": {},
+    }
+
+
+def _snapshot_fx_summary_has_activity(summary: dict[str, Any]) -> bool:
+    return bool(summary.get("converted_rows") or summary.get("dropped_rows"))
+
+
+def _merge_snapshot_fx_summaries(summaries: list[dict[str, Any]]) -> dict[str, Any]:
+    merged = _empty_snapshot_fx_summary()
+    for summary in summaries:
+        merged["converted_rows"] += int(summary.get("converted_rows") or 0)
+        merged["dropped_rows"] += int(summary.get("dropped_rows") or 0)
+        for currency, rows in (summary.get("converted_by_currency") or {}).items():
+            merged["converted_by_currency"][currency] = (
+                merged["converted_by_currency"].get(currency, 0) + int(rows)
+            )
+        for currency, item in (summary.get("dropped_by_currency") or {}).items():
+            slot = merged["dropped_by_currency"].setdefault(
+                currency, {"rows": 0, "native_amount": 0.0}
+            )
+            slot["rows"] += int(item.get("rows") or 0)
+            slot["native_amount"] += float(item.get("native_amount") or 0.0)
+    return merged
+
+
+def _make_formal_fx_rate_lookup(duckdb_path: str) -> Callable[[str, str], Decimal | None]:
+    """(report_date, currency) -> formal 当日 CNY 中间价；缺失时返回 None。
+
+    formal FX 是 fail-closed 的（calc_rules §7.1）：缺当日（或合法结转）中间价时
+    `lookup_formal_fx_rate` 抛错，此处折为 None，由调用方剔除该回退行并披露。
+    """
+    repo = AdbAnalysisRepository(duckdb_path)
+    memo: dict[tuple[str, str], Decimal | None] = {}
+
+    def _lookup(report_date: str, currency: str) -> Decimal | None:
+        key = (report_date, currency)
+        if key not in memo:
+            try:
+                memo[key] = repo.lookup_formal_fx_rate(
+                    report_date=report_date,
+                    base_currency=currency,
+                )
+            except ValueError:
+                memo[key] = None
+        return memo[key]
+
+    return _lookup
+
+
+def _convert_snapshot_frame_to_cny(
+    snap_df: pd.DataFrame,
+    *,
+    amount_columns: tuple[str, ...],
+    fx_lookup: Callable[[str, str], Decimal | None],
+    summary: dict[str, Any],
+) -> pd.DataFrame:
+    """快照回退行并入 CNY 口径前的逐日 FX 归一（calc_rules §12.4）。
+
+    - 人民币口径币种（CNY/CNX/RMB/空）原样保留；
+    - 其他币种按 (report_date, currency) 的 formal 当日中间价把金额列折算为 CNY；
+    - 缺中间价的外币行剔除并计入 ``summary``（§14：降级必须打标记，禁止原币混入）。
+    """
+    if snap_df.empty or "currency_code" not in snap_df.columns:
+        return snap_df
+    currencies = snap_df["currency_code"].map(normalize_currency_code)
+    foreign_mask = ~currencies.isin(_CNY_EQUIVALENT_CURRENCY_CODES)
+    if not foreign_mask.any():
+        return snap_df
+    report_dates = pd.to_datetime(snap_df["report_date"], errors="coerce").dt.strftime("%Y-%m-%d")
+    converted = snap_df.copy()
+    drop_index: list[Any] = []
+    for (report_date, currency), group in converted.loc[foreign_mask].groupby(
+        [report_dates[foreign_mask], currencies[foreign_mask]], dropna=False
+    ):
+        currency_key = str(currency)
+        try:
+            date.fromisoformat(str(report_date))
+        except (TypeError, ValueError):
+            rate = None
+        else:
+            rate = fx_lookup(str(report_date), currency_key)
+        if rate is None:
+            drop_index.extend(group.index.tolist())
+            slot = summary["dropped_by_currency"].setdefault(
+                currency_key, {"rows": 0, "native_amount": 0.0}
+            )
+            slot["rows"] += int(len(group))
+            primary_native = pd.to_numeric(group[amount_columns[0]], errors="coerce").fillna(0.0)
+            slot["native_amount"] += float(primary_native.sum())
+            summary["dropped_rows"] += int(len(group))
+            continue
+        for column in amount_columns:
+            converted.loc[group.index, column] = (
+                pd.to_numeric(converted.loc[group.index, column], errors="coerce") * float(rate)
+            )
+        summary["converted_by_currency"][currency_key] = (
+            summary["converted_by_currency"].get(currency_key, 0) + int(len(group))
+        )
+        summary["converted_rows"] += int(len(group))
+    if drop_index:
+        converted = converted.drop(index=drop_index)
+    return converted
+
+
 def _load_adb_raw_data(
     duckdb_path: str,
     start_date: date,
     end_date: date,
-) -> tuple[pd.DataFrame, pd.DataFrame, list[str], list[str], str, list[str]]:
+) -> tuple[pd.DataFrame, pd.DataFrame, list[str], list[str], str, list[str], dict[str, Any]]:
+    snapshot_fx_summary = _empty_snapshot_fx_summary()
     if not Path(duckdb_path).exists():
-        return pd.DataFrame(), pd.DataFrame(), [], [], "snapshot_calendar", []
+        return pd.DataFrame(), pd.DataFrame(), [], [], "snapshot_calendar", [], snapshot_fx_summary
 
     zqtz_df = pd.DataFrame()
     tyw_df = pd.DataFrame()
@@ -550,7 +671,15 @@ def _load_adb_raw_data(
     with repo.scoped_connection() as conn:
         if conn is None:
             adb_denominator_basis, adb_tables_used = _adb_lineage_sources(zqtz_src, tyw_src)
-            return pd.DataFrame(), pd.DataFrame(), [], [], adb_denominator_basis, adb_tables_used
+            return (
+                pd.DataFrame(),
+                pd.DataFrame(),
+                [],
+                [],
+                adb_denominator_basis,
+                adb_tables_used,
+                snapshot_fx_summary,
+            )
 
         # --- 1. Load from formal tables (primary source) ---
         if repo.table_exists(conn, RELATION_FACT_FORMAL_ZQTZ_BALANCE_DAILY):
@@ -599,6 +728,9 @@ def _load_adb_raw_data(
                 len(zqtz_missing_dates),
                 len(tyw_missing_dates),
             )
+            # 快照存的是原币金额；并入 formal CNY 口径前必须逐日 FX 折算（calc_rules §12.4），
+            # 缺当日中间价的外币行剔除并在 snapshot_fx_summary 中披露（§14）。
+            fx_lookup = _make_formal_fx_rate_lookup(duckdb_path)
 
             # Supplement ZQTZ from snapshot
             if zqtz_missing_dates:
@@ -607,6 +739,12 @@ def _load_adb_raw_data(
                     end_date,
                     zqtz_missing_dates,
                     conn=conn,
+                )
+                zqtz_snap = _convert_snapshot_frame_to_cny(
+                    zqtz_snap,
+                    amount_columns=("market_value_amount",),
+                    fx_lookup=fx_lookup,
+                    summary=snapshot_fx_summary,
                 )
                 if not zqtz_snap.empty:
                     zqtz_df = pd.concat([zqtz_df, zqtz_snap], ignore_index=True) if not zqtz_df.empty else zqtz_snap
@@ -622,6 +760,12 @@ def _load_adb_raw_data(
                     end_date,
                     tyw_missing_dates,
                     conn=conn,
+                )
+                tyw_snap = _convert_snapshot_frame_to_cny(
+                    tyw_snap,
+                    amount_columns=("principal_amount",),
+                    fx_lookup=fx_lookup,
+                    summary=snapshot_fx_summary,
                 )
                 if not tyw_snap.empty:
                     tyw_df = pd.concat([tyw_df, tyw_snap], ignore_index=True) if not tyw_df.empty else tyw_snap
@@ -689,6 +833,7 @@ def _load_adb_raw_data(
             date_columns=("report_date",),
             numeric_columns=("market_value", "yield_to_maturity", "coupon_rate", "interest_rate"),
             nullable_numeric_columns=("yield_to_maturity", "coupon_rate"),
+            validity_numeric_columns=("market_value",),
         )
         bonds_df = _assign_zqtz_bond_categories(bonds_df)
 
@@ -723,9 +868,18 @@ def _load_adb_raw_data(
             date_columns=("report_date",),
             numeric_columns=("amount", "interest_rate"),
             nullable_numeric_columns=("interest_rate",),
+            validity_numeric_columns=("amount",),
         )
 
-    return bonds_df, ib_df, source_versions, rule_versions, adb_denominator_basis, adb_tables_used
+    return (
+        bonds_df,
+        ib_df,
+        source_versions,
+        rule_versions,
+        adb_denominator_basis,
+        adb_tables_used,
+        snapshot_fx_summary,
+    )
 
 
 def _decimal_or_zero(value: object) -> Decimal:
@@ -742,6 +896,39 @@ def _frame_unique_dates(frame: pd.DataFrame) -> set[date]:
 def _adb_distinct_snapshot_days(bonds_df: pd.DataFrame, interbank_df: pd.DataFrame) -> int:
     """ZQTZ ∪ TYW 在区间内的不重复 report_date 数；与月度 `_process_single_month` 口径一致。"""
     return len(_frame_unique_dates(bonds_df) | _frame_unique_dates(interbank_df))
+
+
+def _comparison_valid_balance_rows(
+    frame: pd.DataFrame,
+    *,
+    amount_attr: str,
+    validity_attr: str,
+) -> pd.DataFrame:
+    """Comparison 仅保留显式有效且金额有限的余额行；合法 0 仍保留。"""
+    if frame.empty or amount_attr not in frame.columns or validity_attr not in frame.columns:
+        return frame.iloc[0:0].copy()
+    amounts = pd.to_numeric(frame[amount_attr], errors="coerce")
+    finite_amount = amounts.notna() & amounts.abs().ne(float("inf"))
+    explicitly_valid = frame[validity_attr].fillna(False).eq(True)
+    return frame.loc[explicitly_valid & finite_amount].copy()
+
+
+def _adb_comparison_valid_balance_days(
+    bonds_df: pd.DataFrame,
+    interbank_df: pd.DataFrame,
+) -> int:
+    """Comparison 资产/负债任一侧有效余额日期并集；不改变共享 `/adb` 日期口径。"""
+    valid_bonds = _comparison_valid_balance_rows(
+        bonds_df,
+        amount_attr="market_value",
+        validity_attr="market_value_is_valid",
+    )
+    valid_interbank = _comparison_valid_balance_rows(
+        interbank_df,
+        amount_attr="amount",
+        validity_attr="amount_is_valid",
+    )
+    return len(_frame_unique_dates(valid_bonds) | _frame_unique_dates(valid_interbank))
 
 
 def _frame_sum_by_date(frame: pd.DataFrame, amount_attr: str) -> dict[date, Decimal]:
@@ -928,6 +1115,7 @@ def _normalize_adb_frame(
     date_columns: tuple[str, ...],
     numeric_columns: tuple[str, ...],
     nullable_numeric_columns: tuple[str, ...] = (),
+    validity_numeric_columns: tuple[str, ...] = (),
 ) -> pd.DataFrame:
     if frame.empty:
         return frame
@@ -936,9 +1124,12 @@ def _normalize_adb_frame(
         if column in normalized.columns:
             normalized[column] = pd.to_datetime(normalized[column], errors="coerce")
     nullable = set(nullable_numeric_columns)
+    preserve_validity = set(validity_numeric_columns)
     for column in numeric_columns:
         if column in normalized.columns:
             values = pd.to_numeric(normalized[column], errors="coerce")
+            if column in preserve_validity:
+                normalized[f"{column}_is_valid"] = values.notna() & values.abs().ne(float("inf"))
             normalized[column] = values if column in nullable else values.fillna(0)
     return normalized
 
@@ -985,17 +1176,33 @@ def _split_rate_frames(
         if not bonds_assets_df.empty:
             bonds_assets_df["category"] = bonds_assets_df["bond_category"].map(_clean_cat)
             bonds_assets_df["balance"] = pd.to_numeric(bonds_assets_df["market_value"], errors="coerce").fillna(0.0)
+            bonds_assets_df["balance_valid"] = bonds_assets_df.get(
+                "market_value_is_valid",
+                True,
+            )
             bonds_assets_df["rate_decimal"] = normalize_rate_values(
                 bonds_assets_df["yield_to_maturity"].tolist(),
                 "yield_to_maturity",
             )
             bonds_assets_df["weighted"] = bonds_assets_df["balance"] * bonds_assets_df["rate_decimal"]
-            asset_frames.append(bonds_assets_df[["category", "balance", "rate_decimal", "weighted"]])
+            asset_frames.append(
+                bonds_assets_df[
+                    ["category", "balance", "balance_valid", "rate_decimal", "weighted"]
+                ]
+            )
 
         bonds_liab_df = bonds_df[issued_mask].copy()
         if not bonds_liab_df.empty:
             bonds_liab_df = enrich_bonds_liability_frame(bonds_liab_df)
-            liability_frames.append(bonds_liab_df[["category", "balance", "rate_decimal", "weighted"]])
+            bonds_liab_df["balance_valid"] = bonds_liab_df.get(
+                "market_value_is_valid",
+                True,
+            )
+            liability_frames.append(
+                bonds_liab_df[
+                    ["category", "balance", "balance_valid", "rate_decimal", "weighted"]
+                ]
+            )
 
     ib_assets_df = pd.DataFrame()
     ib_liab_df = pd.DataFrame()
@@ -1004,23 +1211,33 @@ def _split_rate_frames(
         if not ib_assets_df.empty:
             ib_assets_df["category"] = ib_assets_df["product_type"].apply(_clean_cat)
             ib_assets_df["balance"] = pd.to_numeric(ib_assets_df["amount"], errors="coerce").fillna(0.0)
+            ib_assets_df["balance_valid"] = ib_assets_df.get("amount_is_valid", True)
             ib_assets_df["rate_decimal"] = normalize_rate_values(
                 ib_assets_df["interest_rate"].tolist(),
                 "interbank_interest_rate",
             )
             ib_assets_df["weighted"] = ib_assets_df["balance"] * ib_assets_df["rate_decimal"]
-            asset_frames.append(ib_assets_df[["category", "balance", "rate_decimal", "weighted"]])
+            asset_frames.append(
+                ib_assets_df[
+                    ["category", "balance", "balance_valid", "rate_decimal", "weighted"]
+                ]
+            )
 
         ib_liab_df = interbank_df[interbank_df["direction"] == "LIABILITY"].copy()
         if not ib_liab_df.empty:
             ib_liab_df["category"] = ib_liab_df["product_type"].apply(_clean_cat)
             ib_liab_df["balance"] = pd.to_numeric(ib_liab_df["amount"], errors="coerce").fillna(0.0)
+            ib_liab_df["balance_valid"] = ib_liab_df.get("amount_is_valid", True)
             ib_liab_df["rate_decimal"] = normalize_rate_values(
                 ib_liab_df["interest_rate"].tolist(),
                 "interbank_interest_rate",
             )
             ib_liab_df["weighted"] = ib_liab_df["balance"] * ib_liab_df["rate_decimal"]
-            liability_frames.append(ib_liab_df[["category", "balance", "rate_decimal", "weighted"]])
+            liability_frames.append(
+                ib_liab_df[
+                    ["category", "balance", "balance_valid", "rate_decimal", "weighted"]
+                ]
+            )
 
     return asset_frames, liability_frames, bonds_assets_df, bonds_liab_df, ib_assets_df, ib_liab_df
 
@@ -1119,9 +1336,15 @@ def calculate_adb(
 
     calendar_days = (end_date - start_date).days + 1
     all_days = [start_date + timedelta(days=i) for i in range(calendar_days)]
-    bonds_df, interbank_df, source_versions, rule_versions, _adb_basis, adb_tables_used = _load_adb_raw_data(
-        duckdb_path, start_date, end_date
-    )
+    (
+        bonds_df,
+        interbank_df,
+        source_versions,
+        rule_versions,
+        _adb_basis,
+        adb_tables_used,
+        snapshot_fx_summary,
+    ) = _load_adb_raw_data(duckdb_path, start_date, end_date)
     if bonds_df.empty and interbank_df.empty:
         return _empty_adb_response(), source_versions, rule_versions, adb_tables_used
 
@@ -1145,6 +1368,8 @@ def calculate_adb(
         "trend": compute_adb_trend(all_days, daily_assets),
         "breakdown": _adb_breakdown_from_frames(bonds_df, interbank_df, adb_days),
     }
+    if _snapshot_fx_summary_has_activity(snapshot_fx_summary):
+        payload["snapshot_fx_conversion"] = snapshot_fx_summary
     return payload, source_versions, rule_versions, adb_tables_used
 
 
@@ -1260,11 +1485,14 @@ def _empty_comparison_response(
         "sample_filled": False,
         "sample_fill_method": "none",
         "simulated": False,
-        "avg_unavailable_reason": None,
-        "total_spot_assets": 0.0,
-        "total_avg_assets": 0.0,
-        "total_spot_liabilities": 0.0,
-        "total_avg_liabilities": 0.0,
+        "avg_unavailable_reason": (
+            "insufficient_window" if calendar_days_inclusive <= 1 else "no_data"
+        ),
+        "spot_unavailable_reason": "no_data",
+        "total_spot_assets": None,
+        "total_avg_assets": None,
+        "total_spot_liabilities": None,
+        "total_avg_liabilities": None,
         "total_avg_interbank_assets": 0.0,
         "total_avg_interbank_liabilities": 0.0,
         "asset_yield": None,
@@ -1282,11 +1510,11 @@ def _empty_comparison_response(
 
 def _append_other_row(
     breakdown: list[dict[str, Any]],
-    total_spot: float,
+    total_spot: float | None,
     total_avg: float | None,
 ) -> list[dict[str, Any]]:
     """Append an '其他（未列示）' catch-all row when breakdown doesn't sum to total."""
-    if not breakdown or total_avg is None or total_avg <= 0:
+    if not breakdown or total_spot is None or total_avg is None or total_avg <= 0:
         return breakdown
     breakdown_spot_sum = sum(row.get("spot_balance", 0) or 0 for row in breakdown)
     breakdown_avg_sum = sum(row.get("avg_balance", 0) or 0 for row in breakdown)
@@ -1320,9 +1548,15 @@ def get_adb_comparison(
     calendar_days_inclusive = int((end_date - start_date).days) + 1
     calendar_days_dec = Decimal(str(max(calendar_days_inclusive, 1)))
 
-    bonds_df, interbank_df, source_versions, rule_versions, adb_basis, adb_tables_used = _load_adb_raw_data(
-        duckdb_path, start_date, end_date
-    )
+    (
+        bonds_df,
+        interbank_df,
+        source_versions,
+        rule_versions,
+        adb_basis,
+        adb_tables_used,
+        snapshot_fx_summary,
+    ) = _load_adb_raw_data(duckdb_path, start_date, end_date)
     if bonds_df.empty and interbank_df.empty:
         return (
             _empty_comparison_response(
@@ -1336,13 +1570,22 @@ def get_adb_comparison(
             adb_tables_used,
         )
 
+    valid_bonds_df = _comparison_valid_balance_rows(
+        bonds_df,
+        amount_attr="market_value",
+        validity_attr="market_value_is_valid",
+    )
+    valid_interbank_df = _comparison_valid_balance_rows(
+        interbank_df,
+        amount_attr="amount",
+        validity_attr="amount_is_valid",
+    )
     spot_assets, spot_liabilities, sum_assets, sum_liabilities = _build_comparison_spot_sum_maps(
-        bonds_df, interbank_df, end_date
+        valid_bonds_df, valid_interbank_df, end_date
     )
 
-    snapshot_distinct_days = _adb_distinct_snapshot_days(bonds_df, interbank_df)
     calendar_denom = max(calendar_days_inclusive, 1)
-    coverage_days = max(snapshot_distinct_days, 0)
+    coverage_days = _adb_comparison_valid_balance_days(bonds_df, interbank_df)
     sample_filled = False
     sample_fill_method = "none"
     sum_assets_effective = dict(sum_assets)
@@ -1385,30 +1628,63 @@ def get_adb_comparison(
     assets = assets_all[: max(int(top_n), 0)]
     liabilities = liabilities_all[: max(int(top_n), 0)]
 
+    (
+        asset_frames,
+        liability_frames,
+        bonds_assets_df,
+        bonds_liab_df,
+        ib_assets_df,
+        ib_liab_df,
+    ) = _split_rate_frames(valid_bonds_df, valid_interbank_df)
+    has_valid_assets = not bonds_assets_df.empty or not ib_assets_df.empty
+    has_valid_liabilities = not bonds_liab_df.empty or not ib_liab_df.empty
+    has_any_valid_balance = has_valid_assets or has_valid_liabilities
+
+    total_spot_assets = (
+        float(sum(spot_assets.values(), start=Decimal("0"))) if has_valid_assets else None
+    )
+    total_spot_liabilities = (
+        float(sum(spot_liabilities.values(), start=Decimal("0")))
+        if has_valid_liabilities
+        else None
+    )
     total_avg_assets: float | None
     total_avg_liabilities: float | None
     if simulated:
-        total_spot_assets = float(sum(item["spot"] for item in assets_all))
-        total_avg_assets = float(sum(item["avg"] for item in assets_all))
-        total_spot_liabilities = float(sum(item["spot"] for item in liabilities_all))
-        total_avg_liabilities = float(sum(item["avg"] for item in liabilities_all))
+        total_avg_assets = (
+            float(sum(item["avg"] for item in assets_all)) if has_valid_assets else None
+        )
+        total_avg_liabilities = (
+            float(sum(item["avg"] for item in liabilities_all))
+            if has_valid_liabilities
+            else None
+        )
     elif avg_window_insufficient:
-        total_spot_assets = float(sum(spot_assets.values(), start=Decimal("0")))
         total_avg_assets = None
-        total_spot_liabilities = float(sum(spot_liabilities.values(), start=Decimal("0")))
         total_avg_liabilities = None
     else:
-        total_spot_assets = float(sum(spot_assets.values(), start=Decimal("0")))
-        total_avg_assets = float(sum(sum_assets_effective.values(), start=Decimal("0")) / calendar_days_dec)
-        total_spot_liabilities = float(sum(spot_liabilities.values(), start=Decimal("0")))
-        total_avg_liabilities = float(sum(sum_liabilities_effective.values(), start=Decimal("0")) / calendar_days_dec)
+        total_avg_assets = (
+            float(sum(sum_assets_effective.values(), start=Decimal("0")) / calendar_days_dec)
+            if has_valid_assets
+            else None
+        )
+        total_avg_liabilities = (
+            float(
+                sum(sum_liabilities_effective.values(), start=Decimal("0"))
+                / calendar_days_dec
+            )
+            if has_valid_liabilities
+            else None
+        )
 
-    asset_frames, liability_frames, *_ = _split_rate_frames(bonds_df, interbank_df)
     asset_rate_map, asset_yield, asset_rate_coverage_map = build_rate_map(asset_frames)
     liability_rate_map, liability_cost, liability_rate_coverage_map = build_rate_map(liability_frames)
 
     tyw_avg_days = coverage_days if coverage_days > 0 else calendar_denom
-    tyw_avg_assets, tyw_avg_liabilities = _tyw_interval_avg_balances(interbank_df, tyw_avg_days)
+    tyw_avg_assets, tyw_avg_liabilities = _tyw_interval_avg_balances(
+        valid_interbank_df,
+        tyw_avg_days,
+    )
 
     payload = {
         "report_date": end_date.strftime("%Y-%m-%d"),
@@ -1421,7 +1697,12 @@ def get_adb_comparison(
         "sample_filled": sample_filled,
         "sample_fill_method": sample_fill_method,
         "simulated": simulated,
-        "avg_unavailable_reason": "insufficient_window" if avg_window_insufficient else None,
+        "avg_unavailable_reason": (
+            "insufficient_window"
+            if avg_window_insufficient
+            else ("no_data" if not has_any_valid_balance else None)
+        ),
+        "spot_unavailable_reason": "no_data" if not has_any_valid_balance else None,
         "total_spot_assets": total_spot_assets,
         "total_avg_assets": total_avg_assets,
         "total_spot_liabilities": total_spot_liabilities,
@@ -1444,6 +1725,8 @@ def get_adb_comparison(
             total_avg_liabilities,
         ),
     }
+    if _snapshot_fx_summary_has_activity(snapshot_fx_summary):
+        payload["snapshot_fx_conversion"] = snapshot_fx_summary
 
     return payload, source_versions, rule_versions, adb_tables_used
 
@@ -1605,9 +1888,15 @@ def calculate_monthly_adb(duckdb_path: str, year: int) -> tuple[dict[str, Any], 
         "unit": "percent",
     }
 
-    bonds_df, interbank_df, source_versions, rule_versions, _adb_basis, adb_tables_used = _load_adb_raw_data(
-        duckdb_path, start_date, end_date
-    )
+    (
+        bonds_df,
+        interbank_df,
+        source_versions,
+        rule_versions,
+        _adb_basis,
+        adb_tables_used,
+        snapshot_fx_summary,
+    ) = _load_adb_raw_data(duckdb_path, start_date, end_date)
     if bonds_df.empty and interbank_df.empty:
         return empty, source_versions, rule_versions, adb_tables_used
 
@@ -1699,6 +1988,8 @@ def calculate_monthly_adb(duckdb_path: str, year: int) -> tuple[dict[str, Any], 
         ),
         "unit": "percent",
     }
+    if _snapshot_fx_summary_has_activity(snapshot_fx_summary):
+        payload["snapshot_fx_conversion"] = snapshot_fx_summary
     return payload, source_versions, rule_versions, adb_tables_used
 
 
@@ -1726,11 +2017,30 @@ def adb_envelope_for_dates(start_date: str, end_date: str) -> dict[str, Any]:
             else None
         ),
     )
-    calibration_meta = build_adb_daily_balance_calibration_meta(tables_for_calibration)
+    calibration_meta = build_adb_daily_balance_calibration_meta(
+        tables_for_calibration,
+        snapshot_fx_conversion=payload.get("snapshot_fx_conversion"),
+    )
     return {
         **envelope,
         "calibration": balance_calibration_meta_to_dict(calibration_meta),
     }
+
+
+def _duckdb_storage_identity(duckdb_path: str) -> tuple[str, int, int]:
+    """DuckDB 文件身份 (resolved_path, mtime_ns, size)，折入无 TTL 读缓存键。
+
+    物化任务（可能在另一进程的 worker 中）重写 DuckDB 后 mtime/size 变化，
+    API 进程的旧缓存键自然不再命中——不依赖跨进程的 cache_clear 钩子。
+    与 risk_tensor_service / positions_service 的读缓存失效模式一致；
+    文件缺失时返回 (-1, -1) 哨兵（仍可缓存，文件出现后自动失效）。
+    """
+    path = Path(duckdb_path)
+    try:
+        stat = path.stat()
+        return (str(path.resolve()), stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        return (str(path), -1, -1)
 
 
 def adb_comparison_envelope(start_date: str, end_date: str, top_n: int = 20) -> dict[str, Any]:
@@ -1738,11 +2048,13 @@ def adb_comparison_envelope(start_date: str, end_date: str, top_n: int = 20) -> 
     if env_duckdb_path and str(get_settings().duckdb_path) != env_duckdb_path:
         get_settings.cache_clear()
     settings = get_settings()
+    duckdb_path = str(settings.duckdb_path)
     return _cached_adb_comparison_envelope(
         str(start_date),
         str(end_date),
         int(top_n),
-        str(settings.duckdb_path),
+        duckdb_path,
+        _duckdb_storage_identity(duckdb_path),
     )
 
 
@@ -1752,6 +2064,7 @@ def _cached_adb_comparison_envelope(
     end_date: str,
     top_n: int,
     _duckdb_path: str,
+    _storage_identity: tuple[str, int, int],
 ) -> dict[str, Any]:
     return _adb_comparison_envelope_uncached(start_date, end_date, top_n)
 
@@ -1797,7 +2110,10 @@ def _adb_comparison_envelope_uncached(start_date: str, end_date: str, top_n: int
         tables_used=[*tables_for_calibration, "product_category_pnl_canonical_fact"],
         adb_denominator_basis=payload.get("adb_denominator_basis"),
     )
-    calibration_meta = build_adb_daily_balance_calibration_meta(tables_for_calibration)
+    calibration_meta = build_adb_daily_balance_calibration_meta(
+        tables_for_calibration,
+        snapshot_fx_conversion=payload.get("snapshot_fx_conversion"),
+    )
     return {
         **envelope,
         "calibration": balance_calibration_meta_to_dict(calibration_meta),
@@ -1833,10 +2149,16 @@ def _load_adb_insights_window(
     duckdb_path: str,
     start_date: date,
     end_date: date,
-) -> tuple[AdbWindowInput, list[str], list[str], str, list[str]]:
-    bonds_df, interbank_df, source_versions, rule_versions, adb_basis, adb_tables_used = _load_adb_raw_data(
-        duckdb_path, start_date, end_date
-    )
+) -> tuple[AdbWindowInput, list[str], list[str], str, list[str], dict[str, Any]]:
+    (
+        bonds_df,
+        interbank_df,
+        source_versions,
+        rule_versions,
+        adb_basis,
+        adb_tables_used,
+        snapshot_fx_summary,
+    ) = _load_adb_raw_data(duckdb_path, start_date, end_date)
     (
         asset_frames,
         liability_frames,
@@ -1845,16 +2167,30 @@ def _load_adb_insights_window(
         ib_assets_df,
         ib_liab_df,
     ) = _split_rate_frames(bonds_df, interbank_df)
+    calendar_days = (end_date - start_date).days + 1
+    assets = _adb_insights_side_input([bonds_assets_df, ib_assets_df], asset_frames)
+    liabilities = _adb_insights_side_input([bonds_liab_df, ib_liab_df], liability_frames)
+    coverage_days = len(set(assets.daily_totals) | set(liabilities.daily_totals))
+    assets = sample_fill_side_balances(
+        assets,
+        calendar_days=calendar_days,
+        coverage_days=coverage_days,
+    )
+    liabilities = sample_fill_side_balances(
+        liabilities,
+        calendar_days=calendar_days,
+        coverage_days=coverage_days,
+    )
     window = AdbWindowInput(
         start_date=start_date.strftime("%Y-%m-%d"),
         end_date=end_date.strftime("%Y-%m-%d"),
-        calendar_days=(end_date - start_date).days + 1,
-        coverage_days=_adb_distinct_snapshot_days(bonds_df, interbank_df),
-        has_data=not (bonds_df.empty and interbank_df.empty),
-        assets=_adb_insights_side_input([bonds_assets_df, ib_assets_df], asset_frames),
-        liabilities=_adb_insights_side_input([bonds_liab_df, ib_liab_df], liability_frames),
+        calendar_days=calendar_days,
+        coverage_days=coverage_days,
+        has_data=bool(assets.balance_by_category or liabilities.balance_by_category),
+        assets=assets,
+        liabilities=liabilities,
     )
-    return window, source_versions, rule_versions, adb_basis, adb_tables_used
+    return window, source_versions, rule_versions, adb_basis, adb_tables_used, snapshot_fx_summary
 
 
 def adb_insights_envelope(start_date: str, end_date: str) -> dict[str, Any]:
@@ -1862,10 +2198,12 @@ def adb_insights_envelope(start_date: str, end_date: str) -> dict[str, Any]:
     if env_duckdb_path and str(get_settings().duckdb_path) != env_duckdb_path:
         get_settings.cache_clear()
     settings = get_settings()
+    duckdb_path = str(settings.duckdb_path)
     return _cached_adb_insights_envelope(
         str(start_date),
         str(end_date),
-        str(settings.duckdb_path),
+        duckdb_path,
+        _duckdb_storage_identity(duckdb_path),
     )
 
 
@@ -1874,6 +2212,7 @@ def _cached_adb_insights_envelope(
     start_date: str,
     end_date: str,
     _duckdb_path: str,
+    _storage_identity: tuple[str, int, int],
 ) -> dict[str, Any]:
     return _adb_insights_envelope_uncached(start_date, end_date)
 
@@ -1892,6 +2231,7 @@ def _adb_insights_envelope_uncached(start_date: str, end_date: str) -> dict[str,
     rule_versions: list[str] = []
     denominator_bases: list[str] = []
     tables_used: list[str] = []
+    snapshot_fx_summaries: list[dict[str, Any]] = []
     for basis_key in ("current", "qoq", "yoy"):
         window_start, window_end = windows[basis_key]
         (
@@ -1900,18 +2240,23 @@ def _adb_insights_envelope_uncached(start_date: str, end_date: str) -> dict[str,
             window_rule_versions,
             window_basis,
             window_tables,
+            window_fx_summary,
         ) = _load_adb_insights_window(duckdb_path, window_start, window_end)
         loaded[basis_key] = window
         source_versions.extend(window_source_versions)
         rule_versions.extend(window_rule_versions)
         denominator_bases.append(window_basis)
         tables_used.extend(window_tables)
+        snapshot_fx_summaries.append(window_fx_summary)
 
     payload = build_adb_insights_payload(
         current=loaded["current"],
         qoq=loaded["qoq"],
         yoy=loaded["yoy"],
     )
+    merged_fx_summary = _merge_snapshot_fx_summaries(snapshot_fx_summaries)
+    if _snapshot_fx_summary_has_activity(merged_fx_summary):
+        payload["snapshot_fx_conversion"] = merged_fx_summary
     merged_tables = sorted(set(tables_used)) or [
         "fact_formal_zqtz_balance_daily",
         "fact_formal_tyw_balance_daily",
@@ -1957,7 +2302,10 @@ def adb_monthly_envelope(year: int) -> dict[str, Any]:
             else None
         ),
     )
-    calibration_meta = build_adb_daily_balance_calibration_meta(tables_for_calibration)
+    calibration_meta = build_adb_daily_balance_calibration_meta(
+        tables_for_calibration,
+        snapshot_fx_conversion=payload.get("snapshot_fx_conversion"),
+    )
     return {
         **envelope,
         "calibration": balance_calibration_meta_to_dict(calibration_meta),

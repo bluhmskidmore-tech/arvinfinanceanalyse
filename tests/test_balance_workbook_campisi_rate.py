@@ -109,6 +109,22 @@ def test_campisi_monolith_and_package_rows_are_identical() -> None:
     assert _build_campisi_table_monolith(rows)["rows"] == _build_campisi_table_package(rows)["rows"]
 
 
+def test_campisi_benchmark_missing_monolith_and_package_rows_are_identical() -> None:
+    # B10-2 口径：在册无政策性金融债时 spread_bp / spread_income_amount 显式 None，
+    # 不允许把基准静默降级为 0。双实现（单体权威 + 休眠副本）必须同口径。
+    rows = [
+        _asset_row(code="B2", bond_type="企业债", face=Decimal("200000000"), coupon=Decimal("3.20")),
+        _asset_row(code="B3", bond_type="中期票据", face=Decimal("150000000"), coupon=Decimal("2.55")),
+    ]
+
+    monolith_rows = _build_campisi_table_monolith(rows)["rows"]
+    package_rows = _build_campisi_table_package(rows)["rows"]
+
+    assert monolith_rows == package_rows
+    assert all(row["spread_bp"] is None for row in package_rows)
+    assert all(row["spread_income_amount"] is None for row in package_rows)
+
+
 def test_spread_bp_converts_percent_point_difference_to_bp() -> None:
     # 3.0% − 2.0% = 1 个百分点 = 100bp
     assert _spread_bp_monolith(Decimal("3.0"), Decimal("2.0")) == Decimal("100.0")

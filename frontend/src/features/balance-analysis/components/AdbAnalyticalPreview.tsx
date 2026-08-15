@@ -10,18 +10,26 @@ import AdbComparisonChart, {
 } from "../../average-balance/components/AdbComparisonChart";
 import { computeComparisonDeviationPct } from "../../average-balance/components/adbComparisonMetrics";
 import AdbMonthlyBreakdownTable from "../../average-balance/components/AdbMonthlyBreakdownTable";
-import AdbMonthlyHorizontalChart from "../../average-balance/components/AdbMonthlyHorizontalChart";
+import AdbMonthlyHorizontalChart, {
+  type AdbMonthlyHorizontalChartRow,
+} from "../../average-balance/components/AdbMonthlyHorizontalChart";
 import { PlaceholderCard } from "../../workbench/components/PlaceholderCard";
 import { nocturneTokens } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 
 const YI = 100_000_000;
 
-function formatYiAmount(value: number) {
+function formatYiAmount(value: number | null) {
+  if (value === null || Number.isNaN(value)) return EM_DASH;
   return value.toLocaleString("zh-CN", {
     maximumFractionDigits: 1,
     minimumFractionDigits: 1,
   });
+}
+
+/** null 表示上游缺数（区间日均不可用/期末缺数）：不参与除法，避免 null/YI 的伪零。 */
+function toYiOrNull(value: number | null): number | null {
+  return value === null ? null : value / YI;
 }
 
 const previewBreakdownColumns: ColumnsType<AdbMonthlyBreakdownItem> = [
@@ -30,7 +38,7 @@ const previewBreakdownColumns: ColumnsType<AdbMonthlyBreakdownItem> = [
     align: "right",
     dataIndex: "avg_balance",
     key: "avg_balance",
-    render: (value: number) => (value / YI).toFixed(2),
+    render: (value: number | null) => (value === null ? EM_DASH : (value / YI).toFixed(2)),
     title: "日均(亿元)",
   },
   {
@@ -73,24 +81,24 @@ export default function AdbAnalyticalPreview({
     spot: item.spot_balance,
   }));
 
-  const monthlyRows = [
+  const monthlyRows: AdbMonthlyHorizontalChartRow[] = [
     {
-      avgYi: comparison.total_spot_assets / YI,
+      avgYi: toYiOrNull(comparison.total_spot_assets),
       category: "期末时点资产",
       weightedRate: comparison.asset_yield,
     },
     {
-      avgYi: comparison.total_avg_assets / YI,
+      avgYi: toYiOrNull(comparison.total_avg_assets),
       category: "日均资产",
       weightedRate: comparison.asset_yield,
     },
     {
-      avgYi: comparison.total_spot_liabilities / YI,
+      avgYi: toYiOrNull(comparison.total_spot_liabilities),
       category: "期末时点负债",
       weightedRate: comparison.liability_cost,
     },
     {
-      avgYi: comparison.total_avg_liabilities / YI,
+      avgYi: toYiOrNull(comparison.total_avg_liabilities),
       category: "日均负债",
       weightedRate: comparison.liability_cost,
     },
@@ -100,13 +108,19 @@ export default function AdbAnalyticalPreview({
     {
       avg_balance: comparison.total_avg_assets,
       category: "ADB 资产",
-      proportion: comparison.total_avg_assets > 0 ? 100 : 0,
+      proportion:
+        comparison.total_avg_assets === null ? null : comparison.total_avg_assets > 0 ? 100 : 0,
       weighted_rate: comparison.asset_yield,
     },
     {
       avg_balance: comparison.total_avg_liabilities,
       category: "ADB 负债",
-      proportion: comparison.total_avg_liabilities > 0 ? 100 : 0,
+      proportion:
+        comparison.total_avg_liabilities === null
+          ? null
+          : comparison.total_avg_liabilities > 0
+            ? 100
+            : 0,
       weighted_rate: comparison.liability_cost,
     },
   ];
@@ -127,17 +141,17 @@ export default function AdbAnalyticalPreview({
         <PlaceholderCard
           detail={`区间起点 ${comparison.start_date}`}
           title="期末时点资产"
-          value={formatYiAmount(comparison.total_spot_assets / YI)}
+          value={formatYiAmount(toYiOrNull(comparison.total_spot_assets))}
         />
         <PlaceholderCard
           detail={`区间终点 ${comparison.end_date}`}
           title="日均资产"
-          value={formatYiAmount(comparison.total_avg_assets / YI)}
+          value={formatYiAmount(toYiOrNull(comparison.total_avg_assets))}
         />
         <PlaceholderCard
           detail={`${comparison.num_days} 天`}
           title="期末时点负债"
-          value={formatYiAmount(comparison.total_spot_liabilities / YI)}
+          value={formatYiAmount(toYiOrNull(comparison.total_spot_liabilities))}
         />
         <PlaceholderCard
           detail="分析预览"

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
 import duckdb
 import pandas as pd
-
+from backend.app.core_finance.fx_calendar import is_cfets_fx_non_business_day
+from backend.app.core_finance.fx_rates import is_valid_fx_mid_rate
+from backend.app.repositories.currency_codes import normalize_currency_code
 from backend.app.repositories.duckdb_repo import DuckDBRepository, read_only_connection
 
 RELATION_FACT_FORMAL_ZQTZ_BALANCE_DAILY = "fact_formal_zqtz_balance_daily"
@@ -43,6 +46,84 @@ OPTIONAL_ZQTZ_CLASSIFIER_COLUMNS = (
 
 class AdbAnalysisRepository(DuckDBRepository):
     """Read-only ADB formal balance and snapshot tables via shared DuckDB helpers."""
+
+    def lookup_formal_fx_rate(self, *, report_date: str, base_currency: str) -> Decimal:
+        """Resolve one governed CNY mid-rate for ADB snapshot fallback.
+
+        Business-day observations must be direct. Carry-forward is accepted only on
+        a confirmed CFETS non-business day and must point to an earlier trade date.
+        """
+        base = normalize_currency_code(base_currency)
+        if base in {"", "CNY", "CNX", "RMB"}:
+            return Decimal("1")
+
+        with read_only_connection(self.path) as conn:
+            row = conn.execute(
+                """
+                select mid_rate,
+                       is_business_day,
+                       is_carry_forward,
+                       cast(observed_trade_date as varchar)
+                from fx_daily_mid
+                where trade_date = ?
+                  and upper(base_currency) = upper(?)
+                  and upper(quote_currency) = 'CNY'
+                limit 1
+                """,
+                [report_date, base],
+            ).fetchone()
+
+        if row is None or row[0] is None:
+            raise ValueError(
+                f"Missing formal fx rate for base_currency={base} report_date={report_date}"
+            )
+        try:
+            rate = Decimal(str(row[0]))
+        except InvalidOperation as exc:
+            raise ValueError(
+                f"Invalid formal fx rate for base_currency={base} report_date={report_date}: "
+                "mid_rate must be finite and greater than zero."
+            ) from exc
+        if not is_valid_fx_mid_rate(rate):
+            raise ValueError(
+                f"Invalid formal fx rate for base_currency={base} report_date={report_date}: "
+                "mid_rate must be finite and greater than zero."
+            )
+
+        business_day = bool(row[1])
+        carry_forward = bool(row[2])
+        observed_trade_date = str(row[3]) if row[3] is not None else None
+        if business_day:
+            if carry_forward:
+                raise ValueError(
+                    f"Invalid formal fx metadata for base_currency={base} report_date={report_date}: "
+                    "business-day row cannot be carry-forward."
+                )
+            return rate
+
+        if not carry_forward or observed_trade_date is None:
+            raise ValueError(
+                f"Invalid formal fx carry-forward metadata for base_currency={base} "
+                f"report_date={report_date}: non-business-day row must carry forward an "
+                "observed prior trade date."
+            )
+        if date.fromisoformat(observed_trade_date) >= date.fromisoformat(report_date):
+            raise ValueError(
+                f"Invalid formal fx carry-forward metadata for base_currency={base} "
+                f"report_date={report_date}: observed_trade_date={observed_trade_date} "
+                "must be before report_date."
+            )
+        if not is_cfets_fx_non_business_day(
+            report_date,
+            base_currency=base,
+            quote_currency="CNY",
+        ):
+            raise ValueError(
+                f"Invalid formal fx carry-forward metadata for base_currency={base} "
+                f"report_date={report_date}: carry-forward is only allowed for confirmed "
+                "non-business-day rows."
+            )
+        return rate
 
     @staticmethod
     def table_exists(
@@ -409,6 +490,7 @@ class AdbAnalysisRepository(DuckDBRepository):
               principal_native as principal_amount,
               funding_cost_rate,
               product_type,
+              currency_code,
               source_version,
               rule_version
             from {RELATION_TYW_INTERBANK_DAILY_SNAPSHOT}

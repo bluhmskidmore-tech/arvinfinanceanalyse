@@ -421,6 +421,9 @@ export function formatBalanceBusinessTextDisplay(value: unknown): string {
     .replace(/\bliability book\b/gi, "负债账簿")
     .replace(/\binterbank\b/gi, "同业")
     .replace(/\brepo\b/gi, "回购")
+    /* 后端风险预警 reason 直出源字段名（如「缺失 maturity_date：」）；
+       显示层读作业务词，原文由渲染处收 title。 */
+    .replace(/\bmaturity_date\b/g, "到期日")
     .replace(/\b([A-Za-z0-9._-]+) maturity\b/gi, "$1 到期");
 
   return text;
@@ -610,7 +613,7 @@ export type BalanceAnalysisPageReadModelInput = {
   selectedPositionScope: BalancePositionScope;
   selectedCurrencyBasis: BalanceCurrencyBasis;
   overview?: BalanceAnalysisOverviewPayload | null;
-  summary?: Pick<BalanceAnalysisSummaryTablePayload, "total_rows"> | null;
+  summary?: Pick<BalanceAnalysisSummaryTablePayload, "total_rows" | "currency_basis"> | null;
   decisionItems?: Pick<BalanceAnalysisDecisionItemsPayload, "rows"> | null;
   metaSections: BalanceAnalysisPageReadModelMetaInput[];
 };
@@ -655,7 +658,7 @@ export type BalanceAnalysisPageModelInput = {
   positionScope: BalancePositionScope;
   currencyBasis: BalanceCurrencyBasis;
   overview?: BalanceAnalysisOverviewPayload | null;
-  summary?: Pick<BalanceAnalysisSummaryTablePayload, "total_rows"> | null;
+  summary?: Pick<BalanceAnalysisSummaryTablePayload, "total_rows" | "currency_basis"> | null;
   decisionItems?: Pick<BalanceAnalysisDecisionItemsPayload, "rows"> | null;
   workbook?: BalanceAnalysisWorkbookPayload | null;
   summaryRows?: readonly BalanceAnalysisSummaryRow[];
@@ -832,8 +835,14 @@ function buildBalanceEvidenceCards(
 export function buildBalanceAnalysisPageReadModel(
   input: BalanceAnalysisPageReadModelInput,
 ): BalanceAnalysisPageReadModel {
+  const hasUnsupportedNativeAggregate =
+    input.selectedCurrencyBasis === "native" ||
+    input.overview?.currency_basis === "native" ||
+    input.summary?.currency_basis === "native";
+  const supportedOverview = input.overview?.currency_basis === "CNY" ? input.overview : null;
+  const supportedSummary = input.summary?.currency_basis === "CNY" ? input.summary : null;
   const requestedReportDate = input.requestedReportDate || EM_DASH;
-  const overviewReportDate = input.overview?.report_date || "";
+  const overviewReportDate = supportedOverview?.report_date || "";
   const resolvedReportDate = overviewReportDate || requestedReportDate;
   // Without an overview report date there is nothing to compare against; echoing the requested
   // date back as "matched" would present an unconfirmed date as backend-confirmed.
@@ -843,8 +852,8 @@ export function buildBalanceAnalysisPageReadModel(
       : requestedReportDate === overviewReportDate
         ? "matched"
         : "mismatch";
-  const positionScope = input.overview?.position_scope ?? input.selectedPositionScope;
-  const currencyBasis = input.overview?.currency_basis ?? input.selectedCurrencyBasis;
+  const positionScope = supportedOverview?.position_scope ?? input.selectedPositionScope;
+  const currencyBasis: BalanceCurrencyBasis = "CNY";
   const filterLine = `头寸范围 ${balancePositionScopeLabel(positionScope)} · 币种口径 ${balanceCurrencyBasisLabel(currencyBasis)}`;
   const metas = input.metaSections.map((section) => section.meta).filter(Boolean) as ResultMeta[];
   const hasFallback = metas.some((meta) => meta.fallback_mode === "latest_snapshot");
@@ -891,6 +900,14 @@ export function buildBalanceAnalysisPageReadModel(
   }
 
   const stateSurfaces = buildStateSurfaces([
+    {
+      when: hasUnsupportedNativeAggregate,
+      key: "unsupported-native-aggregate",
+      variant: "error",
+      title: "原币总量已停用",
+      description:
+        "原币需逐币种明细，当前不做跨币种总量；页面已回到人民币可汇总口径。",
+    },
     {
       when: input.clientMode === "mock",
       key: "mock",
@@ -953,7 +970,11 @@ export function buildBalanceAnalysisPageReadModel(
     conclusionTitle: "缺口与治理判断",
     conclusionDetail:
       "先看正式资产、负债和治理动作；净头寸、期限缺口与解释项进入 governed workbook 与证据账本下钻，不在前端补算正式口径。",
-    kpis: buildBalancePageKpis(input),
+    kpis: buildBalancePageKpis({
+      ...input,
+      overview: supportedOverview,
+      summary: supportedSummary,
+    }),
     evidenceCards: buildBalanceEvidenceCards(input.metaSections),
   };
 }
@@ -961,8 +982,13 @@ export function buildBalanceAnalysisPageReadModel(
 export function buildBalanceAnalysisPageModel(
   input: BalanceAnalysisPageModelInput,
 ): BalanceAnalysisPageModel {
+  const supportedOverview = input.overview?.currency_basis === "CNY" ? input.overview : undefined;
+  const supportedWorkbook = input.workbook?.currency_basis === "CNY" ? input.workbook : undefined;
+  const supportedSummaryRows = (input.summaryRows ?? []).filter(
+    (row) => row.currency_basis === "CNY",
+  );
   const overviewCards = buildBalanceHeadlineCards({
-    overview: input.overview ?? undefined,
+    overview: supportedOverview,
     positionScope: input.positionScope,
   });
   const stageDecisionRows =
@@ -988,9 +1014,9 @@ export function buildBalanceAnalysisPageModel(
       detail,
     })),
     stageModel: buildBalanceStageRealDataModel({
-      overview: input.overview ?? undefined,
-      summaryRows: input.summaryRows ?? [],
-      workbook: input.workbook ?? undefined,
+      overview: supportedOverview,
+      summaryRows: supportedSummaryRows,
+      workbook: supportedWorkbook,
       decisionRows: stageDecisionRows,
       eventCalendarRows: input.eventCalendarRows ?? [],
       riskAlertRows: input.riskAlertRows ?? [],
@@ -1000,7 +1026,8 @@ export function buildBalanceAnalysisPageModel(
 
 export type BalanceStageAlertLevel = "danger" | "warning" | "caution" | "info";
 export type BalanceStageCalendarLevel = "high" | "medium" | "low";
-export type BalanceStageRiskLevel = "low" | "mid" | "high";
+/** neutral：非利好也非警示的结构状态（如期限缺口非负），走中性描边不占语义色。 */
+export type BalanceStageRiskLevel = "low" | "mid" | "high" | "neutral";
 
 export type BalanceStageAllocationItem = {
   label: string;
@@ -1558,8 +1585,11 @@ function calendarLevelFromEventType(eventType: string): BalanceStageCalendarLeve
   return "low";
 }
 
+/** 面向用户的进度文案走既有中文化入口（pending→待处理…，未登记枚举原样透出）。 */
 function displayDecisionStatus(row: StageDecisionRow): string | null {
-  return "latest_status" in row && row.latest_status ? row.latest_status.status : null;
+  return "latest_status" in row && row.latest_status
+    ? formatBalanceDecisionWorkflowStatusDisplay(row.latest_status.status)
+    : null;
 }
 
 function stageNoDataRow(): BalanceStageContributionRow {
@@ -1638,10 +1668,11 @@ function buildStageContributionRows(
       assetPct: assetTotal === null ? EM_DASH : "100.0%",
       liabBal: liabilityTotal === null ? EM_DASH : formatWanAsYiPlain(liabilityTotal),
       liabPct: liabilityTotal === null ? EM_DASH : "100.0%",
+      // 任一侧合计缺失时净缺口不可计算：禁止以 0 顶替缺失侧伪造读数（null ≠ 0）。
       netGap:
-        assetTotal === null && liabilityTotal === null
+        assetTotal === null || liabilityTotal === null
           ? EM_DASH
-          : formatSignedWanAsYiPlain((assetTotal ?? 0) - (liabilityTotal ?? 0)),
+          : formatSignedWanAsYiPlain(assetTotal - liabilityTotal),
       rowKind: "body",
     });
   }
@@ -1672,10 +1703,15 @@ function buildWatchItems(rows: readonly StageDecisionRow[]): BalanceStageAlertIt
     return {
       level: alertLevelFromSeverity(row.severity),
       title: formatBalanceBusinessTextDisplay(row.title),
+      // §7 `·` 配额（单行最多 1 个）：来源与进度以斜杠并列，`·` 只用于与事由分隔。
       detail: [
         formatBalanceBusinessTextDisplay(row.reason),
-        formatBalanceWorkbookOperationalSectionKeyDisplay(row.source_section),
-        status ? `进度 ${status}` : null,
+        [
+          formatBalanceWorkbookOperationalSectionKeyDisplay(row.source_section),
+          status ? `进度 ${status}` : null,
+        ]
+          .filter(Boolean)
+          .join(" / "),
       ]
         .filter(Boolean)
         .join(" · "),
@@ -1762,7 +1798,8 @@ function buildStageRiskRows({
       current: largestGapValue === null ? "无切片" : largestGapValue < 0 ? "负缺口" : "非负",
       stress: largestGapValue === null ? EM_DASH : `${formatSignedWanAsYiPlain(largestGapValue)} 亿元`,
       scenario: formatBalanceWorkbookCellDisplay(largestGap?.bucket ?? "期限缺口"),
-      level: largestGapValue === null ? "mid" : largestGapValue < 0 ? "high" : "low",
+      /* 2026-07-19 决议：正缺口≠利好，非负态走中性档不给绿。 */
+      level: largestGapValue === null ? "mid" : largestGapValue < 0 ? "high" : "neutral",
     },
     {
       dim: "风险预警",

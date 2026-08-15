@@ -31,3 +31,10 @@
   were recaptured consistently.
 - Approval boundary: this records owner authorization to recapture; final
   approver and approval timestamp remain pending.
+
+## Metadata-only recapture record — 2026-08-14
+
+- Deterministic fixture recapture added explicit report-date, filter,
+  source-table, and evidence-row fields; no workbook business value changed.
+- Approval boundary is unchanged: final approver and approval timestamp remain
+  pending.

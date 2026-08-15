@@ -11,6 +11,10 @@
 - HTTP status is `200`.
 - `result_meta.basis == "formal"`.
 - `result_meta.result_kind == "balance-analysis.workbook"`.
+- `result_meta.requested_report_date == result_meta.resolved_report_date == result_meta.as_of_date == "2025-12-31"`.
+- `result_meta.date_basis == "balance_analysis_report_date"`.
+- `result_meta.filters_applied` freezes the requested report date, `position_scope="all"`, and `currency_basis="CNY"`.
+- `result_meta.tables_used` names both formal balance fact tables and `result_meta.evidence_rows == 2`.
 - `tables[].key` covers the governed workbook supported key set.
 - `advanced_attribution_bundle` does not appear in `tables[].key`.
 - `operational_sections` contains:

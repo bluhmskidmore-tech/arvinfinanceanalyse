@@ -4,7 +4,8 @@
  * 后端为 `backend/app/services/pretrade_checklist_service.py` 的观察面组装
  * (最近信号日候选 + 每票可买性检查 + 仓位建议透传 + 门控敞口现状)。
  * 契约字段全部 optional：展示面必须容忍字段缺失/半空，绝不因缺字段抛错。
- * 404、非 2xx 与网络失败一律语义化为 null(清单不可用 → 整面隐藏)。
+ * 结果三分：ok(有数据) / missing(404 能力不存在或后端明确空 → 整面收缩隐藏)
+ * / error(其余非 2xx、网络或解析失败 → 组件呈现错误态+重试，不静默吞掉)。
  */
 
 export type PretradeChecklistLimitCheck = {
@@ -104,6 +105,15 @@ export type PretradeChecklistEnvelope = {
 
 export const PRETRADE_CHECKLIST_PATH = "/api/pretrade-checklist";
 
+/**
+ * 五态取数结果：区分「能力不存在/明确空(missing → 整面收缩)」与
+ * 「请求失败(error → 错误态+重试)」，不再把失败静默吞成 null。
+ */
+export type PretradeChecklistFetchResult =
+  | { kind: "ok"; payload: PretradeChecklistPayload }
+  | { kind: "missing" }
+  | { kind: "error"; reason: string };
+
 export type FetchPretradeChecklistOptions = {
   fetchImpl?: typeof fetch;
   baseUrl?: string;
@@ -111,12 +121,14 @@ export type FetchPretradeChecklistOptions = {
 };
 
 /**
- * 拉取盘前操作清单。404、非 2xx、网络/解析失败一律返回 null，
- * 调用方整面隐藏，不在页面上留下空壳或报错态。
+ * 拉取盘前操作清单。
+ * - 2xx 且 result 非空 → ok
+ * - 404(能力不存在) / 2xx 但 result 为空 → missing(调用方整面收缩隐藏)
+ * - 其余非 2xx、网络失败、解析失败 → error(调用方呈现一行错误+重试)
  */
 export async function fetchPretradeChecklist(
   options?: FetchPretradeChecklistOptions,
-): Promise<PretradeChecklistPayload | null> {
+): Promise<PretradeChecklistFetchResult> {
   const fetchImpl =
     options?.fetchImpl ?? ((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init));
   const baseUrl = options?.baseUrl ?? "";
@@ -125,10 +137,12 @@ export async function fetchPretradeChecklist(
       headers: { Accept: "application/json" },
       signal: options?.signal,
     });
-    if (!response.ok) return null;
+    if (response.status === 404) return { kind: "missing" };
+    if (!response.ok) return { kind: "error", reason: `HTTP ${response.status}` };
     const envelope = (await response.json()) as PretradeChecklistEnvelope | null;
-    return envelope?.result ?? null;
-  } catch {
-    return null;
+    const payload = envelope?.result ?? null;
+    return payload ? { kind: "ok", payload } : { kind: "missing" };
+  } catch (error) {
+    return { kind: "error", reason: error instanceof Error ? error.message : String(error) };
   }
 }

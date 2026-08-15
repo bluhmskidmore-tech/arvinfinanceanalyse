@@ -18,7 +18,7 @@ export type AdbKpiStripItem = {
 type AdbKpiStripProps = {
   items: AdbKpiStripItem[];
   /** 桌面列数；断点折行由 CSS 统一处理（1200/900/680）。 */
-  columns: 5 | 6;
+  columns: 2 | 5 | 6;
 };
 
 /** KPI 单框横带（首页 kpiStrip 语言：单框 + 发丝竖缝 + 等高分格 + 等宽数字）。 */

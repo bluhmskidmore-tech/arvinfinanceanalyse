@@ -285,6 +285,10 @@
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
+.adb-kpi-strip[data-cols="2"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .adb-kpi {
   background: var(--dh-api-panel-2);
   display: flex;
@@ -491,6 +495,11 @@
   display: grid;
   gap: 8px;
   min-width: 0;
+}
+
+/* insights 结论中 notice/info 档次视觉降权，warning 仍保持 antd 默认强调（DESIGN.md §6）。 */
+.adb-insight-muted {
+  opacity: 0.82;
 }
 
 /* 双列区（04 对比图 / 07 分类明细 / 月度深度分析）；§5 不等高列顶对齐。 */
@@ -859,7 +868,7 @@
   font-family: var(--moss-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
 }
 
-/* 矩阵固定列与展开行的底色收敛到 panel 链（antd 默认钢蓝 colorBgContainer）。 */
+/* 矩阵固定列与展开行显式对齐页面 panel 链；全局 AntD 已切 Nocturne。 */
 .average-balance-page.average-balance-page .ant-table-cell-fix-left,
 .average-balance-page.average-balance-page .ant-table-cell-fix-right {
   background: var(--dh-api-panel);
@@ -1022,7 +1031,8 @@
   }
 
   .adb-kpi-strip[data-cols="6"],
-  .adb-kpi-strip[data-cols="5"] {
+  .adb-kpi-strip[data-cols="5"],
+  .adb-kpi-strip[data-cols="2"] {
     grid-template-columns: 1fr;
   }
 }

@@ -66,7 +66,7 @@ def _write_manifest(
     governance_dir: Path,
     report_date: str,
     *,
-    rule_version: str = "rv_accounting_asset_movement_v2",
+    rule_version: str = "rv_accounting_asset_movement_v3",
     source_version: str = "sv-control",
 ) -> None:
     governance_dir.mkdir(parents=True, exist_ok=True)
@@ -258,7 +258,7 @@ def test_interior_gap_is_repaired_even_when_latest_dates_match(monkeypatch, tmp_
     ("manifest_rule", "manifest_source"),
     [
         ("rv-accounting-old", "sv-control"),
-        ("rv_accounting_asset_movement_v2", "sv-control-old"),
+        ("rv_accounting_asset_movement_v3", "sv-control-old"),
     ],
 )
 def test_rule_or_source_drift_is_rematerialized(

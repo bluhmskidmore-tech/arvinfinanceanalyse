@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "../../../api/clientContext";
@@ -8,6 +8,7 @@ import type {
   BalanceAnalysisWorkbookOperationalSection,
   BalanceAnalysisWorkbookTable,
   BalanceBusinessMovementTrendMonth,
+  BalancePageCalibration,
   BalanceZqtzConcentrationAnalysis,
 } from "../../../api/contracts";
 import { buildBalanceDetailGridRows, buildBalanceDetailSummaryGridRows } from "../pages/balanceAnalysisGridRows";
@@ -46,6 +47,18 @@ export interface BalanceAnalysisDataParams {
 function finiteNumber(value: unknown): number {
   const parsed = Number(String(value ?? "0").replace(/,/g, ""));
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * 后端把 calibration 放在余额分析信封顶层（`_with_balance_analysis_response_context`），
+ * `result` payload 为 `extra=forbid`、不含该字段；`ApiEnvelope` 契约也未声明顶层
+ * calibration，因此这里做运行时读取，供下方合并进 overview。
+ */
+function readEnvelopeCalibration(envelope: unknown): BalancePageCalibration | null | undefined {
+  if (!envelope || typeof envelope !== "object" || !("calibration" in envelope)) {
+    return undefined;
+  }
+  return (envelope as { calibration?: BalancePageCalibration | null }).calibration;
 }
 
 function normalizeConcentrationDimensionLabel(value: unknown, kind: "top" | "other" | "unknown") {
@@ -360,7 +373,16 @@ export function useBalanceAnalysisData({
     retry: false,
   });
 
-  const overview = overviewQuery.data?.result;
+  const overviewEnvelope = overviewQuery.data;
+  // 把信封顶层 calibration 合并进 overview，页面继续消费 overview?.calibration 即可生效。
+  const overview = useMemo(() => {
+    const result = overviewEnvelope?.result;
+    if (!result || result.currency_basis !== "CNY") {
+      return undefined;
+    }
+    const calibration = result.calibration ?? readEnvelopeCalibration(overviewEnvelope);
+    return calibration === undefined ? result : { ...result, calibration };
+  }, [overviewEnvelope]);
   const overviewMeta = overviewQuery.data?.result_meta;
   const detailMeta = detailQuery.data?.result_meta;
   const decisionItemsMeta = decisionItemsQuery.data?.result_meta;
@@ -368,10 +390,15 @@ export function useBalanceAnalysisData({
   const summaryMeta = summaryQuery.data?.result_meta;
   const currentUser = currentUserQuery.data;
   const decisionItems = decisionItemsQuery.data?.result;
-  const workbook = workbookQuery.data?.result;
-  const summaryTable = summaryQuery.data?.result;
-  const detailSummaryGridRows = buildBalanceDetailSummaryGridRows(detailQuery.data?.result.summary ?? []);
-  const detailGridRows = buildBalanceDetailGridRows(detailQuery.data?.result.details ?? []);
+  const workbookResult = workbookQuery.data?.result;
+  const workbook = workbookResult?.currency_basis === "CNY" ? workbookResult : undefined;
+  const summaryResult = summaryQuery.data?.result;
+  const summaryTable = summaryResult?.currency_basis === "CNY" ? summaryResult : undefined;
+  const detailResult = detailQuery.data?.result;
+  const detail = detailResult?.currency_basis === "CNY" ? detailResult : undefined;
+  const detailSummaryRows = detail?.summary ?? [];
+  const detailSummaryGridRows = buildBalanceDetailSummaryGridRows(detailSummaryRows);
+  const detailGridRows = buildBalanceDetailGridRows(detail?.details ?? []);
   const decisionRows = decisionItems?.rows ?? [];
   const workbookTables = workbook?.tables ?? [];
   const workbookOperationalSections = workbook?.operational_sections ?? [];
@@ -544,6 +571,7 @@ export function useBalanceAnalysisData({
     decisionRows,
     workbook,
     summaryTable,
+    detailSummaryRows,
     workbookTables,
     workbookOperationalSections,
     primaryWorkbookTables,

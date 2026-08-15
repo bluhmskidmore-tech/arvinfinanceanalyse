@@ -20,7 +20,8 @@
 - `result_meta.vendor_version == "vv_none"`.
 - `result_meta.fallback_mode == "none"`.
 - `result_meta.scenario_flag == false`.
-- `result_meta.tables_used == ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"]`.
+- `result_meta.filters_applied == {"year": 2025, "accounting_basis_currency": "CNX"}`; `CNX` is the governed CNY accounting-basis code, not a source-currency conversion claim.
+- `result_meta.tables_used == ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily", "product_category_pnl_canonical_fact"]`; the third relation supplies governed basis/calibration evidence and does not replace the two ADB balance facts.
 
 ## Frozen Values
 

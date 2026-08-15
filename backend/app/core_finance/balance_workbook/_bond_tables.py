@@ -17,13 +17,12 @@ from backend.app.core_finance.balance_workbook._utils import (
     _ZERO,
     _card,
     _group_rows,
-    _match_bucket,
+    _matches_maturity_bucket,
     _merged_weighted_average,
     _month_key,
     _month_ladder,
     _normalize_interest_mode,
     _optional_remaining_years,
-    _remaining_years,
     _safe_ratio,
     _spread_bp,
     _sum_decimal,
@@ -134,10 +133,10 @@ def _build_maturity_gap_table(
     cumulative_gap = _ZERO
     rows = []
     for label, lower, upper in _MATURITY_BUCKETS:
-        bucket_bonds = [row for row in asset_bonds if _match_bucket(_remaining_years(report_date, row.maturity_date), lower, upper)]
-        bucket_issuance = [row for row in issuance_rows if _match_bucket(_remaining_years(report_date, row.maturity_date), lower, upper)]
-        bucket_assets = [row for row in asset_interbank if _match_bucket(_remaining_years(report_date, row.maturity_date), lower, upper)]
-        bucket_liabilities = [row for row in liability_interbank if _match_bucket(_remaining_years(report_date, row.maturity_date), lower, upper)]
+        bucket_bonds = [row for row in asset_bonds if _matches_maturity_bucket(report_date, row.maturity_date, label, lower, upper)]
+        bucket_issuance = [row for row in issuance_rows if _matches_maturity_bucket(report_date, row.maturity_date, label, lower, upper)]
+        bucket_assets = [row for row in asset_interbank if _matches_maturity_bucket(report_date, row.maturity_date, label, lower, upper)]
+        bucket_liabilities = [row for row in liability_interbank if _matches_maturity_bucket(report_date, row.maturity_date, label, lower, upper)]
         bond_asset_amount = _sum_decimal(bucket_bonds, lambda row: row.face_value_amount)
         issuance_amount = _sum_decimal(bucket_issuance, lambda row: row.face_value_amount)
         interbank_asset_amount = _sum_decimal(bucket_assets, lambda row: row.principal_amount)

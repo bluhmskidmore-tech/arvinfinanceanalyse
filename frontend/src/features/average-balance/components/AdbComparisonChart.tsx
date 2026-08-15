@@ -2,18 +2,17 @@ import { BaseChart } from "../../../components/charts/BaseChart";
 import { nocturneChartTheme } from "../../../components/charts/chartTheme";
 import { nocturneTokens } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
+import {
+  buildComparisonDisplayRows,
+  isComparisonDeviationAlert,
+  type AdbComparisonChartRow,
+} from "./adbComparisonMetrics";
+
+export type { AdbComparisonChartRow } from "./adbComparisonMetrics";
 
 const YI = 100_000_000;
 const SERIES_SPOT = "期末时点";
 const SERIES_AVG = "区间日均";
-
-export type AdbComparisonChartRow = {
-  label: string;
-  /** null 表示缺数：系列不画柱，tooltip 显示 EM_DASH */
-  spot: number | null;
-  avg: number | null;
-  deviationPct: number | null;
-};
 
 function formatYiValue(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return EM_DASH;
@@ -25,6 +24,11 @@ function formatSignedPct(value: number | null | undefined): string {
   return `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
 }
 
+/**
+ * 横向条形（yAxis 分类、inverse 让规模最大者在顶部）：
+ * 分类名走 y 轴整行可读，不再把 24+ 分类塞进 x 轴挤成墨团。
+ * 日均系列右侧标签为偏离度，|偏离|>5% 走 down 红（与 KPI 警示同判据）。
+ */
 function buildComparisonOption(rows: AdbComparisonChartRow[]) {
   return nocturneChartTheme.createBarChartOption({
     tooltip: {
@@ -43,15 +47,15 @@ function buildComparisonOption(rows: AdbComparisonChartRow[]) {
       },
     },
     legend: { data: [SERIES_SPOT, SERIES_AVG], top: 0, bottom: "auto" },
-    grid: { left: 24, right: 24, top: 44, bottom: 76 },
+    grid: { left: 8, right: 64, top: 32, bottom: 8, containLabel: true },
     xAxis: {
-      type: "category",
-      data: rows.map((row) => row.label),
-      axisLabel: { interval: 0, rotate: 20 },
-    },
-    yAxis: {
       type: "value",
       axisLabel: { formatter: (value: number) => `${(value / YI).toFixed(0)}亿` },
+    },
+    yAxis: {
+      type: "category",
+      data: rows.map((row) => row.label),
+      inverse: true,
     },
     series: [
       {
@@ -64,14 +68,20 @@ function buildComparisonOption(rows: AdbComparisonChartRow[]) {
       {
         name: SERIES_AVG,
         type: "bar",
-        data: rows.map((row) => row.avg),
+        data: rows.map((row) => ({
+          value: row.avg,
+          label: {
+            color: isComparisonDeviationAlert(row.deviationPct)
+              ? nocturneTokens.color.red
+              : nocturneChartTheme.axisLabel.color,
+          },
+        })),
         itemStyle: { color: nocturneTokens.color.inkSoft },
         label: {
           show: true,
-          position: "top",
+          position: "right",
           formatter: ({ dataIndex }: { dataIndex: number }) =>
             formatSignedPct(rows[dataIndex]?.deviationPct),
-          color: nocturneChartTheme.axisLabel.color,
           fontSize: nocturneChartTheme.axisLabel.fontSize,
         },
       },
@@ -81,12 +91,15 @@ function buildComparisonOption(rows: AdbComparisonChartRow[]) {
 
 type AdbComparisonChartProps = {
   rows: AdbComparisonChartRow[];
+  /** 缺省时按展示行数自适应（Top10+其他 约 520px），避免行多标签挤压。 */
   height?: number;
 };
 
 export default function AdbComparisonChart({
   rows,
-  height = 420,
+  height,
 }: AdbComparisonChartProps) {
-  return <BaseChart option={buildComparisonOption(rows)} height={height} />;
+  const displayRows = buildComparisonDisplayRows(rows);
+  const resolvedHeight = height ?? Math.max(280, displayRows.length * 40 + 80);
+  return <BaseChart option={buildComparisonOption(displayRows)} height={resolvedHeight} />;
 }

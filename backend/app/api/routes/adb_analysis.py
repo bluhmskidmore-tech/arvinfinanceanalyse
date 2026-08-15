@@ -87,8 +87,52 @@ def adb_comparison(
             ed.isoformat(),
             top_n=top_n,
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get adb comparison: {e}") from e
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        # 兜底 500 只回固定文案；SQL/路径等内部细节仅记日志，不回显客户端。
+        logger.error(
+            "ADB comparison failed start_date=%s end_date=%s error_type=%s: %s",
+            sd.isoformat(),
+            ed.isoformat(),
+            type(exc).__name__,
+            exc,
+        )
+        raise HTTPException(status_code=500, detail="Failed to get adb comparison.") from exc
+
+
+@router.get("/adb/insights")
+def adb_insights(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    start_date: str = Query(..., description="开始日期 YYYY-MM-DD"),
+    end_date: str = Query(..., description="结束日期 YYYY-MM-DD"),
+):
+    """区间深度分析：规模归因、NIM 量价分解、波动异常、结构集中度与结构化结论。"""
+    sd, ed = _parse_opt_date(start_date), _parse_opt_date(end_date)
+    if sd is None or ed is None:
+        raise HTTPException(status_code=422, detail="start_date and end_date are required.")
+    if sd > ed:
+        raise HTTPException(status_code=400, detail="start_date must be <= end_date")
+    from backend.app.governance.settings import get_settings
+
+    _ensure_adb_analysis_read_allowed(auth, get_settings())
+    try:
+        return adb_analysis_service.adb_insights_envelope(sd.isoformat(), ed.isoformat())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error(
+            "ADB insights failed start_date=%s end_date=%s error_type=%s: %s",
+            sd.isoformat(),
+            ed.isoformat(),
+            type(exc).__name__,
+            exc,
+        )
+        raise HTTPException(status_code=500, detail="Failed to get adb insights.") from exc
 
 
 @router.get("/adb/monthly")
@@ -102,8 +146,18 @@ def adb_monthly(
     _ensure_adb_analysis_read_allowed(auth, get_settings())
     try:
         return adb_analysis_service.adb_monthly_envelope(y)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get monthly adb: {e}") from e
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error(
+            "ADB monthly failed year=%s error_type=%s: %s",
+            y,
+            type(exc).__name__,
+            exc,
+        )
+        raise HTTPException(status_code=500, detail="Failed to get monthly adb.") from exc
 
 
 @router.get("/adb/coverage")
@@ -124,7 +178,14 @@ def adb_coverage(
     try:
         return adb_analysis_service.adb_coverage_diagnostics(sd.isoformat(), ed.isoformat())
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        # 服务层异常文本携带 DuckDB 文件路径，仅记日志；数据源缺失按可重试 503 返回固定文案。
+        logger.error(
+            "ADB coverage source unavailable start_date=%s end_date=%s: %s",
+            sd.isoformat(),
+            ed.isoformat(),
+            exc,
+        )
+        raise HTTPException(status_code=503, detail="ADB coverage source data is unavailable.") from exc
 
 
 @router.post("/adb/backfill")

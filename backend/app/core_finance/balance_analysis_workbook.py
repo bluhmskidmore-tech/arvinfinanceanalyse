@@ -43,6 +43,11 @@ _MATURITY_BUCKETS = (
     ("5-10年", Decimal("5"), Decimal("10")),
     ("10年以上", Decimal("10"), None),
 )
+# 缺失 maturity_date 的行（典型为活期类同业）不落"已到期/逾期"：与负债分析
+# 兼容链（liability_analytics_compat.maturity_bucket → "3个月以内"、
+# monthly_v1_bucket_name → "0-3M"）的缺失兜底口径统一，归入最短真实期限桶；
+# 条数由 bal_wb_risk_maturity_missing_001 风险预警显式披露。
+_MISSING_MATURITY_FALLBACK_BUCKET = "3个月以内"
 _RATE_BUCKETS = (
     ("零息/无息", None, Decimal("0")),
     ("1.5%以下", Decimal("0"), Decimal("1.5")),
@@ -240,10 +245,10 @@ def _build_maturity_gap_table(
     cumulative_gap = _ZERO
     rows = []
     for label, lower, upper in _MATURITY_BUCKETS:
-        bucket_bonds = [row for row in asset_bonds if _match_bucket(_remaining_years(report_date, row.maturity_date), lower, upper)]
-        bucket_issuance = [row for row in issuance_rows if _match_bucket(_remaining_years(report_date, row.maturity_date), lower, upper)]
-        bucket_assets = [row for row in asset_interbank if _match_bucket(_remaining_years(report_date, row.maturity_date), lower, upper)]
-        bucket_liabilities = [row for row in liability_interbank if _match_bucket(_remaining_years(report_date, row.maturity_date), lower, upper)]
+        bucket_bonds = [row for row in asset_bonds if _matches_maturity_bucket(report_date, row.maturity_date, label, lower, upper)]
+        bucket_issuance = [row for row in issuance_rows if _matches_maturity_bucket(report_date, row.maturity_date, label, lower, upper)]
+        bucket_assets = [row for row in asset_interbank if _matches_maturity_bucket(report_date, row.maturity_date, label, lower, upper)]
+        bucket_liabilities = [row for row in liability_interbank if _matches_maturity_bucket(report_date, row.maturity_date, label, lower, upper)]
         bond_asset_amount = _sum_decimal(bucket_bonds, lambda row: row.face_value_amount)
         issuance_amount = _sum_decimal(bucket_issuance, lambda row: row.face_value_amount)
         interbank_asset_amount = _sum_decimal(bucket_assets, lambda row: row.principal_amount)
@@ -821,6 +826,18 @@ def _build_rule_reference_table() -> dict[str, Any]:
             "source_doc": "docs/calc_rules.md",
             "source_section": "14 禁止事项（不允许静默降级为 0 且不打标记）",
         },
+        {
+            "rule_id": "bal_campisi_benchmark_missing_null",
+            "rule_name": "Campisi 基准缺失口径",
+            "summary": (
+                "Campisi 归因的利差基准为在册'政策性金融债'加权票面利率；"
+                "在册无该基准（或基准行票面利率全部缺失）时，"
+                "'campisi_breakdown' 的利差(bp)与利差收入贡献列显式输出 null，"
+                "不允许把基准静默降级为 0（利差退化为票息本身）。"
+            ),
+            "source_doc": "docs/calc_rules.md",
+            "source_section": "14 禁止事项（不允许静默降级为 0 且不打标记）",
+        },
     ]
     return _table(
         "rule_reference",
@@ -1232,7 +1249,12 @@ def _build_counterparty_type_table(tyw_rows: list[FormalTywBalanceFactRow]) -> d
 def _build_campisi_table(zqtz_rows: list[FormalZqtzBalanceFactRow]) -> dict[str, Any]:
     asset_rows = [row for row in zqtz_rows if row.position_scope == "asset"]
     benchmark_rows = [row for row in asset_rows if row.bond_type == _CAMPISI_POLICY_BOND]
-    benchmark_rate = _weighted_average(benchmark_rows, lambda row: row.face_value_amount, lambda row: row.coupon_rate) or _ZERO
+    # 在册无政策性金融债（或基准行票面利率全部缺失）时 benchmark_rate 为 None。
+    # 此时利差(bp)与利差收入贡献列显式输出 None，不再把基准静默降级为 0
+    # （否则 spread_bp 退化为票息×100、利差收入=全部票息收入）。语义由
+    # rule_reference 的 bal_campisi_benchmark_missing_null 行披露
+    # （docs/calc_rules.md §14：不允许静默降级为 0 且不打标记）。
+    benchmark_rate = _weighted_average(benchmark_rows, lambda row: row.face_value_amount, lambda row: row.coupon_rate)
     # coupon_rate 落库为百分数（2.85 = 2.85%，见 docs/audits/2026-07-19-system-calculation-audit.md
     # 取证 1），收入类金额必须显式 ÷100，与包版 balance_workbook/_analysis_tables.py 保持一致。
     total_income = _sum_decimal(asset_rows, lambda row: row.face_value_amount * _rate_value(row.coupon_rate) / Decimal("100"))
@@ -1241,21 +1263,27 @@ def _build_campisi_table(zqtz_rows: list[FormalZqtzBalanceFactRow]) -> dict[str,
     for bond_type, entries in sorted(grouped.items()):
         balance_amount = _sum_decimal(entries, lambda row: row.face_value_amount)
         coupon_income = _sum_decimal(entries, lambda row: row.face_value_amount * _rate_value(row.coupon_rate) / Decimal("100"))
-        spread_bp = _weighted_average(entries, lambda row: row.face_value_amount, lambda row: row.coupon_rate)
-        spread_value = ((spread_bp or _ZERO) - benchmark_rate) * Decimal("100")
-        spread_income = _sum_decimal(
-            entries,
-            lambda row: row.face_value_amount * ((_rate_value(row.coupon_rate) - benchmark_rate) / Decimal("100")),
-        )
+        bucket_rate_pct = _weighted_average(entries, lambda row: row.face_value_amount, lambda row: row.coupon_rate)
+        if benchmark_rate is None:
+            spread_value = None
+            spread_income_amount = None
+        else:
+            spread_value = ((bucket_rate_pct or _ZERO) - benchmark_rate) * Decimal("100")
+            spread_income_amount = _to_wanyuan(
+                _sum_decimal(
+                    entries,
+                    lambda row: row.face_value_amount * ((_rate_value(row.coupon_rate) - benchmark_rate) / Decimal("100")),
+                )
+            )
         rows.append(
             {
                 "bond_type": bond_type,
                 "balance_amount": _to_wanyuan(balance_amount),
-                "weighted_rate_pct": _weighted_average(entries, lambda row: row.face_value_amount, lambda row: row.coupon_rate),
+                "weighted_rate_pct": bucket_rate_pct,
                 "coupon_income_amount": _to_wanyuan(coupon_income),
                 "duration_years": _weighted_average(entries, lambda row: row.face_value_amount, lambda row: _optional_remaining_years(row.report_date, row.maturity_date)),
                 "spread_bp": spread_value,
-                "spread_income_amount": _to_wanyuan(spread_income),
+                "spread_income_amount": spread_income_amount,
                 "share_of_income": _safe_ratio(coupon_income, total_income),
                 "price_return_amount": _to_wanyuan(_sum_decimal(entries, lambda row: row.market_value_amount - row.amortized_cost_amount)),
             }
@@ -1544,7 +1572,8 @@ def _build_risk_alerts_table(
                     "缺失 maturity_date："
                     f"债券投资资产 {bond_asset_count}、发行类负债 {issuance_liability_count}、"
                     f"同业资产 {interbank_asset_count}、同业负债 {interbank_liability_count}。"
-                    "现有数值口径保持不变：四类行在期限缺口中按 0 年处理；"
+                    "口径说明：四类行在期限缺口中归入「3个月以内」桶"
+                    "（与负债分析兼容口径的缺失兜底一致，不落「已到期/逾期」）；"
                     "债券投资资产和同业资产同时按 0 年进入组合剩余期限 proxy；"
                     "债券投资资产与发行类负债的加权期限及现金流、事件日历剔除缺失值。"
                 ),
@@ -1654,6 +1683,20 @@ def _match_bucket(value: Decimal, lower: Decimal | None, upper: Decimal | None) 
     if upper is None:
         return value > lower
     return value > lower and value <= upper
+
+
+def _matches_maturity_bucket(
+    report_date: date,
+    maturity_date: date | None,
+    label: str,
+    lower: Decimal | None,
+    upper: Decimal | None,
+) -> bool:
+    # "已到期/逾期"只收真实 maturity_date <= report_date 的行；缺失到期日的行
+    # 归入 _MISSING_MATURITY_FALLBACK_BUCKET（见常量处注释，与 compat 链统一）。
+    if maturity_date is None:
+        return label == _MISSING_MATURITY_FALLBACK_BUCKET
+    return _match_bucket(_remaining_years(report_date, maturity_date), lower, upper)
 
 
 def _safe_ratio(numerator: Decimal, denominator: Decimal) -> Decimal:

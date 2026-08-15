@@ -114,7 +114,9 @@ CNX/CNY 分开求和；`foreign_cash = cnx_cash - cny_cash`。
 
 ---
 
-**版本提示**：`product_category_source_service.RULE_VERSION = "rv_product_category_pnl_v1"`；源结构变更时应递增规则版本并在 `result_meta` / 治理字段中可追溯（若适用）。
+**版本提示**：`product_category_source_service.RULE_VERSION = "rv_product_category_pnl_v2"`；v2
+覆盖双口径利差、CLN 拆解与零基准 FTP 重估闭合规则。后续源结构或公式变更仍须递增规则版本，
+并在 `result_meta` / 治理字段中可追溯。
 
 ## 13. ZQTZ / TYW Formal Balance Analysis Boundary
 

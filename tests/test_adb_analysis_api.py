@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
@@ -854,24 +855,84 @@ def test_adb_accounting_basis_excluded_control_rows_do_not_enter_buckets(
     assert payload["accounting_basis_daily_avg_trend"] == []
 
 
-def test_adb_comparison_returns_500_on_service_error(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize(
+    "path,params,service_attr,fixed_detail",
+    [
+        (
+            "/api/analysis/adb/comparison",
+            {"start_date": "2025-06-02", "end_date": "2025-06-03", "top_n": 5},
+            "adb_comparison_envelope",
+            "Failed to get adb comparison.",
+        ),
+        (
+            "/api/analysis/adb/monthly",
+            {"year": 2025},
+            "adb_monthly_envelope",
+            "Failed to get monthly adb.",
+        ),
+    ],
+)
+def test_adb_routes_map_service_errors_without_leaking_internal_detail(
+    path: str,
+    params: dict[str, object],
+    service_attr: str,
+    fixed_detail: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """RuntimeError→503、ValueError→422；其余异常 500 固定文案且不回显内部文本。"""
     _seed_adb_read_scope(tmp_path, monkeypatch)
     main_mod = load_module("backend.app.main", "backend/app/main.py")
     route_mod = load_module("backend.app.api.routes.adb_analysis", "backend/app/api/routes/adb_analysis.py")
     client = TestClient(main_mod.app)
 
-    def _boom(*_args, **_kwargs):
-        raise RuntimeError("adb comparison exploded")
+    def _raiser(exc: Exception):
+        def _boom(*_args, **_kwargs):
+            raise exc
 
-    monkeypatch.setattr(route_mod.adb_analysis_service, "adb_comparison_envelope", _boom)
+        return _boom
+
+    monkeypatch.setattr(route_mod.adb_analysis_service, service_attr, _raiser(RuntimeError("adb backend unavailable")))
+    unavailable = client.get(path, params=params)
+    assert unavailable.status_code == 503, unavailable.text
+    assert unavailable.json()["detail"] == "adb backend unavailable"
+
+    monkeypatch.setattr(route_mod.adb_analysis_service, service_attr, _raiser(ValueError("adb window invalid")))
+    invalid = client.get(path, params=params)
+    assert invalid.status_code == 422, invalid.text
+    assert invalid.json()["detail"] == "adb window invalid"
+
+    monkeypatch.setattr(
+        route_mod.adb_analysis_service,
+        service_attr,
+        _raiser(Exception("Binder Error: secret_table at C:\\secret\\moss.duckdb")),
+    )
+    broken = client.get(path, params=params)
+    assert broken.status_code == 500, broken.text
+    assert broken.json()["detail"] == fixed_detail
+    assert "secret" not in broken.text
+
+
+def test_adb_coverage_missing_source_returns_503_with_fixed_detail(tmp_path: Path, monkeypatch) -> None:
+    """FileNotFoundError 携带 DuckDB 路径：仅记日志，响应固定文案 503。"""
+    _seed_adb_read_scope(tmp_path, monkeypatch)
+    main_mod = load_module("backend.app.main", "backend/app/main.py")
+    route_mod = load_module("backend.app.api.routes.adb_analysis", "backend/app/api/routes/adb_analysis.py")
+    client = TestClient(main_mod.app)
+
+    def _missing(*_args, **_kwargs):
+        raise FileNotFoundError("DuckDB not found: C:\\secret\\moss.duckdb")
+
+    monkeypatch.setattr(route_mod.adb_analysis_service, "adb_coverage_diagnostics", _missing)
 
     response = client.get(
-        "/api/analysis/adb/comparison",
-        params={"start_date": "2025-06-02", "end_date": "2025-06-03", "top_n": 5},
+        "/api/analysis/adb/coverage",
+        params={"start_date": "2025-06-02", "end_date": "2025-06-03"},
     )
 
-    assert response.status_code == 500, response.text
-    assert response.json()["detail"] == "Failed to get adb comparison: adb comparison exploded"
+    assert response.status_code == 503, response.text
+    assert response.json()["detail"] == "ADB coverage source data is unavailable."
+    assert "secret" not in response.text
 
 
 def test_adb_comparison_normalizes_bond_rates_from_percent_inputs(tmp_path: Path, monkeypatch) -> None:
@@ -1327,7 +1388,12 @@ def test_adb_comparison_ignores_snapshot_when_formal_tables_missing(tmp_path: Pa
     assert response.status_code == 200, response.text
     payload = response.json()["result"]
     assert payload["adb_denominator_basis"] == "snapshot_calendar"
-    assert payload["total_avg_assets"] == 0.0
+    assert payload["total_spot_assets"] is None
+    assert payload["total_avg_assets"] is None
+    assert payload["total_spot_liabilities"] is None
+    assert payload["total_avg_liabilities"] is None
+    assert payload["avg_unavailable_reason"] == "insufficient_window"
+    assert payload["spot_unavailable_reason"] == "no_data"
     assert payload["total_avg_interbank_assets"] == 0.0
     assert payload["coverage_days"] == 0
 
@@ -1614,3 +1680,232 @@ def test_adb_comparison_explicit_simulation_optin_stays_disclosed(
     assert payload["avg_unavailable_reason"] is None
     assert payload["total_avg_assets"] is not None and payload["total_avg_assets"] > 0
     assert all(row["avg_balance"] is not None for row in payload["assets_breakdown"])
+
+
+def _comparison_bond_row(
+    report_date: str,
+    amount: object,
+    *,
+    valid: bool,
+) -> dict[str, object]:
+    return {
+        "report_date": pd.Timestamp(report_date),
+        "market_value": amount,
+        "market_value_is_valid": valid,
+        "yield_to_maturity": 0.02,
+        "coupon_rate": 0.02,
+        "bond_category": BOND_GOV,
+        "asset_class": BOND_ASSET_CLASS,
+        "is_issuance_like": False,
+    }
+
+
+def _comparison_interbank_row(
+    report_date: str,
+    amount: object,
+    *,
+    valid: bool,
+    direction: str,
+) -> dict[str, object]:
+    return {
+        "report_date": pd.Timestamp(report_date),
+        "amount": amount,
+        "amount_is_valid": valid,
+        "interest_rate": 0.02,
+        "product_type": INTERBANK_PLACE,
+        "direction": direction,
+    }
+
+
+def _comparison_payload_from_frames(
+    monkeypatch,
+    *,
+    bonds_rows: list[dict[str, object]] | None = None,
+    interbank_rows: list[dict[str, object]] | None = None,
+    start_date: str = "2025-06-01",
+    end_date: str = "2025-06-02",
+) -> dict[str, object]:
+    from backend.app.services import adb_analysis_service
+
+    bonds_df = pd.DataFrame(bonds_rows or [])
+    interbank_df = pd.DataFrame(interbank_rows or [])
+
+    def _load_raw(*_args, **_kwargs):
+        return (
+            bonds_df,
+            interbank_df,
+            ["sv-comparison-validity"],
+            ["rv-comparison-validity"],
+            "formal_calendar",
+            ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"],
+            {
+                "converted_rows": 0,
+                "dropped_rows": 0,
+                "converted_by_currency": {},
+                "dropped_by_currency": {},
+            },
+        )
+
+    monkeypatch.setattr(adb_analysis_service, "_load_adb_raw_data", _load_raw)
+    payload, *_ = adb_analysis_service.get_adb_comparison(
+        "unused.duckdb",
+        date.fromisoformat(start_date),
+        date.fromisoformat(end_date),
+        top_n=200,
+    )
+    return payload
+
+
+def test_adb_comparison_excludes_invalid_end_row_and_locf_valid_balance(monkeypatch) -> None:
+    payload = _comparison_payload_from_frames(
+        monkeypatch,
+        bonds_rows=[
+            _comparison_bond_row("2025-06-01", Decimal("100"), valid=True),
+            _comparison_bond_row("2025-06-02", Decimal("900"), valid=False),
+        ],
+    )
+
+    assert payload["coverage_days"] == 1
+    assert payload["sample_fill_method"] == "observed_days_scaled_to_calendar"
+    assert payload["total_spot_assets"] == pytest.approx(100.0)
+    assert payload["total_avg_assets"] == pytest.approx(100.0)
+    assert payload["total_spot_liabilities"] is None
+    assert payload["total_avg_liabilities"] is None
+    assert payload["avg_unavailable_reason"] is None
+    assert payload["spot_unavailable_reason"] is None
+    assert payload["assets_breakdown"][0]["spot_balance"] == pytest.approx(100.0)
+
+
+def test_adb_comparison_all_invalid_balances_are_no_data(monkeypatch) -> None:
+    payload = _comparison_payload_from_frames(
+        monkeypatch,
+        bonds_rows=[_comparison_bond_row("2025-06-01", Decimal("100"), valid=False)],
+        interbank_rows=[
+            _comparison_interbank_row(
+                "2025-06-02",
+                Decimal("200"),
+                valid=False,
+                direction="LIABILITY",
+            )
+        ],
+    )
+
+    assert payload["coverage_days"] == 0
+    assert payload["sample_filled"] is False
+    assert payload["sample_fill_method"] == "none"
+    assert payload["total_spot_assets"] is None
+    assert payload["total_avg_assets"] is None
+    assert payload["total_spot_liabilities"] is None
+    assert payload["total_avg_liabilities"] is None
+    assert payload["avg_unavailable_reason"] == "no_data"
+    assert payload["spot_unavailable_reason"] == "no_data"
+    assert payload["assets_breakdown"] == []
+    assert payload["liabilities_breakdown"] == []
+
+
+@pytest.mark.parametrize("amount", [float("inf"), float("-inf"), float("nan")])
+def test_adb_comparison_requires_finite_balance_when_validity_flag_is_true(
+    amount: float,
+    monkeypatch,
+) -> None:
+    payload = _comparison_payload_from_frames(
+        monkeypatch,
+        interbank_rows=[
+            _comparison_interbank_row(
+                "2025-06-01",
+                amount,
+                valid=True,
+                direction="ASSET",
+            )
+        ],
+    )
+
+    assert payload["coverage_days"] == 0
+    assert payload["total_spot_assets"] is None
+    assert payload["total_avg_assets"] is None
+    assert payload["avg_unavailable_reason"] == "no_data"
+    assert payload["spot_unavailable_reason"] == "no_data"
+
+
+def test_adb_comparison_preserves_valid_zero_as_available_balance(monkeypatch) -> None:
+    payload = _comparison_payload_from_frames(
+        monkeypatch,
+        interbank_rows=[
+            _comparison_interbank_row(
+                "2025-06-01",
+                Decimal("100"),
+                valid=True,
+                direction="ASSET",
+            ),
+            _comparison_interbank_row(
+                "2025-06-02",
+                Decimal("0"),
+                valid=True,
+                direction="ASSET",
+            )
+        ],
+    )
+
+    assert payload["coverage_days"] == 2
+    assert payload["total_spot_assets"] == 0.0
+    assert payload["total_avg_assets"] == pytest.approx(50.0)
+    assert payload["total_spot_liabilities"] is None
+    assert payload["total_avg_liabilities"] is None
+    assert payload["avg_unavailable_reason"] is None
+    assert payload["spot_unavailable_reason"] is None
+
+
+def test_adb_comparison_single_side_invalid_uses_side_null_totals_only(monkeypatch) -> None:
+    payload = _comparison_payload_from_frames(
+        monkeypatch,
+        bonds_rows=[
+            _comparison_bond_row("2025-06-01", Decimal("100"), valid=True),
+            _comparison_bond_row("2025-06-02", Decimal("100"), valid=True),
+        ],
+        interbank_rows=[
+            _comparison_interbank_row(
+                "2025-06-02",
+                Decimal("500"),
+                valid=False,
+                direction="LIABILITY",
+            )
+        ],
+    )
+
+    assert payload["coverage_days"] == 2
+    assert payload["total_spot_assets"] == pytest.approx(100.0)
+    assert payload["total_avg_assets"] == pytest.approx(100.0)
+    assert payload["total_spot_liabilities"] is None
+    assert payload["total_avg_liabilities"] is None
+    assert payload["avg_unavailable_reason"] is None
+    assert payload["spot_unavailable_reason"] is None
+
+
+@pytest.mark.parametrize(
+    ("valid", "expected_spot", "expected_coverage", "expected_spot_reason"),
+    [
+        (True, 100.0, 1, None),
+        (False, None, 0, "no_data"),
+    ],
+)
+def test_adb_comparison_single_day_validity_preserves_reason_priority(
+    valid: bool,
+    expected_spot: float | None,
+    expected_coverage: int,
+    expected_spot_reason: str | None,
+    monkeypatch,
+) -> None:
+    payload = _comparison_payload_from_frames(
+        monkeypatch,
+        bonds_rows=[_comparison_bond_row("2025-06-01", Decimal("100"), valid=valid)],
+        start_date="2025-06-01",
+        end_date="2025-06-01",
+    )
+
+    assert payload["coverage_days"] == expected_coverage
+    assert payload["total_spot_assets"] == expected_spot
+    assert payload["total_avg_assets"] is None
+    assert payload["total_spot_liabilities"] is None
+    assert payload["total_avg_liabilities"] is None
+    assert payload["avg_unavailable_reason"] == "insufficient_window"
+    assert payload["spot_unavailable_reason"] == expected_spot_reason
