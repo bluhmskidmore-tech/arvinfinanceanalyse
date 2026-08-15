@@ -18,7 +18,6 @@ jobs:
     timeout-minutes: 10
     env:
       SOURCE_COMMIT: ${{ inputs.commit || github.sha }}
-      SCAN_DIR: ${{ runner.temp }}/moss-source-audit-scan/${{ inputs.commit || github.sha }}
 
     steps:
       - uses: actions/checkout@v4
@@ -44,6 +43,7 @@ jobs:
       - name: Build deterministic source artifact
         env:
           SOURCE_COMMIT: ${{ inputs.commit || github.sha }}
+          SCAN_DIR: ${{ runner.temp }}/moss-source-audit-scan/${{ inputs.commit || github.sha }}
         run: >-
           python scripts/build_source_audit_artifact.py
           --commit "$SOURCE_COMMIT"
@@ -52,6 +52,7 @@ jobs:
 
       - name: Scan exported target commit
         env:
+          SCAN_DIR: ${{ runner.temp }}/moss-source-audit-scan/${{ inputs.commit || github.sha }}
           EMPTY_GITLEAKS_IGNORE: ${{ runner.temp }}/moss-source-audit-empty.gitleaksignore
         run: |
           set -euo pipefail
