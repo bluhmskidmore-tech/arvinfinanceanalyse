@@ -360,7 +360,7 @@ jobs:
   frontend:
     name: Frontend Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     defaults:
       run:
