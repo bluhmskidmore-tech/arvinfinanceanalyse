@@ -34,6 +34,18 @@
  *    migration (commits 60b112db/1c561ed2) copied 20 legacy hex declarations verbatim from the
  *    shell module into optionTwo (declaration-value fidelity contract, see optionTwo header
  *    comments) without reconciling either per-file entry. Net -26 hex; no new colors introduced.
+ *  - 2026-08-14 Shape Lock allowlist realigned to DESIGN.md §2.2/§5 (8px in, 6px out):
+ *    `--dh-api-radius` = 8px is the canonical Nocturne radius (tokens.css Nocturne scope);
+ *    6px only survives as the steel-blue `.theme-dh-api` compat fallback and hand-written 6px
+ *    is drift. offRadius baselines reconciled surgically (only offRadius fields; no full
+ *    regenerate, so parallel in-flight edits are not absorbed): 10 files raised for newly
+ *    counted literal 6px (+48: StockAnalysisPage 2->27, BondAnalyticsViewContent 1->9,
+ *    dashboardHomeOptionTwoDeferred 0->6, dashboardHome 3->4, workbenchShell 2->3,
+ *    StockAnalysisPretradeChecklist 0->2, CalendarList / DataQualityBanner /
+ *    BondAnalyticsDetailPrimitives / StockAnalysisDataHealthCard 0->1), 3 files ratcheted
+ *    down for now-allowed literal 8px (AgentWorkbenchPage 25->17, MarketDataPage 26->8,
+ *    AgentPanel 1->0). Existing 6px literals are pre-existing drift made visible, not new
+ *    violations; they stay counted so the ratchet drives them to `var(--dh-api-radius)`.
  */
 
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -66,8 +78,14 @@ const FORBIDDEN_HEXES = [
   "#eb2f96",
 ];
 
-/** Shape Lock (DESIGN.md §5): 2px IB light, 6px dark terminal, 999px pills only. */
-const RADIUS_ALLOWLIST = new Set(["0", "2px", "6px", "999px", "50%", "inherit"]);
+/**
+ * Shape Lock (DESIGN.md §2.2/§5): 2px IB light, 8px canonical Nocturne dark
+ * terminal (`--dh-api-radius`, tokens.css Nocturne scope), 999px pills only.
+ * 6px is the steel-blue `.theme-dh-api` compat fallback — hand-written 6px is
+ * drift (compat pages must reference `var(--dh-api-radius)`), so it counts as
+ * debt since 2026-08-14.
+ */
+const RADIUS_ALLOWLIST = new Set(["0", "2px", "8px", "999px", "50%", "inherit"]);
 
 function walkFiles(dir, out = []) {
   for (const entry of readdirSync(dir)) {
@@ -227,7 +245,7 @@ const failures = [];
 const metricHints = {
   hex: "Use --ib-* / --dh-api-* / designTokens instead of new bare hex colors.",
   forbidden: "AI purple family is forbidden (DESIGN.md §4); use IB accent or info scale.",
-  offRadius: "Shape Lock (DESIGN.md §5): only 2px (IB), 6px (dark terminal), 999px (pills).",
+  offRadius: "Shape Lock (DESIGN.md §2.2/§5): only 2px (IB), 8px (canonical Nocturne), 999px (pills).",
   doubleDash: 'Use the canonical em dash "—" for missing values (DESIGN.md §6).',
 };
 

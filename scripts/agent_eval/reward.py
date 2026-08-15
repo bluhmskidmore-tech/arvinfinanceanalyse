@@ -12,6 +12,10 @@ DEFAULT_WEIGHTS = {
 
 PASS_THRESHOLD = 90
 
+# Shared with pr_replay's report classification: evidence hard failures carry
+# this prefix so consumers can tell "artifact not collected" from a probe red.
+EVIDENCE_FAILURE_PREFIX = "Missing required evidence: "
+
 
 def evaluate_result(task: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
     """Score an agent result against a MOSS development task.
@@ -93,7 +97,7 @@ def _verification_ratio(
         if evidence in evidence_used:
             passed += 1
         else:
-            hard_failures.append(f"Missing required evidence: {evidence}")
+            hard_failures.append(f"{EVIDENCE_FAILURE_PREFIX}{evidence}")
 
     for check in required_checks:
         if _is_passed(check_results.get(check)):

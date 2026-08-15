@@ -64,24 +64,21 @@ FIRST_PRIORITY_ITEMS: list[dict[str, Any]] = [
             "category-tree ownership that can diverge from governed rules."
         ),
         "code_anchors": [
-            "frontend/src/features/pnl/YieldAnalysisPage.tsx",
             "frontend/src/features/pnl/PnlByBusinessPage.tsx",
             "frontend/src/features/pnl/pnlByBusinessPageModel.ts",
-            "frontend/src/features/pnl/yieldAnalysis/yieldAnalysisAggregates.ts",
             "frontend/src/features/pnl/zqtzAdbAvgRollup.ts",
         ],
         "test_anchors": [
-            "frontend/src/features/pnl/yieldAnalysis/yieldAnalysisAggregates.test.ts",
             "frontend/src/features/pnl/zqtzAdbAvgRollup.test.ts",
         ],
         "current_test_evidence": [
-            "yieldAnalysisAggregates rejects invalid money inputs instead of coercing them to zero.",
             "zqtzAdbAvgRollup tests freeze the current frontend ADB parent/child rollup behavior.",
+            "The unrouted YieldAnalysis page and yieldAnalysisAggregates dead-code surface were removed in commit 559de28d (2026-08-12).",
         ],
         "post_owner_actions": [
             "If backend DTO is authoritative, consume DTO values and remove formal frontend aggregation.",
             "If frontend helpers remain, label them non-formal and keep them out of governed metric claims.",
-            "Update yield and ADB tests to prove DTO consumption or the explicitly non-formal boundary.",
+            "Update ADB rollup tests to prove DTO consumption or the explicitly non-formal boundary.",
         ],
         "owner_decision_gate": (
             "backend DTO / frontend removal tests, or tests proving non-formal helper labeling"

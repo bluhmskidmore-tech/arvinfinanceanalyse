@@ -131,7 +131,7 @@ VERIFICATION_COMMANDS: list[dict[str, str]] = [
         "name": "risk_warning_consistency",
         "kind": "evidence",
         "command": "python scripts/portfolio_home_risk_warning_consistency.py --require-consistent",
-        "expected_when_blocked": "exit_nonzero",
+        "expected_when_blocked": "exit_0",
         "expected_when_full_score": "exit_0",
     },
     {

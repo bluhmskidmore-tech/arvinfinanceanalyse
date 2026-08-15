@@ -175,7 +175,13 @@ def command_up(config: DevPostgresClusterConfig) -> dict[str, object]:
             ]
         )
 
-    if not _is_port_open(config.host, config.port):
+    port_is_open = _is_port_open(config.host, config.port)
+    if port_is_open and not _is_expected_cluster_running(config):
+        raise RuntimeError(
+            f"Local PostgreSQL dev port {config.host}:{config.port} is already occupied by a "
+            "different process; refusing to run migrations or bootstrap against it."
+        )
+    if not port_is_open:
         _remove_stale_postmaster_pid(config)
         _spawn_postgres_start(config)
     _wait_for_postgres_ready(config)
@@ -589,6 +595,23 @@ def _is_port_open(host: str, port: int) -> bool:
     with socket.socket() as sock:
         sock.settimeout(0.5)
         return sock.connect_ex((host, port)) == 0
+
+
+def _is_expected_cluster_running(config: DevPostgresClusterConfig) -> bool:
+    if not config.data_dir.exists():
+        return False
+    status = subprocess.run(
+        [
+            str(config.bin_dir / "pg_ctl.exe"),
+            "-D",
+            str(config.data_dir),
+            "status",
+        ],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    return status.returncode == 0
 
 
 def _probe_postgres_ready(config: DevPostgresClusterConfig, *, database: str | None = None) -> bool:

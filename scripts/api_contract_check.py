@@ -1046,7 +1046,7 @@ def _baseline_check(
     return 0 if passed else 1
 
 
-def schemathesis_command(schema_path: str = ".codex-tmp/openapi.json", base_url: str = "http://127.0.0.1:8000") -> str:
+def schemathesis_command(schema_path: str = ".codex-tmp/openapi.json", base_url: str = "http://127.0.0.1:7888") -> str:
     """Schemathesis 4.x `run` takes a LOCATION plus `-u/--url`; there is no `--app`."""
     return f"schemathesis run {schema_path} --url {base_url}"
 

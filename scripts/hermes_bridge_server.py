@@ -44,7 +44,8 @@ _SECRET_NAME_MARKERS: tuple[str, ...] = (
 _SECRET_NAME_SUFFIXES: tuple[str, ...] = ("_PAT",)
 
 # 值形如 scheme://user:password@host 的内嵌凭据（DATABASE_URL、带认证的代理地址等）。
-_EMBEDDED_CREDENTIAL_VALUE_PATTERN = re.compile(r"://[^/\s@]*:[^/\s@]+@")
+# 密码段允许含 "/"（如 pa/ss）；字符类排除 "@"，不会吞掉 @ 后的主机段。
+_EMBEDDED_CREDENTIAL_VALUE_PATTERN = re.compile(r"://[^/\s@]*:[^\s@]+@")
 
 
 def _is_sensitive_env_name(name: str) -> bool:
@@ -107,7 +108,15 @@ class HermesBridge:
         selected = [part for part in picked if part in allowed]
         return ",".join(dict.fromkeys(selected)) or self._toolsets
 
-    def query(self, prompt: str, *, model: str, toolsets: str, max_turns: int) -> dict[str, Any]:
+    def query(
+        self,
+        prompt: str,
+        *,
+        model: str,
+        toolsets: str,
+        max_turns: int,
+        timeout_seconds: float = 0.0,
+    ) -> dict[str, Any]:
         with self._lock:
             started = time.monotonic()
             effective_model = model or self._model or ""
@@ -137,6 +146,15 @@ class HermesBridge:
             env.setdefault("PYTHONUTF8", "1")
             env.setdefault("NO_COLOR", "1")
             env["HERMES_HOME"] = self._hermes_home
+            # 以 min(自身上限, 调用方预算-5s 余量) 执行：调用方 urlopen 的 socket
+            # 超时先到就会放弃连接，bridge 必须赶在其之前结束子进程并返回结构化
+            # 错误，否则单飞锁被占满自身上限、后续请求连环降级。
+            own_cap = max(30.0, float(effective_max_turns) * 15.0)
+            caller_budget = float(timeout_seconds or 0.0)
+            if caller_budget > 0:
+                effective_timeout = min(own_cap, max(caller_budget - 5.0, 1.0))
+            else:
+                effective_timeout = own_cap
             completed = subprocess.run(
                 args,
                 check=False,
@@ -144,7 +162,7 @@ class HermesBridge:
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=max(30, effective_max_turns * 15),
+                timeout=effective_timeout,
                 env=env,
             )
             answer = _extract_final_answer(completed.stdout or "")
@@ -163,6 +181,9 @@ class HermesBridge:
             }
 
 
+# 与 backend/app/services/hermes_agent_service.py::_extract_final_answer 保持逐字相同
+# （本脚本独立运行无法 import backend；一致性由源码对照测试守护）。
+# 不做 `or stdout.strip()` 兜底：那会把已过滤的 banner 原样返回给用户。
 def _extract_final_answer(stdout: str) -> str:
     lines = [line.rstrip() for line in stdout.splitlines()]
     content: list[str] = []
@@ -176,6 +197,10 @@ def _extract_final_answer(stdout: str) -> str:
             continue
         if stripped.startswith("Client does not support MCP Roots"):
             continue
+        if stripped.startswith("session_id:"):
+            continue
+        if stripped.startswith("Warning: Unknown toolsets:"):
+            continue
         if stripped.startswith("Resume this session with:"):
             break
         if stripped.startswith("Session:"):
@@ -185,8 +210,7 @@ def _extract_final_answer(stdout: str) -> str:
         if stripped.startswith("Messages:"):
             break
         content.append(line)
-    answer = "\n".join(content).strip()
-    return answer or stdout.strip()
+    return "\n".join(content).strip()
 
 
 def make_handler(bridge: HermesBridge, expected_token: str):
@@ -256,6 +280,7 @@ def make_handler(bridge: HermesBridge, expected_token: str):
                     model=str(payload.get("model") or ""),
                     toolsets=str(payload.get("toolsets") or ""),
                     max_turns=int(payload.get("max_turns") or 1),
+                    timeout_seconds=float(payload.get("timeout_seconds") or 0.0),
                 )
                 self._send_json(200, result)
             except Exception as exc:

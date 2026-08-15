@@ -1,6 +1,10 @@
 param(
   [int]$IntervalSeconds = 5,
   [int]$RestartCooldownSeconds = 15,
+  [ValidateRange(1, 10)]
+  [int]$PostgresProbeFailureThreshold = 3,
+  [ValidateRange(1, 20)]
+  [int]$PostgresRecoveryMaxAttempts = 3,
   [switch]$Once
 )
 
@@ -36,6 +40,19 @@ function Write-KeepaliveLog {
     Write-Host $line
   } catch {
   }
+}
+
+$instanceLockPath = Join-Path $logRoot "dev-keepalive.instance.lock"
+try {
+  $script:InstanceLock = [System.IO.File]::Open(
+    $instanceLockPath,
+    [System.IO.FileMode]::OpenOrCreate,
+    [System.IO.FileAccess]::ReadWrite,
+    [System.IO.FileShare]::None
+  )
+} catch [System.IO.IOException] {
+  Write-KeepaliveLog "another dev keepalive instance already owns $instanceLockPath; exiting"
+  exit 0
 }
 
 function Test-HttpEndpoint {
@@ -242,31 +259,57 @@ function Start-DevScriptDetached {
   $stdoutPath = Join-Path $logRoot "$logName.out.log"
   $stderrPath = Join-Path $logRoot "$logName.err.log"
   Remove-Item -Path $stdoutPath,$stderrPath -Force -ErrorAction SilentlyContinue
+  $scriptArguments = if ($ScriptName -eq "dev-api.ps1") {
+    " -SkipStartupStorageMigrations"
+  } else {
+    ""
+  }
 
   $scriptCommand = (
     (Quote-CmdArgument $powershellExe) +
     " -NoProfile -ExecutionPolicy Bypass -File " +
     (Quote-CmdArgument $scriptPath) +
+    $scriptArguments +
     " 1> " +
     (Quote-CmdArgument $stdoutPath) +
     " 2> " +
     (Quote-CmdArgument $stderrPath)
   )
   $command = "cmd.exe /d /c " + '"' + $scriptCommand + '"'
-  $shell = New-Object -ComObject WScript.Shell
-  $shell.CurrentDirectory = $root
-  $launchResult = $shell.Run($command, 0, $false)
-  if ($launchResult -ne 0) {
-    throw "$ScriptName launcher failed with exit code $launchResult"
+  # The former COM launcher inherited Cursor's Windows Job, so its children
+  # were reaped with that Job. WMI creates the process under WmiPrvSE instead.
+  $startupInfo = New-CimInstance `
+    -ClassName Win32_ProcessStartup `
+    -ClientOnly `
+    -Property @{
+      ShowWindow = [uint16]0
+    }
+  $launchResult = Invoke-CimMethod `
+    -ClassName Win32_Process `
+    -MethodName Create `
+    -Arguments @{
+      CommandLine = $command
+      CurrentDirectory = $root
+      ProcessStartupInformation = $startupInfo
+    }
+  if ([int]$launchResult.ReturnValue -ne 0) {
+    throw "$ScriptName launcher failed with WMI return code $($launchResult.ReturnValue)"
   }
 
-  Start-Sleep -Milliseconds 250
+  $launchDeadline = (Get-Date).AddSeconds(5)
+  do {
+    Start-Sleep -Milliseconds 100
+    $process = Get-NativeScriptProcess -ScriptName $ScriptName
+  } while (
+    -not $process -and
+    $script:ProcessInspectionAvailable -and
+    (Get-Date) -lt $launchDeadline
+  )
   if (-not $script:ProcessInspectionAvailable) {
     Write-KeepaliveLog "launched $ScriptName; process verification unavailable"
     return
   }
 
-  $process = Get-NativeScriptProcess -ScriptName $ScriptName
   if (-not $process) {
     $stderr = if (Test-Path $stderrPath) { @(Get-Content -Path $stderrPath -Tail 40 -ErrorAction SilentlyContinue) } else { @() }
     $stdout = if (Test-Path $stdoutPath) { @(Get-Content -Path $stdoutPath -Tail 40 -ErrorAction SilentlyContinue) } else { @() }
@@ -282,6 +325,10 @@ function Start-DevScriptDetached {
 
 $lastRestartAt = @{}
 $lastHeartbeatAt = [datetime]::MinValue
+$script:PostgresConsecutiveProbeFailures = 0
+$script:PostgresRecoveryFailureCount = 0
+$script:PostgresRecoverySuppressionLogged = $false
+$script:LastPostgresProbeState = "unknown"
 
 function Test-RestartCooldown {
   param(
@@ -304,6 +351,145 @@ function Set-RestartTimestamp {
   )
 
   $lastRestartAt[$Key] = Get-Date
+}
+
+function Get-DevPostgresProbe {
+  $listener = Get-DevListeningPortOwner -Port 55432
+  if (-not $listener) {
+    return [pscustomobject]@{
+      State = "missing"
+      OwningProcess = $null
+      Detail = "no listener on 127.0.0.1:55432"
+    }
+  }
+
+  $owningProcess = [int]$listener.OwningProcess
+  try {
+    $process = Get-CimInstance Win32_Process -Filter "ProcessId=$owningProcess" |
+      Select-Object -First 1
+  } catch {
+    return [pscustomobject]@{
+      State = "unverifiable"
+      OwningProcess = $owningProcess
+      Detail = $_.Exception.Message
+    }
+  }
+
+  if (-not $process -or [string]::IsNullOrWhiteSpace([string]$process.CommandLine)) {
+    return [pscustomobject]@{
+      State = "unverifiable"
+      OwningProcess = $owningProcess
+      Detail = "listener process command line is unavailable"
+    }
+  }
+
+  $expectedDataDir = (Join-Path $root "tmp-governance\pgdev\data").Replace("\", "/")
+  $commandLine = ([string]$process.CommandLine).Replace("\", "/")
+  $ownsDataDir = $commandLine.IndexOf(
+    $expectedDataDir,
+    [System.StringComparison]::OrdinalIgnoreCase
+  ) -ge 0
+  $ownsHost = $commandLine -match '(?i)(^|\s)-h\s+"?127\.0\.0\.1"?(\s|$)'
+  $ownsPort = $commandLine -match '(?i)(^|\s)-p\s+"?55432"?(\s|$)'
+  $isPostgres = ([string]$process.Name) -ieq "postgres.exe"
+  $state = if ($isPostgres -and $ownsDataDir -and $ownsHost -and $ownsPort) {
+    "owned"
+  } else {
+    "foreign"
+  }
+
+  return [pscustomobject]@{
+    State = $state
+    OwningProcess = $owningProcess
+    Detail = "name=$($process.Name) dataDir=$ownsDataDir host=$ownsHost port=$ownsPort"
+  }
+}
+
+function Test-DevPostgresReady {
+  $probe = Get-DevPostgresProbe
+  return ($probe.State -eq "owned")
+}
+
+function Invoke-DevPostgresUp {
+  $scriptPath = Join-Path $root "scripts\dev-postgres-up.ps1"
+  $output = @(
+    & $powershellExe -NoProfile -ExecutionPolicy Bypass -File $scriptPath 2>&1
+  )
+
+  return [pscustomobject]@{
+    ExitCode = [int]$LASTEXITCODE
+    Output = (($output | ForEach-Object { [string]$_ }) -join "`n").Trim()
+  }
+}
+
+function Ensure-DevPostgresRunning {
+  $probe = Get-DevPostgresProbe
+  if ($probe.State -eq "owned") {
+    if ($script:PostgresRecoveryFailureCount -gt 0) {
+      Write-KeepaliveLog "private Postgres listener recovered outside keepalive; clearing failure count"
+    }
+    $script:PostgresConsecutiveProbeFailures = 0
+    $script:PostgresRecoveryFailureCount = 0
+    $script:PostgresRecoverySuppressionLogged = $false
+    $script:LastPostgresProbeState = "owned"
+    return $true
+  }
+
+  if ($probe.State -eq "foreign" -or $probe.State -eq "unverifiable") {
+    $script:PostgresConsecutiveProbeFailures = 0
+    if ($script:LastPostgresProbeState -ne $probe.State) {
+      $label = if ($probe.State -eq "foreign") { "foreign listener" } else { "listener ownership unverifiable" }
+      Write-KeepaliveLog "private Postgres probe blocked by $label on 127.0.0.1:55432 PID=$($probe.OwningProcess); recovery refused"
+    }
+    $script:LastPostgresProbeState = $probe.State
+    return $false
+  }
+
+  $script:LastPostgresProbeState = "missing"
+  $script:PostgresConsecutiveProbeFailures += 1
+  if ($script:PostgresConsecutiveProbeFailures -lt $PostgresProbeFailureThreshold) {
+    Write-KeepaliveLog "private Postgres listener missing on 127.0.0.1:55432; probe $script:PostgresConsecutiveProbeFailures/$PostgresProbeFailureThreshold before recovery"
+    return $false
+  }
+
+  if ($script:PostgresRecoveryFailureCount -ge $PostgresRecoveryMaxAttempts) {
+    if (-not $script:PostgresRecoverySuppressionLogged) {
+      Write-KeepaliveLog "private Postgres recovery suppressed after $PostgresRecoveryMaxAttempts failed attempts; manual intervention required"
+      $script:PostgresRecoverySuppressionLogged = $true
+    }
+    return $false
+  }
+
+  if (Test-RestartCooldown -Key "postgres") {
+    Write-KeepaliveLog "private Postgres listener missing on 127.0.0.1:55432; recovery skipped by cooldown"
+    return $false
+  }
+
+  $attempt = $script:PostgresRecoveryFailureCount + 1
+  Write-KeepaliveLog "private Postgres listener missing on 127.0.0.1:55432; recovery attempt $attempt/$PostgresRecoveryMaxAttempts"
+  Set-RestartTimestamp -Key "postgres"
+
+  try {
+    $result = Invoke-DevPostgresUp
+    if ($result.ExitCode -ne 0) {
+      throw "dev-postgres-up.ps1 exited with code $($result.ExitCode): $($result.Output)"
+    }
+    $recoveredProbe = Get-DevPostgresProbe
+    if ($recoveredProbe.State -ne "owned") {
+      throw "dev-postgres-up.ps1 returned success but the owned cluster is not ready on 127.0.0.1:55432 (state=$($recoveredProbe.State))"
+    }
+
+    $script:PostgresConsecutiveProbeFailures = 0
+    $script:PostgresRecoveryFailureCount = 0
+    $script:PostgresRecoverySuppressionLogged = $false
+    Write-KeepaliveLog "private Postgres recovered on 127.0.0.1:55432"
+    return $true
+  } catch {
+    $script:PostgresRecoveryFailureCount += 1
+    $remaining = [Math]::Max(0, $PostgresRecoveryMaxAttempts - $script:PostgresRecoveryFailureCount)
+    Write-KeepaliveLog "private Postgres recovery attempt $attempt failed; remaining=$remaining error=$($_.Exception.Message)"
+    return $false
+  }
 }
 
 function Restart-HttpService {
@@ -367,6 +553,16 @@ function Ensure-WorkerRunning {
 }
 
 function Invoke-KeepaliveCycle {
+  $postgresReady = Ensure-DevPostgresRunning
+  if (-not $postgresReady) {
+    if ($script:LastPostgresProbeState -eq "foreign" -or $script:LastPostgresProbeState -eq "unverifiable") {
+      Write-KeepaliveLog "private Postgres ownership gate is closed; stopping API and worker until the owned cluster returns"
+      Stop-KnownServiceProcesses -ServiceName "api"
+      Stop-KnownServiceProcesses -ServiceName "worker"
+    }
+    return
+  }
+
   if (-not (Test-HttpEndpoint -Url "http://127.0.0.1:7888/health")) {
     Restart-HttpService `
       -ServiceName "api" `
@@ -393,24 +589,29 @@ function Write-HeartbeatIfDue {
   }
 
   $script:lastHeartbeatAt = $now
+  $postgresOk = Test-DevPostgresReady
   $apiOk = Test-HttpEndpoint -Url "http://127.0.0.1:7888/health"
   $frontendOk = Test-FrontendReady
-  Write-KeepaliveLog "heartbeat api=$apiOk frontend=$frontendOk processInspection=$script:ProcessInspectionAvailable"
+  Write-KeepaliveLog "heartbeat postgres=$postgresOk postgresRecoveryFailures=$script:PostgresRecoveryFailureCount api=$apiOk frontend=$frontendOk processInspection=$script:ProcessInspectionAvailable"
 }
 
-Write-KeepaliveLog "dev keepalive started (interval=${IntervalSeconds}s, once=$Once, apiScript=$apiScriptName)"
+try {
+  Write-KeepaliveLog "dev keepalive started (interval=${IntervalSeconds}s, once=$Once, apiScript=$apiScriptName, postgresProbeFailureThreshold=$PostgresProbeFailureThreshold, postgresRecoveryMaxAttempts=$PostgresRecoveryMaxAttempts)"
 
-do {
-  try {
-    Invoke-KeepaliveCycle
-    Write-HeartbeatIfDue
-  } catch {
-    Write-KeepaliveLog "keepalive cycle failed: $($_.Exception.Message)"
-  }
+  do {
+    try {
+      Invoke-KeepaliveCycle
+      Write-HeartbeatIfDue
+    } catch {
+      Write-KeepaliveLog "keepalive cycle failed: $($_.Exception.Message)"
+    }
 
-  if ($Once) {
-    break
-  }
+    if ($Once) {
+      break
+    }
 
-  Start-Sleep -Seconds $IntervalSeconds
-} while ($true)
+    Start-Sleep -Seconds $IntervalSeconds
+  } while ($true)
+} finally {
+  $script:InstanceLock.Dispose()
+}

@@ -1,8 +1,15 @@
+param(
+  [switch]$SkipStartupStorageMigrations
+)
+
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 . "$root\scripts\dev-env.ps1"
+if ($SkipStartupStorageMigrations) {
+  $env:MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS = "1"
+}
 
 function Get-DevListeningPortOwner {
   param(

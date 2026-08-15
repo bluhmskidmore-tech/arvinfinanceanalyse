@@ -469,14 +469,35 @@ function Start-DevScriptDetached {
     (Quote-CmdArgument $stderrPath)
   )
   $command = "cmd.exe /d /c " + '"' + $scriptCommand + '"'
-  $shell = New-Object -ComObject WScript.Shell
-  $shell.CurrentDirectory = $root
-  $launchResult = $shell.Run($command, 0, $false)
-  if ($launchResult -ne 0) {
-    throw "$ScriptName launcher failed with exit code $launchResult"
+  # The former COM launcher inherited Cursor's Windows Job, so its children
+  # were reaped with that Job. WMI creates the process under WmiPrvSE instead.
+  $startupInfo = New-CimInstance `
+    -ClassName Win32_ProcessStartup `
+    -ClientOnly `
+    -Property @{
+      ShowWindow = [uint16]0
+    }
+  $launchResult = Invoke-CimMethod `
+    -ClassName Win32_Process `
+    -MethodName Create `
+    -Arguments @{
+      CommandLine = $command
+      CurrentDirectory = $root
+      ProcessStartupInformation = $startupInfo
+    }
+  if ([int]$launchResult.ReturnValue -ne 0) {
+    throw "$ScriptName launcher failed with WMI return code $($launchResult.ReturnValue)"
   }
 
-  Start-Sleep -Milliseconds 250
+  $launchDeadline = (Get-Date).AddSeconds(5)
+  do {
+    Start-Sleep -Milliseconds 100
+    $process = Get-NativeScriptProcess -ScriptName $ScriptName
+  } while (
+    -not $process -and
+    $script:ProcessInspectionAvailable -and
+    (Get-Date) -lt $launchDeadline
+  )
   if (-not $script:ProcessInspectionAvailable) {
     Write-Warning "launched $ScriptName; process verification unavailable"
     return [pscustomobject]@{
@@ -487,7 +508,6 @@ function Start-DevScriptDetached {
     }
   }
 
-  $process = Get-NativeScriptProcess -ScriptName $ScriptName
   if (-not $process) {
     $stderr = Get-RecentLogLines -Path $stderrPath
     $stdout = Get-RecentLogLines -Path $stdoutPath

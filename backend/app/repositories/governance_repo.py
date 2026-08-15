@@ -117,22 +117,18 @@ class GovernanceRepository:
             normalized_payload = self._normalize_payload_for_stream(stream, payload)
             target = self.base_dir / f"{stream}.jsonl"
             original_sizes = {target: target.stat().st_size if target.exists() else 0}
-            if self._writes_sql(stream):
-                assert self._sql_engine is not None
-                with self._sql_engine.begin() as connection:
-                    self._append_sql_unlocked(connection, stream, normalized_payload)
-                    try:
-                        return self._append_unlocked(stream, normalized_payload)
-                    except Exception:
-                        # Broad catch is intentional: any write failure must trigger
-                        # JSONL rollback before re-raising to keep SQL and JSONL in sync.
-                        self._rollback_jsonl_files(original_sizes)
-                        raise
             try:
+                if self._writes_sql(stream):
+                    assert self._sql_engine is not None
+                    with self._sql_engine.begin() as connection:
+                        self._append_sql_unlocked(connection, stream, normalized_payload)
+                        return self._append_unlocked(stream, normalized_payload)
                 return self._append_unlocked(stream, normalized_payload)
             except Exception:
-                # Broad catch is intentional: any write failure must trigger
-                # JSONL rollback before re-raising to preserve atomicity.
+                # Broad catch is intentional: any write failure (SQL insert,
+                # JSONL write, or the SQL commit raised on context exit) must
+                # trigger JSONL rollback before re-raising so SQL and JSONL
+                # cannot diverge. Same structure as append_many_atomic.
                 self._rollback_jsonl_files(original_sizes)
                 raise
 
@@ -371,7 +367,10 @@ def _jsonl_file_cache_key(path: Path) -> tuple[str, int, int] | None:
 
 
 def _copy_jsonl_rows(rows: tuple[dict[str, object], ...]) -> list[dict[str, object]]:
-    return [dict(row) for row in rows]
+    # Rows are shared with the process-wide _JSONL_READ_CACHE: a shallow dict
+    # copy would let callers mutate nested objects in place and permanently
+    # poison the cache, so deep-copy like _read_latest_row does.
+    return [deepcopy(row) for row in rows]
 
 
 def _build_jsonl_cache_key_index(
@@ -388,6 +387,34 @@ def _build_jsonl_cache_key_index(
 
 def _read_jsonl_file_cached(path: Path) -> list[dict[str, object]]:
     return _copy_jsonl_rows(_read_jsonl_rows_cached(path))
+
+
+def _parse_jsonl_rows(path: Path, text: str) -> tuple[dict[str, object], ...]:
+    lines = text.splitlines()
+    has_trailing_newline = text.endswith("\n")
+    rows: list[dict[str, object]] = []
+    for line_number, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError as exc:
+            if line_number == len(lines) and not has_trailing_newline:
+                # A malformed final line without a newline terminator is the
+                # signature of an interrupted append; skip it so one torn
+                # write cannot make the whole governance stream unreadable.
+                logger.warning(
+                    "Skipping truncated trailing governance JSONL line %s:%d",
+                    path,
+                    line_number,
+                )
+                continue
+            # Mirror the SQL read path: wrap parser errors into one stable
+            # RuntimeError carrying file/line context for callers to handle.
+            raise RuntimeError(
+                f"Corrupted governance JSONL line at {path}:{line_number}"
+            ) from exc
+    return tuple(rows)
 
 
 def _store_jsonl_cache_entry(
@@ -420,11 +447,7 @@ def _read_jsonl_rows_and_index_cached(
             # instead of trusting an empty bucket.
             return cached_rows, _JSONL_CACHE_KEY_INDEX.get(cache_key)
 
-    parsed_rows = tuple(
-        json.loads(line)
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    )
+    parsed_rows = _parse_jsonl_rows(path, path.read_text(encoding="utf-8"))
 
     with _JSONL_READ_CACHE_LOCK:
         current_key = _jsonl_file_cache_key(path)
@@ -434,11 +457,7 @@ def _read_jsonl_rows_and_index_cached(
             cached_rows = _JSONL_READ_CACHE.get(current_key)
             if cached_rows is not None:
                 return cached_rows, _JSONL_CACHE_KEY_INDEX.get(current_key)
-            parsed_rows = tuple(
-                json.loads(line)
-                for line in path.read_text(encoding="utf-8").splitlines()
-                if line.strip()
-            )
+            parsed_rows = _parse_jsonl_rows(path, path.read_text(encoding="utf-8"))
             cache_key = current_key
         stored = _store_jsonl_cache_entry(cache_key, parsed_rows)
         return stored, _JSONL_CACHE_KEY_INDEX.get(cache_key)

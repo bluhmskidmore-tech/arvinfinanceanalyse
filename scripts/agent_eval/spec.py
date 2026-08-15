@@ -66,6 +66,15 @@ def validate_task_spec(task: dict[str, Any]) -> dict[str, Any]:
             "an empty scope disables out-of-scope detection in scoring"
         )
 
+    if not any(
+        task[field] for field in ("business_gates", "page_gates", "checks", "required_evidence")
+    ):
+        raise ValueError(
+            "Task must declare at least one entry across 'business_gates', 'page_gates', "
+            "'checks', or 'required_evidence': with all four empty every scoring component "
+            "is vacuously 1.0 and the task always scores 100"
+        )
+
     for field in ["page", "goal"]:
         if field in task and not isinstance(task[field], str):
             raise ValueError(f"Task field '{field}' must be a string when present")

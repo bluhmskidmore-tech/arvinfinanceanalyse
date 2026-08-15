@@ -135,9 +135,10 @@ def replace_zqtz_snapshot_rows(
           trace_id,
           value_date,
           customer_attribute,
-          sub_type
+          sub_type,
+          interest_receivable_payable
         ) values (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
         """,
         [
@@ -173,6 +174,7 @@ def replace_zqtz_snapshot_rows(
                 _sql_value(r.get("value_date")),
                 r.get("customer_attribute") or "",
                 r.get("sub_type") or "",
+                _sql_value(r.get("interest_receivable_payable")),
             )
             for r in rows
         ],
@@ -389,6 +391,9 @@ def merge_zqtz_rows_by_grain(rows_in_order: list[dict[str, Any]]) -> list[dict[s
         "amortized_cost_native",
         "accrued_interest_native",
     )
+    # Summed like the additive fields, but "unknown" must not collapse to 0:
+    # a genuine 0 receivable is an observation (coupon just paid), NULL is not.
+    nullable_additive_fields = ("interest_receivable_payable",)
     protected_fields = (
         "instrument_name",
         "portfolio_name",
@@ -434,6 +439,17 @@ def merge_zqtz_rows_by_grain(rows_in_order: list[dict[str, Any]]) -> list[dict[s
 
         for field in additive_fields:
             existing[field] = Decimal(str(existing.get(field) or 0)) + Decimal(str(row.get(field) or 0))
+
+        for field in nullable_additive_fields:
+            incoming = row.get(field)
+            if incoming is None:
+                continue
+            current = existing.get(field)
+            existing[field] = (
+                Decimal(str(incoming))
+                if current is None
+                else Decimal(str(current)) + Decimal(str(incoming))
+            )
 
         for field in weighted_fields:
             value = row.get(field)

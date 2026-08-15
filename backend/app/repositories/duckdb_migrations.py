@@ -655,6 +655,16 @@ def _v44_choice_stock_concept_membership_interval(conn: duckdb.DuckDBPyConnectio
     _run_sql_slice(conn, "44_choice_stock_concept_membership_interval.sql")
 
 
+def _v45_zqtz_interest_receivable_payable(conn: duckdb.DuckDBPyConnection) -> None:
+    """Persist the source 应收/应付利息 column; legacy rows stay NULL (no backfill)."""
+    _ensure_zqtz_patch_target_tables(conn)
+    if _main_table_exists(conn, "zqtz_bond_daily_snapshot"):
+        conn.execute(
+            "alter table zqtz_bond_daily_snapshot "
+            "add column if not exists interest_receivable_payable decimal(24, 8)"
+        )
+
+
 def _v30_fact_snapshot_indexes(conn: duckdb.DuckDBPyConnection) -> None:
     text = (REGISTRY_DIR / "32_fact_snapshot_indexes.sql").read_text(encoding="utf-8")
     for statement in parse_registry_sql_text(text):
@@ -807,6 +817,7 @@ def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(42, "Persist movement chain-continuity and position-source conclusions", _v42_accounting_movement_control_conclusion)
     registry.register(43, "Constrain core ALM fact natural-key grains", _v43_add_core_fact_natural_key_constraints)
     registry.register(44, "Point-in-time concept membership SCD intervals", _v44_choice_stock_concept_membership_interval)
+    registry.register(45, "Persist ZQTZ interest receivable/payable on the standardized snapshot", _v45_zqtz_interest_receivable_payable)
 
 
 def apply_pending_migrations_on_connection(conn: duckdb.DuckDBPyConnection) -> None:

@@ -122,7 +122,7 @@ RERUN_APPROVAL_REQUIRED_WARNING_RESOLUTION_MATRIX = [
         "owner": "risk_owner",
         "current_status": "blocked",
         "current_evidence": {
-            "parsed": ["15Y", "20Y", "2Y", "6M"],
+            "parsed": ["20Y", "2Y", "6M"],
             "recomputed": ["20Y", "2Y", "6M"],
         },
         "evidence_command": (
@@ -137,10 +137,13 @@ RERUN_APPROVAL_REQUIRED_WARNING_RESOLUTION_MATRIX = [
     },
     {
         "warning_key": "duration_no_maturity",
-        "owner": "risk_owner",
-        "current_status": "blocked",
+        "owner": "none",
+        "current_status": "informational",
         "current_evidence": {
-            "parsed": {"row_count": 0, "market_value": "0.00000000"},
+            "parsed": {
+                "row_count": 114,
+                "market_value": "37622164239.83000008",
+            },
             "recomputed": {
                 "row_count": 114,
                 "market_value": "37622164239.83000008",
@@ -161,7 +164,10 @@ RERUN_APPROVAL_REQUIRED_WARNING_RESOLUTION_MATRIX = [
         "owner": "data_owner",
         "current_status": "blocked",
         "current_evidence": {
-            "parsed": {"row_count": 0, "market_value": "0.00000000"},
+            "parsed": {
+                "row_count": 6,
+                "market_value": "1487429865.67000000",
+            },
             "recomputed": {
                 "row_count": 6,
                 "market_value": "1487429865.67000000",
@@ -239,40 +245,34 @@ RERUN_APPROVAL_REQUIRED_RISK_WARNING_STATUS = {
     "decision_status": "blocked",
     "decision_blockers": [
         "risk_tensor_quality_warning",
-        "risk_tensor_warning_mismatch",
     ],
     "evidence_scope": dict(RISK_WARNING_EVIDENCE_SCOPE),
     "warning_resolution_matrix": RERUN_APPROVAL_REQUIRED_WARNING_RESOLUTION_MATRIX,
     "duration_exclusion_delta_detail": {
-        "status": "mismatch",
+        "status": "matched",
         "delta_basis": "recomputed_minus_parsed",
         "owner_reconciliation_hint": (
-            "Recompute or rematerialize risk tensor warnings so parsed warning "
-            "numbers match fact_formal_bond_analytics_daily evidence."
+            "Parsed risk tensor warning matches recomputed duration exclusion evidence."
         ),
-        "mismatch_fields": [
-            "row_count",
-            "market_value_sum",
-            "no_maturity_rows",
-            "no_maturity_market_value",
-            "matured_or_expired_outstanding_rows",
-            "matured_or_expired_outstanding_market_value",
-        ],
+        "mismatch_fields": [],
         "delta": {
-            "row_count": 120,
-            "market_value_sum": "39109594105.50000008",
-            "no_maturity_rows": 114,
-            "no_maturity_market_value": "37622164239.83000008",
-            "matured_or_expired_outstanding_rows": 6,
-            "matured_or_expired_outstanding_market_value": "1487429865.67000000",
+            "row_count": 0,
+            "market_value_sum": "0.00000000",
+            "no_maturity_rows": 0,
+            "no_maturity_market_value": "0.00000000",
+            "matured_or_expired_outstanding_rows": 0,
+            "matured_or_expired_outstanding_market_value": "0.00000000",
             "nonpositive_duration_rows": 0,
             "nonpositive_duration_market_value": "0.00000000",
         },
         "parsed_warning_text": (
             "120 rows carry market_value=39109594105.50000008 and are excluded "
-            "from portfolio duration denominator: 114 without maturity_date; 6 "
-            "with non-positive modified_duration. DV01 totals remain sourced from "
-            "row dv01; duration metrics ignore these rows until inputs are remediated."
+            "from portfolio duration denominator: 114 without maturity_date "
+            "(market_value=37622164239.83000008); 6 matured on or before report_date "
+            "with outstanding market_value (market_value=1487429865.67000000); 0 "
+            "future-dated with non-positive modified_duration (market_value=0). "
+            "DV01 totals remain sourced from row dv01; duration metrics ignore these "
+            "rows until inputs are remediated."
         ),
         "expected_warning_text_from_recomputed": (
             "120 rows carry market_value=39109594105.50000008 and are excluded "
@@ -304,14 +304,8 @@ RERUN_APPROVAL_REQUIRED_RISK_WARNING_STATUS = {
         "writes_database": False,
         "approves_metric_or_page": False,
         "certification_effect": "none",
-        "current_consistency_blockers": [
-            "krd_bucket_warning_mismatch",
-            "duration_exclusion_warning_mismatch",
-        ],
-        "would_clear_consistency_blockers": [
-            "krd_bucket_warning_mismatch",
-            "duration_exclusion_warning_mismatch",
-        ],
+        "current_consistency_blockers": [],
+        "would_clear_consistency_blockers": [],
         "preview_consistency_status": "consistent",
         "preview_consistency_blockers": [],
         "preview_quality_flag": "warning",

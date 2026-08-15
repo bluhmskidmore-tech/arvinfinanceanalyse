@@ -11,7 +11,6 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..");
 const cliRelPath = ["node_modules", "gitnexus", "dist", "cli", "index.js"];
 const candidates = [
-  join(repoRoot, ".tmp-gitnexus-v13", ...cliRelPath),
   join(repoRoot, ...cliRelPath),
   ...(process.env.APPDATA ? [join(process.env.APPDATA, "npm", ...cliRelPath)] : []),
 ];

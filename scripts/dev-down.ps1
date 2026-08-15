@@ -104,6 +104,9 @@ function Stop-NativeProcesses {
 }
 
 $stopped = Stop-NativeProcesses
+Wait-ProcessStopped -Description "keepalive" -Predicate {
+  $_.Name -eq "powershell.exe" -and $_.CommandLine -like "*scripts\dev-keepalive.ps1*"
+}
 & (Join-Path $root "scripts\dev-postgres-down.ps1")
 
 Wait-ProcessStopped -Description "API" -Predicate {
@@ -116,9 +119,6 @@ Wait-ProcessStopped -Description "frontend" -Predicate {
   $_.Name -eq "node.exe" -and
   $_.CommandLine -like ("*" + (Join-Path $root "frontend") + "*") -and
   $_.CommandLine -like "*vite*"
-}
-Wait-ProcessStopped -Description "keepalive" -Predicate {
-  $_.Name -eq "powershell.exe" -and $_.CommandLine -like "*scripts\dev-keepalive.ps1*"
 }
 Wait-PortsClosed -Ports @(7888, 5888) -OwningProcessIds $stopped.TargetIds
 

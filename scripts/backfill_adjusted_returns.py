@@ -528,7 +528,29 @@ def main() -> int:
     parser.add_argument("--start", "--start-date", dest="start_date", required=True)
     parser.add_argument("--end", "--end-date", dest="end_date", required=True)
     parser.add_argument("--report-path", default=None)
+    parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="真实回填写库并生成报告；缺省为 dry-run（只输出计划，不连库、不写库）。",
+    )
     args = parser.parse_args()
+
+    if not args.execute:
+        plan = {
+            "status": "dry_run",
+            "duckdb_path": args.duckdb_path,
+            "start_date": args.start_date,
+            "end_date": args.end_date,
+            "would_update_tables": [
+                history_task.TABLE_HIST,
+                history_task.TABLE_STOCK_UNIVERSE,
+                history_task.TABLE_EXECUTION_HIST,
+            ],
+            "report_path": args.report_path or str(ROOT / "docs/pnl/2026-07-adjusted-vs-unadjusted-report.md"),
+            "hint": "加 --execute 才会以 read_only=False 连接 DuckDB 执行回填并写报告。",
+        }
+        print(json.dumps(plan, ensure_ascii=False, indent=2, sort_keys=True))
+        return 0
 
     try:
         result = backfill_adjusted_returns(

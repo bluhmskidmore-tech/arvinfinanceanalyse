@@ -430,6 +430,26 @@
             "title": "Weighted Avg Duration",
             "type": "string"
           },
+          "weighted_avg_duration_coverage_ratio": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Numeric"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "weighted_avg_ytm_coverage_ratio": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Numeric"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "weighted_avg_ytm_pct": {
             "title": "Weighted Avg Ytm Pct",
             "type": "string"
@@ -961,6 +981,9 @@
             "$ref": "#/components/schemas/Numeric"
           },
           "weighted_convexity": {
+            "$ref": "#/components/schemas/Numeric"
+          },
+          "weighted_convexity_coverage_ratio": {
             "$ref": "#/components/schemas/Numeric"
           },
           "weighted_duration": {
@@ -1572,6 +1595,9 @@
               },
               {
                 "type": "integer"
+              },
+              {
+                "type": "null"
               }
             ],
             "title": "Convexity Effect Pct"
@@ -1594,9 +1620,26 @@
               },
               {
                 "type": "integer"
+              },
+              {
+                "type": "null"
               }
             ],
             "title": "Cross Effect Pct"
+          },
+          "fx_translation": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fx Translation"
           },
           "income_return": {
             "anyOf": [
@@ -1616,9 +1659,26 @@
               },
               {
                 "type": "integer"
+              },
+              {
+                "type": "null"
               }
             ],
             "title": "Income Return Pct"
+          },
+          "manual_adjustment": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Adjustment"
           },
           "market_value_start": {
             "anyOf": [
@@ -1630,6 +1690,20 @@
               }
             ],
             "title": "Market Value Start"
+          },
+          "realized_trading": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realized Trading"
           },
           "reinvestment_effect": {
             "anyOf": [
@@ -1649,6 +1723,9 @@
               },
               {
                 "type": "integer"
+              },
+              {
+                "type": "null"
               }
             ],
             "title": "Reinvestment Effect Pct"
@@ -1671,6 +1748,9 @@
               },
               {
                 "type": "integer"
+              },
+              {
+                "type": "null"
               }
             ],
             "title": "Selection Effect Pct"
@@ -1693,6 +1773,9 @@
               },
               {
                 "type": "integer"
+              },
+              {
+                "type": "null"
               }
             ],
             "title": "Spread Effect Pct"
@@ -1740,6 +1823,9 @@
               },
               {
                 "type": "integer"
+              },
+              {
+                "type": "null"
               }
             ],
             "title": "Treasury Effect Pct"
@@ -1761,20 +1847,13 @@
           "market_value_start",
           "weight_pct",
           "income_return",
-          "income_return_pct",
           "treasury_effect",
-          "treasury_effect_pct",
           "spread_effect",
-          "spread_effect_pct",
           "selection_effect",
-          "selection_effect_pct",
           "total_return",
           "convexity_effect",
-          "convexity_effect_pct",
           "cross_effect",
-          "cross_effect_pct",
-          "reinvestment_effect",
-          "reinvestment_effect_pct"
+          "reinvestment_effect"
         ],
         "title": "CampisiEnhancedAssetClassRow",
         "type": "object"
@@ -1812,6 +1891,20 @@
             ],
             "title": "Cross Effect"
           },
+          "fx_translation": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fx Translation"
+          },
           "has_accrued_interest": {
             "title": "Has Accrued Interest",
             "type": "boolean"
@@ -1826,6 +1919,20 @@
               }
             ],
             "title": "Income Return"
+          },
+          "manual_adjustment": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Adjustment"
           },
           "market_value_start": {
             "anyOf": [
@@ -1852,6 +1959,20 @@
               }
             ],
             "title": "Mod Duration"
+          },
+          "realized_trading": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realized Trading"
           },
           "reinvestment_effect": {
             "anyOf": [
@@ -1958,6 +2079,17 @@
       "CampisiEnhancedPayload": {
         "additionalProperties": false,
         "properties": {
+          "basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis"
+          },
           "by_asset_class": {
             "items": {
               "$ref": "#/components/schemas/CampisiEnhancedAssetClassRow"
@@ -1971,6 +2103,17 @@
             },
             "title": "By Bond",
             "type": "array"
+          },
+          "decomposition_basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decomposition Basis"
           },
           "diagnostics": {
             "anyOf": [
@@ -2077,6 +2220,20 @@
             ],
             "title": "Cross Effect"
           },
+          "fx_translation": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fx Translation"
+          },
           "income_return": {
             "anyOf": [
               {
@@ -2088,6 +2245,20 @@
             ],
             "title": "Income Return"
           },
+          "manual_adjustment": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Adjustment"
+          },
           "market_value_start": {
             "anyOf": [
               {
@@ -2098,6 +2269,20 @@
               }
             ],
             "title": "Market Value Start"
+          },
+          "realized_trading": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realized Trading"
           },
           "reinvestment_effect": {
             "anyOf": [
@@ -2177,16 +2362,37 @@
             "type": "string"
           },
           "bridge_fallback_mode": {
-            "title": "Bridge Fallback Mode",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bridge Fallback Mode"
           },
           "bridge_quality_flag": {
-            "title": "Bridge Quality Flag",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bridge Quality Flag"
           },
           "bridge_vendor_status": {
-            "title": "Bridge Vendor Status",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bridge Vendor Status"
           },
           "campisi_total_return": {
             "anyOf": [
@@ -2206,6 +2412,9 @@
               },
               {
                 "type": "integer"
+              },
+              {
+                "type": "null"
               }
             ],
             "title": "Formal Actual Pnl"
@@ -2225,6 +2434,9 @@
               },
               {
                 "type": "integer"
+              },
+              {
+                "type": "null"
               }
             ],
             "title": "Residual Ratio"
@@ -2236,6 +2448,9 @@
               },
               {
                 "type": "integer"
+              },
+              {
+                "type": "null"
               }
             ],
             "title": "Residual To Formal Pnl"
@@ -2268,6 +2483,20 @@
             "title": "Asset Class",
             "type": "string"
           },
+          "fx_translation": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fx Translation"
+          },
           "income_return": {
             "anyOf": [
               {
@@ -2286,9 +2515,26 @@
               },
               {
                 "type": "integer"
+              },
+              {
+                "type": "null"
               }
             ],
             "title": "Income Return Pct"
+          },
+          "manual_adjustment": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Adjustment"
           },
           "market_value_start": {
             "anyOf": [
@@ -2300,6 +2546,20 @@
               }
             ],
             "title": "Market Value Start"
+          },
+          "realized_trading": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realized Trading"
           },
           "selection_effect": {
             "anyOf": [
@@ -2319,6 +2579,9 @@
               },
               {
                 "type": "integer"
+              },
+              {
+                "type": "null"
               }
             ],
             "title": "Selection Effect Pct"
@@ -2341,6 +2604,9 @@
               },
               {
                 "type": "integer"
+              },
+              {
+                "type": "null"
               }
             ],
             "title": "Spread Effect Pct"
@@ -2388,6 +2654,9 @@
               },
               {
                 "type": "integer"
+              },
+              {
+                "type": "null"
               }
             ],
             "title": "Treasury Effect Pct"
@@ -2409,13 +2678,9 @@
           "market_value_start",
           "weight_pct",
           "income_return",
-          "income_return_pct",
           "treasury_effect",
-          "treasury_effect_pct",
           "spread_effect",
-          "spread_effect_pct",
           "selection_effect",
-          "selection_effect_pct",
           "total_return"
         ],
         "title": "CampisiFourEffectsAssetClassRow",
@@ -2432,6 +2697,20 @@
             "title": "Bond Code",
             "type": "string"
           },
+          "fx_translation": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fx Translation"
+          },
           "has_accrued_interest": {
             "title": "Has Accrued Interest",
             "type": "boolean"
@@ -2446,6 +2725,20 @@
               }
             ],
             "title": "Income Return"
+          },
+          "manual_adjustment": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Adjustment"
           },
           "market_value_start": {
             "anyOf": [
@@ -2472,6 +2765,20 @@
               }
             ],
             "title": "Mod Duration"
+          },
+          "realized_trading": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realized Trading"
           },
           "selection_effect": {
             "anyOf": [
@@ -2547,6 +2854,17 @@
       "CampisiFourEffectsPayload": {
         "additionalProperties": false,
         "properties": {
+          "basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis"
+          },
           "by_asset_class": {
             "items": {
               "$ref": "#/components/schemas/CampisiFourEffectsAssetClassRow"
@@ -2560,6 +2878,17 @@
             },
             "title": "By Bond",
             "type": "array"
+          },
+          "decomposition_basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decomposition Basis"
           },
           "diagnostics": {
             "anyOf": [
@@ -2665,6 +2994,20 @@
       "CampisiFourEffectsTotals": {
         "additionalProperties": false,
         "properties": {
+          "fx_translation": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fx Translation"
+          },
           "income_return": {
             "anyOf": [
               {
@@ -2676,6 +3019,20 @@
             ],
             "title": "Income Return"
           },
+          "manual_adjustment": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Adjustment"
+          },
           "market_value_start": {
             "anyOf": [
               {
@@ -2686,6 +3043,20 @@
               }
             ],
             "title": "Market Value Start"
+          },
+          "realized_trading": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realized Trading"
           },
           "selection_effect": {
             "anyOf": [
@@ -2757,7 +3128,14 @@
             "type": "integer"
           },
           "market_curve_coverage": {
-            "$ref": "#/components/schemas/CampisiMarketCurveCoverage"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CampisiMarketCurveCoverage"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "merged_positions": {
             "title": "Merged Positions",
@@ -2793,7 +3171,6 @@
           "duplicate_instrument_codes",
           "duplicate_position_keys",
           "missing_fields",
-          "market_curve_coverage",
           "warnings"
         ],
         "title": "CampisiInputQuality",
@@ -2852,6 +3229,17 @@
       "CampisiMaturityBucketPayload": {
         "additionalProperties": false,
         "properties": {
+          "basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis"
+          },
           "buckets": {
             "additionalProperties": {
               "$ref": "#/components/schemas/CampisiMaturityBucketRow"
@@ -13218,6 +13606,93 @@
         ]
       }
     },
+    "/api/analysis/adb/insights": {
+      "get": {
+        "description": "区间深度分析：规模归因、NIM 量价分解、波动异常、结构集中度与结构化结论。",
+        "operationId": "adb_insights_api_analysis_adb_insights_get",
+        "parameters": [
+          {
+            "description": "开始日期 YYYY-MM-DD",
+            "in": "query",
+            "name": "start_date",
+            "required": true,
+            "schema": {
+              "description": "开始日期 YYYY-MM-DD",
+              "title": "Start Date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "结束日期 YYYY-MM-DD",
+            "in": "query",
+            "name": "end_date",
+            "required": true,
+            "schema": {
+              "description": "结束日期 YYYY-MM-DD",
+              "title": "End Date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-User-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-User-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Adb Insights",
+        "tags": [
+          "analysis-adb",
+          "analysis-adb"
+        ]
+      }
+    },
     "/api/analysis/adb/monthly": {
       "get": {
         "operationId": "adb_monthly_api_analysis_adb_monthly_get",
@@ -13842,13 +14317,18 @@
             }
           },
           {
-            "description": "MoM / YTD",
+            "description": "MoM / YTD / TTM",
             "in": "query",
             "name": "period_type",
             "required": false,
             "schema": {
               "default": "MoM",
-              "description": "MoM / YTD",
+              "description": "MoM / YTD / TTM",
+              "enum": [
+                "MoM",
+                "YTD",
+                "TTM"
+              ],
               "title": "Period Type",
               "type": "string"
             }
@@ -13937,6 +14417,11 @@
             "schema": {
               "default": "MoM",
               "description": "MoM / YTD / TTM",
+              "enum": [
+                "MoM",
+                "YTD",
+                "TTM"
+              ],
               "title": "Period Type",
               "type": "string"
             }
@@ -15159,6 +15644,11 @@
             "schema": {
               "default": "MoM",
               "description": "MoM / YTD / TTM",
+              "enum": [
+                "MoM",
+                "YTD",
+                "TTM"
+              ],
               "title": "Period Type",
               "type": "string"
             }
@@ -21710,6 +22200,8 @@
             "schema": {
               "default": 30,
               "description": "已废弃：无 start_date 时期初固定对齐 PnL 报告月上月末（月度期间口径），该参数不再参与推导",
+              "maximum": 365,
+              "minimum": 1,
               "title": "Lookback Days",
               "type": "integer"
             }
@@ -21825,6 +22317,8 @@
             "schema": {
               "default": 30,
               "description": "无 start_date 时的回溯天数",
+              "maximum": 365,
+              "minimum": 1,
               "title": "Lookback Days",
               "type": "integer"
             }
@@ -21938,6 +22432,8 @@
             "schema": {
               "default": 30,
               "description": "无 start_date 时的回溯天数",
+              "maximum": 365,
+              "minimum": 1,
               "title": "Lookback Days",
               "type": "integer"
             }
@@ -22067,6 +22563,8 @@
             "schema": {
               "default": 30,
               "description": "无 start_date 时的回溯天数",
+              "maximum": 365,
+              "minimum": 1,
               "title": "Lookback Days",
               "type": "integer"
             }
@@ -25830,6 +26328,74 @@
         "tags": [
           "strategy-reports",
           "strategy-reports"
+        ]
+      }
+    },
+    "/api/team-performance/assessment-workbook": {
+      "get": {
+        "operationId": "assessment_workbook_api_team_performance_assessment_workbook_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-User-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-User-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Assessment Workbook Api Team Performance Assessment Workbook Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Assessment Workbook",
+        "tags": [
+          "team-performance",
+          "team-performance"
         ]
       }
     },

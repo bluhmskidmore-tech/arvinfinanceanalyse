@@ -9,5 +9,391 @@
     "5. After the pull request merges the change becomes part of the base-branch baseline, so delete the entry again; baseline-check reports leftover entries as unused."
   ],
   "id_format": "<surface>|<kind>|<METHOD /path>|<target>. Replace <surface> with '*' to cover the same change on both the default and full surfaces with one entry.",
-  "acknowledgements": []
+  "acknowledgements": [
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].convexity_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].cross_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].income_return_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].reinvestment_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].selection_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].spread_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].treasury_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].convexity_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].cross_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].income_return_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].reinvestment_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].selection_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].spread_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].treasury_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].end_available",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].field",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].market_value_start",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].positions",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].rating",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].start_available",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].end_available",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].field",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].market_value_start",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].positions",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].rating",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].start_available",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.treasury_effect.reason",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.treasury_tenors.end_missing[]",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.treasury_tenors.required_keys[]",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.treasury_tenors.start_missing[]",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/four-effects|response 200:result.by_asset_class[].income_return_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/four-effects|response 200:result.by_asset_class[].selection_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/four-effects|response 200:result.by_asset_class[].spread_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/four-effects|response 200:result.by_asset_class[].treasury_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.by_asset_class[].income_return_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.by_asset_class[].selection_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.by_asset_class[].spread_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.by_asset_class[].treasury_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].end_available",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].field",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].market_value_start",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].positions",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].rating",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].start_available",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].end_available",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].field",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].market_value_start",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].positions",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].rating",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].start_available",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.treasury_effect.reason",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.treasury_tenors.end_missing[]",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.treasury_tenors.required_keys[]",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.treasury_tenors.start_missing[]",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].end_available",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].field",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].market_value_start",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].positions",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].rating",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].start_available",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].end_available",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].field",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].market_value_start",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].positions",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].rating",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].start_available",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.treasury_effect.reason",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.treasury_tenors.end_missing[]",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.treasury_tenors.required_keys[]",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.treasury_tenors.start_missing[]",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.formal_closure.formal_actual_pnl",
+      "reason": "Campisi formal-closure review 2026-08-15: an unavailable formal bridge leaves formal_actual_pnl unknown, so the API must preserve null instead of fabricating zero. The real route/response-model regression is locked by tests/test_campisi_four_effects_detail_summary.py.",
+      "approved_by": "system-audit-loop-2026-08-15"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.formal_closure.residual_ratio",
+      "reason": "Campisi formal-closure review 2026-08-15: an unavailable formal bridge leaves residual_ratio unknown, and the ratio is mathematically undefined when formal actual PnL is zero with a non-zero residual. The real route/response-model regression is locked by tests/test_campisi_four_effects_detail_summary.py.",
+      "approved_by": "system-audit-loop-2026-08-15"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.formal_closure.residual_to_formal_pnl",
+      "reason": "Campisi formal-closure review 2026-08-15: an unavailable formal bridge leaves residual_to_formal_pnl unknown, so the API must preserve null instead of fabricating zero. The real route/response-model regression is locked by tests/test_campisi_four_effects_detail_summary.py.",
+      "approved_by": "system-audit-loop-2026-08-15"
+    },
+    {
+      "id": "full|response_field_type_changed|POST /api/agent/runs|response 200:.",
+      "reason": "审计循环 2026-08-14 B2 批次：POST /api/agent/runs 异步创建从不返回 AgentEnvelope，response_model 收窄为可达联合 AgentRunCreateResponse | AgentDisabledResponse，移除不可达分支的契约噪音；同步问答仍走 POST /api/agent/query。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    }
+  ]
 }

@@ -40,6 +40,21 @@ _PROBE_COMMAND_PATH_PATTERN = re.compile(
     r"(?:(?:backend/)?tests/[A-Za-z0-9_/]+\.py|frontend/src/test/[A-Za-z0-9_./-]+)"
 )
 
+# A green exit that executed nothing must not buy a green gate or check:
+# Playwright `test.skip(...)` (e.g. a probe spec outside mock mode), vitest /
+# pytest all-skip runs, and "no tests found" runs all exit 0 while measuring
+# nothing. Detection is conservative: only a runner summary showing an explicit
+# skip / no-test signal with zero executed (passed/failed/flaky) tests flags the
+# outcome; commands without a recognizable test summary keep exit-code
+# semantics untouched.
+_EXECUTED_COUNT_PATTERN = re.compile(r"\b(\d+)\s+(?:passed|failed|flaky)\b", re.IGNORECASE)
+_SKIPPED_COUNT_PATTERN = re.compile(r"\b(\d+)\s+skipped\b", re.IGNORECASE)
+_NO_TESTS_SIGNALS = (
+    "no tests ran",
+    "no tests found",
+    "no test files found",
+)
+
 
 @dataclass(frozen=True)
 class CommandOutcome:
@@ -201,7 +216,7 @@ def _measure_checks(task: dict[str, Any], collector: _Collector) -> dict[str, st
     checks: dict[str, str] = {}
     for command in task.get("checks", []):
         outcome = collector.run("check", command)
-        checks[command] = "passed" if outcome.exit_code == 0 else "failed"
+        checks[command] = _measured_status(outcome)
     return checks
 
 
@@ -221,9 +236,27 @@ def _measure_gates(
             unprobed.append(gate)
             continue
         outcome = collector.run(f"{label}:{gate}", command)
-        measured[gate] = "passed" if outcome.exit_code == 0 else "failed"
+        measured[gate] = _measured_status(outcome)
 
     return measured, unprobed
+
+
+def _measured_status(outcome: CommandOutcome) -> str:
+    """Exit-code semantics, hardened: a green exit that executed zero tests
+    (all skipped / none found) fails closed instead of counting as passed."""
+
+    if outcome.exit_code != 0:
+        return "failed"
+    return "failed" if _zero_tests_executed(outcome) else "passed"
+
+
+def _zero_tests_executed(outcome: CommandOutcome) -> bool:
+    output = f"{outcome.stdout_tail}\n{outcome.stderr_tail}".lower()
+    if any(signal in output for signal in _NO_TESTS_SIGNALS):
+        return True
+    if any(int(match.group(1)) > 0 for match in _EXECUTED_COUNT_PATTERN.finditer(output)):
+        return False
+    return any(int(match.group(1)) > 0 for match in _SKIPPED_COUNT_PATTERN.finditer(output))
 
 
 def _measure_evidence(task: dict[str, Any], repo_root: Path) -> tuple[list[str], list[dict[str, Any]]]:
@@ -516,7 +549,9 @@ def _log_entry(label: str, command: str, outcome: CommandOutcome, *, reused: boo
         entry["reused_cached_run"] = True
     if outcome.timed_out:
         entry["timed_out"] = True
-    if outcome.exit_code != 0:
+    if outcome.exit_code == 0 and _zero_tests_executed(outcome):
+        entry["zero_tests_executed"] = True
+    if outcome.exit_code != 0 or entry.get("zero_tests_executed"):
         entry["stdout_tail"] = outcome.stdout_tail
         entry["stderr_tail"] = outcome.stderr_tail
     return entry

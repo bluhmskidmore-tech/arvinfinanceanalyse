@@ -23,9 +23,25 @@ MOSS V3 是一个以固定收益分析、经营分析和治理追踪为核心的
 关键约束：
 
 - `backend/app/core_finance/` 是正式金融计算唯一入口。
-- `backend/app/api/` 负责参数校验、鉴权、编排和响应映射。
+- `backend/app/api/` 负责参数校验、**授权**、编排和响应映射。
 - `backend/app/tasks/` 是 DuckDB / 物化写入入口。
 - `frontend/` 负责消费结果和展示，不应补算正式金融指标。
+
+关于「授权」的准确边界（**当前仓库有授权，没有认证**）：
+
+- 授权（authorization）确实存在：`backend/app/security/auth_context.py::ensure_user_allowed` 做基于
+  `resource`/`action`/`scope` 的 RBAC 判定，`backend/app/api/deps.py` 把它接进路由依赖。
+- 认证（authentication）**不存在**：仓库里没有 API Key、Bearer/JWT、会话或网关令牌校验。身份取自
+  `X-User-Id` / `X-User-Role` 请求头（且只有显式打开 `MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST` 才被信任）
+  → `MOSS_USER_ID` / `MOSS_USER_ROLE` 环境变量 → 兜底常量 `anonymous` / `viewer`。
+- `validate_auth_startup_guardrails()` 只在 `environment != "development"` 时生效；`environment` 默认值
+  就是 `development`（`backend/app/governance/settings.py`），所以默认本地运行时全部守卫被跳过。
+- 两种运行姿态，都不构成认证：
+  - 信任开关关闭（默认）——请求头被忽略，所有请求共用同一个进程级身份（环境变量或
+    `anonymous`/`viewer`），RBAC 实际上是在对一个固定身份判权，不区分调用方。
+  - 信任开关打开（开发/测试常态，`scripts/backend_release_suite.py` 就会设 `=1`）——任何调用方
+    都能用请求头自称任意 `user_id` 和 `role`，服务端不做任何校验。
+- 不要把现有 RBAC 当成「已鉴权」，也不要在它之上做安全性判断或对外暴露。
 
 ## 仓库地图
 
@@ -96,12 +112,20 @@ npm run build
 
 ### 后端
 
-```bash
-python -m pytest -q
-python scripts/backend_release_suite.py
+**先看解释器**：不要用裸 `python`。很多机器上 `python` 会被无关 venv 遮蔽（本机就解析到一个没装
+pytest 的 agent venv）。最坏情况不是报错退出，而是解析到另一个装了 pytest 但依赖版本不同的环境，
+给出一个与本仓库无关的绿灯。统一用仓库自己的 `.venv`：
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe scripts\backend_release_suite.py
 ```
 
-`python scripts/backend_release_suite.py` 是当前 repo-wide Phase 2 formal-compute mainline 的 canonical backend gate。
+POSIX 下对应 `.venv/bin/python`；CI 里 `uv sync --frozen` 已把 venv 前置进 `PATH`，那里的裸 `python`
+才是安全的。同一纪律见 `scripts/README.md` 与 `docs/GLOBAL_DATA_REFRESH_RUNBOOK.md`。
+
+`python scripts/backend_release_suite.py` 是当前 repo-wide Phase 2 formal-compute mainline 的
+canonical backend gate（这是门禁的**名字**，本机执行时按上面的形式加解释器前缀）。
 
 ## 文档索引
 

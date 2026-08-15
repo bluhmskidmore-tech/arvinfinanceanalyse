@@ -931,7 +931,6 @@ def _verify_calculation_p1_first_priority_readiness_packet(
         "Owner Decision Gate",
         "backend DTO / frontend removal tests",
         "API contract plus frontend test",
-        "yieldAnalysisAggregates.ts",
         "zqtzAdbAvgRollup.ts",
         "CreditSpreadView.tsx",
         "rating/tenor bucket-boundary regression remains pending",

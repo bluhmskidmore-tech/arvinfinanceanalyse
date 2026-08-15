@@ -11,8 +11,11 @@ failure), which is the only state a CI job should go red on.
 Reading the report:
 
 - ``pass`` / ``fail``: the scorecard verdict from ``reward.py``.
-- hard failures are split into *real failures* (a probe ran and went red) and
-  *probe gaps* (the gate has no probe yet and fails closed by design).
+- hard failures are split into *real failures* (a probe ran and went red),
+  *probe gaps* (the gate has no probe yet and fails closed by design), and
+  *missing evidence artifacts* (``required_evidence`` artifacts are runtime
+  products — typically under the gitignored ``.codex-tmp/`` — that never exist
+  in a fresh CI checkout; they fail closed but are not a probe going red).
 - ``void``: the measurement rejected itself — typically because the PR
   modifies the scoring harness or a protected probe file, which by design
   cannot be scored by the thing it modifies. Void is a statement about the
@@ -31,6 +34,7 @@ from typing import Any
 if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from scripts.agent_eval.reward import EVIDENCE_FAILURE_PREFIX as _EVIDENCE_FAILURE_PREFIX
 from scripts.agent_eval.reward import _path_matches
 from scripts.agent_eval.spec import validate_task_spec
 
@@ -207,7 +211,9 @@ def _render_report(
     lines.extend(sections)
     lines.append(
         "> 说明：本评测为信息性参考，不阻塞合并。`探针缺口` 是 fail-closed 语义下尚无自动化探针的 gate，"
-        "不代表本次变更引入问题；`void` 表示评测按防篡改设计作废（本次变更触及评分基础设施或受保护探针）。"
+        "不代表本次变更引入问题；`证据工件缺失` 是 required_evidence 声明的运行期工件（如 `.codex-tmp/` 下产物）"
+        "未随本次检出存在，按 fail-closed 计失败，同样不是探针变红；"
+        "`void` 表示评测按防篡改设计作废（本次变更触及评分基础设施或受保护探针）。"
     )
     lines.append("")
     return "\n".join(lines)
@@ -220,6 +226,11 @@ def _render_task_section(task: dict[str, Any], outcome: dict[str, Any]) -> str:
     measurement = result.get("measurement") or {}
     unprobed = set(measurement.get("unprobed_gates") or [])
     reasons = measurement.get("unprobed_gate_reasons") or {}
+    artifact_statuses = {
+        str(entry.get("evidence")): str(entry.get("status"))
+        for entry in measurement.get("evidence_artifacts") or []
+        if isinstance(entry, dict)
+    }
 
     lines: list[str] = []
     if outcome["exit_code"] == 2 or scorecard is None:
@@ -245,7 +256,9 @@ def _render_task_section(task: dict[str, Any], outcome: dict[str, Any]) -> str:
     )
     lines.append("")
 
-    real_failures, gap_failures = _split_hard_failures(scorecard.get("hard_failures") or [], unprobed)
+    real_failures, gap_failures, evidence_failures = _split_hard_failures(
+        scorecard.get("hard_failures") or [], unprobed
+    )
     if real_failures:
         lines.append(f"**真实失败（{len(real_failures)}）** — 探针实际运行并变红：")
         lines.extend(f"- {item}" for item in real_failures)
@@ -254,6 +267,16 @@ def _render_task_section(task: dict[str, Any], outcome: dict[str, Any]) -> str:
         lines.append(f"**探针缺口（{len(gap_failures)}）** — gate 尚无探针，按 fail-closed 计失败：")
         lines.extend(
             f"- {item}（{reasons.get(_gate_name(item), '缺口原因未登记')}）" for item in gap_failures
+        )
+        lines.append("")
+    if evidence_failures:
+        lines.append(
+            f"**证据工件缺失（{len(evidence_failures)}）** — required_evidence 声明的运行期工件"
+            "未随本次检出存在（如 `.codex-tmp/` 下产物不入库），按 fail-closed 计失败，非探针失败："
+        )
+        lines.extend(
+            f"- {item}（工件状态：{artifact_statuses.get(_evidence_name(item), '未记录')}）"
+            for item in evidence_failures
         )
         lines.append("")
 
@@ -275,16 +298,35 @@ def _extract_rejection(outcome: dict[str, Any], measurement: dict[str, Any]) -> 
     return stderr_tail.splitlines()[-1] if stderr_tail else "未知（见归档 summary.txt）"
 
 
-def _split_hard_failures(hard_failures: list[str], unprobed: set[str]) -> tuple[list[str], list[str]]:
+def _split_hard_failures(
+    hard_failures: list[str], unprobed: set[str]
+) -> tuple[list[str], list[str], list[str]]:
+    """Split hard failures into (real probe reds, probe gaps, missing evidence artifacts).
+
+    Evidence artifacts live under runtime output directories that a fresh CI
+    checkout never contains, so lumping them into "real failures" would make
+    every PR replay look like probes went red.
+    """
+
     real: list[str] = []
     gaps: list[str] = []
+    missing_evidence: list[str] = []
     for item in hard_failures:
-        (gaps if _gate_name(item) in unprobed else real).append(item)
-    return real, gaps
+        if item.startswith(_EVIDENCE_FAILURE_PREFIX):
+            missing_evidence.append(item)
+        elif _gate_name(item) in unprobed:
+            gaps.append(item)
+        else:
+            real.append(item)
+    return real, gaps, missing_evidence
 
 
 def _gate_name(hard_failure: str) -> str:
     return hard_failure.rsplit(": ", 1)[-1].strip()
+
+
+def _evidence_name(hard_failure: str) -> str:
+    return hard_failure[len(_EVIDENCE_FAILURE_PREFIX):].strip()
 
 
 if __name__ == "__main__":

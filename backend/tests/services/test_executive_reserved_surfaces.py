@@ -11,19 +11,31 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-# Windows / Py3.14: SQLAlchemy import paths can call platform.machine() during
-# backend imports. Keep this aligned with the existing executive service tests.
-_platform.machine = lambda: "AMD64"  # type: ignore[method-assign, assignment]
-
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from backend.app.api.routes import executive as executive_routes
-from backend.app.governance.settings import get_settings
-from backend.app.repositories.user_scope_repo import UserScopeRepository
-from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
-from backend.app.services import executive_service
+# Windows / Py3.14: SQLAlchemy import paths can call platform.machine() during
+# backend imports, which may block on WMI. Stub only for this module's import
+# window and restore afterwards so the stub does not leak into other test
+# modules collected in the same process.
+_platform_machine_original = _platform.machine
+_platform.machine = lambda: "AMD64"  # type: ignore[method-assign, assignment]
+try:
+    from backend.app.api.routes import executive as executive_routes
+    from backend.app.governance.settings import get_settings
+    from backend.app.repositories.user_scope_repo import UserScopeRepository
+    from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
+    from backend.app.services import executive_service
+finally:
+    _platform.machine = _platform_machine_original
+
+# Reserved executive routes must stay 503 fail-closed, and the reserved services'
+# already-landed read paths must not silently regress (tests/AGENTS.md tier 2).
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_executive,
+]
 
 EXECUTIVE_READ_HEADERS = {"X-User-Id": "executive-reserved-user", "X-User-Role": "viewer"}
 REPORT_DATE = "2026-06-30"

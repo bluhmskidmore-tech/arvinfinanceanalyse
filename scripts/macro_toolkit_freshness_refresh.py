@@ -129,6 +129,31 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.choice_source_ip and not args.run_once:
         parser.error("--choice-source-ip requires --run-once")
     include_cffex = not args.skip_cffex
+    if args.run_once and args.run_kind == "scheduled" and args.receipt_path is not None:
+        running_result: dict[str, object] = {
+            "status": "running",
+            "source_version": SOURCE_VERSION,
+            "steps": [],
+            "latest_observation_dates": {},
+        }
+        running_receipt: dict[str, object] = {
+            "schema_version": RECEIPT_SCHEMA_VERSION,
+            "generated_at": datetime.now(UTC).isoformat(),
+            "run_kind": "scheduled",
+            "invocation_mode": "run_once",
+            "task_name": str(refresh_macro_toolkit_freshness_actor.actor_name),
+            "commit_sha": None,
+            "source_version": SOURCE_VERSION,
+            "status": "running",
+            "exit_code": None,
+            "result": running_result,
+            "warnings": [],
+        }
+        try:
+            _write_receipt_atomic(args.receipt_path, running_receipt)
+        except Exception as exc:  # noqa: BLE001 - no writes may start without the guard
+            print(f"running receipt write failed: {_safe_error(exc)}", file=sys.stderr)
+            return 1
     if args.dry_run:
         invocation_mode = "dry_run"
         result = refresh_macro_toolkit_freshness(dry_run=True, include_cffex=include_cffex)

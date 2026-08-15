@@ -112,6 +112,11 @@ class DuckDBRepository:
 
     path: str
     guard_path_exists: bool = field(default=False, repr=False)
+    # Backward-compat constructor flag only: every connection opened by this
+    # class (see ``_connect_read_only``) is always ``read_only=True``,
+    # regardless of the value passed here. Kept (rather than removed) because
+    # existing callers/tests construct instances with ``read_only=False`` and
+    # rely on connections still being forced read-only.
     read_only: bool = field(default=True, repr=False)
     transient_open_retries: int = field(default=3, repr=False)
     transient_open_retry_delay_seconds: float = field(default=0.05, repr=False)

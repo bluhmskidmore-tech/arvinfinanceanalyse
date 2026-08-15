@@ -68,12 +68,13 @@ Explicitly surface material no-data, stale-data, fallback-date, loading-failure,
 - Do not add repeated `style={{ ... }}` layout blocks. A truly local, non-repeated dynamic inline style is acceptable.
 - Do not add visual complexity unless it improves a decision.
 - Do not raise frontend debt baselines without explicit justification.
+- 深色路由的盈亏着色使用主题感知入口（`src/utils/tone.ts` 的 `TONE_CSS_VAR` 或页面主题 token），禁止浅色 `semantic.profit/loss` 直灌深色页。
 
 ### Page view-model primitives
 
 - New page view models must build on `src/pageModel` primitives (`LabeledValue`, `StateSurfaceItem`, `buildStateSurfaces`, `MetricTone`, …) plus the shared helpers in `src/utils/format.ts` and `src/utils/tone.ts`.
 - Do not add page-private formatter or tone implementations that duplicate those shared helpers; extend `src/pageModel` only when a shape repeats across several page models.
-- New pages must render missing values as `EM_DASH` (`—`) from `src/utils/format.ts`; do not introduce `"-"` or `"--"` placeholders.
+- New pages must render missing values as `EM_DASH` (`—`); import from `src/pageModel` or `src/utils/format` (either is fine). Do not introduce string literals `"—"`, `"-"`, or `"--"`.
 
 ## Evidence and validation
 
