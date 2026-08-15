@@ -24,12 +24,13 @@ The client-only, no-RSC boundary above remains defense in depth. The
 `frontend/src/test/routerSecurityBoundary.test.ts` guard fails CI if those APIs
 are introduced without review.
 
-The raw OSV finding is not deleted or hidden. CI stores it with a separate
-machine-readable completion/coverage receipt and adjudication output from
-`scripts/osv_reconciliation_gate.py`. The corresponding exact-tuple record
-lives in `docs/audits/osv-reconciliation-records.json` and is currently
-`pending_owner_approval`; its owner, approver, and approval timestamp are null.
-This note is technical evidence only and does not approve the release gate.
+CI stores each raw scan with a separate machine-readable completion/coverage
+receipt and adjudication output from `scripts/osv_reconciliation_gate.py`. On
+2026-08-15, the pinned OSV-Scanner v2.3.0 returned no findings for the resolved
+lockfiles. In accordance with the repository policy for corrected advisory
+metadata, the obsolete pending exact-tuple record was removed rather than
+activated or renewed. The client-only boundary test remains defense in depth;
+any reintroduced finding will fail closed without a new active record.
 
 Primary sources:
 

@@ -578,33 +578,13 @@ def test_raw_scan_runner_refuses_to_overwrite_records_ledger(tmp_path):
     assert ledger.read_bytes() == before
 
 
-def test_repository_record_is_exact_pending_and_uses_trusted_sources():
+def test_repository_ledger_contains_no_stale_reconciliation_records():
     payload = json.loads(RECORDS_PATH.read_text(encoding="utf-8"))
 
-    assert payload["schema_version"] == 1
-    assert len(payload["records"]) == 1
-    record = payload["records"][0]
-    assert record["status"] == "pending_owner_approval"
-    assert record["advisory_id"] == "GHSA-qwww-vcr4-c8h2"
-    assert record["ecosystem"] == "npm"
-    assert record["package"] == "react-router"
-    assert record["version"] == "7.18.2"
-    assert record["lockfile"] == "frontend/package-lock.json"
-    assert record["lockfile_sha256"] == _sha256(ROOT / record["lockfile"])
-    assert record["boundary_test"]["sha256"] == _sha256(
-        ROOT / record["boundary_test"]["path"]
-    )
-    assert record["owner"] is None
-    assert record["approver"] is None
-    assert record["approved_at"] is None
-    assert record["responsible_owner_type"] == "security_owner"
-    assert record["expires_at"] == "2026-08-21T23:59:59+08:00"
-    assert all(
-        source["url"].startswith("https://github.com/") for source in record["sources"]
-    )
+    assert payload == {"schema_version": 1, "records": []}
 
 
-def test_repository_record_keeps_real_finding_blocked_until_owner_approval():
+def test_repository_ledger_blocks_a_reintroduced_finding_without_an_exact_record():
     module = load_module(
         "scripts.osv_reconciliation_gate", GATE_PATH.relative_to(ROOT).as_posix()
     )
@@ -626,14 +606,7 @@ def test_repository_record_keeps_real_finding_blocked_until_owner_approval():
         scan_receipt_errors=[],
     )
 
-    record_errors = result["record_errors"]["react-router-7.18.2-GHSA-qwww-vcr4-c8h2"]
     assert result["status"] == "fail"
     assert result["counts"] == {"raw": 1, "reconciled": 0, "unresolved": 1}
-    assert "status must be active" in record_errors
-    assert any(
-        error.startswith("owner identity is required") for error in record_errors
-    )
-    assert any(
-        error.startswith("approver identity is required") for error in record_errors
-    )
-    assert "approved_at is required" in record_errors
+    assert result["record_errors"] == {}
+    assert result["unresolved"][0]["reason"] == "no exact reconciliation record"

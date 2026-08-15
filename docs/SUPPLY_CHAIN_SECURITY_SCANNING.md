@@ -117,16 +117,11 @@ OSV's native `IgnoredVulns` mechanism is intentionally not used because it is
 ID-wide and would suppress the finding from the configured scan rather than
 preserve the raw evidence.
 
-## Current React Router record
+## Current React Router status
 
-The single React Router record is deliberately
-`status=pending_owner_approval`. No repository `CODEOWNERS` file or existing
-governance artifact identifies a concrete person authorized to own and approve
-this dependency reconciliation. Existing governance evidence names only the
-`security_owner` role. Therefore `owner`, `approver`, and `approved_at` remain
-null and the release gate remains closed until an authorized security owner
-supplies those identities and changes the status to `active`.
-
-The record expires on `2026-08-21T23:59:59+08:00`. Remove it when the global
-GitHub Advisory Database/OSV range is corrected; do not renew it merely to make
-the scan green.
+As of 2026-08-15, the pinned OSV-Scanner v2.3.0 reports no finding for
+`react-router@7.18.2` in `frontend/package-lock.json`. The obsolete pending
+record was therefore removed from `docs/audits/osv-reconciliation-records.json`
+instead of being activated or renewed. The ledger currently contains no
+reconciliation records. If the advisory is reported again, the exact-tuple gate
+will fail closed because no active record exists.
