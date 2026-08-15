@@ -88,5 +88,8 @@ describe("PortfolioHeadlinesView", () => {
     );
     expect(await screen.findByText("100.00 亿")).toBeInTheDocument();
     expect(screen.getByText("25.00 亿")).toBeInTheDocument();
+    const portfolioDv01 = screen.getByText("组合 DV01（万元/bp）").closest(".ant-statistic");
+    expect(portfolioDv01).toHaveTextContent("8.00");
+    expect(screen.getByText("DV01（万元/bp）")).toBeInTheDocument();
   });
 });

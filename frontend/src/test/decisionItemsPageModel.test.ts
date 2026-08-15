@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { BalanceAnalysisDecisionItemStatusRow, ResultMeta } from "../api/contracts";
-import { buildDecisionItemsPageViewModel } from "../features/decision-items/lib/decisionItemsPageModel";
+import {
+  buildDecisionItemsPageViewModel,
+  decisionSeverityLabel,
+  decisionSourceSectionLabel,
+  formatDecisionReasonText,
+} from "../features/decision-items/lib/decisionItemsPageModel";
 
 function makeResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
@@ -154,5 +159,49 @@ describe("buildDecisionItemsPageViewModel", () => {
     });
     expect(vm.contractWarnings.some((w) => w.includes("正式使用未放行"))).toBe(true);
     expect(vm.contractWarnings.some((w) => w.includes("降级模式"))).toBe(true);
+  });
+});
+
+describe("formatDecisionReasonText", () => {
+  it("collapses full-precision wan amounts >= 1 yi into yi abbreviation", () => {
+    expect(formatDecisionReasonText("全口径期限桶缺口为 6137559.46000000 万元。")).toBe(
+      "全口径期限桶缺口为 613.76 亿元。",
+    );
+  });
+
+  it("keeps sub-yi amounts in wan with thousand separators and 2 decimals", () => {
+    expect(formatDecisionReasonText("发行类桶余额为 6137.46000000 万元。")).toBe(
+      "发行类桶余额为 6,137.46 万元。",
+    );
+  });
+
+  it("handles negative gap amounts and leaves non-amount text untouched", () => {
+    expect(formatDecisionReasonText("全口径期限桶缺口为 -20000.00000000 万元。")).toBe(
+      "全口径期限桶缺口为 -2.00 亿元。",
+    );
+    expect(formatDecisionReasonText("最高评级桶占比已达 63.35%。")).toBe(
+      "最高评级桶占比已达 63.35%。",
+    );
+  });
+});
+
+describe("decisionSourceSectionLabel", () => {
+  it("maps registered source sections to Chinese labels", () => {
+    expect(decisionSourceSectionLabel("maturity_gap")).toBe("期限缺口");
+    expect(decisionSourceSectionLabel("rating_analysis")).toBe("评级分析");
+    expect(decisionSourceSectionLabel("issuance_business_types")).toBe("发行类业务");
+  });
+
+  it("passes unregistered enums through untouched", () => {
+    expect(decisionSourceSectionLabel("some_new_section")).toBe("some_new_section");
+  });
+});
+
+describe("decisionSeverityLabel", () => {
+  it("maps registered severities and passes unregistered enums through", () => {
+    expect(decisionSeverityLabel("high")).toBe("高");
+    expect(decisionSeverityLabel("medium")).toBe("中");
+    expect(decisionSeverityLabel("low")).toBe("低");
+    expect(decisionSeverityLabel("critical")).toBe("critical");
   });
 });

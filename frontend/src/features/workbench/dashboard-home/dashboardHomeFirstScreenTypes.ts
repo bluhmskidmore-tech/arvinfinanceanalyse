@@ -166,16 +166,3 @@ export type HomeSupplementalApiState = {
   kind: HomeDataStateKind;
   label: string;
 };
-
-export function resolveDeltaClass(
-  tone: HomeDeltaTone,
-  styles: Record<string, string>,
-): string {
-  if (tone === "up" || tone === "warn") {
-    return styles.dhUpRed ?? "";
-  }
-  if (tone === "down") {
-    return styles.dhDownGreen ?? "";
-  }
-  return styles.dhMuted ?? "";
-}

@@ -108,6 +108,17 @@
   text-transform: uppercase;
 }
 
+/* 行情兜底「演示」徽标：与终端条同排、不改变行高，警示色与 up-delta 同域。 */
+.workbench-market-ticker-fallback-flag {
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--moss-color-warning-600) 45%, transparent);
+  border-radius: 999px;
+  color: var(--moss-color-warning-600);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
 .workbench-market-ticker-item {
   display: inline-flex;
   align-items: baseline;
@@ -117,7 +128,7 @@
 
 .workbench-market-ticker-meta {
   color: var(--moss-color-text-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.02em;
 }
@@ -131,7 +142,7 @@
 }
 
 .workbench-market-ticker-delta {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -141,6 +152,10 @@
 
 .workbench-market-ticker-delta[data-tone="up"] {
   color: var(--moss-color-warning-500);
+}
+
+.workbench-market-ticker-delta[data-tone="neutral"] {
+  color: var(--moss-color-text-muted);
 }
 
 .workbench-market-ticker-rule {
@@ -210,7 +225,7 @@
 }
 
 .workbench-shell-grid--desktop-aligned [data-testid="workbench-section-subnav"] > div:first-child span {
-  font-size: 10px !important;
+  font-size: 11px !important;
   letter-spacing: 0 !important;
 }
 
@@ -1175,7 +1190,7 @@
   }
 
   .workbench-main-column [data-testid="workbench-section-subnav"] > div:first-child span {
-    font-size: 10px !important;
+    font-size: 11px !important;
     letter-spacing: 0.04em !important;
   }
 

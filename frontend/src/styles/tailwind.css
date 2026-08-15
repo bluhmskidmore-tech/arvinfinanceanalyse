@@ -74,3 +74,62 @@
   --radius-lg: var(--moss-radius-lg);
   --radius-xl: var(--moss-radius-xl);
 }
+
+/*
+ * HeroUI semantic-variable remap (DESIGN.md §4 single color authority).
+ *
+ * @heroui/styles compiles `text-success` / `text-danger` / `text-warning` /
+ * `text-foreground` / `border-default` / `bg-background` (and their opacity
+ * variants) via `@theme inline` straight to `var(--success)` etc., whose values
+ * come from HeroUI's own oklch palette in themes/default/variables.css — a
+ * high-saturation palette MOSS never sanctioned (dark `.dark` never redefines
+ * `--success`, so dark pages inherit the light bright green).
+ *
+ * These unlayered blocks win over HeroUI's `@layer theme.base` declarations on
+ * the same selectors and re-point the base variables at the MOSS token chain.
+ * HeroUI's derived colors (`--success-soft`, `--danger-hover`, ...) are
+ * color-mix() recipes over the base variables declared on the same elements,
+ * so they follow automatically — this is the single choke point.
+ *
+ * Dark side resolves against the `--dh-api-*` semantic chain (Nocturne scopes
+ * remap those to `--nct-*`); every `.dark` consumer today sits inside a
+ * `data-moss-theme-scope` boundary, the moss-color fallbacks only guard a
+ * misplaced `.dark` outside any theme boundary.
+ *
+ * Numeric-scale utilities (`text-default-500`, `bg-default-100`,
+ * `border-default-200`, `divide-default-100`, ...) generate no CSS at all —
+ * neither HeroUI nor MOSS defines `--color-default-<n>` theme keys — so there
+ * is nothing to remap for them; text under those classes inherits the page
+ * ink chain. Do not bridge them to the light-only moss neutral scale: that
+ * would pour light-theme grays into dark pages.
+ */
+:root,
+.light,
+.default,
+[data-theme="light"],
+[data-theme="default"] {
+  --foreground: var(--moss-color-text-primary);
+  --background: var(--moss-color-surface-base);
+  --default: var(--moss-color-neutral-100);
+  --default-foreground: var(--moss-color-neutral-900);
+  --success: var(--moss-color-success-500);
+  --success-foreground: var(--moss-color-neutral-50);
+  --warning: var(--moss-color-warning-500);
+  --warning-foreground: var(--moss-color-neutral-900);
+  --danger: var(--moss-color-danger-500);
+  --danger-foreground: var(--moss-color-neutral-50);
+}
+
+.dark,
+[data-theme="dark"] {
+  --foreground: var(--dh-api-ink, var(--moss-color-neutral-50));
+  --background: var(--dh-api-bg, var(--moss-color-neutral-900));
+  --default: var(--dh-api-line, var(--moss-color-neutral-700));
+  --default-foreground: var(--dh-api-ink, var(--moss-color-neutral-50));
+  --success: var(--dh-api-green, var(--moss-color-success-500));
+  --success-foreground: var(--dh-api-bg, var(--moss-color-neutral-900));
+  --warning: var(--dh-api-amber, var(--moss-color-warning-500));
+  --warning-foreground: var(--dh-api-bg, var(--moss-color-neutral-900));
+  --danger: var(--dh-api-red, var(--moss-color-danger-500));
+  --danger-foreground: var(--dh-api-ink, var(--moss-color-neutral-50));
+}

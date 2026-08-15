@@ -275,6 +275,70 @@ export function ResearchCalendarSection({
               </div>
             ) : null}
             <p className={styles.dhPolicyFundingHeadline}>{summary.headline}</p>
+            {summary.groups.length > 0 ? (
+              <div
+                data-layout-role="research-policy-groups"
+                className={styles.dhPolicyFundingGroupsBoard}
+              >
+                {summary.groups.map((group) => (
+                  <div
+                    key={group.id}
+                    data-layout-role="research-policy-group"
+                    className={styles.dhPolicyFundingGroup}
+                  >
+                    <div
+                      data-layout-role="research-policy-group-header"
+                      className={styles.dhPolicyFundingGroupHeader}
+                    >
+                      <span>{group.label}</span>
+                      <small>{group.countLabel}</small>
+                    </div>
+                    <div
+                      data-layout-role="research-policy-group-list"
+                      className={styles.dhMacroBriefingList}
+                    >
+                      {group.items.map((item) => (
+                        <div
+                          key={item.id}
+                          data-layout-role="research-policy-item"
+                          className={styles.dhMacroNewsItem}
+                          title={`${item.title} · ${item.timeLabel}`}
+                        >
+                          <span
+                            data-layout-role="research-policy-item-topic"
+                            className={styles.dhMacroNewsTopic}
+                          >
+                            {item.topicLabel}
+                          </span>
+                          <span className={styles.dhMacroNewsBody}>
+                            <span
+                              data-layout-role="research-policy-item-title"
+                              className={styles.dhMacroNewsTitle}
+                              title={item.title}
+                            >
+                              {formatResearchTitleDisplay(item.title)}
+                            </span>
+                            <span
+                              data-layout-role="research-policy-item-meta"
+                              className={styles.dhMacroBriefingMeta}
+                            >
+                              {item.timeLabel}
+                            </span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p
+                data-layout-role="research-policy-empty"
+                className={styles.dhMacroBriefingMessage}
+              >
+                {macroBriefing.newsMessage}
+              </p>
+            )}
             <div
               className={styles.dhMacroTrustStrip}
               aria-label="政策与资金面数据状态"
@@ -331,45 +395,6 @@ export function ResearchCalendarSection({
             ) : null}
           </div>
         </div>
-        {summary.groups.length > 0 ? (
-          <div
-            data-layout-role="research-policy-groups"
-            className={styles.dhPolicyFundingGroupsBoard}
-          >
-            {summary.groups.map((group) => (
-              <div key={group.id} className={styles.dhPolicyFundingGroup}>
-                <div className={styles.dhPolicyFundingGroupHeader}>
-                  <span>{group.label}</span>
-                  <small>{group.countLabel}</small>
-                </div>
-                <div className={styles.dhMacroBriefingList}>
-                  {group.items.map((item) => (
-                    <div key={item.id} className={styles.dhMacroNewsItem}>
-                      <span className={styles.dhMacroNewsTopic}>
-                        {item.topicLabel}
-                      </span>
-                      <span className={styles.dhMacroNewsBody}>
-                        <span
-                          className={styles.dhMacroNewsTitle}
-                          title={item.title}
-                        >
-                          {formatResearchTitleDisplay(item.title)}
-                        </span>
-                        <span className={styles.dhMacroBriefingMeta}>
-                          {item.timeLabel}
-                        </span>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className={styles.dhMacroBriefingMessage}>
-            {macroBriefing.newsMessage}
-          </p>
-        )}
         <div
           data-layout-role="research-supply-strip"
           className={styles.dhMacroSupplyStrip}

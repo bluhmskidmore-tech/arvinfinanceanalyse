@@ -69,6 +69,26 @@
   font-weight: 500;
 }
 
+/* 曲线快照日落后数据截至日时的琥珀 stale 徽标（§6 五态：stale 显式发声）。 */
+.curveStaleFlag {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  color: var(--option-two-amber);
+  font-family: var(--option-two-font-data);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.curveStaleFlag i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--option-two-amber);
+}
+
 .curveMeta {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

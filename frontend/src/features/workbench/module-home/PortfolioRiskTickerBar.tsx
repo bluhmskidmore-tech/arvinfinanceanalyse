@@ -16,8 +16,8 @@ type PortfolioRiskTickerBarProps = {
 
 function tickerChangeClass(detail: string | undefined, sparkline: readonly number[] | undefined) {
   const direction = resolveMarketChangeDirection(detail, sparkline);
-  if (direction === "up") return dhStyles.dhUpRed;
-  if (direction === "down") return dhStyles.dhDownGreen;
+  if (direction === "up") return dhStyles.dhUpGreen;
+  if (direction === "down") return dhStyles.dhDownRed;
   return styles.portfolioRiskTickerChangeNeutral;
 }
 

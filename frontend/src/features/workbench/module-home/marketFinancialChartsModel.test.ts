@@ -160,7 +160,8 @@ describe("marketFinancialChartsModel", () => {
       type: string;
     }>;
 
-    expect(curve.subtitle).toContain("1 个唯一期限");
+    // 期限计数收进结构化 display / 脚注，副标题保持「日期 · 单位」单分隔符（C17）。
+    expect(curve.subtitle).toBe("2026-07-30 · 收益率 %");
     expect(curve.footnote).toContain(
       "当前仅返回一个期限，暂不能判断曲线形态。",
     );
@@ -230,7 +231,7 @@ describe("marketFinancialChartsModel", () => {
       (section) => section.key === "rates",
     )!.charts[0]!;
 
-    expect(curve.subtitle).toContain("0 个唯一期限");
+    expect(curve.subtitle).toBe("日期未返回 · 收益率 %");
     expect(curve.yieldCurveDisplay).toBeUndefined();
     expect(curve.option).toBeNull();
     expect(curve.footnote).toBe("后端未返回可用的国债或国开收益率报价。");
@@ -267,6 +268,36 @@ describe("marketFinancialChartsModel", () => {
       "当前报价未形成同一条曲线的多个期限",
     );
     expect(optionSeries.every((series) => series.type !== "line")).toBe(true);
+  });
+
+  it("discloses the tenor coverage gap when one curve returns fewer points", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const rates = clonePayload((await client.getMarketDataRates()).result);
+    const template = rates.series[0]!;
+
+    const quote = (id: string, name: string, value: number) => ({
+      ...template,
+      series_id: id,
+      series_name: name,
+      trade_date: "2026-07-30",
+      unit: "%",
+      value_numeric: value,
+    });
+    rates.series = [
+      quote("gap-gov-1y", "中债国债到期收益率:1年", 1.35),
+      quote("gap-gov-2y", "中债国债到期收益率:2年", 1.45),
+      quote("gap-gov-10y", "中债国债到期收益率:10年", 1.71),
+      quote("gap-cdb-10y", "中债政策性金融债到期收益率(国开行)10年", 1.84),
+    ];
+
+    const curve = buildMarketFinancialChartSections({ rates }).find(
+      (section) => section.key === "rates",
+    )!.charts[0]!;
+
+    // 覆盖缺口披露（C15）：国开点位少于国债时，读图说明里写明缺口，防止误读为换色/形态信号。
+    expect(curve.yieldCurveDisplay).toMatchObject({ kind: "curve" });
+    expect(curve.readingGuide).toContain("国开仅返回 10Y 共 1 点");
+    expect(curve.readingGuide).toContain("数据缺口");
   });
 
   it("keeps the cross-asset normalization transparent and starts each series at 100", async () => {

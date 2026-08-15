@@ -1,8 +1,6 @@
 import type { EChartsOption } from "echarts";
 
 import { BaseChart } from "../../../components/charts/BaseChart";
-import { EvidencePanel } from "../../../components/page/PagePrimitives";
-import { DataSourceBadge } from "../../../components/StatusPill";
 // canvas 不消费 CSS 变量：示意瀑布取色走 nocturneTokens 常量组
 // （operations-analysis 页根已声明 Nocturne scope，risk-tensor 先例）。
 import { nocturneTokens } from "../../../theme/designSystem";
@@ -39,7 +37,7 @@ function buildWaterfallParts() {
 }
 
 function buildOption(): EChartsOption {
-  const { placeholder, positive, negative, total, categories } = buildWaterfallParts();
+  const { placeholder, positive, negative, categories } = buildWaterfallParts();
   return {
     color: ["rgba(0,0,0,0)", nocturneTokens.color.green, nocturneTokens.color.red],
     grid: { left: 48, right: 24, top: 40, bottom: 72 },
@@ -96,38 +94,21 @@ function buildOption(): EChartsOption {
         data: negative,
       },
     ],
-    graphic: [
-      {
-        type: "text",
-        left: "center",
-        top: 8,
-        style: {
-          text: `示意瀑布（静态样例，累计 ${total.toFixed(2)} 为示意值）· 非正式口径，不作正式读数`,
-          fill: nocturneTokens.color.inkMuted,
-          fontSize: 11,
-        },
-      },
-    ],
   };
 }
 
+/**
+ * 收益成本桥示意瀑布（静态样例）。
+ * 「静态示例」红胶囊声明由页面折叠区 summary 承载（收敛为一处），
+ * 组件内只保留一行正式口径缺口说明。
+ */
 export function RevenueCostBridge() {
   return (
-    <EvidencePanel heading="收益成本桥（示意）">
-      <div className={styles.body}>
-        <div>
-          <DataSourceBadge
-            status="mock"
-            label="示意数据·未接入正式口径"
-            testId="revenue-cost-bridge-sample-badge"
-            title="瀑布图为静态示意样例，未接入正式口径读链路，不作正式读数"
-          />
-        </div>
-        <p className={styles.note} data-testid="revenue-cost-bridge-sample-note">
-          正式口径读数：{EM_DASH}（未接入）。下方瀑布为静态示意样例，仅演示“资产收益抵减负债成本得到净贡献”的结构，数值不代表正式读数。
-        </p>
-        <BaseChart option={buildOption()} height={300} />
-      </div>
-    </EvidencePanel>
+    <div className={styles.body}>
+      <p className={styles.note} data-testid="revenue-cost-bridge-sample-note">
+        正式口径读数：{EM_DASH}（未接入）；瀑布为静态样例，数值不代表正式读数。
+      </p>
+      <BaseChart option={buildOption()} height={300} />
+    </div>
   );
 }

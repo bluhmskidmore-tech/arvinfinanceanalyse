@@ -106,7 +106,13 @@ describe("AttributionWaterfallChart", () => {
     );
     expect(option.xAxis.data).toContain("交叉效应");
     const crossIndex = option.xAxis.data.indexOf("交叉效应");
-    expect(option.series[0].data[crossIndex].value).toBeCloseTo(0.0005, 6);
+    // 满数据走标准归因桥：series[0] 是透明垫柱，可见效应柱在 id="bridge-bars"。
+    const bridgeBars = option.series.find(
+      (series: { id?: string }) => series.id === "bridge-bars",
+    );
+    expect(bridgeBars).toBeTruthy();
+    // 微小交叉效应仍以真实柱高（|Δ|=0.0005 亿）保留，不被阈值静默省略。
+    expect(bridgeBars.data[crossIndex].value).toBeCloseTo(0.0005, 6);
     // 图例金额以亿元展示（0.05 百万元 = +0.00 亿）。
     expect(screen.getByText(/交叉效应\s*\+0\.00 亿/)).toBeInTheDocument();
   });

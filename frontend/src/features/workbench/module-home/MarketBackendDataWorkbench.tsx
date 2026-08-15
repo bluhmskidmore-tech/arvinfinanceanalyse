@@ -9,6 +9,7 @@ import type {
   ChoiceNewsEventsPayload,
   ResultMeta,
 } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 import type { ModuleHomeSourceQueries } from "./moduleHomeModel";
 import styles from "./marketBackendDataWorkbench.module.css";
 
@@ -94,6 +95,15 @@ const FIELD_LABELS: Record<string, string> = {
   resolved_report_date: "实际报告日",
   requested_report_date: "请求报告日",
   date_basis: "日期口径",
+  read_target: "读取目标",
+};
+
+/** 后端常见小写枚举值中文化（C12）；未登记的 token 原样透出。 */
+const ENUM_VALUE_LABELS: Record<string, string> = {
+  analytical: "分析口径",
+  ok: "正常",
+  none: "无",
+  backfill: "回填",
 };
 
 const QUALITY_STATE_LABELS: Record<ResultMeta["quality_flag"], string> = {
@@ -197,14 +207,18 @@ function safeStringValue(value: string, context: ScalarContext) {
 
 function primitiveText(value: unknown, context: ScalarContext = {}) {
   if (value === undefined) return "字段未返回";
-  if (value === null) return "无值";
+  if (value === null) return EM_DASH;
   if (value === "") return "空文本";
   if (typeof value === "boolean") return value ? "是" : "否";
   if (typeof value === "number")
     return Number.isFinite(value)
       ? value.toLocaleString("zh-CN")
       : "无有效数值";
-  if (typeof value === "string") return safeStringValue(value, context);
+  if (typeof value === "string") {
+    const enumLabel = ENUM_VALUE_LABELS[value.trim().toLowerCase()];
+    if (enumLabel) return enumLabel;
+    return safeStringValue(value, context);
+  }
   return String(value);
 }
 
@@ -450,25 +464,27 @@ export function MarketPayloadNode({
   return (
     <div className={styles.objectNode}>
       <ScalarGrid entries={scalarEntries} path={path} />
-      <div className={styles.nestedList}>
-        {nestedEntries.map(([key, item]) => (
-          <details
-            className={styles.nestedBlock}
-            key={`${path}.${key}`}
-            open={depth === 0}
-          >
-            <summary>
-              <span>{fieldLabel(key)}</span>
-              <em>{valueSummary(item)}</em>
-            </summary>
-            <MarketPayloadNode
-              value={item}
-              path={`${path}.${key}`}
-              depth={depth + 1}
-            />
-          </details>
-        ))}
-      </div>
+      {nestedEntries.length > 0 ? (
+        <div className={styles.nestedList}>
+          {nestedEntries.map(([key, item]) => (
+            <details
+              className={styles.nestedBlock}
+              key={`${path}.${key}`}
+              open={depth === 0}
+            >
+              <summary>
+                <span>{fieldLabel(key)}</span>
+                <em>{valueSummary(item)}</em>
+              </summary>
+              <MarketPayloadNode
+                value={item}
+                path={`${path}.${key}`}
+                depth={depth + 1}
+              />
+            </details>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -534,6 +550,10 @@ function EnvelopeBoundary<T>({
       </div>
     );
   }
+  // read_target 是信封级标识（如 duckdb），收进面板 meta 行（C12），不落入正文兜底渲染。
+  const readTarget = isRecord(query.data.result)
+    ? query.data.result.read_target
+    : undefined;
   return (
     <div className={styles.envelope}>
       <div className={styles.envelopeState}>
@@ -554,6 +574,9 @@ function EnvelopeBoundary<T>({
                 "未返回"
               }`}
         </em>
+        {typeof readTarget === "string" && readTarget ? (
+          <em title="后端读取目标存储（read_target）">读取目标 {readTarget}</em>
+        ) : null}
       </div>
       {children(query.data)}
       <ResultMetaPanel meta={query.data.result_meta} />
@@ -733,9 +756,17 @@ function SeriesEnvelope({
     <EnvelopeBoundary query={query}>
       {(envelope) => {
         const { series, ...rest } = envelope.result;
+        const restEntries = Object.entries(rest).filter(
+          ([key]) => key !== "read_target",
+        );
         return (
           <>
-            <MarketPayloadNode value={rest} path={`${path}.summary`} />
+            {restEntries.length > 0 ? (
+              <MarketPayloadNode
+                value={Object.fromEntries(restEntries)}
+                path={`${path}.summary`}
+              />
+            ) : null}
             <RecordTable rows={series} title={title} path={`${path}.series`} />
           </>
         );
@@ -753,7 +784,20 @@ function GenericEnvelope({
 }) {
   return (
     <EnvelopeBoundary query={query}>
-      {(envelope) => <MarketPayloadNode value={envelope.result} path={path} />}
+      {(envelope) => (
+        <MarketPayloadNode
+          value={
+            isRecord(envelope.result)
+              ? Object.fromEntries(
+                  Object.entries(envelope.result).filter(
+                    ([key]) => key !== "read_target",
+                  ),
+                )
+              : envelope.result
+          }
+          path={path}
+        />
+      )}
     </EnvelopeBoundary>
   );
 }

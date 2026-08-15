@@ -982,9 +982,10 @@
 .dhApiBackedHome,
 :global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"])) {
   /* 雏形字面量并入 tokens.css 的 --nct-* 单一色源（fallback 保留旧值，
-     供无 Nocturne scope 的上下文兜底），消除第二套 Nocturne 值漂移。 */
+     供无 Nocturne scope 的上下文兜底），消除第二套 Nocturne 值漂移。
+     muted 兜底值对齐 --nct-muted 现值：旧兜底对暗底 4.08:1 不达 AA。 */
   --dh-home-nocturne-ink: var(--nct-ink, #e9e9ed);
-  --dh-home-nocturne-muted: var(--nct-muted, #75798c);
+  --dh-home-nocturne-muted: var(--nct-muted, #9397ab);
   --dh-home-nocturne-radius: 8px;
   --dh-home-nocturne-rule: var(--nct-ring, #1a2a38);
 }
@@ -3232,7 +3233,7 @@ i.dhApiStateMuted {
     align-items: center;
     box-shadow: none;
     display: grid;
-    grid-template-columns: 300px 300px minmax(0, 1fr);
+    grid-template-columns: 300px minmax(0, 1fr);
     gap: 12px;
     height: 42px;
     min-height: 42px;
@@ -3288,10 +3289,10 @@ i.dhApiStateMuted {
   :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarRight {
     align-items: center;
     box-sizing: border-box;
-    grid-column: 3;
+    grid-column: 2;
     width: 100%;
     margin: 0;
-    padding-left: 150px;
+    padding-left: 0;
     justify-content: space-between;
   }
 }

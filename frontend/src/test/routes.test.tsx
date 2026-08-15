@@ -36,7 +36,11 @@ vi.mock("../features/workbench/pages/WorkbenchPlaceholderPage", () => ({
 }));
 
 function getRootChildren(routes: RouteObject[]): RouteObject[] {
-  return routes.find((route) => route.path === "/")?.children ?? [];
+  const rootChildren = routes.find((route) => route.path === "/")?.children ?? [];
+  // 展开无 path 的布局层（子路由级错误边界），保持重复路径检查覆盖真实叶子路由。
+  return rootChildren.flatMap((route) =>
+    route.path === undefined && route.children ? route.children : [route],
+  );
 }
 
 describe("workbench route definitions", () => {

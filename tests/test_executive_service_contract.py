@@ -6,7 +6,8 @@ import datetime as dt
 import json
 
 # Windows / Py3.14: SQLAlchemy's import path calls ``platform.machine()`` which may block
-# on WMI; executive_service pulls models that import SQLAlchemy. Stub before backend imports.
+# on WMI; executive_service pulls models that import SQLAlchemy. Stubbed per-test inside
+# the ``exec_mod`` fixture (monkeypatch restores it) right before the dynamic backend import.
 import platform as _platform
 import threading
 import uuid
@@ -17,9 +18,6 @@ import duckdb
 import pytest
 
 from tests.helpers import load_module
-
-# Windows / Py3.14: SQLAlchemy may call platform.machine() during backend imports.
-_platform.machine = lambda: "AMD64"  # type: ignore[method-assign, assignment]
 
 pytestmark = [
     pytest.mark.excluded_surface_acceptance,
@@ -52,6 +50,10 @@ def _fake_settings(tmp_path):
 
 @pytest.fixture
 def exec_mod(monkeypatch, tmp_path):
+    # Windows / Py3.14: SQLAlchemy may call platform.machine() during the dynamic
+    # backend import; monkeypatch restores the real implementation on teardown
+    # instead of leaking the stub into other test modules in this process.
+    monkeypatch.setattr(_platform, "machine", lambda: "AMD64")
     mod = _exec_service_module()
     monkeypatch.setattr(mod, "get_settings", lambda: _fake_settings(tmp_path))
     return mod

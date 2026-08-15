@@ -161,9 +161,15 @@ function BondDv01Trend({
         ? `${formatBondTrendValue(firstPoint.value)} → ${formatBondTrendValue(lastPoint.value)} ${trend.unit}`
         : `${formatBondTrendValue(firstPoint.value)} ${trend.unit}`
       : "暂无有效月末点";
+  /* 折叠区里的历史提示经 summarizeRiskBondHistoryNotices 聚合后会丢掉逐日日期，
+     所以只有每条趋势提示都逐字在场时才降为条数摘要，否则这里就是唯一的原文。 */
+  const trendNoticesRepeatedInNotices =
+    trend !== null &&
+    trend.notices.every((notice) => summary.notices.includes(notice));
   const trendNoticeText =
     trend && trend.notices.length > 0
-      ? availablePointCount === expectedPointCount
+      ? trendNoticesRepeatedInNotices ||
+        availablePointCount === expectedPointCount
         ? `历史趋势含 ${trend.notices.length} 条待复核提示。`
         : `${trend.notices[0]}${
             trend.notices.length > 1
@@ -223,38 +229,47 @@ function BondDv01Trend({
       ) : (
         <p className={styles.roBondTrendEmpty}>{emptyText}</p>
       )}
-      <div className={styles.roBondTrendDates}>
-        <span>{dateRange}</span>
-        <span>{availablePointCount}/{expectedPointCount} 点</span>
-      </div>
-      <div className={styles.roBondTrendValues}>
-        <span>{valueRangeLabel}</span>
-        <b className={styles.roNum}>{valueRangeText}</b>
-      </div>
-      {trendNoticeText && trend && trend.points.length > 0 ? (
-        <p className={styles.roBondTrendNotice}>{trendNoticeText}</p>
+      {/* 无有效点时空态提示已说明一切，日期区间与有效点两行占位不再重复（§6）。 */}
+      {trend && trend.points.length > 0 ? (
+        <>
+          <div className={styles.roBondTrendDates}>
+            <span>{dateRange}</span>
+            <span>{availablePointCount}/{expectedPointCount} 点</span>
+          </div>
+          <div className={styles.roBondTrendValues}>
+            <span>{valueRangeLabel}</span>
+            <b className={styles.roNum}>{valueRangeText}</b>
+          </div>
+          {trendNoticeText ? (
+            <p className={styles.roBondTrendNotice}>{trendNoticeText}</p>
+          ) : null}
+        </>
       ) : null}
     </div>
   );
 }
 
+function bondComparisonBasisText(
+  summary: RiskBondDv01Summary,
+  comparisonLoading: boolean,
+): string {
+  return comparisonLoading ? "精确月末基期读取中。" : summary.comparisonBasisText;
+}
+
 function BondEvidenceCard({
   summary,
   comparisonLoading,
+  hideComparisonBasis,
+  showNotices,
 }: {
   summary: RiskBondDv01Summary;
   comparisonLoading: boolean;
+  hideComparisonBasis: boolean;
+  showNotices: boolean;
 }) {
   const tone = bondSummaryTone(summary);
-  const currentNotices = summary.notices.filter(
-    (notice) => !/^\d{4}-\d{2}-\d{2}：/.test(notice),
-  );
-  const historyNotices = summary.notices.filter((notice) =>
-    /^\d{4}-\d{2}-\d{2}：/.test(notice),
-  );
-  const visibleNotices = [...currentNotices, ...historyNotices.slice(0, 2)];
-  const hiddenHistoryNoticeCount = Math.max(0, historyNotices.length - 2);
   const comparisonUnavailableText = comparisonLoading ? "读取中" : "基期不可用";
+  const comparisonBasisText = bondComparisonBasisText(summary, comparisonLoading);
 
   return (
     <article
@@ -272,6 +287,7 @@ function BondEvidenceCard({
         </span>
       </div>
 
+      {/* 无指标时状态已由头部胶囊承载，不再重复一行同文案（§6 状态去重）。 */}
       {summary.metrics.length > 0 ? (
         <div className={styles.roBondMetrics}>
           {summary.metrics.map((metric) => {
@@ -302,18 +318,14 @@ function BondEvidenceCard({
             );
           })}
         </div>
-      ) : (
-        <p className={styles.roBondState}>{summary.statusLabel}</p>
-      )}
+      ) : null}
 
-      <div className={styles.roBondComparisonBasis}>
-        <span>系统比较基期</span>
-        <b>
-          {comparisonLoading
-            ? "精确月末基期读取中。"
-            : summary.comparisonBasisText}
-        </b>
-      </div>
+      {hideComparisonBasis ? null : (
+        <div className={styles.roBondComparisonBasis}>
+          <span>系统比较基期</span>
+          <b>{comparisonBasisText}</b>
+        </div>
+      )}
       <BondDv01Trend
         comparisonLoading={comparisonLoading}
         summary={summary}
@@ -322,15 +334,20 @@ function BondEvidenceCard({
         <span>报告日</span>
         <b className={styles.roNum}>{summary.reportDate ?? EM_DASH}</b>
       </div>
-      {summary.notices.length > 0 ? (
-        <div className={styles.roBondNotices}>
-          {visibleNotices.map((notice) => (
-            <p key={notice}>{notice}</p>
-          ))}
-          {hiddenHistoryNoticeCount > 0 ? (
-            <p>另有 {hiddenHistoryNoticeCount} 条历史基期提示未逐条展开。</p>
-          ) : null}
-        </div>
+      {showNotices && summary.notices.length > 0 ? (
+        <details
+          className={styles.roBondDisclosure}
+          data-testid={`risk-overview-${summary.key}-notices`}
+        >
+          <summary className={styles.roBondDisclosureSummary}>
+            口径提示（{summary.notices.length} 条）
+          </summary>
+          <ul className={styles.roBondDisclosureList}>
+            {summary.notices.map((notice, index) => (
+              <li key={`${index}-${notice}`}>{notice}</li>
+            ))}
+          </ul>
+        </details>
       ) : null}
     </article>
   );
@@ -607,6 +624,14 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
       bondHistoryByClass.TPL,
     ],
   );
+  const sharedBondNotices =
+    bondOciSummary.notices.length > 0 &&
+    bondOciSummary.notices.length === bondTplSummary.notices.length &&
+    bondOciSummary.notices.every(
+      (notice, index) => notice === bondTplSummary.notices[index],
+    )
+      ? bondOciSummary.notices
+      : null;
   const bondComparisonHistoryLoading = bondHistoryQueries.some(
     (query) => query.isLoading,
   );
@@ -675,6 +700,13 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
   const bondTplComparisonLoading =
     bondDatesQuery.isLoading ||
     bondHistoryByClass.TPL.some((observation) => observation.isLoading);
+  /* 两卡与区级状态行说的是同一句时，区级那份就够了。任一类不同（单类禁用、单类读取
+     失败、读取中）就整体保留，避免只隐藏其中一卡而让归属变得可猜。 */
+  const bondComparisonBasisSharedWithRegion =
+    bondComparisonBasisText(bondOciSummary, bondOciComparisonLoading) ===
+      bondComparisonStatusText &&
+    bondComparisonBasisText(bondTplSummary, bondTplComparisonLoading) ===
+      bondComparisonStatusText;
 
   const tensor = riskTensorQuery.data?.result;
   const history = riskHistoryQuery.data?.result;
@@ -698,8 +730,12 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
   );
   const detailTables = useMemo(() => buildRiskV6DetailTables(tensor, cashflow), [tensor, cashflow]);
   const lineageRows = useMemo(
-    () => buildRiskV6LineageRows(riskTensorQuery.data?.result_meta),
-    [riskTensorQuery.data],
+    () => [
+      ...buildRiskV6LineageRows(riskTensorQuery.data?.result_meta),
+      ...buildRiskV6LineageRows(riskHistoryQuery.data?.result_meta, "HISTORY"),
+      ...buildRiskV6LineageRows(cashflowQuery.data?.result_meta, "CASHFLOW"),
+    ],
+    [cashflowQuery.data, riskHistoryQuery.data, riskTensorQuery.data],
   );
   const tensorWarnings = tensor?.warnings ?? [];
   const visibleTensorWarnings = tensorWarnings.slice(0, 3);
@@ -748,14 +784,34 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
   ];
   const grade =
     tones.includes("error")
-      ? { label: "承压", tone: "error" as ModuleHomeTone }
+      ? { label: "链路受阻", tone: "error" as ModuleHomeTone }
       : tones.includes("watch")
-        ? { label: "关注", tone: "watch" as ModuleHomeTone }
-        : { label: "可控", tone: "ok" as ModuleHomeTone };
+        ? { label: "需复核", tone: "watch" as ModuleHomeTone }
+        : { label: "证据就绪", tone: "ok" as ModuleHomeTone };
 
-  const stateTone: ModuleHomeTone = view.stateLabel === "读取失败" ? "error" : "ok";
+  // view.stateLabel 只表达"API 可达"，报告日被规则版本拦截时仍显示绿色"已接入"，与顶部
+  // 琥珀横幅矛盾（DESIGN §6 圆点必须承载语义）。moduleHomeModel 为多工作台共享，不改共享
+  // 语义，这里复用它已判定的报告日状态（部分拦截 / 全部拦截）改述胶囊；读取失败仍 error 优先。
+  const blockedDatesStatus = view.statuses.find(
+    (status) => status.key === "dates" && status.tone === "watch",
+  );
+  const allReportDatesBlocked =
+    riskDatesQuery.isSuccess &&
+    riskReportDate === "" &&
+    blockedReportDates.length > 0;
+  const stateTone: ModuleHomeTone =
+    view.stateLabel === "读取失败"
+      ? "error"
+      : blockedDatesStatus
+        ? "watch"
+        : view.decision?.tone === "watch"
+          ? "watch"
+          : "ok";
+  const statePillLabel = blockedDatesStatus
+    ? `报告日${blockedDatesStatus.value}`
+    : view.stateLabel;
 
-  const heroFacts = [
+  const heroFactList = [
     ...(view.decision?.facts ?? []),
     ...(hero.totalMarketValueYi !== null
       ? [{ label: "总市值", value: `${hero.totalMarketValueYi} 亿元`, tone: "ok" as ModuleHomeTone }]
@@ -770,6 +826,12 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
         ]
       : []),
   ];
+  // 去重（DESIGN §6）：拦截计数与最新拦截日已由上方陈旧横幅逐字展示；全部拦截时
+  // "报告日 —""质量标记 —"也已由工具栏与链路状态表达。数据正常时不过滤任何事实。
+  const heroFacts = heroFactList.filter((fact) => {
+    if (blockedReportDates.length > 0 && fact.label === "拦截日期") return false;
+    return !(allReportDatesBlocked && fact.value === EM_DASH);
+  });
 
   return (
     <section
@@ -809,7 +871,7 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
                 title={view.stateDetail}
               >
                 <i className={dhStateClass(stateTone)} aria-hidden="true" />
-                {view.stateLabel}
+                {statePillLabel}
               </span>
               <button
                 type="button"
@@ -874,7 +936,7 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
                     }`}
                   >
                     {hero.dv01Wan ?? EM_DASH}
-                    {hero.dv01Wan !== null ? <small> 万元</small> : null}
+                    {hero.dv01Wan !== null ? <small> 万元/bp</small> : null}
                   </div>
                   {hero.dv01Wan !== null ? (
                     <div className={styles.roV6HeroSub}>
@@ -884,15 +946,17 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
                           {" "}
                           · 峰值敞口位于{" "}
                           <b>
-                            {hero.peakKrdBucket}（KRD {hero.peakKrdWan} 万元）
+                            {hero.peakKrdBucket}（KRD {hero.peakKrdWan} 万元/bp）
                           </b>
                         </>
                       ) : null}
                       {hero.duration !== null ? `，修正久期 ${hero.duration}` : null}
                       {hero.convexity !== null ? `，凸度 ${hero.convexity}` : null}
                     </div>
-                  ) : tensor === undefined ? (
+                  ) : riskDatesQuery.isLoading || riskTensorQuery.isLoading ? (
                     <div className={styles.roV6HeroSub}>主链数据读取中…</div>
+                  ) : tensor === undefined ? (
+                    <div className={styles.roV6HeroSub}>风险张量未返回，处置读数暂缺。</div>
                   ) : (
                     <div className={styles.roV6HeroSub}>监管 DV01 待接入，不用估值口径回填。</div>
                   )}
@@ -918,16 +982,15 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
                 </div>
                 <div className={styles.roV6HeroSide}>
                   <div className={styles.roV6Rate}>
-                    <div className={styles.roV6RateCap}>组合风险评级</div>
+                    <div className={styles.roV6RateCap}>治理复核状态</div>
                     <div className={`${styles.roV6RateVal} ${roToneClass(grade.tone)}`}>
                       {grade.label}
                     </div>
-                    <div className={styles.roV6RateNote}>组合层面综合信号，由 KPI 与链路状态推导</div>
+                    <div className={styles.roV6RateNote}>由治理门禁与链路状态推导，不代表正式风险限额评级</div>
                   </div>
                   <div className={styles.roV6Gate} data-testid="risk-overview-status-strip">
-                    <h3>
-                      链路状态<span title={view.stateDetail}>{view.stateDetail}</span>
-                    </h3>
+                    {/* 可用日期与拦截计数已由陈旧横幅和 hero 事实行展示，此处收进 title（§6）。 */}
+                    <h3 title={view.stateDetail}>链路状态</h3>
                     {view.statuses.map((status) => (
                       <div className={styles.roV6GateRow} key={status.key}>
                         <span>{status.label}</span>
@@ -979,13 +1042,32 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
             <div className={styles.roBondGrid}>
               <BondEvidenceCard
                 comparisonLoading={bondOciComparisonLoading}
+                hideComparisonBasis={bondComparisonBasisSharedWithRegion}
+                showNotices={sharedBondNotices === null}
                 summary={bondOciSummary}
               />
               <BondEvidenceCard
                 comparisonLoading={bondTplComparisonLoading}
+                hideComparisonBasis={bondComparisonBasisSharedWithRegion}
+                showNotices={sharedBondNotices === null}
                 summary={bondTplSummary}
               />
             </div>
+            {sharedBondNotices ? (
+              <details
+                className={`${styles.roBondDisclosure} ${styles.roBondSharedDisclosure}`}
+                data-testid="risk-overview-bond-shared-notices"
+              >
+                <summary className={styles.roBondDisclosureSummary}>
+                  共同口径提示（{sharedBondNotices.length} 条）
+                </summary>
+                <ul className={styles.roBondDisclosureList}>
+                  {sharedBondNotices.map((notice, index) => (
+                    <li key={`${index}-${notice}`}>{notice}</li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
           </section>
 
           {/* 曜石 KPI 卡 ×8 */}
@@ -994,7 +1076,6 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
               kpiCards.map((card) => <V6KpiCardView card={card} key={card.key} />)
             ) : (
               <div className={styles.roEmptyState}>
-                <i className={styles.roEmptyGlyph} aria-hidden="true" />
                 <p className={styles.roV6EmptyText}>风险张量未返回，KPI 待接入。</p>
               </div>
             )}
@@ -1041,7 +1122,7 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
               <div className={styles.roV6Panel} data-testid="risk-overview-krd-panel">
                 <div className={styles.roV6PanelHead}>
                   <b>KRD 分布</b>
-                  <span>DV01 贡献 · 万元</span>
+                  <span>DV01 贡献 · 万元/bp</span>
                 </div>
                 {krdBars.length > 0 ? (
                   <>
@@ -1298,12 +1379,15 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
               <div>
                 <div className={styles.roV6TblHead}>
                   质量提示 · {tensorWarnings.length} 条
+                  {/* 圆点承载语义（§6）：有提示=琥珀，有质量标记=绿，未返回=中性。 */}
                   <span
-                    className={
+                    className={v6PillClass(
                       tensorWarnings.length > 0
-                        ? `${styles.roV6Pill} ${styles.roV6PillWarn}`
-                        : styles.roV6Pill
-                    }
+                        ? "watch"
+                        : tensor?.quality_flag
+                          ? "ok"
+                          : "muted",
+                    )}
                   >
                     <i aria-hidden="true" />
                     {tensor?.quality_flag?.toUpperCase() ?? "待接入"}

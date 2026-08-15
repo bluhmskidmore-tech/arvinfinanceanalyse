@@ -91,12 +91,13 @@ function isUsableFundingTicker(
 }
 
 /**
- * 行内可见来源：vendor 缺失或形如 public_repo_rate_query 的 snake_case
- * 内部管道 token 时省略（行级 title 已全量披露），正常 vendor 名原样展示。
+ * 行内可见来源：vendor 缺失、形如 public_repo_rate_query 的 snake_case 内部管道
+ * token、或全小写 ASCII 数据管道 token（如 tushare）时省略（行级 title 已全量披露），
+ * 正常 vendor 商号名（如 Choice / Tushare）原样展示。
  */
 function fundingVendorDisplay(ticker: HomeMarketTicker): string | null {
   const vendor = ticker.vendorName?.trim() ?? "";
-  if (!vendor || vendor.includes("_")) {
+  if (!vendor || vendor.includes("_") || /^[a-z0-9.-]+$/.test(vendor)) {
     return null;
   }
   return vendor;
@@ -151,6 +152,19 @@ function metaValueDisplay(label: string): string {
 function MarketCurvePanel({ view }: { view: DashboardHomeBodyView }) {
   const context = view.marketContext;
   const curve = context.curveTable;
+  // 卡内只保留一个可见日期（数据截至，curveMeta 行）；曲线快照日收进 title，
+  // 仅当快照日落后于数据截至日时以琥珀 stale 徽标显式发声（§6 五态）。
+  const snapshotDate = curve.asOfLabel;
+  const contextAsOfDate = /(\d{4}-\d{2}-\d{2})/.exec(context.asOfLabel)?.[1] ?? "";
+  const snapshotLagging = Boolean(
+    snapshotDate && contextAsOfDate && snapshotDate < contextAsOfDate,
+  );
+  const curveTitleTooltip = [
+    "报告日正式链路（收益率曲线期限结构），与市场动态行情快讯源口径不同",
+    snapshotDate ? `曲线快照日 ${snapshotDate}` : "",
+  ]
+    .filter(Boolean)
+    .join("；");
   const rows = KEY_TENORS.map((tenor) => {
     const row = curve.rows.find((candidate) => candidate.tenor === tenor);
     const yieldLabel = displayOrGap(row?.yieldLabel);
@@ -174,11 +188,20 @@ function MarketCurvePanel({ view }: { view: DashboardHomeBodyView }) {
     >
       <header className={styles.panelHeader}>
         <div>
-          <h2 id="option-two-market-curve-title">{displayOrGap(curve.title)}</h2>
+          <h2 id="option-two-market-curve-title" title={curveTitleTooltip}>
+            {displayOrGap(curve.title)}
+          </h2>
         </div>
-        <time dateTime={curve.asOfLabel || undefined}>
-          {displayOrGap(curve.asOfLabel)}
-        </time>
+        {snapshotLagging ? (
+          <span
+            className={styles.curveStaleFlag}
+            data-testid="dashboard-home-curve-stale-flag"
+            title={`曲线快照日 ${snapshotDate}，落后${context.asOfLabel}；期限表为快照日估值`}
+          >
+            <i aria-hidden="true" />
+            {`快照 ${snapshotDate}`}
+          </span>
+        ) : null}
       </header>
 
       <div className={styles.curveMeta}>

@@ -414,6 +414,14 @@ describe("createApiClient", () => {
           scenario_flag: false,
           generated_at: "2026-04-15T09:00:00Z",
         },
+        // 后端把校准说明放在信封顶层（与 result 同层），传输层必须透传。
+        calibration: {
+          position_scope: "all",
+          currency_basis: "CNY",
+          source_families: ["zqtz", "tyw"],
+          data_basis: "formal_facts",
+          calibration_note: "口径：正式日均余额（ZQTZ+TYW）",
+        },
         result: {
           report_date: "2025-06-03",
           start_date: "2025-06-02",
@@ -462,6 +470,14 @@ describe("createApiClient", () => {
     expect(payload.asset_rate_coverage_ratio).toBe(0.5);
     expect(payload.liability_rate_coverage_ratio).toBeNull();
     expect(payload.assets_breakdown[0].rate_coverage_ratio).toBe(0.5);
+    // 信封顶层 calibration 必须透传到 normalize 结果，供 AverageBalanceView 徽章消费。
+    expect(payload.calibration).toEqual({
+      position_scope: "all",
+      currency_basis: "CNY",
+      source_families: ["zqtz", "tyw"],
+      data_basis: "formal_facts",
+      calibration_note: "口径：正式日均余额（ZQTZ+TYW）",
+    });
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/api/analysis/adb/comparison?start_date=2025-06-02&end_date=2025-06-03&top_n=5",
@@ -565,6 +581,8 @@ describe("createApiClient", () => {
 
     const payload = await client.getAdbComparison("2025-06-02", "2025-06-03");
 
+    // 信封没有顶层 calibration 时保持 undefined（不伪造空对象）。
+    expect(payload.calibration).toBeUndefined();
     expect(payload.assets_breakdown.map((item) => item.avg_balance)).toEqual([null, null, 0]);
     expect(payload.liabilities_breakdown.map((item) => item.avg_balance)).toEqual([null, null, 0]);
     expect(payload.assets_breakdown.map((item) => item.spot_balance)).toEqual([
@@ -578,6 +596,268 @@ describe("createApiClient", () => {
       0.5,
       null,
     ]);
+  });
+
+  it("preserves a single-day null total average balance instead of coercing it to a fake zero", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_adb_comparison_single_day_null_total_avg",
+          basis: "analytical",
+          result_kind: "adb.comparison",
+          formal_use_allowed: false,
+          source_version: "sv_adb",
+          vendor_version: "vv_none",
+          rule_version: "rv_adb",
+          cache_version: "cv_adb",
+          quality_flag: "warning",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-15T09:00:00Z",
+        },
+        result: {
+          report_date: "2026-04-14",
+          start_date: "2026-04-14",
+          end_date: "2026-04-14",
+          num_days: 1,
+          simulated: false,
+          total_spot_assets: 550000000,
+          total_avg_assets: null,
+          avg_unavailable_reason: "insufficient_window",
+          total_spot_liabilities: 230000000,
+          total_avg_liabilities: null,
+          total_avg_interbank_assets: 0,
+          total_avg_interbank_liabilities: 0,
+          asset_yield: null,
+          liability_cost: null,
+          net_interest_margin: null,
+          assets_breakdown: [],
+          liabilities_breakdown: [],
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.getAdbComparison("2026-04-14", "2026-04-14");
+
+    expect(payload.total_avg_assets).toBeNull();
+    expect(payload.total_avg_liabilities).toBeNull();
+    expect(payload.total_spot_assets).toBe(550000000);
+    expect(payload.total_spot_liabilities).toBe(230000000);
+    expect(payload.avg_unavailable_reason).toBe("insufficient_window");
+    expect(payload.spot_unavailable_reason).toBeNull();
+  });
+
+  it("normalizes an unknown unavailable-reason value to null instead of passing it through", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_adb_comparison_unknown_reason",
+          basis: "analytical",
+          result_kind: "adb.comparison",
+          formal_use_allowed: false,
+          source_version: "sv_adb",
+          vendor_version: "vv_none",
+          rule_version: "rv_adb",
+          cache_version: "cv_adb",
+          quality_flag: "warning",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-15T09:00:00Z",
+        },
+        result: {
+          report_date: "2026-04-14",
+          start_date: "2026-04-14",
+          end_date: "2026-04-14",
+          num_days: 1,
+          simulated: false,
+          total_spot_assets: null,
+          total_avg_assets: null,
+          avg_unavailable_reason: "unmapped_future_reason",
+          spot_unavailable_reason: "unmapped_future_reason",
+          total_spot_liabilities: 0,
+          total_avg_liabilities: 0,
+          total_avg_interbank_assets: 0,
+          total_avg_interbank_liabilities: 0,
+          asset_yield: null,
+          liability_cost: null,
+          net_interest_margin: null,
+          assets_breakdown: [],
+          liabilities_breakdown: [],
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.getAdbComparison("2026-04-14", "2026-04-14");
+
+    expect(payload.total_spot_assets).toBeNull();
+    expect(payload.total_avg_assets).toBeNull();
+    expect(payload.avg_unavailable_reason).toBeNull();
+    expect(payload.spot_unavailable_reason).toBeNull();
+  });
+
+  it("flattens the adb insights envelope and keeps unavailable analysis blocks null", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_adb_insights",
+          basis: "analytical",
+          result_kind: "adb.insights",
+          formal_use_allowed: false,
+          source_version: "sv_adb",
+          vendor_version: "vv_none",
+          rule_version: "rv_adb",
+          cache_version: "cv_adb",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-08-13T09:00:00Z",
+        },
+        result: {
+          start_date: "2026-05-01",
+          end_date: "2026-07-31",
+          calendar_days_inclusive: 92,
+          insufficient_window: false,
+          windows: {
+            current: {
+              start_date: "2026-05-01",
+              end_date: "2026-07-31",
+              calendar_days_inclusive: 92,
+              coverage_days: 92,
+              available: true,
+              reason: "ok",
+            },
+            qoq: {
+              start_date: "2026-01-30",
+              end_date: "2026-04-30",
+              calendar_days_inclusive: 92,
+              coverage_days: 0,
+              available: false,
+              reason: "no_data",
+            },
+            yoy: {
+              start_date: "2025-05-01",
+              end_date: "2025-07-31",
+              calendar_days_inclusive: 92,
+              coverage_days: 92,
+              available: true,
+              // 未知枚举取值必须安全归一为 null，不得原样透传。
+              reason: "partially_ok",
+            },
+          },
+          scale_attribution: {
+            qoq: null,
+            yoy: {
+              side_totals: {
+                assets: {
+                  current_avg: 52000000000,
+                  prior_avg: 45000000000,
+                  delta: 7000000000,
+                  delta_pct: 15.56,
+                },
+                liabilities: {
+                  current_avg: 21500000000,
+                  prior_avg: 0,
+                  delta: 21500000000,
+                  delta_pct: null,
+                },
+              },
+              asset_contributions: [
+                {
+                  category: "国债",
+                  side: "asset",
+                  current_avg: 15800000000,
+                  prior_avg: null,
+                  delta: 15800000000,
+                  contribution_pct: null,
+                },
+              ],
+              liability_contributions: [],
+            },
+          },
+          nim_attribution: null,
+          nim_attribution_unavailable_reason: "comparison_unavailable",
+          volatility: {
+            assets: {
+              mean: 51500000000,
+              std: 800000000,
+              cv: null,
+              min: { date: "2026-05-14", value: 50200000000 },
+              max: { date: "2026-07-30", value: 53100000000 },
+              max_daily_change: null,
+            },
+            liabilities: null,
+            anomaly_detection_available: false,
+            anomalies: [],
+            month_end_effect: {
+              assets: { uplift_pct: null, months_observed: 0, flagged: false },
+              liabilities: { uplift_pct: 0.3, months_observed: 3, flagged: false },
+            },
+          },
+          concentration: { assets: null, liabilities: null, reason: "single_observation" },
+          insights: [
+            {
+              id: "comparison_unavailable",
+              severity: "info",
+              dimension: "quality",
+              title: "对比期数据缺失",
+              detail: "环比期（2026-01-30～2026-04-30）无数据，相关归因不可用。",
+              evidence: { missing_windows: [{ basis: "qoq" }] },
+            },
+          ],
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.getAdbInsights("2026-05-01", "2026-07-31");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/analysis/adb/insights?start_date=2026-05-01&end_date=2026-07-31",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(payload).not.toHaveProperty("result");
+    expect(payload.result_meta?.result_kind).toBe("adb.insights");
+    expect(payload.result_meta?.formal_use_allowed).toBe(false);
+    expect(payload.windows.qoq.available).toBe(false);
+    expect(payload.windows.yoy.reason).toBeNull();
+    // 缺数块保持 null，不得被空对象或 0 顶替。
+    expect(payload.scale_attribution.qoq).toBeNull();
+    expect(payload.nim_attribution).toBeNull();
+    expect(payload.nim_attribution_unavailable_reason).toBe("comparison_unavailable");
+    expect(payload.scale_attribution.yoy?.side_totals.liabilities.delta_pct).toBeNull();
+    expect(payload.scale_attribution.yoy?.asset_contributions[0].prior_avg).toBeNull();
+    expect(payload.scale_attribution.yoy?.asset_contributions[0].contribution_pct).toBeNull();
+    expect(payload.volatility?.assets?.cv).toBeNull();
+    expect(payload.volatility?.assets?.max_daily_change).toBeNull();
+    expect(payload.volatility?.liabilities).toBeNull();
+    expect(payload.volatility?.month_end_effect?.assets.uplift_pct).toBeNull();
+    expect(payload.concentration?.reason).toBe("single_observation");
+    expect(payload.insights.map((item) => item.id)).toEqual(["comparison_unavailable"]);
   });
 
   it("preserves null comparison spot balance and proportion instead of coercing to zero", async () => {

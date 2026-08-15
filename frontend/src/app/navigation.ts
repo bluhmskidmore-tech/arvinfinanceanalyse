@@ -119,8 +119,9 @@ const workbenchSectionGroups: Record<string, WorkbenchGroupKey> = {
 };
 
 /**
- * V1 书签/外部链接常用路径 → V3 工作台规范路径。
- * 与 `router/routes.tsx` 中 `<Navigate replace />` 保持一致。
+ * V1 书签/外部链接常用路径 → V3 工作台规范路径；同时供壳层识别
+ * 隐藏实验页的归属。除 `/agent-lab` 外，与 `router/routes.tsx` 中
+ * `<Navigate replace />` 保持一致。
  */
 export const workbenchPathAliases: Record<string, string> = {
   "/macro-analysis": "/market-data",
@@ -131,6 +132,8 @@ export const workbenchPathAliases: Record<string, string> = {
   "/liabilities": "/liability-analytics",
   "/bonds": "/bond-dashboard",
   "/bond-analytics-advanced": "/bond-analysis",
+  "/pnl-formal-v1": "/pnl",
+  "/agent-lab": "/agent",
 };
 
 export function resolveWorkbenchPathAlias(pathname: string): string {
@@ -158,9 +161,9 @@ export const workbenchNavigation: WorkbenchSection[] = [
     readinessLabel: "临时开放",
     governanceStatus: "temporary-exception",
     governanceBanner:
-      "临时例外：该路由仅在第一阶段 PAGE-OPS-001 收口期间保持可见；如收口延期，下一轮 readiness 梳理需降级。",
+      "临时例外：本页在页面契约（PAGE-OPS-001）收口期间保持可见；若收口延期，将在下一轮就绪度梳理中降级。",
     readinessNote:
-      "已接 source preview、macro、news、formal FX 状态，以及资产负债 overview 速览与跳转。",
+      "已接来源预览、宏观、新闻、正式外汇状态，以及资产负债总览速览与跳转。",
   },
   {
     key: "market-finance",
@@ -172,7 +175,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
     readinessLabel: "临时开放",
     governanceStatus: "temporary-exception",
     readinessNote:
-      "复用市场利率、产品分类损益与资产负债 overview 既有只读链路；不补算跨域传导、OCI 与资本口径，缺证据统一显示待复核。",
+      "复用市场利率、产品分类损益与资产负债总览既有只读链路；不补算跨域传导、OCI 与资本口径，缺证据统一显示待复核。",
   },
   {
     key: "portfolio-home",
@@ -414,6 +417,10 @@ export const workbenchNavigation: WorkbenchSection[] = [
     readiness: "live",
     readinessLabel: "临时开放",
     governanceStatus: "temporary-exception",
+    // 横幅走中文摘要（operations-analysis 先例）；英文治理记录原文保留在
+    // readinessNote（证据引用，页内「候选导入」卡默认折叠展示原文）。
+    governanceBanner:
+      "候选台账读模型，未获正式批准：分类 v2 仅在导入时生效，未匹配项标记 UNCLASSIFIED 待修复；旧规则批次按不可评估处理。英文治理记录原文见页内「候选导入」卡。",
     readinessNote:
       "Candidate imported position_snapshot read model; import-time rv_ledger_classification_v2 materializes UNCLASSIFIED; legacy batches fail closed and invalid_materialization also fails closed. Currency buckets remain independent with past-only fallback. Historical backfill completed for live batches 1-8 and golden sample captured-awaiting-approval; formal use, owner approval, authorized real-page UAT, and UNKNOWN remediation remain pending; same source hash cannot be replayed.",
   },
@@ -490,7 +497,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
     readinessLabel: "临时开放",
     governanceStatus: "temporary-exception",
     readinessNote:
-      "已接 Choice 新闻事件只读链路；页面为分析读面（非 formal metric 主链），与壳层「临时例外」横幅一致。",
+      "已接 Choice 新闻事件只读链路；页面为分析读面（非正式指标主链），与壳层「临时例外」横幅一致。",
   },
   {
     key: "product-category-pnl",
@@ -560,7 +567,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
     label: "业务结构与FTP后收益分析",
     path: "/pnl-by-business-insights",
     icon: "analysis",
-    description: "业务种类集中度、负FTP持续性、份额漂移与规模—FTP后收益正式结构分析。",
+    description: "业务种类集中度、负FTP持续性、份额漂移与规模与FTP后收益正式结构分析。",
     readiness: "live",
     readinessLabel: "已开放",
     readinessNote: "读取 /api/pnl/by-business-insights；正式指标仅按已批准定义展示，未追溯 FI 趋势保持为独立诊断。",
@@ -583,7 +590,9 @@ export function pathMatchesWorkbenchSection(sectionPath: string, pathname: strin
   if (sectionPath === "/") {
     return pathname === "/" || pathname === "/dashboard";
   }
-  return sectionPath === pathname;
+  // 前缀匹配限定在 "/" 边界：让 /product-category-pnl/audit 这类子路由归属
+  // 父 section（壳层标题与高亮），且不会把 /pnl 误配到 /pnl-bridge。
+  return sectionPath === pathname || pathname.startsWith(`${sectionPath}/`);
 }
 
 export function findWorkbenchSectionByPath(

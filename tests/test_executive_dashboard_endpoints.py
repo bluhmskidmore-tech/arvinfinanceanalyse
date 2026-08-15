@@ -9,6 +9,15 @@ from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV, AuthContext
 from tests.helpers import load_module
 
+# E1 included-route contracts plus reserved-route 503 fail-closed guards (tests/AGENTS.md
+# tier 2). Gate-listed in scripts/backend_release_suite.py, so the tier marker must stay
+# `excluded_surface_regression` — an acceptance marker would silently deselect this file
+# from the default release gate (`-m "not excluded_surface_acceptance"`).
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_executive,
+]
+
 EXECUTIVE_READ_HEADERS = {"X-User-Id": "executive-read-user", "X-User-Role": "viewer"}
 
 

@@ -262,6 +262,16 @@
   letter-spacing: 0;
   line-height: 1.08;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 长读数（如日期 2026-07-31）按格宽降档，禁止折行断裂。 */
+.operations-analysis-page__metric-card[data-long-value="true"] .operations-analysis-page__metric-value {
+  font-size: 22px;
+}
+
+.operations-analysis-page__metric-card[data-compact="true"][data-long-value="true"] .operations-analysis-page__metric-value {
+  font-size: 16px;
 }
 
 .operations-analysis-page__metric-card[data-status="warning"] .operations-analysis-page__metric-value {
@@ -328,7 +338,6 @@
   line-height: 1.2;
 }
 
-.operations-analysis-page__section-description,
 .operations-analysis-page__recommendation-text,
 .operations-analysis-page__entry-intro {
   max-width: 760px;
@@ -338,8 +347,96 @@
   line-height: 1.8;
 }
 
-.operations-analysis-page__section-description {
-  line-height: 1.85;
+/* 首屏失败横幅：失败原因与重试入口收敛为单条区块级披露。 */
+.operations-analysis-page__kpi-failure-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--dh-api-red) 42%, transparent);
+  border-left: 2px solid var(--dh-api-red);
+  border-radius: var(--dh-api-radius);
+  background: color-mix(in srgb, var(--dh-api-red) 8%, var(--dh-api-panel));
+  color: var(--ops-ink);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.operations-analysis-page__retry-button {
+  width: fit-content;
+  padding: 4px 14px;
+  border: 1px solid var(--ops-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  color: var(--moss-color-text-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.operations-analysis-page__retry-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.operations-analysis-page__kpi-footnote,
+.operations-analysis-page__entry-footnote {
+  margin: 0;
+  color: var(--ops-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.operations-analysis-page__entry-footnote {
+  margin-top: 10px;
+}
+
+/* 静态示例区块：默认折叠为一行，红胶囊声明保留在 summary 上。 */
+.operations-analysis-page__sample-details {
+  min-height: 0;
+  padding: 0;
+  border: 1px solid var(--ops-shell-border-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.operations-analysis-page__sample-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  padding: 12px 16px;
+  color: var(--ops-ink);
+  cursor: pointer;
+}
+
+.operations-analysis-page__sample-title {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.operations-analysis-page__sample-cue {
+  color: var(--ops-muted);
+  font-size: 12px;
+}
+
+.operations-analysis-page__sample-body {
+  display: grid;
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+/* 展开后隐藏示例组件内部与 summary 重复的面板标题（组件契约锁定，不改组件）。 */
+.operations-analysis-page__sample-body .moss-page-v2-evidence-panel {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.operations-analysis-page__sample-body .moss-page-v2-evidence-panel__heading {
+  display: none;
 }
 
 .operations-analysis-page__panel {
@@ -438,9 +535,10 @@
   align-items: start;
 }
 
+/* 期限示例折叠后改单栏，消除左右栏高差造成的空白断层（§5 align-items: start）。 */
 .operations-analysis-page__structure-layout {
   display: grid;
-  grid-template-columns: minmax(300px, 0.78fr) minmax(0, 1.22fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
   align-items: start;
 }

@@ -438,6 +438,11 @@ function curveDeltaTone(
   return "flat";
 }
 
+/** 收益率水平列是存量水平值而非变动，剥离后端 display 的「+」符号（变动列保留符号）。 */
+function stripLevelPlusSign(label: string): string {
+  return label.replace(/^\+\s*/, "");
+}
+
 function buildCurveTable(
   payload: YieldCurveTermStructurePayload | null | undefined,
 ): HomeMarketCurveTable {
@@ -446,7 +451,7 @@ function buildCurveTable(
     const point = curve ? pointForTenor(curve, tenor) : null;
     return {
       tenor,
-      yieldLabel: displayOrMissing(point?.yield_pct, GAP),
+      yieldLabel: stripLevelPlusSign(displayOrMissing(point?.yield_pct, GAP)),
       deltaLabel: displayOrMissing(point?.delta_bp_prev, GAP),
       deltaTone: isDisplayableNumeric(point?.delta_bp_prev)
         ? curveDeltaTone(point?.delta_bp_prev)

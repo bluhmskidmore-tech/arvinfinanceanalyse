@@ -385,7 +385,7 @@ def test_home_income_trend_prewarm_entries_preserve_flag_and_thread_contract(
 
     with patch.object(es, "_warm_home_income_trend_cache_quietly") as mock_warm:
         assert es.warm_home_income_trend_cache_in_current_thread_if_configured(enabled) is True
-    mock_warm.assert_called_once_with(report_date=None, window=7)
+        mock_warm.assert_called_once_with(report_date=None, window=7, force_refresh=False)
 
 
 def test_home_snapshot_prewarm_can_be_disabled() -> None:

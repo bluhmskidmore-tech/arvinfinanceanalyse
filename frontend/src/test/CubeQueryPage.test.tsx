@@ -145,7 +145,7 @@ describe("CubeQueryPage", () => {
     expect(firstCall.measures).toContain("sum(market_value)");
 
     expect(await screen.findByTestId("cube-results-table")).toBeInTheDocument();
-    expect(await screen.findByText("1,234.5678")).toBeInTheDocument();
+    expect(await screen.findByText("1,234.57")).toBeInTheDocument();
     const meta = await screen.findByTestId("cube-result-meta");
     expect(meta).toHaveTextContent("tr_cube_test");
     expect(meta).toHaveTextContent("sv_test");
@@ -229,11 +229,60 @@ describe("CubeQueryPage", () => {
 
     await user.click(within(errorSurface).getByRole("button", { name: /重\s*试/ }));
 
-    expect(await screen.findByText("1,234.5678")).toBeInTheDocument();
+    expect(await screen.findByText("1,234.57")).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.queryByTestId("cube-query-error")).not.toBeInTheDocument();
     });
     expect(execSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("fixes numeric typography: two decimals, column-level alignment and tabular-nums cells", async () => {
+    const user = userEvent.setup();
+    const client = createApiClient({ mode: "mock" });
+    stubDimensions(client);
+    vi.spyOn(client, "executeCubeQuery").mockResolvedValue(
+      sampleResult({
+        measures: ["sum(market_value)", "avg(duration)"],
+        dimensions: ["rating"],
+        rows: [
+          // 首行 market_value 为 null、duration 为字符串化 Decimal：
+          // 旧实现按首行 typeof 判对齐会把两列都判成左对齐。
+          { rating: "AAA", market_value: null, duration: "2.5" },
+          { rating: "AA+", market_value: 1234.5678, duration: "3.25" },
+        ],
+        total_rows: 2,
+      }),
+    );
+
+    renderCubePage(client);
+    await screen.findByText("asset_class_std");
+    await user.click(screen.getByTestId("cube-execute"));
+
+    // 固定两位小数：同列不再出现 2 位与 4 位混排；字符串 Decimal 也归一。
+    expect(await screen.findByText("1,234.57")).toBeInTheDocument();
+    expect(screen.getByText("2.50")).toBeInTheDocument();
+    expect(screen.getByText("3.25")).toBeInTheDocument();
+
+    const table = screen.getByTestId("cube-results-table");
+    const headerCells = [...table.querySelectorAll("thead th")];
+    const headerAligns = new Map(
+      headerCells.map((th) => [th.textContent ?? "", (th as HTMLElement).style.textAlign]),
+    );
+    // 列级对齐判据：任意一行是数值（含字符串化 Decimal）即右对齐；维度列左对齐。
+    expect(headerAligns.get("market_value")).toBe("right");
+    expect(headerAligns.get("duration")).toBe("right");
+    expect(headerAligns.get("rating")).not.toBe("right");
+
+    // 数值单元格必须带等宽 tabular 栈（designSystem tabularNumsStyle）。
+    const numericCell = screen.getByText("1,234.57").closest("td");
+    expect(numericCell).not.toBeNull();
+    expect(numericCell!.style.fontFamily).toContain("ui-monospace");
+    const dimensionCell = screen.getByText("AA+").closest("td");
+    expect(dimensionCell).not.toBeNull();
+    expect(dimensionCell!.style.fontFamily).toBe("");
+
+    // null 缺值仍走 EM_DASH 占位（列内两处：market_value 首行）。
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(1);
   });
 
   it("bounds pagination parameters: page-size options stop at 200 and offsets follow the page", async () => {
@@ -248,7 +297,7 @@ describe("CubeQueryPage", () => {
     await screen.findByText("asset_class_std");
 
     await user.click(screen.getByTestId("cube-execute"));
-    expect(await screen.findByText("1,234.5678")).toBeInTheDocument();
+    expect(await screen.findByText("1,234.57")).toBeInTheDocument();
 
     // 翻到第 2 页：offset 跟随 page 推进且 limit 不变。
     await user.click(screen.getByTitle("2"));

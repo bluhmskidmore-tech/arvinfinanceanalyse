@@ -27,6 +27,13 @@ type BondNewsGroupProps = {
   message: string | null;
 };
 
+/** 空组消息与组头标题同名时剥离「{组名}：」前缀，避免「持仓命中 0 条 持仓命中：…」重复。 */
+function emptyMessageDisplay(message: string | null, groupTitle: string): string | null {
+  if (!message) return message;
+  const prefix = new RegExp(`^${groupTitle}\\s*[：:]\\s*`, "u");
+  return message.replace(prefix, "").trim() || message;
+}
+
 const HOME_NEWS_QUERY_PREFIXES = [
   ["dashboard", "macro-news"],
   ["dashboard", "macro-news-fallback"],
@@ -82,6 +89,7 @@ function BondNewsGroup({
     <div
       data-testid={testId}
       data-layout-role="bond-news-group"
+      data-empty={isEmpty ? "true" : "false"}
       className={`${styles.dhBondNewsGroup} ${isEmpty ? styles.dhBondNewsGroupEmpty : ""}`}
     >
       <div
@@ -101,7 +109,9 @@ function BondNewsGroup({
           ))}
         </div>
       ) : (
-        <p className={styles.dhBondNewsEmptyCompact}>{message}</p>
+        <p className={styles.dhBondNewsEmptyCompact} title={message ?? undefined}>
+          {emptyMessageDisplay(message, title)}
+        </p>
       )}
     </div>
   );
@@ -187,9 +197,22 @@ export function BondNewsSection({
           >
             <span title={bondNews.asOfLabel}>{bondNews.asOfLabel}</span>
             {isStatusAbnormal ? (
-              <span data-tone="warning" title={bondNews.statusLabel}>
-                {bondNews.statusLabel}
-              </span>
+              // 「偏旧」状态词与治理台账状态列重复（§6 两处上限），卡头收敛为
+              // 琥珀点，全文保留在点与卡头 title；其余异常态保留文字。
+              bondNews.statusLabel.includes("偏旧") ? (
+                <span
+                  data-tone="warning"
+                  data-testid="dashboard-home-bond-news-stale-dot"
+                  title={bondNews.statusLabel}
+                  aria-label={bondNews.statusLabel}
+                >
+                  <i aria-hidden="true" className={styles.dhBondNewsStaleDot} />
+                </span>
+              ) : (
+                <span data-tone="warning" title={bondNews.statusLabel}>
+                  {bondNews.statusLabel}
+                </span>
+              )
             ) : null}
           </div>
           <div

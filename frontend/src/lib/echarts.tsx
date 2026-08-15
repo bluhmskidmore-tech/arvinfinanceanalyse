@@ -14,6 +14,8 @@ import {
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 
+import { nocturneTokens } from "../theme/designSystem";
+
 echarts.use([
   BarChart,
   CandlestickChart,
@@ -33,14 +35,22 @@ echarts.use([
   CanvasRenderer,
 ]);
 
+/* 默认主题色板走 Nocturne 去饱和阶（DESIGN §4：禁高饱和撞色/AI 紫），canvas 不消费 CSS 变量故用常量镜像。 */
 echarts.registerTheme("moss-dark-hero", {
-  color: ["#006FEE", "#17C964", "#F31260", "#F5A524", "#7828C8", "#00C2E6"],
+  color: [
+    nocturneTokens.color.blue,
+    nocturneTokens.color.inkSoft,
+    nocturneTokens.color.amber,
+    nocturneTokens.color.green,
+    nocturneTokens.color.inkMuted,
+    nocturneTokens.color.red,
+  ],
   backgroundColor: "transparent",
   tooltip: {
-    backgroundColor: "rgba(24, 24, 27, 0.6)",
-    borderColor: "rgba(255, 255, 255, 0.15)",
+    backgroundColor: nocturneTokens.color.panel,
+    borderColor: nocturneTokens.color.line,
     textStyle: {
-      color: "#fff",
+      color: nocturneTokens.color.ink,
     },
     extraCssText: "backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);",
   },

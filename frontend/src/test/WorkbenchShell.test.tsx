@@ -206,14 +206,6 @@ describe("WorkbenchShell", () => {
   it("keeps cross-asset shell compression in the final institutional console layer", () => {
     const css = readFileSync(WORKBENCH_INSTITUTIONAL_CONSOLE_CSS_PATH, "utf8");
     const mobileCss = css.slice(css.indexOf("@media (max-width: 720px)"));
-    const desktopBannerBlock =
-      css.match(
-        /\.workbench-shell-grid--institutional-console\.workbench-shell-grid--cross-asset \[data-testid="workbench-governance-banner"\] \{[\s\S]*?\n  \}/,
-      )?.[0] ?? "";
-    const desktopBannerHintBlock =
-      css.match(
-        /\.workbench-shell-grid--institutional-console\.workbench-shell-grid--cross-asset \[data-testid="workbench-governance-banner"\] \.workbench-notice__hint \{[\s\S]*?\n  \}/,
-      )?.[0] ?? "";
     const desktopTerminalBlock =
       css.match(
         /\.workbench-shell-grid--institutional-console\.workbench-shell-grid--cross-asset \[data-testid="workbench-terminal-bar"\] \{[\s\S]*?\n  \}/,
@@ -250,17 +242,11 @@ describe("WorkbenchShell", () => {
     expect(desktopTickerBlock).toContain("gap: 6px !important;");
     expect(desktopUtilityBlock).toContain("padding: 2px 1px !important;");
     expect(desktopUtilityBlock).toContain("font-size: 11px;");
-    expect(desktopBannerBlock).toContain("grid-template-columns: auto minmax(0, 1fr) minmax(210px, 0.42fr);");
-    expect(desktopBannerBlock).toContain("align-items: center;");
-    expect(desktopBannerBlock).toContain("min-height: 36px;");
-    expect(desktopBannerBlock).toContain("padding: 5px 10px !important;");
-    expect(desktopBannerBlock).toContain("border-color: rgba(184, 138, 45, 0.28) !important;");
-    expect(desktopBannerBlock).toContain("background:");
-    expect(desktopBannerBlock).toContain("rgba(184, 138, 45, 0.07)");
-    expect(desktopBannerHintBlock).toContain("grid-column: auto;");
-    expect(desktopBannerHintBlock).toContain("overflow: hidden;");
-    expect(desktopBannerHintBlock).toContain("text-overflow: ellipsis;");
-    expect(desktopBannerHintBlock).toContain("white-space: nowrap;");
+    // cross-asset 治理横幅的浅色硬编码压缩块已随暗色主题清理移除：
+    // 横幅回落到共享 workbench-notice 样式，不得再出现路由私有覆盖。
+    expect(css).not.toContain(
+      '.workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset [data-testid="workbench-governance-banner"]',
+    );
     expect(css).toContain(".workbench-section-subnav__header {\n    display: none !important;");
     expect(mobileCss).not.toContain("workbench-shell-grid--cross-asset");
     expect(css).not.toContain(':has([data-testid="cross-asset-drivers-page"])');
@@ -429,7 +415,8 @@ describe("WorkbenchShell", () => {
     expect(screen.queryByTestId("balance-movement-portfolio-nav")).not.toBeInTheDocument();
     expect(within(rail as HTMLElement).queryByText("PORTFOLIO CONSOLE")).not.toBeInTheDocument();
     expect(within(rail as HTMLElement).queryByText("组合总览")).not.toBeInTheDocument();
-    expect(document.getElementById("data-mode-ribbon")).not.toBeInTheDocument();
+    // mock 警示横幅是全局数据可信标识，不属于该页可隐藏的壳层铬件（页内无等价常显警示）。
+    expect(document.getElementById("data-mode-ribbon")).toBeInTheDocument();
     expect(screen.queryByTestId("workbench-terminal-bar")).not.toBeInTheDocument();
     expect(screen.queryByTestId("workbench-section-subnav")).not.toBeInTheDocument();
   });
@@ -630,6 +617,9 @@ describe("WorkbenchShell", () => {
     const marketTicker = await screen.findByTestId("workbench-market-ticker");
     expect(marketTicker).toHaveTextContent("10年国债");
     expect(marketTicker).toHaveTextContent("DR007");
+    expect(
+      within(marketTicker).getByTestId("workbench-market-ticker-fallback-flag"),
+    ).toHaveTextContent("演示");
     expect(screen.queryByText("Unexpected Application Error!")).not.toBeInTheDocument();
   });
 
@@ -701,7 +691,7 @@ describe("WorkbenchShell", () => {
   });
 
   it("includes stable series_id aliases for future shell ticker concepts", () => {
-    const items = buildShellTickerItems(
+    const { items, isFallback } = buildShellTickerItems(
       [
         {
           series_id: "EMM00166502",
@@ -737,6 +727,7 @@ describe("WorkbenchShell", () => {
       ["policyBank10y", "us10y", "cnUs10ySpread"],
     );
 
+    expect(isFallback).toBe(false);
     expect(items).toEqual([
       expect.objectContaining({ key: "policyBank10y", value: "2.09%", delta: "+1bp" }),
       expect.objectContaining({ key: "us10y", value: "4.12%", delta: "+3bp" }),

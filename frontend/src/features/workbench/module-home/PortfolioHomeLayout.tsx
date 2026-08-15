@@ -24,8 +24,8 @@ import { PortfolioStructureTabPanel } from "./PortfolioStructureTabPanel";
 import styles from "./portfolioHome.module.css";
 
 const PORTFOLIO_KPI_CHANGE_CLASSES = {
-  up: dhStyles.dhUpRed,
-  down: dhStyles.dhDownGreen,
+  up: dhStyles.dhUpGreen,
+  down: dhStyles.dhDownRed,
   neutral: dhStyles.dhMuted,
 } as const;
 
@@ -35,6 +35,28 @@ const ANALYSIS_TABS = [
   { key: "spread-analysis", label: "利差" },
   { key: "business-type-metrics", label: "业务类型" },
 ] as const;
+
+/**
+ * 结构页签 → 债券总览页真实分区锚点（bond-dashboard/sections/* 内的 <section id>）；
+ * 子组合与利差同在「组合与风险」分区，收益率在「资产结构」分区。
+ */
+const BOND_DASHBOARD_SECTION_ANCHORS: Record<(typeof ANALYSIS_TABS)[number]["key"], string> = {
+  "portfolio-comparison": "bond-dashboard-section-portfolio-risk",
+  "yield-distribution": "bond-dashboard-section-structure",
+  "spread-analysis": "bond-dashboard-section-portfolio-risk",
+  "business-type-metrics": "bond-dashboard-section-business-type",
+};
+
+/** 债券总览复核深链：日期为空时不拼 report_date 伪参数，仅保留分区锚点。 */
+function bondDashboardGapLink(
+  tabKey: (typeof ANALYSIS_TABS)[number]["key"],
+  reportDate: string,
+): string {
+  const anchor = `#${BOND_DASHBOARD_SECTION_ANCHORS[tabKey]}`;
+  return reportDate
+    ? `/bond-dashboard?report_date=${encodeURIComponent(reportDate)}${anchor}`
+    : `/bond-dashboard${anchor}`;
+}
 
 type PortfolioStructureTab = (typeof ANALYSIS_TABS)[number] & {
   panel?: ModuleHomeDetailPanel;
@@ -56,6 +78,9 @@ const DRILL_ICON_MAP: Record<string, ReactNode> = {
 
 /** 明细入口默认就绪态；只在偏离默认时展示状态，避免同一文案重复十余次。 */
 const DEFAULT_DRILL_READINESS = "已开放";
+
+/** 「临时开放」在组头汇总一次，不在每个入口行内重复（B6）；行级状态保留在 title。 */
+const TEMP_OPEN_READINESS = "临时开放";
 
 const WORKBENCH_NAV_ITEMS = [
   { href: "#portfolio-holdings-workbench", code: "H", label: "持仓结构", detail: "全景" },
@@ -120,6 +145,25 @@ function detailValueKind(value: string): "prose" | "metric" {
   return text.length >= 16 && !/^[+\-\d]/.test(text) ? "prose" : "metric";
 }
 
+const PNL_DRIVER_TOKEN_LABELS: Record<string, string> = {
+  rate: "利率",
+  volume: "规模",
+  market: "市场",
+};
+
+/** 归因摘要 key_findings 是后端枚举直出句（如「主驱动归类为 rate」），展示层中文化（B7）。 */
+function localizePnlFindingText(text: string) {
+  return text.replace(
+    /归类为\s*(rate|volume|market)\b/gi,
+    (token, driver: string) =>
+      `归类为${PNL_DRIVER_TOKEN_LABELS[driver.toLowerCase()] ?? driver}`,
+  );
+}
+
+/** 日期闭合线（balance-basis）同名行说明：行键仅含来源/类型/计量口径，仓位与币种维度未展开。 */
+const BASIS_DUPLICATE_LABEL_TITLE =
+  "存在同名口径组合的多行：后端还按仓位（资产/负债）与币种拆分，本卡未展开该维度，同名不同值属正常；明细请到资产负债分析页复核。";
+
 function DetailPanelBody({
   panel,
   embedded = false,
@@ -127,6 +171,14 @@ function DetailPanelBody({
   panel: ModuleHomeDetailPanel;
   embedded?: boolean;
 }) {
+  const isPnlPanel = panel.key === "pnl-attribution-summary";
+  const isBasisPanel = panel.key === "balance-basis";
+  const labelCounts = new Map<string, number>();
+  if (isBasisPanel) {
+    for (const row of panel.rows) {
+      labelCounts.set(row.label, (labelCounts.get(row.label) ?? 0) + 1);
+    }
+  }
   const body = (
     <>
       <div className={embedded ? styles.embeddedPanelHead : dhStyles.dhTerminalPanelHead}>
@@ -136,15 +188,29 @@ function DetailPanelBody({
       <p className={styles.detailSource}>{panel.meta}</p>
       {panel.rows.length > 0 ? (
         <ul className={styles.detailList}>
-          {panel.rows.map((row) => (
-            <li className={styles.detailRow} key={row.key}>
-              <div className={styles.detailTop} data-value-kind={detailValueKind(row.value)}>
-                <span className={styles.detailLabel}>{row.label}</span>
-                <span className={`${styles.detailValue} ${toneClass(row.tone)}`}>{row.value}</span>
-              </div>
-              {row.source ? <span className={styles.detailSource}>{row.source}</span> : null}
-            </li>
-          ))}
+          {panel.rows.map((row) => {
+            const displayValue = isPnlPanel ? localizePnlFindingText(row.value) : row.value;
+            const duplicateLabel = isBasisPanel && (labelCounts.get(row.label) ?? 0) > 1;
+            return (
+              <li className={styles.detailRow} key={row.key}>
+                <div className={styles.detailTop} data-value-kind={detailValueKind(row.value)}>
+                  <span
+                    className={styles.detailLabel}
+                    title={duplicateLabel ? BASIS_DUPLICATE_LABEL_TITLE : undefined}
+                  >
+                    {row.label}
+                  </span>
+                  <span
+                    className={`${styles.detailValue} ${toneClass(row.tone)}`}
+                    title={displayValue === row.value ? undefined : row.value}
+                  >
+                    {displayValue}
+                  </span>
+                </div>
+                {row.source ? <span className={styles.detailSource}>{row.source}</span> : null}
+              </li>
+            );
+          })}
         </ul>
       ) : (
         <p className={`${styles.detailSource} ${toneClass(panel.tone)}`} data-empty>
@@ -260,7 +326,9 @@ function WorkbenchSectionHead({
       {metaList.length > 0 || action ? (
         <div className={styles.workbenchSectionMeta}>
           {metaList.map((item) => (
-            <em key={item}>{item}</em>
+            <em key={item} title={item}>
+              {item}
+            </em>
           ))}
           {action}
         </div>
@@ -385,13 +453,56 @@ function decisionUseLabel(decision: NonNullable<ModuleHomeView["decision"]>) {
   return "待复核";
 }
 
+const EVIDENCE_BASIS_LABELS: Record<string, string> = {
+  formal: "正式口径",
+  scenario: "情景口径",
+  analytical: "分析口径",
+  ledger: "台账口径",
+  mock: "样例口径",
+};
+
+const EVIDENCE_QUALITY_LABELS: Record<string, string> = {
+  ok: "正常",
+  warning: "关注",
+  error: "异常",
+  stale: "陈旧",
+  missing: "缺失",
+};
+
+/** 摘要「证据」列的中英混排句改完整中文短句（B7）；原文保留在 title。 */
+function localizeBriefEvidence(text: string) {
+  return localizeEvidenceTokens(text)
+    .replace(/使用 pnl-attribution summary/g, "使用损益归因摘要")
+    .replace(/完整瀑布图在 \/pnl-attribution/g, "完整瀑布图见收益归因页")
+    .replace(/直接展示 headline \/ risk-indicators 字段/g, "直接展示债券总览与风险指标字段")
+    .replace(/使用 balance-analysis overview 字段展示/g, "使用资产负债总览字段展示")
+    .replace(/已挂接 basis 分解/g, "已挂接口径分解");
+}
+
+/** 结论与读数位只出现业务语言；口径原文仍保留在 title 与屏幕阅读器文本中。 */
+function localizeEvidenceTokens(text: string) {
+  return compactActionEvidence(text)
+    .replace(/\s*basis=([a-z_]+)/g, (token, basis: string) =>
+      EVIDENCE_BASIS_LABELS[basis] ? `为${EVIDENCE_BASIS_LABELS[basis]}` : token,
+    )
+    .replace(/\s*quality=([a-z_]+)/g, (token, quality: string) =>
+      EVIDENCE_QUALITY_LABELS[quality] ? `质量标记为${EVIDENCE_QUALITY_LABELS[quality]}` : token,
+    )
+    .replace(/\s*formal_use_allowed=true/g, "已允许正式使用")
+    .replace(/\s*meta_date=(\d{4}-\d{2}-\d{2})/g, "证据日期 $1")
+    .replace(/\s*report_date=(\d{4}-\d{2}-\d{2})/g, "报告日 $1")
+    .replace(/\s*fallback=none/g, "无回退")
+    .replace(/\s*fallback=([^\s；。，,]+)/g, "回退口径 $1");
+}
+
 function compactDecisionDetail(detail: string) {
   const parts = [
     detail.includes("不生成调仓建议") ? "不生成调仓建议" : "",
     detail.includes("不使用前端补数") ? "不使用前端补数" : "",
-    detail.match(/风险闭合：([^；。]+)/)?.[0] ?? "",
+    // 「风险闭合：风险闭合证据…」的标签与证据名同源，展示位去掉重复前缀。
+    (detail.match(/风险闭合：([^；。]+)/)?.[0] ?? "").replace(/^风险闭合：(?=风险闭合)/, ""),
   ].filter(Boolean);
-  return parts.join(" / ");
+  return localizeEvidenceTokens(parts.join(" / "));
 }
 
 function compactFactValue(fact: PortfolioDecisionFact) {
@@ -404,7 +515,7 @@ function compactFactValue(fact: PortfolioDecisionFact) {
     if (entries.length > 0 && dates.length === 1) return `${entries.length} 个来源 / ${dates[0]}`;
     if (entries.length > 0 && dates.length > 1) return `${entries.length} 个来源 / ${dates.join(" / ")}`;
   }
-  return fact.value;
+  return localizeEvidenceTokens(fact.value);
 }
 
 function compactActionEvidence(evidence: string) {
@@ -422,18 +533,47 @@ function uniqueTextParts(parts: Array<string | null | undefined | false>) {
   return Array.from(new Set(parts.filter((part): part is string => Boolean(part))));
 }
 
-function compactKpiDetail(detail: string) {
+function compactKpiDetail(detail: string, valueCarriesUnit = false) {
   const movement = detail.match(/(?:环比|较前日)\s*[+＋−-]?\d+(?:\.\d+)?\s*(?:%|只|bp)?/)?.[0];
   const parts = uniqueTextParts([
     detail.includes("资产负债口径") ? "资产负债口径" : null,
     detail.includes("风险指标") ? "风险指标" : null,
-    detail.includes("按亿元展示") ? "亿元" : null,
-    detail.includes("按万元展示") ? "万元" : null,
+    // 值行已带单位时注行不再重复单位（B5）。
+    !valueCarriesUnit && detail.includes("按亿元展示") ? "亿元" : null,
+    !valueCarriesUnit && detail.includes("按万元展示") ? "万元" : null,
     detail.includes("未返回") ? "未返回" : null,
     movement,
   ]);
 
-  return parts.join(" · ");
+  if (parts.length > 0) {
+    return parts.join(" · ");
+  }
+  // 注行原本只有单位 chip 时，去重后保留口径首段，避免注行（含 title 口径说明）整体消失。
+  if (valueCarriesUnit && /按[亿万]元展示/.test(detail)) {
+    return detail.split(/[，。]/)[0]?.trim() ?? "";
+  }
+  return "";
+}
+
+/**
+ * 口径澄清（B4）：后端字段 credit_spread_median 实为信用债 YTM 中位数
+ * （与 /bond-analysis、/bond-dashboard 同源同口径），按“信用利差”直呼会造成
+ * 230bp 级利差误读，展示层统一改名并在 title 注明口径。
+ */
+const KPI_LABEL_OVERRIDES: Record<string, { label: string; title: string }> = {
+  "bond-credit-spread": {
+    label: "信用债收益率中位数",
+    title:
+      "信用债 YTM 中位数（字段 credit_spread_median），非对国债利差；与债券分析页同源同口径。",
+  },
+};
+
+/** DV01 为每基点价值敏感度，单位口径与债券总览页一致为 万元/bp（B5）。 */
+function kpiUnitDisplay(itemKey: string, unit: string) {
+  if (itemKey === "bond-dv01" && unit === "万元") {
+    return "万元/bp";
+  }
+  return unit;
 }
 
 const PRIMARY_KPI_KEYS = ["bond-market", "bond-duration", "bond-ytm", "bond-dv01", "bond-credit-ratio"] as const;
@@ -462,7 +602,9 @@ function PortfolioKpiCard({ item, variant }: { item: ModuleHomeKpi; variant: "pr
   const value = splitKpiValue(item.value);
   const missingValue = value.number === EM_DASH;
   const changeDirection = resolveMarketChangeDirection(item.detail, item.sparkline);
-  const detail = compactKpiDetail(item.detail);
+  const unitDisplay = kpiUnitDisplay(item.key, value.unit);
+  const detail = compactKpiDetail(item.detail, Boolean(unitDisplay));
+  const labelOverride = KPI_LABEL_OVERRIDES[item.key];
   const variantClass = variant === "primary" ? styles.kpiCardPrimary : styles.kpiCardSecondary;
 
   return (
@@ -473,7 +615,9 @@ function PortfolioKpiCard({ item, variant }: { item: ModuleHomeKpi; variant: "pr
       data-testid={`module-home-portfolio-kpi-${item.key}`}
     >
       <div className={dhStyles.dhTerminalKpiTop}>
-        <span className={styles.kpiLabel}>{item.label}</span>
+        <span className={styles.kpiLabel} title={labelOverride?.title}>
+          {labelOverride?.label ?? item.label}
+        </span>
       </div>
       <div className={styles.portfolioKpiValueRow}>
         <div
@@ -481,10 +625,10 @@ function PortfolioKpiCard({ item, variant }: { item: ModuleHomeKpi; variant: "pr
           data-empty={missingValue ? "true" : undefined}
         >
           <span>{missingValue ? "待核验" : value.number}</span>
-          {value.unit ? (
+          {unitDisplay ? (
             <>
               {" "}
-              <small>{value.unit}</small>
+              <small>{unitDisplay}</small>
             </>
           ) : null}
         </div>
@@ -536,6 +680,21 @@ function splitKpiValue(value: string) {
   };
 }
 
+function DecisionFact({ fact }: { fact: PortfolioDecisionFact }) {
+  const displayValue = compactFactValue(fact);
+
+  return (
+    <div
+      className={styles.decisionFact}
+      aria-label={`${fact.label}: ${fact.value}`}
+      title={`${fact.label}: ${fact.value}`}
+    >
+      <span>{fact.label}</span>
+      <strong className={toneClass(fact.tone)}>{displayValue}</strong>
+    </div>
+  );
+}
+
 function DecisionPanel({ view }: { view: ModuleHomeView }) {
   if (!view.decision) {
     return null;
@@ -558,21 +717,23 @@ function DecisionPanel({ view }: { view: ModuleHomeView }) {
           <span className={`${styles.decisionStatusDot} ${toneClass(view.decision.tone)}`} aria-hidden="true" />
           <span className={styles.decisionKicker}>组合复核</span>
           <span hidden>{view.decision.title}</span>
-          <span
-            className={`${styles.terminalStatus} ${toneClass(view.decision.tone)}`}
-            data-testid="module-home-decision-use-level"
-          >
-            {useLabel}
-          </span>
         </div>
         <h2 className={`${styles.decisionTitle} ${toneClass(view.decision.tone)}`}>
           {view.decision.conclusion}
         </h2>
-        <p className={styles.decisionDetail}>{compactDecisionDetail(view.decision.detail)}</p>
+        <p className={styles.decisionDetail} title={view.decision.detail}>
+          {compactDecisionDetail(view.decision.detail)}
+        </p>
         <span className={styles.srOnly}>{view.decision.detail}</span>
+        {/* 使用级别全卡只此一处字段：结论标题承担唯一强调，这里保持安静读数。 */}
         <div className={styles.decisionReadinessBar} aria-label={`${view.decision.title}: ${useLabel}`}>
           <span>业务可用</span>
-          <strong className={toneClass(view.decision.tone)}>{useLabel}</strong>
+          <strong
+            className={toneClass(view.decision.tone)}
+            data-testid="module-home-decision-use-level"
+          >
+            {useLabel}
+          </strong>
         </div>
       </div>
 
@@ -583,10 +744,7 @@ function DecisionPanel({ view }: { view: ModuleHomeView }) {
         </div>
         <div className={styles.decisionFactGrid}>
           {supportFacts.map((fact) => (
-            <div className={styles.decisionFact} key={fact.label} aria-label={`${fact.label}: ${fact.value}`}>
-              <span>{fact.label}</span>
-              <strong className={toneClass(fact.tone)}>{compactFactValue(fact)}</strong>
-            </div>
+            <DecisionFact fact={fact} key={fact.label} />
           ))}
         </div>
       </div>
@@ -598,10 +756,7 @@ function DecisionPanel({ view }: { view: ModuleHomeView }) {
         </div>
         <div className={styles.evidenceFactList}>
           {headlineFacts.map((fact) => (
-            <div className={styles.decisionFact} key={fact.label} aria-label={`${fact.label}: ${fact.value}`}>
-              <span>{fact.label}</span>
-              <strong className={toneClass(fact.tone)}>{compactFactValue(fact)}</strong>
-            </div>
+            <DecisionFact fact={fact} key={fact.label} />
           ))}
         </div>
         {actions.length > 0 ? (
@@ -752,6 +907,9 @@ export default function PortfolioHomeLayout({
     `${view.statuses.length} 条来源状态`,
     riskClosureBlocked ? "风险闭合待复核" : "风险闭合可用",
   ];
+  const tempOpenDrillCount = config.drilldowns.filter(
+    (item) => item.key !== "portfolio-home" && item.statusLabel === TEMP_OPEN_READINESS,
+  ).length;
   const kpiGroups = useMemo(() => {
     const { primary, secondary } = splitKpisByPriority(view.kpis);
     return { primary, secondary, scopeNote: kpiScopeNote(view.kpis) };
@@ -789,20 +947,21 @@ export default function PortfolioHomeLayout({
       <header data-testid="module-home-toolbar" className={`${dhStyles.dhTopbar} ${styles.portfolioTopbar}`}>
         <div className={`${dhStyles.dhTopbarLeft} ${styles.portfolioTopbarLeft}`}>
           <div className={dhStyles.dhTitleBrand}>
-            <span className={dhStyles.dhTitleBar} aria-hidden="true" />
-            <span className={dhStyles.dhTitleMark} aria-hidden="true">
-              M
-            </span>
             <h1 className={dhStyles.dhTitle}>{view.title}</h1>
           </div>
           <div className={styles.topbarCopy}>
             <p className={styles.topbarSubtitle}>{view.question}</p>
-            <p className={styles.topbarSummary}>{view.summary}</p>
+            <p className={styles.topbarSummary} title={view.summary}>
+              {view.summary}
+            </p>
           </div>
         </div>
         <div className={`${dhStyles.dhTopbarRight} ${styles.portfolioTopbarMeta}`}>
           <div className={styles.toolbarMeta}>
-            <span className={statePillClass(stateTone)} data-tone={stateTone}>{view.stateLabel}</span>
+            <span className={styles.toolbarState} data-tone={stateTone}>
+              <i aria-hidden="true" />
+              {view.stateLabel}
+            </span>
             <span className={styles.datePill}>
               资产负债日 <strong>{balanceReportDate || EM_DASH}</strong>
             </span>
@@ -813,7 +972,7 @@ export default function PortfolioHomeLayout({
         </div>
       </header>
 
-      <main className={`${dhStyles.dhMain} ${styles.portfolioPageMain}`}>
+      <div className={`${dhStyles.dhMain} ${styles.portfolioPageMain}`}>
         <section data-testid="module-home-portfolio-cockpit" className={styles.portfolioCockpit}>
           <section data-testid="module-home-portfolio-review-band" className={styles.portfolioReviewBand}>
             <section data-testid="module-home-portfolio-first-screen" className={styles.portfolioPrimaryGrid}>
@@ -933,7 +1092,7 @@ export default function PortfolioHomeLayout({
                             <Link
                               key={tab.key}
                               className={styles.structureGapAction}
-                              to={`/bond-dashboard?report_date=${encodeURIComponent(bondReportDate || "-")}#${tab.key}`}
+                              to={bondDashboardGapLink(tab.key, bondReportDate)}
                               data-testid={`module-home-structure-gap-action-${tab.key}`}
                             >
                               {tab.label}为空 · 去债券总览复核
@@ -1009,10 +1168,15 @@ export default function PortfolioHomeLayout({
                               key={item.title}
                             >
                               <span className={styles.briefTitle}>{item.title}</span>
-                              <strong className={`${styles.briefConclusion} ${toneClass(item.tone)}`}>
+                              <strong
+                                className={`${styles.briefConclusion} ${toneClass(item.tone)}`}
+                                title={item.conclusion}
+                              >
                                 {item.conclusion}
                               </strong>
-                              <span className={styles.briefEvidence}>{item.evidence}</span>
+                              <span className={styles.briefEvidence} title={item.evidence}>
+                                {localizeBriefEvidence(item.evidence)}
+                              </span>
                             </article>
                           ))}
                         </div>
@@ -1027,8 +1191,10 @@ export default function PortfolioHomeLayout({
                           {view.statuses.slice(0, 4).map((item) => (
                             <div className={styles.statusCell} key={item.key}>
                               <span>{item.label}</span>
-                              <b className={toneClass(item.tone)}>{item.value}</b>
-                              <em>{item.detail}</em>
+                              <b className={toneClass(item.tone)} title={item.value}>
+                                {item.value}
+                              </b>
+                              <em title={item.detail}>{item.detail}</em>
                             </div>
                           ))}
                         </div>
@@ -1061,7 +1227,7 @@ export default function PortfolioHomeLayout({
                               key={tile.key}
                               to={tile.path}
                               className={`${dhStyles.dhCard} ${dhStyles.dhTerminalQuick} ${styles.quickAccessCard}`}
-                              title={tile.description}
+                              title={`${tile.label}：${tile.description}`}
                               data-testid={`module-home-portfolio-quick-${tile.key}`}
                             >
                               <span>{tile.icon}</span>
@@ -1073,14 +1239,30 @@ export default function PortfolioHomeLayout({
                       </section>
 
                       <section data-testid="module-home-drilldowns" className={`${styles.sectionBlock} ${styles.drilldownBlock}`}>
-                        <ModuleHomeSectionHead label="明细" title="全部分组入口" className={styles.sectionHead} />
+                        <ModuleHomeSectionHead
+                          label="明细"
+                          title="全部分组入口"
+                          className={styles.sectionHead}
+                          trailing={
+                            tempOpenDrillCount > 0 ? (
+                              <em
+                                className={styles.sectionHeadNote}
+                                data-testid="module-home-portfolio-drill-readiness-note"
+                                title={`${tempOpenDrillCount} 个入口为「临时开放」；行内不再重复徽标，各入口状态见悬浮说明。`}
+                              >
+                                {tempOpenDrillCount} 个入口临时开放
+                              </em>
+                            ) : undefined
+                          }
+                        />
                         <div className={styles.drillGrid}>
                           {config.drilldowns.map((item) => {
                             const icon = (item.icon && DRILL_ICON_MAP[item.icon]) ?? <LightIcon name="arrow-right" />;
                             const isCurrentHome = item.key === "portfolio-home";
                             const readinessNote = isCurrentHome
                               ? "当前首页"
-                              : item.statusLabel === DEFAULT_DRILL_READINESS
+                              : item.statusLabel === DEFAULT_DRILL_READINESS ||
+                                  item.statusLabel === TEMP_OPEN_READINESS
                                 ? ""
                                 : item.statusLabel;
                             return (
@@ -1091,7 +1273,7 @@ export default function PortfolioHomeLayout({
                                 className={`${dhStyles.dhCard} ${dhStyles.dhTerminalQuick} ${styles.drillCard} ${
                                   isCurrentHome ? styles.drillCardCurrent : ""
                                 }`}
-                                title={`${item.description}（${item.statusLabel}）`}
+                                title={`${item.label}：${item.description}（${item.statusLabel}）`}
                                 data-readiness={readinessNote ? "note" : "default"}
                               >
                                 <span>{icon}</span>
@@ -1126,7 +1308,7 @@ export default function PortfolioHomeLayout({
             </section>
           </section>
         </section>
-      </main>
+      </div>
     </>
   );
 }

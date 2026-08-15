@@ -86,6 +86,13 @@ import {
   type PortfolioEvidenceSource,
 } from "./portfolioReadinessGate";
 import { buildRiskKrdChart } from "./riskHomeAdapter";
+import {
+  buildMarketCrisisExplain,
+  buildMarketDeskIntel,
+  macroToolkitModuleTone,
+  type MarketCrisisExplainView,
+  type MarketDeskIntelView,
+} from "./marketDeskIntelModel";
 
 export type ModuleHomeTone = "ok" | "watch" | "error" | "muted";
 
@@ -94,6 +101,8 @@ export type ModuleHomeKpi = {
   label: string;
   value: string;
   detail: string;
+  /** 端点/函数名等证据引用收进 tooltip（§7），不占正文版面。 */
+  detailTitle?: string;
   tone: ModuleHomeTone;
   /** 近两期读数，仅用于迷你走势展示（数据来自 API prev_kpis / recent_points） */
   sparkline?: readonly number[];
@@ -218,53 +227,16 @@ export type ModuleHomeDetailPanel = {
   chart?: ModuleHomeDetailChart;
 };
 
-export type MarketCrisisExplainComponent = {
-  key: string;
-  label: string;
-  zScore: number | null;
-  weight: number | null;
-  rawValue: number | null;
-};
-
-export type MarketCrisisHistoryPoint = {
-  date: string;
-  crisisScore: number;
-  percentile: number | null;
-};
-
-export type MarketDeskIndicatorHighlight = {
-  key: string;
-  label: string;
-  value: string;
-  group: string;
-  tone: ModuleHomeTone;
-};
-
-export type MarketDeskIntelView = {
-  curveShape: string | null;
-  curveShapeLabel: string | null;
-  curveInterpretation: string | null;
-  spread10y1yBp: number | null;
-  curvePercentile1y: number | null;
-  indicators: MarketDeskIndicatorHighlight[];
-};
-
-export type MarketCrisisExplainView = {
-  crisisScore: number | null;
-  regime: string | null;
-  percentile: number | null;
-  headline: string | null;
-  recommendation: string | null;
-  dataStatus: string | null;
-  availableComponentCount: number | null;
-  componentCount: number | null;
-  scoreDelta: number | null;
-  percentileDelta: number | null;
-  components: MarketCrisisExplainComponent[];
-  scoreHistory: MarketCrisisHistoryPoint[];
-  warnings: string[];
-  tone: ModuleHomeTone;
-};
+// 市场危机解读 / 台桌情报的类型与构建函数已抽取至 marketDeskIntelModel.ts；
+// 这里保留同名导出以兼容仍从本模块导入的调用方（legacy module path）。
+export type {
+  MarketCrisisExplainComponent,
+  MarketCrisisExplainView,
+  MarketCrisisHistoryPoint,
+  MarketDeskIndicatorHighlight,
+  MarketDeskIntelView,
+} from "./marketDeskIntelModel";
+export { buildMarketCrisisExplain, buildMarketDeskIntel };
 
 export type ModuleHomeView = {
   kind: ModuleWorkbenchHomeKind;
@@ -396,11 +368,12 @@ function queryStatus(
     };
   }
   if (query.isError) {
+    // §6 状态去重：失败原因全页只在状态条与数据说明各说一次，分区内保持安静占位。
     return {
       key,
       label,
       value: "读取失败",
-      detail: "不使用前端补数，请进入下钻页或重试读链路。",
+      detail: EM_DASH,
       tone: "error",
     };
   }
@@ -561,11 +534,12 @@ function combinedQueryStatus(
     return queryStatus(key, label, undefined, readyDetail);
   }
   if (active.some((query) => query?.isError)) {
+    // §6 状态去重：同 queryStatus，失败原因不在每个分区重复。
     return {
       key,
       label,
       value: "读取失败",
-      detail: "不使用前端补数，请进入下钻页或重试读链路。",
+      detail: EM_DASH,
       tone: "error",
     };
   }
@@ -1188,9 +1162,10 @@ function baseDataNote(
   queries: ModuleHomeSourceQueries,
 ): ModuleHomeDataNote {
   const config = moduleWorkbenchHomeConfigs[kind];
-  const errorLines = Object.values(queries)
-    .filter((query) => query?.isError)
-    .map(() => "读取失败：不使用前端补数。");
+  const errorCount = Object.values(queries).filter((query) => query?.isError).length;
+  // §6 状态去重：同一失败原因合并为一行，不随失败来源数量重复。
+  const errorLines =
+    errorCount > 0 ? [`${errorCount} 项来源读取失败：不使用前端补数。`] : [];
   return {
     title: "数据说明",
     lines: [...config.dataNotes, ...errorLines],
@@ -1467,19 +1442,6 @@ function buildNewsEventsSnapshotRows(
   return rows;
 }
 
-function macroToolkitModuleTone(tone: string): ModuleHomeTone {
-  if (tone === "positive" || tone === "complete") {
-    return "ok";
-  }
-  if (tone === "negative" || tone === "unavailable") {
-    return "error";
-  }
-  if (tone === "degraded" || tone === "neutral") {
-    return "watch";
-  }
-  return "muted";
-}
-
 function formatMacroToolkitPrimaryMetric(
   metric: { label: string; value: string | number; unit: string } | null,
 ): string {
@@ -1547,184 +1509,6 @@ export function buildMarketCurveSpreadRows(keyRatePanel?: ModuleHomeDetailPanel)
   );
   const creditSpreadRow = findMarketCreditSpreadRow(rows);
   return { termSpreadRows, creditSpreadRow };
-}
-
-const MARKET_CURVE_SHAPE_LABELS: Record<string, string> = {
-  Inverted: "倒挂",
-  Flat: "平坦",
-  Hump: "驼峰",
-  ModerateSteep: "中度陡峭",
-  NormalSteep: "偏陡",
-  Unavailable: "不可用",
-};
-
-const MARKET_DESK_INTEL_INDICATOR_LIMIT = 6;
-
-function crisisHistoryDelta(history: MarketCrisisHistoryPoint[]): {
-  scoreDelta: number | null;
-  percentileDelta: number | null;
-} {
-  if (history.length < 2) {
-    return { scoreDelta: null, percentileDelta: null };
-  }
-  const first = history[0];
-  const last = history[history.length - 1];
-  const scoreDelta =
-    first && last && Number.isFinite(first.crisisScore) && Number.isFinite(last.crisisScore)
-      ? Number((last.crisisScore - first.crisisScore).toFixed(4))
-      : null;
-  const percentileDelta =
-    first?.percentile !== null &&
-    first?.percentile !== undefined &&
-    last?.percentile !== null &&
-    last?.percentile !== undefined
-      ? Number((last.percentile - first.percentile).toFixed(2))
-      : null;
-  return { scoreDelta, percentileDelta };
-}
-
-function readCrisisResultNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-export function buildMarketDeskIntel(
-  analysis: MacroToolkitAnalysisPayload | null | undefined,
-): MarketDeskIntelView | null {
-  if (!analysis) {
-    return null;
-  }
-
-  const curveCapability = analysis.capability_results.find((item) => item.key === "yield_curve_shape");
-  const curveResult = curveCapability?.result ?? {};
-  const curveShape = readCrisisResultString(curveResult.shape);
-  const spreads =
-    curveResult.spreads && typeof curveResult.spreads === "object"
-      ? (curveResult.spreads as Record<string, unknown>)
-      : {};
-  const spread10y1yRaw = spreads["10Y-1Y"];
-  const spread10y1yBp =
-    typeof spread10y1yRaw === "number"
-      ? spread10y1yRaw
-      : typeof spread10y1yRaw === "string"
-        ? readCrisisResultNumber(Number.parseFloat(spread10y1yRaw))
-        : readCrisisResultNumber(spread10y1yRaw);
-
-  const indicators = analysis.indicators
-    .filter((indicator) => indicator.latest_value !== null && indicator.latest_value !== undefined)
-    .slice(0, MARKET_DESK_INTEL_INDICATOR_LIMIT)
-    .map((indicator) => {
-      const changeText =
-        indicator.change_pct !== null && indicator.change_pct !== undefined
-          ? ` · ${indicator.change_pct >= 0 ? "+" : ""}${indicator.change_pct.toFixed(2)}%`
-          : "";
-      return {
-        key: indicator.key,
-        label: indicator.label,
-        value: `${indicator.latest_value}${indicator.unit ?? ""}${changeText}`,
-        group: indicator.group,
-        tone: (indicator.quality === "ok" ? "ok" : "watch") as ModuleHomeTone,
-      };
-    });
-
-  if (!curveShape && indicators.length === 0) {
-    return null;
-  }
-
-  return {
-    curveShape,
-    curveShapeLabel: curveShape ? MARKET_CURVE_SHAPE_LABELS[curveShape] ?? curveShape : null,
-    curveInterpretation: readCrisisResultString(curveResult.interpretation),
-    spread10y1yBp,
-    curvePercentile1y: readCrisisResultNumber(curveResult.percentile_1y),
-    indicators,
-  };
-}
-
-function readCrisisResultString(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed ? trimmed : null;
-}
-
-function readMarketCrisisScoreHistory(raw: unknown): MarketCrisisHistoryPoint[] {
-  if (!Array.isArray(raw)) {
-    return [];
-  }
-  return raw
-    .map((item) => {
-      if (!item || typeof item !== "object") {
-        return null;
-      }
-      const point = item as Record<string, unknown>;
-      const crisisScore = readCrisisResultNumber(point.crisis_score);
-      const date = readCrisisResultString(point.date);
-      if (crisisScore === null || !date) {
-        return null;
-      }
-      return {
-        date,
-        crisisScore,
-        percentile: readCrisisResultNumber(point.percentile),
-      };
-    })
-    .filter((item): item is MarketCrisisHistoryPoint => Boolean(item));
-}
-
-export function buildMarketCrisisExplain(
-  analysis: MacroToolkitAnalysisPayload | null | undefined,
-): MarketCrisisExplainView | null {
-  if (!analysis) {
-    return null;
-  }
-  const capability = analysis.capability_results.find((item) => item.key === "crisis_score_cn");
-  if (!capability) {
-    return null;
-  }
-  const result = capability.result ?? {};
-  const rawComponents = Array.isArray(result.components) ? result.components : [];
-  const components: MarketCrisisExplainComponent[] = rawComponents
-    .map((item) => {
-      if (!item || typeof item !== "object") {
-        return null;
-      }
-      const component = item as Record<string, unknown>;
-      const key = readCrisisResultString(component.key) ?? "";
-      if (!key) {
-        return null;
-      }
-      return {
-        key,
-        label: readCrisisResultString(component.label) ?? key,
-        zScore: readCrisisResultNumber(component.z_score),
-        weight: readCrisisResultNumber(component.weight),
-        rawValue: readCrisisResultNumber(component.raw_value),
-      };
-    })
-    .filter((item): item is MarketCrisisExplainComponent => Boolean(item));
-  const warnings = Array.isArray(result.warnings)
-    ? result.warnings.map((item) => String(item).trim()).filter(Boolean)
-    : capability.warnings ?? [];
-  const scoreHistory = readMarketCrisisScoreHistory(result.score_history);
-  const { scoreDelta, percentileDelta } = crisisHistoryDelta(scoreHistory);
-
-  return {
-    crisisScore: readCrisisResultNumber(result.crisis_score) ?? capability.score,
-    regime: readCrisisResultString(result.regime),
-    percentile: readCrisisResultNumber(result.percentile),
-    headline: readCrisisResultString(result.headline) ?? capability.headline ?? null,
-    recommendation: readCrisisResultString(result.recommendation),
-    dataStatus: readCrisisResultString(result.data_status) ?? capability.status,
-    availableComponentCount: readCrisisResultNumber(result.available_component_count),
-    componentCount: readCrisisResultNumber(result.component_count),
-    scoreDelta,
-    percentileDelta,
-    components,
-    scoreHistory,
-    warnings,
-    tone: macroToolkitModuleTone(capability.status),
-  };
 }
 
 function buildMacroToolkitSignalRows(analysis: MacroToolkitAnalysisPayload): ModuleHomeDetailRow[] {
@@ -2169,7 +1953,10 @@ function buildBusinessTypeChart(
     unit: "亿元",
     orientation: "horizontal",
     categories: items.map((item) => item.name),
-    values: items.map((item) => Number(item.market_value) / 1e8),
+    values: items.map((item) => {
+      const raw = decimalToNumber(item.market_value);
+      return raw === null ? null : raw / 1e8;
+    }),
   };
 }
 
@@ -3388,7 +3175,7 @@ function formatRiskTensorYuanAmount(value: RiskTensorDisplayValue, divisor: numb
 function riskTensorWanWithUnit(value: RiskTensorDisplayValue): string {
   const raw = riskTensorRawOrNull(value);
   const display = formatRiskTensorYuanAmount(value, RISK_YUAN_PER_WAN);
-  return raw === null ? display : `${display} 万元`;
+  return raw === null ? display : `${display} 万元/bp`;
 }
 
 function riskTensorYiWithUnit(value: RiskTensorDisplayValue): string {
@@ -3402,6 +3189,13 @@ function riskTensorRatioPercent(value: RiskTensorDisplayValue): string {
   if (display.includes("%")) {
     return display;
   }
+  // legacy 字符串（riskTensor.ts 标注的历史/mock 兼容分支）没有单位契约：
+  // abs≤1→×100 的双阈值启发式会把 (0,1] 的百分点值放大 100 倍。
+  // 无 "%" 单位时不再猜测，原文透出（空串已由 display 归一为 EM_DASH）。
+  if (typeof value === "string") {
+    return display;
+  }
+  // 正式 Numeric 路径（后端 /api/risk/tensor 契约 raw）保留比例换算。
   const raw = riskTensorRawOrNull(value);
   if (raw === null) {
     return display;
@@ -3779,6 +3573,10 @@ function riskView(
       : undefined;
   const tensor = queries.riskTensor?.data?.result;
   const cashflow = queries.cashflow?.data?.result;
+  const tensorMeta = queries.riskTensor?.data?.result_meta;
+  const cashflowMeta = queries.cashflow?.data?.result_meta;
+  const tensorFormal = metaIsFormalDecisionSource(tensorMeta);
+  const cashflowFormal = metaIsFormalDecisionSource(cashflowMeta);
   const reportDate = tensor?.report_date ?? cashflow?.report_date ?? dates[0] ?? EM_DASH;
   const cashflowReportDate = cashflow?.report_date ?? reportDate;
   const tensorWarnings = tensor?.warnings ?? [];
@@ -3795,7 +3593,12 @@ function riskView(
     ? "error"
     : hasLoading(queries)
       ? "muted"
-      : hasRiskPartialError || !tensor || tensorWarnings.length > 0 || !hasRiskTensorValue(tensor.regulatory_dv01)
+      : hasRiskPartialError ||
+          !tensor ||
+          !tensorFormal ||
+          (Boolean(cashflow) && !cashflowFormal) ||
+          tensorWarnings.length > 0 ||
+          !hasRiskTensorValue(tensor.regulatory_dv01)
         ? "watch"
         : "ok";
   const decisionConclusion = hasRiskPrimaryError
@@ -3808,6 +3611,10 @@ function riskView(
           : "风险张量未返回，先补齐主链数据。"
         : hasRiskPartialError
           ? "风险张量已返回，现金流等辅助链路需单独复核。"
+        : !tensorFormal
+          ? "风险张量治理门禁未通过，只能作为复核证据。"
+        : cashflow && !cashflowFormal
+          ? "现金流为候选分析口径，不纳入正式风险评级。"
         : tensorWarnings.length > 0
           ? `存在 ${tensorWarnings.length} 条风险数据提示，优先核对张量质量。`
           : !hasRiskTensorValue(tensor.regulatory_dv01)
@@ -3820,13 +3627,17 @@ function riskView(
     ? buildRiskTensorDetailSections(tensor)
     : [];
   const riskTensorRows = flattenDetailSections(riskTensorSections);
-  const riskTensorStatus = queryStatus(
-    "risk-tensor-detail",
-    "风险张量明细",
-    queries.riskTensor,
-    riskTensorRows.length > 0
-      ? `风险张量已返回 ${riskTensorRows.length} 条明细。`
-      : "风险张量明细为空。",
+  const riskTensorStatus = sourceUseStatus(
+    queryStatus(
+      "risk-tensor-detail",
+      "风险张量明细",
+      queries.riskTensor,
+      riskTensorRows.length > 0
+        ? `风险张量已返回 ${riskTensorRows.length} 条明细。`
+        : "风险张量明细为空。",
+    ),
+    tensorMeta,
+    "风险张量 basis/formal_use/quality/fallback 治理门禁未通过，仅供复核。",
   );
   const riskTensorPanel = buildDetailPanel({
     key: "risk-tensor-detail",
@@ -3836,17 +3647,22 @@ function riskView(
     rows: riskTensorRows,
     sections: riskTensorSections,
     chart: tensor ? buildRiskKrdChart(tensor) : undefined,
+    showRowsWhenWarning: true,
   });
 
   const cashflowSections = cashflow ? buildCashflowDetailSections(cashflow) : [];
   const cashflowRows = flattenDetailSections(cashflowSections);
-  const cashflowStatus = queryStatus(
-    "cashflow-projection-detail",
-    "现金流与缺口",
-    queries.cashflow,
-    cashflowRows.length > 0
-      ? `现金流预测已返回 ${cashflowRows.length} 条明细。`
-      : "现金流预测明细为空。",
+  const cashflowStatus = sourceUseStatus(
+    queryStatus(
+      "cashflow-projection-detail",
+      "现金流与缺口",
+      queries.cashflow,
+      cashflowRows.length > 0
+        ? `现金流预测已返回 ${cashflowRows.length} 条明细。`
+        : "现金流预测明细为空。",
+    ),
+    cashflowMeta,
+    "现金流为候选/分析口径（formal_use_allowed=false），不得用于正式风险评级。",
   );
   const cashflowPanel = buildDetailPanel({
     key: "cashflow-projection-detail",
@@ -3855,6 +3671,7 @@ function riskView(
     status: cashflowStatus,
     rows: cashflowRows,
     sections: cashflowSections,
+    showRowsWhenWarning: true,
   });
 
   const durationGapKpi = cashflow
@@ -3903,13 +3720,21 @@ function riskView(
         label: durationGapKpi.label,
         value: cashflow || tensor ? durationGapKpi.value : EM_DASH,
         detail: durationGapKpi.detail,
-        tone: cashflow || tensor ? "ok" : "watch",
+        tone: cashflow ? (cashflowFormal ? "ok" : "watch") : tensor ? "ok" : "watch",
       },
     ],
     statuses: [
       riskDatesStatus(queries.riskDates, dates.length, blockedCount),
-      queryStatus("tensor", "风险张量", queries.riskTensor, "风险张量已返回。"),
-      queryStatus("cashflow", "现金流预测", queries.cashflow, "现金流预测已返回。"),
+      sourceUseStatus(
+        queryStatus("tensor", "风险张量", queries.riskTensor, "风险张量已返回。"),
+        tensorMeta,
+        "风险张量治理门禁未通过，仅供复核。",
+      ),
+      sourceUseStatus(
+        queryStatus("cashflow", "现金流预测", queries.cashflow, "现金流预测已返回。"),
+        cashflowMeta,
+        "现金流为候选/分析口径（formal_use_allowed=false），不得用于正式风险评级。",
+      ),
       {
         key: "concentration",
         label: "集中度",
@@ -3935,6 +3760,17 @@ function riskView(
           value: `${tensorWarnings.length} 条`,
           tone: tensorWarnings.length > 0 ? "watch" : "ok",
         },
+        ...(cashflow
+          ? [
+              {
+                label: "现金流口径",
+                value: `${cashflowMeta?.basis ?? "unknown"} · formal_use_allowed=${String(
+                  cashflowMeta?.formal_use_allowed ?? false,
+                )}`,
+                tone: cashflowFormal ? ("ok" as ModuleHomeTone) : ("watch" as ModuleHomeTone),
+              },
+            ]
+          : []),
         ...(blockedCount > 0
           ? [
               {
@@ -3972,8 +3808,12 @@ function riskView(
               cashflow.reinvestment_risk_12m,
             )}。`
           : "现金流预测未返回或待接入。",
-        evidence: "现金流压力以 /cashflow-projection 正式展示为准。",
-        tone: cashflow ? "ok" : "watch",
+        evidence: cashflow
+          ? `现金流治理：basis=${cashflowMeta?.basis ?? "unknown"}，formal_use_allowed=${String(
+              cashflowMeta?.formal_use_allowed ?? false,
+            )}；候选口径仅供复核。`
+          : "现金流预测待接入。",
+        tone: cashflow && cashflowFormal ? "ok" : "watch",
       },
     ],
     detailPanels: [riskTensorPanel, cashflowPanel],
@@ -4095,35 +3935,39 @@ function performanceView(
   return {
     stateLabel: hasError(queries) ? "读取失败" : hasLoading(queries) ? "读取中" : "已接入",
     stateDetail: hasError(queries)
-      ? "绩效读链路失败，不使用前端补数。"
-      : `KPI owner ${owners?.total ?? 0} 个，业务损益项目 ${pnl?.items.length ?? 0} 条。`,
+      ? "绩效读链路失败，不使用前端补数，可重试或进入下钻页核验。"
+      : `KPI Owner ${owners?.total ?? EM_DASH} 个，业务损益项目 ${pnl?.items.length ?? EM_DASH} 条。`,
     kpis: [
       {
         key: "owner-count",
         label: "KPI Owner",
         value: String(owners?.total ?? EM_DASH),
-        detail: "来自 getKpiOwners。",
+        detail: owners ? "本年活跃考核负责人数。" : "考核负责人清单读取失败或未返回。",
+        detailTitle: "getKpiOwners",
         tone: owners && owners.total > 0 ? "ok" : "watch",
       },
       {
         key: "kpi-score",
         label: "本期得分",
         value: kpi?.total_score ? `${kpi.total_score} 分` : EM_DASH,
-        detail: kpi ? `${kpi.period_label} / owner ${kpi.owner_name}` : "KPI summary 未返回。",
+        detail: kpi ? `${kpi.period_label} · ${kpi.owner_name}` : "KPI 汇总未返回。",
+        detailTitle: "getKpiValuesSummary",
         tone: kpi ? "ok" : "watch",
       },
       {
         key: "metric-count",
         label: "指标数",
         value: String(kpi?.total ?? EM_DASH),
-        detail: "KPI summary total。",
+        detail: kpi ? "本期考核指标总数。" : "KPI 汇总未返回。",
+        detailTitle: "getKpiValuesSummary.total",
         tone: kpi ? "ok" : "watch",
       },
       {
         key: "business-pnl",
         label: "YTD 业务损益",
         value: formatYiFromYuan(pnl?.total_pnl),
-        detail: pnl ? `${pnl.period_label}，${pnl.source_tables.join(" / ")}` : "业务损益 YTD 未返回。",
+        detail: pnl ? `${pnl.period_label}正式口径汇总。` : "业务损益 YTD 未返回。",
+        detailTitle: pnl ? `getPnlByBusinessYtd · ${pnl.source_tables.join(" / ")}` : "getPnlByBusinessYtd",
         tone: pnl ? "ok" : "watch",
       },
     ],
@@ -4145,18 +3989,18 @@ function performanceView(
         conclusion: kpi
           ? `${kpi.period_label} 指标 ${kpi.total} 个，总分 ${kpi.total_score}。`
           : "KPI 汇总暂无可用数据。",
-        evidence: "只展示 getKpiValuesSummary 返回值。",
+        evidence: "只展示 KPI 汇总接口返回值。",
         tone: kpi ? "ok" : "watch",
       },
       {
         title: "团队贡献",
-        conclusion: owners ? `当前活跃 owner ${owners.total} 个。` : "团队 owner 未返回。",
+        conclusion: owners ? `当前活跃考核负责人 ${owners.total} 个。` : "考核负责人清单未返回。",
         evidence: "团队贡献明细进入团队绩效页。",
         tone: owners ? "ok" : "watch",
       },
       {
         title: "损益复盘",
-        conclusion: pnl ? `YTD total_pnl ${formatYiFromYuan(pnl.total_pnl)}。` : "业务损益摘要未返回。",
+        conclusion: pnl ? `YTD 业务损益 ${formatYiFromYuan(pnl.total_pnl)}。` : "业务损益摘要未返回。",
         evidence: "使用 /pnl/by-business YTD 字段，不在首页重算 FTP 或收益率。",
         tone: pnl ? "ok" : "watch",
       },
@@ -4294,7 +4138,9 @@ function governanceView(
 ): Omit<ModuleHomeView, "kind" | "title" | "question" | "summary" | "sourceScope"> {
   const live = queries.healthLive?.data?.status;
   const summary = queries.healthSummary?.data?.status;
-  const sources = queries.sourceFoundation?.data?.result.sources ?? [];
+  // 保留 undefined：读取失败/未返回 ≠ 0 个数据源，KPI 侧必须能区分。
+  const sourceList = queries.sourceFoundation?.data?.result.sources;
+  const sources = sourceList ?? [];
   const dims = queries.cubeDimensions?.data;
   const cubeFactTable = dims?.fact_table ?? "bond_analytics";
 
@@ -4360,35 +4206,43 @@ function governanceView(
   return {
     stateLabel: hasError(queries) ? "读取失败" : hasLoading(queries) ? "读取中" : "已接入",
     stateDetail: hasError(queries)
-      ? "数据中心读链路失败，不使用前端补数。"
-      : `live=${live ?? EM_DASH}，health=${summary ?? EM_DASH}，source=${sources.length}。`,
+      ? "数据中心读链路失败，不使用前端补数，可重试或进入下钻页核验。"
+      : `存活探测 ${live ?? EM_DASH}，健康检查 ${summary ?? EM_DASH}，数据源 ${
+          sourceList ? sourceList.length : EM_DASH
+        } 个。`,
     kpis: [
       {
         key: "health-live",
-        label: "Live",
+        label: "存活探测",
         value: live ?? EM_DASH,
-        detail: "GET /health/live。",
+        detail: "服务进程存活状态。",
+        detailTitle: "GET /health/live",
         tone: live === "ok" ? "ok" : live ? "watch" : "muted",
       },
       {
         key: "health-summary",
-        label: "Health",
+        label: "健康检查",
         value: summary ?? EM_DASH,
-        detail: "GET /health。",
+        detail: "系统健康汇总状态。",
+        detailTitle: "GET /health",
         tone: summary === "ok" ? "ok" : summary ? "watch" : "muted",
       },
       {
         key: "source-count",
         label: "数据源",
-        value: `${sources.length}`,
-        detail: "source foundation sources。",
-        tone: sources.length > 0 ? "ok" : "watch",
+        value: sourceList ? `${sourceList.length}` : EM_DASH,
+        detail: sourceList ? "已接入数据源族数量。" : "数据源清单读取失败或未返回。",
+        detailTitle: "getSourceFoundation",
+        tone: sourceList && sourceList.length > 0 ? "ok" : "watch",
       },
       {
         key: "cube-dimensions",
         label: "Cube 维度",
-        value: `${dims?.dimensions.length ?? 0}`,
-        detail: dims ? `${dims.fact_table} / measures ${dims.measures.length}` : "cube dimensions 未返回。",
+        value: dims ? `${dims.dimensions.length}` : EM_DASH,
+        detail: dims
+          ? `事实表 ${dims.fact_table}，度量 ${dims.measures.length} 项。`
+          : "维度目录读取失败或未返回。",
+        detailTitle: "getCubeDimensions(bond_analytics)",
         tone: dims ? "ok" : "watch",
       },
     ],
@@ -4407,14 +4261,14 @@ function governanceView(
     briefings: [
       {
         title: "系统健康",
-        conclusion: `live=${live ?? EM_DASH}，summary=${summary ?? EM_DASH}。`,
-        evidence: "来自既有 health endpoints。",
+        conclusion: `存活探测 ${live ?? EM_DASH}，健康检查 ${summary ?? EM_DASH}。`,
+        evidence: "来自既有健康检查读链路。",
         tone: live === "ok" && summary === "ok" ? "ok" : "watch",
       },
       {
         title: "数据源状态",
-        conclusion: sources.length > 0 ? `已返回 ${sources.length} 个 source family。` : "暂无 source 列表。",
-        evidence: "使用 source foundation，不在首页扫描数据库。",
+        conclusion: sources.length > 0 ? `已返回 ${sources.length} 个数据源族。` : "暂无数据源清单。",
+        evidence: "使用 source foundation 读链路，不在首页扫描数据库。",
         tone: sources.length > 0 ? "ok" : "watch",
       },
       {

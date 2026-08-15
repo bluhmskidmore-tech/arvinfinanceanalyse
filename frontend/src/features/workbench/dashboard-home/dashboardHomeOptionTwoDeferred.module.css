@@ -573,6 +573,16 @@
   content: " · ";
 }
 
+/* 卡头 stale 状态收敛为琥珀点（全文在 title/aria-label），与治理台账状态列去重。 */
+.dhBondNewsStaleDot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dh-api-amber, var(--dh-amber));
+  vertical-align: middle;
+}
+
 .dhPolicyFundingPane {
   align-self: start;
   scroll-margin-top: 18px;
@@ -1677,22 +1687,13 @@
 }
 
 .dhBondNewsSection {
-  --dh-api-line: rgba(103, 119, 142, 0.34);
-  --dh-api-line-soft: rgba(103, 119, 142, 0.22);
-  --dh-api-muted: var(--dh-hex-9aa8bb);
   --dh-density-panel-bg:
-    linear-gradient(
-      145deg,
-      rgba(232, 238, 247, 0.054),
-      rgba(232, 238, 247, 0.01) 44%,
-      rgba(7, 12, 20, 0.2)
-    ),
-    linear-gradient(180deg, rgba(114, 167, 220, 0.032), rgba(255, 255, 255, 0)),
-    rgba(10, 17, 29, 0.82);
-  --dh-density-inner-bg: rgba(7, 12, 20, 0.24);
-  --dh-density-border: rgba(126, 157, 194, 0.28);
-  --dh-density-border-soft: rgba(55, 73, 104, 0.5);
-  --dh-density-divider: rgba(126, 157, 194, 0.18);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0)),
+    var(--dh-api-panel);
+  --dh-density-inner-bg: var(--dh-api-panel-2);
+  --dh-density-border: var(--dh-api-line-soft);
+  --dh-density-border-soft: var(--dh-api-line-soft);
+  --dh-density-divider: var(--dh-api-line-soft);
 }
 
 .dhBondNewsCard {

@@ -165,6 +165,7 @@ function findSectionByKey(sections: WorkbenchSection[], key: string) {
 
 export function WorkbenchShell() {
   const location = useLocation();
+  const isAgentLabRoute = location.pathname === "/agent-lab";
   const pathnameResolved = resolveWorkbenchPathAlias(location.pathname);
   const searchParams = new URLSearchParams(location.search);
   const agentFrontendEnabled = isAgentFrontendEnabled();
@@ -180,6 +181,7 @@ export function WorkbenchShell() {
   const currentRouteKnown = Boolean(matchedSection);
   const showReadinessBanner =
     currentSection.readiness !== "live" &&
+    !isAgentLabRoute &&
     (currentSection.key !== "agent" || agentFrontendEnabled);
   const isStockAnalysisShell = currentSection.key === "stock-analysis";
   const agentWorkbenchSection = visibleWorkbenchNavigation.find((section) => section.key === "agent");
@@ -235,6 +237,7 @@ export function WorkbenchShell() {
     isLiabilityAnalyticsCompactChrome ||
     isProductCategoryPnlShell;
   const isMinimalMainChrome =
+    isAgentLabRoute ||
     isDashboardCockpitShell ||
     isBondAnalysisMinimalShell ||
     isStockAnalysisMinimalShell ||
@@ -243,6 +246,7 @@ export function WorkbenchShell() {
     isPortfolioPageOwnedChrome ||
     isModuleHomePage;
   const showFullWorkspaceGuidance =
+    !isAgentLabRoute &&
     currentSection.readiness !== "live" &&
     !isBondAnalysisMinimalShell &&
     !isStockAnalysisMinimalShell &&
@@ -296,9 +300,7 @@ export function WorkbenchShell() {
 
   return (
     <>
-    {!isBalanceMovementAnalysisCompactChrome ? (
-      <DataModeRibbon variant={isDashboardCockpitShell ? "cockpit" : "default"} />
-    ) : null}
+    <DataModeRibbon variant={isDashboardCockpitShell ? "cockpit" : "default"} />
     <a
       className="workbench-skip-link"
       href="#workbench-main-content"
@@ -757,7 +759,8 @@ export function WorkbenchShell() {
             </section>
           ) : null}
 
-          {!SECTION_SUBNAV_EXCLUDED_SECTION_KEYS.includes(currentSection.key) &&
+          {!isAgentLabRoute &&
+          !SECTION_SUBNAV_EXCLUDED_SECTION_KEYS.includes(currentSection.key) &&
           currentGroup ? (
             <section
               data-testid="workbench-section-subnav"

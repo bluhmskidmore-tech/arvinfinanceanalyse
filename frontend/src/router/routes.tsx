@@ -8,6 +8,7 @@ import {
   workbenchNavigation,
   type WorkbenchSection,
 } from "../app/navigation";
+import { AgentLabRoute } from "./AgentLabRoute";
 import { AgentWorkbenchRoute } from "./AgentWorkbenchRoute";
 import { WorkbenchRouteFallback } from "./WorkbenchRouteFallback";
 import { WorkbenchNotFoundPage, WorkbenchRouteErrorBoundary } from "./WorkbenchRouteStatusPages";
@@ -35,7 +36,6 @@ const MarketFinanceWorkbenchPage = lazy(
   () => import("../features/market-finance/pages/MarketFinanceWorkbenchPage"),
 );
 const PnlPage = lazy(() => import("../features/pnl/PnlPage"));
-const FormalPnlV1Page = lazy(() => import("../features/pnl/FormalPnlV1Page"));
 const PnlByBusinessPage = lazy(() => import("../features/pnl/PnlByBusinessPage"));
 const PnlByBusinessInsightsPage = lazy(
   () => import("../features/pnl-business-insights/PnlByBusinessInsightsPage"),
@@ -432,57 +432,71 @@ export const workbenchRoutes: RouteObject[] = [
     errorElement: routeElement(<WorkbenchRouteErrorBoundary />),
     children: [
       {
-        path: "macro-analysis",
-        element: <Navigate to="/market-data" replace />,
-      },
-      {
-        path: "adb",
-        element: <Navigate to="/average-balance" replace />,
-      },
-      {
-        path: "pnl-formal-v1",
-        element: themedRouteElement(<FormalPnlV1Page />),
-      },
-      {
-        path: "liabilities",
-        element: <Navigate to="/liability-analytics" replace />,
-      },
-      {
-        path: "bonds",
-        element: <Navigate to="/bond-dashboard" replace />,
-      },
-      {
-        path: "bond-analytics-advanced",
-        element: <Navigate to="/bond-analysis" replace />,
-      },
-      {
-        path: "market",
-        element: <Navigate to="/market-data" replace />,
-      },
-      {
-        path: "cross-asset-drivers",
-        element: <Navigate to="/cross-asset" replace />,
-      },
-      {
-        path: "assets",
-        element: <Navigate to="/bond-dashboard" replace />,
-      },
-      ...buildWorkbenchChildRoutes(),
-      {
-        path: "dashboard",
-        element: routeElement(<DashboardHomePage />),
-      },
-      {
-        path: "政策与资金面",
-        element: <Navigate to="/" replace />,
-      },
-      {
-        path: "product-category-pnl/audit",
-        element: themedRouteElement(<ProductCategoryAdjustmentAuditPage />),
-      },
-      {
-        path: "*",
-        element: themedRouteElement(<WorkbenchNotFoundPage />),
+        /*
+         * 子路由级错误边界（pathless layout）：单页渲染崩溃或懒加载 chunk 失败时，
+         * 错误页只替换 WorkbenchShell 的 Outlet 内容区，导航壳层保持可用；
+         * 根级 errorElement 仅兜底壳层自身故障。
+         */
+        errorElement: routeElement(<WorkbenchRouteErrorBoundary />),
+        children: [
+          {
+            path: "macro-analysis",
+            element: <Navigate to="/market-data" replace />,
+          },
+          {
+            path: "adb",
+            element: <Navigate to="/average-balance" replace />,
+          },
+          {
+            path: "pnl-formal-v1",
+            element: <Navigate to="/pnl" replace />,
+          },
+          {
+            path: "liabilities",
+            element: <Navigate to="/liability-analytics" replace />,
+          },
+          {
+            path: "bonds",
+            element: <Navigate to="/bond-dashboard" replace />,
+          },
+          {
+            path: "bond-analytics-advanced",
+            element: <Navigate to="/bond-analysis" replace />,
+          },
+          {
+            path: "market",
+            element: <Navigate to="/market-data" replace />,
+          },
+          {
+            path: "cross-asset-drivers",
+            element: <Navigate to="/cross-asset" replace />,
+          },
+          {
+            path: "assets",
+            element: <Navigate to="/bond-dashboard" replace />,
+          },
+          ...buildWorkbenchChildRoutes(),
+          {
+            path: "agent-lab",
+            element: themedRouteElement(<AgentLabRoute />),
+          },
+          {
+            path: "dashboard",
+            element: routeElement(<DashboardHomePage />),
+          },
+          {
+            path: "政策与资金面",
+            element: <Navigate to="/" replace />,
+          },
+          {
+            path: "product-category-pnl/audit",
+            element: themedRouteElement(<ProductCategoryAdjustmentAuditPage />),
+          },
+          {
+            path: "*",
+            element: themedRouteElement(<WorkbenchNotFoundPage />),
+          },
+        ],
       },
     ],
   },

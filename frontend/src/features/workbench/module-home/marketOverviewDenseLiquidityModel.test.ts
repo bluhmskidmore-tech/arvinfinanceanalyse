@@ -79,7 +79,8 @@ describe("marketOverviewDenseLiquidityModel", () => {
 
     expect(chart.key).toBe("liquidity-tenor");
     expect(chart.title).toBe("流动性期限与资金利率");
-    expect(chart.subtitle).toContain("4 条正式序列");
+    // 序列条数明细收进脚注，副标题保持单个 `·` 配额（DESIGN.md §7）。
+    expect(chart.footnote).toContain("共 4 条正式序列");
     expect(chart.option).not.toBeNull();
     expect(chart.footnote).toContain("不插值、不派生利差");
     expect(chart.status).toBe("ready");
@@ -136,7 +137,7 @@ describe("marketOverviewDenseLiquidityModel", () => {
       : [chart.option?.series].filter(Boolean);
 
     expect(chart.status).toBe("partial");
-    expect(chart.subtitle).toContain("1 条观测不足");
+    expect(chart.footnote).toContain("观测不足 1 条");
     expect(chart.seriesRoles[1]).toMatchObject({
       key: "repo-7d",
       observationCount: 1,
@@ -157,7 +158,8 @@ describe("marketOverviewDenseLiquidityModel", () => {
 
     expect(chart.status).toBe("insufficient-observations");
     expect(chart.option).toBeNull();
-    expect(chart.subtitle).toContain("少于 2 个观测");
+    expect(chart.subtitle).toContain("观测不足未绘制");
+    expect(chart.footnote).toContain("少于 2 个观测");
     expect(chart.footnote).toContain("避免不可见假线");
   });
 

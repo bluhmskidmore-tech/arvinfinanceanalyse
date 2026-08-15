@@ -157,14 +157,50 @@
   font-weight: 700;
 }
 
-.decision-items-page__summary-value,
-.decision-items-page__meta-line {
+.decision-items-page__summary-value {
   color: var(--ib-ink);
   font-weight: 650;
 }
 
-.decision-items-page__meta-line {
+/* 高等级计数 >0 时红色强调 + 语义圆点（圆点=存在高等级待办）。 */
+.decision-items-page__summary-count[data-alert="true"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ib-down);
+  font-weight: 700;
+}
+
+.decision-items-page__summary-count[data-alert="true"]::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ib-down);
+}
+
+.decision-items-page__meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px 16px;
+}
+
+.decision-items-page__meta-entry {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.decision-items-page__meta-entry-label {
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+}
+
+.decision-items-page__meta-entry-value {
+  color: var(--ib-ink);
   font-size: 12px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
 }
 
 .decision-items-page__meta-subline {
@@ -218,9 +254,10 @@
   margin-top: 20px;
 }
 
+/* 表格满宽独占一行；详情面板仅在选中后作为下方区块展开。 */
 .decision-items-page__content-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 20px;
   margin-top: 20px;
 }
@@ -235,9 +272,17 @@
 
 .decision-items-page__table {
   width: 100%;
-  min-width: 960px;
+  min-width: 880px;
   border-collapse: collapse;
   font-size: 13px;
+}
+
+.decision-items-page__table-cell--title {
+  min-width: 120px;
+}
+
+.decision-items-page__table-cell--actions {
+  min-width: 96px;
 }
 
 .decision-items-page__table-head-cell {
@@ -276,6 +321,43 @@
   display: flex;
   gap: 8px;
   white-space: nowrap;
+}
+
+/* 严重度语义徽标：high 红 / medium 琥珀 / low 中性；未登记枚举走中性描边样式。 */
+.decision-items-page__severity-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface-muted);
+  color: var(--ib-ink-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.decision-items-page__severity-badge[data-severity="high"] {
+  border-color: color-mix(in srgb, var(--ib-down) 34%, transparent);
+  background: color-mix(in srgb, var(--ib-down) 10%, var(--ib-surface));
+  color: var(--ib-down);
+}
+
+.decision-items-page__severity-badge[data-severity="medium"] {
+  border-color: color-mix(in srgb, var(--ib-warn) 34%, transparent);
+  background: color-mix(in srgb, var(--ib-warn) 10%, var(--ib-surface));
+  color: var(--ib-warn);
+}
+
+.decision-items-page__severity-badge[data-severity="low"] {
+  border-color: var(--ib-hairline);
+  background: var(--ib-surface-muted);
+  color: var(--ib-ink-muted);
+}
+
+.decision-items-page__detail-token {
+  overflow-wrap: anywhere;
 }
 
 .decision-items-page__detail-title {

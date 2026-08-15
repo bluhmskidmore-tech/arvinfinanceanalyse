@@ -43,10 +43,6 @@ const BALANCE_ANALYSIS_CSS_PATH = resolve(
   process.cwd(),
   "src/features/balance-analysis/pages/BalanceAnalysisPage.css",
 );
-const BALANCE_WORKBENCH_CSS_PATH = resolve(
-  process.cwd(),
-  "src/features/balance-analysis/components/balanceWorkbench.css",
-);
 const BALANCE_ANALYSIS_STYLES_PATH = resolve(
   process.cwd(),
   "src/features/balance-analysis/pages/BalanceAnalysisPage.styles.ts",
@@ -692,18 +688,16 @@ function buildBalanceMovementResponse(): ApiEnvelope<BalanceMovementPayload> {
 }
 
 describe("BalanceAnalysisPage", () => {
-  it("keeps page-local decorative colors on the homepage blue-gray token family", () => {
+  /* balanceWorkbench.css（运行时死码，2026-08 删除）曾是浅色 --moss-color-* 正断言的
+     唯一来源；删除后本用例只保留 warm 调色板禁令的负面护栏。 */
+  it("keeps the banned warm palette out of page-local styles", () => {
     const css = [
       readFileSync(BALANCE_ANALYSIS_CSS_PATH, "utf8"),
-      readFileSync(BALANCE_WORKBENCH_CSS_PATH, "utf8"),
       readFileSync(BALANCE_ANALYSIS_STYLES_PATH, "utf8"),
     ].join("\n");
 
     expect(css).not.toMatch(/--moss-color-warm-(terracotta|paper|slate-blue|burgundy)/);
     expect(css).not.toMatch(/rgba\(76, 58, 44/);
-    expect(css).toContain("var(--moss-color-primary-600)");
-    expect(css).toContain("var(--moss-color-info-500)");
-    expect(css).toContain("var(--moss-color-danger-500)");
   });
 
   it("builds stable grid row ids from row dimensions when row_key is reused", () => {
@@ -966,18 +960,77 @@ describe("BalanceAnalysisPage", () => {
       </MemoryRouter>,
     );
 
+    // AdbComparisonChart 渲染为横向条形图（分类在 yAxis，见该组件注释），
+    // 分类不再落在 xAxis.data 上；两个轴都探测以兼容图表未来切换方向。
     const comparisonOption = balanceAnalysisEchartsOptions.find((option) => {
-      const labels = (option as { xAxis?: { data?: string[] } })?.xAxis?.data ?? [];
+      const axes = option as { xAxis?: { data?: string[] }; yAxis?: { data?: string[] } };
+      const labels = axes?.yAxis?.data ?? axes?.xAxis?.data ?? [];
       return labels.some((label) => label.includes("missing-adb"));
     }) as {
-      series: { name: string; label?: { formatter?: (params: { dataIndex: number }) => string } }[];
+      series: {
+        name: string;
+        data: Array<number | null | { value: number | null }>;
+        label?: { formatter?: (params: { dataIndex: number }) => string };
+      }[];
       tooltip: { formatter: (items: { dataIndex: number }[]) => string };
     };
+    expect(comparisonOption).toBeDefined();
     const adbSeries = comparisonOption.series.find((series) => series.name.includes("区间日均"));
+    expect(adbSeries).toBeDefined();
+
+    // 缺数分类（avg_balance=null）：柱值必须是 null 空档，不得伪造成 0 或 NaN。
+    const missingAdbPoint = adbSeries?.data[0];
+    const missingAdbValue =
+      typeof missingAdbPoint === "object" && missingAdbPoint !== null
+        ? missingAdbPoint.value
+        : missingAdbPoint;
+    expect(missingAdbValue).toBeNull();
+    expect(missingAdbValue).not.toBe(0);
+    expect(Number.isNaN(missingAdbValue)).toBe(false);
 
     expect(comparisonOption.tooltip.formatter([{ dataIndex: 0 }])).toContain("区间日均：—");
     expect(adbSeries?.label?.formatter?.({ dataIndex: 0 })).toBe("—");
     expect(comparisonOption.tooltip.formatter([{ dataIndex: 1 }])).toContain("区间日均：0.00");
+  });
+
+  it("shows an em dash instead of NaN when the interval total average is missing", () => {
+    balanceAnalysisEchartsOptions.length = 0;
+    const comparison: AdbComparisonResponse = {
+      report_date: "2026-04-14",
+      start_date: "2026-04-14",
+      end_date: "2026-04-14",
+      calendar_days_inclusive: 1,
+      adb_denominator_basis: "formal_calendar",
+      num_days: 1,
+      simulated: false,
+      // 单日观测窗口不足：区间日均总资产为 null，不能被当作 0 参与除法或展示。
+      total_spot_assets: 550_000_000,
+      total_avg_assets: null,
+      avg_unavailable_reason: "insufficient_window",
+      total_spot_liabilities: 230_000_000,
+      total_avg_liabilities: 225_000_000,
+      total_avg_interbank_assets: 0,
+      total_avg_interbank_liabilities: 0,
+      asset_yield: null,
+      liability_cost: null,
+      net_interest_margin: null,
+      assets_breakdown: [],
+      liabilities_breakdown: [],
+    };
+
+    render(
+      <MemoryRouter>
+        <AdbAnalyticalPreview comparison={comparison} href="/average-balance" />
+      </MemoryRouter>,
+    );
+
+    const avgAssetCard = screen.getByText("日均资产").closest("div")?.parentElement;
+    expect(avgAssetCard).toHaveTextContent("—");
+    expect(avgAssetCard).not.toHaveTextContent("NaN");
+
+    const breakdownRow = screen.getByText("ADB 资产").closest("tr");
+    expect(breakdownRow).toHaveTextContent("—");
+    expect(breakdownRow).not.toHaveTextContent("NaN");
   });
 
   it("keeps the no-report-date state compact instead of rendering empty workbench placeholders", async () => {
@@ -1096,6 +1149,54 @@ describe("BalanceAnalysisPage", () => {
     expect(getDetailSpy).not.toHaveBeenCalled();
     expect(getBasisBreakdownSpy).not.toHaveBeenCalled();
     expect(getAdvancedAttributionSpy).not.toHaveBeenCalled();
+  });
+
+  it("merges envelope-level calibration into overview so the toolbar badge renders", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const getDatesSpy = vi.fn(async () => ({
+      result_meta: buildMeta("balance-analysis.dates", "tr_balance_dates_calibration"),
+      result: {
+        report_dates: ["2025-12-31"],
+      },
+    }));
+    // 复刻真实后端信封形状：calibration 在信封顶层，result（extra=forbid）内没有该字段；
+    // useBalanceAnalysisData 负责合并，页面 overview?.calibration 取值后徽章才会出现。
+    const overviewEnvelope = {
+      result_meta: buildMeta("balance-analysis.overview", "tr_balance_overview_calibration"),
+      result: {
+        report_date: "2025-12-31",
+        position_scope: "all" as const,
+        currency_basis: "CNY" as const,
+        detail_row_count: 0,
+        summary_row_count: 0,
+        total_market_value_amount: "0.00",
+        total_amortized_cost_amount: "0.00",
+        total_accrued_interest_amount: "0.00",
+        asset_total_market_value_amount: "0.00",
+        liability_total_market_value_amount: "0.00",
+        asset_total_amortized_cost_amount: "0.00",
+        liability_total_amortized_cost_amount: "0.00",
+        asset_total_accrued_interest_amount: "0.00",
+        liability_total_accrued_interest_amount: "0.00",
+      },
+      data_source: "balance_analysis",
+      calibration: {
+        position_scope: "all",
+        currency_basis: "CNY",
+        source_families: ["zqtz", "tyw"],
+        data_basis: "formal_facts",
+        calibration_note: "口径：正式余额事实（ZQTZ+TYW）",
+      },
+    };
+    const getOverviewSpy = vi.fn(async () => overviewEnvelope);
+
+    renderBalanceAnalysisWithClient({
+      ...baseClient,
+      getBalanceAnalysisDates: getDatesSpy,
+      getBalanceAnalysisOverview: getOverviewSpy,
+    });
+
+    expect(await screen.findByText("口径：正式余额事实（ZQTZ+TYW）")).toBeInTheDocument();
   });
 
   it("renders cockpit cards and a paginated summary table from the dedicated summary query", async () => {
@@ -1717,7 +1818,7 @@ describe("BalanceAnalysisPage", () => {
       result: {
         report_date: "2025-11-30",
         position_scope: "liability" as const,
-        currency_basis: "native" as const,
+        currency_basis: "CNY" as const,
         detail_row_count: 1,
         summary_row_count: 1,
         total_market_value_amount: "1000000000.00",
@@ -1736,7 +1837,7 @@ describe("BalanceAnalysisPage", () => {
       result: {
         report_date: "2025-11-30",
         position_scope: "liability",
-        currency_basis: "native",
+        currency_basis: "CNY",
         details: [],
         summary: [],
       },
@@ -1744,7 +1845,7 @@ describe("BalanceAnalysisPage", () => {
     const getSummarySpy = vi.fn(async ({ offset }: { offset: number }) => buildSummaryResponse(offset));
     const getWorkbookSpy = vi.fn(async () => buildWorkbookResponse());
 
-    renderBalanceAnalysisWithClient(
+    const { router } = renderBalanceAnalysisWithClient(
       {
         ...baseClient,
         getBalanceAnalysisDates: getDatesSpy,
@@ -1760,9 +1861,24 @@ describe("BalanceAnalysisPage", () => {
       expect(getOverviewSpy).toHaveBeenCalledWith({
         reportDate: "2025-11-30",
         positionScope: "liability",
-        currencyBasis: "native",
+        currencyBasis: "CNY",
       });
     });
+    await waitFor(() => {
+      expect(getSummarySpy).toHaveBeenCalledWith(
+        expect.objectContaining({ currencyBasis: "CNY" }),
+      );
+      expect(getWorkbookSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ currencyBasis: "CNY" }),
+      );
+    });
+    expect(router.state.location.search).toContain("currency_basis=CNY");
+    expect(screen.getByLabelText("balance-currency-basis")).toBeDisabled();
+    expect(screen.getByLabelText("balance-currency-basis")).toHaveValue("CNY");
+    expect(screen.queryByRole("option", { name: "原币" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("balance-analysis-currency-basis-note")).toHaveTextContent(
+      "原币需逐币种明细，当前不做跨币种总量",
+    );
   });
 
   it("fails closed when an explicitly requested report date is unavailable", async () => {
@@ -1869,7 +1985,7 @@ describe("BalanceAnalysisPage", () => {
       expect(getOverviewSpy).toHaveBeenLastCalledWith({
         reportDate: "2025-11-30",
         positionScope: "liability",
-        currencyBasis: "native",
+        currencyBasis: "CNY",
       });
     });
 
@@ -1889,6 +2005,86 @@ describe("BalanceAnalysisPage", () => {
         currencyBasis: "CNY",
       });
     });
+  });
+
+  it("keeps in-page scope switches effective and locks aggregate currency to CNY after a deep link", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const getDatesSpy = vi.fn(async () => ({
+      result_meta: buildMeta("balance-analysis.dates", "tr_balance_dates_deep_link_switch"),
+      result: {
+        report_dates: ["2025-12-31", "2025-11-30"],
+      },
+    }));
+    const getOverviewSpy = vi.fn(async ({ reportDate, positionScope, currencyBasis }) => ({
+      result_meta: buildMeta("balance-analysis.overview", `tr_balance_overview_${reportDate}_${positionScope}_${currencyBasis}`),
+      result: {
+        report_date: reportDate,
+        position_scope: positionScope,
+        currency_basis: currencyBasis,
+        detail_row_count: 1,
+        summary_row_count: 1,
+        total_market_value_amount: "1000000000.00",
+        total_amortized_cost_amount: "1000000000.00",
+        total_accrued_interest_amount: "100000000.00",
+        asset_total_market_value_amount: "0.00",
+        liability_total_market_value_amount: "0.00",
+        asset_total_amortized_cost_amount: "0.00",
+        liability_total_amortized_cost_amount: "0.00",
+        asset_total_accrued_interest_amount: "0.00",
+        liability_total_accrued_interest_amount: "0.00",
+      },
+    }));
+    const getDetailSpy = vi.fn(async ({ reportDate, positionScope, currencyBasis }): Promise<ApiEnvelope<BalanceAnalysisPayload>> => ({
+      result_meta: buildMeta("balance-analysis.detail", `tr_balance_detail_${reportDate}_${positionScope}_${currencyBasis}`),
+      result: {
+        report_date: reportDate,
+        position_scope: positionScope,
+        currency_basis: currencyBasis,
+        details: [],
+        summary: [],
+      },
+    }));
+    const getSummarySpy = vi.fn(async ({ offset }: { offset: number }) => buildSummaryResponse(offset));
+    const getWorkbookSpy = vi.fn(async () => buildWorkbookResponse());
+    const client = {
+      ...baseClient,
+      getBalanceAnalysisDates: getDatesSpy,
+      getBalanceAnalysisOverview: getOverviewSpy,
+      getBalanceAnalysisDetail: getDetailSpy,
+      getBalanceAnalysisSummary: getSummarySpy,
+      getBalanceAnalysisWorkbook: getWorkbookSpy,
+    };
+
+    const rendered = renderBalanceAnalysisWithClient(
+      client,
+      ["/balance-analysis?report_date=2025-11-30&position_scope=liability&currency_basis=native"],
+    );
+
+    await waitFor(() => {
+      expect(getOverviewSpy).toHaveBeenLastCalledWith({
+        reportDate: "2025-11-30",
+        positionScope: "liability",
+        currencyBasis: "CNY",
+      });
+    });
+
+    await user.selectOptions(screen.getByLabelText("balance-position-scope"), "asset");
+
+    await waitFor(() => {
+      expect(getOverviewSpy).toHaveBeenLastCalledWith({
+        reportDate: "2025-11-30",
+        positionScope: "asset",
+        currencyBasis: "CNY",
+      });
+    });
+    expect(screen.getByLabelText("balance-position-scope")).toHaveValue("asset");
+    expect(rendered.router.state.location.search).toContain("position_scope=asset");
+
+    expect(screen.getByLabelText("balance-currency-basis")).toBeDisabled();
+    expect(screen.getByLabelText("balance-currency-basis")).toHaveValue("CNY");
+    expect(rendered.router.state.location.search).toContain("currency_basis=CNY");
+    expect(rendered.router.state.location.search).toContain("report_date=2025-11-30");
   });
 
   it("downloads the filtered summary export as csv", async () => {

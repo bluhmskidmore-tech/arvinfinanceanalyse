@@ -120,7 +120,12 @@ describe("BondNewsSection", () => {
 
     const creditGroup = screen.getByTestId("dashboard-home-bond-news-credit");
     expect(within(creditGroup).getByText("发行/评级")).toBeInTheDocument();
-    expect(within(creditGroup).getByText("发行/评级：暂无相关新闻")).toBeInTheDocument();
+    // 空组消息与组头同名前缀去重：可见只留结论，原文保留在 title。
+    const creditEmpty = within(creditGroup).getByText("暂无相关新闻");
+    expect(creditEmpty).toHaveAttribute("title", "发行/评级：暂无相关新闻");
+    expect(
+      within(creditGroup).queryByText("发行/评级：暂无相关新闻"),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps only the abnormal status badge visible and folds the page-level update time into the tooltip", () => {
@@ -143,8 +148,33 @@ describe("BondNewsSection", () => {
       "title",
       expect.stringContaining("更新 09:27"),
     );
-    const staleBadge = within(trustStrip).getByText("来源状态：偏旧");
-    expect(staleBadge).toHaveAttribute("data-tone", "warning");
+    // 「偏旧」文字与治理台账状态列去重：卡头收敛为琥珀点，全文在 title/aria-label。
+    expect(within(trustStrip).queryByText("来源状态：偏旧")).not.toBeInTheDocument();
+    const staleDot = within(trustStrip).getByTestId(
+      "dashboard-home-bond-news-stale-dot",
+    );
+    expect(staleDot).toHaveAttribute("data-tone", "warning");
+    expect(staleDot).toHaveAttribute("title", "来源状态：偏旧");
+    expect(staleDot).toHaveAttribute("aria-label", "来源状态：偏旧");
+  });
+
+  it("keeps non-stale abnormal status text visible in the trust strip", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <BondNewsSection
+          bondNews={{ ...bondNews, statusLabel: "来源状态：未命中债券相关内容" }}
+          actions={{ queryClient }}
+        />
+      </QueryClientProvider>,
+    );
+
+    const trustStrip = screen.getByLabelText("债券新闻数据状态");
+    expect(
+      within(trustStrip).getByText("来源状态：未命中债券相关内容"),
+    ).toBeInTheDocument();
   });
 
   it("invalidates and refetches every relevant stored-content query on reread", async () => {

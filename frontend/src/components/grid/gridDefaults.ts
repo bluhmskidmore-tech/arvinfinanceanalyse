@@ -3,6 +3,8 @@ import type {
   ValueFormatterParams,
 } from "ag-grid-community";
 
+import { EM_DASH } from "../../utils/format";
+
 export const mossGridHeaderHeight = 36;
 export const mossGridRowHeight = 36;
 
@@ -61,7 +63,7 @@ function mergeCellClass<TData, TValue>(
 
 function formatNumber(value: unknown, fractionDigits: number): string {
   if (typeof value !== "number" || !Number.isFinite(value)) {
-    return value == null ? "—" : String(value);
+    return value == null ? EM_DASH : String(value);
   }
   return value.toLocaleString("zh-CN", {
     minimumFractionDigits: fractionDigits,
@@ -104,7 +106,7 @@ export function mossGridPercentCol<TData = unknown, TValue = unknown>(
       colDef.valueFormatter ??
       ((params: ValueFormatterParams<TData, TValue>) => {
         const formatted = formatNumber(params.value, 2);
-        return formatted === "—" ? formatted : `${formatted}%`;
+        return formatted === EM_DASH ? formatted : `${formatted}%`;
       }),
     ...colDef,
   });
@@ -118,7 +120,7 @@ export function mossGridBpCol<TData = unknown, TValue = unknown>(
       colDef.valueFormatter ??
       ((params: ValueFormatterParams<TData, TValue>) => {
         const formatted = formatNumber(params.value, 1);
-        return formatted === "—" ? formatted : `${formatted} bp`;
+        return formatted === EM_DASH ? formatted : `${formatted} bp`;
       }),
     ...colDef,
   });

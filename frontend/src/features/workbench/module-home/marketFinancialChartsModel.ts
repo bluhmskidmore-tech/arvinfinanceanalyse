@@ -170,7 +170,6 @@ export type MarketYieldCurveDisplay =
 
 export type MarketFinancialChartSection = {
   key: "rates" | "cross" | "macro" | "strategy" | "news" | "coverage";
-  kicker: string;
   title: string;
   description: string;
   charts: MarketFinancialChartSpec[];
@@ -420,6 +419,33 @@ function buildYieldCurveChart(
           : undefined;
   const latestDate = selectedDate ??
     [...rows.map((row) => row.tradeDate)].sort().at(-1) ?? "日期未返回";
+  // 覆盖缺口披露（C15）：一条曲线的期限点明显少于另一条时，把点位写出来，
+  // 避免「两序列区间不重叠像换色」被误读为形态信号；文案随数据动态生成。
+  const tenorLabelsByCurve = curves.map((curve) => ({
+    curve,
+    labels: [
+      ...new Set(
+        selectedRows
+          .filter((row) => row.curve === curve)
+          .map((row) => row.tenor),
+      ),
+    ]
+      .sort((left, right) => left - right)
+      .map((tenor) => `${tenor}Y`),
+  }));
+  const maxTenorCount = Math.max(
+    0,
+    ...tenorLabelsByCurve.map((entry) => entry.labels.length),
+  );
+  const coverageGapNote = tenorLabelsByCurve
+    .filter(
+      (entry) => entry.labels.length > 0 && entry.labels.length < maxTenorCount,
+    )
+    .map(
+      (entry) =>
+        `${entry.curve}仅返回 ${entry.labels.join("/")} 共 ${entry.labels.length} 点，两序列期限不完全重叠属数据缺口`,
+    )
+    .join("；");
   const option: EChartsOption | null =
     selectedRows.length === 0
       ? null
@@ -543,7 +569,7 @@ function buildYieldCurveChart(
   return {
     key: "yield-curve",
     title: "国债与国开期限结构",
-    subtitle: `${latestDate} · ${tenors.length} 个唯一期限 · 收益率 %`,
+    subtitle: `${latestDate} · 收益率 %`,
     footnote:
       tenors.length === 0
         ? "后端未返回可用的国债或国开收益率报价。"
@@ -551,7 +577,7 @@ function buildYieldCurveChart(
           ? `${singleTenorMessage} 数值直接取自后端最新收益率。`
           : !hasRenderableCurve && tenors.length >= 2
             ? `${sparseTenorsMessage} 数值直接取自后端最新收益率。`
-            : "直接绘制后端最新收益率；纵轴采用聚焦刻度以辨识期限结构。",
+            : `共 ${tenors.length} 个唯一期限；直接绘制后端最新收益率，纵轴采用聚焦刻度以辨识期限结构。`,
     readingGuide:
       tenors.length === 0
         ? "等待同一报告日的有效收益率报价；不补点、不插值。"
@@ -561,7 +587,9 @@ function buildYieldCurveChart(
             ? "读取当前期限的已返回收益率；缺少其他期限，不能判断期限结构。"
             : !hasRenderableCurve && tenors.length >= 2
               ? "逐项核对已返回报价；不同曲线的单个期限不能连成一条曲线。"
-              : "比较同一日期各期限的斜率，以及国债与国开的相对水平。",
+              : coverageGapNote
+                ? `比较同一日期各期限的斜率，以及国债与国开的相对水平。${coverageGapNote}。`
+                : "比较同一日期各期限的斜率，以及国债与国开的相对水平。",
     yieldCurveDisplay,
     option,
     height: 300,
@@ -616,8 +644,8 @@ function buildKeyRateTrend(
   return {
     key: "key-rate-trend",
     title: "关键利率近 20 期走势",
-    subtitle: `${timelineRange(selected)} · ${selected.length} 条同单位利率序列 · %`,
-    footnote: "仅比较百分比利率原值；不同日期缺口保持为空，不做前端插值。",
+    subtitle: `${timelineRange(selected)} · %`,
+    footnote: `共 ${selected.length} 条同单位利率序列；仅比较百分比利率原值，不同日期缺口保持为空，不做前端插值。`,
     option: buildMultiLineOption(theme, lines, {
       unit: "%",
       decimals: 3,
@@ -666,9 +694,8 @@ function buildIndexedCrossAsset(
   return {
     key: "cross-asset-index",
     title: "跨资产观察指数",
-    subtitle: `${timelineRange(selected)} · ${lines.length} 类资产 · 首个可用观测=100`,
-    footnote:
-      "观察性归一化：指数=当期后端值÷该序列首个可用值×100；仅用于比较方向，不是正式收益指标。",
+    subtitle: `${timelineRange(selected)} · 首个可用观测=100`,
+    footnote: `共 ${lines.length} 类资产；观察性归一化：指数=当期后端值÷该序列首个可用值×100，仅用于比较方向，不是正式收益指标。`,
     option: buildMultiLineOption(theme, lines, {
       unit: "指数",
       decimals: 1,
@@ -839,7 +866,7 @@ function buildMacroIndicatorChange(
   return {
     key: "macro-change",
     title: "宏观指标最新变化",
-    subtitle: `${macro?.as_of_date ?? "日期未返回"} · ${rows.length} 项 · 后端 change_pct`,
+    subtitle: `${macro?.as_of_date ?? "日期未返回"} · ${rows.length} 项`,
     footnote:
       "直接使用宏观 full analysis 返回的 change_pct；零线用于区分方向。",
     option,
@@ -950,8 +977,8 @@ function buildStrategyPeriodTrend(
   return {
     key: "strategy-period",
     title: "影子组合期间超额收益",
-    subtitle: `${report?.as_of_date ?? "日期未返回"} · ${report?.period_returns.length ?? 0} 个期间 · %`,
-    footnote: "将后端 excess_return 小数比例转换为百分比展示；不做前端累计。",
+    subtitle: `${report?.as_of_date ?? "日期未返回"} · %`,
+    footnote: `共 ${report?.period_returns.length ?? 0} 个期间；将后端 excess_return 小数比例转换为百分比展示，不做前端累计。`,
     option: buildMultiLineOption(theme, lines, {
       unit: "%",
       decimals: 2,
@@ -1036,8 +1063,8 @@ function buildStrategyPortfolioComparison(
   return {
     key: "strategy-portfolio",
     title: "影子组合收益与回撤",
-    subtitle: `${portfolios.length} 个组合 · 总收益/超额收益/最大回撤 · %`,
-    footnote: "后端小数比例统一换算为百分比；回撤保留后端符号。",
+    subtitle: `${portfolios.length} 个组合 · %`,
+    footnote: "总收益/超额收益/最大回撤同图；后端小数比例统一换算为百分比，回撤保留后端符号。",
     option,
     height: 300,
   };
@@ -1247,12 +1274,12 @@ export function buildMarketFinancialChartSections({
   palette,
 }: MarketFinancialChartsInput): MarketFinancialChartSection[] {
   const theme = createMarketChartTheme(palette ?? MARKET_CHART_STATIC_PALETTE);
+  // 分组不再携带英文眉标（C11，参照 risk-overview 先例）；导读句用平实中文。
   return [
     {
       key: "rates",
-      kicker: "RATES / LIQUIDITY",
       title: "利率与流动性",
-      description: "期限结构回答曲线形态，关键利率趋势回答资金与长端方向。",
+      description: "先看曲线形态，再看关键利率的近期走势。",
       charts: [
         buildYieldCurveChart(theme, rates),
         buildKeyRateTrend(theme, latest, rates),
@@ -1260,10 +1287,8 @@ export function buildMarketFinancialChartSections({
     },
     {
       key: "cross",
-      kicker: "CROSS ASSET",
       title: "跨资产",
-      description:
-        "用透明的观察性归一化比较不同单位资产的方向，再看最新一期变动。",
+      description: "不同单位的资产先归一成指数再比方向，另有最新一期变动。",
       charts: [
         buildIndexedCrossAsset(theme, latest),
         buildLatestCrossAssetMove(theme, latest),
@@ -1271,9 +1296,8 @@ export function buildMarketFinancialChartSections({
     },
     {
       key: "macro",
-      kicker: "MACRO SIGNALS",
       title: "宏观信号",
-      description: "后端指标变化与能力状态并列，避免把降级结果包装成完整信号。",
+      description: "宏观指标最新变化与能力状态并列；降级结果单独计数。",
       charts: [
         buildMacroIndicatorChange(theme, macro),
         buildCapabilityStatus(theme, macro),
@@ -1281,9 +1305,8 @@ export function buildMarketFinancialChartSections({
     },
     {
       key: "strategy",
-      kicker: "STRATEGY / RISK",
       title: "策略与风险",
-      description: "影子组合期间超额收益、总收益和最大回撤使用同一百分比口径。",
+      description: "影子组合的超额收益、总收益与最大回撤，统一按百分比展示。",
       charts: [
         buildStrategyPeriodTrend(theme, strategies),
         buildStrategyPortfolioComparison(theme, strategies),
@@ -1291,10 +1314,8 @@ export function buildMarketFinancialChartSections({
     },
     {
       key: "news",
-      kicker: "EVENT FLOW",
       title: "新闻事件",
-      description:
-        "从最新事件样本查看主题集中度与接收时间密度，同时保留全库总量。",
+      description: "看最新事件样本的主题分布与接收密度，全库总量另行标注。",
       charts: [
         buildNewsTopicChart(theme, news),
         buildNewsDateChart(theme, news),
@@ -1302,9 +1323,8 @@ export function buildMarketFinancialChartSections({
     },
     {
       key: "coverage",
-      kicker: "DATA COVERAGE",
       title: "数据覆盖",
-      description: "目录供应商与刷新层级揭示当前数据可用边界和 fallback 暴露。",
+      description: "数据目录按供应商与刷新层级计数，用于判断数据可用边界。",
       charts: [
         buildCatalogVendorChart(theme, catalog),
         buildCatalogTierChart(theme, catalog),

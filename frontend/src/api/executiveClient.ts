@@ -254,8 +254,9 @@ export function createDemoExecutiveClient(
           krd_10y: "5000.00000000",
           krd_30y: zero,
           cs01: "18000.00000000",
-          portfolio_convexity: "24.50000000",
-          portfolio_modified_duration: "4.20000000",
+          // 与正式后端读surface同形：治理 Numeric（raw + display），display 即页面展示值。
+          portfolio_convexity: { raw: 24.5, unit: "ratio", display: "24.50", precision: 2, sign_aware: false },
+          portfolio_modified_duration: { raw: 4.2, unit: "ratio", display: "4.20", precision: 2, sign_aware: false },
           issuer_concentration_hhi: "0.12000000",
           issuer_top5_weight: "0.36000000",
           asset_cashflow_30d: "300000000.00000000",
@@ -268,7 +269,7 @@ export function createDemoExecutiveClient(
           total_market_value: "500000000.00000000",
           rate_risk_market_value: "400000000.00000000",
           rate_risk_dv01: "110000.00000000",
-          rate_risk_modified_duration: "4.20000000",
+          rate_risk_modified_duration: { raw: 4.2, unit: "ratio", display: "4.20", precision: 2, sign_aware: false },
           duration_excluded_market_value: "100000000.00000000",
           duration_excluded_count: 2,
           missing_maturity_market_value: zero,
@@ -287,8 +288,10 @@ export function createDemoExecutiveClient(
           ],
         },
         {
-          basis: "formal",
-          formal_use_allowed: true,
+          // mock 数据不得伪装正式口径：basis/formal_use_allowed 保持 mock 语义，
+          // 让 formal 门禁（如 riskHomeAdapter）在 mock 模式下正确判为非正式态。
+          basis: "mock",
+          formal_use_allowed: false,
           source_version: RISK_TENSOR_FORMAL_SOURCE_VERSION,
           rule_version: RISK_TENSOR_FORMAL_RULE_VERSION,
           cache_version: RISK_TENSOR_FORMAL_CACHE_VERSION,
@@ -327,8 +330,9 @@ export function createDemoExecutiveClient(
           points,
         },
         {
-          basis: "formal",
-          formal_use_allowed: true,
+          // 同 getRiskTensor：mock 历史序列不通过正式口径门禁。
+          basis: "mock",
+          formal_use_allowed: false,
           source_version: RISK_TENSOR_FORMAL_SOURCE_VERSION,
           rule_version: RISK_TENSOR_FORMAL_RULE_VERSION,
           cache_version: RISK_TENSOR_FORMAL_CACHE_VERSION,

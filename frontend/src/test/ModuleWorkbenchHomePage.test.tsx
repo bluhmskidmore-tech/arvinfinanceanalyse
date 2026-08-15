@@ -1009,13 +1009,14 @@ describe("ModuleWorkbenchHomePage", () => {
 
     const basisText =
       "系统口径快照比较：环比 2026-05-31；同比 2025-06-30；趋势为近 6 个精确自然月末。缺失日期不以邻近日期替代。";
-    expect(ociCard).toHaveTextContent(basisText);
-    expect(tplCard).toHaveTextContent(basisText);
     const comparisonStatus = within(evidence).getByTestId(
       "risk-overview-bond-comparison-status",
     );
     expect(comparisonStatus).toHaveAttribute("data-state", "review");
     expect(comparisonStatus).toHaveTextContent(basisText);
+    // §6 状态去重：两卡基期说明与区级状态完全相同时，卡片内不再重复展示同一句。
+    expect(ociCard).not.toHaveTextContent(basisText);
+    expect(tplCard).not.toHaveTextContent(basisText);
 
     const expectComparison = (
       classKey: "oci" | "tpl",
@@ -1307,7 +1308,10 @@ describe("ModuleWorkbenchHomePage", () => {
     expect(tplTrend).toHaveTextContent("5/6 点");
     expect(tplTrend).toHaveTextContent("首个有效点 → 最近有效点");
     expect(tplTrend).toHaveTextContent("500.00 → 651.06 万元/bp");
-    expect(tplTrend).toHaveTextContent(
+    // §6 状态去重：该失败原因已逐字进入 tplCard 折叠区口径提示（见上方
+    // toHaveTextContent 断言），趋势区只汇总条数，不重复原文。
+    expect(tplTrend).toHaveTextContent("历史趋势含 1 条待复核提示。");
+    expect(tplTrend).not.toHaveTextContent(
       "2026-03-31：历史月末快照读取失败：tpl history unavailable",
     );
     expect(
@@ -1390,13 +1394,23 @@ describe("ModuleWorkbenchHomePage", () => {
       expect(page).toHaveTextContent("利率风险口径 DV01");
       expect(page).toHaveTextContent("久期缺口");
       expect(page).toHaveTextContent("KRD 分布");
+      expect(page).toHaveTextContent("DV01 贡献 · 万元/bp");
+      expect(page).toHaveTextContent("治理复核状态");
+      expect(page).toHaveTextContent("需复核");
+      expect(page).toHaveTextContent("不代表正式风险限额评级");
+      expect(page).not.toHaveTextContent("组合风险评级");
     });
-    expect(within(page).getByTestId("risk-overview-lineage")).toHaveTextContent(
+    const lineage = within(page).getByTestId("risk-overview-lineage");
+    expect(lineage).toHaveTextContent(
       "sv_risk_tensor_fact_mock_v3",
     );
-    expect(within(page).getByTestId("risk-overview-lineage")).toHaveTextContent(
+    expect(lineage).toHaveTextContent(
       "rv_risk_tensor_formal_materialize_v6",
     );
+    expect(lineage).toHaveTextContent("CASHFLOW BASIS");
+    expect(lineage).toHaveTextContent("analytical");
+    expect(lineage).toHaveTextContent("CASHFLOW FORMAL_USE_ALLOWED");
+    expect(lineage).toHaveTextContent("false");
   });
 
   it("surfaces liquidity and cashflow evidence already returned by the risk reads", async () => {
@@ -2070,7 +2084,7 @@ describe("PortfolioHomePage", () => {
       expect(within(page).getByTestId("module-home-analysis-tab-portfolio-comparison")).toHaveTextContent("空");
       expect(within(page).getByTestId("module-home-structure-gap-action-portfolio-comparison")).toHaveAttribute(
         "href",
-        "/bond-dashboard?report_date=2026-05-31#portfolio-comparison",
+        "/bond-dashboard?report_date=2026-05-31#bond-dashboard-section-portfolio-risk",
       );
       expect(within(page).queryByTestId("module-home-business-review-row-子组合分层核验")).not.toBeInTheDocument();
       expect(within(page).queryByTestId("module-home-business-review-row-子组合返回为空")).not.toBeInTheDocument();
@@ -2116,7 +2130,7 @@ describe("PortfolioHomePage", () => {
       expect(gapActions).toHaveTextContent("去债券总览复核");
       expect(within(gapActions).getByTestId("module-home-structure-gap-action-yield-distribution")).toHaveAttribute(
         "href",
-        "/bond-dashboard?report_date=2026-05-31#yield-distribution",
+        "/bond-dashboard?report_date=2026-05-31#bond-dashboard-section-structure",
       );
       expect(terminal).toHaveTextContent("收益率分布为空");
       expect(terminal).toHaveTextContent("无收益率桶明细");
@@ -2461,7 +2475,8 @@ describe("PortfolioHomePage", () => {
     expect(within(holdings).getByTestId("module-home-distribution-maturity")).toBeInTheDocument();
     expect(within(holdings).getByTestId("module-home-distribution-industry")).toBeInTheDocument();
     expect(within(holdings).queryByTestId("module-home-distribution-asset-type")).not.toBeInTheDocument();
-    expect(within(page).getByTestId("module-home-briefing-ledger")).toHaveTextContent("balance-analysis");
+    // 证据列中英混排句已改完整中文短句（原文保留在 title）。
+    expect(within(page).getByTestId("module-home-briefing-ledger")).toHaveTextContent("使用资产负债总览字段展示");
     expect(within(page).getByTestId("module-home-status-ledger")).toHaveTextContent("暂无数据");
     expect(structureWorkbench).toHaveTextContent("结构拆解工作台");
   });

@@ -167,6 +167,49 @@ describe("DashboardHomeOptionTwoSupportBand", () => {
     const missingRow = within(table).getByRole("row", { name: /3Y/ });
     expect(missingRow).toHaveAttribute("data-state", "backend-gap");
     expect(missingRow).toHaveTextContent("—");
+
+    // 卡内只保留一个可见日期（数据截至）；快照日与数据截至一致时无 stale 徽标，
+    // 快照日收进标题 title 与表格 data-as-of。
+    expect(
+      screen.queryByTestId("dashboard-home-curve-stale-flag"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "国债收益率" }).getAttribute("title"),
+    ).toContain("曲线快照日 2026-04-30");
+    expect(
+      screen.getByRole("heading", { name: "国债收益率" }).getAttribute("title"),
+    ).toContain("报告日正式链路");
+  });
+
+  it("raises an amber stale flag when the curve snapshot lags the data as-of date", () => {
+    const base = buildView();
+    const view: DashboardHomeBodyView = {
+      ...base,
+      marketContext: {
+        ...base.marketContext,
+        asOfLabel: "数据截至 2026-07-31",
+        curveTable: {
+          title: "国债收益率",
+          asOfLabel: "2026-06-30",
+          emptyMessage: null,
+          rows: [
+            {
+              tenor: "10Y",
+              yieldLabel: "1.73%",
+              deltaLabel: "+0.80",
+              deltaTone: "up",
+            },
+          ],
+        },
+      },
+    };
+
+    renderBand(view);
+
+    const staleFlag = screen.getByTestId("dashboard-home-curve-stale-flag");
+    expect(staleFlag).toHaveTextContent("快照 2026-06-30");
+    expect(staleFlag.getAttribute("title")).toContain("曲线快照日 2026-06-30");
+    expect(staleFlag.getAttribute("title")).toContain("数据截至 2026-07-31");
   });
 
   it("keeps the DR007 alias order and accepts only landed proxy qualities", () => {
@@ -261,9 +304,11 @@ describe("DashboardHomeOptionTwoSupportBand", () => {
     const shibor1m = within(panel).getByText("SHIBOR 1M").closest("div");
     expect(shibor1m).not.toHaveTextContent("public_repo_rate_query");
     expect(shibor1m?.getAttribute("title")).toContain("public_repo_rate_query");
-    // 正常 vendor 名保留在可见行。
+    // 全小写数据管道 token（如 tushare）不占可见行，收进行级 title，正文留日期。
     const shibor3m = within(panel).getByText("SHIBOR 3M").closest("div");
-    expect(shibor3m).toHaveTextContent("tushare");
+    expect(shibor3m).not.toHaveTextContent("tushare");
+    expect(shibor3m?.getAttribute("title")).toContain("tushare");
+    expect(shibor3m).toHaveTextContent("2026-07-29");
   });
 
   it("uses the next DR007 alias when the preferred alias fails validation", () => {

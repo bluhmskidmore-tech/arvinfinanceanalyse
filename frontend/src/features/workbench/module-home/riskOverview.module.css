@@ -197,6 +197,12 @@
   padding-top: 16px;
 }
 
+/* 网格项默认 min-width:auto 会被内部 nowrap 文本撑破栏宽（实测状态块外溢
+   90px 压到右栏底下），显式归零让其始终受栏宽约束。 */
+.roV6HeroSide > * {
+  min-width: 0;
+}
+
 .roV6Rate {
   border-top: 2px solid var(--ro-ink);
   padding-top: 10px;
@@ -230,18 +236,6 @@
   gap: 10px;
   letter-spacing: 0.16em;
   margin: 0;
-  /* 标题字不因右侧长 detail 被挤成两行折字；detail 自身仍走 ellipsis。 */
-  white-space: nowrap;
-}
-
-.roV6Gate h3 span {
-  color: var(--ro-mut);
-  font-size: 12px;
-  font-weight: 400;
-  letter-spacing: 0;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -1184,13 +1178,6 @@ text.roV6CurveEndText.roV6CurveAcc {
   color: var(--ro-mut);
 }
 
-.roBondState {
-  color: var(--ro-mut);
-  font-size: 12px;
-  margin: 5px 0;
-  min-height: 26px;
-}
-
 .roBondMeta {
   border-top: 1px solid var(--ro-line);
   color: var(--ro-mut);
@@ -1415,35 +1402,16 @@ text.roV6CurveEndText.roV6CurveAcc {
   color: var(--dh-api-muted);
 }
 
+/* 空态收缩为一句话提示框（§5）；不再放形似加载环的装饰图形（§6 无语义圆点）。 */
 .roEmptyState {
   align-items: center;
-  border: 1px dashed color-mix(in srgb, var(--dh-api-blue) 30%, transparent);
+  border: 1px dashed var(--ro-line-2);
   border-radius: var(--dh-api-radius, 6px);
   display: grid;
-  gap: 10px;
   grid-column: 1 / -1;
   justify-items: center;
-  padding: 26px 18px;
+  padding: 22px 18px;
   text-align: center;
-}
-
-.roEmptyGlyph {
-  background:
-    radial-gradient(
-      circle at center,
-      color-mix(in srgb, var(--dh-api-blue) 50%, transparent) 0 3px,
-      transparent 3px
-    ),
-    conic-gradient(
-      from 0deg,
-      color-mix(in srgb, var(--dh-api-blue) 40%, transparent),
-      transparent 26%
-    );
-  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 30%, transparent);
-  border-radius: 999px;
-  display: block;
-  height: 30px;
-  width: 30px;
 }
 
 /* ── 响应式 ───────────────────────────────────────────────────── */
@@ -1620,14 +1588,19 @@ text.roV6CurveEndText.roV6CurveAcc {
 /* 内层：环比/同比小格去独立底色，对齐正文 */
 
 .roBondComparison {
-  align-items: center;
+  align-items: baseline;
   display: grid;
   font-size: 12px;
-  gap: 4px 7px;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
   min-width: 0;
   background: transparent;
-  padding: 5px 0;
+  padding: 4px 0;
+}
+
+.roBondComparison span {
+  grid-column: 1 / -1;
+  line-height: 16px;
 }
 
 /* ── 5) 证据板：去玻璃外框与阴影，保留内部行分隔 ── */
@@ -2120,6 +2093,10 @@ text.roV6CurveEndText.roV6CurveAcc {
   color: var(--ro-err);
 }
 
+.roStatusPill[data-tone="watch"] {
+  color: var(--ro-amber);
+}
+
 /* ── 01-04 编号分区头统一首页语言（ledger-pnl / market-overview 同款） ── */
 .roSecHead {
   gap: 10px;
@@ -2225,4 +2202,123 @@ text.roV6CurveEndText.roV6CurveAcc {
     justify-content: flex-start;
     margin-left: 0;
   }
+}
+
+@media (max-width: 900px) {
+  .roBondComparison {
+    align-items: center;
+    gap: 0 8px;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    padding-block: 3px;
+  }
+
+  .roBondComparison span {
+    grid-column: auto;
+    line-height: 18px;
+  }
+}
+
+/* ── 债券口径披露：默认一行摘要，按需展开完整原文 ─────────────── */
+.roBondDisclosure {
+  color: var(--ro-mut);
+  min-width: 0;
+}
+
+.roBondDisclosureSummary {
+  border-top: 1px solid var(--ro-line);
+  color: var(--ro-mut);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 20px;
+  padding: 4px 0;
+}
+
+.roBondDisclosure:not([open]) > .roBondDisclosureSummary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roBondDisclosure[open] > .roBondDisclosureSummary {
+  color: var(--ro-ink-2);
+  margin-bottom: 4px;
+  white-space: normal;
+}
+
+.roBondDisclosureSummary::marker {
+  color: var(--ro-mut);
+}
+
+.roBondDisclosureSummary:focus-visible {
+  border-radius: var(--dh-api-radius);
+  outline: 1px solid var(--ro-acc);
+  outline-offset: 2px;
+}
+
+.roBondDisclosureList {
+  color: var(--ro-mut);
+  display: grid;
+  font-size: 12px;
+  gap: 4px;
+  line-height: 20px;
+  list-style-position: outside;
+  margin: 0;
+  max-height: none;
+  overflow: visible;
+  padding: 0 0 8px 20px;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.roBondDisclosureList > li {
+  overflow: visible;
+  overflow-wrap: break-word;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.roBondSharedDisclosure {
+  box-sizing: border-box;
+  grid-column: 1 / -1;
+  min-width: 0;
+  width: 100%;
+}
+
+/* ── 债券卡内密度收口（证据去重后 · 仅追加段）────────────────────
+   卡内子块可选出现（基期行可被上游去重掉、趋势可只剩一行摘要或空态），
+   因此密度不能依赖某个元素一定在场。本段统一两条规律：
+     1) 卡内发丝线一律「线上由 .roBondCard 的 12px 栅格间距承担、线下 8px」；
+     2) 子块不保留「只为让开发丝线」的尾随内边距，避免与栅格间距叠加。
+   全部走 :last-child 自适应，不新增类名，不改颜色语义 / 字号 / 圆角。 ── */
+
+/* 同排双卡等高：矮卡被拉伸后，默认 align-content: stretch 会把富余高度
+   平摊进每一条 auto 行，使卡内每个子块各自多出几像素、整体脱离 4px 栅格
+   （越是去重后两卡高度差越大，摊得越多）。改为 start：富余高度集中留在
+   卡片末尾，卡内节奏恒为内容自身高度 + 12px 栅格间距。 */
+.roBondCard {
+  align-content: start;
+}
+
+/* 末条指标已去掉底部发丝线，为该线预留的 8px 尾随内边距随之收掉；
+   否则与 12px 栅格间距叠成 20px 空档（基期行被去重时直接暴露给趋势块）。 */
+.roBondMetric:last-child {
+  padding-bottom: 0;
+}
+
+/* 基期行内部行距对齐 4px 栅格，保持与 12px 块间距的成组关系。 */
+.roBondComparisonBasis {
+  gap: 4px;
+}
+
+/* 空态段落是趋势块最后一行时，其虚线底边会与紧随的 .roBondMeta 顶边
+   形成两条相距 12px、中间无内容的分隔线；此处只撤线，保留 min-height
+   占位，双卡窄格下仍与有图卡等高。若上游在其后补渲染内容，线自动恢复。 */
+.roBondTrendEmpty:last-child {
+  border-bottom: 0;
+}
+
+/* 折叠块顶边与 .roBondMeta 顶边同为卡内分隔线，统一「线下 8px」；
+   点击区随之由 28px 增至 32px，720 单列触控更稳。 */
+.roBondDisclosureSummary {
+  padding: 8px 0 4px;
 }

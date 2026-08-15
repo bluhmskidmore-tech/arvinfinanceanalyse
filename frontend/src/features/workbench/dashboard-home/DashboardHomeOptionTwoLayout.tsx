@@ -347,23 +347,29 @@ export function DashboardHomeOptionTwoBody({
       ? view.marketTape.slice(0, 5).map((row) => ({
           id: row.id,
           label: row.label,
+          title: row.title,
           value: row.value,
           delta: row.delta,
+          deltaTitle: row.deltaTitle,
           tone: row.deltaTone,
         }))
       : view.marketContext.rateSeries.length > 0
         ? view.marketContext.rateSeries.slice(0, 5).map((row) => ({
             id: row.id,
             label: row.label,
+            title: row.title,
             value: row.value,
             delta: row.delta,
+            deltaTitle: row.deltaTitle,
             tone: row.deltaTone,
           }))
       : view.marketContext.curveTable.rows.slice(0, 5).map((row) => ({
           id: row.tenor,
           label: row.tenor,
+          title: undefined as string | undefined,
           value: row.yieldLabel,
           delta: row.deltaLabel,
+          deltaTitle: undefined as string | undefined,
           tone: row.deltaTone,
         }));
 
@@ -642,8 +648,9 @@ export function DashboardHomeOptionTwoBody({
                         : "余额分析台账"
                     }
                   >
-                    {index === 0 && view.decisionItemsReportDate
-                      ? `余额分析台账 · 截至 ${view.decisionItemsReportDate}`
+                    {/* §6 去重：来源标注可见处不重复全局报告日，截至日期收 title。 */}
+                    {index === 0
+                      ? "余额分析台账"
                       : item.reason || "余额分析台账"}
                   </small>
                 </span>
@@ -824,10 +831,12 @@ export function DashboardHomeOptionTwoBody({
             >
               <div className={styles.marketTape}>
                 {marketRows.map((row) => (
-                  <div key={row.id}>
+                  <div key={row.id} title={row.title}>
                     <span>{row.label}</span>
                     <strong>{row.value}</strong>
-                    <em data-tone={row.tone}>{row.delta}</em>
+                    <em data-tone={row.tone} title={row.deltaTitle}>
+                      {row.delta}
+                    </em>
                   </div>
                 ))}
               </div>
@@ -857,8 +866,12 @@ export function DashboardHomeOptionTwoBody({
                   <tbody>
                     {visibleResearchReports.map((row) => {
                       const researchLink = normalizeHomeResearchLink(row.link);
-                      // 可见标题走显示层清洗（去扩展名/日期戳/下划线）；title 与 href 保留原文。
-                      const displayTitle = formatResearchTitleDisplay(row.title);
+                      // 可见标题走显示层清洗（去扩展名/日期戳/下划线，并剥离与
+                      // 来源列重复的机构名前缀）；title 与 href 保留原文。
+                      const displayTitle = formatResearchTitleDisplay(row.title, [
+                        row.institution,
+                        row.source,
+                      ]);
                       return (
                         <tr key={row.id} data-testid="dashboard-home-research-row">
                           <td><ResearchPublishedAt value={row.publishedAt} compact /></td>
@@ -956,9 +969,11 @@ export function DashboardHomeOptionTwoBody({
         <header className={styles.extendedEvidenceHeader}>
           <div>
             <span aria-hidden="true">04</span>
-            <h2 id="dashboard-home-research-evidence-title">研究与资讯证据</h2>
+            {/* §7 微元句：区块范围说明不占正文，收进标题 title。 */}
+            <h2 id="dashboard-home-research-evidence-title" title="事件、政策与债券新闻">
+              研究与资讯证据
+            </h2>
           </div>
-          <small>事件、政策与债券新闻</small>
         </header>
         <ResearchCalendarSection macroBriefing={view.macroBriefing} />
         <BondNewsSection

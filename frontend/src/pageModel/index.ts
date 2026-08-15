@@ -167,6 +167,22 @@ export function fixedOrDash(value: number | null | undefined, digits: number): s
 }
 
 /**
+ * `value.toLocaleString(locale, options)`, or `EM_DASH` when the value is
+ * null/undefined or not finite. Locale and formatting options stay explicit
+ * so this helper does not introduce business-specific display defaults.
+ */
+export function localeOrDash(
+  value: number | null | undefined,
+  locale: string,
+  options?: Intl.NumberFormatOptions,
+): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return EM_DASH;
+  }
+  return value.toLocaleString(locale, options);
+}
+
+/**
  * `value.toFixed(digits) + "%"`, or `EM_DASH` when the value is null/undefined
  * or not finite. Extracted because the shape repeats across 26+ page models
  * (2026-08-13 audit); adopt only where the local semantics are identical

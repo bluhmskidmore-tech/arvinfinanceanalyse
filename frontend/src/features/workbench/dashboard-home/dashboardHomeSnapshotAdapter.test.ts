@@ -59,13 +59,14 @@ describe("adaptHomeSnapshotForFirstScreen product-category contract", () => {
           id: "ytd-summary-pnl",
           label: "年度汇总损益",
           value: "+12.30 亿元",
-          detail: "后端年度汇总口径",
+          // 两个名义字段当前后端同源（business_net_income），title 补口径指引。
+          detail: "后端年度汇总口径（口径详见产品分类损益页）",
         },
         {
           id: "ytd-operating-income",
           label: "年度营业收入",
           value: "+9.20 亿元",
-          detail: "后端营业收入口径",
+          detail: "后端营业收入口径（口径详见产品分类损益页）",
         },
         {
           id: "ytd-intermediate-business-income",

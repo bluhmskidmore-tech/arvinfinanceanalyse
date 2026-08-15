@@ -18,7 +18,12 @@ import {
   PageDecisionHero,
   PageSectionLead,
 } from "../../../components/page/PagePrimitives";
-import { buildDecisionItemsPageViewModel } from "../lib/decisionItemsPageModel";
+import {
+  buildDecisionItemsPageViewModel,
+  decisionSeverityLabel,
+  decisionSourceSectionLabel,
+  formatDecisionReasonText,
+} from "../lib/decisionItemsPageModel";
 
 import "./DecisionItemsPage.css";
 
@@ -62,16 +67,17 @@ function cleanReportDateParam(value: string | null): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : null;
 }
 
-function formatMetaLine(meta: ResultMeta | undefined) {
-  if (!meta) {
-    return EM_DASH;
-  }
+function resolvePopupContainer(trigger: HTMLElement): HTMLElement {
+  return trigger.parentElement ?? document.body;
+}
+
+function resultMetaEntries(meta: ResultMeta | undefined) {
   return [
-    `追踪 ${meta.trace_id || EM_DASH}`,
-    `来源 ${meta.source_version || EM_DASH}`,
-    `规则 ${meta.rule_version || EM_DASH}`,
-    `缓存 ${meta.cache_version || EM_DASH}`,
-  ].join(" · ");
+    { label: "追踪编号", value: meta?.trace_id || EM_DASH },
+    { label: "来源版本", value: meta?.source_version || EM_DASH },
+    { label: "规则版本", value: meta?.rule_version || EM_DASH },
+    { label: "缓存版本", value: meta?.cache_version || EM_DASH },
+  ];
 }
 
 function resultMetaBasisLabel(value: ResultMeta["basis"]): string {
@@ -380,7 +386,11 @@ export default function DecisionItemsPage() {
           </div>
           <div>
             <div className="decision-items-page__summary-label">高等级</div>
-            <div data-testid="decision-items-summary-high" className="decision-items-page__mono">
+            <div
+              data-testid="decision-items-summary-high"
+              className="decision-items-page__mono decision-items-page__summary-count"
+              data-alert={vm.severityCounts.high > 0 ? "true" : undefined}
+            >
               {vm.severityCounts.high}
             </div>
           </div>
@@ -388,7 +398,16 @@ export default function DecisionItemsPage() {
 
         <div className="decision-items-page__meta-block">
           <div className="decision-items-page__meta-label">结果元信息</div>
-          <div className="decision-items-page__meta-line">{formatMetaLine(resultMeta)}</div>
+          <div className="decision-items-page__meta-grid">
+            {resultMetaEntries(resultMeta).map((entry) => (
+              <div key={entry.label} className="decision-items-page__meta-entry">
+                <span className="decision-items-page__meta-entry-label">{entry.label}</span>
+                <span className="decision-items-page__meta-entry-value decision-items-page__mono">
+                  {entry.value}
+                </span>
+              </div>
+            ))}
+          </div>
           {resultMetaSubline(resultMeta) ? (
             <div className="decision-items-page__meta-subline">{resultMetaSubline(resultMeta)}</div>
           ) : null}
@@ -408,6 +427,7 @@ export default function DecisionItemsPage() {
             showSearch
             optionFilterProp="label"
             placeholder="选择报告日"
+            getPopupContainer={resolvePopupContainer}
           />
         </label>
         <label className="decision-items-page__filter-label">
@@ -418,6 +438,7 @@ export default function DecisionItemsPage() {
             onChange={(v) => setPositionScope(v as BalancePositionScope)}
             options={SCOPE_OPTIONS}
             className="decision-items-page__filter-control"
+            getPopupContainer={resolvePopupContainer}
           />
         </label>
         <label className="decision-items-page__filter-label">
@@ -428,6 +449,7 @@ export default function DecisionItemsPage() {
             onChange={(v) => setCurrencyBasis(v as BalanceCurrencyBasis)}
             options={CURRENCY_OPTIONS}
             className="decision-items-page__filter-control"
+            getPopupContainer={resolvePopupContainer}
           />
         </label>
         <label className="decision-items-page__filter-label">
@@ -438,6 +460,7 @@ export default function DecisionItemsPage() {
             onChange={(v) => setStatusFilter(v as StatusFilter)}
             options={STATUS_FILTER_OPTIONS}
             className="decision-items-page__filter-control"
+            getPopupContainer={resolvePopupContainer}
           />
         </label>
         <label className="decision-items-page__filter-label">
@@ -448,6 +471,7 @@ export default function DecisionItemsPage() {
             onChange={(v) => setSeverityFilter(v as SeverityFilter)}
             options={SEVERITY_FILTER_OPTIONS}
             className="decision-items-page__filter-control"
+            getPopupContainer={resolvePopupContainer}
           />
         </label>
       </div>
@@ -499,16 +523,18 @@ export default function DecisionItemsPage() {
                 <table className="decision-items-page__table">
                   <thead>
                     <tr>
-                      <th className="decision-items-page__table-head-cell">标题</th>
+                      <th className="decision-items-page__table-head-cell decision-items-page__table-cell--title">
+                        标题
+                      </th>
                       <th className="decision-items-page__table-head-cell">严重度</th>
-                      <th className="decision-items-page__table-head-cell">操作</th>
+                      <th className="decision-items-page__table-head-cell decision-items-page__table-cell--actions">
+                        操作
+                      </th>
                       <th className="decision-items-page__table-head-cell">原因</th>
                       <th className="decision-items-page__table-head-cell">来源段落</th>
-                      <th className="decision-items-page__table-head-cell">规则</th>
-                      <th className="decision-items-page__table-head-cell">版本</th>
                       <th className="decision-items-page__table-head-cell">状态</th>
                       <th className="decision-items-page__table-head-cell">更新人/时间</th>
-                      <th className="decision-items-page__table-head-cell"> </th>
+                      <th className="decision-items-page__table-head-cell decision-items-page__table-cell--actions"> </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -523,18 +549,31 @@ export default function DecisionItemsPage() {
                           className="decision-items-page__table-row"
                           data-selected={isSel ? "true" : undefined}
                         >
-                          <td className="decision-items-page__table-cell">{row.title}</td>
-                          <td className="decision-items-page__table-cell">{row.severity}</td>
-                          <td className="decision-items-page__table-cell">{row.action_label}</td>
-                          <td className="decision-items-page__table-cell">{row.reason}</td>
-                          <td className="decision-items-page__table-cell">{row.source_section}</td>
-                          <td className="decision-items-page__table-cell decision-items-page__mono">{row.rule_id}</td>
-                          <td className="decision-items-page__table-cell decision-items-page__mono">{row.rule_version}</td>
+                          <td className="decision-items-page__table-cell decision-items-page__table-cell--title">
+                            {row.title}
+                          </td>
+                          <td className="decision-items-page__table-cell">
+                            <span
+                              className="decision-items-page__severity-badge"
+                              data-severity={row.severity}
+                            >
+                              {decisionSeverityLabel(row.severity)}
+                            </span>
+                          </td>
+                          <td className="decision-items-page__table-cell decision-items-page__table-cell--actions">
+                            {row.action_label}
+                          </td>
+                          <td className="decision-items-page__table-cell" title={row.reason}>
+                            {formatDecisionReasonText(row.reason)}
+                          </td>
+                          <td className="decision-items-page__table-cell" title={row.source_section}>
+                            {decisionSourceSectionLabel(row.source_section)}
+                          </td>
                           <td className="decision-items-page__table-cell">{row.latest_status?.status}</td>
                           <td className="decision-items-page__table-cell decision-items-page__table-cell--small">
                             {(row.latest_status?.updated_by || EM_DASH) + " / " + (row.latest_status?.updated_at || EM_DASH)}
                           </td>
-                          <td className="decision-items-page__table-cell">
+                          <td className="decision-items-page__table-cell decision-items-page__table-cell--actions">
                             {canWriteDecisionItems ? (
                               <div className="decision-items-page__button-row">
                                 <Button
@@ -587,37 +626,40 @@ export default function DecisionItemsPage() {
             )}
           </div>
 
-          <aside data-testid="decision-items-detail" className="decision-items-page__detail-panel">
-            <h3 className="decision-items-page__detail-title">
-              事项详情
-            </h3>
-            {!selectedRow ? (
-              <p className="decision-items-page__empty-note">请选择一行查看详情。</p>
-            ) : (
+          {selectedRow ? (
+            <aside data-testid="decision-items-detail" className="decision-items-page__detail-panel">
+              <h3 className="decision-items-page__detail-title">
+                事项详情
+              </h3>
               <div className="decision-items-page__detail-stack">
                 <div className="decision-items-page__detail-label">decision_key</div>
-                <div className="decision-items-page__mono">{selectedRow.decision_key}</div>
+                <div className="decision-items-page__mono decision-items-page__detail-token">
+                  {selectedRow.decision_key}
+                </div>
                 <div>
                   <strong>标题</strong> {selectedRow.title}
                 </div>
                 <div>
-                  <strong>严重度</strong> {selectedRow.severity}
+                  <strong>严重度</strong>{" "}
+                  <span className="decision-items-page__severity-badge" data-severity={selectedRow.severity}>
+                    {decisionSeverityLabel(selectedRow.severity)}
+                  </span>
                 </div>
                 <div>
                   <strong>操作</strong> {selectedRow.action_label}
                 </div>
-                <div>
-                  <strong>原因</strong> {selectedRow.reason}
+                <div title={selectedRow.reason}>
+                  <strong>原因</strong> {formatDecisionReasonText(selectedRow.reason)}
                 </div>
-                <div>
-                  <strong>来源</strong> {selectedRow.source_section}
+                <div title={selectedRow.source_section}>
+                  <strong>来源</strong> {decisionSourceSectionLabel(selectedRow.source_section)}
                 </div>
-                <div>
+                <div className="decision-items-page__detail-token">
                   <strong>规则</strong> {selectedRow.rule_id} @ {selectedRow.rule_version}
                 </div>
                 <div>
-                  <strong>状态</strong> {selectedRow.latest_status?.status} · 更新人 {selectedRow.latest_status?.updated_by || EM_DASH}{" "}
-                  · {selectedRow.latest_status?.updated_at || EM_DASH}
+                  <strong>状态</strong> {selectedRow.latest_status?.status} · 更新人{" "}
+                  {selectedRow.latest_status?.updated_by || EM_DASH} / {selectedRow.latest_status?.updated_at || EM_DASH}
                 </div>
                 <label className="decision-items-page__filter-label">
                   备注
@@ -650,8 +692,8 @@ export default function DecisionItemsPage() {
                   </div>
                 )}
               </div>
-            )}
-          </aside>
+            </aside>
+          ) : null}
         </div>
       )}
     </div>

@@ -91,7 +91,7 @@ describe("AccountingClassAuditView", () => {
     );
 
     expect(await screen.findByTestId("accounting-class-audit-computed-at")).toHaveTextContent(
-      "2026-04-10T00:00:00Z",
+      "计算时间：2026-04-10 00:00",
     );
     expect(screen.getByTestId("accounting-class-audit-shell-lead")).toBeInTheDocument();
     expect(screen.getByTestId("accounting-class-audit-rules-lead")).toBeInTheDocument();

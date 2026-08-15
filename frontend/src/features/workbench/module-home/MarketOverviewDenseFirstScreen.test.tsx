@@ -263,15 +263,16 @@ describe("MarketOverviewDenseFirstScreen", () => {
     expect(
       screen.getByTestId("module-home-market-dense-observation-summary"),
     ).toHaveTextContent("非正式观察，仅供复核。");
+    // 01 区状态面板不透出英文枚举（C13）：basis/formal/fallback 展示中文。
     expect(
       screen.getByTestId("module-home-market-dense-observation-basis"),
-    ).toHaveTextContent("analytical");
+    ).toHaveTextContent("分析口径");
     expect(
       screen.getByTestId("module-home-market-dense-observation-formal"),
-    ).toHaveTextContent("false");
+    ).toHaveTextContent("否");
     expect(
       screen.getByTestId("module-home-market-dense-observation-quality"),
-    ).toHaveTextContent("质量 正常 / 供应方 正常 / 回退 none");
+    ).toHaveTextContent("质量 正常 / 供应方 正常 / 回退 无");
     expect(
       screen.getByTestId("module-home-market-dense-observation-gate"),
     ).toHaveTextContent("仅供复核（非正式观察）");

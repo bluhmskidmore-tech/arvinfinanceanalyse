@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -134,6 +134,7 @@ describe("useDashboardHomeViewModel release timing", () => {
 
   it("fires the bond news probe after the event-feed tier, no longer chained behind the macro fallback tier", async () => {
     expect(BOND_NEWS_PROBE_GROUP_ID).toBeTruthy();
+    vi.useFakeTimers();
     const reportDate = "2026-05-31";
     const getChoiceNewsEventsBatch = vi.fn(
       createApiClient({ mode: "mock" }).getChoiceNewsEventsBatch,
@@ -143,30 +144,41 @@ describe("useDashboardHomeViewModel release timing", () => {
       getResearchCalendarEvents: vi.fn(async () => []),
     });
 
-    renderHook(() => useDashboardHomeViewModel(buildSnapshotBoundary(dataClient, reportDate)), {
-      wrapper: createWrapper(),
-    });
+    const { unmount } = renderHook(
+      () => useDashboardHomeViewModel(buildSnapshotBoundary(dataClient, reportDate)),
+      {
+        wrapper: createWrapper(),
+      },
+    );
 
     // Each idle gate resolves in ~350ms in this jsdom environment (no
     // requestIdleCallback, so it falls through to the timeout fallback).
     // The bond news wave (a single batch request carrying the probe group)
     // now depends only on the event-feed tier (one gate, ~350ms), not on the
     // event-feed -> secondary-event-feed chain (two gates, ~700ms) that used
-    // to sit in front of it. Asserting it resolves well inside a single extra
-    // tier's budget catches any regression back to the three-tier chain
-    // (which would need ~1050ms).
-    await waitFor(
-      () => {
-        expect(
-          getChoiceNewsEventsBatch.mock.calls.some(([options]) =>
-            (options.groups ?? []).some(
-              (group) => group.groupId === BOND_NEWS_PROBE_GROUP_ID,
-            ),
+    // to sit in front of it. Advancing exactly the two expected tier budgets
+    // catches any regression back to the three-tier chain (which would need
+    // ~1050ms) without depending on wall-clock scheduling under suite load.
+    try {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(350);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(350);
+      });
+
+      expect(
+        getChoiceNewsEventsBatch.mock.calls.some(([options]) =>
+          (options.groups ?? []).some(
+            (group) => group.groupId === BOND_NEWS_PROBE_GROUP_ID,
           ),
-        ).toBe(true);
-      },
-      { timeout: 850 },
-    );
+        ),
+      ).toBe(true);
+    } finally {
+      unmount();
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
   });
 
   it("queries current-day research independently from the portfolio report date", async () => {

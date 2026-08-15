@@ -245,11 +245,13 @@ export const designTokens = {
   },
   radius: {
     /*
-     * Shape Lock (DESIGN.md §5): aligned with `tokens.css` `--moss-radius-*`.
+     * Shape Lock (DESIGN.md §2.2/§5): aligned with `tokens.css` `--moss-radius-*`.
      * Page cards/panels must use `--ib-radius` (2px, IB light) or
-     * `--dh-api-radius` / `dhApiTokens.radius` (6px, dark terminal).
+     * `--dh-api-radius` / `nocturneTokens.radius` (8px, canonical Nocturne dark
+     * terminal; the 6px `dhApiTokens.radius` is the steel-blue compat fallback
+     * only — not a template for new pages).
      * `sm` mirrors IB / `--moss-radius-sm` (2px); do not use it as a dark
-     * terminal substitute — use `dhApiTokens.radius` instead.
+     * terminal substitute — use `nocturneTokens.radius` instead.
      */
     sm: 2,
     md: 12,

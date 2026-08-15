@@ -165,6 +165,7 @@ describe("buildHomeMarketContextModel yield curve dates", () => {
     expect(model.curveTable.rows).toEqual([
       {
         tenor: "1Y",
+        // 收益率水平列剥离后端 display 的「+」符号（水平值非变动），变动列保留符号。
         yieldLabel: "1.60%",
         deltaLabel: "-1.20",
         deltaTone: "down",
@@ -189,6 +190,54 @@ describe("buildHomeMarketContextModel yield curve dates", () => {
       },
     ]);
     expect(model.curveTable.emptyMessage).toBeNull();
+  });
+
+  it("strips the plus sign from yield levels but keeps it on deltas", () => {
+    const payload: YieldCurveTermStructurePayload = {
+      report_date: "2026-07-31",
+      curves: [
+        curve("treasury", "2026-06-30", [
+          {
+            tenor: "10Y",
+            yield_pct: {
+              raw: 0.0173,
+              unit: "pct",
+              display: "+1.73%",
+              precision: 2,
+              sign_aware: true,
+            },
+            delta_bp_prev: {
+              raw: 0.8,
+              unit: "bp",
+              display: "+0.80",
+              precision: 2,
+              sign_aware: true,
+            },
+          },
+        ]),
+      ],
+      warnings: [],
+      computed_at: "2026-07-31T16:00:00Z",
+    };
+    const model = buildHomeMarketContextModel({
+      marketTape: [],
+      marketPoints: null,
+      macroNewsEvents: null,
+      todayIsoDate: "2026-07-31",
+      campisiFourEffects: null,
+      returnDecomposition: null,
+      yieldCurveTermStructure: payload,
+      creditSpreadMigration: null,
+      attribution: {
+        maxDragLabel: "",
+        maxContributionLabel: "",
+      },
+    });
+
+    const tenYear = model.curveTable.rows.find((row) => row.tenor === "10Y");
+    expect(tenYear?.yieldLabel).toBe("1.73%");
+    expect(tenYear?.deltaLabel).toBe("+0.80");
+    expect(tenYear?.deltaTone).toBe("up");
   });
 
   it("preserves the full formal rate series independently from the market-temperature tape", () => {

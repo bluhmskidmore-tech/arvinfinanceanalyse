@@ -3,8 +3,12 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { UseQueryResult } from "@tanstack/react-query";
 
-import type { ApiEnvelope, ResultMeta } from "../api/contracts";
+import type { ApiEnvelope, Numeric, ResultMeta } from "../api/contracts";
 import { buildMarketCrisisExplain, buildMarketDeskIntel, buildModuleHomeView, formatPanelMetaForHome } from "../features/workbench/module-home/moduleHomeModel";
+import {
+  buildMarketCrisisExplain as buildExtractedMarketCrisisExplain,
+  buildMarketDeskIntel as buildExtractedMarketDeskIntel,
+} from "../features/workbench/module-home/marketDeskIntelModel";
 import { buildActionQueue } from "../features/workbench/module-home/marketActionQueueModel";
 import { formatRawAsNumeric } from "../utils/format";
 
@@ -2135,19 +2139,22 @@ describe("ModuleWorkbenchHome model", () => {
           }),
         }),
         cashflow: query({
-          data: envelope({
-            report_date: "2026-02-28",
-            duration_gap: formatRawAsNumeric({ raw: 1.25, unit: "ratio", sign_aware: true }),
-            asset_duration: formatRawAsNumeric({ raw: 3.8, unit: "ratio", sign_aware: false }),
-            liability_duration: formatRawAsNumeric({ raw: 2.55, unit: "ratio", sign_aware: false }),
-            equity_duration: formatRawAsNumeric({ raw: 5.2, unit: "ratio", sign_aware: true }),
-            rate_sensitivity_1bp: formatRawAsNumeric({ raw: 125_000, unit: "yuan", sign_aware: true }),
-            reinvestment_risk_12m: formatRawAsNumeric({ raw: 0.185, unit: "pct", sign_aware: false }),
-            monthly_buckets: [],
-            top_maturing_assets_12m: [],
-            warnings: [],
-            computed_at: "2026-06-01T00:00:00Z",
-          }),
+          data: envelope(
+            {
+              report_date: "2026-02-28",
+              duration_gap: formatRawAsNumeric({ raw: 1.25, unit: "ratio", sign_aware: true }),
+              asset_duration: formatRawAsNumeric({ raw: 3.8, unit: "ratio", sign_aware: false }),
+              liability_duration: formatRawAsNumeric({ raw: 2.55, unit: "ratio", sign_aware: false }),
+              equity_duration: formatRawAsNumeric({ raw: 5.2, unit: "ratio", sign_aware: true }),
+              rate_sensitivity_1bp: formatRawAsNumeric({ raw: 125_000, unit: "yuan", sign_aware: true }),
+              reinvestment_risk_12m: formatRawAsNumeric({ raw: 0.185, unit: "pct", sign_aware: false }),
+              monthly_buckets: [],
+              top_maturing_assets_12m: [],
+              warnings: [],
+              computed_at: "2026-06-01T00:00:00Z",
+            },
+            { basis: "analytical", formal_use_allowed: false, quality_flag: "warning" },
+          ),
         }),
       },
     );
@@ -2155,9 +2162,12 @@ describe("ModuleWorkbenchHome model", () => {
     expect(view.stateLabel).toBe("已接入");
     expect(view.kpis.find((item) => item.key === "portfolio-dv01")?.value).toContain("万元");
     expect(view.kpis.find((item) => item.key === "liquidity-gap")?.label).toBe("久期缺口");
+    expect(view.kpis.find((item) => item.key === "liquidity-gap")?.tone).toBe("watch");
     expect(view.kpis.every((item) => item.sparkline === undefined)).toBe(true);
     expect(view.decision?.facts.some((fact) => fact.label === "限额状态")).toBe(false);
     expect(view.decision?.detail).toContain("字段级证据");
+    expect(view.decision?.tone).toBe("watch");
+    expect(view.statuses.find((status) => status.key === "cashflow")?.value).toBe("分析口径");
 
     const tensorPanel = view.detailPanels?.find((panel) => panel.key === "risk-tensor-detail");
     expect(tensorPanel?.rows.some((row) => row.label === "KRD 5Y")).toBe(true);
@@ -2174,6 +2184,76 @@ describe("ModuleWorkbenchHome model", () => {
     expect(cashflowPanel?.sections?.some((section) => section.key === "cashflow-forecast")).toBe(true);
     expect(cashflowPanel?.rows.some((row) => row.label === "12M 再投资风险")).toBe(true);
     expect(cashflowPanel?.meta).toContain("cashflow-projection");
+    expect(cashflowPanel?.stateLabel).toBe("分析口径");
+    expect(view.briefings.find((brief) => brief.title === "现金流压力")?.tone).toBe("watch");
+    expect(view.briefings.find((brief) => brief.title === "现金流压力")?.evidence).toContain(
+      "formal_use_allowed=false",
+    );
+  });
+
+  it("discloses legacy ratio strings verbatim instead of guessing a percent unit", () => {
+    const buildRiskView = (issuerTop5Weight: string | Numeric) =>
+      buildModuleHomeView(
+        "risk",
+        { mode: "mock" },
+        {
+          riskDates: query({ data: envelope({ report_dates: ["2026-02-28"] }) }),
+          riskTensor: query({
+            data: envelope({
+              report_date: "2026-02-28",
+              portfolio_dv01: "120000.00000000",
+              krd_1y: "25000.00000000",
+              krd_3y: "50000.00000000",
+              krd_5y: "30000.00000000",
+              krd_7y: "10000.00000000",
+              krd_10y: "5000.00000000",
+              krd_30y: "0.00000000",
+              cs01: "18000.00000000",
+              portfolio_convexity: "24.50000000",
+              portfolio_modified_duration: "4.20000000",
+              issuer_concentration_hhi: "0.12000000",
+              issuer_top5_weight: issuerTop5Weight,
+              asset_cashflow_30d: "300000000.00000000",
+              asset_cashflow_90d: "500000000.00000000",
+              liability_cashflow_30d: "200000000.00000000",
+              liability_cashflow_90d: "250000000.00000000",
+              liquidity_gap_30d: "100000000.00000000",
+              liquidity_gap_90d: "250000000.00000000",
+              liquidity_gap_30d_ratio: "0.05000000",
+              total_market_value: "500000000.00000000",
+              rate_risk_market_value: "400000000.00000000",
+              rate_risk_dv01: "120000.00000000",
+              rate_risk_modified_duration: "4.20000000",
+              duration_excluded_market_value: "100000000.00000000",
+              duration_excluded_count: 2,
+              bond_count: 8,
+              quality_flag: "ok",
+              warnings: [],
+            }),
+          }),
+        },
+      );
+    const top5Row = (view: ReturnType<typeof buildRiskView>) =>
+      view.detailPanels
+        ?.find((panel) => panel.key === "risk-tensor-detail")
+        ?.rows.find((row) => row.label === "前五大发行人权重");
+
+    // legacy 字符串无 "%" 单位：不再按 abs≤1→×100 猜测比例，原文透出。
+    const legacyFraction = buildRiskView("0.36000000");
+    expect(top5Row(legacyFraction)?.value).toBe("0.36000000");
+    expect(
+      legacyFraction.briefings.find((briefing) => briefing.title === "信用与集中度")?.conclusion,
+    ).toContain("前五大权重 0.36000000");
+
+    // legacy 字符串已带 "%"：display 直用，不重复换算。
+    expect(top5Row(buildRiskView("36.0%"))?.value).toBe("36.0%");
+
+    // 正式 Numeric 契约路径（raw 为比例小数）保留换算展示。
+    expect(
+      top5Row(
+        buildRiskView({ raw: 0.36, unit: "ratio", display: "", precision: 2, sign_aware: false }),
+      )?.value,
+    ).toBe("36.0%");
   });
 
   it("does not attach risk detail panels to market home", () => {
@@ -2322,10 +2402,13 @@ describe("ModuleWorkbenchHome model", () => {
     );
 
     expect(view.stateLabel).toBe("读取失败");
+    // §6 状态去重：完整失败原因只在状态条与数据说明各出现一次，分区内保持安静占位。
+    expect(view.stateDetail).toContain("不使用前端补数");
+    expect(view.dataNote.lines).toContain("2 项来源读取失败：不使用前端补数。");
     const kpiPanel = view.detailPanels?.find((panel) => panel.key === "kpi-metric-detail");
     expect(kpiPanel?.stateLabel).toBe("读取失败");
     expect(kpiPanel?.rows).toHaveLength(0);
-    expect(kpiPanel?.stateDetail).toContain("不使用前端补数");
+    expect(kpiPanel?.stateDetail).toBe("—");
   });
 });
 
@@ -2339,6 +2422,11 @@ describe("formatPanelMetaForHome", () => {
 });
 
 describe("market overview trader-first helpers", () => {
+  it("keeps the legacy module path wired to the extracted market builders", () => {
+    expect(buildMarketCrisisExplain).toBe(buildExtractedMarketCrisisExplain);
+    expect(buildMarketDeskIntel).toBe(buildExtractedMarketDeskIntel);
+  });
+
   it("buildMarketCrisisExplain maps crisis_score_cn capability fields without frontend recalculation", () => {
     const explain = buildMarketCrisisExplain({
       default_data_sources: ["choice"],
@@ -2503,6 +2591,78 @@ describe("market overview trader-first helpers", () => {
         },
       ],
     });
+  });
+
+  it("keeps desk indicator source order, zero values, null filtering, and the six-row cap", () => {
+    const analysis = {
+      default_data_sources: ["choice"],
+      as_of_date: "2026-04-30",
+      conclusion: {
+        stance: "中性观察",
+        tone: "neutral" as const,
+        summary: "summary",
+        recommended_action: "action",
+      },
+      coverage: {
+        indicator_count: 8,
+        hit_count: 7,
+        hit_rate: 0.875,
+        script_count: 1,
+        output_file_count: 0,
+      },
+      indicators: [
+        {
+          key: "missing",
+          alias: "MISSING",
+          label: "Missing",
+          group: "流动性",
+          unit: "%",
+          row_count: 0,
+          latest_date: null,
+          latest_value: null,
+          previous_value: null,
+          change: null,
+          change_pct: null,
+          source: "choice",
+          series_id: "MISSING",
+          quality: "missing" as const,
+        },
+        ...Array.from({ length: 7 }, (_, index) => ({
+          key: `indicator-${index}`,
+          alias: `INDICATOR.${index}`,
+          label: `Indicator ${index}`,
+          group: "流动性",
+          unit: "%",
+          row_count: 1,
+          latest_date: "2026-04-30",
+          latest_value: index,
+          previous_value: index,
+          change: 0,
+          change_pct: 0,
+          source: "choice",
+          series_id: `INDICATOR.${index}`,
+          quality: "ok" as const,
+        })),
+      ],
+      signal_cards: [],
+      capability_results: [],
+      strategy_summaries: [],
+      output_files: [],
+      source_checks: [],
+      capabilities: [],
+      warnings: [],
+    } satisfies NonNullable<Parameters<typeof buildMarketDeskIntel>[0]>;
+
+    const intel = buildMarketDeskIntel(analysis);
+
+    expect(intel?.indicators.map(({ key, value }) => ({ key, value }))).toEqual([
+      { key: "indicator-0", value: "0% · +0.00%" },
+      { key: "indicator-1", value: "1% · +0.00%" },
+      { key: "indicator-2", value: "2% · +0.00%" },
+      { key: "indicator-3", value: "3% · +0.00%" },
+      { key: "indicator-4", value: "4% · +0.00%" },
+      { key: "indicator-5", value: "5% · +0.00%" },
+    ]);
   });
 
   it("orders macro toolkit signal rows for market home compact view", () => {

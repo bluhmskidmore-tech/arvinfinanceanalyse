@@ -9,6 +9,7 @@ import {
 } from "./marketChartPalette";
 import type { MarketFinancialChartSpec } from "./marketFinancialChartsModel";
 
+import { EM_DASH } from "../../../utils/format";
 export type DenseLiquidityPoint = {
   date: string;
   value: number;
@@ -239,7 +240,7 @@ export function buildDenseLiquidityChartSpec(
             valueFormatter: (value: unknown) =>
               typeof value === "number" && Number.isFinite(value)
                 ? formatLiquidityValue(value, unit)
-                : "—",
+                : EM_DASH,
           },
           legend: {
             top: 0,
@@ -332,27 +333,29 @@ export function buildDenseLiquidityChartSpec(
             };
           }),
         };
+  // 副标题单行最多 1 个 `·`（DESIGN.md §7）：只保留日期与单位/状态之一，
+  // 序列条数等明细移入脚注（C17）。
   return {
     key: "liquidity-tenor",
     title: "流动性期限与资金利率",
     subtitle:
       status === "no-data"
-        ? "日期未返回 · 暂无正式序列 · 未绘制"
+        ? "日期未返回 · 未绘制"
         : status === "incompatible-units"
-          ? `${dateRange} · ${liquiditySeries.length} 条正式序列 · 单位缺失或不一致未绘制`
+          ? `${dateRange} · 单位缺失或不一致未绘制`
           : status === "insufficient-observations"
-            ? `${dateRange} · ${liquiditySeries.length} 条正式序列 · 均少于 2 个观测，未绘制趋势`
-            : status === "partial"
-              ? `${dateRange} · ${liquiditySeries.length} 条正式序列 · ${plottableSeries.length} 条已绘制 · ${insufficientSeriesCount} 条观测不足${unit ? ` · ${unit}` : ""}`
-              : `${dateRange} · ${liquiditySeries.length} 条正式序列${unit ? ` · ${unit}` : ""}`,
+            ? `${dateRange} · 观测不足未绘制`
+            : `${dateRange}${unit ? ` · ${unit}` : ""}`,
     footnote:
       status === "incompatible-units"
-        ? "单位缺失或不一致时不共轴绘制、不推导换算。"
+        ? `共 ${liquiditySeries.length} 条正式序列；单位缺失或不一致时不共轴绘制、不推导换算。`
         : status === "insufficient-observations"
-          ? "少于 2 个观测的序列不绘制，避免不可见假线。"
+          ? `共 ${liquiditySeries.length} 条正式序列，均少于 2 个观测不绘制，避免不可见假线。`
           : status === "no-data"
             ? "后端暂未返回可绘制的利率序列。"
-            : "直接使用 recent_points；空值不插值、不派生利差。",
+            : status === "partial"
+              ? `共 ${liquiditySeries.length} 条正式序列，已绘制 ${plottableSeries.length} 条、观测不足 ${insufficientSeriesCount} 条；直接使用 recent_points，空值不插值、不派生利差。`
+              : `共 ${liquiditySeries.length} 条正式序列；直接使用 recent_points，空值不插值、不派生利差。`,
     option,
     height: 232,
     status,

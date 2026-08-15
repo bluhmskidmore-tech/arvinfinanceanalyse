@@ -181,7 +181,7 @@ select {
 }
 
 .workbench-shell-section-label {
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--moss-color-text-muted);
@@ -410,7 +410,7 @@ select {
   border: none;
   background: transparent;
   color: var(--moss-shell-rail-text);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .workbench-group-nav-shell a[data-active="true"] .workbench-shell-group-icon {
@@ -1161,6 +1161,32 @@ select {
     grid-column: 1;
     width: 100%;
     min-width: 0;
+  }
+
+  /* 全外壳窄屏收口：单列塌缩后侧栏不得再保持 sticky/100vh 盖住首屏。
+     上方 --desktop-aligned 与 --balance-movement 变体的 sticky/100vh !important
+     声明没有断点限制，会压过 dashboardCockpit.css 的塌缩规则（加载顺序也不保证），
+     故在此以更高特异性同文件后置压制：侧栏折叠为可滚动静态块，主列提层并
+     继承外壳不透明底，保证首屏能看到业务内容且主导航可达。
+     cockpit / institutional-console 变体在本断点由各自分册整块隐藏侧栏，不受影响。 */
+  .workbench-shell-root.workbench-shell-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .workbench-shell-root.workbench-shell-grid > .workbench-shell-aside.workbench-shell-rail {
+    position: static !important;
+    top: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: min(44vh, 420px);
+    overflow-y: auto;
+  }
+
+  .workbench-shell-root.workbench-shell-grid > .workbench-main-column {
+    position: relative;
+    z-index: 1;
+    min-width: 0;
+    background: inherit;
   }
 }
 

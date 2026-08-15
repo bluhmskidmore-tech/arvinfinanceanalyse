@@ -14,7 +14,9 @@
   --ag-background-color: var(--dh-api-panel);
   --ag-header-background-color: var(--dh-api-panel-3);
   --ag-odd-row-background-color: rgba(255, 255, 255, 0.01);
-  --ag-row-hover-color: rgba(114, 167, 220, 0.08);
+  /* 行 hover 走 institutional 语义变量（Nocturne scope 内已重映射为 accent 8% mix），
+     钢蓝字面量降级为未登记 scope 的兼容回退。 */
+  --ag-row-hover-color: var(--moss-institutional-row-hover, rgba(114, 167, 220, 0.08));
   --ag-border-color: var(--dh-api-line);
   --ag-header-foreground-color: var(--dh-api-soft);
   --ag-foreground-color: var(--dh-api-ink);

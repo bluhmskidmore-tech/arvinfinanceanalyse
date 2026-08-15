@@ -1,6 +1,6 @@
 import { useId } from "react";
 
-import { dhApiTokens } from "../../../theme/designSystem";
+import { nocturneTokens } from "../../../theme/designSystem";
 import { buildSparkPath } from "../dashboard/sparklinePath";
 import type { MarketChangeDirection } from "./marketHomeChangeTone";
 import marketStyles from "./marketHome.module.css";
@@ -17,11 +17,12 @@ function sparkStroke(
   tone: MarketHomeKpiSparklineProps["tone"],
   changeDirection: MarketChangeDirection | undefined,
 ) {
-  if (changeDirection === "up") return dhApiTokens.color.red;
-  if (changeDirection === "down") return dhApiTokens.color.green;
-  if (tone === "error") return dhApiTokens.color.red;
-  if (tone === "watch") return dhApiTokens.color.amber;
-  return dhApiTokens.color.blue;
+  // 方向语义对齐 DESIGN.md §4（up=green / down=red）；取色走 Nocturne 深色终端镜像。
+  if (changeDirection === "up") return nocturneTokens.color.green;
+  if (changeDirection === "down") return nocturneTokens.color.red;
+  if (tone === "error") return nocturneTokens.color.red;
+  if (tone === "watch") return nocturneTokens.color.amber;
+  return nocturneTokens.color.blue;
 }
 
 export function MarketHomeKpiSparkline({

@@ -21,6 +21,23 @@ const SECTION_KEYS = [
   "coverage",
 ] as const satisfies readonly MarketFinancialChartSection["key"][];
 
+/**
+ * 这两张图已在 02 区「市场证据」以 A/B 卡渲染（C10）：
+ * 03 区保留分组头与「怎么看」说明，画布改为锚点引用，不再重复绘制。
+ */
+const DENSE_FIRST_SCREEN_CHART_KEYS = new Set(["yield-curve", "key-rate-trend"]);
+
+function shouldReferenceFirstScreenChart(chart: MarketFinancialChartSpec) {
+  if (!DENSE_FIRST_SCREEN_CHART_KEYS.has(chart.key)) {
+    return false;
+  }
+  // 单期限/稀疏报价状态下 03 区渲染的是文字对照表（非重复画布），保留原卡。
+  if (chart.yieldCurveDisplay && chart.yieldCurveDisplay.kind !== "curve") {
+    return false;
+  }
+  return true;
+}
+
 type MarketFinancialChartsWorkbenchProps = {
   queries: ModuleHomeSourceQueries;
   chartPalette?: MarketChartPalette;
@@ -125,6 +142,36 @@ function ChartCard({ chart }: { chart: MarketFinancialChartSpec }) {
             onChartReady={onChartReady}
           />
         ) : null}
+      </div>
+      <footer>{chart.footnote}</footer>
+    </article>
+  );
+}
+
+function ChartReferenceCard({ chart }: { chart: MarketFinancialChartSpec }) {
+  return (
+    <article
+      className={styles.chartCard}
+      data-chart-view="reference"
+      data-testid={`module-home-market-chart-ref-${chart.key}`}
+    >
+      <header>
+        <div>
+          <h3 title={chart.title}>{chart.title}</h3>
+          <p title={`${chart.subtitle} · ${chart.footnote}`}>{chart.subtitle}</p>
+        </div>
+      </header>
+      <div className={styles.chartCanvas}>
+        {chart.readingGuide ? (
+          <p className={styles.chartReadingGuide} role="note">
+            <strong>怎么看</strong>
+            <span>{chart.readingGuide}</span>
+          </p>
+        ) : null}
+        <p className={styles.chartReference}>
+          <span>该图已在上方市场证据区渲染，此处不再重复。</span>
+          <a href="#market-overview-evidence">见 02 市场证据 →</a>
+        </p>
       </div>
       <footer>{chart.footnote}</footer>
     </article>
@@ -385,7 +432,6 @@ export function MarketFinancialChartsWorkbench({
               <aside className={styles.sectionRail}>
                 <span>{index + 1}</span>
                 <strong>{section.title}</strong>
-                <em>{section.kicker}</em>
                 <p title={section.description}>{section.description}</p>
                 <div className={styles.sourceBadge}>
                   <strong
@@ -415,9 +461,13 @@ export function MarketFinancialChartsWorkbench({
 
               <div className={styles.sectionBody} id={bodyId}>
                 <div className={styles.chartGrid}>
-                  {section.charts.map((chart) => (
-                    <ChartCard chart={chart} key={chart.key} />
-                  ))}
+                  {section.charts.map((chart) =>
+                    shouldReferenceFirstScreenChart(chart) ? (
+                      <ChartReferenceCard chart={chart} key={chart.key} />
+                    ) : (
+                      <ChartCard chart={chart} key={chart.key} />
+                    ),
+                  )}
                 </div>
               </div>
             </article>

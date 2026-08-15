@@ -203,11 +203,21 @@ def _zqtz_asset_row(*, rd: str, mv: Decimal, ytm: Decimal) -> tuple[object, ...]
     )
 
 
-def _one_bond_row(*, rd: str, mv: Decimal, ytm: Decimal, bond_type: str = "国债") -> BondAnalyticsRow:
+def _one_bond_row(
+    *,
+    rd: str,
+    mv: Decimal,
+    ytm: Decimal,
+    bond_type: str = "国债",
+    code: str = "B1",
+) -> BondAnalyticsRow:
+    # Two rows in one batch are two different bonds; they must not share the
+    # fact's natural key (report_date + code + portfolio + cost center +
+    # accounting class + maturity), which the v43 unique index now enforces.
     return BondAnalyticsRow(
         report_date=date.fromisoformat(rd),
-        instrument_code="B1",
-        instrument_name="B1",
+        instrument_code=code,
+        instrument_name=code,
         portfolio_name="P1",
         cost_center="C1",
         asset_class_raw="x",
@@ -298,6 +308,7 @@ def test_core_metrics_latest_anchor_and_three_cards(tmp_path, monkeypatch) -> No
                 mv=Decimal("500000"),
                 ytm=Decimal("0.04"),
                 bond_type="政金债",
+                code="B2",
             ),
         ],
     )
@@ -523,8 +534,9 @@ def test_daily_changes_use_formal_zqtz_balance_when_bond_analytics_prior_is_spar
     con = duckdb.connect(str(duckdb_path), read_only=False)
     try:
         con.execute(_zqtz_ddl())
-        zqtz_prev = _zqtz_asset_row(rd=d1, mv=Decimal("1000000"), ytm=Decimal("0.03"))
-        zqtz_cur = _zqtz_asset_row(rd=d2, mv=Decimal("1200000"), ytm=Decimal("0.04"))
+        # zqtz 余额事实 ytm_value 为百分数口径（3.0 = 3%）。
+        zqtz_prev = _zqtz_asset_row(rd=d1, mv=Decimal("1000000"), ytm=Decimal("3.0"))
+        zqtz_cur = _zqtz_asset_row(rd=d2, mv=Decimal("1200000"), ytm=Decimal("4.0"))
         zqtz_insert = (
             "insert into fact_formal_zqtz_balance_daily values ("
             + ",".join(["?"] * len(zqtz_prev))
@@ -584,7 +596,9 @@ def test_core_metrics_falls_back_to_bond_analytics_when_zqtz_date_is_missing(
         report_date=d2,
         rows=[
             _one_bond_row(rd=d2, mv=Decimal("1200000"), ytm=Decimal("0.04"), bond_type="gov"),
-            _one_bond_row(rd=d2, mv=Decimal("300000"), ytm=Decimal("0.03"), bond_type="corp"),
+            _one_bond_row(
+                rd=d2, mv=Decimal("300000"), ytm=Decimal("0.03"), bond_type="corp", code="B2"
+            ),
         ],
     )
 
@@ -961,3 +975,41 @@ def test_dashboard_core_metrics_logs_api_perf(tmp_path, monkeypatch, caplog) -> 
     assert getattr(record, "trace_id")
     assert getattr(record, "duckdb_statement_count") is None
     get_settings.cache_clear()
+
+
+def test_core_metrics_anchor_without_rows_degrades_quality_flag(monkeypatch) -> None:
+    """用户传入不在数据日期集的 report_date 时，三张卡的 0.00 是"无数据"而非真零，
+    quality_flag 必须降为 warning；有行的锚定日期保持 ok。"""
+    service = load_module(
+        "tests._dashboard_service_core_anchor_no_rows",
+        "backend/app/services/dashboard_service.py",
+    )
+    service.invalidate_dashboard_cache()
+
+    known = {
+        "2026-07-31": (Decimal("110"), Decimal("0.03"), [("bond", Decimal("110"), Decimal("0.03"))], True),
+        "2026-07-30": (Decimal("100"), Decimal("0.02"), [], True),
+    }
+
+    class Repo:
+        def list_merged_report_dates(self):
+            return ["2026-07-31", "2026-07-30"]
+
+        def fetch_bond_core_metrics_for_dates(self, report_dates):
+            return {d: known[d] for d in report_dates if d in known}
+
+        def fetch_tyw_core_metrics_for_dates(self, report_dates, *, asset_side: bool):
+            return {d: known[d] for d in report_dates if d in known}
+
+    monkeypatch.setattr(service, "_repo", lambda: Repo())
+
+    missing = service.get_core_metrics(report_date="2026-08-15")
+    assert missing["result_meta"]["quality_flag"] == "warning"
+    assert missing["result"]["report_date"] == "2026-08-15"
+    assert missing["result"]["bond_investments"]["total_amount"]["raw"] == pytest.approx(0.0)
+
+    present = service.get_core_metrics(report_date="2026-07-31")
+    assert present["result_meta"]["quality_flag"] == "ok"
+    assert present["result"]["bond_investments"]["total_amount"]["raw"] == pytest.approx(110.0)
+
+    service.invalidate_dashboard_cache()

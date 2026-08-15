@@ -21,8 +21,8 @@ import marketStyles from "./marketHome.module.css";
 
 import { EM_DASH } from "../../../utils/format";
 const MARKET_CHANGE_CLASSES = {
-  up: dhStyles.dhUpRed,
-  down: dhStyles.dhDownGreen,
+  up: dhStyles.dhUpGreen,
+  down: dhStyles.dhDownRed,
   neutral: dhStyles.dhMuted,
 } as const;
 
@@ -37,7 +37,8 @@ type MarketCrossAssetGapBlockProps = {
 
 function toneClass(tone: ModuleHomeTone) {
   if (tone === "watch") return dhStyles.dhMuted;
-  if (tone === "error") return dhStyles.dhUpRed;
+  // error 是警示语义（非方向），保持红色链。
+  if (tone === "error") return dhStyles.dhDownRed;
   return "";
 }
 

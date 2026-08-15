@@ -8,6 +8,7 @@ import {
   EM_DASH,
   buildStateSurfaces,
   fixedOrDash,
+  localeOrDash,
   numericRaw,
   numericRawOrZero,
   pctOrDash,
@@ -88,6 +89,31 @@ describe("fixedOrDash", () => {
     expect(fixedOrDash(12.345, 2)).toBe("12.35");
     expect(fixedOrDash(5.6, 0)).toBe("6");
     expect(fixedOrDash(0, 2)).toBe("0.00");
+  });
+});
+
+describe("localeOrDash", () => {
+  it("renders missing or non-finite numbers as undecorated EM_DASH", () => {
+    expect(localeOrDash(null, "zh-CN", { minimumFractionDigits: 2 })).toBe(EM_DASH);
+    expect(localeOrDash(undefined, "zh-CN", { minimumFractionDigits: 2 })).toBe(EM_DASH);
+    expect(localeOrDash(Number.NaN, "zh-CN", { minimumFractionDigits: 2 })).toBe(EM_DASH);
+    expect(localeOrDash(Number.POSITIVE_INFINITY, "zh-CN", { minimumFractionDigits: 2 })).toBe(EM_DASH);
+    expect(localeOrDash(Number.NEGATIVE_INFINITY, "zh-CN", { minimumFractionDigits: 2 })).toBe(EM_DASH);
+  });
+
+  it("uses the explicitly requested locale for grouping and decimal separators", () => {
+    expect(localeOrDash(1234567.89, "zh-CN")).toBe("1,234,567.89");
+    expect(localeOrDash(1234567.89, "de-DE")).toBe("1.234.567,89");
+  });
+
+  it("forwards explicit fraction-digit options without adding precision defaults", () => {
+    const options: Intl.NumberFormatOptions = {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    };
+
+    expect(localeOrDash(1234.5, "en-US", options)).toBe("1,234.50");
+    expect(localeOrDash(1234.567, "en-US", options)).toBe("1,234.57");
   });
 });
 

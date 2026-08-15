@@ -1,12 +1,18 @@
+/*
+ * 懒加载占位：根元素自带 theme-dh-api 但 scope（route-fallback）未登记，
+ * 不引入新 scope 登记，直接消费 var(--nct-*, var(--dh-api-*)) 中性深底链——
+ * 已挂载 Nocturne 外壳（页内二次懒加载）时取 Nocturne 值，路由首载时落
+ * 钢蓝兼容深底，保证加载闪屏与深色页面之间无明暗跳变。
+ */
 .routeFallback {
   --route-fallback-line: color-mix(
     in srgb,
-    var(--moss-color-border-default) 72%,
+    var(--nct-ring, var(--dh-api-line)) 72%,
     transparent
   );
   --route-fallback-fill: color-mix(
     in srgb,
-    var(--moss-color-text-muted) 8%,
+    var(--nct-muted, var(--dh-api-muted)) 8%,
     transparent
   );
 
@@ -22,12 +28,12 @@
   box-sizing: border-box;
   padding: 20px 24px;
   overflow: hidden;
-  border: 1px solid var(--moss-color-border-default);
+  border: 1px solid var(--nct-line, var(--dh-api-line-soft));
   border-radius: var(--moss-radius-sm);
-  color: var(--moss-color-text-muted);
+  color: var(--nct-muted, var(--dh-api-muted));
   font-size: 13px;
   line-height: 1.4;
-  background: var(--moss-shell-paper-bg);
+  background: var(--nct-bg, var(--dh-api-bg));
 }
 
 .routeFallback::before,
@@ -68,9 +74,9 @@
   height: 8px;
   margin-top: 5px;
   border-radius: 999px;
-  background: var(--moss-institutional-accent-cyan);
+  background: var(--nct-accent, var(--dh-api-blue));
   box-shadow: 0 0 0 4px
-    color-mix(in srgb, var(--moss-institutional-accent-cyan) 12%, transparent);
+    color-mix(in srgb, var(--nct-accent, var(--dh-api-blue)) 12%, transparent);
 }
 
 @media (max-width: 700px) {

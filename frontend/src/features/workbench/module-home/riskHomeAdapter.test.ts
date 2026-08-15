@@ -124,10 +124,13 @@ describe("buildRiskV6Sparkline", () => {
     expect(spark?.endY).toBe(15);
   });
 
-  it("drops non-finite values before laying out points", () => {
+  it("fails closed instead of drawing across a non-finite history gap", () => {
     const spark = buildRiskV6Sparkline([1, Number.NaN, 3]);
-    expect(spark).not.toBeNull();
-    expect(spark?.endX).toBe(93);
+    expect(spark).toBeNull();
+  });
+
+  it("fails closed instead of drawing across a null history gap", () => {
+    expect(buildRiskV6Sparkline([1, null, 3])).toBeNull();
   });
 });
 
@@ -172,7 +175,7 @@ describe("buildRiskV6KpiCards", () => {
     const regulatory = cards[0];
     expect(regulatory.label).toBe("监管 DV01");
     expect(regulatory.amount).toBe("10,694.94");
-    expect(regulatory.unit).toBe("万元");
+    expect(regulatory.unit).toBe("万元/bp");
     expect(regulatory.alert).toBe(false);
     expect(regulatory.sparkline).not.toBeNull();
     expect(regulatory.delta?.direction).toBe("up");
@@ -190,12 +193,12 @@ describe("buildRiskV6KpiCards", () => {
 
     const cs01 = cards[4];
     expect(cs01.amount).toBe("2,730.89");
-    expect(cs01.unit).toBe("万元");
+    expect(cs01.unit).toBe("万元/bp");
 
     const hhi = cards[5];
-    expect(hhi.amount).toBe("4.84");
-    expect(hhi.unit).toBe("%");
-    expect(hhi.delta?.text.endsWith("pp")).toBe(true);
+    expect(hhi.amount).toBe("0.04842124");
+    expect(hhi.unit).toBeNull();
+    expect(hhi.delta?.text.endsWith("pp")).toBe(false);
 
     const top5 = cards[6];
     expect(top5.amount).toBe("40.3");
@@ -222,6 +225,14 @@ describe("buildRiskV6KpiCards", () => {
     expect(cards[0].amount).toBe(EM_DASH);
     expect(cards[0].valuePresent).toBe(false);
     expect(cards[0].caption).toBe("待接入");
+  });
+
+  it("does not bridge a null observation in either the sparkline or period delta", () => {
+    const history = historyFixture(3);
+    history.points[1].portfolio_dv01 = null;
+    const cards = buildRiskV6KpiCards(tensorFixture(), history);
+    expect(cards[1].sparkline).toBeNull();
+    expect(cards[1].delta).toBeNull();
   });
 
   it("returns no cards without a tensor payload", () => {
@@ -251,8 +262,8 @@ describe("buildRiskV6Briefs", () => {
   it("composes the three cross-section briefs from tensor fields", () => {
     const briefs = buildRiskV6Briefs(tensorFixture());
     expect(briefs).toHaveLength(3);
-    expect(briefs[0].body).toBe("DV01 10,694.94 万元，修正久期 3.78，凸度 30.90。");
-    expect(briefs[1].body).toBe("CS01 2,730.89 万元，前五大权重 40.3%，HHI 4.84%。");
+    expect(briefs[0].body).toBe("DV01 10,694.94 万元/bp，修正久期 3.78，凸度 30.90。");
+    expect(briefs[1].body).toBe("CS01 2,730.89 万元/bp，前五大权重 40.3%，HHI 0.04842124。");
     expect(briefs[2].body).toBe("30D 缺口 -63.14 亿元，90D 缺口 -10.88 亿元。");
   });
 });
@@ -394,15 +405,15 @@ describe("buildRiskV6DetailTables", () => {
     const portfolioByKey = new Map(portfolio.rows.map((row) => [row.key, row.value]));
     expect(portfolioByKey.get("total-market-value")).toBe("3,478.36 亿元");
     expect(portfolioByKey.get("bond-count")).toBe("1,767");
-    expect(portfolioByKey.get("regulatory-dv01")).toBe("10,694.94 万元");
-    expect(portfolioByKey.get("rate-risk-dv01")).toBe("10,686.87 万元");
+    expect(portfolioByKey.get("regulatory-dv01")).toBe("10,694.94 万元/bp");
+    expect(portfolioByKey.get("rate-risk-dv01")).toBe("10,686.87 万元/bp");
     expect(portfolioByKey.get("rate-risk-mv")).toBe("3,017.18 亿元");
     expect(portfolioByKey.get("duration-excluded")).toBe("131 只 · 461.18 亿元");
 
     const creditByKey = new Map(credit.rows.map((row) => [row.key, row.value]));
-    expect(creditByKey.get("cs01")).toBe("2,730.89 万元");
+    expect(creditByKey.get("cs01")).toBe("2,730.89 万元/bp");
     expect(creditByKey.get("issuer-top5")).toBe("40.3%");
-    expect(creditByKey.get("issuer-hhi")).toBe("4.84%");
+    expect(creditByKey.get("issuer-hhi")).toBe("0.04842124");
     expect(creditByKey.get("duration-gap")).toBe("+3.12");
     expect(creditByKey.get("reinvestment-risk-12m")).toBe("22.82%");
   });
@@ -444,7 +455,19 @@ describe("buildRiskV6LineageRows", () => {
     expect(byKey.get("rule")).toBe("rv_risk_tensor_formal_materialize_v6");
     expect(byKey.get("cache")).toBe("cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6");
     expect(byKey.get("trace")).toBe("tr_9f65d8ba5e40");
+    expect(byKey.get("basis")).toBe("formal");
+    expect(byKey.get("formal-use")).toBe("true");
     expect(byKey.has("fallback")).toBe(false);
+  });
+
+  it("prefixes auxiliary lineage and exposes a non-formal cashflow gate", () => {
+    const rows = buildRiskV6LineageRows(
+      { ...meta, basis: "analytical", formal_use_allowed: false },
+      "CASHFLOW",
+    );
+    const byKey = new Map(rows.map((row) => [row.key, row.value]));
+    expect(byKey.get("cashflow-basis")).toBe("analytical");
+    expect(byKey.get("cashflow-formal-use")).toBe("false");
   });
 
   it("surfaces fallback lineage explicitly", () => {

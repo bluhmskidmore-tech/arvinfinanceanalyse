@@ -46,6 +46,11 @@ DASHBOARD_COCKPIT_DISPLAY_ONLY_SNIPPETS = (
 )
 
 DISPLAY_ONLY_FILE_SNIPPETS = {
+    "features/cross-asset/components/utils.ts": (
+        # This token pair appears only in the display-formatting doc comment;
+        # the helper formats a backend-provided CNY impact value.
+        "DV01/CS01",
+    ),
     "features/workbench/dashboard/dashboardCockpitModel.ts": DASHBOARD_COCKPIT_DISPLAY_ONLY_SNIPPETS,
     "features/workbench/dashboard-home/dashboardHomeBodyView.ts": (
         # Dashboard home body reads backend-provided metrics and fixed mock values
@@ -111,9 +116,24 @@ DISPLAY_ONLY_FILE_SNIPPETS = {
         'evidence: "MOCK 模式不触发信用、久期、DV01 或归因驱动的行动建议。",',
         '"请切换正式数据源后再查看组合规模、信用占比、DV01、持仓只数和归因摘要。",',
     ),
+    "features/pnl/PnlBridgePage.tsx": (
+        # PnL bridge translates the backend effect-availability reason code
+        # non_fvtpl_basis into display copy; the accounting-basis exclusion is
+        # decided in backend/app/core_finance/pnl_bridge, not here.
+        'non_fvtpl_basis: "非 FVTPL 口径不计市场效应",',
+    ),
 }
 
 DISPLAY_ONLY_FILE_LINE_PREFIXES = {
+    "features/pnl/pnlBridgePageSupport.ts": (
+        # Backend effect-availability reason translated into display copy.
+        "non_fvtpl_basis: ",
+    ),
+    "features/workbench/dashboard-home/lib/sanitizeMetricCopy.ts": (
+        # Label/detail cleanup for backend-provided metric copy only.
+        "*",
+        "[/",
+    ),
     "features/workbench/dashboard/dashboardCockpitModel.ts": (
         "label: ",
         "primaryValue: portfolioAllowed ? ",
@@ -194,11 +214,14 @@ DISPLAY_ONLY_FILE_LINE_PREFIXES = {
     "features/workbench/module-home/PortfolioHomeLayout.tsx": (
         # Label alias map for backend-provided fact KPIs; display copy only.
         "DV01: ",
+        "/**",
     ),
     "features/workbench/module-home/PortfolioStructureTabPanel.tsx": (
         # Compact list header cell and source-string cleanup; display copy only.
         "<span>",
         "const fallbackMetric = ",
+        "{ key: ",
+        "row.dv01Display",
     ),
     "features/workbench/module-home/portfolioHomeQuickAccess.ts": (
         "description: ",

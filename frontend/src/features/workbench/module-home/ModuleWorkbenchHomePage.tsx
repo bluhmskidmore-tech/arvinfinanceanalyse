@@ -315,6 +315,14 @@ export default function ModuleWorkbenchHomePage({
     () => buildModuleHomeView(kind, client, queries),
     [kind, client, queries],
   );
+  const hasFailedQuery = Object.values(queries).some((query) => query.isError);
+  const retryFailedQueries = () => {
+    for (const query of Object.values(queries)) {
+      if (query.isError) {
+        void query.refetch();
+      }
+    }
+  };
   const stateTone: ModuleHomeTone =
     view.stateLabel === "读取失败"
       ? "error"
@@ -349,6 +357,18 @@ export default function ModuleWorkbenchHomePage({
             <i aria-hidden="true" />
             {view.stateLabel}
           </span>
+          {hasFailedQuery ? (
+            <button
+              type="button"
+              className={styles.pill}
+              // 复用状态胶囊样式的一次性按钮化重置（非重复布局块）
+              style={{ background: "transparent", cursor: "pointer" }}
+              onClick={retryFailedQueries}
+              data-testid="module-home-retry"
+            >
+              重试
+            </button>
+          ) : null}
         </div>
       </header>
 
@@ -371,7 +391,8 @@ export default function ModuleWorkbenchHomePage({
                 >
                   {item.value}
                 </strong>
-                <span className={styles.kpiDetail} title={item.detail}>
+                {/* 端点/函数名等证据引用收 tooltip（§7），正文保持中文业务语言 */}
+                <span className={styles.kpiDetail} title={item.detailTitle ?? item.detail}>
                   {item.detail}
                 </span>
               </article>

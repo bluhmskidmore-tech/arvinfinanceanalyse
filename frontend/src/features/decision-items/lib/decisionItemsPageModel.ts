@@ -109,6 +109,53 @@ function metaWarnings(meta: ResultMeta | undefined): string[] {
   return out;
 }
 
+const WAN_PER_YI = 10_000;
+
+/**
+ * 决策事项 reason 为后端拼接的叙述串，金额以原始 Decimal 精度直出
+ * （如 "6137559.46000000 万元"）。展示层把「数值 + 万元」片段收敛为
+ * 亿元缩写（≥1 亿）或千分位万元（<1 亿）；原始串由调用方收进 title，
+ * 不改写后端数值本身。
+ */
+export function formatDecisionReasonText(reason: string): string {
+  return reason.replace(/(-?\d+(?:\.\d+)?)\s*万元/g, (match, num: string) => {
+    const value = Number.parseFloat(num);
+    if (!Number.isFinite(value)) {
+      return match;
+    }
+    const options = { minimumFractionDigits: 2, maximumFractionDigits: 2 } as const;
+    if (Math.abs(value) >= WAN_PER_YI) {
+      return `${(value / WAN_PER_YI).toLocaleString("zh-CN", options)} 亿元`;
+    }
+    return `${value.toLocaleString("zh-CN", options)} 万元`;
+  });
+}
+
+const DECISION_SOURCE_SECTION_LABELS: Record<string, string> = {
+  maturity_gap: "期限缺口",
+  rating_analysis: "评级分析",
+  issuance_business_types: "发行类业务",
+};
+
+/** 已登记来源段落映射为中文；未登记枚举原样透出（调用方将原文收进 title）。 */
+export function decisionSourceSectionLabel(value: string): string {
+  return DECISION_SOURCE_SECTION_LABELS[value] ?? value;
+}
+
+const DECISION_SEVERITY_LABELS: Record<BalanceAnalysisSeverity, string> = {
+  high: "高",
+  medium: "中",
+  low: "低",
+};
+
+/** 已登记严重度映射为徽标文案；未登记枚举原样透出。 */
+export function decisionSeverityLabel(value: string): string {
+  if (isValidSeverity(value)) {
+    return DECISION_SEVERITY_LABELS[value];
+  }
+  return value;
+}
+
 export type DecisionItemsStatusCounts = Record<BalanceAnalysisDecisionStatus, number>;
 
 export type DecisionItemsSeverityCounts = Record<BalanceAnalysisSeverity, number>;

@@ -422,7 +422,29 @@ describe("OperationsAnalysisPage governed values", () => {
           asset_total: assetTotal,
           liability_total: liabilityTotal,
           grand_total: grandTotal,
-          interest_spread: null,
+          interest_spread: {
+            all_currency_asset_yield_pct: null,
+            all_currency_liability_yield_pct: null,
+            all_currency_spread_pct: null,
+            cny_asset_yield_pct: null,
+            cny_liability_yield_pct: null,
+            cny_spread_pct: null,
+          },
+          interest_earning_spread: {
+            all_currency_asset_yield_pct: null,
+            all_currency_liability_yield_pct: null,
+            all_currency_spread_pct: null,
+            cny_asset_yield_pct: null,
+            cny_liability_yield_pct: null,
+            cny_spread_pct: null,
+          },
+          liability_cost_decomposition: {
+            liability_yield_pct: null,
+            liability_yield_ex_cln_pct: null,
+            cln_yield_pct: null,
+            cln_drag_bp: null,
+            cln_scale: null,
+          },
         },
       })),
     });
@@ -472,7 +494,8 @@ describe("OperationsAnalysisPage governed values", () => {
     const heroProvenance = await screen.findByTestId("operations-hero-provenance");
     expect(heroProvenance).toHaveTextContent("物化/候选对账");
     expect(heroProvenance).toHaveTextContent("总账对账 + 日均");
-    expect(heroProvenance).toHaveTextContent("静态示例");
+    // hero 只留一句业务口径声明；示例声明由折叠区 summary 承载。
+    expect(heroProvenance).not.toHaveTextContent("静态示例");
     const tableProv = await screen.findByTestId("operations-contribution-table-provenance");
     expect(tableProv).toHaveTextContent("口径 正式口径");
   });
@@ -549,7 +572,29 @@ describe("OperationsAnalysisPage governed values", () => {
           asset_total: assetTotal,
           liability_total: liabilityTotal,
           grand_total: grandTotal,
-          interest_spread: null,
+          interest_spread: {
+            all_currency_asset_yield_pct: null,
+            all_currency_liability_yield_pct: null,
+            all_currency_spread_pct: null,
+            cny_asset_yield_pct: null,
+            cny_liability_yield_pct: null,
+            cny_spread_pct: null,
+          },
+          interest_earning_spread: {
+            all_currency_asset_yield_pct: null,
+            all_currency_liability_yield_pct: null,
+            all_currency_spread_pct: null,
+            cny_asset_yield_pct: null,
+            cny_liability_yield_pct: null,
+            cny_spread_pct: null,
+          },
+          liability_cost_decomposition: {
+            liability_yield_pct: null,
+            liability_yield_ex_cln_pct: null,
+            cln_yield_pct: null,
+            cln_drag_bp: null,
+            cln_scale: null,
+          },
         },
       })),
     });

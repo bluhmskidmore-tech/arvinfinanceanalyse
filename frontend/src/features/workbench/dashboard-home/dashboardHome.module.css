@@ -134,12 +134,13 @@
   color: var(--dh-blue-2);
 }
 
-.dhUpRed {
-  color: var(--dh-red);
+/* 语义正确的方向色（DESIGN.md §4：up=绿、down=红），新消费方一律使用这组。 */
+.dhUpGreen {
+  color: var(--dh-green);
 }
 
-.dhDownGreen {
-  color: var(--dh-green);
+.dhDownRed {
+  color: var(--dh-red);
 }
 
 .dhMuted {

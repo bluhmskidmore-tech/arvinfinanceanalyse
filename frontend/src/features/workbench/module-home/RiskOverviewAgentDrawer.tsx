@@ -37,6 +37,7 @@ export function RiskOverviewAgentDrawer({
       open={open}
       onClose={onClose}
       data-testid="risk-overview-agent-drawer"
+      data-moss-theme-scope="risk-overview"
       title="复核助手"
       extra={
         <AntButton type="text" onClick={onClose} aria-label="关闭抽屉">
@@ -44,7 +45,10 @@ export function RiskOverviewAgentDrawer({
         </AntButton>
       }
     >
-      <div className={`theme-dh-api ${styles.roAgentDrawerBody}`}>
+      <div
+        className={`theme-dh-api ${styles.roAgentDrawerBody}`}
+        data-moss-theme-scope="risk-overview"
+      >
         {open ? (
           <Suspense fallback={null}>
             <LazyAgentPanel

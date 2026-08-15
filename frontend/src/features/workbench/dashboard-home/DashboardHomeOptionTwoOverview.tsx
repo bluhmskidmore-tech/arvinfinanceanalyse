@@ -93,6 +93,17 @@ function decisionTitle(value: string): string {
 /** 演示数据披露文案统一取自状态契约（dataSource.mock），避免另造词汇。 */
 const MOCK_DATA_DISCLOSURE = mapStatusEntry("dataSource", "mock");
 
+/**
+ * §6 状态去重：叙述句中与报告日相同的日期在可见文本折叠为「报告日」，
+ * 原文（含具体日期）由调用处 title 全量保留；与报告日不一致的日期
+ * 是分叉信号，保持显式不折叠。
+ */
+function foldReportDateMention(text: string, reportDate: string): string {
+  const date = reportDate.trim();
+  if (!date || !text.includes(date)) return text;
+  return text.replaceAll(`在 ${date} 的`, "在报告日的").replaceAll(date, "报告日");
+}
+
 const KPI_COUNT_UP_MS = 900;
 
 function isTestRuntime(): boolean {
@@ -229,7 +240,18 @@ export function DashboardHomeOptionTwoOverview({
     view.decisionRail.pendingSummary?.trim() ||
     decisionReason;
   const attentionTitle = decisionTitle(view.decisionRail.conclusion);
+  const reportDateValue = view.reportDateContext.actualDataDate.trim();
+  const attentionSummaryDisplay = foldReportDateMention(attentionSummary, reportDateValue);
+  const decisionReasonDisplay = foldReportDateMention(decisionReason, reportDateValue);
   const dataAsOfText = view.reportDateContext.dataAsOfDate.trim() || "无";
+  // 分域截至日与报告日一致时正文折叠为「同报告日」（§6 卡片内不重复全局报告日），
+  // 日期分叉时保持显式；dd 的 title 恒为全文日期。
+  const dataAsOfSegments = dataAsOfText.split(" · ").map((segment) => {
+    const matched = /^(.+?)\s*(\d{4}-\d{2}-\d{2})$/.exec(segment.trim());
+    return matched && reportDateValue && matched[2] === reportDateValue
+      ? `${matched[1]}同报告日`
+      : segment;
+  });
   const missingDomainText =
     view.missingDomains.map((domain) => domain.label.trim()).filter(Boolean).join("、") || "无";
   const productStateText = stateLabel(productKind);
@@ -284,7 +306,7 @@ export function DashboardHomeOptionTwoOverview({
           <div className={styles.overviewAttention}>
             <span>观察与数据状态 · 不计入治理待办</span>
             <strong title={attentionTitle}>{attentionTitle}</strong>
-            <small title={attentionSummary}>{attentionSummary}</small>
+            <small title={attentionSummary}>{attentionSummaryDisplay}</small>
           </div>
 
           <aside className={styles.overviewStatus} aria-label="首页数据状态">
@@ -309,7 +331,7 @@ export function DashboardHomeOptionTwoOverview({
                   <small>
                     {"核心域截至 "}
                     {/* 每个「域 日期」分段 nowrap，换行只落在分段间，避免日期被拆断。 */}
-                    {dataAsOfText.split(" · ").flatMap((segment, index) => [
+                    {dataAsOfSegments.flatMap((segment, index) => [
                       index > 0 ? " · " : null,
                       <span key={`${index}-${segment}`}>{segment}</span>,
                     ])}
@@ -386,7 +408,7 @@ export function DashboardHomeOptionTwoOverview({
               <strong>观察结论</strong>
             </div>
             <h3>{decisionTitle(view.decisionRail.conclusion)}</h3>
-            <p title={decisionReason}>{decisionReason}</p>
+            <p title={decisionReason}>{decisionReasonDisplay}</p>
             {view.decisionRail.hasContribution || view.decisionRail.hasDrag ? (
               <div
                 className={styles.attributionHints}

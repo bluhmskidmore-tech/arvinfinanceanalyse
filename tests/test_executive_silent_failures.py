@@ -1,13 +1,15 @@
-"""A3-1 回归：executive_service 历史静默失败点位必须 fail-visible。
+"""A3-1 / B11 回归：executive_service 历史静默失败点位必须 fail-visible。
 
-覆盖三个点位：
+覆盖四个点位：
 1. `_read_recent_cache_build_runs_for_executive_overview` 坏行 `continue`
    （原先无计数无告警）→ 计数 + 首例记录 + 每来源去重 warning；
 2. `_fetch_product_category_home_headline_values` 异常时静默 `return {}`
    → 形状兼容的显式 degraded 标记 + warning 日志；
 3. `_build_product_category_ytd_headline` 兜底解析异常时静默 `return None`
    → 显式 `_DegradedProductCategoryHeadline` 标记，且原因透出到
-   home snapshot envelope 的 `filters_applied.degraded_reasons`。
+   home snapshot envelope 的 `filters_applied.degraded_reasons`；
+4. `_build_product_category_monthly_headline` 兜底解析异常时静默 `return None`
+   → 与 ytd 同款 warning 日志 + degraded 标记 + degraded_reasons 透出。
 """
 from __future__ import annotations
 
@@ -183,30 +185,62 @@ class TestProductCategoryYtdHeadlineDegraded:
         )
 
 
+class TestProductCategoryMonthlyHeadlineDegraded:
+    def test_fallback_exception_returns_explicit_degraded_marker(
+        self, monkeypatch: pytest.MonkeyPatch, caplog
+    ) -> None:
+        es = _executive_service()
+        monkeypatch.setattr(
+            es, "_fetch_product_category_home_headline_values", lambda *_a, **_k: {}
+        )
+
+        def exploding_envelope(*_args, **_kwargs):
+            raise RuntimeError("monthly fallback envelope failed")
+
+        monkeypatch.setattr(es, "product_category_pnl_envelope", exploding_envelope)
+
+        with caplog.at_level(logging.WARNING, logger=_LOGGER_NAME):
+            headline = es._build_product_category_monthly_headline("2026-04-08")
+
+        assert isinstance(headline, es._DegradedProductCategoryHeadline)
+        assert headline.degraded is True
+        assert headline.component == "product_category_monthly"
+        assert "RuntimeError" in headline.reason
+        assert "monthly fallback envelope failed" in headline.reason
+        assert any(
+            "monthly fallback envelope failed" in record.getMessage()
+            for record in caplog.records
+        )
+
+
+def _patch_home_snapshot_context(es, monkeypatch: pytest.MonkeyPatch) -> None:
+    dates = ["2026-04-08"]
+    monkeypatch.setattr(
+        es,
+        "_list_domain_date_context",
+        lambda: {"balance": dates, "pnl": dates, "liability": dates, "bond": dates},
+    )
+    monkeypatch.setattr(
+        es,
+        "executive_overview",
+        lambda **_kwargs: {"result_meta": {}, "result": {"title": "overview", "metrics": []}},
+    )
+    monkeypatch.setattr(
+        es,
+        "executive_pnl_attribution",
+        lambda report_date=None: {
+            "result_meta": {},
+            "result": {"title": "attribution", "total": "0", "segments": []},
+        },
+    )
+
+
 class TestHomeSnapshotDegradedReasonVisible:
     def test_snapshot_filters_expose_degraded_reason(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         es = _executive_service()
-        dates = ["2026-04-08"]
-        monkeypatch.setattr(
-            es,
-            "_list_domain_date_context",
-            lambda: {"balance": dates, "pnl": dates, "liability": dates, "bond": dates},
-        )
-        monkeypatch.setattr(
-            es,
-            "executive_overview",
-            lambda **_kwargs: {"result_meta": {}, "result": {"title": "overview", "metrics": []}},
-        )
-        monkeypatch.setattr(
-            es,
-            "executive_pnl_attribution",
-            lambda report_date=None: {
-                "result_meta": {},
-                "result": {"title": "attribution", "total": "0", "segments": []},
-            },
-        )
+        _patch_home_snapshot_context(es, monkeypatch)
         marker = es._DegradedProductCategoryHeadline(
             "product_category_ytd", "RuntimeError: ytd fallback resolver failed"
         )
@@ -224,5 +258,29 @@ class TestHomeSnapshotDegradedReasonVisible:
         assert "product_category_ytd" in filters["degraded_components"]
         assert filters["degraded_reasons"] == {
             "product_category_ytd": "RuntimeError: ytd fallback resolver failed"
+        }
+        assert env["result_meta"]["quality_flag"] == "warning"
+
+    def test_snapshot_filters_expose_monthly_degraded_reason(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        es = _executive_service()
+        _patch_home_snapshot_context(es, monkeypatch)
+        marker = es._DegradedProductCategoryHeadline(
+            "product_category_monthly", "RuntimeError: monthly fallback envelope failed"
+        )
+        monkeypatch.setattr(
+            es,
+            "_build_product_category_headlines",
+            lambda _report_date: (None, marker, 0, 0),
+        )
+
+        env = es.home_snapshot_envelope(report_date=None, allow_partial=False)
+
+        assert env["result"]["product_category_monthly"] is None
+        filters = env["result_meta"]["filters_applied"]
+        assert "product_category_monthly" in filters["degraded_components"]
+        assert filters["degraded_reasons"] == {
+            "product_category_monthly": "RuntimeError: monthly fallback envelope failed"
         }
         assert env["result_meta"]["quality_flag"] == "warning"

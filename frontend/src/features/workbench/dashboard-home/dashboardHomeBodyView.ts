@@ -64,7 +64,6 @@ import { formatDv01Wan } from "../../bond-dashboard/utils/format";
 
 import { EM_DASH } from "../../../utils/format";
 export type { HomeDataStateKind, HomeDeltaTone } from "./dashboardHomeFirstScreenTypes";
-export { resolveDeltaClass } from "./dashboardHomeFirstScreenTypes";
 
 type NumericLike = Numeric | string | number | null | undefined;
 

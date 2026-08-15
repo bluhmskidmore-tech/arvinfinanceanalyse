@@ -140,8 +140,14 @@ function smoothClosedPath(points: ReadonlyArray<{ x: number; y: number }>): stri
  * 24 期序列 → SVG viewBox 96x30 走势几何。
  * 线性归一化到 min/max；全相等（平线）时画中线。
  */
-export function buildRiskV6Sparkline(values: readonly number[]): RiskV6Sparkline | null {
-  const clean = values.filter((value) => Number.isFinite(value));
+export function buildRiskV6Sparkline(values: readonly (number | null)[]): RiskV6Sparkline | null {
+  // A missing observation is a real break in the governed history. The V6 card
+  // exposes one SVG path only, so fail closed instead of visually joining two
+  // non-adjacent observations and implying continuity.
+  if (values.some((value) => value === null || !Number.isFinite(value))) {
+    return null;
+  }
+  const clean = values as readonly number[];
   if (clean.length < 2) {
     return null;
   }
@@ -223,16 +229,17 @@ type RiskV6HistoryField =
 function historySeries(
   history: RiskTensorHistoryPayload | undefined,
   field: RiskV6HistoryField,
-): number[] {
+): (number | null)[] {
   if (!history) {
     return [];
   }
-  return history.points
-    .map((point) => bondNumericRawOrNull(point[field]))
-    .filter((value): value is number => value !== null && Number.isFinite(value));
+  return history.points.map((point) => {
+    const value = bondNumericRawOrNull(point[field]);
+    return value !== null && Number.isFinite(value) ? value : null;
+  });
 }
 
-function seriesLastTwo(series: readonly number[]): { current: number | null; previous: number | null } {
+function seriesLastTwo(series: readonly (number | null)[]): { current: number | null; previous: number | null } {
   return {
     current: series.length > 0 ? series[series.length - 1] : null,
     previous: series.length > 1 ? series[series.length - 2] : null,
@@ -263,7 +270,7 @@ type KpiBuildArgs = {
   unit: string | null;
   caption: string;
   alert?: boolean;
-  series: number[];
+  series: (number | null)[];
   deltaFormat: RiskV6DeltaFormat;
   deltaDecimals?: number;
 };
@@ -298,7 +305,7 @@ export function buildRiskV6KpiCards(
       key: "regulatory-dv01",
       label: "监管 DV01",
       amount: wanText(tensor.regulatory_dv01),
-      unit: "万元",
+      unit: "万元/bp",
       caption: "范围：全部正式行",
       series: historySeries(history, "regulatory_dv01"),
       deltaFormat: "percent",
@@ -307,7 +314,7 @@ export function buildRiskV6KpiCards(
       key: "portfolio-dv01",
       label: "估值 DV01",
       amount: wanText(tensor.portfolio_dv01),
-      unit: "万元",
+      unit: "万元/bp",
       caption: "同值属口径预期",
       series: historySeries(history, "portfolio_dv01"),
       deltaFormat: "percent",
@@ -336,7 +343,7 @@ export function buildRiskV6KpiCards(
       key: "cs01",
       label: "CS01 信用利差",
       amount: wanText(tensor.cs01),
-      unit: "万元",
+      unit: "万元/bp",
       caption: "每 bp 利差",
       series: historySeries(history, "cs01"),
       deltaFormat: "percent",
@@ -344,12 +351,15 @@ export function buildRiskV6KpiCards(
     buildKpiCard({
       key: "issuer-hhi",
       label: "发行人 HHI",
-      amount: percentText(tensor.issuer_concentration_hhi, 2),
-      unit: "%",
+      amount:
+        riskTensorRaw(tensor.issuer_concentration_hhi) === null
+          ? null
+          : bondNumericDisplay(tensor.issuer_concentration_hhi),
+      unit: null,
       caption: "发行人集中度指数",
       series: historySeries(history, "issuer_concentration_hhi"),
-      deltaFormat: "pp",
-      deltaDecimals: 2,
+      deltaFormat: "absolute",
+      deltaDecimals: 4,
     }),
     buildKpiCard({
       key: "issuer-top5",
@@ -441,9 +451,9 @@ export type RiskV6Brief = {
 export function buildRiskV6Briefs(tensor: RiskTensorPayload | undefined): RiskV6Brief[] {
   if (!tensor) {
     return [
-      { key: "duration", title: "久期与 DV01", body: "风险张量暂未返回。", note: "直接展示 risk tensor 字段，不以前端计算监管 DV01。" },
+      { key: "duration", title: "久期与 DV01", body: "久期与 DV01 待风险张量返回。", note: "直接展示 risk tensor 字段，不以前端计算监管 DV01。" },
       { key: "credit", title: "信用与集中度", body: "集中度需要进入下钻页核验。", note: "首页只提供摘要状态。" },
-      { key: "cashflow", title: "现金流压力", body: "风险张量暂未返回。", note: "现金流压力以 /cashflow-projection 正式展示为准。" },
+      { key: "cashflow", title: "现金流压力", body: "现金流窗口待风险张量返回。", note: "现金流压力以 /cashflow-projection 正式展示为准。" },
     ];
   }
   const dv01 = wanText(tensor.portfolio_dv01);
@@ -451,7 +461,10 @@ export function buildRiskV6Briefs(tensor: RiskTensorPayload | undefined): RiskV6
   const convexity = riskTensorRaw(tensor.portfolio_convexity) === null ? null : bondNumericDisplay(tensor.portfolio_convexity);
   const cs01 = wanText(tensor.cs01);
   const top5 = percentText(tensor.issuer_top5_weight, 1);
-  const hhi = percentText(tensor.issuer_concentration_hhi, 2);
+  const hhi =
+    riskTensorRaw(tensor.issuer_concentration_hhi) === null
+      ? null
+      : bondNumericDisplay(tensor.issuer_concentration_hhi);
   const gap30 = yiText(tensor.liquidity_gap_30d);
   const gap90 = yiText(tensor.liquidity_gap_90d);
   return [
@@ -460,7 +473,7 @@ export function buildRiskV6Briefs(tensor: RiskTensorPayload | undefined): RiskV6
       title: "久期与 DV01",
       body:
         dv01 !== null && duration !== null && convexity !== null
-          ? `DV01 ${dv01} 万元，修正久期 ${duration}，凸度 ${convexity}。`
+          ? `DV01 ${dv01} 万元/bp，修正久期 ${duration}，凸度 ${convexity}。`
           : "张量字段缺失，逐项核对后再引用。",
       note: "直接展示 risk tensor 字段，不以前端计算监管 DV01。",
     },
@@ -469,7 +482,7 @@ export function buildRiskV6Briefs(tensor: RiskTensorPayload | undefined): RiskV6
       title: "信用与集中度",
       body:
         cs01 !== null && top5 !== null && hhi !== null
-          ? `CS01 ${cs01} 万元，前五大权重 ${top5}%，HHI ${hhi}%。`
+          ? `CS01 ${cs01} 万元/bp，前五大权重 ${top5}%，HHI ${hhi}。`
           : "集中度字段缺失，进入下钻页核验。",
       note: "首页只提供摘要状态。",
     },
@@ -1712,11 +1725,11 @@ export function buildRiskV6DetailTables(
   push(portfolioRows, "modified-duration", "修正久期", riskTensorRaw(tensor.portfolio_modified_duration) === null ? null : bondNumericDisplay(tensor.portfolio_modified_duration));
   push(portfolioRows, "convexity", "组合凸度", riskTensorRaw(tensor.portfolio_convexity) === null ? null : bondNumericDisplay(tensor.portfolio_convexity));
   const portfolioDv01 = wanText(tensor.portfolio_dv01);
-  push(portfolioRows, "portfolio-dv01", "组合 DV01", portfolioDv01 === null ? null : `${portfolioDv01} 万元`);
+  push(portfolioRows, "portfolio-dv01", "组合 DV01", portfolioDv01 === null ? null : `${portfolioDv01} 万元/bp`);
   const regulatoryDv01 = wanText(tensor.regulatory_dv01);
-  push(portfolioRows, "regulatory-dv01", "监管口径 DV01", regulatoryDv01 === null ? null : `${regulatoryDv01} 万元`);
+  push(portfolioRows, "regulatory-dv01", "监管口径 DV01", regulatoryDv01 === null ? null : `${regulatoryDv01} 万元/bp`);
   const rateRiskDv01 = wanText(tensor.rate_risk_dv01);
-  push(portfolioRows, "rate-risk-dv01", "利率风险口径 DV01", rateRiskDv01 === null ? null : `${rateRiskDv01} 万元`);
+  push(portfolioRows, "rate-risk-dv01", "利率风险口径 DV01", rateRiskDv01 === null ? null : `${rateRiskDv01} 万元/bp`);
   const rateRiskMv = yiText(tensor.rate_risk_market_value);
   push(portfolioRows, "rate-risk-mv", "利率风险口径市值", rateRiskMv === null ? null : `${rateRiskMv} 亿元`);
   const excludedMv = yiText(tensor.duration_excluded_market_value);
@@ -1730,11 +1743,14 @@ export function buildRiskV6DetailTables(
   }
 
   const cs01 = wanText(tensor.cs01);
-  push(creditRows, "cs01", "CS01", cs01 === null ? null : `${cs01} 万元`);
+  push(creditRows, "cs01", "CS01", cs01 === null ? null : `${cs01} 万元/bp`);
   const top5 = percentText(tensor.issuer_top5_weight, 1);
   push(creditRows, "issuer-top5", "前五大发行人权重", top5 === null ? null : `${top5}%`);
-  const hhi = percentText(tensor.issuer_concentration_hhi, 2);
-  push(creditRows, "issuer-hhi", "发行人集中度 HHI", hhi === null ? null : `${hhi}%`);
+  const hhi =
+    riskTensorRaw(tensor.issuer_concentration_hhi) === null
+      ? null
+      : bondNumericDisplay(tensor.issuer_concentration_hhi);
+  push(creditRows, "issuer-hhi", "发行人集中度 HHI", hhi);
 
   // 久期缺口 / 12M 再投资风险来自现金流服务（独立于张量链路）。
   creditRows.push({
@@ -1766,16 +1782,23 @@ export type RiskV6LineageRow = {
   value: string;
 };
 
-export function buildRiskV6LineageRows(meta: ResultMeta | undefined): RiskV6LineageRow[] {
+export function buildRiskV6LineageRows(
+  meta: ResultMeta | undefined,
+  namespace?: string,
+): RiskV6LineageRow[] {
   if (!meta) {
     return [];
   }
   const rows: RiskV6LineageRow[] = [];
+  const prefix = namespace ? `${namespace.toLowerCase()}-` : "";
+  const labelPrefix = namespace ? `${namespace} ` : "";
   const push = (key: string, label: string, value: string | null | undefined) => {
     if (value) {
-      rows.push({ key, label, value });
+      rows.push({ key: `${prefix}${key}`, label: `${labelPrefix}${label}`, value });
     }
   };
+  push("basis", "BASIS", meta.basis);
+  push("formal-use", "FORMAL_USE_ALLOWED", String(meta.formal_use_allowed));
   push("source", "SOURCE", meta.source_version);
   push("rule", "RULE", meta.rule_version);
   push("cache", "CACHE", meta.cache_version);

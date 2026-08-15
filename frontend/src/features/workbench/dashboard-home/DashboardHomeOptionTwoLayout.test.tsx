@@ -347,7 +347,11 @@ describe("DashboardHomeOptionTwoBody", () => {
     expect(
       screen.getByRole("heading", { name: "研究与资讯证据" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("事件、政策与债券新闻")).toBeInTheDocument();
+    // §7 微元句：区块范围说明收进标题 title，不再占区块头正文。
+    expect(
+      screen.getByRole("heading", { name: "研究与资讯证据" }),
+    ).toHaveAttribute("title", "事件、政策与债券新闻");
+    expect(screen.queryByText("事件、政策与债券新闻")).not.toBeInTheDocument();
     expect(screen.getByTestId("dashboard-home-research-calendar")).toBeInTheDocument();
     expect(screen.getByTestId("dashboard-home-bond-news")).toBeInTheDocument();
     expect(screen.getByTestId("dashboard-home-option-two-support-band")).toBeInTheDocument();
@@ -445,9 +449,13 @@ describe("DashboardHomeOptionTwoBody", () => {
     expect(screen.getAllByTestId("dashboard-home-decision-preview-row")).toHaveLength(2);
     expect(riskPanel).toHaveTextContent(/观测 3 · 治理待办/);
     expect(riskPanel.querySelectorAll("[data-priority]")).toHaveLength(3);
-    // 跨域来源标注只在首行出现一次，第二行显示行级事由。
-    expect(riskPanel).toHaveTextContent("余额分析台账 · 截至 2026-07-31");
+    // 跨域来源标注只在首行出现一次；截至日期收 title 不占正文（§6 全页去重）。
     const previewRows = screen.getAllByTestId("dashboard-home-decision-preview-row");
+    expect(previewRows[0]).toHaveTextContent("余额分析台账");
+    expect(previewRows[0]).not.toHaveTextContent("截至 2026-07-31");
+    expect(
+      within(previewRows[0]).getByTitle("余额分析台账 · 截至 2026-07-31"),
+    ).toBeInTheDocument();
     expect(previewRows[1]).not.toHaveTextContent("截至 2026-07-31");
   });
 
@@ -712,8 +720,9 @@ describe("DashboardHomeOptionTwoBody", () => {
     );
 
     const researchTable = screen.getByTestId("dashboard-home-research-reports");
+    // 与来源列重复的机构名前缀在可见标题剥离，原文保留在 td title 与 href。
     const cleanedLink = within(researchTable).getByRole("link", {
-      name: "华源证券 公司动态研究报告",
+      name: "公司动态研究报告",
     });
     expect(cleanedLink).toHaveAttribute("href", "https://example.com/hy.pdf");
     expect(cleanedLink.closest("td")).toHaveAttribute(
@@ -721,5 +730,7 @@ describe("DashboardHomeOptionTwoBody", () => {
       "华源证券_公司动态研究报告_20260712.pdf",
     );
     expect(within(researchTable).queryByText(/\.pdf/)).toBeNull();
+    const sourceCell = within(researchTable).getByRole("cell", { name: "华源证券" });
+    expect(sourceCell).toBeInTheDocument();
   });
 });

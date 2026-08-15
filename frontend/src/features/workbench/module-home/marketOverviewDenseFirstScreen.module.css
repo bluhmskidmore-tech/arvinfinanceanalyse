@@ -234,8 +234,8 @@
 .tapeCell {
   display: flex;
   min-width: 0;
-  min-height: 116px;
-  padding: 12px 14px;
+  min-height: 96px;
+  padding: 10px 14px;
   flex-direction: column;
   gap: 4px;
   overflow: hidden;
@@ -246,17 +246,18 @@
   border-right: 0;
 }
 
-/* 标签统一 2 行 clamp + 固定 min-height，防止换行差异把同排数值顶错位。 */
+/* 标签统一 clamp + 固定 min-height 防同排数值错位；带内 8 个指标名均为
+   单行短词，预留一行即可，2 行预留会让整条带子空 16px。 */
 .tapeCell > span {
   display: -webkit-box;
-  min-height: 32px;
+  min-height: 16px;
   overflow: hidden;
   color: var(--dh-api-soft);
   font-size: 12px;
   font-weight: 600;
   line-height: 16px;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
 }
 
 .tapeCell > time {
@@ -414,26 +415,30 @@
   font-size: 13px;
 }
 
+/* 行式列表替代 2x2 迷你卡：154px 卡宽装不下结论句，逐卡截断可读性太差。 */
 .focusGrid {
   display: grid;
   flex: 1 1 auto;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  /* 行最小尺寸留给内容（auto），否则卡片会撑出行外与下一行重叠。 */
-  grid-template-rows: repeat(2, 1fr);
-  gap: 10px;
-  padding: 12px 14px 14px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: minmax(0, 1fr);
+  gap: 0;
+  padding: 0 14px 4px;
 }
 
 .focusCard {
   display: grid;
-  align-content: start;
-  gap: 7px;
+  grid-template-columns: 84px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-content: center;
+  column-gap: 12px;
+  row-gap: 3px;
   min-width: 0;
-  min-height: 96px;
-  padding: 12px;
-  border: 1px solid var(--dh-api-line-soft);
-  border-radius: var(--dh-api-radius);
-  background: color-mix(in srgb, var(--dh-api-panel-2) 84%, transparent);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.focusCard:last-child {
+  border-bottom: 0;
 }
 
 .focusCard[data-search-match="false"] {
@@ -441,16 +446,23 @@
 }
 
 .focusCard > span {
+  display: -webkit-box;
+  grid-row: 1 / span 2;
+  align-self: center;
+  overflow: hidden;
   color: color-mix(in srgb, var(--dh-api-blue) 55%, var(--dh-api-ink) 45%);
   font-size: 12px;
   font-weight: 600;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .focusCard > strong {
   display: -webkit-box;
   overflow: hidden;
   color: var(--dh-api-ink-soft);
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.4;
   -webkit-box-orient: vertical;
@@ -465,15 +477,17 @@
   font-style: normal;
   line-height: 1.4;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
 }
 
+/* 事项与证据摞两行：四列并排时两列各剩 ~140px，中文标题全部截断。
+   入口列固定宽，保证表头与行两套 grid 对齐。 */
 .queueHead,
 .queueRow {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1.15fr) minmax(0, 1fr) 56px;
+  grid-template-columns: 44px minmax(0, 1fr) 64px;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .queueHead {
@@ -483,16 +497,39 @@
   font-size: 12px;
 }
 
+.queueHead > span:last-child {
+  text-align: right;
+}
+
 .queueRows {
   display: grid;
+  flex: 1 1 auto;
   min-height: 0;
+  grid-auto-rows: minmax(0, 1fr);
 }
 
 .queueRow {
+  grid-template-rows: auto auto;
+  align-content: center;
+  row-gap: 3px;
   min-width: 0;
-  min-height: 70px;
-  padding: 0 14px;
+  min-height: 62px;
+  padding: 8px 14px;
   border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.queueRow > span {
+  grid-row: 1 / span 2;
+}
+
+.queueRow > b {
+  grid-row: 1 / span 2;
+  grid-column: 3;
+}
+
+.queueRow > strong,
+.queueRow > em {
+  grid-column: 2;
 }
 
 .queueRow:last-child {
@@ -588,8 +625,9 @@
   min-height: 276px;
 }
 
+/* 高度随主题行数自适应：固定高度曾把第 4 行起的主题与图例静默裁掉。 */
 .newsCard {
-  height: 176px;
+  height: auto;
   min-height: 176px;
 }
 
@@ -692,12 +730,13 @@
   padding: 6px 12px 10px;
 }
 
+/* 三列 min 宽之和须小于 E 卡内容宽（~327px），否则变化列被挤出可视区。 */
 .pulseColumns,
 .pulseRow {
   display: grid;
-  grid-template-columns: minmax(92px, 0.9fr) minmax(180px, 1.7fr) minmax(
-      96px,
-      0.9fr
+  grid-template-columns: minmax(72px, 0.85fr) minmax(150px, 1.8fr) minmax(
+      84px,
+      0.95fr
     );
   align-items: center;
   gap: 8px;
@@ -744,11 +783,11 @@
   color: var(--dh-api-ink);
 }
 
+/* 变化列窄，标签与数值纵排两行，数值不再被标签挤出。 */
 .pulseRow > em {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: baseline;
-  gap: 5px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
   font-family: var(--font-family-mono, "Cascadia Mono", monospace);
   font-style: normal;
   font-weight: 500;
@@ -858,25 +897,27 @@
   white-space: nowrap;
 }
 
+/* 无数据格用 panel-2 井底色呈现网格结构；数据档在井底上按比例加亮，
+   避免低强度格与卡面同色导致整块热力图"看不见"。 */
 .heatmapRow > i,
 .heatmapLegend > i {
   min-width: 0;
-  background: color-mix(in srgb, var(--dh-api-blue) 9%, transparent);
+  background: var(--dh-api-panel-2);
 }
 
 .heatmapRow > i[data-intensity="1"],
 .heatmapLegend > i[data-intensity="1"] {
-  background: color-mix(in srgb, var(--dh-api-blue) 28%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 34%, var(--dh-api-panel-2));
 }
 
 .heatmapRow > i[data-intensity="2"],
 .heatmapLegend > i[data-intensity="2"] {
-  background: color-mix(in srgb, var(--dh-api-blue) 48%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 54%, var(--dh-api-panel-2));
 }
 
 .heatmapRow > i[data-intensity="3"],
 .heatmapLegend > i[data-intensity="3"] {
-  background: color-mix(in srgb, var(--dh-api-blue) 72%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 76%, var(--dh-api-panel-2));
 }
 
 .heatmapRow > i[data-intensity="4"],
@@ -999,26 +1040,30 @@
   font-weight: 600;
 }
 
-.signalCard strong,
-.signalCard em {
+.signalCard strong {
   min-width: 0;
   overflow: hidden;
+  color: var(--dh-api-ink);
+  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
+  /* 信号带是辅助层，主值压过 01 区 KPI（≤21px）会造成层级倒挂。 */
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.signalCard strong {
-  color: var(--dh-api-ink);
-  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
-  font-size: 24px;
-  font-weight: 700;
-  line-height: 1.08;
-}
-
+/* 证据行折两行展示，单行 ellipsis 时六格全部只剩半句话。 */
 .signalCard em {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
   color: var(--dh-api-muted);
   font-size: 12px;
   font-style: normal;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .signalCard[data-tone="alert"] strong {
@@ -1031,13 +1076,6 @@
 
 .signalCard[data-tone="ok"] strong {
   color: color-mix(in srgb, var(--dh-api-blue) 58%, var(--dh-api-ink) 42%);
-}
-
-@media (min-width: 1321px) {
-  .focusGrid {
-    flex: 0 0 226px;
-    height: 226px;
-  }
 }
 
 /* 8 列行情带在 1500px 以下放不下“数值 + 长单位”，折成 4x2 保持完整可读。 */

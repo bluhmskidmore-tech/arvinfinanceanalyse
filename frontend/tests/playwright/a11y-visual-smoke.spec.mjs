@@ -360,7 +360,7 @@ const gateHControlContextPages = [
       label: "decision next action",
       selector: '[data-testid="bond-analysis-decision-next-action"]',
     },
-    stateCueSelector: '[data-testid="bond-analysis-daily-judgment-status"]',
+    stateCueSelector: '[data-testid="bond-analysis-daily-judgment"]',
   },
 ];
 

@@ -2,7 +2,12 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Annotated
 
+from backend.app.api.deps import ensure_read_allowed
 from backend.app.api.perf_logging import timed_api_call
+from backend.app.api.response_cache import (
+    home_research_reports_cache_key,
+    market_home_response_cache,
+)
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.home_macro_release_context_repo import (
     HomeMacroReleaseContextRepository,
@@ -68,17 +73,7 @@ def _raise_executive_reserved_surface(route_name: str) -> None:
 
 
 def _ensure_executive_read_allowed(auth: AuthContext) -> None:
-    try:
-        ensure_user_allowed(
-            auth=auth,
-            settings=get_settings(),
-            resource="executive",
-            action="read",
-        )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    ensure_read_allowed(auth, "executive", settings=get_settings(), authorize=ensure_user_allowed)
 
 
 @router.get("/home/overview", response_model=ExecutiveOverviewEnvelope)
@@ -164,11 +159,19 @@ def home_research_reports(
     normalized_report_date = _normalize_report_date(report_date)
     assert normalized_report_date is not None
     _ensure_executive_read_allowed(auth)
+    cache_key = home_research_reports_cache_key(
+        str(get_settings().duckdb_path),
+        report_date=normalized_report_date,
+        limit=limit,
+    )
     return timed_api_call(
         "/ui/home/research-reports",
-        lambda: home_research_reports_envelope(
-            report_date=normalized_report_date,
-            limit=limit,
+        lambda: market_home_response_cache.get_or_build(
+            cache_key,
+            lambda: home_research_reports_envelope(
+                report_date=normalized_report_date,
+                limit=limit,
+            ),
         ),
     )
 

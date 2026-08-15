@@ -99,9 +99,9 @@
 
 .portfolioTopbar {
   min-width: 0;
-  padding: 10px 14px;
+  padding: 11px 14px;
   border: 1px solid var(--dh-line);
-  border-left: 3px solid var(--dh-blue);
+  border-left: 2px solid color-mix(in srgb, var(--dh-api-blue) 76%, transparent);
   border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card);
   color: var(--dh-ink);
@@ -112,7 +112,8 @@
   color: var(--dh-ink);
   font-family: var(--dh-font-sans, var(--ib-serif));
   font-size: 20px;
-  font-weight: 760;
+  font-weight: 780;
+  letter-spacing: -0.02em;
 }
 
 .portfolioTopbar :global(.moss-light-icon),
@@ -122,23 +123,24 @@
 
 .portfolioTopbarLeft {
   flex: 1 1 680px;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .topbarCopy {
   display: grid;
-  gap: 2px;
+  gap: 1px;
   min-width: min(560px, 100%);
   max-width: 780px;
+  padding-top: 1px;
 }
 
 .topbarSubtitle {
   display: -webkit-box;
   overflow: hidden;
   margin: 0;
-  color: var(--dh-ink-2);
-  font-size: 13px;
-  font-weight: 720;
+  color: var(--dh-ink);
+  font-size: 12.5px;
+  font-weight: 700;
   line-height: 1.5;
   max-width: 72ch;
   -webkit-box-orient: vertical;
@@ -150,7 +152,7 @@
   overflow: hidden;
   margin: 0;
   color: var(--dh-muted-2);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.45;
   max-width: 82ch;
   -webkit-box-orient: vertical;
@@ -165,27 +167,62 @@
 .toolbarMeta {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 0;
   align-items: center;
   justify-content: flex-end;
+}
+
+.toolbarState {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px 0 0;
+  color: var(--dh-muted);
+  font-size: 12px;
+  font-weight: 720;
+  white-space: nowrap;
+}
+
+.toolbarState i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dh-muted-2);
+}
+
+.toolbarState[data-tone="ok"] i {
+  background: var(--dh-api-green, var(--dh-green));
+}
+
+.toolbarState[data-tone="watch"] i {
+  background: var(--dh-api-amber, var(--dh-amber));
+}
+
+.toolbarState[data-tone="error"] i {
+  background: var(--dh-api-red, var(--dh-red));
 }
 
 .datePill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
-  border: 1px solid var(--dh-line-soft);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-card-soft);
-  color: var(--dh-muted);
+  min-height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-left: 1px solid var(--dh-line-soft);
+  border-radius: 0;
+  background: transparent;
+  color: var(--dh-muted-2);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 650;
+  white-space: nowrap;
 }
 
 .datePill strong {
-  color: var(--dh-ink);
-  font-weight: 800;
+  color: var(--dh-ink-2);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-weight: 760;
   font-variant-numeric: tabular-nums;
 }
 
@@ -474,6 +511,15 @@
   color: var(--dh-blue, var(--ib-accent));
   font-size: 14px;
   font-weight: 850;
+}
+
+/* 组头右侧汇总徽注（如「N 个入口临时开放」），承接行内不再重复的状态（B6）。 */
+.sectionHeadNote {
+  margin-left: auto;
+  color: var(--dh-muted-2, var(--ib-ink-muted));
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 720;
 }
 
 .chartSnapshot {
@@ -1521,6 +1567,11 @@
 
 .structureListCol {
   min-width: 0;
+}
+
+.structureListCol:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--dh-api-blue) 72%, transparent);
+  outline-offset: 2px;
 }
 
 .structureChartCol {
@@ -3546,8 +3597,35 @@
   align-items: center;
 }
 
+/* 收益率桶等三列维度：表头列定义随 tab 切换（B3）。 */
+.structureTableWorkbench .compactListHeader[data-cols="3"],
+.structureTableWorkbench .compactRow[data-cols="3"] {
+  grid-template-columns: minmax(160px, 1.4fr) minmax(110px, 0.72fr) minmax(150px, 0.88fr);
+}
+
 .structureTableWorkbench .compactListHeader span:nth-child(n + 2) {
   text-align: right;
+}
+
+/* 组合级汇总读数（如加权到期收益率）不混入桶明细行。 */
+.structureTableWorkbench .structureSummaryLine {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin: 0;
+  padding: 8px 0 6px;
+  border-bottom: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.structureTableWorkbench .structureSummaryLine strong {
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-size: 13px;
+  font-weight: 860;
+  font-variant-numeric: tabular-nums;
 }
 
 .structureTableWorkbench .compactList {
@@ -3601,11 +3679,31 @@
     column-gap: 12px;
   }
 
+  .structureTableWorkbench .compactListHeader[data-cols="3"],
+  .structureTableWorkbench .compactRow[data-cols="3"] {
+    grid-template-columns: minmax(132px, 1.2fr) minmax(90px, 0.64fr) minmax(120px, 0.82fr);
+  }
+
   .structureTableWorkbench .compactLabel,
   .structureTableWorkbench .compactSource,
   .structureTableWorkbench .compactCount,
   .structureTableWorkbench .compactValue {
     font-size: 14px;
+  }
+}
+
+@media (max-width: 600px) {
+  .structureTableWorkbench .structureListCol {
+    max-width: 100%;
+    padding-bottom: 4px;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
+  }
+
+  .structureTableWorkbench .compactListHeader,
+  .structureTableWorkbench .compactRow {
+    min-width: 528px;
   }
 }
 
@@ -3637,7 +3735,7 @@
 .closureGate,
 .closureReviewCard {
   border-radius: var(--dh-api-radius, 6px);
-  min-height: 214px;
+  min-height: 0;
   max-height: none;
 }
 
@@ -3921,7 +4019,7 @@
   }
 
   .toolbarMeta {
-    gap: 8px;
+    gap: 0;
     justify-content: flex-end;
   }
 
@@ -3936,11 +4034,12 @@
   }
 
   .datePill {
-    min-height: 30px;
-    padding: 5px 11px;
-    border-color: color-mix(in srgb, var(--dh-api-soft) 22%, transparent);
-    border-radius: var(--dh-api-radius, 6px);
-    background: color-mix(in srgb, var(--dh-api-panel-2) 78%, transparent);
+    min-height: 24px;
+    padding: 0 10px;
+    border: 0;
+    border-left: 1px solid var(--dh-line-soft);
+    border-radius: 0;
+    background: transparent;
   }
 
   .datePill strong {
@@ -4167,6 +4266,27 @@
   background: color-mix(in srgb, var(--dh-api-red) 11%, transparent);
 }
 
+.embeddedPanelHead .statePill {
+  gap: 6px;
+  min-height: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.embeddedPanelHead .statePill::before {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+  opacity: 0.72;
+}
+
+.embeddedPanelHead .statePill.stateOk {
+  color: var(--dh-muted);
+}
+
 .kpiCard[data-empty="true"],
 .kpiCard[data-empty="true"]:hover {
   border-color: var(--portfolio-status-idle-border);
@@ -4317,19 +4437,25 @@
 .kpiScopeNote {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 6px;
-  margin: -6px 2px -4px;
+  gap: 4px 0;
+  margin: -6px 2px -3px;
   line-height: 1.35;
 }
 
 .kpiScopeNote span {
-  padding: 2px 7px;
-  border: 1px solid var(--dh-line-soft);
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-card-soft);
-  color: var(--dh-muted, var(--ib-ink-muted));
+  padding: 0 8px;
+  border: 0;
+  border-left: 1px solid var(--dh-line-soft);
+  border-radius: 0;
+  background: transparent;
+  color: var(--dh-muted-2, var(--ib-ink-muted));
   font-size: 12px;
-  font-weight: 720;
+  font-weight: 680;
+}
+
+.kpiScopeNote span:first-child {
+  padding-left: 0;
+  border-left: 0;
 }
 
 .kpiGrid + .kpiGridSecondary {
@@ -4397,13 +4523,13 @@
 }
 
 .decisionAction i[data-row-index] {
-  color: var(--dh-api-blue, var(--dh-blue));
+  color: var(--dh-api-soft, var(--dh-ink-2));
   font-family: var(--dh-font-mono, var(--moss-font-mono));
   font-size: 12px;
   font-style: normal;
   font-weight: 760;
   letter-spacing: 0.08em;
-  opacity: 0.8;
+  opacity: 1;
 }
 
 /* Empty states: dashed hairline box + small void glyph. */
@@ -4776,7 +4902,21 @@
 }
 
 .decisionPanel[data-layout="banner"] .decisionReadinessBar {
-  display: none;
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+  justify-self: start;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.decisionPanel[data-layout="banner"] .decisionReadinessBar span,
+.decisionPanel[data-layout="banner"] .decisionReadinessBar strong {
+  color: var(--dh-muted-2);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .decisionPanel[data-layout="banner"] .evidenceConsole,
@@ -4911,20 +5051,20 @@
   }
 }
 
-/* 驾驶舱导航轻量化 */
+/* 驾驶舱导航轻量化；粘性态需要不透明背板 + top:0 无缝，避免滚动时叠压内容（B8）。 */
 .workbenchNav {
-  top: 12px;
+  top: 0;
   align-self: start;
   min-width: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 8px 10px;
   align-items: center;
-  padding: 4px 0 8px;
+  padding: 6px 0 8px;
   border: 0;
   border-bottom: 1px solid var(--dh-line-soft);
   border-radius: 0;
-  background: transparent;
+  background: var(--dh-api-bg);
 }
 
 .workbenchNavTitle,
@@ -5181,6 +5321,18 @@
   margin-top: 6px;
   font-size: 12.5px;
   font-weight: 700;
+}
+
+/* 方向色按 data-change 提权（A1）：避免同特异性的灰色注行规则按注入顺序覆盖
+   dhUpGreen/dhDownRed，保证 up=绿、down=红 可感知；flat 维持安静灰。 */
+.kpiDetail[data-change="up"],
+.portfolioRiskTickerChange[data-change="up"] {
+  color: var(--dh-green);
+}
+
+.kpiDetail[data-change="down"],
+.portfolioRiskTickerChange[data-change="down"] {
+  color: var(--dh-red);
 }
 
 /* 次级 KPI 行恢复分卡（基准图第二行也是卡片）；gap 随 .kpiGrid 统一 12px，两排列缝共线 */

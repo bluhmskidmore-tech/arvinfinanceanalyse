@@ -74,6 +74,85 @@ from backend.app.services.risk_tensor_service import (
     risk_tensor_envelope,
 )
 from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
+from backend.app.services.executive_service_builders import (
+    _CATEGORY_ID_TO_ATTRIBUTION_SEGMENT,
+    _HOME_SNAPSHOT_CALIBERS,
+    _VERDICT_TONES,
+    _ZERO_ATTRIBUTION_SEGMENTS,
+    _DegradedProductCategoryHeadline,
+    _ProductCategoryHeadlineValues,
+    _aggregate_attribution_segments,
+    _build_contribution_from_repo,
+    _build_pnl_attribution_from_repo,
+    _coerce_verdict_tone,
+    _compute_unified_report_date,
+    _contribution_explicit_miss_payload,
+    _contribution_unavailable_payload,
+    _decimal_from_formal_numeric,
+    _domain_dates_from_context,
+    _empty_alerts_payload,
+    _empty_home_snapshot_payload,
+    _empty_risk_overview_payload,
+    _formal_risk_tensor_quality_flag,
+    _level1_monthly_rows,
+    _pnl_attribution_explicit_miss_payload,
+    _pnl_attribution_unavailable_payload,
+    _portfolio_risk_tensor_from_formal_result,
+    _product_category_monthly_headline_from_values,
+    _product_category_ytd_headline_from_values,
+    _zero_pnl_attribution_payload,
+    executive_verdict,
+)
+from backend.app.services.executive_service_formatting import (
+    _BASIS_POINTS_PER_PERCENT,
+    _YUAN_PER_YI,
+    _fmt_signed_percent,
+    _fmt_signed_ratio_percent,
+    _fmt_signed_segment_yi,
+    _fmt_yi_amount,
+    _format_percent_change,
+    _format_point_change,
+    _format_ratio_point_change,
+    _history_date_slice,
+    _join_lineage_tokens,
+    _lineage_tokens,
+    _lineage_tokens_from_payload,
+    _lineage_tokens_from_rows,
+    _lineage_tokens_from_state,
+    _mapping_missing_required_lineage,
+    _normalize_ratio_percent_input,
+    _normalize_report_date,
+    _previous_report_date,
+    _safe_report_year,
+    _single_effective_report_date,
+    _state_has_lineage_tokens,
+    _state_missing_required_lineage,
+    _tone_for_signed,
+    _unavailable_metric,
+)
+from backend.app.services.executive_service_home_support import (
+    _HOME_CACHE_GOVERNANCE_FILES,
+    _HOME_CACHE_GOVERNANCE_TAIL_BYTES,
+    _HOME_INCOME_BENCHMARK_ID,
+    _HOME_INCOME_BENCHMARK_PERIOD_TYPE,
+    _HOME_INCOME_CURVE_FALLBACK_PREFIX,
+    _HOME_INCOME_MAX_CURVE_FALLBACK_DAYS,
+    _HomeGovernanceFileFingerprint,
+    _duckdb_file_edge_hash,
+    _governance_file_fingerprint,
+    _home_income_benchmark_warning,
+    _home_income_blocking_benchmark_reasons,
+    _home_income_bp_points_from_payload,
+    _home_income_null_pnl,
+    _home_income_pct_points_from_payload,
+    _home_income_warning_date,
+    _is_bounded_home_income_curve_fallback,
+    _is_home_income_amount_disclosure_warning,
+    _is_home_income_reconciliation_warning,
+    _latest_completed_cache_build_run,
+    _numeric_raw_and_unit_from_payload,
+    _selected_governance_files_fingerprint,
+)
 
 # 与 tasks 模块常量对齐；只读路径不得 import tasks（broker/actor 注册）。
 BOND_ANALYTICS_CACHE_KEY = "bond_analytics:materialize:formal"
@@ -81,13 +160,7 @@ PNL_CACHE_KEY = "pnl:phase2:materialize:formal"
 
 PNL_JOB_NAME = "pnl_materialize"
 
-_HOME_INCOME_BENCHMARK_ID = "CDB_INDEX"
-_HOME_INCOME_BENCHMARK_PERIOD_TYPE = "MoM"
-_HOME_INCOME_CURVE_FALLBACK_PREFIX = "YIELD_CURVE_LATEST_FALLBACK"
-_HOME_INCOME_MAX_CURVE_FALLBACK_DAYS = 7
 _HOME_SNAPSHOT_OVERVIEW_HISTORY_POINTS = 3
-_HOME_CACHE_GOVERNANCE_FILES = ("cache_manifest.jsonl", "cache_build_run.jsonl")
-_HOME_CACHE_GOVERNANCE_TAIL_BYTES = 8192
 _HOME_CACHE_BUILD_RUN_TAIL_BYTES = 256 * 1024
 _MISS_SOURCE = "sv_exec_dashboard_explicit_miss_v1"
 _DEFAULT_SOURCE = "sv_exec_dashboard_v1"
@@ -108,32 +181,23 @@ _logger = logging.getLogger(__name__)
 _DEFAULT_RESOLVE_COMPLETED_FORMAL_BUILD_LINEAGE = resolve_completed_formal_build_lineage
 _DEFAULT_LOAD_LATEST_BOND_ANALYTICS_LINEAGE = load_latest_bond_analytics_lineage
 
-# Yuan → 亿 conversion factor; a single named constant avoids magic-number scatter.
-_YUAN_PER_YI: float = 1e8
-_BASIS_POINTS_PER_PERCENT: float = 100.0
 
+def _log_degraded_fallback(context: str, exc: BaseException, **details: object) -> None:
+    """Record a swallowed degradation; the caller keeps its existing fallback.
 
-def _normalize_report_date(report_date: str | None) -> str | None:
-    if report_date is None:
-        return None
-    return date.fromisoformat(str(report_date).strip()).isoformat()
-
-
-def _safe_report_year(report_date: str | None) -> int | None:
-    if not report_date:
-        return None
-    try:
-        return date.fromisoformat(str(report_date).strip()).year
-    except ValueError:
-        return None
-
-
-def _single_effective_report_date(*report_dates: str | None) -> str | None:
-    resolved = [str(value or "").strip() for value in report_dates]
-    if not resolved or any(not value for value in resolved):
-        return None
-    first = resolved[0]
-    return first if all(value == first for value in resolved) else None
+    ``TypeError`` / ``KeyError`` / ``AttributeError`` almost always signal a program
+    defect rather than absent data, so they surface at ``warning`` while expected data
+    gaps stay at ``debug``.
+    """
+    level = (
+        logging.WARNING
+        if isinstance(exc, (TypeError, KeyError, AttributeError))
+        else logging.DEBUG
+    )
+    if not logger.isEnabledFor(level):
+        return
+    detail_text = " ".join(f"{key}={value!r}" for key, value in details.items())
+    logger.log(level, "degraded: %s [%s] %s: %s", context, detail_text, type(exc).__name__, exc)
 
 
 def _envelope(
@@ -173,98 +237,6 @@ def _envelope(
     )
 
 
-def _fmt_yi_amount(value: float | None, *, signed: bool = False) -> Numeric:
-    """Format a yuan-denominated amount into a Numeric in yi display.
-
-    Retains the original signature to minimize churn at call sites (they just
-    receive a Numeric instead of str now; ExecutiveMetric etc. accept both
-    thanks to W2.1 coercion, but callers building Numerics directly bypass
-    the coerce path).
-    """
-    if value is None:
-        return Numeric(
-            raw=None,
-            unit="yuan",
-            display="—" if signed else "0.00 亿",
-            precision=2,
-            sign_aware=signed,
-        )
-    v = float(value)
-    yi = v / _YUAN_PER_YI
-    if signed:
-        sign = "+" if yi >= 0 else ""
-        display = f"{sign}{yi:,.2f} 亿"
-    else:
-        display = f"{yi:,.2f} 亿"
-    return Numeric(
-        raw=v,
-        unit="yuan",
-        display=display,
-        precision=2,
-        sign_aware=signed,
-    )
-
-
-def _fmt_signed_segment_yi(yi: float) -> Numeric:
-    sign = "+" if yi >= 0 else ""
-    return Numeric(
-        raw=float(yi) * _YUAN_PER_YI,
-        unit="yuan",
-        display=f"{sign}{yi:.2f} 亿",
-        precision=2,
-        sign_aware=True,
-    )
-
-
-def _fmt_signed_percent(value: float | None) -> Numeric:
-    if value is None:
-        return Numeric(raw=None, unit="pct", display="—", precision=2, sign_aware=True)
-    sign = "+" if float(value) >= 0 else ""
-    return Numeric(
-        raw=float(value) / 100.0,  # raw 是 decimal ratio
-        unit="pct",
-        display=f"{sign}{float(value):.2f}%",
-        precision=2,
-        sign_aware=True,
-    )
-
-
-def _normalize_ratio_percent_input(value: float | None) -> float:
-    """Treat input as decimal-ratio (e.g. 0.035 = 3.5%).
-
-    Upstream callers (compute_liability_yield_metrics → weighted_rate) all
-    return decimal ratios.  The previous heuristic threshold ``abs(v) >= 0.1``
-    caused a 100× error for NIM values at or above 10 bp decimal (0.001).
-    """
-    if value is None:
-        return 0.0
-    return float(value)
-
-
-def _fmt_signed_ratio_percent(value: float | None) -> Numeric:
-    if value is None:
-        return Numeric(raw=None, unit="pct", display="N/A", precision=2, sign_aware=True)
-    ratio = _normalize_ratio_percent_input(value)
-    sign = "+" if ratio >= 0 else ""
-    return Numeric(
-        raw=ratio,
-        unit="pct",
-        display=f"{sign}{ratio * 100.0:.2f}%",
-        precision=2,
-        sign_aware=True,
-    )
-
-
-def _previous_report_date(dates: list[str], current_report_date: str | None) -> str | None:
-    if not current_report_date or not dates:
-        return None
-    if current_report_date in dates:
-        idx = dates.index(current_report_date)
-        if idx + 1 < len(dates):
-            return dates[idx + 1]
-    return None
-
-
 def _fetch_executive_aum_row(
     balance_repo: object,
     *,
@@ -279,7 +251,13 @@ def _fetch_executive_aum_row(
                 position_scope="asset",
                 currency_basis=currency_basis,
             )
-        except (RuntimeError, OSError, TypeError, ValueError, AttributeError):
+        except (RuntimeError, OSError, TypeError, ValueError, AttributeError) as exc:
+            _log_degraded_fallback(
+                "executive aum row falls back to zqtz-only scope",
+                exc,
+                report_date=report_date,
+                currency_basis=currency_basis,
+            )
             row = None
         if row is None:
             pass
@@ -317,8 +295,12 @@ def _list_executive_aum_report_dates(
             )
             if dates:
                 return dates
-        except (RuntimeError, OSError, TypeError, ValueError, AttributeError):
-            pass
+        except (RuntimeError, OSError, TypeError, ValueError, AttributeError) as exc:
+            _log_degraded_fallback(
+                "executive aum report dates fall back to balance list_report_dates",
+                exc,
+                currency_basis=currency_basis,
+            )
     list_report_dates = getattr(balance_repo, "list_report_dates", None)
     if not callable(list_report_dates):
         return []
@@ -326,58 +308,6 @@ def _list_executive_aum_report_dates(
         return list(list_report_dates(currency_basis=currency_basis))
     except TypeError:
         return list(list_report_dates())
-
-
-def _lineage_tokens(*values: object) -> list[str]:
-    tokens: set[str] = set()
-    for value in values:
-        text = str(value or "").strip()
-        if not text:
-            continue
-        for token in text.split("__"):
-            for dirty_part in token.split(","):
-                normalized = dirty_part.strip()
-                if normalized:
-                    tokens.add(normalized)
-    return sorted(tokens)
-
-
-def _lineage_tokens_from_rows(rows: list[dict[str, object]], field_name: str) -> list[str]:
-    return _lineage_tokens(*(row.get(field_name) for row in rows))
-
-
-def _lineage_tokens_from_payload(payload: dict[str, object], field_name: str) -> list[str]:
-    return _lineage_tokens(payload.get(field_name))
-
-
-def _lineage_tokens_from_state(state: dict[str, object], field_name: str) -> list[str]:
-    value = state.get(field_name, [])
-    if isinstance(value, (list, tuple, set)):
-        return _lineage_tokens(*value)
-    return _lineage_tokens(value)
-
-
-def _state_has_lineage_tokens(state: dict[str, object]) -> bool:
-    return bool(_lineage_tokens_from_state(state, "source_versions")) and bool(
-        _lineage_tokens_from_state(state, "rule_versions")
-    )
-
-
-def _state_missing_required_lineage(state: dict[str, object]) -> bool:
-    return bool(state.get("missing_lineage")) or not _state_has_lineage_tokens(state)
-
-
-def _mapping_missing_required_lineage(row: dict[str, object] | None) -> bool:
-    if row is None:
-        return False
-    return not (
-        _lineage_tokens(row.get("source_version"))
-        and _lineage_tokens(row.get("rule_version"))
-    )
-
-
-def _join_lineage_tokens(*values: object) -> str:
-    return "__".join(_lineage_tokens(*values))
 
 
 class _HomeCacheBuildRunRows(list[dict[str, object]]):
@@ -566,29 +496,6 @@ def _resolve_executive_kpi_metrics_for_overview(
     return [dict(item) for item in _HOME_KPI_METRICS_CACHE.get_or_set(cache_key, produce)]
 
 
-def _latest_completed_cache_build_run(
-    rows: list[dict[str, object]],
-    *,
-    cache_key: str,
-    job_name: str,
-    report_date: str,
-    require_source_version: bool = False,
-) -> dict[str, object] | None:
-    for row in reversed(rows):
-        if str(row.get("cache_key") or "").strip() != cache_key:
-            continue
-        if str(row.get("status") or "").strip() != "completed":
-            continue
-        if str(row.get("job_name") or "").strip() != job_name:
-            continue
-        if str(row.get("report_date") or "").strip() != report_date:
-            continue
-        if require_source_version and not str(row.get("source_version") or "").strip():
-            continue
-        return row
-    return None
-
-
 def _completed_formal_build_lineage_from_rows(
     rows: list[dict[str, object]] | None,
     *,
@@ -671,223 +578,6 @@ def _bond_analytics_lineage_from_rows(
         "cache_version": str(latest.get("cache_version") or "").strip(),
         "vendor_version": str(latest.get("vendor_version") or "vv_none").strip() or "vv_none",
     }
-
-
-def _format_percent_change(current: float | None, previous: float | None) -> Numeric:
-    if current is None or previous in (None, 0):
-        return Numeric(raw=None, unit="pct", display="无环比", precision=2, sign_aware=True)
-    change = ((float(current) - float(previous)) / float(previous)) * 100
-    sign = "+" if change >= 0 else ""
-    return Numeric(
-        raw=change / 100.0,
-        unit="pct",
-        display=f"{sign}{change:.2f}%",
-        precision=2,
-        sign_aware=True,
-    )
-
-
-def _format_point_change(current: float | None, previous: float | None) -> Numeric:
-    if current is None or previous is None:
-        return Numeric(raw=None, unit="bp", display="无环比", precision=2, sign_aware=True)
-    change = float(current) - float(previous)
-    sign = "+" if change >= 0 else ""
-    return Numeric(
-        raw=change * 100.0,  # bp = percent point * 100
-        unit="bp",
-        display=f"{sign}{change:.2f}pp",
-        precision=2,
-        sign_aware=True,
-    )
-
-
-def _format_ratio_point_change(current: float | None, previous: float | None) -> Numeric:
-    if current is None or previous is None:
-        return Numeric(raw=None, unit="bp", display="N/A", precision=2, sign_aware=True)
-    current_ratio = _normalize_ratio_percent_input(current)
-    previous_ratio = _normalize_ratio_percent_input(previous)
-    change_ratio = current_ratio - previous_ratio
-    sign = "+" if change_ratio >= 0 else ""
-    return Numeric(
-        raw=change_ratio * 10000.0,
-        unit="bp",
-        display=f"{sign}{change_ratio * 100.0:.2f}pp",
-        precision=2,
-        sign_aware=True,
-    )
-
-
-def _unavailable_metric(
-    *,
-    metric_id: str,
-    label: str,
-    detail: str,
-    delta: str = "未接入",
-    tone: Literal["positive", "neutral", "warning", "negative"] = "warning",
-) -> ExecutiveMetric:
-    return ExecutiveMetric(
-        id=metric_id,
-        label=label,
-        value=Numeric(raw=None, unit="yuan", display="—", precision=2, sign_aware=False),
-        delta=Numeric(raw=None, unit="pct", display=delta, precision=2, sign_aware=True),
-        tone=tone,
-        detail=detail,
-    )
-
-
-def _tone_for_signed(yi: float) -> str:
-    if yi > 0:
-        return "positive"
-    if yi < 0:
-        return "negative"
-    return "neutral"
-
-
-_CATEGORY_ID_TO_ATTRIBUTION_SEGMENT: dict[str, str] = {
-    # Only level-1 category_ids reach _aggregate_attribution_segments (via
-    # _level1_monthly_rows L380-384).  Currently only ``bond_investment``
-    # defines children at level 1 in product_category_mapping.py; other
-    # product categories (interbank, repo, NCD, etc.) are all level 0 and
-    # flow entirely into the ``other`` bucket by design.
-    "bond_tpl": "trading",
-    "bond_ac": "carry",
-    "bond_fvoci": "carry",
-    "bond_ac_other": "credit",
-    "bond_valuation_spread": "roll",
-}
-
-
-def _level1_monthly_rows(
-    repo: ProductCategoryPnlRepository,
-    report_date: str | None = None,
-) -> tuple[str, list[dict[str, object]]] | None:
-    target_report_date = _normalize_report_date(report_date)
-    if target_report_date is None:
-        dates = repo.list_report_dates()
-        if not dates:
-            return None
-        target_report_date = dates[0]
-    rows = repo.fetch_rows(target_report_date, "monthly")
-    level1 = [
-        r
-        for r in rows
-        if int(r.get("level") or -1) == 1 and not bool(r.get("is_total"))
-    ]
-    if not level1:
-        return None
-    return target_report_date, level1
-
-
-def _aggregate_attribution_segments(rows: list[dict[str, object]]) -> dict[str, float]:
-    totals = {"carry": 0.0, "roll": 0.0, "credit": 0.0, "trading": 0.0, "other": 0.0}
-    for r in rows:
-        cid = str(r.get("category_id") or "")
-        raw = r.get("business_net_income")
-        try:
-            val = float(raw) if raw is not None else 0.0
-        except (TypeError, ValueError):
-            val = 0.0
-        seg = _CATEGORY_ID_TO_ATTRIBUTION_SEGMENT.get(cid, "other")
-        totals[seg] += val / _YUAN_PER_YI
-    return totals
-
-
-def _build_pnl_attribution_from_repo(
-    repo: ProductCategoryPnlRepository,
-    report_date: str | None = None,
-) -> tuple[PnlAttributionPayload, list[dict[str, object]]] | None:
-    packed = _level1_monthly_rows(repo, report_date)
-    if packed is None:
-        return None
-    _report_date, rows = packed
-    seg = _aggregate_attribution_segments(rows)
-    total_yi = sum(seg.values())
-    order = [
-        ("carry", "Carry", seg["carry"]),
-        ("roll", "Roll-down", seg["roll"]),
-        ("credit", "信用利差", seg["credit"]),
-        ("trading", "交易损益", seg["trading"]),
-        ("other", "其他", seg["other"]),
-    ]
-    segments = [
-        AttributionSegment(
-            id=key,
-            label=label,
-            amount=_fmt_signed_segment_yi(val),
-            tone=_tone_for_signed(val),
-        )
-        for key, label, val in order
-    ]
-    return (
-        PnlAttributionPayload(
-            title="经营贡献拆解",
-            total=_fmt_yi_amount(total_yi * 1e8, signed=True),
-            segments=segments,
-        ),
-        rows,
-    )
-
-
-_ZERO_ATTRIBUTION_SEGMENTS = [
-    ("carry", "Carry"),
-    ("roll", "Roll-down"),
-    ("credit", "信用利差"),
-    ("trading", "交易损益"),
-    ("other", "其他"),
-]
-
-
-def _zero_pnl_attribution_payload(title: str) -> PnlAttributionPayload:
-    segments = [
-        AttributionSegment(
-            id=key,
-            label=label,
-            amount=_fmt_signed_segment_yi(0.0),
-            tone=_tone_for_signed(0.0),
-        )
-        for key, label in _ZERO_ATTRIBUTION_SEGMENTS
-    ]
-    return PnlAttributionPayload(
-        title=title,
-        total=Numeric(raw=0.0, unit="yuan", display="0 亿", precision=0, sign_aware=False),
-        segments=segments,
-    )
-
-
-def _pnl_attribution_explicit_miss_payload(report_date: str) -> PnlAttributionPayload:
-    return _zero_pnl_attribution_payload(f"经营贡献拆解（{report_date} 无受控产品分类月度数据）")
-
-
-def _pnl_attribution_unavailable_payload() -> PnlAttributionPayload:
-    return _zero_pnl_attribution_payload("经营贡献拆解（当前无受控产品分类月度数据）")
-
-
-def _contribution_explicit_miss_payload(report_date: str) -> ContributionPayload:
-    return ContributionPayload(
-        title="团队 / 账户 / 策略贡献",
-        rows=[],
-    )
-
-
-def _contribution_unavailable_payload() -> ContributionPayload:
-    return ContributionPayload(
-        title="团队 / 账户 / 策略贡献",
-        rows=[],
-    )
-
-
-def _empty_risk_overview_payload() -> RiskOverviewPayload:
-    return RiskOverviewPayload(
-        title="风险全景",
-        signals=[],
-    )
-
-
-def _empty_alerts_payload() -> AlertsPayload:
-    return AlertsPayload(
-        title="预警与事件",
-        items=[],
-    )
 
 
 def _build_repo_payload_envelope(
@@ -976,75 +666,6 @@ def _build_repo_payload_envelope(
     )
 
 
-def _build_contribution_from_repo(
-    repo: ProductCategoryPnlRepository,
-    report_date: str | None = None,
-) -> tuple[ContributionPayload, list[dict[str, object]]] | None:
-    packed = _level1_monthly_rows(repo, report_date)
-    if packed is None:
-        return None
-    report_date, rows = packed
-    seg = _aggregate_attribution_segments(rows)
-    rates_yi = seg["carry"] + seg["roll"]
-    credit_yi = seg["credit"]
-    trading_yi = seg["trading"]
-    groups: list[tuple[str, str, float]] = [
-        ("rates", "利率组", rates_yi),
-        ("credit", "信用组", credit_yi),
-        ("trading", "交易组", trading_yi),
-    ]
-    max_abs = max((abs(g[2]) for g in groups), default=0.0)
-
-    def _completion(yi: float) -> int:
-        if max_abs <= 0:
-            return 0
-        return int(min(100, max(0, round(abs(yi) / max_abs * 100))))
-
-    def _status(yi: float) -> str:
-        if max_abs <= 0:
-            return "待观察"
-        if abs(yi) >= max_abs * 0.95:
-            return "核心拉动"
-        if abs(yi) >= max_abs * 0.35:
-            return "稳定贡献"
-        return "波动偏大"
-
-    contribution_rows = [
-        ContributionRow(
-            id=gid,
-            name=gname,
-            owner="按团队",
-            contribution=_fmt_signed_segment_yi(val),
-            completion=_completion(val),
-            status=_status(val),
-        )
-        for gid, gname, val in groups
-    ]
-    return (
-        ContributionPayload(
-            title="团队 / 账户 / 策略贡献",
-            rows=contribution_rows,
-        ),
-        rows,
-    )
-
-
-def _history_date_slice(
-    report_dates: list[str],
-    current_report_date: str | None,
-    n: int,
-) -> list[str] | None:
-    if not report_dates:
-        return None
-    if current_report_date is None:
-        return report_dates[:n]
-    try:
-        idx = report_dates.index(current_report_date)
-    except ValueError:
-        return None
-    return report_dates[idx : idx + n]
-
-
 def _fetch_aum_history(
     balance_repo: FormalZqtzBalanceMetricsRepository,
     *,
@@ -1075,8 +696,13 @@ def _fetch_aum_history(
                 if values:
                     values.reverse()
                     return values
-            except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
-                pass
+            except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+                _log_degraded_fallback(
+                    "home snapshot aum trend batch slice falls back to per-date fetch",
+                    exc,
+                    current_report_date=current_report_date,
+                    slice_dates=slice_dates,
+                )
         values: list[float] = []
         for d in slice_dates:
             try:
@@ -1090,13 +716,25 @@ def _fetch_aum_history(
                 v = row.get("total_market_value_amount")
                 if v is not None:
                     values.append(float(v))
-            except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+            except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+                _log_degraded_fallback(
+                    "home snapshot aum trend skips one date",
+                    exc,
+                    report_date=d,
+                    current_report_date=current_report_date,
+                )
                 continue
         if not values:
             return None
         values.reverse()
         return values
-    except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+    except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+        _log_degraded_fallback(
+            "home snapshot aum trend unavailable",
+            exc,
+            current_report_date=current_report_date,
+            report_dates_count=len(report_dates),
+        )
         return None
 
 
@@ -1134,8 +772,13 @@ def _fetch_aum_context(
                 if values:
                     values.reverse()
                 return rows_by_date, values or None
-        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
-            pass
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+            _log_degraded_fallback(
+                "home snapshot aum context batch fetch falls back to per-date fetch",
+                exc,
+                current_report_date=current_report_date,
+                fetch_dates=fetch_dates,
+            )
 
     rows_by_date: dict[str, dict[str, object]] = {}
     for d in fetch_dates:
@@ -1145,7 +788,13 @@ def _fetch_aum_context(
                 report_date=d,
                 currency_basis="CNY",
             )
-        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+            _log_degraded_fallback(
+                "home snapshot aum context drops one date",
+                exc,
+                report_date=d,
+                current_report_date=current_report_date,
+            )
             row = None
         if row is not None:
             rows_by_date[d] = row
@@ -1192,21 +841,38 @@ def _fetch_ytd_history(
                 if values:
                     values.reverse()
                     return values
-            except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
-                pass
+            except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+                _log_degraded_fallback(
+                    "home snapshot ytd pnl trend batch slice falls back to per-date fetch",
+                    exc,
+                    current_report_date=current_report_date,
+                    slice_dates=slice_dates,
+                )
         values: list[float] = []
         for d in slice_dates:
             try:
                 v = _sum_business_ytd_pnl(pnl_repo, d)
                 if v is not None:
                     values.append(float(v))
-            except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+            except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+                _log_degraded_fallback(
+                    "home snapshot ytd pnl trend skips one date",
+                    exc,
+                    report_date=d,
+                    current_report_date=current_report_date,
+                )
                 continue
         if not values:
             return None
         values.reverse()
         return values
-    except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+    except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+        _log_degraded_fallback(
+            "home snapshot ytd pnl trend unavailable",
+            exc,
+            current_report_date=current_report_date,
+            report_dates_count=len(report_dates),
+        )
         return None
 
 
@@ -1255,14 +921,25 @@ def _fetch_ytd_context(
             if values:
                 values.reverse()
             return values_by_date, values or None
-        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
-            pass
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+            _log_degraded_fallback(
+                "home snapshot ytd pnl context batch fetch falls back to per-date fetch",
+                exc,
+                current_report_date=current_report_date,
+                fetch_dates=fetch_dates,
+            )
 
     values_by_date: dict[str, object] = {}
     for d in fetch_dates:
         try:
             values_by_date[d] = _sum_business_ytd_pnl(pnl_repo, d)
-        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+            _log_degraded_fallback(
+                "home snapshot ytd pnl context drops one date",
+                exc,
+                report_date=d,
+                current_report_date=current_report_date,
+            )
             continue
     values = [float(values_by_date[d]) for d in slice_dates if d in values_by_date]
     if values:
@@ -1306,8 +983,13 @@ def _fetch_nim_history(
                 if values:
                     values.reverse()
                     return values
-            except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
-                pass
+            except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+                _log_degraded_fallback(
+                    "home snapshot nim trend batch slice falls back to per-date fetch",
+                    exc,
+                    current_report_date=current_report_date,
+                    slice_dates=slice_dates,
+                )
         values: list[float] = []
         for d in slice_dates:
             try:
@@ -1323,13 +1005,25 @@ def _fetch_nim_history(
                 v = kpi.get("nim") if isinstance(kpi, dict) else None
                 if v is not None:
                     values.append(float(v))
-            except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+            except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+                _log_degraded_fallback(
+                    "home snapshot nim trend skips one date",
+                    exc,
+                    report_date=d,
+                    current_report_date=current_report_date,
+                )
                 continue
         if not values:
             return None
         values.reverse()
         return values
-    except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+    except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+        _log_degraded_fallback(
+            "home snapshot nim trend unavailable",
+            exc,
+            current_report_date=current_report_date,
+            report_dates_count=len(report_dates),
+        )
         return None
 
 
@@ -1351,15 +1045,26 @@ def _fetch_liability_rows_by_dates(
                 for d in report_dates
                 if isinstance(rows_by_date, dict)
             }
-        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
-            pass
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+            _log_degraded_fallback(
+                "home snapshot liability rows batch fetch falls back to per-date fetch",
+                exc,
+                batch_method_name=batch_method_name,
+                report_dates=report_dates,
+            )
 
     fetch_one = getattr(liability_repo, single_method_name)
     rows_by_date: dict[str, list[dict[str, object]]] = {}
     for d in report_dates:
         try:
             rows_by_date[d] = list(fetch_one(d))
-        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+            _log_degraded_fallback(
+                "home snapshot liability rows degrade to empty for one date",
+                exc,
+                report_date=d,
+                single_method_name=single_method_name,
+            )
             rows_by_date[d] = []
     return rows_by_date
 
@@ -1463,8 +1168,13 @@ def _fetch_nim_context_uncached(
                 if history is not None:
                     history.reverse()
                 return payloads_by_date, {}, {}, history
-        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
-            pass
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+            _log_degraded_fallback(
+                "home snapshot nim context yield-kpi batch falls back to row-level compute",
+                exc,
+                current_report_date=current_report_date,
+                fetch_dates=fetch_dates,
+            )
 
     fetch_yield_rows = getattr(liability_repo, "fetch_yield_rows_for_dates", None)
     if callable(fetch_yield_rows):
@@ -1482,7 +1192,13 @@ def _fetch_nim_context_uncached(
                 ),
                 report_date=current_report_date,
             )
-        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+            _log_degraded_fallback(
+                "home snapshot nim context yield-row batch falls back to per-date rows",
+                exc,
+                current_report_date=current_report_date,
+                fetch_dates=fetch_dates,
+            )
             zqtz_rows_by_date, tyw_rows_by_date = {}, {}
     else:
         zqtz_rows_by_date, tyw_rows_by_date = {}, {}
@@ -1510,7 +1226,13 @@ def _fetch_nim_context_uncached(
                 zqtz_rows_by_date.get(d, []),
                 tyw_rows_by_date.get(d, []),
             )
-        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+            _log_degraded_fallback(
+                "home snapshot nim context drops one date from liability yield compute",
+                exc,
+                report_date=d,
+                current_report_date=current_report_date,
+            )
             continue
     _log_home_snapshot_detail_perf(
         "home_snapshot_nim",
@@ -1559,8 +1281,13 @@ def _fetch_dv01_history(
                 if values:
                     values.reverse()
                     return values
-            except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
-                pass
+            except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+                _log_degraded_fallback(
+                    "home snapshot dv01 trend batch slice falls back to per-date fetch",
+                    exc,
+                    current_report_date=current_report_date,
+                    slice_dates=slice_dates,
+                )
         values: list[float] = []
         for d in slice_dates:
             try:
@@ -1570,13 +1297,25 @@ def _fetch_dv01_history(
                 v = snapshot.get("portfolio_dv01")
                 if v is not None:
                     values.append(float(v))
-            except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+            except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+                _log_degraded_fallback(
+                    "home snapshot dv01 trend skips one date",
+                    exc,
+                    report_date=d,
+                    current_report_date=current_report_date,
+                )
                 continue
         if not values:
             return None
         values.reverse()
         return values
-    except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+    except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+        _log_degraded_fallback(
+            "home snapshot dv01 trend unavailable",
+            exc,
+            current_report_date=current_report_date,
+            report_dates_count=len(report_dates),
+        )
         return None
 
 
@@ -1610,14 +1349,25 @@ def _fetch_dv01_context(
                 if values:
                     values.reverse()
                 return snapshots_by_date, values or None
-        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
-            pass
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+            _log_degraded_fallback(
+                "home snapshot dv01 context batch fetch falls back to per-date fetch",
+                exc,
+                current_report_date=current_report_date,
+                fetch_dates=fetch_dates,
+            )
 
     snapshots_by_date: dict[str, dict[str, object]] = {}
     for d in fetch_dates:
         try:
             snapshot = bond_repo.fetch_risk_overview_snapshot(report_date=d)
-        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+            _log_degraded_fallback(
+                "home snapshot dv01 context drops one date",
+                exc,
+                report_date=d,
+                current_report_date=current_report_date,
+            )
             snapshot = None
         if snapshot is not None:
             snapshots_by_date[d] = snapshot
@@ -1802,7 +1552,13 @@ def _compute_executive_overview(
                                 raw,
                                 float(previous_row["total_market_value_amount"]),
                             )
-        except (RuntimeError, OSError, TypeError, ValueError):
+        except (RuntimeError, OSError, TypeError, ValueError) as exc:
+            _log_degraded_fallback(
+                "executive overview aum state degrades to null",
+                exc,
+                report_date=state.get("current_report_date"),
+                requested_report_date=normalized_report_date,
+            )
             state["raw"] = None
         return state
 
@@ -1886,7 +1642,13 @@ def _compute_executive_overview(
                     )
             state["source_versions"] = source_versions
             state["rule_versions"] = rule_versions
-        except (RuntimeError, OSError, TypeError, ValueError):
+        except (RuntimeError, OSError, TypeError, ValueError) as exc:
+            _log_degraded_fallback(
+                "executive overview ytd pnl state degrades to null",
+                exc,
+                report_date=state.get("current_report_date"),
+                requested_report_date=normalized_report_date,
+            )
             state["raw"] = None
         return state
 
@@ -1957,7 +1719,13 @@ def _compute_executive_overview(
                         )
                 state["source_versions"] = source_versions
                 state["rule_versions"] = rule_versions
-        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+            _log_degraded_fallback(
+                "executive overview nim state degrades to null",
+                exc,
+                report_date=state.get("current_report_date"),
+                requested_report_date=normalized_report_date,
+            )
             state["raw"] = None
         return state
 
@@ -2036,8 +1804,13 @@ def _compute_executive_overview(
                                 sign_aware=True,
                             )
                             state["duration_history"] = [previous_duration, duration]
-                except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
-                    pass
+                except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+                    _log_degraded_fallback(
+                        "executive overview duration falls back to risk snapshot",
+                        exc,
+                        report_date=current_report_date,
+                        previous_report_date=previous_report_date,
+                    )
             snapshot = snapshots_by_date.get(current_report_date) if current_report_date else None
             source_versions: list[object] = []
             rule_versions: list[object] = []
@@ -2103,7 +1876,13 @@ def _compute_executive_overview(
                             ]
             state["source_versions"] = source_versions
             state["rule_versions"] = rule_versions
-        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+            _log_degraded_fallback(
+                "executive overview dv01 state degrades to null",
+                exc,
+                report_date=state.get("current_report_date"),
+                requested_report_date=normalized_report_date,
+            )
             state["raw"] = None
         return state
 
@@ -2633,8 +2412,12 @@ def executive_risk_overview(report_date: str | None = None) -> dict[str, object]
             vendor_status="vendor_unavailable",
             source_version=_MISS_SOURCE,
         )
-    except (RuntimeError, OSError, TypeError, ValueError):
-        pass
+    except (RuntimeError, OSError, TypeError, ValueError) as exc:
+        logger.warning(
+            "executive risk-overview degraded to empty payload: %s: %s",
+            type(exc).__name__,
+            exc,
+        )
 
     return _envelope(
         "executive.risk-overview",
@@ -2666,83 +2449,6 @@ def _fallback_executive_alerts() -> dict[str, object]:
         quality_flag="warning",
         vendor_status="vendor_unavailable",
         source_version=_MISS_SOURCE,
-    )
-
-
-def _decimal_from_formal_numeric(
-    value: object,
-    *,
-    field_name: str,
-    allow_none: bool = False,
-) -> Decimal:
-    if isinstance(value, dict):
-        if "raw" not in value:
-            raise ValueError(f"Formal risk tensor numeric field {field_name!r} has no raw value.")
-        value = value["raw"]
-    if value is None:
-        if allow_none:
-            return Decimal("0")
-        raise ValueError(f"Formal risk tensor numeric field {field_name!r} is null.")
-    if isinstance(value, bool):
-        raise ValueError(f"Formal risk tensor numeric field {field_name!r} is boolean.")
-    try:
-        decimal_value = value if isinstance(value, Decimal) else Decimal(str(value))
-    except (ArithmeticError, TypeError, ValueError) as exc:
-        raise ValueError(
-            f"Formal risk tensor numeric field {field_name!r} is invalid."
-        ) from exc
-    if not decimal_value.is_finite():
-        raise ValueError(f"Formal risk tensor numeric field {field_name!r} is not finite.")
-    return decimal_value
-
-
-def _portfolio_risk_tensor_from_formal_result(
-    result: dict[str, object],
-    *,
-    expected_report_date: date,
-) -> PortfolioRiskTensor:
-    result_report_date = date.fromisoformat(str(result["report_date"]))
-    if result_report_date != expected_report_date:
-        raise ValueError(
-            "Formal risk tensor report_date does not match the requested executive alerts date."
-        )
-    warnings = result.get("warnings") or []
-    if not isinstance(warnings, list):
-        raise ValueError("Formal risk tensor warnings must be a list.")
-
-    def _numeric(field_name: str, *, allow_none: bool = False) -> Decimal:
-        return _decimal_from_formal_numeric(
-            result.get(field_name),
-            field_name=field_name,
-            allow_none=allow_none,
-        )
-
-    return PortfolioRiskTensor(
-        report_date=result_report_date,
-        portfolio_dv01=_numeric("portfolio_dv01"),
-        regulatory_dv01=_numeric("regulatory_dv01", allow_none=True),
-        krd_1y=_numeric("krd_1y"),
-        krd_3y=_numeric("krd_3y"),
-        krd_5y=_numeric("krd_5y"),
-        krd_7y=_numeric("krd_7y"),
-        krd_10y=_numeric("krd_10y"),
-        krd_30y=_numeric("krd_30y"),
-        cs01=_numeric("cs01"),
-        portfolio_convexity=_numeric("portfolio_convexity"),
-        portfolio_modified_duration=_numeric("portfolio_modified_duration"),
-        issuer_concentration_hhi=_numeric("issuer_concentration_hhi"),
-        issuer_top5_weight=_numeric("issuer_top5_weight"),
-        asset_cashflow_30d=_numeric("asset_cashflow_30d"),
-        asset_cashflow_90d=_numeric("asset_cashflow_90d"),
-        liability_cashflow_30d=_numeric("liability_cashflow_30d"),
-        liability_cashflow_90d=_numeric("liability_cashflow_90d"),
-        liquidity_gap_30d=_numeric("liquidity_gap_30d"),
-        liquidity_gap_90d=_numeric("liquidity_gap_90d"),
-        liquidity_gap_30d_ratio=_numeric("liquidity_gap_30d_ratio"),
-        total_market_value=_numeric("total_market_value"),
-        bond_count=int(result["bond_count"]),
-        quality_flag=str(result["quality_flag"]),
-        warnings=[str(warning) for warning in warnings],
     )
 
 
@@ -2798,22 +2504,6 @@ def _latest_formal_risk_tensor_report_date(
     if not report_dates:
         return None
     return date.fromisoformat(str(report_dates[0])).isoformat()
-
-
-def _formal_risk_tensor_quality_flag(
-    result_meta: dict[str, object],
-    tensor: PortfolioRiskTensor,
-) -> Literal["ok", "warning", "error", "stale"]:
-    value = str(result_meta.get("quality_flag") or tensor.quality_flag).strip()
-    if value == "ok":
-        return "ok"
-    if value == "warning":
-        return "warning"
-    if value == "error":
-        return "error"
-    if value == "stale":
-        return "stale"
-    raise ValueError(f"Formal risk tensor owner returned invalid quality_flag={value!r}.")
 
 
 def executive_alerts(report_date: str | None = None) -> dict[str, object]:
@@ -2881,14 +2571,19 @@ def executive_alerts(report_date: str | None = None) -> dict[str, object]:
         return _fallback_executive_alerts()
 
 
-_HOME_SNAPSHOT_CALIBERS = ("balance_sheet", "pnl")
-"""Business calibers for the home snapshot.
+def _log_available_dates_source_degraded(source: str, exc: Exception) -> None:
+    """A per-source read failure silently shrinks the advertised available dates.
 
-- ``balance_sheet``: AUM + NIM + DV01 — all from the same T+1 daily pipeline.
-  Available dates = intersection(balance, liability, bond).
-- ``pnl``: YTD P&L — independent formal build cycle.
-- Market/macro data is excluded; it is real-time and not bound to report date.
-"""
+    The caller keeps degrading to an empty date set so the page still renders, but an
+    empty set is indistinguishable from "this source genuinely has no data" — log it so
+    a missing caliber can be told apart from a repository fault.
+    """
+    logger.warning(
+        "executive available-dates source %s unavailable, treated as empty: %s: %s",
+        source,
+        type(exc).__name__,
+        exc,
+    )
 
 
 def _list_domain_dates() -> dict[str, set[str]]:
@@ -2907,26 +2602,26 @@ def _list_domain_dates() -> dict[str, set[str]]:
     try:
         balance_repo = FormalZqtzBalanceMetricsRepository(str(settings.duckdb_path))
         balance_dates = set(_list_executive_aum_report_dates(balance_repo, currency_basis="CNY"))
-    except (RuntimeError, OSError, TypeError, ValueError, AttributeError):
-        pass
+    except (RuntimeError, OSError, TypeError, ValueError, AttributeError) as exc:
+        _log_available_dates_source_degraded("balance", exc)
 
     try:
         pnl_repo = PnlRepository(str(settings.duckdb_path))
         pnl_dates = set(pnl_repo.list_formal_fi_report_dates())
-    except (RuntimeError, OSError, TypeError, ValueError, AttributeError):
-        pass
+    except (RuntimeError, OSError, TypeError, ValueError, AttributeError) as exc:
+        _log_available_dates_source_degraded("pnl", exc)
 
     try:
         liability_repo = LiabilityAnalyticsRepository(str(settings.duckdb_path))
         liability_dates = set(liability_repo.list_report_dates())
-    except (RuntimeError, OSError, TypeError, ValueError, AttributeError):
-        pass
+    except (RuntimeError, OSError, TypeError, ValueError, AttributeError) as exc:
+        _log_available_dates_source_degraded("liability", exc)
 
     try:
         bond_repo = BondAnalyticsRepository(str(settings.duckdb_path))
         bond_dates = set(bond_repo.list_report_dates())
-    except (RuntimeError, OSError, TypeError, ValueError, AttributeError):
-        pass
+    except (RuntimeError, OSError, TypeError, ValueError, AttributeError) as exc:
+        _log_available_dates_source_degraded("bond_analytics", exc)
 
     # balance_sheet caliber: a date is available only when ALL THREE
     # sub-sources (balance, liability, bond) have data for that date.
@@ -2951,243 +2646,13 @@ def _list_domain_date_context() -> dict[str, list[str]]:
     }
     try:
         return DashboardRepository(str(settings.duckdb_path)).list_domain_date_context()
-    except (RuntimeError, OSError, TypeError, ValueError, AttributeError):
+    except (RuntimeError, OSError, TypeError, ValueError, AttributeError) as exc:
+        _log_degraded_fallback(
+            "home snapshot domain date context degrades to empty",
+            exc,
+            duckdb_path=str(settings.duckdb_path),
+        )
         return empty_context
-
-
-def _domain_dates_from_context(context: dict[str, list[str]]) -> dict[str, set[str]]:
-    balance_dates = set(context.get("balance", []))
-    liability_dates = set(context.get("liability", []))
-    bond_dates = set(context.get("bond", []))
-    bs_components = [balance_dates, liability_dates, bond_dates]
-    balance_sheet_dates = (
-        set.intersection(*bs_components) if all(bs_components) else set()
-    )
-    return {
-        "balance_sheet": balance_sheet_dates,
-        "pnl": set(context.get("pnl", [])),
-    }
-
-
-def _compute_unified_report_date(
-    *,
-    requested: str | None,
-    allow_partial: bool,
-    domain_dates: dict[str, set[str]],
-) -> tuple[str | None, list[str], dict[str, str]]:
-    """Pick the authoritative report_date given inputs.
-
-    Returns ``(report_date, domains_missing, domains_effective_date)``.
-    - strict mode: returns the most recent date in the intersection; if
-      ``requested`` is set and in intersection, returns it; else (None, all_domains, {}).
-    - partial mode: returns ``requested`` (or max across union if not requested)
-      and labels domains that don't have that date as missing.
-    """
-    intersection: set[str] = (
-        set.intersection(*domain_dates.values()) if all(domain_dates.values()) else set()
-    )
-
-    if not allow_partial:
-        # strict: intersection-only
-        if requested:
-            if requested in intersection:
-                return (
-                    requested,
-                    [],
-                    {domain: requested for domain in _HOME_SNAPSHOT_CALIBERS},
-                )
-            return (None, list(_HOME_SNAPSHOT_CALIBERS), {})
-        if not intersection:
-            return (None, list(_HOME_SNAPSHOT_CALIBERS), {})
-        top_date = max(intersection)
-        return (
-            top_date,
-            [],
-            {domain: top_date for domain in _HOME_SNAPSHOT_CALIBERS},
-        )
-
-    # partial: accept any requested or fall back to union max
-    if requested:
-        target = requested
-    else:
-        union = set.union(*domain_dates.values()) if domain_dates.values() else set()
-        if not union:
-            return (None, list(_HOME_SNAPSHOT_CALIBERS), {})
-        target = max(union)
-
-    missing = [
-        domain for domain in _HOME_SNAPSHOT_CALIBERS if target not in domain_dates[domain]
-    ]
-    effective: dict[str, str] = {}
-    for domain in _HOME_SNAPSHOT_CALIBERS:
-        if target in domain_dates[domain]:
-            effective[domain] = target
-        elif domain_dates[domain]:
-            # approximate latest available for that domain
-            effective[domain] = max(domain_dates[domain])
-    return (target, missing, effective)
-
-
-_VERDICT_TONES: frozenset[str] = frozenset({"positive", "neutral", "warning", "negative"})
-
-
-def _coerce_verdict_tone(raw: str) -> VerdictTone:
-    if raw in _VERDICT_TONES:
-        return raw  # type: ignore[return-value]
-    return "neutral"
-
-
-def executive_verdict(
-    *,
-    overview: OverviewPayload,
-    attention_count: int,
-    partial_note: str | None,
-    client_mode: str = "real",
-) -> VerdictPayload:
-    """首屏 Pyramid 定调：结论、支撑事实与下钻建议（确定性、可测试）。"""
-
-    metrics = overview.metrics
-    reasons: list[VerdictReason] = []
-    for m in metrics[:3]:
-        reasons.append(
-            VerdictReason(
-                label=m.label,
-                value=m.value.display,
-                detail=m.detail,
-                tone=_coerce_verdict_tone(m.tone),
-            )
-        )
-
-    tones = [_coerce_verdict_tone(m.tone) for m in metrics]
-    pos = sum(1 for t in tones if t == "positive")
-    neg = sum(1 for t in tones if t == "negative")
-    warn = sum(1 for t in tones if t == "warning")
-
-    if client_mode != "real" or partial_note:
-        conclusion = "数据状态需先复核，再做方向性判断"
-        tone: VerdictTone = "warning"
-    elif not metrics:
-        conclusion = "当前指标平稳，等待下一组观测"
-        tone = "neutral"
-    elif len(tones) > 0 and all(t == "neutral" for t in tones):
-        conclusion = "当前指标平稳，等待下一组观测"
-        tone = "neutral"
-    elif pos >= neg + warn:
-        conclusion = "首屏整体偏多，可基于规模与收益做方向性判断"
-        tone = "positive"
-    elif neg + warn > pos:
-        conclusion = "首屏存在压力点，需进入专题页确认原因"
-        tone = "warning"
-    else:
-        conclusion = "当前指标平稳，等待下一组观测"
-        tone = "neutral"
-
-    suggestions: list[VerdictSuggestion] = [
-        VerdictSuggestion(text="进入对应专题页继续下钻原因链条", link=None),
-    ]
-    if any(_coerce_verdict_tone(m.tone) in ("warning", "negative") for m in metrics):
-        suggestions.append(
-            VerdictSuggestion(text="关注信用利差与久期暴露", link="/bond-analysis"),
-        )
-    if attention_count > 0 or partial_note:
-        suggestions.append(
-            VerdictSuggestion(text="复核治理状态后再做正式结论", link="/governance"),
-        )
-
-    return VerdictPayload(
-        conclusion=conclusion,
-        tone=tone,
-        reasons=reasons,
-        suggestions=suggestions,
-    )
-
-
-def _product_category_ytd_headline_from_values(
-    report_date: str,
-    values: dict[str, object],
-) -> ProductCategoryYtdHeadlinePayload | None:
-    if values.get("grand_total") is None:
-        return None
-    summary_pnl = _fmt_yi_amount(float(values["grand_total"]), signed=True)
-    summary_detail = (
-        "Aligned with product-category view=ytd "
-        f"grand_total.business_net_income; report_date={report_date}."
-    )
-    intermediate = values.get("intermediate_business_income")
-    if intermediate is None:
-        int_numeric = _fmt_yi_amount(None, signed=True)
-        int_detail = (
-            "intermediate_business_income row was not found for product-category "
-            f"view=ytd; report_date={report_date}."
-        )
-    else:
-        int_numeric = _fmt_yi_amount(float(intermediate), signed=True)
-        int_detail = (
-            "Aligned with product-category view=ytd "
-            f"intermediate_business_income; report_date={report_date}."
-        )
-    return ProductCategoryYtdHeadlinePayload(
-        view="ytd",
-        summary_pnl=summary_pnl,
-        summary_pnl_detail=summary_detail,
-        operating_income=summary_pnl,
-        operating_income_detail=summary_detail,
-        intermediate_business_income=int_numeric,
-        intermediate_business_income_detail=int_detail,
-    )
-
-
-def _product_category_monthly_headline_from_values(
-    report_date: str,
-    values: dict[str, object],
-) -> ProductCategoryMonthlyHeadlinePayload | None:
-    if values.get("grand_total") is None:
-        return None
-    monthly_detail = (
-        "Aligned with product-category view=monthly "
-        f"grand_total.business_net_income; report_date={report_date}."
-    )
-    return ProductCategoryMonthlyHeadlinePayload(
-        view="monthly",
-        monthly_income=_fmt_yi_amount(float(values["grand_total"]), signed=True),
-        monthly_income_detail=monthly_detail,
-    )
-
-
-class _ProductCategoryHeadlineValues(dict[str, dict[str, object]]):
-    """Home-headline fast-path values carrying explicit degradation metadata.
-
-    Mirrors the `_HomeCacheBuildRunRows` pattern: shape-compatible with the
-    plain dict consumers already `.get()` from, while exposing fail-visible
-    `degraded` / `degraded_reason` attributes instead of a silent empty dict.
-    """
-
-    def __init__(
-        self,
-        values: dict[str, dict[str, object]] | None = None,
-        *,
-        degraded: bool = False,
-        degraded_reason: str | None = None,
-    ) -> None:
-        super().__init__(values or {})
-        self.degraded = degraded
-        self.degraded_reason = degraded_reason
-
-
-class _DegradedProductCategoryHeadline:
-    """Explicit degraded marker returned instead of a silent ``None``.
-
-    The headline payload schemas cannot carry warnings, so the failure reason
-    rides on this marker; `_compute_home_snapshot_envelope` converts it back
-    to ``None`` for the payload and surfaces the reason in
-    ``filters_applied.degraded_reasons``.
-    """
-
-    degraded = True
-
-    def __init__(self, component: str, reason: str) -> None:
-        self.component = component
-        self.reason = reason
 
 
 def _fetch_product_category_home_headline_values(
@@ -3283,7 +2748,9 @@ def _build_product_category_ytd_headline(
     )
 
 
-def _build_product_category_monthly_headline(report_date: str) -> ProductCategoryMonthlyHeadlinePayload | None:
+def _build_product_category_monthly_headline(
+    report_date: str,
+) -> ProductCategoryMonthlyHeadlinePayload | _DegradedProductCategoryHeadline | None:
     """与 /product-category-pnl 月度视图页脚 grand_total.business_net_income 对齐。"""
     settings = get_settings()
     duck_path = str(getattr(settings, "duckdb_path", "") or "").strip()
@@ -3307,8 +2774,14 @@ def _build_product_category_monthly_headline(report_date: str) -> ProductCategor
         from backend.app.schemas.product_category_pnl import ProductCategoryPnlPayload
 
         pc_payload = ProductCategoryPnlPayload.model_validate(result_dict)
-    except Exception:
-        return None
+    except Exception as exc:
+        reason = f"{type(exc).__name__}: {exc}"
+        logger.warning(
+            "product_category monthly headline fallback resolver failed (report_date=%s): %s",
+            report_date,
+            reason,
+        )
+        return _DegradedProductCategoryHeadline("product_category_monthly", reason)
 
     monthly_value = float(pc_payload.grand_total.business_net_income)
     monthly_detail = (
@@ -3326,7 +2799,7 @@ def _build_product_category_headlines(
     report_date: str,
 ) -> tuple[
     ProductCategoryYtdHeadlinePayload | _DegradedProductCategoryHeadline | None,
-    ProductCategoryMonthlyHeadlinePayload | None,
+    ProductCategoryMonthlyHeadlinePayload | _DegradedProductCategoryHeadline | None,
     int,
     int,
 ]:
@@ -3358,7 +2831,10 @@ def _build_product_category_headlines(
         started_at = time.perf_counter()
         return _build_product_category_ytd_headline(report_date), int((time.perf_counter() - started_at) * 1000)
 
-    def timed_monthly() -> tuple[ProductCategoryMonthlyHeadlinePayload | None, int]:
+    def timed_monthly() -> tuple[
+        ProductCategoryMonthlyHeadlinePayload | _DegradedProductCategoryHeadline | None,
+        int,
+    ]:
         started_at = time.perf_counter()
         return _build_product_category_monthly_headline(report_date), int((time.perf_counter() - started_at) * 1000)
 
@@ -3425,117 +2901,6 @@ def home_research_reports_envelope(
     )
 
 
-def _home_income_null_pnl() -> Numeric:
-    return Numeric(
-        raw=None,
-        unit="yuan",
-        display="-",
-        precision=2,
-        sign_aware=True,
-    )
-
-
-def _numeric_raw_and_unit_from_payload(value: object) -> tuple[float | None, str | None]:
-    if isinstance(value, Numeric):
-        return value.raw, value.unit
-    if isinstance(value, dict):
-        raw_value = value.get("raw")
-        unit_value = value.get("unit")
-    else:
-        raw_value = getattr(value, "raw", value)
-        unit_value = getattr(value, "unit", None)
-    if raw_value is None:
-        return None, str(unit_value) if unit_value else None
-    try:
-        return float(raw_value), str(unit_value) if unit_value else None
-    except (TypeError, ValueError):
-        return None, str(unit_value) if unit_value else None
-
-
-def _home_income_pct_points_from_payload(value: object) -> float | None:
-    raw, unit = _numeric_raw_and_unit_from_payload(value)
-    if raw is None:
-        return None
-    if unit == "pct":
-        return raw * _BASIS_POINTS_PER_PERCENT
-    if unit == "bp":
-        return raw / _BASIS_POINTS_PER_PERCENT
-    # Bond analytics collapses governed pct Numerics to flat Q8 strings while
-    # preserving their canonical decimal-ratio raw value.
-    return raw * _BASIS_POINTS_PER_PERCENT
-
-
-def _home_income_bp_points_from_payload(value: object) -> float | None:
-    raw, unit = _numeric_raw_and_unit_from_payload(value)
-    if raw is None:
-        return None
-    if unit == "pct":
-        return raw * _BASIS_POINTS_PER_PERCENT
-    return raw / _BASIS_POINTS_PER_PERCENT
-
-
-def _home_income_benchmark_warning(point_date: str, reason: object) -> str:
-    text = str(reason or "").strip()
-    if not text:
-        text = "benchmark/excess return unavailable"
-    return f"{point_date} {_HOME_INCOME_BENCHMARK_ID}: {text}"
-
-
-def _home_income_warning_date(text: str, marker: str) -> date | None:
-    marker_index = text.find(marker)
-    if marker_index < 0:
-        return None
-    try:
-        return date.fromisoformat(text[marker_index + len(marker): marker_index + len(marker) + 10])
-    except ValueError:
-        return None
-
-
-def _is_bounded_home_income_curve_fallback(reason: object) -> bool:
-    text = str(reason or "")
-    if _HOME_INCOME_CURVE_FALLBACK_PREFIX not in text:
-        return False
-    resolved_date = _home_income_warning_date(text, "from trade_date=")
-    requested_date = _home_income_warning_date(text, "requested_trade_date=")
-    if resolved_date is None or requested_date is None:
-        return False
-    fallback_days = (requested_date - resolved_date).days
-    return 0 <= fallback_days <= _HOME_INCOME_MAX_CURVE_FALLBACK_DAYS
-
-
-def _is_home_income_amount_disclosure_warning(reason: object) -> bool:
-    return BOND_ANALYTICS_FOREIGN_CURRENCY_FALLBACK_WARNING in str(reason or "")
-
-
-def _is_home_income_reconciliation_warning(reason: object) -> bool:
-    return BENCHMARK_EXCESS_RECON_GAP in str(reason or "")
-
-
-def _home_income_blocking_benchmark_reasons(
-    benchmark_warnings: list[object],
-    *,
-    vendor_status: str,
-) -> list[object]:
-    has_bounded_curve_fallback = any(
-        _is_bounded_home_income_curve_fallback(warning)
-        for warning in benchmark_warnings
-    )
-    blocking_reasons: list[object] = [
-        warning
-        for warning in benchmark_warnings
-        if not (
-            _is_bounded_home_income_curve_fallback(warning)
-            or _is_home_income_amount_disclosure_warning(warning)
-            or _is_home_income_reconciliation_warning(warning)
-        )
-    ]
-    if vendor_status != "ok" and not (
-        vendor_status == "vendor_stale" and has_bounded_curve_fallback and not blocking_reasons
-    ):
-        blocking_reasons.append(f"vendor_status={vendor_status}")
-    return blocking_reasons
-
-
 _HomeIncomeBenchmarkFetch = dict[str, object] | RuntimeError | OSError | TypeError | ValueError | KeyError
 
 
@@ -3552,8 +2917,12 @@ def _fetch_home_income_benchmark_envelopes(point_dates: list[str]) -> dict[str, 
             _HOME_INCOME_BENCHMARK_PERIOD_TYPE,
             _HOME_INCOME_BENCHMARK_ID,
         )
-    except (RuntimeError, OSError, TypeError, ValueError, KeyError):
-        pass
+    except (RuntimeError, OSError, TypeError, ValueError, KeyError) as exc:
+        _log_degraded_fallback(
+            "home income benchmark batch fetch falls back to per-date fetch",
+            exc,
+            point_dates=point_dates,
+        )
 
     def load(point_date: str) -> _HomeIncomeBenchmarkFetch:
         try:
@@ -3578,6 +2947,7 @@ def home_income_trend_envelope(
     *,
     report_date: str,
     window: int = 7,
+    force_refresh: bool = False,
 ) -> dict[str, object]:
     normalized = _normalize_report_date(report_date)
     assert normalized is not None
@@ -3587,13 +2957,22 @@ def home_income_trend_envelope(
         bounded_window,
         _home_data_version_token(),
     )
-    envelope = _HOME_INCOME_TREND_CACHE.get_or_set(
-        cache_key,
-        lambda: _compute_home_income_trend_envelope(
+    if force_refresh:
+        # A live entry is returned untouched by get_or_set, so a background refresh
+        # has to recompute and overwrite to restart the TTL.
+        envelope = _compute_home_income_trend_envelope(
             report_date=normalized,
             window=bounded_window,
-        ),
-    )
+        )
+        _HOME_INCOME_TREND_CACHE.set(cache_key, envelope)
+    else:
+        envelope = _HOME_INCOME_TREND_CACHE.get_or_set(
+            cache_key,
+            lambda: _compute_home_income_trend_envelope(
+                report_date=normalized,
+                window=bounded_window,
+            ),
+        )
     return deepcopy(envelope)
 
 
@@ -3789,10 +3168,18 @@ def warm_home_income_trend_cache_if_configured(settings: object) -> bool:
     return True
 
 
-def warm_home_income_trend_cache_in_current_thread_if_configured(settings: object) -> bool:
+def warm_home_income_trend_cache_in_current_thread_if_configured(
+    settings: object,
+    *,
+    force_refresh: bool = False,
+) -> bool:
     if not bool(getattr(settings, "home_income_trend_prewarm_enabled", False)):
         return False
-    _warm_home_income_trend_cache_quietly(report_date=None, window=7)
+    _warm_home_income_trend_cache_quietly(
+        report_date=None,
+        window=7,
+        force_refresh=force_refresh,
+    )
     return True
 
 
@@ -3800,14 +3187,27 @@ def _warm_home_income_trend_cache_quietly(
     *,
     report_date: str | None,
     window: int,
+    force_refresh: bool = False,
 ) -> None:
     started_at = time.perf_counter()
     try:
-        normalized_report_date = _normalize_report_date(report_date) if report_date else _latest_product_category_report_date()
+        if report_date:
+            normalized_report_date = _normalize_report_date(report_date)
+        else:
+            # The page requests income-trend with the snapshot's unified report_date;
+            # warming the product-category maximum would miss whenever the domains
+            # are out of step.
+            normalized_report_date = (
+                home_snapshot_unified_report_date() or _latest_product_category_report_date()
+            )
         if normalized_report_date is None:
             logger.info("home_income_trend_prewarm_skip reason=no_report_date")
             return
-        home_income_trend_envelope(report_date=normalized_report_date, window=window)
+        home_income_trend_envelope(
+            report_date=normalized_report_date,
+            window=window,
+            force_refresh=force_refresh,
+        )
         logger.info(
             "home_income_trend_prewarm_done ms=%d report_date=%s window=%d",
             int((time.perf_counter() - started_at) * 1000),
@@ -3825,21 +3225,6 @@ def _latest_product_category_report_date() -> str | None:
     except (RuntimeError, OSError, TypeError, ValueError, KeyError):
         return None
     return dates[0] if dates else None
-
-
-def _empty_home_snapshot_payload() -> HomeSnapshotPayload:
-    return HomeSnapshotPayload(
-        report_date="",
-        mode="strict",
-        source_surface="executive_analytical",
-        overview=OverviewPayload(title="经营总览", metrics=[]),
-        attribution=_pnl_attribution_unavailable_payload(),
-        domains_missing=list(_HOME_SNAPSHOT_CALIBERS),
-        domains_effective_date={},
-        verdict=None,
-        product_category_ytd=None,
-        product_category_monthly=None,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -3861,7 +3246,6 @@ _HomeDataVersionToken = tuple[object, ...]
 _HomeSnapshotCacheKey = tuple[str | None, bool, _HomeDataVersionToken]
 _HomeIncomeTrendCacheKey = tuple[str, int, _HomeDataVersionToken]
 _HomeNimContextCacheKey = tuple[tuple[str, ...], str | None, int, _HomeDataVersionToken]
-_HomeGovernanceFileFingerprint = tuple[str, int, int, str]
 _HomeCacheBuildRunsKey = tuple[str, _HomeGovernanceFileFingerprint]
 _HomeKpiGateCacheKey = tuple[str, int | None, int]
 _HomeKpiMetricsCacheKey = tuple[str, str | None, int]
@@ -3933,23 +3317,6 @@ def _duckdb_version_token() -> tuple[str, int | None]:
         return duckdb_path, None
 
 
-def _duckdb_file_edge_hash(path: Path, *, stat_size: int) -> str | None:
-    try:
-        with path.open("rb") as handle:
-            head = handle.read(_HOME_CACHE_GOVERNANCE_TAIL_BYTES)
-            if stat_size > _HOME_CACHE_GOVERNANCE_TAIL_BYTES:
-                handle.seek(-_HOME_CACHE_GOVERNANCE_TAIL_BYTES, 2)
-                tail = handle.read(_HOME_CACHE_GOVERNANCE_TAIL_BYTES)
-            else:
-                tail = b""
-    except OSError:
-        return None
-    digest = hashlib.sha256()
-    digest.update(head)
-    digest.update(tail)
-    return digest.hexdigest()
-
-
 def _duckdb_storage_content_fingerprint(duckdb_path: object) -> tuple[tuple[str, int, str], ...] | None:
     path = Path(str(duckdb_path))
     try:
@@ -3987,54 +3354,6 @@ def _duckdb_storage_content_fingerprint(duckdb_path: object) -> tuple[tuple[str,
     with _HOME_FINGERPRINT_CACHE_LOCK:
         _HOME_DUCKDB_STORAGE_FINGERPRINT_CACHE[signature] = value
     return value
-
-
-def _governance_file_fingerprint(
-    base_dir: object,
-    stream: str,
-) -> _HomeGovernanceFileFingerprint | None:
-    base_path = Path(str(base_dir))
-    path = base_path / f"{stream}.jsonl"
-    try:
-        stat = path.stat()
-    except OSError:
-        return None
-    if not path.is_file():
-        return None
-    try:
-        with path.open("rb") as handle:
-            if stat.st_size > _HOME_CACHE_GOVERNANCE_TAIL_BYTES:
-                handle.seek(-_HOME_CACHE_GOVERNANCE_TAIL_BYTES, 2)
-            content = handle.read()
-    except OSError:
-        return None
-    return (stream, stat.st_size, stat.st_mtime_ns, hashlib.sha256(content).hexdigest())
-
-
-def _selected_governance_files_fingerprint(
-    base_dir: object,
-) -> tuple[tuple[str, int, int, str], ...] | None:
-    base_path = Path(str(base_dir))
-    if not str(base_dir or "").strip():
-        return None
-    fingerprint: list[tuple[str, int, int, str]] = []
-    for filename in _HOME_CACHE_GOVERNANCE_FILES:
-        path = base_path / filename
-        try:
-            stat = path.stat()
-        except OSError:
-            return None
-        if not path.is_file():
-            return None
-        try:
-            with path.open("rb") as handle:
-                if stat.st_size > _HOME_CACHE_GOVERNANCE_TAIL_BYTES:
-                    handle.seek(-_HOME_CACHE_GOVERNANCE_TAIL_BYTES, 2)
-                content = handle.read()
-        except OSError:
-            return None
-        fingerprint.append((filename, stat.st_size, stat.st_mtime_ns, hashlib.sha256(content).hexdigest()))
-    return tuple(fingerprint)
 
 
 def _home_data_version_token(
@@ -4169,11 +3488,14 @@ def home_snapshot_envelope(
     *,
     report_date: str | None = None,
     allow_partial: bool = False,
+    force_refresh: bool = False,
 ) -> dict[str, object]:
     """home snapshot envelope 入口（带 TTL 缓存）。
 
     缓存命中：返回上次构造 envelope 的防御副本，避免调用方 mutation 污染缓存。
     缓存未命中或过期：执行 ``_compute_home_snapshot_envelope`` 并写回缓存。
+    ``force_refresh``：后台周期预热使用；get_or_set 命中活跃条目时不会续期，
+    刷新必须重算并覆盖写入才能把过期时间推后。
     """
     total_t0 = time.perf_counter()
     normalized_report_date = _normalize_report_date(report_date)
@@ -4191,13 +3513,20 @@ def home_snapshot_envelope(
         allow_partial=allow_partial,
     )
 
-    envelope = _HOME_SNAPSHOT_CACHE.get_or_set(
-        cache_key,
-        lambda: _compute_home_snapshot_envelope(
+    if force_refresh:
+        envelope = _compute_home_snapshot_envelope(
             report_date=normalized_report_date,
             allow_partial=allow_partial,
-        ),
-    )
+        )
+        _HOME_SNAPSHOT_CACHE.set(cache_key, envelope)
+    else:
+        envelope = _HOME_SNAPSHOT_CACHE.get_or_set(
+            cache_key,
+            lambda: _compute_home_snapshot_envelope(
+                report_date=normalized_report_date,
+                allow_partial=allow_partial,
+            ),
+        )
 
     _log_home_snapshot_perf_step(
         "total",
@@ -4207,6 +3536,24 @@ def home_snapshot_envelope(
         allow_partial=allow_partial,
     )
     return deepcopy(envelope)
+
+
+def home_snapshot_unified_report_date() -> str | None:
+    """dashboard-home 实际请求使用的统一 report_date（来自快照缓存，通常为纯命中）。
+
+    预热侧必须用它构造缓存键：页面所有带日期请求的 report_date 都来自快照的
+    跨域交集日期，而不是任何单域的最大日期。
+    """
+    try:
+        envelope = home_snapshot_envelope(report_date=None, allow_partial=False)
+    except Exception:
+        logger.exception("home_snapshot_unified_report_date_failed")
+        return None
+    result = envelope.get("result")
+    if not isinstance(result, dict):
+        return None
+    value = result.get("report_date")
+    return value if isinstance(value, str) and value else None
 
 
 def warm_home_snapshot_cache_if_configured(settings: object) -> bool:
@@ -4240,7 +3587,11 @@ def warm_home_snapshot_cache_if_configured(settings: object) -> bool:
     return True
 
 
-def warm_home_snapshot_cache_blocking_if_configured(settings: object) -> bool:
+def warm_home_snapshot_cache_blocking_if_configured(
+    settings: object,
+    *,
+    force_refresh: bool = False,
+) -> bool:
     if not bool(getattr(settings, "home_snapshot_prewarm_enabled", False)):
         _set_home_snapshot_prewarm_status(
             ok=False,
@@ -4252,7 +3603,11 @@ def warm_home_snapshot_cache_blocking_if_configured(settings: object) -> bool:
             error=None,
         )
         return False
-    _warm_home_snapshot_cache_quietly(report_date=None, allow_partial=False)
+    _warm_home_snapshot_cache_quietly(
+        report_date=None,
+        allow_partial=False,
+        force_refresh=force_refresh,
+    )
     return home_snapshot_prewarm_status().get("status") == "ready"
 
 
@@ -4260,6 +3615,7 @@ def _warm_home_snapshot_cache_quietly(
     *,
     report_date: str | None,
     allow_partial: bool,
+    force_refresh: bool = False,
 ) -> None:
     t0 = time.perf_counter()
     _set_home_snapshot_prewarm_status(
@@ -4278,7 +3634,11 @@ def _warm_home_snapshot_cache_quietly(
     )
     try:
         _start_home_snapshot_step_profile()
-        home_snapshot_envelope(report_date=report_date, allow_partial=allow_partial)
+        home_snapshot_envelope(
+            report_date=report_date,
+            allow_partial=allow_partial,
+            force_refresh=force_refresh,
+        )
     except Exception as exc:
         step_durations = _finish_home_snapshot_step_profile()
         _set_home_snapshot_prewarm_status(
@@ -4464,6 +3824,11 @@ def _compute_home_snapshot_envelope(
             product_category_ytd.reason
         )
         product_category_ytd = None
+    if isinstance(product_category_monthly, _DegradedProductCategoryHeadline):
+        product_category_degraded_reasons[product_category_monthly.component] = (
+            product_category_monthly.reason
+        )
+        product_category_monthly = None
     _log_home_snapshot_perf_step(
         "product_category_ytd",
         step_t0,

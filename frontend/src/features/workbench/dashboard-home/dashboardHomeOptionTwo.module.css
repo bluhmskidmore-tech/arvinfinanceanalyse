@@ -2230,8 +2230,9 @@
     [data-layout-role="research-decision-strip"] [aria-label="宏观上下文摘要"]
   ) {
   display: grid !important;
-  min-width: 150px;
-  flex: 0 0 150px;
+  /* 150px 三等分放不下「供给提示」，末位标签会被切掉一个字。 */
+  min-width: 168px;
+  flex: 0 0 168px;
   grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   gap: 4px !important;
 }
@@ -2254,7 +2255,9 @@
   padding: 0 !important;
   align-items: start !important;
   grid-template-columns: minmax(0, 1fr) !important;
-  grid-template-rows: 84px 198px !important;
+  /* 发布面板按内容取高（空态只有一行说明），剩余高度全部归政策面板，
+     避免卡片被 358px 契约钉死后在左栏留出成片空白。 */
+  grid-template-rows: auto minmax(0, 1fr) !important;
   gap: 8px !important;
   overflow: hidden !important;
   box-sizing: border-box;
@@ -2262,12 +2265,24 @@
 
 .extendedEvidence :global([data-layout-role="research-release-pane"]),
 .extendedEvidence :global([data-layout-role="research-policy-pane"]) {
-  height: 100% !important;
   min-height: 0 !important;
-  max-height: none !important;
   padding: 7px 9px !important;
-  align-self: stretch !important;
   overflow: hidden !important;
+}
+
+.extendedEvidence :global([data-layout-role="research-release-pane"]) {
+  height: auto !important;
+  /* 有发布项时维持原 84px 上限，只让空态收缩。 */
+  max-height: 84px !important;
+  align-self: start !important;
+}
+
+.extendedEvidence :global([data-layout-role="research-policy-pane"]) {
+  display: flex !important;
+  height: 100% !important;
+  max-height: none !important;
+  flex-direction: column;
+  align-self: stretch !important;
 }
 
 .extendedEvidence :global([data-layout-role="research-release-header"]),
@@ -2289,9 +2304,110 @@
 }
 
 .extendedEvidence :global([data-layout-role="research-release-history"]),
-.extendedEvidence :global([data-layout-role="research-policy-groups"]),
 .extendedEvidence :global([data-layout-role="research-supply-strip"]),
+/* 空态由摘要句承担，另一条同义说明只进 title，不在卡内重复一次。 */
+.extendedEvidence :global([data-layout-role="research-policy-empty"]),
 .extendedEvidence :global([aria-label="政策与资金面数据诊断"]) {
+  display: none !important;
+}
+
+/* 有分组时摘要句是同一信息的复述（分组标签已给出口径与条数），让位给真实快讯。 */
+.extendedEvidence
+  :global(
+    [data-layout-role="research-policy-pane"]:has(
+        [data-layout-role="research-policy-groups"]
+      )
+      > p
+  ) {
+  display: none !important;
+}
+
+/* 卡片高度由计数徽标承诺的政策快讯占满，标题全文进 title。 */
+.extendedEvidence :global([data-layout-role="research-policy-groups"]) {
+  display: grid !important;
+  min-height: 0;
+  margin: 3px 0 0 !important;
+  flex: 1 1 auto;
+  grid-auto-rows: min-content;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 4px !important;
+  overflow: hidden !important;
+}
+
+/* 分组在卡内改用分隔线而非嵌套盒子：省下的内边距正好让每组两条快讯完整落地。 */
+.extendedEvidence :global([data-layout-role="research-policy-group"]) {
+  gap: 2px !important;
+  min-width: 0;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.extendedEvidence
+  :global(
+    [data-layout-role="research-policy-group"]
+      + [data-layout-role="research-policy-group"]
+  ) {
+  padding-top: 4px !important;
+  border-top: 1px solid var(--option-two-line) !important;
+}
+
+.extendedEvidence
+  :global(
+    [data-layout-role="research-policy-pane"]
+      [aria-label="政策与资金面状态标签"]
+  ) {
+  margin-bottom: 4px !important;
+}
+
+.extendedEvidence
+  :global([data-layout-role="research-policy-group-header"] > span) {
+  font-size: 12px !important;
+  line-height: 16px !important;
+}
+
+.extendedEvidence
+  :global([data-layout-role="research-policy-group-header"] > small) {
+  font-size: 11px !important;
+  line-height: 16px !important;
+}
+
+.extendedEvidence :global([data-layout-role="research-policy-group-list"]) {
+  gap: 0 !important;
+  min-width: 0;
+}
+
+/* 每组只留最新两条，其余进「政策与资金面」下钻；避免分组在卡内被半行裁断。 */
+.extendedEvidence
+  :global([data-layout-role="research-policy-item"]:nth-child(n + 3)) {
+  display: none !important;
+}
+
+.extendedEvidence :global([data-layout-role="research-policy-item"]) {
+  /* 话题标签在窄栏里隐藏后，基础样式残留的空 1fr 轨道会吃掉整行宽度，标题只剩几个字。 */
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 6px !important;
+  min-height: 0 !important;
+  padding: 1px 0 !important;
+  align-items: baseline !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.extendedEvidence :global([data-layout-role="research-policy-item-topic"]) {
+  display: none !important;
+}
+
+.extendedEvidence :global([data-layout-role="research-policy-item-title"]) {
+  display: block !important;
+  overflow: hidden;
+  font-size: 12px !important;
+  line-height: 16px !important;
+  text-overflow: ellipsis;
+  white-space: nowrap !important;
+}
+
+.extendedEvidence :global([data-layout-role="research-policy-item-meta"]) {
   display: none !important;
 }
 
@@ -2537,6 +2653,49 @@
   line-height: 16px !important;
   text-overflow: ellipsis;
   white-space: nowrap !important;
+}
+
+/* 有命中时标题独占整组宽度并允许两行：112px 标签列只够放半句，读者拿不到结论。 */
+.extendedEvidence
+  :global([data-testid="dashboard-home-bond-news-holding"][data-empty="false"]),
+.extendedEvidence
+  :global([data-testid="dashboard-home-bond-news-credit"][data-empty="false"]) {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 2px !important;
+}
+
+.extendedEvidence
+  :global(
+    [data-testid="dashboard-home-bond-news-holding"][data-empty="false"]
+      [data-layout-role="bond-news-item"]
+  ),
+.extendedEvidence
+  :global(
+    [data-testid="dashboard-home-bond-news-credit"][data-empty="false"]
+      [data-layout-role="bond-news-item"]
+  ) {
+  min-height: 0 !important;
+  padding: 0 !important;
+}
+
+.extendedEvidence
+  :global(
+    [data-testid="dashboard-home-bond-news-holding"][data-empty="false"]
+      [data-layout-role="bond-news-body"]
+      > strong
+  ),
+.extendedEvidence
+  :global(
+    [data-testid="dashboard-home-bond-news-credit"][data-empty="false"]
+      [data-layout-role="bond-news-body"]
+      > strong
+  ) {
+  display: -webkit-box !important;
+  font-size: 12px !important;
+  white-space: normal !important;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .extendedEvidence :global([data-layout-role="bond-news-item"]) {
@@ -3836,7 +3995,9 @@
    原规则（跨页保留）供给 cockpit 栅格，值为相同字面量。 */
 .page {
   --dh-home-nocturne-ink: var(--moss-color-neutral-200); /* 原 #e9e9ed，现 #e2e6ec。 */
-  --dh-home-nocturne-muted: var(--moss-color-neutral-600); /* 原 #75798c，现 #6b7280。 */
+  /* neutral-600 对暗底 3.64:1 不达 AA；对齐 Nocturne 单一色源 --nct-muted（4.5:1+）。
+     .page 与 dashboard-home scope 同元素声明，token 恒有值，无需 hex 兜底。 */
+  --dh-home-nocturne-muted: var(--nct-muted);
   --dh-home-nocturne-radius: 8px;
   --dh-home-nocturne-rule: var(--moss-color-neutral-900); /* 原 #1a2a38，现 #1f2937。 */
 }

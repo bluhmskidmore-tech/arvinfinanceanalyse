@@ -12,7 +12,7 @@ export function WorkbenchShellMarketTicker() {
     retry: false,
     staleTime: 60_000,
   });
-  const shellTickerItems = useMemo(
+  const shellTicker = useMemo(
     () => buildShellTickerItems(shellTickerQuery.data?.result?.series ?? []),
     [shellTickerQuery.data?.result?.series],
   );
@@ -25,7 +25,16 @@ export function WorkbenchShellMarketTicker() {
       <span className="workbench-market-ticker-label">
         市场快讯
       </span>
-      {shellTickerItems.map((item, index) => (
+      {shellTicker.isFallback ? (
+        <span
+          data-testid="workbench-market-ticker-fallback-flag"
+          className="workbench-market-ticker-fallback-flag"
+          title="行情接口未返回可用序列，以下为演示行情，不代表最新市场数据"
+        >
+          演示
+        </span>
+      ) : null}
+      {shellTicker.items.map((item, index) => (
         <div
           key={item.key}
           className="workbench-market-ticker-item"
@@ -36,10 +45,14 @@ export function WorkbenchShellMarketTicker() {
           <strong className="workbench-market-ticker-strong">
             {item.value}
           </strong>
-          <span className="workbench-market-ticker-delta" data-tone={item.tone}>
+          <span
+            className="workbench-market-ticker-delta"
+            data-tone={item.tone}
+            title={item.deltaTitle}
+          >
             {item.delta}
           </span>
-          {index < shellTickerItems.length - 1 ? (
+          {index < shellTicker.items.length - 1 ? (
             <span className="workbench-market-ticker-rule" />
           ) : null}
         </div>

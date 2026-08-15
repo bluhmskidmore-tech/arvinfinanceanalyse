@@ -102,7 +102,8 @@ describe("dashboard home option two visual contracts", () => {
       ),
     );
 
-    expect(styleAccesses.size).toBe(71);
+    // 72 = 原 71 + 卡头 stale 琥珀点（dhBondNewsStaleDot，§6 状态去重收敛）。
+    expect(styleAccesses.size).toBe(72);
     for (const className of styleAccesses) {
       expect(deferredEvidenceCss).toContain(`.${className}`);
     }

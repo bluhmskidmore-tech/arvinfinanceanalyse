@@ -90,6 +90,14 @@ function visibleAsOf(value: string | null | undefined): string {
     : normalized || GAP;
 }
 
+/**
+ * 来源列可见文本剥离括号内的兜底/状态说明（如「（Choice 不可用或偏旧兜底）」），
+ * 状态语义由状态列徽标承担，全文保留在单元格 title（§6 状态信息去重）。
+ */
+function visibleBasis(value: string): string {
+  return value.replace(/[（(][^（）()]*[）)]\s*$/u, "").trim() || value;
+}
+
 function toneForState(kind: HomeDataStateKind): LedgerTone {
   if (kind === "ready") return "ok";
   if (kind === "error") return "bad";
@@ -404,9 +412,9 @@ export function DashboardHomeOptionTwoGovernanceSection({
       <header className={styles.header}>
         <div>
           <h2 id="dashboard-home-governance-ledger-title">数据治理台账</h2>
-          <small>仅列示当前页面可见状态</small>
         </div>
-        <span>4 个读链视图</span>
+        {/* §7 微元句：范围说明不占区块头正文，收进右侧计数徽标 title。 */}
+        <span title="仅列示当前页面可见状态">4 个读链视图</span>
       </header>
 
       <div className={styles.tabs} role="tablist" aria-label="数据治理台账视图">
@@ -458,7 +466,7 @@ export function DashboardHomeOptionTwoGovernanceSection({
                   >
                     <td className={styles.primary} title={row.basis}>
                       <strong>{row.label}</strong>
-                      <small>{row.basis}</small>
+                      <small>{visibleBasis(row.basis)}</small>
                     </td>
                     <td className={styles.numeric}>{row.date}</td>
                     <td className={styles.numeric}>{row.count}</td>

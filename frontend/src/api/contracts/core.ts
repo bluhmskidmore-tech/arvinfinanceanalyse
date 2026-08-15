@@ -42,6 +42,9 @@ export type ResultMeta = {
   basis: ApiBasis;
   result_kind: string;
   formal_use_allowed: boolean;
+  /** 金额币种口径（后端 ResultMeta 基类字段；analysis_view_tool 等实际输出）。 */
+  amount_currency_basis?: string | null;
+  amount_currency_basis_note?: string | null;
   source_version: string;
   vendor_version: string;
   rule_version: string;

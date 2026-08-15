@@ -216,22 +216,23 @@
   min-width: 0;
 }
 
+/* 一问副题：12px muted 常规体（对齐首页页头语言，不用大写宽字距微标签）。 */
 :where([data-testid="bond-analysis-overview"]) .dashboard-home-toolbar__eyebrow {
+  overflow: hidden;
   color: var(--dh-api-muted);
-  font-size: 10px;
-  font-weight: 640;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 :where([data-testid="bond-analysis-overview"]) .dashboard-home-toolbar__title {
   margin: 0;
   color: var(--ib-ink);
-  font-family: var(--ib-serif);
   font-size: 20px;
-  font-weight: 600;
-  letter-spacing: 0;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   line-height: 1.2;
 }
 
@@ -248,10 +249,11 @@
 :where([data-testid="bond-analysis-overview"]) .dashboard-home-action-button,
 :where([data-testid="bond-analysis-overview"]) .dashboard-home-control,
 :where([data-testid="bond-analysis-overview"]) .dashboard-home-check {
-  min-height: 30px;
-  border-radius: var(--ib-radius);
+  min-height: 28px;
+  /* Shape Lock：跟随页面深色圆角制度（--ib-radius 全局 2px 未随 Nocturne 重映射）。 */
+  border-radius: var(--dh-api-radius, 6px);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1;
 }
 

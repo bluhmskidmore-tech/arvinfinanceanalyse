@@ -87,6 +87,34 @@ function toneBadge(tone: ModuleHomeTone | "up" | "down" | "ok" | "muted") {
   return "muted";
 }
 
+/**
+ * 行情带 tone 由原始数值计算，微小变动格式化后显示为 ±0 时按中性处理（C9），
+ * 避免「+0 却着绿/红」的自相矛盾读数。
+ */
+function normalizeTapeTone(tone: "up" | "down" | "ok" | "muted", delta: string) {
+  if (tone !== "up" && tone !== "down") return tone;
+  const numericToken = delta.trim().match(/^[+-]?([\d,]+(?:\.\d+)?)/)?.[1];
+  if (!numericToken) return tone;
+  return Number(numericToken.replace(/,/g, "")) === 0 ? "muted" : tone;
+}
+
+/** 事件行 content_type 分类 token（news/major_news）中文化，未登记 token 收进 title（C13）。 */
+const NEWS_SOURCE_LABELS: Record<string, string> = {
+  news: "新闻",
+  major_news: "要闻",
+};
+
+function newsEventMeta(row: ModuleHomeDetailRow) {
+  const sourceLabel = row.source ? NEWS_SOURCE_LABELS[row.source] : undefined;
+  return {
+    visible: [row.tradeDate, sourceLabel].filter(Boolean).join(" · "),
+    full: [row.tradeDate, row.source].filter(Boolean).join(" · "),
+  };
+}
+
+/** 脚本/产物类运维状态不属于市场信号（C14），改挂在 01 区状态栏，文件名收 title。 */
+const OPS_SIGNAL_PATTERN = /脚本|产物|output[_\s-]?file|script/i;
+
 function compactEventTime(value: string) {
   return value ? value.replace("T", " ").slice(5, 16) : "时间未返回";
 }
@@ -98,11 +126,26 @@ function signalDetail(row: ModuleHomeDetailRow) {
   return detailParts[0] ?? row.tradeDate ?? EM_DASH;
 }
 
+const FALLBACK_MODE_LABELS: Record<string, string> = {
+  none: "无",
+  backfill: "回填",
+};
+
 function fallbackLabel(meta: ResultMeta | undefined) {
-  if (!meta) return "meta_missing";
-  if (meta.fallback_mode === "none" && !meta.fallback_date) return "none";
-  return `${meta.fallback_mode}${meta.fallback_date ? `/${meta.fallback_date}` : ""}`;
+  if (!meta) return "元数据缺失";
+  if (meta.fallback_mode === "none" && !meta.fallback_date) return "无";
+  const mode = FALLBACK_MODE_LABELS[meta.fallback_mode] ?? meta.fallback_mode;
+  return `${mode}${meta.fallback_date ? `/${meta.fallback_date}` : ""}`;
 }
+
+/** 01 区状态面板不透出英文枚举（C13）：basis/formal_use_allowed 展示为中文。 */
+const OBSERVATION_BASIS_LABELS: Record<string, string> = {
+  formal: "正式口径",
+  scenario: "情景口径",
+  analytical: "分析口径",
+  ledger: "台账口径",
+  mock: "样例口径",
+};
 
 type MacroObservationGate = {
   basis: string;
@@ -150,8 +193,8 @@ function buildMacroObservationGate(
   }
   const blocked = blockingReasons.length > 0;
   return {
-    basis: meta?.basis ?? "unknown",
-    formalUse: meta ? String(meta.formal_use_allowed) : "unknown",
+    basis: meta ? OBSERVATION_BASIS_LABELS[meta.basis] ?? meta.basis : "未返回",
+    formalUse: meta ? (meta.formal_use_allowed ? "是" : "否") : "未返回",
     sourceQuality: [
       `质量 ${meta ? QUALITY_LABELS[meta.quality_flag] : "未知"}`,
       `供应方 ${meta ? VENDOR_LABELS[meta.vendor_status] : "未知"}`,
@@ -197,10 +240,12 @@ function DenseChartCard({
           <span className={styles.cardIndex}>{item.indexLabel}</span>
           <h3>{item.chart.title}</h3>
         </div>
-        <span>{item.chart.subtitle}</span>
+        <span title={item.chart.subtitle}>{item.chart.subtitle}</span>
       </header>
       {effectiveReadingGuide ? (
-        <p className={styles.chartGuide}>{effectiveReadingGuide}</p>
+        <p className={styles.chartGuide} title={effectiveReadingGuide}>
+          {effectiveReadingGuide}
+        </p>
       ) : null}
       <div className={styles.chartCanvas}>
         {item.chart.option ? (
@@ -216,7 +261,7 @@ function DenseChartCard({
           <div className={styles.chartEmpty}>后端暂未返回足够的可绘制数据</div>
         )}
       </div>
-      <footer>{item.chart.footnote}</footer>
+      <footer title={item.chart.footnote}>{item.chart.footnote}</footer>
     </article>
   );
 }
@@ -238,6 +283,15 @@ function DenseMacroPulseCard({
     .join(" ")}`.toLowerCase();
   const isSearchMatch =
     searchQuery.length === 0 || searchableText.includes(searchQuery);
+  // 「绝对变化/百分比变化」字样上收列头（C16）；口径混排时列头退回「变化」，行内以悬浮说明。
+  const changeLabels = [
+    ...new Set(
+      rows
+        .map((row) => row.changeLabel)
+        .filter((label) => label !== "变化未返回"),
+    ),
+  ];
+  const changeHeader = changeLabels.length === 1 ? changeLabels[0] : "变化";
   return (
     <article
       className={`${styles.chartCard} ${styles.pulseCard}`}
@@ -249,13 +303,15 @@ function DenseMacroPulseCard({
           <span className={styles.cardIndex}>E</span>
           <h3>指标变动表</h3>
         </div>
-        <span>各行日期见悬浮 · 单位按原始口径</span>
+        <span title="各行日期见悬浮 · 单位按原始口径">
+          各行日期见悬浮 · 单位按原始口径
+        </span>
       </header>
       <div className={`${styles.chartCanvas} ${styles.macroPulse}`}>
         <div className={styles.pulseColumns} aria-hidden="true">
           <span>指标</span>
           <span>前值 → 最新值</span>
-          <span>变化（按单位）</span>
+          <span>{changeHeader}</span>
         </div>
         <div className={styles.pulseRows}>
           {rows.length > 0 ? (
@@ -263,7 +319,7 @@ function DenseMacroPulseCard({
               <div
                 className={styles.pulseRow}
                 key={row.key}
-                title={`最新日期 ${row.latestDate} · 来源 ${row.source}`}
+                title={`最新日期 ${row.latestDate} · 来源 ${row.source}${changeLabels.length > 1 ? ` · ${row.changeLabel}` : ""}`}
               >
                 <span>{row.label}</span>
                 <div
@@ -275,7 +331,6 @@ function DenseMacroPulseCard({
                   <strong>{row.latestValue}</strong>
                 </div>
                 <em>
-                  <small>{row.changeLabel}</small>
                   <strong>{row.change}</strong>
                 </em>
               </div>
@@ -286,9 +341,9 @@ function DenseMacroPulseCard({
         </div>
       </div>
       <footer
-        title={`分析截至 ${asOfDate || "—"}；各指标最新日期以行内悬浮信息为准。变化列按单位区分绝对变化或百分比，不代表利好或利空。`}
+        title={`分析截至 ${asOfDate || EM_DASH}；各指标最新日期以行内悬浮信息为准。变化列按单位区分绝对变化或百分比，不代表利好或利空。`}
       >
-        分析截至 {asOfDate || "—"} ·
+        分析截至 {asOfDate || EM_DASH} ·
         各指标日期见悬浮；变化按单位区分绝对值或百分比
       </footer>
     </article>
@@ -315,7 +370,7 @@ function DenseNewsDensityCard({
     searchQuery.length === 0 || searchableText.includes(searchQuery);
   const sampleRangeLabel =
     density.sampledEvents > 0
-      ? `有效样本区间 ${density.startDate || "—"}–${density.endDate || "—"}`
+      ? `有效样本区间 ${density.startDate || EM_DASH}–${density.endDate || EM_DASH}`
       : "无有效样本区间";
   return (
     <article
@@ -495,9 +550,13 @@ export function MarketOverviewDenseFirstScreen({
   const eventRows =
     newsPanel?.rows.filter((row) => row.key.startsWith("news-event-")).slice(0, 3) ??
     [];
-  const signalRows = signalPanel?.rows.slice(0, 6) ?? [];
+  const allSignalRows = signalPanel?.rows ?? [];
+  const opsSignalRow = allSignalRows.find((row) => OPS_SIGNAL_PATTERN.test(row.label));
+  const signalRows = allSignalRows
+    .filter((row) => !OPS_SIGNAL_PATTERN.test(row.label))
+    .slice(0, 6);
   const searchQuery = searchValue.trim().toLowerCase();
-  const judgmentDate = macro?.as_of_date ?? latestTradeDate ?? "—";
+  const judgmentDate = macro?.as_of_date ?? latestTradeDate ?? EM_DASH;
   const macroObservationGate = buildMacroObservationGate(
     macroMeta,
     macroRefreshErrorWithData,
@@ -601,17 +660,30 @@ export function MarketOverviewDenseFirstScreen({
               <div>
                 <span>Crisis</span>
                 <strong>
-                  {view.marketCrisisExplain?.crisisScore?.toFixed(2) ?? "—"} ·{" "}
+                  {view.marketCrisisExplain?.crisisScore?.toFixed(2) ?? EM_DASH} ·{" "}
                   {view.marketCrisisExplain?.regime ?? "待返回"}
                 </strong>
               </div>
+              {opsSignalRow ? (
+                <div
+                  data-testid="module-home-market-dense-ops-signal"
+                  title={[
+                    ...new Set(
+                      [opsSignalRow.detail, opsSignalRow.source].filter(Boolean),
+                    ),
+                  ].join("；")}
+                >
+                  <span>{opsSignalRow.label}</span>
+                  <strong>{opsSignalRow.value}</strong>
+                </div>
+              ) : null}
             </div>
             <div
               className={styles.observationMeta}
               data-testid="module-home-market-dense-observation-meta"
             >
               <article className={styles.observationFact}>
-                <span>口径 basis</span>
+                <span>口径</span>
                 <strong data-testid="module-home-market-dense-observation-basis">
                   {macroObservationGate.basis}
                 </strong>
@@ -650,7 +722,7 @@ export function MarketOverviewDenseFirstScreen({
             return (
               <article
                 className={styles.tapeCell}
-                data-tone={metric.tone}
+                data-tone={normalizeTapeTone(metric.tone, metric.delta)}
                 key={metric.key}
                 title={metric.title}
               >
@@ -660,7 +732,7 @@ export function MarketOverviewDenseFirstScreen({
                   {unit ? <small>{unit}</small> : null}
                 </strong>
                 <em>{metric.delta}</em>
-                <time>{metric.tradeDate ?? "—"}</time>
+                <time>{metric.tradeDate ?? EM_DASH}</time>
               </article>
             );
           })}
@@ -674,13 +746,16 @@ export function MarketOverviewDenseFirstScreen({
             </header>
             <div className={styles.eventRows}>
               {eventRows.length > 0 ? (
-                eventRows.map((row, index) => (
-                  <article key={row.key}>
-                    <time>{String(index + 1).padStart(2, "0")}</time>
-                    <strong>{row.value}</strong>
-                    <span>{[row.tradeDate, row.source].filter(Boolean).join(" · ")}</span>
-                  </article>
-                ))
+                eventRows.map((row, index) => {
+                  const meta = newsEventMeta(row);
+                  return (
+                    <article key={row.key}>
+                      <time>{String(index + 1).padStart(2, "0")}</time>
+                      <strong>{row.value}</strong>
+                      <span title={meta.full}>{meta.visible}</span>
+                    </article>
+                  );
+                })
               ) : (
                 <div className={styles.eventEmpty}>
                   {newsPanel?.stateDetail ?? "新闻事件待读取"}
@@ -706,6 +781,7 @@ export function MarketOverviewDenseFirstScreen({
                     data-search-match={matchesSearch ? "true" : "false"}
                     data-tone={item.tone}
                     key={item.title}
+                    title={`${item.conclusion}（证据：${item.evidence}）`}
                   >
                     <span>{item.title}</span>
                     <strong>{item.conclusion}</strong>
@@ -722,8 +798,7 @@ export function MarketOverviewDenseFirstScreen({
             </header>
             <div className={styles.queueHead} aria-hidden="true">
               <span>优先级</span>
-              <span>核验事项</span>
-              <span>证据</span>
+              <span>核验事项 / 证据</span>
               <span>入口</span>
             </div>
             <div className={styles.queueRows}>

@@ -213,7 +213,29 @@ function emptyProductPayload(): ProductCategoryPnlPayload {
     asset_total: asset,
     liability_total: liability,
     grand_total: grand,
-    interest_spread: null,
+    interest_spread: {
+      all_currency_asset_yield_pct: null,
+      all_currency_liability_yield_pct: null,
+      all_currency_spread_pct: null,
+      cny_asset_yield_pct: null,
+      cny_liability_yield_pct: null,
+      cny_spread_pct: null,
+    },
+    interest_earning_spread: {
+      all_currency_asset_yield_pct: null,
+      all_currency_liability_yield_pct: null,
+      all_currency_spread_pct: null,
+      cny_asset_yield_pct: null,
+      cny_liability_yield_pct: null,
+      cny_spread_pct: null,
+    },
+    liability_cost_decomposition: {
+      liability_yield_pct: null,
+      liability_yield_ex_cln_pct: null,
+      cln_yield_pct: null,
+      cln_drag_bp: null,
+      cln_scale: null,
+    },
   };
 }
 
@@ -467,7 +489,6 @@ describe("TeamPerformancePage", () => {
             business_net_income: "-300000",
           }),
         ],
-        interest_spread: null,
       } satisfies ProductCategoryPnlPayload,
     }));
 

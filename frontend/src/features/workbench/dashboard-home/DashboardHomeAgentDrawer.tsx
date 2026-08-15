@@ -37,6 +37,7 @@ export function DashboardHomeAgentDrawer({
       open={open}
       onClose={onClose}
       data-testid="dashboard-home-agent-drawer"
+      data-moss-theme-scope="dashboard-home"
       title="复核助手"
       extra={
         <AntButton type="text" onClick={onClose} aria-label="关闭抽屉">
@@ -44,7 +45,11 @@ export function DashboardHomeAgentDrawer({
         </AntButton>
       }
     >
-      <div className={`theme-dh-api ${styles.dhAgentDrawerBody}`}>
+      {/* Drawer 经 portal 渲染在页根 scope 之外，根与 body 双声明防主题回落钢蓝。 */}
+      <div
+        className={`theme-dh-api ${styles.dhAgentDrawerBody}`}
+        data-moss-theme-scope="dashboard-home"
+      >
         {open ? (
           <Suspense fallback={null}>
             <LazyAgentPanel

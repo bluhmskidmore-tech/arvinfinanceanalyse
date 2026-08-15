@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useApiClient } from "../../../api/client";
 import type { ChoiceMacroRefreshPayload } from "../../../api/contracts";
@@ -98,7 +98,18 @@ export default function MarketHomePage() {
   const [refreshStatus, setRefreshStatus] = useState("");
   const [refreshError, setRefreshError] = useState("");
 
+  // 卸载时取消刷新任务轮询，避免离开首页后长任务继续请求并批量 refetch。
+  const unmountAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    unmountAbortRef.current = controller;
+    return () => {
+      controller.abort();
+    };
+  }, []);
+
   const handleRefreshData = useCallback(async () => {
+    const signal = unmountAbortRef.current?.signal;
     setIsRefreshing(true);
     setRefreshError("");
     setRefreshStatus("正在刷新宏观数据（回填 30 天）…");
@@ -108,6 +119,7 @@ export default function MarketHomePage() {
         getStatus: (runId) => client.getChoiceMacroRefreshStatus(runId),
         intervalMs: 3000,
         maxAttempts: 120,
+        signal,
         isTerminal: (status) => MARKET_REFRESH_TERMINAL_STATUSES.has(status),
         onUpdate: () => {
           setRefreshStatus("刷新任务处理中，正在读取最新市场数据…");
@@ -117,6 +129,7 @@ export default function MarketHomePage() {
         throw new Error(payload.error_message ?? `刷新未完成：${payload.status}`);
       }
 
+      if (signal?.aborted) return;
       await Promise.all([
         refetchAfterMarketRefresh(queries.choiceLatest),
         refetchAfterMarketRefresh(queries.marketRates),
@@ -135,10 +148,13 @@ export default function MarketHomePage() {
         setRefreshStatus("刷新完成，已重新读取市场首页数据。");
       }
     } catch (err) {
+      if (signal?.aborted) return;
       setRefreshError(appendFailedDataNotice(formatChoiceMacroRefreshError(err)));
       setRefreshStatus("");
     } finally {
-      setIsRefreshing(false);
+      if (!signal?.aborted) {
+        setIsRefreshing(false);
+      }
     }
   }, [client, queries]);
 

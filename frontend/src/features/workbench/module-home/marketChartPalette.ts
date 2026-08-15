@@ -1,13 +1,13 @@
 import { useLayoutEffect, useState, type RefObject } from "react";
 
-import { dhApiTokens } from "../../../theme/designSystem";
+import { nocturneTokens } from "../../../theme/designSystem";
 
 /**
  * ECharts 配色是 JS 静态常量，CSS 的 Nocturne scope 别名翻不动它。
  * 这里在页面挂载后从页根元素读取 `--dh-api-*` 的实际值构造调色板，
  * 传入 chart builder；jsdom/测试环境 getComputedStyle 返回空串时逐槽
- * 回退到 dhApiTokens 静态值，保证测试与逻辑不变（参照
- * positions/CustomerDetailModal 的 readCssVar 模式）。
+ * 回退到 nocturneTokens 静态值（canonical Nocturne 镜像，DESIGN.md §2.2），
+ * 保证测试与逻辑不变（参照 positions/CustomerDetailModal 的 readCssVar 模式）。
  */
 export type MarketChartPalette = {
   accent: string;
@@ -25,17 +25,18 @@ export type MarketChartPalette = {
 };
 
 export const MARKET_CHART_STATIC_PALETTE: MarketChartPalette = {
-  accent: dhApiTokens.color.blue,
-  accentDeep: dhApiTokens.color.blueActive,
-  green: dhApiTokens.color.green,
-  red: dhApiTokens.color.red,
-  amber: dhApiTokens.color.amber,
-  ink: dhApiTokens.color.ink,
-  inkSoft: dhApiTokens.color.inkSoft,
-  inkMuted: dhApiTokens.color.inkMuted,
-  lineSoft: dhApiTokens.color.lineSoft,
-  panel2: dhApiTokens.color.panel2,
-  canvas: dhApiTokens.color.bg,
+  accent: nocturneTokens.color.blue,
+  // Nocturne 无独立 active 蓝；accent400 与运行时 color-mix(accent 70%, ink 30%) 最接近。
+  accentDeep: nocturneTokens.color.accent400,
+  green: nocturneTokens.color.green,
+  red: nocturneTokens.color.red,
+  amber: nocturneTokens.color.amber,
+  ink: nocturneTokens.color.ink,
+  inkSoft: nocturneTokens.color.inkSoft,
+  inkMuted: nocturneTokens.color.inkMuted,
+  lineSoft: nocturneTokens.color.lineSoft,
+  panel2: nocturneTokens.color.panel2,
+  canvas: nocturneTokens.color.bg,
 };
 
 const CONCRETE_COLOR_PATTERN = /^(#|rgb|hsl)/i;

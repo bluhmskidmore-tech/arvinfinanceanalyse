@@ -222,12 +222,18 @@ function normalizeCreditSpreadMigrationEnvelope(
       }),
       migration_scenarios: migrationScenarios.map((item) => {
         const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+        /* 缺失 ≠ 0：与 bondAnalyticsClient 同款，字段缺失/不可解析透传 null（消费方渲染 —）。 */
+        const affectedBondsRaw =
+          row.affected_bonds === null || row.affected_bonds === undefined
+            ? null
+            : Number(row.affected_bonds);
         return {
           ...row,
           scenario_name: String(row.scenario_name ?? ""),
           from_rating: String(row.from_rating ?? ""),
           to_rating: String(row.to_rating ?? ""),
-          affected_bonds: Number(row.affected_bonds ?? 0),
+          affected_bonds:
+            affectedBondsRaw !== null && Number.isFinite(affectedBondsRaw) ? affectedBondsRaw : null,
           affected_market_value: normalizeNumeric(row.affected_market_value, "yuan", false),
           pnl_impact: normalizeNumeric(row.pnl_impact, "yuan", true),
           oci_impact: normalizeNumeric(row.oci_impact, "yuan", true),

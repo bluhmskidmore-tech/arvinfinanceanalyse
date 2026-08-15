@@ -122,6 +122,79 @@ describe("mapMarketTape", () => {
     });
   });
 
+  it("labels EM1 as the CN-US 10Y spread with the two-leg basis in the title", () => {
+    const rows = mapMarketTape([
+      point({
+        series_id: "EM1",
+        series_name: "中美国债利差(10Y)",
+        value_numeric: -296.59,
+        unit: "bp",
+        latest_change: 1.8,
+      }),
+    ]);
+
+    expect(rows[0]).toMatchObject({
+      id: "EM1",
+      label: "中美10年利差",
+      title: "中美10年利差 = 中债10Y − 美债10Y（bp，预计算序列）",
+    });
+    expect(rows[0]?.label).not.toContain("1Y-10Y");
+  });
+
+  it("annotates the 10Y CGB tape row as the realtime feed lane", () => {
+    const rows = mapMarketTape([
+      point({
+        series_id: "E1000180",
+        series_name: "中债国债到期收益率:10年",
+        value_numeric: 1.7141,
+      }),
+    ]);
+
+    expect(rows[0]?.label).toBe("10年国债");
+    expect(rows[0]?.title).toContain("实时行情快讯源");
+    expect(rows[0]?.title).toContain("报告日正式链路");
+  });
+
+  it("shows 持平 for a zero-formatted delta and keeps the raw string in deltaTitle", () => {
+    const rows = mapMarketTape([
+      point({
+        series_id: "EMM00058124",
+        series_name: "中间价:美元兑人民币",
+        value_numeric: 6.79,
+        unit: "CNY/USD",
+        latest_change: 0.0016,
+      }),
+    ]);
+
+    expect(rows[0]).toMatchObject({
+      id: "EMM00058124",
+      label: "人民币汇率",
+      value: "6.79CNY/USD",
+      delta: "持平",
+      deltaTone: "flat",
+      deltaTitle: "+0CNY/USD",
+    });
+  });
+
+  it("drops the textual unit from a non-zero delta and discloses the full string in deltaTitle", () => {
+    const rows = mapMarketTape([
+      point({
+        series_id: "EMM00058124",
+        series_name: "中间价:美元兑人民币",
+        value_numeric: 6.82,
+        unit: "CNY/USD",
+        latest_change: 0.03,
+      }),
+    ]);
+
+    expect(rows[0]).toMatchObject({
+      value: "6.82CNY/USD",
+      delta: "+0.03",
+      deltaTone: "up",
+      deltaTitle: "+0.03CNY/USD",
+    });
+  });
+
   it("keeps the full stable series for context panels without changing the compact tape", () => {
     const points = [
       ...Array.from({ length: 8 }, (_, index) =>

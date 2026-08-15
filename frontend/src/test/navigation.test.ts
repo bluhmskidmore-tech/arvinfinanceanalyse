@@ -266,6 +266,7 @@ describe("workbench navigation mocks", () => {
   it("resolves V1 bookmark path aliases for nav grouping", () => {
     expect(resolveWorkbenchPathAlias("/market")).toBe("/market-data");
     expect(resolveWorkbenchPathAlias("/assets")).toBe("/bond-dashboard");
+    expect(resolveWorkbenchPathAlias("/agent-lab")).toBe("/agent");
   });
 
   it("promotes pnl-attribution into the live primary navigation", () => {
@@ -408,6 +409,22 @@ describe("workbench navigation mocks", () => {
     expect(adb).toBeDefined();
     expect(adbAliasSection?.key).toBe("average-balance");
     expect(averageBalanceSection?.key).toBe("average-balance");
+  });
+
+  it("maps registered sub-routes to their owning section via slash-boundary prefix matching", () => {
+    const auditSection = findWorkbenchSectionByPath(
+      "/product-category-pnl/audit",
+      workbenchNavigation,
+    );
+    expect(auditSection?.key).toBe("product-category-pnl");
+    // "/" 边界防误配：/pnl-bridge 不是 /pnl 的子路由。
+    expect(findWorkbenchSectionByPath("/pnl-bridge", workbenchNavigation)?.key).toBe("pnl-bridge");
+    expect(findWorkbenchSectionByPath("/pnl", workbenchNavigation)?.key).toBe("pnl");
+  });
+
+  it("resolves the legacy /pnl-formal-v1 alias to the canonical pnl section", () => {
+    expect(resolveWorkbenchPathAlias("/pnl-formal-v1")).toBe("/pnl");
+    expect(findWorkbenchSectionByPath("/pnl-formal-v1", workbenchNavigation)?.key).toBe("pnl");
   });
 
   it("does not resolve unknown paths to the dashboard section", () => {

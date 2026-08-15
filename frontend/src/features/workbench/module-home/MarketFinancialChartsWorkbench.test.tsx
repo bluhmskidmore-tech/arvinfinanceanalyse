@@ -258,7 +258,7 @@ describe("MarketFinancialChartsWorkbench", () => {
     )!;
     const ratesRail = ratesSection.querySelector("aside");
 
-    expect(ratesRail).toHaveTextContent("期限结构回答曲线形态");
+    expect(ratesRail).toHaveTextContent("先看曲线形态，再看关键利率的近期走势");
     expect(ratesRail).toContainElement(
       screen.getByTestId("module-home-market-section-status-rates"),
     );

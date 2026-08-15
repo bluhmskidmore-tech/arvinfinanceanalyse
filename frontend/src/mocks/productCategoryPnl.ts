@@ -564,6 +564,13 @@ export function buildMockProductCategoryPnlEnvelope(
       grand_total: yuanPayload.grandTotal,
       interest_spread: interestSpread,
       interest_earning_spread: interestEarningSpread,
+      liability_cost_decomposition: {
+        liability_yield_pct: null,
+        liability_yield_ex_cln_pct: null,
+        cln_yield_pct: null,
+        cln_drag_bp: null,
+        cln_scale: null,
+      },
     },
     {
       basis: scenarioRate ? "scenario" : "formal",

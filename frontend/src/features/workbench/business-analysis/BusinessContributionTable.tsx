@@ -66,6 +66,7 @@ export function BusinessContributionTable({
   return (
     <PageAsyncSection
       title="经营贡献（产品分类损益读面）"
+      fillHeight={false}
       isLoading={loading}
       isError={error}
       isEmpty={false}

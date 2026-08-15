@@ -18,6 +18,7 @@ import type {
   ModuleHomeTone,
 } from "./moduleHomeModel";
 
+import { EM_DASH } from "../../../utils/format";
 export type DenseTapeTone = "up" | "down" | "ok" | "muted";
 
 export type DenseTapeMetric = {
@@ -131,12 +132,44 @@ function compactPointValue(point: ChoiceMacroLatestPoint) {
 }
 
 function formatDenseValue(value: number | null, unit: string) {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return EM_DASH;
   return `${compactNumber(value)}${denseUnitSuffix(unit)}`;
 }
 
 function indicatorSearchText(indicator: MacroToolkitIndicator) {
   return `${indicator.key} ${indicator.alias} ${indicator.label} ${indicator.series_id ?? ""}`;
+}
+
+function decimalsNeeded(value: number, cap: number) {
+  for (let digits = 0; digits <= cap; digits += 1) {
+    const scaled = value * 10 ** digits;
+    if (Math.abs(scaled - Math.round(scaled)) < 1e-9 * Math.max(1, Math.abs(scaled))) {
+      return digits;
+    }
+  }
+  return cap;
+}
+
+/**
+ * 指标变动表同一行的前值/最新值使用同一小数位（C16）：
+ * 取两值中实际需要的最大小数位（量级上限沿用 compactNumber 规则），
+ * 避免「4,728 → 4,649.19」这类同列精度不一。
+ */
+function pulseValueDigits(...values: Array<number | null | undefined>) {
+  const finite = values.filter(
+    (value): value is number => value != null && Number.isFinite(value),
+  );
+  if (finite.length === 0) return 2;
+  const cap = finite.every((value) => Math.abs(value) < 10) ? 4 : 2;
+  return Math.max(...finite.map((value) => decimalsNeeded(value, cap)));
+}
+
+function formatPulsePairValue(value: number | null, unit: string, digits: number) {
+  if (value == null || !Number.isFinite(value)) return EM_DASH;
+  return `${value.toLocaleString("zh-CN", {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: digits,
+  })}${denseUnitSuffix(unit)}`;
 }
 
 const MACRO_PULSE_PREFERENCES = [
@@ -187,14 +220,26 @@ export function buildDenseMacroPulseRows(
       : hasPercentageChange
         ? indicator.change_pct
         : null;
+    const valueDigits = pulseValueDigits(
+      indicator.previous_value,
+      indicator.latest_value,
+    );
     return {
       key: indicator.key,
       label: indicator.label,
-      previousValue: formatDenseValue(indicator.previous_value, indicator.unit),
-      latestValue: formatDenseValue(indicator.latest_value, indicator.unit),
+      previousValue: formatPulsePairValue(
+        indicator.previous_value,
+        indicator.unit,
+        valueDigits,
+      ),
+      latestValue: formatPulsePairValue(
+        indicator.latest_value,
+        indicator.unit,
+        valueDigits,
+      ),
       change:
         changeValue == null || !Number.isFinite(changeValue)
-          ? "—"
+          ? EM_DASH
           : `${changeValue > 0 ? "+" : ""}${compactNumber(changeValue)}${denseUnitSuffix(
               hasAbsoluteChange ? indicator.unit : "%",
             )}`,
@@ -204,7 +249,7 @@ export function buildDenseMacroPulseRows(
           ? "百分比变化"
           : "变化未返回",
       tone: directionTone(changeValue),
-      latestDate: indicator.latest_date || macro?.as_of_date || "—",
+      latestDate: indicator.latest_date || macro?.as_of_date || EM_DASH,
       source: indicator.source || indicator.series_id || "来源未返回",
     };
   });
@@ -342,7 +387,7 @@ function pointMetric({
     return {
       key,
       label,
-      value: "—",
+      value: EM_DASH,
       delta: "未返回",
       tone: "muted",
       title: `${label}：后端未返回匹配序列`,
@@ -466,8 +511,8 @@ function toDenseLedgerRow(row: ModuleHomeDetailRow): DenseLedgerRow {
     key: row.key,
     label: row.label,
     value: row.value,
-    delta: row.detail?.split(/\s+\/\s+/)[0] ?? "—",
-    reportDate: row.tradeDate || "—",
+    delta: row.detail?.split(/\s+\/\s+/)[0] ?? EM_DASH,
+    reportDate: row.tradeDate || EM_DASH,
     tone: row.tone,
     source: row.source,
   };

@@ -22,6 +22,10 @@ vi.mock("../features/agent/AgentWorkbenchPage", () => ({
   ),
 }));
 
+vi.mock("../features/agent-lab/AgentLabPage", () => ({
+  default: () => <section data-testid="agent-lab-page">Agent Lab</section>,
+}));
+
 vi.mock("../features/decision-items/pages/DecisionItemsPage", () => ({
   default: () => (
     <section data-testid="decision-items-page">
@@ -143,6 +147,13 @@ vi.mock("../features/cashflow-projection/pages/CashflowProjectionPage", () => ({
       <h1>现金流预测</h1>
     </section>
   ),
+}));
+
+// 供「子路由抛错 → 壳层仍在」用例使用：真实路由表 + 渲染即抛错的页面。
+vi.mock("../features/concentration-monitor/ConcentrationMonitorPage", () => ({
+  default: () => {
+    throw new Error("concentration route exploded");
+  },
 }));
 
 vi.mock("../features/workbench/module-home/ModuleWorkbenchHomePage", () => ({
@@ -322,11 +333,16 @@ describe("RouteRegistry", () => {
     expect(workbenchSections).toHaveLength(primaryWorkbenchNavigation.length);
   });
 
-  it("declares a root error boundary and wildcard workbench 404 route", () => {
+  it("declares root and content-layer error boundaries plus a wildcard workbench 404 route", () => {
     const rootRoute = workbenchRoutes.find((route) => route.path === "/");
-    const wildcardRoute = rootRoute?.children?.find((route) => route.path === "*");
+    const contentLayoutRoute = rootRoute?.children?.find(
+      (route) => route.path === undefined && Array.isArray(route.children),
+    );
+    const wildcardRoute = contentLayoutRoute?.children?.find((route) => route.path === "*");
 
     expect(rootRoute?.errorElement).toBeDefined();
+    // 子路由级错误边界：页面故障只替换内容区，不替换 WorkbenchShell。
+    expect(contentLayoutRoute?.errorElement).toBeDefined();
     expect(wildcardRoute?.element).toBeDefined();
   });
 
@@ -367,6 +383,31 @@ describe("RouteRegistry", () => {
 
       const errorPage = await screen.findByTestId("workbench-route-error-page");
       expect(errorPage).toHaveTextContent("route exploded");
+    } finally {
+      window.removeEventListener("error", preventExpectedRouteError);
+      consoleError.mockRestore();
+    }
+  });
+
+  it("keeps the workbench shell chrome when a child route render fails", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const preventExpectedRouteError = (event: ErrorEvent) => {
+      if (event.error instanceof Error && event.error.message === "concentration route exploded") {
+        event.preventDefault();
+      }
+    };
+    window.addEventListener("error", preventExpectedRouteError);
+
+    try {
+      renderWorkbenchApp(["/concentration-monitor"], { client: mockClient });
+
+      const errorPage = await screen.findByTestId("workbench-route-error-page");
+      expect(errorPage).toHaveTextContent("concentration route exploded");
+      // 故障被子路由级边界隔离在内容区：导航壳层（品牌 + 工作台分组导航）保持可用。
+      expect(screen.getByText("MOSS")).toBeInTheDocument();
+      const groupNav = screen.getByTestId("workbench-group-nav");
+      expect(within(groupNav).getAllByRole("link").length).toBeGreaterThan(0);
+      expect(screen.getByTestId("workbench-main-content")).toContainElement(errorPage);
     } finally {
       window.removeEventListener("error", preventExpectedRouteError);
       consoleError.mockRestore();
@@ -530,6 +571,22 @@ describe("RouteRegistry", () => {
 
     expect(await screen.findByRole("heading", { name: "产品损益调整审计" })).toBeInTheDocument();
     expect(await screen.findByLabelText("审计-报表月份")).toBeInTheDocument();
+
+    // 审计子路由归属产品分析 section：壳层顶栏显示归属页而非「未知页面」，组合组高亮。
+    expect(await screen.findByTestId("workbench-page-context")).toHaveTextContent("产品分析");
+    const activeGroupLinks = within(await screen.findByTestId("workbench-group-nav"))
+      .getAllByRole("link")
+      .filter((link) => link.getAttribute("data-active") === "true");
+    expect(activeGroupLinks).toHaveLength(1);
+    expect(activeGroupLinks[0]).toHaveTextContent("组合工作台");
+  });
+
+  it("redirects legacy /pnl-formal-v1 to the canonical /pnl page", async () => {
+    renderWorkbenchApp(["/pnl-formal-v1"], { client: mockClient });
+
+    expect(await screen.findByTestId("formal-pnl-v1-page")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "正式损益明细" })).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-not-found-page")).not.toBeInTheDocument();
   });
 
   it("renders the market-data route as a live page", async () => {
@@ -690,6 +747,18 @@ describe("RouteRegistry", () => {
     expect(await screen.findByTestId("agent-workbench-page")).toBeInTheDocument();
     expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toBeInTheDocument();
     expect(screen.queryByTestId("workbench-not-found-page")).not.toBeInTheDocument();
+  });
+
+  it("renders the hidden Agent Lab with compact Agent-owned shell chrome", async () => {
+    vi.stubEnv("VITE_MOSS_AGENT_FRONTEND_ENABLED", "true");
+
+    renderWorkbenchApp(["/agent-lab"], { client: mockClient });
+
+    expect(await screen.findByTestId("agent-lab-page")).toBeInTheDocument();
+    expect(screen.getByTestId("workbench-page-context")).toHaveTextContent("MOSS Chat");
+    expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-section-subnav")).not.toBeInTheDocument();
+    expect(document.querySelector(".workbench-workspace-hero")).not.toBeInTheDocument();
   });
 
   it("keeps the Agent workbench closed in production even when the flag is set", async () => {
