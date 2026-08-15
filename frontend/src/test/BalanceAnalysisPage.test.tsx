@@ -2121,8 +2121,12 @@ describe("BalanceAnalysisPage", () => {
       });
 
       await screen.findByRole("heading", { name: "资产负债分析" });
+      const csvExportButton = screen.getByTestId("balance-analysis-export-button");
+      await waitFor(() => {
+        expect(csvExportButton).toBeEnabled();
+      });
       await user.selectOptions(screen.getByLabelText("balance-position-scope"), "asset");
-      await user.click(screen.getByTestId("balance-analysis-export-button"));
+      await user.click(csvExportButton);
 
       await waitFor(() => {
         expect(exportSpy).toHaveBeenCalledWith({
