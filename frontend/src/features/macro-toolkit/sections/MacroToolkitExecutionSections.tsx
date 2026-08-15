@@ -43,6 +43,7 @@ import {
   formatQualityFlagLabel,
   formatSize,
   groupLabel,
+  scriptDisplayLabel,
   statusTone,
 } from "../lib/macroToolkitDisplayFormat";
 import { MetricTile } from "../lib/MacroToolkitStatusPrimitives";
@@ -226,7 +227,13 @@ export function MacroToolkitOperationsConsolePanel({
       <div className="macro-toolkit-operations-console__head">
         <div>
           <span>操作台</span>
-          <strong>{selectedScript?.name ?? "脚本注册表读取中"}</strong>
+          {/* 区题不直出 snake 脚本名；中文名做题，脚本名降副行代码样式。 */}
+          <strong>{scriptDisplayLabel(selectedScript?.name) ?? "脚本注册表读取中"}</strong>
+          {selectedScript ? (
+            <small className="macro-toolkit-operations-console__script-name">
+              {selectedScript.name}
+            </small>
+          ) : null}
           <small>执行脚本、刷新数据源、确认产物状态。</small>
         </div>
         <Tag color={scripts.length > 0 && availableScriptCount === scripts.length ? "green" : "gold"}>
@@ -883,6 +890,7 @@ export function MacroToolkitExecutionReceiptWorkspace({
                     <Select
                       value={selectedGroup}
                       options={groupOptions}
+                      getPopupContainer={(trigger) => trigger.parentElement ?? document.body}
                       onChange={(value) => {
                         setSelectedGroup(value);
                         setSelectedName(null);

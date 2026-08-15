@@ -139,16 +139,6 @@ export class AgentDisabledQueryError extends Error {
   }
 }
 
-export class AgentManagedRunRequiresHermesError extends Error {
-  detail: string;
-
-  constructor(detail: string) {
-    super(detail);
-    this.name = "AgentManagedRunRequiresHermesError";
-    this.detail = detail;
-  }
-}
-
 /** 托管 run 在等待期间进入 cancelled 终态：携带终态载荷，供 UI 渲染取消态而非错误态。 */
 export class AgentRunCancelledError extends Error {
   readonly payload: AgentRunPayload;
@@ -500,17 +490,6 @@ export function isAgentQueryError(value: unknown): value is AgentQueryError {
   return value.kind === "disabled" && typeof value.detail === "string" && typeof value.phase === "string";
 }
 
-export function getManagedRunRequiresHermesDetail(value: unknown) {
-  if (!isRecord(value) || typeof value.detail !== "string") {
-    return null;
-  }
-  const detail = value.detail.trim();
-  if (!detail.startsWith("Agent runs require MOSS_AGENT_PROVIDER=")) {
-    return null;
-  }
-  return detail;
-}
-
 export function isAgentRunStatus(value: unknown): value is AgentRunStatus {
   return typeof value === "string" && AGENT_RUN_STATUSES.has(value as AgentRunStatus);
 }
@@ -666,6 +645,26 @@ export function buildErrorMessage(error: unknown) {
 
 export function getAgentApiErrorPayload(error: unknown) {
   return error instanceof AgentApiError ? error.payload : null;
+}
+
+/**
+ * 识别建议动作确认 token 相关的 403（token 缺失/过期/跨用户）。
+ * 后端 detail 见 routes/agent.py 的 `_SUGGESTED_ACTION_CONFIRMATION_DETAIL` /
+ * `_SUGGESTED_ACTION_SCOPE_USER_DETAIL`；token 有 TTL（约 15 分钟）且按进程密钥签发，
+ * 恢复的历史会话里执行类建议动作大概率命中此错误。
+ */
+export function getSuggestedActionConfirmationErrorMessage(
+  status: number | null,
+  payload: unknown,
+): string | null {
+  if (status !== 403 || !isRecord(payload) || typeof payload.detail !== "string") {
+    return null;
+  }
+  const detail = payload.detail.trim();
+  if (!detail.toLowerCase().includes("confirmation token")) {
+    return null;
+  }
+  return `建议动作确认已过期或无效，请重新生成本轮回答后再执行建议动作。（${detail}）`;
 }
 
 export function getAgentApiErrorStatus(error: unknown) {

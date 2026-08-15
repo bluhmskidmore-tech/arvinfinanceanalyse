@@ -22,7 +22,11 @@ export default function MacroObservationSignalRiskSection({
         <ul className="macro-observation-signalrisk-band" aria-label="信号卡列表">
           {signalCards.map((card) => (
             <li key={card.key} className="macro-observation-signalrisk-cell" data-tone={card.tone}>
-              <span className="macro-observation-signalrisk-cell-title" title={card.title}>
+              {/* 同物双名收敛：卡面统一中文名，后端英文原名（如 Crisis Score）收 title。 */}
+              <span
+                className="macro-observation-signalrisk-cell-title"
+                title={card.rawTitle ?? card.title}
+              >
                 {card.title}
               </span>
               <strong className="macro-observation-signalrisk-cell-stance">{card.stance}</strong>
@@ -60,6 +64,8 @@ export default function MacroObservationSignalRiskSection({
               <span />
             </div>
           </div>
+        ) : risk.state === "empty" ? (
+          <p className="macro-observation-signalrisk-deferred-note">{risk.note}</p>
         ) : (
           <>
             <div className="macro-observation-signalrisk-risk-head">

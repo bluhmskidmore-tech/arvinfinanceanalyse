@@ -1,8 +1,16 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import type { PretradeChecklistPayload } from "../../../api/pretradeChecklistClient";
+import type {
+  PretradeChecklistFetchResult,
+  PretradeChecklistPayload,
+} from "../../../api/pretradeChecklistClient";
 import { StockAnalysisPretradeChecklist } from "./StockAnalysisPretradeChecklist";
+
+function ok(payload: PretradeChecklistPayload): PretradeChecklistFetchResult {
+  return { kind: "ok", payload };
+}
 
 function syntheticPayload(): PretradeChecklistPayload {
   return {
@@ -79,7 +87,7 @@ function syntheticPayload(): PretradeChecklistPayload {
 
 describe("StockAnalysisPretradeChecklist", () => {
   it("renders one row per candidate with status pill, position hint and block reasons", async () => {
-    const loadChecklist = vi.fn(async () => syntheticPayload());
+    const loadChecklist = vi.fn(async () => ok(syntheticPayload()));
     render(<StockAnalysisPretradeChecklist loadChecklist={loadChecklist} />);
 
     const panel = await screen.findByTestId("stock-analysis-pretrade-checklist");
@@ -117,17 +125,20 @@ describe("StockAnalysisPretradeChecklist", () => {
     expect(within(review).getByText("复核")).toHaveAttribute("data-tone", "caution");
     expect(within(review).getByText("流动性不足")).toBeInTheDocument();
 
-    // 脚注汇总与观察面免责。
-    expect(within(panel).getByText("可买 1 · 拦截 2 · 复核 1 · 数据缺 1")).toBeInTheDocument();
+    // 仓位列非同值 → 不出现区头统一摘要。
+    expect(screen.queryByTestId("stock-analysis-pretrade-uniform-note")).toBeNull();
+
+    // 脚注汇总(≤1 个 ·)与观察面免责。
+    expect(within(panel).getByText("可买 1 / 拦截 2 / 复核 1 / 数据缺 1")).toBeInTheDocument();
     expect(within(panel).getByText("观察面输出，不构成交易指令")).toBeInTheDocument();
   });
 
-  it("surfaces stale signal warning and missing gate state", async () => {
+  it("surfaces stale signal warning, demotes buyable pills and reports missing gate state", async () => {
     const payload = syntheticPayload();
     payload.checklist_status = "stale";
     payload.staleness = { status: "stale", calendar_gap_days: 21, stale_calendar_days: 5 };
     payload.gate = { status: "missing", note: "门控敞口在该信号日无持久化点位且不可回放" };
-    const loadChecklist = vi.fn(async () => payload);
+    const loadChecklist = vi.fn(async () => ok(payload));
     render(<StockAnalysisPretradeChecklist loadChecklist={loadChecklist} />);
 
     const panel = await screen.findByTestId("stock-analysis-pretrade-checklist");
@@ -137,37 +148,99 @@ describe("StockAnalysisPretradeChecklist", () => {
     const gate = within(panel).getByText("门控数据缺失");
     expect(gate).toHaveAttribute("data-gate-status", "missing");
     expect(gate).toHaveAttribute("title", "门控敞口在该信号日无持久化点位且不可回放");
+
+    // 过期态下"可买"降为中性描边徽标，绿色仅在信号有效期内使用。
+    const buyable = screen.getByTestId("stock-analysis-pretrade-row-600001.SH");
+    const demoted = within(buyable).getByText("可买(已过期)");
+    expect(demoted).toHaveAttribute("data-tone", "neutral");
+    expect(screen.queryByText(/^可买$/)).toBeNull();
+    // 拦截/复核徽标不受过期降权影响。
+    expect(
+      within(screen.getByTestId("stock-analysis-pretrade-row-600002.SH")).getByText("停牌拦"),
+    ).toHaveAttribute("data-tone", "negative");
   });
 
-  it("hides the whole panel when the checklist is unavailable (404/failure → null)", async () => {
-    const loadChecklist = vi.fn(async () => null);
-    const { container } = render(<StockAnalysisPretradeChecklist loadChecklist={loadChecklist} />);
-    await waitFor(() => expect(loadChecklist).toHaveBeenCalled());
-    await waitFor(() => expect(container.firstChild).toBeNull());
+  it("hoists uniform position hints and whole-column data flags into the header note", async () => {
+    const payload = syntheticPayload();
+    payload.items = (payload.items ?? []).map((item) => ({
+      ...item,
+      position_hint: { equal_weight: 0.025 },
+      data_flags: ["adj_factor_missing", ...(item.data_flags ?? [])],
+    }));
+    const loadChecklist = vi.fn(async () => ok(payload));
+    render(<StockAnalysisPretradeChecklist loadChecklist={loadChecklist} />);
+
+    const panel = await screen.findByTestId("stock-analysis-pretrade-checklist");
+    expect(panel).toHaveAttribute("data-uniform-weight", "true");
+    const note = screen.getByTestId("stock-analysis-pretrade-uniform-note");
+    expect(note).toHaveTextContent("统一建议仓位 2.50%");
+    expect(note).toHaveTextContent("全列缺口：复权缺口");
+
+    // 明细行不再逐行重复统一仓位与整列缺口(区头摘要为单一文本节点)。
+    expect(within(panel).queryByText("2.50%")).toBeNull();
+    expect(within(panel).queryByText("复权缺口")).toBeNull();
+    // 行内只保留非全列的缺口标记。
+    expect(
+      within(screen.getByTestId("stock-analysis-pretrade-row-600004.SH")).getByText("涨跌停价缺"),
+    ).toBeInTheDocument();
   });
 
-  it("hides the whole panel when the load function rejects", async () => {
-    const loadChecklist = vi.fn(async () => {
-      throw new Error("boom");
-    });
+  it("hides the whole panel only when the capability is missing (404/明确空)", async () => {
+    const loadChecklist = vi.fn(async (): Promise<PretradeChecklistFetchResult> => ({ kind: "missing" }));
     const { container } = render(<StockAnalysisPretradeChecklist loadChecklist={loadChecklist} />);
     await waitFor(() => expect(loadChecklist).toHaveBeenCalled());
     await waitFor(() => expect(container.firstChild).toBeNull());
   });
 
   it("hides the whole panel when candidates are empty", async () => {
-    const loadChecklist = vi.fn(async () => ({
-      as_of_date: "2026-08-10",
-      checklist_status: "empty",
-      items: [],
-    }));
+    const loadChecklist = vi.fn(async () =>
+      ok({ as_of_date: "2026-08-10", checklist_status: "empty", items: [] }),
+    );
     const { container } = render(<StockAnalysisPretradeChecklist loadChecklist={loadChecklist} />);
     await waitFor(() => expect(loadChecklist).toHaveBeenCalled());
     await waitFor(() => expect(container.firstChild).toBeNull());
   });
 
+  it("shows a one-line error with retry on request failure instead of hiding", async () => {
+    const user = userEvent.setup();
+    const loadChecklist = vi
+      .fn(async (): Promise<PretradeChecklistFetchResult> => ok(syntheticPayload()))
+      .mockResolvedValueOnce({ kind: "error", reason: "HTTP 503" });
+    render(<StockAnalysisPretradeChecklist loadChecklist={loadChecklist} />);
+
+    const errorPanel = await screen.findByTestId("stock-analysis-pretrade-error");
+    expect(errorPanel).toHaveTextContent("清单加载失败");
+
+    await user.click(screen.getByTestId("stock-analysis-pretrade-retry"));
+    expect(await screen.findByTestId("stock-analysis-pretrade-checklist")).toBeInTheDocument();
+    expect(loadChecklist).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows the error state when the load function rejects", async () => {
+    const loadChecklist = vi.fn(async () => {
+      throw new Error("boom");
+    });
+    render(<StockAnalysisPretradeChecklist loadChecklist={loadChecklist} />);
+    expect(await screen.findByTestId("stock-analysis-pretrade-error")).toBeInTheDocument();
+  });
+
+  it("renders a skeleton placeholder while loading", async () => {
+    let resolveLoad: (value: PretradeChecklistFetchResult) => void = () => undefined;
+    const loadChecklist = vi.fn(
+      () =>
+        new Promise<PretradeChecklistFetchResult>((resolve) => {
+          resolveLoad = resolve;
+        }),
+    );
+    render(<StockAnalysisPretradeChecklist loadChecklist={loadChecklist} />);
+
+    expect(screen.getByTestId("stock-analysis-pretrade-loading")).toBeInTheDocument();
+    resolveLoad(ok(syntheticPayload()));
+    expect(await screen.findByTestId("stock-analysis-pretrade-checklist")).toBeInTheDocument();
+  });
+
   it("tolerates items with every field missing", async () => {
-    const loadChecklist = vi.fn(async () => ({ items: [{}] }));
+    const loadChecklist = vi.fn(async () => ok({ items: [{}] }));
     render(<StockAnalysisPretradeChecklist loadChecklist={loadChecklist} />);
     const panel = await screen.findByTestId("stock-analysis-pretrade-checklist");
     expect(within(panel).getByText("状态待补")).toBeInTheDocument();

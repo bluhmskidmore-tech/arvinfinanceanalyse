@@ -8,6 +8,7 @@ from typing import Any
 import pandas as pd
 
 CRISIS_SCORE_RULE_VERSION = "rv_macro_crisis_score_cn_v1"
+CRISIS_SCORE_INSUFFICIENT_DATA_RECOMMENDATION = "数据不足，观察证据仅供参考"
 DEFAULT_CRISIS_SCORE_HISTORY_LIMIT = 430
 CRISIS_SCORE_FFILL_LIMIT = 5
 CRISIS_SCORE_WEIGHTS: dict[str, float] = {
@@ -64,6 +65,9 @@ def compute_crisis_score_payload(
         latest_index=latest_index,
     )
     data_status = "complete" if len(component_details) == len(resolved_weights) and not warnings else "degraded"
+    if data_status != "complete":
+        # 分量缺失/陈旧时合成分只由部分权重支撑，不足以支撑加减仓方向建议。
+        recommendation = CRISIS_SCORE_INSUFFICIENT_DATA_RECOMMENDATION
     scores = score_frame["crisis_score"].dropna()
     percentile = float((scores <= score).mean() * 100) if len(scores) else None
 
@@ -275,7 +279,7 @@ def _unavailable_payload(report_date: date, warnings: list[str]) -> dict[str, An
         "rule_version": CRISIS_SCORE_RULE_VERSION,
         "crisis_score": None,
         "regime": "不可用",
-        "recommendation": "补齐 Crisis Score 所需历史序列后再判断",
+        "recommendation": CRISIS_SCORE_INSUFFICIENT_DATA_RECOMMENDATION,
         "headline": "Crisis Score 数据不足",
         "percentile": None,
         "available_component_count": 0,

@@ -202,6 +202,14 @@
   background: var(--dh-api-panel-2);
 }
 
+/* 来源链全表同句时收敛到表上方一次（§6 去重）。 */
+.macro-observation-modelstrategy-chain-note {
+  margin: 0;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 /* strategy_data_status.reason：不可用原因琥珀左线细注（P0 可见）。 */
 .macro-observation-modelstrategy-reason {
   margin: 0;
@@ -238,42 +246,21 @@
   background: var(--dh-api-panel);
 }
 
-.macro-observation-crisis-score-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-}
-
-.macro-observation-crisis-score {
-  color: var(--dh-api-ink);
-  font-family: var(--moss-font-mono);
-  font-size: 22px;
-  font-weight: 700;
-  line-height: 1.2;
-  font-variant-numeric: tabular-nums;
-}
-
-.macro-observation-crisis-regime {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  padding: 1px 7px;
-  border: 1px solid var(--dh-api-line-soft);
-  border-radius: var(--dh-api-radius);
-  background: var(--dh-api-panel-2);
-  color: var(--dh-api-soft);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.5;
-  white-space: nowrap;
-}
+/* 危机分大字徽标行已按 §6 去重删除（读数保留在 01 KPI 与 02 信号带）。 */
 
 .macro-observation-crisis-headline {
   margin: 0;
   color: var(--dh-api-soft);
   font-size: 12px;
   line-height: 1.6;
+}
+
+.macro-observation-crisis-coverage-note {
+  display: block;
+  margin-top: 2px;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .macro-observation-crisis-empty {

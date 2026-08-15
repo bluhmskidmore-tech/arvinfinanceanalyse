@@ -7,6 +7,9 @@ import pytest
 
 import backend.app.api.routes.macro_toolkit as macro_toolkit_route
 from backend.app.services import macro_report_asset_service
+from backend.app.services.macro_toolkit_refresh_receipt_service import (
+    MacroToolkitRefreshReceiptHealth,
+)
 
 
 def test_macro_toolkit_analysis_includes_fail_closed_report_bundle(
@@ -61,6 +64,67 @@ def test_macro_toolkit_analysis_includes_fail_closed_report_bundle(
     result = macro_toolkit_route._build_macro_toolkit_analysis("core")
 
     assert result["report_bundle"] == expected_report_bundle
+
+
+def test_analysis_route_uses_one_receipt_snapshot_for_cache_key_and_builder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    health = MacroToolkitRefreshReceiptHealth(
+        status="ready",
+        ready=True,
+        cache_fingerprint="ready:fixture",
+        generated_at="2026-08-09T10:30:00+00:00",
+        run_status="success",
+        source_version="macro_toolkit_freshness_refresh_v3",
+        missing_fields=(),
+        warnings=(),
+        latest_observation_dates={"CA.CSI300": "2026-08-08"},
+    )
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "get_settings",
+        lambda: SimpleNamespace(duckdb_path=tmp_path / "moss.duckdb"),
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_ensure_macro_toolkit_read_allowed",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route.macro_toolkit_refresh_receipt_service,
+        "load_macro_toolkit_refresh_receipt_health",
+        lambda: health,
+    )
+
+    def fake_build(detail: str, **kwargs: object) -> dict[str, object]:
+        captured["detail"] = detail
+        captured.update(kwargs)
+        return {"result_kind": "macro_toolkit.analysis"}
+
+    def fake_get_or_build(key: str, builder) -> dict[str, object]:
+        captured["cache_key"] = key
+        return builder()
+
+    monkeypatch.setattr(macro_toolkit_route, "_build_macro_toolkit_analysis", fake_build)
+    monkeypatch.setattr(
+        macro_toolkit_route.market_home_response_cache,
+        "get_or_build",
+        fake_get_or_build,
+    )
+
+    result = macro_toolkit_route.macro_toolkit_analysis(
+        object(),
+        detail="core",
+        history_limit=None,
+    )
+
+    assert result == {"result_kind": "macro_toolkit.analysis"}
+    assert "ready:fixture" in str(captured["cache_key"])
+    assert captured["detail"] == "core"
+    assert captured["refresh_receipt_health"] is health
 
 
 def test_core_and_full_analysis_share_conclusion_without_hiding_full_signal_cards(
@@ -144,3 +208,27 @@ def test_core_and_full_analysis_share_conclusion_without_hiding_full_signal_card
     assert basis["source"] == "core_signal_cards"
     assert basis_cards["crisis_score_cn"]["tone"] == "neutral"
     assert basis_cards["a_share_stampede_risk"]["tone"] == "missing"
+
+    blocked_health = MacroToolkitRefreshReceiptHealth(
+        status="blocked",
+        ready=False,
+        cache_fingerprint="blocked:fixture",
+        generated_at="2026-08-09T10:30:00+00:00",
+        run_status="failed",
+        source_version="macro_toolkit_freshness_refresh_v3",
+        missing_fields=("receipt.status",),
+        warnings=(),
+        latest_observation_dates={},
+    )
+    blocked = macro_toolkit_route._build_macro_toolkit_analysis(
+        "core",
+        refresh_receipt_health=blocked_health,
+    )
+
+    assert blocked["signal_cards"] == core["signal_cards"]
+    assert blocked["indicators"] == core["indicators"]
+    assert blocked["conclusion"]["tone"] == "missing"
+    assert blocked["conclusion"]["stance"] == "数据不足"
+    assert blocked["conclusion"]["basis"]["refresh_receipt"]["ready"] is False
+    assert blocked["data_health"]["refresh_receipt"]["status"] == "blocked"
+    assert any("方向性结论已关闭" in warning for warning in blocked["warnings"])

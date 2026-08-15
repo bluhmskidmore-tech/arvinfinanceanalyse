@@ -11,6 +11,10 @@ from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.services.choice_news_service import choice_news_latest_envelope
 from tests.helpers import load_module
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_choice_news,
+]
 
 def _grant_choice_news_read_scope(tmp_path, monkeypatch) -> None:
     sqlite_path = tmp_path / "auth-scope.db"
@@ -21,7 +25,6 @@ def _grant_choice_news_read_scope(tmp_path, monkeypatch) -> None:
         resource="choice_news.data",
         action="read",
     )
-
 
 def _append_choice_news_events(repo) -> None:
     repo.append(
@@ -73,7 +76,6 @@ def _append_choice_news_events(repo) -> None:
         },
     )
 
-
 def test_choice_news_materialize_task_builds_duckdb_event_table(tmp_path):
     task_module = sys.modules.get("backend.app.tasks.choice_news")
     if task_module is None:
@@ -118,7 +120,6 @@ def test_choice_news_materialize_task_builds_duckdb_event_table(tmp_path):
     assert rows[1][:3] == ("S888010007API", None, "{\"title\":\"macro-data\"}")
     assert rows[2][:3] == ("__callback__", None, None)
     assert all(row[3] for row in rows)
-
 
 def test_choice_news_materialize_is_incremental_and_dedupes_by_event_key(tmp_path):
     task_module = sys.modules.get("backend.app.tasks.choice_news")
@@ -189,7 +190,6 @@ def test_choice_news_materialize_is_incremental_and_dedupes_by_event_key(tmp_pat
     )
     assert second["event_count"] == 2
     assert second["inserted_count"] == 1
-
 
 def test_choice_news_pull_snapshot_fetches_recent_sectornews_and_materializes(tmp_path, monkeypatch):
     task_module = sys.modules.get("backend.app.tasks.choice_news")
@@ -328,7 +328,6 @@ def test_choice_news_pull_snapshot_fetches_recent_sectornews_and_materializes(tm
 
     assert db_rows == [("C000022", "headline-a"), ("C000022", "headline-b")]
 
-
 def test_choice_news_pull_snapshot_prefers_eitime_when_datetime_is_future(
     tmp_path, monkeypatch
 ):
@@ -418,7 +417,6 @@ def test_choice_news_pull_snapshot_prefers_eitime_when_datetime_is_future(
 
     assert stored is not None
     assert stored[0] == "2025-12-09T15:39:06+08:00"
-
 
 def test_repair_existing_choice_news_future_dates_uses_payload_eitime(tmp_path):
     task_module = sys.modules.get("backend.app.tasks.choice_news")
@@ -517,7 +515,6 @@ def test_repair_existing_choice_news_future_dates_uses_payload_eitime(tmp_path):
     assert rows["normal-a"] == "2026-06-01T10:00:00+08:00"
     assert rows["unrepairable-a"] == "2026-08-01T00:00:00+08:00"
 
-
 def test_repair_existing_choice_news_future_dates_writes_complete_governance_metadata(
     tmp_path,
 ):
@@ -580,7 +577,6 @@ def test_repair_existing_choice_news_future_dates_writes_complete_governance_met
     assert build_run["cache_version"] == "cv_choice_news_v1"
     assert build_run["rule_version"] == "rv_choice_news_future_date_repair_v1"
 
-
 def test_repair_existing_choice_news_future_dates_does_not_apply_global_migrations(
     tmp_path,
     monkeypatch,
@@ -636,7 +632,6 @@ def test_repair_existing_choice_news_future_dates_does_not_apply_global_migratio
     assert result["updated_count"] == 1
     assert result["unresolved_count"] == 0
 
-
 def test_repair_existing_choice_news_future_dates_fails_closed_when_duckdb_missing(
     tmp_path,
 ):
@@ -656,7 +651,6 @@ def test_repair_existing_choice_news_future_dates_fails_closed_when_duckdb_missi
         )
 
     assert not duckdb_path.exists()
-
 
 def test_repair_choice_news_future_dates_script_delegates_to_task(
     tmp_path, monkeypatch, capsys
@@ -709,7 +703,6 @@ def test_repair_choice_news_future_dates_script_delegates_to_task(
     ]
     assert '"updated_count": 3' in captured.out
 
-
 def test_choice_news_latest_api_returns_result_meta_and_rows(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
@@ -745,7 +738,6 @@ def test_choice_news_latest_api_returns_result_meta_and_rows(tmp_path, monkeypat
     assert len(payload["result"]["events"]) == 3
     assert payload["result"]["events"][0]["topic_code"] == "__callback__"
     get_settings.cache_clear()
-
 
 def test_choice_news_latest_api_supports_pagination_and_group_filter(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
@@ -783,7 +775,6 @@ def test_choice_news_latest_api_supports_pagination_and_group_filter(tmp_path, m
     assert len(payload["result"]["events"]) == 1
     assert payload["result"]["events"][0]["topic_code"] == "C000022"
     get_settings.cache_clear()
-
 
 def test_choice_news_latest_api_supports_topic_time_and_error_filters(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
@@ -832,7 +823,6 @@ def test_choice_news_latest_api_supports_topic_time_and_error_filters(tmp_path, 
     assert error_payload["result"]["events"][0]["topic_code"] == "__callback__"
     get_settings.cache_clear()
 
-
 def _create_empty_choice_news_table(duckdb_path) -> None:
     conn = duckdb.connect(str(duckdb_path))
     try:
@@ -857,7 +847,6 @@ def _create_empty_choice_news_table(duckdb_path) -> None:
     finally:
         conn.close()
 
-
 def _assert_choice_news_source_unavailable(payload: dict[str, object]) -> None:
     meta = payload["result_meta"]
     result = payload["result"]
@@ -868,12 +857,10 @@ def _assert_choice_news_source_unavailable(payload: dict[str, object]) -> None:
     assert meta["fallback_mode"] == "none"
     assert result["total_rows"] == 0
 
-
 def test_choice_news_source_health_missing_file_is_unavailable(tmp_path) -> None:
     payload = choice_news_latest_envelope(str(tmp_path / "missing.duckdb"))
 
     _assert_choice_news_source_unavailable(payload)
-
 
 def test_choice_news_source_health_missing_table_is_unavailable(tmp_path) -> None:
     duckdb_path = tmp_path / "missing-table.duckdb"
@@ -883,7 +870,6 @@ def test_choice_news_source_health_missing_table_is_unavailable(tmp_path) -> Non
 
     _assert_choice_news_source_unavailable(payload)
 
-
 def test_choice_news_source_health_invalid_database_is_unavailable(tmp_path) -> None:
     duckdb_path = tmp_path / "invalid.duckdb"
     duckdb_path.write_bytes(b"not a duckdb database")
@@ -891,7 +877,6 @@ def test_choice_news_source_health_invalid_database_is_unavailable(tmp_path) -> 
     payload = choice_news_latest_envelope(str(duckdb_path))
 
     _assert_choice_news_source_unavailable(payload)
-
 
 def test_choice_news_source_health_query_error_is_unavailable(tmp_path) -> None:
     duckdb_path = tmp_path / "malformed-table.duckdb"
@@ -904,7 +889,6 @@ def test_choice_news_source_health_query_error_is_unavailable(tmp_path) -> None:
     payload = choice_news_latest_envelope(str(duckdb_path))
 
     _assert_choice_news_source_unavailable(payload)
-
 
 def test_choice_news_source_health_empty_table_stays_healthy(tmp_path) -> None:
     duckdb_path = tmp_path / "healthy-empty.duckdb"

@@ -35,4 +35,10 @@ describe("choiceMacroFormat", () => {
     expect(formatChoiceMacroValue(point)).toBe("14.64");
     expect(formatChoiceMacroDelta(point)).toBe("+0.22");
   });
+
+  it("uses the canonical em dash when the latest change is missing", () => {
+    const point = macroPoint({ latest_change: undefined });
+    expect(formatChoiceMacroDelta(point)).toBe("—");
+    expect(formatChoiceMacroDelta(point, { emptyDisplay: "无前值" })).toBe("无前值");
+  });
 });

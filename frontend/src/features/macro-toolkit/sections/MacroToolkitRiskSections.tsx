@@ -4,7 +4,7 @@ import { Tag } from "antd";
 import type { MacroToolkitAShareRiskPayload } from "../../../api/macroToolkitClient";
 import { PageSectionLead } from "../../../components/page/PagePrimitives";
 import { EM_DASH } from "../../../utils/format";
-import { formatRiskMetric, riskLevelColor, riskLevelTone } from "../lib/macroToolkitDisplayFormat";
+import { formatRiskMetric, riskLevelTone } from "../lib/macroToolkitDisplayFormat";
 import { MacroStatusIcon } from "../lib/MacroToolkitStatusPrimitives";
 import { compactText, statusColor, statusLabel } from "../lib/macroToolkitPanelShared";
 import { ScoreTrack } from "./MacroToolkitPrimitives";
@@ -37,6 +37,7 @@ export function AShareRiskPanel({ risk }: { risk?: MacroToolkitAShareRiskPayload
   return (
     <div className={`macro-toolkit-a-share-risk macro-toolkit-a-share-risk--${tone}`}>
       <div className="macro-toolkit-a-share-risk__summary">
+        {/* 风险读数已在 hero 主信号与 01 核心信号卡出现，区头徽标只留日期 + 状态（DESIGN §6 去重）。 */}
         <div className="macro-toolkit-capability-result-head">
           <span>
             <MacroStatusIcon tone={tone}>
@@ -46,7 +47,6 @@ export function AShareRiskPanel({ risk }: { risk?: MacroToolkitAShareRiskPayload
           </span>
           <div className="macro-toolkit-tag-row">
             <Tag color={statusColor(risk.status)}>{statusLabel(risk.status)}</Tag>
-            <Tag color={riskLevelColor(risk.risk_level)}>{risk.risk_name}</Tag>
           </div>
         </div>
         <strong>{scoreText}</strong>

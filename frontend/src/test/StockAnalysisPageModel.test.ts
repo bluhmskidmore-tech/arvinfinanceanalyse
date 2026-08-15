@@ -21,7 +21,6 @@ import {
   buildClosedLoopSummary,
   buildCycleMacroLayerSummary,
   buildDataBoundarySummary,
-  clampRatio,
   formatRatioAsPercent,
   localizeBasisLabel,
   localizeDataGapStatus,
@@ -3379,10 +3378,6 @@ describe("stockAnalysisPageModel", () => {
     expect(formatRatioAsPercent(strategyPayload.market_gate.exposure)).toBe("40%");
     expect(formatRatioAsPercent(0.1234, 1)).toBe("12.3%");
     expect(formatRatioAsPercent(null)).toBe("待补");
-    expect(clampRatio(strategyPayload.market_gate.exposure)).toBe(0.4);
-    expect(clampRatio(1.8)).toBe(1);
-    expect(clampRatio(-0.5)).toBe(0);
-    expect(clampRatio(null)).toBeUndefined();
   });
 
   it("builds evidence status and event monitor rows with explicit pending boundaries", () => {

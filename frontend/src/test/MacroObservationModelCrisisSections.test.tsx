@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const echartsOptions = vi.hoisted(() => [] as unknown[]);
@@ -83,31 +84,32 @@ function buildStrategyView(
         label: "多因子选股",
         statusText: "已完成",
         tone: "positive",
-        chainNote: "已完成 · 已接入真实行情或因子快照，仍仅作观察。",
+        chainNote: "已接入真实行情或因子快照",
       },
       {
         key: "low_crowding",
         label: "低拥挤度",
         statusText: "部分降级",
         tone: "warning",
-        chainNote: "部分降级 · 部分真实供数，缺口需在完整分析中复核。",
+        chainNote: "部分真实供数，缺口需在完整分析中复核",
       },
       {
         key: "momentum_sample",
         label: "动量样例",
         statusText: "样例展示",
         tone: "neutral",
-        chainNote: "样例展示 · 当前仅展示策略可用性，不作为正式投资信号。",
+        chainNote: "仅策略可用性检查，未接入真实供数",
       },
       {
         key: "macro_etf",
         label: "宏观 ETF 轮动",
         statusText: "不可用",
         tone: "negative",
-        chainNote: "不可用 · 当前仅展示策略可用性，不作为正式投资信号。",
+        chainNote: null,
       },
     ],
     counts: { full: 1, partial: 1, degraded: 2, sample: 1 },
+    commonChainNote: null,
     shadowPortfolio: {
       label: "影子组合只读",
       value: "2026-08-12",
@@ -135,8 +137,10 @@ function buildCrisisView(
     regime: "常态",
     recommendation: "可适当加仓，风险偏好环境",
     percentileText: "36.21%",
+    availableComponentCount: 4,
     componentCount: 5,
     componentMissingCount: 1,
+    coverageNote: null,
     history: [
       { date: "2026-04-03", value: -0.63 },
       { date: "2026-04-10", value: -0.57 },
@@ -181,8 +185,8 @@ describe("MacroObservationModelStrategySection", () => {
     expect(within(table).getByText("mystery_state")).toHaveAttribute("data-tone", "neutral");
     // degraded_reason 缺失时说明列用 EM_DASH，禁止空白。
     expect(within(table).getAllByText(EM_DASH).length).toBeGreaterThan(0);
-    // observation_only / formal_use_allowed=false 的边界细注必须可见。
-    expect(within(table).getByText("仅观察，不作为正式投资信号。")).toBeInTheDocument();
+    // 「仅观察」卡级脚注已按 §6 去重删除（只读边界由页头徽标与细注声明一次）。
+    expect(within(table).queryByText("仅观察，不作为正式投资信号。")).not.toBeInTheDocument();
   });
 
   it("modelReadiness 空数组给待完整分析空态", () => {
@@ -238,10 +242,11 @@ describe("MacroObservationModelStrategySection", () => {
     expect(within(panel).getByText("部分降级")).toHaveAttribute("data-tone", "warning");
     expect(within(panel).getByText("样例展示")).toHaveAttribute("data-tone", "neutral");
     expect(within(panel).getByText("不可用")).toHaveAttribute("data-tone", "negative");
-    expect(
-      within(panel).getByText("已完成 · 已接入真实行情或因子快照，仍仅作观察。"),
-    ).toBeInTheDocument();
-    expect(within(panel).getByText("全链路 1 · 部分 1 · 降级 2 · 样例 1")).toBeInTheDocument();
+    // 来源链列只留行间差异；行级 null 用 EM_DASH 占位（§6 缺值纪律）。
+    expect(within(panel).getByText("已接入真实行情或因子快照")).toBeInTheDocument();
+    expect(within(panel).getAllByText(EM_DASH).length).toBeGreaterThan(0);
+    // 区头 meta 全量列出（此夹具四计数均非零），分隔改斜杠不占 `·` 配额（§7）。
+    expect(within(panel).getByText("全链路 1 / 部分 1 / 降级 2 / 样例 1")).toBeInTheDocument();
 
     // strategy_data_status.reason：P0 可见的不可用原因琥珀行。
     const reason = within(panel).getByText("价格上下文缺失");
@@ -280,8 +285,9 @@ describe("MacroObservationModelStrategySection", () => {
       within(shadowCard).getByText("6 个周期 · 保持观察，不替换正式规则"),
     ).toBeInTheDocument();
     const etfCard = screen.getByLabelText("宏观 ETF 策略摘要");
-    expect(within(etfCard).getByText("双频 进攻")).toBeInTheDocument();
-    expect(within(etfCard).getByText("observation_only")).toBeInTheDocument();
+    // 「仅观察」卡级脚注按 §6 去重删除；boundary 原文收 title 供溯源。
+    expect(within(etfCard).getByText("双频 进攻")).toHaveAttribute("title", "observation_only");
+    expect(within(etfCard).queryByText("observation_only")).not.toBeInTheDocument();
 
     rerender(
       <MacroObservationModelStrategySection
@@ -310,15 +316,67 @@ describe("MacroObservationModelStrategySection", () => {
     );
     expect(screen.getByText("策略供数明细待完整分析确认。")).toBeInTheDocument();
   });
+
+  it("来源链全表同句时收敛区头一次并删除整列", () => {
+    render(
+      <MacroObservationModelStrategySection
+        modelReadiness={[]}
+        hasonStrategy={null}
+        strategy={buildStrategyView({
+          rows: [
+            {
+              key: "multi_factor_selection",
+              label: "多因子选股",
+              statusText: "已完成",
+              tone: "positive",
+              chainNote: null,
+            },
+            {
+              key: "low_crowding",
+              label: "低拥挤度",
+              statusText: "已完成",
+              tone: "positive",
+              chainNote: null,
+            },
+          ],
+          commonChainNote: "已接入真实行情或因子快照",
+        })}
+      />,
+    );
+
+    const panel = screen.getByRole("region", { name: "策略供数" });
+    // 同句只出现一次（收敛注），表头不再渲染来源链列。
+    expect(within(panel).getAllByText("已接入真实行情或因子快照")).toHaveLength(1);
+    expect(within(panel).queryByText("来源链")).not.toBeInTheDocument();
+  });
+
+  it("区头 meta 只显示非零计数", () => {
+    render(
+      <MacroObservationModelStrategySection
+        modelReadiness={[]}
+        hasonStrategy={null}
+        strategy={buildStrategyView({
+          counts: { full: 4, partial: 0, degraded: 0, sample: 0 },
+        })}
+      />,
+    );
+    expect(screen.getByText("全链路 4")).toBeInTheDocument();
+  });
 });
 
 describe("MacroObservationCrisisSection", () => {
   it("渲染 score/regime/recommendation/percentile/components 读数栈", () => {
-    render(<MacroObservationCrisisSection crisis={buildCrisisView()} />);
+    render(
+      <MemoryRouter>
+        <MacroObservationCrisisSection crisis={buildCrisisView()} />
+      </MemoryRouter>,
+    );
 
     const readout = screen.getByLabelText("危机分读数");
-    expect(within(readout).getByText("-0.6")).toBeInTheDocument();
-    expect(within(readout).getByText("常态")).toBeInTheDocument();
+    // 危机分大字徽标按 §6 去重删除（读数保留在 01 KPI 与 02 信号带）；
+    // headline 原句保留作为证据上下文。
+    expect(within(readout).queryByText("-0.6")).not.toBeInTheDocument();
+    expect(within(readout).queryByText("常态")).not.toBeInTheDocument();
     expect(within(readout).getByText("Crisis Score -0.57: 宽松")).toBeInTheDocument();
     expect(within(readout).getByText("36.21%")).toBeInTheDocument();
     expect(within(readout).getByText("可用 4/5")).toBeInTheDocument();
@@ -332,7 +390,9 @@ describe("MacroObservationCrisisSection", () => {
 
   it("deferred 态给延后文案且不初始化图表", () => {
     render(
-      <MacroObservationCrisisSection crisis={{ state: "deferred", note: "完整分析后确认" }} />,
+      <MemoryRouter>
+        <MacroObservationCrisisSection crisis={{ state: "deferred", note: "完整分析后确认" }} />
+      </MemoryRouter>,
     );
 
     expect(screen.getByText("危机分证据完整分析后确认。")).toBeInTheDocument();
@@ -344,9 +404,11 @@ describe("MacroObservationCrisisSection", () => {
 
   it("history 不足 2 点给暂无历史序列占位", () => {
     render(
-      <MacroObservationCrisisSection
-        crisis={buildCrisisView({ history: [{ date: "2026-04-10", value: -0.57 }] })}
-      />,
+      <MemoryRouter>
+        <MacroObservationCrisisSection
+          crisis={buildCrisisView({ history: [{ date: "2026-04-10", value: -0.57 }] })}
+        />
+      </MemoryRouter>,
     );
 
     const container = screen.getByTestId("macro-observation-crisis-chart");
@@ -356,19 +418,33 @@ describe("MacroObservationCrisisSection", () => {
   });
 
   it("history 正常时在占位容器内初始化折线并传入全量点", () => {
-    render(<MacroObservationCrisisSection crisis={buildCrisisView()} />);
+    render(
+      <MemoryRouter>
+        <MacroObservationCrisisSection crisis={buildCrisisView()} />
+      </MemoryRouter>,
+    );
 
     const container = screen.getByTestId("macro-observation-crisis-chart");
     expect(within(container).getByTestId("macro-observation-echarts-stub")).toBeInTheDocument();
     expect(echartsOptions.length).toBeGreaterThan(0);
     const option = echartsOptions.at(-1) as {
       xAxis: { data: string[] };
-      series: Array<{ type: string; data: number[]; showSymbol: boolean }>;
+      series: Array<{
+        type: string;
+        data: number[];
+        showSymbol: boolean;
+        markLine?: { data: Array<{ yAxis?: number }> };
+        markPoint?: { data: Array<{ coord?: [number, number] }>; label?: { formatter?: string } };
+      }>;
     };
     expect(option.series).toHaveLength(1);
     expect(option.series[0]?.type).toBe("line");
     expect(option.series[0]?.data).toHaveLength(3);
     expect(option.series[0]?.showSymbol).toBe(false);
     expect(option.xAxis.data).toEqual(["2026-04-03", "2026-04-10", "2026-04-17"]);
+    // 0 参考线 + 末点数值标注（阈值后端未下发，不虚构阈值带）。
+    expect(option.series[0]?.markLine?.data).toEqual([{ yAxis: 0 }]);
+    expect(option.series[0]?.markPoint?.data).toEqual([{ name: "latest", coord: [2, -0.52] }]);
+    expect(option.series[0]?.markPoint?.label?.formatter).toBe("-0.52");
   });
 });

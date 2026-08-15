@@ -383,6 +383,149 @@ def test_create_does_not_dedupe_different_owner_conversation_or_client_request_i
     assert len(dispatched) == 4
 
 
+def test_create_dedupes_conversationless_duplicate_client_request_id(monkeypatch, tmp_path):
+    """无会话 run 的幂等 scope 退化为 (user_id, client_request_id) 二元组。"""
+    settings = _settings(tmp_path)
+    dispatched: list[str] = []
+    monkeypatch.setattr(
+        agent_run_service.execute_agent_run_task,
+        "send",
+        lambda *, run_id: dispatched.append(run_id),
+    )
+    request = _request("analyze without conversation", client_request_id="req-no-conv")
+
+    first = agent_run_service.create_agent_run(
+        request=request,
+        settings=settings,
+        provider="hermes",
+    )
+    second = agent_run_service.create_agent_run(
+        request=request,
+        settings=settings,
+        provider="hermes",
+    )
+    other_user = agent_run_service.create_agent_run(
+        request=_request(
+            "same key different user",
+            owner="owner-2",
+            client_request_id="req-no-conv",
+        ),
+        settings=settings,
+        provider="hermes",
+    )
+    with_conversation = agent_run_service.create_agent_run(
+        request=_request(
+            "same key with conversation",
+            conversation_id="conv-9",
+            client_request_id="req-no-conv",
+        ),
+        settings=settings,
+        provider="hermes",
+    )
+
+    assert second.run_id == first.run_id
+    assert other_user.run_id != first.run_id
+    assert with_conversation.run_id != first.run_id
+    assert dispatched == [first.run_id, other_user.run_id, with_conversation.run_id]
+    records = GovernanceRepository(settings.governance_path).read_all(
+        agent_run_service.AGENT_RUN_STREAM
+    )
+    assert len(records) == 3
+
+
+def test_retry_without_conversation_is_idempotent_for_double_click(monkeypatch, tmp_path):
+    settings = _settings(tmp_path)
+    source_request = _request("retry me without conversation")
+    _append_status(
+        settings=settings,
+        run_id="agent_run:no-conv-failed",
+        status="failed",
+        request=source_request,
+        queued_at="2026-07-25T10:00:00+00:00",
+        finished_at="2026-07-25T10:01:00+00:00",
+    )
+    dispatched: list[str] = []
+    monkeypatch.setattr(
+        agent_run_service.execute_agent_run_task,
+        "send",
+        lambda *, run_id: dispatched.append(run_id),
+    )
+
+    retried = agent_run_service.retry_agent_run(
+        run_id="agent_run:no-conv-failed",
+        settings=settings,
+    )
+    duplicate = agent_run_service.retry_agent_run(
+        run_id="agent_run:no-conv-failed",
+        settings=settings,
+    )
+
+    assert retried.run_id != "agent_run:no-conv-failed"
+    assert duplicate.run_id == retried.run_id
+    assert dispatched == [retried.run_id]
+    records = GovernanceRepository(settings.governance_path).read_all(
+        agent_run_service.AGENT_RUN_STREAM
+    )
+    assert [record["run_id"] for record in records] == [
+        "agent_run:no-conv-failed",
+        retried.run_id,
+    ]
+
+
+def test_retry_after_failed_retry_creates_new_run(monkeypatch, tmp_path):
+    """幂等键命中的记录若已终态 failed，再次 retry 必须新建 run 而非返回旧失败记录。"""
+    settings = _settings(tmp_path)
+    source_request = _request(
+        "retry twice",
+        conversation_id="conv-1",
+        client_request_id="create-key",
+    )
+    _append_status(
+        settings=settings,
+        run_id="agent_run:source-failed",
+        status="failed",
+        request=source_request,
+        queued_at="2026-07-25T10:00:00+00:00",
+        finished_at="2026-07-25T10:01:00+00:00",
+    )
+    dispatched: list[str] = []
+    monkeypatch.setattr(
+        agent_run_service.execute_agent_run_task,
+        "send",
+        lambda *, run_id: dispatched.append(run_id),
+    )
+
+    first_retry = agent_run_service.retry_agent_run(
+        run_id="agent_run:source-failed",
+        settings=settings,
+    )
+    agent_run_service.fail_agent_run(
+        run_id=first_retry.run_id,
+        settings=settings,
+        error=ValueError("worker died"),
+    )
+
+    second_retry = agent_run_service.retry_agent_run(
+        run_id="agent_run:source-failed",
+        settings=settings,
+    )
+    duplicate_second = agent_run_service.retry_agent_run(
+        run_id="agent_run:source-failed",
+        settings=settings,
+    )
+
+    assert first_retry.run_id != "agent_run:source-failed"
+    assert second_retry.run_id != first_retry.run_id
+    assert second_retry.status == "queued"
+    assert duplicate_second.run_id == second_retry.run_id
+    assert dispatched == [first_retry.run_id, second_retry.run_id]
+    latest = GovernanceRepository(settings.governance_path).read_all(
+        agent_run_service.AGENT_RUN_STREAM
+    )[-1]
+    assert latest["run_id"] == second_retry.run_id
+    assert latest["request"]["context"]["retry_of_run_id"] == "agent_run:source-failed"
+
+
 def test_execute_by_id_restores_governed_request_and_preserves_cancelled(monkeypatch, tmp_path):
     settings = _settings(tmp_path)
     dispatched: list[str] = []
@@ -476,8 +619,51 @@ def test_cancel_is_cooperative_idempotent_and_rejects_illegal_terminal_state(
         )
 
 
-def test_list_returns_only_each_owners_latest_run_in_descending_time_order(tmp_path):
+def test_cancel_tolerates_overlong_historical_question(tmp_path):
+    """question 的 max_length=8000 约束落地前的历史 run 可能带超长 question；
+    cancel 重建请求时必须经 _reconstructed_question 收敛而不是抛 RuntimeError。"""
     settings = _settings(tmp_path)
+    overlong_question = "问" * 9000
+    agent_run_service._append_record(
+        settings,
+        AgentRunRecord(
+            run_id="agent_run:overlong",
+            status="queued",
+            question=overlong_question,
+            request={
+                "question": overlong_question,
+                "context": {"user_id": "owner-1", "page": "agent-workbench"},
+            },
+            provider="hermes",
+            model="gpt-test",
+            transport="bridge",
+            toolsets="evidence,query,research",
+            queued_at="2026-07-25T10:00:00+00:00",
+        ),
+    )
+
+    status = agent_run_service.cancel_agent_run(
+        run_id="agent_run:overlong",
+        settings=settings,
+    )
+
+    assert status.status == "cancelled"
+    records = GovernanceRepository(settings.governance_path).read_all(
+        agent_run_service.AGENT_RUN_STREAM
+    )
+    assert [record["status"] for record in records] == ["queued", "cancelled"]
+    rebuilt_question = records[-1]["request"]["question"]
+    assert rebuilt_question == overlong_question[:8000]
+
+
+def test_list_returns_only_each_owners_latest_run_in_descending_time_order(monkeypatch, tmp_path):
+    settings = _settings(tmp_path)
+    # 固定时钟在 running 记录的 stale 窗口内，隔离本测试与 stale 收敛语义。
+    monkeypatch.setattr(
+        agent_run_service,
+        "_utc_now",
+        lambda: "2026-07-25T09:01:30+00:00",
+    )
     owner_request = _request("older", owner="owner-1")
     other_request = _request("private", owner="owner-2")
     _append_status(
@@ -524,6 +710,133 @@ def test_list_returns_only_each_owners_latest_run_in_descending_time_order(tmp_p
     ]
     assert response.items[1].status == "running"
     assert all(item.question != "private" for item in response.items)
+
+
+def test_list_agent_runs_applies_stale_judgment_without_writeback(monkeypatch, tmp_path):
+    """列表与单条端点共用 stale 判定；列表只调整视图，不写回。"""
+    settings = _settings(tmp_path)
+    request = _request("stale in list", owner="owner-1")
+    _append_status(
+        settings=settings,
+        run_id="agent_run:list-stale",
+        status="running",
+        request=request,
+        queued_at="2026-07-25T10:00:00+00:00",
+        started_at="2026-07-25T10:00:01+00:00",
+    )
+    # 59s elapsed > hermes timeout 9s + 30s grace.
+    monkeypatch.setattr(
+        agent_run_service,
+        "_utc_now",
+        lambda: "2026-07-25T10:01:00+00:00",
+    )
+    repo = GovernanceRepository(settings.governance_path)
+
+    listed = agent_run_service.list_agent_runs(
+        settings=settings,
+        owner_user_id="owner-1",
+        limit=20,
+    )
+
+    assert [item.status for item in listed.items] == ["failed"]
+    assert listed.items[0].error_message is not None
+    assert "未在运行超时后进入终态" in listed.items[0].error_message
+    assert [
+        record["status"]
+        for record in repo.read_all(agent_run_service.AGENT_RUN_STREAM)
+    ] == ["running"]
+
+    status = agent_run_service.get_agent_run_status(
+        run_id="agent_run:list-stale",
+        settings=settings,
+    )
+    assert status.status == "failed"
+    assert status.error_message == listed.items[0].error_message
+    assert [
+        record["status"]
+        for record in repo.read_all(agent_run_service.AGENT_RUN_STREAM)
+    ] == ["running", "failed"]
+
+
+def _append_legacy_long_question_record(
+    settings: SimpleNamespace,
+    *,
+    run_id: str,
+    status: str,
+    question: str,
+    started_at: str | None = None,
+) -> None:
+    """约束（min/max_length）引入前的历史记录：绕过 AgentQueryRequest 直接落盘。"""
+    agent_run_service._append_record(
+        settings,
+        AgentRunRecord(
+            run_id=run_id,
+            status=status,  # type: ignore[arg-type]
+            question=question,
+            request={
+                "question": question,
+                "context": {"user_id": "owner-1", "page": "agent-workbench"},
+            },
+            provider="hermes",
+            model="gpt-test",
+            transport="bridge",
+            toolsets="evidence,query,research",
+            queued_at="2026-07-25T10:00:00+00:00",
+            started_at=started_at,
+        ),
+    )
+
+
+def test_stale_status_read_tolerates_overlong_historical_question(monkeypatch, tmp_path):
+    """question 约束晚于历史 run 引入：超长 question 的 stale 对账读取不抛错。"""
+    settings = _settings(tmp_path)
+    long_question = "长" * 9000
+    _append_legacy_long_question_record(
+        settings,
+        run_id="agent_run:legacy-long",
+        status="running",
+        question=long_question,
+        started_at="2026-07-25T10:00:01+00:00",
+    )
+    # 59s elapsed > hermes timeout 9s + 30s grace -> 触发 stale 对账重建 request。
+    monkeypatch.setattr(
+        agent_run_service,
+        "_utc_now",
+        lambda: "2026-07-25T10:01:00+00:00",
+    )
+
+    status = agent_run_service.get_agent_run_status(
+        run_id="agent_run:legacy-long",
+        settings=settings,
+    )
+
+    assert status.status == "failed"
+    # run 记录与状态响应保留原文，仅审计用的重建 request 被截断。
+    assert status.question == long_question
+
+
+def test_fail_agent_run_tolerates_overlong_historical_question(tmp_path):
+    """fail_agent_run 的回退 request 重建同样要能吞下超长历史 question。"""
+    settings = _settings(tmp_path)
+    long_question = "q" * 9000
+    _append_legacy_long_question_record(
+        settings,
+        run_id="agent_run:legacy-long-fail",
+        status="queued",
+        question=long_question,
+    )
+
+    agent_run_service.fail_agent_run(
+        run_id="agent_run:legacy-long-fail",
+        settings=settings,
+        error=RuntimeError("worker preparation failed"),
+    )
+
+    status = agent_run_service.get_agent_run_status(
+        run_id="agent_run:legacy-long-fail",
+        settings=settings,
+    )
+    assert status.status == "failed"
 
 
 @pytest.mark.parametrize("source_status", ["failed", "cancelled"])

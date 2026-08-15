@@ -149,7 +149,10 @@ export function StockAnalysisEvidenceLedgerRail({
           <p>结果口径：{resultKindLabel}</p>
           <p>使用边界：{formalUseAllowed ? "正式口径可用" : "仅供观察"}</p>
           <p className="stock-analysis-page__ev-note-status">
-            {sourceVersionSummary} · {basisLabel} · {qualityLabel} · {updatedAtLabel}
+            {sourceVersionSummary} · {basisLabel}
+          </p>
+          <p className="stock-analysis-page__ev-note-status">
+            {qualityLabel} · {updatedAtLabel}
           </p>
         </div>
         {endpointItems.length > 0 ? (

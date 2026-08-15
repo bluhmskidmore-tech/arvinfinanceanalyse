@@ -45,13 +45,15 @@ export default function MacroObservationConclusionSection({
               {conclusion.recommendedAction}
             </span>
           </p>
-          {conclusion.warningNote ? (
-            <p
+          {conclusion.warnings.length ? (
+            <ul
               className="macro-observation-conclusion-warning-note"
               data-testid="macro-observation-conclusion-warning-note"
             >
-              {conclusion.warningNote}，全文见证据与口径分区。
-            </p>
+              {conclusion.warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
           ) : null}
         </div>
 

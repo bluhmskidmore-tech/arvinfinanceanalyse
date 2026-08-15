@@ -250,6 +250,56 @@ function ScoreCell({ label, value, max = 0.4 }: { label: string; value: number |
   );
 }
 
+/** 整列同值时返回该值，否则 null(§6：同值列收敛为区头一句摘要)。 */
+function uniformValue(values: string[]): string | null {
+  if (values.length < 2) return null;
+  return values.every((value) => value === values[0]) ? values[0] : null;
+}
+
+type TrendUniformColumns = {
+  /** 区头摘要句；无同值列时为 null。 */
+  note: string | null;
+  evidenceCount: string | null;
+  boundaryLabel: string | null;
+  invalidation: string | null;
+  reviewDetail: string | null;
+  priorityReason: string | null;
+  sectorBoundary: string | null;
+};
+
+function buildTrendUniformColumns(
+  rows: Array<{
+    evidenceCountLabel: string;
+    boundaryLabel: string;
+    invalidationPreview: string;
+    reviewDetail: string;
+    priorityPreview: string;
+    sectorBoundaryPreview: string;
+  }>,
+): TrendUniformColumns {
+  const evidenceCount = uniformValue(rows.map((row) => row.evidenceCountLabel));
+  const boundaryLabel = uniformValue(rows.map((row) => row.boundaryLabel));
+  const invalidation = uniformValue(rows.map((row) => row.invalidationPreview));
+  const reviewDetail = uniformValue(rows.map((row) => row.reviewDetail));
+  const priorityReason = uniformValue(rows.map((row) => row.priorityPreview));
+  const sectorBoundary = uniformValue(rows.map((row) => row.sectorBoundaryPreview));
+  const parts: string[] = [];
+  if (evidenceCount) parts.push(`证据 ${evidenceCount}/行`);
+  if (boundaryLabel) parts.push(boundaryLabel);
+  if (reviewDetail) parts.push(`决策状态 ${reviewDetail}`);
+  if (priorityReason) parts.push(priorityReason);
+  if (invalidation) parts.push(invalidation);
+  return {
+    note: parts.length > 0 ? `全列一致：${parts.join("；")}` : null,
+    evidenceCount,
+    boundaryLabel,
+    invalidation,
+    reviewDetail,
+    priorityReason,
+    sectorBoundary,
+  };
+}
+
 export function StockAnalysisCandidateLedgerTable({
   candidates,
   usesHybridFusion,
@@ -258,9 +308,63 @@ export function StockAnalysisCandidateLedgerTable({
   onReviewCandidate,
 }: StockAnalysisCandidateLedgerTableProps) {
   const visibleCandidates = candidates.slice(0, visibleCount);
+  const rowModels = visibleCandidates.map((card) => {
+    const fusionActionLabel = fusionActionDisplayLabel(candidateEvidenceValue(card, "fusion_action"));
+    const meaningfulBoundaryCount = meaningfulBoundaryEvidence(card).length;
+    const status = rowStatus(card, usesHybridFusion, fusionActionLabel, meaningfulBoundaryCount);
+    const evidenceCount = card.primaryEvidence.length + card.supportingEvidence.length;
+    return {
+      card,
+      fusionActionLabel,
+      meaningfulBoundaryCount,
+      status,
+      evidenceCount,
+      confidenceDisplay: confidenceDisplayLabel(candidateEvidenceValue(card, "confidence")),
+      stockNarrative: reviewFocusPreview(card),
+      sectorNarrative: boundaryPreview(card),
+      evidenceNarrative: primaryEvidencePreview(card),
+      invalidationNarrative: invalidationPreview(card),
+      supportNarrative: supportingEvidencePreview(card),
+      priorityNarrative: priorityReasonPreview(card, meaningfulBoundaryCount),
+      reviewDetail: reviewStatusDetail(
+        card,
+        usesHybridFusion,
+        fusionActionLabel,
+        status.label,
+        meaningfulBoundaryCount,
+      ),
+      sectorCodeDisplay: displaySectorCode(card.sectorCode),
+    };
+  });
+  // 趋势模式下整列同值的列收敛为区头一句摘要，表内只留差异列(§6)。
+  const uniformColumns = usesHybridFusion
+    ? null
+    : buildTrendUniformColumns(
+        rowModels.map((row) => ({
+          evidenceCountLabel: `${row.evidenceCount} 条`,
+          boundaryLabel:
+            row.meaningfulBoundaryCount > 0 ? `边界 ${row.meaningfulBoundaryCount} 待核` : "边界清洁",
+          invalidationPreview: row.invalidationNarrative.preview,
+          reviewDetail: row.reviewDetail,
+          priorityPreview: row.priorityNarrative.preview,
+          sectorBoundaryPreview: row.sectorNarrative.preview,
+        })),
+      );
+  const showEvidenceColumn = !uniformColumns?.evidenceCount;
+  const showBoundaryColumn = !uniformColumns?.boundaryLabel;
+  const showInvalidationColumn = !uniformColumns?.invalidation;
 
   return (
     <div className="overflow-x-auto rounded-lg border border-default-200 mt-4">
+      {uniformColumns?.note ? (
+        <p
+          className="stock-analysis-page__candidate-ledger-uniform-note"
+          data-testid="stock-analysis-review-queue-uniform-note"
+          title={uniformColumns.sectorBoundary ?? undefined}
+        >
+          {uniformColumns.note}
+        </p>
+      ) : null}
       <table
         className="w-full table-auto text-sm text-left whitespace-nowrap [&_th]:px-3 [&_th]:py-2 [&_th]:border-b [&_th]:border-default-200 [&_th]:bg-default-100/50 [&_th]:text-default-600 [&_th]:font-semibold [&_td]:px-3 [&_td]:py-2 [&_td]:border-b [&_td]:border-default-100/50 hover:[&_tbody_tr]:bg-default-50/50 transition-colors"
         data-mode={usesHybridFusion ? "hybrid" : "trend"}
@@ -283,35 +387,32 @@ export function StockAnalysisCandidateLedgerTable({
               <>
                 <th scope="col">形态</th>
                 <th scope="col">距观察</th>
-                <th scope="col">证据</th>
-                <th scope="col">边界</th>
-                <th scope="col">失效</th>
+                {showEvidenceColumn ? <th scope="col">证据</th> : null}
+                {showBoundaryColumn ? <th scope="col">边界</th> : null}
+                {showInvalidationColumn ? <th scope="col">失效</th> : null}
               </>
             )}
             <th scope="col">复核</th>
           </tr>
         </thead>
         <tbody>
-          {visibleCandidates.map((card, index) => {
-            const fusionActionLabel = fusionActionDisplayLabel(candidateEvidenceValue(card, "fusion_action"));
-            const meaningfulBoundaryCount = meaningfulBoundaryEvidence(card).length;
-            const status = rowStatus(card, usesHybridFusion, fusionActionLabel, meaningfulBoundaryCount);
-            const evidenceCount = card.primaryEvidence.length + card.supportingEvidence.length;
-            const confidenceDisplay = confidenceDisplayLabel(candidateEvidenceValue(card, "confidence"));
-            const stockNarrative = reviewFocusPreview(card);
-            const sectorNarrative = boundaryPreview(card);
-            const evidenceNarrative = primaryEvidencePreview(card);
-            const invalidationNarrative = invalidationPreview(card);
-            const supportNarrative = supportingEvidencePreview(card);
-            const priorityNarrative = priorityReasonPreview(card, meaningfulBoundaryCount);
-            const reviewDetail = reviewStatusDetail(
+          {rowModels.map((row, index) => {
+            const {
               card,
-              usesHybridFusion,
               fusionActionLabel,
-              status.label,
               meaningfulBoundaryCount,
-            );
-            const sectorCodeDisplay = displaySectorCode(card.sectorCode);
+              status,
+              evidenceCount,
+              confidenceDisplay,
+              stockNarrative,
+              sectorNarrative,
+              evidenceNarrative,
+              invalidationNarrative,
+              supportNarrative,
+              priorityNarrative,
+              reviewDetail,
+              sectorCodeDisplay,
+            } = row;
 
             return (
               <tr
@@ -352,19 +453,23 @@ export function StockAnalysisCandidateLedgerTable({
                   <small className={CANDIDATE_LEDGER_DETAIL_CLASS} title={stockNarrative.title}>
                     {stockNarrative.preview}
                   </small>
-                  <small
-                    className={`${CANDIDATE_LEDGER_DETAIL_CLASS} stock-analysis-page__candidate-ledger-priority`}
-                    title={priorityNarrative.title}
-                  >
-                    {priorityNarrative.preview}
-                  </small>
+                  {uniformColumns?.priorityReason ? null : (
+                    <small
+                      className={`${CANDIDATE_LEDGER_DETAIL_CLASS} stock-analysis-page__candidate-ledger-priority`}
+                      title={priorityNarrative.title}
+                    >
+                      {priorityNarrative.preview}
+                    </small>
+                  )}
                 </td>
                 <td>
                   <strong>{card.sectorName}</strong>
                   {sectorCodeDisplay ? <small className="tabular-nums font-mono">{sectorCodeDisplay}</small> : null}
-                  <small className={CANDIDATE_LEDGER_DETAIL_CLASS} title={sectorNarrative.title}>
-                    {sectorNarrative.preview}
-                  </small>
+                  {uniformColumns?.sectorBoundary ? null : (
+                    <small className={CANDIDATE_LEDGER_DETAIL_CLASS} title={sectorNarrative.title}>
+                      {sectorNarrative.preview}
+                    </small>
+                  )}
                 </td>
                 {usesHybridFusion ? (
                   <>
@@ -408,26 +513,34 @@ export function StockAnalysisCandidateLedgerTable({
                     </td>
                     <td data-mobile-label="距观察">
                       <strong className="tabular-nums font-mono">{card.distanceToBreakoutPct}</strong>
-                      <small className={CANDIDATE_LEDGER_DETAIL_CLASS} title={invalidationNarrative.title}>
-                        {invalidationNarrative.preview}
-                      </small>
+                      {uniformColumns?.invalidation ? null : (
+                        <small className={CANDIDATE_LEDGER_DETAIL_CLASS} title={invalidationNarrative.title}>
+                          {invalidationNarrative.preview}
+                        </small>
+                      )}
                     </td>
-                    <td data-mobile-label="证据">
-                      <strong>{evidenceCount} 证据</strong>
-                      <small className={CANDIDATE_LEDGER_DETAIL_CLASS} title={supportNarrative.title}>
-                        {supportNarrative.preview}
-                      </small>
-                    </td>
-                    <td data-mobile-label="边界">
-                      <span className="font-medium text-xs" data-tone={status.tone}>
-                        {meaningfulBoundaryCount > 0 ? `边界 ${meaningfulBoundaryCount}` : "边界清洁"}
-                      </span>
-                    </td>
-                    <td data-mobile-label="失效">
-                      <small className={CANDIDATE_LEDGER_DETAIL_CLASS} title={invalidationNarrative.title}>
-                        {invalidationNarrative.preview}
-                      </small>
-                    </td>
+                    {showEvidenceColumn ? (
+                      <td data-mobile-label="证据">
+                        <strong>{evidenceCount} 证据</strong>
+                        <small className={CANDIDATE_LEDGER_DETAIL_CLASS} title={supportNarrative.title}>
+                          {supportNarrative.preview}
+                        </small>
+                      </td>
+                    ) : null}
+                    {showBoundaryColumn ? (
+                      <td data-mobile-label="边界">
+                        <span className="font-medium text-xs" data-tone={status.tone}>
+                          {meaningfulBoundaryCount > 0 ? `边界 ${meaningfulBoundaryCount}` : "边界清洁"}
+                        </span>
+                      </td>
+                    ) : null}
+                    {showInvalidationColumn ? (
+                      <td data-mobile-label="失效">
+                        <small className={CANDIDATE_LEDGER_DETAIL_CLASS} title={invalidationNarrative.title}>
+                          {invalidationNarrative.preview}
+                        </small>
+                      </td>
+                    ) : null}
                   </>
                 )}
                 <td>
@@ -441,7 +554,7 @@ export function StockAnalysisCandidateLedgerTable({
                   >
                     <span className="sr-only">复核 </span>K 线
                   </button>
-                  <small title={reviewDetail}>{reviewDetail}</small>
+                  {uniformColumns?.reviewDetail ? null : <small title={reviewDetail}>{reviewDetail}</small>}
                 </td>
               </tr>
             );

@@ -1847,6 +1847,13 @@ const MOCK_ANALYSIS: MacroToolkitAnalysisPayload = {
       evidence: ["尚未发现输出文件"],
     },
   ],
+  // A股橙色风险（severity 3）触发风险闸门，压过流动性偏松；Crisis -0.57 未达高风险档。
+  primary_signal: {
+    key: "a_share_stampede_risk",
+    selection_status: "selected",
+    reason_code: "risk_gate_a_share_stampede",
+    rule_version: "rv_macro_primary_signal_risk_first_v1",
+  },
   model_readiness: MOCK_MODEL_READINESS,
   readiness_summary: MOCK_READINESS_SUMMARY,
   hason_strategy: MOCK_HASON_STRATEGY,

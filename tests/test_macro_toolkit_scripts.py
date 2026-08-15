@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+# Governance: 整体标 excluded_surface_acceptance；含 economic_cycle fail-closed、
+# 取消合成回退等审计回归子集，后续可拆分为 regression。
+
 import importlib
 import importlib.util
 import inspect
+import json
 import py_compile
 import subprocess
 import sys
@@ -48,6 +52,11 @@ from backend.app.repositories.governance_repo import GovernanceRepository
 from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.services import cffex_member_rank_service, macro_toolkit_service
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_macro_toolkit,
+]
 
 MACRO_TOOLKIT_READ_HEADERS = {"X-User-Id": "macro-toolkit-read-user", "X-User-Role": "viewer"}
 
@@ -1650,6 +1659,48 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
         conn.close()
     output_dir = tmp_path / "macro_toolkit_output"
     output_dir.mkdir()
+    receipt_service = macro_toolkit_route.macro_toolkit_refresh_receipt_service
+    receipt_path = tmp_path / "macro_toolkit_freshness_refresh_receipt.json"
+    receipt_path.write_text(
+        json.dumps(
+            {
+                "schema_version": receipt_service.RECEIPT_SCHEMA_VERSION,
+                "generated_at": "2026-04-10T06:30:00+00:00",
+                "run_kind": "scheduled",
+                "invocation_mode": "run_once",
+                "task_name": receipt_service.RECEIPT_TASK_NAME,
+                "commit_sha": "test-commit",
+                "source_version": receipt_service.EXPECTED_SOURCE_VERSION,
+                "status": "success",
+                "exit_code": 0,
+                "result": {
+                    "status": "success",
+                    "steps": [
+                        {
+                            "step": step_name,
+                            "status": "success",
+                            "result": {"row_count": 1},
+                        }
+                        for step_name in sorted(
+                            receipt_service.REQUIRED_STEPS | {"cffex_member_rank"}
+                        )
+                    ],
+                    "latest_observation_dates": {
+                        key: "2026-04-10"
+                        for key in receipt_service.CORE_LATEST_OBSERVATION_KEYS
+                    },
+                },
+                "warnings": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    load_refresh_receipt_health = receipt_service.load_macro_toolkit_refresh_receipt_health
+    monkeypatch.setattr(
+        receipt_service,
+        "load_macro_toolkit_refresh_receipt_health",
+        lambda: load_refresh_receipt_health(receipt_path),
+    )
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setattr(macro_toolkit_route, "OUTPUT_DIR", output_dir)
     get_settings.cache_clear()
@@ -1705,10 +1756,11 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
     # 与 docs/plans/2026-07-19-macro-due-diligence-wiring.md（W3）。
     # M12 无可算对照相关腿时诚实计 unavailable（不再 degraded +「常态」）。
     # M10 共同月对齐后：薄种子缺 PMI/M2/社融/信用利差/Brent → 无 6/6 共同月，诚实 unavailable。
+    # M14 economic_cycle：PMI 核心输入缺失时 fail-closed（unavailable，不再 degraded）。
     assert data_health["capability_results"] == {
         "complete": 1,
-        "degraded": 3,
-        "unavailable": 11,
+        "degraded": 2,
+        "unavailable": 12,
         "total_count": 15,
         "deferred": False,
     }
@@ -1840,13 +1892,23 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
 
     economic_cycle = capability_results["economic_cycle"]
     cycle_missing = set(economic_cycle["result"]["input_evidence"]["missing_inputs"])
-    assert economic_cycle["status"] == "degraded"
+    # 核心输入（PMI）缺失时 economic_cycle fail-closed：unknown 且不给策略建议
+    assert economic_cycle["status"] == "unavailable"
+    assert economic_cycle["result"]["cycle_phase"] == "unknown"
+    assert economic_cycle["result"]["strategy"] == {}
     assert {"PMI_MISSING", "SOCIAL_FINANCING_YOY_MISSING"}.issubset(cycle_missing)
     assert "PPI_YOY_MISSING" in cycle_missing
     assert "M2_YOY_MISSING" in cycle_missing
     indicators = {item["alias"]: item for item in payload["result"]["indicators"]}
     assert indicators["DR007.IB"]["latest_value"] == 1.82
     assert indicators["S0059749"]["latest_value"] == 2.48
+    dr007_points = indicators["DR007.IB"]["recent_points"]
+    assert 0 < len(dr007_points) <= 20
+    assert dr007_points[-1]["value"] == indicators["DR007.IB"]["latest_value"]
+    assert dr007_points[-1]["date"] == indicators["DR007.IB"]["latest_date"]
+    assert [point["date"] for point in dr007_points] == sorted(point["date"] for point in dr007_points)
+    missing_indicators = [item for item in payload["result"]["indicators"] if item["quality"] == "missing"]
+    assert all(item["recent_points"] == [] for item in missing_indicators)
     hason_strategy = payload["result"]["hason_strategy"]
     assert hason_strategy["key"] == "hason_macro_strategy"
     assert hason_strategy["basis"] == "analytical"
@@ -1882,17 +1944,12 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
         item["script"] == "signal_aggregator" and item["available"]
         for item in hason_strategy["source_trace"]
     )
-    strategy_summaries = {item["key"]: item for item in payload["result"]["strategy_summaries"]}
-    assert set(strategy_summaries) == {
-        "moving_average",
-        "mean_reversion_momentum",
-        "multi_factor_selection",
-        "low_crowding_regime_multifactor",
+    assert payload["result"]["strategy_summaries"] == []
+    assert payload["result"]["strategy_data_status"] == {
+        "status": "unavailable",
+        "reason": "no_strategy_summaries",
+        "summary_count": 0,
     }
-    assert strategy_summaries["moving_average"]["status"] == "sample_only"
-    assert strategy_summaries["low_crowding_regime_multifactor"]["status"] == "sample_only"
-    assert strategy_summaries["low_crowding_regime_multifactor"]["result"]["regime"]
-    assert strategy_summaries["multi_factor_selection"]["primary_metric"]["label"] == "样例入选数量"
 
 
 def test_hason_module_payload_marks_partially_available_script_chain(tmp_path) -> None:
@@ -2466,6 +2523,70 @@ def test_macro_toolkit_strategy_summaries_endpoint_returns_deferred_strategy_pay
     assert "choice_stock_daily_observation" in result_meta["tables_used"]
 
 
+def test_equity_strategy_missing_price_context_returns_empty_with_unavailable_payload(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb.connect(str(duckdb_path), read_only=False).close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    context_loads = 0
+    shadow_calls: list[pd.DataFrame | None] = []
+
+    def fake_load_price_context(duckdb_path_arg: object) -> None:
+        nonlocal context_loads
+        assert Path(duckdb_path_arg) == duckdb_path
+        context_loads += 1
+        return None
+
+    def fake_shadow_report(
+        duckdb_path_arg: object,
+        *,
+        latest_factor_snapshot: pd.DataFrame | None = None,
+    ) -> dict[str, object]:
+        assert Path(duckdb_path_arg) == duckdb_path
+        shadow_calls.append(latest_factor_snapshot)
+        return {"status": "unavailable", "tables_used": []}
+
+    monkeypatch.setattr(macro_toolkit_route, "_load_equity_strategy_price_context", fake_load_price_context)
+    monkeypatch.setattr(macro_toolkit_route, "compute_equity_shadow_portfolio_report", fake_shadow_report)
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_macro_etf_strategy_snapshot_for_toolkit",
+        lambda **_kwargs: {
+            "boundary": "observation_only",
+            "execution_enabled": False,
+            "data_status": {"status": "ready", "dual_frequency_status": "ready"},
+        },
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_choice_stock_refresh_overview",
+        lambda *_args, **_kwargs: {"daily_observation": {"latest_trade_date": None}},
+    )
+
+    try:
+        assert macro_toolkit_route._equity_strategy_summaries(duckdb_path, price_context=None) == []
+        payload = macro_toolkit_route._build_macro_toolkit_strategy_summaries()
+    finally:
+        get_settings.cache_clear()
+
+    assert context_loads == 1
+    assert shadow_calls == [None]
+    result = payload["result"]
+    assert result["strategy_summaries"] == []
+    assert result["strategy_data_status"] == {
+        "status": "unavailable",
+        "reason": "price_context_unavailable",
+        "summary_count": 0,
+    }
+    assert result["warnings"] == [
+        "A股策略摘要不可用：未找到真实 choice_stock_daily_observation 价格上下文，已停止合成样本回退。"
+    ]
+    assert payload["result_meta"]["quality_flag"] == "ok"
+
+
 def test_macro_toolkit_strategy_summaries_reuses_loaded_factor_snapshot_for_shadow(
     tmp_path,
     monkeypatch,
@@ -2543,6 +2664,8 @@ def test_macro_toolkit_strategy_summaries_reuses_loaded_factor_snapshot_for_shad
     assert len(shadow_calls) == 1
     assert shadow_calls[0] is financials
     assert payload["result"]["strategy_summaries"][0]["status"] == "complete"
+    assert payload["result"]["strategy_data_status"] == {"status": "complete", "summary_count": 4}
+    assert payload["result"]["warnings"] == []
     assert payload["result"]["shadow_portfolio_report"]["status"] == "complete"
     macro_etf_strategy = payload["result"]["macro_etf_strategy"]
     assert macro_etf_strategy["boundary"] == "observation_only"
@@ -3762,7 +3885,8 @@ def test_macro_toolkit_analysis_surfaces_m2_and_ppi_missing_inputs(tmp_path, mon
     leading_missing = set(leading["input_evidence"]["missing_inputs"])
     cycle_missing = set(cycle["input_evidence"]["missing_inputs"])
     assert leading["status"] == "unavailable"
-    assert cycle["status"] == "degraded"
+    # PMI 核心输入缺失 → economic_cycle fail-closed（unavailable，不再 degraded 输出象限）
+    assert cycle["status"] == "unavailable"
     assert "M2_YOY_MISSING" in leading_missing
     assert "M2_YOY_MISSING" in cycle_missing
     assert "PPI_YOY_MISSING" in cycle_missing
@@ -7102,7 +7226,12 @@ def test_capability_input_evidence_pairs_derived_value_with_matching_date() -> N
 
 
 def test_leading_indicator_merrill_cycle_cross_market_ignore_provenance_sidecar() -> None:
-    """Merrill / economic_cycle / cross_market 忽略 _provenance，数值行为不变。"""
+    """Merrill / economic_cycle / cross_market 忽略 _provenance，数值行为不变。
+
+    样本给足 5 个月：economic_cycle 的 fail-closed 门槛要求月度样本 >= 4，
+    pearson 相关要求 >= 5 个对齐样本；样本不足时两侧都退化为 unknown/None，
+    等值断言会空洞化、失去保护力。
+    """
     from backend.app.core_finance.macro.cross_market_linkage import analyze_cross_market_linkage
     from backend.app.core_finance.macro.economic_cycle import compute_economic_cycle
     from backend.app.core_finance.macro.merrill_clock import compute_merrill_clock_payload
@@ -7143,6 +7272,57 @@ def test_leading_indicator_merrill_cycle_cross_market_ignore_provenance_sidecar(
             "us_treasury_10y": 3.9,
             "copper": 69000.0,
         },
+        {
+            "trade_date": date(2026, 2, 28),
+            "biz_date": date(2026, 2, 28),
+            "pmi": 49.5,
+            "cpi_yoy": 0.3,
+            "ppi_yoy": -0.6,
+            "m2_yoy": 7.0,
+            "social_financing_yoy": 8.0,
+            "industrial_yoy": 5.0,
+            "term_spread_10y_1y": 50.0,
+            "treasury_10y": 2.0,
+            "hs300": 3800.0,
+            "usdcny": 7.0,
+            "brent_oil": 76.0,
+            "us_treasury_10y": 3.8,
+            "copper": 68000.0,
+        },
+        {
+            "trade_date": date(2026, 1, 31),
+            "biz_date": date(2026, 1, 31),
+            "pmi": 49.0,
+            "cpi_yoy": 0.2,
+            "ppi_yoy": -0.4,
+            "m2_yoy": 6.5,
+            "social_financing_yoy": 7.5,
+            "industrial_yoy": 4.5,
+            "term_spread_10y_1y": 45.0,
+            "treasury_10y": 1.9,
+            "hs300": 3700.0,
+            "usdcny": 6.9,
+            "brent_oil": 74.0,
+            "us_treasury_10y": 3.7,
+            "copper": 67000.0,
+        },
+        {
+            "trade_date": date(2025, 12, 31),
+            "biz_date": date(2025, 12, 31),
+            "pmi": 48.5,
+            "cpi_yoy": 0.1,
+            "ppi_yoy": -0.2,
+            "m2_yoy": 6.0,
+            "social_financing_yoy": 7.0,
+            "industrial_yoy": 4.0,
+            "term_spread_10y_1y": 40.0,
+            "treasury_10y": 1.8,
+            "hs300": 3600.0,
+            "usdcny": 6.8,
+            "brent_oil": 72.0,
+            "us_treasury_10y": 3.6,
+            "copper": 66000.0,
+        },
     ]
     sidecar_rows = [
         {
@@ -7167,12 +7347,47 @@ def test_leading_indicator_merrill_cycle_cross_market_ignore_provenance_sidecar(
 
     cycle_base = compute_economic_cycle(base_rows, report_date)
     cycle_side = compute_economic_cycle(sidecar_rows, report_date)
+    # 防空洞化：样本必须先让 economic_cycle 真正算出象限，等值断言才有意义
+    assert cycle_base.get("cycle_phase") not in {None, "unknown"}
+    assert cycle_base.get("growth_score") is not None
     assert cycle_base.get("cycle_phase") == cycle_side.get("cycle_phase")
     assert cycle_base.get("growth_score") == cycle_side.get("growth_score")
     assert cycle_base.get("inflation_score") == cycle_side.get("inflation_score")
 
     cross_base = analyze_cross_market_linkage(base_rows, report_date)
     cross_side = analyze_cross_market_linkage(sidecar_rows, report_date)
+    # 防空洞化：至少 fx/oil/us 相关腿可算（5 个对齐样本），不得全为 None
+    assert cross_base.get("bond_fx_corr") is not None
     assert cross_base.get("data_status") == cross_side.get("data_status")
     assert cross_base.get("overall_risk") == cross_side.get("overall_risk")
     assert cross_base.get("bond_equity_corr") == cross_side.get("bond_equity_corr")
+
+
+def test_indicator_payload_recent_points_keep_ascending_tail() -> None:
+    config = {
+        "key": "dr007",
+        "alias": "DR007.IB",
+        "label": "DR007",
+        "group": "流动性",
+        "unit": "%",
+    }
+    frame = pd.DataFrame(
+        {
+            "date": [f"2026-03-{day:02d}" for day in range(1, 31)],
+            "value": [1.5 + day * 0.01 for day in range(1, 31)],
+            "vendor_name": ["choice"] * 30,
+            "series_id": ["DR007.IB"] * 30,
+        }
+    )
+
+    payload = macro_toolkit_route._indicator_payload(config, frame)
+
+    points = payload["recent_points"]
+    assert len(points) == 20
+    assert [point["date"] for point in points] == [f"2026-03-{day:02d}" for day in range(11, 31)]
+    assert points[-1]["value"] == payload["latest_value"]
+    assert points[-1]["date"] == payload["latest_date"]
+
+    empty_payload = macro_toolkit_route._indicator_payload(config, pd.DataFrame())
+    assert empty_payload["quality"] == "missing"
+    assert empty_payload["recent_points"] == []

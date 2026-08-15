@@ -215,7 +215,7 @@ export function StockAnalysisDeepSelectionOverview({
                                   #{sector.sectorRank} {sector.sectorName}
                                 </strong>
                                 <span>
-                                  板块 {sector.sectorPctChange} · 得分 {sector.sectorScore} · 样本 {sector.stocks.length}
+                                  板块 {sector.sectorPctChange} / 得分 {sector.sectorScore} / 样本 {sector.stocks.length}
                                 </span>
                               </header>
                               <ul className="stock-analysis-page__sector-heavyweight-list">

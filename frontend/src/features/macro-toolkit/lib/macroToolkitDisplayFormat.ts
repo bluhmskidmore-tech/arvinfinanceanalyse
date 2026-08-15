@@ -1,6 +1,7 @@
 import type {
   MacroToolkitAShareRiskPayload,
   MacroToolkitIndicator,
+  MacroToolkitPrimarySignal,
   MacroToolkitRunResponse,
   MacroToolkitSignalCard,
   MacroToolkitSourceCheck,
@@ -208,16 +209,94 @@ const OBSERVATION_EVIDENCE_KEY_LABELS: Record<string, string> = {
   avg_corr: "平均相关",
   assets: "资产数",
   vol: "波动",
+  "AAA spread": "AAA利差",
+  AAA: "AAA利差",
+  total_mv: "总市值",
+  duration: "久期",
+  worst_pnl: "最差损益",
+  "5d": "5日变动",
 };
+
+/** 证据值里的英文枚举 → 中文（LOW/MEDIUM/HIGH、Unavailable 等展示层直译）。 */
+const OBSERVATION_EVIDENCE_VALUE_LABELS: Record<string, string> = {
+  Unavailable: "不可用",
+  unavailable: "不可用",
+  LOW: "低",
+  MEDIUM: "中",
+  HIGH: "高",
+  range: "区间",
+};
+
+/** total_mv 一类 14 位金额（元）缩写为亿元；非纯数值原样返回。 */
+function formatEvidenceAmountYi(value: string) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || Math.abs(numeric) < 1e8) {
+    return value;
+  }
+  return `${(numeric / 1e8).toFixed(2)} 亿元`;
+}
+
+export function formatCapabilityEvidenceValue(key: string, value: string) {
+  const trimmed = value.trim();
+  if (key === "total_mv") {
+    return formatEvidenceAmountYi(trimmed);
+  }
+  return OBSERVATION_EVIDENCE_VALUE_LABELS[trimmed] ?? trimmed;
+}
+
+const EVIDENCE_PAIR_PATTERN = /^([A-Za-z0-9][A-Za-z0-9 _-]*?)=(.+)$/;
 
 /** 后端证据串里的 `key=value` 英文键映射为中文标签；未知键仅把 = 换成空格。 */
 export function formatObservationEvidenceItem(item: string) {
-  const pair = item.match(/^([A-Za-z0-9][A-Za-z0-9_-]*)=(.+)$/);
+  const pair = item.match(EVIDENCE_PAIR_PATTERN);
   if (!pair) {
     return item;
   }
-  const label = OBSERVATION_EVIDENCE_KEY_LABELS[pair[1]!] ?? pair[1]!;
-  return `${label} ${pair[2]!}`;
+  const key = pair[1]!.trim();
+  const label = OBSERVATION_EVIDENCE_KEY_LABELS[key] ?? key;
+  return `${label} ${formatCapabilityEvidenceValue(key, pair[2]!)}`;
+}
+
+/**
+ * 04 功能结果卡证据行：`key=value` token 直出改中文键名 + 格式化值
+ * （亿元缩写、Unavailable→不可用、LOW/MEDIUM/HIGH→低/中/高）；
+ * 原始 kv 串由调用方收进 title。
+ */
+export function formatCapabilityEvidenceList(items: string[]) {
+  return items.map((item) => formatObservationEvidenceItem(item.replace(/\s+/g, " ").trim()));
+}
+
+/** 04 功能结果卡主值里的英文枚举值（如「联动风险 MEDIUM」）→ 中文；原值收 title。 */
+export function formatCapabilityMetricValue(value: string | number) {
+  if (typeof value === "number") {
+    return String(value);
+  }
+  return OBSERVATION_EVIDENCE_VALUE_LABELS[value.trim()] ?? value;
+}
+
+/** Hason 框架英文名的展示层中文名；未知名称原样返回（原文由调用方收 title）。 */
+const HASON_FRAMEWORK_DISPLAY_NAMES: Record<string, string> = {
+  "Hason macro hedge due-diligence framework": "Hason 宏观对冲尽调框架",
+};
+
+export function hasonFrameworkDisplayName(name: string) {
+  return HASON_FRAMEWORK_DISPLAY_NAMES[name.trim()] ?? name;
+}
+
+/** 操作台区题脚本中文名；未登记脚本回落「脚本执行」，snake 名降副行代码样式。 */
+const SCRIPT_DISPLAY_LABELS: Record<string, string> = {
+  signal_aggregator: "信号聚合脚本",
+  risk_monitor: "风险监控脚本",
+  crisis_score_cn: "危机评分脚本",
+  merrill_clock_cn: "美林时钟脚本",
+  crowding_cn: "拥挤度脚本",
+};
+
+export function scriptDisplayLabel(name: string | null | undefined) {
+  if (!name) {
+    return null;
+  }
+  return SCRIPT_DISPLAY_LABELS[name] ?? "脚本执行";
 }
 
 export function formatObservationEvidence(evidence: string[] | null | undefined) {
@@ -267,6 +346,28 @@ export function formatCrisisComponentSummaryZh(
 
 export function isObservationOutputSignal(card: MacroToolkitSignalCard) {
   return card.key === "outputs" || /脚本产物|输出文件|output/i.test(card.title);
+}
+
+/**
+ * 主信号解析：只按后端 `primary_signal.key` 取卡。
+ *
+ * Crisis 是 z-score（2 已是高风险），A股踩踏是 0-100 分，流动性等方向卡是固定
+ * 离散状态分，三者不可比较；风险优先规则由后端
+ * rv_macro_primary_signal_risk_first_v1 声明。字段缺失、非 selected、key 悬空
+ * 或指向 outputs 卡时一律返回 null，前端不得自行排序兜底。
+ */
+export function pickPrimarySignal(
+  cards: MacroToolkitSignalCard[],
+  primarySignal: MacroToolkitPrimarySignal | undefined,
+): MacroToolkitSignalCard | null {
+  if (primarySignal?.selection_status !== "selected" || !primarySignal.key) {
+    return null;
+  }
+  const card = cards.find((item) => item.key === primarySignal.key) ?? null;
+  if (!card || isObservationOutputSignal(card)) {
+    return null;
+  }
+  return card;
 }
 
 export function formatObservationSignalTitle(card: MacroToolkitSignalCard) {

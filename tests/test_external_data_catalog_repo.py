@@ -11,6 +11,7 @@ from backend.app.repositories.external_data_catalog_repo import (
     ExternalDataCatalogRepository,
     ensure_external_data_catalog_schema,
 )
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.schemas.external_data import ExternalDataCatalogEntry
 
 DomainLit = Literal["macro", "news", "yield_curve", "fx", "other"]
@@ -42,9 +43,10 @@ def test_register_upserts_by_series_id() -> None:
         ensure_external_data_catalog_schema(conn)
         repo = ExternalDataCatalogRepository(conn=conn)
         e1 = _sample_entry(series_id="macro.a")
-        repo.register(e1)
         e2 = e1.model_copy(update={"series_name": "Updated"})
-        repo.register(e2)
+        with repository_task_write_scope("backend.app.tasks.external_data_catalog_seed_test"):
+            repo.register(e1)
+            repo.register(e2)
         got = repo.get_by_series_id("macro.a")
         assert got is not None
         assert got.series_name == "Updated"
@@ -57,8 +59,9 @@ def test_list_all_and_get_and_by_domain() -> None:
     try:
         ensure_external_data_catalog_schema(conn)
         repo = ExternalDataCatalogRepository(conn=conn)
-        repo.register(_sample_entry(series_id="m1", domain="macro"))
-        repo.register(_sample_entry(series_id="n1", domain="news"))
+        with repository_task_write_scope("backend.app.tasks.external_data_catalog_seed_test"):
+            repo.register(_sample_entry(series_id="m1", domain="macro"))
+            repo.register(_sample_entry(series_id="n1", domain="news"))
         all_rows = repo.list_all()
         assert {r.series_id for r in all_rows} == {"m1", "n1"}
         assert repo.get_by_series_id("missing") is None
@@ -72,7 +75,8 @@ def _seed_path_catalog(path: Path) -> None:
     conn = duckdb.connect(str(path))
     try:
         ensure_external_data_catalog_schema(conn)
-        ExternalDataCatalogRepository(conn=conn).register(_sample_entry(series_id="path.series"))
+        with repository_task_write_scope("backend.app.tasks.external_data_catalog_seed_test"):
+            ExternalDataCatalogRepository(conn=conn).register(_sample_entry(series_id="path.series"))
     finally:
         conn.close()
 
@@ -135,7 +139,8 @@ def test_path_registration_remains_writable(
     monkeypatch.setattr(catalog_repo_module.duckdb, "connect", _recording_connect)
     repo = ExternalDataCatalogRepository(path=str(db_path))
 
-    repo.register(_sample_entry(series_id="written.series"))
+    with repository_task_write_scope("backend.app.tasks.external_data_catalog_seed_test"):
+        repo.register(_sample_entry(series_id="written.series"))
     persisted = repo.get_by_series_id("written.series")
 
     assert persisted is not None

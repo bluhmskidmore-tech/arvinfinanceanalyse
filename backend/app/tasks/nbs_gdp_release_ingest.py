@@ -8,6 +8,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 import duckdb
+from backend.app.governance.locks import acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.repositories.external_data_catalog_repo import ExternalDataCatalogRepository
@@ -18,6 +19,7 @@ from backend.app.repositories.nbs_gdp_release_adapter import (
 )
 from backend.app.repositories.raw_zone_repo import RawZoneRepository
 from backend.app.repositories.source_manifest_repo import SourceManifestRepository
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.services.external_std_macro_etl_service import ExternalStdMacroEtlService
 from backend.app.services.nbs_gdp_release_ingest_service import NbsGdpReleaseIngestService
 from backend.app.tasks.broker import register_actor_once
@@ -41,21 +43,25 @@ def run_nbs_gdp_release_ingest_once(
     db_file.parent.mkdir(parents=True, exist_ok=True)
     governance_path = Path(settings.governance_path)
     governance_path.mkdir(parents=True, exist_ok=True)
-    conn: duckdb.DuckDBPyConnection | None = None
     try:
-        conn = duckdb.connect(str(db_file), read_only=False)
-        apply_pending_migrations_on_connection(conn)
-        raw_zone = RawZoneRepository()
-        service = NbsGdpReleaseIngestService(
-            adapter=NbsGdpReleaseAdapter(),
-            raw_zone_repo=raw_zone,
-            catalog_repo=ExternalDataCatalogRepository(conn=conn),
-            manifest_repo=SourceManifestRepository(
-                governance_repo=GovernanceRepository(base_dir=governance_path)
-            ),
-            etl_service=ExternalStdMacroEtlService(raw_zone, conn),
-        )
-        result = service.ingest_release(batch, reference_date=effective_date)
+        with acquire_lock(resolve_duckdb_writer_lock(db_file), base_dir=db_file.parent):
+            conn = duckdb.connect(str(db_file), read_only=False)
+            try:
+                apply_pending_migrations_on_connection(conn)
+                raw_zone = RawZoneRepository()
+                service = NbsGdpReleaseIngestService(
+                    adapter=NbsGdpReleaseAdapter(),
+                    raw_zone_repo=raw_zone,
+                    catalog_repo=ExternalDataCatalogRepository(conn=conn),
+                    manifest_repo=SourceManifestRepository(
+                        governance_repo=GovernanceRepository(base_dir=governance_path)
+                    ),
+                    etl_service=ExternalStdMacroEtlService(raw_zone, conn),
+                )
+                with repository_task_write_scope(__name__):
+                    result = service.ingest_release(batch, reference_date=effective_date)
+            finally:
+                conn.close()
         return {
             **result,
             "ingest_batch_id": batch,
@@ -75,9 +81,6 @@ def run_nbs_gdp_release_ingest_once(
             "error": f"{type(exc).__name__}: {exc}",
             "elapsed_seconds": round(time.monotonic() - started, 3),
         }
-    finally:
-        if conn is not None:
-            conn.close()
 
 
 refresh_nbs_gdp_release = register_actor_once(

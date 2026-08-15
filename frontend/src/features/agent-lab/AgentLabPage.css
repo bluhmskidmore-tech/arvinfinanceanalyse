@@ -1,0 +1,429 @@
+.agent-lab-shell {
+  width: min(100%, 1180px) !important;
+  min-height: calc(100dvh - 92px);
+  margin: 0 auto;
+  gap: 12px;
+  align-content: start;
+}
+
+.agent-lab-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px 2px 4px;
+}
+
+.agent-lab-header h1 {
+  margin: 2px 0 0;
+  color: var(--dh-api-ink);
+  font-size: clamp(26px, 3vw, 38px);
+  font-weight: 760;
+  letter-spacing: -0.035em;
+}
+
+.agent-lab-header p {
+  max-width: 720px;
+  margin: 8px 0 0;
+  color: var(--dh-api-soft);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.agent-lab-header__eyebrow {
+  color: var(--dh-api-blue);
+  font-family: var(--moss-font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.agent-lab-header__actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.agent-lab-link,
+.agent-lab-clear {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  color: var(--dh-api-soft);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.agent-lab-link:hover,
+.agent-lab-clear:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 42%, var(--dh-api-line));
+  color: var(--dh-api-blue);
+}
+
+.agent-lab-clear {
+  cursor: pointer;
+}
+
+.agent-lab-clear:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.agent-lab-boundary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, var(--dh-api-amber) 34%, var(--dh-api-line));
+  border-radius: var(--dh-api-radius);
+  background: color-mix(in srgb, var(--dh-api-amber) 7%, var(--dh-api-panel));
+  color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+.agent-lab-boundary strong {
+  color: var(--dh-api-ink);
+}
+
+.agent-lab-boundary__signal {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--dh-api-amber);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--dh-api-amber) 12%, transparent);
+}
+
+.agent-lab-shell > .agent-runtime-strip {
+  order: 0 !important;
+  position: static !important;
+  width: auto !important;
+  height: auto !important;
+  margin: 0 !important;
+  padding: 0 2px !important;
+  overflow: visible !important;
+  clip: auto !important;
+  clip-path: none !important;
+  white-space: normal !important;
+}
+
+.agent-lab-thread {
+  min-height: 0;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: color-mix(in srgb, var(--dh-api-panel) 92%, var(--dh-api-bg));
+  box-shadow: var(--dh-api-shadow-sm);
+  overflow: hidden;
+}
+
+.agent-lab-thread__viewport {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 340px;
+  height: clamp(340px, calc(100dvh - 380px), 720px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.agent-lab-empty {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 16px;
+  width: min(100% - 40px, 760px);
+  margin: auto;
+  padding: 28px;
+  border: 1px dashed color-mix(in srgb, var(--dh-api-blue) 28%, var(--dh-api-line));
+  border-radius: var(--dh-api-radius);
+  background: color-mix(in srgb, var(--dh-api-blue) 4%, transparent);
+}
+
+.agent-lab-empty__mark {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 36%, var(--dh-api-line));
+  border-radius: var(--dh-api-radius);
+  color: var(--dh-api-blue);
+  font-family: var(--moss-font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.agent-lab-empty h2 {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 18px;
+}
+
+.agent-lab-empty p {
+  margin: 7px 0 0;
+  color: var(--dh-api-soft);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.agent-lab-empty__examples {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.agent-lab-empty__examples button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  color: var(--dh-api-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.agent-lab-empty__examples button:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 40%, var(--dh-api-line));
+  color: var(--dh-api-blue);
+}
+
+.agent-lab-message {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 14px;
+  width: min(100% - 40px, 920px);
+  margin: 0 auto;
+  padding: 24px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--dh-api-line) 72%, transparent);
+}
+
+.agent-lab-message__role {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 26px;
+  margin-top: 2px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.agent-lab-message--assistant .agent-lab-message__role {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 35%, var(--dh-api-line));
+  color: var(--dh-api-blue);
+}
+
+.agent-lab-message__bubble {
+  justify-self: start;
+  max-width: min(78%, 720px);
+  padding: 11px 14px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: color-mix(in srgb, var(--dh-api-blue) 7%, var(--dh-api-panel));
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.agent-lab-message__bubble p {
+  margin: 0;
+}
+
+.agent-lab-message__content,
+.agent-lab-message__content > .agent-result-shell {
+  min-width: 0;
+}
+
+.agent-lab-running {
+  display: grid;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.agent-lab-running__label {
+  color: var(--dh-api-soft);
+  font-size: 13px;
+}
+
+.agent-lab-cancelled {
+  padding: 10px 12px;
+  border-left: 2px solid var(--dh-api-amber);
+  background: color-mix(in srgb, var(--dh-api-amber) 6%, transparent);
+  color: var(--dh-api-soft);
+  font-size: 13px;
+}
+
+.agent-lab-scroll-bottom {
+  position: absolute;
+  z-index: 2;
+  top: -26px;
+  left: 50%;
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  border: 1px solid var(--dh-api-line);
+  border-radius: 999px;
+  background: var(--dh-api-panel);
+  color: var(--dh-api-blue);
+  cursor: pointer;
+  box-shadow: var(--dh-api-shadow-sm);
+  transform: translateX(-50%);
+}
+
+.agent-lab-scroll-bottom:disabled {
+  display: none;
+}
+
+.agent-lab-composer-dock {
+  position: sticky;
+  z-index: 3;
+  bottom: 0;
+  width: min(100% - 40px, 920px);
+  margin: auto auto 0;
+  padding: 12px 0 18px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in srgb, var(--dh-api-panel) 96%, transparent) 22%
+  );
+}
+
+.agent-lab-composer {
+  display: grid;
+  gap: 8px;
+  padding: 11px 12px 9px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  box-shadow: var(--dh-api-shadow-md);
+}
+
+.agent-lab-composer:focus-within {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 52%, var(--dh-api-line));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--dh-api-blue) 12%, transparent);
+}
+
+.agent-lab-composer__input {
+  width: 100%;
+  min-height: 54px;
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--dh-api-ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.agent-lab-composer__input::placeholder {
+  color: var(--dh-api-muted);
+}
+
+.agent-lab-composer__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+}
+
+.agent-lab-composer__action {
+  min-width: 72px;
+  min-height: 32px;
+  padding: 0 13px;
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 46%, var(--dh-api-line));
+  border-radius: var(--dh-api-radius);
+  background: color-mix(in srgb, var(--dh-api-blue) 16%, var(--dh-api-panel));
+  color: var(--dh-api-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.agent-lab-composer__action:hover:not(:disabled) {
+  border-color: var(--dh-api-blue);
+  color: var(--dh-api-blue);
+}
+
+.agent-lab-composer__action:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.agent-lab-composer__action--stop {
+  border-color: color-mix(in srgb, var(--dh-api-red) 42%, var(--dh-api-line));
+  background: color-mix(in srgb, var(--dh-api-red) 9%, var(--dh-api-panel));
+  color: var(--dh-api-red);
+}
+
+@media (max-width: 760px) {
+  .agent-lab-shell {
+    min-height: calc(100dvh - 72px);
+  }
+
+  .agent-lab-header {
+    display: grid;
+    align-items: start;
+  }
+
+  .agent-lab-header__actions {
+    flex-wrap: wrap;
+  }
+
+  .agent-lab-boundary {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .agent-lab-thread__viewport {
+    min-height: 520px;
+    height: 72dvh;
+  }
+
+  .agent-lab-empty,
+  .agent-lab-message,
+  .agent-lab-composer-dock {
+    width: calc(100% - 24px);
+  }
+
+  .agent-lab-empty {
+    grid-template-columns: 1fr;
+    padding: 20px;
+  }
+
+  .agent-lab-empty__examples {
+    grid-column: 1;
+  }
+
+  .agent-lab-message {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .agent-lab-message__bubble {
+    max-width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-lab-thread__viewport {
+    scroll-behavior: auto;
+  }
+}

@@ -5989,6 +5989,15 @@
   display: none !important;
 }
 
+/* 队列同值列收敛后的区头一句摘要(§6：原因只在区块头部出现一次)。 */
+.stock-analysis-page__candidate-ledger-uniform-note {
+  margin: 0;
+  padding: 8px 12px 0;
+  color: var(--dh-api-ink-muted, var(--dh-api-muted));
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .stock-analysis-page__api-readiness-section {
   margin: 16px 0;
   padding: 12px;
@@ -7146,6 +7155,25 @@ html body [data-testid="market-workbench-frame"][data-page-key="stock-analysis"]
   display: flex;
   align-items: center;
   gap: 18px;
+}
+
+/* CompactStatusTile 基础排版：图标/标签/主值间距，避免"⊵K线雷达0 条"式粘连。
+   作用域内的 grid/block 覆盖(!important)优先级更高，不受影响。 */
+.stock-analysis-page__compact-status-tile {
+  display: inline-flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.stock-analysis-page__compact-status-tile__label {
+  margin-right: 6px;
+}
+
+/* 空态"复核"格的行动链接：跳复核队列，不再是无信息量的静态字。 */
+.stock-analysis-page__compact-status-tile__value a {
+  color: var(--sa-dh-blue, var(--dh-api-blue));
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 /* Readability recovery: keep the v6 ledger look, but stop lower evidence from being crushed. */

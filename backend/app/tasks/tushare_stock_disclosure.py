@@ -9,6 +9,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import duckdb
+from backend.app.governance.locks import acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.repositories.stock_official_disclosure_repo import (
@@ -84,120 +85,122 @@ def sync_stock_official_disclosures(
         raise ValueError("from_date must be on or before to_date after future-date capping.")
 
     resolved_run_id = run_id or _build_run_id(now_dt)
-    conn = duckdb.connect(str(Path(duckdb_path)), read_only=False)
+    duckdb_file = Path(duckdb_path)
     results: list[dict[str, object]] = []
     total_fetched = 0
     total_upserted = 0
     failures = 0
-    try:
-        apply_pending_migrations_on_connection(conn)
-        with repository_task_write_scope(__name__):
-            for stock_code in normalized_codes:
-                # Keep the attempted interval available for failure provenance;
-                # successful syncs may widen it when an existing interval
-                # overlaps or directly adjoins the requested window.
-                attempt_source_version = _source_version(
-                    stock_code=stock_code,
-                    from_date=requested_from,
-                    to_date=effective_to,
-                )
-                vendor_version = _vendor_version(stock_code=stock_code, from_date=requested_from, to_date=effective_to)
-                attempt_at = now_dt
-                prior = get_stock_official_disclosure_sync_status(conn, stock_code=stock_code)
-                prior_success = _coerce_timestamp(prior.get("last_success_at")) if prior else None
-                prior_covered = str(prior.get("covered_through_date") or "").strip() if prior else None
-                prior_coverage_start = (
-                    str(prior.get("coverage_start_date") or prior.get("requested_from_date") or "").strip()
-                    if prior and prior_covered
-                    else ""
-                )
-                try:
-                    records = _fetch_anns_d_window(
-                        tushare_client,
+    with acquire_lock(resolve_duckdb_writer_lock(duckdb_file), base_dir=duckdb_file.parent):
+        conn = duckdb.connect(str(duckdb_file), read_only=False)
+        try:
+            apply_pending_migrations_on_connection(conn)
+            with repository_task_write_scope(__name__):
+                for stock_code in normalized_codes:
+                    # Keep the attempted interval available for failure provenance;
+                    # successful syncs may widen it when an existing interval
+                    # overlaps or directly adjoins the requested window.
+                    attempt_source_version = _source_version(
                         stock_code=stock_code,
-                        start_date=requested_from,
-                        end_date=effective_to,
+                        from_date=requested_from,
+                        to_date=effective_to,
                     )
-                    fetched_count = len(records)
-                    coverage_start, coverage_end = _merge_coverage_window(
-                        prior_start=_parse_date(prior_coverage_start),
-                        prior_end=_parse_date(prior_covered),
-                        requested_start=requested_from,
-                        requested_end=effective_to,
+                    vendor_version = _vendor_version(stock_code=stock_code, from_date=requested_from, to_date=effective_to)
+                    attempt_at = now_dt
+                    prior = get_stock_official_disclosure_sync_status(conn, stock_code=stock_code)
+                    prior_success = _coerce_timestamp(prior.get("last_success_at")) if prior else None
+                    prior_covered = str(prior.get("covered_through_date") or "").strip() if prior else None
+                    prior_coverage_start = (
+                        str(prior.get("coverage_start_date") or prior.get("requested_from_date") or "").strip()
+                        if prior and prior_covered
+                        else ""
                     )
-                    coverage_source_version = _source_version(
-                        stock_code=stock_code,
-                        from_date=coverage_start,
-                        to_date=coverage_end,
-                    )
-                    rows = _build_rows(
-                        records,
-                        stock_code=stock_code,
-                        source_version=attempt_source_version,
-                        vendor_version=vendor_version,
-                        run_id=resolved_run_id,
-                        ingested_at=attempt_at,
-                    )
-                    conn.execute("begin transaction")
-                    upserted_count = upsert_stock_official_disclosures(conn, rows=rows)
-                    upsert_stock_official_disclosure_sync_status(
-                        conn,
-                        stock_code=stock_code,
-                        requested_from_date=coverage_start.isoformat(),
-                        covered_through_date=coverage_end.isoformat(),
-                        last_attempt_at=attempt_at,
-                        last_success_at=attempt_at,
-                        status="empty" if upserted_count == 0 else "success",
-                        fetched_count=fetched_count,
-                        upserted_count=upserted_count,
-                        error_message=None,
-                        run_id=resolved_run_id,
-                        source_version=coverage_source_version,
-                    )
-                    conn.execute("commit")
-                    total_fetched += fetched_count
-                    total_upserted += upserted_count
-                    results.append(
-                        {
-                            "stock_code": stock_code,
-                            "status": "empty" if upserted_count == 0 else "success",
-                            "fetched_count": fetched_count,
-                            "upserted_count": upserted_count,
-                            "source_version": coverage_source_version,
-                            "vendor_version": vendor_version,
-                        }
-                    )
-                except Exception as exc:
-                    _rollback_quietly(conn)
-                    failures += 1
-                    error_message = _safe_error_message(exc)
-                    conn.execute("begin transaction")
-                    upsert_stock_official_disclosure_sync_status(
-                        conn,
-                        stock_code=stock_code,
-                        requested_from_date=prior_coverage_start or requested_from.isoformat(),
-                        covered_through_date=prior_covered or None,
-                        last_attempt_at=attempt_at,
-                        last_success_at=prior_success,
-                        status="failed",
-                        fetched_count=0,
-                        upserted_count=0,
-                        error_message=error_message,
-                        run_id=resolved_run_id,
-                        source_version=attempt_source_version,
-                    )
-                    conn.execute("commit")
-                    results.append(
-                        {
-                            "stock_code": stock_code,
-                            "status": "failed",
-                            "error_message": error_message,
-                            "source_version": attempt_source_version,
-                            "vendor_version": vendor_version,
-                        }
-                    )
-    finally:
-        conn.close()
+                    try:
+                        records = _fetch_anns_d_window(
+                            tushare_client,
+                            stock_code=stock_code,
+                            start_date=requested_from,
+                            end_date=effective_to,
+                        )
+                        fetched_count = len(records)
+                        coverage_start, coverage_end = _merge_coverage_window(
+                            prior_start=_parse_date(prior_coverage_start),
+                            prior_end=_parse_date(prior_covered),
+                            requested_start=requested_from,
+                            requested_end=effective_to,
+                        )
+                        coverage_source_version = _source_version(
+                            stock_code=stock_code,
+                            from_date=coverage_start,
+                            to_date=coverage_end,
+                        )
+                        rows = _build_rows(
+                            records,
+                            stock_code=stock_code,
+                            source_version=attempt_source_version,
+                            vendor_version=vendor_version,
+                            run_id=resolved_run_id,
+                            ingested_at=attempt_at,
+                        )
+                        conn.execute("begin transaction")
+                        upserted_count = upsert_stock_official_disclosures(conn, rows=rows)
+                        upsert_stock_official_disclosure_sync_status(
+                            conn,
+                            stock_code=stock_code,
+                            requested_from_date=coverage_start.isoformat(),
+                            covered_through_date=coverage_end.isoformat(),
+                            last_attempt_at=attempt_at,
+                            last_success_at=attempt_at,
+                            status="empty" if upserted_count == 0 else "success",
+                            fetched_count=fetched_count,
+                            upserted_count=upserted_count,
+                            error_message=None,
+                            run_id=resolved_run_id,
+                            source_version=coverage_source_version,
+                        )
+                        conn.execute("commit")
+                        total_fetched += fetched_count
+                        total_upserted += upserted_count
+                        results.append(
+                            {
+                                "stock_code": stock_code,
+                                "status": "empty" if upserted_count == 0 else "success",
+                                "fetched_count": fetched_count,
+                                "upserted_count": upserted_count,
+                                "source_version": coverage_source_version,
+                                "vendor_version": vendor_version,
+                            }
+                        )
+                    except Exception as exc:
+                        _rollback_quietly(conn)
+                        failures += 1
+                        error_message = _safe_error_message(exc)
+                        conn.execute("begin transaction")
+                        upsert_stock_official_disclosure_sync_status(
+                            conn,
+                            stock_code=stock_code,
+                            requested_from_date=prior_coverage_start or requested_from.isoformat(),
+                            covered_through_date=prior_covered or None,
+                            last_attempt_at=attempt_at,
+                            last_success_at=prior_success,
+                            status="failed",
+                            fetched_count=0,
+                            upserted_count=0,
+                            error_message=error_message,
+                            run_id=resolved_run_id,
+                            source_version=attempt_source_version,
+                        )
+                        conn.execute("commit")
+                        results.append(
+                            {
+                                "stock_code": stock_code,
+                                "status": "failed",
+                                "error_message": error_message,
+                                "source_version": attempt_source_version,
+                                "vendor_version": vendor_version,
+                            }
+                        )
+        finally:
+            conn.close()
 
     return {
         "status": "completed" if failures == 0 else "completed_with_errors",

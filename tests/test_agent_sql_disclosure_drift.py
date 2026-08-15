@@ -34,6 +34,7 @@ from backend.app.services import (
     choice_news_service,
     macro_vendor_service,
     pnl_bridge_service,
+    pretrade_checklist_service,
     research_radar_service,
 )
 
@@ -96,6 +97,7 @@ def test_agent_sql_disclosures_remain_read_only_parameterized_templates():
         *agent_service._MARKET_DATA_SQL_DISCLOSURE,
         *agent_service._PRODUCT_PNL_SQL_DISCLOSURE,
         *agent_service._NEWS_SQL_DISCLOSURE,
+        *agent_service._PRETRADE_CHECKLIST_SQL_DISCLOSURE,
         RESEARCH_RADAR_NEWS_SQL,
     ]
 
@@ -232,6 +234,37 @@ def test_news_disclosure_tracks_choice_news_execution_template_and_filters():
     filters_source = _source(choice_news_repo.choice_news_filters)
     for clause in ("group_id = ?", "topic_code = ?", "received_at >= ?", "received_at <= ?"):
         assert clause in filters_source
+
+
+def test_pretrade_checklist_disclosure_tracks_service_tables_and_filters():
+    # 意图 payload 引用受护常量（与 risk_tensor 护栏同一写法）。
+    assert "_pretrade_checklist_sql_disclosure" in _source(
+        agent_service._pretrade_checklist_payload
+    )
+
+    disclosed = _disclosure(*agent_service._PRETRADE_CHECKLIST_SQL_DISCLOSURE)
+    # 表名以执行服务的表常量为锚：服务改表名或披露漏表任一侧漂移都在此变红。
+    # （执行 SQL 用 f-string 引用这些常量，表名字面量不在函数源码内，
+    # 所以对齐目标是常量值本身而非 inspect 源码。）
+    for table in (
+        pretrade_checklist_service.TABLE_HIST,
+        pretrade_checklist_service.TABLE_DAILY,
+        pretrade_checklist_service.TABLE_LIMIT_PRICE,
+        pretrade_checklist_service.TABLE_ADJ_FACTOR,
+    ):
+        assert table in disclosed
+
+    # 过滤列与执行 SQL 同源出现：披露与执行链路都必须携带同一组过滤条件。
+    source = _source(
+        pretrade_checklist_service._resolve_as_of_date,
+        pretrade_checklist_service._load_candidates,
+        pretrade_checklist_service._load_daily_rows,
+        pretrade_checklist_service._load_limit_price_rows,
+        pretrade_checklist_service._load_adj_factor_codes,
+    )
+    for filter_name in ("snapshot_as_of_date", "signal_kind", "trade_date", "stock_code"):
+        assert filter_name in source
+        assert filter_name in disclosed
 
 
 def test_research_radar_disclosure_is_the_market_read_execution_template():

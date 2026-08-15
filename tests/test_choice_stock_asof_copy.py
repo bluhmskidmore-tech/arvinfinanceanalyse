@@ -26,7 +26,8 @@ def _seed_complete_choice_date(
     as_of_date: str,
     run_id: str,
     source_version: str = "sv_source",
-    vendor_version: str = "vv_source",
+    # 复制前来源切片会做 vendor 白名单 + 代际校验,种子须使用合法 native 模式。
+    vendor_version: str = "vv_choice_stock_20260820_0123456789ab",
 ) -> None:
     history_start = choice_stock_history_start_date(as_of_date)
     conn.execute(
@@ -89,6 +90,7 @@ def _seed_complete_choice_date(
 
 
 def _seed_target_old_rows(conn: duckdb.DuckDBPyConnection, *, as_of_date: str) -> None:
+    # 目标端旧行不做来源校验,可以是任意历史 vendor。
     _seed_complete_choice_date(
         conn,
         as_of_date=as_of_date,
@@ -111,7 +113,8 @@ def test_choice_stock_asof_copy_replaces_target_slice_and_preserves_lineage(tmp_
     )
     source_path = tmp_path / "source.duckdb"
     target_path = tmp_path / "target.duckdb"
-    as_of_date = "2026-01-10"
+    # 复制窗口 [as_of-220d, as_of] 须整体落在 choice_native 代际(>= 2026-01-05)。
+    as_of_date = "2026-08-20"
 
     source = _open_choice_db(source_path)
     try:
@@ -160,7 +163,7 @@ def test_choice_stock_asof_copy_dry_run_does_not_write(tmp_path: Path) -> None:
     )
     source_path = tmp_path / "source.duckdb"
     target_path = tmp_path / "target.duckdb"
-    as_of_date = "2026-01-10"
+    as_of_date = "2026-08-20"
     source = _open_choice_db(source_path)
     try:
         _seed_complete_choice_date(source, as_of_date=as_of_date, run_id="source-run")
@@ -205,7 +208,66 @@ def test_choice_stock_asof_copy_rejects_incomplete_source(tmp_path: Path) -> Non
         module.copy_choice_stock_asof_from_duckdb(
             source_duckdb_path=source_path,
             target_duckdb_path=target_path,
-            as_of_date="2026-01-10",
+            as_of_date="2026-08-20",
+        )
+
+
+def test_choice_stock_asof_copy_rejects_unknown_source_vendor(tmp_path: Path) -> None:
+    module = load_module(
+        "scripts.copy_choice_stock_asof_from_duckdb",
+        "scripts/copy_choice_stock_asof_from_duckdb.py",
+    )
+    source_path = tmp_path / "source.duckdb"
+    target_path = tmp_path / "target.duckdb"
+    as_of_date = "2026-08-20"
+    source = _open_choice_db(source_path)
+    try:
+        _seed_complete_choice_date(
+            source,
+            as_of_date=as_of_date,
+            run_id="source-run",
+            vendor_version="vv_source",
+        )
+    finally:
+        source.close()
+    _open_choice_db(target_path).close()
+
+    with pytest.raises(Exception, match="generation whitelist"):
+        module.copy_choice_stock_asof_from_duckdb(
+            source_duckdb_path=source_path,
+            target_duckdb_path=target_path,
+            as_of_date=as_of_date,
+        )
+
+
+def test_choice_stock_asof_copy_rejects_cross_era_source_slice(tmp_path: Path) -> None:
+    module = load_module(
+        "scripts.copy_choice_stock_asof_from_duckdb",
+        "scripts/copy_choice_stock_asof_from_duckdb.py",
+    )
+    source_path = tmp_path / "source.duckdb"
+    target_path = tmp_path / "target.duckdb"
+    as_of_date = "2026-08-20"
+    source = _open_choice_db(source_path)
+    try:
+        _seed_complete_choice_date(source, as_of_date=as_of_date, run_id="source-run")
+        # tushare 单位代际 vendor 落在 native 代际日期 => 来源切片跨代际,复制应默认 fail-loud。
+        source.execute(
+            """
+            insert into choice_stock_daily_observation values
+              ('2026-02-01', '000002.SZ', 10, 11, 9, 10.5, 1000, 2000, 1.2, 0.8, 2.0, '交易', '涨停', '跌停',
+               '["daily_ohlcv_amount"]', 'sv_source', 'vv_choice_tushare_stock_20260201_0123456789ab', 'rv', 'stray-run')
+            """
+        )
+    finally:
+        source.close()
+    _open_choice_db(target_path).close()
+
+    with pytest.raises(Exception, match="era guard"):
+        module.copy_choice_stock_asof_from_duckdb(
+            source_duckdb_path=source_path,
+            target_duckdb_path=target_path,
+            as_of_date=as_of_date,
         )
 
 
@@ -229,7 +291,7 @@ def test_choice_stock_asof_copy_main_emits_json(monkeypatch: pytest.MonkeyPatch,
             "--target-duckdb-path",
             "target.duckdb",
             "--as-of-date",
-            "2026-01-10",
+            "2026-08-20",
         ],
     )
 

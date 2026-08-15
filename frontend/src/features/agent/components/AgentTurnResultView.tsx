@@ -1,4 +1,5 @@
 import { CheckOutlined, CopyOutlined, ReloadOutlined } from "@ant-design/icons";
+import { memo, useMemo } from "react";
 
 import type { AgentSuggestedAction } from "../../../api/contracts";
 import {
@@ -52,24 +53,32 @@ type AgentTurnResultViewProps = {
   onSideDrawerOpen: () => void;
 };
 
+const EMPTY_SQL_EXECUTED: string[] = [];
+const StaticAgentAnswerPanel = memo(AgentAnswerPanel);
+const StaticAgentEvidencePanel = memo(AgentEvidencePanel);
+const StaticAgentGenericCardsGrid = memo(AgentGenericCardsGrid);
+const StaticAgentResultMetaPanel = memo(AgentResultMetaPanel);
+const StaticAgentGitNexusResultView = memo(AgentGitNexusResultView);
+
 function AgentResultSideDrawer({
   turnResult,
   resultMetaEntries,
+  hasEvidence,
   onSideDrawerOpen,
 }: {
   turnResult: AgentQueryResult;
   resultMetaEntries: Array<[string, unknown]>;
+  hasEvidence: boolean;
   onSideDrawerOpen: () => void;
 }) {
-  const hasEvidence = hasEvidenceContent(turnResult.evidence);
   const detailSectionCount = (hasEvidence ? 1 : 0) + (resultMetaEntries.length > 0 ? 1 : 0);
   const resultSide = (
     <aside className="agent-result-side" aria-label="回答依据与运行信息">
       {hasEvidence ? (
-        <AgentEvidencePanel
+        <StaticAgentEvidencePanel
           tablesUsed={turnResult.evidence.tables_used}
           filtersApplied={turnResult.evidence.filters_applied}
-          sqlExecuted={turnResult.evidence.sql_executed ?? []}
+          sqlExecuted={turnResult.evidence.sql_executed ?? EMPTY_SQL_EXECUTED}
           evidenceStrength={
             turnResult.evidence.evidence_strength ??
             (typeof turnResult.result_meta.evidence_strength === "string"
@@ -80,7 +89,7 @@ function AgentResultSideDrawer({
           qualityFlag={turnResult.evidence.quality_flag}
         />
       ) : null}
-      <AgentResultMetaPanel
+      <StaticAgentResultMetaPanel
         entries={resultMetaEntries}
         formatValue={formatMetaValue}
       />
@@ -121,35 +130,60 @@ export function AgentTurnResultView({
   onSideDrawerOpen,
 }: AgentTurnResultViewProps) {
   const turnResult = turn.result;
-  if (!turnResult) {
+  // Result payloads are immutable snapshots; interaction state stays outside this cached model.
+  const staticResultModel = useMemo(() => {
+    if (!turnResult) {
+      return null;
+    }
+
+    const compactProviderChatResult = isCompactProviderChatResult(turnResult);
+    const visibleCards = compactProviderChatResult ? [] : turnResult.cards;
+    const gitNexusResult = isGitNexusResult(turnResult);
+
+    return {
+      governanceNotices: buildGovernanceNotices(turnResult),
+      researchRadarResult: isResearchRadarResult(turnResult),
+      compactProviderChatResult,
+      resultMetaEntries: buildResultMetaEntries(turnResult.result_meta),
+      visibleCards,
+      gitNexusCards: gitNexusResult ? visibleCards : visibleCards.filter(isGitNexusCard),
+      genericCards: gitNexusResult
+        ? []
+        : visibleCards.filter((card) => !isGitNexusCard(card)),
+      renderableResult: hasRenderableResult(turnResult),
+      hasEvidence: hasEvidenceContent(turnResult.evidence),
+    };
+  }, [turnResult]);
+
+  if (!turnResult || !staticResultModel) {
     return null;
   }
   // 治理警示（stale/降级/禁止正式使用）跟随结果本身常显，不随新回合出现而消失。
-  const governanceNotices = buildGovernanceNotices(turnResult);
-  const researchRadarResult = isResearchRadarResult(turnResult);
-  const compactProviderChatResult = isCompactProviderChatResult(turnResult);
+  const {
+    governanceNotices,
+    researchRadarResult,
+    compactProviderChatResult,
+    resultMetaEntries,
+    visibleCards,
+    gitNexusCards,
+    genericCards,
+    renderableResult,
+    hasEvidence,
+  } = staticResultModel;
   const copyStatus = copyFeedback?.turnId === turn.id ? copyFeedback.status : null;
   const copyLabel = copyStatus === "success" ? "已复制" : copyStatus === "error" ? "复制失败" : "复制回答";
   const copyStatusMessage =
     copyStatus === "success" ? "回答已复制" : copyStatus === "error" ? "复制失败，请手动选择回答文本。" : "";
-  const resultMetaEntries = buildResultMetaEntries(turnResult.result_meta);
-  const visibleCards = compactProviderChatResult ? [] : turnResult.cards;
-  const gitNexusCards = isGitNexusResult(turnResult)
-    ? visibleCards
-    : visibleCards.filter(isGitNexusCard);
-  const genericCards = isGitNexusResult(turnResult)
-    ? []
-    : visibleCards.filter((card) => !isGitNexusCard(card));
   const resultCards =
     visibleCards.length > 0 ? (
       <div className="agent-result-card-stack">
-        {gitNexusCards.length > 0 ? <AgentGitNexusResultView cards={gitNexusCards} /> : null}
-        <AgentGenericCardsGrid cards={genericCards} formatValue={formatMetaValue} />
+        {gitNexusCards.length > 0 ? <StaticAgentGitNexusResultView cards={gitNexusCards} /> : null}
+        <StaticAgentGenericCardsGrid cards={genericCards} formatValue={formatMetaValue} />
       </div>
     ) : null;
   const answerMessage = turnResult.answer.trim() ? (
     <div className="agent-answer-message">
-      <AgentAnswerPanel
+      <StaticAgentAnswerPanel
         answer={turnResult.answer}
         testId={isEmbedded && turn.id === latestConversationTurnId ? "agent-panel-answer" : undefined}
       />
@@ -207,7 +241,7 @@ export function AgentTurnResultView({
           ))}
         </div>
       ) : null}
-      {hasRenderableResult(turnResult) ? (
+      {renderableResult ? (
         <div className="agent-result-grid">
           <div className="agent-result-main">
             {researchRadarResult ? resultCards : answerMessage}
@@ -277,6 +311,7 @@ export function AgentTurnResultView({
             <AgentResultSideDrawer
               turnResult={turnResult}
               resultMetaEntries={resultMetaEntries}
+              hasEvidence={hasEvidence}
               onSideDrawerOpen={onSideDrawerOpen}
             />
           )}
@@ -310,10 +345,10 @@ export function AgentTurnResultView({
         </div>
       )}
 
-      {!hasRenderableResult(turnResult) ? (
+      {!renderableResult ? (
         <details className="agent-result-details">
           <summary>查看依据 · {resultMetaEntries.length} 项</summary>
-          <AgentResultMetaPanel
+          <StaticAgentResultMetaPanel
             entries={resultMetaEntries}
             formatValue={formatMetaValue}
           />

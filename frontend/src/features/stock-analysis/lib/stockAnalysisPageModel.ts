@@ -19,7 +19,7 @@ import type {
 } from "../../../api/contracts";
 import type { ConsensusSummary } from "./buildConsensusSummary";
 import type { StockDetailSource } from "./stockAnalysisDetailSelection";
-import { formatYi } from "../../../utils/format";
+import { EM_DASH, formatYi } from "../../../utils/format";
 import {
   buildMarketGateMacroDisclosure,
   formatMarketGateMacroDisclosureDetail,
@@ -900,7 +900,7 @@ function finiteNumber(value: number | null | undefined): number | null {
   return value == null || !Number.isFinite(value) ? null : value;
 }
 
-export function clampRatio(value: number | null | undefined): number | undefined {
+function clampRatio(value: number | null | undefined): number | undefined {
   if (value == null || !Number.isFinite(value)) return undefined;
   return Math.min(1, Math.max(0, value));
 }
@@ -1794,8 +1794,8 @@ export function buildCycleMacroLayerSummary(
   }
 
   const detailParts = [
-    `可用 ${availableInputs.map(localizeStockDataFamily).join("、") || "-"}`,
-    `缺失 ${missingInputs.map(localizeStockDataFamily).join("、") || "-"}`,
+    `可用 ${availableInputs.map(localizeStockDataFamily).join("、") || EM_DASH}`,
+    `缺失 ${missingInputs.map(localizeStockDataFamily).join("、") || EM_DASH}`,
   ];
   if (macroGapLabelsList.length > 0) {
     detailParts.push(`缺口 ${macroGapLabelsList.join(" / ")}`);
@@ -1849,7 +1849,7 @@ export function buildDataBoundarySummary(
   };
 }
 
-export function isMetaBoundary(meta: StockViewModelMeta = {}): boolean {
+function isMetaBoundary(meta: StockViewModelMeta = {}): boolean {
   const quality = meta.quality_flag ?? "pending";
   const vendor = meta.vendor_status ?? "pending";
   const fallback = meta.fallback_mode ?? "none";
@@ -4276,7 +4276,11 @@ export type StockStrategyPanelMiniStat = {
   label: string;
   value: string;
   tone?: StockClosedLoopTone;
-  /** 数值着色：红涨绿跌 / 强调 / 预警 */
+  /**
+   * 数值着色：绿涨红跌（渲染端 StrategyPanelResultStrip 将 up→success 绿、
+   * down→danger 红）/ 强调 / 预警。方向色两套体系的全站裁决未定，此注释仅
+   * 如实描述现行实现，不构成方向色决议。
+   */
   valueTone?: StockStrategyPanelMiniStatValueTone;
 };
 

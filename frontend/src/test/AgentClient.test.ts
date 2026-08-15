@@ -72,7 +72,7 @@ describe("AgentClient", () => {
 
   it("throws AgentApiError with payload on non-ok run creation", async () => {
     const fetchImpl = vi.fn(async () =>
-      new Response(JSON.stringify({ detail: "Agent runs require MOSS_AGENT_PROVIDER=hermes." }), {
+      new Response(JSON.stringify({ detail: "Run creation rejected." }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       }),
@@ -86,7 +86,7 @@ describe("AgentClient", () => {
       name: "AgentApiError",
       status: 400,
       path: "/api/agent/runs",
-      payload: { detail: "Agent runs require MOSS_AGENT_PROVIDER=hermes." },
+      payload: { detail: "Run creation rejected." },
     });
   });
 

@@ -22,6 +22,7 @@ from backend.app.repositories.nbs_gdp_release_adapter import (
 )
 from backend.app.repositories.raw_zone_repo import RawZoneRepository
 from backend.app.repositories.source_manifest_repo import SourceManifestRepository
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.services.external_std_macro_etl_service import ExternalStdMacroEtlService
 from backend.app.services.nbs_gdp_release_ingest_service import NbsGdpReleaseIngestService
 
@@ -82,7 +83,8 @@ def test_ingest_archives_official_html_and_materializes_governed_rows(tmp_path: 
         ensure_std_external_macro_schema(conn)
         service, _, catalog = _service(tmp_path, conn, _adapter(tmp_path), manifest)
 
-        result = service.ingest_release("nbs-gdp-batch-1", reference_date=date(2026, 7, 17))
+        with repository_task_write_scope("backend.app.tasks.nbs_gdp_release_ingest_test"):
+            result = service.ingest_release("nbs-gdp-batch-1", reference_date=date(2026, 7, 17))
 
         digest = hashlib.sha256(RELEASE_HTML).hexdigest()
         assert result == {
@@ -156,8 +158,9 @@ def test_identical_rerun_is_idempotent_and_records_rerun_lineage(tmp_path: Path)
         first, _, _ = _service(tmp_path, conn, _adapter(tmp_path), manifest)
         second, _, _ = _service(tmp_path, conn, _adapter(tmp_path), manifest)
 
-        first.ingest_release("same-batch", reference_date=date(2026, 7, 17))
-        second.ingest_release("same-batch", reference_date=date(2026, 7, 17))
+        with repository_task_write_scope("backend.app.tasks.nbs_gdp_release_ingest_test"):
+            first.ingest_release("same-batch", reference_date=date(2026, 7, 17))
+            second.ingest_release("same-batch", reference_date=date(2026, 7, 17))
 
         count = conn.execute(
             """

@@ -30,6 +30,21 @@ export const MAX_RECENT_REPO_PATHS = 5;
 
 export const MAX_PINNED_REPO_PATHS = 5;
 
+/**
+ * localStorage 写入统一降级：配额超限（QuotaExceededError）等异常不能击穿
+ * 渲染/提交链路——失败时放弃本次持久化并 console.warn。
+ */
+function writeLocalStorageItem(storageKey: string, value: string) {
+  try {
+    window.localStorage.setItem(storageKey, value);
+  } catch (storageError) {
+    console.warn(
+      `[agent] localStorage 写入失败（${storageKey}），本次持久化已跳过。`,
+      storageError,
+    );
+  }
+}
+
 export function normalizeStoredRepoPaths(paths: string[], limit: number) {
   const normalizedPaths: string[] = [];
   for (const path of paths) {
@@ -69,7 +84,7 @@ export function persistStoredRepoPaths(storageKey: string, paths: string[]) {
   if (typeof window === "undefined") {
     return;
   }
-  window.localStorage.setItem(storageKey, JSON.stringify(paths));
+  writeLocalStorageItem(storageKey, JSON.stringify(paths));
 }
 
 export function normalizeStoredConversationTurns(value: unknown): AgentConversationTurn[] {
@@ -83,7 +98,14 @@ export function normalizeStoredConversationTurns(value: unknown): AgentConversat
         return [];
       }
       const result = isAgentQueryResult(item.result) ? normalizeAgentResult(item.result) : null;
-      const agentRun = isAgentRunPayload(item.agentRun) ? normalizeAgentRunPayload(item.agentRun) : null;
+      const storedAgentRun = isAgentRunPayload(item.agentRun)
+        ? normalizeAgentRunPayload(item.agentRun)
+        : null;
+      // 序列化时剥离了 agentRun.result（envelope 去重），恢复时回填，保持内存形状不变。
+      const agentRun =
+        storedAgentRun && !storedAgentRun.result && result
+          ? { ...storedAgentRun, result }
+          : storedAgentRun;
       const error = isAgentQueryError(item.error) ? item.error : null;
       const conversationContext = isAgentConversationContext(item.conversationContext)
         ? item.conversationContext
@@ -121,13 +143,20 @@ export function loadStoredConversationTurns() {
 }
 
 export function serializeConversationTurn(turn: AgentConversationTurn) {
+  // envelope 去重：turn.result 与 turn.agentRun.result 是同一份 AgentEnvelope，
+  // 双份序列化会成倍消耗 localStorage 配额。存储侧剥离 agentRun.result，
+  // 恢复时（normalizeStoredConversationTurns）从 turn.result 回填。
+  const agentRun =
+    turn.agentRun && turn.agentRun.result && turn.result
+      ? { ...turn.agentRun, result: null }
+      : turn.agentRun;
   return {
     id: turn.id,
     question: turn.question,
     ...(turn.conversationContext ? { conversationContext: turn.conversationContext } : {}),
     ...(turn.retryMode ? { retryMode: turn.retryMode } : {}),
     ...(turn.runRequestLatencyMs !== undefined ? { runRequestLatencyMs: turn.runRequestLatencyMs } : {}),
-    ...(turn.agentRun ? { agentRun: turn.agentRun } : {}),
+    ...(agentRun ? { agentRun } : {}),
     ...(turn.result ? { result: turn.result } : {}),
     ...(turn.error ? { error: turn.error } : {}),
     ...(turn.stopped ? { stopped: true } : {}),
@@ -139,7 +168,7 @@ export function persistStoredConversationTurns(turns: AgentConversationTurn[]) {
     return;
   }
   const storedTurns = turns.slice(-MAX_AGENT_STORED_TURNS).map(serializeConversationTurn);
-  window.localStorage.setItem(AGENT_CONVERSATION_TURNS_KEY, JSON.stringify(storedTurns));
+  writeLocalStorageItem(AGENT_CONVERSATION_TURNS_KEY, JSON.stringify(storedTurns));
 }
 
 export function loadLatestAgentRunId() {
@@ -153,7 +182,7 @@ export function persistLatestAgentRunId(runId: string) {
   if (typeof window === "undefined") {
     return;
   }
-  window.localStorage.setItem(LATEST_AGENT_RUN_ID_KEY, runId);
+  writeLocalStorageItem(LATEST_AGENT_RUN_ID_KEY, runId);
 }
 
 export function clearLatestAgentRunId() {
@@ -178,7 +207,7 @@ export function persistComposerDraft(draft: string) {
     window.localStorage.removeItem(AGENT_COMPOSER_DRAFT_KEY);
     return;
   }
-  window.localStorage.setItem(AGENT_COMPOSER_DRAFT_KEY, draft);
+  writeLocalStorageItem(AGENT_COMPOSER_DRAFT_KEY, draft);
 }
 
 export function clearComposerDraft() {
@@ -221,7 +250,7 @@ export function persistQueuedQueries(queries: string[]) {
     window.localStorage.removeItem(AGENT_QUEUED_QUERIES_KEY);
     return;
   }
-  window.localStorage.setItem(AGENT_QUEUED_QUERIES_KEY, JSON.stringify(nextQueries));
+  writeLocalStorageItem(AGENT_QUEUED_QUERIES_KEY, JSON.stringify(nextQueries));
 }
 
 export function clearStoredQueuedQueries() {

@@ -15,6 +15,7 @@ import type {
 import { AnalysisGrid } from "../../../components/page/PagePrimitives";
 import { TableSkeleton, TextSkeleton } from "../../../components/Skeletons";
 import type { EChartsOption } from "../../../lib/echarts";
+import { EM_DASH } from "../../../utils/format";
 import {
   BarChartOutlined,
   ClockCircleOutlined,
@@ -825,7 +826,7 @@ export function StockAnalysisDeepResearchZone({
                                         {row.stockName}
                                       </strong>
                                       <small className="stock-analysis-page__tabular">
-                                        {row.sectorName || "-"}
+                                        {row.sectorName || EM_DASH}
                                       </small>
                                       <span className="stock-analysis-page__consensus-strategies">
                                         {row.strategies.map((kind) => (
@@ -1446,13 +1447,13 @@ export function StockAnalysisDeepResearchZone({
                                             {formatSectorSeriesScore(row.score)}
                                           </td>
                                           <td className="stock-analysis-page__table-number">
-                                            {row.rank ?? "-"}
+                                            {row.rank ?? EM_DASH}
                                           </td>
                                           <td className="stock-analysis-page__table-number">
                                             {formatSectorSeriesCumPctChange(row.cum_pctchange_window)}
                                           </td>
                                           <td className="stock-analysis-page__table-number">
-                                            {row.constituent_count ?? "-"}
+                                            {row.constituent_count ?? EM_DASH}
                                           </td>
                                         </tr>
                                       ))}
@@ -1839,7 +1840,7 @@ export function StockAnalysisDeepResearchZone({
                                         {row.stockName}
                                       </strong>
                                       <small className="stock-analysis-page__tabular">
-                                        {row.sectorName || "-"}
+                                        {row.sectorName || EM_DASH}
                                       </small>
                                       <span className="stock-analysis-page__consensus-strategies">
                                         {row.strategies.map((kind) => (
@@ -1985,7 +1986,7 @@ export function StockAnalysisDeepResearchZone({
                                       <span className="stock-analysis-page__tabular">{row.stock_code}</span>{" "}
                                       {row.stock_name}{" "}
                                       <small className="stock-analysis-page__tabular">
-                                        {row.sector_name || row.sector_code || "-"}
+                                        {row.sector_name || row.sector_code || EM_DASH}
                                       </small>
                                     </div>
                                     <div className="stock-analysis-page__mean-reversion-metrics stock-analysis-page__tabular">
@@ -2078,7 +2079,7 @@ export function StockAnalysisDeepResearchZone({
                                     <span className="stock-analysis-page__tabular">{row.stock_code}</span>{" "}
                                     {row.stock_name}{" "}
                                     <small className="stock-analysis-page__tabular">
-                                      {row.sector_name || row.industry || "-"}
+                                      {row.sector_name || row.industry || EM_DASH}
                                     </small>
                                   </div>
                                   <div className="stock-analysis-page__factor-screen-metrics stock-analysis-page__tabular">

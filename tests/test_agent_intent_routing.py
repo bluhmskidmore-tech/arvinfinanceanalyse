@@ -2344,15 +2344,29 @@ def test_financial_workflow_slash_command_returns_plan_envelope(tmp_path):
     assert envelope.suggested_actions[0].confirmation_token
 
 
-def test_unknown_workflow_id_falls_back_to_existing_intent_routing(tmp_path):
+def test_unknown_workflow_id_returns_error_envelope_instead_of_silent_fallback(tmp_path):
+    """显式 workflow_id 未命中目录必须 fail-closed 返回错误 envelope，
+    不再静默降级到问题级扫描（拼错的 id 曾被送去 provider 开放聊天）。"""
     module = load_module(
         "backend.app.agent.tools.analysis_view_tool",
         "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    resolution_module = load_module(
+        "backend.app.agent.runtime.local_request_resolution",
+        "backend/app/agent/runtime/local_request_resolution.py",
     )
     request_module = load_module(
         "backend.app.agent.schemas.agent_request",
         "backend/app/agent/schemas/agent_request.py",
     )
+
+    request = request_module.AgentQueryRequest(
+        question="PnL summary",
+        context={"workflow_id": "not_registered"},
+    )
+    resolution = resolution_module.resolve_local_request(request)
+    assert resolution.route == "local"
+    assert resolution.reason == "unknown_workflow"
 
     calls: list[str] = []
     tool = module.AnalysisViewTool(
@@ -2371,16 +2385,15 @@ def test_unknown_workflow_id_falls_back_to_existing_intent_routing(tmp_path):
             }
         },
     )
-    envelope = tool.execute(
-        request_module.AgentQueryRequest(
-            question="PnL summary",
-            context={"workflow_id": "not_registered"},
-        )
-    )
+    envelope = tool.execute(request)
 
-    assert calls == ["not_registered"]
-    assert envelope.result_meta.result_kind == "agent.pnl_summary"
-    assert envelope.result_meta.formal_use_allowed is True
+    assert calls == []
+    assert envelope.result_meta.result_kind == "agent.unknown_workflow"
+    assert envelope.result_meta.quality_flag == "error"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert "not_registered" in envelope.answer
+    assert "portfolio_review" in envelope.answer
+    assert "research_radar_brief" in envelope.answer
 
 
 def test_financial_workflow_execute_mode_runs_mapped_intents_in_order(tmp_path):
@@ -2690,7 +2703,7 @@ def test_risk_tensor_missing_formal_marker_fails_closed(tmp_path, monkeypatch):
         "backend/app/agent/schemas/agent_request.py",
     )
 
-    class StubBondAnalyticsRepository:
+    class StubRiskTensorRepository:
         def __init__(self, path: str):
             assert path == "test.duckdb"
 
@@ -2706,7 +2719,7 @@ def test_risk_tensor_missing_formal_marker_fails_closed(tmp_path, monkeypatch):
         "backend.app.services.risk_tensor_service",
         "backend/app/services/risk_tensor_service.py",
     )
-    monkeypatch.setattr(service_module, "BondAnalyticsRepository", StubBondAnalyticsRepository)
+    monkeypatch.setattr(service_module, "RiskTensorRepository", StubRiskTensorRepository)
     monkeypatch.setattr(risk_service_module, "risk_tensor_envelope", fake_risk_tensor_envelope)
 
     tool = tool_module.AnalysisViewTool(
@@ -3083,3 +3096,387 @@ def test_scope_less_legacy_action_still_executes_for_any_user(tmp_path):
 
     assert calls == ["请汇总今日损益"]
     assert envelope.result_meta.result_kind == "agent.pnl_summary"
+
+
+@pytest.mark.parametrize(
+    ("question", "expected_intent"),
+    [
+        # 金融语义的「影响分析」不得再被 gitnexus_status 截走。
+        ("帮我做一下组合久期影响分析", "duration_risk"),
+        ("信用利差影响分析", "credit_exposure"),
+        # 与 仓库/代码 域词同现时才路由 gitnexus。
+        ("帮我做仓库影响分析", "gitnexus_status"),
+        ("代码影响分析", "gitnexus_status"),
+    ],
+)
+def test_impact_analysis_requires_code_domain_words_for_gitnexus(question, expected_intent):
+    resolution_module = load_module(
+        "backend.app.agent.runtime.local_request_resolution",
+        "backend/app/agent/runtime/local_request_resolution.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    resolution = resolution_module.resolve_local_request(
+        request_module.AgentQueryRequest(question=question)
+    )
+
+    assert resolution.route == "local"
+    assert resolution.intent == expected_intent
+
+
+def test_page_context_question_with_history_prefers_page_default_over_follow_up():
+    """回归（B15-2）：「这个页面…」+ page_id + 会话历史必须走 page_default，
+    不得被 follow-up 裸指代词（「这个」）劫持而复用上一轮意图。"""
+    resolution_module = load_module(
+        "backend.app.agent.runtime.local_request_resolution",
+        "backend/app/agent/runtime/local_request_resolution.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+    conversation_context = {
+        "conversation": {
+            "recent_turns": [
+                {"result_kind": "agent.duration_risk", "answer": "上一轮久期结论。"}
+            ]
+        }
+    }
+
+    resolution = resolution_module.resolve_local_request(
+        request_module.AgentQueryRequest(
+            question="这个页面的数据怎么样",
+            page_context=request_module.AgentPageContext(page_id="dashboard"),
+            context=dict(conversation_context),
+        )
+    )
+    assert resolution.reason == "page_default"
+    assert resolution.intent == "portfolio_overview"
+
+    # 对照：没有可用页面上下文时保持既有 follow-up 语义。
+    fallback = resolution_module.resolve_local_request(
+        request_module.AgentQueryRequest(
+            question="这个页面的数据怎么样",
+            context=dict(conversation_context),
+        )
+    )
+    assert fallback.reason == "follow_up"
+    assert fallback.intent == "duration_risk"
+
+
+def _risk_tensor_upstream_with_cs01(report_date: str) -> dict[str, object]:
+    upstream = _duration_risk_upstream(report_date, quality_flag="ok")
+    upstream["result"]["cs01"] = {
+        "raw": 3.21,
+        "unit": "cs01",
+        "display": "3.21",
+        "precision": 2,
+        "sign_aware": False,
+    }
+    return upstream
+
+
+def test_risk_tensor_latest_date_uses_risk_tensor_fact_not_bond_analytics(tmp_path, monkeypatch):
+    """回归（B15-3）：bond analytics 领先张量落表时，risk_tensor 的 latest
+    日期必须取自张量事实表本身（与 duration_risk 对齐），否则上游直接 raise。"""
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    class StubRiskTensorRepository:
+        def __init__(self, path: str):
+            assert path == "test.duckdb"
+
+        def list_report_dates(self) -> list[str]:
+            # 张量事实表滞后：最新只有 2026-03-31。
+            return ["2026-03-31"]
+
+    class StubBondAnalyticsRepository:
+        def __init__(self, path: str):
+            assert path == "test.duckdb"
+
+        def list_report_dates(self) -> list[str]:
+            # bond analytics 已经推进到 2026-04-01。
+            return ["2026-04-01", "2026-03-31"]
+
+    def fake_risk_tensor_envelope(*, report_date: str, **_: object) -> dict[str, object]:
+        if report_date != "2026-03-31":
+            raise RuntimeError(
+                f"Risk tensor fact missing for report_date={report_date} "
+                "while bond analytics lineage exists."
+            )
+        return _risk_tensor_upstream_with_cs01(report_date)
+
+    risk_service_module = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+    monkeypatch.setattr(service_module, "RiskTensorRepository", StubRiskTensorRepository)
+    monkeypatch.setattr(service_module, "BondAnalyticsRepository", StubBondAnalyticsRepository)
+    monkeypatch.setattr(risk_service_module, "risk_tensor_envelope", fake_risk_tensor_envelope)
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+    envelope = tool.execute(request_module.AgentQueryRequest(question="风险张量怎么样"))
+
+    assert envelope.result_meta.result_kind == "agent.risk_tensor"
+    assert envelope.result_meta.quality_flag != "error"
+    assert envelope.result_meta.filters_applied["report_date"] == "2026-03-31"
+    assert "查询失败" not in envelope.answer
+
+
+def test_risk_tensor_metric_cards_render_numeric_display_not_raw_dict(tmp_path, monkeypatch):
+    """回归（B15-4）：risk_tensor 指标卡必须复用 Numeric display 渲染，
+    不得把 promote_flat_payload 产出的 {'raw': ...} 字典串直接落在卡面与关键数字行。"""
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    class StubRiskTensorRepository:
+        def __init__(self, path: str):
+            assert path == "test.duckdb"
+
+        def list_report_dates(self) -> list[str]:
+            return ["2026-03-31"]
+
+    def fake_risk_tensor_envelope(*, report_date: str, **_: object) -> dict[str, object]:
+        return _risk_tensor_upstream_with_cs01(report_date)
+
+    risk_service_module = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+    monkeypatch.setattr(service_module, "RiskTensorRepository", StubRiskTensorRepository)
+    monkeypatch.setattr(risk_service_module, "risk_tensor_envelope", fake_risk_tensor_envelope)
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+    envelope = tool.execute(request_module.AgentQueryRequest(question="风险张量怎么样"))
+
+    cards = {card.title: card for card in envelope.cards}
+    assert cards["Portfolio DV01"].value == "12.34 dv01"
+    assert cards["CS01"].value == "3.21 cs01"
+    assert cards["Portfolio Convexity"].value == "0.88 ratio"
+    assert cards["Portfolio DV01"].spec == {
+        "numeric": {
+            "raw": 12.34,
+            "unit": "dv01",
+            "display": "12.34",
+            "precision": 2,
+            "sign_aware": False,
+        }
+    }
+    assert "{'raw'" not in envelope.answer
+    assert "Portfolio DV01=12.34 dv01" in envelope.answer
+
+
+def test_intent_from_text_resolves_multi_marker_text_in_declared_order():
+    """回归（B15-5）：多标记文本按 _INTENT_PATTERNS 声明顺序解析，
+    不依赖 frozenset 的 PYTHONHASHSEED 迭代顺序。"""
+    resolution_module = load_module(
+        "backend.app.agent.runtime.local_request_resolution",
+        "backend/app/agent/runtime/local_request_resolution.py",
+    )
+
+    declared_order = [intent for intent, _ in resolution_module._INTENT_PATTERNS]
+    assert declared_order.index("pnl_bridge") < declared_order.index("news")
+    assert declared_order.index("market_data") < declared_order.index("news")
+
+    assert (
+        resolution_module._intent_from_text("agent.news 之后又出现 agent.pnl_bridge")
+        == "pnl_bridge"
+    )
+    assert (
+        resolution_module._intent_from_text("agent.news and agent.market_data markers")
+        == "market_data"
+    )
+
+
+def test_cube_query_evidence_discloses_report_date_and_parameterized_sql(tmp_path):
+    """回归（B15-6）：cube_query 路径必须披露 report_date/fact_table 过滤锚点
+    与只读参数化 SQL 模板（过滤值保持 ? 占位），不再是零披露的动态 SQL 面。"""
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+    cube_service_module = load_module(
+        "backend.app.services.cube_query_service",
+        "backend/app/services/cube_query_service.py",
+    )
+
+    class FakeCubeRepo:
+        def __init__(self, path: str):
+            assert path == "test.duckdb"
+
+        def fetchall(self, sql: str, params=None):
+            text = " ".join(str(sql).split()).lower()
+            if text.startswith("select count(*) from ("):
+                return [(1,)]
+            if text.startswith("select count(*)"):
+                return [(2,)]
+            if "distinct source_version" in text:
+                return [("sv_cube_test",)]
+            if "distinct rule_version" in text:
+                return [("rv_cube_test",)]
+            if text.startswith("select distinct"):
+                return [("credit",)]
+            return [("credit", 100.0)]
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        cube_query_service=cube_service_module.CubeQueryService(repo_factory=FakeCubeRepo),
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="cube query",
+            context={
+                "cube_query": {
+                    "report_date": "2026-03-31",
+                    "fact_table": "bond_analytics",
+                    "measures": ["sum(market_value)"],
+                    "dimensions": ["asset_class_std"],
+                    "filters": {"asset_class_std": ["credit"]},
+                }
+            },
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "cube_query.bond_analytics"
+    assert envelope.evidence.filters_applied["report_date"] == "2026-03-31"
+    assert envelope.evidence.filters_applied["fact_table"] == "bond_analytics"
+    assert envelope.evidence.filters_applied["asset_class_std"] == ["credit"]
+    assert envelope.evidence.sql_executed
+    for sql in envelope.evidence.sql_executed:
+        assert sql.startswith("select")
+        assert "fact_formal_bond_analytics_daily" in sql
+        assert "report_date = ?" in sql
+        # 过滤值/日期不得内嵌进披露文本，全部保持 `?` 绑定占位。
+        assert "2026-03-31" not in sql
+        assert "'credit'" not in sql
+    assert any("asset_class_std in (?)" in sql for sql in envelope.evidence.sql_executed)
+    assert any("limit ? offset ?" in sql for sql in envelope.evidence.sql_executed)
+
+
+def test_audit_filters_preserve_zero_and_false_values():
+    """回归（B15-7）：`0 == False` 不得导致 offset=0/min_amount=0 等合法过滤值
+    被审计过滤器丢弃；None 与空串仍剔除。"""
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    request = request_module.AgentQueryRequest(
+        question="最新新闻",
+        filters={
+            "offset": 0,
+            "min_amount": 0.0,
+            "error_only": False,
+            "limit": 20,
+            "empty": "",
+            "missing": None,
+        },
+    )
+    merged = service_module._audit_filters(
+        request,
+        "2026-03-31",
+        resolution="latest_default",
+        extra={"page_size": 0, "note": ""},
+    )
+
+    assert merged["offset"] == 0
+    assert merged["min_amount"] == 0.0
+    assert merged["error_only"] is False
+    assert merged["limit"] == 20
+    assert merged["page_size"] == 0
+    assert "empty" not in merged
+    assert "missing" not in merged
+    assert "note" not in merged
+    assert merged["report_date"] == "2026-03-31"
+    assert merged["report_date_resolution"] == "latest_default"
+
+
+def test_evidence_tool_normalizes_quality_flag_outside_contract(caplog):
+    """回归（B15-12）：AgentEvidence.quality_flag 值域收敛到 ok/warning/error/stale；
+    handler 笔误产生的枚举外值归一化为 warning 并记日志，合法值原样保留。"""
+    import logging
+
+    evidence_module = load_module(
+        "backend.app.agent.tools.evidence_tool",
+        "backend/app/agent/tools/evidence_tool.py",
+    )
+    tool = evidence_module.EvidenceTool()
+
+    with caplog.at_level(logging.WARNING):
+        typo = tool.build_evidence(
+            tables_used=["fact_formal_pnl_fi"],
+            filters_applied={},
+            row_count=1,
+            quality_flag="warnnig",
+        )
+    assert typo.quality_flag == "warning"
+    assert "outside the contract enum" in caplog.text
+
+    assert (
+        tool.build_evidence(
+            tables_used=["fact_formal_pnl_fi"],
+            filters_applied={},
+            row_count=1,
+            quality_flag="error",
+        ).quality_flag
+        == "error"
+    )
+    assert (
+        tool.build_evidence(
+            tables_used=[],
+            filters_applied={},
+            row_count=0,
+            quality_flag="stale",
+        ).quality_flag
+        == "stale"
+    )
+    # 大小写归一：治理证据充分时 "OK" 收敛为合法小写 "ok"。
+    assert (
+        tool.build_evidence(
+            tables_used=["fact_formal_pnl_fi"],
+            filters_applied={},
+            row_count=1,
+            quality_flag="OK",
+        ).quality_flag
+        == "ok"
+    )

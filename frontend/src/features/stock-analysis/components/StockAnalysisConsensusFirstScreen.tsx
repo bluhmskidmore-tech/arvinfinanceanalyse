@@ -84,7 +84,14 @@ export function StockAnalysisConsensusFirstScreen({
           <CompactStatusTile
             icon={<LineChartOutlined />}
             label="复核"
-            value="队列"
+            value={
+              <a
+                href="#stock-analysis-review-queue"
+                data-testid="stock-analysis-consensus-review-queue-link"
+              >
+                去复核队列
+              </a>
+            }
             tone="positive"
             className="stock-analysis-page__compact-status-tile--accent"
           />

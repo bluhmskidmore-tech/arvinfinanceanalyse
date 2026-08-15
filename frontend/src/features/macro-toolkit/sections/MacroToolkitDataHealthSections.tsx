@@ -18,6 +18,7 @@ import {
   formatMissingIndicatorDetail,
   formatObservationDeferredSectionLabel,
   formatObservationRepairSummary,
+  localizeRepairActionText,
   repairItemFocusKey,
   repairPriorityColor,
   repairPriorityLabel,
@@ -27,6 +28,7 @@ import {
   repairTicketSla,
   repairTicketSubmissionImpact,
   repairTypeLabel,
+  stripRepairActionRepeatedFacts,
   summarizeRepairAction,
 } from "../lib/macroToolkitDataHealthSupport";
 import { MacroStatusIcon } from "../lib/MacroToolkitStatusPrimitives";
@@ -79,15 +81,26 @@ function DataHealthWarningNote({ warning }: { warning: string }) {
 }
 
 /** 能力缺口修复建议：英文缺口代码清单收进 details，卡面留一句中文摘要；原文同时进 title。 */
-function MacroToolkitRepairActionNote({ action }: { action: string }) {
+function MacroToolkitRepairActionNote({
+  action,
+  item,
+}: {
+  action: string;
+  item?: MacroToolkitRepairItem;
+}) {
   const summary = summarizeRepairAction(action);
   if (!summary) {
-    return <small title={action}>{compactText(action, 78)}</small>;
+    // 卡面元信息已单独展示「最新日期 + 落后天数」时，模板句只留动作子句；
+    // 「当前 degraded/unavailable」状态枚举一律译中文，全句保留在 title。
+    const displayAction = localizeRepairActionText(
+      item ? stripRepairActionRepeatedFacts(action, item) : action,
+    );
+    return <small title={action}>{compactText(displayAction, 78)}</small>;
   }
   return (
     <details className="macro-toolkit-data-health__repair-note-details">
       <summary title={action}>{summary}</summary>
-      <small>{action}</small>
+      <small>{localizeRepairActionText(action)}</small>
     </details>
   );
 }
@@ -219,7 +232,7 @@ export function MacroToolkitDataHealthPanel({
           tone={dataHealth.source_coverage.latest_date ? "positive" : "neutral"}
         />
         <HealthMetricTile
-          label="能力降级"
+          label="降级+不可用"
           value={capabilityIssueCount(dataHealth)}
           detail={capabilityHealthDetail(dataHealth)}
           tone={capabilityIssueCount(dataHealth) > 0 ? "neutral" : "positive"}
@@ -301,11 +314,19 @@ export function MacroToolkitDataHealthPanel({
                     </Tag>
                     {formatDataHealthRepairLabel(item, plainLanguage)}
                   </span>
-                  <MacroToolkitRepairActionNote action={formatDataHealthRepairAction(item, plainLanguage)} />
+                  <MacroToolkitRepairActionNote
+                    action={formatDataHealthRepairAction(item, plainLanguage)}
+                    item={item}
+                  />
                 </div>
-                <div className="macro-toolkit-data-health__repair-meta">
-                  {item.alias ? <small>{item.alias}</small> : null}
-                  {item.source_table ? <small>{item.source_table}</small> : null}
+                {/* 卡内只留「最新日期 + 落后天数」；别名与事项名重复不再复读，来源表名收 title。 */}
+                <div
+                  className="macro-toolkit-data-health__repair-meta"
+                  title={item.source_table ? `来源表 ${item.source_table}` : undefined}
+                >
+                  {item.alias && item.alias !== formatDataHealthRepairLabel(item, plainLanguage) ? (
+                    <small>{item.alias}</small>
+                  ) : null}
                   {item.latest_date || item.stale_days ? (
                     <small>
                       {[

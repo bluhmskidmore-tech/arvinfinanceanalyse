@@ -17,6 +17,7 @@ from backend.app.repositories.external_data_catalog_repo import (
 from backend.app.repositories.external_data_migrations_extra import (
     ensure_std_external_macro_schema,
 )
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.schemas.external_data import ExternalDataCatalogEntry
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
@@ -40,6 +41,12 @@ def _grant_external_data_read_scope(tmp_path, monkeypatch, *, user_id: str = "*"
         resource="external_data",
         action="read",
     )
+
+
+def _register(repo: ExternalDataCatalogRepository, *entries: ExternalDataCatalogEntry) -> None:
+    with repository_task_write_scope("backend.app.tasks.external_data_catalog_seed_test"):
+        for entry in entries:
+            repo.register(entry)
 
 
 def _seed_entry(series_id: str, domain: DomainLit) -> ExternalDataCatalogEntry:
@@ -66,7 +73,8 @@ def test_external_data_read_surfaces_require_explicit_read_scope(tmp_path, monke
         ensure_external_data_catalog_schema(conn)
         ensure_std_external_macro_schema(conn)
         repo = ExternalDataCatalogRepository(conn=conn)
-        repo.register(
+        _register(
+            repo,
             ExternalDataCatalogEntry(
                 series_id="api.series",
                 series_name="API series",
@@ -118,8 +126,7 @@ def test_external_data_catalog_endpoints(tmp_path, monkeypatch) -> None:
     try:
         ensure_external_data_catalog_schema(conn)
         repo = ExternalDataCatalogRepository(conn=conn)
-        repo.register(_seed_entry("api.series", "macro"))
-        repo.register(_seed_entry("api.news", "news"))
+        _register(repo, _seed_entry("api.series", "macro"), _seed_entry("api.news", "news"))
     finally:
         conn.close()
 
@@ -149,7 +156,8 @@ def test_external_data_series_data_endpoints_return_rows(tmp_path, monkeypatch) 
     try:
         ensure_external_data_catalog_schema(conn)
         ensure_std_external_macro_schema(conn)
-        ExternalDataCatalogRepository(conn=conn).register(
+        _register(
+            ExternalDataCatalogRepository(conn=conn),
             ExternalDataCatalogEntry(
                 series_id="api.series",
                 series_name="API series",
@@ -215,7 +223,8 @@ def test_external_data_watermark_endpoint_returns_catalog_freshness(tmp_path, mo
         ensure_external_data_catalog_schema(conn)
         ensure_std_external_macro_schema(conn)
         repo = ExternalDataCatalogRepository(conn=conn)
-        repo.register(
+        _register(
+            repo,
             ExternalDataCatalogEntry(
                 series_id="api.watermark.series",
                 series_name="API watermark series",
@@ -242,7 +251,9 @@ def test_external_data_watermark_endpoint_returns_catalog_freshness(tmp_path, mo
         conn.close()
 
     client = TestClient(app)
+    request_day_before = date.today()
     response = client.get("/api/external-data/watermarks")
+    request_day_after = date.today()
 
     assert response.status_code == 200, response.text
     payload = response.json()
@@ -251,6 +262,12 @@ def test_external_data_watermark_endpoint_returns_catalog_freshness(tmp_path, mo
     assert payload["summary"]["oldest_available_business_date"] == "2026-04-20"
     assert payload["summary"]["newest_available_business_date"] == "2026-04-20"
     assert payload["summary"]["last_successful_ingest"] == "2026-04-21 08:00:00"
+    # age_days 由服务端在请求时刻计算：用请求前后窗口断言，避免跨午夜双读翻车。
+    assert len(payload["entries"]) == 1
+    observed_age_days = payload["entries"][0]["age_days"]
+    assert observed_age_days in {
+        (day - date(2026, 4, 20)).days for day in (request_day_before, request_day_after)
+    }
     assert payload["entries"] == [
         {
             "series_id": "api.watermark.series",
@@ -267,7 +284,7 @@ def test_external_data_watermark_endpoint_returns_catalog_freshness(tmp_path, mo
             "row_count": 1,
             "latest_business_date": "2026-04-20",
             "latest_loaded_at": "2026-04-21 08:00:00",
-            "age_days": (date.today() - date(2026, 4, 20)).days,
+            "age_days": observed_age_days,
             "freshness_tier": "unknown",
             "data_status": "available",
             "error_message": None,

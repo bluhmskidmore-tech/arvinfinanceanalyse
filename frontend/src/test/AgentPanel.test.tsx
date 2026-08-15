@@ -62,6 +62,23 @@ function buildAgentResult({
   };
 }
 
+/** POST /api/agent/runs 不再同步短路返回 envelope；托管路径 mock 统一用终态 run payload。 */
+function buildManagedRunPayload(
+  result: ReturnType<typeof buildAgentResult>,
+  runId = "agent_run:panel-test",
+) {
+  return {
+    run_id: runId,
+    status: "completed",
+    provider: "hermes",
+    model: "gpt-5.5",
+    transport: "bridge",
+    toolsets: "file",
+    elapsed_seconds: 1,
+    result,
+  };
+}
+
 function renderAgentPanel() {
   return render(
     <AgentPanel
@@ -174,7 +191,7 @@ describe("AgentPanel", () => {
 
   it("announces page context changes in the embedded panel", async () => {
     const user = userEvent.setup();
-    fetchMock.mockResolvedValueOnce(buildJsonResponse(buildAgentResult()));
+    fetchMock.mockResolvedValueOnce(buildJsonResponse(buildManagedRunPayload(buildAgentResult())));
     const { rerender } = render(
       <AgentPanel
         pageId="test-page"
@@ -248,7 +265,7 @@ describe("AgentPanel", () => {
 
   it("resets the expanded composer height after submitting a multiline draft", async () => {
     const user = userEvent.setup();
-    fetchMock.mockResolvedValueOnce(buildJsonResponse(buildAgentResult()));
+    fetchMock.mockResolvedValueOnce(buildJsonResponse(buildManagedRunPayload(buildAgentResult())));
     renderAgentPanel();
 
     const input = screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL) as HTMLTextAreaElement;
@@ -450,16 +467,22 @@ describe("AgentPanel", () => {
     fetchMock
       .mockResolvedValueOnce(
         buildJsonResponse(
-          buildAgentResult({
-            answer: "First embedded answer.",
-          }),
+          buildManagedRunPayload(
+            buildAgentResult({
+              answer: "First embedded answer.",
+            }),
+            "agent_run:embedded-context-first",
+          ),
         ),
       )
       .mockResolvedValueOnce(
         buildJsonResponse(
-          buildAgentResult({
-            answer: "Second embedded answer.",
-          }),
+          buildManagedRunPayload(
+            buildAgentResult({
+              answer: "Second embedded answer.",
+            }),
+            "agent_run:embedded-context-second",
+          ),
         ),
       );
 

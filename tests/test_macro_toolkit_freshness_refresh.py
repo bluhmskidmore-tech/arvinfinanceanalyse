@@ -9,6 +9,10 @@ import pytest
 
 from backend.app.tasks import macro_toolkit_freshness_refresh as freshness
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_macro_toolkit,
+]
 
 _MISSING_ROW_COUNT = object()
 
@@ -580,6 +584,10 @@ def test_cli_writes_atomic_structured_scheduled_receipt(monkeypatch, tmp_path) -
 
         def fn(self, **kwargs):
             assert kwargs == {"include_cffex": True}
+            running_receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+            assert running_receipt["status"] == "running"
+            assert running_receipt["exit_code"] is None
+            assert running_receipt["result"]["status"] == "running"
             return result
 
     monkeypatch.setattr(cli, "refresh_macro_toolkit_freshness_actor", _Actor())
@@ -614,7 +622,7 @@ def test_cli_writes_atomic_structured_scheduled_receipt(monkeypatch, tmp_path) -
     )
 
     assert exit_code == 0
-    assert len(replace_calls) == 1
+    assert len(replace_calls) == 2
     receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
     assert receipt == {
         "schema_version": 1,
@@ -631,6 +639,44 @@ def test_cli_writes_atomic_structured_scheduled_receipt(monkeypatch, tmp_path) -
     }
     datetime.fromisoformat(receipt["generated_at"])
     assert list(tmp_path.iterdir()) == [receipt_path]
+
+
+def test_scheduled_run_aborts_before_writes_when_running_receipt_cannot_be_written(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    from scripts import macro_toolkit_freshness_refresh as cli
+
+    actor_called = False
+
+    class _Actor:
+        actor_name = "refresh_macro_toolkit_freshness"
+
+        def fn(self, **_kwargs):
+            nonlocal actor_called
+            actor_called = True
+            return {"status": "success"}
+
+    def fail_write(_path, _receipt) -> None:
+        raise OSError("simulated running receipt failure")
+
+    monkeypatch.setattr(cli, "refresh_macro_toolkit_freshness_actor", _Actor())
+    monkeypatch.setattr(cli, "_write_receipt_atomic", fail_write)
+
+    exit_code = cli.main(
+        [
+            "--run-once",
+            "--run-kind",
+            "scheduled",
+            "--receipt-path",
+            str(tmp_path / "receipt.json"),
+        ]
+    )
+
+    assert exit_code == 1
+    assert actor_called is False
+    assert "running receipt write failed" in capsys.readouterr().err.lower()
 
 
 @pytest.mark.parametrize(

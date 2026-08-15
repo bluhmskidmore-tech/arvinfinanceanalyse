@@ -49,8 +49,121 @@ from backend.app.repositories.governance_repo import (
 )
 from backend.app.security.auth_context import AuthContext
 
-# 本地副本，避免模块级 import tasks（commodity_daily_ingest 会 register_actor）。
-ThemeOverlayRefreshMode = Literal["off", "dry_run", "archive"]
+# ---------------------------------------------------------------------------
+# 门面 re-export：以下名字的实现已按内聚拆分到同级 macro_toolkit_service_* 子模块，
+# 逐名显式重新导入，保持本模块的公开 / monkeypatch 命名空间完全不变。
+# ---------------------------------------------------------------------------
+from backend.app.services.macro_toolkit_service_commodity_inputs import (
+    DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS,
+    _commodity_futures_coverage,
+    _commodity_futures_missing_nanhua,
+    _commodity_futures_nanhua_input,
+    _normalize_commodity_trade_date,
+)
+from backend.app.services.macro_toolkit_service_model_chain import (
+    _MODEL_CHAIN_DAILY_CHAIN_RECEIPT_NAME,
+    _MODEL_CHAIN_DCC_META_COLUMNS,
+    _MODEL_CHAIN_DETAIL_HEADLINE,
+    _MODEL_CHAIN_FINAL_SIGNAL_ARTIFACT,
+    _MODEL_CHAIN_FRESHNESS_RECEIPT_NAME,
+    _MODEL_CHAIN_MISSING_HEADLINE,
+    _MODEL_CHAIN_MONITOR_LOG_TAIL_ROWS,
+    _MODEL_CHAIN_NA_TEXT,
+    _MODEL_CHAIN_STEP_DEFINITIONS,
+    _MODEL_CHAIN_TREND_MAX_POINTS,
+    _MODEL_CHAIN_TREND_SIGNAL_SYMBOLS,
+    _load_model_chain_frame,
+    _model_chain_as_of,
+    _model_chain_backtest_headline,
+    _model_chain_cell_text,
+    _model_chain_contains,
+    _model_chain_crisis_headline,
+    _model_chain_crisis_trend_series,
+    _model_chain_cta_headline,
+    _model_chain_daily_chain_summary,
+    _model_chain_dcc_headline,
+    _model_chain_dcc_trend_series,
+    _model_chain_final_signal_as_of_date,
+    _model_chain_final_signal_headline,
+    _model_chain_final_signal_trend_series,
+    _model_chain_freshness_summary,
+    _model_chain_garch_headline,
+    _model_chain_latest_date_text,
+    _model_chain_max_row,
+    _model_chain_merrill_headline,
+    _model_chain_merrill_trend_series,
+    _model_chain_model_payload,
+    _model_chain_monitor_alerts_headline,
+    _model_chain_performance_headline,
+    _model_chain_rebalance_headline,
+    _model_chain_receipt_summary,
+    _model_chain_regime_headline,
+    _model_chain_risk_monitor_headline,
+    _model_chain_risk_parity_headline,
+    _model_chain_scheduler_payload,
+    _model_chain_signal_trend_value,
+    _model_chain_table,
+    _model_chain_trend_column,
+    _model_chain_trend_payload,
+    _model_chain_trend_points,
+    build_model_chain_results,
+)
+from backend.app.services.macro_toolkit_service_readiness import (
+    _MACRO_MODEL_DEFINITIONS,
+    _MONTHLY_CADENCE_ARTIFACTS,
+    _is_generation_evidence_artifact,
+    _is_history_artifact,
+    _is_monthly_cadence_artifact,
+    _macro_artifact_receipt,
+    _macro_generation_freshness,
+    _macro_monthly_output_freshness,
+    _macro_output_content_dates,
+    _macro_output_freshness,
+    _macro_output_health,
+    _macro_output_health_status,
+    _macro_output_modified_date,
+    _macro_readiness_date_basis,
+    _macro_readiness_degraded_reason,
+    _macro_readiness_evidence_level,
+    _macro_run_blocker,
+    _macro_run_data_asof,
+    _macro_run_degraded_reason,
+    _macro_run_manifest,
+)
+from backend.app.services.macro_toolkit_service_support import (
+    MACRO_TOOLKIT_FORMAL_USE_ALLOWED,
+    MACRO_TOOLKIT_MODEL_READINESS_SURFACE,
+    MACRO_TOOLKIT_OBSERVATION_ONLY,
+    MACRO_TOOLKIT_OUTPUT_DATE_COLUMNS,
+    MACRO_TOOLKIT_RUN_CHAIN_ENDPOINT,
+    ThemeOverlayRefreshMode,
+    _WRITE_REFRESH_PUBLIC_FAILURE_CATEGORIES,
+    _WRITE_REFRESH_PUBLIC_STATUSES,
+    _WRITE_REFRESH_RETRY_PENDING_AFTER,
+    _choice_stock_base_table_status,
+    _choice_stock_daily_observation_status_with_freshness,
+    _choice_stock_factor_snapshot_status_with_freshness,
+    _choice_stock_table_freshness,
+    _choice_stock_table_status,
+    _choice_stock_theme_overlay_source_version,
+    _coerce_frame_date,
+    _float_or_none,
+    _int_or_zero,
+    _latest_result_field,
+    _normalize_idempotency_key,
+    _normalize_theme_overlay_mode,
+    _normalize_write_refresh_public_record,
+    _optional_int,
+    _optional_text,
+    _public_text_list,
+    _public_text_mapping,
+    _result_row_count,
+    _tail_text,
+    _unique_texts,
+    _write_refresh_quality_flag,
+    _write_refresh_record_blocks_dispatch,
+    _write_refresh_record_is_within_retry_window,
+)
 
 
 def materialize_choice_stock_factor_snapshot(*args: object, **kwargs: object) -> object:
@@ -189,7 +302,6 @@ CHOICE_STOCK_REFRESH_LOCK = "lock:choice_stock_refresh"
 CHOICE_STOCK_REFRESH_RULE_VERSION = "rv_choice_stock_materialization_front_layer_v1"
 CHOICE_STOCK_THEME_OVERLAY_VENDOR_VERSION = "vv_tushare_ths_current_overlay_v1"
 _CHOICE_STOCK_REFRESH_IN_FLIGHT_STATUSES = {"queued", "running", "retrying"}
-DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS = ("RB", "I", "CU", "AL", "SC", "AU", "NHCI")
 COMMODITY_FUTURES_REFRESH_JOB_NAME = "commodity_futures_daily_ingest"
 COMMODITY_FUTURES_REFRESH_CACHE_KEY = "commodity_futures.daily"
 COMMODITY_FUTURES_REFRESH_CACHE_VERSION = "commodity_futures_daily_v1"
@@ -204,23 +316,6 @@ MACRO_SOURCE_BACKFILL_CACHE_KEY = "macro_toolkit.source_backfill"
 MACRO_SOURCE_BACKFILL_CACHE_VERSION = "macro_source_backfill_v1"
 MACRO_SOURCE_BACKFILL_RULE_VERSION = "rv_macro_source_backfill_async_v1"
 _MACRO_SOURCE_REFRESH_IN_FLIGHT_STATUSES = {"queued", "running", "retrying"}
-_WRITE_REFRESH_RETRY_PENDING_AFTER = timedelta(hours=1)
-_WRITE_REFRESH_PUBLIC_STATUSES = {
-    "queued",
-    "running",
-    "retrying",
-    "completed",
-    "partial",
-    "no_rows",
-    "blocked",
-    "failed",
-}
-_WRITE_REFRESH_PUBLIC_FAILURE_CATEGORIES = {
-    "backfill_failure",
-    "cache_invalidation",
-    "queue_dispatch_failure",
-    "vendor_failure",
-}
 _WRITE_REFRESH_MAX_RETRIES = 3
 EQUITY_PRICE_LOOKBACK_DAYS = 260
 EQUITY_PRICE_MIN_OBSERVATIONS = 80
@@ -238,86 +333,8 @@ _CANONICAL_ISO_DATE_CACHE: dict[_DateColumnCacheKey, bool] = {}
 _CANONICAL_ISO_DATE_CACHE_LOCK = threading.Lock()
 _CANONICAL_ISO_DATE_PROBE_LOCKS: dict[_DateColumnCacheKey, LockType] = {}
 _CANONICAL_ISO_DATE_CACHE_MAX_ENTRIES = 64
-MACRO_TOOLKIT_OBSERVATION_ONLY = True
-MACRO_TOOLKIT_FORMAL_USE_ALLOWED = False
-MACRO_TOOLKIT_OUTPUT_DATE_COLUMNS = ("日期", "date", "trade_date", "as_of_date")
 MACRO_TOOLKIT_CHAIN_LOCK = LockDefinition(key="lock:macro_toolkit:script-chain", ttl_seconds=900)
-MACRO_TOOLKIT_RUN_CHAIN_ENDPOINT = "/ui/macro/toolkit/scripts/run-chain"
-MACRO_TOOLKIT_MODEL_READINESS_SURFACE = "/macro-toolkit#macro-toolkit-model-readiness-detail"
 MACRO_TOOLKIT_SCRIPT_ARTIFACT_SURFACE = "/macro-toolkit#macro-toolkit-script-artifact-detail"
-
-_MACRO_MODEL_DEFINITIONS: tuple[dict[str, object], ...] = (
-    {
-        "id": "merrill_clock",
-        "label": "Merrill Clock",
-        "script_name": "merrill_clock_cn",
-        "expected_outputs": ("merrill_clock_latest.csv", "merrill_clock_history.csv"),
-        "notes": ("Macro cycle and asset allocation candidate signal.",),
-    },
-    {
-        "id": "crisis_score",
-        "label": "Crisis Score",
-        "script_name": "crisis_score_cn",
-        "expected_outputs": ("crisis_score_latest.csv", "crisis_score_history.csv"),
-        "notes": ("Stress score candidate signal.",),
-    },
-    {
-        "id": "bond_futures_basis",
-        "label": "Bond Futures Basis / IRR / Safety Margin",
-        "script_name": "bond_futures_data",
-        "expected_outputs": ("bond_futures_latest.csv", "bond_futures_history.csv"),
-        "notes": ("Treasury futures basis and safety-margin evidence.",),
-    },
-    {
-        "id": "bond_futures_four_factor",
-        "label": "Bond Futures Four-Factor Trend",
-        "script_name": "bond_futures_signals",
-        "expected_outputs": ("bond_signals_latest.csv",),
-        "notes": ("MA, channel, MACD and Bollinger style treasury-futures signal evidence.",),
-    },
-    {
-        "id": "funding_conditions",
-        "label": "Funding Conditions / Flow",
-        "script_name": "merrill_clock_cn",
-        "expected_outputs": ("merrill_clock_latest.csv",),
-        "notes": ("Funding condition is evidenced through DR007/NCD inputs and Merrill liquidity momentum, not a standalone formal metric.",),
-    },
-    {
-        "id": "crowding",
-        "label": "Crowding",
-        "script_name": "crowding_cn",
-        "expected_outputs": ("crowding_latest.csv", "crowding_history.csv"),
-        "notes": ("Crowding candidate signal.",),
-    },
-    {
-        "id": "dcc_garch",
-        "label": "DCC-GARCH",
-        "script_name": "dcc_garch_cn",
-        "expected_outputs": ("dcc_latest.csv", "dcc_results.csv"),
-        "notes": ("Dynamic conditional correlation candidate signal.",),
-    },
-    {
-        "id": "cta_trend",
-        "label": "CTA Trend",
-        "script_name": "cta_trend_cn",
-        "expected_outputs": ("cta_results.csv",),
-        "notes": ("CTA trend candidate signal.",),
-    },
-    {
-        "id": "final_signal",
-        "label": "Final Signal Aggregator",
-        "script_name": "signal_aggregator",
-        "expected_outputs": ("final_signal.csv",),
-        "notes": ("Aggregates macro, bond futures, crisis and crowding evidence.",),
-    },
-    {
-        "id": "risk_monitor",
-        "label": "Risk Monitor",
-        "script_name": "risk_monitor",
-        "expected_outputs": ("risk_state.csv", "risk_log.csv"),
-        "notes": ("Risk warning threshold monitor.",),
-    },
-)
 
 _CURVE_TYPE_TO_ID = {
     "treasury": "CN_GOVT",
@@ -476,823 +493,6 @@ def macro_model_readiness(
             "observation_only": MACRO_TOOLKIT_OBSERVATION_ONLY,
             "formal_use_allowed": MACRO_TOOLKIT_FORMAL_USE_ALLOWED,
         },
-    }
-
-
-# ---------------------------------------------------------------------------
-# Model chain results (observation-only read surface over artifact CSVs)
-# ---------------------------------------------------------------------------
-
-_MODEL_CHAIN_MISSING_HEADLINE = "产物缺失"
-_MODEL_CHAIN_DETAIL_HEADLINE = "详见明细"
-_MODEL_CHAIN_NA_TEXT = "—"
-_MODEL_CHAIN_FINAL_SIGNAL_ARTIFACT = "final_signal.csv"
-# dcc_latest.csv 宽表中除配对列以外的元信息列。
-_MODEL_CHAIN_DCC_META_COLUMNS = ("日期", "平均相关系数", "预警状态")
-
-
-def _model_chain_cell_text(value: object) -> str:
-    """Render one CSV cell as display text; NaN/blank become the em-dash placeholder."""
-    if value is None:
-        return _MODEL_CHAIN_NA_TEXT
-    try:
-        if pd.isna(value):
-            return _MODEL_CHAIN_NA_TEXT
-    except (TypeError, ValueError):
-        pass
-    text = str(value).strip()
-    return text if text else _MODEL_CHAIN_NA_TEXT
-
-
-def _model_chain_contains(value: object, keyword: str) -> bool:
-    text = _model_chain_cell_text(value)
-    if text == _MODEL_CHAIN_NA_TEXT:
-        return False
-    return keyword in text
-
-
-def _model_chain_max_row(frame: pd.DataFrame, column: str) -> pd.Series | None:
-    """Row holding the largest parseable numeric value in ``column``; None when nothing parses."""
-    if column not in frame.columns:
-        return None
-    best_row: pd.Series | None = None
-    best_value: float | None = None
-    for _, row in frame.iterrows():
-        parsed = _float_or_none(row.get(column))
-        if parsed is None:
-            continue
-        if best_value is None or parsed > best_value:
-            best_value = parsed
-            best_row = row
-    return best_row
-
-
-def _load_model_chain_frame(path: Path) -> pd.DataFrame | None:
-    """Load one artifact CSV keeping every value as its original text; None when missing/empty/unreadable."""
-    if not path.is_file():
-        return None
-    try:
-        frame = pd.read_csv(path, encoding="utf-8-sig", dtype=str)
-    except (OSError, UnicodeError, ValueError, pd.errors.EmptyDataError, pd.errors.ParserError):
-        return None
-    if frame.empty:
-        return None
-    return frame
-
-
-def _model_chain_latest_date_text(frame: pd.DataFrame) -> str | None:
-    date_column = next(
-        (column for column in MACRO_TOOLKIT_OUTPUT_DATE_COLUMNS if column in frame.columns),
-        None,
-    )
-    if date_column is None:
-        return None
-    texts = [
-        text
-        for text in (_model_chain_cell_text(value) for value in frame[date_column])
-        if text != _MODEL_CHAIN_NA_TEXT
-    ]
-    if not texts:
-        return None
-    # 产物日期均为 ISO 风格（YYYY-MM / YYYY-MM-DD），字符串序即时间序；保留原始文本粒度。
-    return max(texts)
-
-
-def _model_chain_as_of(frame: pd.DataFrame, path: Path) -> str | None:
-    latest = _model_chain_latest_date_text(frame)
-    if latest is not None:
-        return latest
-    try:
-        modified_at = path.stat().st_mtime
-    except OSError:
-        return None
-    return datetime.fromtimestamp(modified_at, UTC).date().isoformat()
-
-
-def _model_chain_table(
-    frame: pd.DataFrame,
-    model_def: Mapping[str, object],
-) -> tuple[list[str], list[list[str]]]:
-    mode = str(model_def.get("table_mode") or "select")
-    if mode == "dcc_pairs":
-        # dcc_latest.csv 是单行宽表：把 10 个配对列转置成「资产对/相关系数」两列表格，取最末行为最新值。
-        pair_columns = [
-            str(column) for column in frame.columns if str(column) not in _MODEL_CHAIN_DCC_META_COLUMNS
-        ]
-        latest = frame.iloc[-1]
-        return ["资产对", "相关系数"], [
-            [column, _model_chain_cell_text(latest.get(column))] for column in pair_columns
-        ]
-    if mode == "all":
-        selected = [(str(column), str(column)) for column in frame.columns]
-    else:
-        declared = model_def.get("columns") or ()
-        # 列名以产物文件实际表头为准；声明列缺失时跳过该列，保持 columns 与 rows 对齐。
-        selected = [
-            (str(source), str(label))
-            for source, label in declared
-            if str(source) in frame.columns
-        ]
-    if mode == "tail":
-        # 事件日志类产物随时间累积，仅展示尾部窗口（保持行序，最新在最后）。
-        tail_rows = int(model_def.get("tail_rows") or _MODEL_CHAIN_MONITOR_LOG_TAIL_ROWS)
-        frame = frame.tail(tail_rows)
-    columns = [label for _, label in selected]
-    rows = [
-        [_model_chain_cell_text(row.get(source)) for source, _ in selected]
-        for _, row in frame.iterrows()
-    ]
-    return columns, rows
-
-
-def _model_chain_merrill_headline(frame: pd.DataFrame) -> str:
-    # *_latest.csv 为单行产物；多行时取最末行为最新，不重排。
-    row = frame.iloc[-1]
-    quadrant = _model_chain_cell_text(row.get("传统象限"))
-    direction = _model_chain_cell_text(row.get("bond_direction"))
-    return f"象限 {quadrant} · 债券方向 {direction}"
-
-
-def _model_chain_garch_headline(frame: pd.DataFrame) -> str:
-    if "波动率状态" not in frame.columns:
-        return _MODEL_CHAIN_DETAIL_HEADLINE
-    high_count = sum(1 for value in frame["波动率状态"] if _model_chain_contains(value, "高波动"))
-    top_row = _model_chain_max_row(frame, "年化波动率%")
-    if top_row is None:
-        return _MODEL_CHAIN_DETAIL_HEADLINE
-    asset = _model_chain_cell_text(top_row.get("资产"))
-    volatility = _model_chain_cell_text(top_row.get("年化波动率%"))
-    return f"高波动 {high_count}/{len(frame)} · 最高 {asset} {volatility}%"
-
-
-def _model_chain_dcc_headline(frame: pd.DataFrame) -> str:
-    row = frame.iloc[-1]
-    average = _model_chain_cell_text(row.get("平均相关系数"))
-    status = _model_chain_cell_text(row.get("预警状态"))
-    return f"平均相关 {average} · {status}"
-
-
-def _model_chain_regime_headline(frame: pd.DataFrame) -> str:
-    if "当前状态" not in frame.columns:
-        return _MODEL_CHAIN_DETAIL_HEADLINE
-    high_count = sum(1 for value in frame["当前状态"] if _model_chain_contains(value, "高波动"))
-    return f"高波动 {high_count}/{len(frame)}"
-
-
-def _model_chain_cta_headline(frame: pd.DataFrame) -> str:
-    if "操作建议" not in frame.columns or "资产" not in frame.columns:
-        return _MODEL_CHAIN_DETAIL_HEADLINE
-
-    def _assets_for(keyword: str) -> str:
-        assets = [
-            _model_chain_cell_text(row.get("资产"))
-            for _, row in frame.iterrows()
-            if _model_chain_contains(row.get("操作建议"), keyword)
-        ]
-        return "、".join(assets) if assets else "无"
-
-    return f"强多头 {_assets_for('强多头')} · 强空头 {_assets_for('强空头')}"
-
-
-def _model_chain_risk_parity_headline(frame: pd.DataFrame) -> str:
-    top_row = _model_chain_max_row(frame, "风险平价权重%")
-    if top_row is None:
-        return _MODEL_CHAIN_DETAIL_HEADLINE
-    asset = _model_chain_cell_text(top_row.get("资产"))
-    weight = _model_chain_cell_text(top_row.get("风险平价权重%"))
-    return f"风险平价最大权重 {asset} {weight}%"
-
-
-def _model_chain_crisis_headline(frame: pd.DataFrame) -> str:
-    row = frame.iloc[-1]
-    score = _model_chain_cell_text(row.get("Crisis Score"))
-    state = _model_chain_cell_text(row.get("市场状态"))
-    return f"{score} · {state}"
-
-
-def _model_chain_risk_monitor_headline(frame: pd.DataFrame) -> str:
-    cooling = _model_chain_cell_text(frame.iloc[-1].get("cooling_until"))
-    if cooling == _MODEL_CHAIN_NA_TEXT:
-        return "无冷却 · 正常运行"
-    return f"冷却至 {cooling}"
-
-
-_MODEL_CHAIN_MONITOR_LOG_TAIL_ROWS = 6
-
-
-def _model_chain_monitor_alerts_headline(frame: pd.DataFrame) -> str:
-    if "event_type" not in frame.columns:
-        return _MODEL_CHAIN_DETAIL_HEADLINE
-    tail = frame.tail(_MODEL_CHAIN_MONITOR_LOG_TAIL_ROWS)
-    alert_counts: dict[str, int] = {}
-    for value in tail["event_type"]:
-        text = _model_chain_cell_text(value)
-        if text.endswith("_ALERT"):
-            alert_counts[text] = alert_counts.get(text, 0) + 1
-    if not alert_counts:
-        return "近 6 条事件无告警"
-    parts = " · ".join(f"{event} {count}" for event, count in alert_counts.items())
-    return f"告警 {sum(alert_counts.values())} 条 · {parts}"
-
-
-def _model_chain_rebalance_headline(frame: pd.DataFrame) -> str:
-    top_row = _model_chain_max_row(frame, "夏普比率")
-    if top_row is None:
-        return _MODEL_CHAIN_DETAIL_HEADLINE
-    strategy = _model_chain_cell_text(top_row.get("策略"))
-    sharpe = _model_chain_cell_text(top_row.get("夏普比率"))
-    return f"最优 {strategy} · 夏普 {sharpe}"
-
-
-def _model_chain_performance_headline(frame: pd.DataFrame) -> str:
-    top_row = _model_chain_max_row(frame, "夏普比率")
-    if top_row is None:
-        return _MODEL_CHAIN_DETAIL_HEADLINE
-    # 第一列即「资产/组合」标识列（以实际表头为准）。
-    best = _model_chain_cell_text(top_row.get(str(frame.columns[0])))
-    sharpe = _model_chain_cell_text(top_row.get("夏普比率"))
-    return f"最佳 {best} · 夏普 {sharpe}"
-
-
-def _model_chain_backtest_headline(frame: pd.DataFrame) -> str:
-    top_row = _model_chain_max_row(frame, "夏普比率")
-    if top_row is None:
-        return _MODEL_CHAIN_DETAIL_HEADLINE
-    strategy = _model_chain_cell_text(top_row.get("策略"))
-    sharpe = _model_chain_cell_text(top_row.get("夏普比率"))
-    return f"最优 {strategy} · 夏普 {sharpe}"
-
-
-def _model_chain_final_signal_headline(frame: pd.DataFrame) -> str:
-    if "最终信号" not in frame.columns:
-        return _MODEL_CHAIN_DETAIL_HEADLINE
-    counts: dict[str, int] = {}
-    for value in frame["最终信号"]:
-        text = _model_chain_cell_text(value)
-        if text == _MODEL_CHAIN_NA_TEXT:
-            continue
-        counts[text] = counts.get(text, 0) + 1
-    if not counts:
-        return _MODEL_CHAIN_DETAIL_HEADLINE
-    total = sum(counts.values())
-    if len(counts) == 1:
-        value, count = next(iter(counts.items()))
-        return f"{value} {count}/{total}"
-    return " · ".join(f"{value} {count}" for value, count in counts.items())
-
-
-# ---------------------------------------------------------------------------
-# Model chain trend series (optional per-model history line charts)
-# ---------------------------------------------------------------------------
-
-_MODEL_CHAIN_TREND_MAX_POINTS = 120
-_MODEL_CHAIN_TREND_SIGNAL_SYMBOLS = ("TS", "TF", "T", "TL")
-
-
-def _model_chain_trend_column(frame: pd.DataFrame, candidates: Iterable[str]) -> str | None:
-    """列名以历史产物实际表头为准：按候选顺序（中文名优先，英文名兜底）取首个存在列。"""
-    for name in candidates:
-        if str(name) in frame.columns:
-            return str(name)
-    return None
-
-
-def _model_chain_trend_points(
-    frame: pd.DataFrame, date_column: str, value_column: str
-) -> list[list[object]]:
-    """按 CSV 行序提取 [日期原文, float 值] 点；数值不可解析或日期空白的行跳过，仅保留尾部 120 点。"""
-    points: list[list[object]] = []
-    for _, row in frame.iterrows():
-        date_text = _model_chain_cell_text(row.get(date_column))
-        if date_text == _MODEL_CHAIN_NA_TEXT:
-            continue
-        value = _float_or_none(row.get(value_column))
-        if value is None:
-            continue
-        points.append([date_text, value])
-    return points[-_MODEL_CHAIN_TREND_MAX_POINTS:]
-
-
-def _model_chain_merrill_trend_series(frame: pd.DataFrame) -> list[dict[str, object]]:
-    date_column = _model_chain_trend_column(frame, MACRO_TOOLKIT_OUTPUT_DATE_COLUMNS)
-    if date_column is None:
-        return []
-    series: list[dict[str, object]] = []
-    for name, candidates in (
-        ("增长动量", ("增长动量", "growth_momentum", "growth")),
-        ("通胀动量", ("通胀动量", "inflation_momentum", "inflation")),
-        ("流动性动量", ("流动性动量", "liquidity_momentum", "liquidity")),
-    ):
-        column = _model_chain_trend_column(frame, candidates)
-        if column is None:
-            continue
-        series.append(
-            {"name": name, "points": _model_chain_trend_points(frame, date_column, column)}
-        )
-    return series
-
-
-def _model_chain_dcc_trend_series(frame: pd.DataFrame) -> list[dict[str, object]]:
-    date_column = _model_chain_trend_column(frame, MACRO_TOOLKIT_OUTPUT_DATE_COLUMNS)
-    value_column = _model_chain_trend_column(frame, ("平均相关系数", "avg_corr"))
-    if date_column is None or value_column is None:
-        return []
-    return [
-        {
-            "name": "平均相关系数",
-            "points": _model_chain_trend_points(frame, date_column, value_column),
-        }
-    ]
-
-
-def _model_chain_crisis_trend_series(frame: pd.DataFrame) -> list[dict[str, object]]:
-    date_column = _model_chain_trend_column(frame, MACRO_TOOLKIT_OUTPUT_DATE_COLUMNS)
-    value_column = _model_chain_trend_column(frame, ("Crisis Score", "crisis_score"))
-    if date_column is None or value_column is None:
-        return []
-    return [
-        {
-            "name": "Crisis Score",
-            "points": _model_chain_trend_points(frame, date_column, value_column),
-        }
-    ]
-
-
-def _model_chain_signal_trend_value(value: object) -> float | None:
-    """信号文本数值化：含「多」= +1；含「空仓」或「观望」= 0；含「空」（且非空仓）= -1；其他跳过。"""
-    text = _model_chain_cell_text(value)
-    if text == _MODEL_CHAIN_NA_TEXT:
-        return None
-    if "多" in text:
-        return 1.0
-    if "空仓" in text or "观望" in text:
-        return 0.0
-    if "空" in text:
-        return -1.0
-    return None
-
-
-def _model_chain_final_signal_trend_series(frame: pd.DataFrame) -> list[dict[str, object]]:
-    date_column = _model_chain_trend_column(frame, MACRO_TOOLKIT_OUTPUT_DATE_COLUMNS)
-    symbol_column = _model_chain_trend_column(frame, ("品种", "symbol"))
-    signal_column = _model_chain_trend_column(frame, ("最终信号", "final_signal"))
-    if date_column is None or symbol_column is None or signal_column is None:
-        return []
-    series: list[dict[str, object]] = []
-    for symbol in _MODEL_CHAIN_TREND_SIGNAL_SYMBOLS:
-        points: list[list[object]] = []
-        for _, row in frame.iterrows():
-            if _model_chain_cell_text(row.get(symbol_column)) != symbol:
-                continue
-            date_text = _model_chain_cell_text(row.get(date_column))
-            if date_text == _MODEL_CHAIN_NA_TEXT:
-                continue
-            value = _model_chain_signal_trend_value(row.get(signal_column))
-            if value is None:
-                continue
-            points.append([date_text, value])
-        series.append({"name": symbol, "points": points[-_MODEL_CHAIN_TREND_MAX_POINTS:]})
-    return series
-
-
-def _model_chain_trend_payload(
-    model_def: Mapping[str, object],
-    *,
-    output_dir: Path,
-) -> dict[str, object] | None:
-    """构建模型卡 trend 序列；无 trend 数据源 / 历史文件缺失或损坏 / 每条线有效点 <2 → None，不抛错。"""
-    trend_def = model_def.get("trend")
-    if not isinstance(trend_def, Mapping):
-        return None
-    frame = _load_model_chain_frame(output_dir / str(trend_def["artifact"]))
-    if frame is None:
-        return None
-    series_builder = cast(
-        "Callable[[pd.DataFrame], list[dict[str, object]]]", trend_def["series"]
-    )
-    series: list[dict[str, object]] = []
-    for item in series_builder(frame):
-        points = item.get("points")
-        if isinstance(points, list) and len(points) >= 2:
-            series.append(item)
-    if not series:
-        return None
-    return {"label": str(trend_def["label"]), "series": series}
-
-
-_MODEL_CHAIN_STEP_DEFINITIONS: tuple[dict[str, object], ...] = (
-    {
-        "key": "market_state",
-        "step_no": 1,
-        "label": "市场状态识别",
-        "models": (
-            {
-                "id": "merrill_clock",
-                "label": "美林时钟（中国版）",
-                "script_name": "merrill_clock_cn",
-                "artifact": "merrill_clock_latest.csv",
-                "table_mode": "select",
-                "columns": (
-                    ("日期", "日期"),
-                    ("增长动量", "增长动量"),
-                    ("通胀动量", "通胀动量"),
-                    ("流动性动量", "流动性动量"),
-                    ("传统象限", "传统象限"),
-                    ("bond_direction", "债券方向"),
-                ),
-                "headline": _model_chain_merrill_headline,
-                "trend": {
-                    "artifact": "merrill_clock_history.csv",
-                    "label": "三维动量（月度）",
-                    "series": _model_chain_merrill_trend_series,
-                },
-            },
-            {
-                "id": "garch",
-                "label": "GARCH 波动率",
-                "script_name": "garch_multi_asset",
-                "artifact": "garch_results.csv",
-                "table_mode": "select",
-                "columns": (
-                    ("资产", "资产"),
-                    ("最优模型", "最优模型"),
-                    ("年化波动率%", "年化波动率%"),
-                    ("波动率状态", "波动率状态"),
-                    ("操作建议", "操作建议"),
-                ),
-                "headline": _model_chain_garch_headline,
-            },
-            {
-                "id": "dcc_garch",
-                "label": "DCC-GARCH 动态相关",
-                "script_name": "dcc_garch_cn",
-                "artifact": "dcc_latest.csv",
-                "table_mode": "dcc_pairs",
-                "headline": _model_chain_dcc_headline,
-                "trend": {
-                    "artifact": "dcc_results.csv",
-                    "label": "平均相关系数（日度）",
-                    "series": _model_chain_dcc_trend_series,
-                },
-            },
-            {
-                "id": "regime",
-                "label": "市场状态转换",
-                "script_name": "regime_switch_cn",
-                "artifact": "regime_results.csv",
-                "table_mode": "select",
-                "columns": (
-                    ("资产", "资产"),
-                    ("当前状态", "当前状态"),
-                    ("策略建议", "策略建议"),
-                    ("年化波动率%", "年化波动率%"),
-                ),
-                "headline": _model_chain_regime_headline,
-            },
-        ),
-    },
-    {
-        "key": "strategy_selection",
-        "step_no": 2,
-        "label": "策略选择",
-        "models": (
-            {
-                "id": "cta_trend",
-                "label": "CTA 趋势跟踪",
-                "script_name": "cta_trend_cn",
-                "artifact": "cta_results.csv",
-                "table_mode": "select",
-                "columns": (
-                    ("资产", "资产"),
-                    ("合成信号", "合成信号"),
-                    ("趋势强度", "趋势强度"),
-                    ("操作建议", "操作建议"),
-                    ("策略年化收益%", "策略年化收益%"),
-                    ("策略夏普比率", "策略夏普比率"),
-                    ("止损次数", "止损次数"),
-                    ("减仓天数", "减仓天数"),
-                ),
-                "headline": _model_chain_cta_headline,
-            },
-        ),
-    },
-    {
-        "key": "allocation",
-        "step_no": 3,
-        "label": "资产配置",
-        "models": (
-            {
-                "id": "risk_parity",
-                "label": "风险平价 + 风险预算",
-                "script_name": "risk_parity_cn",
-                "artifact": "risk_parity_results.csv",
-                "table_mode": "select",
-                "columns": (
-                    ("资产", "资产"),
-                    ("风险平价权重%", "风险平价权重%"),
-                    ("风险预算权重%", "风险预算权重%"),
-                    ("年化波动率%", "年化波动率%"),
-                ),
-                "headline": _model_chain_risk_parity_headline,
-            },
-        ),
-    },
-    {
-        "key": "risk_management",
-        "step_no": 4,
-        "label": "风险管理",
-        "models": (
-            {
-                "id": "crisis_score",
-                "label": "Crisis Score 危机评分",
-                "script_name": "crisis_score_cn",
-                "artifact": "crisis_score_latest.csv",
-                "table_mode": "all",
-                "headline": _model_chain_crisis_headline,
-                "trend": {
-                    "artifact": "crisis_score_history.csv",
-                    "label": "危机评分（日度）",
-                    "series": _model_chain_crisis_trend_series,
-                },
-            },
-            {
-                "id": "risk_monitor",
-                "label": "导航仪风控",
-                "script_name": "risk_monitor",
-                "artifact": "risk_state.csv",
-                "table_mode": "all",
-                "headline": _model_chain_risk_monitor_headline,
-            },
-            {
-                "id": "monitor_alerts",
-                "label": "导航仪监测告警",
-                "script_name": "risk_monitor",
-                "artifact": "risk_log.csv",
-                # 事件日志随时间累积，只展示尾部窗口。
-                "table_mode": "tail",
-                "tail_rows": _MODEL_CHAIN_MONITOR_LOG_TAIL_ROWS,
-                "columns": (
-                    ("datetime", "时间"),
-                    ("event_type", "事件"),
-                    ("symbol", "对象"),
-                    ("detail", "说明"),
-                ),
-                "headline": _model_chain_monitor_alerts_headline,
-            },
-        ),
-    },
-    {
-        "key": "rebalance",
-        "step_no": 5,
-        "label": "再平衡",
-        "models": (
-            {
-                "id": "rebalance",
-                "label": "再平衡策略对比",
-                "script_name": "rebalance_cn",
-                "artifact": "rebalance_results.csv",
-                "table_mode": "select",
-                "columns": (
-                    ("策略", "策略"),
-                    ("年化收益%", "年化收益%"),
-                    ("年化波动%", "年化波动%"),
-                    ("夏普比率", "夏普比率"),
-                    ("再平衡次数", "再平衡次数"),
-                    ("累计收益%", "累计收益%"),
-                ),
-                "headline": _model_chain_rebalance_headline,
-            },
-        ),
-    },
-    {
-        "key": "performance",
-        "step_no": 6,
-        "label": "绩效评估",
-        "models": (
-            {
-                "id": "performance",
-                "label": "夏普/索提诺绩效",
-                "script_name": "performance_metrics_cn",
-                "artifact": "performance_results.csv",
-                "table_mode": "all",
-                "headline": _model_chain_performance_headline,
-            },
-            {
-                "id": "backtest",
-                "label": "策略回测",
-                "script_name": "backtest_cn",
-                "artifact": "backtest_results.csv",
-                "table_mode": "select",
-                # 契约要求“策略名 + 年化收益/夏普/最大回撤/胜率/累计收益”；
-                # 按实际表头映射为：策略/年化收益%/夏普比率/最大回撤%/胜率%/累计收益%。
-                "columns": (
-                    ("策略", "策略"),
-                    ("年化收益%", "年化收益%"),
-                    ("夏普比率", "夏普比率"),
-                    ("最大回撤%", "最大回撤%"),
-                    ("胜率%", "胜率%"),
-                    ("累计收益%", "累计收益%"),
-                ),
-                "headline": _model_chain_backtest_headline,
-            },
-        ),
-    },
-    {
-        "key": "final_signal",
-        "step_no": 7,
-        "label": "决策链输出",
-        "models": (
-            {
-                "id": "final_signal",
-                "label": "最终信号聚合",
-                "script_name": "signal_aggregator",
-                "artifact": _MODEL_CHAIN_FINAL_SIGNAL_ARTIFACT,
-                "table_mode": "select",
-                "columns": (
-                    ("品种", "品种"),
-                    ("日期", "日期"),
-                    ("第一层_方向", "第一层_方向"),
-                    ("最终信号", "最终信号"),
-                    ("仓位比例", "仓位比例"),
-                    ("置信度", "置信度"),
-                    ("信号说明", "信号说明"),
-                ),
-                "headline": _model_chain_final_signal_headline,
-                "trend": {
-                    "artifact": "final_signal_history.csv",
-                    "label": "信号轨迹（+1 多 / 0 观望 / -1 空）",
-                    "series": _model_chain_final_signal_trend_series,
-                },
-            },
-        ),
-    },
-)
-
-
-def _model_chain_model_payload(
-    model_def: Mapping[str, object],
-    *,
-    output_dir: Path,
-) -> dict[str, object]:
-    artifact = str(model_def["artifact"])
-    payload: dict[str, object] = {
-        "id": model_def["id"],
-        "label": model_def["label"],
-        "script_name": model_def["script_name"],
-        "artifact": artifact,
-        # trend 独立于快照产物：全部模型恒有该键（无历史数据源时为 None），保证前端类型统一。
-        "trend": _model_chain_trend_payload(model_def, output_dir=output_dir),
-    }
-    path = output_dir / artifact
-    frame = _load_model_chain_frame(path)
-    if frame is None:
-        payload.update(
-            {
-                "artifact_status": "missing",
-                "as_of": None,
-                "headline": _MODEL_CHAIN_MISSING_HEADLINE,
-                "columns": [],
-                "rows": [],
-            }
-        )
-        return payload
-    columns, rows = _model_chain_table(frame, model_def)
-    headline_builder = model_def["headline"]
-    payload.update(
-        {
-            "artifact_status": "ok",
-            "as_of": _model_chain_as_of(frame, path),
-            "headline": headline_builder(frame),
-            "columns": columns,
-            "rows": rows,
-        }
-    )
-    return payload
-
-
-def _model_chain_final_signal_as_of_date(output_dir: Path) -> str | None:
-    frame = _load_model_chain_frame(output_dir / _MODEL_CHAIN_FINAL_SIGNAL_ARTIFACT)
-    if frame is None:
-        return None
-    return _model_chain_latest_date_text(frame)
-
-
-# ---------------------------------------------------------------------------
-# Model chain scheduler health (Windows scheduled-task receipt summaries)
-# ---------------------------------------------------------------------------
-
-_MODEL_CHAIN_DAILY_CHAIN_RECEIPT_NAME = "macro_toolkit_daily_chain_receipt.json"
-_MODEL_CHAIN_FRESHNESS_RECEIPT_NAME = "macro_toolkit_freshness_refresh_receipt.json"
-
-
-def _model_chain_daily_chain_summary(result: Mapping[str, object]) -> str:
-    """一句话摘要：``链 <result.chain.status> · 链外脚本 <completed>/<total> 完成``。"""
-    chain = result.get("chain")
-    chain_status = _model_chain_cell_text(
-        chain.get("status") if isinstance(chain, Mapping) else None
-    )
-    extra_scripts = result.get("extra_scripts")
-    items = (
-        [item for item in extra_scripts if isinstance(item, Mapping)]
-        if isinstance(extra_scripts, list)
-        else []
-    )
-    completed = sum(1 for item in items if str(item.get("status") or "") == "completed")
-    return f"链 {chain_status} · 链外脚本 {completed}/{len(items)} 完成"
-
-
-def _model_chain_freshness_summary(result: Mapping[str, object]) -> str:
-    """一句话摘要：``步骤 <success> 成功 / <failed> 失败[ / <degraded> 降级]``。"""
-    steps = result.get("steps")
-    items = (
-        [item for item in steps if isinstance(item, Mapping)] if isinstance(steps, list) else []
-    )
-    statuses = [str(item.get("status") or "") for item in items]
-    success = sum(1 for status in statuses if status == "success")
-    failed = sum(1 for status in statuses if status == "failed")
-    degraded = sum(1 for status in statuses if status == "degraded")
-    summary = f"步骤 {success} 成功 / {failed} 失败"
-    if degraded:
-        summary += f" / {degraded} 降级"
-    return summary
-
-
-def _model_chain_receipt_summary(
-    path: Path,
-    summary_builder: Callable[[Mapping[str, object]], str],
-) -> dict[str, object] | None:
-    """读取一个调度回执 JSON 并压缩为 ReceiptSummary；文件缺失/解析失败/非对象 → None，不抛错。"""
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, ValueError):
-        return None
-    if not isinstance(data, Mapping):
-        return None
-    exit_code = data.get("exit_code")
-    result = data.get("result")
-    return {
-        "task_name": str(data.get("task_name") or ""),
-        "status": str(data.get("status") or ""),
-        "exit_code": exit_code if isinstance(exit_code, int) else None,
-        "generated_at": str(data.get("generated_at") or ""),
-        "run_kind": str(data.get("run_kind") or ""),
-        "summary": summary_builder(result if isinstance(result, Mapping) else {}),
-    }
-
-
-def _model_chain_scheduler_payload(logs_dir: Path) -> dict[str, object]:
-    return {
-        "daily_chain": _model_chain_receipt_summary(
-            logs_dir / _MODEL_CHAIN_DAILY_CHAIN_RECEIPT_NAME,
-            _model_chain_daily_chain_summary,
-        ),
-        "freshness": _model_chain_receipt_summary(
-            logs_dir / _MODEL_CHAIN_FRESHNESS_RECEIPT_NAME,
-            _model_chain_freshness_summary,
-        ),
-    }
-
-
-def build_model_chain_results(
-    output_dir: Path | str = OUTPUT_DIR,
-    logs_dir: Path | str | None = None,
-) -> dict[str, object]:
-    """观察口径：把十个模型脚本的最新产物 CSV 按尽调笔记决策链组装为只读结构。
-
-    仅做文本透传与 headline 摘要拼装，不含任何业务计算；产物缺失/为空/解析失败时
-    对应模型降级为 ``artifact_status="missing"``，不抛异常、不影响其他模型。
-
-    ``logs_dir`` 指向调度回执目录（默认从 ``output_dir`` 推导：
-    ``data/macro_toolkit/output`` → ``data/logs``），用于组装顶层 ``scheduler`` 键；
-    回执缺失/损坏时对应键为 None，顶层 ``scheduler`` 恒存在。
-    """
-    directory = Path(output_dir)
-    if logs_dir is not None:
-        logs_directory = Path(logs_dir)
-    elif len(directory.parents) >= 2:
-        logs_directory = directory.parents[1] / "logs"
-    else:
-        logs_directory = directory / "logs"
-    steps: list[dict[str, object]] = []
-    for step_def in _MODEL_CHAIN_STEP_DEFINITIONS:
-        models = [
-            _model_chain_model_payload(model_def, output_dir=directory)
-            for model_def in step_def["models"]
-        ]
-        steps.append(
-            {
-                "key": step_def["key"],
-                "step_no": step_def["step_no"],
-                "label": step_def["label"],
-                "models": models,
-            }
-        )
-    return {
-        "as_of_date": _model_chain_final_signal_as_of_date(directory),
-        "observation_only": MACRO_TOOLKIT_OBSERVATION_ONLY,
-        "formal_use_allowed": MACRO_TOOLKIT_FORMAL_USE_ALLOWED,
-        "scheduler": _model_chain_scheduler_payload(logs_directory),
-        "steps": steps,
     }
 
 
@@ -1733,44 +933,6 @@ def cffex_member_rank_refresh_status(
     return _normalize_cffex_member_rank_refresh_record(latest)
 
 
-def _write_refresh_record_blocks_dispatch(
-    record: dict[str, object],
-    *,
-    in_flight_statuses: set[str],
-) -> bool:
-    status = str(record.get("status") or "")
-    if status in in_flight_statuses:
-        return (
-            True
-            if status != "retrying"
-            else _write_refresh_record_is_within_retry_window(record)
-        )
-    if status != "failed" or record.get("retryable") is not True:
-        return False
-    return _write_refresh_record_is_within_retry_window(record)
-
-
-def _write_refresh_record_is_within_retry_window(
-    record: dict[str, object],
-) -> bool:
-    raw_finished_at = str(record.get("finished_at") or "").strip()
-    if not raw_finished_at:
-        return False
-    try:
-        finished_at = datetime.fromisoformat(raw_finished_at.replace("Z", "+00:00"))
-    except ValueError:
-        return False
-    if finished_at.tzinfo is None:
-        finished_at = finished_at.replace(tzinfo=UTC)
-    else:
-        finished_at = finished_at.astimezone(UTC)
-    return datetime.now(UTC) - finished_at <= _WRITE_REFRESH_RETRY_PENDING_AFTER
-
-
-def _write_refresh_quality_flag(status: str) -> str:
-    return "ok" if str(status or "").strip() == "completed" else "warning"
-
-
 def _normalize_cffex_member_rank_refresh_record(
     record: dict[str, object],
     *,
@@ -1831,74 +993,6 @@ def _normalize_macro_source_backfill_refresh_record(
             "errors": _public_text_mapping(record.get("errors")),
         }
     )
-    return normalized
-
-
-def _normalize_write_refresh_public_record(
-    record: dict[str, object],
-    *,
-    job_name: str,
-    cache_key: str,
-    cache_version: str,
-    rule_version: str,
-    idempotency_replay: bool | None,
-) -> dict[str, object]:
-    raw_status = str(record.get("status") or "").strip()
-    status = (
-        raw_status if raw_status in _WRITE_REFRESH_PUBLIC_STATUSES else "failed"
-    )
-    failure_category = _optional_text(record.get("failure_category"))
-    if failure_category not in _WRITE_REFRESH_PUBLIC_FAILURE_CATEGORIES:
-        failure_category = "worker_failure" if failure_category else None
-    normalized: dict[str, object] = {
-        "run_id": _optional_text(record.get("run_id")),
-        "job_name": job_name,
-        "status": status,
-        "trigger_mode": (
-            "async"
-            if status in {"queued", "running", "retrying"}
-            else "terminal"
-        ),
-        "cache_key": cache_key,
-        "cache_version": _optional_text(record.get("cache_version"))
-        or cache_version,
-        "rule_version": _optional_text(record.get("rule_version"))
-        or rule_version,
-        "report_date": _optional_text(record.get("report_date")),
-        "queued_at": _optional_text(record.get("queued_at")),
-        "started_at": _optional_text(record.get("started_at")),
-        "finished_at": _optional_text(record.get("finished_at")),
-        "attempt_count": _optional_int(record.get("attempt_count")),
-        "max_attempts": _optional_int(record.get("max_attempts")),
-        "retryable": record.get("retryable") is True,
-        "failure_category": failure_category,
-        "source_version": _optional_text(record.get("source_version")),
-        "vendor_version": _optional_text(record.get("vendor_version")),
-    }
-    if idempotency_replay is not None:
-        normalized["idempotency_replay"] = idempotency_replay
-    return normalized
-
-
-def _public_text_list(value: object) -> list[str]:
-    if not isinstance(value, (list, tuple)):
-        return []
-    return [
-        text
-        for item in value
-        if (text := str(item or "").strip())
-    ]
-
-
-def _public_text_mapping(value: object) -> dict[str, str]:
-    if not isinstance(value, dict):
-        return {}
-    normalized: dict[str, str] = {}
-    for key, item in value.items():
-        key_text = str(key or "").strip()
-        if not key_text or not isinstance(item, (str, int, float, bool)):
-            continue
-        normalized[key_text] = str(item)
     return normalized
 
 
@@ -2389,7 +1483,12 @@ def commodity_futures_status(duckdb_path: str | Path) -> dict[str, object]:
             }
         finally:
             conn.close()
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        logger.warning(
+            "DuckDB query failed surface=commodity_futures_status table=fact_commodity_futures_daily error=%s: %s",
+            type(exc).__name__,
+            exc,
+        )
         return {
             **base,
             "materialized": False,
@@ -2402,89 +1501,6 @@ def commodity_futures_status(duckdb_path: str | Path) -> dict[str, object]:
         }
 
 
-def _commodity_futures_coverage(products: list[dict[str, object]]) -> dict[str, object]:
-    available_products = [
-        str(item["product_code"])
-        for item in products
-        if str(item.get("product_code") or "") in DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS
-        and int(item.get("row_count") or 0) > 0
-    ]
-    return {
-        "target_product_count": len(DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS),
-        "available_product_count": len(available_products),
-        "available_products": available_products,
-        "missing_products": [
-            product for product in DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS if product not in set(available_products)
-        ],
-        "products": products,
-    }
-
-
-def _commodity_futures_missing_nanhua(status: str) -> dict[str, object]:
-    return {
-        "status": status,
-        "product_code": "NHCI",
-        "series_id": "NH0100.NHF",
-        "system_series_id": "NHCI.NH",
-        "latest_trade_date": None,
-        "latest_value": None,
-        "row_count": 0,
-        "source_version": None,
-        "vendor_version": None,
-        "rule_version": None,
-    }
-
-
-def _normalize_commodity_trade_date(value: object) -> str | None:
-    text = str(value or "").strip()
-    if len(text) == 8 and text.isdigit():
-        return f"{text[:4]}-{text[4:6]}-{text[6:8]}"
-    if len(text) >= 10:
-        return text[:10]
-    return text or None
-
-
-def _commodity_futures_nanhua_input(conn: duckdb.DuckDBPyConnection) -> dict[str, object]:
-    row = conn.execute(
-        """
-        with normalized as (
-          select
-            trade_date,
-            close_value,
-            source_version,
-            vendor_version,
-            rule_version,
-            case
-              when regexp_matches(cast(trade_date as varchar), '^[0-9]{8}$')
-                then try_strptime(cast(trade_date as varchar), '%Y%m%d')::date
-              else try_cast(left(cast(trade_date as varchar), 10) as date)
-            end as normalized_trade_date
-          from fact_commodity_futures_daily
-          where product_code = 'NHCI'
-        )
-        select trade_date, close_value, count(*) over () as row_count, source_version, vendor_version, rule_version
-        from normalized
-        order by normalized_trade_date desc nulls last, trade_date desc
-        limit 1
-        """
-    ).fetchone()
-    if not row:
-        return _commodity_futures_missing_nanhua("missing")
-    trade_date, latest_value, row_count, source_version, vendor_version, rule_version = row
-    return {
-        "status": "hit",
-        "product_code": "NHCI",
-        "series_id": "NH0100.NHF",
-        "system_series_id": "NHCI.NH",
-        "latest_trade_date": _normalize_commodity_trade_date(trade_date),
-        "latest_value": float(latest_value) if latest_value is not None else None,
-        "row_count": int(row_count or 0),
-        "source_version": str(source_version) if source_version is not None else None,
-        "vendor_version": str(vendor_version) if vendor_version is not None else None,
-        "rule_version": str(rule_version) if rule_version is not None else None,
-    }
-
-
 def load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[str, object] | None:
     if duckdb_path is None:
         return None
@@ -2493,8 +1509,23 @@ def load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[s
         return None
     try:
         conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
-        return None
+    except duckdb.Error as exc:
+        warning = (
+            f"DUCKDB_QUERY_FAILED: table=choice_stock_daily_observation "
+            f"error={type(exc).__name__}: {exc}"
+        )
+        logger.warning(warning)
+        return {
+            "prices": None,
+            "observations": None,
+            "financials": None,
+            "as_of_date": None,
+            "tables_used": [],
+            "source_versions": [],
+            "vendor_versions": [],
+            "warnings": [warning],
+            "data_status": "unavailable",
+        }
     unit_warnings: list[str] = []
     try:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
@@ -2635,10 +1666,32 @@ def load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[s
                     conn,
                     latest_trade_date.isoformat(),
                 )
-            except duckdb.Error:
+            except duckdb.Error as exc:
+                warning = (
+                    f"DUCKDB_QUERY_FAILED: table=choice_stock_factor_snapshot "
+                    f"date={latest_trade_date.isoformat()} "
+                    f"error={type(exc).__name__}: {exc}"
+                )
+                logger.warning(warning)
+                unit_warnings.append(warning)
                 financials = None
-    except duckdb.Error:
-        return None
+    except duckdb.Error as exc:
+        warning = (
+            f"DUCKDB_QUERY_FAILED: table=choice_stock_daily_observation "
+            f"error={type(exc).__name__}: {exc}"
+        )
+        logger.warning(warning)
+        return {
+            "prices": None,
+            "observations": None,
+            "financials": None,
+            "as_of_date": None,
+            "tables_used": [],
+            "source_versions": [],
+            "vendor_versions": [],
+            "warnings": [*unit_warnings, warning],
+            "data_status": "unavailable",
+        }
     finally:
         conn.close()
 
@@ -2705,7 +1758,13 @@ def load_equity_strategy_factor_snapshot(
 ) -> pd.DataFrame | None:
     try:
         conn = duckdb.connect(str(duckdb_path), read_only=True)
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        logger.warning(
+            "DuckDB query failed surface=equity_factor_snapshot table=choice_stock_factor_snapshot date=%s error=%s: %s",
+            as_of_date,
+            type(exc).__name__,
+            exc,
+        )
         return None
     try:
         return _load_equity_strategy_factor_snapshot_from_conn(
@@ -2713,7 +1772,13 @@ def load_equity_strategy_factor_snapshot(
             as_of_date,
             stock_codes=stock_codes,
         )
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        logger.warning(
+            "DuckDB query failed surface=equity_factor_snapshot table=choice_stock_factor_snapshot date=%s error=%s: %s",
+            as_of_date,
+            type(exc).__name__,
+            exc,
+        )
         return None
     finally:
         conn.close()
@@ -2819,8 +1884,19 @@ def load_a_share_stampede_risk_context(duckdb_path: str | Path | None) -> dict[s
         return None
     try:
         conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
-        return None
+    except duckdb.Error as exc:
+        warning = (
+            f"DUCKDB_QUERY_FAILED: table=choice_stock_daily_observation "
+            f"error={type(exc).__name__}: {exc}"
+        )
+        logger.warning(warning)
+        return {
+            "observations": pd.DataFrame(),
+            "theme_frame": None,
+            "tables_used": [],
+            "warnings": [warning],
+            "data_status": "unavailable",
+        }
     warnings: list[str] = []
     try:
         if not _duckdb_table_exists(conn, "choice_stock_daily_observation"):
@@ -2961,8 +2037,20 @@ def load_a_share_stampede_risk_context(duckdb_path: str | Path | None) -> dict[s
         _merge_a_share_universe(conn, observations, latest_trade_date, tables_used, warnings)
         _merge_a_share_limit_quality(conn, observations, latest_trade_date, tables_used)
         theme_frame = _load_a_share_theme_frame(conn, latest_trade_date, tables_used)
-    except duckdb.Error:
-        return None
+    except duckdb.Error as exc:
+        warning = (
+            f"DUCKDB_QUERY_FAILED: table=choice_stock_daily_observation "
+            f"date={latest_trade_date.isoformat() if 'latest_trade_date' in locals() and latest_trade_date is not None else '-'} "
+            f"error={type(exc).__name__}: {exc}"
+        )
+        logger.warning(warning)
+        return {
+            "observations": pd.DataFrame(),
+            "theme_frame": None,
+            "tables_used": [],
+            "warnings": [*warnings, warning],
+            "data_status": "unavailable",
+        }
     finally:
         conn.close()
     return {
@@ -2979,7 +2067,13 @@ def load_macro_curve_rows(duckdb_path: str | Path, report_date: date) -> list[di
     if path.exists():
         try:
             conn = duckdb.connect(str(path), read_only=True)
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            logger.warning(
+                "DuckDB query failed surface=macro_curve_rows table=fact_formal_yield_curve_daily date=%s error=%s: %s",
+                report_date.isoformat(),
+                type(exc).__name__,
+                exc,
+            )
             conn = None
     try:
         return _load_macro_curve_rows_from_conn(conn, duckdb_path, report_date)
@@ -3064,7 +2158,13 @@ def load_latest_risk_tensor_row(
         return None
     try:
         conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        logger.warning(
+            "DuckDB query failed surface=risk_tensor table=fact_formal_risk_tensor_daily date=%s error=%s: %s",
+            report_date.isoformat(),
+            type(exc).__name__,
+            exc,
+        )
         return None
     try:
         return _load_latest_risk_tensor_row_from_conn(conn, report_date, path)
@@ -3125,7 +2225,13 @@ def load_latest_bond_positions(
         return []
     try:
         conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        logger.warning(
+            "DuckDB query failed surface=bond_positions table=fact_formal_bond_positions_daily date=%s error=%s: %s",
+            report_date.isoformat(),
+            type(exc).__name__,
+            exc,
+        )
         return []
     try:
         return _load_latest_bond_positions_from_conn(conn, report_date, path)
@@ -3202,7 +2308,13 @@ def load_macro_capability_context(
     if path.exists():
         try:
             conn = duckdb.connect(str(path), read_only=True)
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            logger.warning(
+                "DuckDB query failed surface=macro_capability_context table=fact_formal_yield_curve_daily date=%s error=%s: %s",
+                report_date.isoformat(),
+                type(exc).__name__,
+                exc,
+            )
             conn = None
     try:
         curve_rows = _load_macro_curve_rows_from_conn(conn, duckdb_path, report_date)
@@ -3320,8 +2432,12 @@ def default_choice_stock_refresh_as_of_date(duckdb_path: str | Path) -> str:
                         return str(row[0])[:10]
             finally:
                 conn.close()
-        except duckdb.Error:
-            pass
+        except duckdb.Error as exc:
+            logger.warning(
+                "DuckDB query failed surface=choice_stock_refresh_as_of_date table=choice_stock_daily_observation error=%s: %s",
+                type(exc).__name__,
+                exc,
+            )
     return date.today().isoformat()
 
 
@@ -3679,128 +2795,6 @@ def _macro_model_readiness_payload(
     }
 
 
-def _macro_readiness_degraded_reason(
-    *,
-    readiness: str,
-    script_available: bool,
-    missing_outputs: list[str],
-    stale_outputs: list[str],
-    degraded_outputs: list[str],
-) -> str | None:
-    if not script_available:
-        return "script_unavailable"
-    if missing_outputs:
-        return "missing_expected_outputs"
-    if stale_outputs:
-        return "stale_expected_outputs"
-    if degraded_outputs:
-        return "indeterminate_output_dates"
-    if readiness == "registered_only":
-        return "no_expected_outputs_registered"
-    return None
-
-
-def _macro_readiness_evidence_level(*, readiness: str, present_count: int) -> str:
-    if readiness == "artifact_backed":
-        return "fresh_artifacts"
-    if present_count:
-        return "partial_artifacts"
-    return "registered_script_only"
-
-
-def _macro_readiness_date_basis(outputs: list[dict[str, object]]) -> str:
-    statuses = {str(item["freshness_status"]) for item in outputs}
-    if not outputs or statuses == {"missing"}:
-        return "missing"
-    bases = {
-        str(item["freshness_basis"])
-        for item in outputs
-        if item.get("freshness_basis") and item["freshness_status"] != "missing"
-    }
-    if "csv_content" in bases:
-        return "csv_content"
-    if "file_modified_date" in bases:
-        return "file_modified_date"
-    return "unknown"
-
-
-def _macro_artifact_receipt(
-    *,
-    model_id: str,
-    script_name: str,
-    readiness: str,
-    outputs: list[dict[str, object]],
-    degraded_reason: str | None,
-    data_asof: str | None,
-) -> dict[str, object]:
-    return {
-        "status": readiness,
-        "model_id": model_id,
-        "script_name": script_name,
-        "artifact_paths": sorted(str(item["name"]) for item in outputs if item["freshness_status"] != "missing"),
-        "missing_artifacts": sorted(str(item["name"]) for item in outputs if item["freshness_status"] == "missing"),
-        "degraded_reason": degraded_reason,
-        "data_asof": data_asof,
-        "generated_at": datetime.now(UTC).isoformat(),
-        "runtime_endpoint": MACRO_TOOLKIT_RUN_CHAIN_ENDPOINT,
-        "page_surface": MACRO_TOOLKIT_MODEL_READINESS_SURFACE,
-        "formal_use_allowed": MACRO_TOOLKIT_FORMAL_USE_ALLOWED,
-        "observation_only": MACRO_TOOLKIT_OBSERVATION_ONLY,
-    }
-
-
-def _macro_output_health(
-    name: str,
-    file_payload: dict[str, object] | None,
-    *,
-    reference_date: str | None,
-) -> dict[str, object]:
-    if file_payload is None:
-        return {
-            "name": name,
-            "freshness_status": "missing",
-            "freshness_basis": "missing",
-            "modified_at": None,
-            "modified_date": None,
-            "content_date": None,
-            "content_date_min": None,
-            "content_date_max": None,
-            "content_date_invalid_count": 0,
-            "reference_date": reference_date,
-        }
-    modified_at = str(file_payload.get("modified_at") or "").strip() or None
-    modified_date = _macro_output_modified_date(modified_at)
-    content_dates = _macro_output_content_dates(file_payload)
-    content_date = content_dates["max"]
-    content_date_min = content_dates["min"]
-    content_date_max = content_dates["max"]
-    content_date_invalid_count = int(content_dates["invalid_count"] or 0)
-    has_content_date_column = bool(content_dates["date_column"])
-    freshness_basis = "csv_content" if has_content_date_column else "file_modified_date"
-    freshness_status = _macro_output_health_status(
-        name=name,
-        content_date=content_date,
-        content_date_min=content_date_min,
-        content_date_max=content_date_max,
-        content_date_invalid_count=content_date_invalid_count,
-        has_content_date_column=has_content_date_column,
-        modified_date=modified_date,
-        reference_date=reference_date,
-    )
-    return {
-        "name": name,
-        "freshness_status": freshness_status,
-        "freshness_basis": freshness_basis,
-        "modified_at": modified_at,
-        "modified_date": modified_date,
-        "content_date": content_date,
-        "content_date_min": content_date_min,
-        "content_date_max": content_date_max,
-        "content_date_invalid_count": content_date_invalid_count,
-        "reference_date": reference_date,
-    }
-
-
 def _model_readiness_status(
     *,
     script_available: bool,
@@ -3823,180 +2817,6 @@ def _model_readiness_status(
     if degraded_outputs:
         return "degraded"
     return "artifact_backed"
-
-
-def _macro_output_modified_date(modified_at: str | None) -> str | None:
-    if not modified_at:
-        return None
-    try:
-        parsed = datetime.fromisoformat(modified_at.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.date().isoformat()
-    return parsed.astimezone(UTC).date().isoformat()
-
-
-def _macro_output_content_dates(file_payload: dict[str, object]) -> dict[str, str | int | None]:
-    path_value = file_payload.get("path")
-    if not path_value:
-        return {"min": None, "max": None, "invalid_count": 0, "date_column": None}
-    path = Path(str(path_value))
-    if not path.is_file():
-        return {"min": None, "max": None, "invalid_count": 0, "date_column": None}
-    try:
-        columns = pd.read_csv(path, nrows=0).columns
-        date_column = next((column for column in MACRO_TOOLKIT_OUTPUT_DATE_COLUMNS if column in columns), None)
-        if date_column is None:
-            return {"min": None, "max": None, "invalid_count": 0, "date_column": None}
-        frame = pd.read_csv(path, usecols=[date_column])
-    except (OSError, UnicodeError, pd.errors.EmptyDataError, pd.errors.ParserError):
-        return {"min": None, "max": None, "invalid_count": 0, "date_column": None}
-    if frame.empty:
-        return {"min": None, "max": None, "invalid_count": 0, "date_column": date_column}
-    raw_dates = frame[date_column].dropna()
-    parsed = pd.to_datetime(raw_dates, errors="coerce")
-    invalid_count = int(parsed.isna().sum())
-    parsed = parsed.dropna()
-    if parsed.empty:
-        return {"min": None, "max": None, "invalid_count": invalid_count, "date_column": date_column}
-    return {
-        "min": parsed.min().date().isoformat(),
-        "max": parsed.max().date().isoformat(),
-        "invalid_count": invalid_count,
-        "date_column": date_column,
-    }
-
-
-def _macro_output_health_status(
-    *,
-    name: str,
-    content_date: str | None,
-    content_date_min: str | None,
-    content_date_max: str | None,
-    content_date_invalid_count: int,
-    has_content_date_column: bool,
-    modified_date: str | None,
-    reference_date: str | None,
-) -> str:
-    if content_date_invalid_count:
-        return "invalid_date"
-    if has_content_date_column and not content_date:
-        return "unknown"
-    if _is_generation_evidence_artifact(name):
-        return _macro_generation_freshness(content_date or modified_date, reference_date)
-    if _is_monthly_cadence_artifact(name):
-        return _macro_monthly_output_freshness(content_date, reference_date)
-    if content_date_min and content_date_max and content_date_min != content_date_max:
-        if _is_history_artifact(name):
-            return _macro_output_freshness(content_date, reference_date)
-        return "mixed"
-    if has_content_date_column:
-        return _macro_output_freshness(content_date, reference_date)
-    return _macro_generation_freshness(modified_date, reference_date)
-
-
-def _is_history_artifact(name: str) -> bool:
-    stem = Path(name).stem.lower()
-    return stem.endswith("_history") or stem.endswith("_results") or stem.endswith("_log")
-
-
-def _is_generation_evidence_artifact(name: str) -> bool:
-    return Path(name).name.lower() in {"risk_state.csv", "risk_log.csv"}
-
-
-# 内容为月度频率的产物：新鲜度按月度容差判定（日度精确相等口径会让它们结构性 stale）。
-_MONTHLY_CADENCE_ARTIFACTS = frozenset({"merrill_clock_latest.csv", "merrill_clock_history.csv"})
-
-
-def _is_monthly_cadence_artifact(name: str) -> bool:
-    return Path(name).name.lower() in _MONTHLY_CADENCE_ARTIFACTS
-
-
-def _macro_monthly_output_freshness(output_date: str | None, reference_date: str | None) -> str:
-    """月度产物新鲜度：内容月份不早于基准日上月即 current。
-
-    月度宏观数据（如 CPI/PMI/社融）在次月中上旬才发布，"基准月或上月"的内容
-    即为最新可得；早于上月说明该发布的数据未入库，判 stale。
-    """
-    if not output_date:
-        return "unknown"
-    if not reference_date:
-        return "present"
-    try:
-        output_day = date.fromisoformat(output_date[:10])
-        reference_day = date.fromisoformat(reference_date[:10])
-    except ValueError:
-        return "unknown"
-    output_month = output_day.year * 12 + output_day.month
-    reference_month = reference_day.year * 12 + reference_day.month
-    if output_month > reference_month:
-        return "future"
-    return "current" if output_month >= reference_month - 1 else "stale"
-
-
-def _macro_output_freshness(output_date: str | None, reference_date: str | None) -> str:
-    if not output_date:
-        return "unknown"
-    if not reference_date:
-        return "present"
-    try:
-        output_day = date.fromisoformat(output_date[:10])
-        reference_day = date.fromisoformat(reference_date[:10])
-    except ValueError:
-        return "unknown"
-    if output_day > reference_day:
-        return "future"
-    return "current" if output_day == reference_day else "stale"
-
-
-def _macro_generation_freshness(modified_date: str | None, reference_date: str | None) -> str:
-    status = _macro_output_freshness(modified_date, reference_date)
-    return "current" if status == "future" else status
-
-
-def _macro_run_manifest() -> list[dict[str, object]]:
-    labels_by_script = {
-        "merrill_clock_cn": "Merrill Clock",
-        "crisis_score_cn": "Crisis Score",
-        "bond_futures_data": "Bond Futures Basis / IRR / Safety Margin",
-        "bond_futures_signals": "Bond Futures Four-Factor Trend",
-        "crowding_cn": "Crowding",
-        "dcc_garch_cn": "DCC-GARCH",
-        "cta_trend_cn": "CTA Trend",
-        "signal_aggregator": "Final Signal Aggregator",
-        "risk_monitor": "Risk Monitor",
-    }
-    outputs_by_script: dict[str, list[str]] = {}
-    for model in _MACRO_MODEL_DEFINITIONS:
-        script_name = str(model["script_name"])
-        outputs_by_script.setdefault(script_name, [])
-        outputs_by_script[script_name].extend(str(name) for name in model["expected_outputs"])
-    ordered_scripts = (
-        "merrill_clock_cn",
-        "crisis_score_cn",
-        "bond_futures_data",
-        "bond_futures_signals",
-        "crowding_cn",
-        "dcc_garch_cn",
-        "cta_trend_cn",
-        "signal_aggregator",
-        "risk_monitor",
-    )
-    registry = {script.name: script for script in iter_toolkit_scripts()}
-    manifest: list[dict[str, object]] = []
-    for order, script_name in enumerate(ordered_scripts, start=1):
-        script = registry[script_name]
-        manifest.append(
-            {
-                "order": order,
-                "script_name": script_name,
-                "label": labels_by_script[script_name],
-                "expected_outputs": sorted(set(outputs_by_script.get(script_name, []))),
-                "available": script.path.exists(),
-            }
-        )
-    return manifest
 
 
 def _dry_run_receipt(step: dict[str, object], *, chain_id: str, output_dir: str | Path) -> dict[str, object]:
@@ -4063,49 +2883,9 @@ def _run_receipt(
     }
 
 
-def _macro_run_degraded_reason(*, status: str, missing_outputs: list[str]) -> str | None:
-    if status != "completed":
-        return "script_execution_not_completed"
-    if missing_outputs:
-        return "missing_expected_outputs_after_run"
-    return None
-
-
-def _macro_run_blocker(
-    *,
-    degraded_reason: str | None,
-    script_name: str,
-    missing_outputs: list[str],
-) -> dict[str, object] | None:
-    if degraded_reason != "missing_expected_outputs_after_run":
-        return None
-    return {
-        "type": degraded_reason,
-        "script_name": script_name,
-        "missing_outputs": missing_outputs,
-    }
-
-
-def _macro_run_data_asof(*, expected_outputs: list[str], outputs: list[dict[str, object]]) -> str | None:
-    files_by_name = {str(item["name"]): item for item in outputs}
-    content_dates: list[str] = []
-    for name in expected_outputs:
-        content_date = _macro_output_health(name, files_by_name.get(name), reference_date=None).get("content_date")
-        if content_date:
-            content_dates.append(str(content_date))
-    return max(content_dates, default=None)
-
-
 def _missing_expected_outputs(step: dict[str, object], *, output_dir: str | Path) -> list[str]:
     output_names = {str(item["name"]) for item in output_files(output_dir)}
     return [str(name) for name in step.get("expected_outputs") or [] if str(name) not in output_names]
-
-
-def _tail_text(value: str | bytes | None, limit: int = 12000) -> str:
-    if value is None:
-        return ""
-    text = value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value
-    return text[-limit:]
 
 
 def _choice_stock_refresh_records(governance_path: str | Path) -> list[dict[str, object]]:
@@ -4263,7 +3043,12 @@ def _choice_stock_materialization_base_statuses_cache(
 ) -> tuple[dict[str, object], dict[str, object]]:
     try:
         conn = duckdb.connect(duckdb_path, read_only=True)
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        logger.warning(
+            "DuckDB query failed surface=choice_stock_materialization table=choice_stock_daily_observation error=%s: %s",
+            type(exc).__name__,
+            exc,
+        )
         return (
             _choice_stock_base_table_status("unreadable_database"),
             _choice_stock_base_table_status("unreadable_database"),
@@ -4293,7 +3078,12 @@ def _choice_stock_daily_observation_base_status_from_conn(
             from choice_stock_daily_observation
             """
         ).fetchone()
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        logger.warning(
+            "DuckDB query failed surface=choice_stock_daily_observation_status table=choice_stock_daily_observation error=%s: %s",
+            type(exc).__name__,
+            exc,
+        )
         return _choice_stock_base_table_status("unreadable_table")
     row_count = _int_or_zero(row[0] if row else 0)
     latest_trade_date = str(row[3])[:10] if row and row[3] is not None else None
@@ -4334,7 +3124,12 @@ def _choice_stock_factor_snapshot_base_status_from_conn(
             from choice_stock_factor_snapshot
             """
         ).fetchone()
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        logger.warning(
+            "DuckDB query failed surface=choice_stock_factor_snapshot_status table=choice_stock_factor_snapshot error=%s: %s",
+            type(exc).__name__,
+            exc,
+        )
         return _choice_stock_base_table_status("unreadable_table")
     row_count = _int_or_zero(row[0] if row else 0)
     as_of_date = str(row[2])[:10] if row and row[2] is not None else None
@@ -4347,188 +3142,6 @@ def _choice_stock_factor_snapshot_base_status_from_conn(
     }
 
 
-def _choice_stock_daily_observation_status_with_freshness(
-    status: dict[str, object],
-    *,
-    reference_date: str | None = None,
-) -> dict[str, object]:
-    latest_trade_date = str(status.get("latest_trade_date") or "")[:10] or None
-    return {
-        **status,
-        **_choice_stock_table_freshness(latest_trade_date, reference_date),
-    }
-
-
-def _choice_stock_factor_snapshot_status_with_freshness(
-    status: dict[str, object],
-    *,
-    reference_date: str | None = None,
-) -> dict[str, object]:
-    as_of_date = str(status.get("as_of_date") or "")[:10] or None
-    return {
-        **status,
-        **_choice_stock_table_freshness(as_of_date, reference_date),
-    }
-
-
-def _choice_stock_base_table_status(status: str) -> dict[str, object]:
-    return {
-        "materialized": False,
-        "status": status,
-        "row_count": 0,
-        "stock_count": 0,
-    }
-
-
-def _choice_stock_table_status(status: str, *, reference_date: str | None = None) -> dict[str, object]:
-    return {
-        **_choice_stock_base_table_status(status),
-        **_choice_stock_table_freshness(None, reference_date),
-    }
-
-
-def _choice_stock_table_freshness(data_date: str | None, reference_date: str | None) -> dict[str, object]:
-    if not data_date:
-        return {
-            "freshness_status": "missing",
-            "reference_date": reference_date,
-            "stale_days": None,
-            "fallback_mode": "missing",
-            "fallback_date": None,
-        }
-    if not reference_date:
-        return {
-            "freshness_status": "unknown",
-            "reference_date": None,
-            "stale_days": None,
-            "fallback_mode": "unknown",
-            "fallback_date": None,
-        }
-    try:
-        data_day = date.fromisoformat(data_date[:10])
-        reference_day = date.fromisoformat(reference_date[:10])
-    except ValueError:
-        return {
-            "freshness_status": "unknown",
-            "reference_date": reference_date,
-            "stale_days": None,
-            "fallback_mode": "unknown",
-            "fallback_date": None,
-        }
-    raw_stale_days = (reference_day - data_day).days
-    stale_days = max(raw_stale_days, 0)
-    if raw_stale_days <= 1:
-        status = "current"
-    elif raw_stale_days <= 7:
-        status = "lagging"
-    else:
-        status = "stale"
-    fallback_mode = "none" if status == "current" else "latest_available"
-    return {
-        "freshness_status": status,
-        "reference_date": reference_day.isoformat(),
-        "stale_days": stale_days,
-        "fallback_mode": fallback_mode,
-        "fallback_date": data_day.isoformat() if fallback_mode == "latest_available" else None,
-    }
-
-
-def _result_row_count(result: dict[str, object] | None) -> int | None:
-    if not result:
-        return None
-    value = result.get("row_count")
-    return None if value is None else int(value)
-
-
-def _latest_result_field(field_name: str, *results: dict[str, object] | None) -> object | None:
-    for result in results:
-        if result and result.get(field_name):
-            return result[field_name]
-    return None
-
-
-def _optional_text(value: object | None) -> str | None:
-    text = str(value or "").strip()
-    return text or None
-
-
-def _normalize_idempotency_key(value: str | None) -> str | None:
-    text = str(value or "").strip()
-    return text or None
-
-
-def _normalize_theme_overlay_mode(value: object) -> ThemeOverlayRefreshMode:
-    mode = str(value or "off").strip()
-    if mode not in {"off", "dry_run", "archive"}:
-        raise ValueError("theme_overlay_mode must be one of: off, dry_run, archive")
-    return cast(ThemeOverlayRefreshMode, mode)
-
-
-def _choice_stock_theme_overlay_source_version(*, parent_run_id: str, report_date: str) -> str:
-    digest = hashlib.sha256(f"{parent_run_id}|{report_date}".encode()).hexdigest()[:16]
-    return f"sv_choice_stock_theme_overlay_{digest}"
-
-
-def _optional_int(value: object | None) -> int | None:
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _int_or_zero(value: object) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 0
-
-
-def _float_or_none(value: object) -> float | None:
-    if value is None:
-        return None
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError):
-        return None
-    if pd.isna(parsed):
-        return None
-    return parsed
-
-
-def _coerce_frame_date(value: object) -> date | None:
-    if value is None:
-        return None
-    if pd.isna(value):
-        return None
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    if hasattr(value, "date"):
-        try:
-            return value.date()
-        except (AttributeError, TypeError, ValueError):
-            return None
-    try:
-        return date.fromisoformat(str(value)[:10])
-    except ValueError:
-        return None
-
-
-def _unique_texts(values: list[object]) -> list[str]:
-    seen: set[str] = set()
-    output: list[str] = []
-    for value in values:
-        text = str(value or "").strip()
-        if not text or text in seen:
-            continue
-        seen.add(text)
-        output.append(text)
-    return output
-
-
 def _duckdb_table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
     try:
         row = conn.execute(
@@ -4539,7 +3152,13 @@ def _duckdb_table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bo
             """,
             [table_name],
         ).fetchone()
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        logger.warning(
+            "DuckDB query failed surface=duckdb_table_exists table=%s error=%s: %s",
+            table_name,
+            type(exc).__name__,
+            exc,
+        )
         return False
     return bool(row and row[0])
 

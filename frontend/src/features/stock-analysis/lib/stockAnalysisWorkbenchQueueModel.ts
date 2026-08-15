@@ -208,16 +208,15 @@ export function buildStockAnalysisWorkbenchReviewQueue(
           : "首屏候选接口未提供形态标签，页面不补算。",
         distanceToBreakoutPct:
           rowDistancePct != null ? `${rowDistancePct.toFixed(2)}%` : "待复核",
+        // 单行 ≤1 个 ·(§7)：主体“名称（行业） · 来源”，题材补充改逗号衔接。
         reviewFocus: [
-          stockName,
-          sectorName,
-          sourceLabel,
+          `${stockName}（${sectorName}） · ${sourceLabel}`,
           membershipEvidence.length > 0
             ? `题材归属：${membershipEvidence.map((item) => item.value).join(" / ")}`
             : firstThemeName,
         ]
           .filter(Boolean)
-          .join(" · "),
+          .join("，"),
         primaryEvidence: evidence.slice(0, 3),
         supportingEvidence: evidence.slice(3),
         boundaryEvidence,

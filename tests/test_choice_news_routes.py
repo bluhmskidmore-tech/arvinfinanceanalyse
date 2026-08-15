@@ -10,6 +10,12 @@ from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.services.choice_news_service import choice_news_latest_sql_disclosure
 from tests.helpers import load_module
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_choice_news,
+]
 
 def _choice_news_read_client(
     tmp_path, monkeypatch, *, grant_read: bool = True
@@ -30,7 +36,6 @@ def _choice_news_read_client(
     for mod in ("backend.app.main", "backend.app.api"):
         sys.modules.pop(mod, None)
     return TestClient(load_module("backend.app.main", "backend/app/main.py").app)
-
 
 def _seed_choice_news_topics(tmp_path) -> None:
     path = tmp_path / "moss.duckdb"
@@ -162,7 +167,6 @@ def _seed_choice_news_topics(tmp_path) -> None:
     finally:
         conn.close()
 
-
 def _append_research_radar_events(tmp_path) -> None:
     conn = duckdb.connect(str(tmp_path / "moss.duckdb"), read_only=False)
     try:
@@ -204,7 +208,6 @@ def _append_research_radar_events(tmp_path) -> None:
     finally:
         conn.close()
 
-
 def test_choice_events_latest_authorized_returns_envelope(
     tmp_path, monkeypatch
 ) -> None:
@@ -224,7 +227,6 @@ def test_choice_events_latest_authorized_returns_envelope(
     assert payload["result"]["total_rows"] >= 0
     get_settings.cache_clear()
 
-
 def test_choice_events_latest_excludes_future_rows_by_default(
     tmp_path, monkeypatch
 ) -> None:
@@ -242,7 +244,6 @@ def test_choice_events_latest_excludes_future_rows_by_default(
     assert payload["result_meta"]["filters_applied"]["future_rows_excluded"] == 1
     assert all(item["event_key"] != "ev_future" for item in payload["result"]["events"])
     get_settings.cache_clear()
-
 
 def test_choice_events_latest_no_duckdb_file_returns_empty_envelope(
     tmp_path, monkeypatch
@@ -269,7 +270,6 @@ def test_choice_events_latest_no_duckdb_file_returns_empty_envelope(
     assert body["result"]["total_rows"] == 0
     get_settings.cache_clear()
 
-
 def test_choice_events_latest_no_duckdb_file_compact_mode_returns_empty_envelope(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "nonexistent.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
@@ -293,7 +293,6 @@ def test_choice_events_latest_no_duckdb_file_compact_mode_returns_empty_envelope
     assert body["result"]["total_rows"] == 0
     get_settings.cache_clear()
 
-
 def test_choice_events_latest_forbidden_without_read_grant(
     tmp_path, monkeypatch
 ) -> None:
@@ -301,7 +300,6 @@ def test_choice_events_latest_forbidden_without_read_grant(
     response = client.get("/ui/news/choice-events/latest")
     assert response.status_code == 403
     get_settings.cache_clear()
-
 
 def test_choice_events_latest_topic_code_param_filters(tmp_path, monkeypatch) -> None:
     _seed_choice_news_topics(tmp_path)
@@ -316,7 +314,6 @@ def test_choice_events_latest_topic_code_param_filters(tmp_path, monkeypatch) ->
     assert body["result"]["events"][0]["topic_code"] == "TOPIC_FILTER_A"
     assert "alpha" in body["result"]["events"][0]["payload_text"]
     get_settings.cache_clear()
-
 
 def test_choice_events_latest_returns_deterministic_research_compare(
     tmp_path, monkeypatch
@@ -349,7 +346,6 @@ def test_choice_events_latest_returns_deterministic_research_compare(
     )
     get_settings.cache_clear()
 
-
 def test_choice_events_latest_stock_code_filters_payload_text_and_json(
     tmp_path, monkeypatch
 ) -> None:
@@ -371,7 +367,6 @@ def test_choice_events_latest_stock_code_filters_payload_text_and_json(
     ]
     assert body["result"]["events"][0]["payload_json"] is not None
     get_settings.cache_clear()
-
 
 def test_choice_events_latest_compact_returns_whitelisted_display_text(
     tmp_path,
@@ -421,7 +416,6 @@ def test_choice_events_latest_compact_returns_whitelisted_display_text(
     assert result["events"][0]["display_text"] == "Policy follow-up - PBOC commentary"
     get_settings.cache_clear()
 
-
 def test_choice_events_latest_visible_text_compact_excludes_json_only_match(
     tmp_path,
     monkeypatch,
@@ -464,7 +458,6 @@ def test_choice_events_latest_visible_text_compact_excludes_json_only_match(
     assert "cast(null as varchar) as payload_json" in disclosed_sql
     assert "upper(coalesce(payload_json" not in disclosed_sql
     get_settings.cache_clear()
-
 
 def test_choice_events_latest_stock_name_alias_recovers_visible_name_only_match(
     tmp_path,
@@ -519,7 +512,6 @@ def test_choice_events_latest_stock_name_alias_recovers_visible_name_only_match(
     assert alias_only_response.status_code == 400
     get_settings.cache_clear()
 
-
 def test_choice_events_latest_stock_code_returns_empty_without_global_fallback(
     tmp_path, monkeypatch
 ) -> None:
@@ -535,7 +527,6 @@ def test_choice_events_latest_stock_code_returns_empty_without_global_fallback(
     assert body["result"]["total_rows"] == 0
     get_settings.cache_clear()
 
-
 def test_choice_events_latest_rejects_invalid_stock_code(tmp_path, monkeypatch) -> None:
     client = _choice_news_read_client(tmp_path, monkeypatch)
     response = client.get(
@@ -544,7 +535,6 @@ def test_choice_events_latest_rejects_invalid_stock_code(tmp_path, monkeypatch) 
     assert response.status_code == 400
     assert "Invalid stock_code" in response.json()["detail"]
     get_settings.cache_clear()
-
 
 def test_choice_events_latest_rejects_invalid_stock_match_mode(
     tmp_path, monkeypatch
@@ -557,11 +547,24 @@ def test_choice_events_latest_rejects_invalid_stock_match_mode(
     assert response.status_code == 422
     get_settings.cache_clear()
 
-
-def test_tushare_npr_ingest_ui_still_503_reserved(tmp_path, monkeypatch) -> None:
+def test_tushare_npr_ingest_requires_import_scope_before_reserved_503(tmp_path, monkeypatch) -> None:
+    """授权先于保留判断：无 import scope 一律 403；授权后仍保留 503。"""
     client = _choice_news_read_client(tmp_path, monkeypatch)
-    response = client.post("/ui/news/tushare-npr/ingest", params={"limit": 5})
-    assert response.status_code == 503
-    detail = str(response.json().get("detail", "")).lower()
-    assert "reserved" in detail
+
+    for path in ("/ui/news/tushare-npr/ingest", "/api/news/tushare-npr/ingest"):
+        denied = client.post(path, params={"limit": 5})
+        assert denied.status_code == 403, f"{path}: {denied.status_code} {denied.text}"
+        assert "not allowed" in str(denied.json().get("detail", "")).lower()
+
+    sqlite_path = tmp_path / "auth-scope.db"
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="*",
+        role=None,
+        resource="choice_news.data",
+        action="import",
+    )
+    for path in ("/ui/news/tushare-npr/ingest", "/api/news/tushare-npr/ingest"):
+        response = client.post(path, params={"limit": 5})
+        assert response.status_code == 503, f"{path}: {response.status_code} {response.text}"
+        assert "reserved" in str(response.json().get("detail", "")).lower()
     get_settings.cache_clear()

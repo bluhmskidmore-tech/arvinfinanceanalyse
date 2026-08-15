@@ -1,9 +1,10 @@
 import type { ResultMeta } from "../../../api/contracts";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import type { LabeledValue } from "../../../pageModel";
-import type {
-  MacroObservationEvidenceMetaView,
-  MacroObservationReportBundleView,
+import {
+  sanitizeEvidenceMetaForDisplay,
+  type MacroObservationEvidenceMetaView,
+  type MacroObservationReportBundleView,
 } from "../model/macroObservationPageModel";
 import "./MacroObservationHealthEvidence.css";
 
@@ -88,11 +89,20 @@ export default function MacroObservationEvidenceSection({
         </div>
       ) : null}
 
+      {/* 空 JSON 筛选 {} 与 "none" 缓存版本先清洗为缺值，面板统一渲染 —（§6）。 */}
       <FormalResultMetaPanel
         testId="macro-observation-meta-panel"
         sections={[
-          { key: "analysis", title: "宏观分析信封", meta: analysisMeta },
-          { key: "strategy", title: "策略摘要信封", meta: strategyMeta },
+          {
+            key: "analysis",
+            title: "宏观分析信封",
+            meta: sanitizeEvidenceMetaForDisplay(analysisMeta),
+          },
+          {
+            key: "strategy",
+            title: "策略摘要信封",
+            meta: sanitizeEvidenceMetaForDisplay(strategyMeta),
+          },
         ]}
       />
 
@@ -114,6 +124,29 @@ export default function MacroObservationEvidenceSection({
           </small>
         </div>
 
+        <dl
+          className="macro-observation-evidence__bundle-dates"
+          aria-label="报告资产日期与校验范围"
+          data-testid="macro-observation-report-dates"
+        >
+          <div>
+            <dt>材料日</dt>
+            <dd>{reportBundle.materialDate}</dd>
+          </div>
+          <div>
+            <dt>曲线日</dt>
+            <dd>{reportBundle.curveDate}</dd>
+          </div>
+          <div>
+            <dt>账户报告日</dt>
+            <dd>{reportBundle.accountReportDate}</dd>
+          </div>
+          <div>
+            <dt>校验范围</dt>
+            <dd>{reportBundle.validationScope}</dd>
+          </div>
+        </dl>
+
         {reportBundle.downloadable && reportBundle.artifacts.length ? (
           <ul className="macro-observation-evidence__artifacts">
             {reportBundle.artifacts.map((artifact) => (
@@ -130,7 +163,7 @@ export default function MacroObservationEvidenceSection({
                   className="macro-observation-evidence__artifact-label"
                   title={`${artifact.label} · ${artifact.kind}`}
                 >
-                  {artifact.label} · {artifact.kind}
+                  {artifact.label}
                 </small>
                 <span className="macro-observation-evidence__artifact-size">
                   {artifact.sizeText}
@@ -153,10 +186,15 @@ export default function MacroObservationEvidenceSection({
             {failedCount} 项校验未通过，使用报告前需先复核校验明细。
           </p>
         ) : null}
-        {reportBundle.warningCount ? (
-          <p className="macro-observation-evidence__bundle-warnings">
-            警示 {reportBundle.warningCount} 条
-          </p>
+        {reportBundle.warnings.length ? (
+          <ul
+            className="macro-observation-evidence__bundle-warnings"
+            data-testid="macro-observation-bundle-warnings"
+          >
+            {reportBundle.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
         ) : null}
       </div>
     </div>

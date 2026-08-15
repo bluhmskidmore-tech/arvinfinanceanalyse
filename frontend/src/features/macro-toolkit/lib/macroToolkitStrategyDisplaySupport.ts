@@ -482,6 +482,25 @@ export function shadowPortfolioUnavailableDescription(warnings: readonly string[
   return visibleWarnings.join(" / ") || "本地股票历史或因子快照不足。";
 }
 
+/** 影子组合规则版本胶囊：`rv_..._v1` 型 token → 「规则 v1」；未知形态原样（原 token 收 title）。 */
+export function shadowRuleVersionLabel(ruleVersion: string) {
+  const versionMatch = ruleVersion.match(/_v(\d+)$/);
+  return versionMatch ? `规则 v${versionMatch[1]}` : ruleVersion;
+}
+
+/** 影子组合告警胶囊短中文；未登记 token 原样保留为证据引用（原 token 收 title）。 */
+const SHADOW_WARNING_PILL_LABELS: Record<string, string> = {
+  READ_ONLY_SHADOW_NOT_PRODUCTION: "只读·非生产",
+  FACTOR_HISTORY_TOO_SHORT: "因子历史偏短",
+  SHORT_HISTORY: "历史偏短",
+  DUCKDB_BUSY: "本地库占用中",
+  DUCKDB_NOT_FOUND: "本地库缺失",
+};
+
+export function shadowPortfolioWarningPillText(warning: string) {
+  return SHADOW_WARNING_PILL_LABELS[warning] ?? warning;
+}
+
 export function shadowPortfolioObservationText(report: MacroToolkitShadowPortfolioReport | null) {
   if (!report) {
     return {

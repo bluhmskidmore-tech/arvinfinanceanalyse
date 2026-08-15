@@ -3,6 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   buildGovernanceNotices,
   isAgentEvidence,
+  isAgentQueryResult,
+  isAgentResultCard,
+  isAgentRunPayload,
+  normalizeAgentResult,
+  normalizeAgentRunPayload,
   type AgentQueryResult,
 } from "../features/agent/lib/agentWorkbenchModel";
 
@@ -57,5 +62,105 @@ describe("agent workbench evidence governance", () => {
         quality_flag: "warning",
       }),
     ).toBe(true);
+  });
+});
+
+describe("agent result guard and normalization compatibility", () => {
+  it("accepts stored results without suggested actions and normalizes them in place", () => {
+    const storedResult = {
+      answer: "历史回答",
+      cards: [],
+      evidence: {
+        tables_used: [],
+        filters_applied: {},
+        evidence_rows: 0,
+        quality_flag: "ok",
+      },
+      result_meta: {},
+      next_drill: [],
+    };
+
+    expect(isAgentQueryResult(storedResult)).toBe(true);
+    if (!isAgentQueryResult(storedResult)) {
+      throw new Error("expected stored result to remain readable");
+    }
+
+    const normalized = normalizeAgentResult(storedResult);
+
+    expect(normalized).toBe(storedResult);
+    expect(normalized.suggested_actions).toEqual([]);
+  });
+
+  it("normalizes a stored run result without replacing either payload object", () => {
+    const storedRun = {
+      run_id: "agent_run:stored",
+      status: "completed",
+      result: {
+        answer: "历史回答",
+        cards: [],
+        evidence: {
+          tables_used: [],
+          filters_applied: {},
+          evidence_rows: 0,
+          quality_flag: "ok",
+        },
+        result_meta: {},
+        next_drill: [],
+      },
+    };
+
+    expect(isAgentRunPayload(storedRun)).toBe(true);
+    if (!isAgentRunPayload(storedRun)) {
+      throw new Error("expected stored run to remain readable");
+    }
+    const originalResult = storedRun.result;
+
+    const normalized = normalizeAgentRunPayload(storedRun);
+
+    expect(normalized).toBe(storedRun);
+    expect(normalized.result).toBe(originalResult);
+    expect(normalized.result?.suggested_actions).toEqual([]);
+  });
+
+  it("preserves existing card data acceptance semantics", () => {
+    expect(
+      isAgentResultCard({
+        title: "明细",
+        value: null,
+        type: "table",
+        data: [{ name: "有效行" }],
+        spec: {},
+      }),
+    ).toBe(true);
+    expect(
+      isAgentResultCard({
+        title: "明细",
+        type: "table",
+        data: [{ name: "有效行" }, null],
+      }),
+    ).toBe(true);
+    expect(
+      isAgentResultCard({
+        title: "明细",
+        type: "table",
+        data: "invalid",
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects malformed suggested actions inside an otherwise valid result", () => {
+    expect(
+      isAgentQueryResult({
+        ...buildResult("governed_moss"),
+        suggested_actions: [
+          {
+            type: "execute_intent",
+            label: "执行",
+            payload: null,
+            requires_confirmation: true,
+          },
+        ],
+      }),
+    ).toBe(false);
   });
 });

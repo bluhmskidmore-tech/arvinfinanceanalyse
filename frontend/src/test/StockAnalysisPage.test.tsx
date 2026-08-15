@@ -2680,8 +2680,13 @@ describe("StockAnalysisPage", () => {
     expect(detailsToggle).toHaveAttribute("aria-expanded", "true");
     expectElementBefore(table, sectorFilters);
     expect(headers).toEqual(
-      expect.arrayContaining(["排名", "股票", "行业", "形态", "距观察", "证据", "边界", "失效", "复核"]),
+      expect.arrayContaining(["排名", "股票", "行业", "形态", "距观察", "证据", "失效", "复核"]),
     );
+    // 两行边界口径一致 → 边界列收敛为区头一句摘要(§6)，表内只留差异列。
+    expect(headers).not.toContain("边界");
+    expect(
+      within(queue).getByTestId("stock-analysis-review-queue-uniform-note"),
+    ).toHaveTextContent("全列一致");
     expect(within(table).getByTestId("stock-candidate-000001.SZ")).toHaveTextContent("Alpha");
     expect(within(table).getByTestId("stock-candidate-review-chart-000001.SZ")).toHaveTextContent("K 线");
     expect(within(queue).getByTestId("stock-analysis-review-queue-table-footer")).toHaveTextContent(
@@ -6868,12 +6873,27 @@ describe("StockAnalysisPage", () => {
 
     expect(await screen.findByTestId("market-workbench-topbar")).toHaveTextContent("股票分析");
 
+    const page = await screen.findByTestId("stock-analysis-page");
+    const pageSource = readFileSync(STOCK_ANALYSIS_PAGE_IMPL_PATH, "utf8");
+
+    expect(pageSource).not.toContain("<StockAnalysisPretradeChecklist");
+    expect(pageSource).not.toContain("positionSizeHint={buildCandidatePositionSizeHintNotice");
+    expect(pageSource).not.toContain("strategyPayload?.stock_candidates?.position_size_hint");
+
     await waitFor(() => {
-      expect(screen.queryByText(/买入建议/)).not.toBeInTheDocument();
-      expect(screen.queryByText(/卖出建议/)).not.toBeInTheDocument();
-      expect(screen.queryByText(/下单/)).not.toBeInTheDocument();
-      expect(screen.queryByText(/调仓指令/)).not.toBeInTheDocument();
+      expect(page).not.toHaveTextContent(/买入建议/);
+      expect(page).not.toHaveTextContent(/卖出建议/);
+      expect(page).not.toHaveTextContent(/下单/);
+      expect(page).not.toHaveTextContent(/调仓指令/);
+      expect(page).not.toHaveTextContent(/可买/);
+      expect(page).not.toHaveTextContent(/建议仓位/);
+      expect(page).not.toHaveTextContent(/等权仓位/);
+      expect(page).not.toHaveTextContent(/实盘/);
     });
+
+    const evidenceDisclosure = await openEvidenceDisclosure();
+    expect(evidenceDisclosure).toHaveTextContent("规则版本已返回");
+    expect(evidenceDisclosure).not.toHaveTextContent("已签核");
   });
 
   it("shows strategy API failure state", async () => {

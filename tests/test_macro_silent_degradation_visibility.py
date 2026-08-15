@@ -193,6 +193,42 @@ def test_degraded_crisis_score_payload_marks_data_status() -> None:
     assert complete["data_status"] == "complete"
 
 
+def test_degraded_crisis_score_withholds_position_sizing_recommendation() -> None:
+    report_date = _CRISIS_HISTORY_START + timedelta(days=_CRISIS_HISTORY_DAYS - 1)
+
+    degraded = compute_crisis_score_payload(
+        _crisis_series_data(include_nanhua=False),
+        report_date=report_date,
+    )
+    complete = compute_crisis_score_payload(
+        _crisis_series_data(include_nanhua=True),
+        report_date=report_date,
+    )
+
+    assert degraded["data_status"] == "degraded"
+    assert degraded["recommendation"] == "数据不足，观察证据仅供参考"
+    # regime 是可观察证据，仍然保留；只有仓位方向建议被收回。
+    assert degraded["regime"] == complete["regime"]
+
+    assert complete["data_status"] == "complete"
+    assert complete["recommendation"] != "数据不足，观察证据仅供参考"
+
+
+def test_unavailable_crisis_score_withholds_position_sizing_recommendation() -> None:
+    short_history_days = 30
+    report_date = _CRISIS_HISTORY_START + timedelta(days=short_history_days - 1)
+    series_data = {
+        field: points[:short_history_days]
+        for field, points in _crisis_series_data(include_nanhua=True).items()
+    }
+
+    payload = compute_crisis_score_payload(series_data, report_date=report_date)
+
+    assert payload["data_status"] == "unavailable"
+    assert payload["crisis_score"] is None
+    assert payload["recommendation"] == "数据不足，观察证据仅供参考"
+
+
 def test_degraded_crisis_score_surfaces_in_capability_card(tmp_path) -> None:
     duckdb_path = tmp_path / "crisis-degraded.duckdb"
     _seed_crisis_history_without_nanhua(duckdb_path)

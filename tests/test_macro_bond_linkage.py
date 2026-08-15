@@ -1645,6 +1645,131 @@ def test_service_reuses_macro_components_without_reusing_request_envelope(tmp_pa
     get_settings.cache_clear()
 
 
+def _seed_unmapped_macro_series(duckdb_path: str, *, macro_points: int) -> None:
+    """Seed enough trade dates to pass the coverage gate, but no scored indicator series."""
+    _seed_macro_and_curve_inputs(duckdb_path, macro_points=macro_points, rising_rates=True)
+    conn = duckdb.connect(duckdb_path, read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_choice_macro_daily
+            set series_id = 'CA.UNMAPPED_TEST', series_name = '未映射测试序列'
+            """
+        )
+    finally:
+        conn.close()
+
+
+def test_macro_bond_linkage_withholds_duration_direction_when_environment_evidence_is_absent(
+    tmp_path, monkeypatch
+):
+    duckdb_path = tmp_path / "macro-bond-linkage-no-evidence.duckdb"
+    _seed_unmapped_macro_series(str(duckdb_path), macro_points=45)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    from backend.app.services.runtime_cache import clear_runtime_cache
+
+    svc = _service_module()
+    clear_runtime_cache("macro_bond_linkage_components")
+
+    result = svc.get_macro_bond_linkage(REPORT_DATE)["result"]
+    environment_score = result["environment_score"]
+
+    assert environment_score["signal_status"] == "unavailable"
+    assert environment_score["signal_evidence_categories"] == []
+    assert set(environment_score["signal_missing_categories"]) == {
+        "rate",
+        "liquidity",
+        "growth",
+        "inflation",
+    }
+    assert environment_score["rate_direction"] == "unknown"
+    assert environment_score["signal_description"] == "宏观环境评分缺少可用指标证据，暂无信号。"
+    assert "久期" not in environment_score["signal_description"]
+    assert any("暂无信号" in warning for warning in result["warnings"])
+
+    assert result["research_views"], "research views should still be listed as pending"
+    for view in result["research_views"]:
+        assert view["status"] == "pending_signal"
+        assert view["summary"] == "宏观环境评分缺少可用指标证据，暂无信号。"
+    for axis in result["transmission_axes"]:
+        assert axis["status"] == "pending_signal"
+
+    clear_runtime_cache("macro_bond_linkage_components")
+    get_settings.cache_clear()
+
+
+def test_macro_bond_linkage_marks_full_evidence_coverage_as_ready(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "macro-bond-linkage-full-evidence.duckdb"
+    _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=True)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    from backend.app.services.runtime_cache import clear_runtime_cache
+
+    svc = _service_module()
+    clear_runtime_cache("macro_bond_linkage_components")
+
+    environment_score = svc.get_macro_bond_linkage(REPORT_DATE)["result"]["environment_score"]
+
+    assert environment_score["signal_status"] == "ready"
+    assert environment_score["signal_missing_categories"] == []
+    assert environment_score["rate_direction"] in {"rising", "falling", "neutral"}
+
+    clear_runtime_cache("macro_bond_linkage_components")
+    get_settings.cache_clear()
+
+
+def test_macro_bond_linkage_cache_hit_preserves_computed_at_and_reports_served_at(
+    tmp_path, monkeypatch
+):
+    duckdb_path = tmp_path / "macro-bond-linkage-served-at.duckdb"
+    _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=True)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    from backend.app.services.runtime_cache import clear_runtime_cache
+
+    svc = _service_module()
+    clear_runtime_cache("macro_bond_linkage_components")
+
+    first = svc.get_macro_bond_linkage(REPORT_DATE)["result"]
+    second = svc.get_macro_bond_linkage(REPORT_DATE)["result"]
+
+    assert first["cache_hit"] is False
+    assert second["cache_hit"] is True
+    assert first["computed_at"] == second["computed_at"]
+    assert second["served_at"] > second["computed_at"]
+    assert second["served_at"] >= first["served_at"]
+
+    clear_runtime_cache("macro_bond_linkage_components")
+    get_settings.cache_clear()
+
+
+def test_macro_environment_context_cache_hit_preserves_computed_at(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "macro-environment-context-served-at.duckdb"
+    _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=True)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    from backend.app.services.runtime_cache import clear_runtime_cache
+
+    svc = _service_module()
+    clear_runtime_cache("macro_environment_context")
+
+    first = svc.get_macro_environment_context(REPORT_DATE)["result"]
+    second = svc.get_macro_environment_context(REPORT_DATE)["result"]
+
+    assert first["cache_hit"] is False
+    assert second["cache_hit"] is True
+    assert first["computed_at"] == second["computed_at"]
+    assert second["served_at"] > second["computed_at"]
+
+    clear_runtime_cache("macro_environment_context")
+    get_settings.cache_clear()
+
+
 def test_macro_environment_context_skips_full_correlation_analysis(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "macro-environment-context.duckdb"
     _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=True)

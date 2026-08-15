@@ -12,6 +12,7 @@ import {
   localizeMarketDataStatus,
   localizeStockBackendText,
 } from "./stockAnalysisPageModel";
+import { EM_DASH } from "../../../utils/format";
 
 export type StockFirstScreenTone = "positive" | "neutral" | "warning" | "negative";
 
@@ -106,6 +107,18 @@ function gapDisplayStatus(gap: WorkbenchGapInput): string {
   return gap.tier === "stale" || gap.tier === "expired" ? "stale" : String(gap.status);
 }
 
+/**
+ * 缺口行标签：登记过的输入族用中文名；未登记时改用后端数据源字段
+ * (gap.input，如系列号/表名)作证据引用，避免多行同文"输入待确认"不可分辨。
+ * 未登记且无数据源字段时保持"输入待确认"——原始 input_family(如
+ * external_vendor_* 技术 token)不得直出业务叙述位(§7)。
+ */
+function gapShortLabel(gap: WorkbenchGapInput): string {
+  const label = cycleInputLabel(gap.input_family);
+  if (label !== "输入待确认") return label;
+  return gap.input?.trim() || label;
+}
+
 export function buildStockDataGapOverview(gaps: WorkbenchGapInput[]): StockDataGapOverview {
   const activeRaw = gaps.filter(
     (gap) => gap.status !== "ready" || gap.tier === "stale" || gap.tier === "expired",
@@ -114,7 +127,7 @@ export function buildStockDataGapOverview(gaps: WorkbenchGapInput[]): StockDataG
     ...gap,
     blocksReview: gapBlocksReview(gap),
     familyLabel: dataGapFamilyLabel(gap.input_family),
-    shortLabel: cycleInputLabel(gap.input_family),
+    shortLabel: gapShortLabel(gap),
     statusLabel: stockStatusLabel(gapDisplayStatus(gap)),
   }));
   const ordered = [...decorated].sort(
@@ -227,7 +240,7 @@ export function buildStockFirstScreenHero({
     {
       key: "factor-candidates",
       label: "因子初筛候选",
-      value: factorScreen ? `${factorScreen.candidateCount}` : "—",
+      value: factorScreen ? `${factorScreen.candidateCount}` : EM_DASH,
       unit: factorScreen ? "只" : undefined,
       detail: factorScreen ? `截面 ${factorScreen.asOfLabel}` : "接口未提供",
       tone: factorScreen && factorScreen.candidateCount > 0 ? "neutral" : "warning",
@@ -243,7 +256,7 @@ export function buildStockFirstScreenHero({
     {
       key: "source-lag",
       label: "源数据滞后",
-      value: gapOverview.maxStaleAgeDays != null ? `${gapOverview.maxStaleAgeDays}` : "—",
+      value: gapOverview.maxStaleAgeDays != null ? `${gapOverview.maxStaleAgeDays}` : EM_DASH,
       unit: gapOverview.maxStaleAgeDays != null ? "天" : undefined,
       detail: gapOverview.maxStaleAgeFamilyLabel ?? "无陈旧输入",
       tone: gapOverview.maxStaleAgeDays != null ? "warning" : "positive",
@@ -291,7 +304,7 @@ export function buildStockMacroCycleCard(
     weightLabel:
       typeof layer.weight === "number" && Number.isFinite(layer.weight)
         ? `${Math.round(layer.weight * 100)}%`
-        : "—",
+        : EM_DASH,
     statusLabel: localizeImplementationStage(layer.status),
     tone: macroLayerTone(layer.status),
     evidence: localizeStockBackendText(layer.evidence ?? "", layer.key),
@@ -301,7 +314,7 @@ export function buildStockMacroCycleCard(
     statusLabel: ready ? "已落地" : "部分就绪",
     tone: ready ? "positive" : "warning",
     macroScoreLabel:
-      macroScore != null && Number.isFinite(macroScore) ? macroScore.toFixed(2) : "—",
+      macroScore != null && Number.isFinite(macroScore) ? macroScore.toFixed(2) : EM_DASH,
     cycleStateLabel: cycleStateLabel(macroContext?.cycle_state),
     evidence: localizeStockBackendText(
       macroContext?.evidence ?? macroLayer?.evidence ?? "宏观层证据待补",

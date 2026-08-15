@@ -16,6 +16,7 @@ from backend.app.repositories.external_data_catalog_repo import (
 )
 from backend.app.repositories.raw_zone_repo import RawZoneRepository
 from backend.app.repositories.source_manifest_repo import SourceManifestRepository
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.repositories.tushare_adapter import VendorAdapter
 from backend.app.repositories.tushare_catalog_seed import TUSHARE_M2A_SERIES
 from backend.app.services.tushare_macro_ingest_service import TushareMacroIngestService
@@ -69,7 +70,8 @@ def test_retry_recovers_transient_series_failure(tmp_path: Path) -> None:
     adapter = _FlakyAdapter({flaky_id: 2})
     svc, manifest = _service(tmp_path, adapter)
 
-    summary = svc.ingest_all_seed_series_with_summary("batch-retry", retry_sleep_seconds=0)
+    with repository_task_write_scope("backend.app.tasks.tushare_macro_ingest_test"):
+        summary = svc.ingest_all_seed_series_with_summary("batch-retry", retry_sleep_seconds=0)
     assert summary["status"] == "success"
 
     assert summary["failed"] == []
@@ -84,7 +86,8 @@ def test_persistent_failure_is_aggregated_without_aborting_batch(tmp_path: Path)
     adapter = _FlakyAdapter({dead_id: 99})
     svc, manifest = _service(tmp_path, adapter)
 
-    summary = svc.ingest_all_seed_series_with_summary("batch-dead", retry_sleep_seconds=0)
+    with repository_task_write_scope("backend.app.tasks.tushare_macro_ingest_test"):
+        summary = svc.ingest_all_seed_series_with_summary("batch-dead", retry_sleep_seconds=0)
     assert summary["status"] == "partial"
 
     assert [f["series_id"] for f in summary["failed"]] == [dead_id]
@@ -166,3 +169,62 @@ def test_task_raises_when_all_series_fail(
             run_tushare_macro_ingest_once("batch-allfail")
 
     assert any("tushare macro ingest failures" in r.getMessage() for r in caplog.records)
+
+
+def test_task_holds_writer_lock_across_connect_and_close(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """写连接 open→close 全程必须持有 resolve_duckdb_writer_lock（B5 审计修复）。"""
+    from contextlib import contextmanager
+
+    from backend.app.governance.locks import resolve_duckdb_writer_lock
+
+    class _AllGoodAdapter(VendorAdapter):
+        def fetch_macro_snapshot(self, series_id: str) -> dict[str, object]:  # type: ignore[override]
+            return _payload(series_id)
+
+    _patch_task_env(tmp_path, monkeypatch, _AllGoodAdapter)
+
+    events: list[str] = []
+    task_globals = run_tushare_macro_ingest_once.__globals__
+    real_acquire_lock = task_globals["acquire_lock"]
+    real_connect = duckdb.connect
+
+    @contextmanager
+    def recording_acquire_lock(definition, *args, **kwargs):
+        events.append(f"lock_enter:{definition.key}")
+        with real_acquire_lock(definition, *args, **kwargs) as handle:
+            try:
+                yield handle
+            finally:
+                events.append(f"lock_exit:{definition.key}")
+
+    class _RecordingConn:
+        def __init__(self, inner) -> None:
+            self._inner = inner
+
+        def close(self) -> None:
+            events.append("connection_closed")
+            self._inner.close()
+
+        def __getattr__(self, name: str):
+            return getattr(self._inner, name)
+
+    def recording_connect(*args, **kwargs):
+        events.append("connection_opened")
+        return _RecordingConn(real_connect(*args, **kwargs))
+
+    monkeypatch.setitem(task_globals, "acquire_lock", recording_acquire_lock)
+    monkeypatch.setattr(duckdb, "connect", recording_connect)
+
+    out = run_tushare_macro_ingest_once("batch-lock-order")
+
+    assert out["status"] == "success"
+    db_file = Path(task_globals["get_settings"]().duckdb_path)
+    writer_lock_key = resolve_duckdb_writer_lock(db_file).key
+    assert events == [
+        f"lock_enter:{writer_lock_key}",
+        "connection_opened",
+        "connection_closed",
+        f"lock_exit:{writer_lock_key}",
+    ]

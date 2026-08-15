@@ -6,6 +6,10 @@ import { PageSectionLead } from "../../../components/page/PagePrimitives";
 import { EM_DASH } from "../../../utils/format";
 import { formatCrisisTopContributorSummary } from "../lib/crisisScoreDisplay";
 import { isCrisisComponent, normalizeInputEvidence } from "../lib/macroToolkitCrisisSupport";
+import {
+  formatCapabilityEvidenceList,
+  formatCapabilityMetricValue,
+} from "../lib/macroToolkitDisplayFormat";
 import { statusColor, statusLabel } from "../lib/macroToolkitPanelShared";
 import { ScoreTrack } from "./MacroToolkitPrimitives";
 
@@ -50,14 +54,27 @@ export function CapabilityResultCard({ result }: { result: MacroToolkitCapabilit
   const headlineHasInsufficiency = headline.includes(INSUFFICIENT_DATA_MARK);
   // #6 ③：headline 已声明「数据不足」时，结果行与证据行不再复读同一状态（M14 三连去重）。
   const resultText = metric ? formatMetricDisplay(metric) : result.score ?? EM_DASH;
-  const resultLine =
-    typeof resultText === "string" && headlineHasInsufficiency && resultText.includes(INSUFFICIENT_DATA_MARK)
-      ? EM_DASH
-      : resultText;
+  const suppressInsufficiencyRepeat =
+    typeof resultText === "string" && headlineHasInsufficiency && resultText.includes(INSUFFICIENT_DATA_MARK);
+  const resultLine = suppressInsufficiencyRepeat ? EM_DASH : resultText;
+  // 主值英文枚举（如「联动风险 MEDIUM」）译中文；原值收 title。
+  const resultLineDisplay = suppressInsufficiencyRepeat
+    ? EM_DASH
+    : metric
+      ? formatMetricDisplayLocalized(metric)
+      : resultLine;
   const evidencePool = result.evidence.length ? result.evidence : result.warnings;
   const evidence = headlineHasInsufficiency
     ? evidencePool.filter((item) => !item.includes(INSUFFICIENT_DATA_MARK))
     : evidencePool;
+  // 证据行按 key=value 译中文键名 + 格式化值；原始 kv 串收进 title。
+  const visibleEvidence = evidence.slice(0, 3);
+  const evidenceRawText = visibleEvidence.join(" / ");
+  const evidenceDisplayText = formatCapabilityEvidenceList(visibleEvidence).join(" / ");
+  const resultLineTitle =
+    typeof resultLine === "string" && resultLine !== EM_DASH && resultLine !== resultLineDisplay
+      ? resultLine
+      : undefined;
   return (
     <div
       className={`macro-toolkit-capability-result macro-toolkit-capability-result--${result.tone}`}
@@ -67,7 +84,7 @@ export function CapabilityResultCard({ result }: { result: MacroToolkitCapabilit
         <span>{result.label}</span>
         <Tag color={statusColor(result.status)}>{statusLabel(result.status)}</Tag>
       </div>
-      <strong>{resultLine}</strong>
+      <strong title={resultLineTitle}>{resultLineDisplay}</strong>
       <ScoreTrack score={result.score} />
       <p>{headline}</p>
       {componentSummary ? (
@@ -75,7 +92,7 @@ export function CapabilityResultCard({ result }: { result: MacroToolkitCapabilit
           {componentSummary}
         </small>
       ) : null}
-      <small>{evidence.slice(0, 3).join(" / ") || "暂无证据"}</small>
+      <small title={evidenceRawText || undefined}>{evidenceDisplayText || "暂无证据"}</small>
       {inputEvidence ? (
         <details className="macro-toolkit-input-evidence">
           <summary>
@@ -104,6 +121,12 @@ export function CapabilityResultCard({ result }: { result: MacroToolkitCapabilit
 
 function formatMetricDisplay(metric: NonNullable<MacroToolkitCapabilityResult["primary_metric"]>) {
   return `${metric.label} ${metric.value}${metric.unit}`;
+}
+
+function formatMetricDisplayLocalized(
+  metric: NonNullable<MacroToolkitCapabilityResult["primary_metric"]>,
+) {
+  return `${metric.label} ${formatCapabilityMetricValue(metric.value)}${metric.unit}`;
 }
 
 export function MacroToolkitCapabilityResultsSection({

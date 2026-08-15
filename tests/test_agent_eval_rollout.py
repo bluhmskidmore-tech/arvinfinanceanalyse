@@ -39,13 +39,18 @@ PROBED_TASK = {
     "forbidden": ["frontend/src/api/client.ts"],
 }
 
+# Spec floor: validate_task_spec rejects a task whose business/page gates,
+# checks, and required evidence are all empty (it would always score 100).
+# The minimal fixture therefore carries exactly one probed gate; the injected
+# runner answers exit 0, so rollout-mechanics assertions keep their semantics.
 MINIMAL_TASK = {
     "id": "rollout_min_001",
-    "goal": "Minimal rollout task: no gates, no checks, no evidence.",
+    "goal": "Minimal rollout task: one probed gate, no checks, no evidence.",
     "required_evidence": [],
     "checks": [],
-    "business_gates": [],
+    "business_gates": ["unit_consistency"],
     "page_gates": [],
+    "gate_probes": {"unit_consistency": "python -m pytest tests/fake_probe_min.py -q"},
     "allowed_scope": ["notes/"],
     "forbidden": [],
 }

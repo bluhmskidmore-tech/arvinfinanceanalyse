@@ -38,6 +38,7 @@ import {
   formatDataHealthRepairAction,
   formatDataHealthRepairLabel,
   formatObservationDeferredSectionLabel,
+  localizeRepairActionText,
   repairPriorityLabel,
   repairTypeLabel,
 } from "../../macro-toolkit/lib/macroToolkitDataHealthSupport";
@@ -49,6 +50,7 @@ import {
   formatQualityFlagLabel,
   formatSize,
   isObservationOutputSignal,
+  pickPrimarySignal,
   riskLevelTone,
 } from "../../macro-toolkit/lib/macroToolkitDisplayFormat";
 import { statusLabel } from "../../macro-toolkit/lib/macroToolkitPanelShared";
@@ -58,7 +60,6 @@ import {
   hasCompleteRealStrategyChain,
   hasRealStrategySource,
   shadowPortfolioObservationText,
-  strategyObservationNote,
 } from "../../macro-toolkit/lib/macroToolkitStrategyDisplaySupport";
 
 // ---------------------------------------------------------------------------
@@ -67,6 +68,27 @@ import {
 
 /** core 首发延后加载数据的统一说明 note（deferred ≠ 业务缺失）。 */
 export const MACRO_OBSERVATION_DEFERRED_NOTE = "完整分析后确认";
+export const MACRO_OBSERVATION_A_SHARE_EMPTY_NOTE = "暂无A股风险证据";
+export const MACRO_OBSERVATION_CRISIS_EMPTY_NOTE = "暂无危机分证据";
+export const MACRO_OBSERVATION_CRISIS_COVERAGE_FALLBACK_NOTE = "组件覆盖按返回数组回退";
+
+function uniqueWarningTexts(warnings: readonly string[] | null | undefined): string[] {
+  const seen = new Set<string>();
+  const texts: string[] = [];
+  for (const raw of warnings ?? []) {
+    const text = raw.trim();
+    if (!text || seen.has(text)) {
+      continue;
+    }
+    seen.add(text);
+    texts.push(text);
+  }
+  return texts;
+}
+
+function finiteCount(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
 
 const SIGNAL_TONE_TO_METRIC_TONE: Record<MacroToolkitSignalCard["tone"], MetricTone> = {
   positive: "positive",
@@ -150,18 +172,7 @@ export function isCoreAnalysisScope(analysis: MacroToolkitAnalysisPayload | null
   return analysis?.runtime_status?.analysis_scope === "core";
 }
 
-/**
- * 主信号挑选：剔除 outputs 卡后，score 非空按分数降序取第一。
- * 与现页 `analyticalSignalCards → primarySignal` 判定逐字一致。
- */
-export function pickPrimarySignal(cards: MacroToolkitSignalCard[]): MacroToolkitSignalCard | null {
-  return (
-    cards
-      .filter((card) => !isObservationOutputSignal(card))
-      .filter((card) => card.score != null)
-      .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))[0] ?? null
-  );
-}
+export { pickPrimarySignal };
 
 export type MacroObservationStrategyCounts = {
   /** 全链路真实供数（hasCompleteRealStrategyChain）。 */
@@ -257,10 +268,10 @@ export function buildObservationToolbarStatus(
       value: textOrDash(analysis?.as_of_date ?? meta?.as_of_date),
     },
     {
+      // core/full 枚举不再作为 note 直出；「首屏读数 / 完整证据」已是口径本身。
       key: "analysis-scope",
       label: "分析口径",
       value: analysis ? (isCore ? "首屏读数" : "完整证据") : EM_DASH,
-      ...(analysis ? { note: isCore ? "core" : "full" } : {}),
     },
     {
       key: "source-coverage",
@@ -392,16 +403,21 @@ export function buildObservationKpiBand(input: MacroObservationKpiBandInput): Ma
     riskItem = deferredCell(riskCell);
   }
 
-  const primarySignal = pickPrimarySignal(analysis.signal_cards);
-  const signalItem: MacroObservationKpiItem = primarySignal
-    ? {
-        ...signalCell,
-        value: formatObservationSignalTitle(primarySignal),
-        ...(primarySignal.stance ? { note: primarySignal.stance } : {}),
-        tone: signalToneToMetricTone(primarySignal.tone),
-        status: "ready",
-      }
-    : { ...signalCell, value: EM_DASH, status: "ready" };
+  const primarySignal = pickPrimarySignal(analysis.signal_cards, analysis.primary_signal);
+  let signalItem: MacroObservationKpiItem;
+  if (primarySignal) {
+    signalItem = {
+      ...signalCell,
+      value: formatObservationSignalTitle(primarySignal),
+      ...(primarySignal.stance ? { note: primarySignal.stance } : {}),
+      tone: signalToneToMetricTone(primarySignal.tone),
+      status: "ready",
+    };
+  } else if (analysis.primary_signal?.selection_status === "deferred") {
+    signalItem = deferredCell(signalCell);
+  } else {
+    signalItem = { ...signalCell, value: EM_DASH, status: "ready" };
+  }
 
   let strategyItem: MacroObservationKpiItem;
   if (strategySupply === "loading") {
@@ -419,14 +435,16 @@ export function buildObservationKpiBand(input: MacroObservationKpiBandInput): Ma
       };
     } else {
       const counts = buildStrategyCounts(summaries);
+      // 主值改短形（KPI 格窄列防折行断词）；部分/降级/样例只在非零时进副行。
       const noteParts = [
+        counts.partial ? `部分 ${counts.partial}` : "",
         counts.degraded ? `降级 ${counts.degraded}` : "",
         counts.sample ? `样例 ${counts.sample}` : "",
       ].filter(Boolean);
       strategyItem = {
         ...strategyCell,
-        value: `${counts.full} 全链路 / ${counts.partial} 部分`,
-        ...(noteParts.length ? { note: noteParts.join(" · ") } : {}),
+        value: `${counts.full}/${summaries.length} 全链路`,
+        ...(noteParts.length ? { note: noteParts.join(" / ") } : {}),
         status: "ready",
       };
     }
@@ -441,8 +459,8 @@ export type MacroObservationConclusionView = {
   summary: string;
   /** 复用 formatObservationRecommendation 的锁定归纳文案。 */
   recommendedAction: string;
-  /** 分析 warnings 计数一句话；无警示为 null。 */
-  warningNote: string | null;
+  /** 分析信封 warnings 原文；来源内稳定去重，不跨来源吞并。 */
+  warnings: string[];
 };
 
 /** 01 区结论正文视图。 */
@@ -450,13 +468,12 @@ export function buildObservationConclusion(
   analysis: MacroToolkitAnalysisPayload | undefined,
 ): MacroObservationConclusionView {
   const conclusion: MacroToolkitAnalysisPayload["conclusion"] | undefined = analysis?.conclusion;
-  const warningCount = analysis?.warnings.length ?? 0;
   return {
     stance: textOrDash(conclusion?.stance),
     tone: signalToneToMetricTone(conclusion?.tone),
     summary: textOrDash(conclusion?.summary),
     recommendedAction: formatObservationRecommendation(conclusion?.recommended_action),
-    warningNote: warningCount ? `${warningCount} 条分析警示待复核` : null,
+    warnings: uniqueWarningTexts(analysis?.warnings),
   };
 }
 
@@ -467,11 +484,21 @@ export function buildObservationConclusion(
 export type MacroObservationSignalCardView = {
   key: string;
   title: string;
+  /** 展示名与后端原名不同（如 Crisis Score → 危机分）时携带原名供 title 提示。 */
+  rawTitle?: string;
   stance: string;
   scoreText: string;
   evidenceText: string;
   tone: MetricTone;
 };
+
+/** 危机分卡与 01 KPI 统一中文名「危机分」；后端英文原名收 title（同物双名收敛）。 */
+function observationSignalCardTitle(card: MacroToolkitSignalCard): string {
+  if (card.key === "crisis_score_cn") {
+    return "危机分";
+  }
+  return formatObservationSignalTitle(card);
+}
 
 /** 信号卡视图：outputs 卡剔除，score 一位小数或 EM_DASH，证据走共享归纳。 */
 export function buildSignalCardViews(
@@ -479,20 +506,25 @@ export function buildSignalCardViews(
 ): MacroObservationSignalCardView[] {
   return cards
     .filter((card) => !isObservationOutputSignal(card))
-    .map((card) => ({
-      key: card.key,
-      title: formatObservationSignalTitle(card),
-      stance: textOrDash(card.stance),
-      scoreText: fixedOrDash(card.score, 1),
-      evidenceText: formatObservationEvidence(card.evidence),
-      tone: signalToneToMetricTone(card.tone),
-    }));
+    .map((card) => {
+      const title = observationSignalCardTitle(card);
+      return {
+        key: card.key,
+        title,
+        ...(card.title && card.title !== title ? { rawTitle: card.title } : {}),
+        stance: textOrDash(card.stance),
+        scoreText: fixedOrDash(card.score, 1),
+        evidenceText: formatObservationEvidence(card.evidence),
+        tone: signalToneToMetricTone(card.tone),
+      };
+    });
 }
 
 const A_SHARE_RISK_WATCH_NEXT_LIMIT = 3;
 
 export type MacroObservationAShareRiskView =
   | { state: "deferred"; note: string }
+  | { state: "empty"; note: string }
   | {
       state: "ready";
       tradeDate: string;
@@ -509,15 +541,20 @@ export type MacroObservationAShareRiskView =
       triggeredRuleCount: number;
     };
 
-/** A股风险视图：core 态 null → deferred 诚实态；非 null → 只读明细。 */
+/** A股风险视图：core 态 null → deferred；full 态 null → empty；非 null → 只读明细。 */
 export function buildAShareRiskView(
   risk: MacroToolkitAShareRiskPayload | null | undefined,
+  analysisScope?: string | null,
 ): MacroObservationAShareRiskView {
   if (!risk) {
-    return { state: "deferred", note: MACRO_OBSERVATION_DEFERRED_NOTE };
+    return analysisScope === "full"
+      ? { state: "empty", note: MACRO_OBSERVATION_A_SHARE_EMPTY_NOTE }
+      : { state: "deferred", note: MACRO_OBSERVATION_DEFERRED_NOTE };
   }
   const watchNextAll = risk.watch_next.filter((item) => item.trim());
+  // 只折叠 1 项收益为负：隐藏数 ≥2 才截断，否则全量展示（无「另」注）。
   const moreCount = Math.max(0, watchNextAll.length - A_SHARE_RISK_WATCH_NEXT_LIMIT);
+  const shouldFold = moreCount >= 2;
   return {
     state: "ready",
     tradeDate: textOrDash(risk.trade_date),
@@ -528,8 +565,8 @@ export function buildAShareRiskView(
     name: textOrDash(risk.risk_name),
     summary: textOrDash(risk.summary),
     positionRule: textOrDash(risk.position_rule),
-    watchNext: watchNextAll.slice(0, A_SHARE_RISK_WATCH_NEXT_LIMIT),
-    watchNextMoreNote: moreCount ? `另 ${moreCount} 项` : null,
+    watchNext: shouldFold ? watchNextAll.slice(0, A_SHARE_RISK_WATCH_NEXT_LIMIT) : watchNextAll,
+    watchNextMoreNote: shouldFold ? `另 ${moreCount} 项` : null,
     triggeredRuleCount: risk.triggered_rules.length,
   };
 }
@@ -559,6 +596,7 @@ export type MacroObservationCrisisHistoryPoint = {
 
 export type MacroObservationCrisisEvidenceView =
   | { state: "deferred"; note: string }
+  | { state: "empty"; note: string }
   | {
       state: "ready";
       headline: string;
@@ -566,26 +604,59 @@ export type MacroObservationCrisisEvidenceView =
       regime: string;
       recommendation: string;
       percentileText: string;
+      /** 可计算分项数；权威字段优先。 */
+      availableComponentCount: number;
+      /** 权重表分项总数；权威字段优先，旧载荷才回退数组长度。 */
       componentCount: number;
-      /** z_score 非有限数的组件计数（缺失贡献）。 */
+      /** z_score 非有限数的已返回组件计数（缺失贡献，不等于覆盖率分子）。 */
       componentMissingCount: number;
+      /** 旧载荷没有权威计数时披露回退；权威路径为 null。 */
+      coverageNote: string | null;
       history: MacroObservationCrisisHistoryPoint[];
     };
 
-/** 危机分证据视图：core 态无 capability 结果 → deferred；否则只读明细。 */
-export function buildCrisisEvidenceView(
-  crisisResult: MacroToolkitCapabilityResult | null | undefined,
-): MacroObservationCrisisEvidenceView {
-  if (!crisisResult) {
-    return { state: "deferred", note: MACRO_OBSERVATION_DEFERRED_NOTE };
-  }
-  const result = crisisResult.result;
+function crisisComponentCoverage(result: MacroToolkitCapabilityResult["result"]): {
+  availableComponentCount: number;
+  componentCount: number;
+  coverageNote: string | null;
+  componentMissingCount: number;
+} {
   const components = Array.isArray(result.components)
     ? result.components.filter(isCrisisComponent)
     : [];
   const componentMissingCount = components.filter(
     (component) => typeof component.z_score !== "number" || !Number.isFinite(component.z_score),
   ).length;
+  const available = finiteCount(result.available_component_count);
+  const total = finiteCount(result.component_count);
+  if (available !== null && total !== null) {
+    return {
+      availableComponentCount: available,
+      componentCount: total,
+      coverageNote: null,
+      componentMissingCount,
+    };
+  }
+  return {
+    availableComponentCount: components.length - componentMissingCount,
+    componentCount: components.length,
+    coverageNote: MACRO_OBSERVATION_CRISIS_COVERAGE_FALLBACK_NOTE,
+    componentMissingCount,
+  };
+}
+
+/** 危机分证据视图：core 态无结果 → deferred；full 态无结果 → empty。 */
+export function buildCrisisEvidenceView(
+  crisisResult: MacroToolkitCapabilityResult | null | undefined,
+  analysisScope?: string | null,
+): MacroObservationCrisisEvidenceView {
+  if (!crisisResult) {
+    return analysisScope === "full"
+      ? { state: "empty", note: MACRO_OBSERVATION_CRISIS_EMPTY_NOTE }
+      : { state: "deferred", note: MACRO_OBSERVATION_DEFERRED_NOTE };
+  }
+  const result = crisisResult.result;
+  const coverage = crisisComponentCoverage(result);
   const percentile =
     typeof result.percentile === "number" && Number.isFinite(result.percentile)
       ? result.percentile
@@ -601,8 +672,10 @@ export function buildCrisisEvidenceView(
     regime: textOrDash(crisisResultRegime(crisisResult)),
     recommendation: textOrDash(recommendation),
     percentileText: percentile === null ? EM_DASH : `${percentile.toFixed(2)}%`,
-    componentCount: components.length,
-    componentMissingCount,
+    availableComponentCount: coverage.availableComponentCount,
+    componentCount: coverage.componentCount,
+    componentMissingCount: coverage.componentMissingCount,
+    coverageNote: coverage.coverageNote,
     history: crisisScoreHistoryFromResult(result).map((point) => ({
       date: point.date,
       value: point.crisis_score,
@@ -619,8 +692,8 @@ export type MacroObservationStrategyRow = {
   label: string;
   statusText: string;
   tone: MetricTone;
-  /** 供数链一句话（复用 strategyObservationNote 的锁定文案）。 */
-  chainNote: string;
+  /** 供数链差异信息；全表同句时收敛到 commonChainNote，行级为 null。 */
+  chainNote: string | null;
 };
 
 export type MacroObservationStrategyDataStatus = {
@@ -645,6 +718,8 @@ export type MacroObservationEtfStrategySummary = {
 export type MacroObservationStrategyEvidenceView = {
   rows: MacroObservationStrategyRow[];
   counts: MacroObservationStrategyCounts;
+  /** 全表来源链同句时收敛区头一次；行间有差异为 null（差异留在行内）。 */
+  commonChainNote: string | null;
   shadowPortfolio: MacroObservationShadowPortfolioSummary;
   /** strategy-summaries 载荷缺失或未携带 ETF 快照时为 null。 */
   etfStrategy: MacroObservationEtfStrategySummary | null;
@@ -677,6 +752,20 @@ export function looseStrategyDataStatus(payload: unknown): MacroObservationStrat
   };
 }
 
+/**
+ * 供数链行级差异句：不再前缀状态词（状态列已有）、不再挂「仍仅作观察 /
+ * 不作为正式投资信号」尾巴（页级只读边界已声明一次，DESIGN §6 去重）。
+ */
+export function observationStrategyChainNote(strategy: MacroToolkitStrategySummary): string {
+  if (hasCompleteRealStrategyChain(strategy)) {
+    return "已接入真实行情或因子快照";
+  }
+  if (hasRealStrategySource(strategy)) {
+    return "部分真实供数，缺口需在完整分析中复核";
+  }
+  return "仅策略可用性检查，未接入真实供数";
+}
+
 /** 03 区策略证据视图：摘要行 + 影子组合摘要 + ETF 摘要 + strategy_data_status。 */
 export function buildStrategyEvidenceView(
   strategyPayload: MacroToolkitStrategySummariesPayload | undefined,
@@ -687,15 +776,20 @@ export function buildStrategyEvidenceView(
     strategyPayload?.shadow_portfolio_report ?? analysis?.shadow_portfolio_report ?? null;
   const shadowText = shadowPortfolioObservationText(shadowReport);
   const etf = strategyPayload?.macro_etf_strategy ?? null;
+  // 同句逐行重复收敛：全表同句时提升为区头一次（行级置 null，列整体不渲染）。
+  const chainNotes = summaries.map(observationStrategyChainNote);
+  const commonChainNote =
+    summaries.length && new Set(chainNotes).size === 1 ? chainNotes[0]! : null;
   return {
-    rows: summaries.map((strategy) => ({
+    rows: summaries.map((strategy, index) => ({
       key: strategy.key,
       label: strategy.label,
       statusText: statusLabel(strategy.status),
       tone: signalToneToMetricTone(strategy.tone),
-      chainNote: strategyObservationNote(strategy, "loaded"),
+      chainNote: commonChainNote ? null : chainNotes[index]!,
     })),
     counts: buildStrategyCounts(summaries),
+    commonChainNote,
     shadowPortfolio: {
       label: shadowText.label,
       value: shadowText.value,
@@ -727,7 +821,10 @@ export type MacroObservationRepairRow = {
   label: string;
   typeText: string;
   priorityText: string;
+  /** 展示层建议动作：英文错误码译中文短语、状态枚举中文化、去句首事项名。 */
   actionText: string;
+  /** 后端原句（含原始错误码），供行级 title 溯源；与展示句一致时为 null。 */
+  actionTitle: string | null;
   /** 修复项数据最新日期；后端未给时 EM_DASH。 */
   latestDateText: string;
   /** 滞后天数（如「26 天」）；后端未给时 EM_DASH。 */
@@ -743,7 +840,8 @@ export type MacroObservationDataHealthView = {
   repairMoreNote: string | null;
   /** deferred_sections 的中文标签（core 首发延后确认项）。 */
   deferredSectionLabels: string[];
-  warningCount: number;
+  /** 数据健康 warnings 原文；来源内稳定去重。 */
+  warnings: string[];
 };
 
 /** 05 区数据健康视图；data_health 未返回时为 null（交由分区状态兜底）。 */
@@ -789,20 +887,29 @@ export function buildDataHealthView(
         note: capabilityHealthDetail(dataHealth),
       },
     ],
-    repairItems: visibleRepairItems.map((item, index) => ({
-      key: `repair-${index}-${item.alias ?? item.key ?? item.label ?? item.type ?? "item"}`,
-      label: formatDataHealthRepairLabel(item, false),
-      typeText: repairTypeLabel(item.type),
-      priorityText: repairPriorityLabel(item.priority),
-      actionText: formatDataHealthRepairAction(item, false) || EM_DASH,
-      latestDateText: textOrDash(item.latest_date),
-      staleDaysText: item.stale_days == null ? EM_DASH : `${item.stale_days} 天`,
-    })),
+    repairItems: visibleRepairItems.map((item, index) => {
+      const label = formatDataHealthRepairLabel(item, false);
+      const rawAction = formatDataHealthRepairAction(item, false);
+      // 英文错误码译中文短语 + 去句首重复事项名；原句收行 title（DESIGN §7）。
+      const actionText = rawAction
+        ? localizeRepairActionText(rawAction, { mapCodes: true, stripLeadingLabel: label })
+        : EM_DASH;
+      return {
+        key: `repair-${index}-${item.alias ?? item.key ?? item.label ?? item.type ?? "item"}`,
+        label,
+        typeText: repairTypeLabel(item.type),
+        priorityText: repairPriorityLabel(item.priority),
+        actionText,
+        actionTitle: rawAction && rawAction !== actionText ? rawAction : null,
+        latestDateText: textOrDash(item.latest_date),
+        staleDaysText: item.stale_days == null ? EM_DASH : `${item.stale_days} 天`,
+      };
+    }),
     repairMoreNote: moreCount > 0 ? `另 ${moreCount} 项` : null,
     deferredSectionLabels: dataHealth.deferred_sections.map((section) =>
       formatObservationDeferredSectionLabel(section),
     ),
-    warningCount: dataHealth.warnings.length,
+    warnings: uniqueWarningTexts(dataHealth.warnings),
   };
 }
 
@@ -859,6 +966,31 @@ export type MacroObservationEvidenceMetaView = {
   strategy: LabeledValue[] | null;
 };
 
+/**
+ * 06 证据卡展示前的信封清洗：空 JSON 筛选 `{}` 与字面量 "none" 缓存版本
+ * 统一为缺值（共享面板按 EM_DASH 渲染，DESIGN §6 缺值占位）。仅展示层拷贝，
+ * 不改动原信封对象。
+ */
+export function sanitizeEvidenceMetaForDisplay(
+  meta: ResultMeta | undefined,
+): ResultMeta | undefined {
+  if (!meta) {
+    return meta;
+  }
+  const filtersEmpty = !meta.filters_applied || Object.keys(meta.filters_applied).length === 0;
+  const cacheVersionNone =
+    typeof meta.cache_version === "string" && meta.cache_version.trim().toLowerCase() === "none";
+  if (!filtersEmpty && !cacheVersionNone) {
+    return meta;
+  }
+  return {
+    ...meta,
+    ...(filtersEmpty ? { filters_applied: undefined } : {}),
+    // 契约 cache_version 为必填 string；空串在共享面板按 EM_DASH 渲染。
+    ...(cacheVersionNone ? { cache_version: "" } : {}),
+  };
+}
+
 /** 06 区口径面板：分析信封 + 策略信封各一组读数；未返回的信封为 null。 */
 export function buildEvidenceMetaView(
   analysisMeta: ResultMeta | undefined,
@@ -888,10 +1020,18 @@ export type MacroObservationReportBundleView = {
   /** 与现有面板同一放行判定：ready 且 observation_only 且 !formal_use_allowed。 */
   downloadable: boolean;
   reason: string | null;
+  /** 材料日；缺失为 EM_DASH，不得用曲线日/账户日回填。 */
+  materialDate: string;
+  /** 曲线日；缺失为 EM_DASH，不得用材料日回填。 */
+  curveDate: string;
+  /** 账户报告日；缺失为 EM_DASH，不得用材料日回填。 */
+  accountReportDate: string;
   validationText: string;
   /** 校验未通过条数；bundle 未带 validation 时为 0。 */
   validationFailedCount: number;
-  warningCount: number;
+  validationScope: string;
+  /** 报告包 warnings 原文；来源内稳定去重。 */
+  warnings: string[];
   artifacts: MacroObservationReportArtifact[];
 };
 
@@ -912,9 +1052,13 @@ export function buildReportBundleView(
         : "报告资产尚未发布",
     downloadable,
     reason: bundle?.reason ?? null,
+    materialDate: textOrDash(bundle?.as_of_date),
+    curveDate: textOrDash(bundle?.curve_date),
+    accountReportDate: textOrDash(bundle?.account_report_date),
     validationText: validation ? `${validation.passed} 通过 / ${validation.failed} 未通过` : EM_DASH,
     validationFailedCount: validation?.failed ?? 0,
-    warningCount: bundle?.warnings.length ?? 0,
+    validationScope: textOrDash(validation?.scope),
+    warnings: uniqueWarningTexts(bundle?.warnings),
     artifacts: (bundle?.artifacts ?? []).map((artifact) => ({
       id: artifact.id,
       filename: artifact.filename,
@@ -987,7 +1131,9 @@ export function buildObservationSectionStates(
         ? { state: "loading", note: "策略摘要正在生成。" }
         : mergeStrategySummaries(strategyPayload, analysis).length
           ? null
-          : { state: "deferred", note: "暂无策略摘要，完整分析后再确认。" };
+          : isCore
+            ? { state: "deferred", note: "暂无策略摘要，完整分析后再确认。" }
+            : { state: "empty", note: "暂无策略摘要" };
 
   const crisis: MacroObservationSectionState =
     analysisGate ??

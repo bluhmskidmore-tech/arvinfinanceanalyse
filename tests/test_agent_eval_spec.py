@@ -1,4 +1,5 @@
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -64,6 +65,15 @@ def test_validate_task_spec_rejects_empty_allowed_scope():
         validate_task_spec(task)
 
 
+def test_validate_task_spec_rejects_task_with_no_gates_checks_or_evidence():
+    """四项全空时 reward 的四个分量都是空集自比恒 1.0，任务无条件 100 分。"""
+
+    task = dict(VALID_TASK, required_evidence=[], checks=[], business_gates=[], page_gates=[])
+
+    with pytest.raises(ValueError, match="at least one entry"):
+        validate_task_spec(task)
+
+
 def test_validate_task_spec_rejects_gate_probe_command_outside_whitelist():
     task = dict(VALID_TASK, gate_probes={"unit_consistency": "bash scripts/fake_green_gate.sh"})
 
@@ -110,6 +120,19 @@ def test_validate_task_spec_accepts_non_empty_string_metric_ids():
     assert validate_task_spec(task) == task
 
 
+def _metric_id_registered(metric_id: str, dictionary_text: str) -> bool:
+    """词边界精确匹配：子串命中（如 `MTR-RSK-001R` 满足 `MTR-RSK-001`）不算注册。"""
+
+    pattern = re.compile(rf"(?<![A-Za-z0-9-]){re.escape(metric_id)}(?![A-Za-z0-9-])")
+    return pattern.search(dictionary_text) is not None
+
+
+def test_metric_id_registration_rejects_superstring_hits():
+    assert _metric_id_registered("MTR-RSK-001", "| `MTR-RSK-001` | 组合 DV01 |")
+    assert not _metric_id_registered("MTR-RSK-001", "| `MTR-RSK-001R` | 监管口径 DV01 |")
+    assert not _metric_id_registered("MTR-RSK-001", "| `X-MTR-RSK-001` | 别名 |")
+
+
 def test_task_manifest_is_spec_valid_and_metric_ids_exist_in_metric_dictionary():
     """Every shipped task must pass the spec, and every declared metric id must
     resolve against the governance metric dictionary, so a task cannot bind
@@ -123,9 +146,9 @@ def test_task_manifest_is_spec_valid_and_metric_ids_exist_in_metric_dictionary()
         task = json.loads(task_path.read_text(encoding="utf-8"))
         validate_task_spec(task)
         for metric_id in task.get("metric_ids", []):
-            assert metric_id in dictionary_text, (
+            assert _metric_id_registered(metric_id, dictionary_text), (
                 f"{task_path.name} declares metric id '{metric_id}' "
-                "which does not appear in docs/metric_dictionary.md"
+                "which does not appear as an exact id in docs/metric_dictionary.md"
             )
 
 

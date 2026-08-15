@@ -160,4 +160,71 @@ describe("StockAnalysisCandidateLedgerTable", () => {
 
     expect(screen.queryByText(/仓位 ≤/)).not.toBeInTheDocument();
   });
+
+  it("collapses whole-column same values into a header note and keeps difference columns", () => {
+    // 三行证据数/边界/失效/决策状态全同值 → 收敛区头；排名/名称/距观察保留。
+    const candidates = [
+      buildCandidate({ rank: 1, stockCode: "000001.SZ", stockName: "Alpha", distanceToBreakoutPct: "+1.2%" }),
+      buildCandidate({ rank: 2, stockCode: "000002.SZ", stockName: "Beta", distanceToBreakoutPct: "-3.4%" }),
+      buildCandidate({ rank: 3, stockCode: "000003.SZ", stockName: "Gamma", distanceToBreakoutPct: "-0.8%" }),
+    ];
+    render(
+      <StockAnalysisCandidateLedgerTable
+        candidates={candidates}
+        usesHybridFusion={false}
+        selectedSectorCode={null}
+        onReviewCandidate={vi.fn()}
+      />,
+    );
+
+    const note = screen.getByTestId("stock-analysis-review-queue-uniform-note");
+    expect(note).toHaveTextContent("全列一致");
+    expect(note).toHaveTextContent("证据 1 条/行");
+    expect(note).toHaveTextContent("边界清洁");
+    expect(note).toHaveTextContent("失效：跌回 MA20 下方即降级观察。");
+
+    // 同值列的表头与单元格不再逐行重复。
+    expect(screen.queryByRole("columnheader", { name: "证据" })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "边界" })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "失效" })).toBeNull();
+    expect(screen.queryByText("1 证据")).toBeNull();
+
+    // 差异列保留：排名/股票/距观察。
+    expect(screen.getByRole("columnheader", { name: "排名" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "距观察" })).toBeInTheDocument();
+    expect(screen.getByText("+1.2%")).toBeInTheDocument();
+    expect(screen.getByText("-3.4%")).toBeInTheDocument();
+  });
+
+  it("keeps per-row columns when values differ across rows", () => {
+    const candidates = [
+      buildCandidate({ rank: 1, stockCode: "000001.SZ" }),
+      buildCandidate({
+        rank: 2,
+        stockCode: "000002.SZ",
+        primaryEvidence: [
+          { key: "close_vs_break", label: "收盘 vs 观察位", value: "10.0 / 9.8" },
+          { key: "volume", label: "量能", value: "1.4x" },
+        ],
+        boundaryEvidence: ["公告：重大资产重组停牌核查中"],
+        invalidationFocus: "跌破前低即失效。",
+      }),
+    ];
+    render(
+      <StockAnalysisCandidateLedgerTable
+        candidates={candidates}
+        usesHybridFusion={false}
+        selectedSectorCode={null}
+        onReviewCandidate={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId("stock-analysis-review-queue-uniform-note")).toBeNull();
+    expect(screen.getByRole("columnheader", { name: "证据" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "边界" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "失效" })).toBeInTheDocument();
+    expect(screen.getByText("1 证据")).toBeInTheDocument();
+    expect(screen.getByText("2 证据")).toBeInTheDocument();
+    expect(screen.getByText("边界 1")).toBeInTheDocument();
+  });
 });

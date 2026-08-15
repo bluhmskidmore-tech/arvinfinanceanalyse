@@ -25,7 +25,6 @@ import "./AgentWorkbenchPage.css";
 import {
   AGENT_STICKY_BOTTOM_THRESHOLD_PX,
   AgentDisabledQueryError,
-  AgentManagedRunRequiresHermesError,
   AgentRunCancelledError,
   GITNEXUS_QUICK_EXAMPLES,
   buildAgentRequestBody,
@@ -54,7 +53,7 @@ import {
   getAgentApiErrorStatus,
   getExecutableSuggestedIntent,
   getLocalAgentQueryIntent,
-  getManagedRunRequiresHermesDetail,
+  getSuggestedActionConfirmationErrorMessage,
   getSuggestedActionKey,
   isAgentQueryResult,
   isAgentRunPayload,
@@ -66,6 +65,7 @@ import {
   shouldScrollComposerInputIntoView,
   shouldUseLocalAnalysisConversation,
 } from "./lib/agentWorkbenchModel";
+import { getAgentScrollBehavior } from "./lib/agentMotion";
 import type {
   AgentConversationTurn,
   AgentCopyFeedback,
@@ -140,6 +140,7 @@ export function EmbeddedAgentCopilot({
   const repoPathRef = useRef(repoPath);
   const conversationRef = useRef<HTMLElement | null>(null);
   const conversationBottomRef = useRef<HTMLDivElement | null>(null);
+  const composerDockRef = useRef<HTMLDivElement | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const pageContextSummaryRef = useRef(pageContext ? formatPageContextSummary(pageContext) : "");
   const lastAppliedDefaultQuestionRef = useRef(defaultQuestion.trim());
@@ -276,7 +277,7 @@ export function EmbeddedAgentCopilot({
     });
     const scrollIntoView = input.scrollIntoView;
     if (typeof scrollIntoView === "function" && shouldScrollComposerInputIntoView(input)) {
-      scrollIntoView.call(input, { behavior: "smooth", block: "nearest" });
+      scrollIntoView.call(input, { behavior: getAgentScrollBehavior(), block: "nearest" });
     }
   }, [closeResultInteractionDetails, moveComposerCursorToEnd]);
 
@@ -284,18 +285,32 @@ export function EmbeddedAgentCopilot({
     const bottom = conversationBottomRef.current;
     const scrollIntoView = bottom?.scrollIntoView;
     if (typeof scrollIntoView === "function") {
-      scrollIntoView.call(bottom, { behavior: "smooth", block: "end" });
+      scrollIntoView.call(bottom, { behavior: getAgentScrollBehavior(), block: "end" });
     }
   }
 
   function syncConversationStickiness() {
-    const conversation = conversationRef.current;
-    if (!conversation) {
+    const conversationBottom = conversationBottomRef.current;
+    if (!conversationBottom) {
       shouldStickConversationToBottomRef.current = true;
       return;
     }
-    const distanceFromBottom = conversation.scrollHeight - conversation.scrollTop - conversation.clientHeight;
-    shouldStickConversationToBottomRef.current = distanceFromBottom <= AGENT_STICKY_BOTTOM_THRESHOLD_PX;
+
+    const visualViewport = window.visualViewport;
+    const viewportTop = visualViewport?.offsetTop ?? 0;
+    const viewportHeight =
+      visualViewport?.height ?? window.innerHeight ?? document.documentElement.clientHeight;
+    const viewportBottom = viewportTop + viewportHeight;
+    const composerRect = composerDockRef.current?.getBoundingClientRect();
+    const composerIsVisible = Boolean(
+      composerRect && composerRect.bottom > viewportTop && composerRect.top < viewportBottom,
+    );
+    const readableBottom = composerIsVisible
+      ? Math.max(viewportTop, composerRect?.top ?? viewportBottom)
+      : viewportBottom;
+    const distanceFromBottom = conversationBottom.getBoundingClientRect().bottom - readableBottom;
+    shouldStickConversationToBottomRef.current =
+      Math.abs(distanceFromBottom) <= AGENT_STICKY_BOTTOM_THRESHOLD_PX;
   }
 
   function updateComposerQuery(nextQuery: string) {
@@ -414,14 +429,12 @@ export function EmbeddedAgentCopilot({
   ]);
 
   useEffect(() => {
-    const conversation = conversationRef.current;
-    if (!conversation) {
+    if (!conversationRef.current) {
       shouldStickConversationToBottomRef.current = true;
       return;
     }
-    syncConversationStickiness();
-    conversation.addEventListener("scroll", syncConversationStickiness, { passive: true });
-    return () => conversation.removeEventListener("scroll", syncConversationStickiness);
+    document.addEventListener("scroll", syncConversationStickiness, { capture: true, passive: true });
+    return () => document.removeEventListener("scroll", syncConversationStickiness, true);
   }, [hasConversation]);
 
   useEffect(() => {
@@ -496,32 +509,14 @@ export function EmbeddedAgentCopilot({
         throw new AgentDisabledQueryError(requestError.message, requestError.phase);
       }
       const status = getAgentApiErrorStatus(requestError);
-      const apiPayload = getAgentApiErrorPayload(requestError);
-      const managedRunRequiresHermesDetail =
-        status === 400 ? getManagedRunRequiresHermesDetail(apiPayload) : null;
-      if (managedRunRequiresHermesDetail) {
-        throw new AgentManagedRunRequiresHermesError(managedRunRequiresHermesDetail);
-      }
       if (status !== null) {
         throw new Error(`智能体查询失败（${status}）`);
       }
       throw requestError;
     }
 
-    if (isAgentQueryResult(payload)) {
-      const result = normalizeAgentResult(payload);
-      return {
-        run_id: "agent_run:sync_compat",
-        status: "completed",
-        run_kind: "sync",
-        provider: formatRuntimeLabel(result.evidence.filters_applied.provider, "managed"),
-        model: formatRuntimeLabel(result.evidence.filters_applied.model, "default"),
-        transport: formatRuntimeLabel(result.evidence.filters_applied.transport, "bridge"),
-        toolsets: formatRuntimeLabel(result.evidence.filters_applied.toolsets, "default"),
-        result,
-      };
-    }
-
+    // 后端 POST /api/agent/runs 已收窄为仅返回排队回执（不再同步短路返回 AgentEnvelope）；
+    // demo 桩返回的终态 run payload（含 result）同样满足该守卫。
     if (!isAgentRunPayload(payload)) {
       throw new Error("智能体返回结果格式无效。");
     }
@@ -540,6 +535,13 @@ export function EmbeddedAgentCopilot({
         throw new AgentDisabledQueryError(requestError.message, requestError.phase);
       }
       const status = getAgentApiErrorStatus(requestError);
+      const confirmationErrorMessage = getSuggestedActionConfirmationErrorMessage(
+        status,
+        getAgentApiErrorPayload(requestError),
+      );
+      if (confirmationErrorMessage) {
+        throw new Error(confirmationErrorMessage);
+      }
       if (status !== null) {
         throw new Error(`智能体查询失败（${status}）`);
       }
@@ -550,9 +552,6 @@ export function EmbeddedAgentCopilot({
     question: string,
     turnId: string,
     conversationContext?: AgentConversationContext,
-    options?: {
-      rethrowLocalProviderFallback?: boolean;
-    },
   ) {
     const normalizedRepoPath = repoPath.trim();
     const requestVersion = beginProcessStateRequest();
@@ -564,6 +563,12 @@ export function EmbeddedAgentCopilot({
       pageContext,
     );
     const abortController = new AbortController();
+    // 回合提交门与 GitNexus 进程列表提交门解耦：run 进行中编辑仓库路径、点最近仓库、
+    // 点"读取流程"只会使进程列表请求失效，不能丢弃本回合的终态结果/错误提交。
+    // 回合提交只看停止信号（abort）与会话版本（新对话/新提问会重置会话）。
+    const conversationSession = currentConversationSession();
+    const canCommitTurnState = () =>
+      !abortController.signal.aborted && isCurrentConversationSession(conversationSession);
     activeManagedRunAbortRef.current = abortController;
     activeManagedRunIdRef.current = "";
     setAgentRun(null);
@@ -584,18 +589,18 @@ export function EmbeddedAgentCopilot({
           return payload;
         },
         fetchAgentRunStatus,
-        canCommit: () => canCommitProcessState(requestVersion, normalizedRepoPath),
+        canCommit: canCommitTurnState,
         signal: abortController.signal,
         onRunAccepted: (payload, runRequestLatencyMs) => {
           setOrdinaryConversationMode("managed");
           setAgentRun(payload);
-          setConversationTurns((currentTurns) => {
-            const nextTurns = currentTurns.map((turn) =>
+          // 持久化交给 useConversationPersistence 的 write-through effect；
+          // 不在 state 更新器内执行副作用（StrictMode/并发渲染下更新器可能重放）。
+          setConversationTurns((currentTurns) =>
+            currentTurns.map((turn) =>
               turn.id === turnId ? { ...turn, agentRun: payload, runRequestLatencyMs } : turn,
-            );
-            persistConversationTurnsNow(nextTurns);
-            return nextTurns;
-          });
+            ),
+          );
           persistPersistedLatestRunId(payload.run_id);
         },
         onRunUpdate: (payload) => {
@@ -608,13 +613,14 @@ export function EmbeddedAgentCopilot({
         },
       });
 
-      if (!canCommitProcessState(requestVersion, normalizedRepoPath)) {
+      if (!canCommitTurnState()) {
         return;
       }
 
       const payload = finalPayload.result;
       const nextProcesses = extractProcessNames(payload.cards);
-      if (nextProcesses.length > 0) {
+      // 进程列表仍受 processState 门约束：仓库路径已改或已有新的进程请求时不覆盖列表。
+      if (nextProcesses.length > 0 && canCommitProcessState(requestVersion, normalizedRepoPath)) {
         setAvailableProcesses(nextProcesses);
         setSelectedProcess((current) => (current && nextProcesses.includes(current) ? current : nextProcesses[0] ?? ""));
       }
@@ -637,7 +643,7 @@ export function EmbeddedAgentCopilot({
         return;
       }
       if (requestError instanceof AgentRunCancelledError) {
-        if (canCommitProcessState(requestVersion, normalizedRepoPath)) {
+        if (canCommitTurnState()) {
           const cancelledRun = requestError.payload;
           setAgentRun(cancelledRun);
           updateConversationTurn(turnId, (turn) => ({
@@ -652,13 +658,7 @@ export function EmbeddedAgentCopilot({
         }
         return;
       }
-      if (
-        requestError instanceof AgentManagedRunRequiresHermesError &&
-        options?.rethrowLocalProviderFallback
-      ) {
-        throw requestError;
-      }
-      if (canCommitProcessState(requestVersion, normalizedRepoPath)) {
+      if (canCommitTurnState()) {
         if (requestError instanceof AgentDisabledQueryError) {
           const disabledError: AgentQueryError = {
             kind: "disabled",
@@ -863,17 +863,7 @@ export function EmbeddedAgentCopilot({
       return;
     }
 
-    try {
-      await executeManagedAgentRun(question, turnId, conversationContext, {
-        rethrowLocalProviderFallback: true,
-      });
-    } catch (requestError) {
-      if (requestError instanceof AgentManagedRunRequiresHermesError) {
-        await executeLocalSyncConversation(question, turnId, conversationContext);
-        return;
-      }
-      throw requestError;
-    }
+    await executeManagedAgentRun(question, turnId, conversationContext);
   }
 
   function canRetryAgentTurn(turn: AgentConversationTurn) {
@@ -1333,9 +1323,9 @@ export function EmbeddedAgentCopilot({
         focusComposerInput();
       }
     } finally {
-      if (processStateRequestVersionRef.current === activeRequestVersion) {
-        setProcessLoading(false);
-      }
+      // 无条件复位：读取期间任何提问/新的进程请求都会 bump 版本号，
+      // 若仅在版本未变时复位，"读取流程"按钮会永久卡在"读取中..."。
+      setProcessLoading(false);
     }
   }
 
@@ -1985,7 +1975,7 @@ export function EmbeddedAgentCopilot({
       ) : null}
 
       {hasConversation ? (
-        <div className="agent-composer-dock">
+        <div className="agent-composer-dock" ref={composerDockRef}>
           <AgentQueuedDraft
             queuedQueries={queuedQueries}
             onRestoreToComposer={restoreQueuedQueryToComposer}

@@ -41,6 +41,10 @@ export function buildStockAnalysisAgentPageContext(
   };
   if (input.asOfDate != null && String(input.asOfDate).trim() !== "") {
     current_filters.as_of_date = input.asOfDate;
+    // 后端 _requested_report_date 只识别 report_date/date 键（读 page_context.current_filters）；
+    // 与其他页面对齐注入 report_date，否则页面日期会被后端静默忽略。
+    // as_of_date 保留用于观察面 echo 兼容。
+    current_filters.report_date = input.asOfDate;
   }
   if (
     input.requestedAsOfDate != null &&

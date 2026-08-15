@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useApiClient } from "../../../api/clientContext";
 import type { ApiEnvelope } from "../../../api/contracts";
@@ -150,6 +150,17 @@ export function useMacroToolkitOperationActions({
   ]);
   const [isRunning, setIsRunning] = useState(false);
 
+  // 卸载时取消来源补齐 / CFFEX / 选股刷新的长任务轮询（最长 240×5s），
+  // 避免离开页面后继续请求并对已卸载组件 setState、批量 refetch。
+  const unmountAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    unmountAbortRef.current = controller;
+    return () => {
+      controller.abort();
+    };
+  }, []);
+
   const clearFullAnalysisCache = useCallback(async (options?: { preserveCrisisGapRepairFeedback?: boolean }) => {
     setFullAnalysisEnvelope(null);
     setFullAnalysisError(null);
@@ -246,6 +257,7 @@ export function useMacroToolkitOperationActions({
       if (!alias || !canRefreshMacroSourceBackfill(item)) {
         return;
       }
+      const signal = unmountAbortRef.current?.signal;
       const receiptId = nextActionReceiptId("source-backfill");
       const receiptDecision = actionReceiptDecisionFields("source-backfill");
       setRefreshingSourceAlias(alias);
@@ -295,6 +307,7 @@ export function useMacroToolkitOperationActions({
           },
           intervalMs: 5_000,
           maxAttempts: 240,
+          signal,
           isTerminal: isSourceBackfillTerminal,
           onUpdate: (payload) => {
             if (isSourceBackfillTerminal(payload.status)) return;
@@ -305,6 +318,7 @@ export function useMacroToolkitOperationActions({
         if (refresh.status === "failed") {
           throw new Error(refreshFailureMessage("来源补齐", refresh.failure_category));
         }
+        if (signal?.aborted) return;
         const isCompleted = refresh.status === "completed";
         const isPartial = refresh.status === "partial";
         const resultMessage = sourceBackfillTerminalMessage(refresh);
@@ -345,6 +359,7 @@ export function useMacroToolkitOperationActions({
           });
         }
       } catch (error) {
+        if (signal?.aborted) return;
         const errorMessage = error instanceof Error ? error.message : "来源补齐失败";
         setSourceBackfillError(errorMessage);
         setSourceBackfillResult(null);
@@ -368,7 +383,9 @@ export function useMacroToolkitOperationActions({
           });
         }
       } finally {
-        setRefreshingSourceAlias(null);
+        if (!signal?.aborted) {
+          setRefreshingSourceAlias(null);
+        }
       }
     },
     [analysis?.as_of_date, clearFullAnalysisCache, client, loadFullAnalysis, recordActionReceipt],
@@ -499,6 +516,7 @@ export function useMacroToolkitOperationActions({
   ]);
 
   const refreshCffexMemberRank = useCallback(async () => {
+    const signal = unmountAbortRef.current?.signal;
     const receiptId = nextActionReceiptId("cffex");
     const receiptDecision = actionReceiptDecisionFields("cffex");
     setIsRefreshingCffex(true);
@@ -537,6 +555,7 @@ export function useMacroToolkitOperationActions({
         },
         intervalMs: 5_000,
         maxAttempts: 240,
+        signal,
         isTerminal: isCffexRefreshTerminal,
         onUpdate: (payload) => {
           if (isCffexRefreshTerminal(payload.status)) return;
@@ -547,6 +566,7 @@ export function useMacroToolkitOperationActions({
       if (refresh.status === "failed") {
         throw new Error(refreshFailureMessage("CFFEX席位刷新", refresh.failure_category));
       }
+      if (signal?.aborted) return;
       const isCompleted = refresh.status === "completed";
       const resultMessage = cffexRefreshTerminalMessage(refresh);
       setRefreshFeedbackTone(isCompleted ? "success" : "warning");
@@ -565,6 +585,7 @@ export function useMacroToolkitOperationActions({
       await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
       await loadFullAnalysis();
     } catch (error) {
+      if (signal?.aborted) return;
       const errorMessage = error instanceof Error ? error.message : "刷新席位失败";
       setRefreshError(errorMessage);
       setRefreshResult(null);
@@ -579,7 +600,9 @@ export function useMacroToolkitOperationActions({
         nextStep: "检查席位刷新权限和数据源",
       });
     } finally {
-      setIsRefreshingCffex(false);
+      if (!signal?.aborted) {
+        setIsRefreshingCffex(false);
+      }
     }
   }, [
     analysis?.as_of_date,
@@ -593,6 +616,7 @@ export function useMacroToolkitOperationActions({
   ]);
 
   const refreshChoiceStock = useCallback(async () => {
+    const signal = unmountAbortRef.current?.signal;
     const receiptId = nextActionReceiptId("choice-stock");
     const receiptDecision = actionReceiptDecisionFields("choice-stock");
     setIsRefreshingChoiceStock(true);
@@ -625,6 +649,7 @@ export function useMacroToolkitOperationActions({
         },
         intervalMs: 5_000,
         maxAttempts: 240,
+        signal,
         onUpdate: (payload) => {
           setStockRefreshResult(
             payload.status === "completed"
@@ -638,6 +663,7 @@ export function useMacroToolkitOperationActions({
           refreshFailureMessage("股票刷新", refresh.failure_category),
         );
       }
+      if (signal?.aborted) return;
       setStockRefreshResult(
         `刷新完成：历史 ${refresh.history_row_count ?? EM_DASH} 行，因子 ${refresh.factor_row_count ?? EM_DASH} 行`,
       );
@@ -655,6 +681,7 @@ export function useMacroToolkitOperationActions({
       await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
       await loadFullAnalysis();
     } catch (error) {
+      if (signal?.aborted) return;
       const errorMessage = error instanceof Error ? error.message : "刷新股票数据失败";
       setStockRefreshError(errorMessage);
       setStockRefreshResult(null);
@@ -669,7 +696,9 @@ export function useMacroToolkitOperationActions({
         nextStep: "检查 Choice 授权和异步任务状态",
       });
     } finally {
-      setIsRefreshingChoiceStock(false);
+      if (!signal?.aborted) {
+        setIsRefreshingChoiceStock(false);
+      }
     }
   }, [
     analysis?.as_of_date,

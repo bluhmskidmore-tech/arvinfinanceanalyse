@@ -18,10 +18,10 @@ import { formatChange, groupLabel, latestIndicatorDate } from "../lib/macroToolk
 import { MetricTile } from "../lib/MacroToolkitStatusPrimitives";
 
 export function IndicatorValueCell({ item }: { item: MacroToolkitIndicator }) {
+  // 「N 行」副行并入指标列 title（见 indicatorColumns），数值列收窄进容器。
   return (
     <div className="macro-toolkit-number-cell">
       <strong>{formatValue(item.latest_value, item.unit)}</strong>
-      <small>{item.row_count.toLocaleString()} 行</small>
     </div>
   );
 }
@@ -147,13 +147,18 @@ export function IndicatorObservationSummary({ indicators }: { indicators: MacroT
   );
 }
 
+// 列宽合计（不含指标列）约 640px：1440 下 808px 容器可完整放下 7 列，
+// 「来源」列不再被静默裁掉；行数副行并入指标列 title。
 const indicatorColumns: ColumnsType<MacroToolkitIndicator> = [
   {
     title: "指标",
     dataIndex: "label",
     key: "label",
     render: (_, item) => (
-      <div className="macro-toolkit-script-cell">
+      <div
+        className="macro-toolkit-script-cell"
+        title={`${item.label} · ${item.alias} · ${item.row_count.toLocaleString()} 行`}
+      >
         <span className="macro-toolkit-script-name">{item.label}</span>
         <span className="macro-toolkit-script-file">{item.alias}</span>
       </div>
@@ -163,34 +168,34 @@ const indicatorColumns: ColumnsType<MacroToolkitIndicator> = [
     title: "分组",
     dataIndex: "group",
     key: "group",
-    width: 120,
+    width: 84,
     render: (group: string) => <span className="macro-toolkit-indicator-group">{groupLabel(group)}</span>,
   },
   {
     title: "最新值",
     dataIndex: "latest_value",
     key: "latest_value",
-    width: 150,
+    width: 118,
     render: (_, item) => <IndicatorValueCell item={item} />,
   },
   {
     title: "变化",
     dataIndex: "change_pct",
     key: "change_pct",
-    width: 110,
+    width: 90,
     render: (_, item) => <DeltaCell change={item.change} changePct={item.change_pct} />,
   },
   {
     title: "近期走势",
     key: "recent_points",
-    width: 140,
+    width: 108,
     render: (_, item) => <IndicatorSparkline item={item} />,
   },
   {
     title: "最新值日期",
     dataIndex: "latest_date",
     key: "latest_date",
-    width: 120,
+    width: 108,
     render: (date: string | null, item) => (
       <div className="macro-toolkit-date-cell">
         <span>{date ?? EM_DASH}</span>
@@ -202,7 +207,7 @@ const indicatorColumns: ColumnsType<MacroToolkitIndicator> = [
     title: "来源",
     dataIndex: "source",
     key: "source",
-    width: 120,
+    width: 132,
     render: (source: string | null, item) => (
       <div className="macro-toolkit-source-cell">
         <span>{source ?? "未命中"}</span>
@@ -241,7 +246,7 @@ export function MacroToolkitIndicatorSection({
           dataSource={analysis.indicators}
           pagination={false}
           tableLayout="fixed"
-          scroll={{ x: 920 }}
+          scroll={{ x: 760 }}
           rowClassName={(item) => (item.quality === "missing" ? "macro-toolkit-row--missing" : "")}
         />
       )}

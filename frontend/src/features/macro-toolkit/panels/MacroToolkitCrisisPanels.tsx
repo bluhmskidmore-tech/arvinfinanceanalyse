@@ -21,10 +21,11 @@ import type {
 } from "../../../api/macroToolkitClient";
 import { BaseChart } from "../../../components/charts/BaseChart";
 import { PageSectionLead } from "../../../components/page/PagePrimitives";
-import { dhApiTokens } from "../../../theme/designSystem";
+import { nocturneTokens } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 import { MetricTile } from "../lib/MacroToolkitStatusPrimitives";
 import * as crisisSupport from "../lib/macroToolkitCrisisSupport";
+import { repairActionCodeLabel } from "../lib/macroToolkitDataHealthSupport";
 
 type MacroToolkitRepairItem = NonNullable<MacroToolkitDataHealth["repair_items"]>[number];
 type CommodityShortfallChange = crisisSupport.CommodityShortfallChange;
@@ -125,6 +126,19 @@ function crisisScopeLabel(value: string) {
   return CRISIS_SCOPE_LABELS[value] ?? value;
 }
 
+/** 组件卡英文标题中文化（原文与 snake 键收 title）；未登记键回落后端 label。 */
+const CRISIS_COMPONENT_CARD_LABELS: Record<string, string> = {
+  equity_vol: "沪深300已实现波动",
+  fx_vol: "美元人民币已实现波动",
+  commodity_vol: "南华商品已实现波动",
+  liquidity_stress: "DR007-7天逆回购利差",
+  credit_spread: "信用利差",
+};
+
+function crisisComponentCardLabel(component: { key: string; label: string }) {
+  return CRISIS_COMPONENT_CARD_LABELS[component.key] ?? component.label;
+}
+
 function buildCrisisScoreHistoryOption(points: crisisSupport.CrisisScoreHistoryPoint[]): EChartsOption {
   return {
     grid: { left: 48, right: 16, top: 18, bottom: 28 },
@@ -144,14 +158,14 @@ function buildCrisisScoreHistoryOption(points: crisisSupport.CrisisScoreHistoryP
       type: "category",
       boundaryGap: false,
       data: points.map((point) => point.date),
-      axisLabel: { color: dhApiTokens.color.inkMuted, fontSize: 11 },
-      axisLine: { lineStyle: { color: dhApiTokens.color.lineSoft } },
+      axisLabel: { color: nocturneTokens.color.inkMuted, fontSize: 11 },
+      axisLine: { lineStyle: { color: nocturneTokens.color.lineSoft } },
     },
     yAxis: {
       type: "value",
       scale: true,
-      axisLabel: { color: dhApiTokens.color.inkMuted, fontSize: 11 },
-      splitLine: { lineStyle: { color: dhApiTokens.color.lineSoft } },
+      axisLabel: { color: nocturneTokens.color.inkMuted, fontSize: 11 },
+      splitLine: { lineStyle: { color: nocturneTokens.color.lineSoft } },
     },
     series: [
       {
@@ -159,9 +173,9 @@ function buildCrisisScoreHistoryOption(points: crisisSupport.CrisisScoreHistoryP
         type: "line",
         data: points.map((point) => point.crisis_score),
         showSymbol: false,
-        lineStyle: { color: dhApiTokens.color.blue, width: 1.6 },
-        itemStyle: { color: dhApiTokens.color.blue },
-        areaStyle: { color: dhApiTokens.color.blueSoft },
+        lineStyle: { color: nocturneTokens.color.blue, width: 1.6 },
+        itemStyle: { color: nocturneTokens.color.blue },
+        areaStyle: { color: nocturneTokens.color.blueSoft },
       },
     ],
   };
@@ -1050,13 +1064,22 @@ export function CrisisScoreEvidencePanel({
             {crisisGapGroups.map((group) => (
               <div className="macro-toolkit-crisis-gap-group" key={group.key}>
                 <span>{group.label}</span>
-                {group.items.map((item) => (
-                  <small key={`${item.label}-${item.warning}`}>
-                    {item.label} · {item.warning}
-                    <br />
-                    {item.detail}
-                  </small>
-                ))}
+                {group.items.map((item) => {
+                  // 大小写双形 token 并排收敛为一条中文；原始码收 title。
+                  const warningZh = repairActionCodeLabel(item.warning);
+                  const labelDuplicatesWarning =
+                    item.label.trim().toUpperCase() === item.warning.trim().toUpperCase();
+                  return (
+                    <small
+                      key={`${item.label}-${item.warning}`}
+                      title={`${item.label} · ${item.warning}`}
+                    >
+                      {labelDuplicatesWarning ? warningZh : `${item.label} · ${warningZh}`}
+                      <br />
+                      {item.detail}
+                    </small>
+                  );
+                })}
                 <CrisisGapAction
                   group={group}
                   repairItems={repairItems}
@@ -1079,10 +1102,12 @@ export function CrisisScoreEvidencePanel({
       <div className="macro-toolkit-crisis-evidence__components">
         {components.map((component) => (
           <div className="macro-toolkit-crisis-component" key={component.key}>
-            <span>{component.label}</span>
+            <span title={`${component.label} · ${component.key}`}>
+              {crisisComponentCardLabel(component)}
+            </span>
             <strong>{formatValue(component.z_score, "")}</strong>
-            <small>
-              {component.key} · 权重 {formatCrisisWeight(component.key, weights)} · 原始值{" "}
+            <small title={`${component.key} · 权重 ${formatCrisisWeight(component.key, weights)} · 原始值 ${formatValue(component.raw_value, "")}`}>
+              权重 {formatCrisisWeight(component.key, weights)} · 原始值{" "}
               {formatValue(component.raw_value, "")}
             </small>
           </div>

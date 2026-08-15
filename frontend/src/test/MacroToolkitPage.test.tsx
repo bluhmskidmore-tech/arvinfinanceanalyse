@@ -1253,7 +1253,7 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(dataHealth).toHaveTextContent("7/9");
     expect(dataHealth).toHaveTextContent("最新来源日期");
     expect(dataHealth).toHaveTextContent("2026-04-30");
-    expect(dataHealth).toHaveTextContent("能力降级");
+    expect(dataHealth).toHaveTextContent("降级+不可用");
     expect(dataHealth).toHaveTextContent("1");
     expect(dataHealth).toHaveTextContent("待处理数据项");
     expect(dataHealth).toHaveTextContent("M0041813");
@@ -1312,7 +1312,8 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(
       await screen.findByRole("heading", { level: 2, name: "市场踩踏风险" }),
     ).toBeInTheDocument();
-    expect((await screen.findAllByText("橙色风险")).length).toBeGreaterThanOrEqual(2);
+    // 02 区头徽标已按 §6 去重（读数保留在 hero 主信号与 01 核心信号卡）。
+    expect((await screen.findAllByText("橙色风险")).length).toBeGreaterThanOrEqual(1);
     expect(await screen.findByText("总仓位上限30%，高位主题只减不加，午后不做冲高追买。")).toBeInTheDocument();
     expect(await screen.findByText("上涨家数")).toBeInTheDocument();
     expect(await screen.findByText("跌停家数")).toBeInTheDocument();
@@ -1654,8 +1655,9 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
       primarySignalLabel.closest(".macro-toolkit-metric"),
       "house view primary signal tile",
     );
-    await waitFor(() => expect(primarySignalTile).toHaveTextContent("流动性"));
-    expect(primarySignalTile).toHaveTextContent("偏松");
+    // 主信号按后端风险优先规则取卡：A股橙色风险压过流动性偏松，脚本产物永不入选。
+    await waitFor(() => expect(primarySignalTile).toHaveTextContent("市场踩踏风险"));
+    expect(primarySignalTile).toHaveTextContent("橙色风险");
     expect(primarySignalTile).not.toHaveTextContent("脚本产物");
     expect(primarySignalTile).not.toHaveTextContent("final_signal.csv");
   });
@@ -2368,7 +2370,11 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(within(crisisHistory).getByTestId("macro-toolkit-echarts-stub")).toBeInTheDocument();
     expect(crisisEvidence).toHaveTextContent("Nanhua commodity index");
     expect(crisisEvidence).toHaveTextContent("NH0100.NHF");
-    expect(crisisEvidence).toHaveTextContent("commodity_vol");
+    // 组件卡英文标题中文化，snake 键与原文收 title（DESIGN §7）。
+    expect(crisisEvidence).toHaveTextContent("南华商品已实现波动");
+    expect(
+      within(crisisEvidence).getByTitle(/commodity_vol · 权重/),
+    ).toBeInTheDocument();
     expect(crisisEvidence).toHaveTextContent("2026-04-10");
     expect(crisisEvidence).toHaveTextContent("商品旁证覆盖");
     expect(crisisEvidence).toHaveTextContent("6/6");
@@ -4285,6 +4291,52 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(within(runtimeStrip).getByRole("button", { name: "查看完整分析" })).toBeInTheDocument();
   });
 
+  it("keeps a hanging strategy query after a failed full analysis load", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
+    const coreEnvelope = {
+      ...analysisEnvelope,
+      result: {
+        ...analysisEnvelope.result,
+        runtime_status: {
+          analysis_scope: "core",
+          deferred_sections: [
+            {
+              key: "capability_results",
+              label: "功能结果",
+              status: "deferred",
+            },
+          ],
+        },
+        capability_results: [],
+      },
+    };
+    const getMacroToolkitStrategySummaries = vi
+      .fn<ApiClient["getMacroToolkitStrategySummaries"]>()
+      .mockImplementation(() => new Promise<never>(() => {}));
+    const getMacroToolkitAnalysis = vi.fn(
+      (options?: Parameters<ApiClient["getMacroToolkitAnalysis"]>[0]) =>
+        options?.detail === "full"
+          ? Promise.reject(new Error("full analysis 502"))
+          : Promise.resolve(coreEnvelope),
+    );
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis,
+      getMacroToolkitStrategySummaries,
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const runtimeStrip = await screen.findByLabelText("宏观工具运行状态");
+    await user.click(within(runtimeStrip).getByRole("button", { name: "查看完整分析" }));
+
+    expect(await screen.findByText("完整分析加载失败")).toBeInTheDocument();
+    expect(screen.getByText("full analysis 502")).toBeInTheDocument();
+    expect(getMacroToolkitStrategySummaries).toHaveBeenCalledTimes(1);
+  });
+
   it("lets the first-screen deferred evidence action create a reviewable full-analysis receipt", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
@@ -5699,6 +5751,13 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
 
     const report = await screen.findByLabelText("影子组合报告");
     expect(report).toHaveTextContent("只读影子组合");
+    // SCREAMING/snake 胶囊改中文短标，原 token 收 title。
+    expect(within(report).getByTitle("rv_macro_toolkit_shadow_portfolio_v1")).toHaveTextContent(
+      "规则 v1",
+    );
+    expect(within(report).getByTitle("READ_ONLY_SHADOW_NOT_PRODUCTION")).toHaveTextContent(
+      "只读·非生产",
+    );
     expect(report).toHaveTextContent("当前正式规则");
     expect(report).toHaveTextContent("深度价值质量影子组合");
     expect(report).toHaveTextContent("+38.0%");

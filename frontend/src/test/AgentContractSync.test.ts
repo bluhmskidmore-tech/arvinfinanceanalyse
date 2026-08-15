@@ -42,6 +42,7 @@ import type {
   AgentRunStatus,
   AgentRunStatusResponse,
   AgentSuggestedAction,
+  ResultMeta,
 } from "../api/contracts";
 import {
   AGENT_RUN_STATUSES,
@@ -60,6 +61,14 @@ const BACKEND_SCHEMA_SOURCES = {
 const BACKEND_ROUTE_SOURCES = {
   agent: readBackendRoute("agent.py"),
   agentWorkspace: readBackendRoute("agent_workspace.py"),
+};
+
+/** ResultMeta 基类在 backend/app/schemas（非 agent/schemas），AgentResultMeta 继承它。 */
+const BACKEND_BASE_SCHEMA_SOURCES = {
+  resultMeta: readFileSync(
+    resolve(process.cwd(), "../backend/app/schemas/result_meta.py"),
+    "utf8",
+  ),
 };
 
 function readBackendSchema(fileName: string) {
@@ -191,6 +200,40 @@ const AGENT_EVIDENCE_FIELDS = {
   quality_flag: true,
   evidence_strength: true,
 } as const satisfies Record<keyof AgentEvidence, true>;
+
+/**
+ * ResultMeta 基类字段清单（contracts/core.ts ↔ backend/app/schemas/result_meta.py）。
+ * 消除"基类字段盲区"：AgentResultMeta 的 parity 只覆盖子类重声明字段，
+ * 基类新增字段（如 amount_currency_basis）需要这份全量清单兜底。
+ */
+const RESULT_META_BASE_FIELDS = {
+  trace_id: true,
+  basis: true,
+  result_kind: true,
+  formal_use_allowed: true,
+  amount_currency_basis: true,
+  amount_currency_basis_note: true,
+  source_version: true,
+  vendor_version: true,
+  rule_version: true,
+  cache_version: true,
+  cache_key: true,
+  quality_flag: true,
+  vendor_status: true,
+  fallback_mode: true,
+  requested_report_date: true,
+  resolved_report_date: true,
+  scenario_flag: true,
+  as_of_date: true,
+  date_basis: true,
+  fallback_date: true,
+  generated_at: true,
+  filters_applied: true,
+  tables_used: true,
+  evidence_rows: true,
+  next_drill: true,
+  source_surface: true,
+} as const satisfies Record<keyof ResultMeta, true>;
 
 /**
  * AgentResultMeta 后端继承 ResultMeta，只比对子类内重声明/新增的字段；
@@ -364,6 +407,14 @@ describe("Agent 前后端契约防漂移（backend schemas ↔ contracts/agent.t
   it("agent_request.py 模型字段与前端契约一致", () => {
     expectFieldParity(BACKEND_SCHEMA_SOURCES.agentRequest, "AgentQueryRequest", AGENT_QUERY_REQUEST_FIELDS);
     expectFieldParity(BACKEND_SCHEMA_SOURCES.agentRequest, "AgentPageContext", AGENT_PAGE_CONTEXT_FIELDS);
+  });
+
+  it("ResultMeta 基类字段与后端 schemas/result_meta.py 一致（含 amount_currency_basis）", () => {
+    expectFieldParity(
+      BACKEND_BASE_SCHEMA_SOURCES.resultMeta,
+      "ResultMeta",
+      RESULT_META_BASE_FIELDS,
+    );
   });
 
   it("agent_response.py 模型字段与前端契约一致", () => {

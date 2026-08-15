@@ -1806,3 +1806,38 @@ def test_choice_macro_latest_returns_stale_result_meta_when_latest_rows_are_stal
     assert payload["result_meta"]["vendor_version"] == "vv_choice_batch_stale"
     assert payload["result"]["series"][0]["quality_flag"] == "stale"
     get_settings.cache_clear()
+
+
+def test_macro_vendor_route_module_has_no_task_import():
+    """The route delegates task resolution and execution to the service layer."""
+    import ast
+
+    from tests.helpers import ROOT
+
+    source = (ROOT / "backend" / "app" / "api" / "routes" / "macro_vendor.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    offending: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and str(node.module or "").startswith("backend.app.tasks"):
+            offending.append(str(node.module))
+        if isinstance(node, ast.Import):
+            offending.extend(
+                alias.name for alias in node.names if alias.name.startswith("backend.app.tasks")
+            )
+    assert offending == []
+
+
+def test_macro_vendor_lazy_task_proxies_keep_fn_call_semantics():
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+    from backend.app.tasks import choice_macro
+
+    actor_proxy = route_module.refresh_choice_macro_snapshot
+    assert getattr(actor_proxy, "fn", actor_proxy) is choice_macro.refresh_choice_macro_snapshot.fn
+
+    plain_proxy = route_module.refresh_public_cross_asset_headlines
+    resolved_plain = getattr(plain_proxy, "fn", plain_proxy)
+    assert resolved_plain is plain_proxy
+    assert callable(resolved_plain)

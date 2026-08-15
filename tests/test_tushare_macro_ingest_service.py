@@ -14,6 +14,7 @@ from backend.app.repositories.external_data_catalog_repo import (
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.repositories.raw_zone_repo import RawZoneRepository
 from backend.app.repositories.source_manifest_repo import SourceManifestRepository
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.repositories.tushare_adapter import VendorAdapter
 from backend.app.repositories.tushare_catalog_seed import TUSHARE_M2A_SERIES
 from backend.app.services.external_std_macro_etl_service import ExternalStdMacroEtlService
@@ -55,7 +56,8 @@ def test_ingest_series_writes_raw_catalog_manifest(tmp_path: Path) -> None:
         catalog_repo=catalog,
         manifest_repo=manifest,
     )
-    out = svc.ingest_series(sid, "batch-a")
+    with repository_task_write_scope("backend.app.tasks.tushare_macro_ingest_test"):
+        out = svc.ingest_series(sid, "batch-a")
     raw_path = Path(str(out["raw_zone_path"]))
     assert raw_path.is_file()
     assert b"vendor_kind" in raw_path.read_bytes()
@@ -90,7 +92,8 @@ def test_ingest_all_seed_series_covers_seed_list(tmp_path: Path) -> None:
         catalog_repo=catalog,
         manifest_repo=manifest,
     )
-    results = svc.ingest_all_seed_series("batch-multi")
+    with repository_task_write_scope("backend.app.tasks.tushare_macro_ingest_test"):
+        results = svc.ingest_all_seed_series("batch-multi")
     assert len(results) == len(TUSHARE_M2A_SERIES)
     ids = {r["series_id"] for r in results}
     assert ids == {c["series_id"] for c in TUSHARE_M2A_SERIES}
@@ -118,7 +121,8 @@ def test_ingest_series_materializes_zero_and_reports_row_count(tmp_path: Path) -
             etl_service=ExternalStdMacroEtlService(raw, conn),
         )
 
-        out = svc.ingest_series(sid, "batch-materialized")
+        with repository_task_write_scope("backend.app.tasks.tushare_macro_ingest_test"):
+            out = svc.ingest_series(sid, "batch-materialized")
 
         assert out["materialized_rows"] == 1
         stored = conn.execute(

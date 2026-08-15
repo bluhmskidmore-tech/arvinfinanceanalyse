@@ -1,4 +1,5 @@
 import type { ChoiceMacroLatestPoint } from "../api/contracts";
+import { EM_DASH } from "./format";
 
 type ChoiceMacroFormatOptions = {
   spaceBeforeUnit?: boolean;
@@ -63,7 +64,7 @@ export function formatChoiceMacroDelta(
   options: ChoiceMacroFormatOptions = {},
 ): string {
   if (point.latest_change == null) {
-    return options.emptyDisplay ?? "--";
+    return options.emptyDisplay ?? EM_DASH;
   }
 
   const unit = normalizeUnit(point);

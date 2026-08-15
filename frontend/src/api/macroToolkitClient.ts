@@ -280,6 +280,10 @@ export type MacroToolkitCapabilityResult = {
   warnings: string[];
   result: Record<string, unknown> & {
     input_evidence?: MacroToolkitInputEvidence | null;
+    /** 可计算分项数；Crisis 缺少分析日期的兜底结果不带该字段。 */
+    available_component_count?: number;
+    /** 权重表分项总数，是覆盖率分母的权威来源，不能用 components.length 代替。 */
+    component_count?: number;
   };
 };
 
@@ -683,6 +687,24 @@ export type MacroToolkitReportBundle = {
   artifacts: MacroToolkitReportBundleArtifact[];
 };
 
+/**
+ * 后端按风险优先规则显式声明的首屏主信号（rv_macro_primary_signal_risk_first_v1）。
+ * Crisis 是 z-score、A股踩踏是 0-100 分、方向卡是离散状态分，三者不可比较，
+ * 因此前端只能按 key 取卡，不得自行排序推断。
+ */
+export type MacroToolkitPrimarySignal = {
+  key: string | null;
+  selection_status: "selected" | "deferred" | "unavailable";
+  reason_code: string;
+  rule_version: string;
+};
+
+export type MacroToolkitStrategyDataStatus = {
+  status: string;
+  reason?: string | null;
+  summary_count?: number | null;
+};
+
 export type MacroToolkitAnalysisPayload = {
   default_data_sources: string[];
   as_of_date: string | null;
@@ -701,6 +723,8 @@ export type MacroToolkitAnalysisPayload = {
   };
   indicators: MacroToolkitIndicator[];
   signal_cards: MacroToolkitSignalCard[];
+  /** 滚动部署期间旧后端可能未返回；缺失时前端 fail closed，不回退分数排序。 */
+  primary_signal?: MacroToolkitPrimarySignal;
   model_readiness?: MacroToolkitModelReadiness[];
   readiness_summary?: MacroToolkitReadinessSummary;
   hason_strategy?: MacroToolkitHasonStrategy;
@@ -716,6 +740,7 @@ export type MacroToolkitAnalysisPayload = {
   choice_stock_refresh?: MacroToolkitChoiceStockRefreshStatus;
   runtime_status?: MacroToolkitRuntimeStatusPayload;
   data_health?: MacroToolkitDataHealth;
+  strategy_data_status?: MacroToolkitStrategyDataStatus;
   warnings: string[];
 };
 
@@ -886,6 +911,7 @@ export type MacroToolkitStrategySummariesPayload = {
   shadow_portfolio_report?: MacroToolkitShadowPortfolioReport;
   choice_stock_refresh?: MacroToolkitChoiceStockRefreshStatus;
   macro_etf_strategy?: MacroToolkitMacroEtfStrategySnapshot;
+  strategy_data_status?: MacroToolkitStrategyDataStatus;
 };
 
 export type MacroToolkitRunResponse = {

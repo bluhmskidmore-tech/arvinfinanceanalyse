@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createApiClient, type ApiClient } from "../api/client";
@@ -8,6 +9,10 @@ import { ApiClientProvider } from "../api/clientContext";
 import MacroObservationPage from "../features/macro-observation/pages/MacroObservationPage";
 import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
+
+vi.mock("../lib/echarts", () => ({
+  default: () => <div data-testid="macro-observation-echarts-stub" />,
+}));
 
 beforeAll(async () => {
   await preloadWorkbenchRouteModules("macro-observation");
@@ -30,7 +35,9 @@ function renderObservationPage(client: ApiClient, queryClient = createTestQueryC
   return render(
     <ApiClientProvider client={client}>
       <QueryClientProvider client={queryClient}>
-        <MacroObservationPage />
+        <MemoryRouter>
+          <MacroObservationPage />
+        </MemoryRouter>
       </QueryClientProvider>
     </ApiClientProvider>,
   );
@@ -180,6 +187,37 @@ describe("MacroObservationPage", () => {
         expect.objectContaining({ detail: "full" }),
       ),
     );
+  });
+
+  it("does not restart an in-flight strategy query after a failed full analysis load", async () => {
+    const user = userEvent.setup();
+    const { coreEnvelope } = await buildCoreDeferredEnvelope();
+    const baseClient = createApiClient({ mode: "mock" });
+    const getMacroToolkitStrategySummaries = vi
+      .fn<ApiClient["getMacroToolkitStrategySummaries"]>()
+      .mockImplementation(() => new Promise<never>(() => {}));
+    const getMacroToolkitAnalysis = vi.fn(
+      (options?: Parameters<ApiClient["getMacroToolkitAnalysis"]>[0]) =>
+        options?.detail === "full"
+          ? Promise.reject(new Error("full analysis 502"))
+          : Promise.resolve(coreEnvelope),
+    );
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis,
+      getMacroToolkitStrategySummaries,
+    } as ApiClient;
+
+    renderObservationPage(client);
+
+    const fullAnalysisButton = await screen.findByRole("button", { name: "查看完整分析" });
+    await user.click(fullAnalysisButton);
+
+    await waitFor(() =>
+      expect(screen.getByText(/完整分析加载失败/)).toBeInTheDocument(),
+    );
+    // 完整分析与策略摘要是独立读请求；失败不能取消并重启仍在进行的策略初载。
+    expect(getMacroToolkitStrategySummaries).toHaveBeenCalledTimes(1);
   });
 
   it("assembles the six numbered sections with standard leads", async () => {

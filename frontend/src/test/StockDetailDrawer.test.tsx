@@ -493,6 +493,14 @@ describe("StockDetailDrawer", () => {
     expect(panel).toHaveTextContent("78/100");
     expect(panel).toHaveTextContent("信心 高");
     expect(panel).toHaveTextContent("阳包阴");
+    // reasons/risks 徽标走中文语域，snake_case 原 token 只进 title。
+    const tags = screen.getByTestId("stock-detail-kline-tags");
+    expect(within(tags).getByText("收于 MA20 上方")).toHaveAttribute(
+      "title",
+      "close_above_ma20",
+    );
+    expect(within(tags).getByText("MA20 高于 MA60")).toBeInTheDocument();
+    expect(panel).not.toHaveTextContent("close_above_ma20");
     expect(panel).not.toHaveTextContent("买入建议");
     expect(panel).not.toHaveTextContent("卖出建议");
     expect(panel).not.toHaveTextContent("下单");

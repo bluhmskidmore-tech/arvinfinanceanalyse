@@ -13,6 +13,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 import duckdb  # noqa: E402
+from backend.app.governance.locks import acquire_lock, resolve_duckdb_writer_lock  # noqa: E402
 from backend.app.repositories.duckdb_migrations import (  # noqa: E402
     apply_pending_migrations_on_connection,
     ensure_choice_macro_schema_if_missing,
@@ -242,21 +243,22 @@ def materialize_cycle_rotation_macro_fixture(
     source_version = str(fixture.get("source_version") or "sv_cycle_rotation_macro_fixture_v1")
     vendor_version = str(fixture.get("vendor_version") or "vv_cycle_rotation_macro_fixture_v1")
 
-    conn = duckdb.connect(str(db_path), read_only=False)
-    try:
-        apply_pending_migrations_on_connection(conn)
-        ensure_choice_macro_schema_if_missing(conn)
-        catalog_inserted = ensure_cycle_rotation_macro_catalog(conn, config)
-        row_count = upsert_macro_seed_rows(
-            conn,
-            rows=rows,
-            source_version=source_version,
-            vendor_version=vendor_version,
-            run_id=run_id,
-            overwrite_existing=overwrite_existing,
-        )
-    finally:
-        conn.close()
+    with acquire_lock(resolve_duckdb_writer_lock(db_path), base_dir=db_path.parent):
+        conn = duckdb.connect(str(db_path), read_only=False)
+        try:
+            apply_pending_migrations_on_connection(conn)
+            ensure_choice_macro_schema_if_missing(conn)
+            catalog_inserted = ensure_cycle_rotation_macro_catalog(conn, config)
+            row_count = upsert_macro_seed_rows(
+                conn,
+                rows=rows,
+                source_version=source_version,
+                vendor_version=vendor_version,
+                run_id=run_id,
+                overwrite_existing=overwrite_existing,
+            )
+        finally:
+            conn.close()
 
     series_ids = sorted({row.series_id for row in rows})
     return {

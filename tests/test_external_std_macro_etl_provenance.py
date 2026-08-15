@@ -8,6 +8,7 @@ from backend.app.repositories.external_data_migrations_extra import (
     ensure_std_external_macro_schema,
 )
 from backend.app.repositories.raw_zone_repo import RawZoneRepository
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.schemas.external_data import ExternalDataCatalogEntry
 from backend.app.services.external_std_macro_etl_service import ExternalStdMacroEtlService
 
@@ -53,13 +54,14 @@ def test_external_std_macro_etl_preserves_explicit_official_versions(tmp_path) -
         raw_zone = RawZoneRepository(local_raw_path=str(tmp_path / "data" / "raw"))
         service = ExternalStdMacroEtlService(raw_zone, conn)
 
-        count = service.materialize_from_raw(
-            str(raw_file),
-            entry,
-            "nbs-gdp-batch-1",
-            vendor_version="vv_nbs_gdp_release_sha256_deadbeef",
-            rule_version="rv_nbs_gdp_release_v1",
-        )
+        with repository_task_write_scope("backend.app.tasks.external_std_macro_etl_test"):
+            count = service.materialize_from_raw(
+                str(raw_file),
+                entry,
+                "nbs-gdp-batch-1",
+                vendor_version="vv_nbs_gdp_release_sha256_deadbeef",
+                rule_version="rv_nbs_gdp_release_v1",
+            )
 
         row = conn.execute(
             """

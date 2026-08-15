@@ -198,3 +198,29 @@ def test_explicit_research_intent_context_keeps_direct_execution(tmp_path):
     assert calls == ["研究速读"]
     assert envelope.result_meta.result_kind == "agent.research_radar_brief"
     assert envelope.result_meta.formal_use_allowed is False
+
+
+def test_research_invalid_workflow_mode_returns_error_envelope(tmp_path):
+    """回归（B15-8）：research workflow 的 workflow_mode 同样只接受 plan/execute
+    （或缺省），非法值返回错误 envelope 且不执行 handler。"""
+    tool_module = _tool_module()
+    request_module = _request_module()
+    calls: list[str] = []
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={"research_radar_brief": _stub_research_handler(calls)},
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="/research-radar",
+            context={"workflow_mode": "later"},
+        )
+    )
+
+    assert calls == []
+    assert envelope.result_meta.result_kind == "agent.workflow.research_radar_brief"
+    assert envelope.result_meta.quality_flag == "error"
+    assert "workflow_mode" in envelope.answer
+    assert "'later'" in envelope.answer

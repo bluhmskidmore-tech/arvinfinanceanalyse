@@ -53,6 +53,7 @@ import {
   isMacroToolkitReadForbidden,
   isObservationOutputSignal,
   isReadyStatus,
+  pickPrimarySignal,
 } from "../lib/macroToolkitDisplayFormat";
 import { buildMacroToolkitCommitteeModel } from "../lib/macroToolkitCommitteeModel";
 import {
@@ -143,7 +144,6 @@ export default function MacroToolkitPage() {
     setIsLoadingFullAnalysis(true);
     setFullAnalysisError(null);
     try {
-      await queryClient.cancelQueries({ queryKey: ["macro-toolkit", "strategy-summaries"] });
       if (options?.force) {
         await queryClient.cancelQueries({ queryKey: MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY });
         queryClient.removeQueries({ queryKey: MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY });
@@ -267,10 +267,8 @@ export default function MacroToolkitPage() {
   // 脚本产物等运维元信息不进入核心信号区；产物状态保留在深度证据入口与执行区。
   const analyticalSignalCards = analysisSignalCards.filter((card) => !isObservationOutputSignal(card));
   const visibleSignalCards = analyticalSignalCards;
-  const primarySignal =
-    analyticalSignalCards
-      .filter((card) => card.score != null)
-      .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))[0] ?? null;
+  // 主信号由后端风险优先规则声明；Crisis z-score 与 0-100 分不可比较，前端不排序。
+  const primarySignal = pickPrimarySignal(analysisSignalCards, analysis?.primary_signal);
   const isCoreAnalysis = analysis?.runtime_status?.analysis_scope === "core";
   const queryErrors = [analysisQuery.error, scriptsQuery.error, strategyQuery.error];
   const queryErrorText = queryErrors

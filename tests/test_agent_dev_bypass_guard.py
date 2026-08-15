@@ -23,9 +23,14 @@ pytestmark = [
 ]
 
 
-def _settings(tmp_path: Path, *, bypass: bool) -> SimpleNamespace:
+def _settings(
+    tmp_path: Path,
+    *,
+    bypass: bool,
+    environment: str = "development",
+) -> SimpleNamespace:
     return SimpleNamespace(
-        environment="development",
+        environment=environment,
         agent_enabled=True,
         agent_dev_scope_bypass=bypass,
         agent_provider="local",
@@ -173,6 +178,55 @@ def test_agent_dev_scope_bypass_rejects_non_loopback_query_and_workspace_write(
     assert "10.0.0.5" in caplog.text
     assert "non-loopback" in caplog.text
     assert calls == []
+
+
+def test_agent_dev_scope_bypass_is_inert_outside_development(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    # _dev_bypass_allowed keeps three gates: environment == development, the
+    # bypass switch, and a loopback client. Outside development the first gate
+    # fails silently, so even bypass=True + loopback must run ensure_user_allowed.
+    settings = _settings(tmp_path, bypass=True, environment="production")
+    client = _client(monkeypatch, settings, client_host="127.0.0.1")
+    route_module = importlib.import_module("backend.app.api.routes.agent")
+    workspace_route_module = importlib.import_module(
+        "backend.app.api.routes.agent_workspace"
+    )
+    scope_checks: list[str] = []
+
+    def reject_scope_check(**kwargs):
+        scope_checks.append(f"{kwargs['resource']}:{kwargs['action']}")
+        raise PermissionError("missing production scope")
+
+    def unexpected_agent_call(*_args, **_kwargs):
+        raise AssertionError("production bypass reached agent execution")
+
+    def unexpected_workspace_write(**_kwargs):
+        raise AssertionError("production bypass reached workspace storage")
+
+    monkeypatch.setattr(route_module, "ensure_user_allowed", reject_scope_check)
+    monkeypatch.setattr(
+        workspace_route_module,
+        "ensure_user_allowed",
+        reject_scope_check,
+    )
+    monkeypatch.setattr(route_module, "execute_agent_query", unexpected_agent_call)
+    monkeypatch.setattr(
+        workspace_route_module,
+        "create_project",
+        unexpected_workspace_write,
+    )
+
+    query_response = client.post("/api/agent/query", json={"question": "ping"})
+    project_response = client.post(
+        "/api/agent/projects",
+        json={"name": "Production loopback project"},
+    )
+
+    assert query_response.status_code == 403
+    assert project_response.status_code == 403
+    assert scope_checks == ["agent:read", "agent:write"]
 
 
 def test_agent_dev_scope_bypass_false_still_uses_scope_authorization(

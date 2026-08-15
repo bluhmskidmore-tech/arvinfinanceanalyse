@@ -19,9 +19,12 @@ def run_crisis_score_inputs_refresh(
     duckdb_path: str | None = None,
     window_days: int = DEFAULT_ROLLING_WINDOW_DAYS,
     dry_run: bool = False,
+    as_of: str | None = None,
 ) -> dict[str, object]:
-    end_date = date.today().isoformat()
-    start_date = (date.today() - timedelta(days=max(window_days - 1, 0))).isoformat()
+    # 单次读取时钟（可注入 as_of ISO 日期），避免双读 date.today() 跨午夜时窗口错位。
+    as_of_date = date.fromisoformat(as_of) if as_of else date.today()
+    end_date = as_of_date.isoformat()
+    start_date = (as_of_date - timedelta(days=max(window_days - 1, 0))).isoformat()
     payload = backfill_crisis_score_inputs(
         duckdb_path=duckdb_path,
         start_date=start_date,

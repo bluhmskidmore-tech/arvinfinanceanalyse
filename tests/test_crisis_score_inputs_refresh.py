@@ -10,8 +10,10 @@ from backend.app.tasks.crisis_score_inputs_refresh import (
 
 
 def test_run_crisis_score_inputs_refresh_uses_rolling_window() -> None:
-    expected_end = date.today().isoformat()
-    expected_start = (date.today() - timedelta(days=DEFAULT_ROLLING_WINDOW_DAYS - 1)).isoformat()
+    # 注入固定 as_of，窗口断言与真实时钟解耦（消除跨午夜翻车）。
+    as_of = date(2026, 8, 12)
+    expected_end = as_of.isoformat()
+    expected_start = (as_of - timedelta(days=DEFAULT_ROLLING_WINDOW_DAYS - 1)).isoformat()
     captured: dict[str, object] = {}
 
     def fake_backfill(**kwargs):
@@ -22,7 +24,7 @@ def test_run_crisis_score_inputs_refresh_uses_rolling_window() -> None:
         "backend.app.tasks.crisis_score_inputs_refresh.backfill_crisis_score_inputs",
         side_effect=fake_backfill,
     ):
-        payload = run_crisis_score_inputs_refresh(dry_run=True)
+        payload = run_crisis_score_inputs_refresh(dry_run=True, as_of=as_of.isoformat())
 
     assert captured["start_date"] == expected_start
     assert captured["end_date"] == expected_end

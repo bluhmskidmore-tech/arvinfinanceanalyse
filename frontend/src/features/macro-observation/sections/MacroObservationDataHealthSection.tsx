@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+
 import {
   repairPriorityLabel,
   repairTypeLabel,
@@ -73,9 +75,14 @@ export default function MacroObservationDataHealthSection({
       </div>
 
       {health.repairItems.length ? (
+        <div
+          className="macro-observation-datahealth__table-region"
+          role="region"
+          tabIndex={0}
+          aria-label="待处理数据项（只读）"
+        >
         <table
           className="macro-observation-view__table macro-observation-datahealth__table"
-          aria-label="待处理数据项（只读）"
         >
           <thead>
             <tr>
@@ -107,7 +114,11 @@ export default function MacroObservationDataHealthSection({
                     ) : null}
                   </td>
                   <td className="macro-observation-datahealth__type-cell">{item.typeText}</td>
-                  <td className="macro-observation-datahealth__action-cell" title={item.actionText}>
+                  {/* 展示层为中文短语；后端原句（含原始错误码）收行 title 溯源。 */}
+                  <td
+                    className="macro-observation-datahealth__action-cell"
+                    title={item.actionTitle ?? item.actionText}
+                  >
                     {item.actionText}
                   </td>
                   <td className="macro-observation-datahealth__date-cell">{item.latestDateText}</td>
@@ -117,6 +128,7 @@ export default function MacroObservationDataHealthSection({
             })}
           </tbody>
         </table>
+        </div>
       ) : (
         <p className="macro-observation-datahealth__note">当前没有待处理数据项。</p>
       )}
@@ -125,7 +137,7 @@ export default function MacroObservationDataHealthSection({
         {health.repairMoreNote ? (
           <span data-testid="macro-observation-repair-more">{health.repairMoreNote}</span>
         ) : null}
-        <a href="/macro-toolkit">完整修复清单见宏观工具页</a>
+        <Link to="/macro-toolkit">完整修复清单见宏观工具页</Link>
       </p>
 
       {health.deferredSectionLabels.length ? (
@@ -138,8 +150,12 @@ export default function MacroObservationDataHealthSection({
           ))}
         </p>
       ) : null}
-      {health.warningCount ? (
-        <p className="macro-observation-datahealth__warning">健康警示 {health.warningCount} 条</p>
+      {health.warnings.length ? (
+        <ul className="macro-observation-datahealth__warning" data-testid="macro-observation-datahealth-warnings">
+          {health.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
       ) : null}
     </div>
   );

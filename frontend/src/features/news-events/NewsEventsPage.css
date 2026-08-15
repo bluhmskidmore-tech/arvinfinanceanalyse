@@ -36,14 +36,15 @@
   margin-bottom: 24px;
 }
 
+/* 深色终端页不使用衬线刊头；页 h1 收敛到 20px（DESIGN §3 页标题档）。 */
 .news-events-page__title {
   margin-top: 0;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   color: var(--ib-ink);
-  font-family: var(--ib-serif, Georgia, "Noto Serif SC", serif);
-  font-size: 32px;
-  font-weight: 600;
-  letter-spacing: -0.03em;
+  font-family: var(--moss-font-sans);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0;
 }
 
 .news-events-page__intro {
@@ -79,13 +80,16 @@
   color: var(--ib-accent);
 }
 
-.news-events-page__section-shell {
-  height: auto;
-  padding: 24px;
-  border: 1px solid var(--ib-hairline);
+.news-events-page__quality-hint {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--ib-warn) 40%, var(--ib-hairline));
+  border-left: 2px solid var(--ib-warn);
   border-radius: var(--ib-radius, 2px);
-  background: var(--ib-surface);
-  box-shadow: none;
+  background: color-mix(in srgb, var(--ib-warn) 8%, var(--ib-surface));
+  color: var(--ib-warn);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .news-events-page__compare-section {
@@ -131,29 +135,31 @@
   gap: 16px;
 }
 
-.news-events-page__filter-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-  width: 100%;
-}
-
-.news-events-page__filter-bar {
-  margin-bottom: 20px;
+/* 筛选控件右置在分区头一行内（卡套卡拍平后不再有独立筛选卡）。 */
+.news-events-page__filter-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  justify-content: flex-end;
 }
 
 .news-events-page__filter-label {
-  display: grid;
+  display: flex;
+  align-items: center;
   gap: 8px;
   color: var(--ib-ink-secondary);
   font-size: 13px;
 }
 
+.news-events-page__filter-label select {
+  max-width: 260px;
+}
+
 .news-events-page__filter-checkbox-label {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 24px;
+  gap: 8px;
   color: var(--ib-ink-secondary);
   font-size: 13px;
 }
@@ -206,12 +212,34 @@
   font-weight: 700;
 }
 
-.news-events-page__meta-line {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 12px;
+/* 治理元信息 13 项默认折叠；展开后按键值两列排布，不再单行铺开。 */
+.news-events-page__meta-fold {
   color: var(--ib-ink-muted);
   font-size: 11px;
+}
+
+.news-events-page__meta-summary {
+  width: fit-content;
+  color: var(--ib-ink-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.news-events-page__meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 16px;
+  margin-top: 8px;
+}
+
+.news-events-page__meta-grid > span {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .news-events-page__meta-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .news-events-page__compare-grid {
@@ -296,4 +324,10 @@
   white-space: normal;
   word-break: break-word;
   max-width: 480px;
+}
+
+/* 错误行的错误码染语义红，与行底色一致指向同一事实。 */
+.news-events-page__table-row--error .news-events-page__error-code-cell {
+  color: var(--dh-api-red);
+  font-weight: 600;
 }

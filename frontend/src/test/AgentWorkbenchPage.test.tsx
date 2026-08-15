@@ -1013,43 +1013,6 @@ describe("AgentWorkbenchPage", () => {
     await waitFor(() => expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveFocus());
   });
 
-  it("falls back to local agent query when managed Hermes runs return the provider-gated 400", async () => {
-    const user = userEvent.setup();
-    fetchMock
-      .mockResolvedValueOnce(
-        buildJsonResponse(
-          {
-            detail: "Agent runs require MOSS_AGENT_PROVIDER=hermes.",
-          },
-          400,
-        ),
-      )
-      .mockResolvedValueOnce(
-        buildJsonResponse(buildLocalOrdinaryTextResult("local ordinary fallback answer")),
-      );
-
-    render(<AgentWorkbenchPage />);
-
-    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "ordinary question");
-    await user.click(screen.getByRole("button", { name: "发送" }));
-
-    expect(await screen.findByText("local ordinary fallback answer")).toBeInTheDocument();
-    expect(screen.queryByText("智能体查询失败（400）")).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
-      "/api/agent/runs",
-      expect.objectContaining({ method: "POST" }),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      "/api/agent/query",
-      expect.objectContaining({ method: "POST" }),
-    );
-    expect(getAgentTurnStatus()).toHaveTextContent("本地查询完成");
-    expect(screen.getByLabelText(AGENT_RUNTIME_STATUS_LABEL)).toHaveTextContent("local");
-    expect(screen.getByLabelText(AGENT_RUNTIME_STATUS_LABEL)).toHaveTextContent("sync");
-  });
-
   it("routes governed portfolio overview questions directly to local agent query", async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(buildJsonResponse(buildGovernedPortfolioOverviewResult()));
@@ -1537,34 +1500,6 @@ describe("AgentWorkbenchPage", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("falls back to local agent query when managed runs return the generic provider gate", async () => {
-    const user = userEvent.setup();
-    fetchMock
-      .mockResolvedValueOnce(
-        buildJsonResponse(
-          {
-            detail: "Agent runs require MOSS_AGENT_PROVIDER=hermes or dexter.",
-          },
-          400,
-        ),
-      )
-      .mockResolvedValueOnce(
-        buildJsonResponse(buildLocalOrdinaryTextResult("generic provider gate fallback answer")),
-      );
-
-    render(<AgentWorkbenchPage />);
-
-    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "ordinary question");
-    await user.click(screen.getByRole("button", { name: "发送" }));
-
-    expect(await screen.findByText("generic provider gate fallback answer")).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      "/api/agent/query",
-      expect.objectContaining({ method: "POST" }),
-    );
-  });
-
   it("keeps non-provider managed run errors on the managed path", async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(
@@ -1587,6 +1522,181 @@ describe("AgentWorkbenchPage", () => {
       "/api/agent/runs",
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("commits the managed run result when the repo path is edited mid-run", async () => {
+    const user = userEvent.setup();
+    let resolveRunStatus!: (value: Response) => void;
+    const runStatusResponse = new Promise<Response>((resolve) => {
+      resolveRunStatus = resolve;
+    });
+    fetchMock
+      .mockResolvedValueOnce(
+        buildJsonResponse({
+          run_id: "agent_run:repo-edit-mid-run",
+          status: "queued",
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+          queued_at: "2026-05-07T08:00:00Z",
+        }),
+      )
+      .mockReturnValueOnce(runStatusResponse);
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "repo edit mid run question");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await findAgentTurnStatus();
+
+    // run 进行中编辑 GitNexus 仓库路径：不能再丢弃这一轮的终态提交。
+    openGitNexusTools();
+    await user.type(screen.getByLabelText(REPO_PATH_LABEL), "F:\\ANOTHER-REPO");
+
+    await act(async () => {
+      resolveRunStatus(
+        buildJsonResponse(
+          buildManagedRunPayload(
+            {
+              answer: "仓库路径编辑后仍提交的回答。",
+              cards: [],
+              evidence: {
+                tables_used: ["hermes_cli"],
+                filters_applied: {
+                  provider: "hermes",
+                  model: "gpt-5.5",
+                  transport: "bridge",
+                  toolsets: "file",
+                },
+                evidence_rows: 1,
+                quality_flag: "ok",
+              },
+              result_meta: {
+                trace_id: "tr_repo_edit_mid_run",
+                basis: "formal",
+                result_kind: "agent.hermes",
+              },
+              next_drill: [],
+              suggested_actions: [],
+            },
+            "agent_run:repo-edit-mid-run",
+          ),
+        ),
+      );
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText("仓库路径编辑后仍提交的回答。")).toBeInTheDocument();
+    expect(screen.queryByText("智能体查询失败（500）")).not.toBeInTheDocument();
+  });
+
+  it("commits a mid-run managed failure as a turn error after the repo path changes", async () => {
+    const user = userEvent.setup();
+    let rejectRunStatus!: (value: Response) => void;
+    const runStatusResponse = new Promise<Response>((resolve) => {
+      rejectRunStatus = resolve;
+    });
+    fetchMock
+      .mockResolvedValueOnce(
+        buildJsonResponse({
+          run_id: "agent_run:repo-edit-mid-run-failure",
+          status: "queued",
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+          queued_at: "2026-05-07T08:00:00Z",
+        }),
+      )
+      .mockReturnValueOnce(runStatusResponse);
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "repo edit mid run failure");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await findAgentTurnStatus();
+
+    openGitNexusTools();
+    await user.type(screen.getByLabelText(REPO_PATH_LABEL), "F:\\ANOTHER-REPO");
+
+    await act(async () => {
+      rejectRunStatus(
+        buildJsonResponse({
+          run_id: "agent_run:repo-edit-mid-run-failure",
+          status: "failed",
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+          error_message: "managed run failed mid repo edit",
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText("managed run failed mid repo edit")).toBeInTheDocument();
+  });
+
+  it("re-enables the load-processes action when a question bumps the process request version", async () => {
+    const user = userEvent.setup();
+    let resolveProcesses!: (value: Response) => void;
+    const processesResponse = new Promise<Response>((resolve) => {
+      resolveProcesses = resolve;
+    });
+    fetchMock
+      .mockReturnValueOnce(processesResponse)
+      .mockResolvedValueOnce(buildJsonResponse(buildLocalOrdinaryTextResult("local answer while loading processes")));
+
+    render(<AgentWorkbenchPage />);
+
+    openGitNexusTools();
+    await user.type(screen.getByLabelText(REPO_PATH_LABEL), "F:\\MOSS-SYSTEM-V1");
+    await user.click(screen.getByRole("button", { name: "读取流程" }));
+    expect(screen.getByRole("button", { name: "读取中..." })).toBeDisabled();
+
+    // 读取流程进行中提问（本地 open chat 直答路径）：会 bump 进程请求版本号。
+    await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "hi");
+    await user.click(screen.getByTestId("agent-panel-submit"));
+    expect(await screen.findByText("local answer while loading processes")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveProcesses(buildJsonResponse(buildLocalOrdinaryTextResult("stale processes payload")));
+      await Promise.resolve();
+    });
+
+    // 过期的进程结果被丢弃，但读取按钮必须复位，不能永久卡在"读取中..."。
+    openGitNexusTools();
+    const loadProcessesButton = await screen.findByRole("button", { name: "读取流程" });
+    expect(loadProcessesButton).toBeEnabled();
+  });
+
+  it("shows the expired-confirmation message when a suggested action hits the 403 confirmation gate", async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(buildJsonResponse(buildLocalAnalysisChatResult()))
+      .mockResolvedValueOnce(
+        buildJsonResponse(
+          { detail: "Suggested action execution requires a confirmation token." },
+          403,
+        ),
+      );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "第一轮风险判断");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("本地分析对话已接住这轮问题，但未运行正式指标查询。")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "组合概览" }));
+    await user.click(screen.getByRole("button", { name: "确认执行：组合概览" }));
+
+    expect(
+      await screen.findByText(
+        "建议动作确认已过期或无效，请重新生成本轮回答后再执行建议动作。（Suggested action execution requires a confirmation token.）",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("智能体查询失败（403）")).not.toBeInTheDocument();
   });
 
   it("refocuses the composer when a managed request fails after the user checks controls", async () => {
@@ -2703,22 +2813,27 @@ describe("AgentWorkbenchPage", () => {
   it("persists recent repo_path after query", async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(
-      buildJsonResponse({
-        answer: "GitNexus ok",
-        cards: [],
-        evidence: {
-          tables_used: [".gitnexus/meta.json"],
-          filters_applied: { repo_path: "F:\\MOSS-SYSTEM-V1" },
-          evidence_rows: 1,
-          quality_flag: "ok",
-        },
-        result_meta: {
-          trace_id: "tr_gitnexus",
-          basis: "analytical",
-          generated_at: "2026-04-12T09:00:00Z",
-        },
-        next_drill: [],
-      }),
+      buildJsonResponse(
+        buildManagedRunPayload(
+          {
+            answer: "GitNexus ok",
+            cards: [],
+            evidence: {
+              tables_used: [".gitnexus/meta.json"],
+              filters_applied: { repo_path: "F:\\MOSS-SYSTEM-V1" },
+              evidence_rows: 1,
+              quality_flag: "ok",
+            },
+            result_meta: {
+              trace_id: "tr_gitnexus",
+              basis: "analytical",
+              generated_at: "2026-04-12T09:00:00Z",
+            },
+            next_drill: [],
+          },
+          "agent_run:gitnexus-repo-path",
+        ),
+      ),
     );
 
     render(<AgentWorkbenchPage />);
@@ -2738,7 +2853,7 @@ describe("AgentWorkbenchPage", () => {
   it("renders structured table cards instead of flattening them into metrics", async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(
-      buildJsonResponse({
+      buildJsonResponse(buildManagedRunPayload({
         answer: "GitNexus resources ready.",
         cards: [
           {
@@ -2802,7 +2917,7 @@ describe("AgentWorkbenchPage", () => {
           generated_at: "2026-04-12T09:00:00Z",
         },
         next_drill: [],
-      }),
+      }, "agent_run:gitnexus-cards")),
     );
 
     render(<AgentWorkbenchPage />);
@@ -2835,7 +2950,7 @@ describe("AgentWorkbenchPage", () => {
   it("renders process graph using backend-provided module_group and edge_label", async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(
-      buildJsonResponse({
+      buildJsonResponse(buildManagedRunPayload({
         answer: "GitNexus process ready.",
         cards: [
           {
@@ -2879,7 +2994,7 @@ describe("AgentWorkbenchPage", () => {
           generated_at: "2026-04-12T09:00:00Z",
         },
         next_drill: [],
-      }),
+      }, "agent_run:gitnexus-process-graph")),
     );
 
     render(<AgentWorkbenchPage />);
@@ -2900,7 +3015,7 @@ describe("AgentWorkbenchPage", () => {
   it("renders GitNexus summary metrics inside the specialized view instead of generic card mixing", async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(
-      buildJsonResponse({
+      buildJsonResponse(buildManagedRunPayload({
         answer: "GitNexus status ready.",
         cards: [
           { title: "Repo", type: "metric", value: "F:\\MOSS-SYSTEM-V1" },
@@ -2933,7 +3048,7 @@ describe("AgentWorkbenchPage", () => {
           generated_at: "2026-04-12T09:00:00Z",
         },
         next_drill: [],
-      }),
+      }, "agent_run:gitnexus-status-summary")),
     );
 
     render(<AgentWorkbenchPage />);
@@ -5127,18 +5242,46 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText("已填入建议追问 · Enter 发送")).toBeInTheDocument();
   });
 
-  it("restores an unsent composer draft after remount", async () => {
-    const user = userEvent.setup();
+  it("flushes an unsent composer draft when the page unmounts", () => {
     const { unmount } = render(<AgentWorkbenchPage />);
 
-    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "draft question before refresh");
-    expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBe("draft question before refresh");
+    fireEvent.change(screen.getByPlaceholderText(AGENT_PLACEHOLDER), {
+      target: { value: "draft question before refresh" },
+    });
+    expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveValue("draft question before refresh");
+    expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBeNull();
 
     unmount();
+    expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBe("draft question before refresh");
     render(<AgentWorkbenchPage />);
 
     expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveValue("draft question before refresh");
     expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveFocus();
+  });
+
+  it("coalesces rapid composer draft writes while updating the input immediately", () => {
+    vi.useFakeTimers();
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+    try {
+      render(<AgentWorkbenchPage />);
+
+      const input = screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL) as HTMLTextAreaElement;
+      fireEvent.change(input, { target: { value: "d" } });
+      fireEvent.change(input, { target: { value: "dr" } });
+      fireEvent.change(input, { target: { value: "draft" } });
+
+      expect(input).toHaveValue("draft");
+      expect(setItemSpy.mock.calls.filter(([key]) => key === AGENT_COMPOSER_DRAFT_KEY)).toHaveLength(0);
+
+      act(() => {
+        vi.runOnlyPendingTimers();
+      });
+
+      const draftWrites = setItemSpy.mock.calls.filter(([key]) => key === AGENT_COMPOSER_DRAFT_KEY);
+      expect(draftWrites).toEqual([[AGENT_COMPOSER_DRAFT_KEY, "draft"]]);
+    } finally {
+      setItemSpy.mockRestore();
+    }
   });
 
   it("clears the composer draft after send and new conversation", async () => {
@@ -5169,14 +5312,18 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "draft to submit");
-    expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBe("draft to submit");
+    await waitFor(() => {
+      expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBe("draft to submit");
+    });
 
     await user.click(screen.getByRole("button", { name: "发送" }));
     expect(await screen.findByText("draft submitted answer")).toBeInTheDocument();
     expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBeNull();
 
     await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "draft to discard");
-    expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBe("draft to discard");
+    await waitFor(() => {
+      expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBe("draft to discard");
+    });
     await user.click(screen.getByRole("button", { name: "新对话" }));
 
     expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBeNull();
@@ -5212,7 +5359,9 @@ describe("AgentWorkbenchPage", () => {
 
     try {
       await user.type(input, "draft to clear");
-      expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBe("draft to clear");
+      await waitFor(() => {
+        expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBe("draft to clear");
+      });
       scrollTargets.length = 0;
 
       const clearButton = screen.getByRole("button", { name: /清空输入/ });
@@ -5551,9 +5700,17 @@ describe("AgentWorkbenchPage", () => {
       await user.click(screen.getByTestId("agent-panel-submit"));
 
       const conversation = await screen.findByLabelText(AGENT_CONVERSATION_LABEL);
+      const conversationBottom = screen.getByTestId("agent-conversation-bottom");
+      const composerDock = document.querySelector<HTMLElement>(".agent-composer-dock");
+      expect(composerDock).not.toBeNull();
+      if (!composerDock) {
+        throw new Error("Expected the sticky composer dock to exist");
+      }
+
+      // The live page scrolls its document/host ancestor; the conversation itself is not a scroller.
       Object.defineProperty(conversation, "scrollHeight", {
         configurable: true,
-        value: 1800,
+        value: 600,
       });
       Object.defineProperty(conversation, "clientHeight", {
         configurable: true,
@@ -5561,9 +5718,37 @@ describe("AgentWorkbenchPage", () => {
       });
       Object.defineProperty(conversation, "scrollTop", {
         configurable: true,
-        value: 120,
+        value: 0,
       });
-      fireEvent.scroll(conversation);
+      Object.defineProperty(conversationBottom, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({
+          top: 1320,
+          bottom: 1321,
+          left: 0,
+          right: 1,
+          width: 1,
+          height: 1,
+          x: 0,
+          y: 1320,
+          toJSON: () => ({}),
+        }),
+      });
+      Object.defineProperty(composerDock, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({
+          top: 720,
+          bottom: 880,
+          left: 0,
+          right: 400,
+          width: 400,
+          height: 160,
+          x: 0,
+          y: 720,
+          toJSON: () => ({}),
+        }),
+      });
+      fireEvent.scroll(document);
       scrollTargets.length = 0;
 
       await act(async () => {
@@ -5601,6 +5786,198 @@ describe("AgentWorkbenchPage", () => {
 
       expect(await screen.findByText("history read answer returned")).toBeInTheDocument();
       expect(scrollTargets.some((target) => target.dataset.testid === "agent-conversation-bottom")).toBe(false);
+    } finally {
+      scrollIntoViewSpy.restore();
+    }
+  });
+
+  it("does not resume following updates after the reader scrolls below the transcript", async () => {
+    const user = userEvent.setup();
+    let resolveCreateRun!: (value: Response) => void;
+    const createRunResponse = new Promise<Response>((resolve) => {
+      resolveCreateRun = resolve;
+    });
+    const scrollTargets: HTMLElement[] = [];
+    const scrollIntoViewSpy = mockScrollIntoView(function (this: HTMLElement) {
+      scrollTargets.push(this);
+    });
+    fetchMock.mockReturnValueOnce(createRunResponse);
+
+    try {
+      render(<AgentWorkbenchPage />);
+
+      await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "read content below transcript");
+      await user.click(screen.getByTestId("agent-panel-submit"));
+
+      const conversationBottom = await screen.findByTestId("agent-conversation-bottom");
+      const composerDock = document.querySelector<HTMLElement>(".agent-composer-dock");
+      expect(composerDock).not.toBeNull();
+      if (!composerDock) {
+        throw new Error("Expected the sticky composer dock to exist");
+      }
+
+      Object.defineProperty(conversationBottom, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({
+          top: 80,
+          bottom: 81,
+          left: 0,
+          right: 1,
+          width: 1,
+          height: 1,
+          x: 0,
+          y: 80,
+          toJSON: () => ({}),
+        }),
+      });
+      Object.defineProperty(composerDock, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({
+          top: 720,
+          bottom: 880,
+          left: 0,
+          right: 400,
+          width: 400,
+          height: 160,
+          x: 0,
+          y: 720,
+          toJSON: () => ({}),
+        }),
+      });
+      fireEvent.scroll(document);
+      scrollTargets.length = 0;
+
+      await act(async () => {
+        resolveCreateRun(
+          buildJsonResponse(
+            buildManagedRunPayload(
+              buildLocalOrdinaryTextResult("below-transcript update returned"),
+              "agent_run:below-transcript-no-jump",
+            ),
+          ),
+        );
+        await Promise.resolve();
+      });
+
+      expect(await screen.findByText("below-transcript update returned")).toBeInTheDocument();
+      expect(
+        scrollTargets.some((target) => target.dataset.testid === "agent-conversation-bottom"),
+      ).toBe(false);
+    } finally {
+      scrollIntoViewSpy.restore();
+    }
+  });
+
+  it("resumes following updates when the page bottom sentinel reaches the sticky composer", async () => {
+    const user = userEvent.setup();
+    let resolveCreateRun!: (value: Response) => void;
+    const createRunResponse = new Promise<Response>((resolve) => {
+      resolveCreateRun = resolve;
+    });
+    const scrollTargets: HTMLElement[] = [];
+    const scrollIntoViewSpy = mockScrollIntoView(function (this: HTMLElement) {
+      scrollTargets.push(this);
+    });
+    fetchMock.mockReturnValueOnce(createRunResponse);
+
+    try {
+      render(<AgentWorkbenchPage />);
+
+      await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "resume following near composer");
+      await user.click(screen.getByTestId("agent-panel-submit"));
+
+      const conversation = await screen.findByLabelText(AGENT_CONVERSATION_LABEL);
+      const conversationBottom = screen.getByTestId("agent-conversation-bottom");
+      const composerDock = document.querySelector<HTMLElement>(".agent-composer-dock");
+      expect(composerDock).not.toBeNull();
+      if (!composerDock) {
+        throw new Error("Expected the sticky composer dock to exist");
+      }
+
+      Object.defineProperty(conversation, "scrollHeight", {
+        configurable: true,
+        value: 1800,
+      });
+      Object.defineProperty(conversation, "clientHeight", {
+        configurable: true,
+        value: 600,
+      });
+      Object.defineProperty(conversation, "scrollTop", {
+        configurable: true,
+        value: 120,
+      });
+      let conversationBottomTop = 1320;
+      Object.defineProperty(conversationBottom, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({
+          top: conversationBottomTop,
+          bottom: conversationBottomTop + 1,
+          left: 0,
+          right: 1,
+          width: 1,
+          height: 1,
+          x: 0,
+          y: conversationBottomTop,
+          toJSON: () => ({}),
+        }),
+      });
+      Object.defineProperty(composerDock, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({
+          top: 720,
+          bottom: 880,
+          left: 0,
+          right: 400,
+          width: 400,
+          height: 160,
+          x: 0,
+          y: 720,
+          toJSON: () => ({}),
+        }),
+      });
+
+      fireEvent.scroll(conversation);
+      conversationBottomTop = 760;
+      fireEvent.scroll(document);
+      scrollTargets.length = 0;
+
+      await act(async () => {
+        resolveCreateRun(
+          buildJsonResponse(
+            buildManagedRunPayload(
+              {
+                answer: "near-composer update returned",
+                cards: [],
+                evidence: {
+                  tables_used: ["hermes_cli"],
+                  filters_applied: {
+                    provider: "hermes",
+                    model: "gpt-5.5",
+                    transport: "bridge",
+                    toolsets: "file",
+                  },
+                  evidence_rows: 1,
+                  quality_flag: "ok",
+                },
+                result_meta: {
+                  trace_id: "tr_resume_following_near_composer",
+                  basis: "formal",
+                  result_kind: "agent.hermes",
+                },
+                next_drill: [],
+                suggested_actions: [],
+              },
+              "agent_run:resume-following-near-composer",
+            ),
+          ),
+        );
+        await Promise.resolve();
+      });
+
+      expect(await screen.findByText("near-composer update returned")).toBeInTheDocument();
+      expect(
+        scrollTargets.some((target) => target.dataset.testid === "agent-conversation-bottom"),
+      ).toBe(true);
     } finally {
       scrollIntoViewSpy.restore();
     }
@@ -6223,7 +6600,14 @@ describe("AgentWorkbenchPage", () => {
     window.localStorage.setItem(LATEST_AGENT_RUN_ID_KEY, "agent_run:restore-pending-fresh-question");
     fetchMock
       .mockReturnValueOnce(restoreResponse)
-      .mockResolvedValueOnce(buildJsonResponse(buildLocalOrdinaryTextResult("fresh answer while restore was pending")));
+      .mockResolvedValueOnce(
+        buildJsonResponse(
+          buildManagedRunPayload(
+            buildLocalOrdinaryTextResult("fresh answer while restore was pending"),
+            "agent_run:fresh-question-while-restore",
+          ),
+        ),
+      );
 
     render(<AgentWorkbenchPage />);
 
@@ -6262,7 +6646,14 @@ describe("AgentWorkbenchPage", () => {
     window.localStorage.setItem(LATEST_AGENT_RUN_ID_KEY, "agent_run:restore-failed");
     fetchMock
       .mockResolvedValueOnce(buildJsonResponse({ detail: "missing run" }, 500))
-      .mockResolvedValueOnce(buildJsonResponse(buildLocalOrdinaryTextResult("fresh answer after restore failure")));
+      .mockResolvedValueOnce(
+        buildJsonResponse(
+          buildManagedRunPayload(
+            buildLocalOrdinaryTextResult("fresh answer after restore failure"),
+            "agent_run:fresh-after-restore-failure",
+          ),
+        ),
+      );
 
     render(<AgentWorkbenchPage />);
 
@@ -6341,7 +6732,7 @@ describe("AgentWorkbenchPage", () => {
   it("renders answer, cards, evidence, next_drill, and result_meta on success", async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(
-      buildJsonResponse({
+      buildJsonResponse(buildManagedRunPayload({
         answer: "组合久期风险主要集中在 3Y-5Y。",
         cards: [
           { title: "组合久期", value: "4.27", type: "duration" },
@@ -6386,7 +6777,7 @@ describe("AgentWorkbenchPage", () => {
             requires_confirmation: true,
           },
         ],
-      }),
+      }, "agent_run:managed-result-detail")),
     );
 
     render(<AgentWorkbenchPage />);
@@ -6568,7 +6959,7 @@ describe("AgentWorkbenchPage", () => {
   it("surfaces Hermes runtime status from evidence filters", async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(
-      buildJsonResponse({
+      buildJsonResponse(buildManagedRunPayload({
         answer: "pong",
         cards: [
           { title: "Hermes Agent", value: "pong", type: "text", data: null, spec: null },
@@ -6592,7 +6983,7 @@ describe("AgentWorkbenchPage", () => {
         },
         next_drill: [],
         suggested_actions: [],
-      }),
+      }, "agent_run:hermes-runtime-status")),
     );
 
     render(<AgentWorkbenchPage />);
@@ -6654,20 +7045,32 @@ describe("AgentWorkbenchPage", () => {
     const user = userEvent.setup();
     fetchMock
       .mockResolvedValueOnce(
-        buildJsonResponse({
-          answer: "   ",
-          cards: [],
-          evidence: {
-            tables_used: [],
-            filters_applied: {},
-            evidence_rows: 0,
-            quality_flag: "",
-          },
-          result_meta: { trace_id: "tr_empty" },
-          next_drill: [],
-        }),
+        buildJsonResponse(
+          buildManagedRunPayload(
+            {
+              answer: "   ",
+              cards: [],
+              evidence: {
+                tables_used: [],
+                filters_applied: {},
+                evidence_rows: 0,
+                quality_flag: "",
+              },
+              result_meta: { trace_id: "tr_empty" },
+              next_drill: [],
+            },
+            "agent_run:empty-renderable",
+          ),
+        ),
       )
-      .mockResolvedValueOnce(buildJsonResponse(buildLocalOrdinaryTextResult("empty fallback regenerated answer")));
+      .mockResolvedValueOnce(
+        buildJsonResponse(
+          buildManagedRunPayload(
+            buildLocalOrdinaryTextResult("empty fallback regenerated answer"),
+            "agent_run:empty-renderable-regenerated",
+          ),
+        ),
+      );
 
     render(<AgentWorkbenchPage />);
 

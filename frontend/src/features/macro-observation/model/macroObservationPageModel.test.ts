@@ -6,6 +6,7 @@ import type {
   MacroToolkitAShareRiskPayload,
   MacroToolkitCapabilityResult,
   MacroToolkitDataHealth,
+  MacroToolkitPrimarySignal,
   MacroToolkitReportBundle,
   MacroToolkitShadowPortfolioReport,
   MacroToolkitSignalCard,
@@ -34,6 +35,7 @@ import {
   modelDegradedReasonText,
   observationRuntimeSummary,
   pickPrimarySignal,
+  sanitizeEvidenceMetaForDisplay,
   strategySupplyState,
   type MacroObservationSectionStatesInput,
 } from "./macroObservationPageModel";
@@ -54,15 +56,28 @@ function signalCard(overrides: Partial<MacroToolkitSignalCard> = {}): MacroToolk
   };
 }
 
+// 危机分是 z-score（2 已是高风险档），与 0-100 的方向卡不同量纲，fixture 必须按真实尺度构造。
 function fullSignalCards(): MacroToolkitSignalCard[] {
   return [
-    signalCard({ key: "crisis_score_cn", title: "危机分", stance: "警戒", tone: "negative", score: 61.2 }),
+    signalCard({ key: "crisis_score_cn", title: "危机分", stance: "高风险", tone: "negative", score: 2.5 }),
     signalCard({ key: "a_share_stampede_risk", title: "A股踩踏风险", stance: "数据不足", tone: "missing", score: null }),
-    signalCard({ key: "liquidity", score: 50 }),
-    signalCard({ key: "risk_appetite", title: "风险偏好", score: 40 }),
-    signalCard({ key: "credit", title: "信用", score: 30 }),
+    signalCard({ key: "liquidity", score: 78, stance: "偏松", tone: "positive" }),
+    signalCard({ key: "risk_appetite", title: "风险偏好", score: 52 }),
+    signalCard({ key: "credit", title: "信用", score: 55 }),
     signalCard({ key: "outputs", title: "脚本产物", stance: "已生成", tone: "positive", score: 99 }),
   ];
+}
+
+function primarySignal(
+  overrides: Partial<MacroToolkitPrimarySignal> = {},
+): MacroToolkitPrimarySignal {
+  return {
+    key: "crisis_score_cn",
+    selection_status: "selected",
+    reason_code: "risk_gate_crisis_score",
+    rule_version: "rv_macro_primary_signal_risk_first_v1",
+    ...overrides,
+  };
 }
 
 function strategySummary(
@@ -124,23 +139,24 @@ function crisisCapabilityResult(
     group: "风险",
     status: "complete",
     tone: "negative",
-    score: 61.24,
-    headline: "危机分位于警戒区间。",
-    primary_metric: { label: "Crisis Score", value: 61.2, unit: "" },
+    // Crisis 是加权 z-score：>=2 即高风险档，不是 0-100 分。
+    score: 2.54,
+    headline: "Crisis Score 2.54: 高风险",
+    primary_metric: { label: "Crisis Score", value: 2.5, unit: "" },
     evidence: [],
     warnings: [],
     result: {
-      crisis_score: 61.24,
-      regime: "警戒",
-      recommendation: "降低风险敞口，等待信号确认。",
+      crisis_score: 2.54,
+      regime: "高风险",
+      recommendation: "大幅降仓，启动 CTA 保护",
       percentile: 87.256,
       components: [
         { key: "equity_vol", label: "沪深300波动", z_score: 1.25 },
         { key: "fx_vol", label: "美元兑人民币波动", z_score: null },
       ],
       score_history: [
-        { date: "2026-08-11", crisis_score: 58.1, percentile: 80.2 },
-        { date: "2026-08-12", crisis_score: 61.24, percentile: 87.2 },
+        { date: "2026-08-11", crisis_score: 1.98, percentile: 80.2 },
+        { date: "2026-08-12", crisis_score: 2.54, percentile: 87.2 },
         { date: "2026-08-13" },
       ],
     },
@@ -204,6 +220,7 @@ function analysisPayload(
     coverage: { indicator_count: 20, hit_count: 18, hit_rate: 0.9, script_count: 0, output_file_count: 0 },
     indicators: [],
     signal_cards: fullSignalCards(),
+    primary_signal: primarySignal(),
     capability_results: [decisionCapabilityResult(), crisisCapabilityResult()],
     strategy_summaries: [],
     a_share_risk: aShareRisk(),
@@ -231,6 +248,12 @@ function coreAnalysisPayload(): MacroToolkitAnalysisPayload {
     capability_results: [],
     a_share_risk: undefined,
     strategy_summaries: [],
+    // core 首屏没有 Crisis / A股候选，后端不给主信号，前端不得让方向卡顶替。
+    primary_signal: primarySignal({
+      key: null,
+      selection_status: "deferred",
+      reason_code: "core_scope_risk_candidates_deferred",
+    }),
     runtime_status: { analysis_scope: "core", deferred_sections: CORE_DEFERRED_SECTIONS },
     data_health: dataHealth({
       analysis_scope: "core",
@@ -360,22 +383,41 @@ describe("展示映射函数", () => {
 });
 
 describe("pickPrimarySignal", () => {
-  it("剔除 outputs 卡后 score 非空按分数降序取第一", () => {
-    expect(pickPrimarySignal(fullSignalCards())?.key).toBe("crisis_score_cn");
+  it("按后端 key 取卡：危机分 2.5 不被流动性 78 的更高原始分挤掉", () => {
+    expect(pickPrimarySignal(fullSignalCards(), primarySignal())?.key).toBe("crisis_score_cn");
   });
 
-  it("outputs 卡即使分数最高也不入选", () => {
-    const picked = pickPrimarySignal([
-      signalCard({ key: "outputs", title: "脚本产物", score: 99 }),
-      signalCard({ key: "liquidity", score: 10 }),
-    ]);
+  it("后端改判方向信号时前端跟随，不自行排序", () => {
+    const picked = pickPrimarySignal(
+      fullSignalCards(),
+      primarySignal({ key: "liquidity", reason_code: "strongest_direction_signal" }),
+    );
     expect(picked?.key).toBe("liquidity");
   });
 
-  it("score 全为 null 时返回 null", () => {
+  it("deferred 时返回 null，不用方向卡顶替", () => {
     expect(
-      pickPrimarySignal([signalCard({ score: null }), signalCard({ key: "credit", score: null })]),
+      pickPrimarySignal(
+        fullSignalCards(),
+        primarySignal({ key: null, selection_status: "deferred" }),
+      ),
     ).toBeNull();
+  });
+
+  it("旧后端未返回 primary_signal 时 fail closed", () => {
+    expect(pickPrimarySignal(fullSignalCards(), undefined)).toBeNull();
+  });
+
+  it("key 悬空（卡不在本次载荷）时返回 null", () => {
+    expect(pickPrimarySignal([signalCard({ key: "liquidity" })], primarySignal())).toBeNull();
+  });
+
+  it("outputs 卡即使被指名也不入选", () => {
+    const picked = pickPrimarySignal(
+      [signalCard({ key: "outputs", title: "脚本产物", score: 99 })],
+      primarySignal({ key: "outputs" }),
+    );
+    expect(picked).toBeNull();
   });
 });
 
@@ -442,9 +484,10 @@ describe("mergeStrategySummaries", () => {
 
 describe("buildObservationToolbarStatus", () => {
   it("full 数据给出观察日 / 完整证据口径 / 来源覆盖 / 运行时摘要", () => {
+    // core/full 枚举不再作为 note 直出（§7 语域）。
     expect(buildObservationToolbarStatus(analysisPayload(), resultMeta())).toEqual([
       { key: "as-of-date", label: "观察日", value: "2026-08-13" },
-      { key: "analysis-scope", label: "分析口径", value: "完整证据", note: "full" },
+      { key: "analysis-scope", label: "分析口径", value: "完整证据" },
       { key: "source-coverage", label: "来源覆盖", value: "9/10" },
       { key: "runtime-status", label: "证据状态", value: "证据已完整读取" },
     ]);
@@ -453,7 +496,7 @@ describe("buildObservationToolbarStatus", () => {
   it("core 数据给出首屏读数口径与延后计数，来源覆盖如实标延后", () => {
     expect(buildObservationToolbarStatus(coreAnalysisPayload(), resultMeta())).toEqual([
       { key: "as-of-date", label: "观察日", value: "2026-08-13" },
-      { key: "analysis-scope", label: "分析口径", value: "首屏读数", note: "core" },
+      { key: "analysis-scope", label: "分析口径", value: "首屏读数" },
       { key: "source-coverage", label: "来源覆盖", value: "延后加载" },
       { key: "runtime-status", label: "证据状态", value: "5 项证据延后确认" },
     ]);
@@ -492,10 +535,10 @@ describe("buildObservationKpiBand", () => {
     expect(band).toEqual([
       { key: "stance", label: "投研观点", value: "偏防御", tone: "negative", status: "ready" },
       { key: "decision-modules", label: "决策摘要可用模块", value: "12/16", note: "部分降级", status: "ready" },
-      { key: "crisis-score", label: "危机分", value: "61.2", note: "警戒", status: "ready" },
+      { key: "crisis-score", label: "危机分", value: "2.5", note: "高风险", status: "ready" },
       { key: "a-share-risk", label: "A股风险", value: "35", note: "黄灯", tone: "warning", status: "ready" },
-      { key: "primary-signal", label: "主信号", value: "危机分", note: "警戒", tone: "negative", status: "ready" },
-      { key: "strategy-supply", label: "策略供数", value: "1 全链路 / 1 部分", status: "ready" },
+      { key: "primary-signal", label: "主信号", value: "危机分", note: "高风险", tone: "negative", status: "ready" },
+      { key: "strategy-supply", label: "策略供数", value: "1/2 全链路", note: "部分 1", status: "ready" },
     ]);
   });
 
@@ -509,9 +552,10 @@ describe("buildObservationKpiBand", () => {
     expect(band).toEqual([
       { key: "stance", label: "投研观点", value: "偏防御", tone: "negative", status: "ready" },
       { key: "decision-modules", label: "决策摘要可用模块", value: EM_DASH, note: "完整分析后确认", status: "deferred" },
-      { key: "crisis-score", label: "危机分", value: "61.2", note: "完整分析后确认", status: "deferred" },
+      { key: "crisis-score", label: "危机分", value: "2.5", note: "完整分析后确认", status: "deferred" },
       { key: "a-share-risk", label: "A股风险", value: EM_DASH, note: "完整分析后确认", status: "deferred" },
-      { key: "primary-signal", label: "主信号", value: "危机分", note: "警戒", tone: "negative", status: "ready" },
+      // core 缺少风险候选，主信号必须延后，不能让方向卡冒充首屏结论。
+      { key: "primary-signal", label: "主信号", value: EM_DASH, note: "完整分析后确认", status: "deferred" },
       {
         key: "strategy-supply",
         label: "策略供数",
@@ -583,7 +627,7 @@ describe("buildObservationKpiBand", () => {
     });
   });
 
-  it("策略供数 note 归纳降级与样例计数", () => {
+  it("策略供数 note 归纳非零的部分/降级/样例计数", () => {
     const band = buildObservationKpiBand({
       analysis: analysisPayload(),
       strategyPayload: { strategy_summaries: [fullChain(), degradedChain(), sampleOnly()] },
@@ -593,22 +637,32 @@ describe("buildObservationKpiBand", () => {
     expect(band[5]).toEqual({
       key: "strategy-supply",
       label: "策略供数",
-      value: "1 全链路 / 1 部分",
-      note: "降级 1 · 样例 1",
+      value: "1/3 全链路",
+      note: "部分 1 / 降级 1 / 样例 1",
       status: "ready",
     });
   });
 });
 
 describe("buildObservationConclusion", () => {
-  it("full 数据给出结论正文与警示计数", () => {
+  it("full 数据给出结论正文与警示原文", () => {
     expect(buildObservationConclusion(analysisPayload({ warnings: ["w1", "w2"] }))).toEqual({
       stance: "偏防御",
       tone: "negative",
       summary: "宏观信号偏谨慎。",
       recommendedAction: "维持防御仓位",
-      warningNote: "2 条分析警示待复核",
+      warnings: ["w1", "w2"],
     });
+  });
+
+  it("警示原文来源内去重且不把计数当正文", () => {
+    expect(
+      buildObservationConclusion(analysisPayload({ warnings: ["  曲线缺口  ", "曲线缺口", "补齐信用利差"] })),
+    ).toEqual(
+      expect.objectContaining({
+        warnings: ["曲线缺口", "补齐信用利差"],
+      }),
+    );
   });
 
   it("recommended_action 命中补数语义时复用共享归纳文案", () => {
@@ -631,7 +685,7 @@ describe("buildObservationConclusion", () => {
       tone: "neutral",
       summary: EM_DASH,
       recommendedAction: "等待观察结论更新",
-      warningNote: null,
+      warnings: [],
     });
   });
 });
@@ -680,7 +734,14 @@ describe("buildAShareRiskView", () => {
     expect(buildAShareRiskView(null)).toEqual({ state: "deferred", note: "完整分析后确认" });
   });
 
-  it("非 null 时映射只读明细并截断 watch_next 到 3 条", () => {
+  it("full 缺失给 empty，不再显示完整分析后确认", () => {
+    expect(buildAShareRiskView(null, "full")).toEqual({
+      state: "empty",
+      note: "暂无A股风险证据",
+    });
+  });
+
+  it("非 null 时映射只读明细；只隐藏 1 项时不折叠（折叠收益为负）", () => {
     expect(buildAShareRiskView(aShareRisk())).toEqual({
       state: "ready",
       tradeDate: "2026-08-13",
@@ -691,10 +752,21 @@ describe("buildAShareRiskView", () => {
       name: "黄灯",
       summary: "市场情绪偏热，保持观察。",
       positionRule: "权益仓位不超过 60%",
-      watchNext: ["北向资金", "两融余额", "成交额"],
-      watchNextMoreNote: "另 1 项",
+      watchNext: ["北向资金", "两融余额", "成交额", "波动率"],
+      watchNextMoreNote: null,
       triggeredRuleCount: 1,
     });
+  });
+
+  it("隐藏数 ≥2 才截断 watch_next 到 3 条并给「另 N 项」", () => {
+    const view = buildAShareRiskView(
+      aShareRisk({ watch_next: ["北向资金", "两融余额", "成交额", "波动率", "行业轮动"] }),
+    );
+    expect(view.state).toBe("ready");
+    if (view.state === "ready") {
+      expect(view.watchNext).toEqual(["北向资金", "两融余额", "成交额"]);
+      expect(view.watchNextMoreNote).toBe("另 2 项");
+    }
   });
 
   it("risk_score 缺失回落 EM_DASH，watch_next 不足 3 条无「另」注，red 映射 negative", () => {
@@ -720,21 +792,76 @@ describe("buildCrisisEvidenceView", () => {
     expect(buildCrisisEvidenceView(null)).toEqual({ state: "deferred", note: "完整分析后确认" });
   });
 
+  it("full 无能力结果时给 empty，不再显示 deferred", () => {
+    expect(buildCrisisEvidenceView(null, "full")).toEqual({
+      state: "empty",
+      note: "暂无危机分证据",
+    });
+  });
+
   it("完整结果映射 headline/score/regime/percentile/组件计数/折线数据", () => {
     expect(buildCrisisEvidenceView(crisisCapabilityResult())).toEqual({
       state: "ready",
-      headline: "危机分位于警戒区间。",
-      scoreText: "61.2",
-      regime: "警戒",
-      recommendation: "降低风险敞口，等待信号确认。",
+      headline: "Crisis Score 2.54: 高风险",
+      scoreText: "2.5",
+      regime: "高风险",
+      recommendation: "大幅降仓，启动 CTA 保护",
       percentileText: "87.26%",
+      availableComponentCount: 1,
       componentCount: 2,
       componentMissingCount: 1,
+      coverageNote: "组件覆盖按返回数组回退",
       history: [
-        { date: "2026-08-11", value: 58.1 },
-        { date: "2026-08-12", value: 61.24 },
+        { date: "2026-08-11", value: 1.98 },
+        { date: "2026-08-12", value: 2.54 },
       ],
     });
+  });
+
+  it("权威计数字段优先展示 4/5，不用 components.length 当成 4/4", () => {
+    const view = buildCrisisEvidenceView(
+      crisisCapabilityResult({
+        result: {
+          crisis_score: 2.54,
+          regime: "高风险",
+          recommendation: "大幅降仓，启动 CTA 保护",
+          percentile: 87.256,
+          available_component_count: 4,
+          component_count: 5,
+          components: [
+            { key: "equity_vol", label: "沪深300波动", z_score: 1.25 },
+            { key: "fx_vol", label: "美元兑人民币波动", z_score: 2.1 },
+            { key: "credit", label: "信用利差", z_score: 0.8 },
+            { key: "rates", label: "利率波动", z_score: 1.4 },
+          ],
+        },
+      }),
+    );
+    expect(view).toEqual(
+      expect.objectContaining({
+        state: "ready",
+        availableComponentCount: 4,
+        componentCount: 5,
+        coverageNote: null,
+      }),
+    );
+  });
+
+  it("权威计数字段 5/5 与 0/5 原样透出", () => {
+    expect(
+      buildCrisisEvidenceView(
+        crisisCapabilityResult({
+          result: { available_component_count: 5, component_count: 5, components: [] },
+        }),
+      ),
+    ).toEqual(expect.objectContaining({ availableComponentCount: 5, componentCount: 5, coverageNote: null }));
+    expect(
+      buildCrisisEvidenceView(
+        crisisCapabilityResult({
+          result: { available_component_count: 0, component_count: 5, components: [] },
+        }),
+      ),
+    ).toEqual(expect.objectContaining({ availableComponentCount: 0, componentCount: 5, coverageNote: null }));
   });
 
   it("score_history 映射保持 date/value 字段名并剔除无分数点", () => {
@@ -752,8 +879,10 @@ describe("buildCrisisEvidenceView", () => {
       regime: EM_DASH,
       recommendation: EM_DASH,
       percentileText: EM_DASH,
+      availableComponentCount: 0,
       componentCount: 0,
       componentMissingCount: 0,
+      coverageNote: "组件覆盖按返回数组回退",
       history: [],
     });
   });
@@ -764,19 +893,21 @@ describe("buildCrisisEvidenceView", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildStrategyEvidenceView", () => {
-  it("摘要行复用锁定供数链文案并透出 strategy_data_status", () => {
+  it("全表来源链同句时收敛为 commonChainNote 并透出 strategy_data_status", () => {
     const payload = {
       strategy_summaries: [fullChain()],
       strategy_data_status: { status: "complete", summary_count: 4 },
     } as MacroToolkitStrategySummariesPayload;
     const view = buildStrategyEvidenceView(payload, undefined);
+    // 同句逐行重复收敛区头一次；行级差异位为 null（§6 去重）。
+    expect(view.commonChainNote).toBe("已接入真实行情或因子快照");
     expect(view.rows).toEqual([
       {
         key: "livermore_trend",
         label: "利弗莫尔趋势",
         statusText: "已完成",
         tone: "neutral",
-        chainNote: "已完成 · 已接入真实行情或因子快照，仍仅作观察。",
+        chainNote: null,
       },
     ]);
     expect(view.counts).toEqual({ full: 1, partial: 0, degraded: 0, sample: 0 });
@@ -786,6 +917,18 @@ describe("buildStrategyEvidenceView", () => {
       reason: null,
       summaryCount: 4,
     });
+  });
+
+  it("来源链有行间差异时保留在行内且不设 commonChainNote", () => {
+    const view = buildStrategyEvidenceView(
+      { strategy_summaries: [fullChain(), sampleOnly()] } as MacroToolkitStrategySummariesPayload,
+      undefined,
+    );
+    expect(view.commonChainNote).toBeNull();
+    expect(view.rows.map((row) => row.chainNote)).toEqual([
+      "已接入真实行情或因子快照",
+      "仅策略可用性检查，未接入真实供数",
+    ]);
   });
 
   it("影子组合摘要复用只读观察文案", () => {
@@ -920,7 +1063,14 @@ describe("buildDataHealthView", () => {
     expect(view?.repairItems).toEqual([]);
     expect(view?.repairMoreNote).toBeNull();
     expect(view?.deferredSectionLabels).toEqual([]);
-    expect(view?.warningCount).toBe(0);
+    expect(view?.warnings).toEqual([]);
+  });
+
+  it("健康警示展示原文并在来源内去重", () => {
+    const view = buildDataHealthView(
+      dataHealth({ warnings: ["缺 PMI 核心输入", " 缺 PMI 核心输入", "曲线日滞后"] }),
+    );
+    expect(view?.warnings).toEqual(["缺 PMI 核心输入", "曲线日滞后"]);
   });
 
   it("core 延后加载态如实透出，不按 0 处理", () => {
@@ -962,10 +1112,34 @@ describe("buildDataHealthView", () => {
         typeText: "完整分析后确认",
         priorityText: "中",
         actionText: "打开完整分析后确认这部分证据，不把首屏延后加载当作缺失。",
+        actionTitle: null,
         latestDateText: EM_DASH,
         staleDaysText: EM_DASH,
       },
     ]);
+  });
+
+  it("建议动作英文错误码译中文短语、状态枚举中文化、去句首事项名；原句收 title", () => {
+    const view = buildDataHealthView(
+      dataHealth({
+        repair_items: [
+          {
+            type: "missing",
+            priority: "high",
+            label: "经济周期定位",
+            suggested_action:
+              "经济周期定位 当前 unavailable：PMI_CORE_INPUT_MISSING / GOV_CURVE_MISSING_REQUIRED_TENORS；补齐输入证据后重新运行完整宏观分析。",
+          },
+        ],
+      }),
+    );
+    const row = view?.repairItems[0];
+    expect(row?.actionText).toBe(
+      "当前不可用：缺 PMI 核心输入 / 缺国债曲线必需期限；补齐输入证据后重新运行完整宏观分析。",
+    );
+    expect(row?.actionTitle).toBe(
+      "经济周期定位 当前 unavailable：PMI_CORE_INPUT_MISSING / GOV_CURVE_MISSING_REQUIRED_TENORS；补齐输入证据后重新运行完整宏观分析。",
+    );
   });
 });
 
@@ -1013,6 +1187,21 @@ describe("buildEvidenceMetaView", () => {
   });
 });
 
+describe("sanitizeEvidenceMetaForDisplay", () => {
+  it("空 JSON 筛选与 none 缓存版本清洗为缺值；有效值原样返回", () => {
+    const meta = resultMeta({ filters_applied: {}, cache_version: "none" });
+    const sanitized = sanitizeEvidenceMetaForDisplay(meta);
+    expect(sanitized?.filters_applied).toBeUndefined();
+    expect(sanitized?.cache_version).toBe("");
+    // 原信封对象不被改写（仅展示层拷贝）。
+    expect(meta.cache_version).toBe("none");
+
+    const intact = resultMeta({ filters_applied: { report_date: "2026-08-12" }, cache_version: "cv-9" });
+    expect(sanitizeEvidenceMetaForDisplay(intact)).toBe(intact);
+    expect(sanitizeEvidenceMetaForDisplay(undefined)).toBeUndefined();
+  });
+});
+
 describe("buildReportBundleView", () => {
   it("ready 包映射产物 sizeText（KB/MB 一位小数）与 downloadHref", () => {
     const view = buildReportBundleView(reportBundle());
@@ -1020,6 +1209,11 @@ describe("buildReportBundleView", () => {
     expect(view.statusText).toBe("可下载");
     expect(view.downloadable).toBe(true);
     expect(view.validationText).toBe("12 通过 / 0 未通过");
+    expect(view.materialDate).toBe(EM_DASH);
+    expect(view.curveDate).toBe(EM_DASH);
+    expect(view.accountReportDate).toBe(EM_DASH);
+    expect(view.validationScope).toBe("bundle");
+    expect(view.warnings).toEqual([]);
     expect(view.artifacts).toEqual([
       {
         id: "daily-report",
@@ -1048,7 +1242,11 @@ describe("buildReportBundleView", () => {
       reason: null,
       validationText: EM_DASH,
       validationFailedCount: 0,
-      warningCount: 0,
+      materialDate: EM_DASH,
+      curveDate: EM_DASH,
+      accountReportDate: EM_DASH,
+      validationScope: EM_DASH,
+      warnings: [],
       artifacts: [],
     });
   });
@@ -1058,6 +1256,21 @@ describe("buildReportBundleView", () => {
     expect(view.statusText).toBe("资产校验失败，下载已关闭");
     expect(view.downloadable).toBe(false);
     expect(view.reason).toBe("sha256 mismatch");
+  });
+
+  it("三日期与校验范围各自透出，缺失不互相回填", () => {
+    const view = buildReportBundleView(
+      reportBundle({
+        as_of_date: "2026-08-12",
+        curve_date: "2026-08-11",
+        warnings: ["哈希待复核", "哈希待复核"],
+      }),
+    );
+    expect(view.materialDate).toBe("2026-08-12");
+    expect(view.curveDate).toBe("2026-08-11");
+    expect(view.accountReportDate).toBe(EM_DASH);
+    expect(view.validationScope).toBe("bundle");
+    expect(view.warnings).toEqual(["哈希待复核"]);
   });
 });
 
@@ -1128,6 +1341,17 @@ describe("buildObservationSectionStates", () => {
     );
     expect(states.crisis).toEqual({ state: "empty", note: "暂无危机分证据" });
     expect(states.signalRisk).toBeNull();
+  });
+
+  it("full 模式无策略摘要按 empty 处理，不再写完整分析后再确认", () => {
+    const states = buildObservationSectionStates(
+      sectionInput({
+        analysis: analysisPayload({ strategy_summaries: [] }),
+        strategyPayload: { strategy_summaries: [] },
+        strategySupply: "loaded",
+      }),
+    );
+    expect(states.modelStrategy).toEqual({ state: "empty", note: "暂无策略摘要" });
   });
 
   it("信号卡全为 outputs 时信号分区 empty", () => {

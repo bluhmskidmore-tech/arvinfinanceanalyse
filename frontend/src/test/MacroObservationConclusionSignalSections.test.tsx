@@ -32,7 +32,7 @@ const conclusion: MacroObservationConclusionView = {
   tone: "negative",
   summary: "宏观信号偏谨慎，货币边际收敛叠加信用利差走阔，组合优先控制久期与信用敞口。",
   recommendedAction: "先补齐关键输入，再复核观察结论",
-  warningNote: "2 条分析警示待复核",
+  warnings: ["曲线缺口", "信用利差待复核"],
 };
 
 const decisionResult: MacroToolkitCapabilityResult = {
@@ -159,14 +159,20 @@ describe("MacroObservationConclusionSection", () => {
     expect(mockFlag).toHaveTextContent("模拟口径");
   });
 
-  it("renders the warnings note only when the model provides one", () => {
+  it("renders the warning originals instead of a count summary", () => {
     const { unmount } = renderConclusionSection();
-    expect(
-      screen.getByTestId("macro-observation-conclusion-warning-note"),
-    ).toHaveTextContent("2 条分析警示待复核，全文见证据与口径分区。");
+    expect(screen.getByTestId("macro-observation-conclusion-warning-note")).toHaveTextContent(
+      "曲线缺口",
+    );
+    expect(screen.getByTestId("macro-observation-conclusion-warning-note")).toHaveTextContent(
+      "信用利差待复核",
+    );
+    expect(screen.getByTestId("macro-observation-conclusion-warning-note")).not.toHaveTextContent(
+      "2 条分析警示待复核",
+    );
     unmount();
 
-    renderConclusionSection({ conclusion: { ...conclusion, warningNote: null } });
+    renderConclusionSection({ conclusion: { ...conclusion, warnings: [] } });
     expect(
       screen.queryByTestId("macro-observation-conclusion-warning-note"),
     ).not.toBeInTheDocument();
@@ -219,11 +225,11 @@ describe("MacroObservationSignalRiskSection", () => {
     expect(riskBlock).toHaveTextContent("62");
     expect(within(riskBlock).getByText("仓位规则")).toBeInTheDocument();
     expect(within(riskBlock).getByText("仓位不高于五成，禁止追高开新仓。")).toBeInTheDocument();
-    // 模型层截断为前 3 条 + 「另 N 项」。
+    // 只隐藏 1 项时不再折叠（折叠收益为负）；隐藏数 ≥2 才截断（模型层测试覆盖）。
     expect(within(riskBlock).getByText("观察两融余额变化")).toBeInTheDocument();
     expect(within(riskBlock).getByText("观察成交额缩量节奏")).toBeInTheDocument();
-    expect(within(riskBlock).queryByText("观察行业轮动速度")).not.toBeInTheDocument();
-    expect(within(riskBlock).getByText("另 1 项")).toBeInTheDocument();
+    expect(within(riskBlock).getByText("观察行业轮动速度")).toBeInTheDocument();
+    expect(within(riskBlock).queryByText("另 1 项")).not.toBeInTheDocument();
     expect(riskBlock).toHaveTextContent("触发规则 2 条");
     const readout = riskBlock.querySelector(".macro-observation-signalrisk-risk-readout");
     expect(readout).toHaveAttribute("data-tone", "negative");

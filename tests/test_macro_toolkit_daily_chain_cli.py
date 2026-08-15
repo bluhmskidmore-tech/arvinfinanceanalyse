@@ -23,7 +23,11 @@ cli = importlib.util.module_from_spec(_SPEC)
 sys.modules[_SPEC.name] = cli
 _SPEC.loader.exec_module(cli)
 
-pytestmark = pytest.mark.unit
+pytestmark = [
+    pytest.mark.unit,
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_macro_toolkit,
+]
 
 
 def test_extra_scripts_cover_offchain_models_in_dependency_order() -> None:

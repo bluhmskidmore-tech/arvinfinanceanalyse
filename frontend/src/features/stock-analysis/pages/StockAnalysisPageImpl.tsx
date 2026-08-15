@@ -52,7 +52,6 @@ import type {
   WorkbenchSlowState,
 } from "../lib/stockAnalysisPageModel";
 import { buildSectorStrengthCardModel } from "../lib/stockAnalysisChartModel";
-import { buildCandidatePositionSizeHintNotice } from "../lib/stockAnalysisPositionSizeHintModel";
 import {
   buildStockAnalysisRailReviewState,
   compactStockText as compactText,
@@ -114,7 +113,6 @@ import { StockAnalysisDecisionFirstScreen } from "../components/StockAnalysisDec
 import { StockAnalysisEvidenceDisclosure } from "../components/StockAnalysisEvidenceDisclosure";
 import { StockAnalysisEvidenceLedgerRail } from "../components/StockAnalysisEvidenceLedgerRail";
 import { StockAnalysisObservationClosurePanel } from "../components/StockAnalysisObservationClosurePanel";
-import { StockAnalysisPretradeChecklist } from "../components/StockAnalysisPretradeChecklist";
 import { StockAnalysisWorkbenchDigest } from "../components/StockAnalysisWorkbenchDigest";
 import { CompactStatusTile } from "../components/StockAnalysisStatusPrimitives";
 import { StockAnalysisWorkbenchActions } from "../components/StockAnalysisWorkbenchActions";
@@ -528,7 +526,6 @@ export default function StockAnalysisPage() {
       workbenchQueue,
       strategyQueue,
       strategyQueueSourceModule,
-      strategyPayload?.stock_candidates?.position_size_hint,
     );
   }, [strategyPayload, workbenchPayload]);
 
@@ -1832,12 +1829,10 @@ export default function StockAnalysisPage() {
       detail: "回退日期或缓存口径不一致时，顶部和证据栏同步提示。",
     },
   ];
+  // 页尾摘要行由 frame 以 " · " 连接：保持 ≤2 项(§7 单行最多 1 个 ·)。
+  // 来源版本已在证据栏接口口径处呈现，这里不再重复(§6 状态信息去重)。
   const stockWorkbenchMetaItems = [
     { label: "日期", value: backendSupplyOverview?.asOfLabel ?? analyticsAsOf ?? "待返回" },
-    {
-      label: "来源",
-      value: sourceVersionSummary,
-    },
     {
       label: "口径",
       value: stockSupplyBasisLabel(strategyQuery.data?.result_meta?.basis ?? workbenchPayload?.basis ?? "analytical"),
@@ -1977,8 +1972,6 @@ export default function StockAnalysisPage() {
                   />
                 ) : null}
 
-                <StockAnalysisPretradeChecklist />
-
                 <StockAnalysisDataHealthCard />
 
                 <StockAnalysisEvidenceDisclosure
@@ -2015,7 +2008,7 @@ export default function StockAnalysisPage() {
                     value:
                       (item.key === "rule" || item.key === "trace") && item.value !== "待返回"
                         ? item.key === "rule"
-                          ? "已签核"
+                          ? "规则版本已返回"
                           : "已追踪"
                         : item.value,
                     detail:
@@ -2171,7 +2164,6 @@ export default function StockAnalysisPage() {
                     usesHybridFusion={reviewQueueUsesHybridFusion}
                     asOfLabel={decisionSummary?.asOfLabel ?? analyticsAsOf}
                     canReviewCandidates={workbenchCanReviewCandidates}
-                    positionSizeHint={buildCandidatePositionSizeHintNotice(strategyPayload?.stock_candidates?.position_size_hint)}
                     onReviewCandidate={(card) => {
                       const ranks = lookupStockStrategyRanks(strategyPayload ?? null, card.stockCode);
                       setDetailSelection(

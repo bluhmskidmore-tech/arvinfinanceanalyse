@@ -19,6 +19,7 @@ import duckdb
 import pandas as pd
 import requests
 from backend.app.config import choice_runtime
+from backend.app.governance.locks import acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_client import ChoiceClient
 from backend.app.repositories.choice_stock_adapter import (
@@ -548,87 +549,88 @@ def materialize_choice_stock_inputs(
 
     duckdb_file = Path(resolved_duckdb_path)
     duckdb_file.parent.mkdir(parents=True, exist_ok=True)
-    conn = duckdb.connect(str(duckdb_file), read_only=False)
-    try:
-        ensure_choice_stock_schema(conn)
-        conn.execute("begin transaction")
-        _delete_as_of_rows(
-            conn,
-            resolved_date,
-            history_start_date=choice_stock_history_start_date(resolved_date),
-        )
-        _insert_run(
-            conn,
-            run_id=run_id,
-            as_of_date=resolved_date,
-            status="completed",
-            catalog_path=resolved_catalog_path,
-            source_version=source_version,
-            vendor_version=vendor_version,
-            request_count=len(request_audits),
-            row_count=row_count,
-            started_at=started_at,
-            completed_at=completed_at,
-            error_message="",
-        )
-        _insert_request_audits(
-            conn,
-            request_audits=request_audits,
-            source_version=source_version,
-            vendor_version=vendor_version,
-        )
-        _insert_universe(conn, rows=universe_rows, run_id=run_id, source_version=source_version, vendor_version=vendor_version)
-        _insert_sector_membership(
-            conn,
-            rows=sector_rows,
-            run_id=run_id,
-            source_version=source_version,
-            vendor_version=vendor_version,
-        )
-        _insert_daily_observations(
-            conn,
-            rows=daily_rows,
-            run_id=run_id,
-            source_version=source_version,
-            vendor_version=daily_vendor_version,
-        )
-        _insert_limit_quality(
-            conn,
-            rows=limit_rows,
-            run_id=run_id,
-            source_version=source_version,
-            vendor_version=vendor_version,
-        )
-        _insert_concept_membership(
-            conn,
-            rows=concept_rows,
-            run_id=run_id,
-            source_version=source_version,
-            vendor_version=vendor_version,
-        )
-        _insert_intraday_movement_events(
-            conn,
-            rows=movement_rows,
-            run_id=run_id,
-            source_version=source_version,
-            vendor_version=vendor_version,
-        )
-        conn.execute("commit")
-        # 首版观察模式:写入完成后自动执行 DQ 守卫检查,失败仅告警不回滚。
+    with acquire_lock(resolve_duckdb_writer_lock(duckdb_file), base_dir=duckdb_file.parent):
+        conn = duckdb.connect(str(duckdb_file), read_only=False)
         try:
-            dq_checks = run_choice_stock_daily_observation_dq_checks(
+            ensure_choice_stock_schema(conn)
+            conn.execute("begin transaction")
+            _delete_as_of_rows(
+                conn,
+                resolved_date,
+                history_start_date=choice_stock_history_start_date(resolved_date),
+            )
+            _insert_run(
                 conn,
                 run_id=run_id,
-                expected_vendor_version=daily_vendor_version,
+                as_of_date=resolved_date,
+                status="completed",
+                catalog_path=resolved_catalog_path,
+                source_version=source_version,
+                vendor_version=vendor_version,
+                request_count=len(request_audits),
+                row_count=row_count,
+                started_at=started_at,
+                completed_at=completed_at,
+                error_message="",
             )
+            _insert_request_audits(
+                conn,
+                request_audits=request_audits,
+                source_version=source_version,
+                vendor_version=vendor_version,
+            )
+            _insert_universe(conn, rows=universe_rows, run_id=run_id, source_version=source_version, vendor_version=vendor_version)
+            _insert_sector_membership(
+                conn,
+                rows=sector_rows,
+                run_id=run_id,
+                source_version=source_version,
+                vendor_version=vendor_version,
+            )
+            _insert_daily_observations(
+                conn,
+                rows=daily_rows,
+                run_id=run_id,
+                source_version=source_version,
+                vendor_version=daily_vendor_version,
+            )
+            _insert_limit_quality(
+                conn,
+                rows=limit_rows,
+                run_id=run_id,
+                source_version=source_version,
+                vendor_version=vendor_version,
+            )
+            _insert_concept_membership(
+                conn,
+                rows=concept_rows,
+                run_id=run_id,
+                source_version=source_version,
+                vendor_version=vendor_version,
+            )
+            _insert_intraday_movement_events(
+                conn,
+                rows=movement_rows,
+                run_id=run_id,
+                source_version=source_version,
+                vendor_version=vendor_version,
+            )
+            conn.execute("commit")
+            # 首版观察模式:写入完成后自动执行 DQ 守卫检查,失败仅告警不回滚。
+            try:
+                dq_checks = run_choice_stock_daily_observation_dq_checks(
+                    conn,
+                    run_id=run_id,
+                    expected_vendor_version=daily_vendor_version,
+                )
+            except Exception:
+                logger.exception("choice_stock daily observation DQ checks crashed for run_id=%s", run_id)
+                dq_checks = {"status": "error", "issues": ["dq checks crashed; see task log"], "checks": {}}
         except Exception:
-            logger.exception("choice_stock daily observation DQ checks crashed for run_id=%s", run_id)
-            dq_checks = {"status": "error", "issues": ["dq checks crashed; see task log"], "checks": {}}
-    except Exception:
-        conn.execute("rollback")
-        raise
-    finally:
-        conn.close()
+            conn.execute("rollback")
+            raise
+        finally:
+            conn.close()
 
     return {
         "status": "completed",
@@ -663,96 +665,97 @@ def materialize_choice_stock_factor_snapshot(
     if not duckdb_file.exists():
         raise RuntimeError(f"Choice stock DuckDB does not exist: {duckdb_file}")
 
-    conn = duckdb.connect(str(duckdb_file), read_only=False)
-    try:
-        ensure_choice_stock_schema(conn)
-        universe_rows = _load_factor_snapshot_universe(conn, resolved_date, max_stock_count=max_stock_count)
-        if not universe_rows:
-            raise RuntimeError(f"Choice stock universe is not materialized for {resolved_date}.")
-        stock_codes = [str(row["stock_code"]) for row in universe_rows]
-        price_metrics = _load_stock_price_factor_metrics(conn, resolved_date, stock_codes)
-        client = tushare_client or _DefaultTushareStockClient()
-        daily_basic = _load_tushare_daily_basic_factors(client, resolved_date, stock_codes)
-        financial = _load_tushare_financial_factors(client, resolved_date, stock_codes)
-        choice_fallback_used = False
-        vendor_inputs = ["tushare.daily_basic", "tushare.fina_indicator"]
-        if use_choice_financial_fallback and CHOICE_CSS_FINANCIAL_INDICATORS.strip():
-            required_choice_fields_by_code = {
-                code: {
-                    field_key
-                    for field_key in ("roe", "gross_margin")
-                    if financial.get(code, {}).get(field_key) is None
+    with acquire_lock(resolve_duckdb_writer_lock(duckdb_file), base_dir=duckdb_file.parent):
+        conn = duckdb.connect(str(duckdb_file), read_only=False)
+        try:
+            ensure_choice_stock_schema(conn)
+            universe_rows = _load_factor_snapshot_universe(conn, resolved_date, max_stock_count=max_stock_count)
+            if not universe_rows:
+                raise RuntimeError(f"Choice stock universe is not materialized for {resolved_date}.")
+            stock_codes = [str(row["stock_code"]) for row in universe_rows]
+            price_metrics = _load_stock_price_factor_metrics(conn, resolved_date, stock_codes)
+            client = tushare_client or _DefaultTushareStockClient()
+            daily_basic = _load_tushare_daily_basic_factors(client, resolved_date, stock_codes)
+            financial = _load_tushare_financial_factors(client, resolved_date, stock_codes)
+            choice_fallback_used = False
+            vendor_inputs = ["tushare.daily_basic", "tushare.fina_indicator"]
+            if use_choice_financial_fallback and CHOICE_CSS_FINANCIAL_INDICATORS.strip():
+                required_choice_fields_by_code = {
+                    code: {
+                        field_key
+                        for field_key in ("roe", "gross_margin")
+                        if financial.get(code, {}).get(field_key) is None
+                    }
+                    for code in stock_codes
                 }
-                for code in stock_codes
-            }
-            needs_choice = sorted(code for code, missing_fields in required_choice_fields_by_code.items() if missing_fields)
-            if needs_choice:
-                try:
-                    c_client = choice_stock_client if choice_stock_client is not None else _DefaultChoiceStockClient()
-                    patch = _load_choice_css_financial_factors(
-                        c_client,
-                        resolved_date,
-                        needs_choice,
-                        required_fields_by_code=required_choice_fields_by_code,
-                    )
-                    choice_fallback_used = bool(patch)
-                    for stock_code, values in patch.items():
-                        merged = dict(financial.get(stock_code, {}))
-                        if merged.get("roe") is None and values.get("roe") is not None:
-                            merged["roe"] = values["roe"]
-                        if merged.get("gross_margin") is None and values.get("gross_margin") is not None:
-                            merged["gross_margin"] = values["gross_margin"]
-                        financial[stock_code] = merged
-                    if choice_fallback_used:
-                        vendor_inputs.append(f"choice.css({CHOICE_CSS_FINANCIAL_INDICATORS})")
-                except Exception:
-                    logger.exception(
-                        "Choice css financial fallback failed for %s (continuing with Tushare financials only)",
-                        resolved_date,
-                    )
-        rows = _build_factor_snapshot_rows(
-            as_of_date=resolved_date,
-            universe_rows=universe_rows,
-            daily_basic=daily_basic,
-            financial=financial,
-            price_metrics=price_metrics,
-        )
-        if not rows:
-            raise RuntimeError(
-                f"No stock factor rows could be materialized for {resolved_date}; "
-                "check choice_stock_universe coverage."
+                needs_choice = sorted(code for code, missing_fields in required_choice_fields_by_code.items() if missing_fields)
+                if needs_choice:
+                    try:
+                        c_client = choice_stock_client if choice_stock_client is not None else _DefaultChoiceStockClient()
+                        patch = _load_choice_css_financial_factors(
+                            c_client,
+                            resolved_date,
+                            needs_choice,
+                            required_fields_by_code=required_choice_fields_by_code,
+                        )
+                        choice_fallback_used = bool(patch)
+                        for stock_code, values in patch.items():
+                            merged = dict(financial.get(stock_code, {}))
+                            if merged.get("roe") is None and values.get("roe") is not None:
+                                merged["roe"] = values["roe"]
+                            if merged.get("gross_margin") is None and values.get("gross_margin") is not None:
+                                merged["gross_margin"] = values["gross_margin"]
+                            financial[stock_code] = merged
+                        if choice_fallback_used:
+                            vendor_inputs.append(f"choice.css({CHOICE_CSS_FINANCIAL_INDICATORS})")
+                    except Exception:
+                        logger.exception(
+                            "Choice css financial fallback failed for %s (continuing with Tushare financials only)",
+                            resolved_date,
+                        )
+            rows = _build_factor_snapshot_rows(
+                as_of_date=resolved_date,
+                universe_rows=universe_rows,
+                daily_basic=daily_basic,
+                financial=financial,
+                price_metrics=price_metrics,
             )
+            if not rows:
+                raise RuntimeError(
+                    f"No stock factor rows could be materialized for {resolved_date}; "
+                    "check choice_stock_universe coverage."
+                )
 
-        source_version = _build_source_version(
-            {
-                "as_of_date": resolved_date,
-                "rows": rows,
-                "input_tables": ["choice_stock_universe", "choice_stock_sector_membership", "choice_stock_daily_observation"],
-                "vendor_inputs": vendor_inputs,
-            }
-        )
-        vv_tag = "choice_tushare" if choice_fallback_used else "tushare"
-        vendor_version = (
-            f"vv_{vv_tag}_stock_factor_{resolved_date.replace('-', '')}_"
-            f"{source_version.removeprefix('sv_choice_stock_')}"
-        )
-        completed_at = datetime.now(UTC).isoformat()
+            source_version = _build_source_version(
+                {
+                    "as_of_date": resolved_date,
+                    "rows": rows,
+                    "input_tables": ["choice_stock_universe", "choice_stock_sector_membership", "choice_stock_daily_observation"],
+                    "vendor_inputs": vendor_inputs,
+                }
+            )
+            vv_tag = "choice_tushare" if choice_fallback_used else "tushare"
+            vendor_version = (
+                f"vv_{vv_tag}_stock_factor_{resolved_date.replace('-', '')}_"
+                f"{source_version.removeprefix('sv_choice_stock_')}"
+            )
+            completed_at = datetime.now(UTC).isoformat()
 
-        conn.execute("begin transaction")
-        conn.execute("delete from choice_stock_factor_snapshot where as_of_date = ?", [resolved_date])
-        _insert_factor_snapshot(
-            conn,
-            rows=rows,
-            run_id=run_id,
-            source_version=source_version,
-            vendor_version=vendor_version,
-        )
-        conn.execute("commit")
-    except Exception:
-        _rollback_quietly(conn)
-        raise
-    finally:
-        conn.close()
+            conn.execute("begin transaction")
+            conn.execute("delete from choice_stock_factor_snapshot where as_of_date = ?", [resolved_date])
+            _insert_factor_snapshot(
+                conn,
+                rows=rows,
+                run_id=run_id,
+                source_version=source_version,
+                vendor_version=vendor_version,
+            )
+            conn.execute("commit")
+        except Exception:
+            _rollback_quietly(conn)
+            raise
+        finally:
+            conn.close()
 
     return {
         "status": "completed",
@@ -2205,39 +2208,44 @@ def _persist_failed_materialization(
     completed_at = datetime.now(UTC).isoformat()
     duckdb_file = Path(duckdb_path)
     duckdb_file.parent.mkdir(parents=True, exist_ok=True)
-    conn: duckdb.DuckDBPyConnection | None = None
     try:
-        conn = duckdb.connect(str(duckdb_file), read_only=False)
-        ensure_choice_stock_schema(conn)
-        conn.execute("begin transaction")
-        _insert_run(
-            conn,
-            run_id=run_id,
-            as_of_date=as_of_date,
-            status="failed",
-            catalog_path=catalog_path,
-            source_version=source_version,
-            vendor_version=vendor_version,
-            request_count=len(audits),
-            row_count=0,
-            started_at=started_at,
-            completed_at=completed_at,
-            error_message=error_msg,
-        )
-        _insert_request_audits(
-            conn,
-            request_audits=audits,
-            source_version=source_version,
-            vendor_version=vendor_version,
-        )
-        conn.execute("commit")
+        with acquire_lock(resolve_duckdb_writer_lock(duckdb_file), base_dir=duckdb_file.parent):
+            conn: duckdb.DuckDBPyConnection | None = None
+            try:
+                conn = duckdb.connect(str(duckdb_file), read_only=False)
+                ensure_choice_stock_schema(conn)
+                conn.execute("begin transaction")
+                _insert_run(
+                    conn,
+                    run_id=run_id,
+                    as_of_date=as_of_date,
+                    status="failed",
+                    catalog_path=catalog_path,
+                    source_version=source_version,
+                    vendor_version=vendor_version,
+                    request_count=len(audits),
+                    row_count=0,
+                    started_at=started_at,
+                    completed_at=completed_at,
+                    error_message=error_msg,
+                )
+                _insert_request_audits(
+                    conn,
+                    request_audits=audits,
+                    source_version=source_version,
+                    vendor_version=vendor_version,
+                )
+                conn.execute("commit")
+            except Exception:
+                logger.exception("Failed to persist failed-materialization audit record for run_id=%s", run_id)
+                if conn is not None:
+                    _rollback_quietly(conn)
+            finally:
+                if conn is not None:
+                    conn.close()
     except Exception:
+        # Lock acquisition failed; audit persistence must never mask the original error.
         logger.exception("Failed to persist failed-materialization audit record for run_id=%s", run_id)
-        if conn is not None:
-            _rollback_quietly(conn)
-    finally:
-        if conn is not None:
-            conn.close()
 
 
 def _choice_error_details(error: Exception) -> tuple[int, str]:

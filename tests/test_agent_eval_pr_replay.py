@@ -20,7 +20,12 @@ TASK = {
     "id": "pr_probe_demo_001",
     "page": "ledger-pnl",
     "goal": "PR replay selection fixture.",
-    "required_evidence": [],
+    # 证据工件走运行期产物目录（.codex-tmp/ 被 .gitignore），CI 检出中恒缺失：
+    # 复现生产任务的 evidence_probes 形态，报告必须把它与探针红灯区分开。
+    "required_evidence": ["moss-metric-contracts"],
+    "evidence_probes": {
+        "moss-metric-contracts": ".codex-tmp/agent-eval/evidence/metric-contracts.json"
+    },
     "checks": [],
     "business_gates": ["unit_consistency"],
     "page_gates": [],
@@ -64,19 +69,25 @@ def test_task_applies_matches_scope_prefix_against_diff():
     assert _task_applies(TASK, []) is False
 
 
-def test_split_hard_failures_separates_probe_gaps_from_real_failures():
+def test_split_hard_failures_separates_gaps_and_missing_evidence_from_real_failures():
     hard = [
         "Business gate failed: unit_consistency",
         "Required check failed: npm --prefix frontend run typecheck",
+        "Missing required evidence: moss-metric-contracts",
         "Page gate failed: page_loads",
     ]
-    real, gaps = _split_hard_failures(hard, unprobed={"unit_consistency", "page_loads"})
+    real, gaps, missing_evidence = _split_hard_failures(
+        hard, unprobed={"unit_consistency", "page_loads"}
+    )
 
+    # 证据工件缺失不得混入"真实失败"（探针变红）：它的 gate 名不在 unprobed
+    # 分流里，旧实现会把它归为 real。
     assert real == ["Required check failed: npm --prefix frontend run typecheck"]
     assert gaps == [
         "Business gate failed: unit_consistency",
         "Page gate failed: page_loads",
     ]
+    assert missing_evidence == ["Missing required evidence: moss-metric-contracts"]
 
 
 def test_render_task_section_marks_void_when_measurement_is_rejected():
@@ -162,6 +173,11 @@ def test_end_to_end_applicable_task_runs_replay_and_reports_probe_gap(pr_repo, t
     assert "fail" in report
     assert "探针缺口（1）" in report
     assert "fixture gap reason" in report
+    # .codex-tmp/ 工件在检出中不存在：单列"证据工件缺失"，且不得渲染成真实失败。
+    assert "证据工件缺失（1）" in report
+    assert "Missing required evidence: moss-metric-contracts" in report
+    assert "工件状态：missing" in report
+    assert "真实失败" not in report
     assert "不阻塞合并" in report
 
     archive = tmp_path / "archives" / "pr_probe_demo_001"

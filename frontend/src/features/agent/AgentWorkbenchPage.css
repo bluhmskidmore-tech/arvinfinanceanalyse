@@ -709,7 +709,7 @@
 }
 
 .agent-conversation__bottom {
-  min-height: 72px;
+  min-height: 1px;
   scroll-margin-bottom: 280px;
 }
 

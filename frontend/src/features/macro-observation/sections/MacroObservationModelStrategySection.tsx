@@ -3,6 +3,7 @@ import type {
   MacroToolkitModelReadiness,
 } from "../../../api/macroToolkitClient";
 import { EM_DASH, type MetricTone } from "../../../pageModel";
+import { hasonFrameworkDisplayName } from "../../macro-toolkit/lib/macroToolkitDisplayFormat";
 import { statusColor, statusLabel } from "../../macro-toolkit/lib/macroToolkitPanelShared";
 import {
   hasonBoundaryText,
@@ -45,12 +46,8 @@ function hasonStatusTone(status: string): MetricTone {
   return STATUS_COLOR_TO_TONE[statusColor(status)] ?? "neutral";
 }
 
-const OBSERVATION_BOUNDARY_NOTE = "仅观察，不作为正式投资信号。";
-
 function ModelReadinessPanel({ models }: { models: MacroToolkitModelReadiness[] }) {
-  const observationOnly = models.some(
-    (model) => model.observation_only || !model.formal_use_allowed,
-  );
+  // 只读边界声明保留在页头徽标与只读细注；卡级「仅观察」脚注按 §6 去重删除。
   return (
     <section className="macro-observation-modelstrategy-panel" aria-label="模型就绪简表">
       <div className="macro-observation-view__panel-head">
@@ -60,44 +57,39 @@ function ModelReadinessPanel({ models }: { models: MacroToolkitModelReadiness[] 
         </span>
       </div>
       {models.length ? (
-        <>
-          <table className="macro-observation-view__table">
-            <thead>
-              <tr>
-                <th>模型</th>
-                <th>状态</th>
-                <th>说明</th>
-              </tr>
-            </thead>
-            <tbody>
-              {models.map((model) => {
-                const display = modelReadinessDisplay(model.readiness);
-                return (
-                  <tr key={model.id}>
-                    <td>{model.label}</td>
-                    <td>
-                      <span
-                        className="macro-observation-modelstrategy-badge"
-                        data-tone={display.tone}
-                      >
-                        {display.label}
-                      </span>
-                    </td>
-                    <td
-                      className="macro-observation-modelstrategy-note-cell"
-                      title={model.degraded_reason ?? undefined}
+        <table className="macro-observation-view__table">
+          <thead>
+            <tr>
+              <th>模型</th>
+              <th>状态</th>
+              <th>说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            {models.map((model) => {
+              const display = modelReadinessDisplay(model.readiness);
+              return (
+                <tr key={model.id}>
+                  <td>{model.label}</td>
+                  <td>
+                    <span
+                      className="macro-observation-modelstrategy-badge"
+                      data-tone={display.tone}
                     >
-                      {modelDegradedReasonText(model.degraded_reason)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {observationOnly ? (
-            <p className="macro-observation-modelstrategy-boundary">{OBSERVATION_BOUNDARY_NOTE}</p>
-          ) : null}
-        </>
+                      {display.label}
+                    </span>
+                  </td>
+                  <td
+                    className="macro-observation-modelstrategy-note-cell"
+                    title={model.degraded_reason ?? undefined}
+                  >
+                    {modelDegradedReasonText(model.degraded_reason)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       ) : (
         <p className="macro-observation-modelstrategy-empty">模型就绪清单待完整分析确认。</p>
       )}
@@ -111,7 +103,9 @@ function HasonSummaryCard({ hason }: { hason: MacroToolkitHasonStrategy | null }
       {hason ? (
         <>
           <div className="macro-observation-modelstrategy-hason-head">
-            <h3 className="macro-observation-modelstrategy-hason-name">{hason.framework_name}</h3>
+            <h3 className="macro-observation-modelstrategy-hason-name" title={hason.framework_name}>
+              {hasonFrameworkDisplayName(hason.framework_name)}
+            </h3>
             <span
               className="macro-observation-modelstrategy-badge"
               data-tone={hasonStatusTone(hason.display_status)}
@@ -172,7 +166,16 @@ export default function MacroObservationModelStrategySection({
   strategy: MacroObservationStrategyEvidenceView;
 }) {
   const { counts, dataStatus } = strategy;
-  const countsHint = `全链路 ${counts.full} · 部分 ${counts.partial} · 降级 ${counts.degraded} · 样例 ${counts.sample}`;
+  // 区头 meta 只列非零项，`·` 不超单行配额（DESIGN §7）；全部为零时只报全链路。
+  const countsHint = [
+    `全链路 ${counts.full}`,
+    counts.partial ? `部分 ${counts.partial}` : "",
+    counts.degraded ? `降级 ${counts.degraded}` : "",
+    counts.sample ? `样例 ${counts.sample}` : "",
+  ]
+    .filter(Boolean)
+    .join(" / ");
+  const showChainColumn = strategy.rows.some((row) => row.chainNote);
   return (
     <div className="macro-observation-modelstrategy-stack">
       <div className="macro-observation-modelstrategy-layout">
@@ -202,13 +205,17 @@ export default function MacroObservationModelStrategySection({
             {strategy.rows.length ? countsHint : EM_DASH}
           </span>
         </div>
+        {/* 来源链全表同句时收敛区头一次（§6 去重）；列内只留行间差异，无差异整列删。 */}
+        {strategy.commonChainNote ? (
+          <p className="macro-observation-modelstrategy-chain-note">{strategy.commonChainNote}</p>
+        ) : null}
         {strategy.rows.length ? (
           <table className="macro-observation-view__table">
             <thead>
               <tr>
                 <th>策略</th>
                 <th>状态</th>
-                <th>来源链</th>
+                {showChainColumn ? <th>来源链</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -220,7 +227,11 @@ export default function MacroObservationModelStrategySection({
                       {row.statusText}
                     </span>
                   </td>
-                  <td className="macro-observation-modelstrategy-note-cell">{row.chainNote}</td>
+                  {showChainColumn ? (
+                    <td className="macro-observation-modelstrategy-note-cell">
+                      {row.chainNote ?? EM_DASH}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
@@ -249,14 +260,14 @@ export default function MacroObservationModelStrategySection({
           <div className="macro-observation-modelstrategy-summary-card" aria-label="宏观 ETF 策略摘要">
             <span className="macro-observation-modelstrategy-stat-label">宏观 ETF 策略</span>
             {strategy.etfStrategy ? (
-              <>
-                <span className="macro-observation-modelstrategy-stat-value">
-                  双频 {strategy.etfStrategy.dualFrequencyStatusText}
-                </span>
-                <span className="macro-observation-modelstrategy-stat-note">
-                  {strategy.etfStrategy.boundary}
-                </span>
-              </>
+              // 「仅观察」边界句已由页头徽标与只读细注声明，卡级脚注按 §6 去重；
+              // 原始 boundary 收 title 供溯源。
+              <span
+                className="macro-observation-modelstrategy-stat-value"
+                title={strategy.etfStrategy.boundary}
+              >
+                双频 {strategy.etfStrategy.dualFrequencyStatusText}
+              </span>
             ) : (
               <>
                 <span className="macro-observation-modelstrategy-stat-value">{EM_DASH}</span>

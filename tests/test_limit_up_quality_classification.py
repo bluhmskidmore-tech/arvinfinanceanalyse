@@ -443,7 +443,7 @@ def test_materialize_prefers_daily_st_status_over_universe_name(tmp_path: Path) 
         migration = (
             REGISTRY_DIR
             / "proposals"
-            / "41_choice_stock_daily_security_status.sql"
+            / "42_choice_stock_daily_security_status.sql"
         ).read_text(encoding="utf-8")
         for statement in parse_registry_sql_text(migration):
             conn.execute(statement)

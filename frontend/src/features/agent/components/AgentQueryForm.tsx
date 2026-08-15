@@ -1,5 +1,7 @@
 import { useEffect, useRef, type FormEvent, type KeyboardEvent, type MutableRefObject, type Ref } from "react";
 
+import { getAgentScrollBehavior } from "../lib/agentMotion";
+
 type AgentQueryFormProps = {
   compact?: boolean;
   showAdvancedTools?: boolean;
@@ -152,7 +154,7 @@ export function AgentQueryForm({
     textarea.focus();
     const scrollIntoView = textarea.scrollIntoView;
     if (typeof scrollIntoView === "function" && shouldScrollTextareaIntoView(textarea)) {
-      scrollIntoView.call(textarea, { behavior: "smooth", block: "nearest" });
+      scrollIntoView.call(textarea, { behavior: getAgentScrollBehavior(), block: "nearest" });
     }
   }
 

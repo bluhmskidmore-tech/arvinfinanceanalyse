@@ -8,6 +8,7 @@ from backend.app.repositories.external_data_catalog_repo import (
     ensure_external_data_catalog_schema,
 )
 from backend.app.repositories.external_data_migrations_extra import ensure_std_external_macro_schema
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.schemas.external_data import ExternalDataCatalogEntry
 from backend.app.services.external_data_service import ExternalDataService
 
@@ -57,7 +58,8 @@ def test_service_fetches_series_data_pages_from_configured_duckdb(tmp_path) -> N
             catalog_version="cv",
             created_at="2026-04-21T00:00:00+00:00",
         )
-        ExternalDataCatalogRepository(conn=conn).register(entry)
+        with repository_task_write_scope("backend.app.tasks.external_data_catalog_seed_test"):
+            ExternalDataCatalogRepository(conn=conn).register(entry)
         conn.execute(
             """
             insert or replace into std_external_macro_daily (
@@ -96,20 +98,21 @@ def test_service_builds_external_data_watermark_ledger(tmp_path) -> None:
         ensure_external_data_catalog_schema(conn)
         ensure_std_external_macro_schema(conn)
         repo = ExternalDataCatalogRepository(conn=conn)
-        for series_id in ("s.empty", "s.test"):
-            repo.register(
-                ExternalDataCatalogEntry(
-                    series_id=series_id,
-                    series_name=series_id,
-                    vendor_name="v",
-                    source_family="sf",
-                    domain="macro",
-                    standardized_table="std_external_macro_daily",
-                    view_name="vw_external_macro_daily",
-                    catalog_version="cv",
-                    created_at="2026-04-21T00:00:00+00:00",
+        with repository_task_write_scope("backend.app.tasks.external_data_catalog_seed_test"):
+            for series_id in ("s.empty", "s.test"):
+                repo.register(
+                    ExternalDataCatalogEntry(
+                        series_id=series_id,
+                        series_name=series_id,
+                        vendor_name="v",
+                        source_family="sf",
+                        domain="macro",
+                        standardized_table="std_external_macro_daily",
+                        view_name="vw_external_macro_daily",
+                        catalog_version="cv",
+                        created_at="2026-04-21T00:00:00+00:00",
+                    )
                 )
-            )
         conn.execute(
             """
             insert or replace into std_external_macro_daily (

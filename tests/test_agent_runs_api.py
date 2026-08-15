@@ -575,6 +575,181 @@ def test_agent_run_create_is_idempotent_for_duplicate_client_request_id(monkeypa
     ]
 
 
+def test_archive_project_serializes_against_conversation_run_creation(monkeypatch, tmp_path):
+    """归档 vs 带会话 run 创建必须互斥：归档进行中 run 创建阻塞，归档后拒绝。"""
+    from backend.app.agent.schemas.agent_workspace import AgentProjectUpdateRequest
+    from backend.app.repositories.agent_workspace_repo import AgentWorkspaceRepository
+    from backend.app.services.agent_workspace_service import update_project
+
+    client, settings = _client(
+        monkeypatch,
+        tmp_path,
+        lambda *_args, **_kwargs: _sample_envelope(),
+        grant_write=True,
+    )
+    conversation = _create_conversation(client)
+    archive_append_started = threading.Event()
+    allow_archive_append = threading.Event()
+    archive_done = threading.Event()
+    run_done = threading.Event()
+    archive_errors: list[BaseException] = []
+    run_result: dict[str, object] = {}
+    original_append_project = AgentWorkspaceRepository.append_project
+
+    def blocking_append_project(repository, payload):
+        if payload.get("archived_at"):
+            archive_append_started.set()
+            if not allow_archive_append.wait(timeout=5.0):
+                raise AssertionError("Timed out waiting to release archive append.")
+        return original_append_project(repository, payload)
+
+    monkeypatch.setattr(
+        AgentWorkspaceRepository,
+        "append_project",
+        blocking_append_project,
+    )
+
+    def archive_project() -> None:
+        try:
+            update_project(
+                settings=settings,
+                owner_user_id=str(conversation["owner_user_id"]),
+                project_id=str(conversation["project_id"]),
+                request=AgentProjectUpdateRequest(archived=True),
+            )
+        except BaseException as exc:  # pragma: no cover - assertion reports below
+            archive_errors.append(exc)
+        finally:
+            archive_done.set()
+
+    def create_run_after_archive_starts() -> None:
+        try:
+            response = client.post(
+                "/api/agent/runs",
+                json={
+                    "question": "race the archive",
+                    "context": {
+                        "conversation_id": conversation["conversation_id"],
+                    },
+                },
+            )
+            run_result["status_code"] = response.status_code
+            run_result["body"] = response.json()
+        finally:
+            run_done.set()
+
+    archive_thread = threading.Thread(target=archive_project)
+    run_thread = threading.Thread(target=create_run_after_archive_starts)
+    archive_thread.start()
+    assert archive_append_started.wait(timeout=5.0)
+    run_thread.start()
+    # run 创建必须被 lifecycle 锁挡住，直到归档写盘完成。
+    assert not run_done.wait(timeout=0.2)
+
+    allow_archive_append.set()
+    archive_thread.join(timeout=5.0)
+    run_thread.join(timeout=10.0)
+
+    assert archive_done.is_set()
+    assert run_done.is_set()
+    assert archive_errors == []
+    assert run_result["status_code"] == 409
+    assert "archived" in str(run_result["body"])
+    run_stream = tmp_path / "governance" / "agent_run.jsonl"
+    assert not run_stream.exists() or all(
+        json.loads(line).get("conversation_id") != conversation["conversation_id"]
+        for line in run_stream.read_text(encoding="utf-8").splitlines()
+    )
+
+
+def test_conversation_run_dispatch_happens_outside_workspace_lifecycle_lock(monkeypatch, tmp_path):
+    """broker 派发必须在 lifecycle 锁外：锁内派发会把 5s 等待放大为全局 409/503。"""
+    from backend.app.services.agent_workspace_service import (
+        agent_workspace_lifecycle_lock,
+    )
+
+    client, settings = _client(
+        monkeypatch,
+        tmp_path,
+        lambda *_args, **_kwargs: _sample_envelope(),
+        grant_write=True,
+    )
+    conversation = _create_conversation(client)
+    service_module = __import__(
+        "backend.app.services.agent_run_service",
+        fromlist=["execute_agent_run_task"],
+    )
+    probed: list[str] = []
+
+    def dispatch_probe(*, run_id):
+        # 若路由仍持有 lifecycle 锁，这里会在 5s 超时后抛
+        # AgentWorkspaceStateConflict，进而以 dispatch 失败（503）暴露。
+        with agent_workspace_lifecycle_lock(settings=settings):
+            pass
+        probed.append(run_id)
+
+    monkeypatch.setattr(service_module.execute_agent_run_task, "send", dispatch_probe)
+
+    response = client.post(
+        "/api/agent/runs",
+        json={
+            "question": "dispatch outside the lock",
+            "context": {"conversation_id": conversation["conversation_id"]},
+        },
+    )
+
+    assert response.status_code == 200
+    created = response.json()
+    assert created["status"] == "queued"
+    assert probed == [created["run_id"]]
+
+
+def test_conversation_retry_dispatch_happens_outside_workspace_lifecycle_lock(
+    monkeypatch, tmp_path
+):
+    """retry 路径与 create 同构：锁内只 stage，broker 派发（complete）在锁外。"""
+    from backend.app.services.agent_workspace_service import (
+        agent_workspace_lifecycle_lock,
+    )
+
+    def fail_provider(*_args, **_kwargs):
+        raise RuntimeError("provider failed")
+
+    client, settings = _client(monkeypatch, tmp_path, fail_provider, grant_write=True)
+    conversation = _create_conversation(client)
+    failed_run = client.post(
+        "/api/agent/runs",
+        json={
+            "question": "retry dispatch outside the lock",
+            "context": {"conversation_id": conversation["conversation_id"]},
+        },
+    ).json()
+    assert _wait_for_terminal(client, failed_run["run_id"])["status"] == "failed"
+
+    service_module = __import__(
+        "backend.app.services.agent_run_service",
+        fromlist=["execute_agent_run_task"],
+    )
+    probed: list[str] = []
+
+    def dispatch_probe(*, run_id):
+        # 若 retry 路由仍在 lifecycle 锁内派发，这里会在 5s 超时后抛
+        # AgentWorkspaceStateConflict，进而以 dispatch 失败（503）暴露。
+        with agent_workspace_lifecycle_lock(settings=settings):
+            pass
+        probed.append(run_id)
+
+    monkeypatch.setattr(service_module.execute_agent_run_task, "send", dispatch_probe)
+
+    response = client.post(f"/api/agent/runs/{failed_run['run_id']}/retry")
+
+    assert response.status_code == 200
+    retried = response.json()
+    assert retried["status"] == "queued"
+    assert retried["run_id"] != failed_run["run_id"]
+    assert probed == [retried["run_id"]]
+
+
 def test_auth_context_strips_client_supplied_run_id():
     route_module = load_module(
         "backend.app.api.routes.agent",
@@ -1232,16 +1407,9 @@ def test_reconciled_failure_is_not_overwritten_by_late_completion(monkeypatch, t
     assert "completed" not in [record["status"] for record in records]
 
 
-def test_local_running_record_is_not_reconciled_by_external_provider_timeout(monkeypatch, tmp_path):
-    service_module = load_module(
-        "backend.app.services.agent_run_service",
-        "backend/app/services/agent_run_service.py",
-    )
+def _seed_local_running_record(service_module, governance_dir, run_id: str) -> None:
     service_module._AGENT_RUN_LATEST_RECORDS.clear()
-    settings = _local_settings(tmp_path)
-    governance_dir = tmp_path / "governance"
     governance_dir.mkdir(parents=True)
-    run_id = "agent_run:local-running"
     (governance_dir / "agent_run.jsonl").write_text(
         json.dumps(
             {
@@ -1262,7 +1430,20 @@ def test_local_running_record_is_not_reconciled_by_external_provider_timeout(mon
         + "\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(service_module, "_utc_now", lambda: "2026-07-20T08:00:41+00:00")
+
+
+def test_local_running_record_is_not_reconciled_by_external_provider_timeout(monkeypatch, tmp_path):
+    service_module = load_module(
+        "backend.app.services.agent_run_service",
+        "backend/app/services/agent_run_service.py",
+    )
+    settings = _local_settings(tmp_path)
+    governance_dir = tmp_path / "governance"
+    run_id = "agent_run:local-running"
+    _seed_local_running_record(service_module, governance_dir, run_id)
+    # 640s elapsed: well beyond the hermes/dexter timeout + grace window, but
+    # inside the local running stale limit (default 1800s + 30s grace).
+    monkeypatch.setattr(service_module, "_utc_now", lambda: "2026-07-19T08:10:41+00:00")
 
     status = service_module.get_agent_run_status(run_id=run_id, settings=settings)
 
@@ -1272,6 +1453,62 @@ def test_local_running_record_is_not_reconciled_by_external_provider_timeout(mon
         for line in (governance_dir / "agent_run.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert [record["status"] for record in records] == ["running"]
+
+
+def test_local_running_record_reconciles_to_failed_after_local_stale_limit(monkeypatch, tmp_path):
+    """local run 也经 Dramatiq worker 执行：worker 崩溃后必须能收敛为 failed。"""
+    service_module = load_module(
+        "backend.app.services.agent_run_service",
+        "backend/app/services/agent_run_service.py",
+    )
+    settings = _local_settings(tmp_path)
+    governance_dir = tmp_path / "governance"
+    run_id = "agent_run:local-stale"
+    _seed_local_running_record(service_module, governance_dir, run_id)
+    # 1832s elapsed > default 1800s local limit + 30s grace.
+    monkeypatch.setattr(service_module, "_utc_now", lambda: "2026-07-19T08:30:33+00:00")
+
+    status = service_module.get_agent_run_status(run_id=run_id, settings=settings)
+
+    assert status.status == "failed"
+    assert status.finished_at == "2026-07-19T08:30:33+00:00"
+    assert status.error_message is not None
+    assert "未在运行超时后进入终态" in status.error_message
+    repeated = service_module.get_agent_run_status(run_id=run_id, settings=settings)
+    assert repeated.status == "failed"
+    records = [
+        json.loads(line)
+        for line in (governance_dir / "agent_run.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert [record["status"] for record in records] == ["running", "failed"]
+    audit = json.loads(
+        (governance_dir / "agent_audit.jsonl").read_text(encoding="utf-8").splitlines()[-1]
+    )
+    assert audit["run_id"] == run_id
+    assert audit["result_meta"]["error_type"] == "StaleAgentRun"
+
+
+def test_local_running_stale_limit_honors_governance_setting_override(monkeypatch, tmp_path):
+    service_module = load_module(
+        "backend.app.services.agent_run_service",
+        "backend/app/services/agent_run_service.py",
+    )
+    settings = _local_settings(tmp_path)
+    settings.agent_run_local_timeout_seconds = 60.0
+    governance_dir = tmp_path / "governance"
+    run_id = "agent_run:local-stale-override"
+    _seed_local_running_record(service_module, governance_dir, run_id)
+    # 119s elapsed > overridden 60s limit + 30s grace.
+    monkeypatch.setattr(service_module, "_utc_now", lambda: "2026-07-19T08:02:00+00:00")
+
+    status = service_module.get_agent_run_status(run_id=run_id, settings=settings)
+
+    assert status.status == "failed"
+    records = [
+        json.loads(line)
+        for line in (governance_dir / "agent_run.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert [record["status"] for record in records] == ["running", "failed"]
 
 
 def test_agent_run_status_keeps_recent_running_record_active(monkeypatch, tmp_path):

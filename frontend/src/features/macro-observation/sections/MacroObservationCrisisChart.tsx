@@ -85,8 +85,11 @@ function buildCrisisHistoryOption(
   history: MacroObservationCrisisHistoryPoint[],
   palette: CrisisChartPalette,
 ): EChartsOption {
+  const lastIndex = history.length - 1;
+  const lastPoint = history[lastIndex];
   return {
-    grid: { top: 8, right: 12, bottom: 24, left: 44 },
+    // 右缘留出末点数值标注的空间。
+    grid: { top: 8, right: 52, bottom: 24, left: 44 },
     tooltip: {
       trigger: "axis",
       backgroundColor: palette.tooltipBg,
@@ -126,6 +129,34 @@ function buildCrisisHistoryOption(
         lineStyle: { color: palette.line, width: 1.6 },
         itemStyle: { color: palette.line },
         areaStyle: { color: palette.line, opacity: 0.08 },
+        // 0 参考线：危机分为 z-score 型读数，正负分界是解读锚点；
+        // 后端未下发警戒阈值，暂不画阈值带（不虚构业务含义）。
+        markLine: {
+          silent: true,
+          symbol: "none",
+          label: { show: false },
+          lineStyle: { color: palette.axisLabel, type: "dashed", width: 1 },
+          data: [{ yAxis: 0 }],
+        },
+        // 末点标注：终值圆点 + 数值 label（两位小数，全精度在 tooltip）。
+        ...(lastPoint
+          ? {
+              markPoint: {
+                silent: true,
+                symbol: "circle",
+                symbolSize: 6,
+                itemStyle: { color: palette.line },
+                label: {
+                  show: true,
+                  position: "right",
+                  color: palette.tooltipInk,
+                  fontSize: 11,
+                  formatter: lastPoint.value.toFixed(2),
+                },
+                data: [{ name: "latest", coord: [lastIndex, lastPoint.value] }],
+              },
+            }
+          : {}),
       },
     ],
   };

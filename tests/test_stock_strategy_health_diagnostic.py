@@ -157,13 +157,19 @@ def _seed_execution_candidate(
     )
 
 
-def _seed_daily(conn: duckdb.DuckDBPyConnection, *, trade_date: str) -> None:
+def _seed_daily(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    trade_date: str,
+    vendor_version: str | None = None,
+) -> None:
     conn.execute(
         """
-        insert into choice_stock_daily_observation (trade_date, stock_code, close_value, volume)
-        values (?, '000001.SZ', 10.0, 100.0)
+        insert into choice_stock_daily_observation
+          (trade_date, stock_code, close_value, volume, vendor_version)
+        values (?, '000001.SZ', 10.0, 100.0, ?)
         """,
-        [trade_date],
+        [trade_date, vendor_version],
     )
 
 
@@ -428,8 +434,14 @@ def test_health_report_includes_overheat_holding_context_counts(tmp_path: Path) 
     conn = _create_db(db_path)
     try:
         _create_position_table(conn)
+        # 风险退出路径经 volume_shares_sql 归一化成交量:vendor_version 为 NULL 时
+        # fail-closed 丢行,故此处必须落一个可定标的 vendor 代际。
         for offset in range(25):
-            _seed_daily(conn, trade_date=f"2026-06-{offset + 1:02d}")
+            _seed_daily(
+                conn,
+                trade_date=f"2026-06-{offset + 1:02d}",
+                vendor_version="vv_choice_stock_test",
+            )
         _seed_candidate(
             conn,
             snapshot_date="2026-06-21",

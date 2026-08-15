@@ -697,7 +697,7 @@ def test_agent_query_enabled_path_returns_real_risk_tensor_and_audit(tmp_path, m
     assert payload["result_meta"]["basis"] == "formal"
     assert payload["result_meta"]["result_kind"] == "agent.risk_tensor"
     assert payload["result_meta"]["formal_use_allowed"] is True
-    assert payload["result_meta"]["rule_version"] == "rv_risk_tensor_formal_materialize_v5"
+    assert payload["result_meta"]["rule_version"] == "rv_risk_tensor_formal_materialize_v6"
     assert payload["evidence"]["tables_used"] == ["fact_formal_risk_tensor_daily"]
     assert payload["evidence"]["sql_executed"]
     assert all(sql.lower().startswith(("select", "with")) for sql in payload["evidence"]["sql_executed"])

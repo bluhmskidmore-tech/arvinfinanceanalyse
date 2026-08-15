@@ -1033,6 +1033,14 @@
   overflow-wrap: anywhere;
 }
 
+/* 操作台副行脚本名：代码样式降权，中文题保持主视觉。 */
+.macro-toolkit-operations-console__script-name {
+  color: var(--moss-color-text-muted);
+  font-family: var(--moss-font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.01em;
+}
+
 .macro-toolkit-brief-metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1835,6 +1843,14 @@
   overflow-wrap: anywhere;
 }
 
+/* 核心信号卡长文描述 clamp 3 行防等高 stretch 高度失衡；全文入 title（DESIGN §3/§5）。 */
+.macro-toolkit-signal-card > small {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
 .macro-toolkit-capability-result p {
   margin: 0;
   color: var(--moss-color-text-primary);
@@ -1948,6 +1964,49 @@
   border: 1px solid var(--macro-toolkit-border-muted);
   border-radius: var(--moss-radius-sm);
   background: var(--macro-toolkit-warning-soft);
+}
+
+/* 模型就绪度：段落式「/」串改「模型名 + 状态徽标」胶囊列表（06 区模型卡同语言）。 */
+.macro-toolkit-model-readiness-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.macro-toolkit-model-readiness-pills li {
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+  min-width: 0;
+  padding: 3px 8px;
+  border: 1px solid var(--macro-toolkit-border-muted);
+  border-radius: var(--moss-radius-sm);
+  background: var(--macro-toolkit-card);
+  color: var(--moss-color-text-primary);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-model-readiness-pills em {
+  color: var(--moss-color-text-secondary);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.macro-toolkit-model-readiness-pills em[data-readiness="missing_output"] {
+  color: var(--macro-toolkit-danger);
+}
+
+.macro-toolkit-model-readiness-pills em[data-readiness="stale"],
+.macro-toolkit-model-readiness-pills em[data-readiness="degraded"],
+.macro-toolkit-model-readiness-pills em[data-readiness="registered_only"] {
+  color: var(--macro-toolkit-warning);
 }
 
 .macro-toolkit-model-signal-matrix {
@@ -2258,6 +2317,17 @@
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 10px;
   align-items: start;
+}
+
+/* A股策略卡固定 4 张：2×2 网格，避免 3 列布局第 4 卡独行右侧 2/3 空白（DESIGN §5）。 */
+.macro-toolkit-strategy-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 720px) {
+  .macro-toolkit-strategy-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .macro-toolkit-strategy-metric {
@@ -3682,10 +3752,10 @@
   font-weight: 640;
 }
 
+/* 闭环计数与对齐状态拆两行，单行元信息不再串 6+ 个分隔项（DESIGN §7）。 */
 .macro-toolkit-strategy-supply-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  display: grid;
+  gap: 6px;
   min-width: 0;
   padding: 8px 10px;
   border: 1px solid var(--macro-toolkit-border-soft);
@@ -3694,6 +3764,14 @@
   color: var(--moss-color-text-secondary);
   font-size: 12px;
   font-weight: 750;
+}
+
+.macro-toolkit-strategy-supply-strip__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: center;
+  min-width: 0;
 }
 
 .macro-toolkit-strategy-supply-strip span {
@@ -3859,6 +3937,8 @@
 
 .macro-toolkit-sparkline {
   display: block;
+  max-width: 100%;
+  height: auto;
 }
 
 .macro-toolkit-crisis-history {
@@ -3939,9 +4019,12 @@
 
 .macro-toolkit-date-cell span,
 .macro-toolkit-source-cell span {
+  min-width: 0;
   color: var(--moss-color-text-primary);
   font-size: 12px;
   font-weight: 700;
+  /* 长 snake 来源 token（如 public_repo_rate_query）可断行，不外溢来源列。 */
+  overflow-wrap: anywhere;
 }
 
 .macro-toolkit-delta-cell {

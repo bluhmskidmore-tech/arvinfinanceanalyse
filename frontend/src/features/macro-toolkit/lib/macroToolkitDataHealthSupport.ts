@@ -64,6 +64,67 @@ export function extractRepairActionCodes(action: string) {
   return Array.from(new Set(action.match(REPAIR_ACTION_CODE_PATTERN) ?? []));
 }
 
+/** 后端能力缺口英文错误码 → 中文短语（展示层；原始码由调用方收 title）。 */
+const REPAIR_ACTION_CODE_LABELS: Record<string, string> = {
+  PMI_CORE_INPUT_MISSING: "缺 PMI 核心输入",
+  CPI_YOY_CORE_INPUT_MISSING: "缺 CPI 同比核心输入",
+  PMI_MISSING: "缺 PMI 数据",
+  PMI_NEW_ORDERS_UNAVAILABLE: "缺 PMI 新订单",
+  GOV_CURVE_MISSING_REQUIRED_TENORS: "缺国债曲线必需期限",
+  CURVE_TENORS_MISSING: "缺曲线期限",
+  AA_MINUS_AAA_UNAVAILABLE: "缺 AA-AAA 等级利差",
+  CREDIT_SPREAD_STALE: "信用利差数据陈旧",
+  CREDIT_SPREAD_UNAVAILABLE: "信用利差输入缺失",
+  LEI_UNIT_CONTRACT_UNFROZEN: "LEI 单位契约未冻结",
+  LEI_AS_OF_MONTH_LAGGED: "LEI 数据月滞后",
+  PIT_METADATA_UNAVAILABLE: "缺 PIT 元数据",
+  ELECTRICITY_UNAVAILABLE: "缺发电量数据",
+  FREIGHT_UNAVAILABLE: "缺货运量数据",
+};
+
+export function repairActionCodeLabel(code: string) {
+  return REPAIR_ACTION_CODE_LABELS[code] ?? code;
+}
+
+/**
+ * 修复建议展示层本地化：
+ * - 「当前 unavailable / degraded」英文枚举嵌中文句 → 「当前不可用 / 当前已降级」；
+ * - `mapCodes` 时把已登记英文错误码译成中文短语（未登记码原样保留为证据引用）；
+ * - `stripLeadingLabel` 去掉句首与事项列重复的名称前缀。
+ * 原始句由调用方收进 title。
+ */
+export function localizeRepairActionText(
+  action: string,
+  options?: { mapCodes?: boolean; stripLeadingLabel?: string },
+) {
+  let text = action
+    .replace(/当前 unavailable/g, "当前不可用")
+    .replace(/当前 degraded/g, "当前已降级");
+  if (options?.mapCodes) {
+    text = text.replace(REPAIR_ACTION_CODE_PATTERN, (code) => repairActionCodeLabel(code));
+  }
+  const leadingLabel = options?.stripLeadingLabel?.trim();
+  if (leadingLabel && text.startsWith(leadingLabel)) {
+    text = text.slice(leadingLabel.length).replace(/^[\s·:：,，]+/, "");
+  }
+  return text;
+}
+
+/**
+ * 缺口卡模板句去重：当「最新日期 + 落后天数」已在卡面元信息行单独展示时，
+ * 模板句只留「；」之后的动作子句；全句保留在 title。
+ */
+export function stripRepairActionRepeatedFacts(action: string, item: MacroToolkitRepairItem) {
+  if (!item.latest_date || !action.includes(item.latest_date)) {
+    return action;
+  }
+  const clauseIndex = action.lastIndexOf("；");
+  if (clauseIndex === -1 || clauseIndex === action.length - 1) {
+    return action;
+  }
+  return action.slice(clauseIndex + 1).trim();
+}
+
 /**
  * 后端能力缺口的 suggested_action 形如「{label} 当前 unavailable：CODE_A / CODE_B；补齐输入证据后…」。
  * 仅当该模式命中且包含英文缺口代码时给出中文摘要句；其余修复建议（含单代码中文句）原样展示。

@@ -200,6 +200,20 @@ def _percentile(df: pd.DataFrame, column: str, current: float, days: int = 365) 
     return round((recent < current).mean() * 100, 2)
 
 
+NEUTRAL_PERCENTILE = 50.0
+
+
+def _percentile_or_neutral(value: float | None) -> float:
+    """分位数缺失（窗口内无数据）时的中性占位。
+
+    ``0.0`` 是合法且最极端的分位数——当前值严格低于近一年全部观测，即"一年新低"。
+    必须与 ``None`` 区分：``value or 50.0`` 会把一年新低折成中位数 50，使
+    ``y10_pct < 20`` / ``aa_aaa_pct < 30`` 一类阈值判断在最该触发时恰好不触发，
+    结论从"利率处于历史低位、追多性价比低"翻转为中性。
+    """
+    return NEUTRAL_PERCENTILE if value is None else value
+
+
 def _safe_float(value) -> float | None:
     if value is None:
         return None
@@ -628,8 +642,8 @@ def _bond_takeaways(bundle: ReportBundle) -> list[str]:
     curve = float(bundle.rate_latest["term_spread_10y_1y"])
     dr007 = float(bundle.rate_latest["dr007"])
     repo = float(bundle.rate_latest["reverse_repo_7d"])
-    y10_pct = bundle.percentiles["y10_1y"] or 50.0
-    curve_pct = bundle.percentiles["curve_1y"] or 50.0
+    y10_pct = _percentile_or_neutral(bundle.percentiles["y10_1y"])
+    curve_pct = _percentile_or_neutral(bundle.percentiles["curve_1y"])
 
     # 10Y 变动方向
     y10_chg_bp = (y10 - y10_1m) * 100
@@ -680,8 +694,8 @@ def _bond_takeaways(bundle: ReportBundle) -> list[str]:
 def _credit_takeaways(bundle: ReportBundle) -> list[str]:
     aaa = float(bundle.credit_latest["credit_spread_aaa_3y"])
     aa_aaa = float(bundle.credit_latest["aa_aaa_spread_3y"])
-    aaa_pct = bundle.percentiles["aaa_1y"] or 50.0
-    aa_aaa_pct = bundle.percentiles["aa_aaa_1y"] or 50.0
+    aaa_pct = _percentile_or_neutral(bundle.percentiles["aaa_1y"])
+    aa_aaa_pct = _percentile_or_neutral(bundle.percentiles["aa_aaa_1y"])
     crisis = bundle.crisis_latest
     fx_z     = _safe_float(crisis.get("汇率波动率z")) or 0.0
     commod_z = _safe_float(crisis.get("商品波动率z")) or 0.0
@@ -1107,7 +1121,7 @@ def _strategy_recommendations(bundle: ReportBundle) -> list[str]:
         duration_reason = f"美林时钟显示债券偏好很弱（{bond_pref:.2f}），通胀上行+增长复苏不利于债券，大幅缩短久期"
 
     # 信用策略：根据 AA-AAA 等级利差分位数动态调整
-    aa_aaa_pct = bundle.percentiles.get("aa_aaa_1y") or 50.0
+    aa_aaa_pct = _percentile_or_neutral(bundle.percentiles.get("aa_aaa_1y"))
     if aa_aaa_pct > 70:
         credit_rec = "等级利差偏高，下沉信用风险补偿充足但流动性折价大，建议以高等级城投、央国企产业债为主，AA 及以下严格个券筛选。"
     elif aa_aaa_pct < 30:
@@ -1116,7 +1130,7 @@ def _strategy_recommendations(bundle: ReportBundle) -> list[str]:
         credit_rec = "等级利差处于中性区间，可适度参与高等级城投和央国企产业债，流动性较好的二永债可作为补充。"
 
     # 交易策略：根据 10Y 分位数和资金面动态调整
-    y10_pct = bundle.percentiles.get("y10_1y") or 50.0
+    y10_pct = _percentile_or_neutral(bundle.percentiles.get("y10_1y"))
     dr007 = float(bundle.rate_latest["dr007"])
     repo = float(bundle.rate_latest["reverse_repo_7d"])
     if y10_pct < 25:
@@ -1336,7 +1350,7 @@ def _build_document(bundle: ReportBundle, chart_paths: list[Path]) -> Document:
     ppi = float(bundle.macro_latest["ppi_yoy"])
     y10 = float(bundle.rate_latest["treasury_10y"])
     aa_aaa = float(bundle.credit_latest["aa_aaa_spread_3y"])
-    aa_aaa_pct = bundle.percentiles.get("aa_aaa_1y") or 50.0
+    aa_aaa_pct = _percentile_or_neutral(bundle.percentiles.get("aa_aaa_1y"))
     crisis_score = _safe_float(bundle.crisis_latest.get("Crisis Score")) or 0.0
     merrill_phase = str(bundle.merrill_latest["传统象限"])
 

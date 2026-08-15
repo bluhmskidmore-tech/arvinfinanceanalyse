@@ -14,6 +14,7 @@ import type {
   MacroToolkitScriptChainRun,
 } from "../../../api/macroToolkitClient";
 import { MetricTile } from "../lib/MacroToolkitStatusPrimitives";
+import { hasonFrameworkDisplayName } from "../lib/macroToolkitDisplayFormat";
 import {
   formatPercent,
   statusColor,
@@ -59,9 +60,13 @@ export function HasonMacroStrategyPanel({
       <div className="macro-toolkit-hason-strategy__head">
         <div>
           <span>Hason 宏观框架</span>
-          <strong>{strategy.framework_name}</strong>
+          <strong title={strategy.framework_name}>
+            {hasonFrameworkDisplayName(strategy.framework_name)}
+          </strong>
+          {/* 三段元信息分行呈现，单行 `·` 不超配额（DESIGN §7）。 */}
+          <small>模块就绪 {readinessText} · 缺失脚本 {readiness.missing_script_count}</small>
           <small>
-            模块就绪 {readinessText} · 缺失脚本 {readiness.missing_script_count} · 运行输出
+            运行输出{" "}
             {runtimeOutputsCurrent
               ? "已对齐"
               : `${statusLabel(strategy.runtime_output_status)}${runtimeOutputGaps.length ? ` ${runtimeOutputGaps.length}` : ""}`}
@@ -349,9 +354,6 @@ export function ModelSignalMatrix({
     : "边界待后端汇总 · 不入正式口径";
 
   const blockedEntries = rows.filter((item) => !isArtifactBackedModelReadiness(item.readiness));
-  const readinessHeadline = blockedEntries.length
-    ? blockedEntries.map((item) => `${modelSignalMatrixLabel(item)} ${modelReadinessStatusLabel(item.readiness)}`).join(" / ")
-    : "全部模型仅作观察，无待复核缺口";
   const readinessDetail = blockedEntries.length
     ? blockedEntries.map(formatModelReadinessDetail).join(" / ")
     : rows.map((item) => `${item.label} ${modelReadinessStatusLabel(item.readiness)}`).join(" / ");
@@ -397,7 +399,19 @@ export function ModelSignalMatrix({
         data-testid="macro-toolkit-model-readiness-detail"
       >
         <span>模型就绪度 · 仅观察</span>
-        <strong>{readinessHeadline}</strong>
+        {/* 段落式「/」串摘要改为模型名 + 状态徽标胶囊列表（06 区模型卡同语言）。 */}
+        {blockedEntries.length ? (
+          <ul className="macro-toolkit-model-readiness-pills" aria-label="待复核模型清单">
+            {blockedEntries.map((item) => (
+              <li key={item.id} title={formatModelReadinessDetail(item)}>
+                {modelSignalMatrixLabel(item)}{" "}
+                <em data-readiness={item.readiness}>{modelReadinessStatusLabel(item.readiness)}</em>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <strong>全部模型仅作观察，无待复核缺口</strong>
+        )}
         <small title={readinessDetail}>
           {blockedEntries.length ? `${blockedEntries.length} 个模型待复核` : "全部模型仅观察"}
         </small>

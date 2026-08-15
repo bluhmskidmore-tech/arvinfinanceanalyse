@@ -2,9 +2,11 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "../../api/client";
-import { FilterBar } from "../../components/FilterBar";
 import { PageAsyncSection } from "../../components/page/PageAsyncSection";
-import { listChoiceNewsTopicFilterOptions } from "../agent/lib/choiceNewsTopicDictionary";
+import {
+  getChoiceNewsTopicPresentation,
+  listChoiceNewsTopicFilterOptions,
+} from "../agent/lib/choiceNewsTopicDictionary";
 import { KpiCard } from "../../components/KpiCard";
 import type { ChoiceNewsComparePayload, ResultMeta } from "../../api/contracts";
 import { EM_DASH } from "../../utils/format";
@@ -13,22 +15,105 @@ import "./NewsEventsPage.css";
 
 const NEWS_EVENTS_PAGE_SIZE = 50;
 
+/** 摘要列优先展示解析出的 headline / summary；未解析原文收进 title。 */
 function summarizeNewsPayload(event: {
   payload_text: string | null;
   payload_json: string | null;
   error_code: number;
   error_msg: string;
-}) {
+}): { text: string; raw?: string } {
   if (event.payload_text?.trim()) {
-    return event.payload_text;
+    return { text: event.payload_text };
   }
   if (event.payload_json?.trim()) {
-    return event.payload_json;
+    const raw = event.payload_json.trim();
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const headline =
+        typeof parsed.headline === "string" ? parsed.headline.trim() : "";
+      const summary =
+        typeof parsed.summary === "string" ? parsed.summary.trim() : "";
+      const text = headline || summary;
+      if (text) {
+        return {
+          text: headline && summary ? `${headline}：${summary}` : text,
+          raw,
+        };
+      }
+    } catch {
+      // 无法解析时原样透出，不猜测业务含义。
+    }
+    return { text: raw };
   }
   if (event.error_code !== 0) {
-    return event.error_msg || "供应商回调返回了空错误信封。";
+    return { text: event.error_msg || "供应商回调返回了空错误信封。" };
   }
-  return "空回调信封。";
+  return { text: "空回调信封。" };
+}
+
+/** 接收时间列展示 MM-DD HH:mm，ISO 原值收进 title。 */
+const RECEIVED_AT_PATTERN = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/;
+
+function formatReceivedAt(value: string): { display: string; raw?: string } {
+  const match = RECEIVED_AT_PATTERN.exec(value);
+  if (!match) {
+    return { display: value };
+  }
+  return {
+    display: `${match[2]}-${match[3]} ${match[4]}:${match[5]}`,
+    raw: value,
+  };
+}
+
+/** 目录外的常见来源 token → 中文展示；原始 token 收进 title。 */
+const NEWS_TOPIC_TOKEN_LABELS: Record<string, string> = {
+  __callback__: "供应商回调",
+  "tushare.npr": "政策要闻（Tushare）",
+  "tushare.news": "市场快讯（Tushare）",
+  "tushare.cctv": "新闻联播（Tushare）",
+  "tushare.major": "长篇报道（Tushare）",
+  "tushare.research": "研究报告（Tushare）",
+};
+
+/**
+ * Tushare 摄取任务的 topic 形态（tushare_news_ingest.py）：
+ * `tushare.news.{src}` / `tushare.cctv_news.{date}` / `tushare.major_news`
+ * / `tushare.research_report.{range}`；来源子代号保留为证据引用。
+ */
+function mapTushareTopicToken(code: string): string | null {
+  if (code.startsWith("tushare.news.")) {
+    const src = code.slice("tushare.news.".length);
+    return src ? `市场快讯（Tushare·${src}）` : "市场快讯（Tushare）";
+  }
+  if (code.startsWith("tushare.cctv_news")) {
+    return "新闻联播（Tushare）";
+  }
+  if (code.startsWith("tushare.major_news")) {
+    return "长篇报道（Tushare）";
+  }
+  if (code.startsWith("tushare.research_report")) {
+    return "研究报告（Tushare）";
+  }
+  return null;
+}
+
+function presentTopicCode(event: {
+  group_id: string;
+  topic_code: string;
+}): { display: string; raw: string } {
+  const override =
+    NEWS_TOPIC_TOKEN_LABELS[event.topic_code] ??
+    mapTushareTopicToken(event.topic_code);
+  if (override) {
+    return { display: override, raw: event.topic_code };
+  }
+  const presentation = getChoiceNewsTopicPresentation({
+    groupId: event.group_id,
+    topicCode: event.topic_code,
+  });
+  return presentation.topicName
+    ? { display: presentation.topicName, raw: event.topic_code }
+    : { display: event.topic_code, raw: event.topic_code };
 }
 
 function clampOffset(offset: number) {
@@ -64,6 +149,10 @@ function formatResultMetaLine(meta: ResultMeta): string {
   return [
     `口径=${resultMetaBasisLabel(meta.basis)}`,
     `正式可用=${meta.formal_use_allowed ? "是" : "否"}`,
+    `质量=${meta.quality_flag || EM_DASH}`,
+    `降级=${meta.fallback_mode || EM_DASH}`,
+    `请求日=${meta.requested_report_date || EM_DASH}`,
+    `实际日=${meta.resolved_report_date || EM_DASH}`,
     `结果类型=${meta.result_kind || EM_DASH}`,
     `来源面=${meta.source_surface ?? EM_DASH}`,
     `来源版本=${meta.source_version || EM_DASH}`,
@@ -72,6 +161,11 @@ function formatResultMetaLine(meta: ResultMeta): string {
     `数据表=${formatMetaList(meta.tables_used)}`,
     `生成时间=${meta.generated_at || EM_DASH}`,
   ].join(" · ");
+}
+
+/** fallback 非 none 或 quality 非 ok 视为降级，首屏需要琥珀提示。 */
+function isMetaDegraded(meta: ResultMeta | undefined): meta is ResultMeta {
+  return meta != null && (meta.fallback_mode !== "none" || meta.quality_flag !== "ok");
 }
 
 function NewsEventsBoundary({ meta }: { meta: ResultMeta }) {
@@ -84,21 +178,30 @@ function NewsEventsBoundary({ meta }: { meta: ResultMeta }) {
       <span>
         GAP-NEWS-EVENTS-PAGE 为分析读面临时例外事件上下文；标题、专题计数、事件计数、筛选与错误行均非业务事实、非交易指令，亦不构成来源数据质量审批。
       </span>
-      <div
+      <details
         data-testid="news-events-result-meta"
-        className="news-events-page__meta-line"
+        className="news-events-page__meta-fold"
         title={formatResultMetaLine(meta)}
       >
-        <span>口径={resultMetaBasisLabel(meta.basis)}</span>
-        <span>正式可用={meta.formal_use_allowed ? "是" : "否"}</span>
-        <span>结果类型={meta.result_kind || EM_DASH}</span>
-        <span>来源面={meta.source_surface ?? EM_DASH}</span>
-        <span>来源版本={meta.source_version || EM_DASH}</span>
-        <span>规则版本={meta.rule_version || EM_DASH}</span>
-        <span>缓存版本={meta.cache_version || EM_DASH}</span>
-        <span>数据表={formatMetaList(meta.tables_used)}</span>
-        <span>生成时间={meta.generated_at || EM_DASH}</span>
-      </div>
+        <summary className="news-events-page__meta-summary">
+          结果元信息（口径 / 质量 / 版本，共 13 项）
+        </summary>
+        <div className="news-events-page__meta-grid">
+          <span>口径={resultMetaBasisLabel(meta.basis)}</span>
+          <span>正式可用={meta.formal_use_allowed ? "是" : "否"}</span>
+          <span>质量={meta.quality_flag || EM_DASH}</span>
+          <span>降级={meta.fallback_mode || EM_DASH}</span>
+          <span>请求日={meta.requested_report_date || EM_DASH}</span>
+          <span>实际日={meta.resolved_report_date || EM_DASH}</span>
+          <span>结果类型={meta.result_kind || EM_DASH}</span>
+          <span>来源面={meta.source_surface ?? EM_DASH}</span>
+          <span>来源版本={meta.source_version || EM_DASH}</span>
+          <span>规则版本={meta.rule_version || EM_DASH}</span>
+          <span>缓存版本={meta.cache_version || EM_DASH}</span>
+          <span>数据表={formatMetaList(meta.tables_used)}</span>
+          <span>生成时间={meta.generated_at || EM_DASH}</span>
+        </div>
+      </details>
     </section>
   );
 }
@@ -230,6 +333,18 @@ export default function NewsEventsPage() {
   const activeTopicLabel = topicCode || "全部专题";
   const pageLabel = `${currentPage(offset, NEWS_EVENTS_PAGE_SIZE)} / ${totalPages(totalRows, NEWS_EVENTS_PAGE_SIZE)}`;
 
+  // KPI 数值由查询状态驱动：loading/error 一律 EM_DASH 并保留状态注记，
+  // 仅在成功且服务端明确返回数值时才显示 0，禁止请求失败冒充“0 行”。
+  const kpiReady = !eventsQuery.isLoading && !eventsQuery.isError && eventsQuery.data != null;
+  const kpiStateDetail =
+    eventsQuery.isLoading ? "查询进行中，数值待返回"
+    : eventsQuery.isError ? "查询失败，数值不可用"
+    : null;
+  const totalRowsDisplay = kpiReady ? String(totalRows) : EM_DASH;
+  const pageDisplay = kpiReady ? pageLabel : EM_DASH;
+  const errorRowsDisplay = kpiReady ? String(errorRowsOnPage) : EM_DASH;
+  const metaDegraded = isMetaDegraded(resultMeta) ? resultMeta : null;
+
   return (
     <section className="news-events-page" data-moss-theme-scope="news-events">
       <div className="news-events-page__header">
@@ -246,6 +361,19 @@ export default function NewsEventsPage() {
         </span>
       </div>
 
+      {metaDegraded ? (
+        <p
+          data-testid="news-events-quality-hint"
+          role="status"
+          className="news-events-page__quality-hint"
+        >
+          数据状态提示：质量={metaDegraded.quality_flag || EM_DASH}，降级=
+          {metaDegraded.fallback_mode || EM_DASH}，请求日=
+          {metaDegraded.requested_report_date || EM_DASH}，实际日=
+          {metaDegraded.resolved_report_date || EM_DASH}，引用本页计数前请先核对数据状态。
+        </p>
+      ) : null}
+
       <SectionLead
         eyebrow="总览"
         title="事件概览"
@@ -253,16 +381,26 @@ export default function NewsEventsPage() {
       />
       <div className="news-events-page__summary-grid">
         <div data-testid="news-events-total-count">
-          <KpiCard title="事件总数" value={String(totalRows)} detail="当前查询返回的总行数" valueVariant="text" />
+          <KpiCard
+            title="事件总数"
+            value={totalRowsDisplay}
+            detail={kpiStateDetail ?? "当前查询返回的总行数"}
+            valueVariant="text"
+          />
         </div>
         <div data-testid="news-events-current-page-kpi">
-          <KpiCard title="当前页" value={pageLabel} detail="按固定分页窗口展示" valueVariant="text" />
+          <KpiCard
+            title="当前页"
+            value={pageDisplay}
+            detail={kpiStateDetail ?? "按固定分页窗口展示"}
+            valueVariant="text"
+          />
         </div>
         <div data-testid="news-events-error-count">
           <KpiCard
             title="错误行数"
-            value={String(errorRowsOnPage)}
-            detail="当前页含非零错误码的行数"
+            value={errorRowsDisplay}
+            detail={kpiStateDetail ?? "当前页含非零错误码的行数"}
             valueVariant="text"
           />
         </div>
@@ -273,18 +411,11 @@ export default function NewsEventsPage() {
       {resultMeta ? <NewsEventsBoundary meta={resultMeta} /> : null}
       <NewsEventsCompare compare={eventsQuery.data?.result.compare} />
 
-      <SectionLead
-        eyebrow="浏览"
+      {/* 分区头 + 筛选控件右置 + 表格拍平为单层 panel；卡头不再与页 h1 重名。 */}
+      <PageAsyncSection
         title="筛选与事件列表"
-        description="筛选条只控制专题、错误开关与分页，不改变后端事件契约；下方表格继续显示服务端返回的事件流水。"
-      />
-      <section className="news-events-page__section-shell">
-        <div className="news-events-page__section-header-row">
-          <span className="news-events-page__section-header-title">事件列表</span>
-        </div>
-
-        <FilterBar className="news-events-page__filter-bar">
-          <div className="news-events-page__filter-grid">
+        extra={
+          <div className="news-events-page__filter-inline">
             <label className="news-events-page__filter-label">
               <span title="topic_code">专题</span>
               <select
@@ -316,15 +447,13 @@ export default function NewsEventsPage() {
               <span title="error_only">仅错误</span>
             </label>
           </div>
-        </FilterBar>
-
-        <PageAsyncSection
-          title="新闻事件"
-          isLoading={eventsQuery.isLoading}
-          isError={eventsQuery.isError}
-          isEmpty={isEmpty}
-          onRetry={() => void eventsQuery.refetch()}
-        >
+        }
+        fillHeight={false}
+        isLoading={eventsQuery.isLoading}
+        isError={eventsQuery.isError}
+        isEmpty={isEmpty}
+        onRetry={() => void eventsQuery.refetch()}
+      >
           <div className="news-events-page__table-scroll">
             <table data-testid="news-events-table" className="news-events-page__table">
               <thead>
@@ -352,6 +481,9 @@ export default function NewsEventsPage() {
               <tbody>
                 {events.map((event) => {
                   const isErrorRow = event.error_code !== 0;
+                  const receivedAt = formatReceivedAt(event.received_at);
+                  const topic = presentTopicCode(event);
+                  const summary = summarizeNewsPayload(event);
                   return (
                     <tr
                       key={event.event_key}
@@ -361,19 +493,30 @@ export default function NewsEventsPage() {
                           : "news-events-page__table-row"
                       }
                     >
-                      <td className="news-events-page__table-cell news-events-page__table-cell--nowrap">
-                        {event.received_at}
+                      <td
+                        className="news-events-page__table-cell news-events-page__table-cell--nowrap"
+                        title={receivedAt.raw}
+                      >
+                        {receivedAt.display}
                       </td>
-                      <td className="news-events-page__table-cell news-events-page__table-cell--nowrap">
-                        {event.topic_code}
+                      <td
+                        className="news-events-page__table-cell news-events-page__table-cell--nowrap"
+                        title={
+                          topic.display !== topic.raw ? topic.raw : undefined
+                        }
+                      >
+                        {topic.display}
                       </td>
                       <td className="news-events-page__table-cell news-events-page__table-cell--nowrap">
                         {event.group_id}
                       </td>
-                      <td className="news-events-page__table-cell news-events-page__table-cell--summary">
-                        {summarizeNewsPayload(event)}
+                      <td
+                        className="news-events-page__table-cell news-events-page__table-cell--summary"
+                        title={summary.raw}
+                      >
+                        {summary.text}
                       </td>
-                      <td className="news-events-page__table-cell news-events-page__table-cell--nowrap">
+                      <td className="news-events-page__table-cell news-events-page__table-cell--nowrap news-events-page__error-code-cell">
                         {event.error_code}
                       </td>
                     </tr>
@@ -384,40 +527,43 @@ export default function NewsEventsPage() {
           </div>
 
           <div className="news-events-page__pager-row">
-            <button
-              type="button"
-              data-testid="news-events-prev"
-              disabled={offset === 0}
-              onClick={() =>
-                setOffset((current) =>
-                  clampOffset(current - NEWS_EVENTS_PAGE_SIZE),
-                )
-              }
-            >
-              上一页
-            </button>
-            <button
-              type="button"
-              data-testid="news-events-next"
-              disabled={pagerDisabled(
-                offset,
-                NEWS_EVENTS_PAGE_SIZE,
-                totalRows,
-              )}
-              onClick={() =>
-                setOffset((current) => current + NEWS_EVENTS_PAGE_SIZE)
-              }
-            >
-              下一页
-            </button>
+            {totalPages(totalRows, NEWS_EVENTS_PAGE_SIZE) > 1 ? (
+              <>
+                <button
+                  type="button"
+                  data-testid="news-events-prev"
+                  disabled={offset === 0}
+                  onClick={() =>
+                    setOffset((current) =>
+                      clampOffset(current - NEWS_EVENTS_PAGE_SIZE),
+                    )
+                  }
+                >
+                  上一页
+                </button>
+                <button
+                  type="button"
+                  data-testid="news-events-next"
+                  disabled={pagerDisabled(
+                    offset,
+                    NEWS_EVENTS_PAGE_SIZE,
+                    totalRows,
+                  )}
+                  onClick={() =>
+                    setOffset((current) => current + NEWS_EVENTS_PAGE_SIZE)
+                  }
+                >
+                  下一页
+                </button>
+              </>
+            ) : null}
             <span data-testid="news-events-page">
               {currentPage(offset, NEWS_EVENTS_PAGE_SIZE)} /{" "}
               {totalPages(totalRows, NEWS_EVENTS_PAGE_SIZE)}
             </span>
             <span data-testid="news-events-total">事件数 {totalRows}</span>
           </div>
-        </PageAsyncSection>
-      </section>
+      </PageAsyncSection>
     </section>
   );
 }

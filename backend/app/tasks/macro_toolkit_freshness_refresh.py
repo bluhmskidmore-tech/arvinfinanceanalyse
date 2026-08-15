@@ -23,12 +23,15 @@ from pathlib import Path
 from typing import TypeVar
 
 import duckdb
+import requests
+
 from backend.app.governance.settings import get_settings
 from backend.app.services.cffex_member_rank_service import materialize_cffex_member_rank
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.choice_macro import (
     NCD_SHIBOR_LOOKBACK_DAYS,
     NCD_SHIBOR_TENORS,
+    PublicCrossAssetRetryableError,
     refresh_public_cross_asset_headlines,
     refresh_tushare_ncd_shibor_proxy,
 )
@@ -44,6 +47,8 @@ SOURCE_VERSION = "macro_toolkit_freshness_refresh_v3"
 DUCKDB_WRITE_RETRY_ATTEMPTS = 6
 DUCKDB_WRITE_RETRY_SLEEP_SECONDS = 10.0
 CFFEX_FALLBACK_WORKDAYS = 10
+CFFEX_EMPTY_ATTEMPT_STATUSES = frozenset({"empty"})
+CFFEX_RETRYABLE_ATTEMPT_STATUSES = frozenset({"error", "unavailable"})
 NCD_SHIBOR_SERIES_IDS: tuple[str, ...] = tuple(
     str(meta["series_id"]) for meta in NCD_SHIBOR_TENORS.values()
 )
@@ -92,6 +97,10 @@ DEFAULT_COMMODITY_PRODUCTS: tuple[str, ...] = (
 _T = TypeVar("_T")
 
 
+class RetryableFreshnessError(RuntimeError):
+    """A scheduled refresh failure that should be retried by Dramatiq."""
+
+
 def _new_run_id() -> str:
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     return f"macro-toolkit-freshness-{stamp}-{uuid.uuid4().hex[:8]}"
@@ -117,6 +126,140 @@ def _recent_weekdays_on_or_before(day: date, *, limit: int) -> list[date]:
 def _safe_error_reason(exc: BaseException) -> str:
     message = " ".join(str(exc).split()) or "no error details"
     return f"{type(exc).__name__}: {message[:500]}"
+
+
+def _is_non_retryable_contract_error(exc: BaseException) -> bool:
+    return isinstance(
+        exc,
+        (ValueError, TypeError, PermissionError, ImportError, AttributeError),
+    )
+
+
+def _is_retryable_task_error(exc: BaseException) -> bool:
+    if _is_non_retryable_contract_error(exc):
+        return False
+    if isinstance(exc, PublicCrossAssetRetryableError):
+        return True
+    if isinstance(exc, requests.exceptions.HTTPError):
+        response = exc.response
+        status_code = int(response.status_code) if response is not None else None
+        if status_code is not None and 400 <= status_code < 500:
+            return status_code in {408, 429}
+        return True
+    if _is_duckdb_writer_contention(exc):
+        return True
+    return isinstance(
+        exc,
+        (
+            ConnectionError,
+            TimeoutError,
+            requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout,
+            requests.exceptions.RequestException,
+        ),
+    )
+
+
+def _cffex_attempt_summary(attempt: dict[str, object]) -> str:
+    status = str(attempt.get("status") or "unknown")
+    error_type = str(
+        attempt.get("error_type")
+        or attempt.get("exception_type")
+        or status
+    )
+    detail = " ".join(str(attempt.get("detail") or "").split())
+    source_vendor = str(attempt.get("source_vendor") or "unknown_vendor")
+    contract = str(attempt.get("contract") or "unknown_contract")
+    summary = f"{source_vendor}/{contract} {error_type}"
+    if detail:
+        summary = f"{summary}: {detail[:500]}"
+    return summary
+
+
+def _is_retryable_cffex_attempt(attempt: dict[str, object]) -> bool:
+    status = str(attempt.get("status") or "").strip().casefold()
+    if status not in CFFEX_RETRYABLE_ATTEMPT_STATUSES:
+        return False
+    error_type = str(
+        attempt.get("error_type")
+        or attempt.get("exception_type")
+        or ""
+    ).strip().casefold()
+    if any(
+        marker in error_type
+        for marker in (
+            "authentication",
+            "authorization",
+            "credential",
+            "invalidtoken",
+            "permission",
+            "valueerror",
+            "typeerror",
+            "parameter",
+            "validation",
+            "configuration",
+            "importerror",
+            "attributeerror",
+        )
+    ):
+        return False
+    detail = str(attempt.get("detail") or "").casefold()
+    if any(
+        marker in detail
+        for marker in (
+            "token",
+            "credential",
+            "authentication",
+            "authorization",
+            "permission",
+            "unauthorized",
+            "forbidden",
+            "parameter",
+            "invalid exchange",
+            "invalid contract",
+            "not configured",
+            "not installed",
+            "权限",
+            "认证",
+            "参数",
+        )
+    ):
+        return False
+    if any(
+        marker in error_type
+        for marker in (
+            "connection",
+            "timeout",
+            "network",
+            "proxy",
+            "sslerror",
+            "httperror",
+            "requestexception",
+            "remotedisconnected",
+        )
+    ):
+        return True
+    return any(
+        marker in detail
+        for marker in (
+            "connection",
+            "timed out",
+            "timeout",
+            "network",
+            "temporary failure",
+            "temporarily unavailable",
+            "remote disconnected",
+            "service unavailable",
+            "too many requests",
+            "connection reset",
+            "http 408",
+            "http 429",
+            "http 500",
+            "http 502",
+            "http 503",
+            "http 504",
+        )
+    )
 
 
 def _step_receipt(
@@ -198,6 +341,8 @@ def _run_required_step(
     try:
         raw_result = _call_with_duckdb_retry(step, counted_call)
     except Exception as exc:  # noqa: BLE001 - required failure must retain receipts
+        if _is_retryable_task_error(exc):
+            raise
         reason = f"{step} failed: {_safe_error_reason(exc)}"
         logger.error("macro toolkit freshness: %s", reason)
         return _step_receipt(
@@ -221,7 +366,7 @@ def _run_required_step(
 
     result = {field: raw_result.get(field) for field in result_fields}
     raw_status = str(raw_result.get("status") or "unknown")
-    if raw_status in {"completed", "success"}:
+    if raw_status in {"completed", "success", "partial", "degraded"}:
         row_count_reason: str | None = None
         if "row_count" not in raw_result:
             row_count_reason = "missing row_count"
@@ -243,13 +388,21 @@ def _run_required_step(
                 result=result,
                 reason=f"{step} returned success status with {row_count_reason}",
             )
+        receipt_status = (
+            "success" if raw_status in {"completed", "success"} else "degraded"
+        )
         return _step_receipt(
             step=step,
-            status="success",
+            status=receipt_status,
             started_at=started_at,
             started_clock=started_clock,
             attempt_count=attempt_count,
             result=result,
+            reason=(
+                f"{step} returned {raw_status} status"
+                if receipt_status == "degraded"
+                else None
+            ),
         )
     return _step_receipt(
         step=step,
@@ -268,7 +421,18 @@ def _has_required_step_failure(steps: Sequence[dict[str, object]]) -> bool:
         for step in steps
         if step.get("step") in REQUIRED_STEP_NAMES
     }
-    return any(statuses_by_name.get(step_name) != "success" for step_name in REQUIRED_STEP_NAMES)
+    return any(
+        statuses_by_name.get(step_name) not in {"success", "degraded"}
+        for step_name in REQUIRED_STEP_NAMES
+    )
+
+
+def _has_required_step_degradation(steps: Sequence[dict[str, object]]) -> bool:
+    return any(
+        step.get("step") in REQUIRED_STEP_NAMES
+        and str(step.get("status")) == "degraded"
+        for step in steps
+    )
 
 
 def _run_cffex_step(*, report_date: date, duckdb_path: str) -> dict[str, object]:
@@ -281,15 +445,28 @@ def _run_cffex_step(*, report_date: date, duckdb_path: str) -> dict[str, object]
         limit=CFFEX_FALLBACK_WORKDAYS,
     )
 
-    def degraded(reason: str) -> dict[str, object]:
+    def finish(
+        *,
+        status: str,
+        reason: str | None = None,
+        trade_date: date | None = None,
+        row_count: int | None = None,
+        payload_keys: list[str] | None = None,
+    ) -> dict[str, object]:
+        result: dict[str, object] = {"attempts": attempts}
+        if row_count is not None:
+            result["row_count"] = row_count
+        if payload_keys is not None:
+            result["payload_keys"] = payload_keys
         return _step_receipt(
             step="cffex_member_rank",
-            status="degraded",
+            status=status,
             started_at=started_at,
             started_clock=started_clock,
             attempt_count=attempt_count,
-            result={"attempts": attempts},
+            result=result,
             reason=reason,
+            **({"trade_date": trade_date.isoformat()} if trade_date is not None else {}),
         )
 
     for trade_date in candidates:
@@ -318,10 +495,17 @@ def _run_cffex_step(*, report_date: date, duckdb_path: str) -> dict[str, object]
                     "trade_date": trade_date.isoformat(),
                     "status": "failed",
                     "reason": reason,
+                    "error_type": type(exc).__name__,
                     "attempt_count": attempt_count - candidate_attempts_before,
                 }
             )
-            return degraded(f"CFFEX failed for {trade_date.isoformat()}: {reason}")
+            if _is_retryable_task_error(exc):
+                raise
+            return finish(
+                status="failed" if _is_non_retryable_contract_error(exc) else "degraded",
+                reason=f"CFFEX failed for {trade_date.isoformat()}: {reason}",
+                trade_date=trade_date,
+            )
 
         if not isinstance(raw_result, dict):
             reason = f"invalid result type: {type(raw_result).__name__}"
@@ -333,7 +517,38 @@ def _run_cffex_step(*, report_date: date, duckdb_path: str) -> dict[str, object]
                     "attempt_count": attempt_count - candidate_attempts_before,
                 }
             )
-            return degraded(f"CFFEX failed for {trade_date.isoformat()}: {reason}")
+            return finish(
+                status="failed",
+                reason=f"CFFEX failed for {trade_date.isoformat()}: {reason}",
+                trade_date=trade_date,
+            )
+
+        raw_source_attempts = raw_result.get("attempts")
+        legacy_attempts_omitted = "attempts" not in raw_result
+        if raw_source_attempts is None:
+            source_attempts: list[dict[str, object]] = []
+        elif isinstance(raw_source_attempts, list) and all(
+            isinstance(item, dict) for item in raw_source_attempts
+        ):
+            source_attempts = [dict(item) for item in raw_source_attempts]
+        else:
+            reason = "invalid attempts payload"
+            attempts.append(
+                {
+                    "trade_date": trade_date.isoformat(),
+                    "status": "failed",
+                    "reason": reason,
+                    "source_attempts": [],
+                    "attempt_count": attempt_count - candidate_attempts_before,
+                }
+            )
+            return finish(
+                status="failed",
+                reason=f"CFFEX failed for {trade_date.isoformat()}: {reason}",
+                trade_date=trade_date,
+                payload_keys=sorted(str(key) for key in raw_result),
+            )
+
         if "row_count" not in raw_result:
             reason = "missing row_count"
             attempts.append(
@@ -341,23 +556,35 @@ def _run_cffex_step(*, report_date: date, duckdb_path: str) -> dict[str, object]
                     "trade_date": trade_date.isoformat(),
                     "status": "failed",
                     "reason": reason,
+                    "source_attempts": source_attempts,
                     "attempt_count": attempt_count - candidate_attempts_before,
                 }
             )
-            return degraded(f"CFFEX failed for {trade_date.isoformat()}: {reason}")
+            return finish(
+                status="failed",
+                reason=f"CFFEX failed for {trade_date.isoformat()}: {reason}",
+                trade_date=trade_date,
+                payload_keys=sorted(str(key) for key in raw_result),
+            )
         try:
             row_count = int(raw_result["row_count"])
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             reason = "invalid row_count"
             attempts.append(
                 {
                     "trade_date": trade_date.isoformat(),
                     "status": "failed",
                     "reason": reason,
+                    "source_attempts": source_attempts,
                     "attempt_count": attempt_count - candidate_attempts_before,
                 }
             )
-            return degraded(f"CFFEX failed for {trade_date.isoformat()}: {reason}")
+            return finish(
+                status="failed",
+                reason=f"CFFEX failed for {trade_date.isoformat()}: {reason}",
+                trade_date=trade_date,
+                payload_keys=sorted(str(key) for key in raw_result),
+            )
         if row_count < 0:
             reason = "negative row_count"
             attempts.append(
@@ -365,49 +592,101 @@ def _run_cffex_step(*, report_date: date, duckdb_path: str) -> dict[str, object]
                     "trade_date": trade_date.isoformat(),
                     "status": "failed",
                     "reason": reason,
+                    "source_attempts": source_attempts,
                     "attempt_count": attempt_count - candidate_attempts_before,
                 }
             )
-            return degraded(f"CFFEX failed for {trade_date.isoformat()}: {reason}")
-        if row_count == 0:
-            logger.warning(
-                "macro toolkit freshness: cffex returned 0 rows trade_date=%s; trying fallback",
-                trade_date.isoformat(),
+            return finish(
+                status="failed",
+                reason=f"CFFEX failed for {trade_date.isoformat()}: {reason}",
+                trade_date=trade_date,
+                payload_keys=sorted(str(key) for key in raw_result),
             )
+
+        anomalous_attempts = [
+            item
+            for item in source_attempts
+            if str(item.get("status") or "").strip().casefold()
+            not in CFFEX_EMPTY_ATTEMPT_STATUSES | {"materialized"}
+        ]
+        if row_count == 0:
+            all_attempts_empty = legacy_attempts_omitted or (
+                bool(source_attempts)
+                and all(
+                    str(item.get("status") or "").strip().casefold()
+                    in CFFEX_EMPTY_ATTEMPT_STATUSES
+                    for item in source_attempts
+                )
+            )
+            if all_attempts_empty:
+                logger.warning(
+                    "macro toolkit freshness: cffex returned true empty rows trade_date=%s; trying fallback",
+                    trade_date.isoformat(),
+                )
+                attempts.append(
+                    {
+                        "trade_date": trade_date.isoformat(),
+                        "status": "zero_rows",
+                        "row_count": 0,
+                        "source_attempts": source_attempts,
+                        "attempt_count": attempt_count - candidate_attempts_before,
+                    }
+                )
+                continue
+
+            summaries = [_cffex_attempt_summary(item) for item in anomalous_attempts]
+            reason = "; ".join(summaries) or "CFFEX returned no true-empty source attempts"
             attempts.append(
                 {
                     "trade_date": trade_date.isoformat(),
-                    "status": "zero_rows",
+                    "status": "failed",
                     "row_count": 0,
+                    "reason": reason,
+                    "source_attempts": source_attempts,
                     "attempt_count": attempt_count - candidate_attempts_before,
                 }
             )
-            continue
+            if any(_is_retryable_cffex_attempt(item) for item in anomalous_attempts):
+                raise RetryableFreshnessError(
+                    f"CFFEX failed for {trade_date.isoformat()}: {reason}"
+                )
+            return finish(
+                status="failed",
+                reason=f"CFFEX failed for {trade_date.isoformat()}: {reason}",
+                trade_date=trade_date,
+                row_count=0,
+                payload_keys=sorted(str(key) for key in raw_result),
+            )
 
         attempts.append(
             {
                 "trade_date": trade_date.isoformat(),
-                "status": "success",
+                "status": "degraded" if anomalous_attempts else "success",
                 "row_count": row_count,
+                "source_attempts": source_attempts,
                 "attempt_count": attempt_count - candidate_attempts_before,
             }
         )
-        return _step_receipt(
-            step="cffex_member_rank",
-            status="success",
-            started_at=started_at,
-            started_clock=started_clock,
-            attempt_count=attempt_count,
-            trade_date=trade_date.isoformat(),
-            result={
-                "row_count": row_count,
-                "payload_keys": sorted(str(key) for key in raw_result),
-                "attempts": attempts,
-            },
+        anomaly_reason = (
+            "; ".join(_cffex_attempt_summary(item) for item in anomalous_attempts)
+            if anomalous_attempts
+            else None
+        )
+        return finish(
+            status="degraded" if anomalous_attempts else "success",
+            reason=(
+                f"CFFEX partially materialized for {trade_date.isoformat()}: {anomaly_reason}"
+                if anomaly_reason
+                else None
+            ),
+            trade_date=trade_date,
+            row_count=row_count,
+            payload_keys=sorted(str(key) for key in raw_result),
         )
 
-    return degraded(
-        f"CFFEX returned zero rows across latest {CFFEX_FALLBACK_WORKDAYS} workdays"
+    return finish(
+        status="degraded",
+        reason=f"CFFEX returned zero rows across latest {CFFEX_FALLBACK_WORKDAYS} workdays",
     )
 
 
@@ -743,6 +1022,10 @@ def refresh_macro_toolkit_freshness(
                 "series_count",
                 "run_id",
                 "warnings",
+                "warning_count",
+                "failed_sources",
+                "source_failures",
+                "covered_required_series",
             ),
         ),
     )
@@ -796,8 +1079,13 @@ def refresh_macro_toolkit_freshness(
     steps.append(cffex_step)
 
     required_failed = _has_required_step_failure(steps)
+    required_degraded = _has_required_step_degradation(steps)
     if required_failed:
         status = "failed"
+    elif cffex_step["status"] == "failed":
+        status = "failed"
+    elif required_degraded:
+        status = "degraded"
     elif cffex_step["status"] in {"success", "skipped"}:
         status = "success"
     else:

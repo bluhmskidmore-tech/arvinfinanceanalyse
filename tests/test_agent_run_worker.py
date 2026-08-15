@@ -169,6 +169,48 @@ def test_execute_agent_run_task_marks_run_failed_when_execution_raises(
     assert isinstance(failures[0][1], RuntimeError)
 
 
+def test_execute_agent_run_task_marks_run_failed_and_reraises_on_time_limit_interrupt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dramatiq TimeLimitExceeded 是 BaseException 子类：必须先收敛 run 再重抛。"""
+    from dramatiq.middleware import TimeLimitExceeded
+
+    settings = SimpleNamespace()
+    monkeypatch.setattr(agent_run_task_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(
+        agent_run_task_module.agent_run_service,
+        "get_agent_run_status",
+        lambda *, run_id, settings: SimpleNamespace(
+            run_id=run_id,
+            status="running",
+            provider="hermes",
+        ),
+    )
+
+    def interrupted_execution(**_kwargs):
+        raise TimeLimitExceeded("time limit exceeded")
+
+    monkeypatch.setattr(
+        agent_run_task_module.agent_run_service,
+        "execute_agent_run_by_id",
+        interrupted_execution,
+        raising=False,
+    )
+    failures: list[tuple[str, BaseException]] = []
+    monkeypatch.setattr(
+        agent_run_task_module.agent_run_service,
+        "fail_agent_run",
+        lambda *, run_id, settings, error: failures.append((run_id, error)),
+    )
+
+    with pytest.raises(TimeLimitExceeded):
+        agent_run_task_module.execute_agent_run_task.fn(run_id="agent_run:time-limit")
+
+    assert len(failures) == 1
+    assert failures[0][0] == "agent_run:time-limit"
+    assert isinstance(failures[0][1], TimeLimitExceeded)
+
+
 def test_execute_agent_run_task_is_registered_without_external_call_retries() -> None:
     actor = agent_run_task_module.execute_agent_run_task
 

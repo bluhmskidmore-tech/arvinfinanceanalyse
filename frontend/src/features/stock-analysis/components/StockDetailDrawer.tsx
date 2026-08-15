@@ -12,6 +12,7 @@ import type {
 } from "../../../api/contracts";
 import { BaseChart } from "../../../components/charts/BaseChart";
 import { nocturneTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 import { localizeStrategyPanelErrorDetail } from "../lib/stockAnalysisPageModel";
 import { normalizeIsoCalendarDate } from "../lib/stockAnalysisDate";
 import type { StockDetailReviewThesis } from "../lib/stockAnalysisDetailSelection";
@@ -29,6 +30,20 @@ function receivedToForAsOfDate(asOfDate: string): string {
 
 function isFiniteNumber(value: number | null | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+/** 成交量轴刻度缩写：9 位原始数按亿/万降档，避免标签重叠。 */
+function formatVolumeAxisLabel(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 1e8) {
+    const yi = value / 1e8;
+    return `${Number.isInteger(yi) ? yi : yi.toFixed(1)}亿`;
+  }
+  if (abs >= 1e4) {
+    const wan = value / 1e4;
+    return `${Number.isInteger(wan) ? wan : wan.toFixed(1)}万`;
+  }
+  return `${value}`;
 }
 
 function buildCandleVolumeOption(
@@ -92,6 +107,8 @@ function buildCandleVolumeOption(
         type: "value",
         gridIndex: 1,
         scale: true,
+        splitNumber: 3,
+        axisLabel: { formatter: formatVolumeAxisLabel },
         splitLine: { lineStyle: { color: gridLine, type: "dashed" } },
       },
     ],
@@ -192,6 +209,24 @@ function stockKlinePatternLabel(value: string | null | undefined): string {
   return stockKlinePatternLabels[key] ?? (key || "形态待补");
 }
 
+/** K 线观察 reasons/risks 徽标的中文语域(§7)：未登记 token 原样透出、原文收 title。 */
+const stockKlineReasonLabels: Record<string, string> = {
+  close_above_ma20: "收于 MA20 上方",
+  close_below_ma20: "收于 MA20 下方",
+  ma20_above_ma60: "MA20 高于 MA60",
+  ma20_below_ma60: "MA20 低于 MA60",
+  positive_5d_return: "近5日正收益",
+  negative_5d_return: "近5日负收益",
+  positive_20d_return: "近20日正收益",
+  negative_20d_return: "近20日负收益",
+  shooting_star_like: "疑似射击之星",
+};
+
+function stockKlineReasonLabel(value: string): string {
+  const key = value.trim();
+  return stockKlineReasonLabels[key] ?? stockKlinePatternLabels[key] ?? key;
+}
+
 function formatStockKlineScore(value: number | null | undefined): string {
   if (!isFiniteNumber(value)) return "待补";
   return `${Math.round(value)}/100`;
@@ -285,7 +320,7 @@ export type StockDetailDrawerProps = {
 function formatChoiceNewsReceivedAt(iso: string): string {
   const t = iso.trim();
   if (t.length >= 16) return t.slice(0, 16).replace("T", " ");
-  return t || "—";
+  return t || EM_DASH;
 }
 
 function formatChoiceNewsDataDate(
@@ -297,12 +332,12 @@ function formatChoiceNewsDataDate(
     ? Number(excludedFutureRows)
     : 0;
   return futureRows > 0
-    ? `数据日期 ${dateLabel} · 已剔除未来 ${futureRows} 条`
+    ? `数据日期 ${dateLabel}（已剔除未来 ${futureRows} 条）`
     : `数据日期 ${dateLabel}`;
 }
 
 function truncateChoiceNewsText(text: string | null, maxLen: number): string {
-  if (text == null || text === "") return "—";
+  if (text == null || text === "") return EM_DASH;
   const s = text.trim();
   if (s.length <= maxLen) return s;
   return `${s.slice(0, maxLen)}…`;
@@ -357,7 +392,7 @@ function isTechnicalChoiceNewsCode(value: string | null | undefined): boolean {
 function formatCandidateHistoryReturn(
   value: number | null | undefined,
 ): string {
-  if (!isFiniteNumber(value)) return "—";
+  if (!isFiniteNumber(value)) return EM_DASH;
   return `${(value * 100).toFixed(2)}%`;
 }
 
@@ -1074,11 +1109,13 @@ export function StockDetailDrawer({
                         </span>
                       ))}
                       {(klineSignal?.reasons ?? []).slice(0, 3).map((reason) => (
-                        <span key={reason}>{reason}</span>
+                        <span key={reason} title={reason}>
+                          {stockKlineReasonLabel(reason)}
+                        </span>
                       ))}
                       {(klineSignal?.risks ?? []).slice(0, 2).map((risk) => (
-                        <span key={risk} data-tone="warning">
-                          {risk}
+                        <span key={risk} data-tone="warning" title={risk}>
+                          {stockKlineReasonLabel(risk)}
                         </span>
                       ))}
                     </div>
@@ -1306,7 +1343,7 @@ export function StockDetailDrawer({
                                 {row.candidate_rank}
                               </td>
                               <td className="stock-detail-drawer__tabular">
-                                {row.selection_close ?? "—"}
+                                {row.selection_close ?? EM_DASH}
                               </td>
                               <CandidateHistoryMaturityCell row={row} horizon="1d" />
                               <CandidateHistoryMaturityCell row={row} horizon="5d" />
@@ -1336,7 +1373,7 @@ export function StockDetailDrawer({
                       role="note"
                       data-testid="stock-detail-market-events-banner"
                     >
-                      市场事件 · 公告财报待补 · {choiceNewsDataDateLabel}
+                      市场事件 · 公告财报待补，{choiceNewsDataDateLabel}
                     </div>
                     {sideQueryDatePending ? (
                       <p
@@ -1428,8 +1465,8 @@ export function StockDetailDrawer({
               data-testid="stock-detail-footer-meta"
             >
               <span className="text-default-500">
-                数据口径 {dataLineageStatusLabel} · 质量 {qualityStatusLabel} ·
-                供数状态 {vendorStatusLabel}
+                数据口径 {dataLineageStatusLabel} / 质量 {qualityStatusLabel} / 供数状态{" "}
+                {vendorStatusLabel}
               </span>
             </footer>
           ) : null}

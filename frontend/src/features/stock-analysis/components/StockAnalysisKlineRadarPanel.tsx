@@ -223,22 +223,11 @@ export function StockAnalysisKlineRadarPanel({
       id="stock-analysis-kline-radar"
       data-testid="stock-analysis-kline-radar"
     >
+      {/* 区头不再重复每队列计数徽标行：五卡(观察池/风险池/各队列)已承载同一组主值。 */}
       <div className={SA_SECTION_HEAD}>
         <div className="stock-analysis-page__min-w-0">
           <p className={SA_SECTION_EYEBROW}>深度研究</p>
           <h2 className={SA_CARD_TITLE}>K线观察队列</h2>
-          <div className="stock-analysis-page__lower-signal-strip" aria-label="AI K线雷达状态">
-            {summary.queues.map((queue) => (
-              <div
-                key={queue.key}
-                className="stock-analysis-page__signal-pill"
-                data-tone={queue.tone}
-              >
-                {QUEUE_ICONS[queue.key]} {queue.shortLabel}{" "}
-                {queue.key === "risk_exit" && riskUnavailable ? "不可用" : queue.count}
-              </div>
-            ))}
-          </div>
         </div>
         <span className={SA_PILL}>
           {summary.totalCount > 0

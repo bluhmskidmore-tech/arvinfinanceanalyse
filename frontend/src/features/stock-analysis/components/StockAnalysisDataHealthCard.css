@@ -1,8 +1,8 @@
 /*
  * 「数据健康」紧凑卡。
  * 零新增色值：全部取 --dh-api-* 主题 token(深色路由)；
- * 色彩语义克制：仅状态点与整体徽章带语义色(ok 绿 / warn·stale 琥珀 /
- * error 红 / missing 中性)，其余中性。
+ * 色彩语义克制：仅状态点与整体徽章带语义色(ok 绿 / warn·stale·missing 琥珀 /
+ * error 红)，其余中性。
  */
 .stock-analysis-data-health {
   display: flex;
@@ -71,6 +71,56 @@
   color: var(--dh-api-red);
 }
 
+/* missing = 数据缺口，对齐同区琥珀制度(§6 圆点必须承载语义，不留装饰灰点)。 */
+.stock-analysis-data-health__overall[data-status="missing"] {
+  border-color: transparent;
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-amber);
+}
+
+/* loading/error 占位：同背板同边线 + 接近真实高度，防内容到达时重排(§6)。 */
+.stock-analysis-data-health--placeholder {
+  min-height: 120px;
+}
+
+.stock-analysis-data-health__skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stock-analysis-data-health__skeleton > span {
+  display: block;
+  height: 18px;
+  background: var(--dh-api-line-soft, var(--dh-api-line));
+  opacity: 0.55;
+}
+
+.stock-analysis-data-health__error-line {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 0;
+  color: var(--dh-api-ink-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.stock-analysis-data-health__error-line > button {
+  padding: 0 8px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  line-height: 1.6;
+  cursor: pointer;
+}
+
+.stock-analysis-data-health__error-line > button:hover {
+  border-color: var(--dh-api-ink-muted);
+}
+
 .stock-analysis-data-health__rows {
   display: flex;
   flex-direction: column;
@@ -106,6 +156,10 @@
 
 .stock-analysis-data-health__dot[data-status="error"] {
   background: var(--dh-api-red);
+}
+
+.stock-analysis-data-health__dot[data-status="missing"] {
+  background: var(--dh-api-amber);
 }
 
 .stock-analysis-data-health__label {

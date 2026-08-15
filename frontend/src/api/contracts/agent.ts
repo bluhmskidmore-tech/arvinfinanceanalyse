@@ -37,7 +37,11 @@ export type AgentQueryRequest = {
   filters?: Record<string, unknown>;
   position_scope?: string;
   currency_basis?: string;
-  /** @deprecated Prefer `page_context`. Frontend AgentPanel no longer sends this field. */
+  /**
+   * 运行时请求上下文：页面上下文改走 `page_context`；`context` 仍承载
+   * user_id / conversation / intent / suggested_action（含确认 token）等运行时字段，
+   * 前端每次请求都会发送（后端确认 token 校验与会话续接依赖它）。
+   */
   context?: AgentRequestContext;
   page_context?: AgentPageContext | null;
 };
@@ -107,14 +111,23 @@ export type AgentErrorDetail = {
   message: string;
 };
 
+/** FastAPI 请求体校验失败（422）时数组 detail 的单个条目（RequestValidationError 序列化形状）。 */
+export type AgentValidationErrorItem = {
+  loc: Array<string | number>;
+  msg: string;
+  type: string;
+  [key: string]: unknown;
+};
+
 /**
  * agent 端点稳定错误契约：
  * - 禁用态 503：所有 agent 端点统一返回扁平 AgentDisabledResponse（无 detail 包装）；
  * - 机器可判定错误：`{ detail: AgentErrorDetail }`；
- * - 其余错误（校验/权限/404/生命周期冲突）：`{ detail: string }`。
+ * - FastAPI 请求校验失败 422：`{ detail: AgentValidationErrorItem[] }`（数组 detail）；
+ * - 其余错误（业务校验/权限/404/生命周期冲突）：`{ detail: string }`。
  */
 export type AgentErrorResponse = {
-  detail: string | AgentErrorDetail;
+  detail: string | AgentErrorDetail | AgentValidationErrorItem[];
 };
 
 /** Mirrors backend `agent_run.py::AgentRunStatus`（含 cancelled 终态）。 */
@@ -169,10 +182,12 @@ export type AgentRunCreateResponse = {
 };
 
 /**
- * POST /api/agent/runs 的完整响应契约：本地同步短路时直接返回 AgentEnvelope，
- * 其余情况返回排队回执（disabled 时为 503 + AgentDisabledResponse，经错误通道抛出）。
+ * POST /api/agent/runs 的完整响应契约：后端 response_model 已收窄为
+ * `AgentRunCreateResponse | AgentDisabledResponse`——正常路径只返回排队回执
+ * （disabled 时为 503 + AgentDisabledResponse，经错误通道抛出），不再同步短路返回 AgentEnvelope。
+ * AgentRunStatusResponse 分支仅由前端 demo 桩返回（带 result 的终态 payload，驱动本地完成路径）。
  */
-export type AgentRunCreateResult = AgentRunCreateResponse | AgentRunStatusResponse | AgentEnvelope;
+export type AgentRunCreateResult = AgentRunCreateResponse | AgentRunStatusResponse;
 
 /** POST /api/agent/projects — mirrors backend `AgentProjectCreateRequest`（缺省值由后端填入）。 */
 export type AgentProjectCreateRequest = {

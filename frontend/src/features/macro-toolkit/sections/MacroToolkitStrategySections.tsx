@@ -54,7 +54,9 @@ import {
   shadowPortfolioPeriodWinLossText,
   shadowPortfolioReviewAction,
   shadowPortfolioUnavailableDescription,
+  shadowPortfolioWarningPillText,
   shadowPortfolioWarningText,
+  shadowRuleVersionLabel,
   strategyDataStatus,
   strategyObservationDetail,
   strategyObservationNote,
@@ -523,10 +525,12 @@ export function ShadowPortfolioReportPanel({ report }: { report: MacroToolkitSha
           </small>
         </div>
         <div className="macro-toolkit-tag-row">
-          <Tag color="blue">{report.rule_version}</Tag>
+          <Tag color="blue" title={report.rule_version}>
+            {shadowRuleVersionLabel(report.rule_version)}
+          </Tag>
           {report.warnings.map((warning) => (
-            <Tag color="gold" key={warning}>
-              {warning}
+            <Tag color="gold" key={warning} title={warning}>
+              {shadowPortfolioWarningPillText(warning)}
             </Tag>
           ))}
         </div>
@@ -751,52 +755,57 @@ export function MacroToolkitStrategySection({
       }`}
     >
       <PageSectionLead eyebrow="策略" title="策略展示" description={strategyDescription} />
+      {/* 闭环计数与对齐状态拆两行，避免单行元信息分隔符超配额（DESIGN §7）。 */}
       <div className="macro-toolkit-strategy-supply-strip" aria-label="策略供数闭环">
-        <span className="macro-toolkit-strategy-supply-label">
-          <DatabaseOutlined />
-          策略供数闭环
-        </span>
-        {strategySupplyState === "loaded" ? (
-          <>
+        <div className="macro-toolkit-strategy-supply-strip__row">
+          <span className="macro-toolkit-strategy-supply-label">
+            <DatabaseOutlined />
+            策略供数闭环
+          </span>
+          {strategySupplyState === "loaded" ? (
+            <>
+              <span>
+                <DatabaseOutlined />
+                完整链路 {fullRealStrategyCount}/{strategySummaries.length}
+              </span>
+              <span>
+                <SafetyCertificateOutlined />
+                部分链路 {partialRealStrategyCount}
+              </span>
+              <span>
+                <SafetyCertificateOutlined />
+                降级 {degradedStrategyCount}
+              </span>
+              <span>
+                <SafetyCertificateOutlined />
+                样例 {sampleStrategyCount}
+              </span>
+            </>
+          ) : (
             <span>
-              <DatabaseOutlined />
-              完整链路 {fullRealStrategyCount}/{strategySummaries.length}
+              <ClockCircleOutlined />
+              策略供数 {statusLabel(strategySupplyState)}
             </span>
-            <span>
-              <SafetyCertificateOutlined />
-              部分链路 {partialRealStrategyCount}
-            </span>
-            <span>
-              <SafetyCertificateOutlined />
-              降级 {degradedStrategyCount}
-            </span>
-            <span>
-              <SafetyCertificateOutlined />
-              样例 {sampleStrategyCount}
-            </span>
-          </>
-        ) : (
+          )}
+        </div>
+        <div className="macro-toolkit-strategy-supply-strip__row">
           <span>
             <ClockCircleOutlined />
-            策略供数 {statusLabel(strategySupplyState)}
+            股票历史 {choiceStockTableSummary(choiceStockRefresh?.daily_observation, "latest_trade_date")}
           </span>
-        )}
-        <span>
-          <ClockCircleOutlined />
-          股票历史 {choiceStockTableSummary(choiceStockRefresh?.daily_observation, "latest_trade_date")}
-        </span>
-        <span>
-          <ClockCircleOutlined />
-          因子快照 {choiceStockTableSummary(choiceStockRefresh?.factor_snapshot, "as_of_date")}
-        </span>
-        {showOperations ? (
-          <MetricTile
-            label="刷新状态"
-            value={choiceStockRefreshValue(refreshRun, choiceStockRefresh?.permission)}
-            detail={refreshPlainDetail}
-            detailTitle={choiceStockRefreshDetail(refreshRun, choiceStockRefresh?.permission)}
-          />
-        ) : null}
+          <span>
+            <ClockCircleOutlined />
+            因子快照 {choiceStockTableSummary(choiceStockRefresh?.factor_snapshot, "as_of_date")}
+          </span>
+          {showOperations ? (
+            <MetricTile
+              label="刷新状态"
+              value={choiceStockRefreshValue(refreshRun, choiceStockRefresh?.permission)}
+              detail={refreshPlainDetail}
+              detailTitle={choiceStockRefreshDetail(refreshRun, choiceStockRefresh?.permission)}
+            />
+          ) : null}
+        </div>
       </div>
       {!showOperations ? (
         <StrategyObservationSummary

@@ -3,13 +3,13 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from collections.abc import Callable
 from dataclasses import asdict, is_dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal, cast
 
-import duckdb
 from backend.app.core_finance.macro_bond_linkage import (
     ENVIRONMENT_COMPOSITE_FORMULA_VERSION,
     EquityBondSpreadSignal,
@@ -21,6 +21,7 @@ from backend.app.core_finance.macro_bond_linkage import (
     estimate_macro_impact_on_portfolio,
 )
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.macro_bond_linkage_repo import MacroBondLinkageRepository
 from backend.app.schemas.macro_bond_linkage import (
     MacroBondLinkageMethodMeta,
     MacroBondLinkageMethodVariant,
@@ -31,7 +32,7 @@ from backend.app.services.formal_result_runtime import (
     build_analytical_result_meta,
     build_formal_result_envelope,
 )
-from backend.app.services.runtime_cache import get_runtime_cache
+from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
 
 RULE_VERSION = "rv_macro_bond_linkage_v2_liquidity_inverted"
 CACHE_VERSION = "cv_macro_bond_linkage_v2_liquidity_inverted"
@@ -67,6 +68,14 @@ MACRO_CONTEXT_COMPOSITE_FORMULA = (
     "+ 0.2*growth_score + 0.1*inflation_score"
 )
 MACRO_CONTEXT_COMPOSITE_FORMULA_VERSION = ENVIRONMENT_COMPOSITE_FORMULA_VERSION
+# 与 core_finance contributing_factors 的 category 词表保持一致。
+MACRO_ENVIRONMENT_EVIDENCE_CATEGORIES = ("rate", "liquidity", "growth", "inflation")
+MACRO_ENVIRONMENT_SIGNAL_UNAVAILABLE_TEXT = "宏观环境评分缺少可用指标证据，暂无信号。"
+MACRO_ENVIRONMENT_SIGNAL_UNAVAILABLE_WARNING = (
+    "宏观环境评分缺少可用指标证据，久期等方向性判断已置为暂无信号。"
+)
+
+CacheKey = tuple[str, int, int, str, str, str]
 
 
 def get_macro_bond_linkage(report_date: date) -> dict[str, object]:
@@ -76,24 +85,22 @@ def get_macro_bond_linkage(report_date: date) -> dict[str, object]:
         duckdb_path=duckdb_path,
         report_date=report_date,
     )
-    if cache_key is not None:
-        cache = get_runtime_cache(
-            MACRO_BOND_LINKAGE_COMPONENTS_CACHE_NAME,
-            ttl_seconds=MACRO_BOND_LINKAGE_COMPONENTS_CACHE_TTL_SECONDS,
-        )
-        envelope = cache.get_or_set(
-            cache_key,
-            lambda: _get_macro_bond_linkage_uncached(
-                report_date=report_date,
-                duckdb_path=duckdb_path,
-            ),
-        )
-        return _refresh_macro_bond_linkage_envelope(envelope)
 
-    return _get_macro_bond_linkage_uncached(
-        report_date=report_date,
-        duckdb_path=duckdb_path,
+    def _produce() -> dict[str, object]:
+        return _get_macro_bond_linkage_uncached(
+            report_date=report_date,
+            duckdb_path=duckdb_path,
+        )
+
+    if cache_key is None:
+        return _refresh_macro_bond_linkage_envelope(_produce(), cache_hit=False)
+
+    cache: InMemoryTTLCache[CacheKey, dict[str, object]] = get_runtime_cache(
+        MACRO_BOND_LINKAGE_COMPONENTS_CACHE_NAME,
+        ttl_seconds=MACRO_BOND_LINKAGE_COMPONENTS_CACHE_TTL_SECONDS,
     )
+    envelope, cache_hit = _cached_envelope(cache, cache_key, _produce)
+    return _refresh_macro_bond_linkage_envelope(envelope, cache_hit=cache_hit)
 
 
 def get_macro_environment_context(report_date: date) -> dict[str, object]:
@@ -103,24 +110,38 @@ def get_macro_environment_context(report_date: date) -> dict[str, object]:
         duckdb_path=duckdb_path,
         report_date=report_date,
     )
-    if cache_key is not None:
-        cache = get_runtime_cache(
-            MACRO_ENVIRONMENT_CONTEXT_CACHE_NAME,
-            ttl_seconds=MACRO_ENVIRONMENT_CONTEXT_CACHE_TTL_SECONDS,
-        )
-        envelope = cache.get_or_set(
-            cache_key,
-            lambda: _get_macro_environment_context_uncached(
-                report_date=report_date,
-                duckdb_path=duckdb_path,
-            ),
-        )
-        return _refresh_macro_bond_linkage_envelope(envelope)
 
-    return _get_macro_environment_context_uncached(
-        report_date=report_date,
-        duckdb_path=duckdb_path,
+    def _produce() -> dict[str, object]:
+        return _get_macro_environment_context_uncached(
+            report_date=report_date,
+            duckdb_path=duckdb_path,
+        )
+
+    if cache_key is None:
+        return _refresh_macro_bond_linkage_envelope(_produce(), cache_hit=False)
+
+    cache: InMemoryTTLCache[CacheKey, dict[str, object]] = get_runtime_cache(
+        MACRO_ENVIRONMENT_CONTEXT_CACHE_NAME,
+        ttl_seconds=MACRO_ENVIRONMENT_CONTEXT_CACHE_TTL_SECONDS,
     )
+    envelope, cache_hit = _cached_envelope(cache, cache_key, _produce)
+    return _refresh_macro_bond_linkage_envelope(envelope, cache_hit=cache_hit)
+
+
+def _cached_envelope(
+    cache: InMemoryTTLCache[CacheKey, dict[str, object]],
+    cache_key: CacheKey,
+    producer: Callable[[], dict[str, object]],
+) -> tuple[dict[str, object], bool]:
+    produced = False
+
+    def _produce_once() -> dict[str, object]:
+        nonlocal produced
+        produced = True
+        return producer()
+
+    envelope = cache.get_or_set(cache_key, _produce_once)
+    return envelope, not produced
 
 
 def get_macro_context_v1(report_date: date, *, as_of_date: str | None = None) -> dict[str, object]:
@@ -246,24 +267,21 @@ def _get_macro_environment_context_uncached(
 ) -> dict[str, object]:
     computed_at = datetime.now(UTC).isoformat()
     warnings: list[str] = []
-    conn = _connect_read_only(duckdb_path)
-    if conn is None:
-        warnings.append("DuckDB 只读连接不可用，暂无法生成宏观环境评分。")
-        return _build_macro_environment_context_envelope(
-            report_date=report_date,
-            computed_at=computed_at,
-            environment_score={},
-            warnings=warnings,
-            source_versions=[EMPTY_SOURCE_VERSION],
-            vendor_versions=["vv_none"],
-            upstream_rule_versions=[],
-            evidence_rows=0,
-        )
-
-    try:
-        macro_inputs = _load_macro_inputs(conn, report_date)
-    finally:
-        conn.close()
+    repo = MacroBondLinkageRepository(duckdb_path, guard_path_exists=True)
+    with repo.scoped_connection() as conn:
+        if conn is None:
+            warnings.append("DuckDB 只读连接不可用，暂无法生成宏观环境评分。")
+            return _build_macro_environment_context_envelope(
+                report_date=report_date,
+                computed_at=computed_at,
+                environment_score={},
+                warnings=warnings,
+                source_versions=[EMPTY_SOURCE_VERSION],
+                vendor_versions=["vv_none"],
+                upstream_rule_versions=[],
+                evidence_rows=0,
+            )
+        macro_inputs = _load_macro_inputs(repo, report_date, conn=conn)
 
     environment_score_payload: dict[str, Any] = {}
     if macro_inputs["trade_date_count"] < MIN_TRADE_DATES:
@@ -277,7 +295,10 @@ def _get_macro_environment_context_uncached(
             lookback_days=90,
         )
         warnings.extend(environment_score.warnings)
-        environment_score_payload = _json_safe(environment_score)
+        environment_score_payload, _signal_status = _apply_environment_signal_status(
+            _json_safe(environment_score),
+            warnings=warnings,
+        )
 
     return _build_macro_environment_context_envelope(
         report_date=report_date,
@@ -314,15 +335,83 @@ def _macro_bond_linkage_components_cache_key(
     )
 
 
-def _refresh_macro_bond_linkage_envelope(envelope: dict[str, object]) -> dict[str, object]:
+def _refresh_macro_bond_linkage_envelope(
+    envelope: dict[str, object],
+    *,
+    cache_hit: bool,
+) -> dict[str, object]:
     refreshed = dict(envelope)
     result_meta = dict(cast(dict[str, object], refreshed.get("result_meta") or {}))
     result = dict(cast(dict[str, object], refreshed.get("result") or {}))
     result_meta["trace_id"] = _trace_id()
-    result["computed_at"] = datetime.now(UTC).isoformat()
+    # computed_at 必须保留真实计算时间；served_at 记录本次响应时间，两者之差即缓存年龄。
+    result["served_at"] = datetime.now(UTC).isoformat()
+    result["cache_hit"] = cache_hit
     refreshed["result_meta"] = result_meta
     refreshed["result"] = result
     return refreshed
+
+
+def _environment_evidence_categories(environment_score: dict[str, Any]) -> list[str]:
+    factors = environment_score.get("contributing_factors")
+    if not isinstance(factors, list):
+        return []
+    covered = {
+        str(factor.get("category") or "").strip()
+        for factor in factors
+        if isinstance(factor, dict)
+    }
+    return [category for category in MACRO_ENVIRONMENT_EVIDENCE_CATEGORIES if category in covered]
+
+
+def _apply_environment_signal_status(
+    environment_score: dict[str, Any],
+    *,
+    warnings: list[str],
+) -> tuple[dict[str, Any], str]:
+    """标注环境评分的证据覆盖度；证据全缺时不得输出久期方向判断。
+
+    ``compute_macro_environment_score`` 在指标缺失时把分项分数默认为 0，合成分随之落到
+    中性区间并给出"维持当前久期配置"。这里按 contributing_factors 判断真实证据覆盖，
+    零覆盖时把方向性文案替换为显式"暂无信号"。
+    """
+    if not environment_score:
+        return environment_score, "unavailable"
+
+    covered = _environment_evidence_categories(environment_score)
+    if not covered:
+        signal_status = "unavailable"
+    elif len(covered) < len(MACRO_ENVIRONMENT_EVIDENCE_CATEGORIES):
+        signal_status = "partial"
+    else:
+        signal_status = "ready"
+
+    gated = dict(environment_score)
+    gated["signal_status"] = signal_status
+    gated["signal_evidence_categories"] = covered
+    gated["signal_missing_categories"] = [
+        category for category in MACRO_ENVIRONMENT_EVIDENCE_CATEGORIES if category not in covered
+    ]
+    if signal_status == "unavailable":
+        gated["rate_direction"] = "unknown"
+        gated["signal_description"] = MACRO_ENVIRONMENT_SIGNAL_UNAVAILABLE_TEXT
+        warnings.append(MACRO_ENVIRONMENT_SIGNAL_UNAVAILABLE_WARNING)
+    return gated, signal_status
+
+
+def _pending_signal_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    pending: list[dict[str, Any]] = []
+    for row in rows:
+        updated = {
+            **row,
+            "status": "pending_signal",
+            "stance": "neutral",
+            "summary": MACRO_ENVIRONMENT_SIGNAL_UNAVAILABLE_TEXT,
+        }
+        if "confidence" in updated:
+            updated["confidence"] = "low"
+        pending.append(updated)
+    return pending
 
 
 def _build_macro_environment_context_envelope(
@@ -367,30 +456,27 @@ def _get_macro_bond_linkage_uncached(
 ) -> dict[str, object]:
     computed_at = datetime.now(UTC).isoformat()
     warnings: list[str] = []
-    conn = _connect_read_only(duckdb_path)
-    if conn is None:
-        warnings.append("DuckDB 只读连接不可用，暂无法生成宏观-债市联动分析。")
-        return _build_response_envelope(
-            report_date=report_date,
-            computed_at=computed_at,
-            environment_score={},
-            portfolio_impact={},
-            top_correlations=[],
-            method_variants=_empty_method_variants(),
-            research_views=[],
-            transmission_axes=[],
-            warnings=warnings,
-            source_versions=[EMPTY_SOURCE_VERSION],
-            vendor_versions=["vv_none"],
-            upstream_rule_versions=[],
-        )
-
-    try:
-        macro_inputs = _load_macro_inputs(conn, report_date)
-        yield_inputs = _load_yield_inputs(conn, report_date)
-        portfolio_metrics = _load_portfolio_metrics(conn, report_date)
-    finally:
-        conn.close()
+    repo = MacroBondLinkageRepository(duckdb_path, guard_path_exists=True)
+    with repo.scoped_connection() as conn:
+        if conn is None:
+            warnings.append("DuckDB 只读连接不可用，暂无法生成宏观-债市联动分析。")
+            return _build_response_envelope(
+                report_date=report_date,
+                computed_at=computed_at,
+                environment_score={},
+                portfolio_impact={},
+                top_correlations=[],
+                method_variants=_empty_method_variants(),
+                research_views=[],
+                transmission_axes=[],
+                warnings=warnings,
+                source_versions=[EMPTY_SOURCE_VERSION],
+                vendor_versions=["vv_none"],
+                upstream_rule_versions=[],
+            )
+        macro_inputs = _load_macro_inputs(repo, report_date, conn=conn)
+        yield_inputs = _load_yield_inputs(repo, report_date, conn=conn)
+        portfolio_metrics = _load_portfolio_metrics(repo, report_date, conn=conn)
 
     warnings.extend(portfolio_metrics["warnings"])
 
@@ -475,7 +561,10 @@ def _get_macro_bond_linkage_uncached(
             lookback_days=90,
         )
         warnings.extend(environment_score.warnings)
-        environment_score_payload = _json_safe(environment_score)
+        environment_score_payload, signal_status = _apply_environment_signal_status(
+            _json_safe(environment_score),
+            warnings=warnings,
+        )
         portfolio_impact_payload = _json_safe(
             estimate_macro_impact_on_portfolio(
                 macro_environment=environment_score,
@@ -500,6 +589,9 @@ def _get_macro_bond_linkage_uncached(
         )
         research_views = _json_safe(research_view_rows)
         transmission_axes = _json_safe(transmission_axis_rows)
+        if signal_status == "unavailable":
+            research_views = _pending_signal_rows(research_views)
+            transmission_axes = _pending_signal_rows(transmission_axes)
     return _build_response_envelope(
         report_date=report_date,
         computed_at=computed_at,
@@ -533,42 +625,12 @@ def _load_landed_equity_research_signals(
     report_date: date,
     macro_latest: dict[str, tuple[date, float]],
 ) -> tuple[EquityBondSpreadSignal | None, MegaCapEquitySignal | None, list[str]]:
-    conn = _connect_read_only(duckdb_path)
-    if conn is None:
+    repo = MacroBondLinkageRepository(duckdb_path, guard_path_exists=True)
+    rows, error_warning = repo.fetch_equity_axis_latest_rows(report_date)
+    if error_warning is not None:
+        return None, None, [error_warning]
+    if not rows:
         return None, None, []
-    try:
-        if not _relation_exists(conn, "choice_market_snapshot"):
-            return None, None, []
-        rows = conn.execute(
-            """
-            select series_id, cast(trade_date as date) as trade_date, cast(value_numeric as double) as value_numeric
-            from (
-              select
-                series_id,
-                trade_date,
-                value_numeric,
-                row_number() over (partition by series_id order by cast(trade_date as date) desc) as rn
-              from choice_market_snapshot
-              where series_id in (
-                'CA.CSI300',
-                'CA.CSI300_PCT_CHG',
-                'CA.CSI300_PE',
-                'CA.MEGA_CAP_WEIGHT',
-                'CA.MEGA_CAP_TOP5_WEIGHT',
-                'E1000180',
-                'EMM00166466'
-              )
-                and cast(trade_date as date) <= ?
-                and value_numeric is not null
-            )
-            where rn = 1
-            """,
-            [report_date.isoformat()],
-        ).fetchall()
-    except duckdb.Error as exc:
-        return None, None, [f"choice_market_snapshot equity axes unavailable: {exc}"]
-    finally:
-        conn.close()
 
     latest: dict[str, tuple[date, float]] = {}
     for series_id, trade_date_value, value_numeric in rows:
@@ -626,224 +688,30 @@ def _latest_macro_value(
 
 
 def _load_macro_inputs(
-    conn: duckdb.DuckDBPyConnection,
+    repo: MacroBondLinkageRepository,
     report_date: date,
+    *,
+    conn: Any,
 ) -> dict[str, Any]:
-    if not _relation_exists(conn, "fact_choice_macro_daily"):
-        return {
-            "series": {},
-            "latest": {},
-            "series_name_map": {},
-            "trade_date_count": 0,
-            "source_versions": [EMPTY_SOURCE_VERSION],
-            "vendor_versions": [],
-            "rule_versions": [],
-        }
-
-    start_date = report_date - timedelta(days=LOOKBACK_DAYS + 30)
-    rows = conn.execute(
-        """
-        select
-          series_id,
-          series_name,
-          cast(trade_date as date) as trade_date,
-          cast(value_numeric as double) as value_numeric,
-          coalesce(source_version, '') as source_version,
-          coalesce(vendor_version, '') as vendor_version,
-          coalesce(rule_version, '') as rule_version
-        from fact_choice_macro_daily
-        where cast(trade_date as date) <= ?
-          and cast(trade_date as date) >= ?
-          and value_numeric is not null
-        order by series_id, cast(trade_date as date)
-        """,
-        [report_date.isoformat(), start_date.isoformat()],
-    ).fetchall()
-
-    series: dict[str, list[tuple[date, float]]] = {}
-    latest: dict[str, tuple[date, float]] = {}
-    series_name_map: dict[str, str] = {}
-    trade_dates: set[date] = set()
-    source_versions: list[str] = []
-    vendor_versions: list[str] = []
-    rule_versions: list[str] = []
-
-    for series_id, series_name, trade_date_value, value_numeric, source_version, vendor_version, rule_version in rows:
-        series_id_text = str(series_id)
-        point_date = _coerce_date(trade_date_value)
-        if point_date is None:
-            continue
-        value = float(value_numeric)
-        series.setdefault(series_id_text, []).append((point_date, value))
-        latest[series_id_text] = (point_date, value)
-        series_name_map[series_id_text] = str(series_name or series_id_text)
-        trade_dates.add(point_date)
-        source_versions.append(str(source_version))
-        vendor_versions.append(str(vendor_version))
-        rule_versions.append(str(rule_version))
-
-    return {
-        "series": series,
-        "latest": latest,
-        "series_name_map": series_name_map,
-        "trade_date_count": len(trade_dates),
-        "source_versions": _non_empty_values(source_versions),
-        "vendor_versions": _non_empty_values(vendor_versions),
-        "rule_versions": _non_empty_values(rule_versions),
-    }
+    return repo.load_macro_inputs(report_date, conn=conn)
 
 
 def _load_yield_inputs(
-    conn: duckdb.DuckDBPyConnection,
+    repo: MacroBondLinkageRepository,
     report_date: date,
+    *,
+    conn: Any,
 ) -> dict[str, Any]:
-    if not _relation_exists(conn, "fact_formal_yield_curve_daily"):
-        return {
-            "series": {},
-            "source_versions": [],
-            "vendor_versions": [],
-            "rule_versions": [],
-        }
-
-    start_date = report_date - timedelta(days=LOOKBACK_DAYS + 30)
-    rows = conn.execute(
-        """
-        select
-          cast(trade_date as date) as trade_date,
-          curve_type,
-          tenor,
-          cast(rate_pct as double) as rate_pct,
-          coalesce(vendor_version, '') as vendor_version,
-          coalesce(source_version, '') as source_version,
-          coalesce(rule_version, '') as rule_version
-        from fact_formal_yield_curve_daily
-        where cast(trade_date as date) <= ?
-          and cast(trade_date as date) >= ?
-          and rate_pct is not null
-        order by cast(trade_date as date), curve_type, tenor
-        """,
-        [report_date.isoformat(), start_date.isoformat()],
-    ).fetchall()
-
-    series: dict[str, list[tuple[date, float]]] = {}
-    source_versions: list[str] = []
-    vendor_versions: list[str] = []
-    rule_versions: list[str] = []
-    daily_points: dict[tuple[date, str], dict[str, float]] = {}
-
-    for trade_date_value, curve_type, tenor, rate_pct, vendor_version, source_version, rule_version in rows:
-        point_date = _coerce_date(trade_date_value)
-        if point_date is None:
-            continue
-        key = f"{curve_type}_{tenor}"
-        series.setdefault(key, []).append((point_date, float(rate_pct)))
-        daily_points.setdefault((point_date, str(tenor)), {})[str(curve_type)] = float(rate_pct)
-        source_versions.append(str(source_version))
-        vendor_versions.append(str(vendor_version))
-        rule_versions.append(str(rule_version))
-
-    for (trade_date_value, tenor), point_map in daily_points.items():
-        if "aaa_credit" in point_map and "treasury" in point_map:
-            spread_key = f"credit_spread_{tenor}"
-            spread_value = point_map["aaa_credit"] - point_map["treasury"]
-            series.setdefault(spread_key, []).append((trade_date_value, spread_value))
-
-    return {
-        "series": series,
-        "source_versions": _non_empty_values(source_versions),
-        "vendor_versions": _non_empty_values(vendor_versions),
-        "rule_versions": _non_empty_values(rule_versions),
-    }
+    return repo.load_yield_inputs(report_date, conn=conn)
 
 
 def _load_portfolio_metrics(
-    conn: duckdb.DuckDBPyConnection,
+    repo: MacroBondLinkageRepository,
     report_date: date,
+    *,
+    conn: Any,
 ) -> dict[str, Any]:
-    warnings: list[str] = []
-    if _relation_exists(conn, "fact_formal_risk_tensor_daily"):
-        row = conn.execute(
-            """
-            select
-              cast(report_date as date) as resolved_report_date,
-              cast(portfolio_dv01 as decimal(24, 8)) as portfolio_dv01,
-              cast(cs01 as decimal(24, 8)) as cs01,
-              cast(total_market_value as decimal(24, 8)) as total_market_value,
-              coalesce(source_version, '') as source_version,
-              coalesce(rule_version, '') as rule_version
-            from fact_formal_risk_tensor_daily
-            where try_cast(report_date as date) <= ?
-            order by try_cast(report_date as date) desc
-            limit 1
-            """,
-            [report_date.isoformat()],
-        ).fetchone()
-        if row is not None:
-            resolved_report_date = _coerce_date(row[0])
-            if resolved_report_date is not None and resolved_report_date != report_date:
-                warnings.append(
-                    f"风险张量使用最近日期 {resolved_report_date.isoformat()}，目标日期为 {report_date.isoformat()}。"
-                )
-            return {
-                "portfolio_dv01": _coerce_decimal(row[1]),
-                "portfolio_cs01": _coerce_decimal(row[2]),
-                "portfolio_market_value": _coerce_decimal(row[3]),
-                "source_version": str(row[4] or EMPTY_SOURCE_VERSION),
-                "rule_version": str(row[5] or ""),
-                "warnings": warnings,
-            }
-
-    if _relation_exists(conn, "fact_formal_bond_analytics_daily"):
-        row = conn.execute(
-            """
-            with latest as (
-              select max(try_cast(report_date as date)) as resolved_report_date
-              from fact_formal_bond_analytics_daily
-              where try_cast(report_date as date) <= ?
-            )
-            select
-              latest.resolved_report_date,
-              cast(coalesce(sum(dv01), 0) as decimal(24, 8)) as portfolio_dv01,
-              cast(coalesce(sum(case when is_credit then spread_dv01 else 0 end), 0) as decimal(24, 8)) as portfolio_cs01,
-              cast(coalesce(sum(market_value), 0) as decimal(24, 8)) as portfolio_market_value,
-              coalesce(string_agg(distinct source_version, '__'), '') as source_version,
-              coalesce(string_agg(distinct rule_version, '__'), '') as rule_version
-            from fact_formal_bond_analytics_daily, latest
-            where try_cast(fact_formal_bond_analytics_daily.report_date as date) = latest.resolved_report_date
-            group by latest.resolved_report_date
-            """,
-            [report_date.isoformat()],
-        ).fetchone()
-        if row is None:
-            row = (None, Decimal("0"), Decimal("0"), Decimal("0"), EMPTY_SOURCE_VERSION, "")
-        resolved_report_date = _coerce_date(row[0])
-        if resolved_report_date is None:
-            warnings.append("风险张量缺失，且 bond analytics 未提供可用组合 DV01/CS01。")
-        elif resolved_report_date == report_date:
-            warnings.append("风险张量缺失，组合 DV01/CS01 已回退到 bond analytics 聚合结果。")
-        else:
-            warnings.append(
-                "风险张量缺失，组合 DV01/CS01 已回退到 "
-                f"{resolved_report_date.isoformat()} bond analytics 聚合结果。"
-            )
-        return {
-            "portfolio_dv01": _coerce_decimal(row[1]),
-            "portfolio_cs01": _coerce_decimal(row[2]),
-            "portfolio_market_value": _coerce_decimal(row[3]),
-            "source_version": str(row[4] or EMPTY_SOURCE_VERSION),
-            "rule_version": str(row[5] or ""),
-            "warnings": warnings,
-        }
-
-    warnings.append("组合 DV01/CS01 不可用，组合冲击估算将按 0 返回。")
-    return {
-        "portfolio_dv01": Decimal("0"),
-        "portfolio_cs01": Decimal("0"),
-        "portfolio_market_value": Decimal("0"),
-        "source_version": EMPTY_SOURCE_VERSION,
-        "rule_version": "",
-        "warnings": warnings,
-    }
+    return repo.load_portfolio_metrics(report_date, conn=conn)
 
 
 def _empty_method_variants() -> MacroBondLinkageMethodVariants:
@@ -982,33 +850,6 @@ def _macro_context_id(payload: dict[str, object]) -> str:
     return f"macroctx_{digest}"
 
 
-def _connect_read_only(path: str) -> duckdb.DuckDBPyConnection | None:
-    duckdb_file = Path(path)
-    if not duckdb_file.exists():
-        return None
-    try:
-        return duckdb.connect(str(duckdb_file), read_only=True)
-    except duckdb.Error:
-        return None
-
-
-def _relation_exists(conn: duckdb.DuckDBPyConnection, relation_name: str) -> bool:
-    row = conn.execute(
-        """
-        select 1
-        from information_schema.tables
-        where table_name = ?
-        union all
-        select 1
-        from information_schema.views
-        where table_name = ?
-        limit 1
-        """,
-        [relation_name, relation_name],
-    ).fetchone()
-    return row is not None
-
-
 def _aggregate_lineage(values: list[str], empty_value: str) -> str:
     filtered = sorted({str(value).strip() for value in values if str(value).strip()})
     if not filtered:
@@ -1016,10 +857,6 @@ def _aggregate_lineage(values: list[str], empty_value: str) -> str:
     if len(filtered) == 1:
         return filtered[0]
     return "__".join(filtered)
-
-
-def _non_empty_values(values: list[str]) -> list[str]:
-    return [value for value in values if str(value).strip()]
 
 
 def _trace_id() -> str:
@@ -1101,12 +938,6 @@ def _coerce_date(value: object) -> date | None:
     if not text:
         return None
     return date.fromisoformat(text)
-
-
-def _coerce_decimal(value: object) -> Decimal:
-    if isinstance(value, Decimal):
-        return value
-    return Decimal(str(value or "0"))
 
 
 def _json_safe(value: Any) -> Any:

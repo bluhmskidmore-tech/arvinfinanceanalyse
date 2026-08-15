@@ -107,6 +107,80 @@ def test_repeated_probe_command_is_executed_once(git_repo):
     assert runner.calls.count("shared-probe") == 1
 
 
+def _tail_runner(stdout_tails):
+    """exit 0 runner，可注入各命令的 stdout 尾部（模拟测试运行器汇总输出）。"""
+
+    def run(command, cwd, timeout_seconds):
+        return CommandOutcome(
+            exit_code=0, duration_ms=1, stdout_tail=stdout_tails.get(command, "")
+        )
+
+    return run
+
+
+_UNIT_PROBE = "python -m pytest tests/probe_unit_consistency.py -q"
+
+PLAYWRIGHT_ALL_SKIPPED_TAIL = "Running 2 tests using 1 worker\n\n  2 skipped\n"
+
+
+@pytest.mark.parametrize(
+    ("stdout_tail", "expected"),
+    [
+        pytest.param(PLAYWRIGHT_ALL_SKIPPED_TAIL, "failed", id="playwright-all-skipped"),
+        pytest.param(
+            " Test Files  1 skipped (1)\n      Tests  2 skipped (2)\n",
+            "failed",
+            id="vitest-all-skipped",
+        ),
+        pytest.param(
+            "========= no tests ran in 0.01s =========\n", "failed", id="pytest-no-tests-ran"
+        ),
+        pytest.param(
+            "Running 3 tests using 1 worker\n\n  1 skipped\n  2 passed (3.2s)\n",
+            "passed",
+            id="skips-plus-executed-tests-stay-passed",
+        ),
+        pytest.param("", "passed", id="no-test-summary-keeps-exit-code-semantics"),
+    ],
+)
+def test_gate_probe_green_exit_that_executed_zero_tests_fails_closed(
+    git_repo, stdout_tail, expected
+):
+    """Playwright `test.skip(...)`（如非 mock 环境的探针）exit 0 但零执行，
+    不得计为 gate passed；有真实执行的 skip 混合与无汇总输出保持原语义。"""
+
+    runner = _tail_runner({_UNIT_PROBE: stdout_tail})
+
+    result = collect_measured_result(TASK, repo_root=git_repo, run_command=runner)
+
+    assert result["business_gates"]["unit_consistency"] == expected
+    # 有探针的 gate 不进 unprobed_gates：零执行是"探针跑了但没测到"，非缺探针。
+    assert "unit_consistency" not in result["measurement"]["unprobed_gates"]
+
+
+def test_zero_execution_probe_is_flagged_in_the_command_log_with_output_tail(git_repo):
+    runner = _tail_runner({_UNIT_PROBE: PLAYWRIGHT_ALL_SKIPPED_TAIL})
+
+    result = collect_measured_result(TASK, repo_root=git_repo, run_command=runner)
+
+    entry = next(
+        item for item in result["measurement"]["commands"] if item["command"] == _UNIT_PROBE
+    )
+    assert entry["exit_code"] == 0
+    assert entry["zero_tests_executed"] is True
+    assert entry["stdout_tail"] == PLAYWRIGHT_ALL_SKIPPED_TAIL
+
+
+def test_check_command_green_exit_with_all_tests_skipped_is_failed(git_repo):
+    runner = _tail_runner(
+        {"run-unit-tests": " Test Files  1 skipped (1)\n      Tests  2 skipped (2)\n"}
+    )
+
+    result = collect_measured_result(TASK, repo_root=git_repo, run_command=runner)
+
+    assert result["checks"]["run-unit-tests"] == "failed"
+
+
 def test_evidence_requires_a_non_empty_declared_artifact(git_repo):
     empty_artifact = git_repo / "evidence" / "contracts.json"
     empty_artifact.parent.mkdir(parents=True)

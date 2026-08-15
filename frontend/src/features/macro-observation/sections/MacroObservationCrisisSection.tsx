@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+
 import { EM_DASH } from "../../../pageModel";
 import type { MacroObservationCrisisEvidenceView } from "../model/macroObservationPageModel";
 import MacroObservationCrisisChart from "./MacroObservationCrisisChart";
@@ -20,41 +22,44 @@ export default function MacroObservationCrisisSection({
   const isReady = crisis.state === "ready";
   const history = isReady ? crisis.history : [];
   const hasChart = history.length >= CRISIS_CHART_MIN_POINTS;
-  // deferred（core 首发）→ 待完整分析；ready 但序列不足 → 暂无历史序列。
-  const placeholderNote = isReady ? "暂无历史序列" : "历史序列待完整分析确认";
-  const availableComponentCount = isReady
-    ? crisis.componentCount - crisis.componentMissingCount
-    : 0;
+  const placeholderNote = isReady
+    ? "暂无历史序列"
+    : crisis.state === "empty"
+      ? "暂无历史序列"
+      : "历史序列待完整分析确认";
 
   return (
     <div className="macro-observation-crisis-layout">
       <div className="macro-observation-crisis-readout" aria-label="危机分读数">
         {isReady ? (
           <>
-            <div className="macro-observation-crisis-score-row">
-              <span className="macro-observation-crisis-score">{crisis.scoreText}</span>
-              <span className="macro-observation-crisis-regime">{crisis.regime}</span>
-            </div>
+            {/* 危机分读数已在 01 KPI 与 02 信号带出现；本区大字徽标按 §6 去重删除，
+                headline 原句保留作为证据上下文。 */}
             <p className="macro-observation-crisis-headline">{crisis.headline}</p>
             <dl className="macro-observation-view__meta-list">
               <dt>历史分位</dt>
               <dd>{crisis.percentileText}</dd>
               <dt>组件</dt>
               <dd>
-                可用 {availableComponentCount}/{crisis.componentCount}
+                可用 {crisis.availableComponentCount}/{crisis.componentCount}
+                {crisis.coverageNote ? (
+                  <small className="macro-observation-crisis-coverage-note">{crisis.coverageNote}</small>
+                ) : null}
               </dd>
               <dt>模型建议</dt>
               <dd title={crisis.recommendation}>{crisis.recommendation}</dd>
             </dl>
           </>
         ) : (
-          <p className="macro-observation-crisis-empty">危机分证据{crisis.note}。</p>
+          <p className="macro-observation-crisis-empty">
+            {crisis.state === "empty" ? crisis.note : `危机分证据${crisis.note}。`}
+          </p>
         )}
         <p className="macro-observation-crisis-link-note">
           数据修复与刷新请前往
-          <a className="macro-observation-view__toolkit-link" href="/macro-toolkit">
+          <Link className="macro-observation-view__toolkit-link" to="/macro-toolkit">
             宏观工具页
-          </a>
+          </Link>
           。
         </p>
       </div>

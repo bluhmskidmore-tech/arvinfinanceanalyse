@@ -11,6 +11,7 @@ from backend.app.repositories.external_data_catalog_repo import (
     ensure_external_data_catalog_schema,
 )
 from backend.app.repositories.external_data_migrations_extra import ensure_std_external_macro_schema
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.schemas.external_data import ExternalDataCatalogEntry
 from backend.app.services.external_data_query_service import fetch_series_watermark
 from backend.app.services.external_data_service import ExternalDataService
@@ -29,6 +30,12 @@ def _entry(series_id: str, frequency: str | None) -> ExternalDataCatalogEntry:
         catalog_version="cv",
         created_at="2026-04-21T00:00:00+00:00",
     )
+
+
+def _register(repo: ExternalDataCatalogRepository, *entries: ExternalDataCatalogEntry) -> None:
+    with repository_task_write_scope("backend.app.tasks.external_data_catalog_seed_test"):
+        for entry in entries:
+            repo.register(entry)
 
 
 def _insert_row(
@@ -61,7 +68,7 @@ def test_fetch_series_watermark_monthly_cadence_avoids_daily_thresholds(tmp_path
     conn = _connect(tmp_path)
     try:
         entry = _entry("s.monthly", "monthly")
-        ExternalDataCatalogRepository(conn=conn).register(entry)
+        _register(ExternalDataCatalogRepository(conn=conn), entry)
         _insert_row(conn, "s.monthly", "2026-06-01", "2026-06-02 08:00:00")
         wm = fetch_series_watermark(conn, entry, as_of_date=date(2026, 7, 1))
     finally:
@@ -75,7 +82,7 @@ def test_fetch_series_watermark_daily_cadence_flags_stale(tmp_path) -> None:
     conn = _connect(tmp_path)
     try:
         entry = _entry("s.daily", "daily")
-        ExternalDataCatalogRepository(conn=conn).register(entry)
+        _register(ExternalDataCatalogRepository(conn=conn), entry)
         _insert_row(conn, "s.daily", "2026-06-25", "2026-06-25 18:00:00")
         wm = fetch_series_watermark(conn, entry, as_of_date=date(2026, 7, 1))
     finally:
@@ -92,8 +99,7 @@ def test_fetch_series_watermark_unmapped_frequency_reports_unknown_tier(tmp_path
         repo = ExternalDataCatalogRepository(conn=conn)
         quarterly = _entry("s.quarterly", "quarterly")
         nofreq = _entry("s.nofreq", None)
-        repo.register(quarterly)
-        repo.register(nofreq)
+        _register(repo, quarterly, nofreq)
         _insert_row(conn, "s.quarterly", "2026-06-01", "2026-06-02 08:00:00")
         _insert_row(conn, "s.nofreq", "2026-06-01", "2026-06-02 08:00:00")
         wm_quarterly = fetch_series_watermark(conn, quarterly, as_of_date=date(2026, 7, 1))
@@ -111,7 +117,7 @@ def test_fetch_series_watermark_without_rows_has_null_age_and_unknown_tier(tmp_p
     conn = _connect(tmp_path)
     try:
         entry = _entry("s.empty", "daily")
-        ExternalDataCatalogRepository(conn=conn).register(entry)
+        _register(ExternalDataCatalogRepository(conn=conn), entry)
         wm = fetch_series_watermark(conn, entry, as_of_date=date(2026, 7, 1))
     finally:
         conn.close()
@@ -128,8 +134,7 @@ def test_watermark_ledger_exposes_age_tier_and_last_successful_ingest(tmp_path) 
         ensure_external_data_catalog_schema(conn)
         ensure_std_external_macro_schema(conn)
         repo = ExternalDataCatalogRepository(conn=conn)
-        repo.register(_entry("s.monthly", "monthly"))
-        repo.register(_entry("s.nofreq", None))
+        _register(repo, _entry("s.monthly", "monthly"), _entry("s.nofreq", None))
         _insert_row(conn, "s.monthly", "2026-06-01", "2026-06-25 10:00:00")
         _insert_row(conn, "s.nofreq", "2026-05-20", "2026-05-21 08:00:00")
     finally:
@@ -158,7 +163,7 @@ def test_watermark_ledger_last_successful_ingest_null_without_any_loads(tmp_path
     try:
         ensure_external_data_catalog_schema(conn)
         ensure_std_external_macro_schema(conn)
-        ExternalDataCatalogRepository(conn=conn).register(_entry("s.empty", "daily"))
+        _register(ExternalDataCatalogRepository(conn=conn), _entry("s.empty", "daily"))
     finally:
         conn.close()
 

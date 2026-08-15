@@ -8,17 +8,13 @@ from datetime import UTC, datetime
 from typing import Any
 
 import duckdb
+from backend.app.repositories.external_std_macro_repo import (
+    StdExternalMacroDailyRow,
+    upsert_macro_daily_rows,
+)
 from backend.app.repositories.raw_zone_repo import RawZoneRepository
 from backend.app.repositories.tushare_catalog_seed import TUSHARE_M2A_SERIES, get_m2a_series_by_id
 from backend.app.schemas.external_data import ExternalDataCatalogEntry
-
-_INSERT_SQL = """
-insert or replace into std_external_macro_daily (
-  series_id, vendor_name, domain, trade_date, value_numeric,
-  frequency, unit, source_version, vendor_version, rule_version,
-  ingest_batch_id, raw_zone_path, created_at
-) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-"""
 
 
 def _rows_from_raw_payload(raw: object) -> list[dict[str, Any]]:
@@ -71,7 +67,7 @@ class ExternalStdMacroEtlService:
         series_id = catalog_entry.series_id
         vendor = catalog_entry.vendor_name
         dom = str(catalog_entry.domain)
-        count = 0
+        fact_rows: list[StdExternalMacroDailyRow] = []
         for row in rows:
             td = str(row.get("trade_date", "")).strip()
             if not td:
@@ -86,26 +82,24 @@ class ExternalStdMacroEtlService:
                 source_version = f"ingest_{ingest_batch_id[:12]}"
             vver = vendor_version or f"{vendor}|{catalog_entry.catalog_version}"
             rver = rule_version or "m2b.external_std_macro_etl.v1"
-            self._conn.execute(
-                _INSERT_SQL,
-                [
-                    series_id,
-                    vendor,
-                    dom,
-                    td,
-                    vnum,
-                    catalog_entry.frequency,
-                    catalog_entry.unit,
-                    source_version,
-                    vver,
-                    rver,
-                    ingest_batch_id,
-                    raw_zone_path,
-                    now,
-                ],
+            fact_rows.append(
+                StdExternalMacroDailyRow(
+                    series_id=series_id,
+                    vendor_name=vendor,
+                    domain=dom,
+                    trade_date=td,
+                    value_numeric=vnum,
+                    frequency=catalog_entry.frequency,
+                    unit=catalog_entry.unit,
+                    source_version=source_version,
+                    vendor_version=vver,
+                    rule_version=rver,
+                    ingest_batch_id=ingest_batch_id,
+                    raw_zone_path=raw_zone_path,
+                    created_at=now,
+                )
             )
-            count += 1
-        return count
+        return upsert_macro_daily_rows(self._conn, fact_rows)
 
     def _series_paths_for_batch(
         self,

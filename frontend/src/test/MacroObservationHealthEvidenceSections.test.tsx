@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 
 import type { ResultMeta } from "../api/contracts";
@@ -29,7 +30,7 @@ function makeHealthView(
     repairItems: [],
     repairMoreNote: null,
     deferredSectionLabels: [],
-    warningCount: 0,
+    warnings: [],
     ...overrides,
   };
 }
@@ -60,7 +61,11 @@ const READY_BUNDLE: MacroObservationReportBundleView = {
   reason: null,
   validationText: "6 通过 / 0 未通过",
   validationFailedCount: 0,
-  warningCount: 0,
+  materialDate: "2026-08-12",
+  curveDate: "2026-08-11",
+  accountReportDate: EM_DASH,
+  validationScope: "bundle",
+  warnings: ["清单哈希待复核"],
   artifacts: [
     {
       id: "macro-strategy-report",
@@ -80,7 +85,11 @@ const MISSING_BUNDLE: MacroObservationReportBundleView = {
   reason: "报告清单缺失，等待发布流程补齐。",
   validationText: EM_DASH,
   validationFailedCount: 0,
-  warningCount: 0,
+  materialDate: EM_DASH,
+  curveDate: EM_DASH,
+  accountReportDate: EM_DASH,
+  validationScope: EM_DASH,
+  warnings: [],
   artifacts: [],
 };
 
@@ -104,7 +113,11 @@ function renderEvidenceSection(
 
 describe("MacroObservationDataHealthSection", () => {
   it("renders the three-cell coverage band with percentage note and latest date", () => {
-    render(<MacroObservationDataHealthSection health={makeHealthView()} />);
+    render(
+      <MemoryRouter>
+        <MacroObservationDataHealthSection health={makeHealthView()} />
+      </MemoryRouter>,
+    );
 
     const coverage = screen.getByTestId("macro-observation-datahealth-coverage");
     const cells = coverage.querySelectorAll(".macro-observation-datahealth__coverage-cell");
@@ -118,15 +131,17 @@ describe("MacroObservationDataHealthSection", () => {
 
   it("renders repair rows with priority badges, deferred honesty badge and the more-note", () => {
     render(
-      <MacroObservationDataHealthSection
-        health={makeHealthView({
-          repairItems: [
+      <MemoryRouter>
+        <MacroObservationDataHealthSection
+          health={makeHealthView({
+            repairItems: [
             {
               key: "repair-0-cn_cpi",
               label: "CPI 同比",
               typeText: "缺失",
               priorityText: "高",
               actionText: "运行宏观来源补数脚本，补齐 CPI 序列后重跑分析。",
+              actionTitle: "CPI 同比 当前 unavailable：CPI_YOY_CORE_INPUT_MISSING；补数后重跑分析。",
               latestDateText: "2026-07-15",
               staleDaysText: "29 天",
             },
@@ -136,13 +151,15 @@ describe("MacroObservationDataHealthSection", () => {
               typeText: "完整分析后确认",
               priorityText: "低",
               actionText: "打开完整分析后确认这部分证据，不把首屏延后加载当作缺失。",
+              actionTitle: null,
               latestDateText: EM_DASH,
               staleDaysText: EM_DASH,
             },
-          ],
-          repairMoreNote: "另 3 项",
-        })}
-      />,
+            ],
+            repairMoreNote: "另 3 项",
+          })}
+        />
+      </MemoryRouter>,
     );
 
     const highBadge = screen.getByText("高");
@@ -155,6 +172,13 @@ describe("MacroObservationDataHealthSection", () => {
     expect(deferredRow).toHaveAttribute("data-deferred", "true");
     expect(within(deferredRow as HTMLElement).getByText("延后确认")).toBeInTheDocument();
 
+    // 建议动作展示中文短语；后端原句（含原始错误码）收行 title 溯源。
+    const actionCell = screen.getByText("运行宏观来源补数脚本，补齐 CPI 序列后重跑分析。");
+    expect(actionCell).toHaveAttribute(
+      "title",
+      "CPI 同比 当前 unavailable：CPI_YOY_CORE_INPUT_MISSING；补数后重跑分析。",
+    );
+
     const missingRow = screen.getByText("CPI 同比").closest("tr");
     expect(missingRow).not.toHaveAttribute("data-deferred");
 
@@ -166,14 +190,22 @@ describe("MacroObservationDataHealthSection", () => {
   });
 
   it("omits the more-note when repair items fit within the visible limit", () => {
-    render(<MacroObservationDataHealthSection health={makeHealthView()} />);
+    render(
+      <MemoryRouter>
+        <MacroObservationDataHealthSection health={makeHealthView()} />
+      </MemoryRouter>,
+    );
 
     expect(screen.queryByTestId("macro-observation-repair-more")).not.toBeInTheDocument();
     expect(screen.getByText("当前没有待处理数据项。")).toBeInTheDocument();
   });
 
   it("renders a single-line empty state when health evidence is not returned", () => {
-    render(<MacroObservationDataHealthSection health={null} />);
+    render(
+      <MemoryRouter>
+        <MacroObservationDataHealthSection health={null} />
+      </MemoryRouter>,
+    );
 
     expect(screen.getByTestId("macro-observation-datahealth-empty")).toHaveTextContent(
       "数据健康读数尚未返回；核心分析落地后这里会补上覆盖读数与修复项。",
@@ -223,8 +255,16 @@ describe("MacroObservationEvidenceSection", () => {
     const link = within(bundle).getByRole("link", { name: "macro-strategy-2026.pdf" });
     expect(link).toHaveAttribute("href", "/ui/macro/toolkit/report-bundle/macro-strategy-report");
     expect(link).toHaveAttribute("download", "macro-strategy-2026.pdf");
-    expect(within(bundle).getByText("策略报告 · pdf")).toBeInTheDocument();
+    // 「中文说明 · 英文类别词」尾巴删除（§7 语域）；类别词保留在 title。
+    expect(within(bundle).getByText("策略报告")).toHaveAttribute("title", "策略报告 · pdf");
+    expect(within(bundle).queryByText("策略报告 · pdf")).not.toBeInTheDocument();
     expect(within(bundle).getByText("1.2 MB")).toBeInTheDocument();
+    expect(screen.getByTestId("macro-observation-report-dates")).toHaveTextContent("材料日");
+    expect(screen.getByTestId("macro-observation-report-dates")).toHaveTextContent("2026-08-12");
+    expect(screen.getByTestId("macro-observation-report-dates")).toHaveTextContent("曲线日");
+    expect(screen.getByTestId("macro-observation-report-dates")).toHaveTextContent("2026-08-11");
+    expect(screen.getByTestId("macro-observation-report-dates")).toHaveTextContent("账户报告日");
+    expect(screen.getByTestId("macro-observation-bundle-warnings")).toHaveTextContent("清单哈希待复核");
   });
 
   it("renders the missing bundle as a muted reason line without download links", () => {

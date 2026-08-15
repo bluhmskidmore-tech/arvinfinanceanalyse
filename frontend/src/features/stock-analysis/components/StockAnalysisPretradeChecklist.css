@@ -66,6 +66,57 @@
   color: var(--dh-api-ink-muted);
 }
 
+/* loading/error 占位：与就绪态同背板同边线，接近真实高度，防内容到达时重排(§6)。 */
+.stock-analysis-pretrade--placeholder {
+  min-height: 120px;
+}
+
+.stock-analysis-pretrade__skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stock-analysis-pretrade__skeleton > span {
+  display: block;
+  height: 22px;
+  background: var(--dh-api-line-soft, var(--dh-api-line));
+  opacity: 0.55;
+}
+
+.stock-analysis-pretrade__error-line {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 0;
+  color: var(--dh-api-ink-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.stock-analysis-pretrade__error-line > button {
+  padding: 0 8px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  line-height: 1.6;
+  cursor: pointer;
+}
+
+.stock-analysis-pretrade__error-line > button:hover {
+  border-color: var(--dh-api-ink-muted);
+}
+
+/* 整列同值收敛到区头的一句摘要(§6：原因只在区块头部出现一次)。 */
+.stock-analysis-pretrade__uniform-note {
+  margin: 0;
+  color: var(--dh-api-ink-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .stock-analysis-pretrade__rows {
   display: flex;
   flex-direction: column;
@@ -77,12 +128,17 @@
 
 .stock-analysis-pretrade__row {
   display: grid;
-  grid-template-columns: minmax(148px, 200px) 76px minmax(84px, 116px) minmax(0, 1fr);
+  grid-template-columns: minmax(148px, 200px) minmax(76px, max-content) minmax(84px, 116px) minmax(0, 1fr);
   gap: 4px 12px;
   align-items: center;
   padding: 6px 10px;
   border: 1px solid var(--dh-api-line);
   border-radius: 6px;
+}
+
+/* 统一仓位收进区头后，明细行不再保留仓位列。 */
+.stock-analysis-pretrade[data-uniform-weight="true"] .stock-analysis-pretrade__row {
+  grid-template-columns: minmax(148px, 200px) minmax(76px, max-content) minmax(0, 1fr);
 }
 
 .stock-analysis-pretrade__identity {

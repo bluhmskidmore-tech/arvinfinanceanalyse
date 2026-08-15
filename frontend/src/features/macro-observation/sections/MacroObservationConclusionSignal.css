@@ -84,9 +84,14 @@
 
 .macro-observation-conclusion-warning-note {
   margin: 0;
+  padding-left: 1.1em;
   color: var(--dh-api-muted);
   font-size: 11px;
   line-height: 1.5;
+}
+
+.macro-observation-conclusion-warning-note li + li {
+  margin-top: 2px;
 }
 
 /* ---------------------------------------------------------- 决策摘要卡 */

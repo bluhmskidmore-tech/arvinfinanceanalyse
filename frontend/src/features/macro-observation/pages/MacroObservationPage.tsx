@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { useApiClient } from "../../../api/clientContext";
 import type { ApiEnvelope } from "../../../api/contracts";
@@ -43,18 +44,23 @@ import MacroObservationSignalRiskSection from "../sections/MacroObservationSigna
 import "./MacroObservationPage.css";
 
 const MACRO_OBSERVATION_READ_STALE_MS = 60_000;
-const MACRO_OBSERVATION_FULL_PREFETCH_DELAY_MS = 1_500;
 
 /**
  * /macro-observation 只读观察页（首页 Nocturne 标准骨架）。
- * 数据编排与 /macro-toolkit observation 分支逐字对齐（同 query key 共享缓存），
- * 但不请求 scripts / model-chain；全部展示派生走 macroObservationPageModel。
+ * 数据编排与 /macro-toolkit 共享 query key；首屏只请求 core + strategy，
+ * 完整分析由「查看完整分析」显式触发，不预取 full。
  */
 export default function MacroObservationPage() {
   const client = useApiClient();
   const queryClient = useQueryClient();
-  const [fullAnalysisEnvelope, setFullAnalysisEnvelope] =
-    useState<ApiEnvelope<MacroToolkitAnalysisPayload> | null>(null);
+  const [fullAnalysisEnvelope, setFullAnalysisEnvelope] = useState<
+    ApiEnvelope<MacroToolkitAnalysisPayload> | null
+  >(
+    () =>
+      queryClient.getQueryData<ApiEnvelope<MacroToolkitAnalysisPayload>>(
+        MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY,
+      ) ?? null,
+  );
   const [fullAnalysisError, setFullAnalysisError] = useState<string | null>(null);
   const [isLoadingFullAnalysis, setIsLoadingFullAnalysis] = useState(false);
 
@@ -83,7 +89,6 @@ export default function MacroObservationPage() {
     setIsLoadingFullAnalysis(true);
     setFullAnalysisError(null);
     try {
-      await queryClient.cancelQueries({ queryKey: ["macro-toolkit", "strategy-summaries"] });
       const response = await queryClient.fetchQuery({
         queryKey: MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY,
         queryFn: fetchFullAnalysis,
@@ -98,33 +103,6 @@ export default function MacroObservationPage() {
       setIsLoadingFullAnalysis(false);
     }
   }, [fetchFullAnalysis, queryClient]);
-
-  useEffect(() => {
-    if (fullAnalysisEnvelope || analysisQuery.data?.result.runtime_status?.analysis_scope !== "core") {
-      return;
-    }
-    let cancelled = false;
-    const timeoutId = window.setTimeout(() => {
-      void (async () => {
-        try {
-          const response = await queryClient.fetchQuery({
-            queryKey: MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY,
-            queryFn: fetchFullAnalysis,
-            staleTime: MACRO_OBSERVATION_READ_STALE_MS,
-          });
-          if (!cancelled) {
-            setFullAnalysisEnvelope(response);
-          }
-        } catch {
-          // Keep the core screen until the user explicitly retries full analysis.
-        }
-      })();
-    }, MACRO_OBSERVATION_FULL_PREFETCH_DELAY_MS);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timeoutId);
-    };
-  }, [analysisQuery.data?.result.runtime_status?.analysis_scope, fetchFullAnalysis, fullAnalysisEnvelope, queryClient]);
 
   const analysisEnvelope = fullAnalysisEnvelope ?? analysisQuery.data;
   const analysis = analysisEnvelope?.result;
@@ -154,9 +132,12 @@ export default function MacroObservationPage() {
   });
   const conclusion = buildObservationConclusion(analysis);
   const signalCards = buildSignalCardViews(analysis?.signal_cards ?? []);
-  const riskView = buildAShareRiskView(analysis?.a_share_risk);
+  const riskView = buildAShareRiskView(analysis?.a_share_risk, analysis?.runtime_status?.analysis_scope);
   const strategyView = buildStrategyEvidenceView(strategyPayload, analysis);
-  const crisisView = buildCrisisEvidenceView(pickCrisisScoreResult(analysis));
+  const crisisView = buildCrisisEvidenceView(
+    pickCrisisScoreResult(analysis),
+    analysis?.runtime_status?.analysis_scope,
+  );
   const healthView = buildDataHealthView(analysis?.data_health);
   const metaView = buildEvidenceMetaView(analysisMeta, strategyMeta);
   const reportBundle = buildReportBundleView(analysis?.report_bundle);
@@ -190,15 +171,16 @@ export default function MacroObservationPage() {
     <header className="macro-observation-view__header">
       <div className="macro-observation-view__header-copy">
         <h1 className="macro-observation-view__title">宏观观察</h1>
+        {/* 只读边界声明集中在页头徽标与下方细注一处；副题只答「本页看什么」。 */}
         <p className="macro-observation-view__subtitle">
-          只读展示宏观分析证据与策略供数状态；刷新、脚本执行和运营注册表保留在宏观工具页。
+          宏观信号、模型与策略证据的当日观察。
         </p>
       </div>
       <div className="macro-observation-view__header-side">
         <span className="macro-observation-view__mode-badge">只读观察</span>
-        <a className="macro-observation-view__toolkit-link" href="/macro-toolkit">
+        <Link className="macro-observation-view__toolkit-link" to="/macro-toolkit">
           前往宏观工具页
-        </a>
+        </Link>
       </div>
     </header>
   );
@@ -248,9 +230,9 @@ export default function MacroObservationPage() {
             <button type="button" onClick={retryReads} disabled={isRetrying}>
               重试读取
             </button>
-            <a className="macro-observation-view__toolkit-link" href="/macro-toolkit">
+            <Link className="macro-observation-view__toolkit-link" to="/macro-toolkit">
               前往宏观工具页
-            </a>
+            </Link>
           </div>
         </div>
       </section>

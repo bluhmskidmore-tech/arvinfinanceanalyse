@@ -1,8 +1,13 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import type { DataHealthPayload } from "../../../api/dataHealthClient";
+import type { DataHealthFetchResult, DataHealthPayload } from "../../../api/dataHealthClient";
 import { StockAnalysisDataHealthCard } from "./StockAnalysisDataHealthCard";
+
+function ok(payload: DataHealthPayload): DataHealthFetchResult {
+  return { kind: "ok", payload };
+}
 
 function syntheticPayload(): DataHealthPayload {
   return {
@@ -48,7 +53,7 @@ function syntheticPayload(): DataHealthPayload {
 
 describe("StockAnalysisDataHealthCard", () => {
   it("renders one row per section with status dot, label, metric and detail tooltip", async () => {
-    const loadHealth = vi.fn(async () => syntheticPayload());
+    const loadHealth = vi.fn(async () => ok(syntheticPayload()));
     render(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
 
     const panel = await screen.findByTestId("stock-analysis-data-health");
@@ -77,6 +82,25 @@ describe("StockAnalysisDataHealthCard", () => {
     expect(within(scheduled).getByText("1/2 正常")).toBeInTheDocument();
   });
 
+  it("localizes the tradestatus vocabulary label into business language", async () => {
+    const payload = syntheticPayload();
+    payload.sections = [
+      {
+        key: "tradestatus_vocabulary",
+        label: "tradestatus 词表",
+        status: "ok",
+        metric: "3,554 行 · 0.11%",
+        detail: "非空且不在可交易白名单共 3,554 行",
+      },
+    ];
+    const loadHealth = vi.fn(async () => ok(payload));
+    render(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
+
+    const row = await screen.findByTestId("stock-analysis-data-health-row-tradestatus_vocabulary");
+    expect(within(row).getByText("交易状态词表")).toBeInTheDocument();
+    expect(within(row).queryByText("tradestatus 词表")).toBeNull();
+  });
+
   it("derives the overall badge from the worst section when overall_status is absent", async () => {
     const payload = syntheticPayload();
     payload.overall_status = null;
@@ -84,7 +108,7 @@ describe("StockAnalysisDataHealthCard", () => {
       { key: "a", label: "甲", status: "ok", metric: "x" },
       { key: "b", label: "乙", status: "warn", metric: "y" },
     ];
-    const loadHealth = vi.fn(async () => payload);
+    const loadHealth = vi.fn(async () => ok(payload));
     render(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
 
     const overall = await screen.findByTestId("stock-analysis-data-health-overall");
@@ -92,31 +116,60 @@ describe("StockAnalysisDataHealthCard", () => {
     expect(overall).toHaveAttribute("data-status", "warn");
   });
 
-  it("hides the whole panel when the overview is unavailable (404/failure → null)", async () => {
-    const loadHealth = vi.fn(async () => null);
-    const { container } = render(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
-    await waitFor(() => expect(loadHealth).toHaveBeenCalled());
-    await waitFor(() => expect(container.firstChild).toBeNull());
-  });
-
-  it("hides the whole panel when the load function rejects", async () => {
-    const loadHealth = vi.fn(async () => {
-      throw new Error("boom");
-    });
+  it("hides the whole panel only when the capability is missing (404/明确空)", async () => {
+    const loadHealth = vi.fn(async (): Promise<DataHealthFetchResult> => ({ kind: "missing" }));
     const { container } = render(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
     await waitFor(() => expect(loadHealth).toHaveBeenCalled());
     await waitFor(() => expect(container.firstChild).toBeNull());
   });
 
   it("hides the whole panel when sections are empty", async () => {
-    const loadHealth = vi.fn(async () => ({ as_of_date: "2026-08-13", sections: [] }));
+    const loadHealth = vi.fn(async () => ok({ as_of_date: "2026-08-13", sections: [] }));
     const { container } = render(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
     await waitFor(() => expect(loadHealth).toHaveBeenCalled());
     await waitFor(() => expect(container.firstChild).toBeNull());
   });
 
+  it("shows a one-line error with retry on request failure instead of hiding", async () => {
+    const user = userEvent.setup();
+    const loadHealth = vi
+      .fn(async (): Promise<DataHealthFetchResult> => ok(syntheticPayload()))
+      .mockResolvedValueOnce({ kind: "error", reason: "HTTP 503" });
+    render(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
+
+    const errorPanel = await screen.findByTestId("stock-analysis-data-health-error");
+    expect(errorPanel).toHaveTextContent("健康面加载失败");
+
+    await user.click(screen.getByTestId("stock-analysis-data-health-retry"));
+    expect(await screen.findByTestId("stock-analysis-data-health")).toBeInTheDocument();
+    expect(loadHealth).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows the error state when the load function rejects", async () => {
+    const loadHealth = vi.fn(async () => {
+      throw new Error("boom");
+    });
+    render(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
+    expect(await screen.findByTestId("stock-analysis-data-health-error")).toBeInTheDocument();
+  });
+
+  it("renders a skeleton placeholder while loading", async () => {
+    let resolveLoad: (value: DataHealthFetchResult) => void = () => undefined;
+    const loadHealth = vi.fn(
+      () =>
+        new Promise<DataHealthFetchResult>((resolve) => {
+          resolveLoad = resolve;
+        }),
+    );
+    render(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
+
+    expect(screen.getByTestId("stock-analysis-data-health-loading")).toBeInTheDocument();
+    resolveLoad(ok(syntheticPayload()));
+    expect(await screen.findByTestId("stock-analysis-data-health")).toBeInTheDocument();
+  });
+
   it("tolerates sections with every field missing", async () => {
-    const loadHealth = vi.fn(async () => ({ sections: [{}] }));
+    const loadHealth = vi.fn(async () => ok({ sections: [{}] }));
     render(<StockAnalysisDataHealthCard loadHealth={loadHealth} />);
     const panel = await screen.findByTestId("stock-analysis-data-health");
     expect(within(panel).getByText("评估日 —")).toBeInTheDocument();

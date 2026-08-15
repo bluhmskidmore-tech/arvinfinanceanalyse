@@ -49,7 +49,7 @@ export function StockAnalysisDeepZoneHeader({
         <summary className="stock-analysis-page__deep-zone-detail-summary">
           <span className="stock-analysis-page__deep-zone-detail-label">供数 / 回放 / 候选 / 事件明细</span>
           <small className="stock-analysis-page__deep-zone-detail-snapshot">
-            {auditRows.map((row) => `${row.label} ${row.value}`).join(" · ")}
+            {auditRows.map((row) => `${row.label} ${row.value}`).join("，")}
           </small>
         </summary>
         <div
