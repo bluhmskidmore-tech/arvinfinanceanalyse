@@ -2111,10 +2111,8 @@ describe("MarketDataPage", () => {
       throw new Error("curve select shell not found");
     }
     fireEvent.mouseDown(curveSelector);
-    const curveOption = (await screen.findAllByText("国债")).at(-1);
-    if (!curveOption) {
-      throw new Error("curve option not found");
-    }
+    // rc-select also exposes a hidden a11y option; click the titled visual option.
+    const curveOption = await screen.findByTitle("国债");
     fireEvent.click(curveOption);
     await waitFor(() => {
       expect(screen.getByTestId("market-data-rate-curve-lock")).toHaveTextContent("国债曲线");
@@ -2126,10 +2124,7 @@ describe("MarketDataPage", () => {
       throw new Error("source select shell not found");
     }
     fireEvent.mouseDown(sourceSelector);
-    const sourceOption = (await screen.findAllByText("Choice")).at(-1);
-    if (!sourceOption) {
-      throw new Error("source option not found");
-    }
+    const sourceOption = await screen.findByTitle("Choice");
     fireEvent.click(sourceOption);
     await waitFor(() => {
       expect(sourceFilter).toHaveTextContent("Choice");

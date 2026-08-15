@@ -1,15 +1,16 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("market data terminal first screen", () => {
-  test("shows tape, filter controls, and collapsed Livermore shell", async ({ page }) => {
+  test("shows the KPI band, filter controls, and collapsed Livermore shell", async ({ page }) => {
     await page.goto("/market-data", { waitUntil: "domcontentloaded" });
 
     const pageRoot = page.locator('[data-testid="market-data-page"]');
     await expect(pageRoot).toBeVisible();
     await expect(pageRoot).toHaveAttribute("data-layout-rev", "2026-07-01-redesign");
 
-    const ticker = page.locator('[data-testid="market-data-terminal-ticker"]');
-    await expect(ticker).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("market-data-kpi-band")).toBeVisible({ timeout: 30_000 });
+    // The former tape duplicated the KPI band and was intentionally removed.
+    await expect(page.getByTestId("market-data-terminal-ticker")).toHaveCount(0);
 
     await expect(page.getByTestId("market-data-curve-filter")).toBeVisible();
     await expect(page.getByTestId("market-data-source-filter")).toBeVisible();

@@ -124,7 +124,8 @@ test.describe("stock-analysis first-screen geometry", () => {
     });
 
     const visibleRows = rows.filter((row) => row.visible);
-    expect(visibleRows.length).toBeGreaterThanOrEqual(8);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(visibleRows).toHaveLength(rows.length);
     expect(Math.max(...visibleRows.map((row) => row.h))).toBeLessThanOrEqual(28);
   });
 

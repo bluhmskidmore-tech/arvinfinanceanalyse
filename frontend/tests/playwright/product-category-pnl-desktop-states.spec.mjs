@@ -119,6 +119,63 @@ async function installProductCategoryStateRoutes(page, state, options = {}) {
     }
     await route.fulfill({ json: envelope });
   });
+
+  await page.route("**/ui/pnl/product-category/history?*", async (route) => {
+    const url = new URL(route.request().url());
+    const view = url.searchParams.get("view") ?? "monthly";
+    const scenarioRatePct = url.searchParams.get("scenario_rate_pct") ?? undefined;
+    const items = (url.searchParams.get("report_dates") ?? "")
+      .split(",")
+      .filter(Boolean)
+      .map((reportDate) => {
+        const envelope = buildMockProductCategoryPnlEnvelope({
+          reportDate,
+          view,
+          scenarioRatePct,
+        });
+        return {
+          report_date: reportDate,
+          status: "ok",
+          detail: null,
+          result: envelope.result,
+          result_meta: envelope.result_meta,
+        };
+      });
+    await route.fulfill({
+      json: buildMockApiEnvelope("product_category_pnl.history", {
+        view,
+        scenario_rate_pct: scenarioRatePct ?? null,
+        items,
+      }),
+    });
+  });
+
+  await page.route("**/ui/pnl/product-category/attribution/history?*", async (route) => {
+    const url = new URL(route.request().url());
+    const compare = url.searchParams.get("compare") === "yoy" ? "yoy" : "mom";
+    const items = (url.searchParams.get("report_dates") ?? "")
+      .split(",")
+      .filter(Boolean)
+      .map((reportDate) => {
+        const envelope = buildMockProductCategoryAttributionEnvelope({
+          reportDate,
+          compare,
+        });
+        return {
+          report_date: reportDate,
+          status: "ok",
+          detail: null,
+          result: envelope.result,
+          result_meta: envelope.result_meta,
+        };
+      });
+    await route.fulfill({
+      json: buildMockApiEnvelope("product_category_pnl.attribution_history", {
+        compare,
+        items,
+      }),
+    });
+  });
 }
 
 async function installHeldDatesRoute(page) {

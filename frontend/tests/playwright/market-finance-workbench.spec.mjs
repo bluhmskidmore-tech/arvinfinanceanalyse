@@ -22,6 +22,7 @@ async function openMarketFinance(page) {
   await expect(page.locator(rootSelector)).toBeVisible();
   await expect(page.locator('[data-testid="market-finance-data-status"]')).toBeVisible();
   await expect(page.locator(kpiSelector)).toBeVisible();
+  await expect(page.getByTestId("market-finance-kpi-asset-market-value")).toContainText("亿元");
   await page.waitForLoadState("load").catch(() => undefined);
 }
 

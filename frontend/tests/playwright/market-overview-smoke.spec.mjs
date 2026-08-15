@@ -17,6 +17,9 @@ const EXPECTED_CHAPTER_HREFS = [
   "#market-backend-data-all",
 ];
 const EXPECTED_ACTION_HREFS = ["/macro-toolkit", "/market-data", "/cross-asset"];
+// The sixth macro-toolkit row is an operational output-file status. The page
+// deliberately keeps it out of the market-signal strip.
+const EXPECTED_MARKET_SIGNAL_COUNT = 5;
 
 const suspiciousTextPattern = /[\uFFFD]|\u93C3|\u9359|\u5BF0|\u9215/;
 
@@ -107,7 +110,7 @@ test.describe("market overview browser smoke", () => {
     await expect(denseCharts.filter({ has: page.getByText("DR007", { exact: true }) }).first()).toBeVisible();
 
     const signalCards = page.locator("#market-overview-signals article");
-    await expect(signalCards).toHaveCount(6);
+    await expect(signalCards).toHaveCount(EXPECTED_MARKET_SIGNAL_COUNT);
     const signalTones = await signalCards.evaluateAll((cards) =>
       cards.map((card) => card.getAttribute("data-tone")),
     );
@@ -155,6 +158,6 @@ test.describe("market overview browser smoke", () => {
     await page.locator("#market-overview-evidence").scrollIntoViewIfNeeded();
     const signalCards = page.locator("#market-overview-signals article");
     await expect(signalCards.first()).toBeVisible();
-    await expect(signalCards).toHaveCount(6);
+    await expect(signalCards).toHaveCount(EXPECTED_MARKET_SIGNAL_COUNT);
   });
 });

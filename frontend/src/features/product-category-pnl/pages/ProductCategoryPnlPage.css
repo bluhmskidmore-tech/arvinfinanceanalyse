@@ -5228,7 +5228,7 @@
 }
 
 .product-category-attribution-bridge__status small {
-  color: var(--ib-ink-muted);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
 }
 
@@ -5609,7 +5609,7 @@
 }
 
 .product-category-management-monitor__status small {
-  color: var(--ib-ink-muted);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
 }
 
@@ -6871,6 +6871,7 @@
   --moss-color-warning-50: var(--dh-api-amber-soft);
   --moss-color-warning-600: var(--dh-api-amber);
   --moss-color-warning-700: var(--dh-api-amber);
+  --moss-color-warning-900: var(--dh-api-amber);
   --moss-color-danger-50: var(--dh-api-red-soft);
   --moss-color-danger-600: var(--dh-api-red);
   --moss-color-danger-700: var(--dh-api-red);
@@ -6967,6 +6968,7 @@
   --moss-color-warning-600: var(--dh-api-amber);
   --moss-color-warning-700: var(--dh-api-amber);
   --moss-color-warning-800: var(--dh-api-amber);
+  --moss-color-warning-900: var(--dh-api-amber);
   --moss-color-danger-50: var(--dh-api-red-soft);
   --moss-color-danger-100: var(--dh-api-red-soft);
   --moss-color-danger-200: color-mix(
@@ -7925,6 +7927,11 @@
 }
 
 .product-category-page-shell.theme-dh-api
+  .product-category-formal-table__head--highlight {
+  color: var(--dh-api-soft);
+}
+
+.product-category-page-shell.theme-dh-api
   :where(
     .product-category-formal-table__category-button,
     .product-category-attribution__row-name-button
@@ -8556,7 +8563,7 @@
   .product-category-trend-terminal
   .product-category-derived-chart__readout-label {
   overflow: hidden;
-  color: var(--dh-api-muted);
+  color: var(--dh-api-soft);
   font-family: var(--product-category-font-mono);
   font-size: 12px;
   font-weight: 600;
