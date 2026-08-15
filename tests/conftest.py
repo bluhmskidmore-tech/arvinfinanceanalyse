@@ -225,6 +225,22 @@ def reset_auth_scope_decision_cache():
 
 
 @pytest.fixture(autouse=True)
+def reset_settings_cache():
+    """Clear the env-derived Settings cache around each test.
+
+    Tests that monkeypatch MOSS_* env vars and prime get_settings() would
+    otherwise leak a stale Settings instance (e.g. tmp_path duckdb/governance
+    paths) into later tests when a mid-test assertion fails before the tail
+    cache_clear() call runs.
+    """
+    from backend.app.governance.settings import get_settings
+
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
 def reset_choice_runtime_cache():
     yield
 

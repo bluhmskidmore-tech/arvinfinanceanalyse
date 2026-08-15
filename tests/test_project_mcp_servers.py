@@ -920,7 +920,7 @@ def test_project_mcp_config_declares_read_only_surfaces() -> None:
         "/c",
         "scripts\\mcp\\moss_data_quality.cmd",
     ]
-    assert servers["playwright"]["args"][-1] == "@playwright/mcp@latest"
+    assert servers["playwright"]["args"][-1] == "@playwright/mcp@0.0.79"
 
 
 def test_project_mcp_config_pins_mcp_cwd_for_compatible_clients() -> None:
@@ -986,7 +986,7 @@ def test_project_codex_config_declares_read_only_surfaces() -> None:
         "scripts\\mcp\\moss_data_quality.cmd",
     ]
     assert servers["playwright"]["command"] == "npx"
-    assert servers["playwright"]["args"][-1] == "@playwright/mcp@latest"
+    assert servers["playwright"]["args"][-1] == "@playwright/mcp@0.0.79"
 
 
 def test_project_codex_config_pins_mcp_cwd_for_app_launches() -> None:

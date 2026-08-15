@@ -47,6 +47,8 @@ def _run_powershell_harness(harness_path: Path, output_path: Path) -> int:
 
 def test_dev_api_script_bootstraps_native_environment():
     script = (ROOT / "scripts" / "dev-api.ps1").read_text(encoding="utf-8")
+    assert "[switch]$SkipStartupStorageMigrations" in script
+    assert '$env:MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS = "1"' in script
     assert ". .\\scripts\\dev-env.ps1" in script or ". \"$root\\scripts\\dev-env.ps1\"" in script
     assert "dev-postgres-up.ps1" in script
     assert "dev-postgres-up.ps1 failed; aborting dev-api startup." in script
@@ -221,7 +223,11 @@ def test_dev_up_script_bootstraps_local_postgres_and_starts_native_processes():
     assert "dev-frontend.ps1" in script
     assert "Start-Process" not in script
     assert "Start-DevScriptDetached" in script
-    assert "WScript.Shell" in script
+    assert "WScript.Shell" not in script
+    assert "Invoke-CimMethod" in script
+    assert "-ClassName Win32_Process" in script
+    assert "-MethodName Create" in script
+    assert "CurrentDirectory = $root" in script
     assert "runtime-clean\\logs" in script
     assert ".out.log" in script
     assert ".err.log" in script
@@ -282,6 +288,16 @@ def test_dev_up_script_bootstraps_local_postgres_and_starts_native_processes():
     )
 
 
+def test_native_dev_detached_launchers_hide_console_windows():
+    for script_name in ("dev-up.ps1", "dev-keepalive.ps1"):
+        script = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
+        launcher = _extract_powershell_function(script, "Start-DevScriptDetached")
+
+        assert "Win32_ProcessStartup" in launcher
+        assert "ShowWindow = [uint16]0" in launcher
+        assert "ProcessStartupInformation = $startupInfo" in launcher
+
+
 def test_dev_frontend_defaults_to_real_data_source():
     script = (ROOT / "scripts" / "dev-frontend.ps1").read_text(encoding="utf-8")
     assert '$env:VITE_DATA_SOURCE = "real"' in script
@@ -303,6 +319,17 @@ def test_dev_keepalive_checks_vite_source_module_not_only_frontend_root():
     assert "/src/api/clientContext.ts" in script
     assert "/src/api/client.ts" not in script
     assert "http://127.0.0.1:5888" in script
+    assert "WScript.Shell" not in script
+    assert "Invoke-CimMethod" in script
+    assert "-ClassName Win32_Process" in script
+    assert "-MethodName Create" in script
+    assert "CurrentDirectory = $root" in script
+    assert '$ScriptName -eq "dev-api.ps1"' in script
+    assert "-SkipStartupStorageMigrations" in script
+    assert "dev-keepalive.instance.lock" in script
+    assert "[System.IO.FileShare]::None" in script
+    assert "another dev keepalive instance already owns" in script
+    assert "$script:InstanceLock.Dispose()" in script
 
 
 def test_dev_up_http_failure_wrapper_includes_recent_logs(tmp_path):

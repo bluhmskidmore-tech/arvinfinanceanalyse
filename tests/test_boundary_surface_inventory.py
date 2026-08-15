@@ -77,8 +77,22 @@ BACKEND_BOUNDARY_CASES: tuple[SurfaceCase, ...] = (
     SurfaceCase("preview.source-foundation.traces", "/ui/preview/source-foundation/zqtz/traces", "GET", params={"limit": 1, "offset": 0}),
     SurfaceCase("preview.source-foundation.refresh", "/ui/preview/source-foundation/refresh", "POST", side_effect_target="refresh_source_preview", side_effect_module="backend.app.api.routes.source_preview", side_effect_file="backend/app/api/routes/source_preview.py"),
     SurfaceCase("preview.source-foundation.refresh-status", "/ui/preview/source-foundation/refresh-status", "GET"),
-    SurfaceCase("news.ui.ingest", "/ui/news/tushare-npr/ingest", "POST"),
-    SurfaceCase("news.api.ingest", "/api/news/tushare-npr/ingest", "POST"),
+    # 保留 ingest 端点授权先于保留判断：无 import scope 的身份 fail-closed 为 403；
+    # 授权后仍由 _raise_choice_news_reserved_surface 返回 503 reserved。
+    SurfaceCase(
+        "news.ui.ingest",
+        "/ui/news/tushare-npr/ingest",
+        "POST",
+        expected_status=403,
+        detail_substring="not allowed",
+    ),
+    SurfaceCase(
+        "news.api.ingest",
+        "/api/news/tushare-npr/ingest",
+        "POST",
+        expected_status=403,
+        detail_substring="not allowed",
+    ),
     SurfaceCase(
         "executive.risk-overview",
         "/ui/risk/overview",
@@ -146,20 +160,9 @@ CAPABILITY_PROBE_READ_SURFACES = {
     ("GET", "backend/app/api/routes/balance_analysis.py", "/current-user", "current_user")
 }
 
-RESERVED_WRITE_POLICIES = {
-    ("POST", "backend/app/api/routes/choice_news.py", "/tushare-npr/ingest", "tushare_npr_ingest_ui"): RoutePolicySemantics(
-        policy_class="admin",
-        owner="Market news owner",
-        state="reserved",
-        reason="Choice news ingest is intentionally fail-closed until the import lane is approved.",
-    ),
-    ("POST", "backend/app/api/routes/choice_news.py", "/tushare-npr/ingest", "tushare_npr_ingest_api"): RoutePolicySemantics(
-        policy_class="admin",
-        owner="Market news owner",
-        state="reserved",
-        reason="API alias for the reserved Choice news ingest lane.",
-    ),
-}
+# Choice news ingest 保留端点现已在函数体内先调用 ensure_user_allowed
+# (choice_news.data/import) 再抛 503 reserved，不再属于"未接授权门"的例外面。
+RESERVED_WRITE_POLICIES: dict[tuple[str, str, str, str], RoutePolicySemantics] = {}
 
 RESERVED_WRITE_SURFACES = set(RESERVED_WRITE_POLICIES)
 
@@ -169,6 +172,28 @@ RESERVED_HELPER_SCOPES = {
 
 _GATED_TOP_LEVEL_ROUTE_MODULES = {"agent"}
 _NESTED_ROUTE_MODULES = {"agent_workspace"}
+
+# Governance classifications are pinned by name, never by registry size: a count
+# cannot tell an added router from a deleted or renamed one, so it only ever gets
+# its number bumped. These entries fail loudly when a governance-critical router
+# is dropped or moved to a different claim boundary.
+PINNED_ROUTER_GROUPS = {
+    "cube_query": "support",
+    "health": "support",
+    "liability_analytics": "analytical_compatibility",
+    "macro_etf_strategy": "macro_market",
+    "macro_toolkit": "macro_market",
+    "pnl": "formal_mainline",
+    "source_preview": "preview",
+}
+
+REQUIRED_ROUTE_GROUPS = {
+    "formal_mainline",
+    "analytical_compatibility",
+    "preview",
+    "macro_market",
+    "support",
+}
 
 # Routes reach the scope store either directly or through the shared
 # `backend/app/api/deps.ensure_read_allowed` guard, which pins action="read".
@@ -537,10 +562,15 @@ def test_public_or_echo_routes_do_not_return_governed_result_meta(
     client = _build_client(tmp_path, monkeypatch)
 
     response = client.get(f"/health{path}" if path in {"", "/live", "/ready"} else "/ui/balance-analysis/current-user")
+    payload = response.json()
 
     assert method == "GET"
-    assert response.status_code == 200
-    assert "result_meta" not in response.json()
+    # `/health/ready` self-reports dependency degradation as 503 (e7531a33), and this
+    # isolated client has no live dependencies. Derive the expected status from the
+    # payload so the probe's status code must agree with its own verdict, instead of
+    # widening the guard to accept any of several numbers.
+    assert response.status_code == (503 if payload.get("status") == "degraded" else 200)
+    assert "result_meta" not in payload
     get_settings.cache_clear()
 
 
@@ -631,22 +661,32 @@ def test_api_router_registry_classifies_every_included_router(
     api_module = _load_api_registry(monkeypatch, agent_enabled=agent_enabled)
 
     registry = tuple(api_module.ROUTE_REGISTRY)
+    declared_groups = set(api_module.ROUTE_GROUP_METADATA)
     route_groups = {entry.group for entry in registry}
     entries_by_name = {entry.name: entry for entry in registry}
+    unnamed = [index for index, entry in enumerate(registry) if not entry.name.strip()]
     missing_tags = [entry.name for entry in registry if not entry.tags]
     missing_owner = [entry.name for entry in registry if not entry.owner.strip()]
+    ungrouped = [
+        (entry.name, entry.group)
+        for entry in registry
+        if entry.group not in declared_groups
+    ]
+    misclassified = {
+        name: entries_by_name[name].group if name in entries_by_name else "<absent from registry>"
+        for name, expected_group in PINNED_ROUTER_GROUPS.items()
+        if name not in entries_by_name or entries_by_name[name].group != expected_group
+    }
 
-    assert len(registry) == 33 + int(agent_enabled)
-    assert len({entry.name for entry in registry}) == len(registry)
+    assert registry
+    assert unnamed == []
     assert missing_tags == []
     assert missing_owner == []
-    assert route_groups >= {
-        "formal_mainline",
-        "analytical_compatibility",
-        "preview",
-        "macro_market",
-        "support",
-    }
+    assert ungrouped == []
+    assert misclassified == {}
+    assert len(entries_by_name) == len(registry)
+    assert len({id(entry.router) for entry in registry}) == len(registry)
+    assert route_groups >= REQUIRED_ROUTE_GROUPS
     if agent_enabled:
         assert "agent_experimental" in route_groups
         assert entries_by_name["agent"].group == "agent_experimental"
@@ -654,12 +694,24 @@ def test_api_router_registry_classifies_every_included_router(
         assert "agent_experimental" not in route_groups
         assert "agent" not in entries_by_name
     assert "agent_workspace" not in entries_by_name
-    assert entries_by_name["source_preview"].group == "preview"
-    assert entries_by_name["macro_etf_strategy"].group == "macro_market"
-    assert entries_by_name["macro_toolkit"].group == "macro_market"
-    assert entries_by_name["pnl"].group == "formal_mainline"
-    assert entries_by_name["liability_analytics"].group == "analytical_compatibility"
-    assert entries_by_name["cube_query"].group == "support"
+
+
+def test_api_router_registry_agent_gate_adds_only_the_agent_router(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    disabled = {
+        entry.name: entry.group
+        for entry in _load_api_registry(monkeypatch, agent_enabled=False).ROUTE_REGISTRY
+    }
+    enabled = {
+        entry.name: entry.group
+        for entry in _load_api_registry(monkeypatch, agent_enabled=True).ROUTE_REGISTRY
+    }
+
+    assert set(enabled) - set(disabled) == {"agent"}
+    assert set(disabled) - set(enabled) == set()
+    assert {name: group for name, group in enabled.items() if name != "agent"} == disabled
+    assert enabled["agent"] == "agent_experimental"
 
 
 @pytest.mark.parametrize("agent_enabled", (False, True), ids=("agent-disabled", "agent-enabled"))

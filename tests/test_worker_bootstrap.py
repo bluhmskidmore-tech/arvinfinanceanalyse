@@ -1,5 +1,7 @@
 import ast
+import logging
 from pathlib import Path
+from types import SimpleNamespace
 
 import dramatiq
 import pytest
@@ -62,6 +64,11 @@ def test_worker_bootstrap_declares_canonical_dramatiq_task_modules():
         "backend.app.tasks.agent_run_stream_compaction",
         "backend.app.tasks.livermore_gate_supplement",
         "backend.app.tasks.ledger_import",
+        "backend.app.tasks.yield_curve_materialize",
+        "backend.app.tasks.tushare_stock_disclosure",
+        "backend.app.tasks.risk_coupon_window_repair",
+        "backend.app.tasks.bond_dv01_limit_config_import",
+        "backend.app.tasks.fx_mid_backfill",
     )
 
 
@@ -78,6 +85,29 @@ def test_worker_bootstrap_includes_task_owned_send_targets():
 
     assert "backend.app.tasks.accounting_asset_movement" in modules
     assert "backend.app.tasks.risk_tensor_materialize" in modules
+
+
+def test_newly_canonical_task_modules_import_and_expose_send_targets():
+    """B5 审计修复：这 5 个 actor 模块必须能被 worker bootstrap 无副作用导入。"""
+    from importlib import import_module
+
+    expectations = {
+        "backend.app.tasks.yield_curve_materialize": (
+            "materialize_yield_curve",
+            "materialize_yield_curve_month_end_backfill",
+        ),
+        "backend.app.tasks.tushare_stock_disclosure": ("refresh_stock_official_disclosures",),
+        "backend.app.tasks.risk_coupon_window_repair": ("repair_risk_coupon_window",),
+        "backend.app.tasks.bond_dv01_limit_config_import": ("import_bond_dv01_limit_config",),
+        "backend.app.tasks.fx_mid_backfill": ("backfill_fx_mid_history",),
+    }
+    canonical_modules = set(_read_canonical_task_modules())
+    for module_path, actor_attrs in expectations.items():
+        assert module_path in canonical_modules
+        module = import_module(module_path)
+        for attr in actor_attrs:
+            actor = getattr(module, attr)
+            assert hasattr(actor, "send"), f"{module_path}.{attr} must be a Dramatiq send target"
 
 
 def test_choice_news_task_module_declares_tushare_news_background_actor():
@@ -154,3 +184,110 @@ def test_broker_rejects_global_stub_broker_in_production(monkeypatch):
             broker_module.get_broker()
     finally:
         dramatiq.set_broker(original_dramatiq_broker)
+
+
+def _fake_settings(redis_dsn: str, fields_set: set[str], environment: str = "development"):
+    return SimpleNamespace(
+        redis_dsn=redis_dsn,
+        model_fields_set=fields_set,
+        environment=environment,
+    )
+
+
+def test_broker_uses_redis_when_settings_redis_dsn_configured_outside_pytest(monkeypatch):
+    """.env 里的 MOSS_REDIS_DSN（pydantic dotenv 不回写 os.environ）必须被识别。"""
+    broker_module = load_module(
+        "backend.app.tasks.broker",
+        "backend/app/tasks/broker.py",
+    )
+    monkeypatch.delenv("MOSS_REDIS_DSN", raising=False)
+    monkeypatch.delenv("MOSS_ENVIRONMENT", raising=False)
+    monkeypatch.setattr(broker_module, "_is_pytest_process", lambda: False)
+    monkeypatch.setattr(
+        broker_module,
+        "get_settings",
+        lambda: _fake_settings("redis://127.0.0.1:6399/7", {"redis_dsn"}),
+    )
+
+    assert broker_module._should_use_stub_broker() is False
+
+
+def test_broker_keeps_stub_when_redis_dsn_left_default_outside_pytest(monkeypatch):
+    broker_module = load_module(
+        "backend.app.tasks.broker",
+        "backend/app/tasks/broker.py",
+    )
+    monkeypatch.delenv("MOSS_REDIS_DSN", raising=False)
+    monkeypatch.delenv("MOSS_ENVIRONMENT", raising=False)
+    monkeypatch.setattr(broker_module, "_is_pytest_process", lambda: False)
+    monkeypatch.setattr(
+        broker_module,
+        "get_settings",
+        lambda: _fake_settings("redis://localhost:6379/0", set()),
+    )
+
+    assert broker_module._should_use_stub_broker() is True
+
+
+def test_broker_keeps_stub_under_pytest_even_when_dotenv_configures_redis(monkeypatch):
+    broker_module = load_module(
+        "backend.app.tasks.broker",
+        "backend/app/tasks/broker.py",
+    )
+    monkeypatch.delenv("MOSS_REDIS_DSN", raising=False)
+    monkeypatch.delenv("MOSS_ENVIRONMENT", raising=False)
+    monkeypatch.setattr(
+        broker_module,
+        "get_settings",
+        lambda: _fake_settings("redis://127.0.0.1:6399/7", {"redis_dsn"}),
+    )
+
+    assert broker_module._should_use_stub_broker() is True
+
+
+def test_stub_broker_send_warns_outside_pytest(monkeypatch, caplog):
+    broker_module = load_module(
+        "backend.app.tasks.broker",
+        "backend/app/tasks/broker.py",
+    )
+    stub = broker_module._DevStubBroker()
+    actor = dramatiq.actor(lambda: None, actor_name="b5_stub_send_probe", broker=stub)
+    monkeypatch.setattr(broker_module, "_is_pytest_process", lambda: False)
+
+    with caplog.at_level(logging.WARNING, logger="backend.app.tasks.broker"):
+        actor.send()
+
+    warnings = [record for record in caplog.records if "b5_stub_send_probe" in record.getMessage()]
+    assert warnings, "expected a StubBroker send warning outside pytest"
+    assert "background worker" in warnings[0].getMessage()
+
+
+def test_stub_broker_send_stays_quiet_under_pytest(caplog):
+    broker_module = load_module(
+        "backend.app.tasks.broker",
+        "backend/app/tasks/broker.py",
+    )
+    stub = broker_module._DevStubBroker()
+    actor = dramatiq.actor(lambda: None, actor_name="b5_stub_quiet_probe", broker=stub)
+
+    with caplog.at_level(logging.WARNING, logger="backend.app.tasks.broker"):
+        actor.send()
+
+    assert not [record for record in caplog.records if "b5_stub_quiet_probe" in record.getMessage()]
+
+
+def test_choice_macro_declares_refresh_actor_via_register_actor_once():
+    task_path = ROOT / "backend" / "app" / "tasks" / "choice_macro.py"
+    text = task_path.read_text(encoding="utf-8")
+    assert "@dramatiq.actor" not in text
+    assert 'refresh_choice_macro_snapshot = register_actor_once(\n    "refresh_choice_macro_snapshot"' in text
+
+
+def test_choice_macro_refresh_actor_uses_project_channel_options():
+    from backend.app.tasks import choice_macro
+
+    actor = choice_macro.refresh_choice_macro_snapshot
+    assert actor.actor_name == "refresh_choice_macro_snapshot"
+    assert actor.options["max_retries"] == 3
+    assert actor.options["time_limit"] == 3_600_000
+    assert callable(actor.fn)

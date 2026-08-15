@@ -479,3 +479,148 @@ def test_stock_research_context_legacy_schema_fails_closed_with_limitation(
     assert daily["volume_unit"] == "unknown"
     assert daily["amount_unit"] == "unknown"
     assert any("vendor_version" in limitation for limitation in context["limitations"])
+
+
+def _create_news_table(conn) -> None:
+    conn.execute(
+        """
+        create table choice_news_event (
+          event_key varchar, received_at varchar, group_id varchar, content_type varchar,
+          serial_id bigint, request_id bigint, error_code bigint, error_msg varchar,
+          topic_code varchar, item_index bigint, payload_text varchar, payload_json varchar
+        )
+        """
+    )
+    conn.execute(
+        """
+        insert into choice_news_event values
+        ('n-old','2026-04-28T09:00:00Z','tushare_news','text',1,1,0,'','000001.SZ',0,'Old news','{}'),
+        ('n-same-day','2026-04-29T15:00:00Z','tushare_news','text',2,2,0,'','000001.SZ',0,'Same day news','{}'),
+        ('n-future','2026-05-02T09:00:00Z','tushare_news','text',3,3,0,'','000001.SZ',0,'Future news','{}'),
+        ('n-error','2026-04-28T10:00:00Z','tushare_news','text',4,4,7,'boom','000001.SZ',0,'Broken news','{}')
+        """
+    )
+
+
+def test_stock_news_respects_as_of_anchor_and_excludes_error_rows(tmp_path):
+    duckdb_path = tmp_path / "news-asof.duckdb"
+    conn = _connect(duckdb_path)
+    try:
+        _create_news_table(conn)
+    finally:
+        conn.close()
+
+    context = build_dexter_research_context(
+        request=AgentQueryRequest(
+            question="分析这只股票",
+            filters={
+                "research_domain": "stock",
+                "stock_code": "000001.SZ",
+                "as_of_date": "2026-04-29",
+            },
+        ),
+        duckdb_path=str(duckdb_path),
+    )
+
+    keys = [row["event_key"] for row in context["stock"]["news_events"]]
+    # 历史锚定：未来新闻（n-future）与 error 事件行（n-error）都不得注入语料。
+    assert keys == ["n-same-day", "n-old"]
+    assert all("2026-04-29" not in sql for sql in context["sql_executed"])
+    assert all("000001.SZ" not in sql for sql in context["sql_executed"])
+
+
+def test_stock_news_without_as_of_keeps_latest_non_error_rows(tmp_path):
+    duckdb_path = tmp_path / "news-unanchored.duckdb"
+    conn = _connect(duckdb_path)
+    try:
+        _create_news_table(conn)
+    finally:
+        conn.close()
+
+    context = build_dexter_research_context(
+        request=AgentQueryRequest(
+            question="分析这只股票",
+            filters={"research_domain": "stock", "stock_code": "000001.SZ"},
+        ),
+        duckdb_path=str(duckdb_path),
+    )
+
+    keys = [row["event_key"] for row in context["stock"]["news_events"]]
+    assert keys == ["n-future", "n-same-day", "n-old"]
+
+
+def test_research_context_invalid_as_of_disables_anchoring_and_discloses(tmp_path):
+    duckdb_path = tmp_path / "invalid-asof.duckdb"
+    conn = _connect(duckdb_path)
+    try:
+        _create_news_table(conn)
+    finally:
+        conn.close()
+
+    context = build_dexter_research_context(
+        request=AgentQueryRequest(
+            question="分析这只股票",
+            filters={
+                "research_domain": "stock",
+                "stock_code": "000001.SZ",
+                "as_of_date": "2026/04/29",
+            },
+        ),
+        duckdb_path=str(duckdb_path),
+    )
+
+    assert context["as_of_date"] == ""
+    assert "as_of_date" not in context["filters_applied"]
+    assert any("not a valid ISO date" in item for item in context["limitations"])
+    # 非法锚定按未锚定处理：行为与披露一致，而不是 varchar 比较静默失效。
+    keys = [row["event_key"] for row in context["stock"]["news_events"]]
+    assert keys == ["n-future", "n-same-day", "n-old"]
+
+
+def test_research_context_normalizes_compact_iso_as_of(tmp_path):
+    duckdb_path = tmp_path / "compact-asof.duckdb"
+    conn = _connect(duckdb_path)
+    try:
+        _create_news_table(conn)
+    finally:
+        conn.close()
+
+    context = build_dexter_research_context(
+        request=AgentQueryRequest(
+            question="分析这只股票",
+            filters={
+                "research_domain": "stock",
+                "stock_code": "000001.SZ",
+                "as_of_date": "20260429",
+            },
+        ),
+        duckdb_path=str(duckdb_path),
+    )
+
+    assert context["as_of_date"] == "2026-04-29"
+    assert context["filters_applied"]["as_of_date"] == "2026-04-29"
+    keys = [row["event_key"] for row in context["stock"]["news_events"]]
+    assert keys == ["n-same-day", "n-old"]
+
+
+def test_research_context_degrades_when_duckdb_queries_fail(tmp_path):
+    duckdb_path = tmp_path / "broken-schema.duckdb"
+    conn = _connect(duckdb_path)
+    try:
+        # 缺大多数列：select 会触发 BinderException，必须降级披露而不是穿透 500。
+        conn.execute(
+            "create table choice_stock_daily_observation (trade_date varchar, stock_code varchar)"
+        )
+    finally:
+        conn.close()
+
+    context = build_dexter_research_context(
+        request=AgentQueryRequest(
+            question="分析这只股票",
+            filters={"research_domain": "stock", "stock_code": "000001.SZ"},
+        ),
+        duckdb_path=str(duckdb_path),
+    )
+
+    assert context["quality_flag"] == "missing"
+    assert any("DuckDB queries failed" in item for item in context["limitations"])

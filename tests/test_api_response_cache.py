@@ -8,6 +8,7 @@ import time
 from backend.app.api.response_cache import (
     CacheBuildTimeoutError,
     TTLResponseCache,
+    market_home_macro_analysis_cache_key,
     resolve_default_ttl,
 )
 
@@ -41,6 +42,64 @@ def test_get_or_build_caches_until_ttl_expires() -> None:
     assert calls["count"] == 2
 
 
+def test_set_overwrites_a_live_entry_and_restarts_its_ttl() -> None:
+    clock = FakeClock()
+    cache = TTLResponseCache(default_ttl_seconds=300.0, clock=clock)
+
+    cache.get_or_build("k", lambda: {"value": 1})
+
+    # Halfway through the TTL a background refresh replaces the entry; the new
+    # deadline must be measured from the overwrite, not from the original build.
+    clock.now = 150.0
+    cache.set("k", {"value": 2})
+    assert cache.get_or_build("k", lambda: {"value": 99}) == {"value": 2}
+
+    clock.now = 449.0
+    assert cache.get_or_build("k", lambda: {"value": 99}) == {"value": 2}
+
+    clock.now = 451.0
+    assert cache.get_or_build("k", lambda: {"value": 3}) == {"value": 3}
+
+
+def test_set_is_a_noop_when_caching_is_disabled() -> None:
+    clock = FakeClock()
+    cache = TTLResponseCache(default_ttl_seconds=0.0, clock=clock)
+
+    cache.set("k", {"value": 1})
+
+    assert cache.get_or_build("k", lambda: {"value": 2}) == {"value": 2}
+
+
+def test_invalidate_during_inflight_build_prevents_stale_writeback() -> None:
+    """A build that started before an invalidate must not resurrect pre-refresh
+    data: the caller still gets its value, but the cache stays empty so the next
+    reader rebuilds from the refreshed source."""
+    clock = FakeClock()
+    cache = TTLResponseCache(default_ttl_seconds=300.0, clock=clock)
+
+    def builder_that_races_with_a_refresh() -> dict[str, int]:
+        cache.invalidate()  # a data-refresh endpoint clears the cache mid-build
+        return {"value": "stale"}
+
+    assert cache.get_or_build("k", builder_that_races_with_a_refresh) == {"value": "stale"}
+    # The stale result must not have been stored.
+    assert cache.get_or_build("k", lambda: {"value": "fresh"}) == {"value": "fresh"}
+
+
+def test_set_with_stale_generation_is_dropped() -> None:
+    clock = FakeClock()
+    cache = TTLResponseCache(default_ttl_seconds=300.0, clock=clock)
+
+    generation = cache.generation()
+    cache.invalidate()
+
+    assert cache.set("k", {"value": "stale"}, generation=generation) is False
+    assert cache.get_or_build("k", lambda: {"value": "fresh"}) == {"value": "fresh"}
+
+    assert cache.set("k", {"value": "next"}, generation=cache.generation()) is True
+    assert cache.get_or_build("k", lambda: {"value": "unused"}) == {"value": "next"}
+
+
 def test_distinct_keys_do_not_collide() -> None:
     clock = FakeClock()
     cache = TTLResponseCache(default_ttl_seconds=300.0, clock=clock)
@@ -49,6 +108,26 @@ def test_distinct_keys_do_not_collide() -> None:
     b = cache.get_or_build("b", lambda: "beta")
     assert a == "alpha"
     assert b == "beta"
+
+
+def test_macro_analysis_cache_key_tracks_refresh_receipt_fingerprint() -> None:
+    first = market_home_macro_analysis_cache_key(
+        "data/moss.duckdb",
+        "core",
+        freshness_fingerprint="ready:first",
+    )
+    second = market_home_macro_analysis_cache_key(
+        "data/moss.duckdb",
+        "core",
+        freshness_fingerprint="blocked:second",
+    )
+
+    assert first != second
+    assert "ready:first" in first
+    assert "blocked:second" in second
+    assert market_home_macro_analysis_cache_key("data/moss.duckdb", "core") == (
+        "macro-toolkit/analysis::core::data/moss.duckdb"
+    )
 
 
 def test_invalidate_specific_key_then_all() -> None:

@@ -265,6 +265,38 @@ def test_postgres_healthcheck_masks_password_and_reports_driver_unavailable(monk
     assert result["bootstrap_visible"] is None
 
 
+def test_redis_healthcheck_masks_password_only_credentials_in_reported_dsn():
+    redis_module = load_module("backend.app.repositories.redis_repo", "backend/app/repositories/redis_repo.py")
+
+    redis_repo = redis_module.RedisRepository("redis://:super-secret@127.0.0.1:1/0")
+
+    result = redis_repo.healthcheck()
+
+    assert result["ok"] is False
+    assert result["dsn"] == "redis://***@127.0.0.1:1/0"
+    assert "super-secret" not in result["dsn"]
+
+
+def test_redis_healthcheck_masks_username_and_password_in_reported_dsn():
+    redis_module = load_module("backend.app.repositories.redis_repo", "backend/app/repositories/redis_repo.py")
+
+    redis_repo = redis_module.RedisRepository("redis://cache-user:super-secret@127.0.0.1:1/0")
+
+    result = redis_repo.healthcheck()
+
+    assert result["ok"] is False
+    assert result["dsn"] == "redis://cache-user:***@127.0.0.1:1/0"
+    assert "super-secret" not in result["dsn"]
+
+
+def test_redis_healthcheck_keeps_credential_free_dsn_unchanged():
+    redis_module = load_module("backend.app.repositories.redis_repo", "backend/app/repositories/redis_repo.py")
+
+    result = redis_module.RedisRepository("redis://127.0.0.1:1/0").healthcheck()
+
+    assert result["dsn"] == "redis://127.0.0.1:1/0"
+
+
 def test_postgres_healthcheck_requires_sql_roundtrip_and_reports_missing_bootstrap(monkeypatch):
     postgres_module = load_module("backend.app.repositories.postgres_repo", "backend/app/repositories/postgres_repo.py")
     calls: list[tuple[str, float]] = []

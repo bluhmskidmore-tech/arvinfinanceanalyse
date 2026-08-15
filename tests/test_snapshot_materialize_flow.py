@@ -144,6 +144,17 @@ def test_snapshot_tables_materialize_from_manifest_archives(tmp_path, monkeypatc
         assert "rule_version" in zcols
         assert "ingest_batch_id" in zcols
         assert "trace_id" in zcols
+        assert "interest_receivable_payable" in zcols
+
+        populated_interest = conn.execute(
+            """
+            select count(*)
+            from zqtz_bond_daily_snapshot
+            where interest_receivable_payable is not null
+              and interest_receivable_payable <> 0
+            """
+        ).fetchone()[0]
+        assert populated_interest > 0
 
         tcols = [r[1] for r in conn.execute("pragma table_info('tyw_interbank_daily_snapshot')").fetchall()]
         assert "source_version" in tcols

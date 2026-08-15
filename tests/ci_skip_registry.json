@@ -1,7 +1,7 @@
 {
   "schema_version": "ci-skip-registry-v1",
   "description": "受控的环境/数据依赖型 pytest 跳过清单。守卫测试 tests/test_ci_skip_registry.py 会静态扫描 scan_roots 下的 *.py（纯文本、不执行被扫测试），任何未登记的新增依赖型跳过（pytest.mark.skipif / pytest.skip( / importorskip，最后一项含 pytest. 前缀与裸用法）都会导致守卫失败；新增跳过必须先在本文件登记并说明原因分类、依赖资产与合成替代情况。",
-  "as_of": "2026-08-12",
+  "as_of": "2026-08-14",
   "scan_roots": ["tests", "backend/tests"],
   "kinds": {
     "skipif": "pytest.mark.skipif",
@@ -630,6 +630,54 @@
           "has_synthetic_alternative": false,
           "recommendation": "keep-controlled",
           "note": "功能文件落地后守卫自动激活，无外部环境依赖"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_api_contract_baseline_gate.py",
+      "expected_counts": {"skip_call": 1},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "other",
+          "reason": "基线门禁自证用例按排序规则选中首个标量响应属性；若该属性在提交基线中本就非 required，'失去 required 保障'场景不适用而跳过（数据形状防御，非环境缺失）",
+          "depends_on": ["contracts/openapi/openapi.default.json（仓库内提交的 OpenAPI 基线，被选标量属性需处于 required 列表）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "当前提交基线下不触发（2026-08-14 实跑该文件全部通过、无 skip）；若触发说明被选属性已是可选，该场景本身失效而非环境缺失"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_api_contract_tooling.py",
+      "expected_counts": {"skip_call": 1},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "other",
+          "reason": "对打印的 Schemathesis 命令做真实 CLI 选项识别校验，需要本机安装 schemathesis CLI（未声明于 backend/pyproject.toml 的可选工具），缺失时跳过",
+          "depends_on": ["schemathesis CLI（解释器同目录 Scripts/ 或 PATH 内可执行文件）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "命令串形状（含 --url、禁 --app）已由同文件 test_api_contract_script_prints_offline_schemathesis_command 在无 CLI 下覆盖；仅真实选项校验受 CLI 在场门控，本机 .venv 已安装故不触发"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_snapshot_row_parse.py",
+      "expected_counts": {"skip_call": 1},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "real-data",
+          "reason": "应收/应付利息列在三种历史 ZQTZSHOW 归档版式（44/45/46 列）上的真实样本回放断言，本机归档样本缺失时跳过",
+          "depends_on": ["data/archive/ZQTZSHOW/files/ 下 20240101/20250320/2025.11.01 三个归档 xls 样本（本机治理归档，位于 gitignore 的 data/ 下）"],
+          "has_synthetic_alternative": true,
+          "recommendation": "keep-controlled",
+          "note": "同文件 _FakeBook 合成用例已覆盖表头变体、空值置 null、缺列置 null 逻辑分支；真实归档样本保留为三种列数版式的黄金锚点。2026-08-14 工作区未提交并行改动新增，由 ci_skip_registry 守卫拦截后登记"
         }
       ]
     }

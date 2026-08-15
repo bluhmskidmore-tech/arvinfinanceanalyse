@@ -1388,6 +1388,81 @@ def test_dashboard_repository_batch_bond_metrics_falls_back_per_missing_zqtz_dat
     assert previous_top[0][0] == "formal-gov"
 
 
+def test_dashboard_bond_weighted_ytm_excludes_missing_and_dirty_rates_from_denominator(tmp_path):
+    """加权 YTM 分母只计入归一后利率非 NULL 的市值：缺失≠0，脏值(>20%、负数)不稀释。
+
+    同时锁定百分数口径的无条件 /100（0.5 = 0.5% → 0.005，不做 >1 启发式直通）。
+    """
+    repo_module = load_module(
+        "backend.app.repositories.dashboard_repo_ytm_weight_contract",
+        "backend/app/repositories/dashboard_repo.py",
+    )
+    import duckdb
+
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+              report_date varchar,
+              bond_type varchar,
+              position_scope varchar,
+              currency_basis varchar,
+              market_value_amount decimal(24, 8),
+              ytm_value decimal(18, 8)
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table fact_formal_bond_analytics_daily (
+              report_date varchar,
+              bond_type varchar,
+              market_value decimal(24, 8),
+              ytm decimal(18, 8)
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily values
+            ('2026-04-30', 'gov', 'asset', 'CNY', 100, 3.0),
+            ('2026-04-30', 'gov', 'asset', 'CNY', 100, 0.5),
+            ('2026-04-30', 'gov', 'asset', 'CNY', 300, null),
+            ('2026-04-30', 'gov', 'asset', 'CNY', 100, 25.0),
+            ('2026-04-30', 'gov', 'asset', 'CNY', 100, -3.0)
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_bond_analytics_daily values
+            ('2026-04-29', 'gov', 100, 0.03),
+            ('2026-04-29', 'gov', 300, null)
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = repo_module.DashboardRepository(str(db_path))
+
+    total, weighted, top3, has_rows = repo.fetch_bond_core_metrics("2026-04-30")
+    assert has_rows is True
+    assert total == Decimal("700.00000000")
+    # 只有 3.0%（mv 100）与 0.5%（mv 100）参与加权：(0.03 + 0.005) * 100 / 200。
+    assert weighted is not None
+    assert weighted == Decimal("0.0175")
+    assert top3[0][2] == weighted
+
+    # zqtz 缺日期时回退 fact 表：分母同样排除 ytm 缺失行（0.03*100/100，而非 /400）。
+    results = repo.fetch_bond_core_metrics_for_dates(["2026-04-30", "2026-04-29"])
+    assert results["2026-04-30"][1] == weighted
+    fallback_total, fallback_weighted, _fallback_top, fallback_has_rows = results["2026-04-29"]
+    assert fallback_has_rows is True
+    assert fallback_total == Decimal("400.00000000")
+    assert fallback_weighted == Decimal("0.03")
+
+
 def test_dashboard_repository_lists_domain_date_context_from_all_available_tables(tmp_path):
     repo_module = load_module(
         "backend.app.repositories.dashboard_repo_date_context_contract",

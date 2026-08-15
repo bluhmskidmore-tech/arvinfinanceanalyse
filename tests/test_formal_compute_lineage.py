@@ -778,6 +778,75 @@ def test_resolve_formal_dates_lineage_uses_manifest_then_fallback_then_defaults(
     }
 
 
+def test_resolve_formal_dates_lineage_fails_closed_on_malformed_manifest(tmp_path):
+    lineage_mod = _load_lineage_module()
+    _append_jsonl(
+        tmp_path / "cache_manifest.jsonl",
+        {
+            "cache_key": "bond_analytics:materialize:formal",
+            "cache_version": "cv_manifest",
+            "source_version": "sv_manifest",
+            "vendor_version": "",
+            "rule_version": "rv_manifest",
+        },
+    )
+    fallback_calls: list[str] = []
+
+    def fallback(report_date: str) -> dict[str, str]:
+        fallback_calls.append(report_date)
+        return {
+            "source_version": "sv_fallback",
+            "rule_version": "rv_fallback",
+            "cache_version": "cv_fallback",
+            "vendor_version": "vv_fallback",
+        }
+
+    with pytest.raises(
+        lineage_mod.FormalLineageMalformedError,
+        match="missing vendor_version",
+    ):
+        lineage_mod.resolve_formal_dates_lineage(
+            governance_dir=str(tmp_path),
+            cache_key="bond_analytics:materialize:formal",
+            report_dates=["2026-03-31"],
+            default_source_version="sv_empty",
+            default_rule_version="rv_default",
+            default_cache_version="cv_default",
+            fallback_lineage_loader=fallback,
+        )
+
+    assert fallback_calls == []
+
+
+def test_resolve_formal_dates_lineage_propagates_repository_read_failure(tmp_path, monkeypatch):
+    lineage_mod = _load_lineage_module()
+
+    def fail_manifest_read(*_args, **_kwargs):
+        raise RuntimeError("manifest backend exploded")
+
+    monkeypatch.setattr(
+        lineage_mod.GovernanceRepository,
+        "read_latest_manifest",
+        fail_manifest_read,
+    )
+
+    with pytest.raises(RuntimeError, match="manifest backend exploded"):
+        lineage_mod.resolve_formal_dates_lineage(
+            governance_dir=str(tmp_path),
+            cache_key="bond_analytics:materialize:formal",
+            report_dates=["2026-03-31"],
+            default_source_version="sv_empty",
+            default_rule_version="rv_default",
+            default_cache_version="cv_default",
+            fallback_lineage_loader=lambda _report_date: {
+                "source_version": "sv_fallback",
+                "rule_version": "rv_fallback",
+                "cache_version": "cv_fallback",
+                "vendor_version": "vv_fallback",
+            },
+        )
+
+
 def test_resolve_formal_dates_lineage_normalizes_partial_fallback_with_defaults(tmp_path):
     lineage_mod = _load_lineage_module()
 

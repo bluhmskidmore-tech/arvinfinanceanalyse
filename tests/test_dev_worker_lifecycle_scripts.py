@@ -199,6 +199,180 @@ if ($script:RestartAttempted) { throw "keepalive attempted to restart a running 
     _assert_harness_ok(_run_harness(tmp_path, "dev-keepalive-reuses-default-worker", harness))
 
 
+def test_dev_keepalive_skips_postgres_recovery_when_private_cluster_is_healthy(tmp_path: Path) -> None:
+    script = (ROOT / "scripts" / "dev-keepalive.ps1").read_text(encoding="utf-8")
+    harness = (
+        r'''
+$PostgresRecoveryMaxAttempts = 3
+$PostgresProbeFailureThreshold = 3
+$script:PostgresRecoveryFailureCount = 0
+$script:PostgresRecoverySuppressionLogged = $false
+$script:RecoveryAttempted = $false
+
+function Get-DevPostgresProbe { return [pscustomobject]@{ State = "owned"; OwningProcess = 4242 } }
+function Invoke-DevPostgresUp { $script:RecoveryAttempted = $true; throw "unexpected recovery" }
+function Test-RestartCooldown { param([string]$Key) return $false }
+function Set-RestartTimestamp { param([string]$Key) }
+function Write-KeepaliveLog { param([string]$Message) }
+'''
+        + _extract_powershell_function(script, "Ensure-DevPostgresRunning")
+        + r'''
+$ready = Ensure-DevPostgresRunning
+if (-not $ready) { throw "healthy private Postgres cluster was reported unavailable" }
+if ($script:RecoveryAttempted) { throw "healthy private Postgres cluster triggered recovery" }
+'''
+    )
+    _assert_harness_ok(_run_harness(tmp_path, "dev-keepalive-postgres-healthy", harness))
+
+
+def test_dev_keepalive_recovers_private_postgres_when_listener_is_down(tmp_path: Path) -> None:
+    script = (ROOT / "scripts" / "dev-keepalive.ps1").read_text(encoding="utf-8")
+    harness = (
+        r'''
+$PostgresRecoveryMaxAttempts = 3
+$PostgresProbeFailureThreshold = 3
+$script:PostgresRecoveryFailureCount = 0
+$script:PostgresRecoverySuppressionLogged = $false
+$script:ProbeCalls = 0
+$script:RecoveryCalls = 0
+
+function Get-DevPostgresProbe {
+  $script:ProbeCalls += 1
+  $state = if ($script:ProbeCalls -ge 4) { "owned" } else { "missing" }
+  return [pscustomobject]@{ State = $state; OwningProcess = $null }
+}
+function Invoke-DevPostgresUp {
+  $script:RecoveryCalls += 1
+  return [pscustomobject]@{ ExitCode = 0; Output = "started" }
+}
+function Test-RestartCooldown { param([string]$Key) return $false }
+function Set-RestartTimestamp { param([string]$Key) }
+function Write-KeepaliveLog { param([string]$Message) }
+'''
+        + _extract_powershell_function(script, "Ensure-DevPostgresRunning")
+        + r'''
+$first = Ensure-DevPostgresRunning
+$second = Ensure-DevPostgresRunning
+$ready = Ensure-DevPostgresRunning
+if ($first -or $second) { throw "transient probe failures triggered recovery before threshold" }
+if (-not $ready) { throw "private Postgres cluster was not reported recovered" }
+if ($script:RecoveryCalls -ne 1) { throw "expected one recovery call, got $($script:RecoveryCalls)" }
+if ($script:PostgresRecoveryFailureCount -ne 0) { throw "successful recovery did not reset the failure counter" }
+'''
+    )
+    _assert_harness_ok(_run_harness(tmp_path, "dev-keepalive-postgres-recovers", harness))
+
+
+def test_dev_keepalive_caps_failed_postgres_recovery_attempts(tmp_path: Path) -> None:
+    script = (ROOT / "scripts" / "dev-keepalive.ps1").read_text(encoding="utf-8")
+    harness = (
+        r'''
+$PostgresRecoveryMaxAttempts = 3
+$PostgresProbeFailureThreshold = 1
+$script:PostgresRecoveryFailureCount = 0
+$script:PostgresRecoverySuppressionLogged = $false
+$script:RecoveryCalls = 0
+$script:Messages = @()
+
+function Get-DevPostgresProbe { return [pscustomobject]@{ State = "missing"; OwningProcess = $null } }
+function Invoke-DevPostgresUp {
+  $script:RecoveryCalls += 1
+  return [pscustomobject]@{ ExitCode = 1; Output = "failed" }
+}
+function Test-RestartCooldown { param([string]$Key) return $false }
+function Set-RestartTimestamp { param([string]$Key) }
+function Write-KeepaliveLog { param([string]$Message) $script:Messages += $Message }
+'''
+        + _extract_powershell_function(script, "Ensure-DevPostgresRunning")
+        + r'''
+1..4 | ForEach-Object { Ensure-DevPostgresRunning | Out-Null }
+if ($script:RecoveryCalls -ne 3) { throw "expected recovery to stop after 3 attempts, got $($script:RecoveryCalls)" }
+if ($script:PostgresRecoveryFailureCount -ne 3) { throw "expected 3 recorded failures" }
+if (-not ($script:Messages -match "suppressed after 3 failed attempts")) {
+  throw "missing bounded-recovery suppression log"
+}
+'''
+    )
+    _assert_harness_ok(_run_harness(tmp_path, "dev-keepalive-postgres-bounded", harness))
+
+
+def test_dev_keepalive_fails_closed_for_foreign_postgres_listener(tmp_path: Path) -> None:
+    script = (ROOT / "scripts" / "dev-keepalive.ps1").read_text(encoding="utf-8")
+    harness = (
+        r'''
+$PostgresRecoveryMaxAttempts = 3
+$PostgresProbeFailureThreshold = 3
+$script:PostgresRecoveryFailureCount = 0
+$script:PostgresRecoverySuppressionLogged = $false
+$script:RecoveryAttempted = $false
+$script:Messages = @()
+
+function Get-DevPostgresProbe { return [pscustomobject]@{ State = "foreign"; OwningProcess = 9001 } }
+function Invoke-DevPostgresUp { $script:RecoveryAttempted = $true; throw "unsafe recovery" }
+function Test-RestartCooldown { param([string]$Key) return $false }
+function Set-RestartTimestamp { param([string]$Key) }
+function Write-KeepaliveLog { param([string]$Message) $script:Messages += $Message }
+'''
+        + _extract_powershell_function(script, "Ensure-DevPostgresRunning")
+        + r'''
+$ready = Ensure-DevPostgresRunning
+if ($ready) { throw "foreign listener was reported as the private cluster" }
+if ($script:RecoveryAttempted) { throw "foreign listener triggered dev-postgres-up.ps1" }
+if (-not ($script:Messages -match "foreign listener")) { throw "missing fail-closed ownership diagnostic" }
+'''
+    )
+    _assert_harness_ok(_run_harness(tmp_path, "dev-keepalive-postgres-foreign", harness))
+
+
+def test_dev_keepalive_stops_api_and_worker_behind_foreign_postgres_gate(tmp_path: Path) -> None:
+    script = (ROOT / "scripts" / "dev-keepalive.ps1").read_text(encoding="utf-8")
+    harness = (
+        r'''
+$script:LastPostgresProbeState = "foreign"
+$script:StoppedServices = @()
+
+function Ensure-DevPostgresRunning { return $false }
+function Stop-KnownServiceProcesses { param([string]$ServiceName) $script:StoppedServices += $ServiceName }
+function Write-KeepaliveLog { param([string]$Message) }
+function Test-HttpEndpoint { throw "API probe must not run behind ownership gate" }
+function Restart-HttpService { throw "service restart must not run behind ownership gate" }
+function Ensure-WorkerRunning { throw "worker restart must not run behind ownership gate" }
+function Test-FrontendReady { throw "frontend recovery must not run behind ownership gate" }
+'''
+        + _extract_powershell_function(script, "Invoke-KeepaliveCycle")
+        + r'''
+Invoke-KeepaliveCycle
+if ($script:StoppedServices -notcontains "api") { throw "foreign ownership gate did not stop API" }
+if ($script:StoppedServices -notcontains "worker") { throw "foreign ownership gate did not stop worker" }
+'''
+    )
+    _assert_harness_ok(_run_harness(tmp_path, "dev-keepalive-postgres-foreign-gate", harness))
+
+
+def test_dev_keepalive_monitors_only_private_postgres_port_and_heartbeats_it() -> None:
+    script = (ROOT / "scripts" / "dev-keepalive.ps1").read_text(encoding="utf-8")
+    probe = _extract_powershell_function(script, "Get-DevPostgresProbe")
+    heartbeat = _extract_powershell_function(script, "Write-HeartbeatIfDue")
+
+    assert "Get-DevListeningPortOwner -Port 55432" in probe
+    assert "Get-DevListeningPortOwner -Port 5432" not in probe
+    assert r"tmp-governance\pgdev\data" in probe
+    assert '"foreign"' in probe
+    assert "State = $state" in probe
+    assert "Ensure-DevPostgresRunning" in _extract_powershell_function(script, "Invoke-KeepaliveCycle")
+    assert "postgres=$postgresOk" in heartbeat
+    assert "postgresRecoveryFailures=$script:PostgresRecoveryFailureCount" in heartbeat
+
+
+def test_dev_down_waits_for_keepalive_before_stopping_private_postgres() -> None:
+    script = (ROOT / "scripts" / "dev-down.ps1").read_text(encoding="utf-8")
+
+    keepalive_wait = script.index('Wait-ProcessStopped -Description "keepalive"')
+    postgres_down = script.index(r'& (Join-Path $root "scripts\dev-postgres-down.ps1")')
+
+    assert keepalive_wait < postgres_down
+
+
 def test_dev_down_stops_default_worker_runner(tmp_path: Path) -> None:
     script = (ROOT / "scripts" / "dev-down.ps1").read_text(encoding="utf-8")
     harness = (

@@ -125,7 +125,8 @@ def _seed_full_history(path: Path) -> None:
                         "000001.SZ",
                         first_amount,
                         "stock-source-v2",
-                        "stock-vendor-v2",
+                        # 消费端按 vendor 显式定标(fail-closed),夹具须用合法 native 模式
+                        "vv_choice_stock_20260107_0123456789ab",
                         "stock-rule-v2",
                         f"stock:{trade_date.replace('-', '')}T010000Z",
                     ),
@@ -134,7 +135,8 @@ def _seed_full_history(path: Path) -> None:
                         "000002.SZ",
                         second_amount,
                         "stock-source-v2",
-                        "stock-vendor-v2",
+                        # 消费端按 vendor 显式定标(fail-closed),夹具须用合法 native 模式
+                        "vv_choice_stock_20260107_0123456789ab",
                         "stock-rule-v2",
                         f"stock:{trade_date.replace('-', '')}T010000Z",
                     ),
@@ -146,7 +148,7 @@ def _seed_full_history(path: Path) -> None:
                 "000001.SZ",
                 9_999.0,
                 "stock-source-old",
-                "stock-vendor-old",
+                "vv_choice_stock_20260105_0123456789ff",
                 "stock-rule-old",
                 "stock:20260105T000000Z",
             )
@@ -519,8 +521,8 @@ def test_load_history_exposes_null_amount_coverage_without_zero_fallback(
         insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?)
         """,
         [
-            ("2026-01-02", "000001.SZ", 10.0, "sv", "vv", "rv", "run-1"),
-            ("2026-01-02", "000002.SZ", None, "sv", "vv", "rv", "run-1"),
+            ("2026-01-02", "000001.SZ", 10.0, "sv", "vv_choice_stock_20260102_0123456789ab", "rv", "run-1"),
+            ("2026-01-02", "000002.SZ", None, "sv", "vv_choice_stock_20260102_0123456789ab", "rv", "run-1"),
         ],
     )
     conn.close()

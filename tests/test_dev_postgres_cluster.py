@@ -10,6 +10,7 @@ from tests.helpers import ROOT, load_module
 EXPECTED_DEV_USER_SCOPE_GRANTS = {
     ("*", None, "choice_news.data", "read"),
     ("anonymous", "viewer", "accounting_asset_movement", "read"),
+    ("anonymous", "viewer", "adb_analysis", "read"),
     ("anonymous", "viewer", "balance_analysis", "read"),
     ("anonymous", "viewer", "bond_analytics", "read"),
     ("anonymous", "viewer", "bond_dashboard", "read"),
@@ -509,6 +510,45 @@ def test_command_up_starts_postgres_without_inheritable_capture_pipe(tmp_path, m
     assert run_kwargs["stderr"] is subprocess.DEVNULL
     assert payload["running"] is True
     assert payload["action"] == "up"
+
+
+def test_command_up_refuses_foreign_listener_before_sql_or_migrations(tmp_path, monkeypatch):
+    module = load_module(
+        "scripts.dev_postgres_cluster",
+        "scripts/dev_postgres_cluster.py",
+    )
+
+    repo_root = tmp_path / "repo"
+    data_dir = repo_root / "tmp-governance" / "pgdev" / "data"
+    data_dir.mkdir(parents=True)
+    config = module.DevPostgresClusterConfig(
+        repo_root=repo_root,
+        bin_dir=repo_root / "pgbin",
+        cluster_root=repo_root / "tmp-governance" / "pgdev",
+        data_dir=data_dir,
+        log_file=repo_root / "tmp-governance" / "pgdev" / "postgres.log",
+        runtime_root=repo_root / "tmp-governance" / "runtime-clean",
+        runtime_duckdb_path=repo_root / "tmp-governance" / "runtime-clean" / "moss.duckdb",
+        runtime_governance_path=repo_root / "tmp-governance" / "runtime-clean" / "governance",
+        runtime_archive_path=repo_root / "tmp-governance" / "runtime-clean" / "archive",
+        runtime_data_input_path=repo_root / "tmp-governance" / "runtime-clean" / "data_input",
+    )
+    side_effects: list[str] = []
+
+    monkeypatch.setattr(module, "_is_port_open", lambda _host, _port: True)
+    monkeypatch.setattr(module, "_is_expected_cluster_running", lambda _config: False)
+    monkeypatch.setattr(module, "_wait_for_postgres_ready", lambda *_args, **_kwargs: side_effects.append("wait"))
+    monkeypatch.setattr(module, "_ensure_role_and_database", lambda _config: side_effects.append("role"))
+    monkeypatch.setattr(
+        module,
+        "_apply_alembic_migrations_and_grants",
+        lambda _config: side_effects.append("migrations"),
+    )
+
+    with pytest.raises(RuntimeError, match="already occupied by a different process"):
+        module.command_up(config)
+
+    assert side_effects == []
 
 
 def test_apply_alembic_migrations_and_grants_retries_transient_connection_timeout(

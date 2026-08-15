@@ -147,11 +147,52 @@ _SPREAD_LOCK: dict[str, Decimal] = {
     "GOV": Decimal("0"),
 }
 
+# ---------------------------------------------------------------------------
+# W-fi-2026-08 P2 重锁：treasury/spread_effect 的口径依据
+# ---------------------------------------------------------------------------
+# 这批值 pin 的是**逐期现金流贴现久期**，不是旧的整期闭合式久期。完整口径：
+#
+#   剩余期限 = 剩余自然日 / 365（ACT/365）
+#   付息计划 = 半年付，n = ceil(剩余期限 × 2) 期；末期落在剩余期限当天，其余按
+#              1/2 年回推，因此首期是一段短残期（≤0.01 期的尾数并入上一期）
+#   贴现     = (1 + ytm/2) ^ (t × 2)
+#   Macaulay = Σ t·PV(t) / Σ PV(t)；修正久期 = Macaulay / (1 + ytm/2)
+#   Δy       = 国债曲线自然三次样条（1/3/5/7/10/30Y 节点，百分数保留 8 位小数）
+#              在该券剩余期限上的期末期初之差 / 100
+#   treasury_effect = −修正久期 × Δy × 期初市值；spread_effect 同式换 Δ利差
+#
+# 旧锁（−441,588.75 / GOV_2031 −340,435.15）错在久期一项：旧实现把期数四舍五入成
+# 整数，等于把债券重定价成一只整期债——
+#   GOV_2031  剩余 1719d = 4.7096y → 旧口径按 9 期（4.50y）定价，修正久期 4.2322 vs 正确 4.3855（+3.62%）
+#   AAA_2029  剩余 1086d = 2.9753y → 旧口径按 6 期（3.00y）定价，修正久期 2.8322 vs 正确 2.8079（−0.86%）
+#   CT_2027   剩余  437d = 1.1973y → 旧口径按 2 期（1.00y）定价，修正久期 0.9704 vs 正确 1.1438（+17.87%）
+#
+# 2026-08-13 重算方式（这些数是独立推出来的，不是从被测代码输出抄回来的）：另写一份
+# **不 import 任何 MOSS 代码**的教科书参考实现，同一个值用互相独立的多条路径求——
+# 样条走三条（矩量式 + 通用高斯消元 / 4(n−1) 系数全量线性方程组 + 通用高斯消元 /
+# scipy CubicSpline(bc_type="natural")），久期走五条（float 逐期贴现、Decimal prec=60
+# 逐期贴现、几何级数闭合式的 float 与 Decimal 版、prec=60 价格函数中心差分反推修正
+# 久期——最后一条同时独立验证了 Macaulay→修正久期的除法）。核对结果：
+#   * 独立值与代码输出逐券逐字段 |diff| = 0（不是"落在容差内"，是完全一致）；
+#   * 独立样条复现了本文件 2026-08-12 就锁定、且久期修复未触及的 _BENCH_LOCK 七个 Δy
+#     （|diff| < 1.6e-18），说明 Δy 这条腿也不是拿今天的代码倒推的；
+#   * 把同一份独立 Δy/市值配上旧的整期闭合式久期，能把旧锁那六个数复现到 3.5e-10 元，
+#     反证两版锁值之差确实只来自久期口径，其余输入逐字段未动。
+# income_return / total_return / market_value_start 与旧锁完全一致（久期不进入这三项）。
+
+# 上述口径直接产出的修正久期。单独锁一遍，是为了让"利率效应差了几万元"能被读成
+# "久期从 X 年变成 Y 年"——CNY 数字看不出口径回退，久期看得出。
+_MOD_DURATION_LOCK: dict[str, float] = {
+    "GOV_2031": 4.385538577546118,
+    "AAA_2029": 2.8078906842612144,
+    "CT_2027": 1.1438419445777561,
+}
+
 _TOTALS_LOCK: dict[str, float] = {
     "income_return": 481391.7808219178,
-    "treasury_effect": -441588.7504098239,
-    "spread_effect": -42245.38186605198,
-    "selection_effect": 1014688.3422758759,
+    "treasury_effect": -455841.9380529043,
+    "spread_effect": -40625.700618696654,
+    "selection_effect": 1027321.8486716009,
     "total_return": 1012245.9908219178,
     "market_value_start": 182679011.22,
 }
@@ -159,23 +200,23 @@ _TOTALS_LOCK: dict[str, float] = {
 _BY_BOND_LOCK: dict[str, dict[str, float]] = {
     "GOV_2031": {
         "income_return": 227616.43835616438,
-        "treasury_effect": -340435.1512684653,
+        "treasury_effect": -352766.6212843688,
         "spread_effect": 0.0,
-        "selection_effect": 982410.4712684653,
+        "selection_effect": 994741.9412843687,
         "total_return": 869591.7583561643,
     },
     "AAA_2029": {
         "income_return": 146506.84931506848,
-        "treasury_effect": -86257.51296108792,
-        "spread_effect": -48954.35341903336,
-        "selection_effect": -87010.35361987872,
+        "treasury_effect": -85516.62254818487,
+        "spread_effect": -48533.87049675862,
+        "selection_effect": -88171.72695505651,
         "total_return": -75715.3706849315,
     },
     "CT_2027": {
         "income_return": 107268.49315068492,
-        "treasury_effect": -14896.08618027064,
-        "spread_effect": 6708.9715529813775,
-        "selection_effect": 119288.22462728927,
+        "treasury_effect": -17558.694220350662,
+        "spread_effect": 7908.169878061973,
+        "selection_effect": 120751.63434228869,
         "total_return": 218369.60315068494,
     },
 }
@@ -185,6 +226,9 @@ _TOL_DELTA = Decimal("1e-12")
 # 金额展示精度 2dp（四舍五入阈值 5e-3）；1e-4 远小于阈值，同时容纳 float→Decimal 的 ~1e-7 级修正。
 _TOL_YUAN = 1e-4
 _TOL_RATIO = 1e-12
+# 久期展示精度 4dp；1e-12 远小于阈值，而口径回退（整期闭合式）的偏差是 0.02–0.17 年，
+# 差六个数量级，不存在"容差把口径变化吃掉"的风险。
+_TOL_DURATION = 1e-12
 
 
 class TestCampisiDecimalLock:
@@ -197,6 +241,17 @@ class TestCampisiDecimalLock:
         for rating, expected in _SPREAD_LOCK.items():
             got = credit_spread_change_decimal(MARKET_START, MARKET_END, rating)
             assert abs(got - expected) < _TOL_DELTA, (rating, str(got))
+
+    def test_campisi_mod_duration_locked(self) -> None:
+        """锁住驱动 treasury/spread_effect 的修正久期本身。
+
+        这两个效应是 −修正久期 × Δ × 市值，久期是其中唯一会随口径漂移的因子；
+        单锁 CNY 金额时，一次久期口径回退只会表现为一个对不上的大数，看不出成因。
+        """
+        result = campisi_attribution(_positions(), MARKET_START, MARKET_END, START_DATE, END_DATE)
+        rows = {r["bond_code"]: r for r in result.by_bond}
+        for code, expected in _MOD_DURATION_LOCK.items():
+            assert rows[code]["mod_duration"] == pytest.approx(expected, abs=_TOL_DURATION), code
 
     def test_campisi_attribution_totals_locked(self) -> None:
         result = campisi_attribution(_positions(), MARKET_START, MARKET_END, START_DATE, END_DATE)

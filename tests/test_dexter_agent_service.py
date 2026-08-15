@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import io
 import json
+import urllib.error
 from pathlib import Path
 
 import duckdb
@@ -817,6 +819,314 @@ def test_research_context_fresh_data_has_no_stale_sources(tmp_path: Path):
     assert "stale" not in context["stock"]["daily_observation"]
     assert "stale_sources" not in context
     assert "research_stale_sources" not in context["filters_applied"]
+
+
+def _fake_urlopen_response(body: bytes):
+    class _Response:
+        def read(self):
+            return body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    return _Response()
+
+
+def _bridge_query_kwargs(**overrides):
+    kwargs = {
+        "bridge_url": "http://127.0.0.1:7892",
+        "prompt": "probe",
+        "model": "dexter-test",
+        "toolsets": "evidence",
+        "timeout_seconds": 5.0,
+    }
+    kwargs.update(overrides)
+    return kwargs
+
+
+def test_post_dexter_bridge_query_returns_normalized_payload(monkeypatch):
+    body = json.dumps(
+        {
+            "ok": True,
+            "answer": "bridge answer",
+            "tool_name": "portfolio.scan",
+            "tables_used": ["choice_news_event"],
+        }
+    ).encode("utf-8")
+    monkeypatch.setattr(
+        service.urllib.request, "urlopen", lambda *_args, **_kwargs: _fake_urlopen_response(body)
+    )
+
+    result = service._post_dexter_bridge_query(**_bridge_query_kwargs())
+
+    assert result["answer"] == "bridge answer"
+    assert result["transport"] == "sidecar"
+    assert result["tool_name"] == "portfolio.scan"
+    assert result["tables_used"] == ["choice_news_event"]
+
+
+def test_post_dexter_bridge_query_wraps_malformed_json_as_runtime_error(monkeypatch):
+    monkeypatch.setattr(
+        service.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: _fake_urlopen_response(b"<html>bad gateway</html>"),
+    )
+
+    with pytest.raises(RuntimeError, match="invalid JSON"):
+        service._post_dexter_bridge_query(**_bridge_query_kwargs())
+
+
+def test_post_dexter_bridge_query_wraps_non_utf8_garbage_as_runtime_error(monkeypatch):
+    monkeypatch.setattr(
+        service.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: _fake_urlopen_response(b"\xff\xfe\xfa garbage"),
+    )
+
+    with pytest.raises(RuntimeError, match="invalid JSON"):
+        service._post_dexter_bridge_query(**_bridge_query_kwargs())
+
+
+def test_post_dexter_bridge_query_replaces_invalid_utf8_inside_valid_json(monkeypatch):
+    monkeypatch.setattr(
+        service.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: _fake_urlopen_response(b'{"ok": true, "answer": "caf\xe9"}'),
+    )
+
+    result = service._post_dexter_bridge_query(**_bridge_query_kwargs())
+
+    assert result["answer"] == "caf\ufffd"
+
+
+def test_post_dexter_bridge_query_wraps_http_error_detail_as_runtime_error(monkeypatch):
+    def raise_http_error(*_args, **_kwargs):
+        raise urllib.error.HTTPError(
+            url="http://127.0.0.1:7892/query",
+            code=502,
+            msg="Bad Gateway",
+            hdrs=None,
+            fp=io.BytesIO(b"bridge exploded"),
+        )
+
+    monkeypatch.setattr(service.urllib.request, "urlopen", raise_http_error)
+
+    with pytest.raises(RuntimeError, match="Dexter sidecar failed: bridge exploded"):
+        service._post_dexter_bridge_query(**_bridge_query_kwargs())
+
+
+def test_post_dexter_bridge_query_raises_runtime_error_when_bridge_reports_not_ok(monkeypatch):
+    body = json.dumps({"ok": False, "error": "toolset rejected"}).encode("utf-8")
+    monkeypatch.setattr(
+        service.urllib.request, "urlopen", lambda *_args, **_kwargs: _fake_urlopen_response(body)
+    )
+
+    with pytest.raises(RuntimeError, match="toolset rejected"):
+        service._post_dexter_bridge_query(**_bridge_query_kwargs())
+
+
+def test_post_dexter_bridge_query_rejects_non_dict_payload(monkeypatch):
+    monkeypatch.setattr(
+        service.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: _fake_urlopen_response(b"[1, 2]"),
+    )
+
+    with pytest.raises(RuntimeError, match="invalid payload"):
+        service._post_dexter_bridge_query(**_bridge_query_kwargs())
+
+
+def test_execute_dexter_agent_query_converges_malformed_bridge_json_to_fallback(
+    tmp_path: Path, monkeypatch
+):
+    monkeypatch.setattr(
+        service.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: _fake_urlopen_response(b"<html>bad gateway</html>"),
+    )
+
+    envelope = service.execute_dexter_agent_query(
+        request=AgentQueryRequest(
+            question="ping",
+            context={"user_id": "u_dexter", "run_id": "agent_run:dexter-bad-json"},
+        ),
+        governance_dir=str(tmp_path / "governance"),
+        settings=_dexter_settings_stub(tmp_path),
+    )
+
+    assert envelope.result_meta.result_kind == "agent.dexter_fallback"
+    assert envelope.result_meta.vendor_status == "vendor_unavailable"
+
+    audit_path = tmp_path / "governance" / "agent_audit.jsonl"
+    payload = json.loads(audit_path.read_text(encoding="utf-8").splitlines()[-1])
+    assert payload["run_id"] == "agent_run:dexter-bad-json"
+    assert payload["result_meta"]["dexter_error"] == "Dexter sidecar returned invalid JSON."
+
+
+def test_run_dexter_agent_wraps_cli_oserror_as_runtime_error(monkeypatch):
+    def fake_run(*_args, **_kwargs):
+        raise PermissionError("dexter is not executable")
+
+    monkeypatch.setattr(service.subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError, match="Dexter command failed to start"):
+        service.run_dexter_agent(
+            request=AgentQueryRequest(question="ping"),
+            command="dexter",
+            transport="cli",
+            bridge_url="",
+            model="",
+            toolsets="",
+            timeout_seconds=5,
+        )
+
+
+def test_execute_dexter_agent_query_cli_oserror_reaches_fallback_end_to_end(
+    tmp_path: Path, monkeypatch
+):
+    def fake_run(*_args, **_kwargs):
+        raise OSError(206, "The filename or extension is too long")
+
+    monkeypatch.setattr(service.subprocess, "run", fake_run)
+
+    envelope = service.execute_dexter_agent_query(
+        request=AgentQueryRequest(question="ping", context={"user_id": "u_dexter"}),
+        governance_dir=str(tmp_path / "governance"),
+        settings=_dexter_settings_stub(tmp_path, agent_dexter_transport="cli"),
+    )
+
+    assert envelope.result_meta.result_kind == "agent.dexter_fallback"
+    assert envelope.result_meta.vendor_status == "vendor_unavailable"
+    payload = json.loads(
+        (tmp_path / "governance" / "agent_audit.jsonl").read_text(encoding="utf-8").splitlines()[-1]
+    )
+    assert payload["result_meta"]["dexter_error"].startswith("Dexter command failed to start")
+
+
+def test_execute_dexter_agent_query_converges_research_context_failure_to_fallback(
+    tmp_path: Path, monkeypatch
+):
+    def raise_value_error(**_kwargs):
+        raise ValueError("research context blew up")
+
+    monkeypatch.setattr(service, "build_dexter_research_context", raise_value_error)
+
+    envelope = service.execute_dexter_agent_query(
+        request=AgentQueryRequest(question="ping", context={"user_id": "u_dexter"}),
+        governance_dir=str(tmp_path / "governance"),
+        settings=_dexter_settings_stub(tmp_path),
+    )
+
+    assert envelope.result_meta.result_kind == "agent.dexter_fallback"
+    assert envelope.evidence.tables_used == ["dexter_local_fallback"]
+    payload = json.loads(
+        (tmp_path / "governance" / "agent_audit.jsonl").read_text(encoding="utf-8").splitlines()[-1]
+    )
+    assert payload["result_meta"]["dexter_error"] == "research context blew up"
+
+
+def test_build_dexter_envelope_uses_transport_for_source_version_when_sidecar_reports_real_tables():
+    envelope = service.build_dexter_envelope(
+        request=AgentQueryRequest(question="ping"),
+        result={
+            "answer": "pong",
+            "stdout": "pong",
+            "stderr": "",
+            "command": "dexter_sidecar",
+            "tool_name": "portfolio.scan",
+            "model": "dexter-test",
+            "toolsets": "evidence,research",
+            "transport": "sidecar",
+            "tables_used": ["choice_news_event"],
+        },
+    )
+
+    assert envelope.result_meta.source_version == "sv_dexter_sidecar"
+    assert envelope.evidence.tables_used == ["choice_news_event"]
+
+
+def test_build_dexter_envelope_research_filters_cannot_override_runtime_disclosure():
+    envelope = service.build_dexter_envelope(
+        request=AgentQueryRequest(
+            question="stock research",
+            filters={"provider": "spoofed", "transport": "spoofed"},
+        ),
+        result={
+            "answer": "Provider answer",
+            "stdout": "ok",
+            "stderr": "",
+            "command": "dexter",
+            "tool_name": "portfolio.scan",
+            "model": "dexter-test",
+            "toolsets": "evidence,research",
+            "transport": "sidecar",
+            "tables_used": ["dexter_sidecar"],
+        },
+        research_context={
+            "domain": "stock",
+            "tables_used": ["choice_stock_daily_observation"],
+            "filters_applied": {
+                "provider": "spoofed",
+                "model": "spoofed-model",
+                "toolsets": "terminal",
+                "transport": "spoofed",
+                "research_domain": "stock",
+            },
+            "sql_executed": [],
+            "evidence_rows": 1,
+            "quality_flag": "ok",
+            "limitations": [],
+        },
+    )
+
+    assert envelope.evidence.filters_applied["provider"] == "dexter"
+    assert envelope.evidence.filters_applied["model"] == "dexter-test"
+    assert envelope.evidence.filters_applied["toolsets"] == "evidence,research"
+    assert envelope.evidence.filters_applied["transport"] == "sidecar"
+    assert envelope.evidence.filters_applied["research_domain"] == "stock"
+
+
+def test_build_dexter_fallback_envelope_research_filters_cannot_override_fallback_disclosure():
+    envelope = service.build_dexter_fallback_envelope(
+        request=AgentQueryRequest(
+            question="stock research",
+            filters={"fallback_reason": "spoofed"},
+        ),
+        result={
+            "answer": "",
+            "stdout": "",
+            "stderr": "",
+            "command": "dexter",
+            "tool_name": "dexter_local_fallback",
+            "model": "dexter-test",
+            "toolsets": "evidence,research",
+            "transport": "sidecar",
+            "error": "boom",
+            "error_code": "dexter_runtime_unavailable",
+        },
+        research_context={
+            "domain": "stock",
+            "tables_used": ["choice_stock_daily_observation"],
+            "filters_applied": {
+                "provider": "spoofed",
+                "fallback_provider": "spoofed",
+                "fallback_reason": "spoofed",
+                "research_domain": "stock",
+            },
+            "sql_executed": [],
+            "evidence_rows": 1,
+            "quality_flag": "warning",
+            "limitations": [],
+        },
+    )
+
+    assert envelope.evidence.filters_applied["provider"] == "dexter"
+    assert envelope.evidence.filters_applied["fallback_provider"] == "local"
+    assert envelope.evidence.filters_applied["fallback_reason"] == "dexter_runtime_unavailable"
+    assert envelope.evidence.filters_applied["research_domain"] == "stock"
 
 
 def test_build_dexter_envelope_discloses_stale_sources_in_card_and_filters():

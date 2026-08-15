@@ -45,6 +45,7 @@ def _zqtz_row(
     face_value: str = "100",
     market_value: str = "101",
     amortized_cost: str = "100",
+    interest_receivable_payable: Decimal | None = None,
 ) -> dict[str, object]:
     return {
         "report_date": "2026-02-28",
@@ -64,6 +65,7 @@ def _zqtz_row(
         "market_value_native": Decimal(market_value),
         "amortized_cost_native": Decimal(amortized_cost),
         "accrued_interest_native": Decimal("1"),
+        "interest_receivable_payable": interest_receivable_payable,
         "coupon_rate": Decimal("0.020"),
         "ytm_value": Decimal("0.025"),
         "maturity_date": "2034-01-01",
@@ -93,6 +95,31 @@ def test_merge_zqtz_rows_by_grain_sums_duplicate_lots_with_same_accounting_bucke
     assert merged[0]["market_value_native"] == Decimal("304")
     assert merged[0]["amortized_cost_native"] == Decimal("301")
     assert merged[0]["accrued_interest_native"] == Decimal("2")
+
+
+def test_merge_zqtz_rows_by_grain_sums_interest_receivable_without_inventing_zero() -> None:
+    both_present = merge_zqtz_rows_by_grain(
+        [
+            _zqtz_row(face_value="100", interest_receivable_payable=Decimal("120.5")),
+            _zqtz_row(face_value="200", interest_receivable_payable=Decimal("40.25")),
+        ]
+    )
+    partially_present = merge_zqtz_rows_by_grain(
+        [
+            _zqtz_row(face_value="100", interest_receivable_payable=None),
+            _zqtz_row(face_value="200", interest_receivable_payable=Decimal("40.25")),
+        ]
+    )
+    all_missing = merge_zqtz_rows_by_grain(
+        [
+            _zqtz_row(face_value="100", interest_receivable_payable=None),
+            _zqtz_row(face_value="200", interest_receivable_payable=None),
+        ]
+    )
+
+    assert both_present[0]["interest_receivable_payable"] == Decimal("160.75")
+    assert partially_present[0]["interest_receivable_payable"] == Decimal("40.25")
+    assert all_missing[0]["interest_receivable_payable"] is None
 
 
 def test_merge_zqtz_rows_by_grain_keeps_distinct_accounting_buckets_separate() -> None:

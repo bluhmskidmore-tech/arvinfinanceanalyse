@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.readiness_input_snapshot import build_readiness_input_snapshot_env
+
 ROOT = Path(__file__).resolve().parents[1]
 
 pytestmark = pytest.mark.governance_meta
@@ -65,10 +67,29 @@ def run_powershell_script_result(
     )
 
 
-def run_powershell_script(script_name: str, *args: str) -> str:
-    completed = run_powershell_script_result(script_name, *args)
+def run_powershell_script(
+    script_name: str,
+    *args: str,
+    env_overrides: dict[str, str] | None = None,
+) -> str:
+    completed = run_powershell_script_result(script_name, *args, env_overrides=env_overrides)
     completed.check_returncode()
     return completed.stdout
+
+
+# --- codex-page-readiness input snapshot -------------------------------------
+#
+# The readiness dry runs sample the shared real DuckDB (data/moss.duckdb) and
+# the real governance streams from a subprocess with no lock retry, so they are
+# pinned to a one-shot input snapshot. Rationale and implementation live in
+# tests/readiness_input_snapshot.py (shared with test_codex_page_readiness_gate.py).
+
+
+@pytest.fixture(scope="module")
+def readiness_env_overrides(tmp_path_factory) -> dict[str, str]:
+    return build_readiness_input_snapshot_env(
+        tmp_path_factory.mktemp("readiness-input-snapshot")
+    )
 
 
 @contextmanager
@@ -219,8 +240,16 @@ def test_codex_dev_flow_defaults_to_planning_the_system_development_loop():
     assert "Development flow plan complete. Pass -Run with -Mode verify/readiness/approval/all to execute." in output
 
 
-def test_codex_dev_flow_can_run_preflight_readiness_only():
-    output = run_powershell_script("codex-dev-flow.ps1", "-PageSlug", "pnl-attribution", "-Mode", "preflight", "-Run")
+def test_codex_dev_flow_can_run_preflight_readiness_only(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-dev-flow.ps1",
+        "-PageSlug",
+        "pnl-attribution",
+        "-Mode",
+        "preflight",
+        "-Run",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS development flow adapter: pnl-attribution" in output
     assert "Mode: preflight" in output
@@ -984,8 +1013,13 @@ def test_codex_page_smoke_supports_news_events_checklist_only():
     assert "Live checks:" not in output
 
 
-def test_codex_page_readiness_defaults_to_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "product-category-pnl")
+def test_codex_page_readiness_defaults_to_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "product-category-pnl",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: product-category-pnl" in output
     assert "Static evidence gates:" in output
@@ -999,8 +1033,13 @@ def test_codex_page_readiness_defaults_to_dry_run():
     assert "Page readiness gate passed." not in output
 
 
-def test_codex_page_readiness_supports_dashboard_home_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "dashboard-home")
+def test_codex_page_readiness_supports_dashboard_home_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "dashboard-home",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: dashboard-home" in output
     assert "mixed_source_or_observational" in output
@@ -1010,8 +1049,13 @@ def test_codex_page_readiness_supports_dashboard_home_dry_run():
     assert "codex-verify-page.ps1 -PageSlug dashboard-home -Run" in output
 
 
-def test_codex_page_readiness_supports_balance_analysis_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "balance-analysis")
+def test_codex_page_readiness_supports_balance_analysis_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "balance-analysis",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: balance-analysis" in output
     assert "formal_or_governed" in output
@@ -1021,8 +1065,13 @@ def test_codex_page_readiness_supports_balance_analysis_dry_run():
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_pnl_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "pnl")
+def test_codex_page_readiness_supports_pnl_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "pnl",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: pnl" in output
     assert "formal_or_governed" in output
@@ -1034,8 +1083,13 @@ def test_codex_page_readiness_supports_pnl_dry_run():
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_pnl_bridge_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "pnl-bridge")
+def test_codex_page_readiness_supports_pnl_bridge_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "pnl-bridge",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: pnl-bridge" in output
     assert "formal_or_governed" in output
@@ -1047,8 +1101,13 @@ def test_codex_page_readiness_supports_pnl_bridge_dry_run():
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_risk_tensor_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "risk-tensor")
+def test_codex_page_readiness_supports_risk_tensor_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "risk-tensor",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: risk-tensor" in output
     assert "formal_or_governed" in output
@@ -1063,8 +1122,13 @@ def test_codex_page_readiness_supports_risk_tensor_dry_run():
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_bond_dashboard_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "bond-dashboard")
+def test_codex_page_readiness_supports_bond_dashboard_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "bond-dashboard",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: bond-dashboard" in output
     assert "candidate_or_pending" in output
@@ -1081,11 +1145,14 @@ def test_codex_page_readiness_supports_bond_dashboard_dry_run():
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_balance_movement_analysis_dry_run():
+def test_codex_page_readiness_supports_balance_movement_analysis_dry_run(
+    readiness_env_overrides,
+):
     completed = run_powershell_script_result(
         "codex-page-readiness.ps1",
         "-PageSlug",
         "balance-movement-analysis",
+        env_overrides=readiness_env_overrides,
     )
     output = completed.stdout + completed.stderr
 
@@ -1108,8 +1175,13 @@ def test_codex_page_readiness_supports_balance_movement_analysis_dry_run():
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_ledger_pnl_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "ledger-pnl")
+def test_codex_page_readiness_supports_ledger_pnl_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "ledger-pnl",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: ledger-pnl" in output
     assert "candidate_or_pending" in output
@@ -1123,8 +1195,13 @@ def test_codex_page_readiness_supports_ledger_pnl_dry_run():
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_positions_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "positions")
+def test_codex_page_readiness_supports_positions_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "positions",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: positions" in output
     assert "candidate_or_pending" in output
@@ -1139,8 +1216,13 @@ def test_codex_page_readiness_supports_positions_dry_run():
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_operations_analysis_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "operations-analysis")
+def test_codex_page_readiness_supports_operations_analysis_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "operations-analysis",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: operations-analysis" in output
     assert "mixed_source_or_observational" in output
@@ -1155,8 +1237,13 @@ def test_codex_page_readiness_supports_operations_analysis_dry_run():
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_liability_analytics_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "liability-analytics")
+def test_codex_page_readiness_supports_liability_analytics_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "liability-analytics",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: liability-analytics" in output
     assert "mixed_source_or_observational" in output
@@ -1171,8 +1258,13 @@ def test_codex_page_readiness_supports_liability_analytics_dry_run():
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_market_data_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "market-data")
+def test_codex_page_readiness_supports_market_data_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "market-data",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: market-data" in output
     assert "mixed_source_or_observational" in output
@@ -1187,8 +1279,13 @@ def test_codex_page_readiness_supports_market_data_dry_run():
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_macro_toolkit_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "macro-toolkit")
+def test_codex_page_readiness_supports_macro_toolkit_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "macro-toolkit",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: macro-toolkit" in output
     assert "mixed_source_or_observational" in output
@@ -1203,8 +1300,13 @@ def test_codex_page_readiness_supports_macro_toolkit_dry_run():
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_stock_analysis_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "stock-analysis")
+def test_codex_page_readiness_supports_stock_analysis_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "stock-analysis",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: stock-analysis" in output
     assert "gap_or_observational" in output
@@ -1222,8 +1324,13 @@ def test_codex_page_readiness_supports_stock_analysis_dry_run():
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_pnl_attribution_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "pnl-attribution")
+def test_codex_page_readiness_supports_pnl_attribution_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "pnl-attribution",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: pnl-attribution" in output
     assert "candidate_or_pending" in output
@@ -1238,8 +1345,12 @@ def test_codex_page_readiness_supports_pnl_attribution_dry_run():
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_all_mode_defaults_to_batch_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-All")
+def test_codex_page_readiness_all_mode_defaults_to_batch_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-All",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: all seeded pages" in output
     assert "Summary: page_count=39" in output

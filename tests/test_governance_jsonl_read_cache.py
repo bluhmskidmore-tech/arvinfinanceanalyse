@@ -68,6 +68,24 @@ def test_read_all_jsonl_cache_returns_mutation_safe_copies(tmp_path):
     assert rows_again[0]["job_name"] == "ingest"
 
 
+def test_read_all_jsonl_cache_returns_nested_mutation_safe_copies(tmp_path):
+    module = _load_governance_repo_module()
+    repo = module.GovernanceRepository(base_dir=tmp_path)
+    repo.append(
+        "job_runs",
+        {"job_name": "ingest", "lineage": {"steps": [{"name": "extract"}]}},
+    )
+
+    rows = repo.read_all("job_runs")
+    rows[0]["lineage"]["steps"][0]["name"] = "mutated"
+    rows[0]["lineage"]["steps"].append({"name": "injected"})
+
+    # The second read hits the process-wide cache; nested objects must not
+    # have been poisoned by the caller-side mutation above.
+    rows_again = repo.read_all("job_runs")
+    assert rows_again[0]["lineage"] == {"steps": [{"name": "extract"}]}
+
+
 def test_latest_jsonl_helpers_bypass_read_all_and_isolate_nested_mutation(tmp_path, monkeypatch):
     module = _load_governance_repo_module()
     repo = module.GovernanceRepository(base_dir=tmp_path)

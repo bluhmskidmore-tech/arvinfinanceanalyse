@@ -46,8 +46,12 @@ class TestDeterministicPaths:
             ([0.08], "interest_rate", [0.0008]),
             # 边界：1.0% → 0.01
             ([1.0], "interest_rate", [0.01]),
-            # 边界：100% → 1.0
-            ([100.0], "interest_rate", [1.0]),
+            # 边界：20% → 0.20（脏数据上界本身放行，对齐 rate_units）
+            ([20.0], "interest_rate", [0.20]),
+            # >20（如 100）视为脏数据 → None（对齐 rate_units.normalize_percent_rate_to_decimal）
+            ([100.0], "interest_rate", [None]),
+            # 负利率视为脏数据 → None
+            ([-0.5], "interest_rate", [None]),
             # Missing/bad inputs stay nullable; callers decide whether to exclude or default.
             ([None], "interest_rate", [None]),
             # 混合

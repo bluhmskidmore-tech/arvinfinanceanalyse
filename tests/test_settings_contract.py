@@ -244,6 +244,30 @@ def test_resolve_data_input_root_path_moss_env_overrides_raw_files_layout(tmp_pa
     assert resolved == explicit.resolve()
 
 
+def test_data_input_root_from_dotenv_file_ranks_highest(tmp_path, monkeypatch):
+    """MOSS_DATA_INPUT_ROOT provided via an .env file (not os.environ) must
+    keep its documented top priority over RAW_FILES_DIR and directory probes."""
+    _clear_moss_env(monkeypatch)
+    repo_root = Path(__file__).resolve().parents[1]
+    monkeypatch.setenv("RAW_FILES_DIR", "v1_env_raw")
+    env_file = tmp_path / ".env"
+    env_file.write_text("MOSS_DATA_INPUT_ROOT=dotenv_in\n", encoding="utf-8")
+
+    s = Settings(_env_file=str(env_file))
+
+    assert s.data_input_root == (repo_root / "dotenv_in").resolve()
+
+
+def test_data_input_root_constructor_arg_ranks_highest(monkeypatch):
+    _clear_moss_env(monkeypatch)
+    repo_root = Path(__file__).resolve().parents[1]
+    monkeypatch.setenv("RAW_FILES_DIR", "v1_env_raw")
+
+    s = Settings(_env_file=None, data_input_root=Path("ctor_in"))
+
+    assert s.data_input_root == (repo_root / "ctor_in").resolve()
+
+
 def test_settings_production_defaults_governance_backends_to_sql_authority(monkeypatch):
     _clear_moss_env(monkeypatch)
     monkeypatch.setenv("MOSS_ENVIRONMENT", "production")

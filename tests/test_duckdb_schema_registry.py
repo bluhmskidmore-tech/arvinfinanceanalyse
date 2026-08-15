@@ -13,11 +13,12 @@ from backend.app.repositories.duckdb_migrations import (
     _v32_add_table_constraints,
     _v36_risk_tensor_projection_quality,
     _v37_bond_payment_frequency_fallback_provenance,
+    _v45_zqtz_interest_receivable_payable,
     register_all,
 )
 from backend.app.repositories.duckdb_schema_registry import DuckDBSchemaRegistry
 
-_BASELINE_VERSION_COUNT = 44
+_BASELINE_VERSION_COUNT = 45
 _RISK_PROJECTION_QUALITY_COLUMNS = {
     "missing_maturity_market_value",
     "missing_maturity_count",
@@ -351,7 +352,10 @@ def test_migration_tracking(tmp_path) -> None:
     assert versions == list(range(1, _BASELINE_VERSION_COUNT + 1))
     assert len(rows) == _BASELINE_VERSION_COUNT
     assert any("snapshot" in str(row[1]).lower() for row in rows)
-    assert rows[-1] == (44, "Point-in-time concept membership SCD intervals")
+    assert rows[-1] == (
+        45,
+        "Persist ZQTZ interest receivable/payable on the standardized snapshot",
+    )
 
 
 def test_v36_adds_projection_quality_columns_without_backfilling_legacy_rows() -> None:
@@ -410,6 +414,32 @@ def test_v37_adds_frequency_provenance_without_backfilling_legacy_rows() -> None
     assert legacy_value == (None,)
 
 
+def test_v45_adds_interest_receivable_payable_without_backfilling_legacy_rows() -> None:
+    conn = duckdb.connect(":memory:")
+    try:
+        conn.execute(
+            "create table zqtz_bond_daily_snapshot "
+            "(report_date varchar, instrument_code varchar)"
+        )
+        conn.execute("insert into zqtz_bond_daily_snapshot values ('2026-07-31', 'BOND-1')")
+
+        _v45_zqtz_interest_receivable_payable(conn)
+        _v45_zqtz_interest_receivable_payable(conn)  # must stay idempotent
+
+        columns = {
+            str(row[1])
+            for row in conn.execute("pragma table_info('zqtz_bond_daily_snapshot')").fetchall()
+        }
+        legacy_value = conn.execute(
+            "select interest_receivable_payable from zqtz_bond_daily_snapshot"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert "interest_receivable_payable" in columns
+    assert legacy_value == (None,)
+
+
 def test_legacy_missing_zqtz_tables_can_still_recover_current_schema(tmp_path) -> None:
     """A macro-only legacy DB may record ZQTZ patch migrations before ZQTZ tables exist."""
     db_path = tmp_path / "legacy_macro_only.duckdb"
@@ -461,7 +491,7 @@ def test_legacy_missing_zqtz_tables_can_still_recover_current_schema(tmp_path) -
     finally:
         conn.close()
 
-    assert {"business_type_primary", "sub_type"} <= zqtz_columns
+    assert {"business_type_primary", "sub_type", "interest_receivable_payable"} <= zqtz_columns
     assert {"business_type_primary", "sub_type"} <= formal_columns
 
 
