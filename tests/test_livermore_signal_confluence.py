@@ -770,3 +770,31 @@ def test_build_livermore_replay_status_marks_only_mature_complete_windows_decisi
     assert replay_status["matched_entry_count"] == 105
     assert replay_status["has_required_horizon_stats"] is True
     assert replay_status["has_decision_usable_completed_stats"] is True
+
+
+@pytest.mark.parametrize("composite_score", [-0.3, 0.3])
+def test_build_livermore_signal_confluence_treats_macro_boundary_as_neutral(
+    composite_score: float,
+) -> None:
+    module = _service_module()
+
+    result = module.build_livermore_signal_confluence(
+        as_of_date="2026-05-02",
+        livermore_payload={
+            "market_gate": {
+                "state": "WARM",
+                "exposure": 0.5,
+            },
+            "stock_candidates": {"items": []},
+            "risk_exit": {"watch_items": []},
+        },
+        macro_payload={
+            "environment_score": {
+                "composite_score": composite_score,
+            }
+        },
+    )
+
+    macro_context = cast(dict[str, Any], result["macro_context"])
+    assert macro_context["status"] == "neutral"
+    assert macro_context["composite_score"] == pytest.approx(composite_score)
