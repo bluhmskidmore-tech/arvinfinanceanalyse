@@ -926,6 +926,7 @@
   - `/api/pnl-attribution/campisi/four-effects`
   - `/api/pnl-attribution/campisi/enhanced`
   - `/api/pnl-attribution/campisi/maturity-buckets`
+  - `/api/pnl-attribution/campisi/decision-grade`
 - 页面状态：`active`
 
 ### B. 页面目标
@@ -997,6 +998,10 @@
 | 损益构成 | `/api/pnl-attribution/composition` | `PnlCompositionPayload` | `formal` | `other_income` 必须可见 |
 | 归因摘要 | `/api/pnl-attribution/summary` | `PnlAttributionAnalysisSummary` | `formal` | 当前仅做说明性 findings |
 | 高级摘要 | `/api/pnl-attribution/advanced/summary` | `AdvancedAttributionSummary` | `formal` | `static_return_annualized` 已是年化值 |
+| Campisi 四效应 | `/api/pnl-attribution/campisi/four-effects` | `CampisiFourEffectsPayload` | `formal` | `basis=formal_report_pnl_bridge` 时为 formal-bridge 路径；见 §F.1 |
+| Campisi 六效应 | `/api/pnl-attribution/campisi/enhanced` | `CampisiEnhancedPayload` | `formal` | model 路径拆出 `convexity_effect / cross_effect`；formal-bridge 路径不拆二阶项，三项均发布为 0 且贡献并入 `selection_effect` |
+| Campisi 到期桶 | `/api/pnl-attribution/campisi/maturity-buckets` | `CampisiMaturityBucketsPayload` | `formal` | 桶内金额与四效应同源 |
+| Campisi 决策级解释 | `/api/pnl-attribution/campisi/decision-grade` | `CampisiDecisionGradePayload` | `formal` | 窗口口径披露见 `window_disclosure`；不得把 `selection_proxy` 解读为交易员能力 |
 
 ### F. 指标映射
 
@@ -1008,6 +1013,46 @@
 | 其他收入 / 调整项 | `MTR-PAT-205` | `total_other_income` / `other_income` |
 | 静态收益（年化） | `MTR-PAT-301` | `static_return_annualized` |
 | 当前视图元信息 | `MTR-PAT-304` | `generated_at / quality_flag / fallback_mode` |
+| Campisi 收入效应 | `MTR-PAT-305` | `totals.income_return` / 行级 `income_return` |
+| Campisi 国债曲线效应 | `MTR-PAT-306` | `totals.treasury_effect` / 行级 `treasury_effect` |
+| Campisi 信用利差效应 | `MTR-PAT-307` | `totals.spread_effect` / 行级 `spread_effect` |
+| Campisi 选择效应 | `MTR-PAT-308` | `totals.selection_effect` / 行级 `selection_effect` |
+| Campisi 合计回报 | `MTR-PAT-309` | `totals.total_return` / 行级 `total_return` |
+
+#### F.1 Campisi 字段清单
+
+**formal-bridge 路径**（`CampisiFourEffectsPayload` / `CampisiEnhancedPayload`，`basis=formal_report_pnl_bridge`）：
+
+| 字段 | 层级 | 类型 / 单位 | 语义 | 备注 |
+| --- | --- | --- | --- | --- |
+| `income_return` | totals / by_asset_class / by_bond | CNY 金额 | 票息 / carry（514） | 对应 `MTR-PAT-305` |
+| `treasury_effect` | 同上 | CNY 金额 | roll-down + treasury_curve 合并后的国债曲线效应 | 对应 `MTR-PAT-306` |
+| `spread_effect` | 同上 | CNY 金额 | 信用利差效应 | 对应 `MTR-PAT-307` |
+| `realized_trading` | 同上 | CNY 金额 | 517 已实现交易损益 | formal-bridge 独立分量；此前吞并在 `selection_effect` 中 |
+| `manual_adjustment` | 同上 | CNY 金额 | 手工调整 | formal-bridge 独立分量；此前吞并在 `selection_effect` 中 |
+| `fx_translation` | 同上 | CNY 金额 | 汇兑折算效应 | formal-bridge 独立分量；此前吞并在 `selection_effect` 中 |
+| `selection_effect` | 同上 | CNY 金额 | bridge 闭合残差 | 对应 `MTR-PAT-308`；等于 `total_return` 减上述六项。语义为未解释残差，不得解读为选券能力；bridge 路径未拆分的二阶项贡献含在其中 |
+| `total_return` | 同上 | CNY 金额 | 单券 / 分组 / 组合合计 | 对应 `MTR-PAT-309`；formal-bridge 路径等于七项金额之和。enhanced 形状多出的 `convexity_effect / cross_effect / reinvestment_effect` 在该路径恒为 0，不改变合计 |
+| `decomposition_basis` | payload 顶层 | string | 声明 bridge 与 model 两条路径下 `selection_effect` 语义不同 | 必出现在 `basis=formal_report_pnl_bridge` 响应中；前端不得重算或改写 |
+| `effect_availability.convexity_effect` / `.cross_effect` / `.reinvestment_effect` | payload 顶层 | object | 二阶项"未拆分"披露 | 仅 enhanced 形状（four-effects 形状没有这三个金额，因此不产出条目）。bridge 路径必出现且 `status="not_decomposed"`、`reason="bridge_second_order_not_decomposed"`、`unavailable_bonds` = 全部债券；同时进入 `diagnostics`。前端必须据此把这三张卡渲染为 `—` 加"该路径不拆分"，不得显示 `0.00 亿` |
+| `formal_closure` | payload 顶层 | object | Campisi 合计与 formal PnL 的对照闭合 | 仅 four-effects；见 `status / campisi_total_return / formal_actual_pnl / residual_to_formal_pnl` |
+| `basis` | payload 顶层 | string | 分解来源 | `formal_report_pnl_bridge` 或 model 路径标识 |
+
+**model 路径**（非 bridge，`decomposition_basis` 缺省）：`selection_effect` 仍为单券曲线分解闭合残差（`total_return - income_return - treasury_effect - spread_effect`），`total_return` 等于四效应（或 enhanced 六效应）之和；不得与 formal-bridge 七项口径混读。
+
+**decision-grade 路径**（`CampisiDecisionGradePayload`，`/api/pnl-attribution/campisi/decision-grade`）：
+
+| 字段 | 层级 | 类型 | 语义 | 备注 |
+| --- | --- | --- | --- | --- |
+| `pnl_window` | payload 顶层 | `{ start, end, kind }` | formal PnL 取数窗口 | `{ kind: "monthly_period", start=报告月首日, end=period_end }`：`fact_formal_pnl_fi` 一行是 `period_end` 报告月的月度期间流量，不是单日 |
+| `curve_window` | payload 顶层 | `{ start, end, kind }` | 市场效应曲线位移窗口 | `{ kind: "curve_displacement", start=period_start, end=period_end }`；默认路径期初对齐报告月上月末（`lookback_days` 已废弃），显式 start/end 语义不变；曲线解析日偏离窗口端点 >7 天时该侧按缺失处理进入 `residual_noise`（见 `MTR-PAT-310`） |
+| `window_disclosure` | payload 顶层 | `{ level: "info" \| "warning", message: string } \| null` | 窗口与曲线解析口径披露 | 曲线陈旧弃用 / 国债曲线整侧缺失 / `num_days > 45` 任一触发 `warning` 且 `message` 同步进入 `warnings`；对齐正常时为 `info`；`num_days < 1` 且无弃用为 `null` |
+| `formal_pnl_view.closure.status` | nested | `"closed" \| "warning" \| "error"` | 正式 PnL 与解释合计的闭合状态 | `error`：闭合差异占比 > 10% 或无法归一化且差异显著 |
+| `formal_pnl_view.closure.difference` | nested | number | 正式 PnL − 解释合计 | CNY 原值 |
+| `formal_pnl_view.closure.difference_ratio` | nested | `number \| null` | 闭合差异占正式 PnL 比例 | 正式 PnL 为 0 且差异非 0 时为 `null` |
+| `formal_pnl_view.components.realized_trading` | nested | number | 517 已实现交易 | 与 bridge 分量同名，不得解读为能力 |
+| `formal_pnl_view.components.manual_adjustment` | nested | number | 手工调整 | 治理项，不算能力 |
+| `formal_pnl_view.components.selection_proxy` | nested | number | 剩余 / 选券代理 | 含窗口错配影响；不得解读为实名交易员能力 |
 
 ### G. 状态合同
 
@@ -1165,7 +1210,7 @@
 
 | 展示字段 / KPI | 来源 DTO 路径 | `metric_id` |
 | --- | --- | --- |
-| 总市值/久期/票息/浮盈/DV01/信用利差中值等 | `BondDashboardHeadlinePayload.kpis.*`、prev_kpis | 待字典绑定；未绑定时不自称 `MTR-*` |
+| 总市值/久期/票息/浮盈/DV01/信用债收益率（YTM）中位数等 | `BondDashboardHeadlinePayload.kpis.*`、prev_kpis | 待字典绑定；未绑定时不自称 `MTR-*` |
 | 信用占价比等 | `RiskIndicatorsPayload.credit_ratio` 等 | 同上 |
 | 各图 tabular 数据 | `asset-structure` / `industry` / `spread` 等 items | 同上 |
 
@@ -1238,7 +1283,7 @@
 - 页面 ID：`PAGE-POS-001`
 - 页面名称：`持仓`（`PositionsView`）
 - 路由：前端 `/positions?report_date=` 可选；后端 `GET /api/positions/*`（`backend/app/api/routes/positions.py`）
-- 页面状态：`active`（`positions_service` 使用 `build_formal_result_envelope` + `result_kind` 形如 `positions.bonds.*` / `positions.interbank.*` 等，见 `tests/test_positions_api_contract.py`）
+- 页面状态：`temporary-exception / candidate`。`positions_service` 将快照列表与聚合统一封装为 `basis=analytical`、`formal_use_allowed=false`；`result_kind` 形如 `positions.bonds.*` / `positions.interbank.*`（见 `tests/test_positions_api_contract.py`）。页面可见不等于这些快照结果已升格为 formal truth。
 - 报告日来源：页面**复用** `getBalanceAnalysisDates()` 的 `report_dates` 作为默认可选日（与 `bond-dashboard` 自有 dates 源不同，**双源**）
 
 ### B. 业务问题与不回答
@@ -1276,7 +1321,8 @@
 
 ### F. 指标映射
 
-- 不声明新 `metric_id`；表头金额/张数/评级等以 positions schema 与列为准。
+- `MTR-POS-001` / `MTR-POS-002` 仅分别绑定债券与同业列表的候选记录数锚点（`total == evidence_rows`），状态仍为 `candidate`。
+- 其余列表、金额、利率、分布与统计字段只按 positions schema 展示，未升格为 formal `MTR-*`；`GAP-POS-LIST` 保持开放并等待 owner approval。
 
 ### G. 状态
 
@@ -1621,6 +1667,7 @@
   - `GET /api/ledger-pnl/data`
   - `GET /api/ledger-pnl/summary`
   - `GET /api/ledger-pnl/analysis`
+  - `GET /api/ledger-pnl/financial-indicator-summary`
   - `GET /api/ledger-pnl/monthly-analysis/dates`
   - `GET /api/ledger-pnl/monthly-analysis/workbook`
   - `GET /api/ledger-pnl/candidate-financial-indicators`
@@ -1642,6 +1689,7 @@
 - `GET /api/ledger-pnl/analysis?date=YYYY-MM-DD&currency=CNX|CNY` returns a backend-computed candidate analysis snapshot for the selected accounting basis. It includes the core/other-`5*`/all bridge, CNX-versus-CNY comparison, ranked account contributors, and comparison with the previous available source report date.
 - `GET /api/ledger-pnl/candidate-financial-indicators?report_month=YYYYMM&include_lineage=false&metric_id=` executes the active frozen `qdb-finance-2026-v1.0.1` rule pack against the configured monthly ledger/daily workbook pair. `v1.0.1` re-locks the current 202606 ledger SHA without changing formulas or metric IDs; immutable `v1.0.0` remains available for historical replay. For the exact pinned 202606 rule/source tuple, the payload also returns backend-owned `source_version_impact`: all 186 metrics are compared as canonical Decimal values, numeric changes are reported separately from serialization-only changes, and the evidence has `certification_effect=none`. It is an isolated candidate result and does not modify the formal source-contract endpoint.
 - `GET /api/ledger-pnl/candidate-financial-indicators/period-comparison?report_month=YYYYMM` returns the fixed seven-item, backend-computed candidate comparison. It uses exact adjacent calendar months, keeps the complete 186-item replay status separate from the explicitly degraded ledger-only key-metric scope, and never accepts a client-supplied path, comparison month, metric list, or materiality threshold.
+- `GET /api/ledger-pnl/financial-indicator-summary?report_month=YYYYMM&currency=CNX|CNY` returns the operating-indicator summary table (`2026年经营指标情况表` workbook row structure) computed from ledger account compositions in `backend/app/core_finance/ledger_financial_indicator_summary.py`. Flow rows use YTD cumulative 5-class balances against the same month last year; point rows use balance-sheet compositions against the prior year-end. Rows without a system source (subsidiaries, group consolidation, NPL, write-offs) keep `null` values with an explicit `unavailable_reason`; deposit/total-asset/loan-provision rows carry a `caliber_note` marking the ledger-composition caliber difference from the reporting caliber. The envelope stays `basis=ledger`, `formal_use_allowed=false`.
 - `GET /api/ledger-pnl/formal-financial-indicators?report_month=202603` returns the frozen formal financial indicator source contract.
 - `GET /api/ledger-pnl/formal-indicator-rule-checks?report_month=202603` checks the frozen contract without producing new formal metric values.
 - Ledger data/summary/analysis routes delegate to `backend/app/services/ledger_pnl_service.py`; candidate financial-indicator routes delegate to their isolated candidate services and do not pass through that ledger fact service.
@@ -1740,6 +1788,7 @@
 
 - API/source contract: `tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py`.
 - Ledger summary/detail: `tests/test_ledger_pnl_service.py`.
+- Operating-indicator summary (ledger caliber) composition/periods/golden 202603: `tests/test_ledger_financial_indicator_summary.py`; frontend panel: `frontend/src/test/LedgerPnlFinancialIndicatorSummaryPanel.test.tsx`.
 - Ledger candidate analysis arithmetic and envelope: `tests/test_ledger_pnl_analysis.py`; `tests/test_ledger_pnl_service.py`.
 - Ledger route validation/permission: `tests/test_ledger_pnl_routes.py`.
 - Candidate rule/parser/evaluator/service/schema and source-version impact: `tests/test_finance_metric_rule_contract.py`; `tests/test_finance_metric_rule_version_upgrade.py`; `tests/test_finance_metric_xlsx.py`; `tests/test_finance_metric_engine.py`; `tests/test_finance_metric_validations.py`; `tests/test_candidate_financial_indicator_schema.py`; `tests/test_candidate_financial_indicator_service.py`.
@@ -2031,13 +2080,18 @@ truth contract §9.1「do not invent detail `metric_id` numbers beyond active `M
 - Primary front-end route: `/liability-analytics`
 - Status: `active`
 - Primary APIs:
-  - `GET /ui/liability/risk-buckets`
-  - `GET /ui/liability/yield-metrics`
-  - `GET /ui/liability/yield-by-period`
-  - `GET /ui/liability/counterparty`
+  - `GET /ui/balance-analysis/dates`
+  - `GET /ui/balance-analysis/overview?report_date=YYYY-MM-DD&position_scope=asset&currency_basis=CNY`
+  - `GET /api/risk/buckets?report_date=YYYY-MM-DD`
+  - `GET /api/analysis/yield_metrics?report_date=YYYY-MM-DD`
+  - `GET /api/analysis/liabilities/counterparty?report_date=YYYY-MM-DD&top_n=2000`
   - `GET /ui/liability/business-context`
-  - `GET /ui/liability/cockpit-warnings`
-  - `GET /ui/liability/contribution-split`
+  - `GET /api/analysis/liabilities/cockpit-warnings?report_date=YYYY-MM-DD`
+  - `GET /api/analysis/liabilities/contribution-split?report_date=YYYY-MM-DD`
+  - `GET /api/liabilities/monthly?year=YYYY`
+  - `GET /api/analysis/adb/monthly?year=YYYY`
+
+- `active` records route availability only. Liability analytics remains an excluded analytical-compatibility surface; it is not approved for formal use.
 
 ### B. Primary business question
 
@@ -2047,11 +2101,12 @@ truth contract §9.1「do not invent detail `metric_id` numbers beyond active `M
 
 ### C. Data chain
 
-- Frontend page `frontend/src/features/liability-analytics/pages/LiabilityAnalyticsPage.tsx` initializes report dates from balance-analysis dates.
-- Daily view calls liability risk, yield, counterparty, knowledge, warning, and contribution endpoints.
-- Monthly view calls liabilities monthly and liability average-balance monthly endpoints through the API client.
-- Backend route `backend/app/api/routes/liability_analytics.py` delegates to liability analytics and liability knowledge services.
+- Frontend page `frontend/src/features/liability-analytics/pages/LiabilityAnalyticsPage.tsx` initializes report dates from `GET /ui/balance-analysis/dates` and reads the asset-side comparison total from `GET /ui/balance-analysis/overview`.
+- Daily view calls the exact risk, yield, counterparty, knowledge, warning, and contribution paths listed above. The registered compatibility route `GET /api/analysis/yield-by-period` is not called by this page and is therefore not a PAGE-LIAB primary API.
+- Monthly view calls `GET /api/liabilities/monthly` and `GET /api/analysis/adb/monthly` through the API client.
+- Backend route `backend/app/api/routes/liability_analytics.py` owns the liability risk/yield/counterparty/monthly/knowledge/warning/contribution paths; `backend/app/api/routes/balance_analysis.py` owns the date and asset-overview reads; `backend/app/api/routes/adb_analysis.py` owns the monthly ADB read.
 - Frontend adapters in `frontend/src/features/liability-analytics/adapters/` shape counterparty and section-state view models.
+- The balance-analysis overview keeps its own formal asset-side provenance, but its use on this page does not promote liability analytics or ADB fields to formal truth. ADB monthly remains `basis=analytical` with `formal_use_allowed=false`.
 
 ### D. Units, dates, and status
 
@@ -2633,6 +2688,7 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
     - `GET /api/analysis/adb/comparison`
     - `GET /api/analysis/adb/monthly`
     - `GET /api/analysis/adb/coverage`
+    - `GET /api/analysis/adb/insights`
     - 日期初始化复用 `GET /ui/balance-analysis/dates`（同 `PAGE-BALANCE-001` 日期源，不构成 formal balance 提升）
 - 页面状态：`candidate` / `temporary-exception`（live 可见，但非 formal）
 - 前身占位：`GAP-AVERAGE-BALANCE-PAGE`；侧翼草稿：`docs/pnl/average-balance-page-contract.md`
@@ -2662,6 +2718,7 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 | `trend` | 趋势 | 区间趋势 | `/api/analysis/adb` trend |
 | `monthly` | 月度 / YTD NIM | `MTR-ADB-003` 候选读面 | `/api/analysis/adb/monthly` |
 | `coverage` | 覆盖诊断 | 快照 vs formal 覆盖与分母证据 | `/api/analysis/adb/coverage` |
+| `deep_analysis` | 深度分析 | 规模归因/NIM量价归因/波动异常/集中度与后端结论 | `/api/analysis/adb/insights` |
 | `result_meta` | 口径 / lineage | `basis=analytical`、`formal_use_allowed=false` | envelope |
 
 #### 禁止 section
@@ -2680,15 +2737,25 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 | `LOCF` | 某分类在 `end_date` 无行时，取窗口内不晚于 `end_date` 的最近观测合计做期末时点 | `adb_analysis_service` 模块说明与 end-spot LOCF |
 | `calendar-zero` | 日历分母下缺失日贡献为 0；**仅当**后端明确给出该模式时展示 | 侧翼合同定义；不得默认推断 |
 | `observed_days_scaled_to_calendar` | 稀疏观测时将观测日合计按日历天数比例放大（`sample_fill_method`） | coverage/comparison 诊断字段；属 sample completion，非正式真值 |
+| comparison fail-visible | 按侧缺数时 total 为 `null`，不静默填 0 | `total_spot_*` / `total_avg_*`；`avg_unavailable_reason` / `spot_unavailable_reason`；详见侧翼合同 |
+
+#### Comparison fail-visible（`GET /api/analysis/adb/comparison`）
+
+- **有效行**：仅 `*_is_valid=true` 且金额有限的行参与金额、`coverage_days`、LOCF `end_date_seen`；无效行不参与；显式有效的 0 仍为 `0.0`。
+- **`coverage_days`**：资产/负债两侧有效余额观测日**并集**（与 `/api/analysis/adb` 观测日口径可不同）。
+- **四个 total**（`total_spot_assets`、`total_avg_assets`、`total_spot_liabilities`、`total_avg_liabilities`）：按侧无有效余额 → `null`；单日窗口且未 `simulated` 时两侧 `total_avg_*` 为 `null`（`avg_unavailable_reason=insufficient_window`）。
+- **原因字段**：`avg_unavailable_reason` = `insufficient_window` \| `no_data` \| `null`；`spot_unavailable_reason` = `no_data` \| `null`。
+- **前端**：`null` → `EM_DASH`；偏离度/同比不计算、不触发预警。完整字段表见 `docs/pnl/average-balance-page-contract.md`。
 
 ### E. Endpoint / DTO
 
 | 用途 | Endpoint | basis | 备注 |
 | --- | --- | --- | --- |
 | 日均主读 | `GET /api/analysis/adb` | `analytical` | `result_kind=adb.daily`；`GS-AVERAGE-BALANCE-A` |
-| 分类对比 | `GET /api/analysis/adb/comparison` | `analytical` | 含 `sample_fill_method` |
+| 分类对比 | `GET /api/analysis/adb/comparison` | `analytical` | fail-visible totals；`coverage_days`；`sample_fill_method`；`avg_unavailable_reason` / `spot_unavailable_reason` |
 | 月度 | `GET /api/analysis/adb/monthly` | `analytical` | `GS-AVERAGE-BALANCE-MONTHLY-A` |
 | 覆盖 | `GET /api/analysis/adb/coverage` | `analytical` | 诊断，不批准 formal |
+| 深度分析 | `GET /api/analysis/adb/insights` | `analytical` | `result_kind=adb.insights`；含环比/同比归因、量价分解、异常检测、集中度；对比窗口缺数时显式 `available=false` |
 
 ### F. 指标映射
 
@@ -2697,6 +2764,10 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 | 区间日均总资产 | `MTR-ADB-001` | candidate / pending_confirmation |
 | 区间日均总负债 | `MTR-ADB-002` | candidate / pending_confirmation |
 | YTD/月度 NIM | `MTR-ADB-003` | candidate / pending_confirmation |
+| 区间规模变动归因 | `MTR-ADB-004` | candidate / pending_confirmation |
+| NIM 量价归因 | `MTR-ADB-005` | candidate / pending_confirmation |
+| 日度波动与异常检测 | `MTR-ADB-006` | candidate / pending_confirmation |
+| 结构集中度与迁移 | `MTR-ADB-007` | candidate / pending_confirmation |
 
 ### G. 正式真值边界
 

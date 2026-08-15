@@ -98,7 +98,8 @@ def test_calculation_p1_post_owner_execution_plan_routes_current_pending_rows() 
         "verification_gate",
         "status",
     ]
-    assert "yieldAnalysisAggregates.ts" in " ".join(p110["referenced_paths"])
+    assert "zqtzAdbAvgRollup.ts" in " ".join(p110["referenced_paths"])
+    assert "yieldAnalysisAggregates.ts" not in " ".join(p110["referenced_paths"])
 
 
 def test_calculation_p1_post_owner_execution_plan_classifies_captured_rows(

@@ -147,20 +147,22 @@ monthly_avg_market_value_cny = average(market_value_cny_daily)
 
 ## 9. 桥接归因
 
-PnL Bridge 结构：
+PnL Bridge 结构（互斥分解，2026-08 审计 PNL-01 后口径）：
 
 ```text
-期初脏市值
-+ carry
+explained_pnl =
+  carry
 + roll_down
 + treasury_curve
 + credit_spread
 + fx_translation
 + realized_trading
-+ unrealized_fv
 + manual_adjustment
-= 期末变化解释值
 ```
+
+- `unrealized_fv`（516 公允价值变动）不计入 `explained_pnl`：市场效应（骑乘/曲线/利差/汇兑）本身就是对 516 的解释项，二者同时相加会使 residual 在代数上恒等于市场效应之和的相反数。
+- `residual = actual_pnl - explained_pnl`，代数上即 516 − 市场效应，表示模型未能解释的公允价值变动；非 FVTPL 行两侧均为 0，残差自然闭合。
+- `unrealized_fv` 仍作为桥接行字段单独披露（期初/期末脏市值同理），只是不参与 `explained_pnl` 求和。
 
 FX translation base (2026-07-19)：
 - `fx_translation = exposure_native * (fx_mid_current - fx_mid_prior)`。

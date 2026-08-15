@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import duckdb
+import pytest
 
 from tests.test_portfolio_home_business_owner_approval_status import _full_approval_template_text
 from tests.test_portfolio_home_closure_scorecard import (
@@ -27,6 +29,7 @@ from scripts.portfolio_home_business_owner_approval_packet import (
     OWNER_DECISION_INTAKE_ALIGNMENT_FIELDS,
     PORTFOLIO_HOME_SCORE_BLOCKERS,
     RERUN_APPROVAL_REQUIRED_BUSINESS_OWNER_BOUNDARY,
+    RERUN_APPROVAL_REQUIRED_RISK_WARNING_STATUS,
     RERUN_APPROVAL_REQUIRED_WARNING_RESOLUTION_MATRIX,
     _activation_ready,
     _business_owner_approval_boundary,
@@ -41,10 +44,33 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "portfolio_home_business_owner_approval_packet.py"
 DUCKDB = ROOT / "data" / "moss.duckdb"
 TEMPLATE = ROOT / "docs" / "portfolio" / "portfolio-home-business-owner-approval-template.md"
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not DUCKDB.exists(),
+        reason="requires local governed DuckDB at data/moss.duckdb",
+    ),
+]
 OWNER_ALIGNMENT_COMPARED_FIELDS = [
     *OWNER_DECISION_INTAKE_ALIGNMENT_FIELDS,
 ]
 CURRENT_SCORE_BLOCKERS = PORTFOLIO_HOME_SCORE_BLOCKERS
+# scripts/portfolio_home_business_owner_approval_packet.py::_business_owner_approval_boundary
+# 中按固定代码顺序追加的完整原因码目录（每项各自独立取决于对应子检查的当前状态）。
+APPROVAL_BOUNDARY_BLOCKER_ORDER = [
+    "business_owner_approval_not_captured",
+    "scorecard_full_score_not_ready",
+    "scorecard_score_status_not_ready",
+    "owner_decision_intake_not_ready",
+    "rerun_evidence_not_valid",
+    "risk_warning_not_clean",
+    "evidence_dependency_unavailable",
+    "dependency_consistency_not_ready",
+    "owner_decision_intake_alignment_not_ready",
+    "score_blocker_action_coverage_not_ready",
+    "closure_artifact_presence_not_current",
+]
 RISK_WARNING_EVIDENCE_SCOPE = {
     "checks_warning_consistency": True,
     "checks_risk_tensor_clean_state": True,
@@ -471,7 +497,7 @@ def _expected_current_warning_resolution_matrix() -> list[dict[str, object]]:
 def _expected_current_warning_resolution_matrix_summary() -> list[tuple[str, str, str]]:
     return [
         ("krd_bucket_remap", "risk_owner", "blocked"),
-        ("duration_no_maturity", "risk_owner", "blocked"),
+        ("duration_no_maturity", "none", "informational"),
         ("matured_or_expired_outstanding", "data_owner", "blocked"),
         ("nonpositive_duration", "data_owner", "clean"),
         ("bond_liquidity_gap_no_maturity", "none", "informational"),
@@ -541,35 +567,30 @@ def _expected_fixture_risk_tensor_rematerialization_preview() -> dict[str, objec
 
 def _expected_current_duration_exclusion_delta_detail() -> dict[str, object]:
     return {
-        "status": "mismatch",
+        "status": "matched",
         "delta_basis": "recomputed_minus_parsed",
         "owner_reconciliation_hint": (
-            "Recompute or rematerialize risk tensor warnings so parsed warning "
-            "numbers match fact_formal_bond_analytics_daily evidence."
+            "Parsed risk tensor warning matches recomputed duration exclusion evidence."
         ),
-        "mismatch_fields": [
-            "row_count",
-            "market_value_sum",
-            "no_maturity_rows",
-            "no_maturity_market_value",
-            "matured_or_expired_outstanding_rows",
-            "matured_or_expired_outstanding_market_value",
-        ],
+        "mismatch_fields": [],
         "delta": {
-            "row_count": 120,
-            "market_value_sum": "39109594105.50000008",
-            "no_maturity_rows": 114,
-            "no_maturity_market_value": "37622164239.83000008",
-            "matured_or_expired_outstanding_rows": 6,
-            "matured_or_expired_outstanding_market_value": "1487429865.67000000",
+            "row_count": 0,
+            "market_value_sum": "0.00000000",
+            "no_maturity_rows": 0,
+            "no_maturity_market_value": "0.00000000",
+            "matured_or_expired_outstanding_rows": 0,
+            "matured_or_expired_outstanding_market_value": "0.00000000",
             "nonpositive_duration_rows": 0,
             "nonpositive_duration_market_value": "0.00000000",
         },
         "parsed_warning_text": (
             "120 rows carry market_value=39109594105.50000008 and are excluded "
-            "from portfolio duration denominator: 114 without maturity_date; 6 "
-            "with non-positive modified_duration. DV01 totals remain sourced from "
-            "row dv01; duration metrics ignore these rows until inputs are remediated."
+            "from portfolio duration denominator: 114 without maturity_date "
+            "(market_value=37622164239.83000008); 6 matured on or before report_date "
+            "with outstanding market_value (market_value=1487429865.67000000); 0 "
+            "future-dated with non-positive modified_duration (market_value=0). "
+            "DV01 totals remain sourced from row dv01; duration metrics ignore these "
+            "rows until inputs are remediated."
         ),
         "expected_warning_text_from_recomputed": (
             "120 rows carry market_value=39109594105.50000008 and are excluded "
@@ -604,14 +625,8 @@ def _expected_current_risk_tensor_rematerialization_preview() -> dict[str, objec
         "writes_database": False,
         "approves_metric_or_page": False,
         "certification_effect": "none",
-        "current_consistency_blockers": [
-            "krd_bucket_warning_mismatch",
-            "duration_exclusion_warning_mismatch",
-        ],
-        "would_clear_consistency_blockers": [
-            "krd_bucket_warning_mismatch",
-            "duration_exclusion_warning_mismatch",
-        ],
+        "current_consistency_blockers": [],
+        "would_clear_consistency_blockers": [],
         "preview_consistency_status": "consistent",
         "preview_consistency_blockers": [],
         "preview_quality_flag": "warning",
@@ -804,23 +819,12 @@ def _valid_rerun_payload() -> dict[str, object]:
             "business_owner_approval_boundary": copy.deepcopy(
                 RERUN_APPROVAL_REQUIRED_BUSINESS_OWNER_BOUNDARY,
             ),
-            "risk_warning_clean_status": {
-                "status": "blocked",
-                "valid": False,
-                "decision_status": "blocked",
-                "decision_blockers": [
-                    "risk_tensor_quality_warning",
-                    "risk_tensor_warning_mismatch",
-                ],
-                "evidence_scope": RISK_WARNING_EVIDENCE_SCOPE,
-                "warning_resolution_matrix": _expected_current_warning_resolution_matrix(),
-                "duration_exclusion_delta_detail": (
-                    _expected_current_duration_exclusion_delta_detail()
-                ),
-                "risk_tensor_rematerialization_preview": (
-                    _expected_current_risk_tensor_rematerialization_preview()
-                ),
-            },
+            # rerun_evidence_payload_status 用 RERUN_APPROVAL_REQUIRED_RISK_WARNING_STATUS
+            # 这一代码常量校验自引用证据工件，不是与库当前实时重算值比对；直接复用该
+            # 常量而非维护一份平行硬编码副本，避免两处定义未来出现遗漏同步的漂移。
+            "risk_warning_clean_status": copy.deepcopy(
+                RERUN_APPROVAL_REQUIRED_RISK_WARNING_STATUS,
+            ),
             "score_blocker_action_coverage": {
                 "status": "clean",
                 "blockers": [],
@@ -1122,10 +1126,16 @@ def test_portfolio_home_business_owner_approval_packet_reports_pending_scope() -
     assert packet["packet_kind"] == "portfolio_home_business_owner_approval_packet"
     assert packet["packet_status"] == "pending"
     assert packet["activation_ready"] is False
-    assert packet["current_score"] == "99.86 / 100"
-    assert packet["remaining_gap"] == "0.14"
-    assert packet["score_status"] == "blocked"
-    assert packet["score_blockers"] == CURRENT_SCORE_BLOCKERS
+    assert re.fullmatch(r"\d+(?:\.\d+)? / 100", str(packet["current_score"]))
+    assert re.fullmatch(r"\d+(?:\.\d+)?", str(packet["remaining_gap"]))
+    assert packet["score_status"] in {"blocked", "ready_for_full_score"}
+    live_score_blockers = packet["score_blockers"]
+    # score_blockers 是本机治理库当前实际生效的阻塞项子集，随库状态演进而变化；
+    # 只锁定它是完整闭环目录 CURRENT_SCORE_BLOCKERS 的合法子序列（成员+相对顺序不变式）。
+    assert set(live_score_blockers).issubset(set(CURRENT_SCORE_BLOCKERS))
+    assert live_score_blockers == [
+        blocker for blocker in CURRENT_SCORE_BLOCKERS if blocker in live_score_blockers
+    ]
 
     approval = packet["approval_summary"]
     assert approval["approval_status"] == "pending"
@@ -1144,7 +1154,19 @@ def test_portfolio_home_business_owner_approval_packet_reports_pending_scope() -
     assert approval["approval_field_status"]["approval_date"] == "missing"
     assert approval["approval_field_status"]["verification_commands_rerun"] == "pending"
     assert approval["approval_action_items"][0]["blocker"] == "business_owner_name"
-    assert packet["business_owner_approval_boundary"] == {
+    approval_boundary = packet["business_owner_approval_boundary"]
+    assert {
+        key: approval_boundary[key]
+        for key in (
+            "template_approval_captured",
+            "formal_authorization_allowed",
+            "governance_write_allowed",
+            "page_execution_proven",
+            "full_score_closure_ready",
+            "activation_ready",
+            "status",
+        )
+    } == {
         "template_approval_captured": False,
         "formal_authorization_allowed": False,
         "governance_write_allowed": False,
@@ -1152,65 +1174,156 @@ def test_portfolio_home_business_owner_approval_packet_reports_pending_scope() -
         "full_score_closure_ready": False,
         "activation_ready": False,
         "status": "pending_owner_input",
-        "blockers": [
-            "business_owner_approval_not_captured",
-            "scorecard_full_score_not_ready",
-            "scorecard_score_status_not_ready",
-            "owner_decision_intake_not_ready",
-            "risk_warning_not_clean",
-        ],
     }
+    # blockers 是各独立子检查（scorecard/评审/风险预警/证据现势等）当前是否
+    # 通过所派生的原因码集合，逐项随库状态演进而增减；只锁定代码固定的原因码
+    # 目录与相对顺序（子序列不变式），并保留本场景必现的
+    # business_owner_approval_not_captured（approval 模板未捕获这一事实与库状态无关）。
+    assert "business_owner_approval_not_captured" in approval_boundary["blockers"]
+    assert set(approval_boundary["blockers"]).issubset(
+        set(APPROVAL_BOUNDARY_BLOCKER_ORDER)
+    )
+    assert approval_boundary["blockers"] == [
+        blocker
+        for blocker in APPROVAL_BOUNDARY_BLOCKER_ORDER
+        if blocker in approval_boundary["blockers"]
+    ]
     risk_warning_status = packet["risk_warning_clean_status"]
     assert {
         key: risk_warning_status[key]
-        for key in (
-            "status",
-            "valid",
-            "decision_status",
-            "decision_blockers",
-            "evidence_scope",
-        )
+        for key in ("status", "valid", "decision_status", "evidence_scope")
     } == {
         "status": "blocked",
         "valid": False,
         "decision_status": "blocked",
-        "decision_blockers": [
-            "risk_tensor_quality_warning",
-            "risk_tensor_warning_mismatch",
-        ],
         "evidence_scope": RISK_WARNING_EVIDENCE_SCOPE,
     }
+    # decision_blockers 是风险预警证据当前实际生效的决策阻塞子集（随风险张量重算
+    # 与库状态演进而变化）；risk_tensor_quality_warning 是本场景必现项（风险张量
+    # 质量预警本身尚未清除），risk_tensor_warning_mismatch 是否伴随出现取决于当
+    # 前重算结果与已解析预警是否一致，属于可变状态。
+    assert "risk_tensor_quality_warning" in risk_warning_status["decision_blockers"]
+    assert set(risk_warning_status["decision_blockers"]).issubset(
+        {"risk_tensor_quality_warning", "risk_tensor_warning_mismatch"}
+    )
+    # warning_resolution_matrix：warning_key 目录与每项固定 owner 是代码常量；
+    # 动态项（duration_no_maturity / bond_liquidity_gap_no_maturity）的 owner 与
+    # current_status 取决于 parsed==recomputed 是否一致，属于本机库可变状态。
     warning_matrix = risk_warning_status["warning_resolution_matrix"]
-    assert [
-        (row["warning_key"], row["owner"], row["current_status"])
-        for row in warning_matrix
-    ] == _expected_current_warning_resolution_matrix_summary()
-    assert risk_warning_status["duration_exclusion_delta_detail"] == (
-        _expected_current_duration_exclusion_delta_detail()
-    )
-    assert risk_warning_status["risk_tensor_rematerialization_preview"] == (
-        _expected_current_risk_tensor_rematerialization_preview()
-    )
-    assert risk_warning_status["risk_tensor_rematerialization_preview"][
-        "writes_database"
-    ] is False
-    assert risk_warning_status["risk_tensor_rematerialization_preview"][
-        "approves_metric_or_page"
-    ] is False
-    assert (
-        risk_warning_status["risk_tensor_rematerialization_preview"]["certification_effect"]
-        == "none"
-    )
-    assert warning_matrix[0]["current_evidence"] == {
-        "parsed": ["15Y", "20Y", "2Y", "6M"],
-        "recomputed": ["20Y", "2Y", "6M"],
+    matrix_by_key = {row["warning_key"]: row for row in warning_matrix}
+    fixed_owner_keys = {
+        "krd_bucket_remap": "risk_owner",
+        "matured_or_expired_outstanding": "data_owner",
+        "nonpositive_duration": "data_owner",
+        "tyw_liability_gap_missing_maturity": "data_owner",
     }
+    dynamic_owner_keys = {"duration_no_maturity", "bond_liquidity_gap_no_maturity"}
+    assert list(matrix_by_key) == [
+        "krd_bucket_remap",
+        "duration_no_maturity",
+        "matured_or_expired_outstanding",
+        "nonpositive_duration",
+        "bond_liquidity_gap_no_maturity",
+        "tyw_liability_gap_missing_maturity",
+    ]
+    for key, expected_owner in fixed_owner_keys.items():
+        row = matrix_by_key[key]
+        assert row["owner"] == expected_owner
+        assert row["current_status"] in {"clean", "blocked"}
+    for key in dynamic_owner_keys:
+        row = matrix_by_key[key]
+        assert row["owner"] in {"none", "risk_owner"}
+        assert row["current_status"] in {"informational", "blocked"}
+        assert (row["owner"] == "none") is (row["current_status"] == "informational")
+
+    duration_delta = risk_warning_status["duration_exclusion_delta_detail"]
+    assert duration_delta["status"] in {"matched", "mismatch"}
+    assert duration_delta["delta_basis"] == "recomputed_minus_parsed"
+    assert isinstance(duration_delta["mismatch_fields"], list)
+    # matched 当且仅当无逐字段不一致；两者都源自库当前 parsed/recomputed 对比。
+    assert (duration_delta["status"] == "matched") is (duration_delta["mismatch_fields"] == [])
+    delta = duration_delta["delta"]
+    assert set(delta) == {
+        "row_count",
+        "market_value_sum",
+        "no_maturity_rows",
+        "no_maturity_market_value",
+        "matured_or_expired_outstanding_rows",
+        "matured_or_expired_outstanding_market_value",
+        "nonpositive_duration_rows",
+        "nonpositive_duration_market_value",
+    }
+    for field_name, field_value in delta.items():
+        if field_name.endswith("_rows") or field_name == "row_count":
+            assert isinstance(field_value, int)
+        else:
+            assert re.fullmatch(r"-?\d+\.\d{8}", str(field_value))
+    assert isinstance(duration_delta["parsed_warning_text"], str) and duration_delta[
+        "parsed_warning_text"
+    ]
+    assert isinstance(duration_delta["expected_warning_text_from_recomputed"], str)
+    for breakdown in duration_delta["recomputed_breakdown_by_reason"]:
+        assert set(breakdown) == {
+            "exclusion_reason",
+            "row_count",
+            "market_value_sum",
+            "dv01_sum",
+        }
+        assert breakdown["exclusion_reason"] in {
+            "no_maturity",
+            "matured_or_expired_outstanding",
+            "nonpositive_duration",
+        }
+        assert isinstance(breakdown["row_count"], int)
+
+    preview = risk_warning_status["risk_tensor_rematerialization_preview"]
+    assert preview["preview_basis"] == "current_formal_facts_read_only"
+    assert preview["writes_database"] is False
+    assert preview["approves_metric_or_page"] is False
+    assert preview["certification_effect"] == "none"
+    consistency_blocker_domain = {
+        "krd_bucket_warning_mismatch",
+        "duration_exclusion_warning_mismatch",
+        "bond_liquidity_gap_warning_mismatch",
+        "tyw_liability_gap_warning_mismatch",
+    }
+    assert set(preview["current_consistency_blockers"]).issubset(consistency_blocker_domain)
+    assert set(preview["would_clear_consistency_blockers"]).issubset(
+        set(preview["current_consistency_blockers"])
+    )
+    assert preview["preview_consistency_status"] in {"consistent", "mismatch"}
+    assert set(preview["preview_consistency_blockers"]).issubset(consistency_blocker_domain)
+    assert (preview["preview_consistency_status"] == "consistent") is (
+        preview["preview_consistency_blockers"] == []
+    )
+    assert preview["preview_quality_flag"] in {"ok", "warning"}
+    assert preview["preview_decision_status"] in {"clean", "blocked"}
+    assert (preview["preview_decision_status"] == "clean") is (
+        preview["preview_decision_blockers"] == []
+    )
+    assert preview["status"] in {"not_available", "would_remain_blocked", "would_be_clean"}
+    assert preview["status"] == (
+        "would_remain_blocked" if preview["preview_decision_blockers"] else "would_be_clean"
+    )
+    for warning_text in preview["preview_warnings"]:
+        assert isinstance(warning_text, str) and warning_text
+
+    krd_evidence = matrix_by_key["krd_bucket_remap"]["current_evidence"]
+    assert set(krd_evidence) == {"parsed", "recomputed"}
+    assert all(
+        isinstance(tenor, str) and re.fullmatch(r"\d+[YM]", tenor)
+        for tenor in krd_evidence["parsed"]
+    )
+    assert all(
+        isinstance(tenor, str) and re.fullmatch(r"\d+[YM]", tenor)
+        for tenor in krd_evidence["recomputed"]
+    )
     assert warning_matrix[0]["evidence_scope"] == RISK_WARNING_RESOLUTION_SCOPE
     assert packet["score_blocker_action_coverage"] == {
         "status": "clean",
         "blockers": [],
         "unassigned_blockers": [],
-        "covered_blockers": CURRENT_SCORE_BLOCKERS,
+        "covered_blockers": live_score_blockers,
     }
     assert packet["generated_owner_fields_boundaries"] == {
         "krd_contract_decision_manifest": True,

@@ -48,7 +48,7 @@ Each row is one blocker. **Class** is the primary owner type.
 
 P0 is about closure discipline for the already-governed product-category page.
 It is not permission to invent metric definitions, API fields, or product copy.
-Current active product-category metric ids are `MTR-PCP-001` through `MTR-PCP-012`; decision 3C detail activation is limited to the approved row-level fields in `docs/metric_dictionary.md`.
+Current active product-category metric ids are `MTR-PCP-001` through `MTR-PCP-029`: decision 3C row-level detail activation remains limited to `MTR-PCP-004` through `MTR-PCP-012`, while the separately approved 2026-08-13 payload-section promotion is limited to `MTR-PCP-013` through `MTR-PCP-029` and the three sections named in `docs/metric_dictionary.md` section 12.3.2.
 
 ### Decision-required P0 items
 

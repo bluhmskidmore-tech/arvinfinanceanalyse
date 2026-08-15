@@ -1,10 +1,10 @@
 # Tushare News Backup Timer Preflight Status
 
-Status timestamp: 2026-06-07
+Status timestamp: 2026-08-12
 
-External timer is not enabled. Do not enable the timer until the `pre-enable`
-preflight returns `pass`; the current run is still blocked by missing homepage
-page evidence artifacts.
+External timer is not enabled. The `pre-enable` preflight now returns `pass`;
+create the external timer outside this read-only packet and collect first
+scheduled-run evidence.
 
 This status is a handoff summary of the read-only preflight output. It does not
 call Tushare, write DuckDB, enqueue the actor, create a scheduler job, or open
@@ -39,7 +39,7 @@ Machine-readable JSON `ops_gap`:
 - `ops_gap.required_boundary_confirmations` lists the checklist boundary rows
   that must be marked `yes` with evidence before timer creation.
 
-Ready to create timer: `false`
+Ready to create timer: `true`
 
 Markdown handoff command:
 
@@ -79,23 +79,18 @@ python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --form
 
 Combined verdict: `blocked`
 
-Blocking stages: `pre-enable`, `post-enable`
+Blocking stages: `post-enable`
 
-Pre-enable summary: `9 pass / 2 blocked`
+Pre-enable summary: `11 pass / 0 blocked`
 
-Post-enable summary: `9 pass / 4 blocked`
+Post-enable summary: `11 pass / 2 blocked`
 
 ## Operator Fill Order
 
-1. Fill owner fields first in
-   `docs/templates/tushare_news_backup_refresh_go_live_checklist.md`.
-2. Confirm boundary rows with evidence, without exposing secrets.
-3. Complete the timer enablement packet in
-   `docs/templates/tushare_news_backup_timer_enablement_packet.md`.
-4. Record page acceptance sign-off for the attached homepage evidence.
-5. Set Enable timer to yes after pre-enable evidence is accepted, then rerun
-   `--stage pre-enable` before creating the external timer.
-6. After the first scheduled run, attach timer evidence and rerun
+1. Pre-enable gates are complete; no immediate pre-enable actions remain.
+2. Create the external timer outside this packet using the operations-owned
+   scheduler configuration.
+3. After the first scheduled run, attach timer evidence and rerun
    `--stage post-enable`.
 
 ## Activation Sequence
@@ -105,7 +100,8 @@ Immediate stage: `pre-enable`
 Post-enable inputs remain deferred until `pre-enable` returns `pass` and the
 first scheduled run finishes.
 
-Do not create the external timer while `pre-enable` is blocked.
+`pre-enable` is no longer blocked. Create the external timer outside this
+packet and collect first-run evidence.
 
 ## Required Boundary Confirmations
 
@@ -162,19 +158,17 @@ Command:
 python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable
 ```
 
-Current verdict: `blocked`
+Current verdict: `pass`
 
 Current blocking items:
 
-- `page_artifacts_exist`
-- `page_evidence_json_confirms_read_only_fallback`
+- `none`
 
 Current `next_actions`:
 
 | Gate | Path | Action |
 | --- | --- | --- |
-| `page_artifacts_exist` | `frontend/.codex-tmp/tushare-news-backup-home-page-evidence-2026-06-03.json` | Attach page screenshot and browser evidence JSON. |
-| `page_evidence_json_confirms_read_only_fallback` | `frontend/.codex-tmp/tushare-news-backup-home-page-evidence-2026-06-03.json` | Regenerate browser evidence JSON showing landed-data read behavior and no reserved write request. |
+| `none` | `none` | No action required. |
 
 ## Post-Enable Status
 
@@ -190,8 +184,6 @@ Current blocking items:
 
 - `timer_evidence_filled`
 - `post_enable_evidence_confirms_timer_enabled`
-- `page_artifacts_exist`
-- `page_evidence_json_confirms_read_only_fallback`
 
 Additional post-enable `next_actions`:
 
@@ -211,6 +203,8 @@ These gates currently pass in both stages:
 - `boundary_confirmation_filled`
 - `timer_enablement_packet_filled`
 - `refresh_and_page_evidence_attached`
+- `page_artifacts_exist`
+- `page_evidence_json_confirms_read_only_fallback`
 - `page_acceptance_signoff_filled`
 - `enable_timer_decision_yes`
 

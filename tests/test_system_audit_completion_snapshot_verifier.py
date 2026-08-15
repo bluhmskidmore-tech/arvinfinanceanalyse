@@ -197,7 +197,7 @@ def test_verify_completion_snapshot_fails_closed_for_missing_security_outputs() 
     assert result["calculation_prework_p1_count"] == 8
     assert result["calculation_packet_p1_count"] == 8
     assert result["calculation_packet_execution_anchor_ready"] is True
-    assert result["calculation_packet_execution_referenced_path_count"] == 18
+    assert result["calculation_packet_execution_referenced_path_count"] == 16
     assert result["calculation_packet_missing_execution_referenced_path_count"] == 0
     assert result["calculation_owner_meeting_checklist_count"] == 8
     assert result["calculation_owner_meeting_material_ready"] is True

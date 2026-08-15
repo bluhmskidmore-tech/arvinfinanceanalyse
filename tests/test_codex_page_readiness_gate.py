@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 import scripts.codex_page_readiness as readiness_module
 from scripts.codex_page_readiness import (
     _balance_movement_read_model_freshness_gate,
@@ -25,8 +27,34 @@ from scripts.emit_bond_analysis_governance_record import (
     emit_record as emit_bond_analysis_governance_record,
 )
 from scripts.mcp.moss_project_mcp import product_page_trace_bundles
+from tests.readiness_input_snapshot import build_readiness_input_snapshot_env
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture(scope="module", autouse=True)
+def readiness_input_snapshot_env(tmp_path_factory):
+    """Pin readiness date sampling and governance streams to a one-shot snapshot.
+
+    build_page_readiness_report / build_all_page_readiness_report and the
+    powershell/CLI subprocess runs below sample the shared real DuckDB
+    (data/moss.duckdb) with no lock retry. Concurrent writers (dev worker
+    materialize jobs, other sessions' rebuilds) hold the database read-write,
+    which flips catalog_date_evidence to incomplete and turns static-pass
+    pages into blocked. The snapshot (tests/readiness_input_snapshot.py, same
+    mechanism as tests/test_native_dev_scripts.py) mirrors a genuine catalog
+    regression, so the assertions keep their meaning. Overriding os.environ
+    covers both in-process report builds (env resolved at call time) and
+    subprocesses that copy os.environ; tests that set MOSS_DUCKDB_PATH /
+    MOSS_GOVERNANCE_PATH themselves still take precedence.
+    """
+    env_overrides = build_readiness_input_snapshot_env(
+        tmp_path_factory.mktemp("readiness-input-snapshot")
+    )
+    with pytest.MonkeyPatch.context() as module_env:
+        for name, value in env_overrides.items():
+            module_env.setenv(name, value)
+        yield env_overrides
 
 
 def _page_readiness_powershell_env() -> dict[str, str]:

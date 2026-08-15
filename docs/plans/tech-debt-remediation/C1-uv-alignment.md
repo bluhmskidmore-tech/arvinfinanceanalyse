@@ -1,7 +1,14 @@
 # C1 依赖安装与 lock 一致化：uv sync --frozen 切换方案
 
 - 登记日期：2026-08-12
-- 状态：调查完成、方案已备。**本任务不改 ci.yml、不改 backend/pyproject.toml、不运行任何安装命令**（uv sync / pip install / npm install 零执行）。CI 片段与 pyproject 片段供对应负责人应用。
+- **状态更新 2026-08-13：§2 的 CI 切换方案与 §3 的 vendor extra 建议已落地。** 五个安装后端依赖的 job
+  （backend / agent-eval-replay / backend-full-pytest / mypy-ratchet / api-contract）与 docker-compose
+  的 api / worker 已全部改为从 `backend/uv.lock` 冻结安装；`backend/pyproject.toml` 新增 `toolkit`
+  与 `vendor` 两个 extra 并显式约束 `starlette`；`backend/uv.lock` 由 82 → 106 包（纯新增，零版本变更）。
+  落地实现与 §2.2 有一处差异：**没有给每个 run 步骤加 `uv run --project backend --` 前缀**，改为在安装
+  步骤把 `backend/.venv/bin` 写进 `$GITHUB_PATH`，后续裸 `python` 自动命中该环境——消除了 §2.5 中
+  「某个步骤漏加前缀 → ModuleNotFoundError」这条风险。
+- 原始状态：调查完成、方案已备。**本任务不改 ci.yml、不改 backend/pyproject.toml、不运行任何安装命令**（uv sync / pip install / npm install 零执行）。CI 片段与 pyproject 片段供对应负责人应用。
 - 本任务唯一代码编辑：`frontend/package.json` 新增 `engines` 字段（见 §5）。
 
 ## 结论
@@ -214,6 +221,25 @@ vendor = [
 - 可选进阶（owner 决策项，不推荐现在做）：私有 wheel 索引 + `[tool.uv.sources]` 指向，把终端 SDK 纳入 lock 体系。
 
 **3. 不建议做的**：把 tushare/akshare 提为主依赖（CI/开发安装面白白扩大）；在代码层为 vendor 加模块级 import 守卫重构（现有惰性 import 已是正确形态）。
+
+## 三点五、numpy ABI 世代（owner 决策项，2026-08-13 追加，**未擅自收紧**）
+
+现状：`numpy>=1.26,<3` 横跨 1.x 与 2.x 两个不兼容 C-ABI 世代，且下游是 `arch` / `statsmodels` /
+`scipy` / `pandas` 这套编译型科学计算栈——对债券估值/久期/GARCH 这类数值链路，静默跨代跳变
+有改变数值结果的可能。
+
+已被 lock 强制缓解的部分：切到 `uv sync --frozen` 之后，CI 与容器装的都是 lock 钉死的
+`numpy 2.4.4`，日常不再漂移。**剩余敞口只在 `uv lock --upgrade` 那一刻**——届时 numpy 可在
+范围内跨到任意 2.x/未来版本，而目前没有数值回归门禁把关。
+
+之所以不在本次收紧：
+
+1. 收窄到单一世代（如 `>=2.4,<3`）可能立刻让解析在某些 marker 分层上失败，属于高风险单边操作；
+2. `tests/test_backend_dependency_contract.py` 显式断言字符串 `"numpy>=1.26,<3"`，改范围要同步
+   改红线测试，应与业务负责人一次性签核；
+3. 真正的护栏不是版本号而是数值回归基线——建议先补「关键估值输出的黄金样本比对」，再谈收窄。
+
+需要决策：(a) 是否收窄到 `>=2.4,<3`；(b) `uv lock --upgrade` 是否强制附带数值回归比对。
 
 ## 四、Python 版本建议（owner 决策项）
 

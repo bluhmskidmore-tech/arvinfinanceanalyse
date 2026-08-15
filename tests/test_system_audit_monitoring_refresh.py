@@ -4,6 +4,9 @@ import json
 import os
 from pathlib import Path
 
+import pytest
+
+import scripts.refresh_local_secret_hygiene_snapshot as secret_refresh_module
 import scripts.refresh_system_audit_monitoring as monitor
 import scripts.system_audit_pulse as pulse
 
@@ -31,6 +34,37 @@ EXPECTED_PULSE_DRIFT_ERRORS = [
     "strict_gate_matrix.strict_pass_gate_count expected 0, got 1",
     "strict_gate_matrix.unexpected_gate_count expected 0, got 1",
 ]
+
+
+@pytest.fixture(autouse=True)
+def _stub_clean_secret_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
+    """将 config/.env 边界探测固定为干净 checkout 状态。
+
+    上述期望值(strict_pass_gate_count == 1、5 条 pulse drift)编码的是不存在本地
+    ignored config/.env 的 checkout;若测试机工作区带有该文件,实时 git 探测会把
+    local-secret-hygiene gate 翻转为按预期阻塞,导致断言随机器环境漂移。
+    """
+    monkeypatch.setattr(
+        secret_refresh_module,
+        "_boundary_checks",
+        lambda: {
+            "config_env_exists": False,
+            "git_check_ignore": {
+                "command": "git check-ignore -v config/.env",
+                "exit_code": 0,
+                "matched_rule": ".gitignore:4:config/.env",
+            },
+            "git_ls_files": {
+                "command": "git ls-files -- config/.env",
+                "exit_code": 0,
+                "tracked_path_count": 0,
+            },
+            "git_status_ignored": {
+                "command": "git status --ignored --short -- config/.env",
+                "result": "",
+            },
+        },
+    )
 
 
 def test_write_json_preserves_existing_file_when_replace_fails(
@@ -133,7 +167,7 @@ def test_system_audit_monitoring_refresh_keeps_all_boundaries() -> None:
         report["completion_verification"][
             "calculation_packet_execution_referenced_path_count"
         ]
-        == 18
+        == 16
     )
     assert (
         report["completion_verification"][
@@ -520,7 +554,7 @@ def test_system_audit_monitoring_refresh_cli_writes_monitor_report_only(
         payload["completion_verification"][
             "calculation_packet_execution_referenced_path_count"
         ]
-        == 18
+        == 16
     )
     assert (
         payload["completion_verification"][

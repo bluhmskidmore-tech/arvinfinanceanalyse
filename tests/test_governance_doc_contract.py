@@ -670,7 +670,8 @@ def test_product_category_first_stage_field_freeze_is_explicitly_bounded():
 
     for rule in (
         "This is a page-level field freeze for detail semantics. It is also the source field set for the active 2026-05-11 decision 3C detail metrics in `docs/metric_dictionary.md`.",
-        "do not invent detail `metric_id` numbers beyond active `MTR-PCP-004` through `MTR-PCP-012`",
+        "do not invent row-level detail `metric_id` numbers beyond active `MTR-PCP-004` through `MTR-PCP-012`",
+        "payload-section metrics `MTR-PCP-013` through `MTR-PCP-029` are governed separately below",
         "do not treat liability sign normalization as backend truth",
         "do not use `available_views` to add first-screen controls",
         "do not recompute `grand_total` in frontend",
@@ -687,7 +688,8 @@ def test_product_category_p0_closure_gate_stays_decision_safe():
 
     for required in (
         "P0 is a closure gate, not a new feature lane.",
-        "P0-approved active formal metric ids are currently `MTR-PCP-001` through `MTR-PCP-012`.",
+        "Active formal metric ids are currently `MTR-PCP-001` through `MTR-PCP-029`",
+        "`013` through `029` were added by the separately approved 2026-08-13",
         "detail `metric_id` expansion for decision 3C is implemented only for the approved row fields",
         "standalone outward `as_of_date` is a no-field product/API decision for this page",
         "do not add additional `MTR-*` rows for product-category fields from sample evidence alone; use a new approved matrix / dictionary / sample / test bundle",
@@ -905,9 +907,10 @@ def test_product_category_p0_metric_approval_is_consistent_across_docs():
     readiness = _read_pnl_doc("product-category-development-data-readiness.md")
 
     for doc in (metric_dictionary, page_contracts):
-        for metric_id in (f"MTR-PCP-{index:03d}" for index in range(1, 13)):
+        for metric_id in (f"MTR-PCP-{index:03d}" for index in range(1, 30)):
             assert metric_id in doc
-    assert "`MTR-PCP-001` through `MTR-PCP-012`" in readiness
+    assert "P0 keeps `MTR-PCP-001` through `MTR-PCP-029` active" in readiness
+    assert "`MTR-PCP-013` through `MTR-PCP-029` are separately approved payload-section metrics" in readiness
 
     for stale_statement in (
         "formal product-category `metric_id` approval is still missing",
@@ -923,7 +926,7 @@ def test_product_category_p0_metric_approval_is_consistent_across_docs():
         assert stale_statement not in "\n".join((metric_dictionary, page_contracts, readiness))
 
     for required in (
-        "P0 keeps `MTR-PCP-001` through `MTR-PCP-012` active; decision 3C detail expansion is limited to the approved row-level fields.",
+        "P0 keeps `MTR-PCP-001` through `MTR-PCP-029` active; decision 3C detail expansion remains limited to the approved `MTR-PCP-004` through `MTR-PCP-012` row-level fields, while `MTR-PCP-013` through `MTR-PCP-029` are separately approved payload-section metrics.",
         "Decision 3C detail metric expansion is dictionary-active for `MTR-PCP-004` through `MTR-PCP-012`; these rows bind only approved `result.rows[]` detail fields and do not promote dimensions or scenario payloads to formal metrics.",
         "Keep `GS-PROD-CAT-PNL-A` bound to the approved product-category `MTR-PCP-*` set (`001`~`012` row/headline, plus `013`~`029` payload-section spread and CLN-drag metrics from §12.3.2) and require a new matrix / dictionary / sample / test bundle before adding any further detail rows.",
     ):

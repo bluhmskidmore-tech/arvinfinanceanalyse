@@ -1,5 +1,18 @@
 # 2026-07-19 性能优化实测验证报告
 
+> **编者注（2026-08-13 追加，非原文）：本报告正文中的「鉴权」按后续核实实指 RBAC 授权判定。**
+>
+> 涉及「测量环境」的「鉴权头」、结果 A 的「鉴权 allow 决策进程内 TTL 缓存」、「结果 C：鉴权路径」
+> 以及结论第 2 条的「鉴权 TTL 缓存」。该词混淆了认证与授权：这里被缓存和被测量的，
+> 全部是 `backend/app/security/auth_context.py::ensure_user_allowed` 的 `resource`/`action`/`scope`
+> RBAC **授权**判定，不是任何身份校验结果。本仓库**有授权、没有认证**——报告里的
+> `X-User-Id` / `X-User-Role` 头未经任何校验，只是被当作身份取值来源。
+>
+> 正文措辞与全部测量数字保持 2026-07-19 成文原貌，不据此改写：本报告记录的是当时测到了什么、
+> 当时怎么称呼它，措辞本身也是记录的一部分。权威结论见
+> [README.md](../../README.md) 的「关键约束」一节与
+> [SYSTEM_STACK_SPEC_FOR_CODEX.md](../SYSTEM_STACK_SPEC_FOR_CODEX.md) 第 1 节的说明块。
+
 验证对象：分支 `codex/V1` 上的三个性能提交
 `0cb23b1ab`（API 开销 + vendor 体积）、`c7e0e017c`（Market Data 预热延迟 + pnlCore mock 隔离）、`94030ef8c`（热路径 TTL 缓存 + 并行测试 + 渲染 memo）。
 

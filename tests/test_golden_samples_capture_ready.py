@@ -12,6 +12,9 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.app.core_finance.config.product_category_contract import (
+    product_category_cache_version,
+)
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
@@ -1850,6 +1853,13 @@ def _validate_balance_overview(actual: dict[str, Any], expected: dict[str, Any])
             ("result_meta", "vendor_status"),
             ("result_meta", "fallback_mode"),
             ("result_meta", "scenario_flag"),
+            ("result_meta", "requested_report_date"),
+            ("result_meta", "resolved_report_date"),
+            ("result_meta", "as_of_date"),
+            ("result_meta", "date_basis"),
+            ("result_meta", "filters_applied"),
+            ("result_meta", "tables_used"),
+            ("result_meta", "evidence_rows"),
             ("result", "report_date"),
             ("result", "position_scope"),
             ("result", "currency_basis"),
@@ -1882,6 +1892,13 @@ def _validate_balance_workbook(actual: dict[str, Any], expected: dict[str, Any])
             ("result_meta", "vendor_status"),
             ("result_meta", "fallback_mode"),
             ("result_meta", "scenario_flag"),
+            ("result_meta", "requested_report_date"),
+            ("result_meta", "resolved_report_date"),
+            ("result_meta", "as_of_date"),
+            ("result_meta", "date_basis"),
+            ("result_meta", "filters_applied"),
+            ("result_meta", "tables_used"),
+            ("result_meta", "evidence_rows"),
             ("result", "report_date"),
             ("result", "position_scope"),
             ("result", "currency_basis"),
@@ -1982,8 +1999,11 @@ def _validate_product_category_scenario(
     assert actual["result_meta"]["result_kind"] == "product_category_pnl.detail"
     assert actual["result_meta"]["formal_use_allowed"] is False
     assert actual["result_meta"]["vendor_version"] == "vv_none"
-    assert actual["result_meta"]["rule_version"] == "rv_product_category_pnl_v1"
-    assert actual["result_meta"]["cache_version"] == "cv_product_category_pnl_v1"
+    assert actual["result_meta"]["rule_version"] == "rv_product_category_pnl_v2"
+    assert actual["result_meta"]["cache_version"] == product_category_cache_version(
+        "scenario",
+        scenario_rate_pct=actual["result"]["scenario_rate_pct"],
+    )
     assert actual["result_meta"]["quality_flag"] == "ok"
     assert actual["result_meta"]["vendor_status"] == "ok"
     assert actual["result_meta"]["fallback_mode"] == "none"
@@ -2017,6 +2037,15 @@ def _validate_product_category_scenario(
 
     for total_key in ("asset_total", "liability_total", "grand_total"):
         assert actual["result"][total_key] == scenario_row_map[total_key]
+
+    for unchanged_section in (
+        "interest_spread",
+        "interest_earning_spread",
+        "liability_cost_decomposition",
+    ):
+        assert actual["result"][unchanged_section] == baseline_expected["result"][
+            unchanged_section
+        ], unchanged_section
 
     assert scenario_row_map["bond_investment"]["children"] == baseline_row_map["bond_investment"]["children"]
     assert Decimal(str(scenario_row_map["bond_tpl"]["cny_ftp"])) != Decimal(str(baseline_row_map["bond_tpl"]["cny_ftp"]))

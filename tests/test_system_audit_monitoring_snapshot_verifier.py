@@ -326,7 +326,7 @@ def test_verify_monitoring_snapshot_fails_when_completion_packet_anchor_summary_
     ) in result["errors"]
     assert (
         "monitoring completion calculation_packet_execution_referenced_path_count "
-        "expected 18, got 17"
+        "expected 16, got 17"
     ) in result["errors"]
     assert (
         "monitoring completion "

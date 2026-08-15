@@ -314,7 +314,7 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
     assert "API contract plus frontend test" in first_priority_packet
     assert "`captures_owner_decisions=false`" in first_priority_packet
     assert "`chooses_or_approves_conventions=false`" in first_priority_packet
-    assert "yieldAnalysisAggregates.ts" in first_priority_packet
+    assert "yieldAnalysisAggregates.ts" not in first_priority_packet
     assert "zqtzAdbAvgRollup.ts" in first_priority_packet
     assert "CreditSpreadView.tsx" in first_priority_packet
     assert "rating/tenor bucket-boundary regression remains pending" in (

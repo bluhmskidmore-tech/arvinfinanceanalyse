@@ -110,7 +110,10 @@ def test_calculation_p1_owner_decision_packet_prepares_first_blocker_without_app
         "verification_gate",
         "status",
     ]
-    assert "yieldAnalysisAggregates.ts" in " ".join(
+    assert "zqtzAdbAvgRollup.ts" in " ".join(
+        p110["post_decision_execution_slice"]["referenced_paths"]
+    )
+    assert "yieldAnalysisAggregates.ts" not in " ".join(
         p110["post_decision_execution_slice"]["referenced_paths"]
     )
 
@@ -183,7 +186,8 @@ def test_calculation_p1_owner_decision_packet_cli_writes_markdown(tmp_path: Path
     assert "`invalid_selected_decision_count=0`" in text
     assert "treat proposed review defaults as approved rules" in text
     assert "BalanceMovementAnalysisPage.tsx" not in text
-    assert "yieldAnalysisAggregates.ts" in text
+    assert "yieldAnalysisAggregates.ts" not in text
+    assert "zqtzAdbAvgRollup.ts" in text
     assert "CreditSpreadView.tsx" in text
     assert "authorize Ledger PnL `--write`" in text
 

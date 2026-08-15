@@ -107,7 +107,7 @@ The workflow result uses the existing Workbench panels:
 - `Mapped Intent Results` shows each child intent's answer, `result_kind`, source tables, and evidence row count.
 - The right-side evidence and `result_meta` panels continue to show workflow-level governance state, including `formal_use_allowed=false`.
 
-Normal free-text questions in Agent Workbench continue through the managed `/api/agent/runs` path. Only the four financial workflow shortcut buttons use the local `/api/agent/query` execute-mode path.
+Normal free-text questions are routed conditionally (`AgentWorkbenchPage.tsx` `executeOrdinaryConversation`): questions recognized as local open chat (`isLocalOpenChatQuestion`), questions matching a local analysis intent pattern (`getLocalAgentQueryIntent`), plain analysis-conversation follow-ups (`shouldUseLocalAnalysisConversation`), and any question sent while the conversation mode is latched to `local_sync` all execute synchronously through the local `POST /api/agent/query` path. Other free-text questions go through the managed `/api/agent/runs` path; when a managed run fails because the Hermes provider is unavailable, the Workbench falls back to the local sync path and latches the conversation mode to `local_sync`. Beyond the four financial workflow shortcut buttons, the research shortcuts and suggested-action executions also call the local `POST /api/agent/query` path.
 
 ## Next Phases
 

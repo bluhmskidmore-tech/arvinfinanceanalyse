@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.portfolio_home_business_owner_approval_packet import PORTFOLIO_HOME_SCORE_BLOCKERS
-
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKET = ROOT / "docs" / "portfolio" / "portfolio-home-full-closure-sign-off-packet.md"
@@ -14,7 +12,14 @@ SNAPSHOT = ROOT / "docs" / "portfolio" / "portfolio-home-evidence-snapshot.json"
 OPTION_B_NOTE = ROOT / "docs" / "portfolio" / "portfolio-home-option-b-execution-note.md"
 KRD_OWNER_SUMMARY = "docs/portfolio/krd-contract-decision/2026-05-31/owner_summary.md"
 MATURITY_OWNER_SUMMARY = "docs/portfolio/maturity-remediation/2026-05-31/owner_summary.md"
-CURRENT_SCORE_BLOCKERS = tuple(PORTFOLIO_HOME_SCORE_BLOCKERS)
+CURRENT_SCORE_BLOCKERS = (
+    "risk_tensor_quality_warning",
+    "krd_contract_decision_required",
+    "bond_matured_outstanding_reconciliation_required",
+    "tyw_liability_maturity_date_remediation_required",
+    "business_owner_approval",
+    "owner_decision_intake_blocked",
+)
 CURRENT_SCORE_BLOCKERS_MARKDOWN = ", ".join(
     f"`{blocker}`" for blocker in CURRENT_SCORE_BLOCKERS
 )
@@ -49,8 +54,8 @@ def test_portfolio_home_signoff_packet_documents_real_data_blockers() -> None:
 
     for required in (
         "quality_flag=warning",
-        "portfolio_dv01=105628442.39590558",
-        "krd_sum=105628442.39590558",
+        "portfolio_dv01=106224411.96420395",
+        "krd_sum=106224411.96420395",
         "Non-standard tenor buckets remapped to nearest KRD bucket: 20Y, 2Y, 6M",
         "missing_maturity_rows=114",
         "missing_maturity_market_value=37622164239.83000008",
@@ -64,11 +69,11 @@ def test_portfolio_home_signoff_packet_documents_real_data_blockers() -> None:
         "6M: all_rows=282, nonzero_dv01_rows=160, all_market_value=62550571662.68000010",
         "20Y: all_rows=39, nonzero_dv01_rows=39, all_market_value=22035562498.29000004",
         "200004, dv01=8246445.66600614, tenor_bucket=20Y, mapped_to=krd_30y",
-        "Risk warning consistency: `warning_consistency_status=mismatch`",
+        "Risk warning consistency: `warning_consistency_status=consistent`",
         "Risk warning decision status: `decision_status=blocked`",
-        "consistency_blockers=duration_exclusion_warning_mismatch",
-        "decision_blockers=risk_tensor_quality_warning, risk_tensor_warning_mismatch",
-        "duration_exclusion parsed row_count=120, market_value_sum=38318400505.50000008",
+        "consistency_blockers=none",
+        "decision_blockers=risk_tensor_quality_warning",
+        "duration_exclusion parsed row_count=120, market_value_sum=39109594105.50000008",
         "duration_exclusion recomputed row_count=120, market_value_sum=39109594105.50000008",
         "Bond matured-outstanding sample, order by market_value desc:",
         "J12006190202, maturity_date=2023-06-19, days_past_maturity=1077, market_value=463596800.00000000",
@@ -161,7 +166,7 @@ def test_portfolio_home_signoff_packet_lists_full_score_gates_without_approval()
     assert "Owner handoff Markdown summary states export-current system fields prove package freshness only; they do not approve KRD decisions, maturity remediation, signed exclusions, or business-owner closure." in text
     assert "Owner action packet carries KRD `note_gap_counts`, maturity `comment_gap_counts`, and `exact_bucket_schema_evidence` into the owner packets without changing approval status." in text
     assert "Owner action packet carries `owner_decision_intake_alignment.status=consistent` into the owner packets so owners can see activation evidence alignment before signing." in text
-    assert "Owner action packet assigns `risk_tensor_warning_mismatch` to the risk-owner packet, `duration_exclusion_warning_mismatch` to the data-owner packet, and `owner_decision_intake_blocked` to the business-owner packet so no score blocker is left unowned." in text
+    assert "Owner action packet assigns `risk_tensor_quality_warning` and `krd_contract_decision_required` to the risk-owner packet, the maturity and matured-outstanding blockers to the data-owner packet, and `owner_decision_intake_blocked` to the business-owner packet so no score blocker is left unowned." in text
     assert "Owner action packet strict clean gate exits non-zero while any owner packet remains blocked." in text
     assert "Business owner approval packet reports `packet_status=pending`, `activation_ready=false`, and `approval_action_item_count=19`." in text
     assert "Business owner approval packet lists sign-off, audit, evidence snapshot, owner action, KRD decision export, maturity remediation export, scorecard strict gate, and approval strict gate dependencies." in text
@@ -187,7 +192,7 @@ def test_portfolio_home_signoff_packet_lists_full_score_gates_without_approval()
     assert "Business owner approval packet strict ready gate exits non-zero while the template is pending or any full-score blocker remains." in text
     assert "Full-closure evidence script reports `data_quality_status=blocked`." in text
     assert "Full-closure evidence strict clean gate exits non-zero while risk tensor and maturity blockers remain." in text
-    assert "Risk warning consistency strict gate exits non-zero while parsed and recomputed duration-exclusion evidence remains mismatched." in text
+    assert "Risk warning consistency strict gate exits 0 now that parsed and recomputed duration-exclusion evidence match." in text
     assert "Risk warning clean gate exits non-zero while `quality_flag=warning` remains." in text
     assert "KRD remap review queue reports `review_status=decision_required`." in text
     assert "KRD remap review queue exposes `decision_options=approve_nearest_bucket|require_exact_bucket_schema|reject` and `review_actions` for risk-owner decision." in text
@@ -266,14 +271,13 @@ def test_portfolio_audit_references_signoff_packet_and_score_boundary() -> None:
     assert (
         "`risk_tensor_quality_warning`, `krd_contract_decision_required`, "
         "`bond_matured_outstanding_reconciliation_required`, "
-        "`tyw_liability_maturity_date_remediation_required`, `krd_bucket_warning_mismatch`, "
-        "`duration_exclusion_warning_mismatch`, `risk_tensor_warning_mismatch`, "
+        "`tyw_liability_maturity_date_remediation_required`, "
         "`business_owner_approval`, and `owner_decision_intake_blocked`"
     ) in audit
     assert "Residual evidence risks, not independent score blockers:" in audit
     assert (
         "GitNexus evidence was unavailable through this Codex App pass and should be rerun "
-        "when the MCP surface is exposed; it does not replace or add to the current nine score blockers."
+        "when the MCP surface is exposed; it does not replace or add to the current six score blockers."
     ) in audit
     assert (
         "`GS-PORTFOLIO-HOME-A` remains supporting-only; it proves neither capture-ready "
@@ -307,8 +311,7 @@ def test_portfolio_audit_references_signoff_packet_and_score_boundary() -> None:
     assert (
         "must not be allocated across `risk_tensor_quality_warning`, "
         "`krd_contract_decision_required`, `bond_matured_outstanding_reconciliation_required`, "
-        "`tyw_liability_maturity_date_remediation_required`, `krd_bucket_warning_mismatch`, "
-        "`duration_exclusion_warning_mismatch`, `risk_tensor_warning_mismatch`, "
+        "`tyw_liability_maturity_date_remediation_required`, "
         "`business_owner_approval`, or `owner_decision_intake_blocked` "
         "as pseudo-precision"
     ) in audit

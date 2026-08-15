@@ -4,7 +4,7 @@
 
 **目标：** 修复已确认的正式数字、API 写边界和前端正式指标问题，再按依赖收敛 stale/null、单位、日期、血缘、测试与结构债。
 
-**架构方案：** 保持 `frontend -> api -> services -> (repositories / core_finance / governance) -> storage`。route 只校验/鉴权/调用 service，service 只编排，正式计算留在 core_finance，DuckDB 写入只在 tasks；前端只消费后端权威指标。
+**架构方案：** 保持 `frontend -> api -> services -> (repositories / core_finance / governance) -> storage`。route 只校验/**授权**/调用 service，service 只编排，正式计算留在 core_finance，DuckDB 写入只在 tasks；前端只消费后端权威指标。（原文此处写的是「鉴权」；准确说法是授权，边界见 §R-04 的说明。）
 
 **技术栈：** FastAPI、Python Decimal、DuckDB、Dramatiq/现有任务代理、React、TypeScript、Vitest、pytest、治理 JSONL/result_meta。
 
@@ -301,7 +301,14 @@
 
 治理原则：
 
-- route 只做校验、鉴权、service 调用和 response。
+- route 只做校验、**授权**、service 调用和 response。
+  - 原文此处写的是「鉴权」。准确说法是**授权**（authorization / RBAC）：仓库**有授权、没有认证**——
+    `backend/app/security/auth_context.py::ensure_user_allowed` 的 RBAC 判定经 `backend/app/api/deps.py`
+    接进路由依赖，但全仓没有 `HTTPBearer` / `OAuth2` / `APIKeyHeader` / JWT / session，调用方身份未经校验。
+    完整边界见 [README.md](../../README.md)「关键约束」一节与
+    [SYSTEM_STACK_SPEC_FOR_CODEX.md](../SYSTEM_STACK_SPEC_FOR_CODEX.md) 第 1 节。
+  - 因此本条只约束 route 的**动作类型**，不构成安全声明；整改 R-04 时不要把它读成「身份已校验」，
+    也不要在它之上做安全性判断或对外暴露。
 - service 编排，core_finance 纯计算，repository 读，task 写。
 - 不借助“函数定义在 tasks 模块”伪装 API 进程写入。
 

@@ -10,7 +10,7 @@
       "package": "react-router",
       "version": "7.18.2",
       "lockfile": "frontend/package-lock.json",
-      "lockfile_sha256": "e9bfa1bbf2424d6adeb3b2ffdb1501b18195fbeaa9e95773b1dbaf2d0d4f91fa",
+      "lockfile_sha256": "7e052483de232a99c16c61d095f5333bbd0f5b7f2edad756e7ae4b0de6ca9042",
       "boundary_test": {
         "path": "frontend/src/test/routerSecurityBoundary.test.ts",
         "sha256": "ffe020f198d2a2af2288fe40628bab0ae7252bf17837641ffabf6975123ee9bc"

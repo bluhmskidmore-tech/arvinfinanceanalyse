@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from scripts.portfolio_home_closure_artifact_presence_check import (
     artifact_presence_report,
     build_report,
@@ -17,6 +19,14 @@ SCRIPT = ROOT / "scripts" / "portfolio_home_closure_artifact_presence_check.py"
 DUCKDB = ROOT / "data" / "moss.duckdb"
 TEMPLATE = ROOT / "docs" / "portfolio" / "portfolio-home-business-owner-approval-template.md"
 REPORT_DATE = "2026-05-31"
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not DUCKDB.exists(),
+        reason="requires local governed DuckDB at data/moss.duckdb",
+    ),
+]
 
 
 def _run_check(*args: str) -> tuple[int, dict[str, object]]:

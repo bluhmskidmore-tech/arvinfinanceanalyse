@@ -61,8 +61,10 @@ def test_first_priority_readiness_packet_maps_current_p110_p111_without_approval
     items = {item["p1_id"]: item for item in packet["items"]}
     assert set(items) == set(FIRST_PRIORITY_IDS)
     assert "P1-09" not in items
-    assert "yieldAnalysisAggregates.ts" in " ".join(items["P1-10"]["code_anchors"])
+    assert "yieldAnalysisAggregates.ts" not in " ".join(items["P1-10"]["code_anchors"])
+    assert "YieldAnalysisPage.tsx" not in " ".join(items["P1-10"]["code_anchors"])
     assert "zqtzAdbAvgRollup.ts" in " ".join(items["P1-10"]["code_anchors"])
+    assert "pnlByBusinessPageModel.ts" in " ".join(items["P1-10"]["code_anchors"])
     assert "CreditSpreadView.tsx" in " ".join(items["P1-11"]["code_anchors"])
     assert "CreditSpreadView.test.tsx" in " ".join(items["P1-11"]["test_anchors"])
     assert "backend DTO / frontend removal tests" in items["P1-10"][
@@ -115,7 +117,7 @@ def test_first_priority_readiness_packet_cli_writes_markdown(tmp_path: Path) -> 
     assert "backend DTO / frontend removal tests" in text
     assert "API contract plus frontend test" in text
     assert "BalanceMovementAnalysisPage.tsx" not in text
-    assert "yieldAnalysisAggregates.ts" in text
+    assert "yieldAnalysisAggregates.ts" not in text
     assert "zqtzAdbAvgRollup.ts" in text
     assert "CreditSpreadView.tsx" in text
     assert "count this readiness packet as owner decision capture" in text

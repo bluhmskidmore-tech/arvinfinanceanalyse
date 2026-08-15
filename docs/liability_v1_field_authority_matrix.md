@@ -21,7 +21,7 @@ Authority precedence for semantic disputes:
 1. [../AGENTS.md](../AGENTS.md)
 2. [../prd-moss-agent-analytics-os.md](../prd-moss-agent-analytics-os.md)
 3. [DOCUMENT_AUTHORITY.md](DOCUMENT_AUTHORITY.md)
-4. `docs/MOSS-V2 系统架构说明` (repo priority slot; the tracked checkout currently does not expose this file as a standalone path)
+4. `docs/MOSS-V2 系统架构说明` (empty priority slot; this document does not exist in the current checkout and its fate is an owner decision - see the "两个空置槽位（文件从未并入本仓库）" section of [DOCUMENT_AUTHORITY.md](DOCUMENT_AUTHORITY.md))
 5. [calc_rules.md](calc_rules.md)
 6. [data_contracts.md](data_contracts.md)
 7. [CACHE_SPEC.md](CACHE_SPEC.md)

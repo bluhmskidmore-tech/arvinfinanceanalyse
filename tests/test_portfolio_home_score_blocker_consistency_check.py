@@ -19,9 +19,6 @@ CURRENT_SCORE_BLOCKERS = [
     "krd_contract_decision_required",
     "bond_matured_outstanding_reconciliation_required",
     "tyw_liability_maturity_date_remediation_required",
-    "krd_bucket_warning_mismatch",
-    "duration_exclusion_warning_mismatch",
-    "risk_tensor_warning_mismatch",
     "business_owner_approval",
     "owner_decision_intake_blocked",
 ]
@@ -124,7 +121,7 @@ def test_portfolio_home_score_blocker_consistency_check_blocks_audit_drift(
     audit = docs_root / "audits" / "2026-06-05-portfolio-readiness-gate-audit.md"
     audit.write_text(
         audit.read_text(encoding="utf-8").replace(
-            ", `duration_exclusion_warning_mismatch`, `risk_tensor_warning_mismatch`",
+            ", `tyw_liability_maturity_date_remediation_required`, `business_owner_approval`",
             "",
         ),
         encoding="utf-8",
@@ -138,8 +135,8 @@ def test_portfolio_home_score_blocker_consistency_check_blocks_audit_drift(
         artifact for artifact in report["artifacts"] if artifact["name"] == "readiness_gate_audit"
     )
     assert audit_artifact["missing_blockers"] == [
-        "duration_exclusion_warning_mismatch",
-        "risk_tensor_warning_mismatch",
+        "tyw_liability_maturity_date_remediation_required",
+        "business_owner_approval",
     ]
 
 

@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from scripts.portfolio_home_owner_handoff_completeness_check import (
     build_report,
     handoff_completeness_report,
@@ -18,6 +20,14 @@ SCRIPT = ROOT / "scripts" / "portfolio_home_owner_handoff_completeness_check.py"
 DUCKDB = ROOT / "data" / "moss.duckdb"
 TEMPLATE = ROOT / "docs" / "portfolio" / "portfolio-home-business-owner-approval-template.md"
 REPORT_DATE = "2026-05-31"
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not DUCKDB.exists(),
+        reason="requires local governed DuckDB at data/moss.duckdb",
+    ),
+]
 
 
 def _run_check(*args: str) -> tuple[int, dict[str, object]]:
@@ -63,13 +73,19 @@ def test_portfolio_home_owner_handoff_completeness_check_reports_current_clean_h
     assert route_checks["risk_owner"]["unallowlisted_recheck_commands"] == []
     assert route_checks["data_owner"]["unallowlisted_recheck_commands"] == []
     assert route_checks["business_owner"]["unallowlisted_recheck_commands"] == []
-    assert route_checks["risk_owner"]["artifact_checks"][2] == {
-        "artifact": "docs/portfolio/krd-contract-decision/2026-05-31/exact_bucket_schema_evidence.json",
-        "required_now": False,
-        "exists": False,
-        "status": "not_required",
-        "blockers": [],
-    }
+    # required_now/exists/status 反映本机 KRD 契约决策当前是否要求 exact-bucket
+    # 证据，随库状态演进而变化；只锁定字段存在、取值域与代码不变式。
+    exact_bucket_check = route_checks["risk_owner"]["artifact_checks"][2]
+    assert exact_bucket_check["artifact"] == (
+        "docs/portfolio/krd-contract-decision/2026-05-31/exact_bucket_schema_evidence.json"
+    )
+    assert isinstance(exact_bucket_check["required_now"], bool)
+    assert isinstance(exact_bucket_check["exists"], bool)
+    assert exact_bucket_check["status"] in {"not_required", "valid", "missing", "blocked"}
+    assert isinstance(exact_bucket_check["blockers"], list)
+    assert (exact_bucket_check["status"] == "not_required") is (
+        exact_bucket_check["required_now"] is False
+    )
     assert report["evidence_scope"] == {
         "approves_metric_or_page": False,
         "writes_governance_records": False,

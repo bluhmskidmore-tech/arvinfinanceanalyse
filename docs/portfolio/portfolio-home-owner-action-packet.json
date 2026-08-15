@@ -22,9 +22,6 @@
     "krd_contract_decision_required",
     "bond_matured_outstanding_reconciliation_required",
     "tyw_liability_maturity_date_remediation_required",
-    "krd_bucket_warning_mismatch",
-    "duration_exclusion_warning_mismatch",
-    "risk_tensor_warning_mismatch",
     "business_owner_approval",
     "owner_decision_intake_blocked"
   ],
@@ -156,8 +153,7 @@
     "valid": false,
     "decision_status": "blocked",
     "decision_blockers": [
-      "risk_tensor_quality_warning",
-      "risk_tensor_warning_mismatch"
+      "risk_tensor_quality_warning"
     ],
     "evidence_scope": {
       "checks_warning_consistency": true,
@@ -177,7 +173,6 @@
         "current_status": "blocked",
         "current_evidence": {
           "parsed": [
-            "15Y",
             "20Y",
             "2Y",
             "6M"
@@ -199,12 +194,12 @@
       },
       {
         "warning_key": "duration_no_maturity",
-        "owner": "risk_owner",
-        "current_status": "blocked",
+        "owner": "none",
+        "current_status": "informational",
         "current_evidence": {
           "parsed": {
-            "row_count": 0,
-            "market_value": "0.00000000"
+            "row_count": 114,
+            "market_value": "37622164239.83000008"
           },
           "recomputed": {
             "row_count": 114,
@@ -226,8 +221,8 @@
         "current_status": "blocked",
         "current_evidence": {
           "parsed": {
-            "row_count": 0,
-            "market_value": "0.00000000"
+            "row_count": 6,
+            "market_value": "1487429865.67000000"
           },
           "recomputed": {
             "row_count": 6,
@@ -310,28 +305,21 @@
       }
     ],
     "duration_exclusion_delta_detail": {
-      "status": "mismatch",
+      "status": "matched",
       "delta_basis": "recomputed_minus_parsed",
-      "owner_reconciliation_hint": "Recompute or rematerialize risk tensor warnings so parsed warning numbers match fact_formal_bond_analytics_daily evidence.",
-      "mismatch_fields": [
-        "row_count",
-        "market_value_sum",
-        "no_maturity_rows",
-        "no_maturity_market_value",
-        "matured_or_expired_outstanding_rows",
-        "matured_or_expired_outstanding_market_value"
-      ],
+      "owner_reconciliation_hint": "Parsed risk tensor warning matches recomputed duration exclusion evidence.",
+      "mismatch_fields": [],
       "delta": {
-        "row_count": 120,
-        "market_value_sum": "39109594105.50000008",
-        "no_maturity_rows": 114,
-        "no_maturity_market_value": "37622164239.83000008",
-        "matured_or_expired_outstanding_rows": 6,
-        "matured_or_expired_outstanding_market_value": "1487429865.67000000",
+        "row_count": 0,
+        "market_value_sum": "0.00000000",
+        "no_maturity_rows": 0,
+        "no_maturity_market_value": "0.00000000",
+        "matured_or_expired_outstanding_rows": 0,
+        "matured_or_expired_outstanding_market_value": "0.00000000",
         "nonpositive_duration_rows": 0,
         "nonpositive_duration_market_value": "0.00000000"
       },
-      "parsed_warning_text": "120 rows carry market_value=39109594105.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date; 6 with non-positive modified_duration. DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
+      "parsed_warning_text": "120 rows carry market_value=39109594105.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date (market_value=37622164239.83000008); 6 matured on or before report_date with outstanding market_value (market_value=1487429865.67000000); 0 future-dated with non-positive modified_duration (market_value=0). DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
       "expected_warning_text_from_recomputed": "120 rows carry market_value=39109594105.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date (market_value=37622164239.83000008); 6 matured on or before report_date with outstanding market_value (market_value=1487429865.67000000); 0 future-dated with non-positive modified_duration (market_value=0.00000000). DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
       "recomputed_breakdown_by_reason": [
         {
@@ -486,14 +474,8 @@
       "writes_database": false,
       "approves_metric_or_page": false,
       "certification_effect": "none",
-      "current_consistency_blockers": [
-        "krd_bucket_warning_mismatch",
-        "duration_exclusion_warning_mismatch"
-      ],
-      "would_clear_consistency_blockers": [
-        "krd_bucket_warning_mismatch",
-        "duration_exclusion_warning_mismatch"
-      ],
+      "current_consistency_blockers": [],
+      "would_clear_consistency_blockers": [],
       "preview_consistency_status": "consistent",
       "preview_consistency_blockers": [],
       "preview_quality_flag": "warning",
@@ -774,9 +756,6 @@
       "krd_contract_decision_required",
       "bond_matured_outstanding_reconciliation_required",
       "tyw_liability_maturity_date_remediation_required",
-      "krd_bucket_warning_mismatch",
-      "duration_exclusion_warning_mismatch",
-      "risk_tensor_warning_mismatch",
       "business_owner_approval",
       "owner_decision_intake_blocked"
     ],
@@ -785,9 +764,6 @@
       "krd_contract_decision_required",
       "bond_matured_outstanding_reconciliation_required",
       "tyw_liability_maturity_date_remediation_required",
-      "krd_bucket_warning_mismatch",
-      "duration_exclusion_warning_mismatch",
-      "risk_tensor_warning_mismatch",
       "business_owner_approval",
       "owner_decision_intake_blocked"
     ],
@@ -804,9 +780,6 @@
       "krd_contract_decision_required",
       "bond_matured_outstanding_reconciliation_required",
       "tyw_liability_maturity_date_remediation_required",
-      "krd_bucket_warning_mismatch",
-      "duration_exclusion_warning_mismatch",
-      "risk_tensor_warning_mismatch",
       "business_owner_approval",
       "owner_decision_intake_blocked"
     ]
@@ -818,9 +791,6 @@
       "krd_contract_decision_required",
       "bond_matured_outstanding_reconciliation_required",
       "tyw_liability_maturity_date_remediation_required",
-      "krd_bucket_warning_mismatch",
-      "duration_exclusion_warning_mismatch",
-      "risk_tensor_warning_mismatch",
       "business_owner_approval",
       "owner_decision_intake_blocked"
     ],
@@ -829,9 +799,6 @@
       "krd_contract_decision_required",
       "bond_matured_outstanding_reconciliation_required",
       "tyw_liability_maturity_date_remediation_required",
-      "krd_bucket_warning_mismatch",
-      "duration_exclusion_warning_mismatch",
-      "risk_tensor_warning_mismatch",
       "business_owner_approval",
       "owner_decision_intake_blocked"
     ],
@@ -970,93 +937,6 @@
       "removes_blocker_when": "TYW liability missing-maturity rows are remediated at source or covered by a signed scoped exclusion evidence file, and the maturity strict gate exits 0."
     },
     {
-      "blocker": "krd_bucket_warning_mismatch",
-      "owner": "risk_owner",
-      "current_blocker_present": true,
-      "status": "blocked",
-      "next_action": "Review the KRD bucket warning evidence, then rematerialize the risk tensor if the parsed warning is stale or keep /portfolio candidate-only until the warning matches current formal bonds.",
-      "decision_artifacts": [],
-      "required_fields": [],
-      "recheck_commands": [
-        "python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent",
-        "python scripts/portfolio_home_full_closure_evidence.py --report-date 2026-05-31 --require-clean"
-      ],
-      "exit_criteria": "Risk warning consistency confirms the KRD bucket warning matches current formal bonds, and rematerialization is completed or /portfolio remains candidate-only when the warning cannot yet be cleared.",
-      "removes_blocker_when": "KRD bucket warning evidence matches current formal bonds, and the risk tensor is rematerialized or /portfolio remains candidate-only until the warning can be cleared.",
-      "evidence_sources": [
-        {
-          "name": "risk_warning_consistency",
-          "command": "python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent",
-          "fields": [
-            "parsed_warnings",
-            "recomputed_warnings",
-            "duration_exclusion_delta_detail",
-            "warning_resolution_matrix",
-            "decision_blockers"
-          ],
-          "boundary": "Evidence-only warning consistency check; does not approve the metric, clean the risk tensor, or close the page."
-        }
-      ]
-    },
-    {
-      "blocker": "duration_exclusion_warning_mismatch",
-      "owner": "data_owner",
-      "current_blocker_present": true,
-      "status": "blocked",
-      "next_action": "Reconcile the recomputed duration-exclusion warning evidence with the risk tensor warning text before any full-score claim.",
-      "decision_artifacts": [],
-      "required_fields": [],
-      "recheck_commands": [
-        "python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent",
-        "python scripts/portfolio_home_maturity_remediation_queue.py --report-date 2026-05-31 --require-empty"
-      ],
-      "exit_criteria": "Risk warning consistency reports matching parsed and recomputed duration-exclusion evidence.",
-      "removes_blocker_when": "Parsed and recomputed duration-exclusion warning evidence match, and risk warning consistency exits 0.",
-      "evidence_sources": [
-        {
-          "name": "risk_warning_consistency",
-          "command": "python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent",
-          "fields": [
-            "parsed_warnings",
-            "recomputed_warnings",
-            "duration_exclusion_delta_detail",
-            "warning_resolution_matrix",
-            "decision_blockers"
-          ],
-          "boundary": "Evidence-only warning consistency check; does not approve the metric, clean the risk tensor, or close the page."
-        }
-      ]
-    },
-    {
-      "blocker": "risk_tensor_warning_mismatch",
-      "owner": "risk_owner",
-      "current_blocker_present": true,
-      "status": "blocked",
-      "next_action": "Reconcile risk tensor warning evidence and rematerialize the risk tensor or keep /portfolio candidate-only.",
-      "decision_artifacts": [],
-      "required_fields": [],
-      "recheck_commands": [
-        "python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-clean",
-        "python scripts/portfolio_home_full_closure_evidence.py --report-date 2026-05-31 --require-clean"
-      ],
-      "exit_criteria": "Risk warning clean gate exits 0 with no risk tensor warning mismatch.",
-      "removes_blocker_when": "Risk tensor warning evidence is reconciled, cleanly rematerialized, and risk warning clean gate exits 0.",
-      "evidence_sources": [
-        {
-          "name": "risk_warning_consistency",
-          "command": "python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent",
-          "fields": [
-            "parsed_warnings",
-            "recomputed_warnings",
-            "duration_exclusion_delta_detail",
-            "warning_resolution_matrix",
-            "decision_blockers"
-          ],
-          "boundary": "Evidence-only warning consistency check; does not approve the metric, clean the risk tensor, or close the page."
-        }
-      ]
-    },
-    {
       "blocker": "business_owner_approval",
       "owner": "business_owner",
       "current_blocker_present": true,
@@ -1153,8 +1033,6 @@
       "status": "blocked",
       "blockers": [
         "risk_tensor_quality_warning",
-        "krd_bucket_warning_mismatch",
-        "risk_tensor_warning_mismatch",
         "krd_contract_decision_required"
       ],
       "actions": [
@@ -1164,20 +1042,6 @@
           "next_action": "Review the warning-consistency evidence, then rematerialize a clean risk tensor or keep the page candidate-only.",
           "evidence_command": "python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-clean",
           "exit_criteria": "Risk warning clean gate exits 0 and full-closure evidence no longer reports risk_tensor_quality_warning."
-        },
-        {
-          "blocker": "krd_bucket_warning_mismatch",
-          "owner": "risk_owner",
-          "next_action": "Review the KRD bucket warning evidence, then rematerialize the risk tensor if the parsed warning is stale or keep /portfolio candidate-only until the warning matches current formal bonds.",
-          "evidence_command": "python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent",
-          "exit_criteria": "Risk warning consistency confirms the KRD bucket warning matches current formal bonds, and rematerialization is completed or /portfolio remains candidate-only when the warning cannot yet be cleared."
-        },
-        {
-          "blocker": "risk_tensor_warning_mismatch",
-          "owner": "risk_owner",
-          "next_action": "Reconcile risk tensor warning evidence and rematerialize the risk tensor or keep /portfolio candidate-only.",
-          "evidence_command": "python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-clean",
-          "exit_criteria": "Risk warning clean gate exits 0 with no risk tensor warning mismatch."
         },
         {
           "blocker": "krd_contract_decision_required",
@@ -1192,8 +1056,8 @@
         "source_version": "sv_risk_tensor__sv_837e9f35fdda__sv_837e9f35fdda__sv_coupon_gap_repair_20260717_v1__sv_67bf20398f44",
         "upstream_source_version": "sv_837e9f35fdda__sv_837e9f35fdda__sv_coupon_gap_repair_20260717_v1",
         "liability_source_version": "sv_67bf20398f44",
-        "rule_version": "rv_risk_tensor_formal_materialize_v3",
-        "cache_version": "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v3",
+        "rule_version": "rv_risk_tensor_formal_materialize_v5",
+        "cache_version": "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5",
         "trace_id": "trace_risk_tensor_20260531"
       },
       "risk_warning_decision_status": "blocked",
@@ -1205,7 +1069,6 @@
           "current_status": "blocked",
           "current_evidence": {
             "parsed": [
-              "15Y",
               "20Y",
               "2Y",
               "6M"
@@ -1227,12 +1090,12 @@
         },
         {
           "warning_key": "duration_no_maturity",
-          "owner": "risk_owner",
-          "current_status": "blocked",
+          "owner": "none",
+          "current_status": "informational",
           "current_evidence": {
             "parsed": {
-              "row_count": 0,
-              "market_value": "0.00000000"
+              "row_count": 114,
+              "market_value": "37622164239.83000008"
             },
             "recomputed": {
               "row_count": 114,
@@ -1254,8 +1117,8 @@
           "current_status": "blocked",
           "current_evidence": {
             "parsed": {
-              "row_count": 0,
-              "market_value": "0.00000000"
+              "row_count": 6,
+              "market_value": "1487429865.67000000"
             },
             "recomputed": {
               "row_count": 6,
@@ -1338,28 +1201,21 @@
         }
       ],
       "duration_exclusion_delta_detail": {
-        "status": "mismatch",
+        "status": "matched",
         "delta_basis": "recomputed_minus_parsed",
-        "owner_reconciliation_hint": "Recompute or rematerialize risk tensor warnings so parsed warning numbers match fact_formal_bond_analytics_daily evidence.",
-        "mismatch_fields": [
-          "row_count",
-          "market_value_sum",
-          "no_maturity_rows",
-          "no_maturity_market_value",
-          "matured_or_expired_outstanding_rows",
-          "matured_or_expired_outstanding_market_value"
-        ],
+        "owner_reconciliation_hint": "Parsed risk tensor warning matches recomputed duration exclusion evidence.",
+        "mismatch_fields": [],
         "delta": {
-          "row_count": 120,
-          "market_value_sum": "39109594105.50000008",
-          "no_maturity_rows": 114,
-          "no_maturity_market_value": "37622164239.83000008",
-          "matured_or_expired_outstanding_rows": 6,
-          "matured_or_expired_outstanding_market_value": "1487429865.67000000",
+          "row_count": 0,
+          "market_value_sum": "0.00000000",
+          "no_maturity_rows": 0,
+          "no_maturity_market_value": "0.00000000",
+          "matured_or_expired_outstanding_rows": 0,
+          "matured_or_expired_outstanding_market_value": "0.00000000",
           "nonpositive_duration_rows": 0,
           "nonpositive_duration_market_value": "0.00000000"
         },
-        "parsed_warning_text": "120 rows carry market_value=39109594105.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date; 6 with non-positive modified_duration. DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
+        "parsed_warning_text": "120 rows carry market_value=39109594105.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date (market_value=37622164239.83000008); 6 matured on or before report_date with outstanding market_value (market_value=1487429865.67000000); 0 future-dated with non-positive modified_duration (market_value=0). DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
         "expected_warning_text_from_recomputed": "120 rows carry market_value=39109594105.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date (market_value=37622164239.83000008); 6 matured on or before report_date with outstanding market_value (market_value=1487429865.67000000); 0 future-dated with non-positive modified_duration (market_value=0.00000000). DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
         "recomputed_breakdown_by_reason": [
           {
@@ -1514,14 +1370,8 @@
         "writes_database": false,
         "approves_metric_or_page": false,
         "certification_effect": "none",
-        "current_consistency_blockers": [
-          "krd_bucket_warning_mismatch",
-          "duration_exclusion_warning_mismatch"
-        ],
-        "would_clear_consistency_blockers": [
-          "krd_bucket_warning_mismatch",
-          "duration_exclusion_warning_mismatch"
-        ],
+        "current_consistency_blockers": [],
+        "would_clear_consistency_blockers": [],
         "preview_consistency_status": "consistent",
         "preview_consistency_blockers": [],
         "preview_quality_flag": "warning",
@@ -1740,8 +1590,7 @@
       "status": "blocked",
       "blockers": [
         "tyw_liability_maturity_date_remediation_required",
-        "bond_matured_outstanding_reconciliation_required",
-        "duration_exclusion_warning_mismatch"
+        "bond_matured_outstanding_reconciliation_required"
       ],
       "actions": [
         {
@@ -1757,13 +1606,6 @@
           "next_action": "Reconcile matured or unparseable non-zero bond positions at source; this read-only gate does not accept an exception as closure evidence.",
           "evidence_command": "python scripts/portfolio_home_matured_outstanding_queue.py --report-date 2026-05-31 --require-empty",
           "exit_criteria": "Matured outstanding strict queue exits 0 with no matured or unparseable non-zero bond positions."
-        },
-        {
-          "blocker": "duration_exclusion_warning_mismatch",
-          "owner": "data_owner",
-          "next_action": "Reconcile the recomputed duration-exclusion warning evidence with the risk tensor warning text before any full-score claim.",
-          "evidence_command": "python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent",
-          "exit_criteria": "Risk warning consistency reports matching parsed and recomputed duration-exclusion evidence."
         }
       ],
       "maturity_remediation_status": "blocked",
@@ -1771,33 +1613,26 @@
         "source_version": "sv_risk_tensor__sv_837e9f35fdda__sv_837e9f35fdda__sv_coupon_gap_repair_20260717_v1__sv_67bf20398f44",
         "upstream_source_version": "sv_837e9f35fdda__sv_837e9f35fdda__sv_coupon_gap_repair_20260717_v1",
         "liability_source_version": "sv_67bf20398f44",
-        "rule_version": "rv_risk_tensor_formal_materialize_v3",
-        "cache_version": "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v3",
+        "rule_version": "rv_risk_tensor_formal_materialize_v5",
+        "cache_version": "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5",
         "trace_id": "trace_risk_tensor_20260531"
       },
       "duration_exclusion_delta_detail": {
-        "status": "mismatch",
+        "status": "matched",
         "delta_basis": "recomputed_minus_parsed",
-        "owner_reconciliation_hint": "Recompute or rematerialize risk tensor warnings so parsed warning numbers match fact_formal_bond_analytics_daily evidence.",
-        "mismatch_fields": [
-          "row_count",
-          "market_value_sum",
-          "no_maturity_rows",
-          "no_maturity_market_value",
-          "matured_or_expired_outstanding_rows",
-          "matured_or_expired_outstanding_market_value"
-        ],
+        "owner_reconciliation_hint": "Parsed risk tensor warning matches recomputed duration exclusion evidence.",
+        "mismatch_fields": [],
         "delta": {
-          "row_count": 120,
-          "market_value_sum": "39109594105.50000008",
-          "no_maturity_rows": 114,
-          "no_maturity_market_value": "37622164239.83000008",
-          "matured_or_expired_outstanding_rows": 6,
-          "matured_or_expired_outstanding_market_value": "1487429865.67000000",
+          "row_count": 0,
+          "market_value_sum": "0.00000000",
+          "no_maturity_rows": 0,
+          "no_maturity_market_value": "0.00000000",
+          "matured_or_expired_outstanding_rows": 0,
+          "matured_or_expired_outstanding_market_value": "0.00000000",
           "nonpositive_duration_rows": 0,
           "nonpositive_duration_market_value": "0.00000000"
         },
-        "parsed_warning_text": "120 rows carry market_value=39109594105.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date; 6 with non-positive modified_duration. DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
+        "parsed_warning_text": "120 rows carry market_value=39109594105.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date (market_value=37622164239.83000008); 6 matured on or before report_date with outstanding market_value (market_value=1487429865.67000000); 0 future-dated with non-positive modified_duration (market_value=0). DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
         "expected_warning_text_from_recomputed": "120 rows carry market_value=39109594105.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date (market_value=37622164239.83000008); 6 matured on or before report_date with outstanding market_value (market_value=1487429865.67000000); 0 future-dated with non-positive modified_duration (market_value=0.00000000). DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
         "recomputed_breakdown_by_reason": [
           {
@@ -1952,14 +1787,8 @@
         "writes_database": false,
         "approves_metric_or_page": false,
         "certification_effect": "none",
-        "current_consistency_blockers": [
-          "krd_bucket_warning_mismatch",
-          "duration_exclusion_warning_mismatch"
-        ],
-        "would_clear_consistency_blockers": [
-          "krd_bucket_warning_mismatch",
-          "duration_exclusion_warning_mismatch"
-        ],
+        "current_consistency_blockers": [],
+        "would_clear_consistency_blockers": [],
         "preview_consistency_status": "consistent",
         "preview_consistency_blockers": [],
         "preview_quality_flag": "warning",

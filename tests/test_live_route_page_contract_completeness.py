@@ -1,6 +1,6 @@
 """
 Contract source:
-- `frontend/src/mocks/navigation.ts` `workbenchNavigation`
+- `frontend/src/app/navigation.ts` `workbenchNavigation`
 - `docs/page_contracts.md` `PAGE-*` sections and their primary or explicitly governed detail routes
 
 Whitelist:
@@ -26,7 +26,7 @@ import pytest
 
 from tests.helpers import ROOT
 
-NAVIGATION_PATH = ROOT / "frontend" / "src" / "mocks" / "navigation.ts"
+NAVIGATION_PATH = ROOT / "frontend" / "src" / "app" / "navigation.ts"
 PAGE_CONTRACTS_PATH = ROOT / "docs" / "page_contracts.md"
 ROUTE_MATURITY_PATH = ROOT / "docs" / "live_route_maturity.md"
 

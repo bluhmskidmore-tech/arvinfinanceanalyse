@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from tests.test_portfolio_home_business_owner_approval_status import _filled_template_text
 from tests.test_portfolio_home_closure_scorecard import (
     _create_schema,
@@ -22,6 +24,14 @@ SCRIPT = ROOT / "scripts" / "portfolio_home_owner_decision_intake_check.py"
 DUCKDB = ROOT / "data" / "moss.duckdb"
 TEMPLATE = ROOT / "docs" / "portfolio" / "portfolio-home-business-owner-approval-template.md"
 REPORT_DATE = "2026-05-31"
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not DUCKDB.exists(),
+        reason="requires local governed DuckDB at data/moss.duckdb",
+    ),
+]
 
 
 def _expected_owner_input_boundary(

@@ -366,7 +366,7 @@ What is now strong:
 
 Authoritative score blockers from the scorecard:
 
-- `risk_tensor_quality_warning`, `krd_contract_decision_required`, `bond_matured_outstanding_reconciliation_required`, `tyw_liability_maturity_date_remediation_required`, `krd_bucket_warning_mismatch`, `duration_exclusion_warning_mismatch`, `risk_tensor_warning_mismatch`, `business_owner_approval`, and `owner_decision_intake_blocked`.
+- `risk_tensor_quality_warning`, `krd_contract_decision_required`, `bond_matured_outstanding_reconciliation_required`, `tyw_liability_maturity_date_remediation_required`, `business_owner_approval`, and `owner_decision_intake_blocked`.
 
 What still prevents 100:
 
@@ -374,9 +374,6 @@ What still prevents 100:
 - `krd_contract_decision_required`: the KRD tensor still depends on nearest-bucket remaps for `2Y`, `6M`, and `20Y`; this needs either an explicit business approval of the minimal-bucket tensor or a formally expanded KRD schema;
 - `bond_matured_outstanding_reconciliation_required`: six matured non-zero bond positions remain and must be reconciled at source; exception evidence cannot close this blocker;
 - `tyw_liability_maturity_date_remediation_required`: source TYW liability facts still lack maturity dates for material liability balances, so liquidity-gap evidence remains incomplete;
-- `krd_bucket_warning_mismatch`: the stored KRD bucket warning does not match the current formal-bond recomputation and must be reconciled/rematerialized;
-- `duration_exclusion_warning_mismatch`: parsed risk-tensor duration-exclusion market value is `38318400505.50000008`, but recomputed formal facts show `39109594105.50000008`;
-- `risk_tensor_warning_mismatch`: risk tensor warning text needs reconciliation/rematerialization before the warning evidence can be called clean;
 - `business_owner_approval`: business-owner approval is not present, so the page cannot claim full page-level formal closure;
 - `owner_decision_intake_blocked`: risk-owner CSV decisions, nearest-bucket approval or exact-bucket schema evidence, data-owner CSV decisions, scoped-exclusion evidence, and business-owner approval have not all been reconciled by the owner-decision intake gate.
 
@@ -384,7 +381,7 @@ Residual evidence risks, not independent score blockers:
 
 - no primary `/portfolio` governance record was written because capture-ready payload parity and owner approval are not proven;
 - `GS-PORTFOLIO-HOME-A` remains supporting-only; it proves neither capture-ready payload parity nor owner approval.
-- GitNexus evidence was unavailable through this Codex App pass and should be rerun when the MCP surface is exposed; it does not replace or add to the current nine score blockers.
+- GitNexus evidence was unavailable through this Codex App pass and should be rerun when the MCP surface is exposed; it does not replace or add to the current six score blockers.
 
 ## Full-Closure Handoff Packet
 
@@ -410,7 +407,7 @@ The remaining `0.14` gap has been converted into a review packet and an owner/ri
 
 The scorecard combines the full-closure evidence, risk-warning consistency gate, KRD review queue, maturity remediation queue, matured-outstanding reconciliation gate, business-owner approval status, owner-decision intake, approval-dependency consistency, and verification command coverage. It currently reports `score_status=blocked`, `full_score_ready=false`, `current_score=99.86 / 100`, and `remaining_gap=0.14`; its strict full-score mode exits non-zero until every listed blocker is closed. Its `score_blocker_actions` output maps each blocker to an owner, next action, evidence command, and exit criteria so the review queue can move without changing the score logic. Its `gates.krd_contract` and `gates.maturity_remediation` entries also carry the queue-level action maps and scope fields.
 
-The score method is `discrete_full_closure_gate`. The `0.14` remaining gap is a full-score readiness gap, not a linear sum of blocker weights, and must not be allocated across `risk_tensor_quality_warning`, `krd_contract_decision_required`, `bond_matured_outstanding_reconciliation_required`, `tyw_liability_maturity_date_remediation_required`, `krd_bucket_warning_mismatch`, `duration_exclusion_warning_mismatch`, `risk_tensor_warning_mismatch`, `business_owner_approval`, or `owner_decision_intake_blocked` as pseudo-precision.
+The score method is `discrete_full_closure_gate`. The `0.14` remaining gap is a full-score readiness gap, not a linear sum of blocker weights, and must not be allocated across `risk_tensor_quality_warning`, `krd_contract_decision_required`, `bond_matured_outstanding_reconciliation_required`, `tyw_liability_maturity_date_remediation_required`, `business_owner_approval`, or `owner_decision_intake_blocked` as pseudo-precision.
 
 The scorecard also emits a machine-readable `verification_commands` list. It carries `score_blocker_action_coverage.status=clean` for the current blocker set; unknown or unassigned score blockers prevent strict activation. Evidence and regression commands are expected to exit 0 in the current blocked state, while strict gates such as `portfolio_home_full_closure_evidence.py --require-clean`, `portfolio_home_closure_scorecard.py --require-full-score`, and `check_portfolio_home_business_owner_approval.py --require-captured` are expected to exit non-zero until blockers close.
 

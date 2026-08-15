@@ -14,7 +14,7 @@ This packet prepares the first open blocker for owner/governance intake. It does
 - `pending_decision_count=8`
 - `captured_decision_count=0`
 - `post_owner_required_fields=selected_decision, owner_rationale, implementation_owner, verification_gate, status`
-- `execution_referenced_path_count=18`
+- `execution_referenced_path_count=16`
 - `missing_execution_referenced_path_count=0`
 - First priority group: `P1-10, P1-11`
 
@@ -36,7 +36,7 @@ This packet prepares the first open blocker for owner/governance intake. It does
 - `invalid_status_count=0`
 - `invalid_selected_decision_count=0`
 - `execution_slice_count=8`
-- `execution_referenced_path_count=18`
+- `execution_referenced_path_count=16`
 - `all_execution_slices_present=true`
 - `all_execution_slice_paths_exist=true`
 - `missing_execution_referenced_path_count=0`
@@ -90,9 +90,9 @@ Allowed option letters are row-specific; some P1 rows only allow `Option A` and 
 | `P1-02` | after source-unit evidence is captured for `ytm_value` and coupon rates, remove or quarantine the formal-path heuristic in `backend/app/core_finance/bond_analytics/engine.py`; regression should include sub-1% rate examples in the bond analytics engine/service tests and preserve explicit-unit handling. | `backend/app/core_finance/bond_analytics/engine.py` |
 | `P1-03` | after owner sign convention is selected, align `backend/app/core_finance/pnl_bridge.py` with the authoritative attribution convention or label both conventions explicitly; regression should update `tests/test_pnl_bridge_roll_down_sign.py` and any attribution comparison test that freezes the losing sign. | `backend/app/core_finance/pnl_bridge.py`, `tests/test_pnl_bridge_roll_down_sign.py` |
 | `P1-04` | after governance classifies the check as a control or diagnostic, update `backend/app/core_finance/qdb_gl_monthly_analysis.py` so control claims require independent anchors, or label same-source checks as non-control; regression should use QDB GL core/API tests to prove the selected label and evidence path. | `backend/app/core_finance/qdb_gl_monthly_analysis.py` |
-| `P1-05` | after the denominator rule is approved, normalize `backend/app/core_finance/yield_by_period.py` and the `frontend/src/features/pnl/yieldAnalysis/YieldByPeriodPanel.tsx` display contract; regression should extend `tests/test_yield_by_period_core.py` across monthly, quarterly, and yearly buckets. | `backend/app/core_finance/yield_by_period.py`, `frontend/src/features/pnl/yieldAnalysis/YieldByPeriodPanel.tsx`, `tests/test_yield_by_period_core.py` |
+| `P1-05` | after the denominator rule is approved, normalize `backend/app/core_finance/yield_by_period.py`; the unrouted frontend YieldByPeriodPanel display surface was removed as dead code in commit 559de28d (2026-08-12), so a display contract re-enters scope only if a successor page is routed; regression should extend `tests/test_yield_by_period_core.py` across monthly, quarterly, and yearly buckets. | `backend/app/core_finance/yield_by_period.py`, `tests/test_yield_by_period_core.py` |
 | `P1-06` | after reconciliation-quality behavior is selected, align `backend/app/core_finance/pnl_bridge.py` with `backend/app/core_finance/attribution_core.py` or document the explicit difference; regression should cover `actual_pnl=0` with nonzero explained/residual in `tests/test_pnl_bridge_core.py`. | `backend/app/core_finance/pnl_bridge.py`, `backend/app/core_finance/attribution_core.py`, `tests/test_pnl_bridge_core.py` |
-| `P1-10` | after backend-vs-frontend aggregation ownership is approved, move or label formal aggregation currently in `frontend/src/features/pnl/yieldAnalysis/yieldAnalysisAggregates.ts` and `frontend/src/features/pnl/zqtzAdbAvgRollup.ts`; regression should keep DTO consumption and non-formal helper boundaries explicit in the corresponding frontend tests. | `frontend/src/features/pnl/yieldAnalysis/yieldAnalysisAggregates.ts`, `frontend/src/features/pnl/zqtzAdbAvgRollup.ts` |
+| `P1-10` | after backend-vs-frontend aggregation ownership is approved, move or label formal aggregation currently in `frontend/src/features/pnl/zqtzAdbAvgRollup.ts`; the unrouted yieldAnalysisAggregates dead-code surface was removed in commit 559de28d (2026-08-12); regression should keep DTO consumption and non-formal helper boundaries explicit in the corresponding frontend tests. | `frontend/src/features/pnl/zqtzAdbAvgRollup.ts` |
 | `P1-11` | after matrix ownership is approved, render a governed backend matrix or explicitly document frontend ownership in `frontend/src/features/bond-analytics/components/CreditSpreadView.tsx`; regression should update `frontend/src/test/CreditSpreadView.test.tsx` for rating/tenor bucket boundaries and missing governed matrix behavior. | `frontend/src/features/bond-analytics/components/CreditSpreadView.tsx`, `frontend/src/test/CreditSpreadView.test.tsx` |
 
 ## Execution Anchor Checks
@@ -105,9 +105,9 @@ Every referenced execution path below is an engineering handoff anchor only. Exi
 | `P1-02` | 1 | `true` | none |
 | `P1-03` | 2 | `true` | none |
 | `P1-04` | 1 | `true` | none |
-| `P1-05` | 3 | `true` | none |
+| `P1-05` | 2 | `true` | none |
 | `P1-06` | 3 | `true` | none |
-| `P1-10` | 2 | `true` | none |
+| `P1-10` | 1 | `true` | none |
 | `P1-11` | 2 | `true` | none |
 
 ## Next Engineering Action After Owner Input

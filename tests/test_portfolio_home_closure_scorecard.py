@@ -1291,7 +1291,7 @@ def test_portfolio_home_closure_scorecard_summarizes_blocked_gates(tmp_path: Pat
     assert commands["krd_contract_decision_export_current"]["kind"] == "regression"
     assert commands["krd_contract_decision_export_current"]["expected_when_blocked"] == "exit_0"
     assert commands["krd_contract_decision_export_current"]["expected_when_full_score"] == "exit_0"
-    assert commands["risk_warning_consistency"]["expected_when_blocked"] == "exit_nonzero"
+    assert commands["risk_warning_consistency"]["expected_when_blocked"] == "exit_0"
     assert commands["risk_warning_consistency"]["expected_when_full_score"] == "exit_0"
     actions = {item["blocker"]: item for item in scorecard["score_blocker_actions"]}
     assert actions["risk_tensor_quality_warning"]["owner"] == "risk_owner"

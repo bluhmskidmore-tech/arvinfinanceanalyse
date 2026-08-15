@@ -10,7 +10,7 @@
 
 | 层 | 触发 | 内容 | 缺口 |
 | --- | --- | --- | --- |
-| PR 门禁 | `pull_request` → main、`push` → main / `codex/**` | `backend` job：`scripts/backend_release_suite.py`（30 个测试文件 + MCP fast 合约；2026-08-12 起含 6 个 caliber 口径红线文件）+ agent harness 十文件（见 §1.2 补充段） | 覆盖约 30/约 700 个后端测试文件（约 4.3%），无 mypy、无后端 ruff |
+| PR 门禁 | `pull_request` → main、`push` → main / `codex/**` | `backend` job：`scripts/backend_release_suite.py`（30 个测试文件 + MCP fast 合约；2026-08-12 起含 6 个 caliber 口径红线文件）+ agent harness 十三文件（见 §1.2 补充段） | 覆盖约 30/约 700 个后端测试文件（约 4.3%），无 mypy、无后端 ruff |
 | 全量兜底 | `schedule`（每日 18:00 UTC）与 push→main | `backend-full-pytest` job：`python -m pytest -q`（collects `tests/` + `backend/tests/`，约 700 个文件） | 失败无通知闭环：不开 issue、不产出摘要工件，红灯依赖有人主动看 Actions |
 | 静态检查 | PR/push | 仅前端（`npm run typecheck`、ESLint、debt:audit）；后端只有 `uv lock --check` | `backend/pyproject.toml` 已有 `[tool.ruff]`、`[tool.mypy]` 配置，但 CI 从不执行；且 ruff/mypy 均不在 `[project.optional-dependencies].dev` 中 |
 
@@ -94,11 +94,11 @@
 | fast（默认） | `tests/test_project_mcp_fast_contracts.py`（`-m mcp_fast`） | 2 | PR 门禁在跑 |
 | full | `tests/test_project_mcp_servers.py` | 172 | 仅手动 `--mcp-profile full`；CI 的 PR 阶段不跑（nightly 全量 pytest 会收集到） |
 
-**PR job 内、套件外补充**：agent harness 十文件（`tests/test_agent_eval_spec.py`、`tests/test_agent_eval_reward.py`、`tests/test_agent_eval_collect.py`、`tests/test_agent_eval_scoring_integrity.py`、`tests/test_agent_eval_replay.py`、`tests/test_agent_eval_pr_replay.py`、`tests/test_agent_eval_rollout.py`、`tests/test_agent_eval_coverage_report.py`、`tests/test_caliber_gate_mapping.py`、`tests/test_mcp_config_consistency.py`；用例数为动态演进值，以 pytest 收集为准），以独立步骤直跑 pytest，不经过 release suite 的隔离环境；另有 `Caliber path-trigger gate` 步骤（仅 `pull_request`）按 diff 定向触发 caliber 红线测试——2026-08-12 起该六文件同时是 release suite 无条件成员（§1.1 G 组），路径触发为定向快反、套件成员为无条件兜底，互为双保险。
+**PR job 内、套件外补充**：agent harness 十三文件（`tests/test_agent_eval_spec.py`、`tests/test_agent_eval_reward.py`、`tests/test_agent_eval_collect.py`、`tests/test_agent_eval_scoring_integrity.py`、`tests/test_agent_eval_replay.py`、`tests/test_agent_eval_pr_replay.py`、`tests/test_agent_eval_rollout.py`、`tests/test_agent_eval_coverage_report.py`、`tests/test_agent_sql_disclosure_drift.py`、`tests/test_agent_api_contract.py`、`tests/test_agent_audit_log_contract.py`、`tests/test_caliber_gate_mapping.py`、`tests/test_mcp_config_consistency.py`；用例数为动态演进值，以 pytest 收集为准），以独立步骤直跑 pytest，不经过 release suite 的隔离环境；另有 `Caliber path-trigger gate` 步骤（仅 `pull_request`）按 diff 定向触发 caliber 红线测试——2026-08-12 起该六文件同时是 release suite 无条件成员（§1.1 G 组），路径触发为定向快反、套件成员为无条件兜底，互为双保险。
 
 \* 用例数为 AST 静态统计的 `test_*` 函数数（含类方法，不含参数化展开），2026-08-12 快照，仅供体量参考。
 
-执行环境要点（影响"该套件证明了什么"）：release suite 在临时目录隔离 `MOSS_GOVERNANCE_PATH` / `MOSS_DUCKDB_PATH`，并设 `MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS=1`、`MOSS_SKIP_POSTGRES_MIGRATIONS=1`、`MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST=1` —— 即它证明的是**fixture 隔离环境下的合约行为**，不证明迁移路径、真实存储与真实鉴权链路。
+执行环境要点（影响"该套件证明了什么"）：release suite 在临时目录隔离 `MOSS_GOVERNANCE_PATH` / `MOSS_DUCKDB_PATH`，并设 `MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS=1`、`MOSS_SKIP_POSTGRES_MIGRATIONS=1`、`MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST=1` —— 即它证明的是**fixture 隔离环境下的合约行为**，不证明迁移路径、真实存储与真实授权链路（原文写作「鉴权链路」；准确说法是**授权**——仓库本就没有认证环节，而这里 `MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST=1` 又把默认关闭的请求头信任开关强制打开，因此套件跑的是最宽松的授权姿态，不代表默认姿态）。
 
 ### 1.2 保护面总结与盲区
 
@@ -111,7 +111,7 @@
 3. **物化与任务流**：`test_snapshot_materialize_flow.py`、`test_balance_analysis_materialize_flow.py`、`test_bond_analytics_materialize_flow.py`、`test_snapshot_materialize_manifest_fail_closed.py`、`test_worker_bootstrap.py`。
 4. **缓存与启动路径**：`test_api_response_cache.py`、`test_home_snapshot_cache.py`、`test_home_endpoint_response_cache.py`、`test_market_home_warmup.py`、`test_main_lifespan.py`。
 5. **vendor / 市场数据**：`test_choice_client_contract.py`、`test_choice_runtime.py`、`test_market_data_livermore_api.py` 及全部 `market_data_livermore_*` / `choice_*` 系列。
-6. **agent 链路**（除 eval spec/reward 外）：`test_agent_intent_routing.py`、`test_agent_api_contract.py`、`test_agent_sql_disclosure_drift.py`、`test_agent_enabled_path_smoke.py`。
+6. **agent 链路**（除 §1.1 补充段的 agent harness 十三文件外）：`test_agent_intent_routing.py`、`test_agent_enabled_path_smoke.py`。
 7. **精度与数据修复**：`test_decimal_precision_backfill.py`、`test_fx_mid_materialize.py`、`test_risk_coupon_window_repair.py`、`test_common_numeric_finite_guard.py`。
 8. **dev 基础设施**：`test_dev_postgres_cluster.py`、`test_dev_worker_lifecycle_scripts.py`、`test_native_dev_script_contents.py`。
 9. **MCP full 合约**：172 个用例只在 nightly 全量里被收集，PR 改 MCP 服务器实现时 fast 合约（2 用例）是唯一即时防线。

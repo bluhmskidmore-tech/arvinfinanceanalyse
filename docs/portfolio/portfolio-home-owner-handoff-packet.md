@@ -15,9 +15,9 @@
 - Rerun evidence status: `valid`
 - Rerun evidence artifact: `docs/portfolio/portfolio-home-evidence-snapshot.json`
 - Risk warning clean status: `blocked`
-- Risk warning blockers: `risk_tensor_quality_warning`, `risk_tensor_warning_mismatch`
+- Risk warning blockers: `risk_tensor_quality_warning`
 - Risk tensor rematerialization preview: `would_remain_blocked`
-- Risk tensor preview would clear: `krd_bucket_warning_mismatch`, `duration_exclusion_warning_mismatch`
+- Risk tensor preview would clear: `none`
 - Risk tensor preview decision status: `blocked`
 - Risk tensor preview decision blockers: `risk_tensor_quality_warning`
 - Risk tensor preview writes database: `false`
@@ -40,7 +40,7 @@
 - Score blocker action coverage: `clean`
 - Score blocker action coverage blockers: `none`
 - Score blocker action coverage unassigned blockers: `none`
-- Score blocker action coverage covered blockers: `risk_tensor_quality_warning`, `krd_contract_decision_required`, `bond_matured_outstanding_reconciliation_required`, `tyw_liability_maturity_date_remediation_required`, `krd_bucket_warning_mismatch`, `duration_exclusion_warning_mismatch`, `risk_tensor_warning_mismatch`, `business_owner_approval`, `owner_decision_intake_blocked`
+- Score blocker action coverage covered blockers: `risk_tensor_quality_warning`, `krd_contract_decision_required`, `bond_matured_outstanding_reconciliation_required`, `tyw_liability_maturity_date_remediation_required`, `business_owner_approval`, `owner_decision_intake_blocked`
 - Blocker closure matrix coverage: `clean`
 - Blocker closure matrix missing blockers: `none`
 - Blocker closure matrix unexpected blockers: `none`
@@ -59,18 +59,18 @@
 ## Owner Quickstart
 - Quickstart boundary: fill owner-controlled fields only; do not edit generated system fields.
 - Risk Owner quickstart:
-  - Close: `risk_tensor_quality_warning`, `krd_bucket_warning_mismatch`, `risk_tensor_warning_mismatch`, `krd_contract_decision_required`
+  - Close: `risk_tensor_quality_warning`, `krd_contract_decision_required`
   - Fill/review: `docs/portfolio/krd-contract-decision/2026-05-31/krd_remap_summary.csv`; `docs/portfolio/krd-contract-decision/2026-05-31/krd_remap_detail.csv`; `docs/portfolio/krd-contract-decision/2026-05-31/nearest_bucket_approval_evidence.json`; `docs/portfolio/krd-contract-decision/2026-05-31/exact_bucket_schema_evidence.json`
   - Required fields: `risk_owner_decision`, `decision_notes`
   - Conditional fields (`approve_nearest_bucket` only): `risk_owner_name`, `risk_owner_approval_date`, `risk_owner_approved`, `business_owner_name`, `business_owner_acknowledgement_date`, `business_owner_acknowledged`, `metric_contract_decision_recorded`, `verification_rerun_matched`
   - Conditional fields (`require_exact_bucket_schema` only): `metric_contract_owner_name`, `metric_contract_update_date`, `metric_contract_updated`, `api_schema_owner_name`, `api_schema_update_date`, `api_schema_updated`, `risk_tensor_owner_name`, `risk_tensor_rematerialization_date`, `risk_tensor_rematerialized`, `verifier_name`, `verification_rerun_date`, `verification_rerun_matched`
-  - Recheck: `python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-clean`; `python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent`; `python scripts/portfolio_home_krd_remap_review_queue.py --report-date 2026-05-31 --require-clean`
+  - Recheck: `python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-clean`; `python scripts/portfolio_home_krd_remap_review_queue.py --report-date 2026-05-31 --require-clean`
 - Data Owner quickstart:
-  - Close: `tyw_liability_maturity_date_remediation_required`, `bond_matured_outstanding_reconciliation_required`, `duration_exclusion_warning_mismatch`
+  - Close: `tyw_liability_maturity_date_remediation_required`, `bond_matured_outstanding_reconciliation_required`
   - Fill/review: `docs/portfolio/maturity-remediation/2026-05-31/tyw_liability_missing_maturity.csv`; `docs/portfolio/maturity-remediation/2026-05-31/maturity_scoped_exclusion_evidence.json`
   - Required fields: `proposed_maturity_date`, `owner_decision`, `owner_comment`
   - Conditional fields (`approve_scoped_exclusion` only): `data_owner_name`, `data_owner_approval_date`, `data_owner_approved`, `risk_owner_name`, `risk_owner_countersign_date`, `risk_owner_countersigned`, `business_owner_name`, `business_owner_acknowledgement_date`, `business_owner_acknowledged`, `verification_rerun_matched`
-  - Recheck: `python scripts/portfolio_home_maturity_remediation_queue.py --report-date 2026-05-31 --require-empty`; `python scripts/portfolio_home_matured_outstanding_queue.py --report-date 2026-05-31 --require-empty`; `python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent`
+  - Recheck: `python scripts/portfolio_home_maturity_remediation_queue.py --report-date 2026-05-31 --require-empty`; `python scripts/portfolio_home_matured_outstanding_queue.py --report-date 2026-05-31 --require-empty`
 - Business Owner quickstart:
   - Close: `business_owner_approval`, `owner_decision_intake_blocked`
   - Fill/review: `docs/portfolio/portfolio-home-business-owner-approval-template.md`
@@ -82,9 +82,6 @@
 - `krd_contract_decision_required`
 - `bond_matured_outstanding_reconciliation_required`
 - `tyw_liability_maturity_date_remediation_required`
-- `krd_bucket_warning_mismatch`
-- `duration_exclusion_warning_mismatch`
-- `risk_tensor_warning_mismatch`
 - `business_owner_approval`
 - `owner_decision_intake_blocked`
 
@@ -95,16 +92,13 @@
 | `krd_contract_decision_required` | `risk_owner` | `docs/portfolio/krd-contract-decision/2026-05-31/krd_remap_summary.csv`; `docs/portfolio/krd-contract-decision/2026-05-31/krd_remap_detail.csv`; `docs/portfolio/krd-contract-decision/2026-05-31/nearest_bucket_approval_evidence.json`; `docs/portfolio/krd-contract-decision/2026-05-31/exact_bucket_schema_evidence.json` | `python scripts/portfolio_home_krd_remap_review_queue.py --report-date 2026-05-31 --require-clean`; `python scripts/portfolio_home_owner_decision_intake_check.py --report-date 2026-05-31 --limit 3 --require-ready` | Risk-owner KRD decision is captured with notes for every scoped row, conditional nearest-bucket or exact-bucket evidence is valid when selected, and the KRD strict gate exits 0. |
 | `bond_matured_outstanding_reconciliation_required` | `data_owner` | `matured_outstanding_queue` (`summary`, `rows`) | `python scripts/portfolio_home_matured_outstanding_queue.py --report-date 2026-05-31 --require-empty`; `python scripts/portfolio_home_full_closure_evidence.py --report-date 2026-05-31 --require-clean` | Matured or unparseable non-zero bond positions are reconciled at source, and the matured-outstanding strict queue exits 0. |
 | `tyw_liability_maturity_date_remediation_required` | `data_owner` | `docs/portfolio/maturity-remediation/2026-05-31/tyw_liability_missing_maturity.csv`; `docs/portfolio/maturity-remediation/2026-05-31/maturity_scoped_exclusion_evidence.json` | `python scripts/portfolio_home_maturity_remediation_queue.py --report-date 2026-05-31 --require-empty`; `python scripts/portfolio_home_owner_decision_intake_check.py --report-date 2026-05-31 --limit 3 --require-ready` | TYW liability missing-maturity rows are remediated at source or covered by a signed scoped exclusion evidence file, and the maturity strict gate exits 0. |
-| `krd_bucket_warning_mismatch` | `risk_owner` | `risk_warning_consistency` (`parsed_warnings`, `recomputed_warnings`, `duration_exclusion_delta_detail`, `warning_resolution_matrix`, `decision_blockers`) | `python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent`; `python scripts/portfolio_home_full_closure_evidence.py --report-date 2026-05-31 --require-clean` | KRD bucket warning evidence matches current formal bonds, and the risk tensor is rematerialized or /portfolio remains candidate-only until the warning can be cleared. |
-| `duration_exclusion_warning_mismatch` | `data_owner` | `risk_warning_consistency` (`parsed_warnings`, `recomputed_warnings`, `duration_exclusion_delta_detail`, `warning_resolution_matrix`, `decision_blockers`) | `python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent`; `python scripts/portfolio_home_maturity_remediation_queue.py --report-date 2026-05-31 --require-empty` | Parsed and recomputed duration-exclusion warning evidence match, and risk warning consistency exits 0. |
-| `risk_tensor_warning_mismatch` | `risk_owner` | `risk_warning_consistency` (`parsed_warnings`, `recomputed_warnings`, `duration_exclusion_delta_detail`, `warning_resolution_matrix`, `decision_blockers`) | `python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-clean`; `python scripts/portfolio_home_full_closure_evidence.py --report-date 2026-05-31 --require-clean` | Risk tensor warning evidence is reconciled, cleanly rematerialized, and risk warning clean gate exits 0. |
 | `business_owner_approval` | `business_owner` | `docs/portfolio/portfolio-home-business-owner-approval-template.md` | `python scripts/check_portfolio_home_business_owner_approval.py --report-date 2026-05-31 --require-captured`; `python scripts/portfolio_home_business_owner_approval_packet.py --report-date 2026-05-31 --limit 3 --require-ready`; `python scripts/portfolio_home_closure_scorecard.py --report-date 2026-05-31 --limit 3 --require-full-score` | Business-owner approval is signed, risk-owner countersignature is present, evidence scope approves the page, and the full scorecard strict gate exits 0. |
 | `owner_decision_intake_blocked` | `business_owner` | `docs/portfolio/krd-contract-decision/2026-05-31/krd_remap_summary.csv`; `docs/portfolio/krd-contract-decision/2026-05-31/krd_remap_detail.csv`; `docs/portfolio/krd-contract-decision/2026-05-31/nearest_bucket_approval_evidence.json`; `docs/portfolio/krd-contract-decision/2026-05-31/exact_bucket_schema_evidence.json`; `docs/portfolio/maturity-remediation/2026-05-31/tyw_liability_missing_maturity.csv`; `docs/portfolio/maturity-remediation/2026-05-31/maturity_scoped_exclusion_evidence.json`; `docs/portfolio/portfolio-home-business-owner-approval-template.md` | `python scripts/portfolio_home_owner_decision_intake_check.py --report-date 2026-05-31 --limit 3 --require-ready` | Risk-owner CSV decisions, nearest-bucket or exact-bucket evidence, data-owner CSV decisions, scoped-exclusion evidence, and business-owner approval are reconciled, and the owner decision intake strict gate exits 0. |
 
 ## Owner Checklist
-- [ ] Risk Owner: close `risk_tensor_quality_warning`, `krd_bucket_warning_mismatch`, `risk_tensor_warning_mismatch`, `krd_contract_decision_required`
-  - Evidence commands: `python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-clean`; `python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent`; `python scripts/portfolio_home_krd_remap_review_queue.py --report-date 2026-05-31 --require-clean`
-  - Exit criteria: Risk warning clean gate exits 0 and full-closure evidence no longer reports risk_tensor_quality_warning; Risk warning consistency confirms the KRD bucket warning matches current formal bonds, and rematerialization is completed or /portfolio remains candidate-only when the warning cannot yet be cleared; Risk warning clean gate exits 0 with no risk tensor warning mismatch; KRD review queue exits 0 under the approved contract and the metric contract records the decision.
+- [ ] Risk Owner: close `risk_tensor_quality_warning`, `krd_contract_decision_required`
+  - Evidence commands: `python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-clean`; `python scripts/portfolio_home_krd_remap_review_queue.py --report-date 2026-05-31 --require-clean`
+  - Exit criteria: Risk warning clean gate exits 0 and full-closure evidence no longer reports risk_tensor_quality_warning; KRD review queue exits 0 under the approved contract and the metric contract records the decision.
   - Artifacts: `docs/portfolio/krd-contract-decision/2026-05-31/krd_remap_summary.csv`; `docs/portfolio/krd-contract-decision/2026-05-31/krd_remap_detail.csv`; `docs/portfolio/krd-contract-decision/2026-05-31/nearest_bucket_approval_evidence.json`; `docs/portfolio/krd-contract-decision/2026-05-31/exact_bucket_schema_evidence.json`
   - Workload: KRD owner decision fields across 503 rows (summary 3, detail 500).
   - Current gaps: KRD owner decision missing on 503 rows (summary 3, detail 500).
@@ -113,9 +107,9 @@
   - Conditional artifact fields (`require_exact_bucket_schema` only): `metric_contract_owner_name`, `metric_contract_update_date`, `metric_contract_updated`, `api_schema_owner_name`, `api_schema_update_date`, `api_schema_updated`, `risk_tensor_owner_name`, `risk_tensor_rematerialization_date`, `risk_tensor_rematerialized`, `verifier_name`, `verification_rerun_date`, `verification_rerun_matched`
   - Allowed decisions: `approve_nearest_bucket`, `require_exact_bucket_schema`, `reject`
   - Notes required for: `approve_nearest_bucket`, `require_exact_bucket_schema`, `reject`
-- [ ] Data Owner: close `tyw_liability_maturity_date_remediation_required`, `bond_matured_outstanding_reconciliation_required`, `duration_exclusion_warning_mismatch`
-  - Evidence commands: `python scripts/portfolio_home_maturity_remediation_queue.py --report-date 2026-05-31 --require-empty`; `python scripts/portfolio_home_matured_outstanding_queue.py --report-date 2026-05-31 --require-empty`; `python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent`
-  - Exit criteria: TYW liability maturity remediation queue is empty or signed exclusion evidence is captured and surfaced as a boundary; Matured outstanding strict queue exits 0 with no matured or unparseable non-zero bond positions; Risk warning consistency reports matching parsed and recomputed duration-exclusion evidence.
+- [ ] Data Owner: close `tyw_liability_maturity_date_remediation_required`, `bond_matured_outstanding_reconciliation_required`
+  - Evidence commands: `python scripts/portfolio_home_maturity_remediation_queue.py --report-date 2026-05-31 --require-empty`; `python scripts/portfolio_home_matured_outstanding_queue.py --report-date 2026-05-31 --require-empty`
+  - Exit criteria: TYW liability maturity remediation queue is empty or signed exclusion evidence is captured and surfaced as a boundary; Matured outstanding strict queue exits 0 with no matured or unparseable non-zero bond positions.
   - Artifacts: `docs/portfolio/maturity-remediation/2026-05-31/tyw_liability_missing_maturity.csv`; `docs/portfolio/maturity-remediation/2026-05-31/maturity_scoped_exclusion_evidence.json`
   - Workload: maturity remediation fields across 1455 rows (bond 0, TYW liability 1455).
   - Current gaps: maturity owner decision missing on 1455 rows (bond 0, TYW liability 1455).
@@ -142,14 +136,10 @@
 
 ## Risk Owner
 - Status: `blocked`
-- Blockers: `risk_tensor_quality_warning`, `krd_bucket_warning_mismatch`, `risk_tensor_warning_mismatch`, `krd_contract_decision_required`
+- Blockers: `risk_tensor_quality_warning`, `krd_contract_decision_required`
 - KRD decision scale: `20Y` maps to `krd_30y` across 39 rows with DV01 23598290.06912522; `2Y` maps to `krd_3y` across 301 rows with DV01 9195343.60983627; `6M` maps to `krd_1y` across 282 rows (160 non-zero DV01 rows) with DV01 571392.61884027.
 - Required actions:
   - `risk_tensor_quality_warning`: Review the warning-consistency evidence, then rematerialize a clean risk tensor or keep the page candidate-only.
-    Evidence command: `python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-clean`
-  - `krd_bucket_warning_mismatch`: Review the KRD bucket warning evidence, then rematerialize the risk tensor if the parsed warning is stale or keep /portfolio candidate-only until the warning matches current formal bonds.
-    Evidence command: `python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent`
-  - `risk_tensor_warning_mismatch`: Reconcile risk tensor warning evidence and rematerialize the risk tensor or keep /portfolio candidate-only.
     Evidence command: `python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-clean`
   - `krd_contract_decision_required`: Approve nearest-bucket mappings for 2Y, 6M, and 20Y, or require an exact-bucket KRD schema/API update.
     Evidence command: `python scripts/portfolio_home_krd_remap_review_queue.py --report-date 2026-05-31 --require-clean`
@@ -171,15 +161,13 @@
 
 ## Data Owner
 - Status: `blocked`
-- Blockers: `tyw_liability_maturity_date_remediation_required`, `bond_matured_outstanding_reconciliation_required`, `duration_exclusion_warning_mismatch`
+- Blockers: `tyw_liability_maturity_date_remediation_required`, `bond_matured_outstanding_reconciliation_required`
 - Maturity decision scale: bond queue has 0 missing maturity rows with market value 0; TYW liability queue has 1455 missing maturity rows with principal 43822652393.01000002.
 - Required actions:
   - `tyw_liability_maturity_date_remediation_required`: Remediate missing TYW liability maturity_date values or capture a signed scoped exclusion before rematerialization.
     Evidence command: `python scripts/portfolio_home_maturity_remediation_queue.py --report-date 2026-05-31 --require-empty`
   - `bond_matured_outstanding_reconciliation_required`: Reconcile matured or unparseable non-zero bond positions at source; this read-only gate does not accept an exception as closure evidence.
     Evidence command: `python scripts/portfolio_home_matured_outstanding_queue.py --report-date 2026-05-31 --require-empty`
-  - `duration_exclusion_warning_mismatch`: Reconcile the recomputed duration-exclusion warning evidence with the risk tensor warning text before any full-score claim.
-    Evidence command: `python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent`
 - Decision intake artifacts:
   - Artifact: `docs/portfolio/maturity-remediation/2026-05-31/tyw_liability_missing_maturity.csv`
     Required fields: `proposed_maturity_date`, `owner_decision`, `owner_comment`

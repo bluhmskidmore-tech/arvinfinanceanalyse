@@ -57,10 +57,10 @@ Risk tensor fact row for `2026-05-31`:
 
 ```text
 quality_flag=warning
-portfolio_dv01=105628442.39590558
-krd_sum=105628442.39590558
-source_version=sv_risk_tensor__sv_837e9f35fdda__sv_67bf20398f44
-upstream_source_version=sv_837e9f35fdda
+portfolio_dv01=106224411.96420395
+krd_sum=106224411.96420395
+source_version=sv_risk_tensor__sv_837e9f35fdda__sv_837e9f35fdda__sv_coupon_gap_repair_20260717_v1__sv_67bf20398f44
+upstream_source_version=sv_837e9f35fdda__sv_837e9f35fdda__sv_coupon_gap_repair_20260717_v1
 liability_source_version=sv_67bf20398f44
 ```
 
@@ -68,20 +68,22 @@ Risk tensor warnings:
 
 ```text
 Non-standard tenor buckets remapped to nearest KRD bucket: 20Y, 2Y, 6M
-120 rows carry market_value=38318400505.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date; 6 with non-positive modified_duration.
+120 rows carry market_value=39109594105.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date; 6 matured on or before report_date with outstanding market_value; 0 future-dated with non-positive modified_duration.
 Excluded 114 rows without maturity_date from liquidity gap calculation.
 Excluded 1455 liability rows without maturity_date from liquidity gap calculation.
+3 floating-rate rows use the current coupon rate as a frozen proxy for the full projection horizon.
+1588 rows lack an explicit payment frequency; annual coupon frequency is used as a proxy.
 ```
 
 Risk warning consistency:
 
 ```text
-Risk warning consistency: `warning_consistency_status=mismatch`
+Risk warning consistency: `warning_consistency_status=consistent`
 Risk warning decision status: `decision_status=blocked`
-consistency_blockers=duration_exclusion_warning_mismatch
-decision_blockers=risk_tensor_quality_warning, risk_tensor_warning_mismatch
-duration_exclusion parsed row_count=120, market_value_sum=38318400505.50000008, missing_maturity_rows=114, nonpositive_duration_rows=6
-duration_exclusion recomputed row_count=120, market_value_sum=39109594105.50000008, missing_maturity_rows=114, nonpositive_duration_rows=6
+consistency_blockers=none
+decision_blockers=risk_tensor_quality_warning
+duration_exclusion parsed row_count=120, market_value_sum=39109594105.50000008, no_maturity_rows=114, matured_or_expired_outstanding_rows=6, nonpositive_duration_rows=0
+duration_exclusion recomputed row_count=120, market_value_sum=39109594105.50000008, no_maturity_rows=114, matured_or_expired_outstanding_rows=6, nonpositive_duration_rows=0
 bond_liquidity_gap missing_maturity_rows=114
 tyw_liability_liquidity_gap missing_maturity_rows=1455
 krd_buckets=20Y, 2Y, 6M
@@ -285,7 +287,7 @@ Observed status:
 - Score methodology is `discrete_full_closure_gate`; the `0.14` gap is not allocated across blockers as linear weights.
 - Closure scorecard reports `score_status=blocked` and `full_score_ready=false`.
 - Closure scorecard strict full-score gate exits non-zero while score blockers remain.
-- Closure scorecard blockers: `risk_tensor_quality_warning`, `krd_contract_decision_required`, `bond_matured_outstanding_reconciliation_required`, `tyw_liability_maturity_date_remediation_required`, `krd_bucket_warning_mismatch`, `duration_exclusion_warning_mismatch`, `risk_tensor_warning_mismatch`, `business_owner_approval`, `owner_decision_intake_blocked`.
+- Closure scorecard blockers: `risk_tensor_quality_warning`, `krd_contract_decision_required`, `bond_matured_outstanding_reconciliation_required`, `tyw_liability_maturity_date_remediation_required`, `business_owner_approval`, `owner_decision_intake_blocked`.
 - Closure scorecard action map records `owner`, `next_action`, `evidence_command`, and `exit_criteria` for every score blocker.
 - Closure scorecard gates carry `score_blocker_action_coverage.status=clean`; unknown or unassigned score blockers prevent strict activation.
 - Closure scorecard emits `verification_commands` with evidence, strict-gate, and regression commands plus expected blocked-state exits.
@@ -323,7 +325,7 @@ Observed status:
 - Owner handoff Markdown summary states export-current system fields prove package freshness only; they do not approve KRD decisions, maturity remediation, signed exclusions, or business-owner closure.
 - Owner action packet carries KRD `note_gap_counts`, maturity `comment_gap_counts`, and `exact_bucket_schema_evidence` into the owner packets without changing approval status.
 - Owner action packet carries `owner_decision_intake_alignment.status=consistent` into the owner packets so owners can see activation evidence alignment before signing.
-- Owner action packet assigns `risk_tensor_warning_mismatch` to the risk-owner packet, `duration_exclusion_warning_mismatch` to the data-owner packet, and `owner_decision_intake_blocked` to the business-owner packet so no score blocker is left unowned.
+- Owner action packet assigns `risk_tensor_quality_warning` and `krd_contract_decision_required` to the risk-owner packet, the maturity and matured-outstanding blockers to the data-owner packet, and `owner_decision_intake_blocked` to the business-owner packet so no score blocker is left unowned.
 - Owner action packet strict clean gate exits non-zero while any owner packet remains blocked.
 - Business owner approval packet reports `packet_status=pending`, `activation_ready=false`, and `approval_action_item_count=19`.
 - Business owner approval packet lists sign-off, audit, evidence snapshot, owner action, KRD decision export, maturity remediation export, scorecard strict gate, and approval strict gate dependencies.
@@ -349,8 +351,8 @@ Observed status:
 - Business owner approval packet strict ready gate exits non-zero while the template is pending or any full-score blocker remains.
 - Full-closure evidence script reports `data_quality_status=blocked`.
 - Full-closure evidence strict clean gate exits non-zero while risk tensor and maturity blockers remain.
-- Risk warning consistency strict gate exits non-zero while parsed and recomputed duration-exclusion evidence remains mismatched.
-- Risk tensor rematerialization preview is read-only: it would clear `krd_bucket_warning_mismatch` and `duration_exclusion_warning_mismatch`, but `preview_decision_status=blocked` remains because `preview_quality_flag=warning`.
+- Risk warning consistency strict gate exits 0 now that parsed and recomputed duration-exclusion evidence match.
+- Risk tensor rematerialization preview is read-only: parsed warnings already match recomputed facts, and `preview_decision_status=blocked` remains because `preview_quality_flag=warning`.
 - Risk warning clean gate exits non-zero while `quality_flag=warning` remains.
 - KRD remap review queue reports `review_status=decision_required`.
 - KRD remap review queue exposes `decision_options=approve_nearest_bucket|require_exact_bucket_schema|reject` and `review_actions` for risk-owner decision.

@@ -473,10 +473,10 @@ Guardrails:
 
 | metric_id | payload 字段 | 指标字典条目名 | 页面用词 | 报告册用词 |
 | --- | --- | --- | --- | --- |
-| `MTR-PCP-021` | `interest_spread.all_currency_spread_pct` | 资产负债利差（含TPL） | 图例「资产负债利差（含TPL）（%）」；读数卡「资产负债利差（含TPL）（bp）」；图表标题「资产负债利差趋势图」 | **「全口径利差」**（完整版 7 处，含 P34 累计条与 P43 口径说明；简版 4 处，含 P01 封面「全口径利差0.64%」与 P10） |
-| `MTR-PCP-015` | `interest_earning_spread.all_currency_spread_pct` | 生息资产利差 | 读数卡「生息资产利差（bp）」；对比卡标题「生息资产利差：今年与上年同月」；**图例「生息资产负债利差（%）」与图表标题「生息资产负债利差趋势图」**（多「负债」二字） | 「生息资产利差」（完整版 3 处、简版 2 处） |
-| `MTR-PCP-019` | `interest_spread.all_currency_asset_yield_pct` | 资产端收益率（含TPL） | 图例「资产端收益率（含TPL）（%）」；读数卡「资产端收益率（含TPL）」 | 「资产端收益率」/ 表内简写「资产收益」 |
-| `MTR-PCP-013` | `interest_earning_spread.all_currency_asset_yield_pct` | 生息资产收益率（综本） | 图例「生息资产收益率（%）」 | 「生息资产收益率」/ 表内简写「生息资产收益」 |
+| MTR-PCP-021 | `interest_spread.all_currency_spread_pct` | 资产负债利差（含TPL） | 图例「资产负债利差（含TPL）（%）」；读数卡「资产负债利差（含TPL）（bp）」；图表标题「资产负债利差趋势图」 | **「全口径利差」**（完整版 7 处，含 P34 累计条与 P43 口径说明；简版 4 处，含 P01 封面「全口径利差0.64%」与 P10） |
+| MTR-PCP-015 | `interest_earning_spread.all_currency_spread_pct` | 生息资产利差 | 读数卡「生息资产利差（bp）」；对比卡标题「生息资产利差：今年与上年同月」；**图例「生息资产负债利差（%）」与图表标题「生息资产负债利差趋势图」**（多「负债」二字） | 「生息资产利差」（完整版 3 处、简版 2 处） |
+| MTR-PCP-019 | `interest_spread.all_currency_asset_yield_pct` | 资产端收益率（含TPL） | 图例「资产端收益率（含TPL）（%）」；读数卡「资产端收益率（含TPL）」 | 「资产端收益率」/ 表内简写「资产收益」 |
+| MTR-PCP-013 | `interest_earning_spread.all_currency_asset_yield_pct` | 生息资产收益率（综本） | 图例「生息资产收益率（%）」 | 「生息资产收益率」/ 表内简写「生息资产收益」 |
 | `MTR-PCP-014` / `MTR-PCP-020` | 两段各自的 `all_currency_liability_yield_pct` | 负债端成本率（综本，…口径） | 图例「负债端成本率（%）」（两张利差图共用，同源镜像） | 「负债端成本率」/ 表内简写「负债成本」 |
 
 别名守则：
@@ -566,7 +566,9 @@ cln_drag_bp        = (liability_yield_pct - liability_yield_ex_cln_pct) * 100
 口径说明：`ex_cln_cash = liability_total.cnx_cash − credit_linked_notes.cnx_cash`，
 `ex_cln_scale = liability_total.cnx_scale − credit_linked_notes.cnx_scale`，
 再按同一 `days_for_view` / 365 年化。负债行 `cnx_scale` / `cnx_cash` 同为负值，负负相除得正，与 `weighted_yield` 正值口径一致。
-`credit_linked_notes`（`信用联结票据`）行缺失或分母为 0 时五个字段全部返回 `null`。
+`liability_total`、`credit_linked_notes` 与剔除 CLN 后的规模必须同时保持负债侧负号；
+任一规模为 0、符号异常、CLN 规模超过负债合计，或 `credit_linked_notes` 行缺失时，
+五个字段全部返回 `null`，不得发布伪造的 0 或反号拆解。
 
 后端落地状态（治理登记，由 `tests/test_interest_spread_metric_governance_contract.py` 解析）：
 
@@ -646,7 +648,7 @@ Guardrails：
 | `/bond-dashboard` | `PAGE-BOND-001` | `frontend/src/features/bond-dashboard/pages/BondDashboardPage.tsx` → `getBondDashboardHeadlineKpis`；`frontend/src/features/bond-dashboard/components/HeadlineKpis.tsx`（`total_market_value`, `unrealized_pnl`, `weighted_ytm`, …） | **GAP-BOND-DASH-HL**：**页面契约已有**；Headline 与 `MTR-BAL-001` 等 formal 字段 **未建立字典级同源** | `GS-BOND-HEADLINE-A` **capture-ready**（冻结 `GET /api/bond-dashboard/headline-kpis` 的页面 headline DTO；非字典级 metric 批准） | `frontend/src/test/BondDashboardPage.test.tsx` |
 | `/bond-dashboard` | `PAGE-BOND-001` | 同页 → `getBondDashboardRiskIndicators`；`RiskIndicatorsPanel.tsx`（`total_market_value`, `total_dv01`, `credit_ratio`, …） | **GAP-BOND-DASH-RISK**：**页面契约已有**；与 `MTR-RSK-*`（`GS-RISK-A` / risk tensor）是否同源 **未冻结** | —（不自动继承 `GS-RISK-A`） | `frontend/src/test/BondDashboardPage.test.tsx` |
 | `/bond-analysis` | `PAGE-BOND-ANALYSIS-001` | `frontend/src/features/bond-analytics/components/BondAnalyticsView.tsx` → `GET /api/bond-analytics/action-attribution` | `MTR-BOND-ACT-001`~`MTR-BOND-ACT-006`（candidate；pending confirmation；`formal_use_allowed=false`） | `GS-BOND-ANALYSIS-ACTION-ATTR-A` **capture-ready pending approval**（冻结 action-attribution 页面 DTO；非固定收益公式/owner 审批） | `tests/test_golden_samples_capture_ready.py`；`tests/test_bond_analysis_business_owner_approval_status.py`；`frontend/src/test/BondAnalyticsView.test.tsx` |
-| `/positions` | `PAGE-POS-001` | `frontend/src/features/positions/components/PositionsView.tsx` → `getPositionsBondsList` / `getPositionsInterbankList` / counterparty 等 | **GAP-POS-LIST**：**页面契约已有**；`/api/positions/*` 列表与统计 DTO **未升为** `MTR-*` | — | `tests/test_positions_api_contract.py`；`frontend/src/test/PositionsView.test.tsx` |
+| `/positions` | `PAGE-POS-001` | `frontend/src/features/positions/components/PositionsView.tsx` → `getPositionsBondsList` / `getPositionsInterbankList` / counterparty 等 | **GAP-POS-LIST**：**页面契约已有**；仅列表记录数登记为 candidate `MTR-POS-001` / `MTR-POS-002`，其余列表与统计 DTO 未升为 formal `MTR-*` | `GS-POSITIONS-BONDS-LIST-A` / `GS-POSITIONS-INTERBANK-LIST-A`（capture-ready pending approval；不构成 formal 批准） | `tests/test_positions_api_contract.py`；`frontend/src/test/PositionsView.test.tsx` |
 | `/positions` | `PAGE-POS-001` | 同页 → `getBalanceAnalysisDates`（仅日期列表） | 非业务展示指标；日期与 balance 正式读面可对齐属实现细节，**不**单占 `metric_id` | 可与 `GS-BAL-OVERVIEW-A` 的 `report_date` **语义对照**，非同一样本字段冻结 | `tests/test_balance_analysis_api.py`（以 dates/overview 专测为准） |
 | `/market-data` | `PAGE-MKT-001` | `frontend/src/features/market-data/pages/MarketDataPage.tsx` → Choice macro / FX analytical / macro-bond-linkage 等 | **GAP-MKT-DATA**：**页面契约已有**；当前仅 formal rates 片段可单独核对，尚无 full-page formal metric dictionary / capture-ready golden sample | — | `frontend/src/test/MarketDataPage.test.tsx` |
 | `/macro-observation` | `PAGE-MACRO-OBS-001` | `MacroToolkitPage.tsx` -> `getMacroToolkitAnalysis` / `getMacroToolkitStrategySummaries` | **无 `MTR-*`**：只读宏观观察口径，不升格为正式指标 | — | `frontend/src/test/MacroToolkitPage.test.tsx`；`frontend/src/test/RouteRegistry.test.tsx` |
@@ -662,9 +664,9 @@ Guardrails：
 
 ## 14. 版本说明
 
-- 当前版本：`v1-draft + sample_scope pass + wave1_page_binding`
-- 日期：`2026-04-24`
-- 性质：docs-only first pass + capture-ready sample binding + Wave 1 工作台四路由文档绑定（§12.5）
+- 当前版本：`v1-draft + sample_scope pass + wave1_page_binding + live_headline_backfill + formal_promotions`
+- 日期：`2026-08-13`（最近一次 formal 升格批准日；初版 `2026-04-24`）
+- 性质：docs-only first pass + capture-ready sample binding + Wave 1 工作台四路由文档绑定（§12.5）；其后增量：2026-05-10 live 页面 headline KPI 补录（§15）、2026-07-15 `MTR-PNLBIZ-001`~`007` formal 批准（§15.2.11）、2026-08-13 利差与 CLN 拖累指标 formal 升格（§12.3.2，`MTR-PCP-013`~`029`）
 - 约束：仅反映当前仓库已落地指标，不代表未来所有页面或所有域已建字典
 
 ## 15. 2026-05-10 Live 页面 headline KPI 补录
@@ -683,7 +685,7 @@ Guardrails：
 | --- | --- | --- | --- | --- |
 | `bond-dashboard` | 新增 4 条 `candidate`：`MTR-BOND-001`~`MTR-BOND-004` | `PAGE-BOND-001` | `GS-BOND-HEADLINE-A` | 页面 headline DTO 已 freeze，但 §12.5 仍将字典级批准视为 gap，因此保留 `pending_confirmation=true` |
 | `positions` | 新增 2 条 `candidate`：`MTR-POS-001`~`MTR-POS-002` | `PAGE-POS-001` | `MTR-POS-001` -> `GS-POSITIONS-BONDS-LIST-A`; `MTR-POS-002` -> `GS-POSITIONS-INTERBANK-LIST-A` | 两个列表 DTO 样本已 capture-ready 但未审批；两条记录数指标仍为 candidate，`GAP-POS-LIST` 保持开放直至业主审批 |
-| `average-balance` | 3 candidate rows: `MTR-ADB-001`~`MTR-ADB-003` | `PAGE-ADB-001` | `MTR-ADB-001`/`MTR-ADB-002` -> `GS-AVERAGE-BALANCE-A`; `MTR-ADB-003` -> `GS-AVERAGE-BALANCE-MONTHLY-A` | daily and monthly DTO samples are capture-ready but not approved; all ADB metrics remain candidate and must not be promoted to formal use |
+| `average-balance` | 7 candidate rows: `MTR-ADB-001`~`MTR-ADB-007` | `PAGE-ADB-001` | `MTR-ADB-001`/`MTR-ADB-002` -> `GS-AVERAGE-BALANCE-A`; `MTR-ADB-003` -> `GS-AVERAGE-BALANCE-MONTHLY-A`; `MTR-ADB-004`~`MTR-ADB-007` -> `TBD`（尚无黄金样本） | daily and monthly DTO samples are capture-ready but not approved; `MTR-ADB-004`~`MTR-ADB-007` have no golden sample yet (`bound_sample_id=TBD`); all ADB metrics remain candidate and must not be promoted to formal use |
 | `ledger-pnl` | 新增 3 条 `candidate`：`MTR-LPN-001`~`MTR-LPN-003` | `PAGE-LEDGER-PNL-001` | `GS-LEDGER-PNL-SUMMARY-A` | dedicated summary DTO 已 capture-ready 但未审批；三条 summary 卡仍为 candidate，不能替代 formal PnL 或 product-category PnL |
 | `market-data` | 新增 1 条 `candidate`：`MTR-MKT-001` | `PAGE-MKT-001` | `none` | 仅登记宏观目录数 candidate；formal rates 片段不在本表升格为新的 formal `MTR-*` |
 | `operations-analysis` | 复用既有 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003` | `PAGE-OPS-001` | `GS-PROD-CAT-PNL-A`（复用上游 formal headline 真值） | `PAGE-OPS-001` 已对齐当前 product-category headline 实现；balance overview 仅为 supplemental topic-entry evidence；macro/FX/news 仍由 `GAP-OPS-MACRO-FX` 限定 |
@@ -714,6 +716,12 @@ Guardrails：
 - `MTR-ADB-001` 区间日均总资产: `status=candidate`; `display_unit=亿元`; `precision=2`; `sign_rule=unsigned amount`; `null_rule=null -> --`; `source_endpoint=GET /api/analysis/adb`; `owner=TBD`; `last_reviewed=2026-06-09`; `bound_page_id=PAGE-ADB-001`; `bound_sample_id=GS-AVERAGE-BALANCE-A`; `pending_confirmation=true`.
 - `MTR-ADB-002` 区间日均总负债: `status=candidate`; `display_unit=亿元`; `precision=2`; `sign_rule=unsigned amount`; `null_rule=null -> --`; `source_endpoint=GET /api/analysis/adb`; `owner=TBD`; `last_reviewed=2026-06-09`; `bound_page_id=PAGE-ADB-001`; `bound_sample_id=GS-AVERAGE-BALANCE-A`; `pending_confirmation=true`.
 - `MTR-ADB-003` YTD spread / monthly ADB-NIM: `status=candidate`; `display_unit=%`; `precision=2`; `sign_rule=signed percent; preserve source sign`; `null_rule=null -> --`; `source_endpoint=GET /api/analysis/adb/monthly`; `owner=TBD`; `last_reviewed=2026-06-10`; `bound_page_id=PAGE-ADB-001`; `bound_sample_id=GS-AVERAGE-BALANCE-MONTHLY-A`; `pending_confirmation=true`.
+- `MTR-ADB-004` 区间规模变动归因: `status=candidate`; `display_unit=亿元/%（delta 亿元、contribution_pct %）`; `precision=2`; `sign_rule=signed`; `null_rule=null -> --`; `source_endpoint=GET /api/analysis/adb/insights`; `owner=TBD`; `last_reviewed=2026-08-13`; `bound_page_id=PAGE-ADB-001`; `bound_sample_id=TBD`; `pending_confirmation=true`.
+- `MTR-ADB-005` NIM 量价归因（rate/mix/residual）: `status=candidate`; `display_unit=bp`; `precision=1`; `sign_rule=signed`; `null_rule=null -> --`; `source_endpoint=GET /api/analysis/adb/insights`; `owner=TBD`; `last_reviewed=2026-08-13`; `bound_page_id=PAGE-ADB-001`; `bound_sample_id=TBD`; `pending_confirmation=true`.
+- `MTR-ADB-006` 日度波动与异常检测（std/cv/zscore/月末效应）: `status=candidate`; `display_unit=混合（亿元/%/z）`; `precision=2`; `sign_rule=signed`; `null_rule=null -> --`; `source_endpoint=GET /api/analysis/adb/insights`; `owner=TBD`; `last_reviewed=2026-08-13`; `bound_page_id=PAGE-ADB-001`; `bound_sample_id=TBD`; `pending_confirmation=true`.
+- `MTR-ADB-007` 结构集中度与迁移（HHI/Top3/Top5/movers）: `status=candidate`; `display_unit=比率与 pp`; `precision=4（HHI）/2（share）`; `sign_rule=signed`; `null_rule=null -> --`; `source_endpoint=GET /api/analysis/adb/insights`; `owner=TBD`; `last_reviewed=2026-08-13`; `bound_page_id=PAGE-ADB-001`; `bound_sample_id=TBD`; `pending_confirmation=true`.
+
+**Comparison 端点读面（非独立 `MTR-*`）**：`GET /api/analysis/adb/comparison` 的 `total_spot_*` / `total_avg_*` 按侧 fail-visible（该侧无有效余额 → `null`；valid 0 → `0.0`）；`null_rule=null -> --（EM_DASH）` 与上表一致；偏离度/同比为展示层派生，分母 `null` 时不计算、不触发预警。详见 `docs/pnl/average-balance-page-contract.md` §Comparison fail-visible。
 
 #### 15.2.4 `ledger-pnl`
 

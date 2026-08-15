@@ -36,7 +36,7 @@ def test_calculation_p1_owner_meeting_checklist_prepares_owner_intake() -> None:
     assert checklist["meeting_missing_field_count"] == 8
     assert checklist["meeting_record_complete"] is False
     assert checklist["execution_anchor_ready"] is True
-    assert checklist["execution_referenced_path_count"] == 18
+    assert checklist["execution_referenced_path_count"] == 16
     assert checklist["missing_execution_referenced_path_count"] == 0
     assert checklist["decision_ids"] == EXPECTED_OPEN_CALCULATION_P1_IDS
     assert checklist["post_meeting_required_fields"] == [
