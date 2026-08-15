@@ -67,6 +67,10 @@ class TTLResponseCache:
         self._lock = threading.Lock()
         self._store: dict[str, tuple[float, object]] = {}
         self._inflight: dict[str, _InFlightBuild] = {}
+        # Bumped on every invalidate. A build that started before an invalidate
+        # must not write its (pre-invalidation) result back, otherwise a refresh
+        # endpoint can be immediately overwritten by stale data for a full TTL.
+        self._generation = 0
 
     def get_or_build(
         self,
@@ -88,6 +92,7 @@ class TTLResponseCache:
             if inflight is None:
                 inflight = _InFlightBuild()
                 self._inflight[key] = inflight
+                builder_generation = self._generation
                 should_build = True
             else:
                 should_build = False
@@ -110,7 +115,8 @@ class TTLResponseCache:
 
         expires_at = self._clock() + ttl
         with self._lock:
-            self._store[key] = (expires_at, value)
+            if self._generation == builder_generation:
+                self._store[key] = (expires_at, value)
             inflight.value = value
             self._inflight.pop(key, None)
             inflight.event.set()
@@ -142,6 +148,7 @@ class TTLResponseCache:
             if inflight is None:
                 inflight = _InFlightBuild()
                 self._inflight[key] = inflight
+                builder_generation = self._generation
                 should_build = True
             else:
                 should_build = False
@@ -164,14 +171,50 @@ class TTLResponseCache:
 
         expires_at = self._clock() + ttl
         with self._lock:
-            self._store[key] = (expires_at, value)
+            if self._generation == builder_generation:
+                self._store[key] = (expires_at, value)
             inflight.value = value
             self._inflight.pop(key, None)
             inflight.event.set()
         return value, "produce"
 
+    def generation(self) -> int:
+        """Snapshot the invalidation counter before starting an out-of-band build."""
+        with self._lock:
+            return self._generation
+
+    def set(
+        self,
+        key: str,
+        value: object,
+        *,
+        ttl_seconds: float | None = None,
+        generation: int | None = None,
+    ) -> bool:
+        """Overwrite an entry and restart its TTL.
+
+        Background refresh passes need this: ``get_or_build`` returns a still-live
+        entry untouched, so a refresh would never push the expiry out and the entry
+        would still lapse at its original deadline.
+
+        Pass ``generation`` (captured via :meth:`generation` before computing the
+        value) so a refresh that raced with an ``invalidate`` drops its now-stale
+        result instead of resurrecting pre-invalidation data. Returns whether the
+        value was stored.
+        """
+        ttl = self._default_ttl if ttl_seconds is None else ttl_seconds
+        if ttl <= 0:
+            return False
+        expires_at = self._clock() + ttl
+        with self._lock:
+            if generation is not None and self._generation != generation:
+                return False
+            self._store[key] = (expires_at, value)
+            return True
+
     def invalidate(self, key: str | None = None) -> None:
         with self._lock:
+            self._generation += 1
             if key is None:
                 self._store.clear()
             else:
@@ -201,14 +244,51 @@ def market_home_macro_analysis_cache_key(
     detail: str = "full",
     *,
     history_limit: int | None = None,
+    freshness_fingerprint: str | None = None,
 ) -> str:
+    freshness_suffix = (
+        f"::{freshness_fingerprint}" if freshness_fingerprint is not None else ""
+    )
     if detail == "full" and history_limit is not None:
-        return f"macro-toolkit/analysis::{detail}::{history_limit}::{duckdb_path}"
-    return f"macro-toolkit/analysis::{detail}::{duckdb_path}"
+        return (
+            f"macro-toolkit/analysis::{detail}::{history_limit}"
+            f"{freshness_suffix}::{duckdb_path}"
+        )
+    return f"macro-toolkit/analysis::{detail}{freshness_suffix}::{duckdb_path}"
 
 
 def market_home_strategy_summaries_cache_key(duckdb_path: str) -> str:
     return f"macro-toolkit/strategy-summaries::{duckdb_path}"
+
+
+def bond_analytics_credit_spread_migration_cache_key(
+    duckdb_path: str,
+    *,
+    report_date: str,
+    spread_scenarios: str,
+) -> str:
+    return (
+        "bond-analytics/credit-spread-migration"
+        f"::{report_date}::{spread_scenarios}::{duckdb_path}"
+    )
+
+
+def bond_analytics_position_changes_cache_key(
+    duckdb_path: str,
+    *,
+    report_date: str,
+    top_n: int,
+) -> str:
+    return f"bond-analytics/position-changes::{report_date}::{top_n}::{duckdb_path}"
+
+
+def home_research_reports_cache_key(
+    duckdb_path: str,
+    *,
+    report_date: str,
+    limit: int,
+) -> str:
+    return f"home/research-reports::{report_date}::{limit}::{duckdb_path}"
 
 
 def campisi_four_effects_cache_key(

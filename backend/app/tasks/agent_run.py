@@ -68,6 +68,17 @@ def _execute_agent_run_task(*, run_id: str) -> None:
             settings=settings,
             error=exc,
         )
+    except BaseException as exc:
+        # Dramatiq's time_limit interrupt (TimeLimitExceeded) subclasses
+        # BaseException, so it bypasses the branch above. Converge the run to
+        # failed first, then re-raise to preserve the worker interrupt
+        # semantics (shutdown, time-limit accounting).
+        agent_run_service.fail_agent_run(
+            run_id=run_id,
+            settings=settings,
+            error=exc,
+        )
+        raise
     return None
 
 

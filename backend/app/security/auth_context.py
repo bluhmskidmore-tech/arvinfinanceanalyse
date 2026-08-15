@@ -5,6 +5,7 @@ import time
 from dataclasses import dataclass
 from threading import Lock
 from typing import Annotated
+from urllib.parse import unquote, urlparse
 
 from backend.app.governance.settings import Settings
 from backend.app.repositories.user_scope_repo import UserScopeRepository
@@ -13,6 +14,10 @@ from fastapi import Header
 DEFAULT_AUTH_USER_ID = "anonymous"
 DEFAULT_AUTH_ROLE = "viewer"
 ROLE_HEADER_TRUST_ENV = "MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST"
+# Repository-shipped weak credentials that must never survive into a
+# non-development deployment (checked by validate_auth_startup_guardrails).
+_REPO_DEFAULT_POSTGRES_CREDENTIALS = ("moss", "moss")
+_REPO_DEFAULT_MINIO_CREDENTIAL = "minioadmin"
 SCOPE_DECISION_CACHE_TTL_ENV = "MOSS_AUTH_SCOPE_CACHE_TTL_SECONDS"
 _DEFAULT_SCOPE_DECISION_CACHE_TTL_SECONDS = 30.0
 _SCOPE_DECISION_CACHE_MAX_ENTRIES = 4096
@@ -158,6 +163,14 @@ def _header_trust_enabled() -> bool:
     return os.environ.get(ROLE_HEADER_TRUST_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _uses_repo_default_postgres_credentials(dsn: object) -> bool:
+    parsed = urlparse(str(dsn or "").strip())
+    if parsed.scheme.split("+", maxsplit=1)[0].lower() not in {"postgres", "postgresql"}:
+        return False
+    credentials = (unquote(parsed.username or ""), unquote(parsed.password or ""))
+    return credentials == _REPO_DEFAULT_POSTGRES_CREDENTIALS
+
+
 def validate_auth_startup_guardrails(settings: Settings) -> None:
     environment = str(settings.environment).strip().lower()
     if environment == "development":
@@ -177,6 +190,29 @@ def validate_auth_startup_guardrails(settings: Settings) -> None:
     if "*" in cors_origins:
         raise RuntimeError(
             f"{environment} environment cannot use wildcard CORS origins with credentialed API responses"
+        )
+    dsn_candidates = {
+        str(settings.postgres_dsn or "").strip(),
+        str(settings.governance_sql_dsn or "").strip(),
+    }
+    if any(_uses_repo_default_postgres_credentials(dsn) for dsn in dsn_candidates):
+        raise RuntimeError(
+            f"{environment} environment cannot start with the repository default postgres "
+            "credentials (moss:moss); override MOSS_POSTGRES_DSN (and MOSS_GOVERNANCE_SQL_DSN "
+            "when set) with deployment-specific credentials"
+        )
+    # minioadmin is only material when the object store actually talks to MinIO;
+    # local archive mode never presents these credentials to any service.
+    object_store_mode = str(settings.object_store_mode or "").strip().lower()
+    minio_credentials = {
+        str(settings.minio_access_key or "").strip(),
+        str(settings.minio_secret_key or "").strip(),
+    }
+    if object_store_mode != "local" and _REPO_DEFAULT_MINIO_CREDENTIAL in minio_credentials:
+        raise RuntimeError(
+            f"{environment} environment cannot start with the repository default MinIO "
+            "credentials (minioadmin); override MOSS_MINIO_ACCESS_KEY and MOSS_MINIO_SECRET_KEY "
+            "with deployment-specific credentials"
         )
 
 

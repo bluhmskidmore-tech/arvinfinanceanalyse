@@ -34,12 +34,13 @@ def execute_dexter_agent_query(
     governance_dir: str,
     settings: Any,
 ) -> AgentEnvelope:
-    research_context = build_dexter_research_context(
-        request=request,
-        duckdb_path=str(getattr(settings, "duckdb_path", "") or ""),
-    )
-    prompt = _build_dexter_prompt(request, research_context=research_context)
+    research_context: dict[str, Any] = {}
     try:
+        research_context = build_dexter_research_context(
+            request=request,
+            duckdb_path=str(getattr(settings, "duckdb_path", "") or ""),
+        )
+        prompt = _build_dexter_prompt(request, research_context=research_context)
         result = run_dexter_agent(
             request=request,
             command=str(getattr(settings, "agent_dexter_command", "dexter") or "dexter"),
@@ -51,7 +52,9 @@ def execute_dexter_agent_query(
             prompt_override=prompt,
         )
         envelope = build_dexter_envelope(request=request, result=result, research_context=research_context)
-    except RuntimeError as exc:
+    except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as exc:
+        # 运行链任何失败（含研究上下文构建、子进程拉起、超时、bridge 响应解析）都收敛到
+        # 同一条确定性兜底路径；裸异常穿透到路由层会被误映射成 404/500 且无审计。
         _LOGGER.warning(
             "Dexter provider runtime failed provider=dexter error_type=%s error_code=%s",
             exc.__class__.__name__,
@@ -122,6 +125,9 @@ def run_dexter_agent(
         raise RuntimeError(f"Dexter command not found: {command}") from exc
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"Dexter timed out after {timeout_seconds:g}s") from exc
+    except OSError as exc:
+        # 覆盖 PermissionError、Windows argv 超长（WinError 206）等启动失败。
+        raise RuntimeError(f"Dexter command failed to start: {exc}") from exc
 
     stdout = str(completed.stdout or "")
     stderr = str(completed.stderr or "")
@@ -157,13 +163,6 @@ def build_dexter_envelope(
     filters_applied = {
         key: value for key, value in request.filters.items() if value not in (None, "")
     }
-    filters_applied["provider"] = "dexter"
-    if result.get("model"):
-        filters_applied["model"] = result["model"]
-    if result.get("toolsets"):
-        filters_applied["toolsets"] = _normalize_toolsets(str(result["toolsets"]))
-    if result.get("transport"):
-        filters_applied["transport"] = result["transport"]
     if has_research_context:
         filters_applied.update(
             {
@@ -172,10 +171,19 @@ def build_dexter_envelope(
                 if value not in (None, "")
             }
         )
+    # 运行时披露键最后写入：request/research filters 里的同名键不得覆写 provider 事实。
+    filters_applied["provider"] = "dexter"
+    if result.get("model"):
+        filters_applied["model"] = result["model"]
+    if result.get("toolsets"):
+        filters_applied["toolsets"] = _normalize_toolsets(str(result["toolsets"]))
+    if result.get("transport"):
+        filters_applied["transport"] = result["transport"]
 
+    is_bridge_transport = str(result.get("transport") or "").strip().lower() in {"sidecar", "bridge"}
     tables_used = _normalize_tables_used(
         result.get("tables_used"),
-        fallback="dexter_sidecar" if str(result.get("transport") or "").strip().lower() in {"sidecar", "bridge"} else "dexter_cli",
+        fallback="dexter_sidecar" if is_bridge_transport else "dexter_cli",
     )
     if has_research_context:
         tables_used = _dedupe([*tables_used, *list(research_context.get("tables_used") or [])])
@@ -197,7 +205,9 @@ def build_dexter_envelope(
         quality_flag=quality_flag,
         evidence_strength=evidence_strength,
     )
-    source_suffix = "sidecar" if "dexter_sidecar" in tables_used else "cli"
+    # 用运行时 transport 判定来源版本：sidecar 自报真实表名时 tables_used 不含
+    # "dexter_sidecar"，按表名判定会误标 sv_dexter_cli。
+    source_suffix = "sidecar" if is_bridge_transport else "cli"
     result_meta = AgentResultMeta(
         trace_id=trace_id,
         basis=request.basis,
@@ -241,6 +251,15 @@ def build_dexter_fallback_envelope(
     filters_applied = {
         key: value for key, value in request.filters.items() if value not in (None, "")
     }
+    if has_research_context:
+        filters_applied.update(
+            {
+                key: value
+                for key, value in dict(research_context.get("filters_applied") or {}).items()
+                if value not in (None, "")
+            }
+        )
+    # 运行时披露键最后写入：request/research filters 里的同名键不得覆写 fallback 事实。
     filters_applied["provider"] = "dexter"
     filters_applied["fallback_provider"] = "local"
     filters_applied["fallback_reason"] = str(result.get("error_code") or _DEXTER_FALLBACK_REASON)
@@ -250,14 +269,6 @@ def build_dexter_fallback_envelope(
         filters_applied["toolsets"] = _normalize_toolsets(str(result["toolsets"]))
     if result.get("transport"):
         filters_applied["transport"] = result["transport"]
-    if has_research_context:
-        filters_applied.update(
-            {
-                key: value
-                for key, value in dict(research_context.get("filters_applied") or {}).items()
-                if value not in (None, "")
-            }
-        )
 
     # 研究上下文在 provider 失败前已真实执行过只读查询：表访问与 SQL 披露必须保留在证据里。
     tables_used = ["dexter_local_fallback"]
@@ -405,12 +416,19 @@ def _post_dexter_bridge_query(
     )
     try:
         with urllib.request.urlopen(request, timeout=max(timeout_seconds, 1.0)) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+            raw_body = response.read()
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"Dexter sidecar failed: {_truncate(detail, 2000)}") from exc
-    except (urllib.error.URLError, TimeoutError) as exc:
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise RuntimeError(f"Dexter sidecar unavailable: {exc}") from exc
+
+    # 解析失败必须收敛为 RuntimeError：JSONDecodeError 是 ValueError 子类，裸穿透会被
+    # 路由层 except ValueError 误映射成 404。decode 用 errors="replace" 排除 UnicodeDecodeError。
+    try:
+        payload = json.loads(raw_body.decode("utf-8", errors="replace"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Dexter sidecar returned invalid JSON.") from exc
 
     if not isinstance(payload, dict):
         raise RuntimeError("Dexter sidecar returned an invalid payload.")

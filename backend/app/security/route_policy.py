@@ -80,4 +80,5 @@ POLICY_SCOPE_SEMANTICS: dict[tuple[str, str], RoutePolicySemantics] = {
     ("source_preview.source_foundation", "read"): RoutePolicySemantics("internal", "Reports and data owner"),
     ("source_preview.source_foundation", "refresh"): RoutePolicySemantics("admin", "Reports and data owner"),
     ("strategy_reports", "read"): RoutePolicySemantics("internal", "Market data owner"),
+    ("team_performance", "read"): RoutePolicySemantics("internal", "Team performance workbook owner"),
 }

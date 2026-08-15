@@ -39,6 +39,11 @@ CANONICAL_TASK_MODULES: tuple[str, ...] = (
     "backend.app.tasks.agent_run_stream_compaction",
     "backend.app.tasks.livermore_gate_supplement",
     "backend.app.tasks.ledger_import",
+    "backend.app.tasks.yield_curve_materialize",
+    "backend.app.tasks.tushare_stock_disclosure",
+    "backend.app.tasks.risk_coupon_window_repair",
+    "backend.app.tasks.bond_dv01_limit_config_import",
+    "backend.app.tasks.fx_mid_backfill",
 )
 
 

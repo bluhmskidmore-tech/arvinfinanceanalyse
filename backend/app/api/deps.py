@@ -19,7 +19,7 @@ def ensure_read_allowed(
     settings: object | None = None,
     allow_dev_fallback: bool = False,
     allow_dev_fallback_on_unavailable: bool = False,
-    authorize: Callable[..., None] = ensure_user_allowed,
+    authorize: Callable[..., None] | None = None,
 ) -> None:
     """Authorize a governed read and translate scope failures into API errors.
 
@@ -28,8 +28,9 @@ def ensure_read_allowed(
     namespace still intercept the check.
     """
     resolved_settings = get_settings() if settings is None else settings
+    resolved_authorize = ensure_user_allowed if authorize is None else authorize
     try:
-        authorize(
+        resolved_authorize(
             auth=auth,
             settings=resolved_settings,
             resource=resource,

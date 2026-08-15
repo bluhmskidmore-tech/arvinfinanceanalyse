@@ -250,7 +250,11 @@ def audit_disabled_agent_query(
         trace_id=trace_id,
         tools_used=["agent_disabled"],
         tables_used=[],
-        filters_applied={key: value for key, value in request.filters.items() if value not in (None, "")},
+        filters_applied={
+            key: value
+            for key, value in request.filters.items()
+            if _audit_filter_value_present(value)
+        },
         result_meta={
             "trace_id": trace_id,
             "basis": request.basis,
@@ -1146,7 +1150,10 @@ def _risk_tensor_payload(
 ) -> dict[str, Any]:
     from backend.app.services.risk_tensor_service import risk_tensor_envelope
 
-    repo = BondAnalyticsRepository(duckdb_path)
+    # latest 日期必须来自张量事实表本身（与 _duration_risk_payload 对齐）：
+    # bond analytics 领先张量落表时，用 BondAnalyticsRepository 的最新日期会让
+    # risk_tensor_envelope 直接 raise。
+    repo = RiskTensorRepository(duckdb_path)
     report_date = _latest_or_requested(request, repo.list_report_dates())
     if report_date is None:
         raise ValueError("No risk-tensor report date is available.")
@@ -1179,9 +1186,11 @@ def _risk_tensor_payload(
     return {
         "answer": answer,
         "cards": [
-            {"type": "metric", "title": "Portfolio DV01", "value": str(result.get("portfolio_dv01", ""))},
-            {"type": "metric", "title": "CS01", "value": str(result.get("cs01", ""))},
-            {"type": "metric", "title": "Portfolio Convexity", "value": str(result.get("portfolio_convexity", ""))},
+            # 上游经 promote_flat_payload 产出 Numeric dict；复用 pnl_bridge 同款
+            # 渲染取 display 字段，避免把 {'raw': ...} 字典串直接落在指标卡上。
+            _agent_metric_card("Portfolio DV01", result.get("portfolio_dv01")),
+            _agent_metric_card("CS01", result.get("cs01")),
+            _agent_metric_card("Portfolio Convexity", result.get("portfolio_convexity")),
         ],
         "tables_used": ["fact_formal_risk_tensor_daily"],
         "filters_applied": _audit_filters(request, report_date, resolution=rd_mode),
@@ -1779,7 +1788,7 @@ def _append_failed_query_audit(
         filters_applied={
             key: value
             for key, value in request.filters.items()
-            if value not in (None, "", False)
+            if _audit_filter_value_present(value)
         },
         result_meta={
             "trace_id": trace_id,
@@ -1849,6 +1858,15 @@ def _coerce_iso_report_date(raw: str) -> str:
     return date.fromisoformat(str(raw).strip()).isoformat()
 
 
+def _audit_filter_value_present(value: Any) -> bool:
+    """审计过滤值保留判定：仅剔除 None 与空串。
+
+    不能写 `value not in (None, "", False)`：Python 中 0 == False，会把
+    offset=0 / min_amount=0 这类合法过滤值一并丢弃；0 与 False 都必须保留。
+    """
+    return not (value is None or value == "")
+
+
 def _audit_filters(
     request: AgentQueryRequest,
     report_date: str | None,
@@ -1859,11 +1877,11 @@ def _audit_filters(
     merged: dict[str, Any] = {
         key: value
         for key, value in request.filters.items()
-        if value not in (None, "", False)
+        if _audit_filter_value_present(value)
     }
     if extra:
         for key, value in extra.items():
-            if value not in (None, "", False):
+            if _audit_filter_value_present(value):
                 merged[key] = value
     if report_date is not None:
         merged["report_date"] = report_date

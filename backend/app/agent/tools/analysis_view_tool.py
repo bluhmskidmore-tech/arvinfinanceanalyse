@@ -5,7 +5,10 @@ from typing import Any, Literal, cast
 from uuid import uuid4
 
 from backend.app.agent.runtime.action_token import agent_action_confirmation_token
-from backend.app.agent.runtime.financial_workflow_catalog import FinancialWorkflow
+from backend.app.agent.runtime.financial_workflow_catalog import (
+    FinancialWorkflow,
+    list_financial_workflows,
+)
 from backend.app.agent.runtime.local_request_resolution import (
     has_explicit_local_agent_context as _has_explicit_local_agent_context,
 )
@@ -18,7 +21,10 @@ from backend.app.agent.runtime.local_request_resolution import (
 from backend.app.agent.runtime.local_request_resolution import (
     resolve_local_request,
 )
-from backend.app.agent.runtime.research_workflow_catalog import ResearchWorkflow
+from backend.app.agent.runtime.research_workflow_catalog import (
+    ResearchWorkflow,
+    list_research_workflows,
+)
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import (
     AgentCard,
@@ -121,16 +127,33 @@ class AnalysisViewTool:
                 detail=scope_violation,
             )
         resolution = resolve_local_request(request)
+        if resolution.reason == "unknown_workflow":
+            return self._unknown_workflow_envelope(request)
+
+        workflow_mode = str(request.context.get("workflow_mode") or "").strip().lower()
         workflow = resolution.financial_workflow
         if workflow is not None:
-            if str(request.context.get("workflow_mode") or "").strip().lower() == "execute":
+            mode_violation = self._workflow_mode_violation(workflow_mode)
+            if mode_violation is not None:
+                return self._error_envelope(
+                    request=request,
+                    intent=f"workflow.{workflow.workflow_id}",
+                    detail=mode_violation,
+                )
+            if workflow_mode == "execute":
                 return self._execute_workflow_envelope(request, workflow)
             return self._workflow_envelope(request, workflow)
 
         research_workflow = resolution.research_workflow
         if research_workflow is not None:
+            mode_violation = self._workflow_mode_violation(workflow_mode)
+            if mode_violation is not None:
+                return self._error_envelope(
+                    request=request,
+                    intent=f"workflow.{research_workflow.workflow_id}",
+                    detail=mode_violation,
+                )
             explicit_intent = str(request.context.get("intent") or "").strip().lower().replace("-", "_")
-            workflow_mode = str(request.context.get("workflow_mode") or "").strip().lower()
             # 显式 context.intent 保持既有直接执行语义；其余入口与 financial workflow 对齐：默认 plan，execute 需显式声明。
             if workflow_mode == "execute" or explicit_intent == research_workflow.workflow_id:
                 return self._execute_research_workflow(request, research_workflow)
@@ -154,6 +177,31 @@ class AnalysisViewTool:
             )
         except Exception as exc:
             return self._error_envelope(request=request, intent=intent, detail=str(exc))
+
+    def _unknown_workflow_envelope(self, request: AgentQueryRequest) -> AgentEnvelope:
+        """显式传入的 workflow_id 未命中目录：返回错误 envelope，不静默降级到问题扫描。"""
+        requested_workflow_id = str(request.context.get("workflow_id") or "").strip()
+        known_workflow_ids = [
+            workflow.workflow_id for workflow in list_financial_workflows()
+        ] + [workflow.workflow_id for workflow in list_research_workflows()]
+        return self._error_envelope(
+            request=request,
+            intent="unknown_workflow",
+            detail=(
+                f"Unrecognized workflow_id '{requested_workflow_id}'. "
+                f"Known workflows: {', '.join(known_workflow_ids)}."
+            ),
+        )
+
+    @staticmethod
+    def _workflow_mode_violation(workflow_mode: str) -> str | None:
+        """workflow_mode 仅接受空值 / plan / execute；其他值不再静默按 plan 处理。"""
+        if workflow_mode in ("", "plan", "execute"):
+            return None
+        return (
+            f"Unsupported workflow_mode '{workflow_mode}'; "
+            "expected 'plan' or 'execute'."
+        )
 
     def _workflow_envelope(
         self,
@@ -344,7 +392,18 @@ class AnalysisViewTool:
             if envelope.result_meta.quality_flag != "ok":
                 failed_intents.append(intent)
 
-        quality_flag: Literal["ok", "warning", "error", "stale"] = "warning" if failed_intents else "ok"
+        # 全部步骤硬失败（missing/error，无任何 status=ok 的结果）时整体与
+        # 步骤 quality_flag 升为 error，避免「全失败仍 warning」的矛盾展示；
+        # 部分失败保持既有 warning 语义。
+        all_steps_failed = bool(workflow.mapped_intents) and not any(
+            row.get("status") == "ok" for row in step_rows
+        )
+        if all_steps_failed:
+            for row in step_rows:
+                row["quality_flag"] = "error"
+        quality_flag: Literal["ok", "warning", "error", "stale"] = (
+            "error" if all_steps_failed else "warning" if failed_intents else "ok"
+        )
         evidence = self._evidence.build_evidence(
             tables_used=tables_used,
             filters_applied=filters_applied,
@@ -396,7 +455,14 @@ class AnalysisViewTool:
             ),
         ]
 
-        if failed_intents:
+        if all_steps_failed:
+            answer = (
+                f"Failed to execute financial workflow '{workflow.title}' ({workflow.workflow_id}): "
+                f"all mapped intents failed ({', '.join(failed_intents)}). "
+                "No governed intent produced a result. "
+                "The workflow summary is not a formal financial result."
+            )
+        elif failed_intents:
             answer = (
                 f"Executed financial workflow '{workflow.title}' ({workflow.workflow_id}) with warnings. "
                 f"Failed or degraded intents: {', '.join(failed_intents)}. "
@@ -538,14 +604,22 @@ class AnalysisViewTool:
         filters_applied: dict[str, Any],
     ) -> AgentCard:
         """纯模板化 memo 合成（不调用 LLM）：仅重排既有子 envelope 结论，不新增取数或计算。"""
-        report_date = next(
-            (
-                str(value)
-                for key, value in filters_applied.items()
-                if key.endswith(".report_date") and str(value or "").strip()
-            ),
-            "未提供",
-        )
+        # 收集全部子意图的 report_date：一致才收敛为单一日期，分歧时逐子意图
+        # 列出并明确标注，避免仅取第一个命中值误导阅读者。
+        report_dates_by_intent: dict[str, str] = {}
+        for key, value in filters_applied.items():
+            if key.endswith(".report_date") and str(value or "").strip():
+                report_dates_by_intent[key.removesuffix(".report_date")] = str(value).strip()
+        unique_report_dates = list(dict.fromkeys(report_dates_by_intent.values()))
+        if not unique_report_dates:
+            report_date_line = "报告日期：未提供"
+        elif len(unique_report_dates) == 1:
+            report_date_line = f"报告日期：{unique_report_dates[0]}"
+        else:
+            per_intent_dates = "；".join(
+                f"{intent}={value}" for intent, value in report_dates_by_intent.items()
+            )
+            report_date_line = f"报告日期：子意图日期不一致（{per_intent_dates}）"
         conclusion_lines: list[str] = []
         for row in detail_rows:
             intent = str(row.get("intent") or "")
@@ -563,7 +637,7 @@ class AnalysisViewTool:
         ]
         sections = [
             f"## Workflow Memo：{workflow_title}（{workflow_id}）",
-            f"报告日期：{report_date}",
+            report_date_line,
             "",
             "### 分步结论",
             *conclusion_lines,
@@ -603,11 +677,15 @@ class AnalysisViewTool:
         cube_request = CubeQueryRequest(**payload)
         cube_response = self._cube_query_service.execute(cube_request, self._duckdb_path)
         table_name = CubeQueryService.table_name_for(cube_response.fact_table)
-        filters_applied = {
+        filters_applied: dict[str, Any] = {
             path.dimension: path.current_filter
             for path in cube_response.drill_paths
             if path.current_filter
         }
+        # WHERE 恒含 report_date（cube_query_service.build_where_clause），一并披露
+        # 请求锚点，避免 cube 路径成为零披露的动态 SQL 执行面。
+        filters_applied["report_date"] = cube_response.report_date
+        filters_applied["fact_table"] = cube_response.fact_table
         next_drill = [
             AgentDrill(dimension=path.dimension, label=path.label)
             for path in cube_response.drill_paths
@@ -621,6 +699,7 @@ class AnalysisViewTool:
             filters_applied=filters_applied,
             row_count=len(cube_response.rows),
             quality_flag=cube_response.result_meta.quality_flag,
+            sql_executed=self._cube_query_sql_disclosure(cube_request, table_name),
         )
         cube_meta = cube_response.result_meta.model_dump(mode="python")
         for key in ("tables_used", "filters_applied", "evidence_rows", "next_drill"):
@@ -654,6 +733,34 @@ class AnalysisViewTool:
                 suggested_actions=suggested_actions,
             )
         )
+
+    def _cube_query_sql_disclosure(
+        self,
+        cube_request: CubeQueryRequest,
+        table_name: str,
+    ) -> list[str]:
+        """仅用于披露（sql_executed）：与 CubeQueryService 执行链路同源的只读
+        参数化模板。where 由 build_where_clause 生成（恒含 report_date = ?，
+        过滤值全部保持 `?` 绑定占位），维度/度量/表名均已过服务端白名单校验；
+        实际绑定值见 evidence.filters_applied。此处从不执行任何语句。"""
+        filters = self._cube_query_service.validate_filters(cube_request)
+        where_sql, _params = self._cube_query_service.build_where_clause(
+            cube_request.report_date,
+            filters,
+        )
+        dimensions = self._cube_query_service.validate_dimensions(cube_request)
+        measure_specs = self._cube_query_service.parse_measures(cube_request)
+        select_parts = list(dimensions) + [
+            f"{spec.sql} as {spec.alias}" for spec in measure_specs
+        ]
+        group_sql = f" group by {', '.join(dimensions)}" if dimensions else ""
+        return [
+            f"select count(*) from {table_name}{where_sql}",
+            (
+                f"select {', '.join(select_parts)} from {table_name}"
+                f"{where_sql}{group_sql} limit ? offset ?"
+            ),
+        ]
 
     def _analysis_chat_envelope(self, request: AgentQueryRequest) -> AgentEnvelope:
         filters_applied = self._analysis_chat_filters(request)

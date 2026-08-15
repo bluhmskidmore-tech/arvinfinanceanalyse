@@ -28,12 +28,15 @@ from backend.app.services.agent_run_service import (
     AgentRunDispatchError,
     AgentRunStateConflict,
     cancel_agent_run,
+    complete_agent_run_creation,
     create_agent_run,
     get_agent_run_owner,
     get_agent_run_status,
     iter_agent_run_events,
     list_agent_runs,
     retry_agent_run,
+    stage_agent_run_creation,
+    stage_agent_run_retry,
 )
 from backend.app.services.agent_service import (
     audit_disabled_agent_query,
@@ -383,14 +386,14 @@ def query_agent(
 
 @router.post(
     "/runs",
-    response_model=AgentRunCreateResponse | AgentEnvelope | AgentDisabledResponse,
+    response_model=AgentRunCreateResponse | AgentDisabledResponse,
     response_model_exclude_none=True,
 )
 def create_agent_run_endpoint(
     request: AgentQueryRequest,
     http_request: Request,
     auth: Annotated[AuthContext, Depends(get_auth_context)],
-) -> AgentRunCreateResponse | AgentEnvelope | JSONResponse:
+) -> AgentRunCreateResponse | JSONResponse:
     request = _apply_auth_context(request, auth)
     _enforce_read_only_agent_request(request)
     _enforce_suggested_action_confirmation(request, auth)
@@ -416,6 +419,9 @@ def create_agent_run_endpoint(
 
     try:
         if conversation_id is not None:
+            # 锁内只做归属/归档校验 + queued 记录落盘（stage），保证 archive
+            # 与 run 创建互斥；幂等等待轮询与 broker 派发（complete）移出锁，
+            # 避免单个请求的派发阻塞放大为其他用户的 409。
             with agent_workspace_lifecycle_lock(settings=settings):
                 _ensure_agent_conversation_owned_by_auth(
                     conversation_id=conversation_id,
@@ -423,11 +429,12 @@ def create_agent_run_endpoint(
                     settings=settings,
                     require_active=True,
                 )
-                return create_agent_run(
+                staged = stage_agent_run_creation(
                     request=request,
                     settings=settings,
                     provider=provider,
                 )
+            return complete_agent_run_creation(staged=staged, settings=settings)
         return create_agent_run(
             request=request,
             settings=settings,
@@ -529,6 +536,8 @@ def retry_agent_run_endpoint(
         )
         run = get_agent_run_status(run_id=run_id, settings=settings)
         if run.conversation_id is not None:
+            # 锁内只做归属校验 + 排队记录落盘（stage），分发等待与 broker
+            # send（complete）移到锁外，与 create 路径保持同一临界区形状。
             with agent_workspace_lifecycle_lock(settings=settings):
                 _ensure_agent_conversation_owned_by_auth(
                     conversation_id=run.conversation_id,
@@ -536,7 +545,8 @@ def retry_agent_run_endpoint(
                     settings=settings,
                     require_active=True,
                 )
-                return retry_agent_run(run_id=run_id, settings=settings)
+                staged = stage_agent_run_retry(run_id=run_id, settings=settings)
+            return complete_agent_run_creation(staged=staged, settings=settings)
         return retry_agent_run(run_id=run_id, settings=settings)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

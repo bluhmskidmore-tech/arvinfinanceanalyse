@@ -6,11 +6,13 @@ from typing import Any, Literal
 
 from backend.app.agent.runtime.financial_workflow_catalog import (
     FinancialWorkflow,
+    get_financial_workflow,
     is_financial_workflow_id,
     resolve_financial_workflow,
 )
 from backend.app.agent.runtime.research_workflow_catalog import (
     ResearchWorkflow,
+    get_research_workflow,
     is_research_workflow_id,
     list_research_workflows,
     resolve_research_workflow,
@@ -18,9 +20,11 @@ from backend.app.agent.runtime.research_workflow_catalog import (
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 
 _INTENT_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
+    # 「影响分析」是金融/代码双关词，不入主关键词表；只有与 code/repo/仓库 等
+    # 域词同现时才路由 gitnexus（见 _GITNEXUS_AMBIGUOUS_TERMS 守卫）。
     (
         "gitnexus_status",
-        ("gitnexus", "仓库图谱", "代码图谱", "repo graph", "code graph", "影响分析"),
+        ("gitnexus", "仓库图谱", "代码图谱", "repo graph", "code graph"),
     ),
     # 两个观察面意图放在宽泛金融词表之前：「盘前…损益」「策略样本外…收益」等
     # 问法应命中更具体的盘前清单 / walk-forward 判定，而不是被 pnl_summary、
@@ -149,7 +153,7 @@ _EXTERNAL_PROVIDER_PATTERNS = (
     "dexter diagnostic",
 )
 
-_GITNEXUS_AMBIGUOUS_TERMS = ("context", "process", "processes")
+_GITNEXUS_AMBIGUOUS_TERMS = ("context", "process", "processes", "影响分析")
 _GITNEXUS_DOMAIN_TERMS = (
     "gitnexus",
     "code",
@@ -157,6 +161,8 @@ _GITNEXUS_DOMAIN_TERMS = (
     "repository",
     "symbol",
     "call graph",
+    "仓库",
+    "代码",
 )
 _DURATION_DOMAIN_TERMS = (
     "asset",
@@ -232,22 +238,34 @@ def resolve_local_request(request: AgentQueryRequest) -> LocalRequestResolution:
             reason="provider_diagnostic",
         )
 
-    financial_workflow = resolve_financial_workflow(request.question, request.context)
-    if financial_workflow is not None:
+    # 显式 context.workflow_id 是最强声明：命中目录即路由对应工作流；
+    # 未命中时 fail-closed 走本地错误提示，不再静默降级到问题级扫描
+    # （避免拼错的 workflow_id 被送去 provider 开放聊天）。
+    explicit_workflow_id = str(request.context.get("workflow_id") or "").strip()
+    if explicit_workflow_id:
+        explicit_financial = get_financial_workflow(explicit_workflow_id)
+        if explicit_financial is not None:
+            return LocalRequestResolution(
+                route="local",
+                reason="financial_workflow",
+                financial_workflow=explicit_financial,
+            )
+        explicit_research = get_research_workflow(explicit_workflow_id)
+        if explicit_research is not None:
+            return LocalRequestResolution(
+                route="local",
+                reason="research_workflow",
+                research_workflow=explicit_research,
+            )
         return LocalRequestResolution(
             route="local",
-            reason="financial_workflow",
-            financial_workflow=financial_workflow,
+            reason="unknown_workflow",
+            intent="unknown_workflow",
         )
 
-    research_workflow = resolve_research_workflow(request.question, request.context)
-    if research_workflow is not None:
-        return LocalRequestResolution(
-            route="local",
-            reason="research_workflow",
-            research_workflow=research_workflow,
-        )
-
+    # 显式 context.intent / cube_query 优先于问题级 slash/关键词工作流解析：
+    # plan 卡的建议动作 payload 只携带 intent，调用方按文档 merge 回传时可能
+    # 沿用原 slash 问题；此时应直接执行 intent，而不是再次返回 plan 卡形成回环。
     explicit_intent = _normalize_intent(request.context.get("intent"))
     if explicit_intent == "cube_query" or "cube_query" in request.context:
         return LocalRequestResolution(
@@ -262,6 +280,22 @@ def resolve_local_request(request: AgentQueryRequest) -> LocalRequestResolution:
             intent=explicit_intent,
         )
 
+    financial_workflow = resolve_financial_workflow(request.question, None)
+    if financial_workflow is not None:
+        return LocalRequestResolution(
+            route="local",
+            reason="financial_workflow",
+            financial_workflow=financial_workflow,
+        )
+
+    research_workflow = resolve_research_workflow(request.question, None)
+    if research_workflow is not None:
+        return LocalRequestResolution(
+            route="local",
+            reason="research_workflow",
+            research_workflow=research_workflow,
+        )
+
     keyword_intent = _intent_from_question(normalized_question, request=request)
     if keyword_intent is not None:
         return LocalRequestResolution(
@@ -270,14 +304,9 @@ def resolve_local_request(request: AgentQueryRequest) -> LocalRequestResolution:
             intent=keyword_intent,
         )
 
-    follow_up_intent = _conversation_intent(request, normalized_question)
-    if follow_up_intent is not None:
-        return LocalRequestResolution(
-            route="local",
-            reason="follow_up",
-            intent=follow_up_intent,
-        )
-
+    # 页面上下文问句（「这个页面 / 当前页」）先于 follow-up 判定：
+    # 「这个」等裸指代词同时也是 follow-up 标记，若 follow-up 先行会复用
+    # 上一轮意图，导致 page_default 分支不可达。
     if _is_page_context_question(normalized_question):
         page_intent = _page_default_intent(request)
         if page_intent is not None:
@@ -286,6 +315,14 @@ def resolve_local_request(request: AgentQueryRequest) -> LocalRequestResolution:
                 reason="page_default",
                 intent=page_intent,
             )
+
+    follow_up_intent = _conversation_intent(request, normalized_question)
+    if follow_up_intent is not None:
+        return LocalRequestResolution(
+            route="local",
+            reason="follow_up",
+            intent=follow_up_intent,
+        )
 
     if is_plain_analysis_chat_question(normalized_question):
         return LocalRequestResolution(
@@ -323,7 +360,9 @@ def _intent_from_text(value: Any) -> str | None:
     text = _normalize_text(value)
     if not text:
         return None
-    for intent in _LOCAL_INTENTS:
+    # 按 _INTENT_PATTERNS 声明顺序遍历：frozenset 迭代顺序受 PYTHONHASHSEED
+    # 影响，多标记文本的 follow-up 解析会跨进程非确定。
+    for intent, _keywords in _INTENT_PATTERNS:
         if f"agent.{intent}" in text:
             return intent
     for workflow in list_research_workflows():
@@ -405,20 +444,25 @@ def _matches_domain_combination(
 
 
 def _matches_any(normalized_question: str, terms: tuple[str, ...]) -> bool:
-    return any(
-        re.search(
-            rf"(?<!\w){re.escape(term)}(?!\w)",
-            normalized_question,
+    return any(_matches_term(normalized_question, term) for term in terms)
+
+
+def _matches_term(normalized_question: str, term: str) -> bool:
+    # ASCII 词用词边界匹配；中文等非 ASCII 词无空格分词（\w 也匹配汉字，
+    # 词边界断言必然失败），用子串匹配。
+    if term.isascii():
+        return (
+            re.search(
+                rf"(?<!\w){re.escape(term)}(?!\w)",
+                normalized_question,
+            )
+            is not None
         )
-        is not None
-        for term in terms
-    )
+    return term in normalized_question
 
 
 def _matches_analysis_pattern(normalized_question: str, pattern: str) -> bool:
-    if pattern.isascii():
-        return _matches_any(normalized_question, (pattern,))
-    return pattern in normalized_question
+    return _matches_term(normalized_question, pattern)
 
 
 def _normalize_intent(value: Any) -> str:

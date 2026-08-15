@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
+import duckdb
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.repositories.market_read_repo import (
     RELATION_CHOICE_MARKET_SNAPSHOT,
@@ -75,16 +76,25 @@ class ResearchContextBuilder:
             return context
 
         repo = MarketReadRepository(str(db_path), guard_path_exists=True)
-        with repo.scoped_connection() as conn:
-            if conn is None:
-                context["quality_flag"] = "missing"
-                context["limitations"].append("DuckDB database could not be opened read-only.")
-                return context
-            tables = repo.available_relations(conn=conn)
-            if domain == "stock":
-                _build_stock_context(repo=repo, conn=conn, tables=tables, context=context)
-            elif domain == "macro":
-                _build_macro_context(repo=repo, conn=conn, tables=tables, context=context)
+        try:
+            with repo.scoped_connection() as conn:
+                if conn is None:
+                    context["quality_flag"] = "missing"
+                    context["limitations"].append("DuckDB database could not be opened read-only.")
+                    return context
+                tables = repo.available_relations(conn=conn)
+                if domain == "stock":
+                    _build_stock_context(repo=repo, conn=conn, tables=tables, context=context)
+                elif domain == "macro":
+                    _build_macro_context(repo=repo, conn=conn, tables=tables, context=context)
+        except (OSError, duckdb.Error) as exc:
+            # 研究上下文是增强证据：DuckDB 查询失败（如 schema 漂移的 BinderException）
+            # 降级为披露性 limitation，不让异常穿透 provider 链路变成 500。
+            context["quality_flag"] = "warning" if context["evidence_rows"] > 0 else "missing"
+            context["limitations"].append(
+                f"Research context DuckDB queries failed ({exc.__class__.__name__}); "
+                "evidence may be partial."
+            )
 
         _apply_stale_disclosures(context)
         _enforce_context_budget(context)
@@ -107,7 +117,21 @@ def build_dexter_research_context(
 
 def _base_context(*, request: AgentQueryRequest, domain: str | None) -> dict[str, Any]:
     filters_applied = _non_empty_dict(request.filters)
-    as_of_date = _resolve_as_of_date(request)
+    limitations: list[str] = []
+    raw_as_of = _resolve_as_of_date(request)
+    as_of_date = ""
+    if raw_as_of:
+        parsed = _parse_iso_date(raw_as_of)
+        if parsed is None:
+            # 非 ISO 的 as_of 会让下游 varchar 日期比较静默失效：置空禁用锚定并显式披露，
+            # 避免"披露声明了锚定、SQL 实际未生效"的分叉。
+            limitations.append(
+                f"as_of_date '{raw_as_of[:64]}' is not a valid ISO date (YYYY-MM-DD); "
+                "date anchoring was disabled for this research context."
+            )
+            filters_applied.pop("as_of_date", None)
+        else:
+            as_of_date = parsed.isoformat()
     stock_code = _resolve_stock_code(request)
     if as_of_date:
         filters_applied["as_of_date"] = as_of_date
@@ -124,7 +148,7 @@ def _base_context(*, request: AgentQueryRequest, domain: str | None) -> dict[str
         "sql_executed": [],
         "evidence_rows": 0,
         "quality_flag": "ok",
-        "limitations": [],
+        "limitations": limitations,
         "stock": {},
         "macro": {},
     }
@@ -217,6 +241,7 @@ def _build_stock_context(
         context["tables_used"].append(RELATION_CHOICE_NEWS_EVENT)
         rows = repo.fetch_dexter_stock_news(
             stock_code=stock_code,
+            as_of_date=as_of_date,
             sql_executed=context["sql_executed"],
             conn=conn,
         )

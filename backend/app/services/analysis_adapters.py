@@ -7,10 +7,17 @@ from decimal import Decimal
 from backend.app.core_finance.bond_analytics.common import resolve_period
 from backend.app.core_finance.calibers.enums import Basis, View
 from backend.app.core_finance.calibers.rules.formal_scenario_gate import assert_basis_view_allowed
+from backend.app.core_finance.config.product_category_contract import (
+    PRODUCT_CATEGORY_RULE_VERSION,
+    product_category_cache_version,
+)
 from backend.app.core_finance.config.product_category_mapping import (
     resolve_product_category_ftp_rate_pct,
 )
-from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
+from backend.app.repositories.product_category_pnl_repo import (
+    ProductCategoryPnlRepository,
+    ProductCategoryPnlStorageError,
+)
 from backend.app.schemas.analysis_service import (
     AnalysisQuery,
     AnalysisResultEnvelope,
@@ -68,6 +75,15 @@ class ProductCategoryPnlAnalysisAdapter:
         if not rows:
             raise ValueError(
                 f"No product-category read model rows for report_date={query.report_date} view={view}"
+            )
+        persisted_rule_versions = {
+            str(row.get("rule_version") or "").strip() for row in rows
+        }
+        if persisted_rule_versions != {PRODUCT_CATEGORY_RULE_VERSION}:
+            raise ProductCategoryPnlStorageError(
+                "Product-category read model rule_version mismatch: "
+                f"expected {PRODUCT_CATEGORY_RULE_VERSION!r}, "
+                f"found {sorted(persisted_rule_versions)!r}; refresh is required."
             )
 
         from backend.app.core_finance.product_category_pnl import apply_baseline_ftp_rate_to_rows
@@ -134,8 +150,11 @@ class ProductCategoryPnlAnalysisAdapter:
                 trace_id=f"tr_{query.consumer}_{query.report_date}_{view}",
                 result_kind=result_kind,
                 source_version=str(rows[0]["source_version"]),
-                rule_version=str(rows[0]["rule_version"]),
-                cache_version="cv_product_category_pnl_v1",
+                rule_version=PRODUCT_CATEGORY_RULE_VERSION,
+                cache_version=product_category_cache_version(
+                    Basis.SCENARIO.value,
+                    scenario_rate_pct=query.scenario_rate_pct,
+                ),
                 quality_flag="ok",
             )
             if query.basis == Basis.SCENARIO.value
@@ -143,8 +162,8 @@ class ProductCategoryPnlAnalysisAdapter:
                 trace_id=f"tr_{query.consumer}_{query.report_date}_{view}",
                 result_kind=result_kind,
                 source_version=str(rows[0]["source_version"]),
-                rule_version=str(rows[0]["rule_version"]),
-                cache_version="cv_product_category_pnl_v1",
+                rule_version=PRODUCT_CATEGORY_RULE_VERSION,
+                cache_version=product_category_cache_version(Basis.FORMAL.value),
                 quality_flag="ok",
             )
         )

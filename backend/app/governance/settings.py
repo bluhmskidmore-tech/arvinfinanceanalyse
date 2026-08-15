@@ -66,16 +66,25 @@ def _env_nonempty(key: str) -> bool:
 _DEFAULT_PRODUCT_CATEGORY_REL = Path("data_input") / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
 
 
-def resolve_data_input_root_path(*, repo_root: Path, pydantic_value: Path) -> Path:
+def resolve_data_input_root_path(
+    *,
+    repo_root: Path,
+    pydantic_value: Path,
+    explicit: bool | None = None,
+) -> Path:
     """
     Raw input directory (aligned with MOSS-SYSTEM-V1 `resolve_raw_dir`):
 
     1. ``MOSS_DATA_INPUT_ROOT`` — explicit override (via Settings field).
+       Settings passes ``explicit`` from ``model_fields_set`` so values from
+       ``.env`` files or constructor args rank the same as process env vars;
+       when ``explicit`` is None, only ``os.environ`` is checked.
     2. ``RAW_FILES_DIR`` — V1 env; relative paths anchor to repo root.
     3. ``<repo>/data_warehouse/raw_files`` if that directory exists.
     4. Otherwise ``pydantic_value`` resolved relative to repo (default ``data_input``).
     """
-    if _env_nonempty("MOSS_DATA_INPUT_ROOT"):
+    is_explicit = _env_nonempty("MOSS_DATA_INPUT_ROOT") if explicit is None else explicit
+    if is_explicit:
         return Path(resolve_repo_relative_path(str(pydantic_value), repo_root=repo_root)).resolve()
 
     raw_files_env = str(os.environ.get("RAW_FILES_DIR", "") or "").strip()
@@ -203,6 +212,7 @@ class Settings(BaseSettings):
         self.data_input_root = resolve_data_input_root_path(
             repo_root=_REPO_ROOT,
             pydantic_value=self.data_input_root,
+            explicit="data_input_root" in explicit_fields,
         )
         self.local_archive_path = Path(
             resolve_repo_relative_path(

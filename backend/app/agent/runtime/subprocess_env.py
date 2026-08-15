@@ -33,7 +33,9 @@ _BLOCKED_NAME_PREFIXES: tuple[str, ...] = ("MOSS_",)
 
 # 值形如 scheme://user:password@host 的内嵌凭据（DATABASE_URL、带认证的代理地址等）。
 # 用户名允许为空（redis://:password@host）；不带密码段的普通 URL 不受影响。
-_EMBEDDED_CREDENTIAL_VALUE_PATTERN = re.compile(r"://[^/\s@]*:[^/\s@]+@")
+# 密码段允许含 "/"（如 postgresql://user:pa/ss@host/db）；字符类排除 "@"，
+# 不会吞掉 @ 后的主机段。与 scripts/hermes_bridge_server.py 同款保持同步。
+_EMBEDDED_CREDENTIAL_VALUE_PATTERN = re.compile(r"://[^/\s@]*:[^\s@]+@")
 
 
 def is_sensitive_env_name(name: str) -> bool:

@@ -273,7 +273,10 @@ def resolve_formal_dates_lineage(
                 default_cache_version=default_cache_version,
                 default_vendor_version=default_vendor_version,
             )
-        except RuntimeError:
+        except FormalLineageUnavailableError:
+            # Only "no canonical record exists" may fall back. Malformed
+            # records (FormalLineageMalformedError) and repository read
+            # failures (RuntimeError) must propagate to stay fail-closed.
             if fallback_lineage_loader is not None:
                 return _build_lineage_values(
                     **fallback_lineage_loader(report_dates[0]),
