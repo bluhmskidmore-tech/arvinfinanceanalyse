@@ -246,6 +246,19 @@ Hermes 模式（`MOSS_AGENT_PROVIDER=hermes`）走 **`backend/app/services/herme
 | 确认 suggested action 返回 403（`confirmation token`） | token 缺失/过期（15 分钟）/与动作不匹配；或多进程部署未配置统一 `MOSS_AGENT_ACTION_TOKEN_SECRET` | 重新获取动作与 token；多进程部署为 API 与 worker 配置同一 secret 并重启 |
 | bridge 模式 Hermes 持续降级，日志出现 `Hermes bridge at ... rejects this process's token` | 后端曾非优雅退出（kill -9/崩溃），上一进程的孤儿 bridge 仍占用端口并持旧一次性 token；新进程令牌不匹配被 403 | 按 bridge 端口找到孤儿进程并停掉（正常重启已由 lifespan 自动关停托管 bridge）；长期自管的外部 bridge 应配置固定 `HERMES_BRIDGE_TOKEN` 供各后端进程共用 |
 
+### Hermes 失败分类码（日志与审计）
+
+Hermes 链路失败时，后端日志（`error_code=...`）与 `agent_audit` 的 `result_meta.error_code` 会带运维分类码，用于区分失败通道：
+
+- `hermes_timeout`：CLI/bridge 请求超时，或 bridge 未在期限内就绪；
+- `hermes_spawn_failed`：命令不存在或子进程/bridge 拉起失败；
+- `hermes_exit_failed`：hermes 进程非零退出，或 bridge 就绪前意外退出；
+- `hermes_bridge_unauthorized`：bridge 拒绝本进程 token（403，见上表孤儿 bridge 场景）。
+
+分类码只进日志与审计；对外 `AgentEnvelope` 的 `fallback_reason` 保持粗粒度契约 `hermes_runtime_unavailable` 不变。
+
+WSL 部署下，`HERMES_BRIDGE_TOKEN` 不进入 `wsl.exe` 命令行（避免本机进程列表可见），而是写入 `WSLENV`（`HERMES_BRIDGE_TOKEN/u`）由 wsl.exe 以环境变量穿透到 WSL 侧 bridge 进程；非 WSL 场景该变量无副作用。
+
 ---
 
 ## 相关测试（后端）

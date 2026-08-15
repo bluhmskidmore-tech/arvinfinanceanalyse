@@ -105,8 +105,8 @@ docker compose up api worker frontend postgres redis minio
 
 `docker-compose.yml` 中的服务命令仍然是开发型命令：
 
-- API: `pip install -e ./backend[dev] && python -m uvicorn backend.app.main:app ...`
-- Worker: `pip install -e ./backend[dev] && python -m dramatiq backend.app.tasks.worker_bootstrap`
+- API: 从 `backend/uv.lock` 导出冻结闭包后 `uv pip install --system --no-deps` 安装，再 `python -m uvicorn backend.app.main:app ...`
+- Worker: 同样的锁定安装，再 `python -m dramatiq backend.app.tasks.worker_bootstrap`
 - Frontend: `npm run dev -- --host 0.0.0.0 --port 5173`
 
 ## 首次健康检查
@@ -138,9 +138,17 @@ curl http://127.0.0.1:7888/api/bond-analytics/dates
 ### 后端
 
 ```bash
-python -m pip install -e "./backend[dev]"
-python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 7888
+# 与 CI 完全一致的锁定环境（uv 0.11.32）；venv 落在 backend/.venv
+uv sync --frozen --project backend --extra dev --python 3.11
+
+# 之后用 uv run 执行，不必手工激活 venv
+uv run --project backend -- python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 7888
+uv run --project backend -- python -m pytest tests -q
 ```
+
+可选 extra：`--extra toolkit`（matplotlib / python-docx，macro toolkit 出图与报告）、
+`--extra vendor`（akshare / tushare，真实行情摄取）、`--extra otel`（可观测性）。
+不装时对应功能按调用点的守卫降级或报错，API 启动与测试收集不受影响。
 
 ### Worker
 
