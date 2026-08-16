@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Literal
 
 from backend.app.agent.schemas.agent_response import AgentEnvelope
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 AgentRunStatus = Literal[
     "queued",
@@ -69,3 +69,14 @@ class AgentRunRecord(BaseModel):
     elapsed_seconds: float | None = None
     error_message: str | None = None
     result: dict[str, object] | None = None
+
+
+class AgentRunDeltaRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str = Field(min_length=1)
+    owner_user_id: str = Field(min_length=1)
+    seq: int = Field(ge=1)
+    channel: Literal["answer"] = "answer"
+    text: str = Field(min_length=1)
+    created_at: str = Field(min_length=1)

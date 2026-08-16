@@ -14630,6 +14630,95 @@
         ]
       }
     },
+    "/api/agent/lab/runs": {
+      "post": {
+        "operationId": "create_agent_lab_run_endpoint_api_agent_lab_runs_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-User-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-User-Role"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentRunCreateResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentDisabledResponse"
+                    }
+                  ],
+                  "title": "Response Create Agent Lab Run Endpoint Api Agent Lab Runs Post"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Agent Lab streaming is only available when the configured provider is Hermes."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "description": "Agent is disabled or the run could not be dispatched."
+          }
+        },
+        "summary": "Create Agent Lab Run Endpoint",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
     "/api/agent/projects": {
       "get": {
         "operationId": "list_agent_projects_endpoint_api_agent_projects_get",
@@ -15507,6 +15596,27 @@
             "schema": {
               "title": "Run Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_deltas",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Deltas",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_seq",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "After Seq",
+              "type": "integer"
             }
           },
           {

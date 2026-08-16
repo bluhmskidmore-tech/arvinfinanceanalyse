@@ -5,7 +5,7 @@ import {
   ThreadPrimitive,
   useAui,
 } from "@assistant-ui/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import type { AgentSuggestedAction } from "../../api/contracts";
@@ -13,6 +13,7 @@ import { AgentRunProgress } from "../agent/components/AgentRunProgress";
 import { AgentRuntimeStrip } from "../agent/components/AgentRuntimeStrip";
 import { AgentTurnErrorCallout } from "../agent/components/AgentTurnErrorCallout";
 import { AgentTurnResultView } from "../agent/components/AgentTurnResultView";
+import { getAgentScrollBehavior } from "../agent/lib/agentMotion";
 import {
   buildRuntimeStatus,
   type AgentConversationTurn,
@@ -50,7 +51,70 @@ function AgentLabAssistantMessage({
 }) {
   const aui = useAui();
   const [copyStatus, setCopyStatus] = useState<"success" | "error" | null>(null);
+  const messageRootRef = useRef<HTMLDivElement>(null);
+  const previousPhaseRef = useRef(message.phase);
+  const wasFollowingLatestRef = useRef(true);
   const turn = message.turn;
+
+  useEffect(() => {
+    if (message.phase === "complete") {
+      return;
+    }
+    const viewport = messageRootRef.current?.closest<HTMLElement>(
+      ".agent-lab-thread__viewport",
+    );
+    if (!viewport) {
+      return;
+    }
+    const updateFollowState = () => {
+      const distanceFromBottom =
+        viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+      wasFollowingLatestRef.current = distanceFromBottom <= 48;
+    };
+    updateFollowState();
+    viewport.addEventListener("scroll", updateFollowState, { passive: true });
+    return () => viewport.removeEventListener("scroll", updateFollowState);
+  }, [message.phase]);
+
+  useEffect(() => {
+    const previousPhase = previousPhaseRef.current;
+    previousPhaseRef.current = message.phase;
+    if (message.phase !== "complete" || previousPhase === "complete") {
+      return;
+    }
+    const messageRoot = messageRootRef.current;
+    const viewport = messageRoot?.closest<HTMLElement>(".agent-lab-thread__viewport");
+    if (!messageRoot || !viewport || typeof messageRoot.scrollIntoView !== "function") {
+      return;
+    }
+    const messageRect = messageRoot.getBoundingClientRect();
+    const viewportRect = viewport.getBoundingClientRect();
+    const activeTurnStartsInViewport =
+      messageRect.top >= viewportRect.top && messageRect.top <= viewportRect.bottom;
+    if (!wasFollowingLatestRef.current || !activeTurnStartsInViewport) {
+      return;
+    }
+    const animationFrame = window.requestAnimationFrame(() => {
+      messageRoot.scrollIntoView({ behavior: getAgentScrollBehavior(), block: "start" });
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [message.phase]);
+
+  useEffect(() => {
+    if (message.phase !== "running" || !message.partialAnswer) {
+      return;
+    }
+    const viewport = messageRootRef.current?.closest<HTMLElement>(
+      ".agent-lab-thread__viewport",
+    );
+    if (!viewport || !wasFollowingLatestRef.current) {
+      return;
+    }
+    const animationFrame = window.requestAnimationFrame(() => {
+      viewport.scrollTop = viewport.scrollHeight;
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [message.partialAnswer, message.phase]);
 
   function fillComposer(question: string) {
     aui.composer.setText(question);
@@ -72,15 +136,23 @@ function AgentLabAssistantMessage({
   }
 
   return (
-    <MessagePrimitive.Root className="agent-lab-message agent-lab-message--assistant">
+    <MessagePrimitive.Root
+      ref={messageRootRef}
+      className="agent-lab-message agent-lab-message--assistant"
+    >
       <div className="agent-lab-message__role" aria-hidden="true">
         LAB
       </div>
       <div className="agent-lab-message__content">
         {message.phase === "running" && turn ? (
-          <div className="agent-lab-running" role="status" aria-live="polite">
-            <div className="agent-lab-running__label">{message.text}</div>
-            <AgentRunProgress agentRun={turn.agentRun} question={turn.question} />
+          <div className="agent-lab-running">
+            <div className="agent-lab-running__status" role="status" aria-live="polite">
+              <div className="agent-lab-running__label">{message.text}</div>
+              <AgentRunProgress agentRun={turn.agentRun} question={turn.question} />
+            </div>
+            {message.partialAnswer ? (
+              <div className="agent-lab-running__partial">{message.partialAnswer}</div>
+            ) : null}
           </div>
         ) : null}
 

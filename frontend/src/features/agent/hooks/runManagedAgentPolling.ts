@@ -6,7 +6,10 @@ import {
   normalizeAgentRunRequestLatencyMs,
 } from "../lib/agentWorkbenchModel";
 import type { AgentQueryResult, AgentRunPayload } from "../lib/agentWorkbenchModel";
-import { waitForAgentRunTerminal } from "./agentRunStatusOrchestrator";
+import {
+  waitForAgentRunTerminal,
+  type StreamAgentRunEvents,
+} from "./agentRunStatusOrchestrator";
 
 type RunManagedAgentPollingOptions = {
   requestBody: AgentQueryRequest;
@@ -15,6 +18,7 @@ type RunManagedAgentPollingOptions = {
   canCommit: () => boolean;
   onRunAccepted: (payload: AgentRunPayload, requestLatencyMs: number | undefined) => void;
   onRunUpdate: (payload: AgentRunPayload) => void;
+  streamAgentRunEvents?: StreamAgentRunEvents;
   signal?: AbortSignal;
 };
 
@@ -30,6 +34,7 @@ export async function runManagedAgentPolling({
   canCommit,
   onRunAccepted,
   onRunUpdate,
+  streamAgentRunEvents,
   signal,
 }: RunManagedAgentPollingOptions): Promise<AgentRunPayload & { result: AgentQueryResult }> {
   const runRequestStartedAtMs = getAgentRequestClockMs();
@@ -44,6 +49,7 @@ export async function runManagedAgentPolling({
   const finalPayload = await waitForAgentRunTerminal({
     runId: initialPayload.run_id,
     initialPayload,
+    streamAgentRunEvents,
     fetchAgentRunStatus,
     canCommit,
     onRunUpdate,

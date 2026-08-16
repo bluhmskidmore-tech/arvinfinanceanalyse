@@ -24,6 +24,7 @@ from backend.app.governance.locks import acquire_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import GovernanceRepository
 from backend.app.services.agent_run_service import (
+    AGENT_RUN_DELTA_STREAM,
     AGENT_RUN_DISPATCH_STREAM,
     AGENT_RUN_STREAM,
     AGENT_RUN_TRANSITION_FILE_LOCK,
@@ -40,7 +41,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def compact_agent_run_streams(*, settings: Any) -> dict[str, object]:
-    """Compact the ``agent_run`` and ``agent_run_dispatch`` governance streams.
+    """Compact the ``agent_run``, ``agent_run_dispatch`` and ``agent_run_delta`` streams.
 
     Rules:
 
@@ -49,7 +50,7 @@ def compact_agent_run_streams(*, settings: Any) -> dict[str, object]:
       last write time is older than the retention window (default 7 days,
       overridable via ``settings.agent_run_stream_retention_days``).
     - A compacted run keeps only its last (terminal snapshot) record in
-      ``agent_run``; its ``agent_run_dispatch`` acceptance records are removed.
+      ``agent_run``; its ``agent_run_dispatch`` and ``agent_run_delta`` rows are removed.
     - Non-terminal runs, in-window runs, and unparseable lines are kept as-is.
     - Every removed line is appended verbatim to ``<stream>.archive.jsonl``.
     """
@@ -81,8 +82,16 @@ def compact_agent_run_streams(*, settings: Any) -> dict[str, object]:
                 base_dir=base_dir,
                 compacted_run_ids=compacted_run_ids,
             )
+            delta_stats = _compact_delta_stream(
+                base_dir=base_dir,
+                compacted_run_ids=compacted_run_ids,
+            )
 
-    archived_total = int(run_stats["archived"]) + int(dispatch_stats["archived"])
+    archived_total = (
+        int(run_stats["archived"])
+        + int(dispatch_stats["archived"])
+        + int(delta_stats["archived"])
+    )
     stats: dict[str, object] = {
         "job_name": AGENT_RUN_COMPACTION_JOB_NAME,
         "retention_days": retention_days,
@@ -93,11 +102,15 @@ def compact_agent_run_streams(*, settings: Any) -> dict[str, object]:
         "agent_run_dispatch_total": dispatch_stats["total"],
         "agent_run_dispatch_kept": dispatch_stats["kept"],
         "agent_run_dispatch_archived": dispatch_stats["archived"],
+        "agent_run_delta_total": delta_stats["total"],
+        "agent_run_delta_kept": delta_stats["kept"],
+        "agent_run_delta_archived": delta_stats["archived"],
     }
     _LOGGER.info(
         "Agent run stream compaction finished retention_days=%g runs_compacted=%d "
         "agent_run_total=%d agent_run_kept=%d agent_run_archived=%d "
-        "agent_run_dispatch_total=%d agent_run_dispatch_kept=%d agent_run_dispatch_archived=%d",
+        "agent_run_dispatch_total=%d agent_run_dispatch_kept=%d agent_run_dispatch_archived=%d "
+        "agent_run_delta_total=%d agent_run_delta_kept=%d agent_run_delta_archived=%d",
         retention_days,
         len(compacted_run_ids),
         run_stats["total"],
@@ -106,6 +119,9 @@ def compact_agent_run_streams(*, settings: Any) -> dict[str, object]:
         dispatch_stats["total"],
         dispatch_stats["kept"],
         dispatch_stats["archived"],
+        delta_stats["total"],
+        delta_stats["kept"],
+        delta_stats["archived"],
     )
     # A no-op rerun must not grow governance itself, so the traceability event
     # is only written when the pass actually archived something.
@@ -165,6 +181,26 @@ def _compact_dispatch_stream(
     compacted_run_ids: set[str],
 ) -> dict[str, int]:
     target = base_dir / f"{AGENT_RUN_DISPATCH_STREAM}.jsonl"
+    lines = _read_lines(target)
+    kept_lines: list[str] = []
+    archived_lines: list[str] = []
+    for line in lines:
+        record = _parse_json(line)
+        run_id = str((record or {}).get("run_id") or "").strip()
+        if record is not None and run_id and run_id in compacted_run_ids:
+            archived_lines.append(line)
+        else:
+            kept_lines.append(line)
+    _archive_and_rewrite(target=target, kept_lines=kept_lines, archived_lines=archived_lines)
+    return {"total": len(lines), "kept": len(kept_lines), "archived": len(archived_lines)}
+
+
+def _compact_delta_stream(
+    *,
+    base_dir: Path,
+    compacted_run_ids: set[str],
+) -> dict[str, int]:
+    target = base_dir / f"{AGENT_RUN_DELTA_STREAM}.jsonl"
     lines = _read_lines(target)
     kept_lines: list[str] = []
     archived_lines: list[str] = []

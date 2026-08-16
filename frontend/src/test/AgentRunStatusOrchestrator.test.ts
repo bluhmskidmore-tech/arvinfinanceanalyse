@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AgentRunStreamConnectionError } from "../api/agentRunStream";
+import { runManagedAgentPolling } from "../features/agent/hooks/runManagedAgentPolling";
 import {
   pollAgentRunUntilTerminal,
   waitForAgentRunTerminal,
@@ -358,5 +359,58 @@ describe("pollAgentRunUntilTerminal", () => {
     await settled;
 
     expect(fetchAgentRunStatus).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("runManagedAgentPolling", () => {
+  it("uses an injected stream handler for lab-only runs", async () => {
+    const queued = buildRun("queued");
+    const completed = buildRun("completed", { result: buildResult("streamed result") });
+    const createAgentRun = vi.fn(async () => queued);
+    const fetchAgentRunStatus = vi.fn();
+    const streamAgentRunEvents = vi.fn(async (_runId, onEvent) => {
+      onEvent(completed);
+    });
+    const onRunAccepted = vi.fn();
+    const onRunUpdate = vi.fn();
+
+    const payload = await runManagedAgentPolling({
+      requestBody: { question: "lab stream question" },
+      createAgentRun,
+      fetchAgentRunStatus,
+      canCommit: () => true,
+      onRunAccepted,
+      onRunUpdate,
+      streamAgentRunEvents,
+    });
+
+    expect(payload).toEqual(completed);
+    expect(streamAgentRunEvents).toHaveBeenCalledOnce();
+    expect(fetchAgentRunStatus).not.toHaveBeenCalled();
+    expect(onRunAccepted).toHaveBeenCalledWith(queued, expect.any(Number));
+    expect(onRunUpdate).toHaveBeenCalledWith(completed);
+  });
+
+  it("keeps the original polling path when no stream override is provided", async () => {
+    const queued = buildRun("queued");
+    const completed = buildRun("completed", { result: buildResult("polled result") });
+    const createAgentRun = vi.fn(async () => queued);
+    const fetchAgentRunStatus = vi.fn(async () => completed);
+    const onRunAccepted = vi.fn();
+    const onRunUpdate = vi.fn();
+
+    const payload = await runManagedAgentPolling({
+      requestBody: { question: "formal path question" },
+      createAgentRun,
+      fetchAgentRunStatus,
+      canCommit: () => true,
+      onRunAccepted,
+      onRunUpdate,
+    });
+
+    expect(payload).toEqual(completed);
+    expect(fetchAgentRunStatus).toHaveBeenCalledWith("agent_run:test");
+    expect(onRunAccepted).toHaveBeenCalledWith(queued, expect.any(Number));
+    expect(onRunUpdate).toHaveBeenCalledWith(completed);
   });
 });

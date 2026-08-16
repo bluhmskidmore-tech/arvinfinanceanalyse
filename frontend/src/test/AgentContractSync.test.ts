@@ -38,6 +38,7 @@ import type {
   AgentQueryRequest,
   AgentResultMeta,
   AgentRunCreateResponse,
+  AgentRunDeltaEvent,
   AgentRunListResponse,
   AgentRunStatus,
   AgentRunStatusResponse,
@@ -63,6 +64,10 @@ const BACKEND_ROUTE_SOURCES = {
   agentWorkspace: readBackendRoute("agent_workspace.py"),
 };
 
+const BACKEND_SERVICE_SOURCES = {
+  agentRun: readBackendService("agent_run_service.py"),
+};
+
 /** ResultMeta 基类在 backend/app/schemas（非 agent/schemas），AgentResultMeta 继承它。 */
 const BACKEND_BASE_SCHEMA_SOURCES = {
   resultMeta: readFileSync(
@@ -81,6 +86,13 @@ function readBackendSchema(fileName: string) {
 function readBackendRoute(fileName: string) {
   return readFileSync(
     resolve(process.cwd(), "../backend/app/api/routes", fileName),
+    "utf8",
+  );
+}
+
+function readBackendService(fileName: string) {
+  return readFileSync(
+    resolve(process.cwd(), "../backend/app/services", fileName),
     "utf8",
   );
 }
@@ -123,6 +135,21 @@ function expectFieldParity(
   );
 }
 
+function parseFunctionDictKeys(source: string, functionName: string): string[] {
+  const functionStart = source.indexOf(`def ${functionName}(`);
+  if (functionStart < 0) {
+    throw new Error(`backend service is missing function ${functionName}`);
+  }
+  const rest = source.slice(functionStart);
+  const nextFunctionOffset = rest.slice(1).search(/\r?\ndef /);
+  const block = nextFunctionOffset >= 0
+    ? rest.slice(0, nextFunctionOffset + 1)
+    : rest;
+  return [...block.matchAll(/^\s+"([a-z_][a-zA-Z0-9_]*)":/gm)].map(
+    (match) => match[1],
+  );
+}
+
 /** 解析路由源码中的机器可判定错误码常量（`*_CODE = "AGENT_..."`）。 */
 function parseRouteErrorCodes(source: string): string[] {
   return [...source.matchAll(/^_?[A-Z][A-Z0-9_]*_CODE\s*=\s*"([A-Z0-9_]+)"/gm)].map(
@@ -132,8 +159,10 @@ function parseRouteErrorCodes(source: string): string[] {
 
 /** 解析路由源码中结构化 detail 字面量的键（形如 `"code": SOME_CONSTANT`）。 */
 function parseStructuredDetailKeys(source: string): string[] {
-  return [...source.matchAll(/"([a-z_]+)":\s*_?[A-Z][A-Z0-9_]*\s*,?\s*$/gm)].map(
-    (match) => match[1],
+  return [...source.matchAll(/detail=\{\s*([\s\S]*?)\s*\}/g)].flatMap((detailMatch) =>
+    [...detailMatch[1].matchAll(/"([a-z_]+)":\s*_?[A-Z][A-Z0-9_]*\s*,?\s*$/gm)].map(
+      (keyMatch) => keyMatch[1],
+    ),
   );
 }
 
@@ -295,6 +324,14 @@ const AGENT_RUN_CREATE_RESPONSE_FIELDS = {
   queued_at: true,
 } as const satisfies Record<keyof AgentRunCreateResponse, true>;
 
+const AGENT_RUN_DELTA_EVENT_FIELDS = {
+  run_id: true,
+  seq: true,
+  channel: true,
+  text: true,
+  created_at: true,
+} as const satisfies Record<keyof AgentRunDeltaEvent, true>;
+
 const AGENT_RUN_LIST_RESPONSE_FIELDS = {
   items: true,
 } as const satisfies Record<keyof AgentRunListResponse, true>;
@@ -431,6 +468,12 @@ describe("Agent 前后端契约防漂移（backend schemas ↔ contracts/agent.t
     expectFieldParity(BACKEND_SCHEMA_SOURCES.agentRun, "AgentRunStatusResponse", AGENT_RUN_STATUS_RESPONSE_FIELDS);
     expectFieldParity(BACKEND_SCHEMA_SOURCES.agentRun, "AgentRunCreateResponse", AGENT_RUN_CREATE_RESPONSE_FIELDS);
     expectFieldParity(BACKEND_SCHEMA_SOURCES.agentRun, "AgentRunListResponse", AGENT_RUN_LIST_RESPONSE_FIELDS);
+    expect(
+      parseFunctionDictKeys(
+        BACKEND_SERVICE_SOURCES.agentRun,
+        "_agent_run_delta_event_payload",
+      ).sort(),
+    ).toEqual(Object.keys(AGENT_RUN_DELTA_EVENT_FIELDS).sort());
   });
 
   it("agent_workspace.py 模型字段与前端契约一致", () => {

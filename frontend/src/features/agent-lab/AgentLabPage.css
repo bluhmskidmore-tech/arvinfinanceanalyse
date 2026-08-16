@@ -254,9 +254,26 @@
   padding: 4px 0;
 }
 
+.agent-lab-running__status {
+  display: grid;
+  gap: 12px;
+}
+
 .agent-lab-running__label {
   color: var(--dh-api-soft);
   font-size: 13px;
+}
+
+.agent-lab-running__partial {
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 24%, var(--dh-api-line));
+  border-radius: var(--dh-api-radius);
+  background: color-mix(in srgb, var(--dh-api-blue) 6%, var(--dh-api-panel));
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .agent-lab-cancelled {

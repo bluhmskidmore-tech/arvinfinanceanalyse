@@ -56,6 +56,27 @@ describe("AgentClient", () => {
     });
   });
 
+  it("uses the dedicated lab run endpoint in createRealAgentClient", async () => {
+    const runPayload = { run_id: "agent_run:lab", status: "queued" };
+    const fetchImpl = vi.fn(async () =>
+      new Response(JSON.stringify(runPayload), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const client = createRealAgentClient({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      baseUrl: "http://example.test/base",
+    });
+
+    await expect(client.createAgentLabRun({ question: "lab run" })).resolves.toEqual(runPayload);
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://example.test/base/api/agent/lab/runs",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("throws AgentDisabledError on 503 disabled payload", async () => {
     const fetchImpl = vi.fn(async () =>
       new Response(JSON.stringify({ enabled: false, phase: "phase1", detail: "disabled" }), {

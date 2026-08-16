@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import queue
 import re
 import secrets
 import subprocess
@@ -11,6 +12,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -41,9 +43,17 @@ _HERMES_ERROR_TIMEOUT = "hermes_timeout"
 _HERMES_ERROR_SPAWN = "hermes_spawn_failed"
 _HERMES_ERROR_EXIT = "hermes_exit_failed"
 _HERMES_ERROR_BRIDGE_UNAUTHORIZED = "hermes_bridge_unauthorized"
+_HERMES_ERROR_STREAM_CANCELLED = "hermes_stream_cancelled"
 # WSL 内定向清理的 pkill -f 特征（匹配 WSL 内完整命令行，不影响宿主进程）。
 _HERMES_BRIDGE_WSL_PKILL_PATTERN = "hermes_bridge_server.py"
 _HERMES_CLI_WSL_PKILL_PATTERN = "/usr/local/bin/hermes chat -Q"
+_HERMES_STREAM_WSL_PKILL_PATTERN = "hermes_stream_runner.py"
+_HERMES_STREAM_FLUSH_INTERVAL_SECONDS = 0.08
+_HERMES_STREAM_CONTINUE_CHECK_SECONDS = 0.1
+_HERMES_STREAM_FLUSH_BYTES = 1024
+_HERMES_STREAM_MAX_FRAME_BYTES = 4096
+_HERMES_STREAM_STDERR_MAX_CHARS = 4096
+_HERMES_STREAM_READY_TIMEOUT_SECONDS = 30.0
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -71,8 +81,32 @@ class HermesBridgeConfig:
     max_turns: int
 
 
+@dataclass(frozen=True)
+class HermesStreamConfig:
+    command: str
+    wsl_distro: str
+    hermes_home: str
+    model: str
+    max_turns: int
+
+
+@dataclass
+class ManagedHermesStreamProcess:
+    process: subprocess.Popen[Any]
+    stdout_thread: threading.Thread
+    stderr_thread: threading.Thread
+    event_queue: queue.Queue[tuple[str, str | None]]
+    instance_id: str
+    ready: bool = False
+
+
 _HERMES_BRIDGE_PROCESS: subprocess.Popen | None = None
 _HERMES_BRIDGE_CONFIG: HermesBridgeConfig | None = None
+_HERMES_STREAM_PROCESS: ManagedHermesStreamProcess | None = None
+_HERMES_STREAM_CONFIG: HermesStreamConfig | None = None
+_HERMES_STREAM_LOCK = threading.Lock()
+_HERMES_STREAM_REQUEST_SEQ = 0
+_HERMES_STREAM_LIFECYCLE_SEQ = 0
 _BRIDGE_TOKEN_HEADER = "X-Hermes-Bridge-Token"
 # 供运维指向一个外部已启动的 bridge；未设置时每个后端进程自带一次性令牌。
 _PROCESS_BRIDGE_TOKEN = os.environ.get("HERMES_BRIDGE_TOKEN", "").strip() or secrets.token_hex(32)
@@ -167,6 +201,9 @@ def execute_hermes_agent_query(
     request: AgentQueryRequest,
     governance_dir: str,
     settings: Any,
+    *,
+    stream_delta_callback: Callable[[str], bool] | None = None,
+    stream_should_continue: Callable[[], bool] | None = None,
 ) -> AgentEnvelope:
     if _should_answer_open_chat_locally(request.question):
         result = {
@@ -184,17 +221,22 @@ def execute_hermes_agent_query(
         return envelope
 
     try:
+        transport = str(getattr(settings, "agent_hermes_transport", "cli") or "cli")
+        if stream_delta_callback is not None:
+            transport = "cli"
         result = run_hermes_agent(
             request=request,
             command=str(settings.agent_hermes_command),
             wsl_distro=str(settings.agent_hermes_wsl_distro or ""),
             hermes_home=str(getattr(settings, "agent_hermes_home", "") or ""),
-            transport=str(getattr(settings, "agent_hermes_transport", "cli") or "cli"),
+            transport=transport,
             bridge_url=str(getattr(settings, "agent_hermes_bridge_url", "") or ""),
             model=str(settings.agent_hermes_model or ""),
             toolsets=str(getattr(settings, "agent_hermes_toolsets", "") or ""),
             max_turns=int(settings.agent_hermes_max_turns),
             timeout_seconds=float(settings.agent_hermes_timeout_seconds),
+            stream_delta_callback=stream_delta_callback,
+            stream_should_continue=stream_should_continue,
         )
         envelope = build_hermes_envelope(request=request, result=result)
     except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as exc:
@@ -310,6 +352,23 @@ def _warm_hermes_bridge_quietly(**kwargs: Any) -> None:
         return
 
 
+def warm_hermes_stream_if_configured(settings: Any) -> bool:
+    """Preload the Lab-only Hermes stream runtime in the worker process."""
+    if not bool(getattr(settings, "agent_enabled", False)):
+        return False
+    if str(getattr(settings, "agent_provider", "") or "").strip().lower() != "hermes":
+        return False
+    with _HERMES_STREAM_LOCK:
+        _ensure_managed_hermes_stream_process_locked(
+            command=str(getattr(settings, "agent_hermes_command", "wsl.exe") or "wsl.exe"),
+            wsl_distro=str(getattr(settings, "agent_hermes_wsl_distro", "") or ""),
+            hermes_home=str(getattr(settings, "agent_hermes_home", "") or ""),
+            model=str(getattr(settings, "agent_hermes_model", "") or ""),
+            max_turns=max(int(getattr(settings, "agent_hermes_max_turns", 1) or 1), 1),
+        )
+    return True
+
+
 def run_hermes_agent(
     *,
     request: AgentQueryRequest,
@@ -322,9 +381,24 @@ def run_hermes_agent(
     toolsets: str,
     max_turns: int,
     timeout_seconds: float,
+    stream_delta_callback: Callable[[str], bool] | None = None,
+    stream_should_continue: Callable[[], bool] | None = None,
 ) -> dict[str, str]:
     prompt = _build_hermes_prompt(request)
     normalized_toolsets = _normalize_toolsets(toolsets)
+    if stream_delta_callback is not None:
+        return _run_hermes_agent_streaming(
+            command=command,
+            wsl_distro=wsl_distro,
+            hermes_home=hermes_home,
+            prompt=prompt,
+            model=model,
+            normalized_toolsets=normalized_toolsets,
+            max_turns=max_turns,
+            timeout_seconds=timeout_seconds,
+            stream_delta_callback=stream_delta_callback,
+            stream_should_continue=stream_should_continue,
+        )
     if str(transport or "").strip().lower() == "bridge":
         normalized_bridge_url = str(bridge_url or "").strip() or "http://127.0.0.1:7891"
         _ensure_hermes_bridge(
@@ -429,6 +503,224 @@ def run_hermes_agent(
         "toolsets": normalized_toolsets,
         "transport": "cli",
     }
+
+
+def _run_hermes_agent_streaming(
+    *,
+    command: str,
+    wsl_distro: str,
+    hermes_home: str,
+    prompt: str,
+    model: str,
+    normalized_toolsets: str,
+    max_turns: int,
+    timeout_seconds: float,
+    stream_delta_callback: Callable[[str], bool],
+    stream_should_continue: Callable[[], bool] | None,
+) -> dict[str, str]:
+    should_continue = stream_should_continue or (lambda: True)
+    with _HERMES_STREAM_LOCK:
+        request_id = _next_hermes_stream_request_id()
+        request_body = json.dumps(
+            {
+                "request_id": request_id,
+                "prompt": prompt,
+                "model": model,
+                "toolsets": normalized_toolsets,
+                "max_turns": max(max_turns, 1),
+            },
+            ensure_ascii=False,
+        ) + "\n"
+        manager = _ensure_managed_hermes_stream_process_locked(
+            command=command,
+            wsl_distro=wsl_distro,
+            hermes_home=hermes_home,
+            model=model,
+            max_turns=max(max_turns, 1),
+        )
+        if not manager.ready:
+            try:
+                _wait_for_managed_hermes_stream_ready(manager)
+            except Exception:
+                _stop_managed_hermes_stream_locked(
+                    command=command,
+                    wsl_distro=wsl_distro,
+                )
+                raise
+        manager.ready = False
+        process = manager.process
+        stdin_stream = process.stdin
+        if stdin_stream is None:
+            _stop_managed_hermes_stream_locked(command=command, wsl_distro=wsl_distro)
+            raise RuntimeError("Hermes stream stdin unavailable.")
+        try:
+            stdin_stream.write(request_body)
+            stdin_stream.flush()
+        except OSError as exc:
+            _stop_managed_hermes_stream_locked(command=command, wsl_distro=wsl_distro)
+            raise HermesRuntimeError(
+                "Hermes stream request failed to start.",
+                error_code=_HERMES_ERROR_SPAWN,
+            ) from exc
+
+        stderr_parts: list[str] = []
+        pending_deltas: list[str] = []
+        pending_bytes = 0
+        last_flush = time.monotonic()
+        last_continue_check = 0.0
+        continue_allowed = True
+        final_answer = ""
+        final_session_id = ""
+        error_code = ""
+        last_delta_seq = 0
+        deadline = time.monotonic() + max(timeout_seconds, 1.0)
+
+        def still_running(*, force: bool = False) -> bool:
+            nonlocal continue_allowed, last_continue_check
+            now = time.monotonic()
+            if force or now - last_continue_check >= _HERMES_STREAM_CONTINUE_CHECK_SECONDS:
+                continue_allowed = bool(should_continue())
+                last_continue_check = now
+            return continue_allowed
+
+        def flush_pending(*, force: bool = False) -> bool:
+            nonlocal pending_bytes, last_flush
+            if not pending_deltas:
+                return True
+            now = time.monotonic()
+            if (
+                not force
+                and pending_bytes < _HERMES_STREAM_FLUSH_BYTES
+                and now - last_flush < _HERMES_STREAM_FLUSH_INTERVAL_SECONDS
+            ):
+                return True
+            text = "".join(pending_deltas)
+            pending_deltas.clear()
+            pending_bytes = 0
+            last_flush = now
+            for frame in _chunk_text_by_utf8_bytes(text, _HERMES_STREAM_MAX_FRAME_BYTES):
+                if not still_running():
+                    return False
+                if stream_delta_callback(frame) is False:
+                    return False
+            return True
+
+        cancelled = False
+        try:
+            while True:
+                now = time.monotonic()
+                if now >= deadline:
+                    raise HermesRuntimeError(
+                        f"Hermes timed out after {timeout_seconds:g}s",
+                        error_code=_HERMES_ERROR_TIMEOUT,
+                    )
+                if not still_running():
+                    cancelled = True
+                    break
+                wait_seconds = min(0.05, max(deadline - now, 0.01))
+                try:
+                    kind, payload = manager.event_queue.get(timeout=wait_seconds)
+                except queue.Empty:
+                    if not flush_pending():
+                        cancelled = True
+                        break
+                    if process.poll() is not None:
+                        break
+                    continue
+
+                if kind == "stdout":
+                    record = _parse_hermes_stream_record(payload or "")
+                    record_request_id = str(record.get("request_id") or "")
+                    if record_request_id != request_id:
+                        raise RuntimeError("Hermes stream record had an unexpected request id.")
+                    record_type = str(record.get("type") or "")
+                    if record_type == "delta":
+                        text = str(record.get("text") or "")
+                        delta_seq = int(record.get("seq") or 0)
+                        if delta_seq != last_delta_seq + 1:
+                            raise RuntimeError("Hermes stream delta sequence was invalid.")
+                        last_delta_seq = delta_seq
+                        if text:
+                            pending_deltas.append(text)
+                            pending_bytes += len(text.encode("utf-8"))
+                            if not flush_pending():
+                                cancelled = True
+                                break
+                    elif record_type == "final":
+                        if not flush_pending(force=True):
+                            cancelled = True
+                            break
+                        final_answer = str(record.get("answer") or "")
+                        final_session_id = str(record.get("session_id") or "")
+                        break
+                    elif record_type == "error":
+                        error_code = str(record.get("code") or "runtime_failed")
+                    else:
+                        raise RuntimeError("Hermes stream returned an invalid record.")
+                elif kind == "stderr":
+                    if payload and len("".join(stderr_parts)) < _HERMES_STREAM_STDERR_MAX_CHARS:
+                        stderr_parts.append(payload)
+                        if len("".join(stderr_parts)) > _HERMES_STREAM_STDERR_MAX_CHARS:
+                            joined = "".join(stderr_parts)[:_HERMES_STREAM_STDERR_MAX_CHARS]
+                            stderr_parts[:] = [joined]
+                elif kind in {"stdout_eof", "stderr_eof"}:
+                    if process.poll() is not None:
+                        break
+
+                if error_code:
+                    raise RuntimeError("Hermes stream returned an error record.")
+            if cancelled:
+                raise HermesRuntimeError(
+                    "Hermes stream was cancelled before completion.",
+                    error_code=_HERMES_ERROR_STREAM_CANCELLED,
+                )
+            stderr = _truncate("".join(stderr_parts).strip(), _HERMES_STREAM_STDERR_MAX_CHARS)
+            returncode = process.poll()
+            if returncode is not None and returncode != 0:
+                if _is_nonfatal_hermes_mcp_shutdown(
+                    returncode=returncode,
+                    stderr=stderr,
+                    answer=final_answer,
+                ):
+                    return {
+                        "answer": final_answer,
+                        "stdout": final_answer,
+                        "stderr": stderr,
+                        "command": command,
+                        "model": model or "default",
+                        "toolsets": normalized_toolsets,
+                        "transport": "cli_stream",
+                        "session_id": final_session_id,
+                    }
+                _stop_managed_hermes_stream_locked(command=command, wsl_distro=wsl_distro)
+                raise HermesRuntimeError(
+                    f"Hermes failed with exit code {returncode}: stream wrapper exited",
+                    error_code=_HERMES_ERROR_EXIT,
+                )
+            if not final_answer:
+                _stop_managed_hermes_stream_locked(command=command, wsl_distro=wsl_distro)
+                raise RuntimeError("Hermes stream returned no final answer.")
+            return {
+                "answer": final_answer,
+                "stdout": final_answer,
+                "stderr": stderr,
+                "command": command,
+                "model": model or "default",
+                "toolsets": normalized_toolsets,
+                "transport": "cli_stream",
+                "session_id": final_session_id,
+            }
+        except Exception as exc:
+            _stop_managed_hermes_stream_locked(command=command, wsl_distro=wsl_distro)
+            if getattr(exc, "error_code", "") == _HERMES_ERROR_STREAM_CANCELLED:
+                _schedule_managed_hermes_stream_warmup_locked(
+                    command=command,
+                    wsl_distro=wsl_distro,
+                    hermes_home=hermes_home,
+                    model=model,
+                    max_turns=max(max_turns, 1),
+                )
+            raise
 
 
 def _ensure_hermes_bridge(
@@ -928,6 +1220,58 @@ def _build_hermes_bridge_command(
     return [python_path, *bridge_args]
 
 
+def _build_hermes_stream_command(
+    *,
+    command: str,
+    wsl_distro: str,
+    hermes_home: str,
+    daemon: bool = False,
+    instance_id: str = "",
+    model: str = "",
+    max_turns: int = 1,
+) -> list[str]:
+    python_path = _hermes_bridge_python_path()
+    hermes_root = _hermes_root_from_python_path(python_path)
+    script_path = _REPO_ROOT / "scripts" / "hermes_stream_runner.py"
+    if _is_wsl_command(command):
+        args = [command]
+        if wsl_distro:
+            args.extend(["-d", wsl_distro])
+        args.extend(["-e", "env"])
+        normalized_home = str(hermes_home or "").strip()
+        if normalized_home:
+            args.append(f"HERMES_HOME={normalized_home}")
+        args.extend(
+            [
+                "HERMES_SESSION_SOURCE=tool",
+                "PYTHONIOENCODING=utf-8",
+                "PYTHONUTF8=1",
+                "NO_COLOR=1",
+                python_path,
+                _windows_path_to_wsl_path(script_path),
+                "--hermes-root",
+                hermes_root,
+            ]
+        )
+        if daemon:
+            if model:
+                args.extend(["--model", model])
+            args.extend(["--max-turns", str(max(max_turns, 1))])
+            args.append("--daemon")
+            if instance_id:
+                args.extend(["--instance-id", instance_id])
+        return args
+    args = [python_path, str(script_path), "--hermes-root", hermes_root]
+    if daemon:
+        if model:
+            args.extend(["--model", model])
+        args.extend(["--max-turns", str(max(max_turns, 1))])
+        args.append("--daemon")
+        if instance_id:
+            args.extend(["--instance-id", instance_id])
+    return args
+
+
 def _hermes_bridge_python_path() -> str:
     from backend.app.governance.settings import (  # noqa: PLC0415
         DEFAULT_AGENT_HERMES_PYTHON_PATH,
@@ -943,8 +1287,27 @@ def _is_wsl_command(command: str) -> bool:
     return normalized.endswith("wsl.exe") or normalized == "wsl"
 
 
+def _hermes_root_from_python_path(python_path: str) -> str:
+    normalized = str(python_path or "").strip().replace("\\", "/").rstrip("/")
+    for marker in ("/venv/", "/.venv/"):
+        if marker in normalized:
+            return normalized.rsplit(marker, 1)[0]
+    return normalized
+
+
 def _normalize_toolsets(toolsets: str) -> str:
     return normalize_read_only_toolsets(toolsets)
+
+
+def _build_hermes_stream_env(*, command: str, hermes_home: str) -> dict[str, str]:
+    normalized_home = str(hermes_home or "").strip()
+    env = build_agent_subprocess_env(
+        HERMES_HOME=normalized_home if not _is_wsl_command(command) else "",
+        HERMES_SESSION_SOURCE="tool",
+    )
+    if _is_wsl_command(command):
+        env["WSLENV"] = _merge_wslenv(env.get("WSLENV", ""), "HERMES_HOME/u")
+    return env
 
 
 def _build_hermes_subprocess_env(hermes_home: str) -> dict[str, str]:
@@ -972,6 +1335,372 @@ def _windows_path_to_wsl_path(path: Path) -> str:
         rest = raw[3:].replace("\\", "/")
         return f"/mnt/{drive}/{rest}"
     return raw.replace("\\", "/")
+
+
+def _next_hermes_stream_request_id() -> str:
+    global _HERMES_STREAM_REQUEST_SEQ
+    _HERMES_STREAM_REQUEST_SEQ += 1
+    return f"stream-{_HERMES_STREAM_REQUEST_SEQ}"
+
+
+def _parse_hermes_stream_record(line: str) -> dict[str, str]:
+    try:
+        payload = json.loads(str(line or "").strip())
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Hermes stream returned invalid JSON.") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("Hermes stream returned a non-object record.")
+    record_type = str(payload.get("type") or "")
+    request_id = str(payload.get("request_id") or "").strip()
+    if record_type == "ready":
+        return {
+            "type": "ready",
+            "instance_id": str(payload.get("instance_id") or "").strip(),
+        }
+    if record_type == "delta":
+        text = str(payload.get("text") or "")
+        if not text:
+            raise RuntimeError("Hermes stream delta record was empty.")
+        seq = payload.get("seq")
+        if not isinstance(seq, int) or seq < 1:
+            raise RuntimeError("Hermes stream delta record had an invalid sequence.")
+        return {"type": "delta", "text": text, "seq": str(seq), "request_id": request_id}
+    if record_type == "final":
+        return {
+            "type": "final",
+            "answer": str(payload.get("answer") or ""),
+            "session_id": str(payload.get("session_id") or ""),
+            "request_id": request_id,
+        }
+    if record_type == "error":
+        return {
+            "type": "error",
+            "code": str(payload.get("code") or "runtime_failed"),
+            "request_id": request_id,
+        }
+    raise RuntimeError("Hermes stream record type was not recognized.")
+
+
+def _chunk_text_by_utf8_bytes(text: str, max_bytes: int) -> list[str]:
+    if max_bytes <= 0:
+        return [text]
+    chunks: list[str] = []
+    start = 0
+    while start < len(text):
+        end = min(len(text), start + max_bytes)
+        while end > start and len(text[start:end].encode("utf-8")) > max_bytes:
+            end -= 1
+        if end == start:
+            end = start + 1
+        chunks.append(text[start:end])
+        start = end
+    return chunks or [""]
+
+
+def _start_managed_hermes_stream_process(
+    *,
+    command: str,
+    wsl_distro: str,
+    hermes_home: str,
+    model: str,
+    max_turns: int,
+) -> ManagedHermesStreamProcess:
+    instance_id = f"moss-{os.getpid()}-{uuid4().hex[:12]}"
+    args = _build_hermes_stream_command(
+        command=command,
+        wsl_distro=wsl_distro,
+        hermes_home=hermes_home,
+        daemon=True,
+        instance_id=instance_id,
+        model=model,
+        max_turns=max_turns,
+    )
+    env = _build_hermes_stream_env(command=command, hermes_home=hermes_home)
+    process = subprocess.Popen(
+        args,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=env,
+        bufsize=1,
+    )
+    event_queue: queue.Queue[tuple[str, str | None]] = queue.Queue()
+
+    def read_stdout() -> None:
+        stream = process.stdout
+        if stream is None:
+            event_queue.put(("stdout_eof", None))
+            return
+        try:
+            for line in iter(stream.readline, ""):
+                event_queue.put(("stdout", line))
+        finally:
+            try:
+                stream.close()
+            except OSError:
+                pass
+            event_queue.put(("stdout_eof", None))
+
+    def read_stderr() -> None:
+        stream = process.stderr
+        if stream is None:
+            event_queue.put(("stderr_eof", None))
+            return
+        try:
+            for line in iter(stream.readline, ""):
+                event_queue.put(("stderr", line))
+        finally:
+            try:
+                stream.close()
+            except OSError:
+                pass
+            event_queue.put(("stderr_eof", None))
+
+    stdout_thread = threading.Thread(target=read_stdout, daemon=True)
+    stderr_thread = threading.Thread(target=read_stderr, daemon=True)
+    stdout_thread.start()
+    stderr_thread.start()
+    manager = ManagedHermesStreamProcess(
+        process=process,
+        stdout_thread=stdout_thread,
+        stderr_thread=stderr_thread,
+        event_queue=event_queue,
+        instance_id=instance_id,
+    )
+    try:
+        _wait_for_managed_hermes_stream_ready(manager)
+    except Exception:
+        _terminate_stream_process(
+            process=process,
+            command=command,
+            wsl_distro=wsl_distro,
+            pattern=_hermes_stream_cleanup_pattern(instance_id),
+        )
+        stdout_thread.join(timeout=1.0)
+        stderr_thread.join(timeout=1.0)
+        raise
+    return manager
+
+
+def _wait_for_managed_hermes_stream_ready(
+    manager: ManagedHermesStreamProcess,
+) -> None:
+    deadline = time.monotonic() + _HERMES_STREAM_READY_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        if manager.process.poll() is not None:
+            raise HermesRuntimeError(
+                "Hermes stream runner exited before it became ready.",
+                error_code=_HERMES_ERROR_EXIT,
+            )
+        try:
+            kind, payload = manager.event_queue.get(timeout=0.05)
+        except queue.Empty:
+            continue
+        if kind == "stdout":
+            record = _parse_hermes_stream_record(payload or "")
+            ready_instance_id = str(record.get("instance_id") or "")
+            if (
+                record.get("type") == "ready"
+                and (not ready_instance_id or ready_instance_id == manager.instance_id)
+            ):
+                manager.ready = True
+                return
+            raise HermesRuntimeError(
+                "Hermes stream runner returned an invalid readiness record.",
+                error_code=_HERMES_ERROR_EXIT,
+            )
+        if kind in {"stdout_eof", "stderr_eof"} and manager.process.poll() is not None:
+            raise HermesRuntimeError(
+                "Hermes stream runner exited before it became ready.",
+                error_code=_HERMES_ERROR_EXIT,
+            )
+    raise HermesRuntimeError(
+        "Hermes stream runner did not become ready in time.",
+        error_code=_HERMES_ERROR_TIMEOUT,
+    )
+
+
+def _reset_managed_hermes_stream_locked() -> None:
+    global _HERMES_STREAM_PROCESS, _HERMES_STREAM_CONFIG
+    _HERMES_STREAM_PROCESS = None
+    _HERMES_STREAM_CONFIG = None
+
+
+def stop_managed_hermes_stream() -> None:
+    """Stop the Lab-only resident runner owned by this backend worker."""
+    with _HERMES_STREAM_LOCK:
+        config = _HERMES_STREAM_CONFIG
+        _stop_managed_hermes_stream_locked(
+            command=config.command if config is not None else "",
+            wsl_distro=config.wsl_distro if config is not None else "",
+        )
+
+
+def _stop_managed_hermes_stream_locked(
+    *,
+    command: str,
+    wsl_distro: str,
+) -> None:
+    global _HERMES_STREAM_LIFECYCLE_SEQ
+    _HERMES_STREAM_LIFECYCLE_SEQ += 1
+    manager = _HERMES_STREAM_PROCESS
+    if manager is None:
+        _reset_managed_hermes_stream_locked()
+        return
+    process = manager.process
+    config = _HERMES_STREAM_CONFIG
+    cleanup_command = config.command if config is not None else command
+    cleanup_distro = config.wsl_distro if config is not None else wsl_distro
+    _terminate_stream_process(
+        process=process,
+        command=cleanup_command,
+        wsl_distro=cleanup_distro,
+        pattern=_hermes_stream_cleanup_pattern(manager.instance_id),
+    )
+    stdout_stream = process.stdout
+    stderr_stream = process.stderr
+    if stdout_stream is not None:
+        try:
+            stdout_stream.close()
+        except OSError:
+            pass
+    if stderr_stream is not None:
+        try:
+            stderr_stream.close()
+        except OSError:
+            pass
+    manager.stdout_thread.join(timeout=1.0)
+    manager.stderr_thread.join(timeout=1.0)
+    _reset_managed_hermes_stream_locked()
+
+
+def _schedule_managed_hermes_stream_warmup_locked(
+    *,
+    command: str,
+    wsl_distro: str,
+    hermes_home: str,
+    model: str,
+    max_turns: int,
+) -> None:
+    lifecycle_seq = _HERMES_STREAM_LIFECYCLE_SEQ
+    thread = threading.Thread(
+        target=_warm_managed_hermes_stream_quietly,
+        kwargs={
+            "command": command,
+            "wsl_distro": wsl_distro,
+            "hermes_home": hermes_home,
+            "model": model,
+            "max_turns": max(max_turns, 1),
+            "lifecycle_seq": lifecycle_seq,
+        },
+        daemon=True,
+        name="moss-hermes-stream-rewarm",
+    )
+    thread.start()
+
+
+def _warm_managed_hermes_stream_quietly(
+    *,
+    command: str,
+    wsl_distro: str,
+    hermes_home: str,
+    model: str,
+    max_turns: int,
+    lifecycle_seq: int,
+) -> None:
+    with _HERMES_STREAM_LOCK:
+        if lifecycle_seq != _HERMES_STREAM_LIFECYCLE_SEQ:
+            return
+        try:
+            _ensure_managed_hermes_stream_process_locked(
+                command=command,
+                wsl_distro=wsl_distro,
+                hermes_home=hermes_home,
+                model=model,
+                max_turns=max(max_turns, 1),
+            )
+        except Exception:
+            return
+
+
+def _ensure_managed_hermes_stream_process_locked(
+    *,
+    command: str,
+    wsl_distro: str,
+    hermes_home: str,
+    model: str,
+    max_turns: int,
+) -> ManagedHermesStreamProcess:
+    global _HERMES_STREAM_PROCESS, _HERMES_STREAM_CONFIG
+    desired = HermesStreamConfig(
+        command=command,
+        wsl_distro=wsl_distro,
+        hermes_home=hermes_home,
+        model=model,
+        max_turns=max(max_turns, 1),
+    )
+    if _HERMES_STREAM_PROCESS is not None:
+        if _HERMES_STREAM_CONFIG != desired:
+            _stop_managed_hermes_stream_locked(command=command, wsl_distro=wsl_distro)
+        elif _HERMES_STREAM_PROCESS.process.poll() is not None:
+            _stop_managed_hermes_stream_locked(command=command, wsl_distro=wsl_distro)
+    if _HERMES_STREAM_PROCESS is None:
+        try:
+            _HERMES_STREAM_PROCESS = _start_managed_hermes_stream_process(
+                command=command,
+                wsl_distro=wsl_distro,
+                hermes_home=hermes_home,
+                model=model,
+                max_turns=max(max_turns, 1),
+            )
+            _HERMES_STREAM_CONFIG = desired
+        except FileNotFoundError as exc:
+            raise HermesRuntimeError(
+                f"Hermes command not found: {command}",
+                error_code=_HERMES_ERROR_SPAWN,
+            ) from exc
+        except OSError as exc:
+            raise HermesRuntimeError(
+                f"Hermes command failed to start: {exc}",
+                error_code=_HERMES_ERROR_SPAWN,
+            ) from exc
+    return _HERMES_STREAM_PROCESS
+
+
+def _terminate_stream_process(
+    *,
+    process: subprocess.Popen[Any],
+    command: str,
+    wsl_distro: str,
+    pattern: str,
+) -> None:
+    if process.poll() is None:
+        try:
+            process.terminate()
+            process.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
+            try:
+                process.kill()
+                process.wait(timeout=1.0)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        except OSError:
+            pass
+    _cleanup_wsl_processes(
+        command=command,
+        wsl_distro=wsl_distro,
+        pattern=pattern,
+    )
+
+
+def _hermes_stream_cleanup_pattern(instance_id: str) -> str:
+    return (
+        f"{_HERMES_STREAM_WSL_PKILL_PATTERN}.*--instance-id "
+        f"{re.escape(str(instance_id or ''))}"
+    )
 
 
 def _build_hermes_prompt(request: AgentQueryRequest) -> str:

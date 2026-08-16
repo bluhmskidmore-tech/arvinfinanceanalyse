@@ -127,6 +127,7 @@ class Settings(BaseSettings):
     # （error_type=StaleQueuedAgentRun）。缺省 600 与
     # agent_run_service.AGENT_RUN_QUEUED_STALE_SECONDS 保持一致。
     agent_run_queued_timeout_seconds: float = 600.0
+    agent_run_stream_retention_days: float = 7.0
     # suggested action 确认 token 的 HMAC secret。多进程部署（API 进程 +
     # worker 进程）必须显式配置同一值，否则跨进程签发/校验会失败；
     # 为空时回退进程本地随机 secret（仅单进程可用）。

@@ -19,8 +19,10 @@ from backend.app.agent.schemas.agent_run import (
 from backend.app.api.routes.agent_workspace import (
     _dev_bypass_allowed,
     agent_disabled_json_response,
-    router as workspace_router,
     workspace_record_corrupt_error_detail,
+)
+from backend.app.api.routes.agent_workspace import (
+    router as workspace_router,
 )
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
@@ -92,6 +94,11 @@ _SUGGESTED_ACTION_CONFIRMATION_TOKEN_PATTERN = re.compile(
 )
 _PROVIDER_EXECUTION_FAILURE_CODE = "AGENT_PROVIDER_EXECUTION_FAILED"
 _PROVIDER_EXECUTION_FAILURE_DETAIL = "Agent provider execution failed."
+_AGENT_LAB_STREAM_PROTOCOL = "run_delta_v1"
+_AGENT_LAB_STREAM_SURFACE = "lab"
+_AGENT_LAB_STREAMING_UNAVAILABLE_DETAIL = (
+    "Agent Lab streaming is only available when the configured provider is Hermes."
+)
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -216,7 +223,13 @@ def _apply_auth_context(
         key: value
         for key, value in request.context.items()
         if key.strip().lower()
-        not in {"run_id", "retry_of_run_id", "artifact_refs"}
+        not in {
+            "run_id",
+            "retry_of_run_id",
+            "artifact_refs",
+            "agent_stream_protocol",
+            "agent_stream_surface",
+        }
     }
     return request.model_copy(
         update={
@@ -228,6 +241,26 @@ def _apply_auth_context(
             }
         }
     )
+
+
+def _apply_agent_lab_stream_context(request: AgentQueryRequest) -> AgentQueryRequest:
+    return request.model_copy(
+        update={
+            "context": {
+                **request.context,
+                "agent_stream_protocol": _AGENT_LAB_STREAM_PROTOCOL,
+                "agent_stream_surface": _AGENT_LAB_STREAM_SURFACE,
+            }
+        }
+    )
+
+
+def _ensure_agent_lab_streaming_supported(settings: object) -> None:
+    if _provider_name(settings) != "hermes":
+        raise HTTPException(
+            status_code=409,
+            detail=_AGENT_LAB_STREAMING_UNAVAILABLE_DETAIL,
+        )
 
 
 def _ensure_agent_action_allowed(
@@ -446,6 +479,70 @@ def create_agent_run_endpoint(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+@router.post(
+    "/lab/runs",
+    response_model=AgentRunCreateResponse | AgentDisabledResponse,
+    response_model_exclude_none=True,
+    responses={
+        409: {"description": _AGENT_LAB_STREAMING_UNAVAILABLE_DETAIL},
+        503: {"description": "Agent is disabled or the run could not be dispatched."},
+    },
+)
+def create_agent_lab_run_endpoint(
+    request: AgentQueryRequest,
+    http_request: Request,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> AgentRunCreateResponse | JSONResponse:
+    request = _apply_auth_context(request, auth)
+    request = _apply_agent_lab_stream_context(request)
+    _enforce_read_only_agent_request(request)
+    _enforce_suggested_action_confirmation(request, auth)
+    settings = get_settings()
+    if not settings.agent_enabled:
+        audit_disabled_agent_query(
+            request=request,
+            governance_dir=str(settings.governance_path),
+        )
+        return agent_disabled_json_response()
+    _ensure_agent_read_allowed(auth, settings, http_request=http_request)
+    _ensure_agent_lab_streaming_supported(settings)
+    conversation_id = _conversation_id_from_request(request)
+    if conversation_id is not None:
+        request = request.model_copy(
+            update={
+                "context": {
+                    **request.context,
+                    "conversation_id": conversation_id,
+                }
+            }
+        )
+
+    try:
+        if conversation_id is not None:
+            with agent_workspace_lifecycle_lock(settings=settings):
+                _ensure_agent_conversation_owned_by_auth(
+                    conversation_id=conversation_id,
+                    auth=auth,
+                    settings=settings,
+                    require_active=True,
+                )
+                staged = stage_agent_run_creation(
+                    request=request,
+                    settings=settings,
+                    provider="hermes",
+                )
+            return complete_agent_run_creation(staged=staged, settings=settings)
+        return create_agent_run(
+            request=request,
+            settings=settings,
+            provider="hermes",
+        )
+    except AgentWorkspaceStateConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except AgentRunDispatchError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.get(
     "/runs",
     response_model=AgentRunListResponse,
@@ -589,6 +686,8 @@ def get_agent_run_events_endpoint(
     run_id: str,
     http_request: Request,
     auth: Annotated[AuthContext, Depends(get_auth_context)],
+    include_deltas: bool = False,
+    after_seq: Annotated[int, Query(ge=0)] = 0,
 ) -> StreamingResponse | JSONResponse:
     settings = get_settings()
     disabled = _agent_disabled_response_if_off(settings)
@@ -610,6 +709,8 @@ def get_agent_run_events_endpoint(
             run_id=run_id,
             settings=settings,
             initial_status=initial_status,
+            include_deltas=include_deltas,
+            after_seq=after_seq,
         ),
         media_type="text/event-stream",
         headers={

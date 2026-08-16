@@ -162,6 +162,15 @@ export type AgentRunStatusResponse = {
   result?: AgentEnvelope | null;
 };
 
+/** `/api/agent/runs/{run_id}/events?include_deltas=true` 的 Lab-only 增量事件。 */
+export type AgentRunDeltaEvent = {
+  run_id: string;
+  seq: number;
+  channel: "answer";
+  text: string;
+  created_at: string;
+};
+
 /** GET /api/agent/runs — mirrors backend `AgentRunListResponse`. */
 export type AgentRunListResponse = {
   items: AgentRunStatusResponse[];

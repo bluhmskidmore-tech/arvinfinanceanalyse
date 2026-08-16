@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import threading
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from backend.app.agent.runtime.toolset_policy import normalize_read_only_toolsets
@@ -14,6 +15,7 @@ from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import AgentEnvelope
 from backend.app.agent.schemas.agent_run import (
     AgentRunCreateResponse,
+    AgentRunDeltaRecord,
     AgentRunListResponse,
     AgentRunRecord,
     AgentRunStatusResponse,
@@ -24,6 +26,7 @@ from backend.app.repositories.governance_repo import GovernanceRepository
 
 AGENT_RUN_STREAM = "agent_run"
 AGENT_RUN_DISPATCH_STREAM = "agent_run_dispatch"
+AGENT_RUN_DELTA_STREAM = "agent_run_delta"
 AGENT_RUN_JOB_NAME = "agent_run"
 AGENT_RUN_STATE_LOCK = threading.Lock()
 AGENT_RUN_TRANSITION_LOCK = threading.RLock()
@@ -42,6 +45,12 @@ AGENT_RUN_DISPATCH_WAIT_SECONDS = 5.0
 AGENT_RUN_DISPATCH_POLL_SECONDS = 0.01
 AGENT_RUN_CANCEL_POLL_SECONDS = 0.5
 AGENT_RUN_HEARTBEAT_SECONDS = 15.0
+AGENT_RUN_DELTA_PROTOCOL = "run_delta_v1"
+AGENT_RUN_DELTA_SURFACE = "lab"
+AGENT_RUN_DELTA_CHANNEL: Literal["answer"] = "answer"
+AGENT_RUN_DELTA_MAX_FRAME_BYTES = 4096
+AGENT_RUN_DELTA_MAX_FRAMES = 512
+AGENT_RUN_DELTA_MAX_TOTAL_BYTES = 256 * 1024
 _AGENT_RUN_LATEST_RECORDS: dict[str, dict[str, object]] = {}
 _ACTIVE_AGENT_RUN_STATUSES = frozenset({"queued", "starting", "running"})
 _TERMINAL_AGENT_RUN_STATUSES = frozenset({"completed", "failed", "cancelled"})
@@ -68,6 +77,89 @@ class AgentRunDispatchError(RuntimeError):
     """Raised after a broker dispatch failure is persisted as terminal."""
 
 
+class AgentRunDeltaPublisher:
+    def __init__(self, *, run_id: str, settings: Any) -> None:
+        self._run_id = str(run_id or "").strip()
+        self._settings = settings
+        self._frame_count = 0
+        self._total_bytes = 0
+        self._next_seq = 1
+        self._truncated = False
+        self._initialize_counters()
+
+    def publish(self, text: str) -> bool:
+        normalized_text = str(text or "")
+        if not normalized_text:
+            return self.is_active()
+
+        encoded = normalized_text.encode("utf-8", errors="ignore")
+        if not encoded:
+            return self.is_active()
+
+        repo = GovernanceRepository(base_dir=self._settings.governance_path)
+        with AGENT_RUN_TRANSITION_LOCK:
+            with acquire_lock(
+                AGENT_RUN_TRANSITION_FILE_LOCK,
+                base_dir=repo.base_dir,
+                timeout_seconds=5.0,
+            ):
+                latest = _latest_run_record_from_repo(repo=repo, run_id=self._run_id)
+                if latest is None or not _run_record_allows_deltas(latest):
+                    return False
+                owner_user_id = _owner_from_run_record(latest)
+                if owner_user_id is None:
+                    return False
+                if self._truncated:
+                    return True
+                if (
+                    len(encoded) > AGENT_RUN_DELTA_MAX_FRAME_BYTES
+                    or self._frame_count >= AGENT_RUN_DELTA_MAX_FRAMES
+                    or self._total_bytes + len(encoded) > AGENT_RUN_DELTA_MAX_TOTAL_BYTES
+                ):
+                    self._truncated = True
+                    return True
+                record = AgentRunDeltaRecord(
+                    run_id=self._run_id,
+                    owner_user_id=owner_user_id,
+                    seq=self._next_seq,
+                    channel=AGENT_RUN_DELTA_CHANNEL,
+                    text=encoded.decode("utf-8", errors="ignore"),
+                    created_at=_utc_now(),
+                )
+                repo.append(
+                    AGENT_RUN_DELTA_STREAM,
+                    record.model_dump(mode="json"),
+                )
+                self._frame_count += 1
+                self._total_bytes += len(record.text.encode("utf-8"))
+                self._next_seq += 1
+                return True
+
+    def is_active(self) -> bool:
+        repo = GovernanceRepository(base_dir=self._settings.governance_path)
+        with AGENT_RUN_TRANSITION_LOCK:
+            with acquire_lock(
+                AGENT_RUN_TRANSITION_FILE_LOCK,
+                base_dir=repo.base_dir,
+                timeout_seconds=5.0,
+            ):
+                latest = _latest_run_record_from_repo(repo=repo, run_id=self._run_id)
+                return latest is not None and _run_record_allows_deltas(latest)
+
+    def _initialize_counters(self) -> None:
+        if not self._run_id:
+            return
+        for record in _load_run_delta_records(self._settings, run_id=self._run_id):
+            self._frame_count += 1
+            self._total_bytes += len(record.text.encode("utf-8"))
+            self._next_seq = max(self._next_seq, record.seq + 1)
+        if (
+            self._frame_count >= AGENT_RUN_DELTA_MAX_FRAMES
+            or self._total_bytes >= AGENT_RUN_DELTA_MAX_TOTAL_BYTES
+        ):
+            self._truncated = True
+
+
 class _ExecuteAgentRunTaskProxy:
     def send(self, **kwargs: object) -> object:
         from backend.app.tasks.agent_run import execute_agent_run_task as _actor
@@ -83,6 +175,8 @@ async def iter_agent_run_events(
     run_id: str,
     settings: Any,
     initial_status: AgentRunStatusResponse | None = None,
+    include_deltas: bool = False,
+    after_seq: int = 0,
     poll_interval_seconds: float = 0.5,
     heartbeat_interval_seconds: float = AGENT_RUN_HEARTBEAT_SECONDS,
 ):
@@ -96,8 +190,33 @@ async def iter_agent_run_events(
     current_status = initial_status or get_agent_run_status(run_id=run_id, settings=settings)
     last_frame: str | None = None
     last_emit = _monotonic()
+    last_delta_seq = max(int(after_seq), 0)
+    delta_owner_user_id: str | None = None
+    if include_deltas:
+        latest_run = _latest_run_record(run_id=run_id, settings=settings)
+        if latest_run is not None and _run_record_supports_delta_history(latest_run):
+            delta_owner_user_id = _owner_from_run_record(latest_run)
+    effective_poll_interval = max(
+        0.0,
+        min(poll_interval_seconds, 0.1) if include_deltas else poll_interval_seconds,
+    )
 
     while True:
+        if include_deltas and delta_owner_user_id is not None:
+            deltas = await asyncio.to_thread(
+                load_agent_run_deltas,
+                run_id=run_id,
+                settings=settings,
+                after_seq=last_delta_seq,
+                expected_owner_user_id=delta_owner_user_id,
+            )
+            for delta in deltas:
+                yield (
+                    "event: run_delta\n"
+                    f"data: {_agent_run_delta_event_payload(delta)}\n\n"
+                )
+                last_delta_seq = delta.seq
+                last_emit = _monotonic()
         frame = (
             "event: run_update\n"
             f"data: {current_status.model_dump_json(exclude_none=True)}\n\n"
@@ -115,7 +234,7 @@ async def iter_agent_run_events(
             yield ": keepalive\n\n"
             last_emit = _monotonic()
 
-        await asyncio.sleep(max(0.0, poll_interval_seconds))
+        await asyncio.sleep(effective_poll_interval)
         current_status = await asyncio.to_thread(
             get_agent_run_status,
             run_id=run_id,
@@ -492,6 +611,43 @@ def cancel_agent_run(*, run_id: str, settings: Any) -> AgentRunStatusResponse:
     )
 
 
+def build_agent_run_delta_publisher(
+    *,
+    run_id: str,
+    settings: Any,
+) -> AgentRunDeltaPublisher:
+    return AgentRunDeltaPublisher(run_id=run_id, settings=settings)
+
+
+def load_agent_run_deltas(
+    *,
+    run_id: str,
+    settings: Any,
+    after_seq: int = 0,
+    expected_owner_user_id: str | None = None,
+) -> list[AgentRunDeltaRecord]:
+    return _load_run_delta_records(
+        settings,
+        run_id=run_id,
+        after_seq=after_seq,
+        expected_owner_user_id=expected_owner_user_id,
+    )
+
+
+def _agent_run_delta_event_payload(delta: AgentRunDeltaRecord) -> str:
+    return json.dumps(
+        {
+            "run_id": delta.run_id,
+            "seq": delta.seq,
+            "channel": delta.channel,
+            "text": delta.text,
+            "created_at": delta.created_at,
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
 def retry_agent_run(*, run_id: str, settings: Any) -> AgentRunCreateResponse:
     staged = stage_agent_run_retry(run_id=run_id, settings=settings)
     return complete_agent_run_creation(staged=staged, settings=settings)
@@ -511,6 +667,13 @@ def stage_agent_run_retry(*, run_id: str, settings: Any) -> StagedAgentRunCreati
     if status not in {"failed", "cancelled"}:
         raise AgentRunStateConflict(
             f"Agent run {run_id} cannot be retried from status={status or '<empty>'}."
+        )
+    configured_provider = str(
+        getattr(settings, "agent_provider", "hermes") or "hermes"
+    ).strip().lower()
+    if _run_record_supports_delta_history(record) and configured_provider != "hermes":
+        raise AgentRunStateConflict(
+            "Agent Lab streaming is only available when the configured provider is Hermes."
         )
 
     request = _request_from_run_record(record=record, run_id=run_id)
@@ -829,6 +992,43 @@ def _owner_from_run_record(record: dict[str, object]) -> str | None:
         return None
     owner = str(context.get("user_id") or "").strip()
     return owner or None
+
+
+def _run_record_uses_agent_stream_protocol(
+    record: dict[str, object],
+    *,
+    protocol: str,
+    surface: str | None = None,
+) -> bool:
+    request = record.get("request")
+    if not isinstance(request, dict):
+        return False
+    context = request.get("context")
+    if not isinstance(context, dict):
+        return False
+    if str(context.get("agent_stream_protocol") or "").strip() != protocol:
+        return False
+    if surface is None:
+        return True
+    return str(context.get("agent_stream_surface") or "").strip() == surface
+
+
+def _run_record_allows_deltas(record: dict[str, object]) -> bool:
+    return (
+        str(record.get("status") or "") in {"starting", "running"}
+        and _run_record_supports_delta_history(record)
+    )
+
+
+def _run_record_supports_delta_history(record: dict[str, object]) -> bool:
+    return (
+        str(record.get("provider") or "").strip().lower() == "hermes"
+        and _run_record_uses_agent_stream_protocol(
+            record,
+            protocol=AGENT_RUN_DELTA_PROTOCOL,
+            surface=AGENT_RUN_DELTA_SURFACE,
+        )
+    )
 
 
 def _conversation_id_from_run_record(record: dict[str, object]) -> str | None:
@@ -1447,6 +1647,54 @@ def _load_run_records(settings: Any, *, run_id: str) -> list[dict[str, object]]:
         if str(record.get("run_id") or "") == run_id
     ]
     return records
+
+
+def _load_run_delta_records(
+    settings: Any,
+    *,
+    run_id: str,
+    after_seq: int = 0,
+    expected_owner_user_id: str | None = None,
+) -> list[AgentRunDeltaRecord]:
+    owner_user_id = str(expected_owner_user_id or "").strip() or None
+    if owner_user_id is None:
+        latest_run = _latest_run_record(run_id=run_id, settings=settings)
+        if latest_run is None:
+            return []
+        if not _run_record_supports_delta_history(latest_run):
+            return []
+        owner_user_id = _owner_from_run_record(latest_run)
+        if owner_user_id is None:
+            return []
+    records = GovernanceRepository(base_dir=settings.governance_path).read_all(
+        AGENT_RUN_DELTA_STREAM
+    )
+    deltas: list[AgentRunDeltaRecord] = []
+    minimum_seq = max(int(after_seq), 0)
+    for record in records:
+        if str(record.get("run_id") or "") != run_id:
+            continue
+        delta = AgentRunDeltaRecord.model_validate(record)
+        if delta.owner_user_id != owner_user_id:
+            continue
+        if delta.seq > minimum_seq:
+            deltas.append(delta)
+    deltas.sort(key=lambda item: item.seq)
+    return deltas
+
+
+def _latest_run_record_from_repo(
+    *,
+    repo: GovernanceRepository,
+    run_id: str,
+) -> dict[str, object] | None:
+    latest: dict[str, object] | None = None
+    for record in repo.read_all(AGENT_RUN_STREAM):
+        if str(record.get("run_id") or "") == run_id:
+            latest = record
+    if latest is not None:
+        _remember_run_record(latest)
+    return latest
 
 
 def _status_from_record(record: dict[str, object]) -> AgentRunStatusResponse:

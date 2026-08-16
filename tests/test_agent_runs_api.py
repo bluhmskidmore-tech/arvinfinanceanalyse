@@ -370,6 +370,147 @@ def test_agent_run_event_iterator_emits_keepalive_comment_between_updates(
     assert '"status":"completed"' in events[2]
 
 
+def test_agent_run_events_route_forwards_delta_query_controls(monkeypatch, tmp_path):
+    client, settings = _client(monkeypatch, tmp_path, lambda *_args, **_kwargs: _sample_envelope())
+    created = client.post("/api/agent/runs", json={"question": "ping"}).json()
+    _wait_for_terminal_record(settings, created["run_id"])
+    route_module = sys.modules["backend.app.api.routes.agent"]
+    calls: list[dict[str, object]] = []
+
+    async def fake_iter_agent_run_events(**kwargs):
+        calls.append(kwargs)
+        yield (
+            "event: run_update\n"
+            f"data: {json.dumps({'run_id': created['run_id'], 'status': 'completed'})}\n\n"
+        )
+
+    monkeypatch.setattr(route_module, "iter_agent_run_events", fake_iter_agent_run_events)
+
+    default_response = client.get(f"/api/agent/runs/{created['run_id']}/events")
+    opted_in_response = client.get(
+        f"/api/agent/runs/{created['run_id']}/events?include_deltas=true&after_seq=3"
+    )
+
+    assert default_response.status_code == 200
+    assert opted_in_response.status_code == 200
+    assert calls[0]["include_deltas"] is False
+    assert calls[0]["after_seq"] == 0
+    assert calls[1]["include_deltas"] is True
+    assert calls[1]["after_seq"] == 3
+
+
+def test_shared_agent_runs_strip_client_stream_flags(monkeypatch, tmp_path):
+    client, settings = _client(monkeypatch, tmp_path, lambda *_args, **_kwargs: _sample_envelope())
+
+    created = client.post(
+        "/api/agent/runs",
+        json={
+            "question": "ping",
+            "context": {
+                "agent_stream_protocol": "run_delta_v1",
+                "agent_stream_surface": "lab",
+                "agent_ui_experiment": "spoofed",
+            },
+        },
+    ).json()
+    _wait_for_terminal_record(settings, created["run_id"])
+
+    records = [
+        json.loads(line)
+        for line in (Path(settings.governance_path) / "agent_run.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    latest = [record for record in records if record["run_id"] == created["run_id"]][-1]
+    context = latest["request"]["context"]
+    assert context["agent_ui_experiment"] == "spoofed"
+    assert "agent_stream_protocol" not in context
+    assert "agent_stream_surface" not in context
+
+
+def test_agent_lab_runs_persist_server_stream_flags(monkeypatch, tmp_path):
+    client, settings = _client(monkeypatch, tmp_path, lambda *_args, **_kwargs: _sample_envelope())
+
+    created = client.post(
+        "/api/agent/lab/runs",
+        json={
+            "question": "ping",
+            "context": {
+                "agent_ui_experiment": "assistant-ui-external-store",
+            },
+        },
+    ).json()
+    _wait_for_terminal_record(settings, created["run_id"])
+
+    records = [
+        json.loads(line)
+        for line in (Path(settings.governance_path) / "agent_run.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    latest = [record for record in records if record["run_id"] == created["run_id"]][-1]
+    context = latest["request"]["context"]
+    assert context["agent_ui_experiment"] == "assistant-ui-external-store"
+    assert context["agent_stream_protocol"] == "run_delta_v1"
+    assert context["agent_stream_surface"] == "lab"
+
+
+def test_agent_lab_runs_reject_non_hermes_provider(monkeypatch, tmp_path):
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    workspace_route_module = importlib.import_module(
+        "backend.app.api.routes.agent_workspace"
+    )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
+    _seed_agent_scope(tmp_path, monkeypatch, action="execute")
+    settings = _local_settings(tmp_path)
+    monkeypatch.setattr(route_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(workspace_route_module, "get_settings", lambda: settings)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    response = client.post("/api/agent/lab/runs", json={"question": "ping"})
+
+    assert response.status_code == 409
+    assert (
+        response.json()["detail"]
+        == "Agent Lab streaming is only available when the configured provider is Hermes."
+    )
+
+
+def test_agent_lab_run_retry_rejects_provider_change(monkeypatch, tmp_path):
+    def fail_provider(*_args, **_kwargs):
+        raise RuntimeError("provider failed")
+
+    client, settings = _client(monkeypatch, tmp_path, fail_provider)
+    created = client.post(
+        "/api/agent/lab/runs",
+        json={"question": "retry only while Hermes remains configured"},
+    ).json()
+    assert _wait_for_terminal(client, created["run_id"])["status"] == "failed"
+
+    settings.agent_provider = "local"
+    response = client.post(f"/api/agent/runs/{created['run_id']}/retry")
+
+    assert response.status_code == 409
+    assert (
+        response.json()["detail"]
+        == "Agent Lab streaming is only available when the configured provider is Hermes."
+    )
+
+
+def test_agent_lab_runs_openapi_documents_fail_closed_responses():
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    app = FastAPI()
+    app.include_router(route_module.router)
+
+    responses = app.openapi()["paths"]["/api/agent/lab/runs"]["post"]["responses"]
+
+    assert {"200", "409", "422", "503"}.issubset(responses)
+
+
 def test_agent_run_events_rejects_different_header_user(monkeypatch, tmp_path):
     monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
     client, settings = _client(

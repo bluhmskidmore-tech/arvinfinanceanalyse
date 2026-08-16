@@ -86,6 +86,28 @@ def _seed_streams(settings: SimpleNamespace) -> GovernanceRepository:
             compaction.AGENT_RUN_DISPATCH_STREAM,
             {"run_id": run_id, "accepted_at": OLD_AT},
         )
+    repo.append(
+        compaction.AGENT_RUN_DELTA_STREAM,
+        {
+            "run_id": "agent_run:old-done",
+            "owner_user_id": "owner-1",
+            "seq": 1,
+            "channel": "answer",
+            "text": "old done delta",
+            "created_at": OLD_AT,
+        },
+    )
+    repo.append(
+        compaction.AGENT_RUN_DELTA_STREAM,
+        {
+            "run_id": "agent_run:recent-done",
+            "owner_user_id": "owner-1",
+            "seq": 1,
+            "channel": "answer",
+            "text": "recent done delta",
+            "created_at": RECENT_AT,
+        },
+    )
     return repo
 
 
@@ -121,6 +143,9 @@ def test_compacts_old_terminal_runs_and_archives_removed_records(tmp_path):
     assert stats["agent_run_dispatch_total"] == 3
     assert stats["agent_run_dispatch_kept"] == 2
     assert stats["agent_run_dispatch_archived"] == 1
+    assert stats["agent_run_delta_total"] == 2
+    assert stats["agent_run_delta_kept"] == 1
+    assert stats["agent_run_delta_archived"] == 1
 
     remaining = _stream_records(settings, "agent_run.jsonl")
     by_run: dict[str, list[str]] = {}
@@ -151,6 +176,14 @@ def test_compacts_old_terminal_runs_and_archives_removed_records(tmp_path):
     assert [str(record["run_id"]) for record in dispatch_archived] == [
         "agent_run:old-done"
     ]
+    delta_remaining = _stream_records(settings, "agent_run_delta.jsonl")
+    assert [str(record["run_id"]) for record in delta_remaining] == [
+        "agent_run:recent-done"
+    ]
+    delta_archived = _stream_records(settings, "agent_run_delta.archive.jsonl")
+    assert [str(record["run_id"]) for record in delta_archived] == [
+        "agent_run:old-done"
+    ]
 
     events = repo.read_all(compaction.AGENT_RUN_COMPACTION_STREAM)
     assert len(events) == 1
@@ -158,6 +191,7 @@ def test_compacts_old_terminal_runs_and_archives_removed_records(tmp_path):
     assert events[0]["runs_compacted"] == 1
     assert events[0]["agent_run_archived"] == 3
     assert events[0]["agent_run_dispatch_archived"] == 1
+    assert events[0]["agent_run_delta_archived"] == 1
     assert events[0]["compacted_at"]
 
 
@@ -169,20 +203,27 @@ def test_compaction_is_idempotent_on_rerun(tmp_path):
     run_stream_path = Path(settings.governance_path) / "agent_run.jsonl"
     dispatch_stream_path = Path(settings.governance_path) / "agent_run_dispatch.jsonl"
     archive_path = Path(settings.governance_path) / "agent_run.archive.jsonl"
+    delta_stream_path = Path(settings.governance_path) / "agent_run_delta.jsonl"
+    delta_archive_path = Path(settings.governance_path) / "agent_run_delta.archive.jsonl"
     first_pass_files = (
         run_stream_path.read_bytes(),
         dispatch_stream_path.read_bytes(),
         archive_path.read_bytes(),
+        delta_stream_path.read_bytes(),
+        delta_archive_path.read_bytes(),
     )
 
     rerun_stats = compaction.compact_agent_run_streams(settings=settings)
 
     assert rerun_stats["agent_run_archived"] == 0
     assert rerun_stats["agent_run_dispatch_archived"] == 0
+    assert rerun_stats["agent_run_delta_archived"] == 0
     assert (
         run_stream_path.read_bytes(),
         dispatch_stream_path.read_bytes(),
         archive_path.read_bytes(),
+        delta_stream_path.read_bytes(),
+        delta_archive_path.read_bytes(),
     ) == first_pass_files
     # A no-op rerun does not append another compaction event.
     assert len(repo.read_all(compaction.AGENT_RUN_COMPACTION_STREAM)) == 1
@@ -200,18 +241,27 @@ def test_retention_window_override_keeps_old_terminal_runs(tmp_path):
     assert stats["runs_compacted"] == 0
     assert stats["agent_run_archived"] == 0
     assert stats["agent_run_dispatch_archived"] == 0
+    assert stats["agent_run_delta_archived"] == 0
     assert run_stream_path.read_bytes() == before
     assert not (Path(settings.governance_path) / "agent_run.archive.jsonl").exists()
     assert not (
         Path(settings.governance_path) / "agent_run_dispatch.archive.jsonl"
     ).exists()
+    assert not (
+        Path(settings.governance_path) / "agent_run_delta.archive.jsonl"
+    ).exists()
 
 
-def test_service_read_paths_are_intact_after_compaction(tmp_path):
+def test_service_read_paths_are_intact_after_compaction(monkeypatch, tmp_path):
     settings = _settings(tmp_path)
     _seed_streams(settings)
 
     compaction.compact_agent_run_streams(settings=settings)
+    monkeypatch.setattr(
+        agent_run_service,
+        "_utc_now",
+        lambda: OLD_AT,
+    )
 
     status = agent_run_service.get_agent_run_status(
         run_id="agent_run:old-done",

@@ -9,11 +9,15 @@ from backend.app.governance.settings import get_settings
 from backend.app.services import agent_run_service
 from backend.app.services.agent_service import execute_agent_query
 from backend.app.services.dexter_agent_service import execute_dexter_agent_query
-from backend.app.services.hermes_agent_service import execute_hermes_agent_query
+from backend.app.services.hermes_agent_service import (
+    execute_hermes_agent_query as _execute_hermes_agent_query_direct,
+)
 from backend.app.tasks.broker import register_actor_once
 
 AGENT_RUN_TIME_LIMIT_MS = 3_600_000
 _TERMINAL_AGENT_RUN_STATUSES = frozenset({"completed", "failed", "cancelled"})
+_AGENT_LAB_STREAM_PROTOCOL = "run_delta_v1"
+_AGENT_LAB_STREAM_SURFACE = "lab"
 
 AgentExecutor = Callable[[AgentQueryRequest, str, Any], AgentEnvelope]
 
@@ -27,6 +31,34 @@ def _execute_local_agent_query(
         request=request,
         duckdb_path=str(getattr(settings, "duckdb_path", "")),
         governance_dir=governance_dir,
+    )
+
+
+def execute_hermes_agent_query(
+    request: AgentQueryRequest,
+    governance_dir: str,
+    settings: Any,
+) -> AgentEnvelope:
+    if (
+        str(request.context.get("agent_stream_protocol") or "").strip()
+        != _AGENT_LAB_STREAM_PROTOCOL
+        or str(request.context.get("agent_stream_surface") or "").strip()
+        != _AGENT_LAB_STREAM_SURFACE
+    ):
+        return _execute_hermes_agent_query_direct(request, governance_dir, settings)
+    run_id = str(request.context.get("run_id") or "").strip()
+    if not run_id:
+        return _execute_hermes_agent_query_direct(request, governance_dir, settings)
+    publisher = agent_run_service.build_agent_run_delta_publisher(
+        run_id=run_id,
+        settings=settings,
+    )
+    return _execute_hermes_agent_query_direct(
+        request,
+        governance_dir,
+        settings,
+        stream_delta_callback=publisher.publish,
+        stream_should_continue=publisher.is_active,
     )
 
 

@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import importlib.util
+import io
 import json
-from types import SimpleNamespace
+import queue
+import sys
+import threading
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -39,6 +44,178 @@ _BENIGN_MCP_SHUTDOWN_STDERR = (
     "    raise RuntimeError('Event loop is closed')\n"
     "RuntimeError: Event loop is closed\n"
 )
+
+
+class _FakeWritable:
+    def __init__(self) -> None:
+        self.value = ""
+        self.closed = False
+
+    def write(self, text: str) -> int:
+        self.value += text
+        return len(text)
+
+    def flush(self) -> None:
+        return
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _BlockingStream:
+    def readline(self) -> str:
+        return ""
+
+    def close(self) -> None:
+        return
+
+
+class _DelayedBlockingStream:
+    def __init__(self, delay_seconds: float) -> None:
+        self.delay_seconds = delay_seconds
+
+    def readline(self) -> str:
+        import time
+
+        time.sleep(self.delay_seconds)
+        return ""
+
+    def close(self) -> None:
+        return
+
+
+class _FakeStreamingProcess:
+    def __init__(
+        self,
+        *,
+        stdout_text: str = "",
+        stderr_text: str = "",
+        returncode: int = 0,
+        poll_returncode: int | None = 0,
+        stdout_stream=None,
+        stderr_stream=None,
+    ) -> None:
+        self.stdin = _FakeWritable()
+        self.stdout = stdout_stream if stdout_stream is not None else io.StringIO(stdout_text)
+        self.stderr = stderr_stream if stderr_stream is not None else io.StringIO(stderr_text)
+        self.returncode = returncode
+        self._poll_returncode = poll_returncode
+        self.terminated = False
+        self.killed = False
+
+    def poll(self):
+        return self._poll_returncode
+
+    def wait(self, timeout=None):
+        return self.returncode
+
+    def terminate(self):
+        self.terminated = True
+        self._poll_returncode = self.returncode
+
+    def kill(self):
+        self.killed = True
+        self._poll_returncode = self.returncode
+
+
+class _DaemonWritable:
+    def __init__(self, process: "_FakeDaemonProcess") -> None:
+        self._process = process
+        self._buffer = ""
+        self.closed = False
+
+    def write(self, text: str) -> int:
+        self._buffer += text
+        while "\n" in self._buffer:
+            frame, self._buffer = self._buffer.split("\n", 1)
+            self._process.accept_request(frame)
+        return len(text)
+
+    def close(self) -> None:
+        self.closed = True
+        if self._buffer.strip():
+            self._process.accept_request(self._buffer)
+            self._buffer = ""
+
+    def flush(self) -> None:
+        return
+
+
+class _QueuedReadable:
+    def __init__(self) -> None:
+        self._queue: queue.Queue[str | None] = queue.Queue()
+        self.closed = False
+
+    def push(self, text: str) -> None:
+        self._queue.put(text)
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        self._queue.put(None)
+
+    def readline(self) -> str:
+        item = self._queue.get()
+        if item is None:
+            return ""
+        return item
+
+
+class _FakeDaemonProcess:
+    def __init__(
+        self,
+        *,
+        responses: list[list[dict[str, object]]],
+        poll_returncodes: list[int | None] | None = None,
+    ) -> None:
+        self.stdin = _DaemonWritable(self)
+        self.stdout = _QueuedReadable()
+        self.stderr = _QueuedReadable()
+        self._responses = list(responses)
+        self._poll_returncodes = list(poll_returncodes or [None] * len(responses))
+        self.requests: list[dict[str, object]] = []
+        self.returncode: int | None = None
+        self.terminated = False
+        self.killed = False
+        self._lock = threading.Lock()
+        self.stdout.push('{"type":"ready"}\n')
+
+    def accept_request(self, raw_request: str) -> None:
+        payload = json.loads(raw_request)
+        with self._lock:
+            self.requests.append(payload)
+            index = len(self.requests) - 1
+            response_batch = self._responses[index]
+            self.returncode = self._poll_returncodes[index]
+        request_id = str(payload.get("request_id") or "")
+        for record in response_batch:
+            materialized = dict(record)
+            if materialized.get("request_id") == "__REQUEST_ID__":
+                materialized["request_id"] = request_id
+            self.stdout.push(json.dumps(materialized, ensure_ascii=False) + "\n")
+        if any(record.get("type") == "final" for record in response_batch):
+            self.stdout.push('{"type":"ready"}\n')
+
+    def poll(self):
+        return self.returncode
+
+    def wait(self, timeout=None):
+        return self.returncode if self.returncode is not None else 0
+
+    def terminate(self):
+        self.terminated = True
+        self.stdout.close()
+        self.stderr.close()
+        if self.returncode is None:
+            self.returncode = -15
+
+    def kill(self):
+        self.killed = True
+        self.stdout.close()
+        self.stderr.close()
+        if self.returncode is None:
+            self.returncode = -9
 
 
 def test_build_hermes_command_passes_lite_home_and_read_only_toolsets_to_wsl():
@@ -299,6 +476,745 @@ def test_run_hermes_agent_uses_bridge_transport(monkeypatch):
     assert calls[0][0] == "ensure"
 
 
+def test_build_hermes_stream_command_uses_wrapper_and_session_source():
+    args = service._build_hermes_stream_command(
+        command="wsl.exe",
+        wsl_distro="HermesUbuntu",
+        hermes_home="/home/hermes/.hermes-moss",
+    )
+
+    assert args[:7] == [
+        "wsl.exe",
+        "-d",
+        "HermesUbuntu",
+        "-e",
+        "env",
+        "HERMES_HOME=/home/hermes/.hermes-moss",
+        "HERMES_SESSION_SOURCE=tool",
+    ]
+    assert args[7:10] == ["PYTHONIOENCODING=utf-8", "PYTHONUTF8=1", "NO_COLOR=1"]
+    assert args[-3].endswith("/scripts/hermes_stream_runner.py")
+    assert args[-2] == "--hermes-root"
+    assert args[-1] == "/home/hermes/hermes-agent"
+
+
+def test_build_hermes_stream_command_daemon_is_uniquely_identifiable():
+    args = service._build_hermes_stream_command(
+        command="wsl.exe",
+        wsl_distro="HermesUbuntu",
+        hermes_home="/home/hermes/.hermes-moss",
+        daemon=True,
+        instance_id="runner-abc123",
+        model="gpt-test",
+        max_turns=7,
+    )
+
+    assert args[args.index("--model") + 1] == "gpt-test"
+    assert args[args.index("--max-turns") + 1] == "7"
+    assert args[-3:] == ["--daemon", "--instance-id", "runner-abc123"]
+
+
+def test_hermes_stream_runner_uses_explicit_empty_hermes_tool_allowlist(
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
+    runner_path = service._REPO_ROOT / "scripts" / "hermes_stream_runner.py"
+    spec = importlib.util.spec_from_file_location("test_hermes_stream_runner", runner_path)
+    assert spec is not None and spec.loader is not None
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+
+    captured: dict[str, object] = {}
+
+    class FakeAgent:
+        session_id = "session-1"
+        stream_delta_callback = None
+
+        def run_conversation(self, *, user_message, conversation_history):
+            assert user_message == "ping"
+            assert conversation_history == []
+            assert self.stream_delta_callback is not None
+            self.stream_delta_callback("pong")
+            return {"final_response": "pong"}
+
+    class FakeHermesCLI:
+        def __init__(self, *, model, toolsets, reasoning, max_turns, compact):
+            captured.update(
+                model=model,
+                toolsets=toolsets,
+                reasoning=reasoning,
+                max_turns=max_turns,
+                compact=compact,
+            )
+            self.agent = FakeAgent()
+            self.session_id = ""
+
+        def _claim_active_session(self, _source, *, stderr):
+            return stderr
+
+        def _ensure_runtime_credentials(self):
+            return True
+
+        def _resolve_turn_agent_config(self, _prompt):
+            return {}
+
+        def _init_agent(self, **_kwargs):
+            return True
+
+    fake_cli_module = ModuleType("cli")
+    fake_cli_module.HermesCLI = FakeHermesCLI
+    fake_cli_module._finalize_single_query = lambda _cli: None
+    fake_hermes_cli_package = ModuleType("hermes_cli")
+    fake_hermes_main_module = ModuleType("hermes_cli.main")
+    fake_hermes_main_module._prepare_agent_startup = lambda _args: None
+    monkeypatch.setitem(sys.modules, "cli", fake_cli_module)
+    monkeypatch.setitem(sys.modules, "hermes_cli", fake_hermes_cli_package)
+    monkeypatch.setitem(sys.modules, "hermes_cli.main", fake_hermes_main_module)
+    monkeypatch.setattr(
+        runner,
+        "_load_request",
+        lambda: {
+            "prompt": "ping",
+            "model": "gpt-test",
+            "toolsets": ["evidence", "query", "research"],
+            "max_turns": 3,
+        },
+    )
+    monkeypatch.setattr(
+        runner,
+        "_parse_args",
+        lambda: SimpleNamespace(hermes_root=str(tmp_path)),
+    )
+
+    assert runner.main() == 0
+    output = capsys.readouterr()
+    assert captured["toolsets"] == []
+    assert captured["reasoning"] == "low"
+    assert "Unknown toolsets" not in output.err
+    records = [json.loads(line) for line in output.out.splitlines()]
+    assert records == [
+        {"type": "delta", "seq": 1, "text": "pong"},
+        {"type": "final", "answer": "pong", "session_id": "session-1"},
+    ]
+
+
+def test_hermes_stream_runner_daemon_prepares_once_and_emits_ready(
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
+    runner_path = service._REPO_ROOT / "scripts" / "hermes_stream_runner.py"
+    spec = importlib.util.spec_from_file_location(
+        "test_hermes_stream_runner_daemon", runner_path
+    )
+    assert spec is not None and spec.loader is not None
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    handled: list[dict[str, object]] = []
+    prepared: list[tuple[object, str, int, bool]] = []
+    monkeypatch.setattr(
+        runner,
+        "_parse_args",
+        lambda: SimpleNamespace(
+            hermes_root=str(tmp_path),
+            daemon=True,
+            instance_id="runner-abc123",
+            model="gpt-test",
+            max_turns=7,
+        ),
+    )
+    def fake_prepare(*, hermes_root, model, max_turns, persistent):
+        prepared.append((hermes_root, model, max_turns, persistent))
+        return f"slot-{len(prepared)}"
+
+    monkeypatch.setattr(
+        runner,
+        "_prepare_request_runtime",
+        fake_prepare,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        runner,
+        "_run_single_request",
+        lambda *, request, emit, hermes_root, prepared_runtime=None: (
+            handled.append({**request, "slot": prepared_runtime}) or 0
+        ),
+    )
+    monkeypatch.setattr(
+        sys,
+        "stdin",
+        io.StringIO(
+            '{"request_id":"req-1","prompt":"first","model":"gpt-test","max_turns":7}\n'
+            '{"request_id":"req-2","prompt":"second","model":"gpt-test","max_turns":7}\n'
+        ),
+    )
+
+    assert runner.main() == 0
+
+    records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert records == [
+        {"type": "ready", "instance_id": "runner-abc123"},
+        {"type": "ready", "instance_id": "runner-abc123"},
+        {"type": "ready", "instance_id": "runner-abc123"},
+    ]
+    assert prepared == [
+        (tmp_path, "gpt-test", 7, True),
+        (tmp_path, "gpt-test", 7, True),
+        (tmp_path, "gpt-test", 7, True),
+    ]
+    assert [request["request_id"] for request in handled] == ["req-1", "req-2"]
+    assert [request["slot"] for request in handled] == ["slot-1", "slot-2"]
+
+
+def test_hermes_stream_runner_persistent_finalizer_avoids_process_cleanup(
+    monkeypatch,
+):
+    runner_path = service._REPO_ROOT / "scripts" / "hermes_stream_runner.py"
+    spec = importlib.util.spec_from_file_location(
+        "test_hermes_stream_runner_persistent_finalize", runner_path
+    )
+    assert spec is not None and spec.loader is not None
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    calls: list[object] = []
+
+    class FakeAgent:
+        session_id = "session-persistent"
+        platform = "cli"
+        _session_messages = [{"role": "assistant", "content": "done"}]
+
+        def shutdown_memory_provider(self, messages):
+            calls.append(("memory", messages))
+
+        def close(self):
+            calls.append("agent_close")
+
+    class FakeSessionDb:
+        def close(self):
+            calls.append("session_db_close")
+
+    class FakeCli:
+        def __init__(self):
+            self.agent = FakeAgent()
+            self.session_id = ""
+            self._session_db = FakeSessionDb()
+
+        def _release_active_session(self):
+            calls.append("release_active_session")
+
+    fake_cli = FakeCli()
+    fake_cli_module = ModuleType("cli")
+    fake_cli_module._active_agent_ref = fake_cli.agent
+    fake_cli_module._run_cleanup = lambda **_kwargs: calls.append("process_cleanup")
+    fake_hermes_cli_package = ModuleType("hermes_cli")
+    fake_lifecycle_module = ModuleType("hermes_cli.lifecycle")
+    fake_lifecycle_module.finalize_session = lambda **kwargs: calls.append(
+        ("finalize_session", kwargs)
+    )
+    monkeypatch.setitem(sys.modules, "cli", fake_cli_module)
+    monkeypatch.setitem(sys.modules, "hermes_cli", fake_hermes_cli_package)
+    monkeypatch.setitem(sys.modules, "hermes_cli.lifecycle", fake_lifecycle_module)
+
+    runner._finalize_persistent_query(fake_cli)
+
+    assert "process_cleanup" not in calls
+    assert calls[0] == (
+        "finalize_session",
+        {
+            "session_id": "session-persistent",
+            "platform": "cli",
+            "reason": "shutdown",
+        },
+    )
+    assert ("memory", FakeAgent._session_messages) in calls
+    assert "agent_close" in calls
+    assert "session_db_close" in calls
+    assert calls[-1] == "release_active_session"
+    assert fake_cli.agent is None
+    assert fake_cli._session_db is None
+    assert fake_cli_module._active_agent_ref is None
+
+
+def test_hermes_stream_runner_persistent_finalizer_reports_cleanup_failures(
+    monkeypatch,
+    caplog,
+):
+    runner_path = service._REPO_ROOT / "scripts" / "hermes_stream_runner.py"
+    spec = importlib.util.spec_from_file_location(
+        "test_hermes_stream_runner_persistent_cleanup_failures", runner_path
+    )
+    assert spec is not None and spec.loader is not None
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    calls: list[str] = []
+
+    class FailingAgent:
+        session_id = "session-persistent"
+        platform = "cli"
+        _session_messages: list[object] = []
+
+        def shutdown_memory_provider(self, _messages):
+            calls.append("memory")
+            raise RuntimeError("memory cleanup failed")
+
+        def close(self):
+            calls.append("agent_close")
+            raise RuntimeError("agent cleanup failed")
+
+    class FailingSessionDb:
+        def close(self):
+            calls.append("session_db_close")
+            raise RuntimeError("session DB cleanup failed")
+
+    class FakeCli:
+        def __init__(self):
+            self.agent = FailingAgent()
+            self.session_id = ""
+            self._session_db = FailingSessionDb()
+
+        def _release_active_session(self):
+            calls.append("release_active_session")
+            raise RuntimeError("session release failed")
+
+    def fail_finalize_session(**_kwargs):
+        calls.append("finalize_session")
+        raise RuntimeError("session finalization failed")
+
+    fake_cli = FakeCli()
+    fake_cli_module = ModuleType("cli")
+    fake_cli_module._active_agent_ref = fake_cli.agent
+    fake_hermes_cli_package = ModuleType("hermes_cli")
+    fake_lifecycle_module = ModuleType("hermes_cli.lifecycle")
+    fake_lifecycle_module.finalize_session = fail_finalize_session
+    monkeypatch.setitem(sys.modules, "cli", fake_cli_module)
+    monkeypatch.setitem(sys.modules, "hermes_cli", fake_hermes_cli_package)
+    monkeypatch.setitem(sys.modules, "hermes_cli.lifecycle", fake_lifecycle_module)
+
+    with caplog.at_level("WARNING"):
+        runner._finalize_persistent_query(fake_cli)
+
+    assert calls == [
+        "finalize_session",
+        "memory",
+        "agent_close",
+        "session_db_close",
+        "release_active_session",
+    ]
+    for operation in (
+        "finalize_session",
+        "shutdown_memory_provider",
+        "agent.close",
+        "session_db.close",
+        "release_active_session",
+    ):
+        assert f"operation={operation}" in caplog.text
+    assert "error_type=RuntimeError" in caplog.text
+    assert "error_code=hermes_stream_cleanup_failed" in caplog.text
+    assert fake_cli.agent is None
+    assert fake_cli._session_db is None
+    assert fake_cli_module._active_agent_ref is None
+
+
+def test_hermes_root_from_python_path_supports_dot_venv():
+    assert (
+        service._hermes_root_from_python_path("/opt/hermes-agent/.venv/bin/python")
+        == "/opt/hermes-agent"
+    )
+
+
+def test_run_hermes_agent_streaming_aggregates_delta_and_returns_final(monkeypatch):
+    deltas = []
+    process = _FakeDaemonProcess(
+        responses=[
+            [
+                {"type": "delta", "request_id": "__REQUEST_ID__", "seq": 1, "text": "第一段"},
+                {"type": "delta", "request_id": "__REQUEST_ID__", "seq": 2, "text": "第二段"},
+                {
+                    "type": "final",
+                    "request_id": "__REQUEST_ID__",
+                    "answer": "最终答案",
+                    "session_id": "sess-1",
+                },
+            ]
+        ]
+    )
+
+    monkeypatch.setattr(
+        service.subprocess,
+        "Popen",
+        lambda *args, **kwargs: process,
+    )
+    monkeypatch.setattr(service, "_cleanup_wsl_processes", lambda **_kwargs: None)
+
+    result = service.run_hermes_agent(
+        request=AgentQueryRequest(question="解释当前页面"),
+        command="wsl.exe",
+        wsl_distro="HermesUbuntu",
+        hermes_home="/home/hermes/.hermes-moss",
+        model="gpt-test",
+        toolsets="file",
+        max_turns=3,
+        timeout_seconds=5,
+        stream_delta_callback=lambda text: deltas.append(text) or True,
+        stream_should_continue=lambda: True,
+    )
+
+    assert deltas == ["第一段第二段"]
+    assert result["answer"] == "最终答案"
+    assert result["transport"] == "cli_stream"
+    assert result["session_id"] == "sess-1"
+    service.stop_managed_hermes_stream()
+
+
+def test_run_hermes_agent_streaming_rejects_bad_delta_sequence(monkeypatch):
+    process = _FakeDaemonProcess(
+        responses=[
+            [
+                {
+                    "type": "delta",
+                    "request_id": "__REQUEST_ID__",
+                    "seq": 2,
+                    "text": "out-of-order",
+                },
+                {
+                    "type": "final",
+                    "request_id": "__REQUEST_ID__",
+                    "answer": "最终答案",
+                },
+            ]
+        ]
+    )
+    monkeypatch.setattr(
+        service.subprocess,
+        "Popen",
+        lambda *args, **kwargs: process,
+    )
+    monkeypatch.setattr(service, "_cleanup_wsl_processes", lambda **_kwargs: None)
+
+    with pytest.raises(RuntimeError, match="sequence"):
+        service.run_hermes_agent(
+            request=AgentQueryRequest(question="解释当前页面"),
+            command="wsl.exe",
+            wsl_distro="HermesUbuntu",
+            hermes_home="/home/hermes/.hermes-moss",
+            model="gpt-test",
+            toolsets="file",
+            max_turns=3,
+            timeout_seconds=5,
+            stream_delta_callback=lambda _text: True,
+            stream_should_continue=lambda: True,
+        )
+
+
+def test_run_hermes_agent_streaming_cleans_up_on_callback_cancel(monkeypatch):
+    cleanup_calls = []
+    warmup_calls = []
+    process = _FakeDaemonProcess(
+        responses=[
+            [
+                {
+                    "type": "delta",
+                    "request_id": "__REQUEST_ID__",
+                    "seq": 1,
+                    "text": "第一段",
+                }
+            ]
+        ]
+    )
+    monkeypatch.setattr(service.subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr(
+        service,
+        "_cleanup_wsl_processes",
+        lambda **kwargs: cleanup_calls.append(kwargs),
+    )
+    monkeypatch.setattr(
+        service,
+        "_schedule_managed_hermes_stream_warmup_locked",
+        lambda **kwargs: warmup_calls.append(kwargs),
+    )
+
+    with pytest.raises(service.HermesRuntimeError) as excinfo:
+        service.run_hermes_agent(
+            request=AgentQueryRequest(question="解释当前页面"),
+            command="wsl.exe",
+            wsl_distro="HermesUbuntu",
+            hermes_home="/home/hermes/.hermes-moss",
+            model="gpt-test",
+            toolsets="file",
+            max_turns=3,
+            timeout_seconds=5,
+            stream_delta_callback=lambda _text: False,
+            stream_should_continue=lambda: True,
+        )
+
+    assert excinfo.value.error_code == "hermes_stream_cancelled"
+    assert process.terminated is True
+    assert cleanup_calls and cleanup_calls[0]["pattern"].startswith(
+        "hermes_stream_runner.py.*--instance-id "
+    )
+    assert warmup_calls == [
+        {
+            "command": "wsl.exe",
+            "wsl_distro": "HermesUbuntu",
+            "hermes_home": "/home/hermes/.hermes-moss",
+            "model": "gpt-test",
+            "max_turns": 3,
+        }
+    ]
+
+
+def test_run_hermes_agent_streaming_timeout_cleans_up_wsl_process(monkeypatch):
+    cleanup_calls = []
+    process = _FakeDaemonProcess(responses=[[]])
+    monkeypatch.setattr(service.subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr(
+        service,
+        "_cleanup_wsl_processes",
+        lambda **kwargs: cleanup_calls.append(kwargs),
+    )
+
+    with pytest.raises(service.HermesRuntimeError) as excinfo:
+        service.run_hermes_agent(
+            request=AgentQueryRequest(question="解释当前页面"),
+            command="wsl.exe",
+            wsl_distro="HermesUbuntu",
+            hermes_home="/home/hermes/.hermes-moss",
+            model="gpt-test",
+            toolsets="file",
+            max_turns=3,
+            timeout_seconds=0.05,
+            stream_delta_callback=lambda _text: True,
+            stream_should_continue=lambda: True,
+        )
+
+    assert excinfo.value.error_code == "hermes_timeout"
+    assert process.terminated is True
+    assert cleanup_calls and cleanup_calls[0]["pattern"].startswith(
+        "hermes_stream_runner.py"
+    )
+
+
+def test_run_hermes_agent_streaming_rejects_missing_request_id(monkeypatch):
+    process = _FakeDaemonProcess(
+        responses=[
+            [
+                {"type": "delta", "seq": 1, "text": "不可归属"},
+                {"type": "final", "answer": "错误答案"},
+            ]
+        ]
+    )
+    monkeypatch.setattr(service.subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr(service, "_cleanup_wsl_processes", lambda **_kwargs: None)
+
+    with pytest.raises(RuntimeError, match="request id"):
+        service.run_hermes_agent(
+            request=AgentQueryRequest(question="解释当前页面"),
+            command="wsl.exe",
+            wsl_distro="HermesUbuntu",
+            hermes_home="/home/hermes/.hermes-moss",
+            model="gpt-test",
+            toolsets="file",
+            max_turns=3,
+            timeout_seconds=5,
+            stream_delta_callback=lambda _text: True,
+            stream_should_continue=lambda: True,
+        )
+
+    assert process.terminated is True
+
+
+def test_run_hermes_agent_streaming_reuses_persistent_runner_across_successive_requests(
+    monkeypatch,
+):
+    service._HERMES_STREAM_PROCESS = None
+    service._HERMES_STREAM_CONFIG = None
+    service._HERMES_STREAM_REQUEST_SEQ = 0
+    deltas: list[str] = []
+    popen_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+    process = _FakeDaemonProcess(
+        responses=[
+            [
+                {"type": "delta", "request_id": "__REQUEST_ID__", "seq": 1, "text": "第一轮"},
+                {"type": "final", "request_id": "__REQUEST_ID__", "answer": "答案一", "session_id": "sess-1"},
+            ],
+            [
+                {"type": "delta", "request_id": "__REQUEST_ID__", "seq": 1, "text": "第二轮"},
+                {"type": "final", "request_id": "__REQUEST_ID__", "answer": "答案二", "session_id": "sess-2"},
+            ],
+        ]
+    )
+
+    def fake_popen(*args, **kwargs):
+        popen_calls.append((args, kwargs))
+        return process
+
+    monkeypatch.setattr(service.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(service, "_cleanup_wsl_processes", lambda **_kwargs: None)
+
+    first = service.run_hermes_agent(
+        request=AgentQueryRequest(question="解释第一页"),
+        command="wsl.exe",
+        wsl_distro="HermesUbuntu",
+        hermes_home="/home/hermes/.hermes-moss",
+        model="gpt-test",
+        toolsets="file",
+        max_turns=3,
+        timeout_seconds=5,
+        stream_delta_callback=lambda text: deltas.append(f"1:{text}") or True,
+        stream_should_continue=lambda: True,
+    )
+    second = service.run_hermes_agent(
+        request=AgentQueryRequest(question="解释第二页"),
+        command="wsl.exe",
+        wsl_distro="HermesUbuntu",
+        hermes_home="/home/hermes/.hermes-moss",
+        model="gpt-test",
+        toolsets="file",
+        max_turns=3,
+        timeout_seconds=5,
+        stream_delta_callback=lambda text: deltas.append(f"2:{text}") or True,
+        stream_should_continue=lambda: True,
+    )
+
+    assert len(popen_calls) == 1
+    assert [payload["request_id"] for payload in process.requests] == ["stream-1", "stream-2"]
+    assert deltas == ["1:第一轮", "2:第二轮"]
+    assert first["answer"] == "答案一"
+    assert second["answer"] == "答案二"
+    service._stop_managed_hermes_stream_locked(command="wsl.exe", wsl_distro="HermesUbuntu")
+
+
+def test_run_hermes_agent_streaming_rejects_records_for_different_request_id(monkeypatch):
+    service._HERMES_STREAM_PROCESS = None
+    service._HERMES_STREAM_CONFIG = None
+    service._HERMES_STREAM_REQUEST_SEQ = 0
+    process = _FakeDaemonProcess(
+        responses=[
+            [
+                {"type": "delta", "request_id": "wrong-request", "seq": 1, "text": "串线"},
+                {"type": "final", "request_id": "wrong-request", "answer": "错误答案", "session_id": "sess-x"},
+            ]
+        ]
+    )
+    monkeypatch.setattr(service.subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr(service, "_cleanup_wsl_processes", lambda **_kwargs: None)
+
+    with pytest.raises(RuntimeError, match="request id"):
+        service.run_hermes_agent(
+            request=AgentQueryRequest(question="解释当前页面"),
+            command="wsl.exe",
+            wsl_distro="HermesUbuntu",
+            hermes_home="/home/hermes/.hermes-moss",
+            model="gpt-test",
+            toolsets="file",
+            max_turns=3,
+            timeout_seconds=5,
+            stream_delta_callback=lambda _text: True,
+            stream_should_continue=lambda: True,
+        )
+    service._stop_managed_hermes_stream_locked(command="wsl.exe", wsl_distro="HermesUbuntu")
+
+
+def test_run_hermes_agent_streaming_restarts_persistent_runner_after_cancel(monkeypatch):
+    service._HERMES_STREAM_PROCESS = None
+    service._HERMES_STREAM_CONFIG = None
+    service._HERMES_STREAM_REQUEST_SEQ = 0
+    processes = [
+        _FakeDaemonProcess(
+            responses=[
+                [
+                    {"type": "delta", "request_id": "__REQUEST_ID__", "seq": 1, "text": "第一轮"},
+                    {"type": "final", "request_id": "__REQUEST_ID__", "answer": "不会到达", "session_id": "sess-1"},
+                ]
+            ]
+        ),
+        _FakeDaemonProcess(
+            responses=[
+                [
+                    {"type": "delta", "request_id": "__REQUEST_ID__", "seq": 1, "text": "第二轮"},
+                    {"type": "final", "request_id": "__REQUEST_ID__", "answer": "恢复成功", "session_id": "sess-2"},
+                ]
+            ]
+        ),
+    ]
+    popen_calls = []
+
+    def fake_popen(*args, **kwargs):
+        popen_calls.append((args, kwargs))
+        index = min(len(popen_calls) - 1, len(processes) - 1)
+        return processes[index]
+
+    monkeypatch.setattr(service.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(service, "_cleanup_wsl_processes", lambda **_kwargs: None)
+    warmup_calls = []
+
+    def warm_immediately(**kwargs):
+        warmup_calls.append(kwargs)
+        service._ensure_managed_hermes_stream_process_locked(**kwargs)
+
+    monkeypatch.setattr(
+        service,
+        "_schedule_managed_hermes_stream_warmup_locked",
+        warm_immediately,
+    )
+
+    with pytest.raises(service.HermesRuntimeError) as excinfo:
+        service.run_hermes_agent(
+            request=AgentQueryRequest(question="先取消"),
+            command="wsl.exe",
+            wsl_distro="HermesUbuntu",
+            hermes_home="/home/hermes/.hermes-moss",
+            model="gpt-test",
+            toolsets="file",
+            max_turns=3,
+            timeout_seconds=5,
+            stream_delta_callback=lambda _text: False,
+            stream_should_continue=lambda: True,
+        )
+
+    resumed = service.run_hermes_agent(
+        request=AgentQueryRequest(question="再试一次"),
+        command="wsl.exe",
+        wsl_distro="HermesUbuntu",
+        hermes_home="/home/hermes/.hermes-moss",
+        model="gpt-test",
+        toolsets="file",
+        max_turns=3,
+        timeout_seconds=5,
+        stream_delta_callback=lambda _text: True,
+        stream_should_continue=lambda: True,
+    )
+
+    assert excinfo.value.error_code == "hermes_stream_cancelled"
+    assert processes[0].terminated is True
+    assert len(popen_calls) == 2
+    assert len(warmup_calls) == 1
+    assert resumed["answer"] == "恢复成功"
+    service._stop_managed_hermes_stream_locked(command="wsl.exe", wsl_distro="HermesUbuntu")
+
+
+def test_hermes_stream_background_warmup_skips_stale_lifecycle(monkeypatch):
+    service._HERMES_STREAM_LIFECYCLE_SEQ = 12
+    ensure_calls = []
+    monkeypatch.setattr(
+        service,
+        "_ensure_managed_hermes_stream_process_locked",
+        lambda **kwargs: ensure_calls.append(kwargs),
+    )
+
+    service._warm_managed_hermes_stream_quietly(
+        command="wsl.exe",
+        wsl_distro="HermesUbuntu",
+        hermes_home="/home/hermes/.hermes-moss",
+        model="gpt-test",
+        max_turns=3,
+        lifecycle_seq=11,
+    )
+
+    assert ensure_calls == []
+
+
 def test_build_hermes_envelope_exposes_hermes_runtime_evidence():
     envelope = service.build_hermes_envelope(
         request=AgentQueryRequest(question="ping"),
@@ -486,6 +1402,51 @@ def test_execute_hermes_agent_query_keeps_business_questions_on_hermes_path(monk
     assert envelope.result_meta.result_kind == "agent.hermes"
 
 
+def test_execute_hermes_agent_query_with_stream_callback_forces_cli_transport(
+    monkeypatch, tmp_path
+):
+    run_calls = []
+
+    def fake_run_hermes_agent(**kwargs):
+        run_calls.append(kwargs)
+        return {
+            "answer": "formal business path",
+            "stdout": "formal business path",
+            "stderr": "",
+            "command": "hermes",
+            "model": "gpt-test",
+            "toolsets": "evidence,query,research",
+            "transport": "cli_stream",
+        }
+
+    monkeypatch.setattr(service, "run_hermes_agent", fake_run_hermes_agent)
+    monkeypatch.setattr(service, "_append_hermes_audit", lambda *_args, **_kwargs: None)
+
+    envelope = service.execute_hermes_agent_query(
+        request=AgentQueryRequest(question="组合风险今天该关注什么"),
+        governance_dir=str(tmp_path / "governance"),
+        settings=SimpleNamespace(
+            agent_hermes_command="hermes",
+            agent_hermes_wsl_distro="",
+            agent_hermes_home="",
+            agent_hermes_transport="bridge",
+            agent_hermes_bridge_url="http://127.0.0.1:7891",
+            agent_hermes_model="gpt-test",
+            agent_hermes_toolsets="file",
+            agent_hermes_max_turns=3,
+            agent_hermes_timeout_seconds=9.0,
+        ),
+        stream_delta_callback=lambda _text: True,
+        stream_should_continue=lambda: True,
+    )
+
+    assert run_calls
+    assert envelope.answer == "formal business path"
+    assert run_calls[0]["transport"] == "cli"
+    assert callable(run_calls[0]["stream_delta_callback"])
+    assert callable(run_calls[0]["stream_should_continue"])
+
+
 def test_execute_hermes_agent_query_returns_local_fallback_when_runtime_fails(
     monkeypatch,
     tmp_path,
@@ -597,6 +1558,99 @@ def test_warm_hermes_bridge_if_configured_starts_daemon_thread(monkeypatch):
     assert calls[0]["name"] == "moss-hermes-bridge-warmup"
     assert calls[0]["kwargs"]["toolsets"] == "evidence,query,research"
     assert calls[1] == "started"
+
+
+def test_warm_hermes_stream_if_configured_starts_ready_runner(monkeypatch):
+    calls = []
+    sentinel = object()
+    monkeypatch.setattr(
+        service,
+        "_ensure_managed_hermes_stream_process_locked",
+        lambda **kwargs: calls.append(kwargs) or sentinel,
+    )
+
+    warmed = service.warm_hermes_stream_if_configured(
+        SimpleNamespace(
+            agent_enabled=True,
+            agent_provider="hermes",
+            agent_hermes_command="wsl.exe",
+            agent_hermes_wsl_distro="HermesUbuntu",
+            agent_hermes_home="/home/hermes/.hermes-moss",
+            agent_hermes_model="gpt-test",
+            agent_hermes_max_turns=7,
+        )
+    )
+
+    assert warmed is True
+    assert calls == [
+        {
+            "command": "wsl.exe",
+            "wsl_distro": "HermesUbuntu",
+            "hermes_home": "/home/hermes/.hermes-moss",
+            "model": "gpt-test",
+            "max_turns": 7,
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    ("agent_enabled", "agent_provider"),
+    [(False, "hermes"), (True, "local")],
+)
+def test_warm_hermes_stream_if_configured_skips_unrelated_runtime(
+    agent_enabled,
+    agent_provider,
+):
+    assert (
+        service.warm_hermes_stream_if_configured(
+            SimpleNamespace(
+                agent_enabled=agent_enabled,
+                agent_provider=agent_provider,
+            )
+        )
+        is False
+    )
+
+
+def test_hermes_stream_worker_middleware_warms_and_stops(monkeypatch):
+    from backend.app.tasks import hermes_stream_middleware as middleware_module
+
+    calls = []
+    settings = object()
+    monkeypatch.setattr(middleware_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(
+        middleware_module,
+        "warm_hermes_stream_if_configured",
+        lambda actual: calls.append(("warm", actual)) or True,
+    )
+    monkeypatch.setattr(
+        middleware_module,
+        "stop_managed_hermes_stream",
+        lambda: calls.append(("stop", None)),
+    )
+    middleware = middleware_module.HermesStreamRuntimeMiddleware()
+
+    middleware.after_process_boot(object())
+    middleware.before_worker_shutdown(object(), object())
+
+    assert calls == [("warm", settings), ("stop", None)]
+
+
+def test_register_hermes_stream_worker_middleware_is_idempotent():
+    from backend.app.tasks import hermes_stream_middleware as middleware_module
+
+    class FakeBroker:
+        def __init__(self):
+            self.middleware = []
+
+        def add_middleware(self, middleware):
+            self.middleware.append(middleware)
+
+    broker = FakeBroker()
+
+    assert middleware_module.register_hermes_stream_runtime_middleware(broker) is True
+    assert middleware_module.register_hermes_stream_runtime_middleware(broker) is False
+    assert len(broker.middleware) == 1
 
 
 def test_warm_hermes_bridge_if_configured_skips_non_bridge_settings(monkeypatch):

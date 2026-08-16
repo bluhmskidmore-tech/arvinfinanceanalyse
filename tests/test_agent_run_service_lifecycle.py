@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -105,6 +106,28 @@ def _append_status(
             started_at=started_at,
             finished_at=finished_at,
         ),
+    )
+
+
+def _append_delta(
+    *,
+    settings: SimpleNamespace,
+    run_id: str,
+    owner_user_id: str,
+    seq: int,
+    text: str,
+    created_at: str = "2026-07-25T10:00:00+00:00",
+) -> None:
+    GovernanceRepository(settings.governance_path).append(
+        agent_run_service.AGENT_RUN_DELTA_STREAM,
+        {
+            "run_id": run_id,
+            "owner_user_id": owner_user_id,
+            "seq": seq,
+            "channel": "answer",
+            "text": text,
+            "created_at": created_at,
+        },
     )
 
 
@@ -1192,3 +1215,263 @@ def test_execution_is_not_globally_serialized_across_runs(monkeypatch, tmp_path)
         )
 
     assert [status.status for status in statuses] == ["completed", "completed"]
+
+
+def test_delta_publisher_persists_separate_stream_with_seq_owner_and_caps(
+    monkeypatch,
+    tmp_path,
+):
+    settings = _settings(tmp_path)
+    request = _request("stream me")
+    _append_status(
+        settings=settings,
+        run_id="agent_run:delta",
+        status="running",
+        request=request.model_copy(
+            update={
+                "context": {
+                    **request.context,
+                    "run_id": "agent_run:delta",
+                    "agent_stream_protocol": "run_delta_v1",
+                    "agent_stream_surface": "lab",
+                }
+            }
+        ),
+        queued_at="2026-07-25T10:00:00+00:00",
+        started_at="2026-07-25T10:00:01+00:00",
+    )
+    monkeypatch.setattr(agent_run_service, "AGENT_RUN_DELTA_MAX_FRAMES", 2)
+    monkeypatch.setattr(agent_run_service, "AGENT_RUN_DELTA_MAX_TOTAL_BYTES", 32)
+    publisher = agent_run_service.build_agent_run_delta_publisher(
+        run_id="agent_run:delta",
+        settings=settings,
+    )
+
+    assert publisher.publish("第一段") is True
+    assert publisher.publish("第二段") is True
+    assert publisher.publish("第三段超过上限后不再落盘") is True
+
+    repo = GovernanceRepository(settings.governance_path)
+    deltas = repo.read_all(agent_run_service.AGENT_RUN_DELTA_STREAM)
+    assert [
+        (record["seq"], record["owner_user_id"], record["text"])
+        for record in deltas
+    ] == [
+        (1, "owner-1", "第一段"),
+        (2, "owner-1", "第二段"),
+    ]
+    latest = agent_run_service._latest_run_record(
+        run_id="agent_run:delta",
+        settings=settings,
+    )
+    assert latest is not None
+    assert latest["status"] == "running"
+    assert "partial_answer" not in latest
+
+
+def test_delta_publisher_stops_after_cancel_and_is_active_false(tmp_path):
+    settings = _settings(tmp_path)
+    request = _request("cancel my stream")
+    _append_status(
+        settings=settings,
+        run_id="agent_run:delta-cancel",
+        status="running",
+        request=request.model_copy(
+            update={
+                "context": {
+                    **request.context,
+                    "run_id": "agent_run:delta-cancel",
+                    "agent_stream_protocol": "run_delta_v1",
+                    "agent_stream_surface": "lab",
+                }
+            }
+        ),
+        queued_at="2026-07-25T10:00:00+00:00",
+        started_at="2026-07-25T10:00:01+00:00",
+    )
+    publisher = agent_run_service.build_agent_run_delta_publisher(
+        run_id="agent_run:delta-cancel",
+        settings=settings,
+    )
+
+    assert publisher.publish("before cancel") is True
+    cancelled = agent_run_service.cancel_agent_run(
+        run_id="agent_run:delta-cancel",
+        settings=settings,
+    )
+
+    assert cancelled.status == "cancelled"
+    assert publisher.is_active() is False
+    assert publisher.publish("after cancel") is False
+    deltas = GovernanceRepository(settings.governance_path).read_all(
+        agent_run_service.AGENT_RUN_DELTA_STREAM
+    )
+    assert [record["text"] for record in deltas] == ["before cancel"]
+
+
+def test_iter_agent_run_events_keeps_default_contract_and_opt_in_deltas_order(tmp_path):
+    settings = _settings(tmp_path)
+    request = _request("completed stream")
+    _append_status(
+        settings=settings,
+        run_id="agent_run:delta-events",
+        status="completed",
+        request=request.model_copy(
+            update={
+                "context": {
+                    **request.context,
+                    "run_id": "agent_run:delta-events",
+                    "agent_stream_protocol": "run_delta_v1",
+                    "agent_stream_surface": "lab",
+                }
+            }
+        ),
+        queued_at="2026-07-25T10:00:00+00:00",
+        started_at="2026-07-25T10:00:01+00:00",
+        finished_at="2026-07-25T10:00:02+00:00",
+    )
+    _append_delta(
+        settings=settings,
+        run_id="agent_run:delta-events",
+        owner_user_id="owner-1",
+        seq=1,
+        text="第一段",
+    )
+    _append_delta(
+        settings=settings,
+        run_id="agent_run:delta-events",
+        owner_user_id="owner-1",
+        seq=2,
+        text="第二段",
+    )
+    _append_delta(
+        settings=settings,
+        run_id="agent_run:delta-events",
+        owner_user_id="other-user",
+        seq=3,
+        text="越权数据",
+    )
+    completed = agent_run_service.get_agent_run_status(
+        run_id="agent_run:delta-events",
+        settings=settings,
+    )
+
+    async def collect_default() -> list[str]:
+        return [
+            event
+            async for event in agent_run_service.iter_agent_run_events(
+                run_id="agent_run:delta-events",
+                settings=settings,
+                initial_status=completed,
+            )
+        ]
+
+    async def collect_opted_in() -> list[str]:
+        return [
+            event
+            async for event in agent_run_service.iter_agent_run_events(
+                run_id="agent_run:delta-events",
+                settings=settings,
+                initial_status=completed,
+                include_deltas=True,
+                after_seq=1,
+                poll_interval_seconds=0,
+            )
+        ]
+
+    default_events = asyncio.run(collect_default())
+    opted_in_events = asyncio.run(collect_opted_in())
+
+    assert len(default_events) == 1
+    assert default_events[0].startswith("event: run_update\n")
+    assert [event.splitlines()[0] for event in opted_in_events] == [
+        "event: run_delta",
+        "event: run_update",
+    ]
+    delta_payload = json.loads(opted_in_events[0].split("data: ", 1)[1])
+    assert delta_payload["seq"] == 2
+    assert "owner_user_id" not in delta_payload
+    assert "越权数据" not in opted_in_events[0]
+
+
+def test_execute_agent_run_task_wraps_hermes_only_for_delta_protocol(monkeypatch):
+    from backend.app.tasks import agent_run as task_module
+
+    settings = SimpleNamespace()
+    monkeypatch.setattr(task_module, "get_settings", lambda: settings)
+    observed_calls: list[dict[str, object]] = []
+
+    def fake_execute_hermes_agent_query(request, governance_dir, settings, **kwargs):
+        observed_calls.append(
+            {
+                "request": request,
+                "governance_dir": governance_dir,
+                "settings": settings,
+                "kwargs": kwargs,
+            }
+        )
+        return _envelope("wrapped")
+
+    class FakePublisher:
+        def publish(self, _text: str) -> bool:
+            return True
+
+        def is_active(self) -> bool:
+            return True
+
+    monkeypatch.setattr(
+        task_module,
+        "_execute_hermes_agent_query_direct",
+        fake_execute_hermes_agent_query,
+    )
+    monkeypatch.setattr(
+        task_module.agent_run_service,
+        "build_agent_run_delta_publisher",
+        lambda *, run_id, settings: FakePublisher(),
+    )
+    monkeypatch.setattr(
+        task_module.agent_run_service,
+        "get_agent_run_status",
+        lambda *, run_id, settings: SimpleNamespace(
+            run_id=run_id,
+            status="queued",
+            provider="hermes",
+        ),
+    )
+
+    def execute_with_protocol(*, run_id, settings, executor):
+        request = _request("delta protocol").model_copy(
+            update={
+                "context": {
+                    "user_id": "owner-1",
+                    "page": "agent-workbench",
+                    "run_id": run_id,
+                    "agent_stream_protocol": "run_delta_v1",
+                    "agent_stream_surface": "lab",
+                }
+            }
+        )
+        executor(request, "governance", settings)
+        plain_request = _request("plain protocol").model_copy(
+            update={
+                "context": {
+                    "user_id": "owner-1",
+                    "page": "agent-workbench",
+                    "run_id": run_id,
+                }
+            }
+        )
+        executor(plain_request, "governance", settings)
+        return "executed"
+
+    monkeypatch.setattr(
+        task_module.agent_run_service,
+        "execute_agent_run_by_id",
+        execute_with_protocol,
+        raising=False,
+    )
+
+    assert task_module.execute_agent_run_task.fn(run_id="agent_run:task-delta") is None
+    assert callable(observed_calls[0]["kwargs"]["stream_delta_callback"])
+    assert callable(observed_calls[0]["kwargs"]["stream_should_continue"])
+    assert observed_calls[1]["kwargs"] == {}

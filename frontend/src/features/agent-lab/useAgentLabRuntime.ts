@@ -3,12 +3,16 @@ import {
   type AppendMessage,
   type ThreadMessageLike,
 } from "@assistant-ui/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 
+import { streamAgentLabRunEvents } from "../../api/agentLabRunStream";
 import { AgentDisabledError } from "../../api/agentClient";
 import { useApiClient } from "../../api/client";
 import type { AgentQueryRequest } from "../../api/contracts";
-import { isAbortError } from "../agent/hooks/agentRunStatusOrchestrator";
+import {
+  isAbortError,
+  type StreamAgentRunEvents,
+} from "../agent/hooks/agentRunStatusOrchestrator";
 import { runManagedAgentPolling } from "../agent/hooks/runManagedAgentPolling";
 import {
   AgentDisabledQueryError,
@@ -32,6 +36,7 @@ export type AgentLabMessage = {
   id: string;
   role: "user" | "assistant";
   text: string;
+  partialAnswer?: string;
   createdAt: Date;
   phase?: AgentLabMessagePhase;
   turn?: AgentConversationTurn;
@@ -43,6 +48,10 @@ type ActiveLabRun = {
   runId: string | null;
   cancelled: boolean;
   cancelSent: boolean;
+  lastDeltaSeq: number;
+  partialAnswer: string;
+  deltaBuffer: string[];
+  deltaFrame: number | null;
 };
 
 function convertLabMessage(message: AgentLabMessage): ThreadMessageLike {
@@ -89,8 +98,12 @@ export function useAgentLabRuntime() {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      const activeRun = activeRunRef.current;
+      if (activeRun?.deltaFrame != null) {
+        window.cancelAnimationFrame(activeRun.deltaFrame);
+      }
       // 与正式页一致：离开页面只停止前端等待，不擅自取消后台任务。
-      activeRunRef.current?.controller.abort();
+      activeRun?.controller.abort();
     };
   }, []);
 
@@ -111,6 +124,63 @@ export function useAgentLabRuntime() {
     [],
   );
 
+  const clearStreamingBuffer = useCallback((activeRun: ActiveLabRun) => {
+    if (activeRun.deltaFrame !== null) {
+      window.cancelAnimationFrame(activeRun.deltaFrame);
+      activeRun.deltaFrame = null;
+    }
+    activeRun.deltaBuffer.length = 0;
+  }, []);
+
+  const flushPartialBuffer = useCallback(
+    (activeRun: ActiveLabRun) => {
+      activeRun.deltaFrame = null;
+      if (
+        activeRun.cancelled ||
+        activeRunRef.current !== activeRun ||
+        !mountedRef.current ||
+        activeRun.deltaBuffer.length === 0
+      ) {
+        activeRun.deltaBuffer.length = 0;
+        return;
+      }
+      activeRun.partialAnswer += activeRun.deltaBuffer.join("");
+      activeRun.deltaBuffer.length = 0;
+      startTransition(() => {
+        updateAssistantMessage(activeRun.assistantMessageId, (current) =>
+          current.phase !== "running"
+            ? current
+            : {
+                ...current,
+                partialAnswer: activeRun.partialAnswer,
+              },
+        );
+      });
+    },
+    [updateAssistantMessage],
+  );
+
+  const enqueuePartialDelta = useCallback(
+    (activeRun: ActiveLabRun, text: string) => {
+      if (
+        activeRun.cancelled ||
+        activeRunRef.current !== activeRun ||
+        !mountedRef.current ||
+        text.length === 0
+      ) {
+        return;
+      }
+      activeRun.deltaBuffer.push(text);
+      if (activeRun.deltaFrame !== null) {
+        return;
+      }
+      activeRun.deltaFrame = window.requestAnimationFrame(() => {
+        flushPartialBuffer(activeRun);
+      });
+    },
+    [flushPartialBuffer],
+  );
+
   const cancelBackendRun = useCallback(
     (activeRun: ActiveLabRun) => {
       if (!activeRun.runId || activeRun.cancelSent) {
@@ -122,11 +192,11 @@ export function useAgentLabRuntime() {
     [apiClient],
   );
 
-  const createAgentRun = useCallback(
+  const createAgentLabRun = useCallback(
     async (requestBody: AgentQueryRequest): Promise<AgentRunPayload> => {
       let payload: unknown;
       try {
-        payload = await apiClient.createAgentRun(requestBody);
+        payload = await apiClient.createAgentLabRun(requestBody);
       } catch (error) {
         if (error instanceof AgentDisabledError) {
           throw new AgentDisabledQueryError(error.message, error.phase);
@@ -165,6 +235,34 @@ export function useAgentLabRuntime() {
     [apiClient],
   );
 
+  const createLabStreamAdapter = useCallback(
+    (activeRun: ActiveLabRun): StreamAgentRunEvents =>
+      async (runId, onEvent, options) => {
+        await streamAgentLabRunEvents(
+          runId,
+          {
+            onRunUpdate: onEvent,
+            onRunDelta: (delta) => {
+              if (
+                activeRun.cancelled ||
+                activeRunRef.current !== activeRun ||
+                !mountedRef.current
+              ) {
+                return;
+              }
+              activeRun.lastDeltaSeq = delta.seq;
+              enqueuePartialDelta(activeRun, delta.text);
+            },
+          },
+          {
+            ...options,
+            afterSeq: activeRun.lastDeltaSeq,
+          },
+        );
+      },
+    [enqueuePartialDelta],
+  );
+
   const onNew = useCallback(
     async (message: AppendMessage) => {
       const question = getQuestion(message);
@@ -185,6 +283,10 @@ export function useAgentLabRuntime() {
         runId: null,
         cancelled: false,
         cancelSent: false,
+        lastDeltaSeq: 0,
+        partialAnswer: "",
+        deltaBuffer: [],
+        deltaFrame: null,
       };
       activeRunRef.current = activeRun;
       setIsRunning(true);
@@ -200,6 +302,7 @@ export function useAgentLabRuntime() {
           id: assistantMessageId,
           role: "assistant",
           text: "正在连接 MOSS Agent…",
+          partialAnswer: "",
           createdAt: new Date(),
           phase: "running",
           turn,
@@ -214,9 +317,11 @@ export function useAgentLabRuntime() {
             "",
             conversationContext,
             undefined,
-            { agent_ui_experiment: "assistant-ui-external-store" },
+            {
+              agent_ui_experiment: "assistant-ui-external-store",
+            },
           ),
-          createAgentRun,
+          createAgentRun: createAgentLabRun,
           fetchAgentRunStatus,
           canCommit: () => mountedRef.current,
           onRunAccepted: (payload) => {
@@ -244,6 +349,7 @@ export function useAgentLabRuntime() {
               turn: current.turn ? { ...current.turn, agentRun: payload } : current.turn,
             }));
           },
+          streamAgentRunEvents: createLabStreamAdapter(activeRun),
           signal: activeRun.controller.signal,
         });
 
@@ -254,9 +360,11 @@ export function useAgentLabRuntime() {
         ) {
           return;
         }
+        clearStreamingBuffer(activeRun);
         updateAssistantMessage(assistantMessageId, (current) => ({
           ...current,
           text: finalPayload.result.answer,
+          partialAnswer: undefined,
           phase: "complete",
           turn: current.turn
             ? {
@@ -271,12 +379,15 @@ export function useAgentLabRuntime() {
           return;
         }
         if (activeRun.cancelled || isAbortError(error)) {
+          clearStreamingBuffer(activeRun);
           return;
         }
         if (error instanceof AgentRunCancelledError) {
+          clearStreamingBuffer(activeRun);
           updateAssistantMessage(assistantMessageId, (current) => ({
             ...current,
             text: "任务已由运行端取消。",
+            partialAnswer: undefined,
             phase: "cancelled",
             turn: current.turn
               ? { ...current.turn, stopped: true, agentRun: error.payload }
@@ -285,9 +396,11 @@ export function useAgentLabRuntime() {
           return;
         }
         const errorMessage = buildErrorMessage(error);
+        clearStreamingBuffer(activeRun);
         updateAssistantMessage(assistantMessageId, (current) => ({
           ...current,
           text: errorMessage,
+          partialAnswer: undefined,
           phase: "error",
           turn: current.turn
             ? {
@@ -300,6 +413,7 @@ export function useAgentLabRuntime() {
             : current.turn,
         }));
       } finally {
+        clearStreamingBuffer(activeRun);
         if (mountedRef.current && activeRunRef.current === activeRun) {
           activeRunRef.current = null;
           setIsRunning(false);
@@ -308,7 +422,9 @@ export function useAgentLabRuntime() {
     },
     [
       cancelBackendRun,
-      createAgentRun,
+      clearStreamingBuffer,
+      createAgentLabRun,
+      createLabStreamAdapter,
       fetchAgentRunStatus,
       messages,
       nextMessageId,
@@ -323,15 +439,17 @@ export function useAgentLabRuntime() {
     }
     activeRun.cancelled = true;
     activeRun.controller.abort();
+    clearStreamingBuffer(activeRun);
     setIsRunning(false);
     updateAssistantMessage(activeRun.assistantMessageId, (current) => ({
       ...current,
       text: "已停止，本轮不会写入正式对话。",
+      partialAnswer: undefined,
       phase: "cancelled",
       turn: current.turn ? { ...current.turn, stopped: true } : current.turn,
     }));
     cancelBackendRun(activeRun);
-  }, [cancelBackendRun, updateAssistantMessage]);
+  }, [cancelBackendRun, clearStreamingBuffer, updateAssistantMessage]);
 
   const runtime = useExternalStoreRuntime<AgentLabMessage>({
     messages,

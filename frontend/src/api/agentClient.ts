@@ -29,6 +29,7 @@ export type ListAgentProjectsOptions = {
 export type AgentClientMethods = {
   queryAgent: (request: AgentQueryRequest) => Promise<AgentEnvelope>;
   createAgentRun: (request: AgentQueryRequest) => Promise<AgentRunCreateResult>;
+  createAgentLabRun: (request: AgentQueryRequest) => Promise<AgentRunCreateResult>;
   getAgentRun: (runId: string) => Promise<AgentRunStatusResponse>;
   cancelAgentRun: (runId: string) => Promise<AgentRunStatusResponse>;
   /** 只读 workspace 端点（backend routes/agent_workspace.py 的 GET 面）。 */
@@ -193,6 +194,10 @@ export function createDemoAgentClient(delay: AgentClientDelay): AgentClientMetho
       await delay();
       return buildDemoAgentRunPayload(request);
     },
+    async createAgentLabRun(request: AgentQueryRequest): Promise<AgentRunCreateResult> {
+      await delay();
+      return buildDemoAgentRunPayload(request);
+    },
     async getAgentRun(runId: string): Promise<AgentRunStatusResponse> {
       await delay();
       return buildDemoAgentRunPayload({ question: "Agent demo run" }, runId);
@@ -316,6 +321,15 @@ export function createRealAgentClient(options: AgentClientFactoryOptions): Agent
     },
     async createAgentRun(request: AgentQueryRequest): Promise<AgentRunCreateResult> {
       return requestAgentJson<AgentRunCreateResult>("/api/agent/runs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(request),
+      });
+    },
+    async createAgentLabRun(request: AgentQueryRequest): Promise<AgentRunCreateResult> {
+      return requestAgentJson<AgentRunCreateResult>("/api/agent/lab/runs", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
