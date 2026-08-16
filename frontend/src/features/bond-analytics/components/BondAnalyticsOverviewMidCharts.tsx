@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Card, Col, Row, Spin } from "antd";
+import { Alert, Card, Col, Row } from "antd";
 
 import { useApiClient } from "../../../api/client";
 import type {
@@ -9,9 +9,18 @@ import type {
   PeriodType,
 } from "../types";
 import { designTokens } from "../../../theme/designSystem";
+import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
+import {
+  bundleSectionQuery,
+  useBondAnalyticsCockpitBundleQuery,
+} from "../lib/bondAnalyticsCockpitBundleQuery";
 import { buildReturnDecompositionWaterfallOption } from "../lib/returnDecompositionWaterfallOption";
 import { bondAnalyticsQueryKeyRoot } from "../lib/bondAnalyticsQueryKeys";
 import { BondAnalyticsYieldCurveTermStructureChart } from "./BondAnalyticsYieldCurveTermStructureChart";
+import {
+  DetailChartSkeleton,
+  DetailEmptyNote,
+} from "./BondAnalyticsDetailPrimitives";
 import { ReturnDecompositionWaterfallChart } from "./ReturnDecompositionWaterfallChart";
 
 const dt = designTokens;
@@ -30,10 +39,18 @@ export function BondAnalyticsOverviewMidCharts({
   accountingClass,
 }: BondAnalyticsOverviewMidChartsProps) {
   const client = useApiClient();
+  const cockpitBundleQ = useBondAnalyticsCockpitBundleQuery(reportDate);
+  const yieldCurveQ = bundleSectionQuery(cockpitBundleQ, "yield-curve-term-structure");
+  const returnDecompositionOptions = {
+    detail: "summary" as const,
+    ...(assetClass !== "all" ? { assetClass } : {}),
+    ...(accountingClass !== "all" ? { accountingClass } : {}),
+  };
   const rdQuery = useQuery({
     queryKey: [
       ...bondAnalyticsQueryKeyRoot,
       "return-decomposition",
+      "summary",
       client.mode,
       reportDate,
       periodType,
@@ -41,27 +58,35 @@ export function BondAnalyticsOverviewMidCharts({
       accountingClass,
     ],
     queryFn: () =>
-      assetClass === "all" && accountingClass === "all"
-        ? client.getBondAnalyticsReturnDecomposition(reportDate, periodType)
-        : client.getBondAnalyticsReturnDecomposition(reportDate, periodType, {
-            ...(assetClass !== "all" ? { assetClass } : {}),
-            ...(accountingClass !== "all" ? { accountingClass } : {}),
-          }),
+      client.getBondAnalyticsReturnDecomposition(reportDate, periodType, returnDecompositionOptions),
     enabled: Boolean(reportDate),
     retry: false,
     staleTime: 60_000,
   });
 
-  const waterfallOption = useMemo(
-    () => (rdQuery.data?.result ? buildReturnDecompositionWaterfallOption(rdQuery.data.result) : null),
-    [rdQuery.data?.result],
-  );
+  const waterfallOption = useMemo(() => {
+    const result = rdQuery.data?.result;
+    if (!result) return null;
+    const hasSeries = [
+      result.carry,
+      result.roll_down,
+      result.rate_effect,
+      result.spread_effect,
+      result.fx_effect,
+      result.convexity_effect,
+      result.trading,
+    ].some((value) => bondNumericRaw(value) !== null);
+    return hasSeries ? buildReturnDecompositionWaterfallOption(result) : null;
+  }, [rdQuery.data?.result]);
 
   return (
     <div data-testid="bond-analytics-overview-mid-charts" style={{ display: "grid", gap: dt.space[2] }}>
       <Row gutter={[dt.space[3], dt.space[3]]}>
         <Col xs={24} lg={12}>
-          <BondAnalyticsYieldCurveTermStructureChart reportDate={reportDate} />
+          <BondAnalyticsYieldCurveTermStructureChart
+            reportDate={reportDate}
+            bundledYieldCurveQuery={yieldCurveQ}
+          />
         </Col>
         <Col xs={24} lg={12}>
           <Card
@@ -80,24 +105,16 @@ export function BondAnalyticsOverviewMidCharts({
                 }
               />
             ) : rdQuery.isPending ? (
-              <div style={{ display: "flex", justifyContent: "center", padding: dt.space[6] }}>
-                <Spin />
-              </div>
+              <DetailChartSkeleton
+                height={280}
+                testId="bond-analytics-overview-waterfall-loading"
+              />
             ) : waterfallOption ? (
               <ReturnDecompositionWaterfallChart option={waterfallOption} height={280} />
             ) : (
-              <div
-                style={{
-                  border: `1px dashed ${dt.color.neutral[300]}`,
-                  borderRadius: dt.radius.md,
-                  padding: dt.space[4],
-                  textAlign: "center",
-                  color: dt.color.neutral[500],
-                  fontSize: dt.fontSize[13],
-                }}
-              >
+              <DetailEmptyNote testId="bond-analytics-overview-waterfall-empty">
                 暂无收益分解数据
-              </div>
+              </DetailEmptyNote>
             )}
           </Card>
         </Col>

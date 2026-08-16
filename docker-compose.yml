@@ -1,8 +1,15 @@
 services:
   api:
-    image: python:3.14-slim
+    image: python:3.11-slim
     working_dir: /workspace
-    command: sh -c "pip install -e ./backend[dev] && python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
+    # 安装即 lock：从 backend/uv.lock 导出完整闭包后 --no-deps 安装，容器内不再
+    # 二次解析，装出来的版本与 CI、与 OSV 扫描对象逐字一致。
+    command: >-
+      sh -c "pip install --no-cache-dir uv==0.11.32 &&
+      uv export --frozen --project backend --extra dev --no-hashes --no-emit-project -o /tmp/backend-requirements.txt &&
+      uv pip install --system --no-deps -r /tmp/backend-requirements.txt &&
+      uv pip install --system --no-deps -e ./backend &&
+      python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
     volumes:
       - ./:/workspace
     environment:
@@ -18,11 +25,25 @@ services:
       - postgres
       - redis
       - minio
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json,sys,urllib.request; payload=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2)); sys.exit(0 if payload.get('status') == 'ok' else 1)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
 
   worker:
-    image: python:3.14-slim
+    image: python:3.11-slim
     working_dir: /workspace
-    command: sh -c "pip install -e ./backend[dev] && python -m dramatiq backend.app.tasks.worker_bootstrap"
+    # 与 api 同源同法。注意：本命令只装 [dev]，不装 [vendor]，因此 akshare /
+    # tushare 摄取任务在本容器内调用时仍会报错——这是既有行为，未在此改动。
+    # 需要真实摄取的部署把 `--extra dev` 换成 `--extra dev --extra vendor`。
+    command: >-
+      sh -c "pip install --no-cache-dir uv==0.11.32 &&
+      uv export --frozen --project backend --extra dev --no-hashes --no-emit-project -o /tmp/backend-requirements.txt &&
+      uv pip install --system --no-deps -r /tmp/backend-requirements.txt &&
+      uv pip install --system --no-deps -e ./backend &&
+      python -m dramatiq --processes 1 --threads 8 backend.app.tasks.worker_bootstrap"
     volumes:
       - ./:/workspace
     environment:
@@ -30,14 +51,20 @@ services:
       MOSS_POSTGRES_DSN: postgresql://${MOSS_POSTGRES_USER:-moss}:${MOSS_POSTGRES_PASSWORD:?Set MOSS_POSTGRES_PASSWORD for docker compose}@postgres:5432/${MOSS_POSTGRES_DB:-moss}
       MOSS_REDIS_DSN: redis://redis:6379/0
       MOSS_DUCKDB_PATH: data/moss.duckdb
+      MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS: "1"
       MOSS_MINIO_ENDPOINT: minio:9000
       MOSS_MINIO_ACCESS_KEY: ${MOSS_MINIO_ROOT_USER:?Set MOSS_MINIO_ROOT_USER for docker compose}
       MOSS_MINIO_SECRET_KEY: ${MOSS_MINIO_ROOT_PASSWORD:?Set MOSS_MINIO_ROOT_PASSWORD for docker compose}
       MOSS_MINIO_BUCKET: moss-artifacts
     depends_on:
-      - postgres
-      - redis
-      - minio
+      api:
+        condition: service_healthy
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
 
   postgres:
     image: postgres:17-alpine
@@ -66,12 +93,21 @@ services:
   frontend:
     image: node:22-alpine
     working_dir: /workspace/frontend
-    command: sh -c "if [ -f package.json ]; then npm run dev -- --host 0.0.0.0 --port 5173; else sleep infinity; fi"
+    command: >-
+      sh -c "if [ ! -x node_modules/.bin/vite ] ||
+      ! cmp package-lock.json node_modules/.moss-package-lock.json >/dev/null 2>&1;
+      then npm ci --legacy-peer-deps --include=optional &&
+      cp package-lock.json node_modules/.moss-package-lock.json;
+      fi && npm run dev -- --host 0.0.0.0 --port 5173"
     volumes:
       - ./:/workspace
+      - frontend_node_modules:/workspace/frontend/node_modules
     environment:
       MOSS_VITE_API_PROXY: http://api:8000
     ports:
       - "127.0.0.1:${MOSS_FRONTEND_PORT:-5173}:5173"
     depends_on:
       - api
+
+volumes:
+  frontend_node_modules:

@@ -15,6 +15,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.data_readiness_report import build_data_readiness_report  # noqa: E402
+from scripts.mcp.golden_approval import golden_sample_readiness  # noqa: E402
 
 DEFAULT_DUCKDB_PATH = REPO_ROOT / "data" / "moss.duckdb"
 DEFAULT_GOVERNANCE_DIR = REPO_ROOT / "data" / "governance"
@@ -27,20 +28,20 @@ DEFAULT_EVIDENCE_READINESS_PAGES = [
     "PAGE-OPS-001",
 ]
 DEFAULT_CATALOG_DATE_EXCLUDED_PAGE_IDS = {
-    "GAP-AVERAGE-BALANCE-PAGE",
-    "GAP-BANK-LEDGER-DASHBOARD-PAGE",
-    "GAP-CASHFLOW-PROJECTION-PAGE",
+    "PAGE-ADB-001",
+    "PAGE-BANK-LEDGER-001",
+    "PAGE-CFP-001",
     "GAP-DECISION-ITEMS-PAGE",
 }
 EVIDENCE_READINESS_STATUS_BY_PAGE_ID = {
-    "GAP-BANK-LEDGER-DASHBOARD-PAGE": "candidate_or_pending",
-    "GAP-CASHFLOW-PROJECTION-PAGE": "candidate_or_pending",
-    "GAP-CONCENTRATION-MONITOR-PAGE": "candidate_or_pending",
+    "PAGE-BANK-LEDGER-001": "candidate_or_pending",
+    "PAGE-CFP-001": "candidate_or_pending",
+    "PAGE-CONC-001": "candidate_or_pending",
     "GAP-CROSS-ASSET-PAGE": "mixed_source_or_observational",
     "GAP-DECISION-ITEMS-PAGE": "candidate_or_pending",
     "GAP-KPI-PERFORMANCE-PAGE": "candidate_or_pending",
     "GAP-NEWS-EVENTS-PAGE": "candidate_or_pending",
-    "GAP-AVERAGE-BALANCE-PAGE": "candidate_or_pending",
+    "PAGE-ADB-001": "candidate_or_pending",
     "GAP-TEAM-PERFORMANCE-PAGE": "candidate_or_pending",
     "GAP-PLATFORM-CONFIG-PAGE": "candidate_or_pending",
     "PAGE-BOND-ANALYSIS-001": "candidate_or_pending",
@@ -63,7 +64,7 @@ EVIDENCE_READINESS_STATUS_BY_PAGE_ID = {
     "PAGE-OPS-001": "mixed_source_or_observational",
     "PAGE-PNL-001": "formal_or_governed",
     "PAGE-PNL-ATTR-WB-001": "candidate_or_pending",
-    "PAGE-PNL-BY-BUSINESS-001": "candidate_or_pending",
+    "PAGE-PNL-BY-BUSINESS-001": "formal_or_governed",
     "PAGE-POS-001": "candidate_or_pending",
     "PAGE-PROD-CAT-001": "formal_or_governed",
     "PAGE-PORTFOLIO-HOME-001": "mixed_source_or_observational",
@@ -127,13 +128,13 @@ PAGE_CATALOG_DATE_TABLES = {
         "ledger_import_batch",
         "ledger_raw_row",
     ],
-    "GAP-BANK-LEDGER-DASHBOARD-PAGE": [
+    "PAGE-BANK-LEDGER-001": [
         "ledger_import_batch",
         "ledger_raw_row",
         "position_snapshot",
         "position_snapshot_agg",
     ],
-    "GAP-CASHFLOW-PROJECTION-PAGE": [
+    "PAGE-CFP-001": [
         "fact_formal_zqtz_balance_daily",
         "fact_formal_tyw_balance_daily",
     ],
@@ -141,7 +142,7 @@ PAGE_CATALOG_DATE_TABLES = {
         "fact_formal_zqtz_balance_daily",
         "fact_formal_tyw_balance_daily",
     ],
-    "GAP-CONCENTRATION-MONITOR-PAGE": [
+    "PAGE-CONC-001": [
         "fact_formal_bond_analytics_daily",
     ],
     "PAGE-BRIDGE-001": [
@@ -233,7 +234,7 @@ PAGE_CATALOG_DATE_TABLES = {
         "choice_stock_daily_observation",
         "fact_livermore_gate_supplement_daily",
     ],
-    "GAP-AVERAGE-BALANCE-PAGE": [
+    "PAGE-ADB-001": [
         "fact_formal_zqtz_balance_daily",
         "fact_formal_tyw_balance_daily",
         "zqtz_bond_daily_snapshot",
@@ -299,7 +300,7 @@ PAGE_CATALOG_DATE_DEFERRED_REASONS = {
         "Read/write KPI scoring workbench; direct page closure depends on governance SQL source, score-rule, "
         "permission, and audit-trail evidence rather than DuckDB table/date sampling."
     ),
-    "GAP-AVERAGE-BALANCE-PAGE": (
+    "PAGE-ADB-001": (
         "ADB analytical route; direct page closure depends on PAGE contract approval, ADB denominator semantics, "
         "bound golden sample, lineage records, and owner review before any formal-use claim."
     ),
@@ -346,6 +347,10 @@ class ProjectMcpServer:
     def __init__(self, provider: "McpProvider") -> None:
         self._provider = provider
         self._next_request_id = 0
+        # Optional call-receipt hook for the agent-eval harness. Default off:
+        # unless the trusted runner sets MOSS_MCP_RECEIPT_LOG, dispatch
+        # behavior is byte-for-byte unchanged.
+        self._receipt_log = os.environ.get("MOSS_MCP_RECEIPT_LOG") or None
 
     def serve(self) -> None:
         while True:
@@ -399,8 +404,33 @@ class ProjectMcpServer:
         if method == "tools/call":
             name = str(params.get("name") or "")
             arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
-            return self._provider.call_tool(name, arguments)
+            result = self._provider.call_tool(name, arguments)
+            self._record_receipt(name, arguments, result)
+            return result
         raise McpError(-32601, f"Unsupported method: {method}")
+
+    def _record_receipt(self, tool: str, arguments: dict[str, Any], result: dict[str, Any]) -> None:
+        """Append a call receipt when the harness enabled MOSS_MCP_RECEIPT_LOG.
+
+        Only successful tool responses are receipted: evidence can only be
+        built from a response that was actually produced. A receipt write
+        failure propagates as a JSON-RPC error on purpose — when receipts are
+        explicitly requested, an unreceipted response must not flow silently.
+        """
+
+        if not self._receipt_log:
+            return
+        # Lazy import keeps the default (receipts-off) server fully decoupled
+        # from the agent-eval harness modules.
+        from scripts.agent_eval.receipts import append_receipt, canonical_json_bytes, digest_params
+
+        append_receipt(
+            self._receipt_log,
+            server=self._provider.name,
+            tool=tool,
+            params_digest=digest_params(arguments),
+            response_bytes=canonical_json_bytes(result),
+        )
 
     def _read_message(self) -> dict[str, Any] | None:
         header_lines: list[bytes] = []
@@ -457,6 +487,7 @@ class MetricContractsProvider(McpProvider):
             "page_contracts": REPO_ROOT / "docs" / "page_contracts.md",
             "calc_rules": REPO_ROOT / "docs" / "calc_rules.md",
             "metric_dictionary": REPO_ROOT / "docs" / "metric_dictionary.md",
+            "stock_analysis_workbench_api_contract": REPO_ROOT / "docs" / "stock_analysis_workbench_api_contract.md",
             "product_category_truth": REPO_ROOT
             / "docs"
             / "pnl"
@@ -625,7 +656,7 @@ class LineageEvidenceProvider(McpProvider):
             "accounting_asset_movement",
             "fact_accounting_asset_movement_monthly",
             "fact_formal_zqtz_balance_daily",
-            "rv_accounting_asset_movement_v2",
+            "rv_accounting_asset_movement_v3",
             "cv_accounting_asset_movement_v1",
             "AccountingAssetMovementPayload",
             "AccountingAssetMovementSummaryPayload",
@@ -677,11 +708,11 @@ class LineageEvidenceProvider(McpProvider):
             "kpi.value",
             "temporary-exception read/write KPI scoring boundary",
         ],
-        "gap-average-balance-page": [
+        "page-adb-001": [
             "/average-balance",
             "average-balance",
             "average_balance",
-            "GAP-AVERAGE-BALANCE-PAGE",
+            "PAGE-ADB-001",
             "/api/analysis/adb",
             "/api/analysis/adb/comparison",
             "/api/analysis/adb/monthly",
@@ -695,13 +726,14 @@ class LineageEvidenceProvider(McpProvider):
             "MTR-ADB-001",
             "MTR-ADB-002",
             "MTR-ADB-003",
-            "PAGE-CONTRACT-PENDING:/average-balance",
+            "PAGE-ADB-001",
             "temporary-exception ADB analytical balance boundary",
         ],
-        "gap-bank-ledger-dashboard-page": [
+        "page-bank-ledger-001": [
             "/bank-ledger-dashboard",
             "bank-ledger-dashboard",
             "bank_ledger_dashboard",
+            "PAGE-BANK-LEDGER-001",
             "GAP-BANK-LEDGER-DASHBOARD-PAGE",
             "/api/ledger/dates",
             "/api/ledger/dashboard",
@@ -721,11 +753,11 @@ class LineageEvidenceProvider(McpProvider):
             "position_key_contract_v1",
             "temporary-exception bank ledger read-model boundary",
         ],
-        "gap-cashflow-projection-page": [
+        "page-cfp-001": [
             "/cashflow-projection",
             "cashflow-projection",
             "cashflow_projection",
-            "GAP-CASHFLOW-PROJECTION-PAGE",
+            "PAGE-CFP-001",
             "/api/cashflow-projection",
             "/ui/balance-analysis/dates",
             "cashflow_projection.overview",
@@ -736,7 +768,7 @@ class LineageEvidenceProvider(McpProvider):
             "MTR-CFP-002",
             "MTR-CFP-003",
             "MTR-CFP-004",
-            "PAGE-CONTRACT-PENDING:/cashflow-projection",
+            "PAGE-CFP-001",
             "fact_formal_zqtz_balance_daily",
             "fact_formal_tyw_balance_daily",
             "duration_gap",
@@ -745,11 +777,11 @@ class LineageEvidenceProvider(McpProvider):
             "rate_sensitivity_1bp",
             "temporary-exception cashflow projection liquidity boundary",
         ],
-        "gap-concentration-monitor-page": [
+        "page-conc-001": [
             "/concentration-monitor",
             "concentration-monitor",
             "concentration_monitor",
-            "GAP-CONCENTRATION-MONITOR-PAGE",
+            "PAGE-CONC-001",
             "/api/bond-analytics/dates",
             "/api/bond-analytics/credit-spread-migration",
             "bond_analytics.dates",
@@ -761,7 +793,7 @@ class LineageEvidenceProvider(McpProvider):
             "MTR-CON-002",
             "MTR-CON-003",
             "MTR-CON-004",
-            "PAGE-CONTRACT-PENDING:/concentration-monitor",
+            "PAGE-CONC-001",
             "fact_formal_bond_analytics_daily",
             "concentration_by_issuer",
             "concentration_by_industry",
@@ -1136,6 +1168,7 @@ class LineageEvidenceProvider(McpProvider):
             "GS-LEDGER-PNL-FIN-IND-202603-B",
         ],
         "page-pnl-by-business-001": [
+            "/api/pnl/by-business-insights",
             "/api/pnl/by-business-ytd",
             "/api/pnl/by-business-monthly",
             "/api/pnl/by-business",
@@ -1145,6 +1178,7 @@ class LineageEvidenceProvider(McpProvider):
             "pnl.by_business_monthly",
             "pnl.by_business",
             "pnl.by_business_analysis",
+            "pnl.by_business_insights",
             "fact_formal_pnl_fi",
             "fact_nonstd_pnl_bridge",
             "fact_formal_zqtz_balance_daily",
@@ -1152,7 +1186,15 @@ class LineageEvidenceProvider(McpProvider):
             "pnl_by_business_adjustments",
             "pnl-by-business",
             "/pnl-by-business",
-            "page-level analytical display no newly approved MTR binding",
+            "GS-PNL-BUSINESS-INSIGHTS-A",
+            "MTR-PNLBIZ-001",
+            "MTR-PNLBIZ-002",
+            "MTR-PNLBIZ-003",
+            "MTR-PNLBIZ-004",
+            "MTR-PNLBIZ-005",
+            "MTR-PNLBIZ-006",
+            "MTR-PNLBIZ-007",
+            "approved derived-insights overlay; source PnL facts keep their existing contracts",
         ],
         "page-liab-analytics-001": [
             "/api/risk/buckets",
@@ -1265,6 +1307,7 @@ class LineageEvidenceProvider(McpProvider):
             "stock-analysis",
             "/stock-analysis",
             "GAP-STOCK-ANALYSIS-PAGE",
+            "/ui/market-data/stock-analysis/workbench", "market_data.stock_analysis.workbench", "rv_stock_analysis_workbench_v1", "cv_stock_analysis_workbench_v1",
             "/ui/market-data/livermore",
             "/ui/market-data/livermore/stock-detail",
             "/ui/market-data/livermore/candidate-history",
@@ -1300,6 +1343,7 @@ class LineageEvidenceProvider(McpProvider):
             "GAP-STOCK-ANALYSIS-PAGE",
             "stock-analysis",
             "/stock-analysis",
+            "/ui/market-data/stock-analysis/workbench", "market_data.stock_analysis.workbench", "rv_stock_analysis_workbench_v1", "cv_stock_analysis_workbench_v1",
             "/ui/market-data/livermore",
             "/ui/market-data/livermore/stock-detail",
             "/ui/market-data/livermore/candidate-history",
@@ -1335,6 +1379,7 @@ class LineageEvidenceProvider(McpProvider):
             "GAP-STOCK-ANALYSIS-PAGE",
             "stock-analysis",
             "/stock-analysis",
+            "/ui/market-data/stock-analysis/workbench", "market_data.stock_analysis.workbench", "rv_stock_analysis_workbench_v1", "cv_stock_analysis_workbench_v1",
             "/ui/market-data/livermore",
             "/ui/market-data/livermore/stock-detail",
             "/ui/market-data/livermore/candidate-history",
@@ -2970,13 +3015,13 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
     }
     average_balance_bundle = {
         "page_slug": "average-balance",
-        "page_id": "GAP-AVERAGE-BALANCE-PAGE",
+        "page_id": "PAGE-ADB-001",
         "page_name": "Average Balance",
         "aliases": [
             "average-balance",
             "average_balance",
             "/average-balance",
-            "GAP-AVERAGE-BALANCE-PAGE",
+            "PAGE-ADB-001",
             "/api/analysis/adb",
             "/api/analysis/adb/comparison",
             "/api/analysis/adb/monthly",
@@ -3002,9 +3047,9 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
         ],
         "truth_chain": [
             "docs/pnl/average-balance-page-contract.md defines /average-balance as a candidate ADB analytical page and points formal balance truth back to PAGE-BALANCE-001.",
-            "docs/live_route_maturity.md marks /average-balance as temporary-exception with page id GAP-AVERAGE-BALANCE-PAGE.",
+            "docs/live_route_maturity.md marks /average-balance as temporary-exception with page id PAGE-ADB-001.",
             "docs/metric_dictionary.md registers MTR-ADB-001 through MTR-ADB-003 as candidate metrics only.",
-            "docs/metric_dictionary.md keeps bound_page_id=PAGE-CONTRACT-PENDING:/average-balance; MTR-ADB-001 and MTR-ADB-002 are bound to GS-AVERAGE-BALANCE-A, and MTR-ADB-003 is bound to GS-AVERAGE-BALANCE-MONTHLY-A as candidate DTO sample evidence.",
+            "docs/metric_dictionary.md keeps bound_page_id=PAGE-ADB-001; MTR-ADB-001 and MTR-ADB-002 are bound to GS-AVERAGE-BALANCE-A, and MTR-ADB-003 is bound to GS-AVERAGE-BALANCE-MONTHLY-A as candidate DTO sample evidence.",
             "docs/pnl/average-balance-owner-evidence-packet.md packages owner-review evidence without approving page closure.",
             "docs/pnl/average-balance-business-owner-approval-template.md captures pending owner fields and preserves formal_use_allowed=false.",
             "docs/pnl/average-balance-owner-signoff-runbook.md lists the human review, fill, and post-signing verification commands without approving formal use.",
@@ -3046,7 +3091,7 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "Check observed, LOCF, and calendar-zero denominator semantics, selected date range, monthly/YTD basis, amount unit conversion, percent precision, null-vs-zero behavior, and fallback/no-data states.",
         ],
         "guardrails": [
-            "GAP-AVERAGE-BALANCE-PAGE is candidate ADB analysis, not formal balance truth.",
+            "PAGE-ADB-001 is candidate ADB analysis, not formal balance truth.",
             "Do not replace formal balance truth from PAGE-BALANCE-001 or /balance-analysis with ADB interval, comparison, monthly, or coverage output.",
             "Do not promote MTR-ADB-001 through MTR-ADB-003 to formal use until a dedicated PAGE contract, golden approval, lineage records, manual audit, and owner approval exist.",
             "Do not hide candidate, stale, fallback, no-data, denominator, date-range, or result_meta boundaries behind a successful /average-balance shell.",
@@ -3055,12 +3100,13 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
     }
     bank_ledger_dashboard_bundle = {
         "page_slug": "bank-ledger-dashboard",
-        "page_id": "GAP-BANK-LEDGER-DASHBOARD-PAGE",
+        "page_id": "PAGE-BANK-LEDGER-001",
         "page_name": "Bank Ledger Dashboard",
         "aliases": [
             "bank-ledger-dashboard",
             "bank_ledger_dashboard",
             "/bank-ledger-dashboard",
+            "PAGE-BANK-LEDGER-001",
             "GAP-BANK-LEDGER-DASHBOARD-PAGE",
             "/api/ledger/dashboard",
             "/api/ledger/positions",
@@ -3079,20 +3125,22 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "docs/metric_dictionary.md",
         ],
         "truth_chain": [
-            "docs/live_route_maturity.md marks /bank-ledger-dashboard as temporary-exception with page id GAP-BANK-LEDGER-DASHBOARD-PAGE.",
-            "GET /api/ledger/dashboard returns LedgerDashboardData for asset_face_amount, liability_face_amount, net_face_exposure, and alert_count.",
-            "GET /api/ledger/dates selects available as_of_date values and latest ledger metadata.",
-            "GET /api/ledger/positions and /api/ledger/export/positions provide position-level detail and trace fields.",
-            "backend/app/services/ledger_analytics_service.py keeps metadata source_version, rule_version, batch_id, stale, fallback, and no_data visible.",
-            "backend/app/repositories/ledger_analytics_repo.py reads position_snapshot_agg and position_snapshot after ledger import, with zqtz_bond_daily_snapshot compatibility when available.",
-            "ledger_import_batch, ledger_raw_row, position_snapshot, and position_snapshot_agg are the current catalog/date anchors for this read-model route.",
-            "GAP-BANK-LEDGER-DASHBOARD-PAGE is candidate ledger read-model evidence; it has no standalone PAGE contract approval or MTR dictionary approval in this pass.",
+            "docs/live_route_maturity.md keeps /bank-ledger-dashboard temporary-exception and binds PAGE-BANK-LEDGER-001 with formal_use_allowed=false.",
+            "GET /api/ledger/dashboard returns classification_status, rv_ledger_classification_v2, and currency_breakdown buckets containing UNKNOWN, asset_face_amount, liability_face_amount, net_face_exposure, UNCLASSIFIED row/amount evidence, total rows, and classification_coverage_pct; alert_count is removed.",
+            "GET /api/ledger/dates, dashboard, positions, and export read imported position_snapshot batches only; standardized ZQTZ and position_snapshot_agg are not runtime sources.",
+            "Currency is upper(trim(currency)); blank values map to UNKNOWN, buckets are stably sorted, and native amounts / 100m are never added across currencies or FX-converted.",
+            "Positions and export share normalized currency filters; UNKNOWN selects blank-currency rows.",
+            "Exact date chooses the latest same-day batch; fallback is past-only to the latest as_of_date <= requested_as_of_date, and requests before the first snapshot return no_data.",
+            "rv_ledger_classification_v2 is a closed import-time pair allowlist; all unmatched pairs are materialized as UNCLASSIFIED and never read-time reclassified.",
+            "Current-rule batches expose row-based coverage only when every materialized direction is ASSET, LIABILITY, or UNCLASSIFIED; legacy_unassessed and invalid_materialization both fail closed with financial and assessable quality values null. source_version, rule_version, batch_id, dates, filters, position keys, row numbers, category fields, and raw-row lineage remain traceable.",
+            "PAGE-BANK-LEDGER-001 has no approved MTR binding or owner approval. GS-BANK-LEDGER-CLASSIFICATION-A is captured-awaiting-approval DTO/classification evidence only.",
         ],
         "backend_touchpoints": [
             "backend/app/api/routes/ledger.py",
             "backend/app/services/ledger_analytics_service.py",
             "backend/app/repositories/ledger_analytics_repo.py",
             "backend/app/repositories/ledger_import_repo.py",
+            "backend/app/tasks/ledger_classification_backfill.py",
             "backend/app/schemas/ledger.py",
             "backend/app/schema_registry/duckdb/19_ledger_import.sql",
             "backend/app/schema_registry/duckdb/20_ledger_analytics.sql",
@@ -3110,34 +3158,38 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "tests/test_ledger_import_flow.py",
             "tests/test_ledger_analytics_api.py",
             "tests/test_live_route_page_contract_completeness.py",
+            "tests/test_golden_samples_capture_ready.py",
             "frontend/src/test/LedgerDashboardPage.test.tsx",
             "frontend/src/test/LedgerDashboardPageModel.test.ts",
             "frontend/src/test/RouteRegistry.test.tsx",
         ],
-        "golden_samples": [],
+        "golden_samples": ["GS-BANK-LEDGER-CLASSIFICATION-A"],
         "verification_focus": [
-            "No dedicated golden sample is currently registered for GAP-BANK-LEDGER-DASHBOARD-PAGE; verify through live-route maturity, ledger import/API tests, LedgerDashboardPage tests, and route registry tests.",
-            "Trace /api/ledger/dashboard through ledgerClient, buildLedgerKpiCards, LedgerDashboardPage KPI cards, status banners, evidence panels, and positions table before changing display logic.",
-            "Check as_of_date resolution, requested vs resolved dates, CNY yuan-to-yi display conversion, null-vs-zero behavior, batch_id, source_version, rule_version, stale, fallback, no_data, and position trace fields.",
-            "Verify position filters preserve direction, page/page_size, account_category_std, asset_class_std, portfolio, cost_center, and bond_code semantics without frontend recalculation.",
+            "GS-BANK-LEDGER-CLASSIFICATION-A freezes the five ASSET pairs, LIABILITY pair, missing/unknown/conflict UNCLASSIFIED cases, CNY /100m amounts, row coverage, and ready DTO; status remains captured-awaiting-approval.",
+            "Trace position_snapshot through LedgerAnalyticsRepository, LedgerAnalyticsService, ledgerClient, selected-currency URL state, KPI cards, positions, and export.",
+            "Check CNY/USD/UNKNOWN separation, UNCLASSIFIED null-vs-zero and coverage behavior, legacy fail-close, past-only fallback, batch/source/rule metadata, and import-success refetch.",
+            "Verify UNCLASSIFIED direction drill, URL/query key/client/export filters, table classification fields, and selected currency without frontend aggregation.",
         ],
         "guardrails": [
-            "GAP-BANK-LEDGER-DASHBOARD-PAGE is candidate ledger read-model evidence, not formal PnL and not formal balance truth.",
-            "Do not use asset_face_amount, liability_face_amount, or net_face_exposure to replace PAGE-BALANCE-001, PAGE-PNL-001, PAGE-LEDGER-PNL-001, or product-category PnL truth.",
-            "Do not promote ledger dashboard fields to MTR-* rows until a dedicated PAGE contract, metric dictionary rows, golden sample, lineage records, manual audit, and owner approval exist.",
-            "Do not hide stale, fallback, no-data, requested/resolved date, source_version, rule_version, batch_id, or position trace boundaries behind a successful page shell.",
-            "Do not backfill missing ledger dates, dashboard totals, positions, or export evidence with static demo values in real mode.",
+            "PAGE-BANK-LEDGER-001 remains candidate evidence with formal_use_allowed=false; it is not formal PnL, not formal balance truth, not approved net exposure, and not alert truth.",
+            "A capture-ready golden sample is not business-owner approval; keep formal_use_allowed=false until non-placeholder approval and authorized real-page UAT are recorded.",
+            "Do not reintroduce standardized ZQTZ or position_snapshot_agg as a dashboard runtime source.",
+            "Do not aggregate currencies, perform FX conversion, promote dashboard fields to MTR rows, or invent alert rules.",
+            "Runtime reads never reclassify direction. The controlled ledger_classification_backfill task applied live history batches 1-8 on 2026-07-12 under plan digest 1c90458a94f56525d4ee360cd2e7cad6fe79f035508b89355f0fd795fa6f065c with a completed receipt; immutable values and direction remained unchanged.",
+            "Backfill apply requires explicit batches/source directory, exact plan digest, a byte-identical existing backup that is not the target or its hard link, an exclusively created prepared/completed receipt, fixed global-writer then Ledger-import lock order, frozen source fingerprint recheck, and one all-or-none transaction; it may update only three rule_version columns and must preserve direction and immutable evidence including position_snapshot_agg when present.",
+            "Do not hide stale, fallback, no-data, requested/resolved date, source_version, rule_version, batch_id, currency, or position trace boundaries.",
+            "Do not backfill missing ledger dates, currency buckets, positions, or export evidence with static real-mode values.",
         ],
     }
     cashflow_projection_bundle = {
         "page_slug": "cashflow-projection",
-        "page_id": "GAP-CASHFLOW-PROJECTION-PAGE",
+        "page_id": "PAGE-CFP-001",
         "page_name": "Cashflow Projection",
         "aliases": [
             "cashflow-projection",
             "cashflow_projection",
             "/cashflow-projection",
-            "GAP-CASHFLOW-PROJECTION-PAGE",
+            "PAGE-CFP-001",
             "/api/cashflow-projection",
             "cashflow_projection.overview",
         ],
@@ -3152,15 +3204,15 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "docs/metric_dictionary.md",
         ],
         "truth_chain": [
-            "docs/live_route_maturity.md marks /cashflow-projection as temporary-exception with page id GAP-CASHFLOW-PROJECTION-PAGE.",
+            "docs/live_route_maturity.md marks /cashflow-projection as temporary-exception with page id PAGE-CFP-001.",
             "docs/metric_dictionary.md registers MTR-CFP-001 through MTR-CFP-004 as candidate metrics only.",
-            "docs/metric_dictionary.md keeps bound_page_id=PAGE-CONTRACT-PENDING:/cashflow-projection and bound_sample_id=GS-CASHFLOW-PROJECTION-A for the cashflow candidate metrics.",
+            "docs/metric_dictionary.md keeps bound_page_id=PAGE-CFP-001 and bound_sample_id=GS-CASHFLOW-PROJECTION-A for the cashflow candidate metrics.",
             "tests/golden_samples/GS-CASHFLOW-PROJECTION-A freezes the capture-ready candidate DTO for GET /api/cashflow-projection and remains captured-awaiting-approval.",
             "GET /api/cashflow-projection returns cashflow_projection.overview with cashflow_projection_report_date result_meta.",
             "backend/app/services/cashflow_projection_service.py computes duration_gap, asset_duration, liability_duration, rate_sensitivity_1bp, monthly_buckets, top_maturing_assets_12m, warnings, and result_meta.",
             "backend/app/repositories/cashflow_projection_repo.py reads fact_formal_zqtz_balance_daily and fact_formal_tyw_balance_daily for the requested report_date and CNY currency basis.",
-            "frontend/src/features/cashflow-projection/pages/CashflowProjectionPage.tsx surfaces PAGE-CONTRACT-PENDING:/cashflow-projection, analytical basis, quality, result kind, date basis, tables_used, and evidence_rows.",
-            "GAP-CASHFLOW-PROJECTION-PAGE is candidate liquidity projection evidence; it has no standalone PAGE contract approval or MTR dictionary approval in this pass.",
+            "frontend/src/features/cashflow-projection/pages/CashflowProjectionPage.tsx surfaces PAGE-CFP-001, analytical basis, quality, result kind, date basis, tables_used, and evidence_rows.",
+            "PAGE-CFP-001 is candidate liquidity projection evidence with a documented page contract; MTR dictionary rows remain candidate/pending_confirmation and are not formally approved.",
         ],
         "backend_touchpoints": [
             "backend/app/api/routes/cashflow_projection.py",
@@ -3193,7 +3245,7 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "Check report_date selection, requested/resolved/as_of dates, CNY basis, yuan-to-yi display conversion, ratio/year/pct precision, null-vs-zero behavior, no-data 404, fallback/stale banners, tables_used, evidence_rows, and warnings.",
         ],
         "guardrails": [
-            "GAP-CASHFLOW-PROJECTION-PAGE is candidate liquidity projection evidence, not formal liquidity truth and not a certified risk or balance page.",
+            "PAGE-CFP-001 is candidate liquidity projection evidence, not formal liquidity truth and not a certified risk or balance page.",
             "Do not replace PAGE-RISK-001 formal risk truth, PAGE-BALANCE-001 balance truth, or formal PnL truth with cashflow duration-gap or monthly projection output.",
             "Do not promote MTR-CFP-001 through MTR-CFP-004 to formal use until a dedicated PAGE contract, golden sample, lineage records, manual audit, and owner approval exist.",
             "Do not hide stale, fallback, no-data, requested/resolved date, source_version, rule_version, cache_version, tables_used, evidence_rows, or warning boundaries behind a successful page shell.",
@@ -3202,13 +3254,13 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
     }
     concentration_monitor_bundle = {
         "page_slug": "concentration-monitor",
-        "page_id": "GAP-CONCENTRATION-MONITOR-PAGE",
+        "page_id": "PAGE-CONC-001",
         "page_name": "Concentration Monitor",
         "aliases": [
             "concentration-monitor",
             "concentration_monitor",
             "/concentration-monitor",
-            "GAP-CONCENTRATION-MONITOR-PAGE",
+            "PAGE-CONC-001",
             "/api/bond-analytics/credit-spread-migration",
             "bond_analytics.credit_spread_migration",
         ],
@@ -3224,13 +3276,13 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
         ],
         "truth_chain": [
             "docs/metric_dictionary.md registers MTR-CON-001 through MTR-CON-004 as candidate metrics only.",
-            "docs/metric_dictionary.md keeps bound_page_id=PAGE-CONTRACT-PENDING:/concentration-monitor and bound_sample_id=GS-CONCENTRATION-MONITOR-A for the concentration candidate metrics.",
+            "docs/metric_dictionary.md keeps bound_page_id=PAGE-CONC-001 and bound_sample_id=GS-CONCENTRATION-MONITOR-A for the concentration candidate metrics.",
             "tests/golden_samples/GS-CONCENTRATION-MONITOR-A freezes the capture-ready candidate DTO for GET /api/bond-analytics/credit-spread-migration and remains captured-awaiting-approval.",
             "GET /api/bond-analytics/credit-spread-migration returns bond_analytics.credit_spread_migration with issuer, industry, rating, and tenor concentration breakdowns.",
             "CreditSpreadMigrationResponse exposes concentration_by_issuer.hhi, concentration_by_issuer.top5_concentration, concentration_by_industry, concentration_by_rating, concentration_by_tenor, credit_weight, and rating_aa_and_below_weight.",
             "backend/app/services/bond_analytics_service.py reads fact_formal_bond_analytics_daily and returns analytical/candidate result_meta for credit-spread migration.",
-            "frontend/src/features/concentration-monitor/ConcentrationMonitorPage.tsx surfaces PAGE-CONTRACT-PENDING:/concentration-monitor, analytical basis, quality, result kind, date basis, tables_used, and evidence_rows.",
-            "GAP-CONCENTRATION-MONITOR-PAGE is candidate concentration-monitor evidence; it has no standalone PAGE contract approval or MTR dictionary approval in this pass.",
+            "frontend/src/features/concentration-monitor/ConcentrationMonitorPage.tsx surfaces PAGE-CONC-001, analytical basis, quality, result kind, date basis, tables_used, and evidence_rows.",
+            "PAGE-CONC-001 is candidate concentration-monitor evidence with a documented page contract; MTR dictionary rows remain candidate/pending_confirmation and are not formally approved.",
         ],
         "backend_touchpoints": [
             "backend/app/api/routes/bond_analytics.py",
@@ -3264,7 +3316,7 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "Verify issuer HHI, top5_concentration, credit_weight, AA-and-below ratio, and dimension top_items are displayed from the API payload without frontend portfolio-level recalculation.",
         ],
         "guardrails": [
-            "GAP-CONCENTRATION-MONITOR-PAGE is candidate concentration-monitor evidence, not formal risk truth and not certified concentration-limit approval.",
+            "PAGE-CONC-001 is candidate concentration-monitor evidence, not formal risk truth and not certified concentration-limit approval.",
             "Do not replace PAGE-RISK-001 formal risk truth, /bond-analysis action-attribution evidence, or formal fixed-income metric truth with concentration-monitor output.",
             "Do not promote MTR-CON-001 through MTR-CON-004 to formal use until a dedicated PAGE contract, golden sample, lineage records, manual audit, and owner approval exist.",
             "Do not treat front-end limit comparisons, issuer HHI, top5 concentration, credit weight, or rating AA-and-below ratio as approved risk-limit breaches without owner/golden/manual audit closure.",
@@ -3371,7 +3423,7 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "docs/page_contracts.md PAGE-BAL-MOVE-001",
             "docs/page_contracts.md MTR-BMV-001 through MTR-BMV-004",
             "backend/app/schema_registry/duckdb/18_accounting_asset_movement.sql fact_accounting_asset_movement_monthly",
-            "backend/app/tasks/accounting_asset_movement.py rv_accounting_asset_movement_v2",
+            "backend/app/tasks/accounting_asset_movement.py rv_accounting_asset_movement_v3",
             "backend/app/services/accounting_asset_movement_service.py accounting_asset_movement_envelope",
             "AccountingAssetMovementPayload",
             "AccountingAssetMovementSummaryPayload",
@@ -3511,6 +3563,8 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "PAGE-LEDGER-PNL-001",
             "/api/ledger-pnl/summary",
             "/api/ledger-pnl/formal-financial-indicators",
+            "/api/ledger-pnl/candidate-financial-indicators/period-comparison",
+            "/api/ledger-pnl/candidate-financial-indicators/period-comparison/component-detail",
         ],
         "frontend_route": "/ledger-pnl",
         "primary_api": "/api/ledger-pnl/summary",
@@ -3518,6 +3572,8 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "/api/ledger-pnl/dates",
             "/api/ledger-pnl/data",
             "/api/ledger-pnl/formal-financial-indicators",
+            "/api/ledger-pnl/candidate-financial-indicators/period-comparison",
+            "/api/ledger-pnl/candidate-financial-indicators/period-comparison/component-detail",
         ],
         "contract_docs": [
             "docs/page_contracts.md",
@@ -3535,7 +3591,10 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "backend/app/services/ledger_pnl_service.py ledger_pnl.summary / ledger_pnl.data / ledger_pnl.dates",
             "backend/app/services/ledger_pnl_service.py ledger_pnl.formal_financial_indicator_source_contract",
             "backend/app/core_finance/formal_financial_indicators.py GS-LEDGER-PNL-FIN-IND-202603-B contract fixture builder",
+            "backend/app/core_finance/finance_metric_ledger_comparison_source_locks.py qdb-ledger-comparison-source-locks-2026-v1.0.0 immutable ledger-only comparison source identity",
+            "backend/app/services/candidate_financial_indicator_period_comparison_service.py period comparison and net-interest component detail",
             "tests/fixtures/formal_financial_indicators/ledger_pnl_202603_financial_indicator_golden.json GS-LEDGER-PNL-FIN-IND-202603-B",
+            "tests/golden_samples/GS-LEDGER-PNL-NET-INTEREST-202606-A capture-ready comparison/detail snapshot; owner approval remains TBD",
             "LedgerPnlSummaryPayload",
             "LedgerPnlDataPayload",
             "LedgerPnlFormalFinancialIndicatorContractPayload",
@@ -3550,6 +3609,8 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "backend/app/api/routes/ledger_pnl.py",
             "backend/app/services/ledger_pnl_service.py",
             "backend/app/core_finance/formal_financial_indicators.py",
+            "backend/app/core_finance/finance_metric_ledger_comparison_source_locks.py",
+            "backend/app/services/candidate_financial_indicator_period_comparison_service.py",
             "backend/app/core_finance/config/classification_rules.py",
             "backend/app/services/product_category_source_service.py",
         ],
@@ -3558,11 +3619,19 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "frontend/src/api/contracts.ts",
             "frontend/src/features/ledger-pnl/pages/LedgerPnlPage.tsx",
             "frontend/src/features/ledger-pnl/pages/LedgerPnlPage.css",
+            "frontend/src/features/ledger-pnl/components/LedgerPnlCandidatePeriodComparison.tsx",
+            "frontend/src/features/ledger-pnl/components/LedgerPnlNetInterestComponentDetailDrawer.tsx",
+            "frontend/src/features/ledger-pnl/models/candidatePeriodComparisonModel.ts",
+            "frontend/src/features/ledger-pnl/models/candidateNetInterestComponentDetailModel.ts",
             "frontend/src/mocks/ledgerPnlMocks.ts",
         ],
         "test_touchpoints": [
             "tests/test_ledger_pnl_service.py",
             "tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py",
+            "tests/test_finance_metric_ledger_comparison_source_locks.py",
+            "tests/test_candidate_financial_indicator_period_comparison_service.py",
+            "tests/test_candidate_financial_indicator_component_detail_service.py",
+            "tests/test_ledger_pnl_net_interest_golden_sample.py",
             "tests/test_golden_samples_capture_ready.py",
             "tests/test_governance_doc_contract.py",
             "tests/test_live_route_page_contract_completeness.py",
@@ -3571,12 +3640,16 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "tests/golden_samples/GS-LEDGER-PNL-SUMMARY-A/assertions.md",
             "tests/fixtures/formal_financial_indicators/ledger_pnl_202603_financial_indicator_golden.json",
         ],
-        "golden_samples": ["tests/golden_samples/GS-LEDGER-PNL-SUMMARY-A"],
+        "golden_samples": [
+            "tests/golden_samples/GS-LEDGER-PNL-SUMMARY-A",
+            "tests/golden_samples/GS-LEDGER-PNL-NET-INTEREST-202606-A",
+        ],
         "verification_focus": [
             "GS-LEDGER-PNL-SUMMARY-A is a dedicated capture-ready page-level summary DTO sample for PAGE-LEDGER-PNL-001; it is captured-awaiting-approval and does not approve formal use.",
             "Trace /api/ledger-pnl/summary, /api/ledger-pnl/data, and /api/ledger-pnl/formal-financial-indicators through pnlCoreClient, LedgerPnlPage, summary cards, detail tables, source-contract panel, and result_meta display before changing display logic.",
             "Check report_date, report_month, currency filter, yuan-to-yi display conversion, signed amount display, source_version, rule_version, cache_version, trace_id, as_of_date, and date_basis.",
             "Keep GS-LEDGER-PNL-FIN-IND-202603-B as a formal financial indicator source-contract fixture only; it freezes source status and Excel sample values but does not approve system values for formal use.",
+            "Trace the period-comparison source periods through the immutable comparison source-lock asset, backend standard/degraded status, frontend headline and four component-detail source locators; standard_candidate proves source identity and arithmetic foot only.",
         ],
         "guardrails": [
             "Treat MTR-LPN-001 through MTR-LPN-003 as candidate display metrics with pending_confirmation=true.",
@@ -3595,32 +3668,48 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "pnl-by-business",
             "pnl_by_business",
             "/pnl-by-business",
+            "pnl-by-business-insights",
+            "/pnl-by-business-insights",
             "PAGE-PNL-BY-BUSINESS-001",
+            "/api/pnl/by-business-insights",
             "/api/pnl/by-business-ytd",
             "/api/pnl/by-business-analysis",
         ],
         "frontend_route": "/pnl-by-business",
-        "primary_api": "/api/pnl/by-business-ytd",
+        "primary_api": "/api/pnl/by-business-insights",
         "supporting_apis": [
+            "/api/pnl/by-business-ytd",
             "/api/pnl/by-business-monthly",
             "/api/pnl/by-business",
             "/api/pnl/by-business-analysis",
+            "/api/pnl/by-business-candidate-insights",
             "/api/pnl/by-business/manual-adjustments",
             "/api/adb/comparison",
         ],
         "contract_docs": [
             "docs/page_contracts.md",
+            "docs/metric_dictionary.md",
+            "docs/golden_sample_catalog.md",
+            "docs/pnl/candidate-metrics-promotion-review.md",
             "docs/pnl/pnl-by-business-formal-untraced-diagnostic-2026-05-31.md",
             "docs/pnl/pnl-by-business-formal-untraced-detail-packet-2026-05-31.md",
+            "tests/golden_samples/GS-PNL-BUSINESS-INSIGHTS-A/approval.md",
         ],
+        "metric_ids": [f"MTR-PNLBIZ-{index:03d}" for index in range(1, 8)],
         "truth_chain": [
             "docs/page_contracts.md PAGE-PNL-BY-BUSINESS-001",
             "YTD/monthly ZQTZ management-disclosure business classification is the primary analysis view.",
             "Formal primary is formal reconciliation evidence only and must not be mixed into YTD/monthly business conclusions.",
-            "This page has no newly approved MTR metric binding in this pass.",
+            "MTR-PNLBIZ-001 through MTR-PNLBIZ-007 are approved formal derived-insights bindings served by GET /api/pnl/by-business-insights.",
+            "MTR-PNLBIZ-006 is diagnostic-only and remains separate from leadership concentration, FTP, share-drift, and quadrant conclusions.",
+            "GS-PNL-BUSINESS-INSIGHTS-A is the approved formula/DTO sample; it does not independently approve the underlying PnL or balance facts.",
             "backend/app/services/pnl_service.py materialize_pnl_by_business_read_model",
+            "backend/app/services/pnl_by_business_candidate_insights.py pnl_by_business_insights_envelope",
+            "backend/app/core_finance/pnl_by_business_insights.py",
             "fact_formal_pnl_fi + fact_nonstd_pnl_bridge + fact_formal_zqtz_balance_daily",
             "fact_pnl_by_business_precompute",
+            "pnl.by_business_insights result_kind with formal_use_allowed=true and result_version=v2",
+            "/api/pnl/by-business-insights",
             "pnl_by_business_adjustments as audit/reconciliation control evidence",
             "/api/pnl/by-business-ytd",
             "frontend/src/features/pnl/PnlByBusinessPage.tsx",
@@ -3628,6 +3717,8 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
         "backend_touchpoints": [
             "backend/app/api/routes/pnl.py",
             "backend/app/services/pnl_service.py",
+            "backend/app/services/pnl_by_business_candidate_insights.py",
+            "backend/app/core_finance/pnl_by_business_insights.py",
             "backend/app/repositories/pnl_repo.py",
             "backend/app/schemas/pnl.py",
         ],
@@ -3636,22 +3727,34 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "frontend/src/api/contracts.ts",
             "frontend/src/features/pnl/PnlByBusinessPage.tsx",
             "frontend/src/features/pnl/pnlByBusinessPageModel.ts",
+            "frontend/src/features/pnl/pnlByBusinessInsightsModel.ts",
+            "frontend/src/features/pnl/PnlByBusinessInsightsLeadershipPanel.tsx",
+            "frontend/src/features/pnl-business-insights/PnlByBusinessInsightsPage.tsx",
         ],
         "test_touchpoints": [
             "tests/test_pnl_api_contract.py",
+            "tests/test_pnl_by_business_insights_contract.py",
+            "tests/test_pnl_by_business_candidate_insights_contract.py",
+            "tests/test_golden_samples_capture_ready.py",
             "tests/test_live_route_page_contract_completeness.py",
             "frontend/src/features/pnl/pnlByBusinessPageModel.test.ts",
+            "frontend/src/features/pnl/pnlByBusinessInsightsModel.test.ts",
+            "frontend/src/features/pnl/PnlByBusinessInsightsLeadershipPanel.test.tsx",
+            "frontend/src/features/pnl-business-insights/PnlByBusinessInsightsPage.test.tsx",
             "frontend/src/test/PnlRoutesSmoke.test.tsx",
         ],
-        "golden_samples": [],
+        "golden_samples": ["tests/golden_samples/GS-PNL-BUSINESS-INSIGHTS-A"],
         "verification_focus": [
-            "No dedicated golden sample is currently registered for PAGE-PNL-BY-BUSINESS-001; verify through page contract, PnL API contract tests, frontend model tests, and lineage evidence.",
+            "Verify GS-PNL-BUSINESS-INSIGHTS-A against the approved MTR-PNLBIZ-001 through MTR-PNLBIZ-007 formulas, DTO fields, units, eligibility rules, nested component evidence, and diagnostic separation.",
+            "Trace /api/pnl/by-business-insights result_meta and component_evidence through pnlClient, pnlByBusinessInsightsModel, the leadership panel, and the detail route; fail closed on date, quality, vendor, or fallback mismatch.",
             "Trace the active monthly/YTD/formal endpoint result_meta through pnlClient, pnlByBusinessPageModel, PnlByBusinessPage, status strip, main table, and evidence panel before changing display logic.",
             "Check YTD year/as_of_date, monthly report bucket, formal report_date, fallback/stale/warning visibility, and null-vs-zero semantics.",
             "Check units: amount fields are displayed as ten-thousand yuan unless explicitly labelled hundred-million yuan; ADB/current balance are hundred-million yuan; yields are percent.",
         ],
         "guardrails": [
             "Manual adjustment audit/actions are audit and reconciliation controls; they must not create a new official metric definition.",
+            "MTR-PNLBIZ-006 is diagnostic-only; do not mix untraced-FI trend evidence into leadership concentration, FTP, share-drift, or quadrant conclusions.",
+            "Formal approval covers the seven derived-insights definitions and DTO contract only; it does not independently approve underlying PnL, ADB, FX, FTP-rate, or balance facts.",
             "Product-category truth remains governed by PAGE-PROD-CAT-PNL-001 and must not be replaced by Business Type PnL rows.",
             "Ledger-account PnL truth remains governed by PAGE-LEDGER-PNL-001 and must not be inferred from this page.",
             "Formal PnL overview truth remains PAGE-PNL-001, and PnL Bridge truth remains PAGE-BRIDGE-001.",
@@ -4399,7 +4502,7 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
         ],
         "truth_chain": [
             "docs/page_contracts.md PAGE-POS-001",
-            "docs/metric_dictionary.md MTR-POS-001 and MTR-POS-002 as candidate metrics with pending_confirmation=true and bound_sample_id=none",
+            "docs/metric_dictionary.md MTR-POS-001 and MTR-POS-002 as candidate metrics with pending_confirmation=true, bound to GS-POSITIONS-BONDS-LIST-A and GS-POSITIONS-INTERBANK-LIST-A capture-ready samples awaiting owner approval",
             "docs/metric_dictionary.md GAP-POS-LIST",
             "GET /ui/balance-analysis/dates",
             "balance-analysis dates supply the default report_dates selector for this page",
@@ -4427,22 +4530,22 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "frontend/src/features/positions/components/IndustryDistributionCard.tsx",
         ],
         "test_touchpoints": [
-            "tests/test_positions_api_contract.py",
+            "tests/test_positions_api_contract.py", "tests/test_golden_samples_capture_ready.py",
             "tests/test_live_route_page_contract_completeness.py",
             "tests/test_governance_doc_contract.py",
             "frontend/src/test/PositionsView.test.tsx",
             "frontend/src/test/RouteRegistry.test.tsx",
             "frontend/src/test/CustomerDetailModal.test.tsx",
         ],
-        "golden_samples": [],
+        "golden_samples": ["tests/golden_samples/GS-POSITIONS-BONDS-LIST-A", "tests/golden_samples/GS-POSITIONS-INTERBANK-LIST-A"],
         "verification_focus": [
-            "No dedicated golden sample is currently registered for PAGE-POS-001; verify list/count behavior through page contract, metric dictionary, positions API contract tests, and frontend page tests.",
+            "Dedicated golden samples GS-POSITIONS-BONDS-LIST-A and GS-POSITIONS-INTERBANK-LIST-A are capture-ready pending approval and freeze the candidate list DTOs with the total==evidence_rows record-count anchor; verify list/count behavior through page contract, metric dictionary, golden sample replay, positions API contract tests, and frontend page tests.",
             "Trace /api/positions/bonds and /api/positions/interbank through positions_service, positionsClient, PositionsView, table totals, candidate-boundary copy, and result_meta display before changing display logic.",
             "Check report_date selection from balance-analysis dates, explicit URL report_date behavior, list request gating, start_date/end_date interval semantics for counterparty/stat endpoints, and customer drilldown report_date behavior.",
-            "Verify GAP-POS-LIST remains explicit: positions list/stat DTOs are page evidence but not approved formal business metric truth or dedicated sample truth.",
+            "Verify GAP-POS-LIST remains explicit: positions list/stat DTOs and their capture-ready samples are page evidence, not approved formal business metric truth.",
         ],
         "guardrails": [
-            "Treat MTR-POS-001 and MTR-POS-002 as candidate display metrics with pending_confirmation=true and bound_sample_id=none.",
+            "Treat MTR-POS-001 and MTR-POS-002 as candidate display metrics with pending_confirmation=true; their capture-ready samples GS-POSITIONS-BONDS-LIST-A and GS-POSITIONS-INTERBANK-LIST-A remain captured-awaiting-approval and do not grant formal use.",
             "Keep GAP-POS-LIST visible in the page contract and do not promote positions list/count DTOs into formal metric truth without new contracts, samples, and tests.",
             "Do not use positions list totals to replace formal PnL, product-category PnL, bond-dashboard headline truth, or balance-analysis truth.",
             "Do not fire list requests without an explicit report_date; preserve balance-analysis dates as the default selector source and keep that dual-source boundary visible.",
@@ -4646,23 +4749,24 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "stock_analysis",
             "/stock-analysis",
             "GAP-STOCK-ANALYSIS-PAGE",
+            "/ui/market-data/stock-analysis/workbench", "market_data.stock_analysis.workbench",
         ],
         "frontend_route": "/stock-analysis",
-        "primary_api": "/ui/market-data/livermore",
+        "primary_api": "/ui/market-data/stock-analysis/workbench",
         "supporting_apis": [
-            "/ui/market-data/livermore/signal-confluence",
-            "/ui/market-data/livermore/stock-detail",
-            "/ui/market-data/livermore/candidate-history",
-            "/ui/market-data/livermore/strategy-score",
-            "/ui/market-data/livermore/strategy-optimization",
-            "/ui/market-data/livermore/cycle-proxy-backtest",
-            "/ui/market-data/livermore/candidate-history-portfolio-backtest",
-            "/ui/market-data/livermore/sector-rank-series",
+            "/ui/market-data/livermore",
+            "/ui/market-data/livermore/signal-confluence", "/ui/market-data/livermore/stock-detail",
+            "/ui/market-data/livermore/candidate-history", "/ui/market-data/livermore/strategy-score",
+            "/ui/market-data/livermore/strategy-optimization", "/ui/market-data/livermore/cycle-proxy-backtest",
+            "/ui/market-data/livermore/candidate-history-portfolio-backtest", "/ui/market-data/livermore/sector-rank-series",
         ],
         "contract_docs": [
-            "docs/audits/2026-06-06-stock-analysis-gate-i-lane.md",
-            "docs/pnl/stock-analysis-owner-evidence-packet.md",
+            "docs/stock_analysis_workbench_api_contract.md", "docs/audits/2026-06-06-stock-analysis-gate-i-lane.md",
+            "docs/pnl/stock-analysis-owner-evidence-packet.md", "docs/pnl/stock-analysis-sign-off-packet.md",
+            "docs/pnl/stock-analysis-governance-audit-packet.md",
             "docs/pnl/stock-analysis-business-owner-approval-template.md",
+            "docs/pnl/stock-analysis-owner-signoff-runbook.md",
+            "docs/pnl/stock-analysis-owner-qa-checklist.md",
             "docs/live_route_maturity.md",
             "docs/page_contracts.md",
             "docs/metric_dictionary.md",
@@ -4670,25 +4774,30 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
         ],
         "truth_chain": [
             "docs/audits/2026-06-06-stock-analysis-gate-i-lane.md defines the direct observational Gate I lane and no-trading-instruction boundary for /stock-analysis.",
-            "docs/pnl/stock-analysis-owner-evidence-packet.md packages owner-review evidence without approving page closure.",
-            "docs/pnl/stock-analysis-business-owner-approval-template.md captures pending owner fields and preserves formal_use_allowed=false.",
-            "tests/golden_samples/GS-STOCK-ANALYSIS-OBS-A freezes the observation-only Livermore primary DTO for /stock-analysis.",
+            "docs/pnl/stock-analysis-owner-evidence-packet.md packages owner-review evidence while preserving formal_use_allowed=false.",
+            "docs/pnl/stock-analysis-sign-off-packet.md is observational sign-off evidence only and does not approve page closure.",
+            "docs/pnl/stock-analysis-governance-audit-packet.md is review-only audit evidence and does not write governance records.",
+            "docs/pnl/stock-analysis-business-owner-approval-template.md captures pending owner fields and remains unsigned.",
+            "docs/pnl/stock-analysis-owner-signoff-runbook.md lists the human review, fill, and post-signing verification commands without promoting formal stock-analysis truth or trading instructions.",
+            "docs/pnl/stock-analysis-owner-qa-checklist.md lists the owner page checks, evidence checks, and verification commands before any signature.",
+            "docs/stock_analysis_workbench_api_contract.md binds the implemented workbench wrapper to GAP-STOCK-ANALYSIS-PAGE while preserving analytical basis and formal_use_allowed=false.",
+            "GET /ui/market-data/stock-analysis/workbench returns market_data.stock_analysis.workbench as the page primary analytical envelope.",
+            "tests/golden_samples/GS-STOCK-ANALYSIS-OBS-A freezes the underlying observation-only Livermore DTO; it is not an independent golden sample for the workbench wrapper.",
             "docs/live_route_maturity.md marks /stock-analysis as temporary-exception with page id GAP-STOCK-ANALYSIS-PAGE",
-            "docs/page_contracts.md currently lists /stock-analysis as a Market Workbench Home downstream page, not as a standalone PAGE-STOCK contract",
-            "search_contract_docs has no PAGE-STOCK-* or MTR-STOCK-* binding for this page in the current contract set",
+            "The page-local workbench contract does not create a standalone PAGE-STOCK-* identity or MTR-STOCK-* binding.",
             "GET /ui/market-data/livermore returns market_data.livermore analytical observation-only evidence",
             "GET /ui/market-data/livermore/signal-confluence returns read-only signal confluence diagnostics",
             "GET /ui/market-data/livermore/strategy-score and strategy-optimization use candidate-history diagnostics for ranking, not formal metric approval",
             "GET /ui/market-data/livermore/cycle-proxy-backtest and candidate-history-portfolio-backtest are reduced proxy backtests with full-strategy readiness gaps",
+            "backend/app/services/stock_analysis_workbench_service.py composes the first-screen decision, queue, module status, evidence, and issue boundaries without adding finance math.",
             "backend/app/services/market_data_livermore_service.py keeps risk_exit backend-owned and gated by unsupported_outputs, rule_readiness, and data_gaps",
             "backend/app/services/livermore_candidate_history_service.py builds candidate-history diagnostics from read-only persisted observations",
-            "frontend/src/features/stock-analysis/pages/StockAnalysisPage.tsx renders the route as a read-only review surface with readiness and boundary states visible",
+            "frontend/src/features/stock-analysis/pages/StockAnalysisPageImpl.tsx consumes the workbench endpoint for the first screen and keeps deep diagnostics lazy.",
             "frontend/src/features/stock-analysis/lib/stockAnalysisPageModel.ts localizes observation-only and no-trading-instruction boundaries",
         ],
         "backend_touchpoints": [
-            "backend/app/api/routes/market_data_livermore.py",
-            "backend/app/services/market_data_livermore_service.py",
-            "backend/app/services/livermore_signal_confluence_service.py",
+            "backend/app/api/routes/market_data_livermore.py", "backend/app/services/stock_analysis_workbench_service.py",
+            "backend/app/services/market_data_livermore_service.py", "backend/app/services/livermore_signal_confluence_service.py",
             "backend/app/services/livermore_candidate_history_service.py",
             "backend/app/services/livermore_stock_detail_service.py",
             "backend/app/services/livermore_sector_rank_series_service.py",
@@ -4698,13 +4807,14 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
         "frontend_touchpoints": [
             "frontend/src/api/marketDataClient.ts",
             "frontend/src/api/contracts.ts",
-            "frontend/src/features/stock-analysis/pages/StockAnalysisPage.tsx",
-            "frontend/src/features/stock-analysis/lib/stockAnalysisPageModel.ts",
+            "frontend/src/features/stock-analysis/pages/StockAnalysisPage.tsx", "frontend/src/features/stock-analysis/pages/StockAnalysisPageImpl.tsx",
+            "frontend/src/features/stock-analysis/lib/stockAnalysisPageModel.ts", "frontend/src/features/stock-analysis/lib/stockAnalysisWorkbenchQueueModel.ts",
             "frontend/src/features/stock-analysis/lib/buildStockAnalysisAgentPageContext.ts",
             "frontend/src/features/stock-analysis/components/StockDetailDrawer.tsx",
             "frontend/src/router/routes.tsx",
         ],
         "test_touchpoints": [
+            "tests/test_stock_analysis_workbench_api.py", "tests/test_stock_analysis_workbench_first_screen_contract.py",
             "tests/test_market_data_livermore_api.py",
             "tests/test_market_data_livermore_risk_exit_source.py",
             "tests/test_market_data_livermore_candidate_history.py",
@@ -4719,9 +4829,10 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
         ],
         "golden_samples": ["tests/golden_samples/GS-STOCK-ANALYSIS-OBS-A"],
         "verification_focus": [
-            "Dedicated golden sample GS-STOCK-ANALYSIS-OBS-A is capture-ready pending approval and freezes observation-only Livermore DTO evidence; it does not approve trading instructions or formal stock-analysis truth.",
+            "GS-STOCK-ANALYSIS-OBS-A remains underlying Livermore DTO evidence only; the workbench wrapper has no independent golden sample or direct execution record and must remain formal_use_allowed=false.",
             "There is currently no PAGE-STOCK standalone contract or MTR-STOCK binding; do not treat this trace bundle as contract closure or formal metric approval.",
-            "Trace /ui/market-data/livermore through marketDataClient, StockAnalysisPage query state, stockAnalysisPageModel, readiness panels, boundary summary, and stock detail drawer before changing display logic.",
+            "Trace /ui/market-data/stock-analysis/workbench through marketDataClient, StockAnalysisPageImpl query state, workbench queue model, first-screen decision, readiness panels, and boundary summary before changing display logic.",
+            "Trace the supporting /ui/market-data/livermore envelope separately for underlying strategy, risk-exit, sector, and drawer semantics.",
             "Check as_of_date/requested_as_of_date, stale/fallback/no-data/error states, unsupported_outputs, rule_readiness, data_gaps, proxy-backtest sample maturity, and risk_exit blocked/ready conditions.",
         ],
         "guardrails": [
@@ -8679,12 +8790,15 @@ def choose_date_column(column_names: list[str]) -> str | None:
 
 
 def page_evidence_readiness_row(bundle: dict[str, Any]) -> dict[str, Any]:
-    combined = bundle_text(bundle)
-    approval_readiness = page_approval_readiness(bundle, combined)
+    approval_readiness = page_approval_readiness(bundle, bundle_text(bundle))
     approval_status = approval_readiness["status"]
     formal_use_allowed = approval_status == "formal_or_governed"
-    golden_samples = list(bundle.get("golden_samples") or [])
-    golden_status = golden_sample_status(bundle, approval_status)
+    golden_readiness = golden_sample_readiness(
+        bundle,
+        approval_status,
+        repo_root=REPO_ROOT,
+        bundle_text=bundle_text(bundle),
+    )
     lineage_status = lineage_readiness(bundle)
     lineage_anchors = lineage_status["anchors"]
     catalog_anchors = catalog_date_readiness_anchors(bundle, lineage_anchors)
@@ -8697,6 +8811,9 @@ def page_evidence_readiness_row(bundle: dict[str, Any]) -> dict[str, Any]:
         "approval_status": approval_status,
         "approval_status_source": approval_readiness["source"],
         "formal_use_allowed": formal_use_allowed,
+        "contract_status": approval_status, "formal_envelope_allowed": formal_use_allowed,
+        "golden_approval_status": golden_readiness["approval_status"],
+        "business_owner_closure_status": "direct_review_required",
         "checks": {
             "trace_bundle": {
                 "status": "present",
@@ -8710,15 +8827,11 @@ def page_evidence_readiness_row(bundle: dict[str, Any]) -> dict[str, Any]:
                 "status": "direct_review_required",
                 "anchors": catalog_anchors,
             },
-            "golden_sample": {
-                "status": golden_status,
-                "anchors": golden_samples,
-            },
+            "golden_sample": golden_readiness,
         },
-        "residual_gaps": residual_evidence_gaps(bundle, approval_status, golden_status),
+        "residual_gaps": residual_evidence_gaps(bundle, approval_status, golden_readiness),
         "guardrails": list(bundle.get("guardrails") or []),
     }
-
 
 def bundle_text(bundle: dict[str, Any]) -> str:
     values: list[str] = []
@@ -12008,18 +12121,6 @@ def page_lineage_recommended_next_actions(page_id: str, lineage_status: str) -> 
     ]
 
 
-def golden_sample_status(bundle: dict[str, Any], approval_status: str) -> str:
-    golden_samples = list(bundle.get("golden_samples") or [])
-    if not golden_samples:
-        return "missing"
-    text = bundle_text(bundle).casefold()
-    if approval_status != "formal_or_governed":
-        if "dto" in text or "page headline" in text or "page-level dto" in text:
-            return "page_dto_only"
-        return "supporting_or_fragment_only"
-    return "approved"
-
-
 def lineage_readiness(bundle: dict[str, Any]) -> dict[str, Any]:
     page_id = str(bundle.get("page_id") or "")
     anchors = lineage_query_terms(page_id, LineageEvidenceProvider._QUERY_EXPANSIONS)
@@ -12108,8 +12209,12 @@ def filter_readiness_anchors(anchors: list[str], *, limit: int = 40) -> list[str
     return filtered
 
 
-def residual_evidence_gaps(bundle: dict[str, Any], approval_status: str, golden_status: str) -> list[str]:
+def residual_evidence_gaps(
+    bundle: dict[str, Any], approval_status: str, golden_readiness: dict[str, Any]
+) -> list[str]:
     page_id = str(bundle.get("page_id") or "")
+    golden_scope_status = str(golden_readiness["status"])
+    golden_approval_status = str(golden_readiness["approval_status"])
     gaps = [
         "full data-catalog/date review required before page-level closure.",
         "direct page-keyed governance records are still required before treating this as proof of a specific page/API execution.",
@@ -12120,9 +12225,11 @@ def residual_evidence_gaps(bundle: dict[str, Any], approval_status: str, golden_
         gaps.append("Mixed-source page cannot be collapsed into full-page formal truth.")
     if approval_status == "gap_or_observational":
         gaps.append("GAP/observational route lacks standalone formal page contract closure.")
-    if golden_status == "missing":
+    if golden_scope_status == "missing":
         gaps.append("dedicated golden sample is missing for the page-level metric surface.")
-    elif golden_status != "approved":
+    elif golden_approval_status != "approved":
+        gaps.append(f"Golden sample approval is {golden_approval_status}; it must not be treated as approved evidence.")
+    if golden_scope_status in {"supporting_or_fragment_only", "page_dto_only"}:
         gaps.append("Existing golden sample is supporting or page DTO evidence only, not dictionary-level approval.")
     if page_id == "PAGE-BOND-001":
         gaps.append("MTR-BOND-* dictionary-level approval remains pending.")
@@ -12137,7 +12244,6 @@ def residual_evidence_gaps(bundle: dict[str, Any], approval_status: str, golden_
         gaps.append("Trading instructions, PAGE-STOCK contracts, MTR-* creation, and formal approval remain out of scope.")
         gaps.append("Dedicated sample GS-STOCK-ANALYSIS-OBS-A is page DTO evidence only, not formal stock-analysis truth.")
     return gaps
-
 
 def list_golden_samples(*, limit: int) -> list[dict[str, Any]]:
     root = REPO_ROOT / "tests" / "golden_samples"

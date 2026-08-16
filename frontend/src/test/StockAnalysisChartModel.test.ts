@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { StockSectorViewRow } from "../features/stock-analysis/lib/stockAnalysisPageModel";
+import { nocturneTokens } from "../theme/designSystem";
 import {
   buildCompactBarOption,
   buildEventSummaryOption,
@@ -9,6 +10,9 @@ import {
   buildReviewQueueRankingOption,
   buildRiskSupplyChartRows,
   buildSectorChartRows,
+  buildSectorSeriesTrendOption,
+  buildSectorStrengthBarRows,
+  buildSectorStrengthCardModel,
   buildSectorStrengthOption,
   resolveSectorMetricValue,
   sectorViewLabel,
@@ -54,6 +58,22 @@ const sectorRow: StockSectorViewRow = {
 };
 
 describe("stockAnalysisChartModel", () => {
+  it("sources the chart palette from canonical Nocturne tokens", () => {
+    expect(stockChartPalette).toEqual({
+      ink: nocturneTokens.color.ink,
+      muted: nocturneTokens.color.inkMuted,
+      grid: nocturneTokens.color.lineSoft,
+      track: nocturneTokens.color.line,
+      primary: nocturneTokens.color.blue,
+      primaryLight: nocturneTokens.color.inkMuted,
+      accent: nocturneTokens.color.inkSoft,
+      success: nocturneTokens.color.green,
+      successLight: nocturneTokens.color.greenSoft,
+      danger: nocturneTokens.color.red,
+      gold: nocturneTokens.color.amber,
+    });
+  });
+
   it("exposes stable sector view labels and metric selectors", () => {
     expect(sectorViewTabs).toEqual([
       { key: "score", label: "综合得分" },
@@ -239,5 +259,126 @@ describe("stockAnalysisChartModel", () => {
     expect(sector.tooltip?.formatter?.([{ dataIndex: 0 }])).toBe(
       "1. 半导体<br/>平均涨跌幅: +2.35%<br/>成分 24",
     );
+  });
+
+  it("builds first-screen SVG bar rows on the same caliber as the ECharts sector option", () => {
+    const negativeRow: StockSectorViewRow = {
+      ...sectorRow,
+      rank: 2,
+      sectorCode: "BK002",
+      sectorName: "银行",
+      pctChange: "-1.10%",
+      pctChangeValue: -1.1,
+    };
+
+    const scoreBars = buildSectorStrengthBarRows({
+      rows: [sectorRow],
+      view: "score",
+      activeSectorCode: "BK001",
+    });
+    expect(scoreBars).toHaveLength(1);
+    // score 视角 X 轴固定 0..1：跨度即后端归一分值，起点在零轴。
+    expect(scoreBars[0]).toMatchObject({
+      key: "BK001",
+      name: "半导体",
+      rank: 1,
+      valueLabel: "0.82",
+      active: true,
+      barStartFraction: 0,
+    });
+    expect(scoreBars[0].barSpanFraction).toBeCloseTo(0.82, 6);
+    expect(scoreBars[0].title).toBe("1. 半导体\n综合得分: 0.82\n成分 24");
+
+    const pctBars = buildSectorStrengthBarRows({
+      rows: [sectorRow, negativeRow],
+      view: "pctchange",
+      activeSectorCode: null,
+    });
+    // pctchange 视角对称轴：absMax*1.08，正值自零轴向右、负值向左。
+    const range = 2 * 2.35 * 1.08;
+    expect(pctBars[0].barStartFraction).toBeCloseTo(0.5, 6);
+    expect(pctBars[0].barSpanFraction).toBeCloseTo(2.35 / range, 6);
+    expect(pctBars[1].barStartFraction).toBeCloseTo(0.5 - 1.1 / range, 6);
+    expect(pctBars[1].barSpanFraction).toBeCloseTo(1.1 / range, 6);
+    expect(pctBars[1].barStartFraction + pctBars[1].barSpanFraction).toBeCloseTo(0.5, 6);
+    expect(pctBars[0].active).toBe(false);
+    expect(pctBars[1].valueLabel).toBe("-1.10%");
+
+    // 与 ECharts 版一致：只展示前 10 行。
+    const manyRows = Array.from({ length: 12 }, (_, index) => ({
+      ...sectorRow,
+      rank: index + 1,
+      sectorCode: `BK${String(index + 1).padStart(3, "0")}`,
+    }));
+    expect(
+      buildSectorStrengthBarRows({ rows: manyRows, view: "score", activeSectorCode: null }),
+    ).toHaveLength(10);
+  });
+
+  it("resolves the first-screen sector card state on the page's existing priority", () => {
+    const base = {
+      view: "score" as const,
+      activeSectorCode: null,
+      sourceLabel: "策略快照",
+      leaderName: "半导体",
+      seriesLoading: false,
+      seriesErrored: false,
+      seriesErrorMessage: null,
+    };
+
+    const ready = buildSectorStrengthCardModel({ ...base, rows: [sectorRow] });
+    expect(ready.state).toBe("ready");
+    expect(ready.bars).toHaveLength(1);
+    expect(ready.sectorCount).toBe(1);
+    expect(ready.leaderLabel).toBe("半导体");
+    expect(ready.emptyReason).toBeNull();
+    expect(ready.errorMessage).toBeNull();
+
+    // 有行优先于回退查询状态：即便序列查询在跑，也不回退到 loading。
+    expect(
+      buildSectorStrengthCardModel({ ...base, rows: [sectorRow], seriesLoading: true }).state,
+    ).toBe("ready");
+
+    expect(buildSectorStrengthCardModel({ ...base, rows: [], seriesLoading: true }).state).toBe(
+      "loading",
+    );
+
+    const errored = buildSectorStrengthCardModel({
+      ...base,
+      rows: [],
+      seriesErrored: true,
+      seriesErrorMessage: "读取失败",
+    });
+    expect(errored.state).toBe("error");
+    expect(errored.errorMessage).toBe("读取失败");
+
+    const empty = buildSectorStrengthCardModel({ ...base, rows: [] });
+    expect(empty.state).toBe("empty");
+    expect(empty.bars).toHaveLength(0);
+    expect(empty.emptyReason).toBe("板块强度暂无可用样本，等待快照或支撑序列补全");
+  });
+
+  it("builds multi-day sector trend chart options from backend series rows", () => {
+    const option = buildSectorSeriesTrendOption([
+      {
+        sectorCode: "BK001",
+        sectorName: "半导体",
+        dates: ["2026-04-28", "2026-04-29"],
+        scores: [0.7, 0.82],
+      },
+      {
+        sectorCode: "BK002",
+        sectorName: "新能源",
+        dates: ["2026-04-28", "2026-04-29"],
+        scores: [0.5, 0.55],
+      },
+    ]);
+    const chart = inspectChartOption(option);
+
+    expect(chart.animation).toBe(false);
+    expect(chart.series).toHaveLength(2);
+    expect(chart.series[0].name).toBe("半导体");
+    expect(chart.series[0].data).toEqual([0.7, 0.82]);
+    expect(chart.series[1].data).toEqual([0.5, 0.55]);
   });
 });

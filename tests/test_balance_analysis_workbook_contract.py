@@ -20,6 +20,8 @@ from fastapi.testclient import TestClient
 from backend.app.governance.settings import get_settings
 from tests.helpers import ROOT, load_module
 
+pytestmark = [pytest.mark.integration, pytest.mark.materialize]
+
 # Keys exercised by tests in this module (API + `_build_*` helpers). Keep in sync with the spec doc.
 GOVERNED_WORKBOOK_SUPPORTED_TABLE_KEYS = frozenset(
     {
@@ -61,6 +63,23 @@ FIXED = "\u56fa\u5b9a"
 ISSUANCE_ASSET_CLASS = "\u53d1\u884c\u7c7b\u503a\u52b5"
 INTERBANK_DEPOSIT = "\u540c\u4e1a\u5b58\u653e"
 JOINT_STOCK_BANK = "\u80a1\u4efd\u5236\u94f6\u884c"
+
+# The workbook request below uses the formal CNY basis.  The fixture contains a
+# CNY 100 face-value bond and a USD 50 face-value bond, with a seeded USD/CNY
+# mid-rate of 7.2.  Workbook amounts are presentation values in 万元.
+_WANYUAN_DIVISOR = Decimal("10000")
+_POLICY_FACE_NATIVE_WANYUAN = Decimal("100") / _WANYUAN_DIVISOR
+_USD_RECEIVABLE_FACE_NATIVE_WANYUAN = Decimal("50") / _WANYUAN_DIVISOR
+_USD_CNY_MID_RATE = Decimal("7.2")
+_USD_RECEIVABLE_FACE_CNY_WANYUAN = (
+    _USD_RECEIVABLE_FACE_NATIVE_WANYUAN * _USD_CNY_MID_RATE
+)
+_EXPECTED_NATIVE_BOND_ASSETS_WANYUAN = (
+    _POLICY_FACE_NATIVE_WANYUAN + _USD_RECEIVABLE_FACE_NATIVE_WANYUAN
+)
+_EXPECTED_CNY_BOND_ASSETS_WANYUAN = (
+    _POLICY_FACE_NATIVE_WANYUAN + _USD_RECEIVABLE_FACE_CNY_WANYUAN
+)
 
 
 @pytest.fixture(autouse=True)
@@ -650,18 +669,22 @@ def test_workbook_decision_and_risk_items_use_full_scope_maturity_gap_amount():
             is_issuance_like=is_issuance_like,
         )
 
+    # BAL-P1-08（owner 2026-08-12 裁决）：severity 阈值为绝对亿元口径
+    # （high ≥ 100 亿 = 1,000,000 万元，medium ≥ 10 亿 = 100,000 万元）。
+    # 资产 150 亿元、发行类负债 135 亿元：全口径缺口 15 亿元（150,000 万元）→ medium；
+    # 若误用窄口径缺口 150 亿元（1,500,000 万元）则为 high，severity 仍可判别口径。
     rows = [
         zqtz_row(
             code="ASSET",
             position_scope="asset",
-            face_value_amount=Decimal("1000000"),
+            face_value_amount=Decimal("15000000000"),
             maturity_date=date(2026, 6, 30),
             is_issuance_like=False,
         ),
         zqtz_row(
             code="ISSUE",
             position_scope="liability",
-            face_value_amount=Decimal("900000"),
+            face_value_amount=Decimal("13500000000"),
             maturity_date=date(2026, 6, 30),
             is_issuance_like=True,
         ),
@@ -673,12 +696,12 @@ def test_workbook_decision_and_risk_items_use_full_scope_maturity_gap_amount():
     )
 
     assert gap_decision["severity"] == "medium"
-    assert gap_decision["reason"] == "全口径期限桶缺口为 10 万元。"
+    assert gap_decision["reason"] == "全口径期限桶缺口为 150000 万元。"
 
     risk_section = workbook_module._build_risk_alerts_table(report_date, rows[1:], [])
     gap_risk = next(row for row in risk_section["rows"] if row["rule_id"] == "bal_wb_risk_gap_001")
 
-    assert gap_risk["reason"] == "Full-scope gap dropped to -90 wan yuan."
+    assert gap_risk["reason"] == "Full-scope gap dropped to -1350000 wan yuan."
 
 
 def test_workbook_interest_mode_table_normalizes_fixed_floating_and_unknown_labels():
@@ -919,7 +942,11 @@ def test_real_tyw_parse_marks_tongye_cunfang_as_liability():
     assert all(str(row["position_side"]) == "liability" for row in cunfang_rows[:10])
 
 
-def test_balance_analysis_workbook_api_returns_governed_sections(tmp_path, monkeypatch):
+def test_balance_analysis_workbook_api_returns_governed_sections(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -961,7 +988,20 @@ def test_balance_analysis_workbook_api_returns_governed_sections(tmp_path, monke
     } <= card_keys
     card_map = {card["key"]: card for card in payload["result"]["cards"]}
     assert Decimal(str(card_map["issuance_liabilities"]["value"])) > Decimal("0")
-    assert Decimal(str(card_map["bond_assets_excluding_issue"]["value"])) == Decimal("0.015")
+    assert Decimal(str(card_map["bond_assets_excluding_issue"]["value"])) == _EXPECTED_CNY_BOND_ASSETS_WANYUAN
+
+    native_response = client.get(
+        "/ui/balance-analysis/workbook",
+        params={"report_date": "2025-12-31", "position_scope": "all", "currency_basis": "native"},
+    )
+    assert native_response.status_code == 200
+    native_card_map = {
+        card["key"]: card for card in native_response.json()["result"]["cards"]
+    }
+    assert Decimal(str(native_card_map["bond_assets_excluding_issue"]["value"])) == _EXPECTED_NATIVE_BOND_ASSETS_WANYUAN
+    assert Decimal(str(native_card_map["bond_assets_excluding_issue"]["value"])) != Decimal(
+        str(card_map["bond_assets_excluding_issue"]["value"])
+    )
 
     table_keys = {table["key"] for table in payload["result"]["tables"]}
     assert GOVERNED_WORKBOOK_SUPPORTED_TABLE_KEYS <= table_keys
@@ -975,7 +1015,7 @@ def test_balance_analysis_workbook_api_returns_governed_sections(tmp_path, monke
     policy_row = next(row for row in bond_rows if row["bond_type"] == POLICY_BOND)
     assert Decimal(str(policy_row["balance_amount"])) < Decimal("1")
     delegated_row = next(row for row in bond_rows if row["bond_type"] == "\u5176\u4e2d\uff1a\u5916\u5e01\u59d4\u5916")
-    assert Decimal(str(delegated_row["balance_amount"])) == Decimal("0.005")
+    assert Decimal(str(delegated_row["balance_amount"])) == _USD_RECEIVABLE_FACE_CNY_WANYUAN
 
     get_settings.cache_clear()
 
@@ -983,6 +1023,7 @@ def test_balance_analysis_workbook_api_returns_governed_sections(tmp_path, monke
 def test_balance_analysis_workbook_contract_keeps_generated_decision_items_in_operational_sections(
     tmp_path,
     monkeypatch,
+    seed_wildcard_scope,
 ):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
@@ -1038,7 +1079,11 @@ def test_governed_workbook_inventory_matches_spec_contract():
     assert "advanced_attribution_bundle" in NOT_GOVERNED_OR_NOT_SUPPORTED_KEYS
 
 
-def test_balance_analysis_workbook_does_not_silently_expose_future_gap_sections(tmp_path, monkeypatch):
+def test_balance_analysis_workbook_does_not_silently_expose_future_gap_sections(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -1073,7 +1118,11 @@ def test_balance_analysis_workbook_does_not_silently_expose_future_gap_sections(
     get_settings.cache_clear()
 
 
-def test_maturity_gap_includes_issuance_and_full_scope_liabilities(tmp_path, monkeypatch):
+def test_maturity_gap_includes_issuance_and_full_scope_liabilities(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -1111,7 +1160,11 @@ def test_maturity_gap_includes_issuance_and_full_scope_liabilities(tmp_path, mon
     get_settings.cache_clear()
 
 
-def test_workbook_exposes_cashflow_calendar_section(tmp_path, monkeypatch):
+def test_workbook_exposes_cashflow_calendar_section(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -1157,7 +1210,11 @@ def test_workbook_exposes_cashflow_calendar_section(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
-def test_workbook_exposes_liquidity_layers_section(tmp_path, monkeypatch):
+def test_workbook_exposes_liquidity_layers_section(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -1190,7 +1247,7 @@ def test_workbook_exposes_liquidity_layers_section(tmp_path, monkeypatch):
     assert [row["liquidity_layer"] for row in rows] == ["Level 1", "Level 2A", "Level 2B", "其他"]
 
     layer_map = {row["liquidity_layer"]: row for row in rows}
-    total_bond = Decimal("0.015")
+    total_bond = _EXPECTED_CNY_BOND_ASSETS_WANYUAN
     l1 = layer_map["Level 1"]
     assert l1["row_count"] == 1
     assert Decimal(str(l1["balance_amount"])) == Decimal("0.01")
@@ -1210,8 +1267,8 @@ def test_workbook_exposes_liquidity_layers_section(tmp_path, monkeypatch):
 
     other = layer_map["其他"]
     assert other["row_count"] == 1
-    assert Decimal(str(other["balance_amount"])) == Decimal("0.005")
-    assert Decimal(str(other["share_of_bond_assets"])) == Decimal("0.005") / total_bond
+    assert Decimal(str(other["balance_amount"])) == _USD_RECEIVABLE_FACE_CNY_WANYUAN
+    assert Decimal(str(other["share_of_bond_assets"])) == _USD_RECEIVABLE_FACE_CNY_WANYUAN / total_bond
     assert Decimal(str(other["weighted_rate_pct"])) == Decimal("0")
     assert Decimal(str(other["hqla_haircut"])) == Decimal("0")
     assert Decimal(str(other["hqla_amount"])) == Decimal("0")
@@ -1219,7 +1276,11 @@ def test_workbook_exposes_liquidity_layers_section(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
-def test_workbook_exposes_issuer_concentration_section(tmp_path, monkeypatch):
+def test_workbook_exposes_issuer_concentration_section(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -1255,13 +1316,17 @@ def test_workbook_exposes_issuer_concentration_section(tmp_path, monkeypatch):
     assert issuer_a["count"] == 1
     assert Decimal(str(issuer_a["balance_amount"])) == Decimal("0.01")
     assert issuer_b["count"] == 1
-    assert Decimal(str(issuer_b["balance_amount"])) == Decimal("0.005")
+    assert Decimal(str(issuer_b["balance_amount"])) == _USD_RECEIVABLE_FACE_CNY_WANYUAN
     assert all(row["issuer_name"] != "IssuerC" for row in rows)
 
     get_settings.cache_clear()
 
 
-def test_workbook_exposes_rule_reference_section(tmp_path, monkeypatch):
+def test_workbook_exposes_rule_reference_section(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -1298,10 +1363,22 @@ def test_workbook_exposes_rule_reference_section(tmp_path, monkeypatch):
     assert issuance_rule["source_section"] == "12.2 zqtz formal fact 规则"
     assert "发行类" in str(issuance_rule["summary"])
 
+    overdue_interest_rule = next(
+        row for row in rows if row["rule_id"] == "bal_overdue_interest_days_placeholder"
+    )
+    assert overdue_interest_rule["source_doc"] == "docs/calc_rules.md"
+    assert "未拆分本金/利息逾期天数" in str(overdue_interest_rule["summary"])
+    assert "占位 0" in str(overdue_interest_rule["summary"])
+    assert "不代表无利息逾期" in str(overdue_interest_rule["summary"])
+
     get_settings.cache_clear()
 
 
-def test_workbook_exposes_ifrs9_classification_section(tmp_path, monkeypatch):
+def test_workbook_exposes_ifrs9_classification_section(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -1352,11 +1429,11 @@ def test_workbook_exposes_ifrs9_classification_section(tmp_path, monkeypatch):
     assert "share_of_total" in columns
     assert fvoci_asset["row_count"] == 1
     assert Decimal(str(fvoci_asset["balance_amount"])) == Decimal("0.01")
-    total_native_wan = sum(Decimal(str(r["balance_amount"])) for r in rows)
-    assert total_native_wan > Decimal("0")
-    assert Decimal(str(fvoci_asset["share_of_total"])) == Decimal(str(fvoci_asset["balance_amount"])) / total_native_wan
+    total_cny_wan = sum(Decimal(str(r["balance_amount"])) for r in rows)
+    assert total_cny_wan > Decimal("0")
+    assert Decimal(str(fvoci_asset["share_of_total"])) == Decimal(str(fvoci_asset["balance_amount"])) / total_cny_wan
     assert ac_asset["row_count"] == 1
-    assert Decimal(str(ac_asset["balance_amount"])) == Decimal("0.005")
+    assert Decimal(str(ac_asset["balance_amount"])) == _USD_RECEIVABLE_FACE_CNY_WANYUAN
 
     assert "ifrs9_position_scope" in table_map
     assert "ifrs9_source_family" in table_map
@@ -1364,7 +1441,11 @@ def test_workbook_exposes_ifrs9_classification_section(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
-def test_workbook_exposes_account_category_comparison_section(tmp_path, monkeypatch):
+def test_workbook_exposes_account_category_comparison_section(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -1400,6 +1481,6 @@ def test_workbook_exposes_account_category_comparison_section(tmp_path, monkeypa
     assert afs_row["row_count"] == 1
     assert Decimal(str(afs_row["balance_amount"])) == Decimal("0.01")
     assert bank_row["row_count"] == 1
-    assert Decimal(str(bank_row["balance_amount"])) == Decimal("0.005")
+    assert Decimal(str(bank_row["balance_amount"])) == _USD_RECEIVABLE_FACE_CNY_WANYUAN
 
     get_settings.cache_clear()

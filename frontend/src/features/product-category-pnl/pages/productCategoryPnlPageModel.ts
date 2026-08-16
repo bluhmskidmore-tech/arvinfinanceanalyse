@@ -7,7 +7,31 @@ import type {
   ProductCategoryPnlRow,
   ResultMeta,
 } from "../../../api/contracts";
-import { designTokens } from "../../../theme/designSystem";
+import { buildProductCategoryInterestSpreadAttributionImpl } from "./model/productCategoryPnlInterestSpreadModel";
+import {
+  buildProductCategoryLiabilitySideTrendSurfaceImpl,
+  selectProductCategoryLiabilityDetailMatrixImpl,
+  selectProductCategoryLiabilityDetailTrendRowsImpl,
+  selectProductCategoryLiabilitySideTrendChartImpl,
+} from "./model/productCategoryPnlLiabilityModel";
+import { interestSpreadMetricNumberInternal as interestSpreadMetricNumber } from "./model/productCategoryPnlModelInternals";
+import {
+  buildProductCategoryTrendSnapshotImpl,
+  selectProductCategoryCurrencyNetIncomeChartImpl,
+  selectProductCategoryInterestEarningAssetLiabilityScaleChartImpl,
+  selectProductCategoryInterestEarningIncomeScaleChartImpl,
+  selectProductCategoryInterestEarningSpreadChartImpl,
+  selectProductCategoryInterestEarningSpreadYearComparisonChartImpl,
+  selectProductCategoryInterestSpreadChartImpl,
+  selectProductCategoryInterestSpreadYearComparisonChartImpl,
+  selectProductCategoryIntermediateBusinessIncomeYearComparisonChartImpl,
+  selectProductCategoryTplScaleYieldChartImpl,
+  selectProductCategoryTrendReportDatesImpl,
+  selectProductCategoryTrendReportPointsImpl,
+  selectProductCategoryTwoYearInterestSpreadReportPointsImpl,
+} from "./model/productCategoryPnlTrendAndChartModel";
+import { TONE_DH_CSS_VAR } from "../../../utils/tone";
+import { EM_DASH } from "../../../utils/format";
 
 /** Display order for category rows; does not re-aggregate backend totals. */
 const DISPLAY_ORDER = [
@@ -51,13 +75,19 @@ export const PRODUCT_CATEGORY_GOVERNED_DETAIL_VIEWS = [
 
 export function mainPageViewsAreGovernedDetailSubset(): boolean {
   return PRODUCT_CATEGORY_MAIN_PAGE_VIEWS.every((view) =>
-    (PRODUCT_CATEGORY_GOVERNED_DETAIL_VIEWS as readonly string[]).includes(view),
+    (PRODUCT_CATEGORY_GOVERNED_DETAIL_VIEWS as readonly string[]).includes(
+      view,
+    ),
   );
 }
 
 /** True when the API surface includes both views required by the main-page selector. */
-export function availableViewsSupportMainPageSelector(availableViews: string[]): boolean {
-  return PRODUCT_CATEGORY_MAIN_PAGE_VIEWS.every((view) => availableViews.includes(view));
+export function availableViewsSupportMainPageSelector(
+  availableViews: string[],
+): boolean {
+  return PRODUCT_CATEGORY_MAIN_PAGE_VIEWS.every((view) =>
+    availableViews.includes(view),
+  );
 }
 
 export const PRODUCT_CATEGORY_FTP_SCENARIO_OPTIONS = [
@@ -82,7 +112,9 @@ export function defaultProductCategoryScenarioRateForReportDate(
   return "1.75";
 }
 
-export function formatProductCategoryReportMonthLabel(reportDate: string): string {
+export function formatProductCategoryReportMonthLabel(
+  reportDate: string,
+): string {
   const match = /^(\d{4})-(\d{2})-\d{2}$/.exec(reportDate);
   if (!match) {
     return reportDate;
@@ -99,60 +131,114 @@ function parseProductCategoryReportDate(
   }
   const year = Number(match[1]);
   const month = Number(match[2]);
-  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    month < 1 ||
+    month > 12
+  ) {
     return null;
   }
   return { year, month };
-}
-
-function productCategoryReportMonthPrefix(year: number, month: number): string {
-  return `${year}-${String(month).padStart(2, "0")}-`;
 }
 
 function formatProductCategoryShortMonthLabel(month: number): string {
   return `${month}\u6708`;
 }
 
-function findProductCategoryReportDateForMonth(
-  reportDates: string[],
-  year: number,
-  month: number,
-  selectedDate: string,
-): string | null {
-  const prefix = productCategoryReportMonthPrefix(year, month);
-  if (selectedDate.startsWith(prefix)) {
-    return selectedDate;
-  }
-  return reportDates.find((reportDate) => reportDate.startsWith(prefix)) ?? null;
-}
-
-function pushUniqueProductCategoryTrendPoint(
-  points: ProductCategoryTrendReportPoint[],
-  point: ProductCategoryTrendReportPoint,
-): void {
-  if (points.some((existing) => existing.reportDate === point.reportDate && existing.view === point.view)) {
-    return;
-  }
-  points.push(point);
-}
-
+/*
+ * 盈亏着色走主题感知 tone 入口（frontend/AGENTS.md：深色路由禁止浅色
+ * semantic.profit/loss 直灌）。消费方（本页 + operations-analysis 贡献表）
+ * 均为 DOM 内联样式且页根已声明 Nocturne scope，--dh-api-* 在 scope 内
+ * 解析为 --nct-* 色板；default 取强墨阶（原 neutral-900 语义）。
+ */
 export const PRODUCT_CATEGORY_VALUE_TONE_COLORS = {
-  default: designTokens.color.neutral[900],
-  positive: designTokens.color.semantic.profit,
-  negative: designTokens.color.semantic.loss,
+  default: "var(--dh-api-ink)",
+  positive: TONE_DH_CSS_VAR.positive,
+  negative: TONE_DH_CSS_VAR.negative,
 } as const;
 
 const YUAN_PER_YI = 100_000_000;
+const PRODUCT_CATEGORY_CLOSURE_ERROR_ALERT_THRESHOLD_YUAN = 500_000;
+const PRODUCT_CATEGORY_CLOSURE_ERROR_WARNING_TEXT =
+  "对账残差非零，父级自报变动与子项之和存在缺口";
+
+export type ProductCategoryCandidateMetricStatus = {
+  status: "candidate";
+  pendingConfirmation: true;
+  formalUseAllowed: false;
+  source: "frontend_derived";
+  label: string;
+  disclaimer: string;
+};
+
+export const PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS: ProductCategoryCandidateMetricStatus =
+  {
+    status: "candidate",
+    pendingConfirmation: true,
+    formalUseAllowed: false,
+    source: "frontend_derived",
+    label: "候选指标 · 非正式结论",
+    disclaimer:
+      "本区指标由前端基于后端 formal/scenario 字段进行排序、差额、阈值或诊断归类，仅供内部复核，不构成正式金融指标或业务结论。",
+  };
 
 export type ProductCategoryTrendSnapshot = {
   reportDate: string;
   label?: string;
   view?: string;
+  meta?: ResultMeta;
   rows: ProductCategoryPnlRow[];
   assetTotal?: ProductCategoryPnlRow | null;
   liabilityTotal?: ProductCategoryPnlRow | null;
   grandTotal?: ProductCategoryPnlRow | null;
   interestSpread?: ProductCategoryInterestSpreadPayload | null;
+  interestEarningSpread?: ProductCategoryInterestSpreadPayload | null;
+};
+
+export type ProductCategoryManagementMonitoringSurface = {
+  metricStatus: ProductCategoryCandidateMetricStatus;
+  state: "ready" | "insufficient" | "scenario_blocked";
+  periodLabel: string;
+  coverageLabel: string;
+  emptyCopy: string | null;
+  tpl: {
+    currentPnlLabel: string;
+    currentYieldLabel: string;
+    currentScaleLabel: string;
+    thresholds: Array<{
+      key: "prior_month" | "h1_average" | "q1_average";
+      label: string;
+      targetPnlLabel: string;
+      requiredYieldLabel: string;
+      liftBpLabel: string;
+    }>;
+  } | null;
+  liability: {
+    h1NetLabel: string;
+    positivePoolLabel: string;
+    negativePoolLabel: string;
+    offsetRatioLabel: string;
+    currentMonthDeltaLabel: string;
+    leadingMovementLabel: string;
+    leadingDriverLabel: string;
+  } | null;
+  derivatives: {
+    h1TotalLabel: string;
+    monthlyAverageLabel: string;
+    volatilityLabel: string;
+    topThreeConcentrationLabel: string;
+    negativeMonthCountLabel: string;
+  } | null;
+  runRate: {
+    q1MonthlyAverageLabel: string;
+    q2MonthlyAverageLabel: string;
+    h1MonthlyAverageLabel: string;
+    recoveryLiftLabel: string;
+    h2AtQ2PaceLabel: string;
+    gapToH1Label: string;
+  } | null;
+  methodNotes: string[];
 };
 
 export type ProductCategoryTrendReportPoint = {
@@ -213,6 +299,7 @@ export type ProductCategorySpreadMovementAttribution =
     } & ProductCategorySpreadMovementAttributionBase);
 
 export type ProductCategoryDiagnosticsSurface = {
+  metricStatus: ProductCategoryCandidateMetricStatus;
   headlineTotalLabel: string | null;
   matrixRows: ProductCategoryDiagnosticsMatrixRow[];
   matrixEmptyCopy: string | null;
@@ -290,6 +377,7 @@ export type ProductCategoryOperatingActionQueueRow = {
 };
 
 export type ProductCategoryOperatingAnalysisSurface = {
+  metricStatus: ProductCategoryCandidateMetricStatus;
   contribution: {
     grandTotalLabel: string | null;
     profitRows: ProductCategoryOperatingContributionRow[];
@@ -413,6 +501,7 @@ export type ProductCategoryOperatingBacktestExample = {
 };
 
 export type ProductCategoryOperatingBacktestSurface = {
+  metricStatus: ProductCategoryCandidateMetricStatus;
   summary: {
     evaluatedMonthCount: number;
     signalCount: number;
@@ -621,6 +710,7 @@ export type ProductCategoryScenarioExplanation = {
 };
 
 export type ProductCategoryScenarioSensitivitySurface = {
+  metricStatus: ProductCategoryCandidateMetricStatus;
   baselineGrandTotalLabel: string | null;
   rows: ProductCategoryScenarioSensitivityRow[];
   insightCards: ProductCategoryScenarioInsightCard[];
@@ -657,6 +747,7 @@ export type ProductCategoryAttributionWaterfallRow = {
 };
 
 export type ProductCategoryAttributionWaterfallSurface = {
+  metricStatus: ProductCategoryCandidateMetricStatus;
   title: string;
   deltaLabel: string;
   rows: ProductCategoryAttributionWaterfallRow[];
@@ -664,6 +755,7 @@ export type ProductCategoryAttributionWaterfallSurface = {
 };
 
 export type ProductCategoryRootCauseDriverKey =
+  | "day_effect"
   | "scale_effect"
   | "rate_effect"
   | "ftp_effect"
@@ -682,6 +774,7 @@ export type ProductCategoryRootCauseDriverRow = {
 };
 
 export type ProductCategoryRootCauseSurface = {
+  metricStatus: ProductCategoryCandidateMetricStatus;
   headline: {
     categoryId: string;
     categoryLabel: string;
@@ -718,6 +811,7 @@ export type ProductCategoryDecisionFocusItem = {
 };
 
 export type ProductCategoryDecisionFocusSurface = {
+  metricStatus: ProductCategoryCandidateMetricStatus;
   items: ProductCategoryDecisionFocusItem[];
   emptyCopy: string | null;
 };
@@ -741,6 +835,12 @@ export type ProductCategoryInterestEarningIncomeScaleChart = {
   income: number[];
 };
 
+export type ProductCategoryInterestEarningAssetLiabilityScaleChart = {
+  labels: string[];
+  interestEarningAssetScale: number[];
+  interestBearingLiabilityScale: number[];
+};
+
 export type ProductCategoryInterestSpreadChart = {
   labels: string[];
   assetYield: number[];
@@ -748,9 +848,16 @@ export type ProductCategoryInterestSpreadChart = {
   spread: Array<number | null>;
 };
 
+export type ProductCategoryYearComparisonStatus = {
+  comparableMonthCount: number;
+  qualityState: "ok" | "degraded" | "unknown";
+  qualityIssueMonthCount: number;
+};
+
 export type ProductCategoryInterestSpreadYearComparisonChart = {
   labels: string[];
   monthKeys: number[];
+  comparisonStatus: ProductCategoryYearComparisonStatus;
   series: Array<{
     year: string;
     spread: Array<number | null>;
@@ -759,6 +866,7 @@ export type ProductCategoryInterestSpreadYearComparisonChart = {
 
 export type ProductCategoryIntermediateBusinessIncomeYearComparisonChart = {
   labels: string[];
+  comparisonStatus: ProductCategoryYearComparisonStatus;
   series: Array<{
     year: string;
     income: Array<number | null>;
@@ -811,6 +919,7 @@ export type ProductCategoryInterestSpreadAttributionDetail = {
 };
 
 export type ProductCategoryInterestSpreadAttributionSurface = {
+  metricStatus: ProductCategoryCandidateMetricStatus;
   selected: {
     basis: ProductCategoryInterestSpreadBasis;
     month: number;
@@ -902,7 +1011,9 @@ export type ProductCategoryLiabilityDetailMatrix = {
 };
 
 export type ProductCategoryLiabilitySideTrendSurface = {
+  metricStatus: ProductCategoryCandidateMetricStatus;
   chart: ProductCategoryLiabilitySideTrendChart | null;
+  totalReadout: ProductCategoryLiabilityDetailTrendRow | null;
   detailRows: ProductCategoryLiabilityDetailTrendRow[];
   detailMatrix: ProductCategoryLiabilityDetailMatrix;
   emptyCopy: string | null;
@@ -914,7 +1025,7 @@ export function formatProductCategoryValue(
   digits = 2,
 ): string {
   if (value === null || value === undefined) {
-    return "-";
+    return EM_DASH;
   }
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
@@ -930,13 +1041,38 @@ export function formatProductCategoryAttributionEffect(
   return formatProductCategoryValue(value, digits);
 }
 
+export type ProductCategoryClosureErrorSignal = {
+  hasMaterialGap: boolean;
+  warningText: string | null;
+};
+
+export function selectProductCategoryClosureErrorSignal(
+  value: DecimalLike | null | undefined,
+): ProductCategoryClosureErrorSignal {
+  const raw = decimalNumber(value);
+  if (raw === null) {
+    return {
+      hasMaterialGap: false,
+      warningText: null,
+    };
+  }
+  const hasMaterialGap =
+    Math.abs(raw) >= PRODUCT_CATEGORY_CLOSURE_ERROR_ALERT_THRESHOLD_YUAN;
+  return {
+    hasMaterialGap,
+    warningText: hasMaterialGap
+      ? PRODUCT_CATEGORY_CLOSURE_ERROR_WARNING_TEXT
+      : null,
+  };
+}
+
 export function formatProductCategoryRowDisplayValue(
   row: Pick<ProductCategoryPnlRow, "side">,
   value: DecimalLike | null | undefined,
   digits = 2,
 ): string {
   if (value === null || value === undefined) {
-    return "-";
+    return EM_DASH;
   }
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
@@ -954,7 +1090,7 @@ export function formatProductCategoryForeignDisplayValue(
   digits = 2,
 ): string {
   if (value === null || value === undefined) {
-    return "-";
+    return EM_DASH;
   }
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
@@ -969,7 +1105,7 @@ export function formatProductCategoryYieldValue(
   digits = 2,
 ): string {
   if (value === null || value === undefined) {
-    return "-";
+    return EM_DASH;
   }
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
@@ -978,7 +1114,19 @@ export function formatProductCategoryYieldValue(
   return parsed.toFixed(digits);
 }
 
-export function toneForProductCategoryValue(value: DecimalLike | null | undefined): string {
+export function formatProductCategoryChartNumberTwoDecimals(
+  value: unknown,
+): string {
+  if (value === null || value === undefined) {
+    return EM_DASH;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed.toFixed(2) : EM_DASH;
+}
+
+export function toneForProductCategoryValue(
+  value: DecimalLike | null | undefined,
+): string {
   if (value === null || value === undefined) {
     return PRODUCT_CATEGORY_VALUE_TONE_COLORS.default;
   }
@@ -995,12 +1143,54 @@ export function toneForProductCategoryValue(value: DecimalLike | null | undefine
   return PRODUCT_CATEGORY_VALUE_TONE_COLORS.default;
 }
 
+export function toneForProductCategoryForeignDisplayValue(
+  row: Pick<ProductCategoryPnlRow, "side">,
+  value: DecimalLike | null | undefined,
+): string {
+  const displayValue = productCategoryForeignDisplayNumber(row, value);
+  if (displayValue === null) {
+    return PRODUCT_CATEGORY_VALUE_TONE_COLORS.default;
+  }
+  return toneForProductCategoryValue(displayValue);
+}
+
 function decimalNumber(value: DecimalLike | null | undefined): number | null {
   if (value === null || value === undefined) {
     return null;
   }
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function yiNumber(value: DecimalLike | null | undefined): number | null {
+  const parsed = decimalNumber(value);
+  if (parsed === null) {
+    return null;
+  }
+  return Number((parsed / YUAN_PER_YI).toFixed(2));
+}
+
+function rawYiNumber(value: DecimalLike | null | undefined): number | null {
+  const parsed = decimalNumber(value);
+  return parsed === null ? null : parsed / YUAN_PER_YI;
+}
+
+function percentNumber(value: DecimalLike | null | undefined): number | null {
+  const parsed = decimalNumber(value);
+  if (parsed === null) {
+    return null;
+  }
+  return Number(parsed.toFixed(2));
+}
+
+function toneNameForValue(
+  value: DecimalLike | null | undefined,
+): "neutral" | "positive" | "negative" {
+  const parsed = decimalNumber(value);
+  if (parsed === null || parsed === 0) {
+    return "neutral";
+  }
+  return parsed > 0 ? "positive" : "negative";
 }
 
 function productCategoryForeignDisplayNumber(
@@ -1014,73 +1204,56 @@ function productCategoryForeignDisplayNumber(
   return row.side === "liability" ? -parsed : parsed;
 }
 
-export function toneForProductCategoryForeignDisplayValue(
-  row: Pick<ProductCategoryPnlRow, "side">,
-  value: DecimalLike | null | undefined,
-): string {
-  const displayValue = productCategoryForeignDisplayNumber(row, value);
-  if (displayValue === null) {
-    return PRODUCT_CATEGORY_VALUE_TONE_COLORS.default;
-  }
-  return toneForProductCategoryValue(displayValue);
-}
-
-function yiNumber(value: DecimalLike | null | undefined): number | null {
-  const parsed = decimalNumber(value);
-  if (parsed === null) {
-    return null;
-  }
-  return Number((parsed / YUAN_PER_YI).toFixed(2));
-}
-
-function percentNumber(value: DecimalLike | null | undefined): number | null {
-  const parsed = decimalNumber(value);
-  if (parsed === null) {
-    return null;
-  }
-  return Number(parsed.toFixed(2));
-}
-
-function toneNameForValue(value: DecimalLike | null | undefined): "neutral" | "positive" | "negative" {
-  const parsed = decimalNumber(value);
-  if (parsed === null || parsed === 0) {
-    return "neutral";
-  }
-  return parsed > 0 ? "positive" : "negative";
-}
-
 function formatSignedProductCategoryYi(value: number | null): string {
   return signedYiDeltaLabel(value);
 }
 
 function productCategoryPercentLabel(value: number | null): string {
   if (value === null || !Number.isFinite(value)) {
-    return "-";
+    return EM_DASH;
   }
   return `${value.toFixed(1)}%`;
 }
 
 function productCategoryYiNumberLabel(value: number | null): string {
   if (value === null || !Number.isFinite(value)) {
-    return "-";
+    return EM_DASH;
   }
   return value.toFixed(2);
 }
 
-function nonTotalProductCategoryRows(rows: ProductCategoryPnlRow[]): ProductCategoryPnlRow[] {
-  return rows.filter((row) => !row.is_total && !row.category_id.endsWith("_total") && row.category_id !== "grand_total");
+function nonTotalProductCategoryRows(
+  rows: ProductCategoryPnlRow[],
+): ProductCategoryPnlRow[] {
+  return rows.filter(
+    (row) =>
+      !row.is_total &&
+      !row.category_id.endsWith("_total") &&
+      row.category_id !== "grand_total",
+  );
 }
 
-function leafProductCategoryRows(rows: ProductCategoryPnlRow[]): ProductCategoryPnlRow[] {
-  return nonTotalProductCategoryRows(rows).filter((row) => row.children.length === 0);
+function leafProductCategoryRows(
+  rows: ProductCategoryPnlRow[],
+): ProductCategoryPnlRow[] {
+  return nonTotalProductCategoryRows(rows).filter(
+    (row) => row.children.length === 0,
+  );
 }
 
 function parentProductCategoryIds(rows: ProductCategoryPnlRow[]): Set<string> {
-  return new Set(nonTotalProductCategoryRows(rows).filter((row) => row.children.length > 0).map((row) => row.category_id));
+  return new Set(
+    nonTotalProductCategoryRows(rows)
+      .filter((row) => row.children.length > 0)
+      .map((row) => row.category_id),
+  );
 }
 
 function medianProductCategoryNumber(values: number[]): number | null {
-  const sorted = values.filter(Number.isFinite).slice().sort((left, right) => left - right);
+  const sorted = values
+    .filter(Number.isFinite)
+    .slice()
+    .sort((left, right) => left - right);
   if (sorted.length === 0) {
     return null;
   }
@@ -1106,7 +1279,9 @@ const PRODUCT_CATEGORY_OPERATING_DRIVER_KEYS = Object.keys(
   PRODUCT_CATEGORY_OPERATING_DRIVER_LABELS,
 ) as Array<keyof typeof PRODUCT_CATEGORY_OPERATING_DRIVER_LABELS>;
 
-function productCategoryQuadrantLabel(quadrant: ProductCategoryOperatingQuadrant): string {
+function productCategoryQuadrantLabel(
+  quadrant: ProductCategoryOperatingQuadrant,
+): string {
   if (quadrant === "core_profit_pool") {
     return "核心利润池";
   }
@@ -1150,10 +1325,11 @@ function selectProductCategoryOperatingContribution(input: {
         return null;
       }
       const grandTotal = yiNumber(input.grandTotal?.business_net_income);
-      const denominator = grandTotal !== null && grandTotal !== 0
-        ? Math.abs(grandTotal)
+      const denominator =
+        grandTotal !== null && grandTotal !== 0 ? Math.abs(grandTotal) : null;
+      const contributionPct = denominator
+        ? Number(((value / denominator) * 100).toFixed(1))
         : null;
-      const contributionPct = denominator ? Number((value / denominator * 100).toFixed(1)) : null;
       return {
         categoryId: row.category_id,
         categoryLabel: row.category_name || row.category_id,
@@ -1162,10 +1338,12 @@ function selectProductCategoryOperatingContribution(input: {
         netIncomeLabel: value.toFixed(2),
         contributionPct,
         contributionLabel: productCategoryPercentLabel(contributionPct),
-        tone: value > 0 ? "positive" as const : "negative" as const,
+        tone: value > 0 ? ("positive" as const) : ("negative" as const),
       };
     })
-    .filter((row): row is ProductCategoryOperatingContributionRow => row !== null);
+    .filter(
+      (row): row is ProductCategoryOperatingContributionRow => row !== null,
+    );
   const profitRows = candidates
     .filter((row) => row.netIncome > 0)
     .sort((left, right) => right.netIncome - left.netIncome)
@@ -1175,12 +1353,15 @@ function selectProductCategoryOperatingContribution(input: {
     .sort((left, right) => left.netIncome - right.netIncome)
     .slice(0, 5);
   return {
-    grandTotalLabel: input.grandTotal ? formatProductCategoryValue(input.grandTotal.business_net_income) : null,
+    grandTotalLabel: input.grandTotal
+      ? formatProductCategoryValue(input.grandTotal.business_net_income)
+      : null,
     profitRows,
     pressureRows,
-    emptyCopy: profitRows.length === 0 && pressureRows.length === 0
-      ? "当前正式表没有可排序的产品贡献。"
-      : null,
+    emptyCopy:
+      profitRows.length === 0 && pressureRows.length === 0
+        ? "当前正式表没有可排序的产品贡献。"
+        : null,
   };
 }
 
@@ -1193,18 +1374,25 @@ function buildProductCategoryOperatingMovementRows(
   }
   const rows: ProductCategoryOperatingMovementRow[] = [];
   for (const row of attribution.rows) {
-    if (row.category_id.endsWith("_total") || row.category_id === "grand_total" || parentCategoryIds.has(row.category_id)) {
+    if (
+      row.category_id.endsWith("_total") ||
+      row.category_id === "grand_total" ||
+      parentCategoryIds.has(row.category_id)
+    ) {
       continue;
     }
     const delta = yiNumber(row.effects.delta_business_net_income);
     if (delta === null || delta === 0) {
       continue;
     }
-    const leadingDriverKey = PRODUCT_CATEGORY_OPERATING_DRIVER_KEYS.reduce((best, key) => {
-      const bestValue = Math.abs(yiNumber(row.effects[best]) ?? 0);
-      const currentValue = Math.abs(yiNumber(row.effects[key]) ?? 0);
-      return currentValue > bestValue ? key : best;
-    }, PRODUCT_CATEGORY_OPERATING_DRIVER_KEYS[0]);
+    const leadingDriverKey = PRODUCT_CATEGORY_OPERATING_DRIVER_KEYS.reduce(
+      (best, key) => {
+        const bestValue = Math.abs(yiNumber(row.effects[best]) ?? 0);
+        const currentValue = Math.abs(yiNumber(row.effects[key]) ?? 0);
+        return currentValue > bestValue ? key : best;
+      },
+      PRODUCT_CATEGORY_OPERATING_DRIVER_KEYS[0],
+    );
     const leadingDriverValue = yiNumber(row.effects[leadingDriverKey]) ?? 0;
     rows.push({
       categoryId: row.category_id,
@@ -1212,10 +1400,14 @@ function buildProductCategoryOperatingMovementRows(
       delta,
       deltaLabel: formatSignedProductCategoryYi(delta),
       leadingDriverKey,
-      leadingDriverLabel: PRODUCT_CATEGORY_OPERATING_DRIVER_LABELS[leadingDriverKey],
+      leadingDriverLabel:
+        PRODUCT_CATEGORY_OPERATING_DRIVER_LABELS[leadingDriverKey],
       leadingDriverValue,
-      leadingDriverValueLabel: formatSignedProductCategoryYi(leadingDriverValue),
-      closureErrorLabel: formatSignedProductCategoryYi(yiNumber(row.effects.closure_error)),
+      leadingDriverValueLabel:
+        formatSignedProductCategoryYi(leadingDriverValue),
+      closureErrorLabel: formatSignedProductCategoryYi(
+        yiNumber(row.effects.closure_error),
+      ),
     });
   }
   rows.sort((left, right) => Math.abs(right.delta) - Math.abs(left.delta));
@@ -1232,7 +1424,10 @@ function selectProductCategoryOperatingMovement(
       emptyCopy: "当前缺少可用的月度经营差异归因。",
     };
   }
-  const rows = buildProductCategoryOperatingMovementRows(attribution, parentCategoryIds);
+  const rows = buildProductCategoryOperatingMovementRows(
+    attribution,
+    parentCategoryIds,
+  );
   const topRows = rows.slice(0, 5);
   return {
     rows: topRows,
@@ -1257,24 +1452,32 @@ function selectProductCategoryOperatingQuadrant(
         scale,
         yieldPct,
         netIncome,
-        netIncomeLabel: netIncome !== null ? netIncome.toFixed(2) : "-",
+        netIncomeLabel: netIncome !== null ? netIncome.toFixed(2) : EM_DASH,
       };
     })
-    .filter((row): row is {
-      row: ProductCategoryPnlRow;
-      scale: number;
-      yieldPct: number;
-      netIncome: number | null;
-      netIncomeLabel: string;
-    } => row !== null);
-  const scaleBenchmark = medianProductCategoryNumber(candidates.map((item) => item.scale));
-  const yieldBenchmark = medianProductCategoryNumber(candidates.map((item) => item.yieldPct));
+    .filter(
+      (
+        row,
+      ): row is {
+        row: ProductCategoryPnlRow;
+        scale: number;
+        yieldPct: number;
+        netIncome: number | null;
+        netIncomeLabel: string;
+      } => row !== null,
+    );
+  const scaleBenchmark = medianProductCategoryNumber(
+    candidates.map((item) => item.scale),
+  );
+  const yieldBenchmark = medianProductCategoryNumber(
+    candidates.map((item) => item.yieldPct),
+  );
   if (scaleBenchmark === null || yieldBenchmark === null) {
     return {
       scaleBenchmark: null,
       yieldBenchmark: null,
-      scaleBenchmarkLabel: "-",
-      yieldBenchmarkLabel: "-",
+      scaleBenchmarkLabel: EM_DASH,
+      yieldBenchmarkLabel: EM_DASH,
       rows: [],
       emptyCopy: "当前缺少可用于规模/收益率象限的规模或收益率。",
     };
@@ -1301,14 +1504,20 @@ function selectProductCategoryOperatingQuadrant(
       };
     })
     .sort((left, right) => right.scale - left.scale);
-  const displayRows = options.limit === null ? quadrantRows : quadrantRows.slice(0, options.limit ?? 12);
+  const displayRows =
+    options.limit === null
+      ? quadrantRows
+      : quadrantRows.slice(0, options.limit ?? 12);
   return {
     scaleBenchmark,
     yieldBenchmark,
     scaleBenchmarkLabel: scaleBenchmark.toFixed(2),
     yieldBenchmarkLabel: yieldBenchmark.toFixed(2),
     rows: displayRows,
-    emptyCopy: displayRows.length === 0 ? "当前缺少可用于规模/收益率象限的产品行。" : null,
+    emptyCopy:
+      displayRows.length === 0
+        ? "当前缺少可用于规模/收益率象限的产品行。"
+        : null,
   };
 }
 
@@ -1331,12 +1540,23 @@ function selectProductCategoryOperatingActionQueue(input: {
   parentCategoryIds: Set<string>;
 }): ProductCategoryOperatingAnalysisSurface["actionQueue"] {
   const leafRows = leafProductCategoryRows(input.rows);
-  const actionRows: Array<Omit<ProductCategoryOperatingActionQueueRow, "priorityLabel">> = [];
+  const actionRows: Array<
+    Omit<ProductCategoryOperatingActionQueueRow, "priorityLabel">
+  > = [];
   const seenCategoryIds = new Set<string>();
-  const movementRows = buildProductCategoryOperatingMovementRows(input.attribution, input.parentCategoryIds);
-  const quadrant = selectProductCategoryOperatingQuadrant(input.rows, { limit: null });
-  const quadrantByCategoryId = new Map(quadrant.rows.map((row) => [row.categoryId, row]));
-  const appendActionRow = (row: Omit<ProductCategoryOperatingActionQueueRow, "priorityLabel">) => {
+  const movementRows = buildProductCategoryOperatingMovementRows(
+    input.attribution,
+    input.parentCategoryIds,
+  );
+  const quadrant = selectProductCategoryOperatingQuadrant(input.rows, {
+    limit: null,
+  });
+  const quadrantByCategoryId = new Map(
+    quadrant.rows.map((row) => [row.categoryId, row]),
+  );
+  const appendActionRow = (
+    row: Omit<ProductCategoryOperatingActionQueueRow, "priorityLabel">,
+  ) => {
     if (seenCategoryIds.has(row.categoryId)) {
       return;
     }
@@ -1349,10 +1569,20 @@ function selectProductCategoryOperatingActionQueue(input: {
       const netIncome = yiNumber(row.business_net_income);
       const scale = yiNumber(row.cnx_scale);
       const yieldPct = percentNumber(row.weighted_yield);
-      const movement = movementRows.find((item) => item.categoryId === row.category_id);
+      const movement = movementRows.find(
+        (item) => item.categoryId === row.category_id,
+      );
       const quadrantRow = quadrantByCategoryId.get(row.category_id);
-      const hasLowYield = quadrantRow?.quadrant === "scale_efficiency_watch" || quadrantRow?.quadrant === "shrink_or_reprice";
-      if (netIncome === null || netIncome >= 0 || yieldPct === null || scale === null || !hasLowYield) {
+      const hasLowYield =
+        quadrantRow?.quadrant === "scale_efficiency_watch" ||
+        quadrantRow?.quadrant === "shrink_or_reprice";
+      if (
+        netIncome === null ||
+        netIncome >= 0 ||
+        yieldPct === null ||
+        scale === null ||
+        !hasLowYield
+      ) {
         return null;
       }
       return { row, netIncome, scale, yieldPct, movement };
@@ -1361,61 +1591,77 @@ function selectProductCategoryOperatingActionQueue(input: {
     .sort((left, right) => left.netIncome - right.netIncome)[0];
 
   if (lowYieldLoss) {
-    appendActionRow(productCategoryOperatingActionRow({
-      categoryId: lowYieldLoss.row.category_id,
-      categoryLabel: lowYieldLoss.row.category_name || lowYieldLoss.row.category_id,
-      actionKind: "shrink_or_limit",
-      actionLabel: "压降或限额复核",
-      triggerLabel: "负贡献叠加收益偏低",
-      primaryMetricLabel: lowYieldLoss.netIncome.toFixed(2),
-      evidenceItems: [
-        `净营收 ${lowYieldLoss.netIncome.toFixed(2)} 亿元`,
-        `规模 ${lowYieldLoss.scale.toFixed(2)} 亿元`,
-        `收益率 ${lowYieldLoss.yieldPct.toFixed(2)}%`,
-        `变动 ${lowYieldLoss.movement?.deltaLabel ?? "-"} 亿元`,
-      ],
-      tone: "negative",
-    }));
+    appendActionRow(
+      productCategoryOperatingActionRow({
+        categoryId: lowYieldLoss.row.category_id,
+        categoryLabel:
+          lowYieldLoss.row.category_name || lowYieldLoss.row.category_id,
+        actionKind: "shrink_or_limit",
+        actionLabel: "压降或限额复核",
+        triggerLabel: "负贡献叠加收益偏低",
+        primaryMetricLabel: lowYieldLoss.netIncome.toFixed(2),
+        evidenceItems: [
+          `净营收 ${lowYieldLoss.netIncome.toFixed(2)} 亿元`,
+          `规模 ${lowYieldLoss.scale.toFixed(2)} 亿元`,
+          `收益率 ${lowYieldLoss.yieldPct.toFixed(2)}%`,
+          `变动 ${lowYieldLoss.movement?.deltaLabel ?? EM_DASH} 亿元`,
+        ],
+        tone: "negative",
+      }),
+    );
   }
 
   const unexplainedReview = movementRows
-    .filter((row) => row.leadingDriverKey === "unexplained_effect" && Math.abs(row.leadingDriverValue) > 0)
-    .sort((left, right) => Math.abs(right.leadingDriverValue) - Math.abs(left.leadingDriverValue))[0];
+    .filter(
+      (row) =>
+        row.leadingDriverKey === "unexplained_effect" &&
+        Math.abs(row.leadingDriverValue) > 0,
+    )
+    .sort(
+      (left, right) =>
+        Math.abs(right.leadingDriverValue) - Math.abs(left.leadingDriverValue),
+    )[0];
 
   if (unexplainedReview) {
-    appendActionRow(productCategoryOperatingActionRow({
-      categoryId: unexplainedReview.categoryId,
-      categoryLabel: unexplainedReview.categoryLabel,
-      actionKind: "review_attribution",
-      actionLabel: "归因复核",
-      triggerLabel: "未解释差异偏高",
-      primaryMetricLabel: unexplainedReview.leadingDriverValueLabel,
-      evidenceItems: [
-        `未解释 ${unexplainedReview.leadingDriverValueLabel} 亿元`,
-        `变动 ${unexplainedReview.deltaLabel} 亿元`,
-      ],
-      tone: "neutral",
-    }));
+    appendActionRow(
+      productCategoryOperatingActionRow({
+        categoryId: unexplainedReview.categoryId,
+        categoryLabel: unexplainedReview.categoryLabel,
+        actionKind: "review_attribution",
+        actionLabel: "归因复核",
+        triggerLabel: "未解释差异偏高",
+        primaryMetricLabel: unexplainedReview.leadingDriverValueLabel,
+        evidenceItems: [
+          `未解释 ${unexplainedReview.leadingDriverValueLabel} 亿元`,
+          `变动 ${unexplainedReview.deltaLabel} 亿元`,
+        ],
+        tone: "neutral",
+      }),
+    );
   }
 
   const reprice = quadrant.rows.find(
-    (row) => row.quadrant === "scale_efficiency_watch" && !seenCategoryIds.has(row.categoryId),
+    (row) =>
+      row.quadrant === "scale_efficiency_watch" &&
+      !seenCategoryIds.has(row.categoryId),
   );
   if (reprice) {
-    appendActionRow(productCategoryOperatingActionRow({
-      categoryId: reprice.categoryId,
-      categoryLabel: reprice.categoryLabel,
-      actionKind: "reprice_or_improve",
-      actionLabel: "重定价/提效",
-      triggerLabel: "高规模低收益",
-      primaryMetricLabel: `${reprice.yieldLabel}%`,
-      evidenceItems: [
-        `规模 ${reprice.scaleLabel} 亿元`,
-        `收益率 ${reprice.yieldLabel}%`,
-        `净营收 ${reprice.netIncomeLabel} 亿元`,
-      ],
-      tone: "negative",
-    }));
+    appendActionRow(
+      productCategoryOperatingActionRow({
+        categoryId: reprice.categoryId,
+        categoryLabel: reprice.categoryLabel,
+        actionKind: "reprice_or_improve",
+        actionLabel: "重定价/提效",
+        triggerLabel: "高规模低收益",
+        primaryMetricLabel: `${reprice.yieldLabel}%`,
+        evidenceItems: [
+          `规模 ${reprice.scaleLabel} 亿元`,
+          `收益率 ${reprice.yieldLabel}%`,
+          `净营收 ${reprice.netIncomeLabel} 亿元`,
+        ],
+        tone: "negative",
+      }),
+    );
   }
 
   const selectiveGrowth = quadrant.rows.find(
@@ -1426,20 +1672,22 @@ function selectProductCategoryOperatingActionQueue(input: {
       !seenCategoryIds.has(row.categoryId),
   );
   if (selectiveGrowth) {
-    appendActionRow(productCategoryOperatingActionRow({
-      categoryId: selectiveGrowth.categoryId,
-      categoryLabel: selectiveGrowth.categoryLabel,
-      actionKind: "selective_growth",
-      actionLabel: "选择性扩张",
-      triggerLabel: "低规模高收益",
-      primaryMetricLabel: `${selectiveGrowth.yieldLabel}%`,
-      evidenceItems: [
-        `规模 ${selectiveGrowth.scaleLabel} 亿元`,
-        `收益率 ${selectiveGrowth.yieldLabel}%`,
-        `净营收 ${selectiveGrowth.netIncomeLabel} 亿元`,
-      ],
-      tone: "positive",
-    }));
+    appendActionRow(
+      productCategoryOperatingActionRow({
+        categoryId: selectiveGrowth.categoryId,
+        categoryLabel: selectiveGrowth.categoryLabel,
+        actionKind: "selective_growth",
+        actionLabel: "选择性扩张",
+        triggerLabel: "低规模高收益",
+        primaryMetricLabel: `${selectiveGrowth.yieldLabel}%`,
+        evidenceItems: [
+          `规模 ${selectiveGrowth.scaleLabel} 亿元`,
+          `收益率 ${selectiveGrowth.yieldLabel}%`,
+          `净营收 ${selectiveGrowth.netIncomeLabel} 亿元`,
+        ],
+        tone: "positive",
+      }),
+    );
   }
 
   const rows = actionRows.map((row, index) => ({
@@ -1448,7 +1696,8 @@ function selectProductCategoryOperatingActionQueue(input: {
   }));
   return {
     rows,
-    emptyCopy: rows.length === 0 ? "当前没有需要进入经营动作队列的产品分类。" : null,
+    emptyCopy:
+      rows.length === 0 ? "当前没有需要进入经营动作队列的产品分类。" : null,
   };
 }
 
@@ -1459,11 +1708,15 @@ export function selectProductCategoryOperatingAnalysisSurface(input: {
 }): ProductCategoryOperatingAnalysisSurface {
   const parentCategoryIds = parentProductCategoryIds(input.rows);
   return {
+    metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
     contribution: selectProductCategoryOperatingContribution({
       rows: input.rows,
       grandTotal: input.grandTotal,
     }),
-    movement: selectProductCategoryOperatingMovement(input.attribution, parentCategoryIds),
+    movement: selectProductCategoryOperatingMovement(
+      input.attribution,
+      parentCategoryIds,
+    ),
     quadrant: selectProductCategoryOperatingQuadrant(input.rows),
     actionQueue: selectProductCategoryOperatingActionQueue({
       rows: input.rows,
@@ -1489,7 +1742,9 @@ function productCategoryRowDeltaYi(
   return Number((scenarioValue - baselineValue).toFixed(2));
 }
 
-function productCategoryDeltaTone(value: number | null): "positive" | "negative" | "neutral" {
+function productCategoryDeltaTone(
+  value: number | null,
+): "positive" | "negative" | "neutral" {
   if (value === null || value === 0) {
     return "neutral";
   }
@@ -1500,7 +1755,12 @@ function productCategoryScenarioAnalysisCopy(
   worst: ProductCategoryScenarioSensitivityRow | undefined,
   best: ProductCategoryScenarioSensitivityRow | undefined,
 ): string | null {
-  if (!worst || !best || worst.grandDelta === null || best.grandDelta === null) {
+  if (
+    !worst ||
+    !best ||
+    worst.grandDelta === null ||
+    best.grandDelta === null
+  ) {
     return null;
   }
   if (worst.grandDelta < 0) {
@@ -1512,31 +1772,33 @@ function productCategoryScenarioAnalysisCopy(
   return "四档 FTP 情景围绕基线窄幅波动，建议结合产品行变动继续复核。";
 }
 
-type ProductCategoryComparableScenarioRow = ProductCategoryScenarioSensitivityRow & {
-  grandNetIncome: number;
-  grandDelta: number;
-};
+type ProductCategoryComparableScenarioRow =
+  ProductCategoryScenarioSensitivityRow & {
+    grandNetIncome: number;
+    grandDelta: number;
+  };
 
-const EMPTY_PRODUCT_CATEGORY_SCENARIO_PRESSURE_SUMMARY: ProductCategoryScenarioPressureSummary = {
-  breakeven: {
-    label: "临界 FTP",
-    valueLabel: "-",
-    detailLabel: "待加载可比较情景后估算；此处仅做线性插值辅助判断。",
-    tone: "neutral",
-  },
-  sideOffset: {
-    rateLabel: "-",
-    totalDeltaLabel: "-",
-    assetDeltaLabel: "-",
-    liabilityDeltaLabel: "-",
-    offsetLabel: "-",
-    conclusionLabel: "待加载情景矩阵后拆分资产端与负债端冲抵关系。",
-    assetWidthClassName: "is-width-0",
-    liabilityWidthClassName: "is-width-0",
-    tone: "neutral",
-  },
-  reviewRows: [],
-};
+const EMPTY_PRODUCT_CATEGORY_SCENARIO_PRESSURE_SUMMARY: ProductCategoryScenarioPressureSummary =
+  {
+    breakeven: {
+      label: "临界 FTP",
+      valueLabel: EM_DASH,
+      detailLabel: "待加载可比较情景后估算；此处仅做线性插值辅助判断。",
+      tone: "neutral",
+    },
+    sideOffset: {
+      rateLabel: EM_DASH,
+      totalDeltaLabel: EM_DASH,
+      assetDeltaLabel: EM_DASH,
+      liabilityDeltaLabel: EM_DASH,
+      offsetLabel: EM_DASH,
+      conclusionLabel: "待加载情景矩阵后拆分资产端与负债端冲抵关系。",
+      assetWidthClassName: "is-width-0",
+      liabilityWidthClassName: "is-width-0",
+      tone: "neutral",
+    },
+    reviewRows: [],
+  };
 
 function hasComparableScenarioGrandTotal(
   row: ProductCategoryScenarioSensitivityRow,
@@ -1567,7 +1829,9 @@ function selectProductCategoryScenarioInsightCards(
   if (comparableRows.length === 0) {
     return [];
   }
-  const sortedByGrand = [...comparableRows].sort((left, right) => right.grandNetIncome - left.grandNetIncome);
+  const sortedByGrand = [...comparableRows].sort(
+    (left, right) => right.grandNetIncome - left.grandNetIncome,
+  );
   const best = sortedByGrand[0];
   const worst = sortedByGrand[sortedByGrand.length - 1];
   const cards: ProductCategoryScenarioInsightCard[] = [
@@ -1595,12 +1859,19 @@ function selectProductCategoryScenarioInsightCards(
     tone: "neutral",
   });
   const rateSpanBp = (worst.ratePct - best.ratePct) * 100;
-  const slope = rateSpanBp === 0 ? null : Number(((worst.grandNetIncome - best.grandNetIncome) / rateSpanBp).toFixed(2));
+  const slope =
+    rateSpanBp === 0
+      ? null
+      : Number(
+          ((worst.grandNetIncome - best.grandNetIncome) / rateSpanBp).toFixed(
+            2,
+          ),
+        );
   cards.push({
     key: "ftp_slope",
     label: "FTP 斜率",
     valueLabel: productCategoryYiNumberLabel(slope),
-    detailLabel: "每 1bp 约影响净营收",
+    detailLabel: "每 1 bp 约影响净营收",
     tone: productCategoryDeltaTone(slope),
   });
   return cards;
@@ -1619,7 +1890,7 @@ function selectProductCategoryScenarioRiskRows(
     }
   >();
   for (const row of rows) {
-    if (row.topMoverCategoryLabel === "-" || row.topMoverDelta === null) {
+    if (row.topMoverCategoryLabel === EM_DASH || row.topMoverDelta === null) {
       continue;
     }
     const current = byCategory.get(row.topMoverCategoryLabel);
@@ -1633,7 +1904,10 @@ function selectProductCategoryScenarioRiskRows(
       continue;
     }
     current.count += 1;
-    if (current.worstDelta === null || Math.abs(row.topMoverDelta) > Math.abs(current.worstDelta)) {
+    if (
+      current.worstDelta === null ||
+      Math.abs(row.topMoverDelta) > Math.abs(current.worstDelta)
+    ) {
       current.worstRateLabel = row.rateLabel;
       current.worstDelta = row.topMoverDelta;
     }
@@ -1670,7 +1944,8 @@ function selectProductCategoryScenarioPathPoints(
     rateLabel: row.rateLabel,
     grandNetIncomeLabel: row.grandNetIncomeLabel,
     grandDeltaLabel: row.grandDeltaLabel,
-    positionPct: span === 0 ? 50 : Math.round(((row.ratePct - minRate) / span) * 100),
+    positionPct:
+      span === 0 ? 50 : Math.round(((row.ratePct - minRate) / span) * 100),
     positionClassName: `is-position-${productCategoryBucketPct(
       span === 0 ? 50 : Math.round(((row.ratePct - minRate) / span) * 100),
     )}`,
@@ -1684,10 +1959,14 @@ function selectProductCategoryScenarioActionItems(input: {
   riskRows: ProductCategoryScenarioRiskRow[];
 }): ProductCategoryScenarioActionItem[] {
   const items: ProductCategoryScenarioActionItem[] = [];
-  if (input.worst?.grandDelta !== null && input.worst?.grandDelta !== undefined) {
+  if (
+    input.worst?.grandDelta !== null &&
+    input.worst?.grandDelta !== undefined
+  ) {
     const absoluteDelta = Math.abs(input.worst.grandDelta).toFixed(2);
     items.push({
-      title: input.worst.grandDelta < 0 ? "锁定下行情景敞口" : "确认上行情景弹性",
+      title:
+        input.worst.grandDelta < 0 ? "锁定下行情景敞口" : "确认上行情景弹性",
       valueLabel: input.worst.grandDeltaLabel,
       detailLabel: `${input.worst.rateLabel} 情景较基线${input.worst.grandDelta < 0 ? "少" : "多"} ${absoluteDelta} 亿元`,
       tone: productCategoryDeltaTone(input.worst.grandDelta),
@@ -1702,8 +1981,14 @@ function selectProductCategoryScenarioActionItems(input: {
       tone: topRisk.tone,
     });
   }
-  if (input.best && input.worst && input.best.grandNetIncome !== input.worst.grandNetIncome) {
-    const range = Number((input.best.grandNetIncome - input.worst.grandNetIncome).toFixed(2));
+  if (
+    input.best &&
+    input.worst &&
+    input.best.grandNetIncome !== input.worst.grandNetIncome
+  ) {
+    const range = Number(
+      (input.best.grandNetIncome - input.worst.grandNetIncome).toFixed(2),
+    );
     items.push({
       title: "设置情景监控阈值",
       valueLabel: productCategoryYiNumberLabel(range),
@@ -1718,7 +2003,10 @@ function selectProductCategoryScenarioHeatRows(input: {
   baselineRowsById: Map<string, ProductCategoryPnlRow>;
   scenarios: ProductCategoryPnlPayload[];
 }): ProductCategoryScenarioHeatRow[] {
-  const exposures = new Map<string, { categoryLabel: string; exposure: number }>();
+  const exposures = new Map<
+    string,
+    { categoryLabel: string; exposure: number }
+  >();
   for (const scenario of input.scenarios) {
     for (const row of leafProductCategoryRows(scenario.rows)) {
       const delta = productCategoryRowDeltaYi(input.baselineRowsById, row);
@@ -1741,7 +2029,8 @@ function selectProductCategoryScenarioHeatRows(input: {
   return sorted.map((row) => ({
     categoryLabel: row.categoryLabel,
     exposureLabel: formatSignedProductCategoryYi(row.exposure),
-    widthPct: maxAbs === 0 ? 0 : Math.round((Math.abs(row.exposure) / maxAbs) * 100),
+    widthPct:
+      maxAbs === 0 ? 0 : Math.round((Math.abs(row.exposure) / maxAbs) * 100),
     widthClassName: `is-width-${productCategoryBucketPct(
       maxAbs === 0 ? 0 : Math.round((Math.abs(row.exposure) / maxAbs) * 100),
     )}`,
@@ -1755,7 +2044,10 @@ function selectProductCategoryScenarioComparisonRows(input: {
 }): ProductCategoryScenarioComparisonRow[] {
   const scenarioRowsByCategory = new Map<
     string,
-    { baselineRow: ProductCategoryPnlRow; scenarioRows: Array<{ rate: string; row: ProductCategoryPnlRow }> }
+    {
+      baselineRow: ProductCategoryPnlRow;
+      scenarioRows: Array<{ rate: string; row: ProductCategoryPnlRow }>;
+    }
   >();
   for (const scenario of input.scenarios) {
     const scenarioRate = scenario.scenario_rate_pct;
@@ -1769,7 +2061,10 @@ function selectProductCategoryScenarioComparisonRows(input: {
       }
       const current = scenarioRowsByCategory.get(scenarioRow.category_id);
       if (current) {
-        current.scenarioRows.push({ rate: String(scenarioRate), row: scenarioRow });
+        current.scenarioRows.push({
+          rate: String(scenarioRate),
+          row: scenarioRow,
+        });
       } else {
         scenarioRowsByCategory.set(scenarioRow.category_id, {
           baselineRow,
@@ -1778,69 +2073,92 @@ function selectProductCategoryScenarioComparisonRows(input: {
       }
     }
   }
-  const rows: Array<ProductCategoryScenarioComparisonRow | null> = [...scenarioRowsByCategory.entries()]
-    .map(([categoryId, entry]) => {
-      const baselineNetIncome = yiNumber(entry.baselineRow.business_net_income);
-      const cells = entry.scenarioRows
-        .map((scenarioEntry) => {
-          const rate = scenarioEntry.rate;
-          const ratePct = Number(rate);
-          const netIncome = yiNumber(scenarioEntry.row.business_net_income);
-          const delta = productCategoryRowDeltaYi(input.baselineRowsById, scenarioEntry.row);
-          return {
-            rate: String(rate),
-            ratePct,
-            rateLabel: `${ratePct.toFixed(2)}%`,
-            netIncome,
-            netIncomeLabel: productCategoryYiNumberLabel(netIncome),
-            delta,
-            deltaLabel: formatSignedProductCategoryYi(delta),
-            tone: productCategoryDeltaTone(delta),
-          };
-        })
-        .filter((cell): cell is ProductCategoryScenarioComparisonCell => cell !== null)
-        .sort((left, right) => left.ratePct - right.ratePct);
-      const comparableCells = cells.filter((cell): cell is ProductCategoryScenarioComparisonCell & {
+  const rows: Array<ProductCategoryScenarioComparisonRow | null> = [
+    ...scenarioRowsByCategory.entries(),
+  ].map(([categoryId, entry]) => {
+    const baselineNetIncome = yiNumber(entry.baselineRow.business_net_income);
+    const cells = entry.scenarioRows
+      .map((scenarioEntry) => {
+        const rate = scenarioEntry.rate;
+        const ratePct = Number(rate);
+        const netIncome = yiNumber(scenarioEntry.row.business_net_income);
+        const delta = productCategoryRowDeltaYi(
+          input.baselineRowsById,
+          scenarioEntry.row,
+        );
+        return {
+          rate: String(rate),
+          ratePct,
+          rateLabel: `${ratePct.toFixed(2)}%`,
+          netIncome,
+          netIncomeLabel: productCategoryYiNumberLabel(netIncome),
+          delta,
+          deltaLabel: formatSignedProductCategoryYi(delta),
+          tone: productCategoryDeltaTone(delta),
+        };
+      })
+      .filter(
+        (cell): cell is ProductCategoryScenarioComparisonCell => cell !== null,
+      )
+      .sort((left, right) => left.ratePct - right.ratePct);
+    const comparableCells = cells.filter(
+      (
+        cell,
+      ): cell is ProductCategoryScenarioComparisonCell & {
         delta: number;
         netIncome: number;
-      } => cell.delta !== null && cell.netIncome !== null);
-      if (comparableCells.length === 0) {
-        return null;
-      }
-      const best = [...comparableCells].sort((left, right) => right.delta - left.delta)[0];
-      const worst = [...comparableCells].sort((left, right) => left.delta - right.delta)[0];
-      if (!best || !worst) {
-        return null;
-      }
-      const minNetIncome = Math.min(...comparableCells.map((cell) => cell.netIncome));
-      const maxNetIncome = Math.max(...comparableCells.map((cell) => cell.netIncome));
-      const range = Number((maxNetIncome - minNetIncome).toFixed(2));
-      const maxAbsDelta = Math.max(...comparableCells.map((cell) => Math.abs(cell.delta)), 0);
-      return {
-        categoryId,
-        categoryLabel: entry.baselineRow.category_name || categoryId,
-        sideLabel: productCategoryScenarioSideLabel(entry.baselineRow.side),
-        baselineNetIncome,
-        baselineNetIncomeLabel: productCategoryYiNumberLabel(baselineNetIncome),
-        cells,
-        bestRateLabel: best.rateLabel,
-        bestDelta: best.delta,
-        bestDeltaLabel: formatSignedProductCategoryYi(best.delta),
-        worstRateLabel: worst.rateLabel,
-        worstDelta: worst.delta,
-        worstDeltaLabel: formatSignedProductCategoryYi(worst.delta),
-        range,
-        rangeLabel: productCategoryYiNumberLabel(range),
-        maxAbsDelta,
-        tone: productCategoryDeltaTone(worst.delta),
-      };
-    });
+      } => cell.delta !== null && cell.netIncome !== null,
+    );
+    if (comparableCells.length === 0) {
+      return null;
+    }
+    const best = [...comparableCells].sort(
+      (left, right) => right.delta - left.delta,
+    )[0];
+    const worst = [...comparableCells].sort(
+      (left, right) => left.delta - right.delta,
+    )[0];
+    if (!best || !worst) {
+      return null;
+    }
+    const minNetIncome = Math.min(
+      ...comparableCells.map((cell) => cell.netIncome),
+    );
+    const maxNetIncome = Math.max(
+      ...comparableCells.map((cell) => cell.netIncome),
+    );
+    const range = Number((maxNetIncome - minNetIncome).toFixed(2));
+    const maxAbsDelta = Math.max(
+      ...comparableCells.map((cell) => Math.abs(cell.delta)),
+      0,
+    );
+    return {
+      categoryId,
+      categoryLabel: entry.baselineRow.category_name || categoryId,
+      sideLabel: productCategoryScenarioSideLabel(entry.baselineRow.side),
+      baselineNetIncome,
+      baselineNetIncomeLabel: productCategoryYiNumberLabel(baselineNetIncome),
+      cells,
+      bestRateLabel: best.rateLabel,
+      bestDelta: best.delta,
+      bestDeltaLabel: formatSignedProductCategoryYi(best.delta),
+      worstRateLabel: worst.rateLabel,
+      worstDelta: worst.delta,
+      worstDeltaLabel: formatSignedProductCategoryYi(worst.delta),
+      range,
+      rangeLabel: productCategoryYiNumberLabel(range),
+      maxAbsDelta,
+      tone: productCategoryDeltaTone(worst.delta),
+    };
+  });
   return rows
     .filter((row): row is ProductCategoryScenarioComparisonRow => row !== null)
     .sort((left, right) => right.maxAbsDelta - left.maxAbsDelta);
 }
 
-function productCategoryScenarioClosureRecommendation(row: ProductCategoryScenarioComparisonRow): string {
+function productCategoryScenarioClosureRecommendation(
+  row: ProductCategoryScenarioComparisonRow,
+): string {
   if (row.sideLabel === "负债端") {
     return "复核负债成本、FTP 曲线与定价传导";
   }
@@ -1855,12 +2173,18 @@ function selectProductCategoryScenarioActionClosureRows(
 ): ProductCategoryScenarioActionClosureRow[] {
   return comparisonRows
     .filter((row) => row.worstDelta !== null && row.worstDelta < 0)
-    .sort((left, right) => Math.abs(right.worstDelta ?? 0) - Math.abs(left.worstDelta ?? 0))
+    .sort(
+      (left, right) =>
+        Math.abs(right.worstDelta ?? 0) - Math.abs(left.worstDelta ?? 0),
+    )
     .slice(0, 4)
     .map((row, index) => {
-      const worstCell = row.cells.find((cell) => cell.rateLabel === row.worstRateLabel);
-      const scenarioNetIncomeLabel = worstCell?.netIncomeLabel ?? "-";
-      const recommendationLabel = productCategoryScenarioClosureRecommendation(row);
+      const worstCell = row.cells.find(
+        (cell) => cell.rateLabel === row.worstRateLabel,
+      );
+      const scenarioNetIncomeLabel = worstCell?.netIncomeLabel ?? EM_DASH;
+      const recommendationLabel =
+        productCategoryScenarioClosureRecommendation(row);
       return {
         priorityLabel: `动作 ${index + 1}`,
         categoryId: row.categoryId,
@@ -1898,7 +2222,9 @@ function selectProductCategoryScenarioBreakeven(
   if (comparableRows.length === 0) {
     return EMPTY_PRODUCT_CATEGORY_SCENARIO_PRESSURE_SUMMARY.breakeven;
   }
-  const sortedByRate = [...comparableRows].sort((left, right) => left.ratePct - right.ratePct);
+  const sortedByRate = [...comparableRows].sort(
+    (left, right) => left.ratePct - right.ratePct,
+  );
   const exact = sortedByRate.find((row) => row.grandDelta === 0);
   if (exact) {
     return {
@@ -1918,7 +2244,9 @@ function selectProductCategoryScenarioBreakeven(
     if (deltaSpan === 0) {
       continue;
     }
-    const rate = left.ratePct + ((0 - left.grandDelta) / deltaSpan) * (right.ratePct - left.ratePct);
+    const rate =
+      left.ratePct +
+      ((0 - left.grandDelta) / deltaSpan) * (right.ratePct - left.ratePct);
     return {
       label: "临界 FTP",
       valueLabel: `约 ${rate.toFixed(2)}%`,
@@ -1928,12 +2256,16 @@ function selectProductCategoryScenarioBreakeven(
       tone: "warning",
     };
   }
-  const best = [...sortedByRate].sort((left, right) => right.grandDelta - left.grandDelta)[0];
-  const worst = [...sortedByRate].sort((left, right) => left.grandDelta - right.grandDelta)[0];
+  const best = [...sortedByRate].sort(
+    (left, right) => right.grandDelta - left.grandDelta,
+  )[0];
+  const worst = [...sortedByRate].sort(
+    (left, right) => left.grandDelta - right.grandDelta,
+  )[0];
   if (worst && worst.grandDelta > 0) {
     return {
       label: "临界 FTP",
-      valueLabel: `高于 ${sortedByRate[sortedByRate.length - 1]?.rateLabel ?? "-"}`,
+      valueLabel: `高于 ${sortedByRate[sortedByRate.length - 1]?.rateLabel ?? EM_DASH}`,
       detailLabel: `已加载情景均高于基线，最低差额 ${worst.grandDeltaLabel}；未在当前区间触发临界点。`,
       tone: "positive",
     };
@@ -1941,7 +2273,7 @@ function selectProductCategoryScenarioBreakeven(
   if (best && best.grandDelta < 0) {
     return {
       label: "临界 FTP",
-      valueLabel: `低于 ${sortedByRate[0]?.rateLabel ?? "-"}`,
+      valueLabel: `低于 ${sortedByRate[0]?.rateLabel ?? EM_DASH}`,
       detailLabel: `已加载情景均低于基线，最高差额 ${best.grandDeltaLabel}；需复核情景输入或基线安全垫。`,
       tone: "negative",
     };
@@ -1956,11 +2288,18 @@ function selectProductCategoryScenarioSideOffset(
     return EMPTY_PRODUCT_CATEGORY_SCENARIO_PRESSURE_SUMMARY.sideOffset;
   }
   const totalAbs = Math.abs(worst.assetDelta) + Math.abs(worst.liabilityDelta);
-  const assetWidth = totalAbs === 0 ? 0 : Math.round((Math.abs(worst.assetDelta) / totalAbs) * 100);
+  const assetWidth =
+    totalAbs === 0
+      ? 0
+      : Math.round((Math.abs(worst.assetDelta) / totalAbs) * 100);
   const liabilityWidth =
-    totalAbs === 0 ? 0 : Math.round((Math.abs(worst.liabilityDelta) / totalAbs) * 100);
+    totalAbs === 0
+      ? 0
+      : Math.round((Math.abs(worst.liabilityDelta) / totalAbs) * 100);
   const hasOffset = worst.assetDelta * worst.liabilityDelta < 0;
-  const offset = hasOffset ? Math.min(Math.abs(worst.assetDelta), Math.abs(worst.liabilityDelta)) : 0;
+  const offset = hasOffset
+    ? Math.min(Math.abs(worst.assetDelta), Math.abs(worst.liabilityDelta))
+    : 0;
   let conclusionLabel = "资产端与负债端变化较小，当前情景未形成显著冲抵。";
   if (hasOffset) {
     conclusionLabel = `资产端与负债端形成 ${productCategoryYiNumberLabel(
@@ -1991,10 +2330,12 @@ function productCategoryScenarioSideLabel(side: string): string {
   if (side === "liability") {
     return "负债端";
   }
-  return side || "-";
+  return side || EM_DASH;
 }
 
-function productCategoryScenarioReviewAction(tone: "positive" | "negative" | "neutral"): string {
+function productCategoryScenarioReviewAction(
+  tone: "positive" | "negative" | "neutral",
+): string {
   if (tone === "negative") {
     return "复核 FTP 敞口、规模与收益率输入";
   }
@@ -2020,7 +2361,8 @@ function selectProductCategoryScenarioReviewRows(input: {
   >();
   for (const scenario of input.scenarios) {
     const scenarioRate = decimalNumber(scenario.scenario_rate_pct);
-    const triggerRateLabel = scenarioRate === null ? "-" : `${scenarioRate.toFixed(2)}%`;
+    const triggerRateLabel =
+      scenarioRate === null ? EM_DASH : `${scenarioRate.toFixed(2)}%`;
     for (const row of leafProductCategoryRows(scenario.rows)) {
       const delta = productCategoryRowDeltaYi(input.baselineRowsById, row);
       if (delta === null || delta === 0) {
@@ -2095,7 +2437,9 @@ function scenarioExplanationDriverRows(
       valueLabel: formatSignedProductCategoryYi(value),
       tone: productCategoryDeltaTone(value),
     };
-  }).sort((left, right) => Math.abs(right.value ?? 0) - Math.abs(left.value ?? 0));
+  }).sort(
+    (left, right) => Math.abs(right.value ?? 0) - Math.abs(left.value ?? 0),
+  );
 }
 
 function dominantScenarioExplanationDriver(
@@ -2107,7 +2451,9 @@ function dominantScenarioExplanationDriver(
 function scenarioExplanationAttributionTotal(
   rows: ProductCategoryScenarioExplanationDriverRow[],
 ): number | null {
-  const values = rows.map((row) => row.value).filter((value): value is number => value !== null);
+  const values = rows
+    .map((row) => row.value)
+    .filter((value): value is number => value !== null);
   if (values.length === 0) {
     return null;
   }
@@ -2117,17 +2463,31 @@ function scenarioExplanationAttributionTotal(
 function scenarioExplanationBridge(input: {
   scenarioDelta: number | null | undefined;
   attributionTotal: number | null;
-}): Pick<ProductCategoryScenarioExplanation, "bridgeLabel" | "bridgeConclusionLabel" | "bridgeTone"> {
-  const scenarioDeltaLabel = formatSignedProductCategoryYi(input.scenarioDelta ?? null);
-  const attributionTotalLabel = formatSignedProductCategoryYi(input.attributionTotal);
-  if (input.scenarioDelta === null || input.scenarioDelta === undefined || input.attributionTotal === null) {
+}): Pick<
+  ProductCategoryScenarioExplanation,
+  "bridgeLabel" | "bridgeConclusionLabel" | "bridgeTone"
+> {
+  const scenarioDeltaLabel = formatSignedProductCategoryYi(
+    input.scenarioDelta ?? null,
+  );
+  const attributionTotalLabel = formatSignedProductCategoryYi(
+    input.attributionTotal,
+  );
+  if (
+    input.scenarioDelta === null ||
+    input.scenarioDelta === undefined ||
+    input.attributionTotal === null
+  ) {
     return {
-      bridgeLabel: `口径桥：情景压力 ${scenarioDeltaLabel} 亿元；正式归因合计 ${attributionTotalLabel} 亿元；差异 -。`,
-      bridgeConclusionLabel: "当前缺少可比较的情景压力或正式归因驱动，暂不能做口径差异判断。",
+      bridgeLabel: `口径桥：情景压力 ${scenarioDeltaLabel} 亿元；正式归因合计 ${attributionTotalLabel} 亿元；差异 ${EM_DASH}。`,
+      bridgeConclusionLabel:
+        "当前缺少可比较的情景压力或正式归因驱动，暂不能做口径差异判断。",
       bridgeTone: "neutral",
     };
   }
-  const bridgeGap = Number((input.scenarioDelta - input.attributionTotal).toFixed(2));
+  const bridgeGap = Number(
+    (input.scenarioDelta - input.attributionTotal).toFixed(2),
+  );
   const bridgeGapAbs = Math.abs(bridgeGap);
   const bridgeTone = bridgeGapAbs <= 0.01 ? "neutral" : "warning";
   return {
@@ -2156,13 +2516,19 @@ function scenarioExplanationReviewActions(input: {
           "核对正式归因期间口径：确认 current/prior 日期、月度/同比口径与情景基线不同。",
         ];
   if (input.dominantDriver) {
-    const driverActionByKey: Record<ProductCategoryScenarioExplanationDriverRow["key"], string> = {
+    const driverActionByKey: Record<
+      ProductCategoryScenarioExplanationDriverRow["key"],
+      string
+    > = {
       ftp_effect: "复核 FTP 输入、基准利率和资产负债侧映射。",
       scale_effect: "复核规模口径、日均余额和产品分类映射。",
       rate_effect: "复核收益率/成本率输入、计息天数和基准利率变动。",
-      unexplained_effect: "复核残差来源，检查缺失字段、四舍五入和未覆盖业务项。",
+      unexplained_effect:
+        "复核残差来源，检查缺失字段、四舍五入和未覆盖业务项。",
     };
-    actions.push(`重点追踪 ${input.dominantDriver.label}：${driverActionByKey[input.dominantDriver.key]}`);
+    actions.push(
+      `重点追踪 ${input.dominantDriver.label}：${driverActionByKey[input.dominantDriver.key]}`,
+    );
   }
   return actions.slice(0, 3);
 }
@@ -2176,19 +2542,23 @@ export function selectProductCategoryScenarioExplanation(input: {
   if (!input.categoryId || !input.baseline) {
     return null;
   }
-  const baselineRow = findProductCategoryRow(input.baseline.rows, input.categoryId);
+  const baselineRow = findProductCategoryRow(
+    input.baseline.rows,
+    input.categoryId,
+  );
   if (!baselineRow) {
     return {
       categoryId: input.categoryId,
       categoryLabel: input.categoryId,
-      sideLabel: "-",
-      triggerRateLabel: "-",
-      scenarioDeltaLabel: "-",
-      baselineNetIncomeLabel: "-",
-      scenarioNetIncomeLabel: "-",
+      sideLabel: EM_DASH,
+      triggerRateLabel: EM_DASH,
+      scenarioDeltaLabel: EM_DASH,
+      baselineNetIncomeLabel: EM_DASH,
+      scenarioNetIncomeLabel: EM_DASH,
       summaryLabel: "当前正式基线未返回该产品行，无法形成行级情景解释。",
-      bridgeLabel: "口径桥：情景压力 - 亿元；正式归因合计 - 亿元；差异 -。",
-      bridgeConclusionLabel: "当前缺少可比较的情景压力或正式归因驱动，暂不能做口径差异判断。",
+      bridgeLabel: `口径桥：情景压力 ${EM_DASH} 亿元；正式归因合计 ${EM_DASH} 亿元；差异 ${EM_DASH}。`,
+      bridgeConclusionLabel:
+        "当前缺少可比较的情景压力或正式归因驱动，暂不能做口径差异判断。",
       bridgeTone: "neutral",
       reviewActionItems: ["补齐正式基线和情景矩阵后，再生成行级复核动作。"],
       driverRows: [],
@@ -2198,14 +2568,24 @@ export function selectProductCategoryScenarioExplanation(input: {
   const baselineNetIncome = yiNumber(baselineRow.business_net_income);
   const scenarioMoves = input.scenarios
     .map((scenario) => {
-      const scenarioRow = findProductCategoryRow(scenario.rows, input.categoryId as string);
+      const scenarioRow = findProductCategoryRow(
+        scenario.rows,
+        input.categoryId as string,
+      );
       if (!scenarioRow) {
         return null;
       }
-      const delta = productCategoryRowDeltaYi(new Map([[baselineRow.category_id, baselineRow]]), scenarioRow);
+      const delta = productCategoryRowDeltaYi(
+        new Map([[baselineRow.category_id, baselineRow]]),
+        scenarioRow,
+      );
       const scenarioNetIncome = yiNumber(scenarioRow.business_net_income);
       const scenarioRate = decimalNumber(scenario.scenario_rate_pct);
-      if (delta === null || scenarioNetIncome === null || scenarioRate === null) {
+      if (
+        delta === null ||
+        scenarioNetIncome === null ||
+        scenarioRate === null
+      ) {
         return null;
       }
       return {
@@ -2215,22 +2595,33 @@ export function selectProductCategoryScenarioExplanation(input: {
         rateLabel: `${scenarioRate.toFixed(2)}%`,
       };
     })
-    .filter((move): move is {
-      row: ProductCategoryPnlRow;
-      delta: number;
-      scenarioNetIncome: number;
-      rateLabel: string;
-    } => move !== null)
+    .filter(
+      (
+        move,
+      ): move is {
+        row: ProductCategoryPnlRow;
+        delta: number;
+        scenarioNetIncome: number;
+        rateLabel: string;
+      } => move !== null,
+    )
     .sort((left, right) => Math.abs(right.delta) - Math.abs(left.delta));
   const topMove = scenarioMoves[0];
-  const attributionRow = input.attribution?.rows.find((row) => row.category_id === input.categoryId);
+  const attributionRow = input.attribution?.rows.find(
+    (row) => row.category_id === input.categoryId,
+  );
   const driverRows = scenarioExplanationDriverRows(attributionRow);
   const dominantDriver = dominantScenarioExplanationDriver(driverRows);
   const attributionTotal = scenarioExplanationAttributionTotal(driverRows);
-  const scenarioDeltaLabel = formatSignedProductCategoryYi(topMove?.delta ?? null);
-  const triggerRateLabel = topMove?.rateLabel ?? "-";
-  const baselineNetIncomeLabel = productCategoryYiNumberLabel(baselineNetIncome);
-  const scenarioNetIncomeLabel = productCategoryYiNumberLabel(topMove?.scenarioNetIncome ?? null);
+  const scenarioDeltaLabel = formatSignedProductCategoryYi(
+    topMove?.delta ?? null,
+  );
+  const triggerRateLabel = topMove?.rateLabel ?? EM_DASH;
+  const baselineNetIncomeLabel =
+    productCategoryYiNumberLabel(baselineNetIncome);
+  const scenarioNetIncomeLabel = productCategoryYiNumberLabel(
+    topMove?.scenarioNetIncome ?? null,
+  );
   const bridge = scenarioExplanationBridge({
     scenarioDelta: topMove?.delta,
     attributionTotal,
@@ -2266,8 +2657,11 @@ export function selectProductCategoryScenarioSensitivitySurface(input: {
 }): ProductCategoryScenarioSensitivitySurface {
   if (!input.baseline || input.scenarios.length === 0) {
     return {
+      metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
       baselineGrandTotalLabel: input.baseline
-        ? formatProductCategoryValue(input.baseline.grand_total.business_net_income)
+        ? formatProductCategoryValue(
+            input.baseline.grand_total.business_net_income,
+          )
         : null,
       rows: [],
       insightCards: [],
@@ -2282,10 +2676,18 @@ export function selectProductCategoryScenarioSensitivitySurface(input: {
       emptyCopy: "当前尚未返回可比较的 FTP 情景结果。",
     };
   }
-  const baselineRowsById = new Map(input.baseline.rows.map((row) => [row.category_id, row]));
-  const baselineAssetTotal = yiNumber(input.baseline.asset_total.business_net_income);
-  const baselineLiabilityTotal = yiNumber(input.baseline.liability_total.business_net_income);
-  const baselineGrandTotal = yiNumber(input.baseline.grand_total.business_net_income);
+  const baselineRowsById = new Map(
+    input.baseline.rows.map((row) => [row.category_id, row]),
+  );
+  const baselineAssetTotal = yiNumber(
+    input.baseline.asset_total.business_net_income,
+  );
+  const baselineLiabilityTotal = yiNumber(
+    input.baseline.liability_total.business_net_income,
+  );
+  const baselineGrandTotal = yiNumber(
+    input.baseline.grand_total.business_net_income,
+  );
   const rows: ProductCategoryScenarioSensitivityRow[] = [];
   for (const scenario of input.scenarios) {
     const scenarioRate = scenario.scenario_rate_pct;
@@ -2294,7 +2696,9 @@ export function selectProductCategoryScenarioSensitivitySurface(input: {
     }
     const ratePct = Number(scenarioRate);
     const assetValue = yiNumber(scenario.asset_total.business_net_income);
-    const liabilityValue = yiNumber(scenario.liability_total.business_net_income);
+    const liabilityValue = yiNumber(
+      scenario.liability_total.business_net_income,
+    );
     const grandValue = yiNumber(scenario.grand_total.business_net_income);
     const assetDelta =
       assetValue === null || baselineAssetTotal === null
@@ -2313,7 +2717,10 @@ export function selectProductCategoryScenarioSensitivitySurface(input: {
         row,
         delta: productCategoryRowDeltaYi(baselineRowsById, row),
       }))
-      .filter((item): item is { row: ProductCategoryPnlRow; delta: number } => item.delta !== null)
+      .filter(
+        (item): item is { row: ProductCategoryPnlRow; delta: number } =>
+          item.delta !== null,
+      )
       .sort((left, right) => Math.abs(right.delta) - Math.abs(left.delta))[0];
     rows.push({
       rate: String(scenarioRate),
@@ -2331,9 +2738,12 @@ export function selectProductCategoryScenarioSensitivitySurface(input: {
       grandDelta,
       grandNetIncomeLabel: productCategoryYiNumberLabel(grandValue),
       grandDeltaLabel: formatSignedProductCategoryYi(grandDelta),
-      topMoverCategoryLabel: topMover?.row.category_name || topMover?.row.category_id || "-",
+      topMoverCategoryLabel:
+        topMover?.row.category_name || topMover?.row.category_id || EM_DASH,
       topMoverDelta: topMover?.delta ?? null,
-      topMoverDeltaLabel: formatSignedProductCategoryYi(topMover?.delta ?? null),
+      topMoverDeltaLabel: formatSignedProductCategoryYi(
+        topMover?.delta ?? null,
+      ),
       tone: productCategoryDeltaTone(grandDelta),
     });
   }
@@ -2350,18 +2760,26 @@ export function selectProductCategoryScenarioSensitivitySurface(input: {
     scenarios: input.scenarios,
   });
   return {
-    baselineGrandTotalLabel: formatProductCategoryValue(input.baseline.grand_total.business_net_income),
+    metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
+    baselineGrandTotalLabel: formatProductCategoryValue(
+      input.baseline.grand_total.business_net_income,
+    ),
     rows,
     insightCards: selectProductCategoryScenarioInsightCards(rows),
     riskRows,
     pathPoints: selectProductCategoryScenarioPathPoints(rows),
-    actionItems: selectProductCategoryScenarioActionItems({ best, worst, riskRows }),
+    actionItems: selectProductCategoryScenarioActionItems({
+      best,
+      worst,
+      riskRows,
+    }),
     heatRows: selectProductCategoryScenarioHeatRows({
       baselineRowsById,
       scenarios: input.scenarios,
     }),
     comparisonRows,
-    actionClosureRows: selectProductCategoryScenarioActionClosureRows(comparisonRows),
+    actionClosureRows:
+      selectProductCategoryScenarioActionClosureRows(comparisonRows),
     pressureSummary: selectProductCategoryScenarioPressureSummary({
       baselineRowsById,
       comparableRows,
@@ -2384,13 +2802,16 @@ const PRODUCT_CATEGORY_ATTRIBUTION_WATERFALL_STEPS = [
 ] as const;
 
 const PRODUCT_CATEGORY_ROOT_CAUSE_DRIVER_STEPS = [
+  ["day_effect", "天数因素"],
   ["scale_effect", "规模因素"],
   ["rate_effect", "利率因素"],
   ["ftp_effect", "FTP因素"],
   ["direct_effect", "直接因素"],
   ["unexplained_effect", "未解释"],
   ["closure_error", "闭合误差"],
-] as const satisfies ReadonlyArray<readonly [ProductCategoryRootCauseDriverKey, string]>;
+] as const satisfies ReadonlyArray<
+  readonly [ProductCategoryRootCauseDriverKey, string]
+>;
 
 export function selectProductCategoryAttributionWaterfallSurface(
   attribution: ProductCategoryAttributionPayload | null | undefined,
@@ -2398,47 +2819,58 @@ export function selectProductCategoryAttributionWaterfallSurface(
   const headline = attribution?.totals?.grand_total;
   if (!headline || attribution?.state !== "complete") {
     return {
+      metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
       title: "经营差异瀑布",
-      deltaLabel: "-",
+      deltaLabel: EM_DASH,
       rows: [],
       emptyCopy: "当前缺少可用的全表经营差异归因。",
     };
   }
   const prior = yiNumber(headline.prior?.business_net_income);
+  const priorRaw = rawYiNumber(headline.prior?.business_net_income);
   const current = yiNumber(headline.current?.business_net_income);
+  const currentRaw = rawYiNumber(headline.current?.business_net_income);
   const delta = yiNumber(headline.effects.delta_business_net_income);
-  if (prior === null || current === null) {
+  if (
+    prior === null ||
+    priorRaw === null ||
+    current === null ||
+    currentRaw === null
+  ) {
     return {
+      metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
       title: `${headline.category_name || "全表合计"}经营差异瀑布`,
       deltaLabel: formatSignedProductCategoryYi(delta),
       rows: [],
       emptyCopy: "当前归因缺少本期或对比期净营收。",
     };
   }
-  let cumulative = prior;
+  let cumulative = priorRaw;
   const rows: ProductCategoryAttributionWaterfallRow[] = [
     {
       key: "prior",
       label: "对比期净营收",
       value: prior,
       valueLabel: productCategoryYiNumberLabel(prior),
-      cumulative: prior,
-      cumulativeLabel: productCategoryYiNumberLabel(prior),
+      cumulative: priorRaw,
+      cumulativeLabel: productCategoryYiNumberLabel(priorRaw),
       tone: productCategoryDeltaTone(prior),
     },
   ];
   for (const [key, label] of PRODUCT_CATEGORY_ATTRIBUTION_WATERFALL_STEPS) {
     const value = yiNumber(headline.effects[key]);
-    if (value !== null) {
-      cumulative = Number((cumulative + value).toFixed(2));
+    const rawValue = rawYiNumber(headline.effects[key]);
+    if (rawValue !== null) {
+      cumulative += rawValue;
     }
     rows.push({
       key,
       label,
       value,
       valueLabel: formatSignedProductCategoryYi(value),
-      cumulative: value === null ? null : cumulative,
-      cumulativeLabel: value === null ? "-" : productCategoryYiNumberLabel(cumulative),
+      cumulative: rawValue === null ? null : cumulative,
+      cumulativeLabel:
+        rawValue === null ? EM_DASH : productCategoryYiNumberLabel(cumulative),
       tone: productCategoryDeltaTone(value),
     });
   }
@@ -2447,11 +2879,12 @@ export function selectProductCategoryAttributionWaterfallSurface(
     label: "本期净营收",
     value: current,
     valueLabel: productCategoryYiNumberLabel(current),
-    cumulative: current,
-    cumulativeLabel: productCategoryYiNumberLabel(current),
+    cumulative: currentRaw,
+    cumulativeLabel: productCategoryYiNumberLabel(currentRaw),
     tone: productCategoryDeltaTone(delta),
   });
   return {
+    metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
     title: `${headline.category_name || "全表合计"}经营差异瀑布`,
     deltaLabel: formatSignedProductCategoryYi(delta),
     rows,
@@ -2465,6 +2898,7 @@ export function selectProductCategoryRootCauseSurface(input: {
 }): ProductCategoryRootCauseSurface {
   if (!input.attribution || input.attribution.state !== "complete") {
     return {
+      metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
       headline: null,
       driverRows: [],
       evidenceItems: [],
@@ -2473,31 +2907,51 @@ export function selectProductCategoryRootCauseSurface(input: {
   }
   const parentIds = parentProductCategoryIds(input.rows);
   const attributionRows = input.attribution.rows.filter(
-    (row) => !row.category_id.endsWith("_total") && row.category_id !== "grand_total" && !parentIds.has(row.category_id),
+    (row) =>
+      !row.category_id.endsWith("_total") &&
+      row.category_id !== "grand_total" &&
+      !parentIds.has(row.category_id),
   );
   const headlineRow = attributionRows
-    .map((row) => ({ row, delta: yiNumber(row.effects.delta_business_net_income) }))
-    .filter((item): item is { row: ProductCategoryAttributionRow; delta: number } =>
-      item.delta !== null && item.delta !== 0,
+    .map((row) => ({
+      row,
+      delta: yiNumber(row.effects.delta_business_net_income),
+    }))
+    .filter(
+      (item): item is { row: ProductCategoryAttributionRow; delta: number } =>
+        item.delta !== null && item.delta !== 0,
     )
     .sort((left, right) => Math.abs(right.delta) - Math.abs(left.delta))[0];
   if (!headlineRow) {
     return {
+      metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
       headline: null,
       driverRows: [],
       evidenceItems: [],
       emptyCopy: "当前产品级归因没有可拆解的显著差异。",
     };
   }
-  const displayRow = input.rows.find((row) => row.category_id === headlineRow.row.category_id);
-  const currentNetIncome = yiNumber(headlineRow.row.current?.business_net_income ?? displayRow?.business_net_income);
+  const displayRow = input.rows.find(
+    (row) => row.category_id === headlineRow.row.category_id,
+  );
+  const currentNetIncome = yiNumber(
+    headlineRow.row.current?.business_net_income ??
+      displayRow?.business_net_income,
+  );
   const priorNetIncome = yiNumber(headlineRow.row.prior?.business_net_income);
-  const scale = yiNumber(headlineRow.row.current?.scale ?? displayRow?.cnx_scale);
-  const yieldPct = percentNumber(headlineRow.row.current?.yield_pct ?? displayRow?.weighted_yield);
-  const driverRows = PRODUCT_CATEGORY_ROOT_CAUSE_DRIVER_STEPS
-    .map(([key, label]) => {
+  const scale = yiNumber(
+    headlineRow.row.current?.scale ?? displayRow?.cnx_scale,
+  );
+  const yieldPct = percentNumber(
+    headlineRow.row.current?.yield_pct ?? displayRow?.weighted_yield,
+  );
+  const driverRows = PRODUCT_CATEGORY_ROOT_CAUSE_DRIVER_STEPS.map(
+    ([key, label]) => {
       const value = yiNumber(headlineRow.row.effects[key]) ?? 0;
-      const sharePct = headlineRow.delta !== 0 ? Number((value / headlineRow.delta * 100).toFixed(1)) : null;
+      const sharePct =
+        headlineRow.delta !== 0
+          ? Number(((value / headlineRow.delta) * 100).toFixed(1))
+          : null;
       return {
         key,
         label,
@@ -2507,25 +2961,27 @@ export function selectProductCategoryRootCauseSurface(input: {
         shareLabel: productCategoryPercentLabel(sharePct),
         tone: productCategoryDeltaTone(value),
       };
-    })
-    .sort((left, right) => Math.abs(right.value) - Math.abs(left.value));
+    },
+  ).sort((left, right) => Math.abs(right.value) - Math.abs(left.value));
   const leadingDriver = driverRows[0] ?? null;
   const closureError = yiNumber(headlineRow.row.effects.closure_error);
   return {
+    metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
     headline: {
       categoryId: headlineRow.row.category_id,
-      categoryLabel: headlineRow.row.category_name || headlineRow.row.category_id,
+      categoryLabel:
+        headlineRow.row.category_name || headlineRow.row.category_id,
       delta: headlineRow.delta,
       deltaLabel: formatSignedProductCategoryYi(headlineRow.delta),
       driverLabel: leadingDriver?.label ?? "未识别",
-      driverValueLabel: leadingDriver?.valueLabel ?? "-",
+      driverValueLabel: leadingDriver?.valueLabel ?? EM_DASH,
       currentNetIncomeLabel: productCategoryYiNumberLabel(currentNetIncome),
       priorNetIncomeLabel: productCategoryYiNumberLabel(priorNetIncome),
       scaleLabel: productCategoryYiNumberLabel(scale),
-      yieldLabel: yieldPct === null ? "-" : `${yieldPct.toFixed(2)}%`,
+      yieldLabel: yieldPct === null ? EM_DASH : `${yieldPct.toFixed(2)}%`,
       conclusionLabel: `${headlineRow.row.category_name || headlineRow.row.category_id} 变动 ${formatSignedProductCategoryYi(
         headlineRow.delta,
-      )} 亿元，主导原因是 ${leadingDriver?.label ?? "未识别"} ${leadingDriver?.valueLabel ?? "-"} 亿元。`,
+      )} 亿元，主导原因是 ${leadingDriver?.label ?? "未识别"} ${leadingDriver?.valueLabel ?? EM_DASH} 亿元。`,
       tone: productCategoryDeltaTone(headlineRow.delta),
     },
     driverRows,
@@ -2533,7 +2989,7 @@ export function selectProductCategoryRootCauseSurface(input: {
       `本期净营收 ${productCategoryYiNumberLabel(currentNetIncome)} 亿元`,
       `对比期净营收 ${productCategoryYiNumberLabel(priorNetIncome)} 亿元`,
       `当前规模 ${productCategoryYiNumberLabel(scale)} 亿元`,
-      `当前收益率 ${yieldPct === null ? "-" : `${yieldPct.toFixed(2)}%`}`,
+      `当前收益率 ${yieldPct === null ? EM_DASH : `${yieldPct.toFixed(2)}%`}`,
       `闭合误差 ${formatSignedProductCategoryYi(closureError)} 亿元`,
     ],
     emptyCopy: null,
@@ -2568,43 +3024,62 @@ export function selectProductCategoryDecisionFocusSurface(input: {
       const value = yiNumber(row.business_net_income);
       return value === null || value === 0 ? null : { row, value };
     })
-    .filter((item): item is { row: ProductCategoryPnlRow; value: number } => item !== null);
+    .filter(
+      (item): item is { row: ProductCategoryPnlRow; value: number } =>
+        item !== null,
+    );
   const items: ProductCategoryDecisionFocusItem[] = [];
-  const topContributor = candidates.filter((item) => item.value > 0).sort((left, right) => right.value - left.value)[0];
+  const topContributor = candidates
+    .filter((item) => item.value > 0)
+    .sort((left, right) => right.value - left.value)[0];
   if (topContributor) {
-    items.push(focusItemFromRow({
-      key: "top_contributor",
-      row: topContributor.row,
-      value: topContributor.value,
-      reasonLabel: "本期贡献最高",
-      secondaryLabel: "优先确认利润可持续性",
-    }));
+    items.push(
+      focusItemFromRow({
+        key: "top_contributor",
+        row: topContributor.row,
+        value: topContributor.value,
+        reasonLabel: "本期贡献最高",
+        secondaryLabel: "优先确认利润可持续性",
+      }),
+    );
   }
-  const topPressure = candidates.filter((item) => item.value < 0).sort((left, right) => left.value - right.value)[0];
+  const topPressure = candidates
+    .filter((item) => item.value < 0)
+    .sort((left, right) => left.value - right.value)[0];
   if (topPressure) {
-    items.push(focusItemFromRow({
-      key: "top_pressure",
-      row: topPressure.row,
-      value: topPressure.value,
-      reasonLabel: "本期压力最大",
-      secondaryLabel: "优先定位收入承压来源",
-    }));
+    items.push(
+      focusItemFromRow({
+        key: "top_pressure",
+        row: topPressure.row,
+        value: topPressure.value,
+        reasonLabel: "本期压力最大",
+        secondaryLabel: "优先定位收入承压来源",
+      }),
+    );
   }
   if (input.attribution?.state === "complete") {
     const attributionRows = input.attribution.rows.filter(
-      (row) => !row.category_id.endsWith("_total") && row.category_id !== "grand_total",
+      (row) =>
+        !row.category_id.endsWith("_total") &&
+        row.category_id !== "grand_total",
     );
     const largestDeterioration = attributionRows
-      .map((row) => ({ row, value: yiNumber(row.effects.delta_business_net_income) }))
-      .filter((item): item is { row: ProductCategoryAttributionRow; value: number } =>
-        item.value !== null && item.value < 0,
+      .map((row) => ({
+        row,
+        value: yiNumber(row.effects.delta_business_net_income),
+      }))
+      .filter(
+        (item): item is { row: ProductCategoryAttributionRow; value: number } =>
+          item.value !== null && item.value < 0,
       )
       .sort((left, right) => left.value - right.value)[0];
     if (largestDeterioration) {
       items.push({
         key: "largest_deterioration",
         categoryId: largestDeterioration.row.category_id,
-        categoryLabel: largestDeterioration.row.category_name || largestDeterioration.row.category_id,
+        categoryLabel:
+          largestDeterioration.row.category_name ||
+          largestDeterioration.row.category_id,
         reasonLabel: "环比恶化最大",
         primaryLabel: formatSignedProductCategoryYi(largestDeterioration.value),
         secondaryLabel: "优先查看规模/利率/FTP驱动",
@@ -2613,15 +3088,18 @@ export function selectProductCategoryDecisionFocusSurface(input: {
     }
     const largestUnexplained = attributionRows
       .map((row) => ({ row, value: yiNumber(row.effects.unexplained_effect) }))
-      .filter((item): item is { row: ProductCategoryAttributionRow; value: number } =>
-        item.value !== null && item.value !== 0,
+      .filter(
+        (item): item is { row: ProductCategoryAttributionRow; value: number } =>
+          item.value !== null && item.value !== 0,
       )
       .sort((left, right) => Math.abs(right.value) - Math.abs(left.value))[0];
     if (largestUnexplained) {
       items.push({
         key: "largest_unexplained",
         categoryId: largestUnexplained.row.category_id,
-        categoryLabel: largestUnexplained.row.category_name || largestUnexplained.row.category_id,
+        categoryLabel:
+          largestUnexplained.row.category_name ||
+          largestUnexplained.row.category_id,
         reasonLabel: "未解释金额最大",
         primaryLabel: formatSignedProductCategoryYi(largestUnexplained.value),
         secondaryLabel: "需要复核归因残差",
@@ -2630,31 +3108,33 @@ export function selectProductCategoryDecisionFocusSurface(input: {
     }
   }
   return {
+    metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
     items,
-    emptyCopy: items.length === 0 ? "当前没有可形成决策焦点的产品行或归因结果。" : null,
+    emptyCopy:
+      items.length === 0 ? "当前没有可形成决策焦点的产品行或归因结果。" : null,
   };
 }
 
 function signedBpLabel(value: number | null): string {
   if (value === null || !Number.isFinite(value)) {
-    return "-";
+    return EM_DASH;
   }
   if (value === 0) {
-    return "0bp";
+    return "0 bp";
   }
-  return `${value > 0 ? "+" : "-"}${Math.abs(value).toFixed(1).replace(/\.0$/, "")}bp`;
+  return `${value > 0 ? "+" : "-"}${Math.abs(value).toFixed(1).replace(/\.0$/, "")} bp`;
 }
 
 function bpLabel(value: number | null): string {
   if (value === null || !Number.isFinite(value)) {
-    return "-";
+    return EM_DASH;
   }
-  return `${value.toFixed(1).replace(/\.0$/, "")}bp`;
+  return `${value.toFixed(1).replace(/\.0$/, "")} bp`;
 }
 
 function signedYiDeltaLabel(value: number | null): string {
   if (value === null || !Number.isFinite(value)) {
-    return "-";
+    return EM_DASH;
   }
   if (value === 0) {
     return "0.00";
@@ -2669,7 +3149,9 @@ function findProductCategoryRow(
   return rows.find((row) => row.category_id === categoryId);
 }
 
-function productCategoryActionLabel(kind: ProductCategoryOperatingActionKind): string {
+function productCategoryActionLabel(
+  kind: ProductCategoryOperatingActionKind,
+): string {
   if (kind === "shrink_or_limit") {
     return "压降或限额复核";
   }
@@ -2682,29 +3164,37 @@ function productCategoryActionLabel(kind: ProductCategoryOperatingActionKind): s
   return "选择性扩张";
 }
 
-function averageProductCategoryNumber(values: Array<number | null>): number | null {
-  const candidates = values.filter((value): value is number => value !== null && Number.isFinite(value));
+function averageProductCategoryNumber(
+  values: Array<number | null>,
+): number | null {
+  const candidates = values.filter(
+    (value): value is number => value !== null && Number.isFinite(value),
+  );
   if (candidates.length === 0) {
     return null;
   }
-  return Number((candidates.reduce((total, value) => total + value, 0) / candidates.length).toFixed(2));
+  return Number(
+    (
+      candidates.reduce((total, value) => total + value, 0) / candidates.length
+    ).toFixed(2),
+  );
 }
 
 function productCategoryRateLabel(rate: number | null): string {
   if (rate === null || !Number.isFinite(rate)) {
-    return "-";
+    return EM_DASH;
   }
   return `${(rate * 100).toFixed(1)}%`;
 }
 
 function signedProductCategoryBpDeltaLabel(value: number | null): string {
   if (value === null || !Number.isFinite(value)) {
-    return "-";
+    return EM_DASH;
   }
   if (value === 0) {
-    return "0.0bp";
+    return "0.0 bp";
   }
-  return `${value > 0 ? "+" : "-"}${Math.abs(value).toFixed(1)}bp`;
+  return `${value > 0 ? "+" : "-"}${Math.abs(value).toFixed(1)} bp`;
 }
 
 function productCategoryOutcomeHit(input: {
@@ -2728,7 +3218,10 @@ function productCategoryOutcomeHit(input: {
     }
     return input.scaleDelta > 0 && input.nextNetIncome > 0;
   }
-  if (input.currentUnexplainedAbs === null || input.nextUnexplainedAbs === null) {
+  if (
+    input.currentUnexplainedAbs === null ||
+    input.nextUnexplainedAbs === null
+  ) {
     return null;
   }
   return input.nextUnexplainedAbs < input.currentUnexplainedAbs;
@@ -2750,8 +3243,10 @@ function productCategoryBacktestNextUnexplainedAbs(
   categoryId: string,
 ): number | null {
   const parentCategoryIds = parentProductCategoryIds(rows);
-  const movement = buildProductCategoryOperatingMovementRows(attribution, parentCategoryIds)
-    .find((row) => row.categoryId === categoryId);
+  const movement = buildProductCategoryOperatingMovementRows(
+    attribution,
+    parentCategoryIds,
+  ).find((row) => row.categoryId === categoryId);
   if (!movement) {
     return 0;
   }
@@ -2760,7 +3255,9 @@ function productCategoryBacktestNextUnexplainedAbs(
     : 0;
 }
 
-function productCategoryBacktestEvidenceLabel(kind: ProductCategoryOperatingActionKind): string {
+function productCategoryBacktestEvidenceLabel(
+  kind: ProductCategoryOperatingActionKind,
+): string {
   if (kind === "shrink_or_limit") {
     return "命中=次月净营收改善";
   }
@@ -2773,7 +3270,9 @@ function productCategoryBacktestEvidenceLabel(kind: ProductCategoryOperatingActi
   return "命中=次月未解释差异下降";
 }
 
-function productCategoryBacktestTone(hitRate: number | null): "positive" | "negative" | "neutral" {
+function productCategoryBacktestTone(
+  hitRate: number | null,
+): "positive" | "negative" | "neutral" {
   if (hitRate === null) {
     return "neutral";
   }
@@ -2786,16 +3285,17 @@ function productCategoryBacktestTone(hitRate: number | null): "positive" | "nega
   return "neutral";
 }
 
-const PRODUCT_CATEGORY_BACKTEST_MISS_REASON_ORDER: ProductCategoryOperatingBacktestMissReasonKey[] = [
-  "yield_not_improved",
-  "net_income_not_improved",
-  "scale_not_expanded",
-  "positive_contribution_missing",
-  "attribution_not_reduced",
-  "scale_mismatch",
-  "net_income_drag",
-  "outcome_not_improved",
-];
+const PRODUCT_CATEGORY_BACKTEST_MISS_REASON_ORDER: ProductCategoryOperatingBacktestMissReasonKey[] =
+  [
+    "yield_not_improved",
+    "net_income_not_improved",
+    "scale_not_expanded",
+    "positive_contribution_missing",
+    "attribution_not_reduced",
+    "scale_mismatch",
+    "net_income_drag",
+    "outcome_not_improved",
+  ];
 
 function productCategoryBacktestMissReasonLabel(
   reasonKey: ProductCategoryOperatingBacktestMissReasonKey,
@@ -2842,7 +3342,11 @@ function productCategoryBacktestMissReasonKeys(input: {
     if (input.yieldDeltaBp !== null && input.yieldDeltaBp <= 0) {
       reasons.push("yield_not_improved");
     }
-    if (input.scaleDelta !== null && input.scaleDelta > 0 && (input.yieldDeltaBp === null || input.yieldDeltaBp <= 0)) {
+    if (
+      input.scaleDelta !== null &&
+      input.scaleDelta > 0 &&
+      (input.yieldDeltaBp === null || input.yieldDeltaBp <= 0)
+    ) {
       reasons.push("scale_mismatch");
     }
     if (input.netIncomeDelta !== null && input.netIncomeDelta < 0) {
@@ -2866,9 +3370,9 @@ function productCategoryBacktestMissReasonKeys(input: {
       reasons.push("yield_not_improved");
     }
   } else if (
-    input.currentUnexplainedAbs !== null
-    && input.nextUnexplainedAbs !== null
-    && input.nextUnexplainedAbs >= input.currentUnexplainedAbs
+    input.currentUnexplainedAbs !== null &&
+    input.nextUnexplainedAbs !== null &&
+    input.nextUnexplainedAbs >= input.currentUnexplainedAbs
   ) {
     reasons.push("attribution_not_reduced");
   }
@@ -2882,7 +3386,9 @@ function productCategoryBacktestCalibrationRows(input: {
   actionRows: ProductCategoryOperatingBacktestActionRow[];
   missReasonRows: ProductCategoryOperatingBacktestMissActionRow[];
 }): ProductCategoryOperatingBacktestCalibrationRow[] {
-  const missRowsByAction = new Map(input.missReasonRows.map((row) => [row.actionKind, row]));
+  const missRowsByAction = new Map(
+    input.missReasonRows.map((row) => [row.actionKind, row]),
+  );
   const confidenceForCount = (count: number) => ({
     confidenceLabel: count >= 6 ? "高置信" : count >= 3 ? "中置信" : "低置信",
     confidenceDetailLabel: `${count} 条可评价样本`,
@@ -2936,10 +3442,17 @@ function productCategoryBacktestLatestReviewRows(input: {
   latestReportDate: string | null;
   backtestGateTone: "positive" | "negative" | "neutral";
 }): ProductCategoryOperatingBacktestLatestReviewRow[] {
-  const actionRowsByAction = new Map(input.actionRows.map((row) => [row.actionKind, row]));
-  const watchReportDate = input.latestReportDate ? productCategoryNextMonthEndDate(input.latestReportDate) : null;
-  const reviewLabel = input.backtestGateTone === "negative" ? "补样本后复核" : "复核后执行";
-  const riskRankForCalibration = (calibration: ProductCategoryOperatingBacktestCalibrationRow) => {
+  const actionRowsByAction = new Map(
+    input.actionRows.map((row) => [row.actionKind, row]),
+  );
+  const watchReportDate = input.latestReportDate
+    ? productCategoryNextMonthEndDate(input.latestReportDate)
+    : null;
+  const reviewLabel =
+    input.backtestGateTone === "negative" ? "补样本后复核" : "复核后执行";
+  const riskRankForCalibration = (
+    calibration: ProductCategoryOperatingBacktestCalibrationRow,
+  ) => {
     if (calibration.confidenceLabel === "高置信") {
       return "P1 高置信复核";
     }
@@ -2948,7 +3461,9 @@ function productCategoryBacktestLatestReviewRows(input: {
     }
     return "P3 低样本复核";
   };
-  const checkItemsForAction = (actionKind: ProductCategoryOperatingActionKind): string[] => {
+  const checkItemsForAction = (
+    actionKind: ProductCategoryOperatingActionKind,
+  ): string[] => {
     if (actionKind === "reprice_or_improve") {
       return [
         "确认最新收益率改善证据",
@@ -2970,13 +3485,11 @@ function productCategoryBacktestLatestReviewRows(input: {
         "核对收益率是否被摊薄",
       ];
     }
-    return [
-      "确认未解释差异下降",
-      "复核归因残差来源",
-      "核对正式归因闭合误差",
-    ];
+    return ["确认未解释差异下降", "复核归因残差来源", "核对正式归因闭合误差"];
   };
-  const releaseConditionForAction = (actionKind: ProductCategoryOperatingActionKind): string => {
+  const releaseConditionForAction = (
+    actionKind: ProductCategoryOperatingActionKind,
+  ): string => {
     if (actionKind === "reprice_or_improve") {
       return "放行条件：收益率转正改善且净营收不恶化";
     }
@@ -2988,7 +3501,9 @@ function productCategoryBacktestLatestReviewRows(input: {
     }
     return "放行条件：未解释差异下降且闭合误差可接受";
   };
-  const observationForAction = (actionKind: ProductCategoryOperatingActionKind): string => {
+  const observationForAction = (
+    actionKind: ProductCategoryOperatingActionKind,
+  ): string => {
     if (actionKind === "reprice_or_improve") {
       return "观察口径：下一期收益率改善且净营收不恶化";
     }
@@ -3000,17 +3515,24 @@ function productCategoryBacktestLatestReviewRows(input: {
     }
     return "观察口径：下一期未解释差异下降且闭合误差可接受";
   };
-  const gapForAction = (row: ProductCategoryOperatingActionQueueRow): string => {
+  const gapForAction = (
+    row: ProductCategoryOperatingActionQueueRow,
+  ): string => {
     if (row.actionKind === "reprice_or_improve") {
-      const yieldEvidence = row.evidenceItems.find((item) => item.startsWith("收益率 ")) ?? "收益率 -";
+      const yieldEvidence =
+        row.evidenceItems.find((item) => item.startsWith("收益率 ")) ??
+        "收益率 -";
       return `判定缺口：当前${yieldEvidence}，需下一期收益率转正改善`;
     }
     if (row.actionKind === "shrink_or_limit") {
-      const netIncomeEvidence = row.evidenceItems.find((item) => item.startsWith("净营收 ")) ?? "净营收 -";
+      const netIncomeEvidence =
+        row.evidenceItems.find((item) => item.startsWith("净营收 ")) ??
+        "净营收 -";
       return `判定缺口：当前${netIncomeEvidence}，需下一期净营收改善`;
     }
     if (row.actionKind === "selective_growth") {
-      const scaleEvidence = row.evidenceItems.find((item) => item.startsWith("规模 ")) ?? "规模 -";
+      const scaleEvidence =
+        row.evidenceItems.find((item) => item.startsWith("规模 ")) ?? "规模 -";
       return `判定缺口：当前${scaleEvidence}，需下一期规模扩张且净营收为正`;
     }
     return "判定缺口：需下一期正式归因确认未解释差异下降";
@@ -3026,28 +3548,30 @@ function productCategoryBacktestLatestReviewRows(input: {
       return [];
     }
     const actionRow = actionRowsByAction.get(row.actionKind);
-    return [{
-      priorityLabel: row.priorityLabel,
-      categoryId: row.categoryId,
-      categoryLabel: row.categoryLabel,
-      actionKind: row.actionKind,
-      actionLabel: row.actionLabel,
-      reviewLabel,
-      riskRankLabel: riskRankForCalibration(calibration),
-      riskReasonLabel: `${calibration.confidenceLabel}；${calibration.reasonLabel.replace(/^命中率 [^，]+，/, "")}`,
-      reasonLabel: `历史回测建议${calibration.recommendationLabel}：${calibration.reasonLabel}`,
-      impactLabel: actionRow
-        ? `历史均值：净营收 ${actionRow.averageNetIncomeDeltaLabel} 亿元 · 收益率 ${actionRow.averageYieldDeltaBpLabel} · 规模 ${actionRow.averageScaleDeltaLabel} 亿元`
-        : "历史均值：-",
-      watchReportDateLabel: `观察月份：${watchReportDate ?? "-"}`,
-      releaseConditionLabel: releaseConditionForAction(row.actionKind),
-      observationLabel: observationForAction(row.actionKind),
-      gapLabel: gapForAction(row),
-      evidenceLabel: `${row.triggerLabel} · ${calibration.confidenceLabel} · ${calibration.evidenceLabel}`,
-      currentEvidenceItems: row.evidenceItems,
-      checkItems: checkItemsForAction(row.actionKind),
-      tone: "negative" as const,
-    }];
+    return [
+      {
+        priorityLabel: row.priorityLabel,
+        categoryId: row.categoryId,
+        categoryLabel: row.categoryLabel,
+        actionKind: row.actionKind,
+        actionLabel: row.actionLabel,
+        reviewLabel,
+        riskRankLabel: riskRankForCalibration(calibration),
+        riskReasonLabel: `${calibration.confidenceLabel}；${calibration.reasonLabel.replace(/^命中率 [^，]+，/, "")}`,
+        reasonLabel: `历史回测建议${calibration.recommendationLabel}：${calibration.reasonLabel}`,
+        impactLabel: actionRow
+          ? `历史均值：净营收 ${actionRow.averageNetIncomeDeltaLabel} 亿元、收益率 ${actionRow.averageYieldDeltaBpLabel}、规模 ${actionRow.averageScaleDeltaLabel} 亿元`
+          : `历史均值：${EM_DASH}`,
+        watchReportDateLabel: `观察月份：${watchReportDate ?? EM_DASH}`,
+        releaseConditionLabel: releaseConditionForAction(row.actionKind),
+        observationLabel: observationForAction(row.actionKind),
+        gapLabel: gapForAction(row),
+        evidenceLabel: `${row.triggerLabel}；${calibration.confidenceLabel}，${calibration.evidenceLabel}`,
+        currentEvidenceItems: row.evidenceItems,
+        checkItems: checkItemsForAction(row.actionKind),
+        tone: "negative" as const,
+      },
+    ];
   });
 }
 
@@ -3057,11 +3581,23 @@ function productCategoryBacktestReviewWorkload(
   reviewWorkloadLabel: string;
   reviewWorkloadDetailLabel: string;
 } {
-  const p1Count = latestReviewRows.filter((row) => row.riskRankLabel.startsWith("P1")).length;
-  const p2Count = latestReviewRows.filter((row) => row.riskRankLabel.startsWith("P2")).length;
-  const p3Count = latestReviewRows.filter((row) => row.riskRankLabel.startsWith("P3")).length;
+  const p1Count = latestReviewRows.filter((row) =>
+    row.riskRankLabel.startsWith("P1"),
+  ).length;
+  const p2Count = latestReviewRows.filter((row) =>
+    row.riskRankLabel.startsWith("P2"),
+  ).length;
+  const p3Count = latestReviewRows.filter((row) =>
+    row.riskRankLabel.startsWith("P3"),
+  ).length;
   const headline =
-    p1Count > 0 ? `P1 ${p1Count}` : p2Count > 0 ? `P2 ${p2Count}` : p3Count > 0 ? `P3 ${p3Count}` : "0";
+    p1Count > 0
+      ? `P1 ${p1Count}`
+      : p2Count > 0
+        ? `P2 ${p2Count}`
+        : p3Count > 0
+          ? `P3 ${p3Count}`
+          : "0";
   return {
     reviewWorkloadLabel: headline,
     reviewWorkloadDetailLabel: `复核 ${latestReviewRows.length} 条；P1 ${p1Count} 条，P2 ${p2Count} 条，P3 ${p3Count} 条`,
@@ -3074,11 +3610,21 @@ function productCategoryBacktestRuleDisposition(
   dispositionLabel: string;
   dispositionDetailLabel: string;
 } {
-  const tightenCount = calibrationRows.filter((row) => row.recommendationLabel === "收紧触发条件").length;
-  const observeCount = calibrationRows.filter((row) => row.recommendationLabel === "继续观察").length;
-  const keepCount = calibrationRows.filter((row) => row.recommendationLabel === "保留规则").length;
+  const tightenCount = calibrationRows.filter(
+    (row) => row.recommendationLabel === "收紧触发条件",
+  ).length;
+  const observeCount = calibrationRows.filter(
+    (row) => row.recommendationLabel === "继续观察",
+  ).length;
+  const keepCount = calibrationRows.filter(
+    (row) => row.recommendationLabel === "保留规则",
+  ).length;
   const headline =
-    tightenCount > 0 ? `收紧 ${tightenCount}` : observeCount > 0 ? `观察 ${observeCount}` : `保留 ${keepCount}`;
+    tightenCount > 0
+      ? `收紧 ${tightenCount}`
+      : observeCount > 0
+        ? `观察 ${observeCount}`
+        : `保留 ${keepCount}`;
   return {
     dispositionLabel: headline,
     dispositionDetailLabel: `规则处置：收紧 ${tightenCount} 条，观察 ${observeCount} 条，保留 ${keepCount} 条`,
@@ -3096,8 +3642,10 @@ function productCategoryBacktestGate(input: {
   backtestGateDetailLabel: string;
   backtestGateTone: "positive" | "negative" | "neutral";
 } {
-  const enoughHistory = input.evaluatedMonthCount >= PRODUCT_CATEGORY_BACKTEST_REQUIRED_MONTH_COUNT;
-  const enoughSignals = input.signalCount >= PRODUCT_CATEGORY_BACKTEST_REQUIRED_SIGNAL_COUNT;
+  const enoughHistory =
+    input.evaluatedMonthCount >= PRODUCT_CATEGORY_BACKTEST_REQUIRED_MONTH_COUNT;
+  const enoughSignals =
+    input.signalCount >= PRODUCT_CATEGORY_BACKTEST_REQUIRED_SIGNAL_COUNT;
   if (enoughHistory && enoughSignals) {
     return {
       backtestGateLabel: "可用于复核",
@@ -3122,8 +3670,14 @@ function productCategoryBacktestSampleRepair(input: {
   sampleRepairDateLabel: string;
   sampleRepairReviewLabel: string;
 } {
-  const missingMonthCount = Math.max(0, PRODUCT_CATEGORY_BACKTEST_REQUIRED_MONTH_COUNT - input.evaluatedMonthCount);
-  const missingSignalCount = Math.max(0, PRODUCT_CATEGORY_BACKTEST_REQUIRED_SIGNAL_COUNT - input.signalCount);
+  const missingMonthCount = Math.max(
+    0,
+    PRODUCT_CATEGORY_BACKTEST_REQUIRED_MONTH_COUNT - input.evaluatedMonthCount,
+  );
+  const missingSignalCount = Math.max(
+    0,
+    PRODUCT_CATEGORY_BACKTEST_REQUIRED_SIGNAL_COUNT - input.signalCount,
+  );
   const repairDates: string[] = [];
   let cursor = input.latestReportDate;
   for (let index = 0; index < missingMonthCount; index += 1) {
@@ -3142,12 +3696,16 @@ function productCategoryBacktestSampleRepair(input: {
           ? `补 ${missingSignalCount} 条信号`
           : "样本已满足",
     sampleRepairDetailLabel: `闸口需 ${PRODUCT_CATEGORY_BACKTEST_REQUIRED_MONTH_COUNT} 个月/${PRODUCT_CATEGORY_BACKTEST_REQUIRED_SIGNAL_COUNT} 条信号；当前 ${input.evaluatedMonthCount} 个月/${input.signalCount} 条信号`,
-    sampleRepairDateLabel: repairDates.length > 0 ? `需补月份：${repairDates.join("、")}` : "需补月份：-",
-    sampleRepairReviewLabel: repairDates.length > 0
-      ? `最早复核：${repairDates[repairDates.length - 1]} 后`
-      : missingSignalCount > 0
-        ? "最早复核：待补齐信号后"
-        : "最早复核：当前可复核",
+    sampleRepairDateLabel:
+      repairDates.length > 0
+        ? `需补月份：${repairDates.join("、")}`
+        : "需补月份：-",
+    sampleRepairReviewLabel:
+      repairDates.length > 0
+        ? `最早复核：${repairDates[repairDates.length - 1]} 后`
+        : missingSignalCount > 0
+          ? "最早复核：待补齐信号后"
+          : "最早复核：当前可复核",
   };
 }
 
@@ -3162,38 +3720,57 @@ function productCategoryNextMonthEndDate(reportDate: string): string | null {
   return `${nextYear}-${String(nextMonth).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 }
 
-function productCategoryReportDatesAreConsecutiveMonths(current: string, next: string): boolean {
+function productCategoryReportDatesAreConsecutiveMonths(
+  current: string,
+  next: string,
+): boolean {
   return productCategoryNextMonthEndDate(current) === next;
 }
 
 function productCategoryBacktestEmptyCopy(
   coverageRows: ProductCategoryOperatingBacktestSurface["coverageRows"],
 ): string {
-  const skippedRow = coverageRows.find((row) => row.statusLabel === "跳过：非连续月份");
+  const skippedRow = coverageRows.find(
+    (row) => row.statusLabel === "跳过：非连续月份",
+  );
   if (skippedRow?.nextReportDate) {
-    const expectedNextReportDate = productCategoryNextMonthEndDate(skippedRow.reportDate);
-    return `需要至少两个连续月度正式 payload 才能回测行动信号；${skippedRow.reportDate} 后缺少 ${expectedNextReportDate ?? "-"}，实际下一期为 ${skippedRow.nextReportDate}。`;
+    const expectedNextReportDate = productCategoryNextMonthEndDate(
+      skippedRow.reportDate,
+    );
+    return `需要至少两个连续月度正式 payload 才能回测行动信号；${skippedRow.reportDate} 后缺少 ${expectedNextReportDate ?? EM_DASH}，实际下一期为 ${skippedRow.nextReportDate}。`;
   }
   return "需要至少两个连续月度正式 payload 才能回测行动信号。";
 }
 
 function productCategoryAttributionCoverage(input: {
   payloads: ProductCategoryPnlPayload[];
-  attributionsByReportDate?: Map<string, ProductCategoryAttributionPayload | null>;
+  attributionsByReportDate?: Map<
+    string,
+    ProductCategoryAttributionPayload | null
+  >;
 }): {
   attributionCoverageLabel: string;
   attributionCoverageDetailLabel: string;
 } {
-  const reportDates = Array.from(new Set(input.payloads.map((payload) => payload.report_date))).sort();
+  const reportDates = Array.from(
+    new Set(input.payloads.map((payload) => payload.report_date)),
+  ).sort();
   if (reportDates.length === 0) {
     return {
       attributionCoverageLabel: "0/0",
       attributionCoverageDetailLabel: "暂无月度归因样本",
     };
   }
-  const coveredDates = reportDates.filter((reportDate) => input.attributionsByReportDate?.get(reportDate));
-  const missingDates = reportDates.filter((reportDate) => !input.attributionsByReportDate?.get(reportDate));
-  const missingSuffix = missingDates.length > 0 ? `；缺少 ${missingDates.slice(0, 3).join("、")}` : "；归因样本完整";
+  const coveredDates = reportDates.filter((reportDate) =>
+    input.attributionsByReportDate?.get(reportDate),
+  );
+  const missingDates = reportDates.filter(
+    (reportDate) => !input.attributionsByReportDate?.get(reportDate),
+  );
+  const missingSuffix =
+    missingDates.length > 0
+      ? `；缺少 ${missingDates.slice(0, 3).join("、")}`
+      : "；归因样本完整";
   return {
     attributionCoverageLabel: `${coveredDates.length}/${reportDates.length}`,
     attributionCoverageDetailLabel: `归因覆盖 ${coveredDates.length}/${reportDates.length}${missingSuffix}`,
@@ -3202,7 +3779,10 @@ function productCategoryAttributionCoverage(input: {
 
 export function selectProductCategoryOperatingActionBacktestSurface(input: {
   payloads: ProductCategoryPnlPayload[];
-  attributionsByReportDate?: Map<string, ProductCategoryAttributionPayload | null>;
+  attributionsByReportDate?: Map<
+    string,
+    ProductCategoryAttributionPayload | null
+  >;
 }): ProductCategoryOperatingBacktestSurface {
   const payloads = input.payloads
     .filter((payload) => payload.view === "monthly")
@@ -3214,15 +3794,18 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
   });
   const latestPayload = payloads[payloads.length - 1];
   const latestActionRows = latestPayload
-      ? selectProductCategoryOperatingActionQueue({
-          rows: latestPayload.rows,
-          attribution: input.attributionsByReportDate?.get(latestPayload.report_date),
-          parentCategoryIds: parentProductCategoryIds(latestPayload.rows),
-        }).rows
-      : [];
+    ? selectProductCategoryOperatingActionQueue({
+        rows: latestPayload.rows,
+        attribution: input.attributionsByReportDate?.get(
+          latestPayload.report_date,
+        ),
+        parentCategoryIds: parentProductCategoryIds(latestPayload.rows),
+      }).rows
+    : [];
   const latestPendingCount = latestActionRows.length;
   const samples: ProductCategoryOperatingBacktestExample[] = [];
-  const coverageRows: ProductCategoryOperatingBacktestSurface["coverageRows"] = [];
+  const coverageRows: ProductCategoryOperatingBacktestSurface["coverageRows"] =
+    [];
 
   for (let index = 0; index < payloads.length - 1; index += 1) {
     const current = payloads[index];
@@ -3235,19 +3818,28 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
       attribution: input.attributionsByReportDate?.get(current.report_date),
       parentCategoryIds: parentProductCategoryIds(current.rows),
     }).rows;
-    if (!productCategoryReportDatesAreConsecutiveMonths(current.report_date, next.report_date)) {
+    if (
+      !productCategoryReportDatesAreConsecutiveMonths(
+        current.report_date,
+        next.report_date,
+      )
+    ) {
       coverageRows.push({
         reportDate: current.report_date,
         nextReportDate: next.report_date,
         statusLabel: "跳过：非连续月份",
-        detailLabel: `期望下一月末 ${productCategoryNextMonthEndDate(current.report_date) ?? "-"}，实际 ${next.report_date}`,
+        detailLabel: `期望下一月末 ${productCategoryNextMonthEndDate(current.report_date) ?? EM_DASH}，实际 ${next.report_date}`,
         signalCount: currentActions.length,
         tone: "negative",
       });
       continue;
     }
-    const currentRowsById = new Map(current.rows.map((row) => [row.category_id, row]));
-    const nextRowsById = new Map(next.rows.map((row) => [row.category_id, row]));
+    const currentRowsById = new Map(
+      current.rows.map((row) => [row.category_id, row]),
+    );
+    const nextRowsById = new Map(
+      next.rows.map((row) => [row.category_id, row]),
+    );
     for (const action of currentActions) {
       const currentRow = currentRowsById.get(action.categoryId);
       const nextRow = nextRowsById.get(action.categoryId);
@@ -3272,7 +3864,8 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
         currentScale === null || nextScale === null
           ? null
           : Number((nextScale - currentScale).toFixed(2));
-      const currentUnexplainedAbs = productCategoryBacktestCurrentUnexplainedAbs(action);
+      const currentUnexplainedAbs =
+        productCategoryBacktestCurrentUnexplainedAbs(action);
       const nextUnexplainedAbs = productCategoryBacktestNextUnexplainedAbs(
         input.attributionsByReportDate?.get(next.report_date),
         next.rows,
@@ -3330,97 +3923,127 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
       reportDate: latestPayload.report_date,
       nextReportDate: null,
       statusLabel: "最新月待观察",
-      detailLabel: `等待下一期 ${productCategoryNextMonthEndDate(latestPayload.report_date) ?? "-"} payload 验证`,
+      detailLabel: `等待下一期 ${productCategoryNextMonthEndDate(latestPayload.report_date) ?? EM_DASH} payload 验证`,
       signalCount: latestPendingCount,
       tone: "neutral",
     });
   }
 
-  const evaluatedDates = Array.from(new Set(samples.map((sample) => sample.reportDate))).sort();
-  const actionRows = ([
-    "shrink_or_limit",
-    "review_attribution",
-    "reprice_or_improve",
-    "selective_growth",
-  ] as const).flatMap((actionKind) => {
+  const evaluatedDates = Array.from(
+    new Set(samples.map((sample) => sample.reportDate)),
+  ).sort();
+  const actionRows = (
+    [
+      "shrink_or_limit",
+      "review_attribution",
+      "reprice_or_improve",
+      "selective_growth",
+    ] as const
+  ).flatMap((actionKind) => {
     const rows = samples.filter((sample) => sample.actionKind === actionKind);
     if (rows.length === 0) {
       return [];
     }
     const hitCount = rows.filter((row) => row.outcomeLabel === "命中").length;
-    const comparableCount = rows.filter((row) => row.outcomeLabel !== "待判定").length;
+    const comparableCount = rows.filter(
+      (row) => row.outcomeLabel !== "待判定",
+    ).length;
     const hitRate = comparableCount === 0 ? null : hitCount / comparableCount;
-    const averageNetIncomeDelta = averageProductCategoryNumber(rows.map((row) => row.netIncomeDelta));
-    const averageYieldDeltaBp = averageProductCategoryNumber(rows.map((row) => row.yieldDeltaBp));
-    const averageScaleDelta = averageProductCategoryNumber(rows.map((row) => row.scaleDelta));
-    return [{
-      actionKind,
-      actionLabel: productCategoryActionLabel(actionKind),
-      signalCount: rows.length,
-      comparableCount,
-      hitCount,
-      hitRate,
-      hitRateLabel: productCategoryRateLabel(hitRate),
-      averageNetIncomeDelta,
-      averageNetIncomeDeltaLabel: signedYiDeltaLabel(averageNetIncomeDelta),
-      averageYieldDeltaBp,
-      averageYieldDeltaBpLabel: signedProductCategoryBpDeltaLabel(averageYieldDeltaBp),
-      averageScaleDelta,
-      averageScaleDeltaLabel: signedYiDeltaLabel(averageScaleDelta),
-      evidenceLabel: productCategoryBacktestEvidenceLabel(actionKind),
-      tone: productCategoryBacktestTone(hitRate),
-    }];
+    const averageNetIncomeDelta = averageProductCategoryNumber(
+      rows.map((row) => row.netIncomeDelta),
+    );
+    const averageYieldDeltaBp = averageProductCategoryNumber(
+      rows.map((row) => row.yieldDeltaBp),
+    );
+    const averageScaleDelta = averageProductCategoryNumber(
+      rows.map((row) => row.scaleDelta),
+    );
+    return [
+      {
+        actionKind,
+        actionLabel: productCategoryActionLabel(actionKind),
+        signalCount: rows.length,
+        comparableCount,
+        hitCount,
+        hitRate,
+        hitRateLabel: productCategoryRateLabel(hitRate),
+        averageNetIncomeDelta,
+        averageNetIncomeDeltaLabel: signedYiDeltaLabel(averageNetIncomeDelta),
+        averageYieldDeltaBp,
+        averageYieldDeltaBpLabel:
+          signedProductCategoryBpDeltaLabel(averageYieldDeltaBp),
+        averageScaleDelta,
+        averageScaleDeltaLabel: signedYiDeltaLabel(averageScaleDelta),
+        evidenceLabel: productCategoryBacktestEvidenceLabel(actionKind),
+        tone: productCategoryBacktestTone(hitRate),
+      },
+    ];
   });
-  const missReasonRows = ([
-    "shrink_or_limit",
-    "review_attribution",
-    "reprice_or_improve",
-    "selective_growth",
-  ] as const).flatMap((actionKind) => {
-    const rows = samples.filter((sample) => sample.actionKind === actionKind);
-    const comparableRows = rows.filter((row) => row.outcomeLabel !== "待判定");
-    const missedRows = rows.filter((row) => row.outcomeLabel === "未命中");
-    if (missedRows.length === 0) {
-      return [];
-    }
-    const reasonCounts = missedRows.reduce((counts, row) => {
-      row.missReasonKeys.forEach((reasonKey) => {
-        counts.set(reasonKey, (counts.get(reasonKey) ?? 0) + 1);
-      });
-      return counts;
-    }, new Map<ProductCategoryOperatingBacktestMissReasonKey, number>());
-    const reasonRows = Array.from(reasonCounts.entries())
-      .sort((left, right) => {
-        if (right[1] !== left[1]) {
-          return right[1] - left[1];
-        }
-        return PRODUCT_CATEGORY_BACKTEST_MISS_REASON_ORDER.indexOf(left[0])
-          - PRODUCT_CATEGORY_BACKTEST_MISS_REASON_ORDER.indexOf(right[0]);
-      })
-      .map(([reasonKey, sampleCount]) => ({
-        reasonKey,
-        reasonLabel: productCategoryBacktestMissReasonLabel(reasonKey),
-        sampleCount,
-        sampleShareLabel: `${sampleCount}/${missedRows.length}`,
-      }));
-    const missRate = comparableRows.length === 0 ? null : missedRows.length / comparableRows.length;
-    return [{
-      actionKind,
-      actionLabel: productCategoryActionLabel(actionKind),
-      missCount: missedRows.length,
-      comparableCount: comparableRows.length,
-      missRate,
-      missRateLabel: productCategoryRateLabel(missRate),
-      primaryReasonLabel: reasonRows[0]?.reasonLabel ?? "-",
-      reasonRows,
-      tone: productCategoryBacktestTone(missRate === null ? null : 1 - missRate),
-    }];
-  }).sort((left, right) => {
-    if ((right.missRate ?? -1) !== (left.missRate ?? -1)) {
-      return (right.missRate ?? -1) - (left.missRate ?? -1);
-    }
-    return right.missCount - left.missCount;
-  });
+  const missReasonRows = (
+    [
+      "shrink_or_limit",
+      "review_attribution",
+      "reprice_or_improve",
+      "selective_growth",
+    ] as const
+  )
+    .flatMap((actionKind) => {
+      const rows = samples.filter((sample) => sample.actionKind === actionKind);
+      const comparableRows = rows.filter(
+        (row) => row.outcomeLabel !== "待判定",
+      );
+      const missedRows = rows.filter((row) => row.outcomeLabel === "未命中");
+      if (missedRows.length === 0) {
+        return [];
+      }
+      const reasonCounts = missedRows.reduce((counts, row) => {
+        row.missReasonKeys.forEach((reasonKey) => {
+          counts.set(reasonKey, (counts.get(reasonKey) ?? 0) + 1);
+        });
+        return counts;
+      }, new Map<ProductCategoryOperatingBacktestMissReasonKey, number>());
+      const reasonRows = Array.from(reasonCounts.entries())
+        .sort((left, right) => {
+          if (right[1] !== left[1]) {
+            return right[1] - left[1];
+          }
+          return (
+            PRODUCT_CATEGORY_BACKTEST_MISS_REASON_ORDER.indexOf(left[0]) -
+            PRODUCT_CATEGORY_BACKTEST_MISS_REASON_ORDER.indexOf(right[0])
+          );
+        })
+        .map(([reasonKey, sampleCount]) => ({
+          reasonKey,
+          reasonLabel: productCategoryBacktestMissReasonLabel(reasonKey),
+          sampleCount,
+          sampleShareLabel: `${sampleCount}/${missedRows.length}`,
+        }));
+      const missRate =
+        comparableRows.length === 0
+          ? null
+          : missedRows.length / comparableRows.length;
+      return [
+        {
+          actionKind,
+          actionLabel: productCategoryActionLabel(actionKind),
+          missCount: missedRows.length,
+          comparableCount: comparableRows.length,
+          missRate,
+          missRateLabel: productCategoryRateLabel(missRate),
+          primaryReasonLabel: reasonRows[0]?.reasonLabel ?? EM_DASH,
+          reasonRows,
+          tone: productCategoryBacktestTone(
+            missRate === null ? null : 1 - missRate,
+          ),
+        },
+      ];
+    })
+    .sort((left, right) => {
+      if ((right.missRate ?? -1) !== (left.missRate ?? -1)) {
+        return (right.missRate ?? -1) - (left.missRate ?? -1);
+      }
+      return right.missCount - left.missCount;
+    });
   const calibrationRows = productCategoryBacktestCalibrationRows({
     actionRows,
     missReasonRows,
@@ -3441,19 +4064,24 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
     latestReportDate: latestPayload?.report_date ?? null,
     backtestGateTone: backtestGate.backtestGateTone,
   });
-  const reviewWorkload = productCategoryBacktestReviewWorkload(latestReviewRows);
-  const ruleDisposition = productCategoryBacktestRuleDisposition(calibrationRows);
+  const reviewWorkload =
+    productCategoryBacktestReviewWorkload(latestReviewRows);
+  const ruleDisposition =
+    productCategoryBacktestRuleDisposition(calibrationRows);
 
   return {
+    metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
     summary: {
       evaluatedMonthCount: evaluatedDates.length,
       signalCount: samples.length,
       latestPendingCount,
-      coverageLabel: evaluatedDates.length > 0
-        ? `${evaluatedDates[0]} 至 ${evaluatedDates[evaluatedDates.length - 1]}`
-        : "-",
+      coverageLabel:
+        evaluatedDates.length > 0
+          ? `${evaluatedDates[0]} 至 ${evaluatedDates[evaluatedDates.length - 1]}`
+          : EM_DASH,
       attributionCoverageLabel: attributionCoverage.attributionCoverageLabel,
-      attributionCoverageDetailLabel: attributionCoverage.attributionCoverageDetailLabel,
+      attributionCoverageDetailLabel:
+        attributionCoverage.attributionCoverageDetailLabel,
       backtestGateLabel: backtestGate.backtestGateLabel,
       backtestGateDetailLabel: backtestGate.backtestGateDetailLabel,
       backtestGateTone: backtestGate.backtestGateTone,
@@ -3474,46 +4102,17 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
     latestReviewRows,
     examples: samples
       .slice()
-      .sort((left, right) => Math.abs(right.netIncomeDelta ?? 0) - Math.abs(left.netIncomeDelta ?? 0))
+      .sort(
+        (left, right) =>
+          Math.abs(right.netIncomeDelta ?? 0) -
+          Math.abs(left.netIncomeDelta ?? 0),
+      )
       .slice(0, 6),
-    emptyCopy: samples.length === 0 ? productCategoryBacktestEmptyCopy(coverageRows) : null,
+    emptyCopy:
+      samples.length === 0
+        ? productCategoryBacktestEmptyCopy(coverageRows)
+        : null,
   };
-}
-
-function buildSnapshotChart<T>(
-  snapshots: ProductCategoryTrendSnapshot[],
-  project: (snapshot: ProductCategoryTrendSnapshot) => T | null,
-): { labels: string[]; points: T[] } {
-  const labels: string[] = [];
-  const points: T[] = [];
-  snapshots
-    .slice()
-    .sort((left, right) => left.reportDate.localeCompare(right.reportDate))
-    .forEach((snapshot) => {
-      const point = project(snapshot);
-      if (point === null) {
-        return;
-      }
-      labels.push(snapshot.label ?? formatProductCategoryReportMonthLabel(snapshot.reportDate));
-      points.push(point);
-    });
-  return { labels, points };
-}
-
-function chronologicalProductCategorySnapshots(
-  snapshots: ProductCategoryTrendSnapshot[],
-): ProductCategoryTrendSnapshot[] {
-  return snapshots.slice().sort((left, right) => left.reportDate.localeCompare(right.reportDate));
-}
-
-function liabilityDetailRowsFromSnapshot(snapshot: ProductCategoryTrendSnapshot): ProductCategoryPnlRow[] {
-  return snapshot.rows
-    .filter((row) => row.side === "liability" && !row.is_total && row.category_id !== "liability_total")
-    .sort((left, right) => {
-      const leftIndex = DISPLAY_ORDER_INDEX.get(left.category_id) ?? Number.MAX_SAFE_INTEGER;
-      const rightIndex = DISPLAY_ORDER_INDEX.get(right.category_id) ?? Number.MAX_SAFE_INTEGER;
-      return leftIndex - rightIndex;
-    });
 }
 
 function productCategorySideLabel(side: string): string {
@@ -3523,7 +4122,7 @@ function productCategorySideLabel(side: string): string {
   if (side === "liability") {
     return "\u8d1f\u503a";
   }
-  return side || "-";
+  return side || EM_DASH;
 }
 
 function formatProductCategoryDiagnosticMoneyLabel(
@@ -3534,14 +4133,14 @@ function formatProductCategoryDiagnosticMoneyLabel(
   const display = options?.foreignDisplay
     ? formatProductCategoryForeignDisplayValue(row, value)
     : formatProductCategoryRowDisplayValue(row, value);
-  return display === "-" ? "\u7f3a\u5931" : `${display} \u4ebf\u5143`;
+  return display === EM_DASH ? "\u7f3a\u5931" : `${display} \u4ebf\u5143`;
 }
 
 function formatProductCategoryDiagnosticYieldLabel(
   value: DecimalLike | null | undefined,
 ): { label: string; missing: boolean } {
   const display = formatProductCategoryYieldValue(value);
-  if (display === "-") {
+  if (display === EM_DASH) {
     return { label: "\u6536\u76ca\u7387\u7f3a\u5931", missing: true };
   }
   return { label: `${display}%`, missing: false };
@@ -3579,7 +4178,9 @@ function buildProductCategoryDriverHint(row: ProductCategoryPnlRow): string {
 
   const currencyPressureHints: string[] = [];
   if (cnyNet !== null && cnyNet < 0) {
-    currencyPressureHints.push("\u4eba\u6c11\u5e01\u51c0\u6536\u5165\u4e3a\u8d1f");
+    currencyPressureHints.push(
+      "\u4eba\u6c11\u5e01\u51c0\u6536\u5165\u4e3a\u8d1f",
+    );
   } else if (
     cnyCash !== null &&
     cnyFtp !== null &&
@@ -3614,23 +4215,37 @@ function buildProductCategoryDiagnosticsMatrixRow(
   row: ProductCategoryPnlRow,
 ): ProductCategoryDiagnosticsMatrixRow {
   const scaleDisplay = formatProductCategoryRowDisplayValue(row, row.cnx_scale);
-  const yieldDisplay = formatProductCategoryDiagnosticYieldLabel(row.weighted_yield);
+  const yieldDisplay = formatProductCategoryDiagnosticYieldLabel(
+    row.weighted_yield,
+  );
   return {
     categoryId: row.category_id,
     categoryLabel: row.category_name,
     sideLabel: productCategorySideLabel(row.side),
-    scaleLabel: scaleDisplay === "-" ? "\u89c4\u6a21\u7f3a\u5931" : `${scaleDisplay} \u4ebf\u5143`,
-    scaleMissing: scaleDisplay === "-",
-    businessNetIncomeLabel: formatProductCategoryDiagnosticMoneyLabel(row, row.business_net_income),
+    scaleLabel:
+      scaleDisplay === EM_DASH
+        ? "\u89c4\u6a21\u7f3a\u5931"
+        : `${scaleDisplay} \u4ebf\u5143`,
+    scaleMissing: scaleDisplay === EM_DASH,
+    businessNetIncomeLabel: formatProductCategoryDiagnosticMoneyLabel(
+      row,
+      row.business_net_income,
+    ),
     businessNetIncomeTone: toneNameForValue(row.business_net_income),
     yieldLabel: yieldDisplay.label,
     yieldMissing: yieldDisplay.missing,
     cnyNetLabel: formatProductCategoryDiagnosticMoneyLabel(row, row.cny_net),
     cnyNetTone: toneNameForValue(row.cny_net),
-    foreignNetLabel: formatProductCategoryDiagnosticMoneyLabel(row, row.foreign_net, {
-      foreignDisplay: true,
-    }),
-    foreignNetTone: toneNameForValue(productCategoryForeignDisplayNumber(row, row.foreign_net)),
+    foreignNetLabel: formatProductCategoryDiagnosticMoneyLabel(
+      row,
+      row.foreign_net,
+      {
+        foreignDisplay: true,
+      },
+    ),
+    foreignNetTone: toneNameForValue(
+      productCategoryForeignDisplayNumber(row, row.foreign_net),
+    ),
     driverHint: buildProductCategoryDriverHint(row),
   };
 }
@@ -3640,7 +4255,11 @@ function buildSpreadMovementDriverHint(
   liabilityYieldDelta: number | null,
   spreadDelta: number | null,
 ): string {
-  if (assetYieldDelta === null || liabilityYieldDelta === null || spreadDelta === null) {
+  if (
+    assetYieldDelta === null ||
+    liabilityYieldDelta === null ||
+    spreadDelta === null
+  ) {
     return "\u7f3a\u5c11\u5b8c\u6574\u6536\u76ca\u7387\u5bf9\u6bd4";
   }
   if (spreadDelta === 0) {
@@ -3680,7 +4299,10 @@ function buildProductCategorySpreadMovementAttribution(input: {
     input.trendSnapshots?.[0] ??
     (input.assetTotal || input.liabilityTotal
       ? {
-          reportDate: input.assetTotal?.report_date ?? input.liabilityTotal?.report_date ?? "",
+          reportDate:
+            input.assetTotal?.report_date ??
+            input.liabilityTotal?.report_date ??
+            "",
           rows: [],
           assetTotal: input.assetTotal,
           liabilityTotal: input.liabilityTotal,
@@ -3689,19 +4311,30 @@ function buildProductCategorySpreadMovementAttribution(input: {
       : null);
   const priorSnapshot = input.trendSnapshots?.slice(1)[0] ?? null;
 
-  const currentLabel = currentSnapshot?.label ?? formatProductCategoryReportMonthLabel(currentSnapshot?.reportDate ?? "");
-  const priorLabel = priorSnapshot?.label ?? formatProductCategoryReportMonthLabel(priorSnapshot?.reportDate ?? "");
+  const currentLabel =
+    currentSnapshot?.label ??
+    formatProductCategoryReportMonthLabel(currentSnapshot?.reportDate ?? "");
+  const priorLabel =
+    priorSnapshot?.label ??
+    formatProductCategoryReportMonthLabel(priorSnapshot?.reportDate ?? "");
   const currentAssetYield = interestSpreadMetricNumber(
     currentSnapshot?.interestSpread?.all_currency_asset_yield_pct,
   );
-  const currentLiabilityYield =
-    interestSpreadMetricNumber(currentSnapshot?.interestSpread?.all_currency_liability_yield_pct);
-  const currentSpread = interestSpreadMetricNumber(currentSnapshot?.interestSpread?.all_currency_spread_pct);
+  const currentLiabilityYield = interestSpreadMetricNumber(
+    currentSnapshot?.interestSpread?.all_currency_liability_yield_pct,
+  );
+  const currentSpread = interestSpreadMetricNumber(
+    currentSnapshot?.interestSpread?.all_currency_spread_pct,
+  );
   const priorAssetYield = interestSpreadMetricNumber(
     priorSnapshot?.interestSpread?.all_currency_asset_yield_pct,
   );
-  const priorLiabilityYield = interestSpreadMetricNumber(priorSnapshot?.interestSpread?.all_currency_liability_yield_pct);
-  const priorSpread = interestSpreadMetricNumber(priorSnapshot?.interestSpread?.all_currency_spread_pct);
+  const priorLiabilityYield = interestSpreadMetricNumber(
+    priorSnapshot?.interestSpread?.all_currency_liability_yield_pct,
+  );
+  const priorSpread = interestSpreadMetricNumber(
+    priorSnapshot?.interestSpread?.all_currency_spread_pct,
+  );
   const assetYieldDelta =
     currentAssetYield === null || priorAssetYield === null
       ? null
@@ -3711,27 +4344,38 @@ function buildProductCategorySpreadMovementAttribution(input: {
       ? null
       : (currentLiabilityYield - priorLiabilityYield) * 100;
   const spreadDelta =
-    currentSpread === null || priorSpread === null ? null : (currentSpread - priorSpread) * 100;
+    currentSpread === null || priorSpread === null
+      ? null
+      : (currentSpread - priorSpread) * 100;
 
   const base: ProductCategorySpreadMovementAttributionBase = {
     currentLabel: currentLabel || "\u5f53\u524d\u671f",
     priorLabel: priorLabel || "\u4e0a\u671f",
     currentAssetYieldLabel:
-      currentAssetYield === null ? "\u7f3a\u5931" : `${currentAssetYield.toFixed(2)}%`,
+      currentAssetYield === null
+        ? "\u7f3a\u5931"
+        : `${currentAssetYield.toFixed(2)}%`,
     currentLiabilityYieldLabel:
-      currentLiabilityYield === null ? "\u7f3a\u5931" : `${currentLiabilityYield.toFixed(2)}%`,
+      currentLiabilityYield === null
+        ? "\u7f3a\u5931"
+        : `${currentLiabilityYield.toFixed(2)}%`,
     currentSpreadLabel: bpLabel(currentSpread),
     priorSpreadLabel: bpLabel(priorSpread),
     assetYieldDeltaLabel: signedBpLabel(assetYieldDelta),
     liabilityYieldDeltaLabel: signedBpLabel(liabilityYieldDelta),
     spreadDeltaLabel: signedBpLabel(spreadDelta),
-    driverHint: buildSpreadMovementDriverHint(assetYieldDelta, liabilityYieldDelta, spreadDelta),
+    driverHint: buildSpreadMovementDriverHint(
+      assetYieldDelta,
+      liabilityYieldDelta,
+      spreadDelta,
+    ),
   };
 
   if (!currentSnapshot) {
     return {
       state: "incomplete",
-      reason: "\u5f53\u524d\u5feb\u7167\u7f3a\u5931\uff0c\u65e0\u6cd5\u6784\u5efa\u5229\u5dee\u5f52\u56e0\u3002",
+      reason:
+        "\u5f53\u524d\u5feb\u7167\u7f3a\u5931\uff0c\u65e0\u6cd5\u6784\u5efa\u5229\u5dee\u5f52\u56e0\u3002",
       ...base,
     };
   }
@@ -3772,24 +4416,40 @@ export function buildProductCategoryDiagnosticsSurface(input: {
   grandTotal?: ProductCategoryPnlRow | null;
   interestSpread?: ProductCategoryInterestSpreadPayload | null;
 }): ProductCategoryDiagnosticsSurface {
-  const productRows = input.rows.filter((row) => !row.is_total && row.category_id !== "grand_total");
+  const productRows = input.rows.filter(
+    (row) => !row.is_total && row.category_id !== "grand_total",
+  );
   const matrixRows = productRows.map(buildProductCategoryDiagnosticsMatrixRow);
   const negativeWatchlistRows = productRows
     .filter((row) => {
       const businessNetIncome = decimalNumber(row.business_net_income);
       return businessNetIncome !== null && businessNetIncome < 0;
     })
-    .sort((left, right) => Number(left.business_net_income) - Number(right.business_net_income))
+    .sort(
+      (left, right) =>
+        Number(left.business_net_income) - Number(right.business_net_income),
+    )
     .map((row) => {
-      const scaleDisplay = formatProductCategoryRowDisplayValue(row, row.cnx_scale);
-      const yieldDisplay = formatProductCategoryDiagnosticYieldLabel(row.weighted_yield);
+      const scaleDisplay = formatProductCategoryRowDisplayValue(
+        row,
+        row.cnx_scale,
+      );
+      const yieldDisplay = formatProductCategoryDiagnosticYieldLabel(
+        row.weighted_yield,
+      );
       return {
         categoryId: row.category_id,
         categoryLabel: row.category_name,
         sideLabel: productCategorySideLabel(row.side),
-        lossLabel: formatProductCategoryDiagnosticMoneyLabel(row, row.business_net_income),
-        scaleLabel: scaleDisplay === "-" ? "\u89c4\u6a21\u7f3a\u5931" : `${scaleDisplay} \u4ebf\u5143`,
-        scaleMissing: scaleDisplay === "-",
+        lossLabel: formatProductCategoryDiagnosticMoneyLabel(
+          row,
+          row.business_net_income,
+        ),
+        scaleLabel:
+          scaleDisplay === EM_DASH
+            ? "\u89c4\u6a21\u7f3a\u5931"
+            : `${scaleDisplay} \u4ebf\u5143`,
+        scaleMissing: scaleDisplay === EM_DASH,
         yieldLabel: yieldDisplay.label,
         yieldMissing: yieldDisplay.missing,
         driverHint: buildProductCategoryDriverHint(row),
@@ -3797,12 +4457,15 @@ export function buildProductCategoryDiagnosticsSurface(input: {
     });
 
   return {
+    metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
     headlineTotalLabel: input.grandTotal
       ? `${formatProductCategoryValue(input.grandTotal.business_net_income)} \u4ebf\u5143`
       : null,
     matrixRows,
     matrixEmptyCopy:
-      matrixRows.length === 0 ? "\u5f53\u524d payload \u672a\u8fd4\u56de\u53ef\u8bca\u65ad\u7684\u4ea7\u54c1\u884c\u3002" : null,
+      matrixRows.length === 0
+        ? "\u5f53\u524d payload \u672a\u8fd4\u56de\u53ef\u8bca\u65ad\u7684\u4ea7\u54c1\u884c\u3002"
+        : null,
     negativeWatchlistRows,
     negativeWatchlistEmptyCopy:
       matrixRows.length === 0
@@ -3824,8 +4487,10 @@ export function selectProductCategoryTrendReportDates(
   reportDates: string[] | undefined,
   limit = 8,
 ): string[] {
-  return selectProductCategoryTrendReportPoints(selectedDate, reportDates, "monthly", limit).map(
-    (point) => point.reportDate,
+  return selectProductCategoryTrendReportDatesImpl(
+    selectedDate,
+    reportDates,
+    limit,
   );
 }
 
@@ -3835,69 +4500,12 @@ export function selectProductCategoryTrendReportPoints(
   monthlyView = "monthly",
   limit = 8,
 ): ProductCategoryTrendReportPoint[] {
-  if (!selectedDate) {
-    return [];
-  }
-  const dates = Array.from(new Set([selectedDate, ...(reportDates ?? [])].filter(Boolean)));
-  const selected = parseProductCategoryReportDate(selectedDate);
-  if (!selected) {
-    return dates
-      .slice(0, limit)
-      .map((reportDate) => ({
-        reportDate,
-        view: monthlyView,
-        label: formatProductCategoryReportMonthLabel(reportDate),
-      }));
-  }
-
-  const chronologicalPoints: ProductCategoryTrendReportPoint[] = [];
-  const previousYear = selected.year - 1;
-  ([1, 2, 3] as const).forEach((quarter) => {
-    const reportDate = findProductCategoryReportDateForMonth(dates, previousYear, quarter * 3, selectedDate);
-    if (!reportDate) {
-      return;
-    }
-    pushUniqueProductCategoryTrendPoint(chronologicalPoints, {
-      reportDate,
-      view: monthlyView,
-      label: `${previousYear}\u5e74Q${quarter}`,
-    });
-  });
-
-  ([11, 12] as const).forEach((month) => {
-    const reportDate = findProductCategoryReportDateForMonth(dates, previousYear, month, selectedDate);
-    if (!reportDate) {
-      return;
-    }
-    pushUniqueProductCategoryTrendPoint(chronologicalPoints, {
-      reportDate,
-      view: monthlyView,
-      label: formatProductCategoryReportMonthLabel(reportDate),
-    });
-  });
-
-  for (let month = 1; month <= selected.month; month += 1) {
-    const reportDate = findProductCategoryReportDateForMonth(dates, selected.year, month, selectedDate);
-    if (!reportDate) {
-      continue;
-    }
-    pushUniqueProductCategoryTrendPoint(chronologicalPoints, {
-      reportDate,
-      view: monthlyView,
-      label: formatProductCategoryReportMonthLabel(reportDate),
-    });
-  }
-
-  if (chronologicalPoints.length === 0) {
-    return dates
-      .slice(0, limit)
-      .map((reportDate) => ({
-        reportDate,
-        view: monthlyView,
-        label: formatProductCategoryReportMonthLabel(reportDate),
-      }));
-  }
-  return chronologicalPoints.slice(-limit).reverse();
+  return selectProductCategoryTrendReportPointsImpl(
+    selectedDate,
+    reportDates,
+    monthlyView,
+    limit,
+  ) as ProductCategoryTrendReportPoint[];
 }
 
 export function selectProductCategoryTwoYearInterestSpreadReportPoints(
@@ -3905,257 +4513,490 @@ export function selectProductCategoryTwoYearInterestSpreadReportPoints(
   reportDates: string[] | undefined,
   monthlyView = "monthly",
 ): ProductCategoryTrendReportPoint[] {
-  if (!selectedDate) {
-    return [];
-  }
-  const dates = Array.from(new Set([selectedDate, ...(reportDates ?? [])].filter(Boolean)));
-  const selected = parseProductCategoryReportDate(selectedDate);
-  if (!selected) {
-    return dates.slice(0, 6).map((reportDate) => ({
-      reportDate,
-      view: monthlyView,
-      label: formatProductCategoryReportMonthLabel(reportDate),
-    }));
-  }
-
-  const chronologicalPoints: ProductCategoryTrendReportPoint[] = [];
-  const previousYear = selected.year - 1;
-  for (let month = 1; month <= 12; month += 1) {
-    const reportDate = findProductCategoryReportDateForMonth(dates, previousYear, month, selectedDate);
-    if (!reportDate) {
-      continue;
-    }
-    pushUniqueProductCategoryTrendPoint(chronologicalPoints, {
-      reportDate,
-      view: monthlyView,
-      label: formatProductCategoryReportMonthLabel(reportDate),
-    });
-  }
-
-  for (let month = 1; month <= selected.month; month += 1) {
-    const reportDate = findProductCategoryReportDateForMonth(dates, selected.year, month, selectedDate);
-    if (!reportDate) {
-      continue;
-    }
-    pushUniqueProductCategoryTrendPoint(chronologicalPoints, {
-      reportDate,
-      view: monthlyView,
-      label: formatProductCategoryReportMonthLabel(reportDate),
-    });
-  }
-  return chronologicalPoints.reverse();
+  return selectProductCategoryTwoYearInterestSpreadReportPointsImpl(
+    selectedDate,
+    reportDates,
+    monthlyView,
+  ) as ProductCategoryTrendReportPoint[];
 }
 
 export function buildProductCategoryTrendSnapshot(
   payload: ProductCategoryPnlPayload,
   label?: string,
+  meta?: ResultMeta,
 ): ProductCategoryTrendSnapshot {
-  return {
-    reportDate: payload.report_date,
+  return buildProductCategoryTrendSnapshotImpl(
+    payload,
     label,
-    view: payload.view,
-    rows: selectProductCategoryDetailRows(payload.rows, undefined),
-    assetTotal: payload.asset_total,
-    liabilityTotal: payload.liability_total,
-    grandTotal: payload.grand_total,
-    interestSpread: payload.interest_spread ?? null,
+    meta,
+    selectProductCategoryDetailRows,
+  ) as ProductCategoryTrendSnapshot;
+}
+
+const PRODUCT_CATEGORY_MANAGEMENT_LIABILITY_IDS = [
+  "interbank_deposits",
+  "interbank_borrowings",
+  "repo_liabilities",
+  "interbank_cds",
+  "credit_linked_notes",
+] as const;
+
+function emptyProductCategoryManagementMonitoringSurface(
+  state: "insufficient" | "scenario_blocked",
+  reportDate: string,
+  emptyCopy: string,
+  coverageLabel = "待补齐",
+): ProductCategoryManagementMonitoringSurface {
+  return {
+    metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
+    state,
+    periodLabel: reportDate
+      ? formatProductCategoryReportMonthLabel(reportDate)
+      : "未选择报告月份",
+    coverageLabel,
+    emptyCopy,
+    tpl: null,
+    liability: null,
+    derivatives: null,
+    runRate: null,
+    methodNotes: [],
+  };
+}
+
+function formatProductCategoryManagementYi(value: number): string {
+  return value.toFixed(2);
+}
+
+function formatProductCategoryManagementPercent(value: number | null): string {
+  return value === null || !Number.isFinite(value)
+    ? EM_DASH
+    : `${value.toFixed(1)}%`;
+}
+
+/**
+ * Candidate management view derived from six monthly formal payloads and the June MoM attribution.
+ * It does not replace governed totals, forecast results, or formal FTP scenario calculations.
+ */
+export function selectProductCategoryManagementMonitoringSurface(input: {
+  reportDate: string;
+  snapshots: ProductCategoryTrendSnapshot[];
+  currentAttribution?: ProductCategoryAttributionPayload | null;
+  scenarioDistinct?: boolean;
+}): ProductCategoryManagementMonitoringSurface {
+  if (input.scenarioDistinct) {
+    return emptyProductCategoryManagementMonitoringSurface(
+      "scenario_blocked",
+      input.reportDate,
+      "经营修复监控只使用正式基准口径；请将 FTP 场景恢复为正式基准后查看。",
+      "正式基线停算",
+    );
+  }
+
+  const selected = parseProductCategoryReportDate(input.reportDate);
+  if (!selected || selected.month !== 6) {
+    return emptyProductCategoryManagementMonitoringSurface(
+      "insufficient",
+      input.reportDate,
+      "本监控按 1—6 月连续 monthly 正式数据生成，仅在 6 月末报告展示。",
+      "需选择 6 月末",
+    );
+  }
+
+  const snapshotsByMonth = new Map<number, ProductCategoryTrendSnapshot>();
+  input.snapshots.forEach((snapshot) => {
+    const parsed = parseProductCategoryReportDate(snapshot.reportDate);
+    if (
+      parsed?.year === selected.year &&
+      parsed.month >= 1 &&
+      parsed.month <= 6 &&
+      (!snapshot.view || snapshot.view === "monthly")
+    ) {
+      snapshotsByMonth.set(parsed.month, snapshot);
+    }
+  });
+  const missingMonths = [1, 2, 3, 4, 5, 6].filter(
+    (month) => !snapshotsByMonth.has(month),
+  );
+  if (missingMonths.length > 0) {
+    return emptyProductCategoryManagementMonitoringSurface(
+      "insufficient",
+      input.reportDate,
+      `需要 1—6 月连续 monthly 正式 payload；当前缺少 ${missingMonths.map(formatProductCategoryShortMonthLabel).join("、")}。`,
+      `已覆盖 ${6 - missingMonths.length}/6 月`,
+    );
+  }
+  const h1Snapshots = [1, 2, 3, 4, 5, 6].map((month) =>
+    snapshotsByMonth.get(month)!,
+  );
+  const tplRows = h1Snapshots.map((snapshot) =>
+    findProductCategoryRow(snapshot.rows, "bond_tpl"),
+  );
+  const derivativeRows = h1Snapshots.map((snapshot) =>
+    findProductCategoryRow(snapshot.rows, "derivatives"),
+  );
+  const grandTotalValues = h1Snapshots.map((snapshot) =>
+    rawYiNumber(snapshot.grandTotal?.business_net_income),
+  );
+  const liabilityTotalValues = h1Snapshots.map((snapshot) =>
+    rawYiNumber(snapshot.liabilityTotal?.business_net_income),
+  );
+  const tplPnlValues = tplRows.map((row) =>
+    rawYiNumber(row?.business_net_income),
+  );
+  const derivativePnlValues = derivativeRows.map((row) =>
+    rawYiNumber(row?.business_net_income),
+  );
+  const currentAttribution =
+    input.currentAttribution?.compare === "mom" &&
+    input.currentAttribution.state === "complete" &&
+    input.currentAttribution.report_date === input.reportDate
+      ? input.currentAttribution
+      : null;
+  const tplAttributionRow = currentAttribution?.rows.find(
+    (row) => row.category_id === "bond_tpl",
+  );
+  const currentTplPoint = tplAttributionRow?.current;
+  const currentTplRow = tplRows[5];
+  const requiredValues = [
+    ...grandTotalValues,
+    ...liabilityTotalValues,
+    ...tplPnlValues,
+    ...derivativePnlValues,
+  ];
+  const currentTplScale = rawYiNumber(currentTplPoint?.scale);
+  const currentTplPnl = rawYiNumber(currentTplPoint?.business_net_income);
+  const currentTplYield = decimalNumber(currentTplPoint?.yield_pct);
+  const currentTplFtp = decimalNumber(currentTplRow?.baseline_ftp_rate_pct);
+  const currentTplDays = currentTplPoint?.days ?? null;
+  if (
+    requiredValues.some((value) => value === null) ||
+    currentTplScale === null ||
+    currentTplScale <= 0 ||
+    currentTplPnl === null ||
+    currentTplYield === null ||
+    currentTplFtp === null ||
+    currentTplDays === null ||
+    currentTplDays <= 0
+  ) {
+    return emptyProductCategoryManagementMonitoringSurface(
+      "insufficient",
+      input.reportDate,
+      "连续月份已覆盖，但 TPL、衍生品、合计行或本期正式归因字段不完整，候选监控未生成。",
+      "6/6 月 · 字段不完整",
+    );
+  }
+
+  const safeTplPnlValues = tplPnlValues as number[];
+  const safeGrandTotalValues = grandTotalValues as number[];
+  const safeLiabilityTotalValues = liabilityTotalValues as number[];
+  const safeDerivativePnlValues = derivativePnlValues as number[];
+  const sum = (values: number[]) =>
+    values.reduce((total, value) => total + value, 0);
+  const average = (values: number[]) => sum(values) / values.length;
+  const q1TplAverage = average(safeTplPnlValues.slice(0, 3));
+  const h1TplAverage = average(safeTplPnlValues);
+  const thresholdInputs = [
+    {
+      key: "prior_month" as const,
+      label: "达到 5 月净营收水平",
+      targetPnl: safeTplPnlValues[4]!,
+    },
+    {
+      key: "h1_average" as const,
+      label: "达到 H1 月均净营收水平",
+      targetPnl: h1TplAverage,
+    },
+    {
+      key: "q1_average" as const,
+      label: "达到 Q1 月均净营收水平",
+      targetPnl: q1TplAverage,
+    },
+  ];
+  const thresholds = thresholdInputs.map((threshold) => {
+    const requiredYield =
+      currentTplFtp +
+      (threshold.targetPnl / currentTplScale) * (365 / currentTplDays) * 100;
+    const liftBp = (requiredYield - currentTplYield) * 100;
+    return {
+      key: threshold.key,
+      label: threshold.label,
+      targetPnlLabel: formatProductCategoryManagementYi(threshold.targetPnl),
+      requiredYieldLabel: `${requiredYield.toFixed(2)}%`,
+      liftBpLabel: signedBpLabel(liftBp),
+    };
+  });
+
+  const liabilityCategoryTotals = PRODUCT_CATEGORY_MANAGEMENT_LIABILITY_IDS.map(
+    (categoryId) => {
+      const monthlyValues = h1Snapshots.map((snapshot) =>
+        rawYiNumber(
+          findProductCategoryRow(snapshot.rows, categoryId)
+            ?.business_net_income,
+        ),
+      );
+      return monthlyValues.some((value) => value === null)
+        ? null
+        : sum(monthlyValues as number[]);
+    },
+  );
+  if (liabilityCategoryTotals.some((value) => value === null)) {
+    return emptyProductCategoryManagementMonitoringSurface(
+      "insufficient",
+      input.reportDate,
+      "负债端 1—6 月产品明细不完整，候选监控未生成。",
+      "6/6 月 · 负债明细不完整",
+    );
+  }
+  const safeLiabilityCategoryTotals = liabilityCategoryTotals as number[];
+  const liabilityPositivePool = sum(
+    safeLiabilityCategoryTotals.filter((value) => value > 0),
+  );
+  const liabilityNegativePool = sum(
+    safeLiabilityCategoryTotals.filter((value) => value < 0),
+  );
+  const liabilityOffsetRatio =
+    liabilityPositivePool > 0
+      ? (Math.abs(liabilityNegativePool) / liabilityPositivePool) * 100
+      : null;
+  const liabilityCurrentMonthDelta =
+    safeLiabilityTotalValues[5]! - safeLiabilityTotalValues[4]!;
+  const liabilityAttributionRows = (currentAttribution?.rows ?? [])
+    .filter((row) =>
+      PRODUCT_CATEGORY_MANAGEMENT_LIABILITY_IDS.includes(
+        row.category_id as (typeof PRODUCT_CATEGORY_MANAGEMENT_LIABILITY_IDS)[number],
+      ),
+    )
+    .map((row) => ({
+      row,
+      delta: rawYiNumber(row.effects.delta_business_net_income),
+    }))
+    .filter(
+      (item): item is { row: ProductCategoryAttributionRow; delta: number } =>
+        item.delta !== null && item.delta < 0,
+    )
+    .sort((left, right) => left.delta - right.delta);
+  const leadingLiabilityMovement = liabilityAttributionRows[0] ?? null;
+  const liabilityDriverCandidates = leadingLiabilityMovement
+    ? [
+        ["天数", leadingLiabilityMovement.row.effects.day_effect],
+        ["规模", leadingLiabilityMovement.row.effects.scale_effect],
+        ["利率", leadingLiabilityMovement.row.effects.rate_effect],
+        ["FTP", leadingLiabilityMovement.row.effects.ftp_effect],
+        ["直接项", leadingLiabilityMovement.row.effects.direct_effect],
+        ["未解释", leadingLiabilityMovement.row.effects.unexplained_effect],
+      ].map(([label, value]) => ({
+        label: String(label),
+        value: rawYiNumber(value as DecimalLike) ?? 0,
+      }))
+    : [];
+  const leadingLiabilityDriver = liabilityDriverCandidates.sort(
+    (left, right) => Math.abs(right.value) - Math.abs(left.value),
+  )[0];
+
+  const derivativeH1Total = sum(safeDerivativePnlValues);
+  const derivativeMonthlyAverage = average(safeDerivativePnlValues);
+  const derivativeVolatility = Math.sqrt(
+    average(
+      safeDerivativePnlValues.map(
+        (value) => (value - derivativeMonthlyAverage) ** 2,
+      ),
+    ),
+  );
+  const derivativeTopThreeConcentration =
+    derivativeH1Total > 0
+      ? (sum(
+          safeDerivativePnlValues
+            .slice()
+            .sort((left, right) => right - left)
+            .slice(0, 3),
+        ) /
+          derivativeH1Total) *
+        100
+      : null;
+  const derivativeNegativeMonthCount = safeDerivativePnlValues.filter(
+    (value) => value < 0,
+  ).length;
+
+  const q1MonthlyAverage = average(safeGrandTotalValues.slice(0, 3));
+  const q2MonthlyAverage = average(safeGrandTotalValues.slice(3, 6));
+  const h1MonthlyAverage = average(safeGrandTotalValues);
+  const recoveryLift =
+    q2MonthlyAverage === 0
+      ? null
+      : (h1MonthlyAverage / q2MonthlyAverage - 1) * 100;
+  const h1Total = sum(safeGrandTotalValues);
+  const h2AtQ2Pace = q2MonthlyAverage * 6;
+
+  return {
+    metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
+    state: "ready",
+    periodLabel: `${selected.year} 年 1—6 月`,
+    coverageLabel: "6/6 月正式数据",
+    emptyCopy: null,
+    tpl: {
+      currentPnlLabel: formatProductCategoryManagementYi(currentTplPnl),
+      currentYieldLabel: `${currentTplYield.toFixed(2)}%`,
+      currentScaleLabel: formatProductCategoryManagementYi(currentTplScale),
+      thresholds,
+    },
+    liability: {
+      h1NetLabel: formatProductCategoryManagementYi(
+        sum(safeLiabilityTotalValues),
+      ),
+      positivePoolLabel: formatProductCategoryManagementYi(
+        liabilityPositivePool,
+      ),
+      negativePoolLabel: signedYiDeltaLabel(liabilityNegativePool),
+      offsetRatioLabel:
+        formatProductCategoryManagementPercent(liabilityOffsetRatio),
+      currentMonthDeltaLabel: signedYiDeltaLabel(liabilityCurrentMonthDelta),
+      leadingMovementLabel: leadingLiabilityMovement
+        ? `${leadingLiabilityMovement.row.category_name || leadingLiabilityMovement.row.category_id} ${signedYiDeltaLabel(leadingLiabilityMovement.delta)}`
+        : "6 月无负向回落",
+      leadingDriverLabel: leadingLiabilityDriver
+        ? `${leadingLiabilityDriver.label} ${signedYiDeltaLabel(leadingLiabilityDriver.value)}`
+        : "无可用驱动",
+    },
+    derivatives: {
+      h1TotalLabel: formatProductCategoryManagementYi(derivativeH1Total),
+      monthlyAverageLabel: formatProductCategoryManagementYi(
+        derivativeMonthlyAverage,
+      ),
+      volatilityLabel: formatProductCategoryManagementYi(derivativeVolatility),
+      topThreeConcentrationLabel: formatProductCategoryManagementPercent(
+        derivativeTopThreeConcentration,
+      ),
+      negativeMonthCountLabel: `${derivativeNegativeMonthCount} 个月`,
+    },
+    runRate: {
+      q1MonthlyAverageLabel:
+        formatProductCategoryManagementYi(q1MonthlyAverage),
+      q2MonthlyAverageLabel:
+        formatProductCategoryManagementYi(q2MonthlyAverage),
+      h1MonthlyAverageLabel:
+        formatProductCategoryManagementYi(h1MonthlyAverage),
+      recoveryLiftLabel: formatProductCategoryManagementPercent(recoveryLift),
+      h2AtQ2PaceLabel: formatProductCategoryManagementYi(h2AtQ2Pace),
+      gapToH1Label: signedYiDeltaLabel(h2AtQ2Pace - h1Total),
+    },
+    methodNotes: [
+      "TPL 阈值固定 6 月正式规模、正式 FTP 和归因天数，仅反推达到目标净营收所需收益率，不构成预测。",
+      "负债改善质量按五类负债产品 H1 正、负净营收池归组；6 月回落及驱动直接复用正式月环比归因。",
+      "衍生品稳定性仅以月度净营收波动、负值月份和 Top3 月份集中度作为代理，不识别一次性或可重复收益。",
+      "经营节奏用正式 grand_total 的 Q1、Q2 与 H1 月均做静态延展，不替代预算、计财目标或正式预测。",
+    ],
   };
 }
 
 export function selectProductCategoryTplScaleYieldChart(
   snapshots: ProductCategoryTrendSnapshot[],
 ): ProductCategoryTplScaleYieldChart | null {
-  const chart = buildSnapshotChart(snapshots, (snapshot) => {
-    const row = findProductCategoryRow(snapshot.rows, "bond_tpl");
-    if (!row) {
-      return null;
-    }
-    const cnyScale = yiNumber(row.cny_scale);
-    const foreignScale = yiNumber(row.foreign_scale);
-    const weightedYield = percentNumber(row.weighted_yield);
-    if (cnyScale === null || foreignScale === null || weightedYield === null) {
-      return null;
-    }
-    return { cnyScale, foreignScale, weightedYield };
-  });
-  if (chart.labels.length === 0) {
-    return null;
-  }
-  return {
-    labels: chart.labels,
-    cnyScale: chart.points.map((point) => point.cnyScale),
-    foreignScale: chart.points.map((point) => point.foreignScale),
-    weightedYield: chart.points.map((point) => point.weightedYield),
-  };
+  return selectProductCategoryTplScaleYieldChartImpl(
+    snapshots,
+  ) as ProductCategoryTplScaleYieldChart | null;
 }
 
 export function selectProductCategoryCurrencyNetIncomeChart(
   snapshots: ProductCategoryTrendSnapshot[],
 ): ProductCategoryCurrencyNetIncomeChart | null {
-  const chart = buildSnapshotChart(snapshots, (snapshot) => {
-    const row = snapshot.grandTotal;
-    if (!row) {
-      return null;
-    }
-    const cnyNet = yiNumber(row.cny_net);
-    const foreignNet = yiNumber(row.foreign_net);
-    if (cnyNet === null || foreignNet === null) {
-      return null;
-    }
-    return { cnyNet, foreignNet };
-  });
-  if (chart.labels.length === 0) {
-    return null;
-  }
-  return {
-    labels: chart.labels,
-    cnyNet: chart.points.map((point) => point.cnyNet),
-    foreignNet: chart.points.map((point) => point.foreignNet),
-  };
+  return selectProductCategoryCurrencyNetIncomeChartImpl(
+    snapshots,
+  ) as ProductCategoryCurrencyNetIncomeChart | null;
 }
 
 export function selectProductCategoryInterestEarningIncomeScaleChart(
   snapshots: ProductCategoryTrendSnapshot[],
 ): ProductCategoryInterestEarningIncomeScaleChart | null {
-  const chart = buildSnapshotChart(snapshots, (snapshot) => {
-    const row = findProductCategoryRow(snapshot.rows, "interest_earning_assets");
-    if (!row) {
-      return null;
-    }
-    const scale = yiNumber(row.cnx_scale);
-    const income = yiNumber(row.business_net_income);
-    if (scale === null || income === null) {
-      return null;
-    }
-    return { scale, income };
-  });
-  if (chart.labels.length === 0) {
-    return null;
-  }
-  return {
-    labels: chart.labels,
-    scale: chart.points.map((point) => point.scale),
-    income: chart.points.map((point) => point.income),
-  };
+  return selectProductCategoryInterestEarningIncomeScaleChartImpl(
+    snapshots,
+  ) as ProductCategoryInterestEarningIncomeScaleChart | null;
+}
+
+export function selectProductCategoryInterestEarningAssetLiabilityScaleChart(
+  snapshots: ProductCategoryTrendSnapshot[],
+): ProductCategoryInterestEarningAssetLiabilityScaleChart | null {
+  return selectProductCategoryInterestEarningAssetLiabilityScaleChartImpl(
+    snapshots,
+  ) as ProductCategoryInterestEarningAssetLiabilityScaleChart | null;
 }
 
 export function selectProductCategoryInterestSpreadChart(
   snapshots: ProductCategoryTrendSnapshot[],
 ): ProductCategoryInterestSpreadChart | null {
-  const chart = buildSnapshotChart(snapshots, (snapshot) => {
-    const assetYield = interestSpreadMetricNumber(
-      snapshot.interestSpread?.all_currency_asset_yield_pct,
-    );
-    const liabilityYield = interestSpreadMetricNumber(
-      snapshot.interestSpread?.all_currency_liability_yield_pct,
-    );
-    const spread = interestSpreadMetricNumber(snapshot.interestSpread?.all_currency_spread_pct);
-    if (assetYield === null || liabilityYield === null || spread === null) {
-      return null;
-    }
-    return { assetYield, liabilityYield, spread };
-  });
-  if (chart.labels.length === 0) {
-    return null;
-  }
-  return {
-    labels: chart.labels,
-    assetYield: chart.points.map((point) => point.assetYield),
-    liabilityYield: chart.points.map((point) => point.liabilityYield),
-    spread: chart.points.map((point) => point.spread),
-  };
+  return selectProductCategoryInterestSpreadChartImpl(
+    snapshots,
+  ) as ProductCategoryInterestSpreadChart | null;
+}
+
+export function selectProductCategoryInterestEarningSpreadChart(
+  snapshots: ProductCategoryTrendSnapshot[],
+): ProductCategoryInterestSpreadChart | null {
+  return selectProductCategoryInterestEarningSpreadChartImpl(
+    snapshots,
+  ) as ProductCategoryInterestSpreadChart | null;
 }
 
 export function selectProductCategoryInterestSpreadYearComparisonChart(
   snapshots: ProductCategoryTrendSnapshot[],
   basis: ProductCategoryInterestSpreadBasis = "weighted",
 ): ProductCategoryInterestSpreadYearComparisonChart | null {
-  const yearMonthSpread = new Map<number, Map<number, number | null>>();
-  const months = new Set<number>();
-  let hasSpreadValue = false;
-  chronologicalProductCategorySnapshots(snapshots).forEach((snapshot) => {
-    const parsed = parseProductCategoryReportDate(snapshot.reportDate);
-    if (!parsed) {
-      return;
-    }
-    const spread = productCategoryInterestSpreadForBasis(snapshot, basis);
-    if (spread !== null) {
-      hasSpreadValue = true;
-    }
-    const existing = yearMonthSpread.get(parsed.year) ?? new Map<number, number | null>();
-    existing.set(parsed.month, spread);
-    yearMonthSpread.set(parsed.year, existing);
-    months.add(parsed.month);
-  });
-  if (!hasSpreadValue || yearMonthSpread.size === 0 || months.size === 0) {
-    return null;
-  }
+  return selectProductCategoryInterestSpreadYearComparisonChartImpl(
+    snapshots,
+    basis,
+  ) as ProductCategoryInterestSpreadYearComparisonChart | null;
+}
 
-  const sortedMonths = Array.from(months).sort((left, right) => left - right);
-  const sortedYears = Array.from(yearMonthSpread.keys()).sort((left, right) => left - right);
-  return {
-    labels: sortedMonths.map((month) => formatProductCategoryShortMonthLabel(month)),
-    monthKeys: sortedMonths,
-    series: sortedYears.map((year) => ({
-      year: `${year}\u5e74`,
-      spread: sortedMonths.map((month) => yearMonthSpread.get(year)?.get(month) ?? null),
-    })),
-  };
+export function selectProductCategoryInterestEarningSpreadYearComparisonChart(
+  snapshots: ProductCategoryTrendSnapshot[],
+  basis: ProductCategoryInterestSpreadBasis = "weighted",
+): ProductCategoryInterestSpreadYearComparisonChart | null {
+  return selectProductCategoryInterestEarningSpreadYearComparisonChartImpl(
+    snapshots,
+    basis,
+  ) as ProductCategoryInterestSpreadYearComparisonChart | null;
 }
 
 export function selectProductCategoryIntermediateBusinessIncomeYearComparisonChart(
   snapshots: ProductCategoryTrendSnapshot[],
 ): ProductCategoryIntermediateBusinessIncomeYearComparisonChart | null {
-  const yearMonthIncome = new Map<number, Map<number, number | null>>();
-  const months = new Set<number>();
-  let hasIncomeValue = false;
+  return selectProductCategoryIntermediateBusinessIncomeYearComparisonChartImpl(
+    snapshots,
+  ) as ProductCategoryIntermediateBusinessIncomeYearComparisonChart | null;
+}
 
-  chronologicalProductCategorySnapshots(snapshots).forEach((snapshot) => {
-    const parsed = parseProductCategoryReportDate(snapshot.reportDate);
-    if (!parsed) {
-      return;
-    }
-    const row = findProductCategoryRow(snapshot.rows, "intermediate_business_income");
-    const income = row ? yiNumber(row.business_net_income) : null;
-    if (income !== null) {
-      hasIncomeValue = true;
-    }
-    const existing = yearMonthIncome.get(parsed.year) ?? new Map<number, number | null>();
-    existing.set(parsed.month, income);
-    yearMonthIncome.set(parsed.year, existing);
-    months.add(parsed.month);
-  });
+const PRODUCT_CATEGORY_LIABILITY_COPY = {
+  missingAverageDailySuffix: "负债端日均额缺失",
+  missingRateSuffix: "负债端利率缺失",
+  comparisonArrow: " → ",
+  comparisonAmountPrefix: "日均额：",
+  comparisonRatePrefix: "利率：",
+  comparisonJoiner: "；",
+  comparisonMissingCurrent: "当前指标缺失",
+  comparisonMissingPrior: "缺少可比上期",
+  liabilityTotalFallbackLabel: "负债合计",
+  movementGroupAdjacent: "环比月度变动情况",
+  movementGroupFallback: "较上期变动",
+  cnyCurrencyLabel: "人民币结构",
+  foreignCurrencyLabel: "外币结构",
+  emptySurfaceCopy: "当前 payload 未返回可展示的负债端趋势数据。",
+  emptyChartCopy: "负债端趋势数据不完整，无法绘制完整走势。",
+} as const;
 
-  if (!hasIncomeValue || yearMonthIncome.size === 0 || months.size === 0) {
-    return null;
-  }
-
-  const sortedMonths = Array.from(months).sort((left, right) => left - right);
-  const sortedYears = Array.from(yearMonthIncome.keys()).sort((left, right) => left - right);
+function buildProductCategoryLiabilityModelInput(
+  snapshots: ProductCategoryTrendSnapshot[],
+) {
   return {
-    labels: sortedMonths.map((month) => formatProductCategoryShortMonthLabel(month)),
-    series: sortedYears.map((year) => ({
-      year: `${year}\u5e74`,
-      income: sortedMonths.map((month) => yearMonthIncome.get(year)?.get(month) ?? null),
-    })),
+    snapshots,
+    displayOrderIndex: DISPLAY_ORDER_INDEX,
+    formatReportMonthLabel: formatProductCategoryReportMonthLabel,
+    parseReportDate: parseProductCategoryReportDate,
+    formatRowDisplayValue: formatProductCategoryRowDisplayValue,
+    formatForeignDisplayValue: formatProductCategoryForeignDisplayValue,
+    percentNumber,
+    signedYiDeltaLabel,
+    signedBpLabel,
+    copy: PRODUCT_CATEGORY_LIABILITY_COPY,
   };
-}
-
-function interestSpreadMetricNumber(
-  metric: ProductCategoryInterestSpreadPayload[keyof ProductCategoryInterestSpreadPayload] | null | undefined,
-): number | null {
-  return decimalNumber(metric?.raw);
-}
-
-function productCategoryInterestSpreadForBasis(
-  snapshot: ProductCategoryTrendSnapshot,
-  basis: ProductCategoryInterestSpreadBasis,
-): number | null {
-  return interestSpreadMetricNumber(
-    basis === "cny"
-      ? snapshot.interestSpread?.cny_spread_pct
-      : snapshot.interestSpread?.all_currency_spread_pct,
-  );
 }
 
 export function selectProductCategoryInterestSpreadAttributionSurface(
@@ -4163,639 +5004,88 @@ export function selectProductCategoryInterestSpreadAttributionSurface(
   options: ProductCategoryInterestSpreadAttributionSelection,
   currentYear: number,
 ): ProductCategoryInterestSpreadAttributionSurface {
-  const current = findInterestSpreadAttributionSnapshot(snapshots, currentYear, options.month);
-  const prior = findInterestSpreadAttributionSnapshot(snapshots, currentYear - 1, options.month);
-  const currentMetrics = interestSpreadAttributionMetrics(current, options.basis);
-  const priorMetrics = interestSpreadAttributionMetrics(prior, options.basis);
-  const assetContributionBp = basisPointDelta(currentMetrics.assetYield, priorMetrics.assetYield);
-  const liabilityContributionBp = basisPointDelta(priorMetrics.liabilityYield, currentMetrics.liabilityYield);
-  const spreadDelta = basisPointDelta(currentMetrics.spread, priorMetrics.spread);
-  const incompleteReasons = interestSpreadAttributionIncompleteReasons({
-    current,
-    prior,
-    currentMetrics,
-    priorMetrics,
-    basis: options.basis,
+  const surface = buildProductCategoryInterestSpreadAttributionImpl({
+    snapshots,
+    options,
+    currentYear,
+    formatRowDisplayValue: formatProductCategoryRowDisplayValue,
+    formatYieldValue: formatProductCategoryYieldValue,
   });
 
   return {
-    selected: {
-      basis: options.basis,
-      month: options.month,
-      currentYear,
-      priorYear: currentYear - 1,
-      currentReportDate: current?.reportDate ?? null,
-      priorReportDate: prior?.reportDate ?? null,
-    },
-    complete: incompleteReasons.length === 0,
-    incompleteReasons,
-    summary: {
-      assetYieldCurrent: currentMetrics.assetYield,
-      assetYieldPrior: priorMetrics.assetYield,
-      liabilityYieldCurrent: currentMetrics.liabilityYield,
-      liabilityYieldPrior: priorMetrics.liabilityYield,
-      spreadCurrent: currentMetrics.spread,
-      spreadPrior: priorMetrics.spread,
-      assetContributionBp,
-      liabilityContributionBp,
-      spreadDeltaBp: spreadDelta,
-    },
+    metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
+    selected: surface.selected,
+    complete: surface.complete,
+    incompleteReasons: surface.incompleteReasons,
+    summary: surface.summary,
     rows: [
       {
         key: "asset_yield",
-        label: "\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387",
-        priorValue: priorMetrics.assetYield,
-        currentValue: currentMetrics.assetYield,
-        deltaBp: assetContributionBp,
-        priorLabel: interestSpreadPercentLabel(priorMetrics.assetYield),
-        currentLabel: interestSpreadPercentLabel(currentMetrics.assetYield),
-        contributionLabel: signedBpLabelWithOneDecimal(assetContributionBp),
-        explanation: "仅展示后端返回的资产端收益率字段，不推导利差贡献",
+        label: "资产端收益率（含TPL）",
+        ...surface.rows.assetYield,
+        explanation: "仅展示后端返回的资产端收益率（含TPL）字段，不推导利差贡献",
       },
       {
         key: "liability_cost",
-        label: "\u8d1f\u503a\u7aef\u6210\u672c",
-        priorValue: priorMetrics.liabilityYield,
-        currentValue: currentMetrics.liabilityYield,
-        deltaBp: liabilityContributionBp,
-        priorLabel: interestSpreadPercentLabel(priorMetrics.liabilityYield),
-        currentLabel: interestSpreadPercentLabel(currentMetrics.liabilityYield),
-        contributionLabel: signedBpLabelWithOneDecimal(liabilityContributionBp),
-        explanation: "仅展示后端返回的负债端收益率字段，不推导利差贡献",
+        label: "负债端成本率",
+        ...surface.rows.liabilityCost,
+        explanation: "仅展示后端返回的负债端成本率字段，不推导利差贡献",
       },
       {
         key: "spread",
-        label: "\u751f\u606f\u8d44\u4ea7\u5229\u5dee",
-        priorValue: priorMetrics.spread,
-        currentValue: currentMetrics.spread,
-        deltaBp: spreadDelta,
-        priorLabel: interestSpreadPercentLabel(priorMetrics.spread),
-        currentLabel: interestSpreadPercentLabel(currentMetrics.spread),
-        contributionLabel: signedBpLabelWithOneDecimal(spreadDelta),
-        explanation: "展示后端返回的利差指标变动，不由前端推导",
+        label: "资产负债利差（含TPL）",
+        ...surface.rows.spread,
+        explanation: "展示后端返回的利差指标变动（含TPL口径），不由前端推导",
       },
     ],
     details: [
       {
         key: "asset_total",
-        label: "\u8d44\u4ea7\u7aef\u5408\u8ba1",
-        prior: interestSpreadAttributionDetailPoint(prior, priorMetrics.assetRow, priorMetrics.assetYield, options.basis),
-        current: interestSpreadAttributionDetailPoint(
-          current,
-          currentMetrics.assetRow,
-          currentMetrics.assetYield,
-          options.basis,
-        ),
+        label: "资产端合计",
+        prior: surface.details.assetTotal.prior,
+        current: surface.details.assetTotal.current,
       },
       {
         key: "liability_total",
-        label: "\u8d1f\u503a\u7aef\u5408\u8ba1",
-        prior: interestSpreadAttributionDetailPoint(
-          prior,
-          priorMetrics.liabilityRow,
-          priorMetrics.liabilityYield,
-          options.basis,
-        ),
-        current: interestSpreadAttributionDetailPoint(
-          current,
-          currentMetrics.liabilityRow,
-          currentMetrics.liabilityYield,
-          options.basis,
-        ),
+        label: "负债端合计",
+        prior: surface.details.liabilityTotal.prior,
+        current: surface.details.liabilityTotal.current,
       },
     ],
-  };
-}
-
-function findInterestSpreadAttributionSnapshot(
-  snapshots: ProductCategoryTrendSnapshot[],
-  year: number,
-  month: number,
-): ProductCategoryTrendSnapshot | null {
-  return (
-    snapshots.find((snapshot) => {
-      const parsed = parseProductCategoryReportDate(snapshot.reportDate);
-      return parsed?.year === year && parsed.month === month;
-    }) ?? null
-  );
-}
-
-function interestSpreadAttributionMetrics(
-  snapshot: ProductCategoryTrendSnapshot | null,
-  basis: ProductCategoryInterestSpreadBasis,
-): {
-  assetYield: number | null;
-  liabilityYield: number | null;
-  spread: number | null;
-  assetRow: ProductCategoryPnlRow | null;
-  liabilityRow: ProductCategoryPnlRow | null;
-} {
-  if (!snapshot) {
-    return { assetYield: null, liabilityYield: null, spread: null, assetRow: null, liabilityRow: null };
-  }
-  const assetRow = snapshot.assetTotal ?? null;
-  const liabilityRow = snapshot.liabilityTotal ?? null;
-  if (!assetRow || !liabilityRow) {
-    return { assetYield: null, liabilityYield: null, spread: null, assetRow, liabilityRow };
-  }
-  const assetYield = interestSpreadMetricNumber(
-    basis === "cny"
-      ? snapshot.interestSpread?.cny_asset_yield_pct
-      : snapshot.interestSpread?.all_currency_asset_yield_pct,
-  );
-  const liabilityYield = interestSpreadMetricNumber(
-    basis === "cny"
-      ? snapshot.interestSpread?.cny_liability_yield_pct
-      : snapshot.interestSpread?.all_currency_liability_yield_pct,
-  );
-  return {
-    assetYield,
-    liabilityYield,
-    spread: productCategoryInterestSpreadForBasis(snapshot, basis),
-    assetRow,
-    liabilityRow,
-  };
-}
-
-function basisPointDelta(current: number | null, prior: number | null): number | null {
-  if (current === null || prior === null) {
-    return null;
-  }
-  return Number(((current - prior) * 100).toFixed(1));
-}
-
-function interestSpreadPercentLabel(value: number | null): string {
-  return value === null ? "-" : `${value.toFixed(2)}%`;
-}
-
-function signedBpLabelWithOneDecimal(value: number | null): string {
-  if (value === null || !Number.isFinite(value)) {
-    return "-";
-  }
-  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
-  return `${sign}${Math.abs(value).toFixed(1)}bp`;
-}
-
-function interestSpreadAttributionIncompleteReasons(input: {
-  current: ProductCategoryTrendSnapshot | null;
-  prior: ProductCategoryTrendSnapshot | null;
-  currentMetrics: { assetYield: number | null; liabilityYield: number | null; spread: number | null };
-  priorMetrics: { assetYield: number | null; liabilityYield: number | null; spread: number | null };
-  basis: ProductCategoryInterestSpreadBasis;
-}): string[] {
-  const prefix = input.basis === "cny" ? "\u4eba\u6c11\u5e01" : "\u5168\u53e3\u5f84";
-  const reasons: string[] = [];
-  if (!input.current) {
-    reasons.push("\u7f3a\u5c11\u5f53\u524d\u6708\u6570\u636e");
-  }
-  if (!input.prior) {
-    reasons.push("\u7f3a\u5c11\u4e0a\u5e74\u540c\u6708\u6570\u636e");
-  }
-  if (input.currentMetrics.assetYield === null) {
-    reasons.push(`${prefix}\u5f53\u524d\u6708\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387\u4e0d\u53ef\u7528`);
-  }
-  if (input.priorMetrics.assetYield === null) {
-    reasons.push(`${prefix}\u4e0a\u5e74\u540c\u6708\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387\u4e0d\u53ef\u7528`);
-  }
-  if (input.currentMetrics.liabilityYield === null) {
-    reasons.push(`${prefix}\u5f53\u524d\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528`);
-  }
-  if (input.priorMetrics.liabilityYield === null) {
-    reasons.push(`${prefix}\u4e0a\u5e74\u540c\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528`);
-  }
-  if (
-    input.current &&
-    input.prior &&
-    input.currentMetrics.assetYield !== null &&
-    input.priorMetrics.assetYield !== null &&
-    input.currentMetrics.liabilityYield !== null &&
-    input.priorMetrics.liabilityYield !== null &&
-    (input.currentMetrics.spread === null || input.priorMetrics.spread === null)
-  ) {
-    reasons.push(`${prefix}\u5229\u5dee\u6307\u6807\u672a\u7531\u540e\u7aef\u8fd4\u56de`);
-  }
-  return reasons;
-}
-
-function interestSpreadAttributionDetailPoint(
-  snapshot: ProductCategoryTrendSnapshot | null,
-  row: ProductCategoryPnlRow | null,
-  yieldValue: number | null,
-  basis: ProductCategoryInterestSpreadBasis,
-): ProductCategoryInterestSpreadAttributionDetailPoint {
-  const amountField = basis === "cny" ? "cny_scale" : "cnx_scale";
-  const cashField = basis === "cny" ? "cny_cash" : "cnx_cash";
-  return {
-    reportLabel: snapshot?.label ?? (snapshot ? formatProductCategoryReportMonthLabel(snapshot.reportDate) : "-"),
-    amountLabel: row ? `${formatProductCategoryRowDisplayValue(row, row[amountField])}\u4ebf\u5143` : "-",
-    cashLabel: row ? `${formatProductCategoryRowDisplayValue(row, row[cashField])}\u4ebf\u5143` : "-",
-    yieldLabel: yieldValue === null ? "-" : `${formatProductCategoryYieldValue(yieldValue)}%`,
   };
 }
 
 export function selectProductCategoryLiabilitySideTrendChart(
   snapshots: ProductCategoryTrendSnapshot[],
 ): ProductCategoryLiabilitySideTrendChart | null {
-  const ordered = chronologicalProductCategorySnapshots(snapshots);
-  if (ordered.length === 0) {
-    return null;
-  }
-  const labels: string[] = [];
-  const totalAverageDaily: Array<number | null> = [];
-  const totalRate: Array<number | null> = [];
-  const incompleteReasons: string[] = [];
-
-  ordered.forEach((snapshot) => {
-    const label = snapshot.label ?? formatProductCategoryReportMonthLabel(snapshot.reportDate);
-    const averageDaily = yiNumber(snapshot.liabilityTotal?.cnx_scale);
-    const rate = percentNumber(snapshot.liabilityTotal?.weighted_yield);
-    labels.push(label);
-    totalAverageDaily.push(averageDaily);
-    totalRate.push(rate);
-    if (averageDaily === null) {
-      incompleteReasons.push(`${label}负债端日均额缺失`);
-    }
-    if (rate === null) {
-      incompleteReasons.push(`${label}负债端利率缺失`);
-    }
-  });
-
-  return { labels, totalAverageDaily, totalRate, incompleteReasons };
-}
-
-function latestComparableLiabilityValue(input: {
-  snapshots: ProductCategoryTrendSnapshot[];
-  categoryId: string;
-  metric: "cnx_scale" | "weighted_yield";
-  beforeIndex?: number;
-}): { value: number; label: string; index: number } | null {
-  const upperBound = input.beforeIndex ?? input.snapshots.length;
-  for (let index = upperBound - 1; index >= 0; index -= 1) {
-    const snapshot = input.snapshots[index];
-    if (!snapshot) {
-      continue;
-    }
-    const row = liabilityDetailRowsFromSnapshot(snapshot).find((item) => item.category_id === input.categoryId);
-    const value =
-      input.metric === "cnx_scale" ? yiNumber(row?.cnx_scale) : percentNumber(row?.weighted_yield);
-    if (value !== null) {
-      return {
-        value,
-        label: snapshot.label ?? formatProductCategoryReportMonthLabel(snapshot.reportDate),
-        index,
-      };
-    }
-  }
-  return null;
-}
-
-function liabilityComparisonLabel(input: {
-  amountLatestLabel: string | null;
-  amountPriorLabel: string | null;
-  rateLatestLabel: string | null;
-  ratePriorLabel: string | null;
-}): string {
-  const amountLabel =
-    input.amountLatestLabel && input.amountPriorLabel
-      ? `${input.amountPriorLabel} → ${input.amountLatestLabel}`
-      : null;
-  const rateLabel =
-    input.rateLatestLabel && input.ratePriorLabel
-      ? `${input.ratePriorLabel} → ${input.rateLatestLabel}`
-      : null;
-  if (amountLabel && rateLabel && amountLabel !== rateLabel) {
-    return `日均额：${amountLabel}；利率：${rateLabel}`;
-  }
-  if (!input.amountLatestLabel && !input.rateLatestLabel) {
-    return "当前指标缺失";
-  }
-  return amountLabel ?? rateLabel ?? "缺少可比上期";
-}
-
-function adjacentProductCategoryMonths(
-  previous: ProductCategoryTrendSnapshot | undefined,
-  latest: ProductCategoryTrendSnapshot | undefined,
-): boolean {
-  const previousDate = previous ? parseProductCategoryReportDate(previous.reportDate) : null;
-  const latestDate = latest ? parseProductCategoryReportDate(latest.reportDate) : null;
-  if (!previousDate || !latestDate) {
-    return false;
-  }
-  return latestDate.year * 12 + latestDate.month - (previousDate.year * 12 + previousDate.month) === 1;
-}
-
-type ProductCategoryLiabilityAmountField = "cnx_scale" | "cny_scale" | "foreign_scale";
-
-function liabilityDetailMetricLabels(
-  row: ProductCategoryPnlRow | undefined,
-  amountField: ProductCategoryLiabilityAmountField = "cnx_scale",
-): {
-  amountLabel: string;
-  amountValue: number | null;
-  rateLabel: string;
-  rateValue: number | null;
-} {
-  const amountValue = yiNumber(row?.[amountField]);
-  const rateValue = percentNumber(row?.weighted_yield);
-  return {
-    amountLabel: amountValue !== null ? amountValue.toFixed(2) : "-",
-    amountValue,
-    rateLabel: rateValue !== null ? rateValue.toFixed(2) : "-",
-    rateValue,
-  };
-}
-
-function liabilityCurrencyMetricLabels(
-  row: ProductCategoryPnlRow | undefined,
-  amountField: ProductCategoryLiabilityAmountField,
-): {
-  amountLabel: string;
-  amountValue: number | null;
-  rateLabel: string;
-  rateValue: number | null;
-} {
-  const amountValue = yiNumber(row?.[amountField]);
-  const rateValue: number | null = null;
-  return {
-    amountLabel: amountValue !== null ? amountValue.toFixed(2) : "-",
-    amountValue,
-    rateLabel: "-",
-    rateValue,
-  };
-}
-
-function buildLiabilityDetailMatrixRow(input: {
-  categoryId: string;
-  categoryLabel: string;
-  isSummary?: boolean;
-  periods: ProductCategoryLiabilityDetailMatrixPeriod[];
-  latestIndex: number;
-  previousIndex: number;
-  rowAt: (index: number) => ProductCategoryPnlRow | undefined;
-}): ProductCategoryLiabilityDetailMatrixRow {
-  const latestMetrics = liabilityDetailMetricLabels(input.rowAt(input.latestIndex));
-  const previousMetrics = liabilityDetailMetricLabels(input.rowAt(input.previousIndex));
-  const amountDelta =
-    latestMetrics.amountValue !== null && previousMetrics.amountValue !== null
-      ? Number((latestMetrics.amountValue - previousMetrics.amountValue).toFixed(2))
-      : null;
-  const rateDelta =
-    latestMetrics.rateValue !== null && previousMetrics.rateValue !== null
-      ? Number(((latestMetrics.rateValue - previousMetrics.rateValue) * 100).toFixed(1))
-      : null;
-
-  return {
-    categoryId: input.categoryId,
-    categoryLabel: input.categoryLabel,
-    isSummary: input.isSummary,
-    cells: input.periods.map((period, index) => {
-      const labels = liabilityDetailMetricLabels(input.rowAt(index));
-      return {
-        periodKey: period.key,
-        amountLabel: labels.amountLabel,
-        rateLabel: labels.rateLabel,
-      };
-    }),
-    movement: {
-      amountLabel: signedYiDeltaLabel(amountDelta),
-      rateLabel: signedBpLabel(rateDelta),
-    },
-  };
-}
-
-function buildLiabilityCurrencyMatrixRow(input: {
-  categoryId: string;
-  categoryLabel: string;
-  isSummary?: boolean;
-  amountField: ProductCategoryLiabilityAmountField;
-  periods: ProductCategoryLiabilityDetailMatrixPeriod[];
-  latestIndex: number;
-  previousIndex: number;
-  rowAt: (index: number) => ProductCategoryPnlRow | undefined;
-}): ProductCategoryLiabilityCurrencyMatrixRow {
-  const latestMetrics = liabilityCurrencyMetricLabels(
-    input.rowAt(input.latestIndex),
-    input.amountField,
+  return selectProductCategoryLiabilitySideTrendChartImpl(
+    buildProductCategoryLiabilityModelInput(snapshots),
   );
-  const previousMetrics = liabilityCurrencyMetricLabels(
-    input.rowAt(input.previousIndex),
-    input.amountField,
-  );
-  const amountDelta =
-    latestMetrics.amountValue !== null && previousMetrics.amountValue !== null
-      ? Number((latestMetrics.amountValue - previousMetrics.amountValue).toFixed(2))
-      : null;
-  const rateDelta =
-    latestMetrics.rateValue !== null && previousMetrics.rateValue !== null
-      ? Number(((latestMetrics.rateValue - previousMetrics.rateValue) * 100).toFixed(1))
-      : null;
-
-  return {
-    categoryId: input.categoryId,
-    categoryLabel: input.categoryLabel,
-    isSummary: input.isSummary,
-    cells: input.periods.map((period, index) => {
-      const labels = liabilityCurrencyMetricLabels(input.rowAt(index), input.amountField);
-      return {
-        periodKey: period.key,
-        amountLabel: labels.amountLabel,
-        rateLabel: labels.rateLabel,
-      };
-    }),
-    movement: {
-      amountLabel: signedYiDeltaLabel(amountDelta),
-      rateLabel: signedBpLabel(rateDelta),
-    },
-  };
 }
 
 export function selectProductCategoryLiabilityDetailMatrix(
   snapshots: ProductCategoryTrendSnapshot[],
 ): ProductCategoryLiabilityDetailMatrix {
-  const ordered = chronologicalProductCategorySnapshots(snapshots);
-  const periods = ordered.map((snapshot) => ({
-    key: `${snapshot.reportDate}:${snapshot.view ?? ""}`,
-    label: snapshot.label ?? formatProductCategoryReportMonthLabel(snapshot.reportDate),
-    reportDate: snapshot.reportDate,
-  }));
-  const rowsBySnapshot = ordered.map((snapshot) => liabilityDetailRowsFromSnapshot(snapshot));
-  const rowMaps = rowsBySnapshot.map((rows) => new Map(rows.map((row) => [row.category_id, row])));
-  const rowRefs = new Map<string, { first: ProductCategoryPnlRow; latest: ProductCategoryPnlRow }>();
-
-  rowsBySnapshot.forEach((rows) => {
-    rows.forEach((row) => {
-      const existing = rowRefs.get(row.category_id);
-      rowRefs.set(row.category_id, {
-        first: existing?.first ?? row,
-        latest: row,
-      });
-    });
-  });
-
-  const categoryIds = Array.from(rowRefs.keys()).sort((left, right) => {
-    const leftIndex = DISPLAY_ORDER_INDEX.get(left) ?? Number.MAX_SAFE_INTEGER;
-    const rightIndex = DISPLAY_ORDER_INDEX.get(right) ?? Number.MAX_SAFE_INTEGER;
-    if (leftIndex !== rightIndex) {
-      return leftIndex - rightIndex;
-    }
-    return left.localeCompare(right);
-  });
-  const latestIndex = ordered.length - 1;
-  const previousIndex = ordered.length - 2;
-  const latestTotal = ordered[latestIndex]?.liabilityTotal ?? undefined;
-  const firstTotal = ordered.find((snapshot) => snapshot.liabilityTotal)?.liabilityTotal ?? undefined;
-  const totalRow =
-    latestTotal || firstTotal
-      ? buildLiabilityDetailMatrixRow({
-          categoryId: "liability_total",
-          categoryLabel: latestTotal?.category_name || firstTotal?.category_name || "负债合计",
-          isSummary: true,
-          periods,
-          latestIndex,
-          previousIndex,
-          rowAt: (index) => ordered[index]?.liabilityTotal ?? undefined,
-        })
-      : null;
-  const detailRows = categoryIds.map((categoryId) => {
-    const refs = rowRefs.get(categoryId);
-    const latestRow = refs?.latest;
-    const firstRow = refs?.first;
-    return buildLiabilityDetailMatrixRow({
-      categoryId,
-      categoryLabel: latestRow?.category_name || firstRow?.category_name || categoryId,
-      periods,
-      latestIndex,
-      previousIndex,
-      rowAt: (index) => rowMaps[index]?.get(categoryId),
-    });
-  });
-  const movementGroupLabel = adjacentProductCategoryMonths(ordered[previousIndex], ordered[latestIndex])
-    ? "环比月度变动情况"
-    : "较上期变动";
-  const currencyMatrices: ProductCategoryLiabilityCurrencyMatrix[] = [
-    { currencyKey: "cny", currencyLabel: "人民币结构", amountField: "cny_scale" },
-    {
-      currencyKey: "foreign",
-      currencyLabel: "外币结构",
-      amountField: "foreign_scale",
-    },
-  ].map((currency) => {
-    const totalCurrencyRow =
-      latestTotal || firstTotal
-        ? buildLiabilityCurrencyMatrixRow({
-            categoryId: "liability_total",
-            categoryLabel: latestTotal?.category_name || firstTotal?.category_name || "负债合计",
-            isSummary: true,
-            amountField: currency.amountField as ProductCategoryLiabilityAmountField,
-            periods,
-            latestIndex,
-            previousIndex,
-            rowAt: (index) => ordered[index]?.liabilityTotal ?? undefined,
-          })
-        : null;
-    const currencyRows = categoryIds.map((categoryId) => {
-      const refs = rowRefs.get(categoryId);
-      const latestRow = refs?.latest;
-      const firstRow = refs?.first;
-      return buildLiabilityCurrencyMatrixRow({
-        categoryId,
-        categoryLabel: latestRow?.category_name || firstRow?.category_name || categoryId,
-        amountField: currency.amountField as ProductCategoryLiabilityAmountField,
-        periods,
-        latestIndex,
-        previousIndex,
-        rowAt: (index) => rowMaps[index]?.get(categoryId),
-      });
-    });
-    return {
-      currencyKey: currency.currencyKey as ProductCategoryLiabilityCurrencyKey,
-      currencyLabel: currency.currencyLabel,
-      movementGroupLabel,
-      rows: totalCurrencyRow ? [totalCurrencyRow, ...currencyRows] : currencyRows,
-    };
-  });
-
-  return {
-    periods,
-    movementGroupLabel,
-    rows: totalRow ? [totalRow, ...detailRows] : detailRows,
-    currencyMatrices,
-  };
+  return selectProductCategoryLiabilityDetailMatrixImpl(
+    buildProductCategoryLiabilityModelInput(snapshots),
+  );
 }
 
 export function selectProductCategoryLiabilityDetailTrendRows(
   snapshots: ProductCategoryTrendSnapshot[],
 ): ProductCategoryLiabilityDetailTrendRow[] {
-  const ordered = chronologicalProductCategorySnapshots(snapshots);
-  const latestSnapshot = ordered[ordered.length - 1];
-  if (!latestSnapshot) {
-    return [];
-  }
-  const latestLabel = latestSnapshot.label ?? formatProductCategoryReportMonthLabel(latestSnapshot.reportDate);
-  const latestIndex = ordered.length - 1;
-  return liabilityDetailRowsFromSnapshot(latestSnapshot).map((row) => {
-    const latestAmount = yiNumber(row.cnx_scale);
-    const priorAmount = latestAmount !== null
-      ? latestComparableLiabilityValue({
-          snapshots: ordered,
-          categoryId: row.category_id,
-          metric: "cnx_scale",
-          beforeIndex: latestIndex,
-        })
-      : null;
-    const latestRate = percentNumber(row.weighted_yield);
-    const priorRate = latestRate !== null
-      ? latestComparableLiabilityValue({
-          snapshots: ordered,
-          categoryId: row.category_id,
-          metric: "weighted_yield",
-          beforeIndex: latestIndex,
-        })
-      : null;
-    const amountDelta =
-      latestAmount !== null && priorAmount ? Number((latestAmount - priorAmount.value).toFixed(2)) : null;
-    const rateDelta =
-      latestRate !== null && priorRate ? Number(((latestRate - priorRate.value) * 100).toFixed(1)) : null;
-    return {
-      categoryId: row.category_id,
-      categoryLabel: row.category_name || row.category_id,
-      latestAmountLabel: latestAmount !== null ? latestAmount.toFixed(2) : "-",
-      amountDeltaLabel: signedYiDeltaLabel(amountDelta),
-      latestRateLabel: latestRate !== null ? latestRate.toFixed(2) : "-",
-      rateDeltaLabel: signedBpLabel(rateDelta),
-      comparisonLabel: liabilityComparisonLabel({
-        amountLatestLabel: latestAmount !== null ? latestLabel : null,
-        amountPriorLabel: priorAmount?.label ?? null,
-        rateLatestLabel: latestRate !== null ? latestLabel : null,
-        ratePriorLabel: priorRate?.label ?? null,
-      }),
-    };
-  });
+  return selectProductCategoryLiabilityDetailTrendRowsImpl(
+    buildProductCategoryLiabilityModelInput(snapshots),
+  );
 }
 
 export function buildProductCategoryLiabilitySideTrendSurface(
   snapshots: ProductCategoryTrendSnapshot[],
 ): ProductCategoryLiabilitySideTrendSurface {
-  const chart = selectProductCategoryLiabilitySideTrendChart(snapshots);
-  const detailRows = selectProductCategoryLiabilityDetailTrendRows(snapshots);
-  const detailMatrix = selectProductCategoryLiabilityDetailMatrix(snapshots);
-  const incompleteReasons = chart?.incompleteReasons ?? [];
-  if (!chart && detailRows.length === 0 && detailMatrix.rows.length === 0) {
-    return {
-      chart: null,
-      detailRows,
-      detailMatrix,
-      emptyCopy: "当前 payload 未返回可展示的负债端趋势数据。",
-      incompleteReasons,
-    };
-  }
-  return {
-    chart,
-    detailRows,
-    detailMatrix,
-    emptyCopy: chart ? null : "负债端趋势数据不完整，无法绘制完整走势。",
-    incompleteReasons,
-  };
+  return buildProductCategoryLiabilitySideTrendSurfaceImpl({
+    ...buildProductCategoryLiabilityModelInput(snapshots),
+    metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
+  }) as ProductCategoryLiabilitySideTrendSurface;
 }
 
 /**
@@ -4810,15 +5100,20 @@ export function selectProductCategoryDetailRows(
   return source
     .filter((row) => row.category_id !== "grand_total")
     .sort((left, right) => {
-      const leftIndex = DISPLAY_ORDER_INDEX.get(left.category_id) ?? Number.MAX_SAFE_INTEGER;
-      const rightIndex = DISPLAY_ORDER_INDEX.get(right.category_id) ?? Number.MAX_SAFE_INTEGER;
+      const leftIndex =
+        DISPLAY_ORDER_INDEX.get(left.category_id) ?? Number.MAX_SAFE_INTEGER;
+      const rightIndex =
+        DISPLAY_ORDER_INDEX.get(right.category_id) ?? Number.MAX_SAFE_INTEGER;
       return leftIndex - rightIndex;
     });
 }
 
 export function selectDisplayedProductCategoryGrandTotal<
   T extends Pick<ProductCategoryPnlRow, "business_net_income">,
->(scenarioGrand: T | null | undefined, baselineGrand: T | null | undefined): T | undefined {
+>(
+  scenarioGrand: T | null | undefined,
+  baselineGrand: T | null | undefined,
+): T | undefined {
   return scenarioGrand ?? baselineGrand ?? undefined;
 }
 
@@ -4853,6 +5148,136 @@ export function buildLedgerPnlHrefForReportDate(reportDate: string): string {
 /** Page-visible copy: product-category PnL intentionally has no standalone `as_of_date` field. */
 export const PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY =
   "归属日期：本页不提供独立 as_of_date；请分别查看报告日期和生成时间，二者不互相代替。";
+
+export type ProductCategoryDataHealthState =
+  "loading" | "ready" | "degraded" | "empty" | "error";
+
+export type ProductCategoryDataHealth = {
+  state: ProductCategoryDataHealthState;
+  judgementState: "pending" | "allowed" | "blocked";
+  judgementLabel: "等待数据完成" | "可用于经营判断" | "正式判断阻断";
+  title: string;
+  description: string;
+  facts: Array<{ label: string; value: string }>;
+  retryTarget: "dates" | "baseline" | null;
+};
+
+export function buildProductCategoryDataHealth(input: {
+  datesLoading: boolean;
+  datesError: boolean;
+  reportDates: string[] | undefined;
+  selectedDate: string;
+  baselineLoading: boolean;
+  baselineError: boolean;
+  baseline: ProductCategoryPnlPayload | null | undefined;
+  meta: ResultMeta | null | undefined;
+}): ProductCategoryDataHealth {
+  if (input.datesLoading) {
+    return {
+      state: "loading",
+      judgementState: "pending",
+      judgementLabel: "等待数据完成",
+      title: "报告月份加载中",
+      description: "正在确认可用报告月份。",
+      facts: [],
+      retryTarget: null,
+    };
+  }
+  if (input.datesError) {
+    return {
+      state: "error",
+      judgementState: "blocked",
+      judgementLabel: "正式判断阻断",
+      title: "报告月份加载失败",
+      description: "无法确定可用报告月份，正式基线尚未查询。",
+      facts: [],
+      retryTarget: "dates",
+    };
+  }
+  if (input.reportDates?.length === 0) {
+    return {
+      state: "empty",
+      judgementState: "blocked",
+      judgementLabel: "正式判断阻断",
+      title: "暂无可选报告月份",
+      description: "日期接口未返回可查询月份。",
+      facts: [],
+      retryTarget: null,
+    };
+  }
+
+  const reportDate = input.baseline?.report_date || input.selectedDate;
+  const facts: Array<{ label: string; value: string }> = [];
+  if (reportDate) {
+    facts.push({ label: "报告日期", value: reportDate });
+  }
+
+  if (input.baselineError) {
+    return {
+      state: "error",
+      judgementState: "blocked",
+      judgementLabel: "正式判断阻断",
+      title: "正式基线加载失败",
+      description: "当前未展示历史缓存结果，请重新查询正式读模型。",
+      facts,
+      retryTarget: "baseline",
+    };
+  }
+  if (input.baselineLoading || !input.baseline) {
+    return {
+      state: "loading",
+      judgementState: "pending",
+      judgementLabel: "等待数据完成",
+      title: "正式基线加载中",
+      description: "正在读取所选月份的正式产品分类损益。",
+      facts,
+      retryTarget: null,
+    };
+  }
+
+  if (input.meta?.source_version) {
+    facts.push({ label: "来源版本", value: input.meta.source_version });
+  }
+  const detailRowCount = input.baseline.rows.filter(
+    (row) => row.category_id !== "grand_total",
+  ).length;
+  facts.push({ label: "明细", value: `${detailRowCount} 行` });
+  if (input.meta?.generated_at) {
+    facts.push({ label: "生成时间", value: input.meta.generated_at });
+  }
+
+  if (detailRowCount === 0) {
+    return {
+      state: "empty",
+      judgementState: "blocked",
+      judgementLabel: "正式判断阻断",
+      title: "所选月份暂无产品明细",
+      description: "正式读模型已响应，但没有返回可展示的分类行。",
+      facts,
+      retryTarget: null,
+    };
+  }
+
+  const formalJudgementAllowed =
+    input.meta?.basis === "formal" &&
+    input.meta.formal_use_allowed === true &&
+    input.meta.scenario_flag === false &&
+    input.meta.quality_flag === "ok" &&
+    input.meta.vendor_status === "ok" &&
+    input.meta.fallback_mode === "none";
+  const degraded = !formalJudgementAllowed;
+  return {
+    state: degraded ? "degraded" : "ready",
+    judgementState: degraded ? "blocked" : "allowed",
+    judgementLabel: degraded ? "正式判断阻断" : "可用于经营判断",
+    title: degraded ? "正式基线需复核" : "正式基线已就绪",
+    description: degraded
+      ? "数据已返回，但结果元数据未满足正式经营判断门禁，需复核。"
+      : "正式读模型已返回当前报告口径。",
+    facts,
+    retryTarget: null,
+  };
+}
 
 export type ProductCategoryGovernanceNotice = {
   id: "fallback_mode" | "vendor_status" | "quality_flag";
@@ -4905,7 +5330,10 @@ export function collectProductCategoryGovernanceNotices(
       text: `读链路回退中：降级模式=${resultMetaFallbackLabel(meta.fallback_mode)}（仅元数据展示，非前端补算）。`,
     });
   }
-  if (meta.vendor_status === "vendor_stale" || meta.vendor_status === "vendor_unavailable") {
+  if (
+    meta.vendor_status === "vendor_stale" ||
+    meta.vendor_status === "vendor_unavailable"
+  ) {
     out.push({
       id: "vendor_status",
       text: `供应侧状态需关注：供应商状态=${resultMetaVendorLabel(meta.vendor_status)}。`,
@@ -4928,4 +5356,18 @@ export function formatProductCategoryDualMetaDistinctLine(
   scenarioMeta: ResultMeta,
 ): string {
   return `正式与情景分开展示：正式口径=${resultMetaBasisLabel(formalMeta.basis)} 追踪编号=${formalMeta.trace_id}；情景口径=${resultMetaBasisLabel(scenarioMeta.basis)} 追踪编号=${scenarioMeta.trace_id}（两路结果元信息分卡展示，不混用）。`;
+}
+
+export function isProductCategoryAttributionTotalRow(
+  row: ProductCategoryAttributionRow,
+): boolean {
+  return (
+    row.category_id.endsWith("_total") || row.category_id === "grand_total"
+  );
+}
+
+export function isProductCategoryAttributionDetailRow(
+  row: ProductCategoryAttributionRow,
+): boolean {
+  return !isProductCategoryAttributionTotalRow(row);
 }

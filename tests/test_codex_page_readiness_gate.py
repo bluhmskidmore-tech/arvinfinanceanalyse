@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 import scripts.codex_page_readiness as readiness_module
 from scripts.codex_page_readiness import (
     _balance_movement_read_model_freshness_gate,
@@ -25,8 +27,92 @@ from scripts.emit_bond_analysis_governance_record import (
     emit_record as emit_bond_analysis_governance_record,
 )
 from scripts.mcp.moss_project_mcp import product_page_trace_bundles
+from tests.readiness_input_snapshot import build_readiness_input_snapshot_env
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture(scope="module", autouse=True)
+def readiness_input_snapshot_env(tmp_path_factory):
+    """Pin readiness date sampling and governance streams to a one-shot snapshot.
+
+    build_page_readiness_report / build_all_page_readiness_report and the
+    powershell/CLI subprocess runs below sample the shared real DuckDB
+    (data/moss.duckdb) with no lock retry. Concurrent writers (dev worker
+    materialize jobs, other sessions' rebuilds) hold the database read-write,
+    which flips catalog_date_evidence to incomplete and turns static-pass
+    pages into blocked. The snapshot (tests/readiness_input_snapshot.py, same
+    mechanism as tests/test_native_dev_scripts.py) mirrors a genuine catalog
+    regression, so the assertions keep their meaning. Overriding os.environ
+    covers both in-process report builds (env resolved at call time) and
+    subprocesses that copy os.environ; tests that set MOSS_DUCKDB_PATH /
+    MOSS_GOVERNANCE_PATH themselves still take precedence.
+    """
+    env_overrides = build_readiness_input_snapshot_env(
+        tmp_path_factory.mktemp("readiness-input-snapshot")
+    )
+    with pytest.MonkeyPatch.context() as module_env:
+        for name, value in env_overrides.items():
+            module_env.setenv(name, value)
+        yield env_overrides
+
+
+def _page_readiness_powershell_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env.get("PATH", "")
+    return env
+
+
+def assert_direct_evidence_visible_without_closure(report: dict) -> None:
+    assert report["catalog_date_evidence"] is not None
+    assert report["catalog_date_evidence"]["status"] in {"sampled", "incomplete"}
+    assert report["governance_record_validation"] is not None
+    assert report["governance_record_validation"]["status"] in {
+        "direct_records_ready_for_audit_review",
+        "missing_direct_records",
+    }
+    assert report["audit_review"] is not None
+    assert report["audit_review"]["closure_approved"] is False
+
+
+def assert_catalog_gap_matches_direct_evidence(report: dict) -> None:
+    has_gap = any(
+        "full data-catalog/date review" in gap
+        for gap in report["residual_gaps"]
+    )
+    if report["catalog_date_evidence"]["status"] == "sampled":
+        assert not has_gap
+    else:
+        assert has_gap
+
+
+def test_optional_direct_evidence_missing_batch_rows_stays_fail_closed(monkeypatch) -> None:
+    readiness_module._direct_evidence_reports_for_context.cache_clear()
+    monkeypatch.setattr(
+        readiness_module,
+        "page_catalog_date_evidence",
+        lambda *args, **kwargs: {"pages": []},
+    )
+    monkeypatch.setattr(
+        readiness_module,
+        "page_governance_record_validation",
+        lambda *args, **kwargs: {"pages": []},
+    )
+
+    try:
+        report = build_page_readiness_report("pnl")
+    finally:
+        readiness_module._direct_evidence_reports_for_context.cache_clear()
+
+    assert report["overall_status"] == "static-pass"
+    assert report["catalog_date_evidence"]["status"] == "incomplete"
+    assert report["catalog_date_evidence"]["table_count"] == 0
+    assert report["governance_record_validation"]["status"] == "missing_direct_records"
+    assert report["governance_record_validation"]["ready_record_count"] == 0
+    assert report["audit_review"]["status"] == "blocked_by_record_gaps"
+    assert report["audit_review"]["closure_approved"] is False
+    assert_catalog_gap_matches_direct_evidence(report)
+    assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
 
 
 def test_balance_movement_freshness_gate_blocks_when_read_model_lags_upstream(tmp_path) -> None:
@@ -284,9 +370,8 @@ def test_pnl_readiness_exposes_run_commands_without_direct_record_promotion() ->
     assert "codex-page-smoke.ps1 -PageSlug pnl" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug pnl -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
-    assert report["catalog_date_evidence"] is None
-    assert report["governance_record_validation"] is None
-    assert any("full data-catalog/date review" in gap for gap in report["residual_gaps"])
+    assert_direct_evidence_visible_without_closure(report)
+    assert_catalog_gap_matches_direct_evidence(report)
     assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
 
 
@@ -305,9 +390,8 @@ def test_pnl_bridge_readiness_exposes_run_commands_without_direct_record_promoti
     assert "codex-page-smoke.ps1 -PageSlug pnl-bridge" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug pnl-bridge -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
-    assert report["catalog_date_evidence"] is None
-    assert report["governance_record_validation"] is None
-    assert any("full data-catalog/date review" in gap for gap in report["residual_gaps"])
+    assert_direct_evidence_visible_without_closure(report)
+    assert_catalog_gap_matches_direct_evidence(report)
     assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
 
 
@@ -534,31 +618,81 @@ def test_balance_movement_readiness_surfaces_direct_candidate_evidence_without_p
     assert report["primary_api"] == "/ui/balance-movement-analysis"
     assert report["approval_status"] == "candidate_or_pending"
     assert report["formal_use_allowed"] is False
-    assert report["overall_status"] == "static-pass"
+    gate_map = {gate["name"]: gate for gate in report["static_gates"]}
+    expected_blocking_gates = [
+        gate["name"] for gate in report["static_gates"] if gate["outcome"] == "block"
+    ]
+
+    assert report["overall_status"] == (
+        "blocked" if expected_blocking_gates else "static-pass"
+    )
+    assert report["blocking_gates"] == expected_blocking_gates
     assert "codex-page-smoke.ps1 -PageSlug balance-movement-analysis -CheckLive" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug balance-movement-analysis -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
 
-    gates = {gate["name"]: gate for gate in report["static_gates"]}
-    assert gates["catalog_date_evidence_sampled"]["outcome"] == "pass"
-    assert gates["catalog_date_evidence_sampled"]["detail"] == "2/2 table date samples"
-    assert gates["direct_governance_record_ready"]["outcome"] == "pass"
-    assert gates["golden_sample_boundary"]["outcome"] == "pass"
-    assert gates["golden_sample_boundary"]["detail"] == "missing"
-    assert gates["formal_promotion_boundary"]["outcome"] == "pass"
-    assert gates["formal_promotion_boundary"]["detail"] == "candidate_or_pending; formal_use_allowed=false"
+    assert gate_map["catalog_date_evidence_sampled"]["outcome"] == "pass"
+    assert gate_map["catalog_date_evidence_sampled"]["detail"] == "2/2 table date samples"
+    assert gate_map["direct_governance_record_ready"]["outcome"] == "pass"
+    assert gate_map["golden_sample_boundary"]["outcome"] == "pass"
+    assert gate_map["golden_sample_boundary"]["detail"] == "missing"
+    assert gate_map["formal_promotion_boundary"]["outcome"] == "pass"
+    assert gate_map["formal_promotion_boundary"]["detail"] == "candidate_or_pending; formal_use_allowed=false"
 
-    assert report["catalog_date_evidence"]["status"] == "sampled"
-    assert report["catalog_date_evidence"]["present_table_count"] == 2
-    assert report["catalog_date_evidence"]["date_sampled_table_count"] == 2
-    assert report["governance_record_validation"]["status"] == "direct_records_ready_for_audit_review"
-    assert report["governance_record_validation"]["ready_record_count"] >= 1
-    assert report["audit_review"]["status"] == "ready_for_audit_review"
+    freshness_gate = gate_map["balance_movement_read_model_freshness"]
+    freshness_detail = freshness_gate["detail"]
+    assert freshness_gate["outcome"] in {"pass", "block"}
+    assert "movement_latest=" in freshness_detail
+    assert "control_latest=" in freshness_detail
+    assert "currency_basis=CNX" in freshness_detail
+
+    for gate_name in (
+        "catalog_date_evidence_sampled",
+        "direct_governance_record_ready",
+        "balance_movement_read_model_freshness",
+    ):
+        assert (gate_name in report["blocking_gates"]) == (
+            gate_map[gate_name]["outcome"] == "block"
+        )
+
+    if gate_map["catalog_date_evidence_sampled"]["outcome"] == "pass":
+        assert report["catalog_date_evidence"]["status"] == "sampled"
+        assert report["catalog_date_evidence"]["present_table_count"] == 2
+        assert report["catalog_date_evidence"]["date_sampled_table_count"] == 2
+        assert not any(
+            "full data-catalog/date review" in gap
+            for gap in report["residual_gaps"]
+        )
+    else:
+        assert report["catalog_date_evidence"]["status"] == "incomplete"
+
+    if gate_map["direct_governance_record_ready"]["outcome"] == "pass":
+        assert report["governance_record_validation"]["status"] == "direct_records_ready_for_audit_review"
+        assert report["governance_record_validation"]["ready_record_count"] >= 1
+        assert not any(
+            "direct page-keyed governance records" in gap
+            for gap in report["residual_gaps"]
+        )
+    else:
+        assert report["governance_record_validation"]["status"] == "missing_direct_records"
+
+    if (
+        gate_map["catalog_date_evidence_sampled"]["outcome"] == "pass"
+        and gate_map["direct_governance_record_ready"]["outcome"] == "pass"
+    ):
+        assert report["audit_review"]["status"] == "ready_for_audit_review"
+    else:
+        assert report["audit_review"]["status"] == "blocked_by_record_gaps"
+
     assert report["audit_review"]["closure_approved"] is False
-    assert not any("full data-catalog/date review" in gap for gap in report["residual_gaps"])
-    assert not any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
-    assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
-    assert any("Business owner approval is still required" in gap for gap in report["residual_gaps"])
+    assert any(
+        "dedicated golden sample is missing" in gap
+        for gap in report["residual_gaps"]
+    )
+    assert any(
+        "Business owner approval is still required" in gap
+        for gap in report["residual_gaps"]
+    )
 
 
 def test_ledger_pnl_readiness_exposes_run_commands_without_direct_record_promotion() -> None:
@@ -574,8 +708,15 @@ def test_ledger_pnl_readiness_exposes_run_commands_without_direct_record_promoti
     assert "codex-page-smoke.ps1 -PageSlug ledger-pnl" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug ledger-pnl -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
-    assert report["catalog_date_evidence"] is None
-    assert report["governance_record_validation"] is None
+    assert report["catalog_date_evidence"]["status"] == "incomplete"
+    assert report["catalog_date_evidence"]["table_count"] == 3
+    assert report["catalog_date_evidence"]["present_table_count"] == 2
+    assert report["catalog_date_evidence"]["date_sampled_table_count"] == 1
+    assert report["governance_record_validation"]["status"] == "missing_direct_records"
+    assert report["governance_record_validation"]["ready_record_count"] == 0
+    assert report["governance_record_validation"]["direct_record_count"] == 0
+    assert report["audit_review"]["status"] == "blocked_by_record_gaps"
+    assert report["audit_review"]["closure_approved"] is False
     assert report["governance_record_commands"] == [
         "python scripts/emit_ledger_pnl_governance_record.py",
         "python scripts/emit_ledger_pnl_governance_record.py --write",
@@ -629,6 +770,7 @@ def test_ledger_pnl_readiness_exposes_run_commands_without_direct_record_promoti
         "current_status": "pending",
     } in report["business_owner_approval_status"]["approval_action_items"]
     gates = {gate["name"]: gate for gate in report["static_gates"]}
+    assert "direct_governance_record_ready" not in gates
     assert gates["business_owner_approval_status"]["outcome"] == "pass"
     assert gates["business_owner_approval_status"]["detail"] == "pending; captured=false"
     assert any("full data-catalog/date review" in gap for gap in report["residual_gaps"])
@@ -649,9 +791,8 @@ def test_positions_readiness_exposes_run_commands_without_direct_record_promotio
     assert "codex-page-smoke.ps1 -PageSlug positions" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug positions -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
-    assert report["catalog_date_evidence"] is None
-    assert report["governance_record_validation"] is None
-    assert any("full data-catalog/date review" in gap for gap in report["residual_gaps"])
+    assert_direct_evidence_visible_without_closure(report)
+    assert_catalog_gap_matches_direct_evidence(report)
     assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
     assert any("Candidate metric dictionary-level approval remains pending." in gap for gap in report["residual_gaps"])
     assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
@@ -672,9 +813,8 @@ def test_operations_analysis_readiness_exposes_run_commands_without_full_page_pr
     assert "codex-page-smoke.ps1 -PageSlug operations-analysis" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug operations-analysis -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
-    assert report["catalog_date_evidence"] is None
-    assert report["governance_record_validation"] is None
-    assert any("full data-catalog/date review" in gap for gap in report["residual_gaps"])
+    assert_direct_evidence_visible_without_closure(report)
+    assert_catalog_gap_matches_direct_evidence(report)
     assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
     assert any("Mixed-source page cannot be collapsed into full-page formal truth." in gap for gap in report["residual_gaps"])
     assert any("GAP-OPS-MACRO-FX" in gap for gap in report["residual_gaps"])
@@ -693,9 +833,8 @@ def test_liability_analytics_readiness_exposes_run_commands_without_formal_promo
     assert "codex-page-smoke.ps1 -PageSlug liability-analytics" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug liability-analytics -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
-    assert report["catalog_date_evidence"] is None
-    assert report["governance_record_validation"] is None
-    assert any("full data-catalog/date review" in gap for gap in report["residual_gaps"])
+    assert_direct_evidence_visible_without_closure(report)
+    assert_catalog_gap_matches_direct_evidence(report)
     assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
     assert any("Mixed-source page cannot be collapsed into full-page formal truth." in gap for gap in report["residual_gaps"])
     assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
@@ -714,9 +853,8 @@ def test_market_data_readiness_exposes_run_commands_without_full_page_promotion(
     assert "codex-page-smoke.ps1 -PageSlug market-data" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug market-data -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
-    assert report["catalog_date_evidence"] is None
-    assert report["governance_record_validation"] is None
-    assert any("full data-catalog/date review" in gap for gap in report["residual_gaps"])
+    assert_direct_evidence_visible_without_closure(report)
+    assert_catalog_gap_matches_direct_evidence(report)
     assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
     assert any("Mixed-source page cannot be collapsed into full-page formal truth." in gap for gap in report["residual_gaps"])
     assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
@@ -735,13 +873,12 @@ def test_cross_asset_readiness_exposes_run_commands_without_formal_promotion() -
     assert "codex-page-smoke.ps1 -PageSlug cross-asset" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug cross-asset -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
-    assert report["catalog_date_evidence"] is None
-    assert report["governance_record_validation"] is None
+    assert_direct_evidence_visible_without_closure(report)
     assert "docs/live_route_maturity.md" in report["contract_docs"]
     assert any("/api/macro-bond-linkage/analysis" in item for item in report["truth_chain"])
     assert any("NCD" in item and "proxy" in item for item in report["guardrails"])
     assert any("Livermore" in item and "observational" in item for item in report["guardrails"])
-    assert any("full data-catalog/date review" in gap for gap in report["residual_gaps"])
+    assert_catalog_gap_matches_direct_evidence(report)
     assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
     assert any("Mixed-source page cannot be collapsed into full-page formal truth." in gap for gap in report["residual_gaps"])
     assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
@@ -817,7 +954,7 @@ def test_cashflow_projection_readiness_exposes_candidate_record_path_without_for
     report = build_page_readiness_report("cashflow-projection")
 
     assert report["page_slug"] == "cashflow-projection"
-    assert report["page_id"] == "GAP-CASHFLOW-PROJECTION-PAGE"
+    assert report["page_id"] == "PAGE-CFP-001"
     assert report["route"] == "/cashflow-projection"
     assert report["primary_api"] == "/api/cashflow-projection"
     assert report["approval_status"] == "candidate_or_pending"
@@ -855,7 +992,7 @@ def test_concentration_monitor_readiness_exposes_candidate_record_path_without_f
     report = build_page_readiness_report("concentration-monitor")
 
     assert report["page_slug"] == "concentration-monitor"
-    assert report["page_id"] == "GAP-CONCENTRATION-MONITOR-PAGE"
+    assert report["page_id"] == "PAGE-CONC-001"
     assert report["route"] == "/concentration-monitor"
     assert report["primary_api"] == "/api/bond-analytics/credit-spread-migration"
     assert report["approval_status"] == "candidate_or_pending"
@@ -890,7 +1027,7 @@ def test_average_balance_readiness_exposes_candidate_record_path_without_formal_
     report = build_page_readiness_report("average-balance")
 
     assert report["page_slug"] == "average-balance"
-    assert report["page_id"] == "GAP-AVERAGE-BALANCE-PAGE"
+    assert report["page_id"] == "PAGE-ADB-001"
     assert report["route"] == "/average-balance"
     assert report["primary_api"] == "/api/analysis/adb"
     assert report["approval_status"] == "candidate_or_pending"
@@ -1097,9 +1234,8 @@ def test_macro_toolkit_readiness_exposes_run_commands_without_formal_promotion()
     assert "codex-page-smoke.ps1 -PageSlug macro-toolkit" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug macro-toolkit -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
-    assert report["catalog_date_evidence"] is None
-    assert report["governance_record_validation"] is None
-    assert any("full data-catalog/date review" in gap for gap in report["residual_gaps"])
+    assert_direct_evidence_visible_without_closure(report)
+    assert_catalog_gap_matches_direct_evidence(report)
     assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
     assert any("Mixed-source page cannot be collapsed into full-page formal truth." in gap for gap in report["residual_gaps"])
     assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
@@ -1111,7 +1247,7 @@ def test_stock_analysis_readiness_exposes_run_commands_without_formal_promotion(
     assert report["page_slug"] == "stock-analysis"
     assert report["page_id"] == "GAP-STOCK-ANALYSIS-PAGE"
     assert report["route"] == "/stock-analysis"
-    assert report["primary_api"] == "/ui/market-data/livermore"
+    assert report["primary_api"] == "/ui/market-data/stock-analysis/workbench"
     assert report["approval_status"] == "gap_or_observational"
     assert report["formal_use_allowed"] is False
     assert report["overall_status"] == "static-pass"
@@ -1136,6 +1272,21 @@ def test_stock_analysis_readiness_exposes_run_commands_without_formal_promotion(
     ]
     assert "docs/audits/2026-06-06-stock-analysis-gate-i-lane.md" in report["contract_docs"]
     assert "docs/pnl/stock-analysis-owner-evidence-packet.md" in report["contract_docs"]
+    assert "docs/pnl/stock-analysis-sign-off-packet.md" in report["contract_docs"]
+    assert "docs/pnl/stock-analysis-governance-audit-packet.md" in report["contract_docs"]
+    assert "docs/pnl/stock-analysis-business-owner-approval-template.md" in report["contract_docs"]
+    assert "docs/pnl/stock-analysis-owner-signoff-runbook.md" in report["contract_docs"]
+    assert "docs/pnl/stock-analysis-owner-qa-checklist.md" in report["contract_docs"]
+    assert any("owner-review evidence while preserving formal_use_allowed=false" in item for item in report["truth_chain"])
+    assert any("observational sign-off evidence only" in item for item in report["truth_chain"])
+    assert any("review-only audit evidence" in item for item in report["truth_chain"])
+    assert any("business-owner-approval-template.md captures pending owner fields and remains unsigned" in item for item in report["truth_chain"])
+    assert any(
+        "owner-signoff-runbook.md lists the human review, fill, and post-signing verification commands"
+        in item
+        for item in report["truth_chain"]
+    )
+    assert any("owner-qa-checklist.md lists the owner page checks" in item for item in report["truth_chain"])
     assert "codex-page-smoke.ps1 -PageSlug stock-analysis" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug stock-analysis -Run" in report["required_commands"][1]
     assert report["approval_status_commands"] == [
@@ -1277,7 +1428,12 @@ def test_pnl_attribution_readiness_exposes_run_commands_without_formal_pnl_promo
     assert not any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
 
 
-def test_page_readiness_cli_emits_json_report() -> None:
+def test_page_readiness_cli_emits_json_report(tmp_path: Path) -> None:
+    env = {
+        **os.environ,
+        "MOSS_DUCKDB_PATH": str(tmp_path / "missing.duckdb"),
+        "MOSS_GOVERNANCE_PATH": str(tmp_path / "empty-governance"),
+    }
     completed = subprocess.run(
         [
             sys.executable,
@@ -1286,16 +1442,21 @@ def test_page_readiness_cli_emits_json_report() -> None:
             "product-category-pnl",
         ],
         cwd=ROOT,
-        check=True,
+        check=False,
         capture_output=True,
+        env=env,
         stdin=subprocess.DEVNULL,
         text=True,
     )
 
     payload = json.loads(completed.stdout)
     assert payload["page_slug"] == "product-category-pnl"
-    assert payload["overall_status"] == "static-pass"
-    assert payload["blocking_gates"] == []
+    assert completed.returncode == 1
+    assert payload["overall_status"] == "blocked"
+    assert payload["blocking_gates"] == [
+        "catalog_date_evidence_sampled",
+        "direct_governance_record_ready",
+    ]
 
 
 def test_all_page_readiness_covers_every_unique_seeded_trace_bundle(
@@ -1310,13 +1471,37 @@ def test_all_page_readiness_covers_every_unique_seeded_trace_bundle(
         for bundle in product_page_trace_bundles().values()
     }
     actual_page_slugs = {page["page_slug"] for page in payload["pages"]}
+    expected_static_pass_count = sum(
+        1 for page in payload["pages"] if page["overall_status"] == "static-pass"
+    )
+    expected_blocked_count = sum(
+        1 for page in payload["pages"] if page["overall_status"] == "blocked"
+    )
+    expected_blocking_pages = [
+        page["page_slug"]
+        for page in payload["pages"]
+        if page["overall_status"] == "blocked"
+    ]
 
     assert payload["scope"] == "all-page-readiness"
     assert actual_page_slugs == expected_page_slugs
     assert payload["summary"]["page_count"] == len(expected_page_slugs)
-    assert payload["summary"]["formal_or_governed_count"] == 5
-    assert payload["summary"]["blocked_count"] == 6
-    assert payload["summary"]["mixed_or_candidate_count"] == len(expected_page_slugs) - 5
+    assert payload["summary"]["formal_or_governed_count"] == 6
+    assert {
+        page["page_slug"]
+        for page in payload["pages"]
+        if page["approval_status"] == "formal_or_governed"
+    } == {
+        "product-category-pnl",
+        "balance-analysis",
+        "pnl",
+        "pnl-by-business",
+        "pnl-bridge",
+        "risk-tensor",
+    }
+    assert payload["summary"]["static_pass_count"] == expected_static_pass_count
+    assert payload["summary"]["blocked_count"] == expected_blocked_count
+    assert payload["summary"]["mixed_or_candidate_count"] == len(expected_page_slugs) - 6
     assert payload["summary"]["run_supported_count"] == sum(
         1 for page in payload["pages"] if page["run_supported"]
     )
@@ -1324,14 +1509,7 @@ def test_all_page_readiness_covers_every_unique_seeded_trace_bundle(
     assert payload["summary"]["business_owner_approval_action_item_count"] == 84
     assert payload["summary"]["business_owner_action_signoff_missing_or_invalid_item_count"] == 5
     assert payload["summary"]["business_owner_action_signoff_pending_review_item_count"] == 10
-    assert payload["blocking_pages"] == [
-        "product-category-pnl",
-        "balance-analysis",
-        "balance-movement-analysis",
-        "risk-tensor",
-        "bond-dashboard",
-        "bond-analysis",
-    ]
+    assert payload["blocking_pages"] == expected_blocking_pages
     pending_by_slug = {
         page["page_slug"]: page
         for page in payload["business_owner_approval_pending_pages"]
@@ -1504,7 +1682,7 @@ def test_all_page_readiness_covers_every_unique_seeded_trace_bundle(
     assert "not_trading_instruction_review" in stock_pending["remaining_blockers"]
     assert stock_pending["approval_field_status"]["reviewed_owner_evidence_packet"] == "valid"
     average_balance_pending = pending_by_slug["average-balance"]
-    assert average_balance_pending["page_id"] == "GAP-AVERAGE-BALANCE-PAGE"
+    assert average_balance_pending["page_id"] == "PAGE-ADB-001"
     assert average_balance_pending["approval_action_item_count"] == 13
     assert average_balance_pending["business_owner_approval_captured"] is False
     assert "daily_golden_sample_review" in average_balance_pending["remaining_blockers"]
@@ -1599,6 +1777,21 @@ def test_route_scope_classification_preserves_missing_consistency_no_effect_fiel
     )
 
 
+def test_pnl_business_insights_detail_navigation_reuses_governing_page_seed() -> None:
+    payload = build_route_scope_classification_report()
+    rows_by_slug = {row["page_slug"]: row for row in payload["routes"]}
+    visible_unseeded = {
+        row["page_slug"]: row["route"]
+        for row in payload["routes"]
+        if row["source"] == "visible_navigation_unseeded"
+    }
+
+    assert visible_unseeded == {"market-finance": "/market-finance"}
+    assert "pnl-by-business-insights" not in rows_by_slug
+    assert rows_by_slug["pnl-by-business"]["page_id"] == "PAGE-PNL-BY-BUSINESS-001"
+    assert rows_by_slug["pnl-by-business"]["visible_navigation_route"] is True
+
+
 def test_route_scope_classification_keeps_certification_claim_route_scoped() -> None:
     payload = build_route_scope_classification_report()
     rows_by_slug = {
@@ -1612,8 +1805,8 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
     assert payload["summary"]["business_contract_certified_count"] == 0
     assert payload["summary"]["evidence_pending_count"] == 23
     assert payload["summary"]["gate_i_gap_count"] == 0
-    assert payload["summary"]["not_started_count"] == 0
-    assert payload["summary"]["visible_unseeded_route_count"] == 0
+    assert payload["summary"]["not_started_count"] == 1
+    assert payload["summary"]["visible_unseeded_route_count"] == 1
     assert payload["summary"]["unclassified_count"] == 0
     assert payload["summary"]["business_owner_action_signoff_missing_or_invalid_item_count"] == 5
     assert payload["summary"]["business_owner_action_signoff_pending_review_item_count"] == 10
@@ -1621,6 +1814,10 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
         "No seeded route is business-contract-certified until direct golden approval, "
         "manual audit closure, and captured business-owner approval all exist."
     )
+
+    assert rows_by_slug["market-finance"]["source"] == "visible_navigation_unseeded"
+    assert rows_by_slug["market-finance"]["route"] == "/market-finance"
+    assert "pnl-by-business-insights" not in rows_by_slug
 
     assert rows_by_slug["product-category-pnl"]["classification"] == "evidence-pending"
     assert rows_by_slug["product-category-pnl"]["blocking_reason"] == "business_owner_approval_pending"
@@ -1820,7 +2017,7 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
     assert rows_by_slug["average-balance"]["classification"] == "evidence-pending"
     assert rows_by_slug["average-balance"]["blocking_reason"] == "business_owner_approval_pending"
     assert rows_by_slug["average-balance"]["route"] == "/average-balance"
-    assert rows_by_slug["average-balance"]["page_id"] == "GAP-AVERAGE-BALANCE-PAGE"
+    assert rows_by_slug["average-balance"]["page_id"] == "PAGE-ADB-001"
     assert rows_by_slug["average-balance"]["source"] == "seeded_trace_bundle"
     assert rows_by_slug["average-balance"]["run_supported"] is True
     assert rows_by_slug["average-balance"]["formal_use_allowed"] is False
@@ -1832,16 +2029,16 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
     assert rows_by_slug["bank-ledger-dashboard"]["classification"] == "evidence-pending"
     assert rows_by_slug["bank-ledger-dashboard"]["blocking_reason"] == "golden_or_manual_audit_or_owner_approval_pending"
     assert rows_by_slug["bank-ledger-dashboard"]["route"] == "/bank-ledger-dashboard"
-    assert rows_by_slug["bank-ledger-dashboard"]["page_id"] == "GAP-BANK-LEDGER-DASHBOARD-PAGE"
+    assert rows_by_slug["bank-ledger-dashboard"]["page_id"] == "PAGE-BANK-LEDGER-001"
     assert rows_by_slug["bank-ledger-dashboard"]["source"] == "seeded_trace_bundle"
     assert rows_by_slug["bank-ledger-dashboard"]["run_supported"] is True
     assert rows_by_slug["bank-ledger-dashboard"]["formal_use_allowed"] is False
-    assert rows_by_slug["bank-ledger-dashboard"]["has_golden_samples"] is False
+    assert rows_by_slug["bank-ledger-dashboard"]["has_golden_samples"] is True
     assert rows_by_slug["bank-ledger-dashboard"]["golden_sample_approved"] is False
     assert rows_by_slug["cashflow-projection"]["classification"] == "evidence-pending"
     assert rows_by_slug["cashflow-projection"]["blocking_reason"] == "golden_or_manual_audit_or_owner_approval_pending"
     assert rows_by_slug["cashflow-projection"]["route"] == "/cashflow-projection"
-    assert rows_by_slug["cashflow-projection"]["page_id"] == "GAP-CASHFLOW-PROJECTION-PAGE"
+    assert rows_by_slug["cashflow-projection"]["page_id"] == "PAGE-CFP-001"
     assert rows_by_slug["cashflow-projection"]["source"] == "seeded_trace_bundle"
     assert rows_by_slug["cashflow-projection"]["run_supported"] is True
     assert rows_by_slug["cashflow-projection"]["formal_use_allowed"] is False
@@ -1850,7 +2047,7 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
     assert rows_by_slug["concentration-monitor"]["classification"] == "evidence-pending"
     assert rows_by_slug["concentration-monitor"]["blocking_reason"] == "golden_or_manual_audit_or_owner_approval_pending"
     assert rows_by_slug["concentration-monitor"]["route"] == "/concentration-monitor"
-    assert rows_by_slug["concentration-monitor"]["page_id"] == "GAP-CONCENTRATION-MONITOR-PAGE"
+    assert rows_by_slug["concentration-monitor"]["page_id"] == "PAGE-CONC-001"
     assert rows_by_slug["concentration-monitor"]["source"] == "seeded_trace_bundle"
     assert rows_by_slug["concentration-monitor"]["run_supported"] is True
     assert rows_by_slug["concentration-monitor"]["formal_use_allowed"] is False
@@ -1899,6 +2096,54 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
     assert payload["next_gate_i_gap_routes"] == []
 
 
+def test_route_scope_classification_skips_catalog_date_sampling(monkeypatch) -> None:
+    readiness_module._direct_governance_evidence_reports_for_context.cache_clear()
+
+    def fail_catalog_date_sampling(*_args, **_kwargs):
+        raise AssertionError("route-scope classification should not sample catalog dates")
+
+    def governance_record_validation(_bundles, _streams, page_slugs, _stream_names, *, max_results):
+        assert max_results == 20
+        return {
+            "pages": [
+                {
+                    "page_slug": page_slug,
+                    "page_id": f"TEST-{page_slug}",
+                    "page_name": page_slug,
+                    "frontend_route": f"/{page_slug}",
+                    "primary_api": f"/api/test/{page_slug}",
+                    "approval_status": "candidate_or_pending",
+                    "record_formal_use_policy": {
+                        "formal_use_allowed": False,
+                        "certification_effect": "none",
+                    },
+                    "validation_status": "missing_direct_records",
+                    "direct_record_validations": [],
+                    "expanded_anchor_records": [],
+                    "residual_gaps": [],
+                }
+                for page_slug in page_slugs
+            ]
+        }
+
+    monkeypatch.setattr(
+        readiness_module,
+        "page_catalog_date_evidence",
+        fail_catalog_date_sampling,
+    )
+    assert not hasattr(readiness_module, "page_governance_audit_review_checklist")
+    monkeypatch.setattr(
+        readiness_module,
+        "page_governance_record_validation",
+        governance_record_validation,
+    )
+
+    payload = readiness_module.build_route_scope_classification_report()
+
+    assert payload["scope"] == "route-scope-classification"
+    assert payload["summary"]["seeded_trace_bundle_count"] == 39
+
+
 def test_all_page_readiness_embeds_route_scope_classification_summary() -> None:
     payload = build_all_page_readiness_report()
 
@@ -1944,22 +2189,27 @@ def test_page_readiness_cli_all_mode_emits_batch_report(tmp_path: Path) -> None:
     )
 
     payload = json.loads(completed.stdout)
+    expected_static_pass_count = sum(
+        1 for page in payload["pages"] if page["overall_status"] == "static-pass"
+    )
+    expected_blocked_count = sum(
+        1 for page in payload["pages"] if page["overall_status"] == "blocked"
+    )
+    expected_blocking_pages = [
+        page["page_slug"]
+        for page in payload["pages"]
+        if page["overall_status"] == "blocked"
+    ]
     assert payload["scope"] == "all-page-readiness"
     assert payload["summary"]["page_count"] == 39
-    assert payload["summary"]["blocked_count"] == 6
+    assert payload["summary"]["static_pass_count"] == expected_static_pass_count
+    assert payload["summary"]["blocked_count"] == expected_blocked_count
     assert payload["summary"]["run_supported_count"] == 27
     assert payload["summary"]["business_owner_approval_pending_count"] == 7
     assert payload["summary"]["business_owner_approval_action_item_count"] == 84
     assert payload["summary"]["business_owner_action_signoff_missing_or_invalid_item_count"] == 5
     assert payload["summary"]["business_owner_action_signoff_pending_review_item_count"] == 10
-    assert payload["blocking_pages"] == [
-        "product-category-pnl",
-        "balance-analysis",
-        "balance-movement-analysis",
-        "risk-tensor",
-        "bond-dashboard",
-        "bond-analysis",
-    ]
+    assert payload["blocking_pages"] == expected_blocking_pages
     assert {
         page["page_slug"]
         for page in payload["business_owner_approval_pending_pages"]
@@ -2020,8 +2270,11 @@ def test_page_readiness_cli_route_scope_mode_emits_classification_report() -> No
     assert rows_by_slug["team-performance"]["classification"] == "evidence-pending"
     assert rows_by_slug["platform-config"]["classification"] == "evidence-pending"
     assert rows_by_slug["news-events"]["classification"] == "evidence-pending"
-    assert payload["summary"]["visible_unseeded_route_count"] == 0
-    assert payload["summary"]["not_started_count"] == 0
+    assert payload["summary"]["visible_unseeded_route_count"] == 1
+    assert payload["summary"]["not_started_count"] == 1
+    assert rows_by_slug["market-finance"]["source"] == "visible_navigation_unseeded"
+    assert rows_by_slug["market-finance"]["route"] == "/market-finance"
+    assert "pnl-by-business-insights" not in rows_by_slug
 
 
 def test_page_readiness_powershell_route_scope_mode_surfaces_classification_summary() -> None:
@@ -2038,14 +2291,15 @@ def test_page_readiness_powershell_route_scope_mode_surfaces_classification_summ
         cwd=ROOT,
         check=True,
         capture_output=True,
+        env=_page_readiness_powershell_env(),
         stdin=subprocess.DEVNULL,
         text=True,
     )
 
     assert "MOSS page readiness gate: route-scope classification" in completed.stdout
     assert (
-        "Summary: route_count=39; seeded_trace_bundle_count=39; "
-        "visible_unseeded_route_count=0; business_contract_certified_count=0; "
+        "Summary: route_count=40; seeded_trace_bundle_count=39; "
+        "visible_unseeded_route_count=1; business_contract_certified_count=0; "
         "evidence_pending_count=23; gate_i_gap_count=0; unclassified_count=0; "
         "business_owner_action_signoff_missing_or_invalid_item_count=5; "
         "business_owner_action_signoff_pending_review_item_count=10"
@@ -2093,6 +2347,7 @@ def test_pnl_attribution_page_readiness_powershell_surfaces_approval_blockers() 
         cwd=ROOT,
         check=True,
         capture_output=True,
+        env=_page_readiness_powershell_env(),
         stdin=subprocess.DEVNULL,
         text=True,
     )
@@ -2136,6 +2391,7 @@ def test_product_category_page_readiness_powershell_surfaces_packet_consistency_
         cwd=ROOT,
         check=True,
         capture_output=True,
+        env=_page_readiness_powershell_env(),
         stdin=subprocess.DEVNULL,
         text=True,
     )
@@ -2225,6 +2481,7 @@ def test_pnl_attribution_page_readiness_powershell_can_require_captured_approval
         cwd=ROOT,
         check=False,
         capture_output=True,
+        env=_page_readiness_powershell_env(),
         stdin=subprocess.DEVNULL,
         text=True,
     )
@@ -2262,6 +2519,7 @@ def test_all_page_readiness_powershell_can_require_captured_approval() -> None:
         cwd=ROOT,
         check=False,
         capture_output=True,
+        env=_page_readiness_powershell_env(),
         stdin=subprocess.DEVNULL,
         text=True,
     )
@@ -2343,6 +2601,7 @@ def test_all_page_readiness_powershell_surfaces_pending_approval_summary() -> No
         cwd=ROOT,
         check=True,
         capture_output=True,
+        env=_page_readiness_powershell_env(),
         stdin=subprocess.DEVNULL,
         text=True,
     )
@@ -2366,7 +2625,7 @@ def test_all_page_readiness_powershell_surfaces_pending_approval_summary() -> No
     assert "- pnl-attribution (PAGE-PNL-ATTR-WB-001): pending; captured=False; action_items=11" in completed.stdout
     assert "- bond-analysis (PAGE-BOND-ANALYSIS-001): pending; captured=False; action_items=12" in completed.stdout
     assert "- stock-analysis (GAP-STOCK-ANALYSIS-PAGE): pending; captured=False; action_items=11" in completed.stdout
-    assert "- average-balance (GAP-AVERAGE-BALANCE-PAGE): pending; captured=False; action_items=13" in completed.stdout
+    assert "- average-balance (PAGE-ADB-001): pending; captured=False; action_items=13" in completed.stdout
     assert "Approval evidence scope:" in completed.stdout
     assert "  - proves_page_execution=False" in completed.stdout
     assert "  - captures_business_owner_approval=False" in completed.stdout

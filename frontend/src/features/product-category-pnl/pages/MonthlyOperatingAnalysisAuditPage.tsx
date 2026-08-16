@@ -8,60 +8,8 @@ import type {
   QdbGlMonthlyAnalysisManualAdjustmentPayload,
   QdbGlMonthlyAnalysisManualAdjustmentRequest,
 } from "../../../api/contracts";
-import { designTokens } from "../../../theme/designSystem";
-import { displayTokens } from "../../../theme/displayTokens";
-
-const pageHeaderStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: 16,
-  padding: 20,
-  borderRadius: 18,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: designTokens.color.neutral[50],
-  marginBottom: 18,
-} as const;
-
-const chipTypography = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "8px 12px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 600,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase" as const,
-} as const;
-
-const sectionLeadWrapStyle = {
-  display: "grid",
-  gap: 6,
-  marginBottom: 14,
-} as const;
-
-const sectionEyebrowStyle = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: designTokens.color.neutral[500],
-} as const;
-
-const sectionTitleStyle = {
-  margin: 0,
-  fontSize: 18,
-  fontWeight: 600,
-  color: designTokens.color.neutral[900],
-} as const;
-
-const sectionDescriptionStyle = {
-  margin: 0,
-  maxWidth: 900,
-  color: designTokens.color.neutral[600],
-  fontSize: 13,
-  lineHeight: 1.7,
-} as const;
+import "./ProductCategoryAuditPages.css";
+import "./ProductCategoryPnlPage.css";
 
 const COPY = {
   title: "\u6708\u5ea6\u7ecf\u8425\u5206\u6790\u8c03\u6574\u5ba1\u8ba1",
@@ -198,10 +146,10 @@ function SectionLead(props: {
   testId?: string;
 }) {
   return (
-    <div data-testid={props.testId} style={sectionLeadWrapStyle}>
-      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
-      <h2 style={sectionTitleStyle}>{props.title}</h2>
-      <p style={sectionDescriptionStyle}>{props.description}</p>
+    <div data-testid={props.testId} className="product-category-section-lead">
+      <span className="product-category-section-lead__eyebrow">{props.eyebrow}</span>
+      <h2 className="product-category-section-lead__title">{props.title}</h2>
+      <p className="product-category-section-lead__description">{props.description}</p>
     </div>
   );
 }
@@ -487,31 +435,34 @@ export default function MonthlyOperatingAnalysisAuditPage() {
   }
 
   return (
-    <section data-testid="monthly-operating-analysis-audit-page">
-      <div style={pageHeaderStyle}>
+    <section
+      data-testid="monthly-operating-analysis-audit-page"
+      data-moss-theme-scope="product-category-pnl"
+    >
+      <div className="product-category-audit-page-header">
         <div>
-          <h1 data-testid="monthly-operating-analysis-audit-title" style={{ margin: 0, fontSize: 28, fontWeight: 700 }}>{COPY.title}</h1>
-          <p data-testid="monthly-operating-analysis-audit-boundary-copy" style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 14 }}>
+          <h1 data-testid="monthly-operating-analysis-audit-title" className="product-category-audit-page-title">
+            {COPY.title}
+          </h1>
+          <p
+            data-testid="monthly-operating-analysis-audit-boundary-copy"
+            className="product-category-audit-boundary-copy"
+          >
             {COPY.subtitle}
           </p>
-          <p style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 12 }}>
+          <p className="product-category-audit-meta-copy">
             月度经营审计只调整分析分支记录，并保持与产品分类正式结果分离。
           </p>
-          {lastActionId ? (
-            <p style={{ margin: "8px 0 0", color: designTokens.color.neutral[600], fontSize: 12 }}>{lastActionId}</p>
-          ) : null}
+          {lastActionId ? <p className="product-category-audit-meta-copy--compact">{lastActionId}</p> : null}
           {errorMessage ? (
-            <p
-              data-testid="monthly-operating-analysis-audit-error"
-              style={{ margin: "8px 0 0", color: designTokens.color.danger[700], fontSize: 12 }}
-            >
+            <p data-testid="monthly-operating-analysis-audit-error" className="product-category-audit-meta-copy--danger">
               {errorMessage}
             </p>
           ) : null}
           {loadErrorMessage ? (
             <p
               data-testid="monthly-operating-analysis-audit-load-error"
-              style={{ margin: "8px 0 0", color: designTokens.color.danger[700], fontSize: 12 }}
+              className="product-category-audit-meta-copy--danger"
             >
               {loadErrorMessage}
             </p>
@@ -519,7 +470,7 @@ export default function MonthlyOperatingAnalysisAuditPage() {
           {loadingMessage ? (
             <p
               data-testid="monthly-operating-analysis-audit-loading"
-              style={{ margin: "8px 0 0", color: designTokens.color.neutral[600], fontSize: 12 }}
+              className="product-category-audit-meta-copy--compact"
             >
               {loadingMessage}
             </p>
@@ -527,27 +478,21 @@ export default function MonthlyOperatingAnalysisAuditPage() {
           {showDatesEmpty ? (
             <p
               data-testid="monthly-operating-analysis-audit-dates-empty"
-              style={{ margin: "8px 0 0", color: designTokens.color.danger[700], fontSize: 12 }}
+              className="product-category-audit-meta-copy--danger"
             >
               {COPY.noReportMonths}
             </p>
           ) : null}
         </div>
-        <FilterBar style={{ justifyContent: "flex-end" }}>
+        <FilterBar className="product-category-audit-filter-bar--end">
           <span
-            style={{
-              ...chipTypography,
-              background:
-                client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
-              color:
-                client.mode === "real"
-                  ? displayTokens.apiMode.realForeground
-                  : displayTokens.apiMode.mockForeground,
-            }}
+            className={`product-category-audit-chip ${
+              client.mode === "real" ? "product-category-audit-chip--real" : "product-category-audit-chip--mock"
+            }`}
           >
             {client.mode === "real" ? "正式接口链路" : "本地离线契约回放"}
           </span>
-          <label style={{ display: "grid", gap: 8 }}>
+          <label className="product-category-audit-field">
             {COPY.reportMonth}
             <select
               data-testid="monthly-operating-analysis-audit-month-select"
@@ -584,19 +529,9 @@ export default function MonthlyOperatingAnalysisAuditPage() {
         description="映射调整用于修正映射类字段，分析调整用于修正指定分析单元格，均沿用既有调整接口。"
         testId="monthly-operating-analysis-audit-form-lead"
       />
-      <div style={{ display: "grid", gap: 12, marginBottom: 18 }}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-            gap: 12,
-            padding: 12,
-            borderRadius: 12,
-            border: `1px solid ${designTokens.color.neutral[200]}`,
-            background: designTokens.color.neutral[50],
-          }}
-        >
-          <label style={{ display: "grid", gap: 6 }}>
+      <div className="product-category-audit-form-stack">
+        <div className="product-category-audit-form-panel">
+          <label className="product-category-audit-field--compact">
             {COPY.adjustmentClass}
             <select
               data-testid="monthly-operating-analysis-adjustment-class"
@@ -632,11 +567,11 @@ export default function MonthlyOperatingAnalysisAuditPage() {
 
           {isMappingAdjustment ? (
             <>
-              <div style={{ display: "grid", gap: 6 }}>
+              <div className="product-category-audit-target-hint">
                 <span>{COPY.mappingTarget}</span>
-                <span style={{ color: designTokens.color.neutral[600], fontSize: 12 }}>{COPY.mappingHint}</span>
+                <span className="product-category-audit-hint">{COPY.mappingHint}</span>
               </div>
-              <label style={{ display: "grid", gap: 6 }}>
+              <label className="product-category-audit-field--compact">
                 <span>{COPY.mappingAccountCode}</span>
                 <input
                   aria-label={COPY.mappingAccountCode}
@@ -652,7 +587,7 @@ export default function MonthlyOperatingAnalysisAuditPage() {
                   placeholder={COPY.mappingAccountPlaceholder}
                 />
               </label>
-              <label style={{ display: "grid", gap: 6 }}>
+              <label className="product-category-audit-field--compact">
                 <span>{COPY.mappingField}</span>
                 <select
                   aria-label={COPY.mappingField}
@@ -676,11 +611,11 @@ export default function MonthlyOperatingAnalysisAuditPage() {
             </>
           ) : (
             <>
-              <div style={{ display: "grid", gap: 6 }}>
+              <div className="product-category-audit-target-hint">
                 <span>{COPY.analysisTarget}</span>
-                <span style={{ color: designTokens.color.neutral[600], fontSize: 12 }}>{COPY.analysisHint}</span>
+                <span className="product-category-audit-hint">{COPY.analysisHint}</span>
               </div>
-              <label style={{ display: "grid", gap: 6 }}>
+              <label className="product-category-audit-field--compact">
                 <span>{COPY.sectionKey}</span>
                 <select
                   data-testid="monthly-operating-analysis-analysis-section-key"
@@ -701,7 +636,7 @@ export default function MonthlyOperatingAnalysisAuditPage() {
                   ))}
                 </select>
               </label>
-              <label style={{ display: "grid", gap: 6 }}>
+              <label className="product-category-audit-field--compact">
                 <span>{COPY.rowKey}</span>
                 <select
                   data-testid="monthly-operating-analysis-analysis-row-key"
@@ -723,7 +658,7 @@ export default function MonthlyOperatingAnalysisAuditPage() {
                   ))}
                 </select>
               </label>
-              <label style={{ display: "grid", gap: 6 }}>
+              <label className="product-category-audit-field--compact">
                 <span>{COPY.metricKey}</span>
                 <select
                   data-testid="monthly-operating-analysis-analysis-metric-key"
@@ -747,7 +682,7 @@ export default function MonthlyOperatingAnalysisAuditPage() {
             </>
           )}
 
-          <label style={{ display: "grid", gap: 6 }}>
+          <label className="product-category-audit-field--compact">
             <span>{COPY.adjustmentValue}</span>
             <input
               data-testid="monthly-operating-analysis-adjustment-value"
@@ -757,8 +692,8 @@ export default function MonthlyOperatingAnalysisAuditPage() {
               placeholder={COPY.adjustmentValuePlaceholder}
             />
           </label>
-          <div style={{ display: "flex", alignItems: "end" }}>
-            <div style={{ display: "flex", gap: 8 }}>
+          <div className="product-category-audit-form-actions">
+            <div className="product-category-audit-form-actions__row">
               <button
                 type="button"
                 data-testid="monthly-operating-analysis-adjustment-submit"
@@ -792,25 +727,16 @@ export default function MonthlyOperatingAnalysisAuditPage() {
         description="列表和事件区继续展示后端返回的 adjustments / events，并保留编辑、撤销、恢复与导出行为。"
         testId="monthly-operating-analysis-audit-list-lead"
       />
-      <div data-testid="monthly-operating-analysis-adjustment-list" style={{ display: "grid", gap: 12 }}>
+      <div data-testid="monthly-operating-analysis-adjustment-list" className="product-category-audit-list">
         {(adjustmentsQuery.data?.adjustments ?? []).map((item) => (
           <div
             key={item.adjustment_id}
             data-testid={`monthly-operating-analysis-adjustment-row-${item.adjustment_id}`}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1.4fr 1fr auto auto auto",
-              gap: 12,
-              alignItems: "center",
-              padding: 12,
-              borderRadius: 12,
-              border: `1px solid ${designTokens.color.neutral[200]}`,
-              background: designTokens.color.neutral[50],
-            }}
+            className="product-category-audit-adjustment-row product-category-audit-adjustment-row--monthly product-category-audit-adjustment-row--filled"
           >
             <div>
               <div>{item.adjustment_class}</div>
-              <div style={{ color: designTokens.color.neutral[600], fontSize: 12 }}>{serializeTarget(item)}</div>
+              <div className="product-category-audit-adjustment-secondary">{serializeTarget(item)}</div>
             </div>
             <div>{item.value}</div>
             <div>{item.approval_status}</div>
@@ -822,7 +748,7 @@ export default function MonthlyOperatingAnalysisAuditPage() {
             >
               {COPY.edit}
             </button>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div className="product-category-audit-row-actions">
               <button
                 type="button"
                 data-testid={`monthly-operating-analysis-adjustment-revoke-${item.adjustment_id}`}
@@ -849,29 +775,21 @@ export default function MonthlyOperatingAnalysisAuditPage() {
           </div>
         ))}
         {showAdjustmentsEmpty ? (
-          <div style={{ color: designTokens.color.neutral[500], fontSize: 13 }}>{COPY.empty}</div>
+          <div className="product-category-audit-empty">{COPY.empty}</div>
         ) : null}
       </div>
 
-      <div
-        data-testid="monthly-operating-analysis-adjustment-events"
-        style={{ display: "grid", gap: 8, marginTop: 18 }}
-      >
+      <div data-testid="monthly-operating-analysis-adjustment-events" className="product-category-audit-events">
         {(adjustmentsQuery.data?.events ?? []).map((item) => (
           <div
             key={`${item.adjustment_id}-${item.created_at}-${item.event_type}`}
-            style={{
-              padding: 12,
-              borderRadius: 12,
-              border: `1px dashed ${designTokens.color.neutral[200]}`,
-              background: designTokens.color.neutral[50],
-            }}
+            className="product-category-audit-event-row"
           >
             {item.event_type} / {item.adjustment_id}
           </div>
         ))}
         {showEventsEmpty ? (
-          <div style={{ color: designTokens.color.neutral[500], fontSize: 13 }}>{COPY.emptyEvents}</div>
+          <div className="product-category-audit-empty">{COPY.emptyEvents}</div>
         ) : null}
       </div>
     </section>

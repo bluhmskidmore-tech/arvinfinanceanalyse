@@ -1,6 +1,6 @@
 import { Button, Card } from "antd";
 
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { designTokens, dhApiTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { displayTokens } from "../../../theme/displayTokens";
 import type { BondAnalyticsHeadlineTile, BondAnalyticsReadinessItem } from "../lib/bondAnalyticsOverviewModel";
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
@@ -79,7 +79,7 @@ export function BondAnalyticsHeadlineZone({
               style={{
                 border: `1px solid ${dt.color.neutral[200]}`,
                 background: headlineTileSurface,
-                borderRadius: dt.radius.xl,
+                  borderRadius: dhApiTokens.radius,
                 padding: dt.space[5],
                 textAlign: "left",
                 cursor: "pointer",
@@ -108,7 +108,7 @@ export function BondAnalyticsHeadlineZone({
             <div
               style={{
                 border: `1px dashed ${dt.color.neutral[300]}`,
-                borderRadius: dt.radius.xl,
+                  borderRadius: dhApiTokens.radius,
                 padding: dt.space[4],
                 background: `${dt.color.neutral[50]}D9`,
                 display: "grid",
@@ -128,7 +128,7 @@ export function BondAnalyticsHeadlineZone({
 
         <div
           style={{
-            borderRadius: dt.radius.xl,
+                  borderRadius: dhApiTokens.radius,
             border: `1px solid ${dt.color.neutral[200]}`,
             background: dt.color.neutral[50],
             padding: dt.space[4],
@@ -141,7 +141,7 @@ export function BondAnalyticsHeadlineZone({
           <div style={{ display: "grid", gap: dt.space[3] }}>
             <div
               style={{
-                borderRadius: dt.radius.lg,
+                borderRadius: dhApiTokens.radius,
                 padding: `${dt.space[2]}px ${dt.space[3]}px`,
                 background: displayTokens.surface.section,
                 border: `1px solid ${dt.color.neutral[200]}`,
@@ -156,7 +156,7 @@ export function BondAnalyticsHeadlineZone({
             </div>
             <div
               style={{
-                borderRadius: dt.radius.lg,
+                borderRadius: dhApiTokens.radius,
                 padding: `${dt.space[2]}px ${dt.space[3]}px`,
                 background: warningItems.length > 0 ? dt.color.warning[50] : displayTokens.surface.section,
                 border:

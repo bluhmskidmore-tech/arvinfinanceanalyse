@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+import logging
+from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
+import duckdb
 from backend.app.core_finance.balance_analysis import (
+    BalancePositionScope,
+    FormalTywBalanceFactRow,
+    FormalZqtzBalanceFactRow,
     project_tyw_formal_balance_row,
     project_zqtz_formal_balance_row,
 )
 from backend.app.core_finance.module_contracts import FormalComputeModuleDescriptor
 from backend.app.core_finance.module_registry import ensure_formal_module
+from backend.app.governance.locks import LockDefinition
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 from backend.app.repositories.governance_repo import GovernanceRepository
@@ -42,12 +50,89 @@ BALANCE_ANALYSIS_MODULE = ensure_formal_module(
 )
 BALANCE_ANALYSIS_FORMAL_BASIS = BALANCE_ANALYSIS_MODULE.basis
 CACHE_KEY = BALANCE_ANALYSIS_MODULE.cache_key
-BALANCE_ANALYSIS_LOCK = BALANCE_ANALYSIS_MODULE.lock_definition
+BALANCE_ANALYSIS_LOCK = LockDefinition(
+    key=BALANCE_ANALYSIS_MODULE.lock_key,
+    ttl_seconds=BALANCE_ANALYSIS_MODULE.lock_ttl_seconds,
+)
 RULE_VERSION = BALANCE_ANALYSIS_MODULE.rule_version
 CACHE_VERSION = BALANCE_ANALYSIS_MODULE.cache_version
 _DIRECT_ZQTZ_INVEST_TYPE_LABELS = frozenset(
     {"持有至到期类资产", "可供出售类资产", "交易性资产", "应收投资款项", "发行类债劵", "发行类债券"}
 )
+# snapshot↔fact native 本金合计差异容差（单位：元）。
+TYW_SNAPSHOT_FACT_PRINCIPAL_TOLERANCE = Decimal("0.01")
+
+logger = logging.getLogger(__name__)
+
+
+def _tyw_consistency_entry(row: dict[str, Any], *, tolerance: Decimal) -> dict[str, object]:
+    diff: Decimal = row["principal_native_diff"]
+    status = "drift" if abs(diff) > tolerance else "consistent"
+    return {
+        "report_date": str(row["report_date"]),
+        "status": status,
+        "snapshot_row_count": int(row["snapshot_row_count"]),
+        "fact_native_row_count": int(row["fact_native_row_count"]),
+        "snapshot_principal_native_total": str(row["snapshot_principal_native_total"]),
+        "fact_principal_native_total": str(row["fact_principal_native_total"]),
+        "principal_native_diff": str(diff),
+        "tolerance": str(tolerance),
+    }
+
+
+def check_tyw_snapshot_fact_consistency(
+    *,
+    duckdb_path: str | None = None,
+    report_dates: list[str] | None = None,
+    tolerance: Decimal = TYW_SNAPSHOT_FACT_PRINCIPAL_TOLERANCE,
+) -> list[dict[str, object]]:
+    """批量核对 TYW snapshot 与 formal fact 的 native 本金合计（只读，不改数据）。
+
+    ``report_dates`` 为 None 时覆盖两侧出现过的全部报告日；用于对历史漂移
+    （snapshot↔fact 不一致的报告日）出报告，哪一侧为准由数据 owner 裁决。
+    """
+    resolved_path = str(duckdb_path) if duckdb_path else str(get_settings().duckdb_path)
+    repo = BalanceAnalysisRepository(resolved_path)
+    rows = repo.fetch_tyw_snapshot_fact_native_consistency_rows(report_dates=report_dates)
+    return [_tyw_consistency_entry(row, tolerance=tolerance) for row in rows]
+
+
+def _verify_tyw_snapshot_fact_consistency_after_write(
+    *,
+    repo: BalanceAnalysisRepository,
+    report_date: str,
+    snapshot_ingest_batch_id: str | None,
+) -> dict[str, object]:
+    """物化写入后的只读一致性校验；校验自身失败不回滚、不中断任务。"""
+    try:
+        rows = repo.fetch_tyw_snapshot_fact_native_consistency_rows(
+            report_dates=[report_date],
+            snapshot_ingest_batch_id=snapshot_ingest_batch_id,
+        )
+    except (OSError, duckdb.Error) as exc:
+        logger.warning(
+            "TYW snapshot/fact consistency check failed to run for report_date=%s: %s",
+            report_date,
+            exc,
+        )
+        return {"report_date": report_date, "status": "check_failed", "error": str(exc)}
+    entry = _tyw_consistency_entry(rows[0], tolerance=TYW_SNAPSHOT_FACT_PRINCIPAL_TOLERANCE)
+    if entry["status"] == "drift":
+        logger.warning(
+            "TYW snapshot/fact native principal drift detected: report_date=%s "
+            "snapshot_total=%s fact_total=%s diff=%s tolerance=%s "
+            "(snapshot_rows=%s, fact_native_rows=%s); data owner adjudication required, "
+            "no automatic re-materialization performed.",
+            entry["report_date"],
+            entry["snapshot_principal_native_total"],
+            entry["fact_principal_native_total"],
+            entry["principal_native_diff"],
+            entry["tolerance"],
+            entry["snapshot_row_count"],
+            entry["fact_native_row_count"],
+        )
+    return entry
+
 
 def _resolve_snapshot_ingest_batch_id(
     *,
@@ -145,19 +230,22 @@ def _execute_balance_analysis_materialization(
     governance_dir: str,
     data_root: str | None = None,
     fx_source_path: str | None = None,
+    use_existing_fx_only: bool = False,
 ) -> FormalComputeMaterializeResult:
     settings = get_settings()
-    materialize_fx_mid_for_report_date.fn(
-        report_date=report_date,
-        duckdb_path=str(duckdb_file),
-        data_input_root=str(data_root or settings.data_input_root),
-        official_csv_path=str(
-            fx_source_path
-            or getattr(settings, "fx_official_source_path", "")
-            or ""
-        ),
-        explicit_csv_path=str(getattr(settings, "fx_mid_csv_path", "") or ""),
-    )
+    if not use_existing_fx_only:
+        materialize_fx_mid_for_report_date.fn(
+            report_date=report_date,
+            duckdb_path=str(duckdb_file),
+            data_input_root=str(data_root or settings.data_input_root),
+            official_csv_path=str(
+                fx_source_path
+                or getattr(settings, "fx_official_source_path", "")
+                or ""
+            ),
+            explicit_csv_path=str(getattr(settings, "fx_mid_csv_path", "") or ""),
+            writer_lock_already_held=True,
+        )
 
     repo = BalanceAnalysisRepository(str(duckdb_file))
     zqtz_ingest_batch_id = _resolve_snapshot_ingest_batch_id(
@@ -183,13 +271,13 @@ def _execute_balance_analysis_materialization(
         ingest_batch_id=tyw_ingest_batch_id,
     )
 
-    zqtz_fact_rows = []
-    tyw_fact_rows = []
+    zqtz_fact_rows: list[FormalZqtzBalanceFactRow] = []
+    tyw_fact_rows: list[FormalTywBalanceFactRow] = []
     source_versions: set[str] = set()
     fx_source_versions: set[str] = set()
 
     for row in zqtz_snapshot_rows:
-        position_scope = "liability" if row.is_issuance_like else "asset"
+        position_scope: BalancePositionScope = "liability" if row.is_issuance_like else "asset"
         invest_type_raw = (
             row.asset_class
             if row.asset_class in _DIRECT_ZQTZ_INVEST_TYPE_LABELS
@@ -223,32 +311,38 @@ def _execute_balance_analysis_materialization(
         if fx_lookup.source_version and fx_lookup.source_version != "sv_fx_identity":
             fx_source_versions.add(fx_lookup.source_version)
 
-    for row in tyw_snapshot_rows:
-        position_scope = row.position_side if row.position_side in {"asset", "liability"} else "all"
-        invest_type_raw = row.product_type or row.account_type
-        native_row = project_tyw_formal_balance_row(
-            row,
+    for tyw_row in tyw_snapshot_rows:
+        # Equivalent to: position_side if position_side in {"asset", "liability"} else "all".
+        if tyw_row.position_side == "asset":
+            position_scope = "asset"
+        elif tyw_row.position_side == "liability":
+            position_scope = "liability"
+        else:
+            position_scope = "all"
+        invest_type_raw = tyw_row.product_type or tyw_row.account_type
+        tyw_native_row = project_tyw_formal_balance_row(
+            tyw_row,
             invest_type_raw=invest_type_raw,
             position_scope=position_scope,
             currency_basis="native",
         )
-        tyw_fact_rows.append(native_row)
-        if native_row.source_version:
-            source_versions.add(native_row.source_version)
+        tyw_fact_rows.append(tyw_native_row)
+        if tyw_native_row.source_version:
+            source_versions.add(tyw_native_row.source_version)
         fx_lookup = repo.lookup_formal_fx_rate(
             report_date=report_date,
-            base_currency=row.currency_code,
+            base_currency=tyw_row.currency_code,
         )
-        cny_row = project_tyw_formal_balance_row(
-            row,
+        tyw_cny_row = project_tyw_formal_balance_row(
+            tyw_row,
             invest_type_raw=invest_type_raw,
             position_scope=position_scope,
             currency_basis="CNY",
             fx_rate=fx_lookup.rate,
         )
-        tyw_fact_rows.append(cny_row)
-        if cny_row.source_version:
-            source_versions.add(cny_row.source_version)
+        tyw_fact_rows.append(tyw_cny_row)
+        if tyw_cny_row.source_version:
+            source_versions.add(tyw_cny_row.source_version)
         if fx_lookup.source_version and fx_lookup.source_version != "sv_fx_identity":
             fx_source_versions.add(fx_lookup.source_version)
 
@@ -266,12 +360,18 @@ def _execute_balance_analysis_materialization(
             vendor_version="vv_none",
             message=str(exc),
         ) from exc
+    tyw_consistency = _verify_tyw_snapshot_fact_consistency_after_write(
+        repo=repo,
+        report_date=report_date,
+        snapshot_ingest_batch_id=tyw_ingest_batch_id,
+    )
     return FormalComputeMaterializeResult(
         source_version=combined_source_version,
         vendor_version="vv_none",
         payload={
             "zqtz_rows": len(zqtz_fact_rows),
             "tyw_rows": len(tyw_fact_rows),
+            "tyw_snapshot_fact_consistency": tyw_consistency,
         },
     )
 
@@ -285,6 +385,7 @@ def _materialize_balance_analysis_facts(
     ingest_batch_id: str | None = None,
     data_root: str | None = None,
     fx_source_path: str | None = None,
+    use_existing_fx_only: bool = False,
 ) -> dict[str, object]:
     settings = get_settings()
     duckdb_file = Path(duckdb_path or settings.duckdb_path)
@@ -306,6 +407,7 @@ def _materialize_balance_analysis_facts(
             governance_dir=str(governance_path),
             data_root=data_root,
             fx_source_path=fx_source_path,
+            use_existing_fx_only=use_existing_fx_only,
         ),
     )
 

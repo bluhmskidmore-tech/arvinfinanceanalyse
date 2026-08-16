@@ -1,0 +1,135 @@
+﻿@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@theme {
+  --color-primary-50: var(--moss-color-primary-50);
+  --color-primary-100: var(--moss-color-primary-100);
+  --color-primary-200: var(--moss-color-primary-200);
+  --color-primary-300: var(--moss-color-primary-300);
+  --color-primary-400: var(--moss-color-primary-400);
+  --color-primary-500: var(--moss-color-primary-500);
+  --color-primary-600: var(--moss-color-primary-600);
+  --color-primary-700: var(--moss-color-primary-700);
+  --color-primary-800: var(--moss-color-primary-800);
+  --color-primary-900: var(--moss-color-primary-900);
+
+  --color-info-50: var(--moss-color-info-50);
+  --color-info-100: var(--moss-color-info-100);
+  --color-info-200: var(--moss-color-info-200);
+  --color-info-300: var(--moss-color-info-300);
+  --color-info-400: var(--moss-color-info-400);
+  --color-info-500: var(--moss-color-info-500);
+  --color-info-600: var(--moss-color-info-600);
+  --color-info-700: var(--moss-color-info-700);
+  --color-info-800: var(--moss-color-info-800);
+  --color-info-900: var(--moss-color-info-900);
+
+  --color-success-50: var(--moss-color-success-50);
+  --color-success-100: var(--moss-color-success-100);
+  --color-success-200: var(--moss-color-success-200);
+  --color-success-300: var(--moss-color-success-300);
+  --color-success-400: var(--moss-color-success-400);
+  --color-success-500: var(--moss-color-success-500);
+  --color-success-600: var(--moss-color-success-600);
+  --color-success-700: var(--moss-color-success-700);
+  --color-success-800: var(--moss-color-success-800);
+  --color-success-900: var(--moss-color-success-900);
+
+  --color-warning-50: var(--moss-color-warning-50);
+  --color-warning-100: var(--moss-color-warning-100);
+  --color-warning-200: var(--moss-color-warning-200);
+  --color-warning-300: var(--moss-color-warning-300);
+  --color-warning-400: var(--moss-color-warning-400);
+  --color-warning-500: var(--moss-color-warning-500);
+  --color-warning-600: var(--moss-color-warning-600);
+  --color-warning-700: var(--moss-color-warning-700);
+  --color-warning-800: var(--moss-color-warning-800);
+  --color-warning-900: var(--moss-color-warning-900);
+
+  --color-danger-50: var(--moss-color-danger-50);
+  --color-danger-100: var(--moss-color-danger-100);
+  --color-danger-200: var(--moss-color-danger-200);
+  --color-danger-300: var(--moss-color-danger-300);
+  --color-danger-400: var(--moss-color-danger-400);
+  --color-danger-500: var(--moss-color-danger-500);
+  --color-danger-600: var(--moss-color-danger-600);
+  --color-danger-700: var(--moss-color-danger-700);
+  --color-danger-800: var(--moss-color-danger-800);
+  --color-danger-900: var(--moss-color-danger-900);
+
+  --color-neutral-50: var(--moss-color-neutral-50);
+  --color-neutral-100: var(--moss-color-neutral-100);
+  --color-neutral-200: var(--moss-color-neutral-200);
+  --color-neutral-300: var(--moss-color-neutral-300);
+  --color-neutral-400: var(--moss-color-neutral-400);
+  --color-neutral-500: var(--moss-color-neutral-500);
+  --color-neutral-600: var(--moss-color-neutral-600);
+  --color-neutral-700: var(--moss-color-neutral-700);
+  --color-neutral-800: var(--moss-color-neutral-800);
+  --color-neutral-900: var(--moss-color-neutral-900);
+
+  --radius-sm: var(--moss-radius-sm);
+  --radius-md: var(--moss-radius-md);
+  --radius-lg: var(--moss-radius-lg);
+  --radius-xl: var(--moss-radius-xl);
+}
+
+/*
+ * HeroUI semantic-variable remap (DESIGN.md §4 single color authority).
+ *
+ * @heroui/styles compiles `text-success` / `text-danger` / `text-warning` /
+ * `text-foreground` / `border-default` / `bg-background` (and their opacity
+ * variants) via `@theme inline` straight to `var(--success)` etc., whose values
+ * come from HeroUI's own oklch palette in themes/default/variables.css — a
+ * high-saturation palette MOSS never sanctioned (dark `.dark` never redefines
+ * `--success`, so dark pages inherit the light bright green).
+ *
+ * These unlayered blocks win over HeroUI's `@layer theme.base` declarations on
+ * the same selectors and re-point the base variables at the MOSS token chain.
+ * HeroUI's derived colors (`--success-soft`, `--danger-hover`, ...) are
+ * color-mix() recipes over the base variables declared on the same elements,
+ * so they follow automatically — this is the single choke point.
+ *
+ * Dark side resolves against the `--dh-api-*` semantic chain (Nocturne scopes
+ * remap those to `--nct-*`); every `.dark` consumer today sits inside a
+ * `data-moss-theme-scope` boundary, the moss-color fallbacks only guard a
+ * misplaced `.dark` outside any theme boundary.
+ *
+ * Numeric-scale utilities (`text-default-500`, `bg-default-100`,
+ * `border-default-200`, `divide-default-100`, ...) generate no CSS at all —
+ * neither HeroUI nor MOSS defines `--color-default-<n>` theme keys — so there
+ * is nothing to remap for them; text under those classes inherits the page
+ * ink chain. Do not bridge them to the light-only moss neutral scale: that
+ * would pour light-theme grays into dark pages.
+ */
+:root,
+.light,
+.default,
+[data-theme="light"],
+[data-theme="default"] {
+  --foreground: var(--moss-color-text-primary);
+  --background: var(--moss-color-surface-base);
+  --default: var(--moss-color-neutral-100);
+  --default-foreground: var(--moss-color-neutral-900);
+  --success: var(--moss-color-success-500);
+  --success-foreground: var(--moss-color-neutral-50);
+  --warning: var(--moss-color-warning-500);
+  --warning-foreground: var(--moss-color-neutral-900);
+  --danger: var(--moss-color-danger-500);
+  --danger-foreground: var(--moss-color-neutral-50);
+}
+
+.dark,
+[data-theme="dark"] {
+  --foreground: var(--dh-api-ink, var(--moss-color-neutral-50));
+  --background: var(--dh-api-bg, var(--moss-color-neutral-900));
+  --default: var(--dh-api-line, var(--moss-color-neutral-700));
+  --default-foreground: var(--dh-api-ink, var(--moss-color-neutral-50));
+  --success: var(--dh-api-green, var(--moss-color-success-500));
+  --success-foreground: var(--dh-api-bg, var(--moss-color-neutral-900));
+  --warning: var(--dh-api-amber, var(--moss-color-warning-500));
+  --warning-foreground: var(--dh-api-bg, var(--moss-color-neutral-900));
+  --danger: var(--dh-api-red, var(--moss-color-danger-500));
+  --danger-foreground: var(--dh-api-ink, var(--moss-color-neutral-50));
+}

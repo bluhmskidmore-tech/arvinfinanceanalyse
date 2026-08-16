@@ -31,7 +31,12 @@
 ## 3. 非谈判边界
 
 - 正式金融计算只能在 `backend/app/core_finance/` 实现一次。
-- `backend/app/api/` 只允许做参数校验、鉴权、调用 service、返回响应。
+- `backend/app/api/` 只允许做参数校验、**授权**、调用 service、返回响应。
+  - 原文此处写的是「鉴权」。准确说法是**授权**（authorization / RBAC）：仓库**有授权、没有认证**——
+    `ensure_user_allowed` 的 RBAC 判定存在，但没有 `HTTPBearer` / `OAuth2` / `APIKeyHeader` / JWT /
+    session，调用方身份未经校验。完整边界见 [../README.md](../README.md)「关键约束」一节与
+    [SYSTEM_STACK_SPEC_FOR_CODEX.md](SYSTEM_STACK_SPEC_FOR_CODEX.md) 第 1 节；这里只描述 API 层允许做的
+    动作类型，不构成安全声明。
 - `frontend/` 不允许补算正式金融指标。
 - `Scenario` 不得污染 `Formal`。
 - DuckDB API 常态只读；写入只能走 `backend/app/tasks/`。
@@ -46,11 +51,11 @@
 - `Current-state pointer`: use `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md` after `AGENTS.md` and `docs/DOCUMENT_AUTHORITY.md`
 - 下方列表保留为背景 / reference doc pack，不作为当前 repo-level entry sequence。
 
-阅读顺序如下：
+阅读顺序如下（第 3、11 项是**空置槽位**，见列表下方说明）：
 
 1. `AGENTS.md`
 2. `prd-moss-agent-analytics-os.md`
-3. `docs/MOSS-V2 系统架构说明`
+3. `docs/MOSS-V2 系统架构说明` — **该文档在当前 checkout 中不存在**，归宿待定
 4. `docs/V2_TO_V3_MIGRATION_INVENTORY.md`
 5. `docs/DOCUMENT_AUTHORITY.md`
 6. `docs/IMPLEMENTATION_PLAN.md`
@@ -58,7 +63,12 @@
 8. `docs/data_contracts.md`
 9. `docs/CACHE_SPEC.md`
 10. `docs/acceptance_tests.md`
-11. `MOSS 系统：取值逻辑、计算层与规则总览`
+11. `MOSS 系统：取值逻辑、计算层与规则总览` — **该文档在当前 checkout 中不存在**，归宿待定
+
+第 3 项与第 11 项从未并入本仓库。不要去找、不要以它们为依据裁决冲突，也不要声称「已按 V2 架构说明
+确认」。是否补齐还是正式作废属于 owner 决策；权威说明见
+[DOCUMENT_AUTHORITY.md](DOCUMENT_AUTHORITY.md) 的「两个空置槽位（文件从未并入本仓库）」一节，
+其中也列出了当前可用的替代文件。
 
 ## 5. 技术栈冻结
 

@@ -99,4 +99,28 @@ describe("StockAnalysisClosedLoopRail", () => {
     fireEvent.click(within(screen.getByTestId("stock-analysis-replay-status")).getByText("明细"));
     expect(summary).toHaveTextContent("2 snapshots cover the current queue.");
   });
+
+  it("renders unsupported risk as blocked without numeric trigger claims", () => {
+    render(
+      <StockAnalysisClosedLoopSummaryRail
+        summary={closedLoopSummary}
+        riskTone="warning"
+        riskTriggeredCount={3}
+        riskUnsupportedOutput={{
+          key: "risk_exit",
+          reason: "livermore_position_snapshot has no ACTIVE A-share rows.",
+        }}
+        boundaryIssueCount={2}
+        reviewQueueCount={3}
+        nextActionLabel="先补持仓快照"
+        nextActionFullLabel="先补持仓快照，再复核风险退出"
+      />,
+    );
+
+    const risk = screen.getByTestId("stock-analysis-closed-loop-risk");
+    expect(risk).toHaveAttribute("data-tone", "negative");
+    expect(risk).toHaveTextContent("阻断");
+    expect(risk).toHaveTextContent("持仓快照缺失");
+    expect(risk).not.toHaveTextContent(/\d+\s*触发/);
+  });
 });

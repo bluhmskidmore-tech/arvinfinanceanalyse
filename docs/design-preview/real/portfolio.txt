@@ -1,0 +1,377 @@
+# 组合首页  /portfolio
+final_url: http://127.0.0.1:5888/portfolio
+title: MOSS Workbench
+
+## innerText (first ~3000 chars)
+Skip to main content
+M
+MOSS
+工作台
+经营日报
+首页
+组合工作台
+首页
+市场工作台
+首页
+风险工作台
+首页
+绩效工作台
+首页
+报表与数据
+首页
+对话
+MOSS Chat
+可用
+直接提问
+支持入口
+报表中心
+中台配置
+帮助文档
+M
+组合工作台
+
+规模、久期、结构与损益 — 首页读链路汇总
+
+已接入
+资产负债日
+2026-06-30
+债券总览日
+2026-06-30
+组合复核
+仅供分析
+仅供分析：来源证据未达到决策级口径
+
+不使用前端补数 / 风险闭合：同日闭合 2026-06-30
+
+风险约束使用现有字段与首屏监控阈值；行动队列：先复核来源证据、日期和回退状态，不形成调仓建议。 数据可信度：已接入；源日期：债券总览=2026-06-30；风险指标=2026-06-30；资产负债=2026-06-30；损益归因=2026-06-30；风险闭合：同日闭合 2026-06-30；readiness：债券总览 basis=analytical；债券总览 formal_use_allowed=false；风险指标 basis=analytical；风险指标 formal_use_allowed=false；风险指标 quality=warning；资产负债 report_date 缺失；损益归因 report_date 缺失；债券总览 basis=analytical, quality=ok；风险指标 basis=analytical, quality=warning；来源事实：债券总览: basis=analytical, formal_use_allowed=false, quality=ok, fallback=none；风险指标: basis=analytical, formal_use_allowed=false, quality=warning, fallback=none；资产负债: basis=formal, formal_use_allowed=true, quality=ok, fallback=none；损益归因: basis=formal, formal_use_allowed=true, quality=ok, fallback=none；风险闭合证据: basis=formal, formal_use_allowed=true, quality=ok, fallback=none；证据：bond_dashboard.home_summary / 1767 行 / fact_formal_bond_analytics_daily / 无回退；不使用前端补数。
+证据样本
+1767 行
+子组合
+6 个
+待复核
+01
+来源证据复核
+证据
+02
+债券总览核对
+债券总览
+03
+收益归因复核
+收益归因
+核心指标
+
+债券总览 · 分析/复核口径 · 仅展示读数 · 不形成调仓建议 · 不纳入风险 ticker
+
+债券组合市值
+3,478.36
+亿元
+亿元 · 环比 +3.14%
+加权久期
+4.37
+年
+环比 -1.13%
+加权 YTM
+2.59
+%
+环比 -0.33%
+DV01 合计
+10,694.94
+万元
+万元 · 环比 +0.68%
+信用占比
+30.65
+%
+风险指标
+资产侧市值
+3,734.29
+亿元
+资产负债口径
+负债侧市值
+1,815.7
+亿元
+资产负债口径
+信用利差中位数
+2.33
+%
+环比 -1.44%
+未实现损益
+82.19
+亿元
+亿元 · 环比 +2.48%
+持仓只数
+1,767
+只
+较前日 +57 只
+组合复盘驾驶舱
+H
+持仓结构
+G
+收益/风险
+S
+结构拆解
+A
+明细入口
+
+结构、归因、明细按业务动作串联，保留来源状态与复核入口。
+
+图表
+01持仓结构全景
+
+券种、子组合与关键暴露并排复核。
+
+3,478.36 亿
+图表
+持仓结构全景
+3,478.36 亿
+政策性金融债
+政策性金融债 其他 信用债券-企业 同业存单 地方政府债 资产支持证券 商业银行债 国债
+政策性金融债
+19.32%
+672.18 亿元
+其他
+16.35%
+568.57 亿元
+信用债券-企业
+15.84%
+551.03 亿元
+同业存单
+14.78%
+514.22 亿元
+地方政府债
+13.95%
+485.20 亿元
+FIOA 3,376.44 亿 4.26 年 2.59% 10,021.06 万 1,665
+FI19 91.39 亿 7.62 年 2.37% 665.49 万 65
+RIOA 7.56 亿 0.40 年 3.36% 2.99 万 4
+PORT 2.50 亿 1.72 年 2.20% 4.30 万 1
+RI19 0.47 亿 0.30 年 3.08% 0.14 万 1
+未命名组合 6 0.00 亿 0.00 年 0.00% 0.97 万 31
+持仓
+关键暴露账本
+
+评级、期限、品种集中在一个可扫区域。
+
+维度
+读数
+状态
+动作
+信用占比
+30.65%
+仅分析
+风险复核
+DV01
+10,694.94 万元
+仅分析
+风险复核
+归因摘要
+利率
+可读
+持仓透视
+数据链路
+已接入 / 2026-06-30
+可读
+持仓透视
+源日期
+4 个来源 / 2026-06-30
+可读
+持仓透视
+02结构拆解工作台
+
+子组合、收益率、利差、业务类型统一按表格核对。
+
+4 个结构维度
+子组合
+6
+收益率
+8
+利差
+8
+业务类型
+8
+子组合
+DV01
+持仓
+市值
+FIOA
+10,021.06 万
+1,665 只
+3,376.44 亿
+FI19
+665.49 万
+65 只
+91.39 亿
+RIOA
+2.99 万
+4 只
+7.56 亿
+PORT
+4.30 万
+1 只
+2.50 亿
+RI19
+0.14 万
+1 只
+0.47 亿
+未命名组合 6
+0.97 万
+31 只
+0.00 亿
+子组合市值规模
+收益
+03分析读数与归因
+
+闭合前门、风险读数、收益归因和日期闭合线并排复核。
+
+可进入复核
+闭合状态
+决策口径未通过
+
+债券总览为分析口径；债券总览尚未允许正式使用；风险指标 分析口径；风险指标 尚未允许正式使用；风险指标 质量标记为关注；资产负债 报告日缺失；损益归因 报告日缺失
+
+风险张量已闭合
+分析口径已隔离
+不使用前端补数
+风险
+风险读数
+分析口径
+
+来源 bond-dashboard · 2026-06-30
+
+组合市值
+3,478.36 亿元
+DV01
+10,694.94 万元
+加权久期
+4.37 年
+信用占比
+30.65%
+凸性(加权)
+26.8008
+利差 DV01
+2,730.89 万元
+1年内再投资占比
+36.75%
+归因
+收益归因
+已返回
+
+来源 pnl-attribution · 2026-06-30
+
+主驱动
+利率 · +65.90%
+TPL 与市场
+待核验
+发现 1
+本期损益变动的规模与利率分解见规模/利率页签。
+发现 2
+主驱动归类为 rate（约 66% 相对占比）。
+发现 3
+TPL 与 10Y 国债月度变动的样本相关系数约为 -0.20。
+来源
+日期闭合线
+已返回
+
+来源 balance-analysis · 2026-06-30
+
+TYW · H · AC
+2
+
+## computed styles
+{
+  "body_backgroundColor": "rgb(244, 243, 240)",
+  "body_color": "rgb(31, 41, 55)",
+  "body_fontFamily": "\"PingFang SC\", \"Microsoft YaHei UI\", \"Noto Sans SC\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif",
+  "body_fontSize": "16px",
+  "root_backgroundColor": "rgb(245, 247, 249)",
+  "main_backgroundColor": "rgba(0, 0, 0, 0)",
+  "body_borderRadius_first": "0px",
+  "css_vars": {
+    "--background": "oklch(0.9702 0 0)",
+    "--foreground": "oklch(0.2103 0.0059 285.89)",
+    "--border": "oklch(90% 0.004 286.32)",
+    "--font-sans": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\",\n      \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+    "--radius": "0.5rem",
+    "--moss-color-primary-50": "#e8f1fb",
+    "--moss-color-primary-100": "#d0e3f6",
+    "--moss-color-primary-200": "#a8c9ec",
+    "--moss-color-primary-300": "#79a7de",
+    "--moss-color-primary-400": "#4d84cc",
+    "--moss-color-primary-500": "#2f68b8",
+    "--moss-color-primary-600": "#1850a1",
+    "--moss-color-primary-700": "#144287",
+    "--moss-color-primary-800": "#10356a",
+    "--moss-color-primary-900": "#0c2a54",
+    "--moss-color-info-50": "#eff6ff",
+    "--moss-color-info-100": "#dbeafe",
+    "--moss-color-info-200": "#bfdbfe",
+    "--moss-color-info-300": "#93c5fd",
+    "--moss-color-info-400": "#60a5fa",
+    "--moss-color-info-500": "#3b82f6",
+    "--moss-color-info-600": "#2563eb",
+    "--moss-color-info-700": "#1d4ed8",
+    "--moss-color-info-800": "#1e40af",
+    "--moss-color-info-900": "#1e3a8a",
+    "--moss-color-success-50": "#ecf8f2",
+    "--moss-color-success-100": "#d5efe0",
+    "--moss-color-success-200": "#aedfc8",
+    "--moss-color-success-300": "#7fc8a4",
+    "--moss-color-success-400": "#52ad84",
+    "--moss-color-success-500": "#2d8a5e",
+    "--moss-color-success-600": "#25714d",
+    "--moss-color-success-700": "#1d5c40",
+    "--moss-color-success-800": "#174833",
+    "--moss-color-success-900": "#123828",
+    "--moss-color-warning-50": "#fff9eb",
+    "--moss-color-warning-100": "#fef0d4",
+    "--moss-color-warning-200": "#fde0a8",
+    "--moss-color-warning-300": "#fbc874",
+    "--moss-color-warning-400": "#f8a93a",
+    "--moss-color-warning-500": "#d97706",
+    "--moss-color-warning-600": "#b35c05",
+    "--moss-color-warning-700": "#8f4708",
+    "--moss-color-warning-800": "#713a0c",
+    "--moss-color-warning-900": "#5c300e"
+  }
+}
+
+## api calls (38)
+200  /src/api/clientContext.ts
+200  /src/api/client.ts
+200  /src/api/healthClient.ts
+200  /src/api/executiveClient.ts
+200  /src/api/cashflowClient.ts
+200  /src/api/balanceAnalysisClient.ts
+200  /src/api/bondAnalyticsClient.ts
+200  /src/api/liabilityAdbClient.ts
+200  /src/api/pnlClient.ts
+200  /src/api/pnlCoreClient.ts
+200  /src/api/pnlAttributionClient.ts
+200  /src/api/productCategoryClient.ts
+200  /src/api/qdbGlMonthlyAnalysisClient.ts
+200  /src/api/positionsClient.ts
+200  /src/api/balanceMovementClient.ts
+200  /src/api/ledgerClient.ts
+200  /src/api/kpiClient.ts
+200  /src/api/cubeClient.ts
+200  /src/api/bondDashboardWorkbenchEndpoints.ts
+200  /src/api/agentClient.ts
+200  /src/api/workbenchDashboardApi.ts
+200  /src/api/marketDataClient.ts
+200  /src/api/macroToolkitClient.ts
+200  /src/api/executiveHomeSnapshotFetch.ts
+200  /src/api/numeric.ts
+200  /src/api/bondDashboardBundleMock.ts
+200  /src/api/httpResponseError.ts
+200  /src/api/bondAnalyticsYieldCurveTermStructureMock.ts
+200  /src/api/marketDataMocks.ts
+200  /ui/balance-analysis/dates
+200  /api/bond-dashboard/dates
+200  /src/api/homeSupplementalClient.ts
+200  /api/bond-dashboard/home-summary?report_date=2026-06-30
+200  /ui/balance-analysis/summary-by-basis?report_date=2026-06-30&position_scope=all&currency_basis=CNY
+200  /ui/balance-analysis/overview?report_date=2026-06-30&position_scope=all&currency_basis=CNY
+200  /api/bond-dashboard/risk-indicators?report_date=2026-06-30
+200  /api/risk/tensor/dates
+200  /api/pnl-attribution/summary?report_date=2026-06-30
+
+## console errors (0)

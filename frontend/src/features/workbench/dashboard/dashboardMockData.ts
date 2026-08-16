@@ -1,5 +1,8 @@
 /** 经营驾驶舱首页：API 缺字段时的集中 mock（禁止散落在 JSX）。 */
 
+import { designTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
+
 export const DASHBOARD_COCKPIT_IMPROVEMENT_NOTES = [
   "信息分层重构：核心KPI前置，宏观脉搏强化，减少噪音干扰。",
   "宏观-债市-组合联动：宏观指标与组合表现联动展示，支持快速判断市场驱动因素。",
@@ -130,13 +133,13 @@ export const DASHBOARD_EXPOSURE_ROWS_MOCK: readonly DashboardExposureRowMock[] =
     weight: "29.31%",
     duration: "0.83",
     dv01: "1,916.67",
-    dailyPnl: "--",
+    dailyPnl: EM_DASH,
     tone: "neutral",
   },
   {
     id: "exp-5",
     account: "风险总计",
-    type: "--",
+    type: EM_DASH,
     assetScale: "3,708.10",
     weight: "100.00%",
     duration: "4.14",
@@ -154,10 +157,12 @@ export const DASHBOARD_PORTFOLIO_STATS_MOCK = [
 ] as const;
 
 export const DASHBOARD_ASSET_BARS_MOCK = [
+  /* 利率/信用/存单三条 mock 色带无同值 token（designSystem/tokens 均无此三值），
+     保留字面量；「其他」灰已取同值 neutral[600]。 */
   { id: "rate", label: "利率债", pct: 36.3, value: "1,345.62 亿", color: "#1D4E89" },
   { id: "credit", label: "信用债", pct: 42.9, value: "1,587.83 亿", color: "#16835F" },
   { id: "cd", label: "同业存单", pct: 14.4, value: "534.21 亿", color: "#C77700" },
-  { id: "other", label: "其他", pct: 6.4, value: "240.44 亿", color: "#6B7280" },
+  { id: "other", label: "其他", pct: 6.4, value: "240.44 亿", color: designTokens.color.neutral[600] },
 ] as const;
 
 export const DASHBOARD_INTERBANK_MOCK = {

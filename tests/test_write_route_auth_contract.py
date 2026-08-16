@@ -1,8 +1,16 @@
 """Verify write-route auth contracts, including scoped refresh exceptions."""
 from __future__ import annotations
 
+from typing import Any, Protocol, cast
+
 import pytest
 from fastapi.testclient import TestClient
+
+
+class _SettingsGetterWithCacheClear(Protocol):
+    def __call__(self) -> object: ...
+
+    def cache_clear(self) -> None: ...
 
 
 def _load_app():
@@ -15,6 +23,7 @@ def _setup_scope_store(tmp_path, monkeypatch, *, grant: bool):
     """Set up SQLite-backed scope store. If grant=False, no permissions are seeded."""
     from backend.app.governance.settings import get_settings
 
+    get_settings = cast(_SettingsGetterWithCacheClear, get_settings)
     sqlite_path = tmp_path / "auth-scope-contract.db"
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
     monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
@@ -28,7 +37,7 @@ def _setup_scope_store(tmp_path, monkeypatch, *, grant: bool):
     return sqlite_path
 
 
-MUTATION_ROUTES = [
+MUTATION_ROUTES: list[tuple[str, str, dict[str, Any] | None]] = [
     ("POST", "/api/kpi/metrics", {"metric_code": "T", "metric_name": "Test", "major_category": "A", "owner_id": 1, "year": 2026, "score_weight": "1.0", "data_source_type": "MANUAL", "scoring_rule_type": "LINEAR"}),
     ("PUT", "/api/kpi/metrics/99999", {"metric_code": "T", "metric_name": "Test", "major_category": "A", "owner_id": 1, "year": 2026, "score_weight": "1.0", "data_source_type": "MANUAL", "scoring_rule_type": "LINEAR"}),
     ("DELETE", "/api/kpi/metrics/99999", None),
@@ -63,6 +72,7 @@ MUTATION_ROUTES = [
     ("POST", "/api/pnl/by-business/manual-adjustments/test-id/revoke", None),
     ("POST", "/api/pnl/by-business/manual-adjustments/test-id/restore", None),
     ("POST", "/api/pnl/by-business/manual-adjustments/test-id/approve", None),
+    ("POST", "/api/pnl/by-business/precompute-rebuild?year=2026", None),
     ("POST", "/ui/pnl/product-category/manual-adjustments", {"report_date": "2026-01-01", "account_code": "X", "currency": "CNY", "operator": "DELTA", "monthly_pnl": "100"}),
     ("POST", "/ui/pnl/product-category/manual-adjustments/test-id/revoke", None),
     ("POST", "/ui/pnl/product-category/manual-adjustments/test-id/edit", {"report_date": "2026-01-01", "account_code": "X", "currency": "CNY", "operator": "DELTA", "monthly_pnl": "50"}),
@@ -82,10 +92,9 @@ MUTATION_ROUTES = [
     ("POST", "/api/analysis/adb/backfill?start_date=1900-01-01&end_date=1900-01-02", None),
 ]
 
-RESERVED_MUTATION_PATHS = {
-    "/ui/news/tushare-npr/ingest",
-    "/api/news/tushare-npr/ingest",
-}
+# Choice news 保留 ingest 端点授权先于保留判断：无 scope 授权时与其他写路由一致返回 403，
+# 授权后才落到 503 reserved（见 tests/test_choice_news_routes.py）。
+RESERVED_MUTATION_PATHS: set[str] = set()
 
 
 @pytest.mark.parametrize("method,path,body", MUTATION_ROUTES, ids=[f"{m} {p}" for m, p, _ in MUTATION_ROUTES])
@@ -193,20 +202,22 @@ def _patch_choice_stock_refresh(monkeypatch, calls: list[str]) -> str:
 
 
 def _patch_source_backfill_refresh(monkeypatch, calls: list[str]) -> str:
-    import backend.app.api.routes.macro_toolkit as route_module
+    from backend.app.services import macro_toolkit_service
 
-    def fake_backfill_macro_series(**_kwargs):
+    def fake_queue_macro_source_backfill(**_kwargs):
         calls.append("called")
-        return {
-            "dry_run": False,
-            "processed_count": 1,
-            "total_added": 42,
-            "results": {"SHIBOR:3M": 42},
-            "errors": {},
-        }
+        return macro_toolkit_service.MacroToolkitActionResult(
+            payload={
+                "status": "queued",
+                "run_id": "macro-source-refresh-test",
+                "series_ids": ["NCD.SHIBOR.3M"],
+            },
+            quality_flag="warning",
+            as_of_date="2026-04-30",
+        )
 
-    monkeypatch.setattr(route_module, "backfill_macro_series", fake_backfill_macro_series)
-    return "NCD.SHIBOR.3M"
+    monkeypatch.setattr(macro_toolkit_service, "queue_macro_source_backfill", fake_queue_macro_source_backfill)
+    return "macro-source-refresh-test"
 
 
 def _patch_commodity_futures_refresh(monkeypatch, calls: list[str]) -> str:
@@ -250,8 +261,19 @@ def _patch_livermore_gate_supplement_refresh(monkeypatch, calls: list[str]) -> s
         calls.append("called")
         return {"status": "queued", "run_id": "livermore-gate-supplement-refresh-test"}
 
-    monkeypatch.setattr(route_module, "compute_and_materialize_gate_supplement", fake_refresh)
+    monkeypatch.setattr(route_module, "queue_gate_supplement_refresh", fake_refresh)
     return "livermore-gate-supplement-refresh-test"
+
+
+def _patch_livermore_gate_supplement_status(monkeypatch, calls: list[str]) -> str:
+    import backend.app.api.routes.market_data_livermore as route_module
+
+    def fake_status(_governance_path, *, run_id: str):
+        calls.append(run_id)
+        return {"status": "queued", "run_id": run_id}
+
+    monkeypatch.setattr(route_module, "livermore_gate_supplement_refresh_status", fake_status)
+    return "livermore-gate-supplement-refresh-status-test"
 
 
 SCOPED_REFRESH_ROUTES = [
@@ -326,9 +348,55 @@ def test_refresh_route_requires_explicit_scope_grant(path, body, resource, patch
         json=body,
         headers={"X-User-Id": "refresh-user"},
     )
-    assert allowed.status_code == 200, allowed.text
+    expected_status = 202 if path.split("?", 1)[0] in (
+        "/ui/macro/toolkit/choice-stock/refresh",
+        "/ui/macro/toolkit/source-backfill/refresh",
+        "/ui/market-data/livermore/refresh-gate-supplement",
+    ) else 200
+    assert allowed.status_code == expected_status, allowed.text
     assert expected_run_id in allowed.text
     assert calls == ["called"]
+
+
+def test_livermore_status_route_requires_read_scope_not_refresh(tmp_path, monkeypatch):
+    sqlite_path = _setup_scope_store(tmp_path, monkeypatch, grant=False)
+
+    from backend.app.repositories.user_scope_repo import UserScopeRepository
+
+    calls: list[str] = []
+    expected_run_id = _patch_livermore_gate_supplement_status(monkeypatch, calls)
+    client = TestClient(_load_app(), raise_server_exceptions=False)
+
+    repo = UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
+    repo.grant_scope(
+        user_id="status-user",
+        role=None,
+        resource="market_data.livermore_gate_supplement",
+        action="refresh",
+    )
+
+    denied = client.get(
+        "/ui/market-data/livermore/refresh-gate-supplement/status",
+        params={"run_id": "livermore-gate-supplement-refresh-status-test"},
+        headers={"X-User-Id": "status-user"},
+    )
+    assert denied.status_code == 403, denied.text
+    assert calls == []
+
+    repo.grant_scope(
+        user_id="status-user",
+        role=None,
+        resource="market_data.livermore",
+        action="read",
+    )
+    allowed = client.get(
+        "/ui/market-data/livermore/refresh-gate-supplement/status",
+        params={"run_id": expected_run_id},
+        headers={"X-User-Id": "status-user"},
+    )
+    assert allowed.status_code == 200, allowed.text
+    assert expected_run_id in allowed.text
+    assert calls == [expected_run_id]
 
 
 def _patch_qdb_adjustment_create(monkeypatch, calls: list[str]) -> str:
@@ -463,6 +531,64 @@ def test_product_category_refresh_returns_503_when_scope_store_unavailable(tmp_p
     assert calls == []
 
 
+# B12 修复面：这些端点此前只捕 PermissionError→403，scope 存储不可用时漏出 500。
+# 契约：RuntimeError("User scope store is unavailable.") 必须映射为可重试 503。
+_SCOPE_STORE_UNAVAILABLE_ROUTES: list[tuple[str, str, dict[str, Any] | None]] = [
+    ("POST", "/api/kpi/metrics", {"metric_code": "T", "metric_name": "Test", "major_category": "A", "owner_id": 1, "year": 2026, "score_weight": "1.0", "data_source_type": "MANUAL", "scoring_rule_type": "LINEAR"}),
+    ("PUT", "/api/kpi/metrics/99999", {"metric_code": "T", "metric_name": "Test", "major_category": "A", "owner_id": 1, "year": 2026, "score_weight": "1.0", "data_source_type": "MANUAL", "scoring_rule_type": "LINEAR"}),
+    ("DELETE", "/api/kpi/metrics/99999", None),
+    ("POST", "/api/kpi/values", {"metric_id": 99999, "as_of_date": "2026-01-01"}),
+    ("PUT", "/api/kpi/values/99999", {}),
+    ("POST", "/api/kpi/values/batch", {"as_of_date": "2026-01-01", "items": []}),
+    ("POST", "/api/kpi/fetch_and_recalc?owner_id=1&as_of_date=2026-01-01", {"metric_ids": []}),
+    ("POST", "/ui/pnl/product-category/manual-adjustments", {"report_date": "2026-01-01", "account_code": "X", "currency": "CNY", "operator": "DELTA", "monthly_pnl": "100"}),
+    ("POST", "/ui/pnl/product-category/manual-adjustments/test-id/revoke", None),
+    ("POST", "/ui/pnl/product-category/manual-adjustments/test-id/edit", {"report_date": "2026-01-01", "account_code": "X", "currency": "CNY", "operator": "DELTA", "monthly_pnl": "50"}),
+    ("POST", "/ui/pnl/product-category/manual-adjustments/test-id/restore", None),
+    ("GET", "/ui/news/choice-events/latest", None),
+    ("GET", "/ui/news/choice-events/latest-batch?topics=NEWSTOPIC:5", None),
+    ("POST", "/ui/news/tushare-npr/ingest", None),
+    ("POST", "/api/news/tushare-npr/ingest", None),
+    ("POST", "/api/ledger/import", None),
+]
+
+
+@pytest.mark.parametrize(
+    "method,path,body",
+    _SCOPE_STORE_UNAVAILABLE_ROUTES,
+    ids=[f"{m} {p}" for m, p, _ in _SCOPE_STORE_UNAVAILABLE_ROUTES],
+)
+def test_route_returns_503_when_scope_store_unavailable(method, path, body, tmp_path, monkeypatch):
+    _setup_scope_store(tmp_path, monkeypatch, grant=False)
+    from backend.app.security.auth_context import ensure_user_allowed
+
+    class BrokenScopeRepository:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def has_permission(self, *_args, **_kwargs):
+            raise RuntimeError("scope store down")
+
+    monkeypatch.setitem(
+        ensure_user_allowed.__globals__,
+        "UserScopeRepository",
+        BrokenScopeRepository,
+    )
+    client = TestClient(_load_app(), raise_server_exceptions=False)
+
+    response = client.request(
+        method,
+        path,
+        json=body,
+        headers={"X-User-Id": "scope-store-down-user"},
+    )
+
+    assert response.status_code == 503, (
+        f"Expected 503 for {method} {path}, got {response.status_code}: {response.text}"
+    )
+    assert "User scope store is unavailable." in response.text
+
+
 def test_macro_choice_series_refresh_requires_explicit_refresh_grant(tmp_path, monkeypatch):
     sqlite_path = _setup_scope_store(tmp_path, monkeypatch, grant=False)
 
@@ -478,7 +604,7 @@ def test_macro_choice_series_refresh_requires_explicit_refresh_grant(tmp_path, m
     monkeypatch.setattr(route_module.refresh_choice_macro_snapshot, "fn", fake_choice_refresh, raising=False)
     monkeypatch.setattr(
         route_module,
-        "_run_public_cross_asset_headline_refresh",
+        "refresh_public_cross_asset_headlines",
         lambda: {"status": "completed", "warnings": []},
     )
     client = TestClient(_load_app(), raise_server_exceptions=False)
@@ -502,6 +628,43 @@ def test_macro_choice_series_refresh_requires_explicit_refresh_grant(tmp_path, m
     )
     assert allowed.status_code == 200, allowed.text
     assert calls == [2]
+
+
+def test_macro_choice_series_refresh_returns_503_when_scope_store_unavailable(tmp_path, monkeypatch):
+    _setup_scope_store(tmp_path, monkeypatch, grant=False)
+
+    import backend.app.api.routes.macro_vendor as route_module
+
+    calls: list[int] = []
+
+    def fake_choice_refresh(*, backfill_days: int):
+        calls.append(backfill_days)
+        return {"status": "completed", "warnings": []}
+
+    monkeypatch.setattr(route_module.refresh_choice_macro_snapshot, "fn", fake_choice_refresh, raising=False)
+
+    class BrokenScopeRepository:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def has_permission(self, *_args, **_kwargs):
+            raise RuntimeError("scope store down")
+
+    monkeypatch.setitem(
+        route_module.ensure_user_allowed.__globals__,
+        "UserScopeRepository",
+        BrokenScopeRepository,
+    )
+    client = TestClient(_load_app(), raise_server_exceptions=False)
+
+    response = client.post(
+        "/ui/macro/choice-series/refresh",
+        headers={"X-User-Id": "macro-user"},
+    )
+
+    assert response.status_code == 503, response.text
+    assert response.json()["detail"] == "User scope store is unavailable."
+    assert calls == []
 
 
 def test_macro_toolkit_script_run_requires_matching_scope_grant(tmp_path, monkeypatch):
@@ -610,4 +773,4 @@ def test_macro_toolkit_cffex_refresh_accepts_explicit_refresh_grant(tmp_path, mo
         headers={"X-User-Id": "cffex-user"},
     )
 
-    assert response.status_code == 200, response.text
+    assert response.status_code == 202, response.text

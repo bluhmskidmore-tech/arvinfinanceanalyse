@@ -1,0 +1,75 @@
+{
+  "_policy": "只降不升（ratchet-only）。本文件登记各债务计数器的上限基线：基线只允许下调，禁止上调；任何上调（含放松或删除现有条目）必须由技术负责人签核，并在 PR 中注明原因与证据。下调基线使用 `node scripts/audit_frontend_debt.mjs --ratchet`（只会收紧到当前实测值，绝不放松）。Baselines are ratchet-only debt ceilings: decreases only; any increase requires tech-lead sign-off recorded in the PR. Namespaces other than `frontend` are reserved placeholders for future counters (mypy / ble001 / as-unknown-as / duckdb direct-connect / visual tokens).",
+  "frontend": {
+    "apiClientLines": 563,
+    "apiClientMockOccurrences": 36,
+    "totalTsxStyleProps": 901,
+    "totalStaticTsxStyleProps": 359,
+    "featuresEmDashLiterals": 497,
+    "featuresSemanticProfitLossRefs": 13,
+    "featuresEchartsForReactImportFiles": 0,
+    "dashboardStyleFiles": {},
+    "maxPageStyleProps": {
+      "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx": 8,
+      "frontend/src/features/market-data/pages/MarketDataPage.tsx": 1,
+      "frontend/src/features/workbench/pages/OperationsAnalysisPage.tsx": 0,
+      "frontend/src/layouts/WorkbenchShell.tsx": 0,
+      "frontend/src/features/bond-analytics/components/BondAnalyticsInstitutionalCockpit.tsx": 6,
+      "frontend/src/features/cross-asset/pages/CrossAssetDriversPage.tsx": 0,
+      "frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx": 0,
+      "frontend/src/features/risk-overview/RiskOverviewPage.tsx": 0
+    },
+    "maxPageStaticStyleProps": {},
+    "protectedMonolithFiles": {
+      "scripts/mcp/moss_project_mcp.py": {
+        "maxLines": 12672,
+        "routeHint": "Add provider or domain behavior in a focused scripts/mcp/<domain>_*.py module."
+      },
+      "tests/test_project_mcp_servers.py": {
+        "maxLines": 14518,
+        "routeHint": "Add coverage in a focused tests/test_project_mcp_<domain>.py module."
+      },
+      "frontend/src/api/contracts.ts": {
+        "maxLines": 19,
+        "routeHint": "Put new contracts in the owning domain contract or client module."
+      },
+      "frontend/src/features/macro-toolkit/pages/MacroToolkitPage.tsx": {
+        "maxLines": 7179,
+        "routeHint": "Add new logic in a colocated macro-toolkit component or model module and keep the page compositional."
+      },
+      "frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx": {
+        "maxLines": 5158,
+        "routeHint": "Add a colocated feature component or model and keep the page compositional."
+      },
+      "frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.ts": {
+        "maxLines": 5459,
+        "routeHint": "Create a focused productCategory<Surface>Model.ts instead of moving page debt here."
+      },
+      "frontend/src/features/stock-analysis/lib/stockAnalysisPageModel.ts": {
+        "maxLines": 5860,
+        "routeHint": "Create a focused stockAnalysis<Surface>Model.ts instead of moving page debt here."
+      },
+      "frontend/src/features/balance-movement-analysis/pages/BalanceMovementAnalysisPage.tsx": {
+        "maxLines": 4619,
+        "routeHint": "Add a colocated balance-movement component or model and keep the page compositional."
+      },
+      "frontend/src/features/workbench/module-home/moduleHomeModel.ts": {
+        "maxLines": 4505,
+        "routeHint": "Create a focused moduleHome<Surface>Model.ts instead of moving page debt here."
+      },
+      "frontend/src/features/stock-analysis/pages/StockAnalysisPageImpl.tsx": {
+        "maxLines": 4406,
+        "routeHint": "Add a colocated stock-analysis component or model and keep the page compositional."
+      },
+      "backend/app/services/pnl_service.py": {
+        "maxLines": 4218,
+        "routeHint": "Add focused pnl_<domain>.py logic and keep pnl_service.py as orchestration."
+      }
+    }
+  },
+  "mypy": {},
+  "ble001": {},
+  "as_unknown_as": {},
+  "duckdb_connect": {},
+  "visual_tokens": {}
+}

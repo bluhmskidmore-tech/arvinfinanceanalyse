@@ -12,7 +12,7 @@ describe("StockAnalysisStatusPrimitives", () => {
     const icon = container.querySelector("span");
 
     expect(icon).toHaveAttribute("aria-hidden", "true");
-    expect(icon).toHaveClass("text-warning-700");
+    expect(icon).toHaveClass("stock-analysis-page__status-icon--warning");
     expect(icon).toHaveTextContent("!");
   });
 
@@ -35,7 +35,7 @@ describe("StockAnalysisStatusPrimitives", () => {
     expect(tile).toHaveAttribute("aria-label", "优化 待查 T+5");
     expect(tile).toHaveAttribute("title", "优化诊断");
     expect(tile).toHaveClass("extra-class");
-    expect(screen.getByText("优化")).toHaveClass("text-danger-600");
+    expect(screen.getByText("优化")).toHaveClass("stock-analysis-page__tone-text--negative");
     expect(screen.getByText("待查")).toBeInTheDocument();
     expect(screen.getByText("T+5")).toBeInTheDocument();
   });

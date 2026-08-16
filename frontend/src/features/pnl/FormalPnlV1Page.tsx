@@ -8,22 +8,23 @@ import "ag-grid-community/styles/ag-theme-alpine.css";
 import "../../styles/agGridInstitutional.css";
 
 import { useApiClient } from "../../api/client";
-import type { LiabilityYieldKpi, Numeric, PnlBasis, PnlV1DetailRow } from "../../api/contracts";
-import { formatNumeric } from "../../utils/format";
+import type { Numeric, PnlBasis, PnlV1DetailRow } from "../../api/contracts";
+import type { LiabilityYieldKpi } from "../../api/liabilityAdbContracts";
+import { EM_DASH, formatNumeric } from "../../utils/format";
 import { runPollingTask } from "../../app/jobs/polling";
 import { FilterBar } from "../../components/FilterBar";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
+import { PageAsyncSection } from "../../components/page/PageAsyncSection";
 import { SectionLead } from "../../components/page/SectionLead";
-import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../../components/KpiCard";
 import { toneFromSignedDisplayString } from "../workbench/components/kpiFormat";
 import { PnlRefreshStatus } from "./PnlRuntimePanels";
-import { resolvePnlSectionState } from "./PnlRuntimeSupport";
+import { PNL_GRID_LOCALE_TEXT, resolvePnlSectionState } from "./PnlRuntimeSupport";
 import "./FormalPnlV1Page.css";
 
 function cellText(value: string | number | null | undefined) {
   if (value === null || value === undefined) {
-    return "—";
+    return EM_DASH;
   }
   return String(value);
 }
@@ -31,7 +32,7 @@ function cellText(value: string | number | null | undefined) {
 function thousandsValueFormatter(params: ValueFormatterParams) {
   const value = params.value;
   if (value === null || value === undefined || value === "") {
-    return "—";
+    return EM_DASH;
   }
   const numeric = Number(String(value).replace(/,/g, ""));
   if (!Number.isFinite(numeric)) {
@@ -69,7 +70,7 @@ type DataTab = "fi" | "nonstd" | "yield";
 
 function formatYieldNumeric(value: Numeric | null | undefined) {
   if (value == null) {
-    return "—";
+    return EM_DASH;
   }
   return formatNumeric(value);
 }
@@ -117,9 +118,10 @@ export default function FormalPnlV1Page() {
 
   const v1DetailColDefs = useMemo(() => withNumericFormatters(v1DetailColumnDefs), []);
 
+  // /api/pnl/dates 与 /api/pnl/overview 仅正式口径读模型（后端不消费 basis 参数），不再发送 basis。
   const datesQuery = useQuery({
-    queryKey: ["pnl", "dates", client.mode, basis],
-    queryFn: () => client.getFormalPnlDates(basis),
+    queryKey: ["pnl", "dates", client.mode],
+    queryFn: () => client.getFormalPnlDates(),
     retry: false,
   });
 
@@ -138,17 +140,20 @@ export default function FormalPnlV1Page() {
     }
   }, [reportDates, selectedReportDate]);
 
+  // 后端 /api/pnl/v1-data 不支持 basis 参数（仅正式口径读模型）；
+  // 分析口径下不加载明细，避免与概览查询的口径混用。
+  const detailBasisLocked = basis !== "formal";
   const dataQuery = useQuery({
     queryKey: ["pnl", "v1-data", client.mode, selectedReportDate],
-    enabled: Boolean(selectedReportDate),
+    enabled: Boolean(selectedReportDate) && !detailBasisLocked,
     queryFn: () => client.getPnlV1Data(selectedReportDate),
     retry: false,
   });
 
   const overviewQuery = useQuery({
-    queryKey: ["pnl", "overview", client.mode, basis, selectedReportDate],
+    queryKey: ["pnl", "overview", client.mode, selectedReportDate],
     enabled: Boolean(selectedReportDate),
-    queryFn: () => client.getFormalPnlOverview(selectedReportDate, basis),
+    queryFn: () => client.getFormalPnlOverview(selectedReportDate),
     retry: false,
   });
 
@@ -173,9 +178,12 @@ export default function FormalPnlV1Page() {
     !overviewQuery.isError &&
     (!selectedReportDate || overview === null);
 
-  const dataLoading = datesQuery.isLoading || (Boolean(selectedReportDate) && dataQuery.isLoading);
-  const dataError = datesQuery.isError || dataQuery.isError;
+  const detailTabLocked = detailBasisLocked && dataTab !== "yield";
+  const dataLoading =
+    !detailTabLocked && (datesQuery.isLoading || (Boolean(selectedReportDate) && !detailBasisLocked && dataQuery.isLoading));
+  const dataError = !detailTabLocked && (datesQuery.isError || dataQuery.isError);
   const dataEmpty =
+    !detailTabLocked &&
     !datesQuery.isLoading &&
     !dataQuery.isLoading &&
     !datesQuery.isError &&
@@ -246,16 +254,10 @@ export default function FormalPnlV1Page() {
         start: () => client.refreshFormalPnl(selectedReportDate),
         getStatus: (runId) => client.getFormalPnlImportStatus(runId),
         onUpdate: (nextPayload) => {
-          setRefreshStatus(
-            [
-              nextPayload.status,
-              nextPayload.run_id,
-              nextPayload.report_date,
-              nextPayload.source_version,
-            ]
-              .filter(Boolean)
-              .join(" · "),
-          );
+          const secondary = [nextPayload.run_id, nextPayload.report_date, nextPayload.source_version]
+            .filter(Boolean)
+            .join(" ");
+          setRefreshStatus([nextPayload.status, secondary].filter(Boolean).join(" · "));
         },
       });
       if (payload.status !== "completed") {
@@ -269,8 +271,12 @@ export default function FormalPnlV1Page() {
     }
   }
 
+  /*
+   * 深色 owner 由外层 ThemedRouteBoundary 承担；页根只声明 Nocturne scope
+   * （tokens.css 别名块将 --dh-api-* 重映射至 --nct-*，ledger-pnl 同款）。
+   */
   return (
-    <section data-testid="formal-pnl-v1-page">
+    <section data-testid="formal-pnl-v1-page" data-moss-theme-scope="pnl">
       <div className="formal-pnl-v1-page-header">
         <div>
           <h1
@@ -324,11 +330,15 @@ export default function FormalPnlV1Page() {
             <button
               type="button"
               className={tabButtonClassName(basis === "analytical")}
-              onClick={() => setBasis("analytical")}
+              disabled
+              title="分析口径读模型未建，后端 /api/pnl/dates、/api/pnl/overview、/api/pnl/v1-data 均不消费 basis 参数。"
             >
               分析口径
             </button>
           </div>
+          <p data-testid="pnl-basis-formal-only-note" className="formal-pnl-v1-basis-inline-note">
+            当前仅正式口径；分析口径读模型未建。
+          </p>
         </div>
         <label>
           <span className="formal-pnl-v1-filter-label">报告日</span>
@@ -375,7 +385,7 @@ export default function FormalPnlV1Page() {
           title="正式损益汇总"
           description="先确认报告日与刷新状态，再阅读 514 / 516 / 517、手工调整和损益合计；所有数值均来自后端正式读模型。"
         />
-        <AsyncSection
+        <PageAsyncSection
           title="汇总概览"
           isLoading={overviewLoading}
           isError={overviewError}
@@ -384,49 +394,49 @@ export default function FormalPnlV1Page() {
             void Promise.all([datesQuery.refetch(), overviewQuery.refetch()]);
           }}
         >
+          {/* 技术小注（"后端返回的汇总金额字符串。"等）收进格 title（§6 去重）；
+              数据来源结论由区头一句「所有数值均来自后端正式读模型」统一承载。 */}
           <div data-testid="pnl-overview-cards" className="formal-pnl-v1-summary-grid">
-            <KpiCard
-              title="固收明细行数"
-              value={cellText(overview?.formal_fi_row_count)}
-              detail="正式固收明细行数（后端计数）。"
-              unit="行"
-            />
-            <KpiCard
-              title="非标桥接行数"
-              value={cellText(overview?.nonstd_bridge_row_count)}
-              detail="非标桥接明细行数（后端计数）。"
-              unit="行"
-            />
-            <KpiCard
-              title="利息收入 (514)"
-              value={formatWan(overview?.interest_income_514)}
-              detail="后端返回的汇总金额字符串。"
-              unit="万元"
-              tone={toneFromSignedDisplayString(formatWan(overview?.interest_income_514))}
-            />
-            <KpiCard
-              title="公允价值变动 (516)"
-              value={formatWan(overview?.fair_value_change_516)}
-              detail="后端返回的汇总金额字符串。"
-              unit="万元"
-              tone={toneFromSignedDisplayString(formatWan(overview?.fair_value_change_516))}
-            />
-            <KpiCard
-              title="资本利得 (517)"
-              value={formatWan(overview?.capital_gain_517)}
-              detail="后端返回的汇总金额字符串。"
-              unit="万元"
-              tone={toneFromSignedDisplayString(formatWan(overview?.capital_gain_517))}
-            />
-            <KpiCard
-              title="损益合计"
-              value={formatWan(overview?.total_pnl)}
-              detail="后端返回的汇总损益字符串。"
-              unit="万元"
-              tone={toneFromSignedDisplayString(formatWan(overview?.total_pnl))}
-            />
+            <div className="formal-pnl-v1-kpi-cell" title="正式固收明细行数（后端计数）。">
+              <KpiCard title="固收明细行数" value={cellText(overview?.formal_fi_row_count)} unit="行" />
+            </div>
+            <div className="formal-pnl-v1-kpi-cell" title="非标桥接明细行数（后端计数）。">
+              <KpiCard title="非标桥接行数" value={cellText(overview?.nonstd_bridge_row_count)} unit="行" />
+            </div>
+            <div className="formal-pnl-v1-kpi-cell" title="后端返回的汇总金额字符串。">
+              <KpiCard
+                title="利息收入 (514)"
+                value={formatWan(overview?.interest_income_514)}
+                unit="万元"
+                tone={toneFromSignedDisplayString(formatWan(overview?.interest_income_514))}
+              />
+            </div>
+            <div className="formal-pnl-v1-kpi-cell" title="后端返回的汇总金额字符串。">
+              <KpiCard
+                title="公允价值变动 (516)"
+                value={formatWan(overview?.fair_value_change_516)}
+                unit="万元"
+                tone={toneFromSignedDisplayString(formatWan(overview?.fair_value_change_516))}
+              />
+            </div>
+            <div className="formal-pnl-v1-kpi-cell" title="后端返回的汇总金额字符串。">
+              <KpiCard
+                title="资本利得 (517)"
+                value={formatWan(overview?.capital_gain_517)}
+                unit="万元"
+                tone={toneFromSignedDisplayString(formatWan(overview?.capital_gain_517))}
+              />
+            </div>
+            <div className="formal-pnl-v1-kpi-cell" title="后端返回的汇总损益字符串。">
+              <KpiCard
+                title="损益合计"
+                value={formatWan(overview?.total_pnl)}
+                unit="万元"
+                tone={toneFromSignedDisplayString(formatWan(overview?.total_pnl))}
+              />
+            </div>
           </div>
-        </AsyncSection>
+        </PageAsyncSection>
       </div>
 
       <div data-testid="pnl-data-section" data-state={dataState} className="formal-pnl-v1-data-section">
@@ -439,7 +449,7 @@ export default function FormalPnlV1Page() {
               : "固收明细和非标桥接共用当前报告日，保留原有页签、明细表和分页行为，不改变正式损益契约。"
           }
         />
-        <AsyncSection
+        <PageAsyncSection
           title="明细数据"
           extra={dataTabExtra}
           isLoading={detailLoading}
@@ -453,9 +463,18 @@ export default function FormalPnlV1Page() {
             }
           }}
         >
-          {dataTab === "fi" ? (
+          {detailTabLocked ? (
+            <div data-testid="pnl-detail-basis-locked" className="formal-pnl-v1-basis-note">
+              明细仅正式口径：后端明细接口（/api/pnl/v1-data）不支持分析口径参数，为避免明细与概览口径混用，
+              分析口径下不加载固收明细与非标桥接表。切回「正式口径」查看明细。
+            </div>
+          ) : dataTab === "fi" ? (
             <div className="ag-theme-alpine formal-pnl-v1-grid-shell" data-testid="pnl-formal-fi-table">
+              {/* theme="legacy"：走 ag-theme-alpine CSS 主题链（theme-dh-api 深色块 + 页内
+                  --ag-* 变量）；缺省 Theming API 会注入浅色皮肤造成明暗拼接（§11.1）。 */}
               <AgGridReact<PnlV1DetailRow>
+                theme="legacy"
+                localeText={PNL_GRID_LOCALE_TEXT}
                 rowData={formalRows}
                 columnDefs={v1DetailColDefs}
                 defaultColDef={gridDefaultColDef}
@@ -470,6 +489,8 @@ export default function FormalPnlV1Page() {
           ) : dataTab === "nonstd" ? (
             <div className="ag-theme-alpine formal-pnl-v1-grid-shell" data-testid="pnl-nonstd-bridge-table">
               <AgGridReact<PnlV1DetailRow>
+                theme="legacy"
+                localeText={PNL_GRID_LOCALE_TEXT}
                 rowData={nonstdRows}
                 columnDefs={v1DetailColDefs}
                 defaultColDef={gridDefaultColDef}
@@ -483,33 +504,37 @@ export default function FormalPnlV1Page() {
             </div>
           ) : (
             <div data-testid="pnl-yield-kpi-grid" className="formal-pnl-v1-summary-grid">
-              <KpiCard
-                title="资产收益率"
-                value={formatYieldNumeric(yieldKpi?.asset_yield ?? null)}
-                detail="后端资产收益率显示值。"
-                tone={toneFromSignedDisplayString(formatYieldNumeric(yieldKpi?.asset_yield ?? null))}
-              />
-              <KpiCard
-                title="负债成本"
-                value={formatYieldNumeric(yieldKpi?.liability_cost ?? null)}
-                detail="后端负债成本显示值。"
-                tone={toneFromSignedDisplayString(formatYieldNumeric(yieldKpi?.liability_cost ?? null))}
-              />
-              <KpiCard
-                title="市场负债成本"
-                value={formatYieldNumeric(yieldKpi?.market_liability_cost ?? null)}
-                detail="后端市场负债成本显示值。"
-                tone={toneFromSignedDisplayString(formatYieldNumeric(yieldKpi?.market_liability_cost ?? null))}
-              />
-              <KpiCard
-                title="净息差 (NIM)"
-                value={formatYieldNumeric(yieldKpi?.nim ?? null)}
-                detail="后端净息差显示值。"
-                tone={toneFromSignedDisplayString(formatYieldNumeric(yieldKpi?.nim ?? null))}
-              />
+              <div className="formal-pnl-v1-kpi-cell" title="后端资产收益率显示值。">
+                <KpiCard
+                  title="资产收益率"
+                  value={formatYieldNumeric(yieldKpi?.asset_yield ?? null)}
+                  tone={toneFromSignedDisplayString(formatYieldNumeric(yieldKpi?.asset_yield ?? null))}
+                />
+              </div>
+              <div className="formal-pnl-v1-kpi-cell" title="后端负债成本显示值。">
+                <KpiCard
+                  title="负债成本"
+                  value={formatYieldNumeric(yieldKpi?.liability_cost ?? null)}
+                  tone={toneFromSignedDisplayString(formatYieldNumeric(yieldKpi?.liability_cost ?? null))}
+                />
+              </div>
+              <div className="formal-pnl-v1-kpi-cell" title="后端市场负债成本显示值。">
+                <KpiCard
+                  title="市场负债成本"
+                  value={formatYieldNumeric(yieldKpi?.market_liability_cost ?? null)}
+                  tone={toneFromSignedDisplayString(formatYieldNumeric(yieldKpi?.market_liability_cost ?? null))}
+                />
+              </div>
+              <div className="formal-pnl-v1-kpi-cell" title="后端净息差显示值。">
+                <KpiCard
+                  title="净息差 (NIM)"
+                  value={formatYieldNumeric(yieldKpi?.nim ?? null)}
+                  tone={toneFromSignedDisplayString(formatYieldNumeric(yieldKpi?.nim ?? null))}
+                />
+              </div>
             </div>
           )}
-        </AsyncSection>
+        </PageAsyncSection>
       </div>
 
       <FormalResultMetaPanel

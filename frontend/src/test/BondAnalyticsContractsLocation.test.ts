@@ -4,11 +4,13 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const ROOT = resolve(__dirname, "..");
-const CONTRACTS_PATH = resolve(ROOT, "api/contracts.ts");
+// Contracts are split by domain under api/contracts/; bond analytics payloads
+// live in the bondAnalytics domain file (re-exported via api/contracts.ts).
+const CONTRACTS_PATH = resolve(ROOT, "api/contracts/bondAnalytics.ts");
 const FEATURE_TYPES_PATH = resolve(ROOT, "features/bond-analytics/types.ts");
 
 describe("bond analytics payload contract location", () => {
-  it("keeps major bond analytics API payloads in api/contracts.ts and only aliases them in feature types", () => {
+  it("keeps major bond analytics API payloads in api/contracts/bondAnalytics.ts and only aliases them in feature types", () => {
     const contractsText = readFileSync(CONTRACTS_PATH, "utf8");
     const featureTypesText = readFileSync(FEATURE_TYPES_PATH, "utf8");
 

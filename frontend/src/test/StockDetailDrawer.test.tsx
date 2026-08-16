@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -7,23 +10,50 @@ import { createApiClient } from "../api/client";
 import type {
   ApiEnvelope,
   ApiQuality,
+  ChoiceNewsEventsPayload,
   LivermoreCandidateHistoryRow,
   LivermoreStockDetailPayload,
   ResultMeta,
+  StockKlineAnalysisPayload,
 } from "../api/contracts";
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { StockDetailDrawer } from "../features/stock-analysis/components/StockDetailDrawer";
+import { nocturneTokens } from "../theme/designSystem";
 
 vi.mock("../components/charts/BaseChart", () => ({
-  BaseChart: function MockBaseChart() {
-    return <div data-testid="stock-detail-chart-canvas-stub" />;
+  BaseChart: function MockBaseChart({
+    height,
+    option,
+  }: {
+    height?: number;
+    option?: unknown;
+  }) {
+    return (
+      <div
+        data-height={height}
+        data-option={JSON.stringify(option)}
+        data-testid="stock-detail-chart-canvas-stub"
+      />
+    );
   },
 }));
+
+const STOCK_DETAIL_DRAWER_CSS_PATH = resolve(
+  process.cwd(),
+  "src/features/stock-analysis/components/StockDetailDrawer.css",
+);
+const STOCK_DETAIL_DRAWER_SOURCE_PATH = resolve(
+  process.cwd(),
+  "src/features/stock-analysis/components/StockDetailDrawer.tsx",
+);
 
 function buildStockDetailEnvelope(
   overrides: {
     factor?: Partial<NonNullable<LivermoreStockDetailPayload["factor"]>>;
-    payload?: Partial<Pick<LivermoreStockDetailPayload, "requested_as_of_date" | "as_of_date">>;
+    payload?: Partial<
+      Pick<LivermoreStockDetailPayload, "requested_as_of_date" | "as_of_date">
+    >;
+    candles?: LivermoreStockDetailPayload["candles"];
     meta?: {
       source_version?: string;
       rule_version?: string;
@@ -37,7 +67,9 @@ function buildStockDetailEnvelope(
       ? (overrides.payload.requested_as_of_date ?? null)
       : "2026-04-29";
   const asOfDate: LivermoreStockDetailPayload["as_of_date"] =
-    overrides.payload && "as_of_date" in overrides.payload ? (overrides.payload.as_of_date ?? null) : "2026-04-29";
+    overrides.payload && "as_of_date" in overrides.payload
+      ? (overrides.payload.as_of_date ?? null)
+      : "2026-04-29";
 
   const envelope = buildMockApiEnvelope<LivermoreStockDetailPayload>(
     "market_data.livermore.stock_detail",
@@ -48,7 +80,7 @@ function buildStockDetailEnvelope(
       requested_as_of_date: requestedAsOfDate,
       as_of_date: asOfDate,
       lookback: 60,
-      candles: [
+      candles: overrides.candles ?? [
         {
           trade_date: "2026-04-26",
           open_value: 10,
@@ -82,6 +114,86 @@ function buildStockDetailEnvelope(
   return envelope;
 }
 
+function buildKlineAnalysisEnvelope(
+  overrides: Partial<StockKlineAnalysisPayload> = {},
+): ApiEnvelope<StockKlineAnalysisPayload> {
+  return buildMockApiEnvelope<StockKlineAnalysisPayload>(
+    "market_data.stock_analysis.kline",
+    {
+      basis: "analytical",
+      state: "ok",
+      contract_status: "observational_only",
+      formal_use_allowed: false,
+      trading_instruction_allowed: false,
+      stock_code: "000001.SZ",
+      requested_as_of_date: "2026-04-29",
+      as_of_date: "2026-04-29",
+      lookback: 60,
+      engine: {
+        name: "moss_stock_kline_analysis",
+        source: "kline-analysis zip deterministic OHLCV subset",
+        rule_version: "rv_stock_kline_analysis_observation_v1",
+        coverage: ["daily_patterns", "moving_average_trend", "volume_context", "validity_check"],
+      },
+      latest_candle: {
+        trade_date: "2026-04-29",
+        open_value: 10.1,
+        high_value: 10.8,
+        low_value: 10,
+        close_value: 10.7,
+        volume: 1_200_000,
+        amount: 12_840_000,
+      },
+      indicators: {
+        latest_close: 10.7,
+        ma5: 10.3,
+        ma20: 9.9,
+        ma60: 9.5,
+        return_5d: 0.042,
+        return_20d: 0.09,
+        volume_ratio_20d: 1.6,
+      },
+      patterns: [
+        {
+          key: "bullish_engulfing",
+          label: "bullish_engulfing",
+          tone: "positive",
+          evidence: "latest body engulfs prior down body",
+        },
+      ],
+      validity: {
+        state: "usable",
+        usable: true,
+        bar_count: 60,
+        required_bar_count: 30,
+        recommended_bar_count: 60,
+        data_health: { state: "ok", invalid_candle_count: 0, zero_volume_count: 0 },
+        liquidity: { state: "ok", latest_volume: 1_200_000, average_volume_20d: 900_000 },
+        warnings: [],
+      },
+      observation_signal: {
+        level: "constructive_watch",
+        label: "constructive_watch",
+        score: 78,
+        confidence: "high",
+        reasons: ["close_above_ma20", "ma20_above_ma60"],
+        risks: [],
+      },
+      diagnostics: [],
+      ...overrides,
+    },
+    {
+      basis: "analytical",
+      source_version: "sv_kline_test",
+      vendor_version: "vv_kline_test",
+      rule_version: "rv_stock_kline_analysis_observation_v1",
+      cache_version: "cv_stock_kline_analysis_observation_v1",
+      quality_flag: "ok",
+      vendor_status: "ok",
+    },
+  );
+}
+
 function buildCandidateHistoryEnvelope(items: LivermoreCandidateHistoryRow[]) {
   return buildMockApiEnvelope(
     "market_data.livermore.candidate_history",
@@ -104,68 +216,462 @@ function buildCandidateHistoryEnvelope(items: LivermoreCandidateHistoryRow[]) {
   );
 }
 
+function buildEmptyChoiceNewsEnvelope() {
+  return buildMockApiEnvelope<ChoiceNewsEventsPayload>(
+    "news.choice.latest",
+    {
+      total_rows: 0,
+      limit: 10,
+      offset: 0,
+      as_of_date: "2026-04-29",
+      excluded_future_rows: 0,
+      events: [],
+    },
+    { basis: "analytical", result_kind: "news.choice.latest" },
+  );
+}
+
 describe("StockDetailDrawer", () => {
+  it("locks the portal and drawer surfaces to the dark terminal theme", () => {
+    const source = readFileSync(STOCK_DETAIL_DRAWER_SOURCE_PATH, "utf8");
+    const css = readFileSync(STOCK_DETAIL_DRAWER_CSS_PATH, "utf8");
+
+    expect(source).toContain(
+      'rootClassName="theme-dh-api stock-detail-drawer"',
+    );
+    expect(source).toContain("rootStyle={stockAnalysisPageCssVars}");
+
+    [
+      "--dh-api-bg",
+      "--dh-api-panel",
+      "--dh-api-panel-2",
+      "--dh-api-panel-3",
+      "--dh-api-line",
+      "--dh-api-ink",
+      "--dh-api-blue",
+      "--dh-api-green",
+      "--dh-api-amber",
+      "--dh-api-red",
+    ].forEach((token) => expect(css).toContain(`var(${token}`));
+
+    expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+    expect(css).not.toMatch(/\brgba?\(/);
+    expect(css).not.toContain("var(--ib-");
+    expect(css).not.toContain("linear-gradient");
+
+    const shadowValues = [...css.matchAll(/box-shadow:\s*([^;]+);/g)].map(
+      ([, value]) => value.trim(),
+    );
+    expect(shadowValues.length).toBeGreaterThan(0);
+    expect(
+      shadowValues.every((value) => /^none(?:\s*!important)?$/.test(value)),
+    ).toBe(true);
+
+    const fontSizes = [...css.matchAll(/font-size:\s*([\d.]+)px/g)].map(
+      ([, value]) => Number(value),
+    );
+    expect(fontSizes.length).toBeGreaterThan(0);
+    expect(fontSizes.every((value) => value >= 12 && value <= 15)).toBe(true);
+
+    const radiusValues = [...css.matchAll(/border-radius:\s*([^;]+);/g)].map(
+      ([, value]) => value.trim(),
+    );
+    expect(radiusValues.length).toBeGreaterThan(0);
+    expect(
+      radiusValues.every((value) => value === "var(--dh-api-radius, 6px)"),
+    ).toBe(true);
+  });
+
+  it("keeps the stock detail drawer header compact before the decision summary", () => {
+    const css = readFileSync(STOCK_DETAIL_DRAWER_CSS_PATH, "utf8");
+    const compactStart = css.indexOf("Detail drawer compact header pass");
+    const compactCss = css.slice(compactStart);
+
+    expect(compactStart).toBeGreaterThan(-1);
+    expect(compactCss).toMatch(
+      /\.stock-detail-drawer__header\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)\s*auto[\s\S]*?gap:\s*8px[\s\S]*?padding:\s*10px 12px/,
+    );
+    expect(compactCss).toMatch(
+      /\.stock-detail-drawer__strategy-ranks-label\s*\{[\s\S]*?display:\s*none/,
+    );
+    expect(compactCss).toMatch(
+      /@media \(max-width:\s*720px\)[\s\S]*?\.stock-detail-drawer__header\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)\s*auto[\s\S]*?padding:\s*10px/,
+    );
+    expect(compactCss).toMatch(
+      /@media \(max-width:\s*720px\)[\s\S]*?\.stock-detail-drawer__lookback\s*\.ant-typography\s*\{[\s\S]*?display:\s*none/,
+    );
+  });
+
+  it("keeps audit and footer governance compact behind the stock review", () => {
+    const css = readFileSync(STOCK_DETAIL_DRAWER_CSS_PATH, "utf8");
+    const compactStart = css.indexOf("Detail drawer audit compact pass");
+    const compactCss = css.slice(compactStart);
+
+    expect(compactStart).toBeGreaterThan(-1);
+    expect(compactCss).toMatch(
+      /\.stock-detail-drawer__audit-details\s*>\s*summary\s*\{[\s\S]*?min-height:\s*36px[\s\S]*?padding:\s*8px 10px/,
+    );
+    expect(compactCss).toMatch(
+      /\.stock-detail-drawer__footer-meta\s*\{[\s\S]*?min-height:\s*28px[\s\S]*?white-space:\s*nowrap/,
+    );
+    expect(compactCss).toMatch(
+      /@media \(max-width:\s*720px\)[\s\S]*?\.stock-detail-drawer__audit-details\s*>\s*summary\s*\{[\s\S]*?align-items:\s*center[\s\S]*?flex-direction:\s*row/,
+    );
+  });
+
   it("fetches stock detail and shows chart + factor grid", async () => {
     const client = createApiClient({ mode: "mock" });
-    const spy = vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());
+    const spy = vi
+      .spyOn(client, "getLivermoreStockDetail")
+      .mockResolvedValue(buildStockDetailEnvelope());
     const newsSpy = vi.spyOn(client, "getChoiceNewsEvents");
 
     render(
       <AppProviders client={client}>
-        <StockDetailDrawer stockCode="000001.SZ" stockName="Alpha" asOfDate="2026-04-29" onClose={() => undefined} />
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          stockName="Alpha"
+          asOfDate="2026-04-29"
+          onClose={() => undefined}
+        />
       </AppProviders>,
     );
 
     await waitFor(() => expect(spy).toHaveBeenCalled());
 
     expect(await screen.findByTestId("stock-detail-chart")).toBeInTheDocument();
+    expect(screen.getByTestId("stock-detail-chart-canvas-stub")).toHaveAttribute(
+      "data-height",
+      "300",
+    );
     expect(screen.getByTestId("stock-detail-factors")).toBeInTheDocument();
-    expect(screen.getByTestId("stock-detail-factor-pe")).toHaveTextContent("9.70");
+    expect(screen.getByTestId("stock-detail-factor-pe")).toHaveTextContent(
+      "9.70",
+    );
     const footerMeta = screen.getByTestId("stock-detail-footer-meta");
-    expect(footerMeta).toHaveTextContent("来源版本 sv_test");
-    expect(footerMeta).toHaveTextContent("规则版本 rv_test");
+    expect(footerMeta).toHaveTextContent("数据口径 已确认");
     expect(footerMeta).toHaveTextContent("质量 正常");
     expect(footerMeta).toHaveTextContent("供数状态 正常");
+    expect(footerMeta).not.toHaveTextContent("sv_test");
+    expect(footerMeta).not.toHaveTextContent("rv_test");
     expect(footerMeta).not.toHaveTextContent("通道 正常");
     expect(footerMeta).not.toHaveTextContent("source_version");
     expect(footerMeta).not.toHaveTextContent("rule_version");
     expect(footerMeta).not.toHaveTextContent("quality_flag");
     expect(footerMeta).not.toHaveTextContent("vendor_status");
+    const lineageDetail = screen.getByTestId("stock-detail-lineage-detail");
+    expect(lineageDetail).toHaveTextContent(/来源版本\s*sv_test/);
+    expect(lineageDetail).toHaveTextContent(/规则版本\s*rv_test/);
     await waitFor(() =>
       expect(newsSpy).toHaveBeenCalledWith({
         limit: 10,
         offset: 0,
         stockCode: "000001.SZ",
+        receivedTo: "2026-04-29T23:59:59Z",
       }),
     );
-    expect(screen.getByTestId("stock-detail-candidate-history")).toHaveTextContent("价格回报 · 快照累计");
-    expect(screen.getByTestId("stock-detail-candidate-history")).not.toHaveTextContent("backfill");
-    expect(screen.getByTestId("stock-detail-market-events-banner")).toHaveTextContent("市场事件 · 公告财报待补");
-    expect(screen.getByTestId("stock-detail-market-events-banner")).not.toHaveTextContent("payload");
+    expect(
+      screen.getByTestId("stock-detail-candidate-history"),
+    ).toHaveTextContent("价格回报 · 快照累计");
+    expect(
+      screen.getByTestId("stock-detail-candidate-history"),
+    ).not.toHaveTextContent("backfill");
+    expect(
+      screen.getByTestId("stock-detail-market-events-banner"),
+    ).toHaveTextContent("市场事件 · 公告财报待补");
+    expect(
+      screen.getByTestId("stock-detail-market-events-banner"),
+    ).not.toHaveTextContent("payload");
   });
 
-  it("shows the resolved data date separately when a requested date falls back", async () => {
+  it("omits incomplete OHLC rows and preserves missing volume in the chart", async () => {
     const client = createApiClient({ mode: "mock" });
-    const detailSpy = vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
       buildStockDetailEnvelope({
-        payload: {
-          requested_as_of_date: "2026-05-08",
-          as_of_date: "2026-04-29",
-        },
+        candles: [
+          {
+            trade_date: "2026-04-25",
+            open_value: null,
+            high_value: 10.4,
+            low_value: 9.8,
+            close_value: 10.1,
+            volume: 500,
+            amount: 5_000,
+          },
+          {
+            trade_date: "2026-04-26",
+            open_value: 10.2,
+            high_value: 10.8,
+            low_value: 10,
+            close_value: 10.6,
+            volume: null,
+            amount: null,
+          },
+        ],
       }),
     );
-    vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
-      buildMockApiEnvelope(
-        "news.choice.latest",
-        { total_rows: 0, limit: 10, offset: 0, events: [] },
-        { basis: "analytical", result_kind: "news.choice.latest" },
-      ),
-    );
-    vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(buildCandidateHistoryEnvelope([]));
 
     render(
       <AppProviders client={client}>
-        <StockDetailDrawer stockCode="000001.SZ" stockName="Alpha" asOfDate="2026-05-08" onClose={() => undefined} />
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          stockName="Alpha"
+          asOfDate="2026-04-29"
+          onClose={() => undefined}
+        />
+      </AppProviders>,
+    );
+
+    const chart = await screen.findByTestId("stock-detail-chart-canvas-stub");
+    await waitFor(() => {
+      const option = JSON.parse(chart.getAttribute("data-option") ?? "{}") as {
+        textStyle?: { color?: string };
+        xAxis?: Array<{ data: string[] }>;
+        yAxis?: Array<{
+          splitLine?: { lineStyle?: { color?: string } };
+        }>;
+        series?: Array<{
+          data: unknown[];
+          itemStyle?: {
+            color?: string;
+            color0?: string;
+            borderColor?: string;
+            borderColor0?: string;
+          };
+        }>;
+      };
+
+      expect(option.xAxis?.[0]?.data).toEqual(["2026-04-26"]);
+      expect(option.series?.[0]?.data).toEqual([[10.2, 10.6, 10, 10.8]]);
+      expect(option.series?.[1]?.data).toEqual([null]);
+      expect(option.textStyle?.color).toBe(nocturneTokens.color.inkMuted);
+      expect(option.yAxis?.[0]?.splitLine?.lineStyle?.color).toBe(
+        nocturneTokens.color.lineSoft,
+      );
+      expect(option.series?.[0]?.itemStyle).toMatchObject({
+        color: nocturneTokens.color.red,
+        color0: nocturneTokens.color.green,
+        borderColor: nocturneTokens.color.red,
+        borderColor0: nocturneTokens.color.green,
+      });
+      expect(option.series?.[1]?.itemStyle?.color).toBe(
+        nocturneTokens.color.blue,
+      );
+    });
+  });
+
+  it("shows observational K-line analysis from the MOSS kline endpoint", async () => {
+    const client = createApiClient({ mode: "mock" });
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+      buildStockDetailEnvelope(),
+    );
+    const klineSpy = vi
+      .spyOn(client, "getStockKlineAnalysis")
+      .mockResolvedValue(buildKlineAnalysisEnvelope());
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          stockName="Alpha"
+          asOfDate="2026-04-29"
+          onClose={() => undefined}
+        />
+      </AppProviders>,
+    );
+
+    await waitFor(() =>
+      expect(klineSpy).toHaveBeenCalledWith({
+        stockCode: "000001.SZ",
+        asOfDate: "2026-04-29",
+        lookback: 60,
+      }),
+    );
+    const panel = await screen.findByTestId("stock-detail-kline-analysis");
+    expect(panel).toHaveTextContent("K 线观察");
+    expect(panel).toHaveTextContent("观察增强");
+    expect(panel).toHaveTextContent("78/100");
+    expect(panel).toHaveTextContent("信心 高");
+    expect(panel).toHaveTextContent("阳包阴");
+    // reasons/risks 徽标走中文语域，snake_case 原 token 只进 title。
+    const tags = screen.getByTestId("stock-detail-kline-tags");
+    expect(within(tags).getByText("收于 MA20 上方")).toHaveAttribute(
+      "title",
+      "close_above_ma20",
+    );
+    expect(within(tags).getByText("MA20 高于 MA60")).toBeInTheDocument();
+    expect(panel).not.toHaveTextContent("close_above_ma20");
+    expect(panel).not.toHaveTextContent("买入建议");
+    expect(panel).not.toHaveTextContent("卖出建议");
+    expect(panel).not.toHaveTextContent("下单");
+  });
+
+  it("trims padded stock codes before stock detail and K-line fetches", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const detailSpy = vi
+      .spyOn(client, "getLivermoreStockDetail")
+      .mockResolvedValue(buildStockDetailEnvelope());
+    const klineSpy = vi
+      .spyOn(client, "getStockKlineAnalysis")
+      .mockResolvedValue(buildKlineAnalysisEnvelope());
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer
+          stockCode=" 000001.SZ "
+          stockName="Alpha"
+          asOfDate="2026-04-29"
+          onClose={() => undefined}
+        />
+      </AppProviders>,
+    );
+
+    await waitFor(() =>
+      expect(detailSpy).toHaveBeenCalledWith({
+        stockCode: "000001.SZ",
+        asOfDate: "2026-04-29",
+        lookback: 60,
+      }),
+    );
+    await waitFor(() =>
+      expect(klineSpy).toHaveBeenCalledWith({
+        stockCode: "000001.SZ",
+        asOfDate: "2026-04-29",
+        lookback: 60,
+      }),
+    );
+  });
+
+  it("starts dated news and candidate history in parallel for a resolved caller date", async () => {
+    const client = createApiClient({ mode: "mock" });
+    let resolveDetail!: (
+      value: ApiEnvelope<LivermoreStockDetailPayload>,
+    ) => void;
+    let detailSettled = false;
+    const pendingDetail = new Promise<ApiEnvelope<LivermoreStockDetailPayload>>(
+      (resolve) => {
+        resolveDetail = resolve;
+      },
+    ).finally(() => {
+      detailSettled = true;
+    });
+    const detailSpy = vi
+      .spyOn(client, "getLivermoreStockDetail")
+      .mockReturnValue(pendingDetail);
+    const newsSpy = vi
+      .spyOn(client, "getChoiceNewsEvents")
+      .mockResolvedValue(buildEmptyChoiceNewsEnvelope());
+    const historySpy = vi
+      .spyOn(client, "getLivermoreCandidateHistory")
+      .mockResolvedValue(buildCandidateHistoryEnvelope([]));
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          asOfDate="2026-04-29"
+          asOfDateIsResolved
+          onClose={() => undefined}
+        />
+      </AppProviders>,
+    );
+
+    await waitFor(() => {
+      expect(detailSpy).toHaveBeenCalledWith({
+        stockCode: "000001.SZ",
+        asOfDate: "2026-04-29",
+        lookback: 60,
+      });
+      expect(newsSpy).toHaveBeenCalledWith({
+        limit: 10,
+        offset: 0,
+        stockCode: "000001.SZ",
+        receivedTo: "2026-04-29T23:59:59Z",
+      });
+      expect(historySpy).toHaveBeenCalledWith({
+        stockCode: "000001.SZ",
+        snapshotTo: "2026-04-29",
+        evaluationAsOfDate: "2026-04-29",
+        limit: 10,
+      });
+    });
+    expect(detailSettled).toBe(false);
+    expect(
+      screen.queryByTestId("stock-detail-market-events-empty"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("stock-detail-candidate-history-empty"),
+    ).not.toBeInTheDocument();
+    expect(newsSpy).toHaveBeenCalledOnce();
+    expect(historySpy).toHaveBeenCalledOnce();
+
+    resolveDetail(buildStockDetailEnvelope());
+    await waitFor(() => expect(detailSettled).toBe(true));
+    expect(newsSpy).toHaveBeenCalledOnce();
+    expect(historySpy).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["invalid", "2026-02-30"],
+  ])(
+    "keeps dated news and candidate history disabled when the effective date is %s",
+    async (_case, effectiveAsOfDate) => {
+      const client = createApiClient({ mode: "mock" });
+      const detailSpy = vi
+        .spyOn(client, "getLivermoreStockDetail")
+        .mockImplementation(
+          () =>
+            new Promise<ApiEnvelope<LivermoreStockDetailPayload>>(
+              () => undefined,
+            ),
+        );
+      const newsSpy = vi.spyOn(client, "getChoiceNewsEvents");
+      const historySpy = vi.spyOn(client, "getLivermoreCandidateHistory");
+
+      render(
+        <AppProviders client={client}>
+          <StockDetailDrawer
+            stockCode="000001.SZ"
+            asOfDate={effectiveAsOfDate}
+            onClose={() => undefined}
+          />
+        </AppProviders>,
+      );
+
+      await waitFor(() => expect(detailSpy).toHaveBeenCalledOnce());
+      expect(newsSpy).not.toHaveBeenCalled();
+      expect(historySpy).not.toHaveBeenCalled();
+    },
+  );
+
+  it("shows the resolved data date separately when a requested date falls back", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const detailSpy = vi
+      .spyOn(client, "getLivermoreStockDetail")
+      .mockResolvedValue(
+        buildStockDetailEnvelope({
+          payload: {
+            requested_as_of_date: "2026-05-08",
+            as_of_date: "2026-04-29",
+          },
+        }),
+      );
+    vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
+      buildEmptyChoiceNewsEnvelope(),
+    );
+    vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(
+      buildCandidateHistoryEnvelope([]),
+    );
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          stockName="Alpha"
+          asOfDate="2026-05-08"
+          onClose={() => undefined}
+        />
       </AppProviders>,
     );
 
@@ -184,30 +690,37 @@ describe("StockDetailDrawer", () => {
 
   it("keeps stock detail lineage visible as pending when result metadata is missing", async () => {
     const client = createApiClient({ mode: "mock" });
-    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope({ meta: null }));
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+      buildStockDetailEnvelope({ meta: null }),
+    );
     vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
-      buildMockApiEnvelope(
-        "news.choice.latest",
-        { total_rows: 0, limit: 10, offset: 0, events: [] },
-        { basis: "analytical", result_kind: "news.choice.latest" },
-      ),
+      buildEmptyChoiceNewsEnvelope(),
     );
 
     render(
       <AppProviders client={client}>
-        <StockDetailDrawer stockCode="000001.SZ" stockName="Alpha" asOfDate="2026-04-29" onClose={() => undefined} />
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          stockName="Alpha"
+          asOfDate="2026-04-29"
+          onClose={() => undefined}
+        />
       </AppProviders>,
     );
 
     const footerMeta = await screen.findByTestId("stock-detail-footer-meta");
-    expect(footerMeta).toHaveTextContent("来源版本 待确认");
-    expect(footerMeta).toHaveTextContent("规则版本 待确认");
+    expect(footerMeta).toHaveTextContent("数据口径 待确认");
     expect(footerMeta).toHaveTextContent("质量 待确认");
     expect(footerMeta).toHaveTextContent("供数状态 待确认");
+    expect(footerMeta).not.toHaveTextContent("来源版本");
+    expect(footerMeta).not.toHaveTextContent("规则版本");
     expect(footerMeta).not.toHaveTextContent("通道 待确认");
+    const lineageDetail = screen.getByTestId("stock-detail-lineage-detail");
+    expect(lineageDetail).toHaveTextContent(/来源版本\s*待确认/);
+    expect(lineageDetail).toHaveTextContent(/规则版本\s*待确认/);
   });
 
-  it("does not show the requested date as the stock detail data date when no data date is resolved", async () => {
+  it("blocks dated side queries when no stock detail data date is resolved", async () => {
     const client = createApiClient({ mode: "mock" });
     vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
       buildStockDetailEnvelope({
@@ -217,18 +730,21 @@ describe("StockDetailDrawer", () => {
         },
       }),
     );
-    vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
-      buildMockApiEnvelope(
-        "news.choice.latest",
-        { total_rows: 0, limit: 10, offset: 0, events: [] },
-        { basis: "analytical", result_kind: "news.choice.latest" },
-      ),
+    const newsSpy = vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
+      buildEmptyChoiceNewsEnvelope(),
     );
-    const histSpy = vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(buildCandidateHistoryEnvelope([]));
+    const historySpy = vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(
+      buildCandidateHistoryEnvelope([]),
+    );
 
     render(
       <AppProviders client={client}>
-        <StockDetailDrawer stockCode="000001.SZ" stockName="Alpha" asOfDate="2026-05-08" onClose={() => undefined} />
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          stockName="Alpha"
+          asOfDate="2026-05-08"
+          onClose={() => undefined}
+        />
       </AppProviders>,
     );
 
@@ -236,12 +752,64 @@ describe("StockDetailDrawer", () => {
     expect(screen.getByText("截至日 日期待补")).toBeInTheDocument();
     expect(screen.getByText("请求日期 2026-05-08")).toBeInTheDocument();
     expect(screen.queryByText("截至日 2026-05-08")).not.toBeInTheDocument();
-    expect(histSpy).not.toHaveBeenCalled();
+    expect(
+      screen.queryByTestId("stock-detail-market-events-empty"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("stock-detail-candidate-history-empty"),
+    ).not.toBeInTheDocument();
+    expect(newsSpy).not.toHaveBeenCalled();
+    expect(historySpy).not.toHaveBeenCalled();
+    expect(
+      screen.getByTestId("stock-detail-market-events-date-pending"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("stock-detail-candidate-history-date-pending"),
+    ).toBeInTheDocument();
   });
 
-  it("fetches candidate history with the resolved detail date when a requested date falls back", async () => {
+  it("waits for the resolved detail date before starting dated side queries", async () => {
     const client = createApiClient({ mode: "mock" });
-    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+    let resolveDetail!: (
+      value: ApiEnvelope<LivermoreStockDetailPayload>,
+    ) => void;
+    const pendingDetail = new Promise<ApiEnvelope<LivermoreStockDetailPayload>>(
+      (resolve) => {
+        resolveDetail = resolve;
+      },
+    );
+    const detailSpy = vi
+      .spyOn(client, "getLivermoreStockDetail")
+      .mockReturnValue(pendingDetail);
+    const newsSpy = vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
+      buildEmptyChoiceNewsEnvelope(),
+    );
+    const histSpy = vi
+      .spyOn(client, "getLivermoreCandidateHistory")
+      .mockResolvedValue(buildCandidateHistoryEnvelope([]));
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          stockName="Alpha"
+          asOfDate="2026-05-08"
+          onClose={() => undefined}
+        />
+      </AppProviders>,
+    );
+
+    await waitFor(() => expect(detailSpy).toHaveBeenCalledOnce());
+    expect(histSpy).not.toHaveBeenCalled();
+    expect(newsSpy).not.toHaveBeenCalled();
+    expect(
+      screen.queryByTestId("stock-detail-market-events-empty"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("stock-detail-candidate-history-empty"),
+    ).not.toBeInTheDocument();
+
+    resolveDetail(
       buildStockDetailEnvelope({
         payload: {
           requested_as_of_date: "2026-05-08",
@@ -249,32 +817,34 @@ describe("StockDetailDrawer", () => {
         },
       }),
     );
-    vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
-      buildMockApiEnvelope(
-        "news.choice.latest",
-        { total_rows: 0, limit: 10, offset: 0, events: [] },
-        { basis: "analytical", result_kind: "news.choice.latest" },
-      ),
-    );
-    const histSpy = vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(buildCandidateHistoryEnvelope([]));
 
-    render(
-      <AppProviders client={client}>
-        <StockDetailDrawer stockCode="000001.SZ" stockName="Alpha" asOfDate="2026-05-08" onClose={() => undefined} />
-      </AppProviders>,
-    );
-
-    await waitFor(() =>
+    await waitFor(() => {
       expect(histSpy).toHaveBeenCalledWith({
         stockCode: "000001.SZ",
         snapshotTo: "2026-04-29",
+        evaluationAsOfDate: "2026-04-29",
         limit: 10,
-      }),
-    );
+      });
+      expect(newsSpy).toHaveBeenCalledWith({
+        limit: 10,
+        offset: 0,
+        stockCode: "000001.SZ",
+        receivedTo: "2026-04-29T23:59:59Z",
+      });
+    });
+    expect(histSpy).toHaveBeenCalledOnce();
+    expect(newsSpy).toHaveBeenCalledOnce();
     expect(histSpy).not.toHaveBeenCalledWith({
       stockCode: "000001.SZ",
       snapshotTo: "2026-05-08",
+      evaluationAsOfDate: "2026-05-08",
       limit: 10,
+    });
+    expect(newsSpy).not.toHaveBeenCalledWith({
+      limit: 10,
+      offset: 0,
+      stockCode: "000001.SZ",
+      receivedTo: "2026-05-08T23:59:59Z",
     });
   });
 
@@ -293,18 +863,27 @@ describe("StockDetailDrawer", () => {
 
     render(
       <AppProviders client={client}>
-        <StockDetailDrawer stockCode="000001.SZ" stockName="Alpha" asOfDate="2026-04-29" onClose={() => undefined} />
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          stockName="Alpha"
+          asOfDate="2026-04-29"
+          onClose={() => undefined}
+        />
       </AppProviders>,
     );
 
     const footerMeta = await screen.findByTestId("stock-detail-footer-meta");
-    expect(footerMeta).toHaveTextContent("来源版本 sv_live");
-    expect(footerMeta).toHaveTextContent("规则版本 rv_live");
+    expect(footerMeta).toHaveTextContent("数据口径 已确认");
     expect(footerMeta).toHaveTextContent("质量 需复核");
     expect(footerMeta).toHaveTextContent("供数状态 供数陈旧");
+    expect(footerMeta).not.toHaveTextContent("sv_live");
+    expect(footerMeta).not.toHaveTextContent("rv_live");
     expect(footerMeta).not.toHaveTextContent("通道 供数陈旧");
     expect(footerMeta).not.toHaveTextContent("warning");
     expect(footerMeta).not.toHaveTextContent("vendor_stale");
+    const lineageDetail = screen.getByTestId("stock-detail-lineage-detail");
+    expect(lineageDetail).toHaveTextContent(/来源版本\s*sv_live/);
+    expect(lineageDetail).toHaveTextContent(/规则版本\s*rv_live/);
   });
 
   it("does not expose unknown stock detail footer governance codes", async () => {
@@ -315,14 +894,20 @@ describe("StockDetailDrawer", () => {
           source_version: "sv_live",
           rule_version: "rv_live",
           quality_flag: "external_vendor_quality_state" as ApiQuality,
-          vendor_status: "external_vendor_feed_pending" as ResultMeta["vendor_status"],
+          vendor_status:
+            "external_vendor_feed_pending" as ResultMeta["vendor_status"],
         },
       }),
     );
 
     render(
       <AppProviders client={client}>
-        <StockDetailDrawer stockCode="000001.SZ" stockName="Alpha" asOfDate="2026-04-29" onClose={() => undefined} />
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          stockName="Alpha"
+          asOfDate="2026-04-29"
+          onClose={() => undefined}
+        />
       </AppProviders>,
     );
 
@@ -330,11 +915,20 @@ describe("StockDetailDrawer", () => {
     expect(footerMeta).toHaveTextContent("待确认");
     expect(footerMeta).not.toHaveTextContent("external_vendor_quality_state");
     expect(footerMeta).not.toHaveTextContent("external_vendor_feed_pending");
+    const lineageDetail = screen.getByTestId("stock-detail-lineage-detail");
+    expect(lineageDetail).toHaveTextContent(/质量\s*待确认/);
+    expect(lineageDetail).toHaveTextContent(/供数状态\s*待确认/);
+    expect(lineageDetail).not.toHaveTextContent(
+      "external_vendor_quality_state",
+    );
+    expect(lineageDetail).not.toHaveTextContent("external_vendor_feed_pending");
   });
 
   it("shows the review context that opened the drawer", async () => {
     const client = createApiClient({ mode: "mock" });
-    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+      buildStockDetailEnvelope(),
+    );
 
     render(
       <AppProviders client={client}>
@@ -360,9 +954,241 @@ describe("StockDetailDrawer", () => {
     expect(context).toHaveTextContent("距观察位 0.46%");
   });
 
-  it("renders market event rows from getChoiceNewsEvents", async () => {
+  it("renders candidate review thesis when opened from the review queue", async () => {
     const client = createApiClient({ mode: "mock" });
-    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+      buildStockDetailEnvelope(),
+    );
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          stockName="Alpha"
+          asOfDate="2026-04-29"
+          reviewContext={{
+            sourceLabel: "复核队列",
+            sectorName: "AI",
+            reviewRank: 1,
+            distanceToBreakoutPct: "0.46%",
+            reviewThesis: {
+              whySelected: [
+                "Alpha · AI · 距观察位 0.46%",
+                "行业排名：行业排名第 1：AI",
+              ],
+              boundaries: ["新闻、公告、财报事件尚未进入候选卡。"],
+              invalidation: ["收盘跌破 10EMA 20.60 后降级观察。"],
+              nextActions: [
+                "看 K 线确认价格与量能",
+                "查公告/新闻确认边界",
+                "确认失效条件后再继续观察",
+              ],
+            },
+          }}
+          onClose={() => undefined}
+        />
+      </AppProviders>,
+    );
+
+    const thesis = await screen.findByTestId("stock-detail-review-thesis");
+    const brief = screen.getByTestId("stock-detail-decision-brief");
+    const thesisDetails = screen.getByTestId("stock-detail-thesis-details");
+    expect(brief).toHaveTextContent("为什么看");
+    expect(brief).toHaveTextContent("Alpha · AI");
+    expect(brief).toHaveTextContent("失效线");
+    expect(brief).toHaveTextContent("10EMA");
+    expect(brief).toHaveTextContent("边界");
+    expect(brief).toHaveTextContent("新闻、公告、财报事件尚未进入候选卡");
+    expect(brief).toHaveTextContent("下一步");
+    expect(brief).toHaveTextContent("看 K 线确认价格与量能");
+    expect(thesisDetails).not.toHaveAttribute("open");
+    expect(thesis).toHaveTextContent("为什么入选");
+    expect(thesis).toHaveTextContent("Alpha · AI");
+    expect(thesis).toHaveTextContent("行业排名");
+    expect(thesis).toHaveTextContent("主要边界");
+    expect(thesis).toHaveTextContent("新闻、公告、财报事件尚未进入候选卡");
+    expect(thesis).toHaveTextContent("失效条件");
+    expect(thesis).toHaveTextContent("10EMA");
+    expect(thesis).toHaveTextContent("下一步动作");
+    expect(thesis).toHaveTextContent("看 K 线确认价格与量能");
+    expect(thesis).not.toHaveTextContent("仅作观察与复核");
+    expect(thesis).not.toHaveTextContent("source_table");
+  });
+
+  it("opens review candidates with a decision summary before secondary audit details", async () => {
+    const client = createApiClient({ mode: "mock" });
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+      buildStockDetailEnvelope(),
+    );
+    vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
+      buildEmptyChoiceNewsEnvelope(),
+    );
+    vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(
+      buildCandidateHistoryEnvelope([]),
+    );
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          stockName="Alpha"
+          asOfDate="2026-04-29"
+          reviewContext={{
+            sourceLabel: "review queue",
+            sectorName: "AI",
+            reviewRank: 1,
+            distanceToBreakoutPct: "MA20 0.46%",
+            reviewThesis: {
+              whySelected: [
+                "Selected because rank #1 and MA20 distance is tight",
+              ],
+              boundaries: [
+                "Boundary: announcement and news still need manual confirmation",
+              ],
+              invalidation: ["Downgrade if price closes below 10EMA"],
+              nextActions: ["Open K-line review before continuing"],
+            },
+          }}
+          onClose={() => undefined}
+        />
+      </AppProviders>,
+    );
+
+    await screen.findByTestId("stock-detail-chart");
+
+    const summary = await screen.findByTestId("stock-detail-decision-summary");
+    const brief = screen.getByTestId("stock-detail-decision-brief");
+    expect(summary).toHaveTextContent("Selected because rank #1");
+    expect(summary).toHaveTextContent(
+      "Boundary: announcement and news still need manual confirmation",
+    );
+    expect(summary).toHaveTextContent("Downgrade if price closes below 10EMA");
+    expect(summary).toHaveTextContent("Open K-line review before continuing");
+    expect(brief).toHaveTextContent("为什么看");
+    expect(brief).toHaveTextContent("失效线");
+    expect(brief).toHaveTextContent("边界");
+    expect(brief).toHaveTextContent("下一步");
+
+    const chart = screen.getByTestId("stock-detail-chart");
+    expect(
+      summary.compareDocumentPosition(chart) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    const auditDetails = screen.getByTestId("stock-detail-audit-details");
+    expect(auditDetails).toContainElement(
+      screen.getByTestId("stock-detail-lineage-detail"),
+    );
+    expect(auditDetails).toContainElement(
+      screen.getByTestId("stock-detail-factors"),
+    );
+    expect(auditDetails).toContainElement(
+      screen.getByTestId("stock-detail-candidate-history"),
+    );
+    expect(auditDetails).toContainElement(
+      screen.getByTestId("stock-detail-market-events"),
+    );
+  });
+
+  it("renders compact review checks for price, volume, invalidation, and boundary", async () => {
+    const client = createApiClient({ mode: "mock" });
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+      buildStockDetailEnvelope({
+        candles: [
+          {
+            trade_date: "2026-04-24",
+            open_value: 9.8,
+            high_value: 10.1,
+            low_value: 9.7,
+            close_value: 10,
+            volume: 100,
+            amount: 1_000,
+          },
+          {
+            trade_date: "2026-04-25",
+            open_value: 10,
+            high_value: 10.8,
+            low_value: 9.9,
+            close_value: 10.5,
+            volume: 100,
+            amount: 1_050,
+          },
+          {
+            trade_date: "2026-04-26",
+            open_value: 10.6,
+            high_value: 11.2,
+            low_value: 10.5,
+            close_value: 11,
+            volume: 300,
+            amount: 3_300,
+          },
+        ],
+      }),
+    );
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          stockName="Alpha"
+          asOfDate="2026-04-29"
+          reviewContext={{
+            sourceLabel: "复核队列",
+            sectorName: "AI",
+            reviewRank: 1,
+            distanceToBreakoutPct: "MA20 0.46%",
+            reviewThesis: {
+              whySelected: ["Alpha · AI · 距观察位 MA20 0.46%"],
+              boundaries: ["新闻、公告、财报事件尚未进入候选卡。"],
+              invalidation: ["收盘跌破 10EMA 20.60 后降级观察。"],
+              nextActions: ["看 K 线确认价格与量能"],
+            },
+          }}
+          onClose={() => undefined}
+        />
+      </AppProviders>,
+    );
+
+    const confirmation = await screen.findByTestId(
+      "stock-detail-review-checklist",
+    );
+    const primaryGrid = confirmation.querySelector(
+      ".stock-detail-drawer__review-check-grid",
+    );
+    const moreChecks = within(confirmation).getByTestId(
+      "stock-detail-review-check-more",
+    );
+    const moreGrid = moreChecks.querySelector(
+      ".stock-detail-drawer__review-check-more-grid",
+    );
+    const timeline = within(confirmation).getByTestId(
+      "stock-detail-event-boundary-timeline",
+    );
+
+    expect(primaryGrid?.children.length).toBe(2);
+    expect(moreChecks).not.toHaveAttribute("open");
+    expect(moreChecks).toContainElement(timeline);
+    expect(moreGrid?.children.length).toBe(2);
+    expect(confirmation).toHaveTextContent("复核核验");
+    expect(confirmation).toHaveTextContent("价格");
+    await waitFor(() => expect(confirmation).toHaveTextContent("11.00"));
+    expect(confirmation).toHaveTextContent("较前日 +4.76%");
+    expect(confirmation).toHaveTextContent("量能 3.0x");
+    expect(confirmation).toHaveTextContent("观察位");
+    expect(confirmation).toHaveTextContent("MA20 0.46%");
+    expect(confirmation).toHaveTextContent("失效");
+    expect(confirmation).toHaveTextContent("收盘跌破 10EMA 20.60 后降级观察。");
+    expect(confirmation).toHaveTextContent("边界");
+    expect(confirmation).toHaveTextContent(
+      "新闻、公告、财报事件尚未进入候选卡。",
+    );
+    expect(confirmation).not.toHaveTextContent("source_table");
+  });
+
+  it("renders event boundary timeline near the candidate decision", async () => {
+    const client = createApiClient({ mode: "mock" });
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+      buildStockDetailEnvelope(),
+    );
     vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
       buildMockApiEnvelope(
         "news.choice.latest",
@@ -370,6 +1196,94 @@ describe("StockDetailDrawer", () => {
           total_rows: 2,
           limit: 10,
           offset: 0,
+          as_of_date: "2026-05-08",
+          excluded_future_rows: 1,
+          events: [
+            {
+              event_key: "e1",
+              received_at: "2026-05-08T09:30:00Z",
+              group_id: "g1",
+              content_type: "announcement",
+              serial_id: 1,
+              request_id: 1,
+              error_code: 0,
+              error_msg: "",
+              topic_code: "TOPIC_ONE",
+              item_index: 0,
+              payload_text: "Alpha signed a new supply contract",
+              payload_json: null,
+            },
+            {
+              event_key: "e2",
+              received_at: "2026-05-08T10:15:00Z",
+              group_id: "g1",
+              content_type: "stocknews",
+              serial_id: 2,
+              request_id: 1,
+              error_code: 0,
+              error_msg: "",
+              topic_code: "TOPIC_TWO",
+              item_index: 0,
+              payload_text: "Alpha intraday volume expanded",
+              payload_json: null,
+            },
+          ],
+        },
+        { basis: "analytical", result_kind: "news.choice.latest" },
+      ),
+    );
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          stockName="Alpha"
+          asOfDate="2026-04-29"
+          reviewContext={{
+            sourceLabel: "复核队列",
+            reviewThesis: {
+              whySelected: ["Alpha · AI"],
+              boundaries: ["新闻、公告、财报事件尚未进入候选卡。"],
+              invalidation: ["跌破 MA20 后降级观察。"],
+              nextActions: ["查公告/新闻确认边界"],
+            },
+          }}
+          onClose={() => undefined}
+        />
+      </AppProviders>,
+    );
+
+    const checklist = await screen.findByTestId(
+      "stock-detail-review-checklist",
+    );
+    const timeline = within(checklist).getByTestId(
+      "stock-detail-event-boundary-timeline",
+    );
+    expect(checklist).toHaveTextContent("复核核验");
+    await waitFor(() => expect(checklist).toHaveTextContent("事件 2 条"));
+    expect(checklist).toHaveTextContent("边界");
+    expect(checklist).toHaveTextContent("新闻、公告、财报事件尚未进入候选卡。");
+    expect(timeline).toHaveTextContent("公告事件");
+    expect(timeline).toHaveTextContent("个股新闻事件");
+    expect(timeline).toHaveTextContent("Alpha signed a new supply contract");
+    expect(timeline).not.toHaveTextContent("TOPIC_ONE");
+    expect(timeline).not.toHaveTextContent("source_table");
+  });
+
+  it("renders market event rows from getChoiceNewsEvents", async () => {
+    const client = createApiClient({ mode: "mock" });
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+      buildStockDetailEnvelope(),
+    );
+    vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
+      buildMockApiEnvelope(
+        "news.choice.latest",
+        {
+          total_rows: 2,
+          limit: 10,
+          offset: 0,
+          as_of_date: "2026-05-08",
+          excluded_future_rows: 1,
           events: [
             {
               event_key: "e1",
@@ -421,11 +1335,21 @@ describe("StockDetailDrawer", () => {
 
     render(
       <AppProviders client={client}>
-        <StockDetailDrawer stockCode="000001.SZ" asOfDate="2026-04-29" onClose={() => undefined} />
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          asOfDate="2026-04-29"
+          onClose={() => undefined}
+        />
       </AppProviders>,
     );
 
     const list = await screen.findByTestId("stock-detail-market-events-list");
+    expect(screen.getByTestId("stock-detail-market-events-banner")).toHaveTextContent(
+      "数据日期 2026-05-08",
+    );
+    expect(screen.getByTestId("stock-detail-market-events-banner")).toHaveTextContent(
+      "已剔除未来 1 条",
+    );
     expect(list.querySelectorAll("li")).toHaveLength(3);
     expect(screen.getAllByText("行业新闻")).toHaveLength(2);
     expect(screen.getByText("事件分类待确认")).toBeInTheDocument();
@@ -433,66 +1357,97 @@ describe("StockDetailDrawer", () => {
     expect(list).not.toHaveTextContent("TOPIC_TWO");
     expect(list).not.toHaveTextContent("externalVendorTopic");
     expect(list).not.toHaveTextContent("externalVendorNews");
-    expect(screen.getByText(/Brief headline about macro conditions/)).toBeInTheDocument();
+    expect(
+      within(list).getByText(/Brief headline about macro conditions/),
+    ).toBeInTheDocument();
   });
 
   it("shows choice news error in isolation while chart and factors still render", async () => {
+    const user = userEvent.setup();
     const client = createApiClient({ mode: "mock" });
-    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());
-    vi.spyOn(client, "getChoiceNewsEvents").mockRejectedValue(
-      new Error(
-        "Request failed: /ui/news/choice-events/latest because source_table choice_stock_news_event is missing.",
-      ),
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+      buildStockDetailEnvelope(),
     );
+    const newsSpy = vi
+      .spyOn(client, "getChoiceNewsEvents")
+      .mockRejectedValueOnce(
+        new Error(
+          "Request failed: /ui/news/choice-events/latest because source_table choice_stock_news_event is missing.",
+        ),
+      )
+      .mockResolvedValue(buildEmptyChoiceNewsEnvelope());
 
     render(
       <AppProviders client={client}>
-        <StockDetailDrawer stockCode="000001.SZ" asOfDate="2026-04-29" onClose={() => undefined} />
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          asOfDate="2026-04-29"
+          onClose={() => undefined}
+        />
       </AppProviders>,
     );
 
     expect(await screen.findByTestId("stock-detail-chart")).toBeInTheDocument();
     expect(screen.getByTestId("stock-detail-factors")).toBeInTheDocument();
-    const marketEventsError = await screen.findByTestId("stock-detail-market-events-error");
+    const marketEventsError = await screen.findByTestId(
+      "stock-detail-market-events-error",
+    );
     expect(marketEventsError).toHaveTextContent("市场事件暂不可用");
     expect(marketEventsError).toHaveTextContent("个股复核数据不受影响");
     expect(marketEventsError).toHaveTextContent("数据源缺失");
     expect(marketEventsError).not.toHaveTextContent("Request failed");
-    expect(marketEventsError).not.toHaveTextContent("/ui/news/choice-events/latest");
+    expect(marketEventsError).not.toHaveTextContent(
+      "/ui/news/choice-events/latest",
+    );
     expect(marketEventsError).not.toHaveTextContent("source_table");
     expect(marketEventsError).not.toHaveTextContent("choice_stock_news_event");
+    await user.click(within(marketEventsError).getByRole("button", { name: "重新读取市场事件" }));
+    expect(await screen.findByTestId("stock-detail-market-events-empty")).toBeInTheDocument();
+    expect(newsSpy).toHaveBeenCalledTimes(2);
   });
 
   it("shows empty state when choice news returns no events", async () => {
     const client = createApiClient({ mode: "mock" });
-    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+      buildStockDetailEnvelope(),
+    );
     vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
-      buildMockApiEnvelope(
-        "news.choice.latest",
-        { total_rows: 0, limit: 10, offset: 0, events: [] },
-        { basis: "analytical", result_kind: "news.choice.latest" },
-      ),
+      buildEmptyChoiceNewsEnvelope(),
     );
 
     render(
       <AppProviders client={client}>
-        <StockDetailDrawer stockCode="000001.SZ" asOfDate="2026-04-29" onClose={() => undefined} />
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          asOfDate="2026-04-29"
+          onClose={() => undefined}
+        />
       </AppProviders>,
     );
 
-    const emptyState = await screen.findByTestId("stock-detail-market-events-empty");
-    expect(emptyState).toHaveTextContent("暂无与该股票代码匹配的市场事件，公告财报仍待补。");
+    const emptyState = await screen.findByTestId(
+      "stock-detail-market-events-empty",
+    );
+    expect(emptyState).toHaveTextContent(
+      "暂无与该股票代码匹配的市场事件，公告财报仍待补。",
+    );
     expect(emptyState).not.toHaveTextContent("库表");
   });
 
   it("refetches when lookback segment changes", async () => {
     const user = userEvent.setup();
     const client = createApiClient({ mode: "mock" });
-    const spy = vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());
+    const spy = vi
+      .spyOn(client, "getLivermoreStockDetail")
+      .mockResolvedValue(buildStockDetailEnvelope());
 
     render(
       <AppProviders client={client}>
-        <StockDetailDrawer stockCode="000001.SZ" asOfDate="2026-04-29" onClose={() => undefined} />
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          asOfDate="2026-04-29"
+          onClose={() => undefined}
+        />
       </AppProviders>,
     );
 
@@ -502,7 +1457,9 @@ describe("StockDetailDrawer", () => {
     const seg = await screen.findByText("120");
     await user.click(seg);
 
-    await waitFor(() => expect(spy.mock.calls.length).toBeGreaterThan(firstCalls));
+    await waitFor(() =>
+      expect(spy.mock.calls.length).toBeGreaterThan(firstCalls),
+    );
     const lastArg = spy.mock.calls[spy.mock.calls.length - 1]?.[0];
     expect(lastArg?.lookback).toBe(120);
   });
@@ -530,7 +1487,13 @@ describe("StockDetailDrawer", () => {
               amount: 0,
             },
           ],
-          factor: { as_of_date: null, pe: null, pb: null, roe: null, dividend_yield: null },
+          factor: {
+            as_of_date: null,
+            pe: null,
+            pb: null,
+            roe: null,
+            dividend_yield: null,
+          },
         },
         { basis: "analytical", quality_flag: "missing" },
       ),
@@ -542,28 +1505,30 @@ describe("StockDetailDrawer", () => {
       </AppProviders>,
     );
 
-    expect(await screen.findByTestId("stock-detail-factor-pe")).toHaveTextContent("待补");
+    expect(
+      await screen.findByTestId("stock-detail-factor-pe"),
+    ).toHaveTextContent("待补");
   });
 
   it("shows 待补 instead of non-finite factor metrics", async () => {
     const client = createApiClient({ mode: "mock" });
-    const detailSpy = vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
-      buildStockDetailEnvelope({
-        factor: {
-          pe: Number.POSITIVE_INFINITY,
-          pb: Number.NEGATIVE_INFINITY,
-          roe: Number.POSITIVE_INFINITY,
-          dividend_yield: Number.NEGATIVE_INFINITY,
-        },
-      }),
+    const detailSpy = vi
+      .spyOn(client, "getLivermoreStockDetail")
+      .mockResolvedValue(
+        buildStockDetailEnvelope({
+          factor: {
+            pe: Number.POSITIVE_INFINITY,
+            pb: Number.NEGATIVE_INFINITY,
+            roe: Number.POSITIVE_INFINITY,
+            dividend_yield: Number.NEGATIVE_INFINITY,
+          },
+        }),
+      );
+    vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(
+      buildCandidateHistoryEnvelope([]),
     );
-    vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(buildCandidateHistoryEnvelope([]));
     vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
-      buildMockApiEnvelope(
-        "news.choice.latest",
-        { total_rows: 0, limit: 10, offset: 0, events: [] },
-        { basis: "analytical", result_kind: "news.choice.latest" },
-      ),
+      buildEmptyChoiceNewsEnvelope(),
     );
 
     render(
@@ -579,16 +1544,30 @@ describe("StockDetailDrawer", () => {
         lookback: 60,
       }),
     );
-    expect(await screen.findByTestId("stock-detail-factor-pe")).toHaveTextContent("待补");
-    expect(screen.getByTestId("stock-detail-factor-pb")).toHaveTextContent("待补");
-    expect(screen.getByTestId("stock-detail-factor-roe")).toHaveTextContent("待补");
-    expect(screen.getByTestId("stock-detail-factor-dividend")).toHaveTextContent("待补");
-    expect(screen.getByTestId("stock-detail-factors")).not.toHaveTextContent("Infinity");
+    expect(
+      await screen.findByTestId("stock-detail-factor-pe"),
+    ).toHaveTextContent("待补");
+    expect(screen.getByTestId("stock-detail-factor-pb")).toHaveTextContent(
+      "待补",
+    );
+    expect(screen.getByTestId("stock-detail-factor-roe")).toHaveTextContent(
+      "待补",
+    );
+    expect(
+      screen.getByTestId("stock-detail-factor-dividend"),
+    ).toHaveTextContent("待补");
+    expect(screen.getByTestId("stock-detail-factors")).not.toHaveTextContent(
+      "Infinity",
+    );
   });
 
   it("shows error state without breaking drawer chrome", async () => {
+    const user = userEvent.setup();
     const client = createApiClient({ mode: "mock" });
-    vi.spyOn(client, "getLivermoreStockDetail").mockRejectedValue(new Error("network down"));
+    const detailSpy = vi
+      .spyOn(client, "getLivermoreStockDetail")
+      .mockRejectedValueOnce(new Error("network down"))
+      .mockResolvedValue(buildStockDetailEnvelope());
 
     render(
       <AppProviders client={client}>
@@ -597,16 +1576,27 @@ describe("StockDetailDrawer", () => {
     );
 
     expect(await screen.findByTestId("stock-detail-error")).toBeInTheDocument();
-    expect(screen.getByTestId("stock-detail-error")).toHaveTextContent("个股复核数据暂不可用");
-    expect(screen.getByTestId("stock-detail-error")).toHaveTextContent("请稍后重试");
-    expect(screen.getByTestId("stock-detail-error")).not.toHaveTextContent("network down");
+    expect(screen.getByTestId("stock-detail-error")).toHaveTextContent(
+      "个股复核数据暂不可用",
+    );
+    expect(screen.getByTestId("stock-detail-error")).toHaveTextContent(
+      "请稍后重试",
+    );
+    expect(screen.getByTestId("stock-detail-error")).not.toHaveTextContent(
+      "network down",
+    );
+    await user.click(screen.getByRole("button", { name: "重新读取个股数据" }));
+    expect(await screen.findByTestId("stock-detail-chart")).toBeInTheDocument();
+    expect(detailSpy).toHaveBeenCalledTimes(2);
   });
 
   it("close button calls onClose", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
     const client = createApiClient({ mode: "mock" });
-    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+      buildStockDetailEnvelope(),
+    );
 
     render(
       <AppProviders client={client}>
@@ -700,19 +1690,23 @@ describe("StockDetailDrawer", () => {
         data_status: "complete",
       },
     ];
-    const histSpy = vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(buildCandidateHistoryEnvelope(histItems));
-    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());
+    const histSpy = vi
+      .spyOn(client, "getLivermoreCandidateHistory")
+      .mockResolvedValue(buildCandidateHistoryEnvelope(histItems));
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+      buildStockDetailEnvelope(),
+    );
     vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
-      buildMockApiEnvelope(
-        "news.choice.latest",
-        { total_rows: 0, limit: 10, offset: 0, events: [] },
-        { basis: "analytical", result_kind: "news.choice.latest" },
-      ),
+      buildEmptyChoiceNewsEnvelope(),
     );
 
     render(
       <AppProviders client={client}>
-        <StockDetailDrawer stockCode="000001.SZ" asOfDate="2026-04-29" onClose={() => undefined} />
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          asOfDate="2026-04-29"
+          onClose={() => undefined}
+        />
       </AppProviders>,
     );
 
@@ -720,34 +1714,205 @@ describe("StockDetailDrawer", () => {
       expect(histSpy).toHaveBeenCalledWith({
         stockCode: "000001.SZ",
         snapshotTo: "2026-04-29",
+        evaluationAsOfDate: "2026-04-29",
         limit: 10,
       }),
     );
-    expect(await screen.findByTestId("stock-detail-candidate-history")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("stock-detail-candidate-history"),
+    ).toBeInTheDocument();
     expect(screen.getByText("1.00%")).toBeInTheDocument();
     expect(screen.getByText("-2.00%")).toBeInTheDocument();
     expect(screen.getByText("8.00%")).toBeInTheDocument();
-    const completeRow = screen.getByTestId("stock-detail-candidate-history-row-2026-04-10-1");
+    const completeRow = screen.getByTestId(
+      "stock-detail-candidate-history-row-2026-04-10-1",
+    );
     expect(completeRow).toHaveTextContent("趋势突破");
     expect(completeRow).not.toHaveTextContent("livermore");
     expect(completeRow).toHaveTextContent("已成熟");
     expect(completeRow).not.toHaveTextContent("complete");
-    const pendingRow = screen.getByTestId("stock-detail-candidate-history-row-2026-04-03-2");
+    const pendingRow = screen.getByTestId(
+      "stock-detail-candidate-history-row-2026-04-03-2",
+    );
     expect(pendingRow).toHaveTextContent("待成熟");
     expect(pendingRow).not.toHaveTextContent("pending");
-    expect(within(pendingRow).getAllByText("—").length).toBeGreaterThanOrEqual(1);
-    const partialHaltRow = screen.getByTestId("stock-detail-candidate-history-row-2026-03-27-3");
+    expect(within(pendingRow).getAllByText("—").length).toBeGreaterThanOrEqual(
+      1,
+    );
+    const partialHaltRow = screen.getByTestId(
+      "stock-detail-candidate-history-row-2026-03-27-3",
+    );
     expect(partialHaltRow).toHaveTextContent("部分停牌");
     expect(partialHaltRow).not.toHaveTextContent("partial_halt");
-    expect(partialHaltRow).toHaveClass("stock-detail-drawer__history-row--halt");
-    const unknownStatusRow = screen.getByTestId("stock-detail-candidate-history-row-2026-03-20-4");
+    expect(partialHaltRow).toHaveClass(
+      "stock-detail-drawer__history-row--halt",
+    );
+    const unknownStatusRow = screen.getByTestId(
+      "stock-detail-candidate-history-row-2026-03-20-4",
+    );
     expect(unknownStatusRow).toHaveTextContent("策略待确认");
     expect(unknownStatusRow).not.toHaveTextContent("experimental_signal");
     expect(unknownStatusRow).toHaveTextContent("状态待确认");
     expect(unknownStatusRow).not.toHaveTextContent("missing_forward_return");
-    const sourceTableRow = screen.getByTestId("stock-detail-candidate-history-row-2026-03-13-5");
+    const sourceTableRow = screen.getByTestId(
+      "stock-detail-candidate-history-row-2026-03-13-5",
+    );
     expect(sourceTableRow).toHaveTextContent("策略待确认");
     expect(sourceTableRow).not.toHaveTextContent("sourceTableAlphaSignal");
+  });
+
+  it("renders T+5 and T+20 maturity independently without turning null returns into zero", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const baseRow = {
+      stock_code: "000001.SZ",
+      stock_name: "样本股份",
+      signal_kind: "livermore",
+      sector_code: null,
+      sector_name: null,
+      selection_close: 10,
+      forward_trade_date_1d: "2026-05-02",
+      return_1d: 0.01,
+    };
+    const histItems = [
+      {
+        ...baseRow,
+        snapshot_as_of_date: "2026-05-01",
+        candidate_rank: 1,
+        forward_trade_date_5d: "2026-05-08",
+        forward_trade_date_20d: null,
+        return_5d: 0.04,
+        return_20d: null,
+        data_status: "pending",
+        forward_maturity: {
+          evaluation_as_of_date: "2026-05-12",
+          source_status: "available",
+          classification_available: true,
+          horizons: {
+            "5d": { status: "complete", horizon_bars: 5 },
+            "20d": { status: "natural_pending", horizon_bars: 20 },
+          },
+        },
+      },
+      {
+        ...baseRow,
+        snapshot_as_of_date: "2026-04-01",
+        candidate_rank: 2,
+        forward_trade_date_5d: null,
+        forward_trade_date_20d: null,
+        return_5d: null,
+        return_20d: null,
+        data_status: "partial_halt",
+        forward_maturity: {
+          evaluation_as_of_date: "2026-05-12",
+          source_status: "available",
+          classification_available: true,
+          horizons: {
+            "5d": { status: "partial_halt", horizon_bars: 5 },
+            "20d": { status: "matured_missing_bar", horizon_bars: 20 },
+          },
+        },
+      },
+      {
+        ...baseRow,
+        snapshot_as_of_date: "2026-03-01",
+        candidate_rank: 3,
+        forward_trade_date_5d: "2026-03-08",
+        forward_trade_date_20d: null,
+        return_5d: 0.02,
+        return_20d: null,
+        data_status: "pending",
+        forward_maturity: {
+          evaluation_as_of_date: "2026-05-12",
+          source_status: "available",
+          classification_available: true,
+          horizons: {
+            "5d": { status: "raw_matured_adjustment_missing", horizon_bars: 5 },
+            "20d": { status: "matured_missing_bar", horizon_bars: 20 },
+          },
+        },
+      },
+      {
+        ...baseRow,
+        snapshot_as_of_date: "2026-02-01",
+        candidate_rank: 4,
+        forward_trade_date_5d: null,
+        forward_trade_date_20d: null,
+        return_5d: null,
+        return_20d: null,
+        data_status: "pending",
+        forward_maturity: {
+          evaluation_as_of_date: "2026-05-12",
+          source_status: "unavailable",
+          classification_available: false,
+          source_issue: "observation_table_missing",
+          horizons: {
+            "5d": {
+              status: "matured_missing_bar",
+              reason: "observation_source_unavailable",
+              horizon_bars: 5,
+            },
+            "20d": {
+              status: "matured_missing_bar",
+              reason: "observation_source_unavailable",
+              horizon_bars: 20,
+            },
+          },
+        },
+      },
+    ] as unknown as LivermoreCandidateHistoryRow[];
+    vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(
+      buildCandidateHistoryEnvelope(histItems),
+    );
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+      buildStockDetailEnvelope(),
+    );
+    vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
+      buildEmptyChoiceNewsEnvelope(),
+    );
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          asOfDate="2026-05-12"
+          onClose={() => undefined}
+        />
+      </AppProviders>,
+    );
+
+    const mixedRow = await screen.findByTestId(
+      "stock-detail-candidate-history-row-2026-05-01-1",
+    );
+    expect(within(mixedRow).getByTestId("candidate-maturity-5d")).toHaveTextContent(
+      "4.00% 已成熟",
+    );
+    const pending20 = within(mixedRow).getByTestId("candidate-maturity-20d");
+    expect(pending20).toHaveTextContent("— 自然待成熟");
+    expect(pending20).not.toHaveTextContent("0.00%");
+
+    const haltRow = screen.getByTestId(
+      "stock-detail-candidate-history-row-2026-04-01-2",
+    );
+    expect(within(haltRow).getByTestId("candidate-maturity-5d")).toHaveTextContent(
+      "部分停牌",
+    );
+    expect(within(haltRow).getByTestId("candidate-maturity-20d")).toHaveTextContent(
+      "窗口已成熟 · 无有效行情",
+    );
+
+    const adjustmentRow = screen.getByTestId(
+      "stock-detail-candidate-history-row-2026-03-01-3",
+    );
+    expect(within(adjustmentRow).getByTestId("candidate-maturity-5d")).toHaveTextContent(
+      "2.00% 原始收益已成熟 · 复权待补",
+    );
+
+    const unavailableRow = screen.getByTestId(
+      "stock-detail-candidate-history-row-2026-02-01-4",
+    );
+    expect(within(unavailableRow).getByTestId("candidate-maturity-5d")).toHaveTextContent(
+      "— 成熟分类不可用",
+    );
   });
 
   it("shows dashes instead of non-finite candidate history returns", async () => {
@@ -771,19 +1936,23 @@ describe("StockDetailDrawer", () => {
         data_status: "complete",
       },
     ];
-    const histSpy = vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(buildCandidateHistoryEnvelope(histItems));
-    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());
+    const histSpy = vi
+      .spyOn(client, "getLivermoreCandidateHistory")
+      .mockResolvedValue(buildCandidateHistoryEnvelope(histItems));
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+      buildStockDetailEnvelope(),
+    );
     vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
-      buildMockApiEnvelope(
-        "news.choice.latest",
-        { total_rows: 0, limit: 10, offset: 0, events: [] },
-        { basis: "analytical", result_kind: "news.choice.latest" },
-      ),
+      buildEmptyChoiceNewsEnvelope(),
     );
 
     render(
       <AppProviders client={client}>
-        <StockDetailDrawer stockCode="000003.SZ" asOfDate="2026-04-29" onClose={() => undefined} />
+        <StockDetailDrawer
+          stockCode="000003.SZ"
+          asOfDate="2026-04-29"
+          onClose={() => undefined}
+        />
       </AppProviders>,
     );
 
@@ -791,67 +1960,91 @@ describe("StockDetailDrawer", () => {
       expect(histSpy).toHaveBeenCalledWith({
         stockCode: "000003.SZ",
         snapshotTo: "2026-04-29",
+        evaluationAsOfDate: "2026-04-29",
         limit: 10,
       }),
     );
-    const row = await screen.findByTestId("stock-detail-candidate-history-row-2026-04-10-1");
+    const row = await screen.findByTestId(
+      "stock-detail-candidate-history-row-2026-04-10-1",
+    );
     expect(row).not.toHaveTextContent("Infinity");
     expect(row).not.toHaveTextContent("NaN");
     expect(within(row).getAllByText("—").length).toBeGreaterThanOrEqual(3);
   });
 
   it("shows candidate history error without breaking chart or factors", async () => {
+    const user = userEvent.setup();
     const client = createApiClient({ mode: "mock" });
-    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());
-    vi.spyOn(client, "getLivermoreCandidateHistory").mockRejectedValue(
-      new Error(
-        "Request failed: /ui/market-data/livermore/candidate-history because source_table choice_stock_candidate_history is missing.",
-      ),
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+      buildStockDetailEnvelope(),
     );
+    const historySpy = vi
+      .spyOn(client, "getLivermoreCandidateHistory")
+      .mockRejectedValueOnce(
+        new Error(
+          "Request failed: /ui/market-data/livermore/candidate-history because source_table choice_stock_candidate_history is missing.",
+        ),
+      )
+      .mockResolvedValue(buildCandidateHistoryEnvelope([]));
     vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
-      buildMockApiEnvelope(
-        "news.choice.latest",
-        { total_rows: 0, limit: 10, offset: 0, events: [] },
-        { basis: "analytical", result_kind: "news.choice.latest" },
-      ),
+      buildEmptyChoiceNewsEnvelope(),
     );
 
     render(
       <AppProviders client={client}>
-        <StockDetailDrawer stockCode="000001.SZ" asOfDate="2026-04-29" onClose={() => undefined} />
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          asOfDate="2026-04-29"
+          onClose={() => undefined}
+        />
       </AppProviders>,
     );
 
     expect(await screen.findByTestId("stock-detail-chart")).toBeInTheDocument();
     expect(screen.getByTestId("stock-detail-factors")).toBeInTheDocument();
-    const candidateHistoryError = await screen.findByTestId("stock-detail-candidate-history-error");
+    const candidateHistoryError = await screen.findByTestId(
+      "stock-detail-candidate-history-error",
+    );
     expect(candidateHistoryError).toHaveTextContent("入选历史暂不可用");
     expect(candidateHistoryError).toHaveTextContent("图表与因子仍可继续查看");
     expect(candidateHistoryError).toHaveTextContent("数据源缺失");
     expect(candidateHistoryError).not.toHaveTextContent("Request failed");
-    expect(candidateHistoryError).not.toHaveTextContent("/ui/market-data/livermore/candidate-history");
+    expect(candidateHistoryError).not.toHaveTextContent(
+      "/ui/market-data/livermore/candidate-history",
+    );
     expect(candidateHistoryError).not.toHaveTextContent("source_table");
-    expect(candidateHistoryError).not.toHaveTextContent("choice_stock_candidate_history");
+    expect(candidateHistoryError).not.toHaveTextContent(
+      "choice_stock_candidate_history",
+    );
+    await user.click(within(candidateHistoryError).getByRole("button", { name: "重新读取入选历史" }));
+    expect(await screen.findByTestId("stock-detail-candidate-history-empty")).toBeInTheDocument();
+    expect(historySpy).toHaveBeenCalledTimes(2);
   });
 
   it("shows empty state when candidate history has no rows", async () => {
     const client = createApiClient({ mode: "mock" });
-    vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(buildCandidateHistoryEnvelope([]));
-    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());
+    vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(
+      buildCandidateHistoryEnvelope([]),
+    );
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+      buildStockDetailEnvelope(),
+    );
     vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
-      buildMockApiEnvelope(
-        "news.choice.latest",
-        { total_rows: 0, limit: 10, offset: 0, events: [] },
-        { basis: "analytical", result_kind: "news.choice.latest" },
-      ),
+      buildEmptyChoiceNewsEnvelope(),
     );
 
     render(
       <AppProviders client={client}>
-        <StockDetailDrawer stockCode="000001.SZ" asOfDate="2026-04-29" onClose={() => undefined} />
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          asOfDate="2026-04-29"
+          onClose={() => undefined}
+        />
       </AppProviders>,
     );
 
-    expect(await screen.findByTestId("stock-detail-candidate-history-empty")).toHaveTextContent("暂无入选快照记录");
+    expect(
+      await screen.findByTestId("stock-detail-candidate-history-empty"),
+    ).toHaveTextContent("暂无入选快照记录");
   });
 });

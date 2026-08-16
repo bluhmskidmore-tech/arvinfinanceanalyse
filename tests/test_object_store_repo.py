@@ -100,7 +100,7 @@ def test_healthcheck_local_mkdir_oserror(monkeypatch, tmp_path):
     assert result["mode"] == "local"
 
 
-def test_healthcheck_minio_success(monkeypatch):
+def test_healthcheck_minio_tcp_reachable_is_not_operational(monkeypatch):
     cm = MagicMock()
     cm.__enter__.return_value = None
     cm.__exit__.return_value = None
@@ -113,12 +113,22 @@ def test_healthcheck_minio_success(monkeypatch):
         mode="minio",
     )
     out = repo.healthcheck()
-    assert out == {"ok": True, "mode": "minio", "endpoint": "127.0.0.1:9000", "bucket": "buck"}
+    assert out == {
+        "ok": False,
+        "mode": "minio",
+        "endpoint": "127.0.0.1:9000",
+        "bucket": "buck",
+        "tcp_reachable": True,
+        "read_write_supported": False,
+        "error": "MinIO object-store read/write operations are not implemented.",
+    }
     socket.create_connection.assert_called_once_with(("127.0.0.1", 9000), timeout=0.2)
 
 
 def test_healthcheck_minio_connection_error(monkeypatch):
-    monkeypatch.setattr(socket, "create_connection", MagicMock(side_effect=OSError("refused")))
+    monkeypatch.setattr(
+        socket, "create_connection", MagicMock(side_effect=OSError("refused"))
+    )
     repo = ObjectStoreRepository(
         endpoint="127.0.0.1:9000",
         access_key="k",
@@ -126,7 +136,10 @@ def test_healthcheck_minio_connection_error(monkeypatch):
         bucket="buck",
         mode="minio",
     )
-    assert repo.healthcheck()["ok"] is False
+    result = repo.healthcheck()
+    assert result["ok"] is False
+    assert result["tcp_reachable"] is False
+    assert result["read_write_supported"] is False
 
 
 def test_healthcheck_minio_default_port_when_endpoint_has_no_colon(monkeypatch):
@@ -142,7 +155,10 @@ def test_healthcheck_minio_default_port_when_endpoint_has_no_colon(monkeypatch):
         bucket="buck",
         mode="minio",
     )
-    assert repo.healthcheck()["ok"] is True
+    result = repo.healthcheck()
+    assert result["ok"] is False
+    assert result["tcp_reachable"] is True
+    assert result["read_write_supported"] is False
     mock_conn.assert_called_once_with(("10.0.0.1", 9000), timeout=0.2)
 
 

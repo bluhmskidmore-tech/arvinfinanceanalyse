@@ -1,0 +1,445 @@
+/*
+ * 题材突破分组视图（StockAnalysisThemeGroupedView）。
+ * 零新增色值：全部取全局 --dh-api-* 深色终端 token（DESIGN.md §2.2），
+ * 页面根的 theme-dh-api 提供变量作用域；不 import 任何页面级 css。
+ * 圆角制度：容器/行统一 var(--dh-api-radius, 6px)；
+ * 徽标 pill 沿用页面既有 999px 胶囊语言；色点为状态语义点
+ * （有信号=强调蓝 / 无信号=弱墨），非装饰（DESIGN.md §6）。
+ */
+
+.stock-analysis-theme-grouped {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ---- 空态（7 题材全空）：收缩消息框，居中一句话 ---- */
+
+.stock-analysis-theme-grouped__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 96px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-api-panel);
+  color: var(--dh-api-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ---- 题材筛选 chips ---- */
+
+.stock-analysis-theme-grouped__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.stock-analysis-theme-grouped__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-api-panel);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.3;
+  cursor: pointer;
+  transition: border-color 150ms ease-out, color 150ms ease-out;
+}
+
+.stock-analysis-theme-grouped__chip:hover:not(:disabled) {
+  border-color: var(--dh-api-line);
+  color: var(--dh-api-ink);
+}
+
+.stock-analysis-theme-grouped__chip[aria-pressed="true"] {
+  border-color: var(--dh-api-blue);
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-ink);
+}
+
+.stock-analysis-theme-grouped__chip:disabled {
+  color: var(--dh-api-muted);
+  cursor: default;
+}
+
+.stock-analysis-theme-grouped__chip-count {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stock-analysis-theme-grouped__chip[aria-pressed="true"] .stock-analysis-theme-grouped__chip-count {
+  color: var(--dh-api-blue);
+}
+
+/* ---- 题材分组段 ---- */
+
+.stock-analysis-theme-grouped__group {
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-api-panel);
+  overflow: hidden;
+}
+
+.stock-analysis-theme-grouped__group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.stock-analysis-theme-grouped__group-name {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* 状态语义点：有信号=强调蓝，无信号=弱墨 */
+.stock-analysis-theme-grouped__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dh-api-muted);
+}
+
+.stock-analysis-theme-grouped__dot[data-state="active"] {
+  background: var(--dh-api-blue);
+}
+
+.stock-analysis-theme-grouped__proxy {
+  margin-left: auto;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stock-analysis-theme-grouped__rows {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stock-analysis-theme-grouped__row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+}
+
+.stock-analysis-theme-grouped__row + .stock-analysis-theme-grouped__row {
+  border-top: 1px solid var(--dh-api-line-soft);
+}
+
+.stock-analysis-theme-grouped__row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.stock-analysis-theme-grouped__row-rank {
+  color: var(--dh-api-blue);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.stock-analysis-theme-grouped__row-sector {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+.stock-analysis-theme-grouped__row-source {
+  margin-left: auto;
+}
+
+.stock-analysis-theme-grouped__row-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.stock-analysis-theme-grouped__stat {
+  padding: 1px 8px;
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+.stock-analysis-theme-grouped__row-reason {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.stock-analysis-theme-grouped__row-event {
+  margin: 0;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.stock-analysis-theme-grouped__row-boundary {
+  margin: 0;
+  color: var(--dh-api-amber);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ---- 龙头股行 ---- */
+
+.stock-analysis-theme-grouped__leaders {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stock-analysis-theme-grouped__leader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-api-panel-2);
+}
+
+.stock-analysis-theme-grouped__leader-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stock-analysis-theme-grouped__leader-name {
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.stock-analysis-theme-grouped__leader-meta {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- 通用徽标 pill（沿用页面既有胶囊语言） ---- */
+
+.stock-analysis-theme-grouped__pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 1px 8px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: 999px;
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.stock-analysis-theme-grouped__pill[data-tone="accent"] {
+  border-color: var(--dh-api-blue);
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-blue);
+}
+
+.stock-analysis-theme-grouped__pill[data-tone="success"] {
+  border-color: var(--dh-api-green-soft);
+  background: var(--dh-api-green-soft);
+  color: var(--dh-api-green);
+}
+
+.stock-analysis-theme-grouped__pill[data-tone="warning"] {
+  border-color: var(--dh-api-amber-soft);
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-amber);
+}
+
+.stock-analysis-theme-grouped__pill[data-tone="danger"] {
+  border-color: var(--dh-api-red-soft);
+  background: var(--dh-api-red-soft);
+  color: var(--dh-api-red);
+}
+
+/* ---- 无信号题材汇总条（可折叠） ---- */
+
+.stock-analysis-theme-grouped__idle {
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-api-panel);
+}
+
+.stock-analysis-theme-grouped__idle-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  background: none;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.stock-analysis-theme-grouped__idle-toggle:hover {
+  color: var(--dh-api-ink);
+}
+
+.stock-analysis-theme-grouped__idle-hint {
+  margin-left: auto;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+.stock-analysis-theme-grouped__idle-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--dh-api-line-soft);
+  list-style: none;
+}
+
+.stock-analysis-theme-grouped__idle-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+.stock-analysis-theme-grouped__idle-item .stock-analysis-theme-grouped__proxy {
+  margin-left: 0;
+}
+
+/* ---- 证据 / 复核区块 ---- */
+
+.stock-analysis-theme-grouped__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stock-analysis-theme-grouped__section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stock-analysis-theme-grouped__section-title {
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.stock-analysis-theme-grouped__section-title--warning {
+  color: var(--dh-api-amber);
+}
+
+.stock-analysis-theme-grouped__evidence-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-api-panel);
+  list-style: none;
+}
+
+.stock-analysis-theme-grouped__evidence-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+}
+
+.stock-analysis-theme-grouped__evidence-item + .stock-analysis-theme-grouped__evidence-item {
+  border-top: 1px solid var(--dh-api-line-soft);
+}
+
+.stock-analysis-theme-grouped__evidence-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stock-analysis-theme-grouped__evidence-main strong {
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.stock-analysis-theme-grouped__evidence-main span {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stock-analysis-theme-grouped__evidence-detail {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  text-align: right;
+}
+
+.stock-analysis-theme-grouped__review-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stock-analysis-theme-grouped__review-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-api-panel);
+}
+
+.stock-analysis-theme-grouped__review-title {
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 600;
+}

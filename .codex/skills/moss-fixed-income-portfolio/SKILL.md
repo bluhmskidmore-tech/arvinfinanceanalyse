@@ -1,6 +1,6 @@
 ---
 name: moss-fixed-income-portfolio
-description: Use when working on MOSS bond dashboard, positions, market data, fixed-income analytics, portfolio risk, yield curve, duration, DV01, spread, cashflow, scenario, or risk tensor workflows.
+description: "【MOSS固收组合】用于债券仪表盘、持仓、收益率曲线、久期、DV01、利差、现金流和风险张量工作。"
 ---
 
 # MOSS Fixed-Income Portfolio

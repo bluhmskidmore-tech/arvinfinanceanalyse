@@ -1,0 +1,139 @@
+/*
+ * 06 证据与口径分区专属样式（仅由 EvidenceSection.tsx import）。
+ * 颜色一律走 --dh-api-* 语义链；圆角制度 var(--dh-api-radius)；字号下限 11px。
+ * 状态圆点为语义圆点（颜色=数据状态，DESIGN.md §6），允许圆形。
+ */
+
+/* ---------------------------------- 披露面板（治理边界 / 指标口径说明） */
+
+.bond-dashboard-evidence__notes {
+  padding: 8px 12px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+.bond-dashboard-evidence__notes summary {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  cursor: pointer;
+  user-select: none;
+}
+
+.bond-dashboard-evidence__notes summary:hover {
+  color: var(--dh-api-soft);
+}
+
+.bond-dashboard-evidence__notes p {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* 口径说明条目：每条一行的安静列表，不用装饰 marker。 */
+.bond-dashboard-evidence__notes-list {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  list-style: none;
+}
+
+/* ------------------------------------- bundle 分区读取状态披露 */
+
+.bond-dashboard-evidence__statuses {
+  padding: 4px 12px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+}
+
+.bond-dashboard-evidence__status-summary,
+.bond-dashboard-evidence__status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  align-items: baseline;
+  margin: 0;
+  padding: 5px 0;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.bond-dashboard-evidence__status-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* 摘要行与失败明细行之间、明细行彼此之间发丝分隔。 */
+.bond-dashboard-evidence__status-row {
+  border-top: 1px solid var(--dh-api-line-soft);
+}
+
+.bond-dashboard-evidence__status-dot {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.bond-dashboard-evidence__status-dot[data-tone="ok"] {
+  background: var(--dh-api-green);
+}
+
+.bond-dashboard-evidence__status-dot[data-tone="error"] {
+  background: var(--dh-api-red);
+}
+
+.bond-dashboard-evidence__status-text,
+.bond-dashboard-evidence__status-label {
+  font-weight: 600;
+}
+
+/* 失败原因：错误语义色，12px 随行继承。 */
+.bond-dashboard-evidence__status-message {
+  color: var(--dh-api-red);
+}
+
+/* 耗时：等宽 11px muted，推到行尾对齐。 */
+.bond-dashboard-evidence__status-duration {
+  margin-left: auto;
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------ FormalResultMetaPanel 区域精修 */
+
+/*
+ * 长 trace/version 值（聚合 source_version 可能是多哈希拼接的巨串）：
+ * 任意断行 + 3 行钳制，完整值保留在信封原文，避免证据字段把分区撑高。
+ * badge 变量出口 / 12px 密度 / 88-108px 标签列 / 圆角收敛已由页级
+ * BondDashboardPage.css 的 FormalResultMetaPanel 块承担，此处不重复。
+ */
+.bond-dashboard-evidence .formal-result-meta-panel__value {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+/*
+ * 四卡字段数天然不等（evidence 字段可选），禁止默认 stretch 把短卡
+ * 拉出大段尾部空白（DESIGN.md §5 不等高网格必须 align-items:start）。
+ */
+.bond-dashboard-evidence .formal-result-meta-panel__grid {
+  align-items: start;
+}

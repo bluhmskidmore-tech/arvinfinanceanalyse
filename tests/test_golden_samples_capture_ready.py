@@ -8,9 +8,13 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.app.core_finance.config.product_category_contract import (
+    product_category_cache_version,
+)
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
@@ -33,8 +37,15 @@ LEDGER_PNL_SAMPLE_PATHS = {"/api/ledger-pnl/summary"}
 LEDGER_PNL_READ_HEADERS = {"X-User-Id": "ledger-pnl-read-user", "X-User-Role": "viewer"}
 CASHFLOW_PROJECTION_SAMPLE_PATHS = {"/api/cashflow-projection"}
 CASHFLOW_PROJECTION_READ_HEADERS = {"X-User-Id": "cashflow-projection-read-user", "X-User-Role": "viewer"}
+POSITIONS_SAMPLE_PATHS = {"/api/positions/bonds", "/api/positions/interbank"}
+POSITIONS_READ_HEADERS = {"X-User-Id": "positions-read-user", "X-User-Role": "viewer"}
 PNL_SAMPLE_PATHS = {"/api/pnl/bridge", "/api/pnl/data", "/api/pnl/overview"}
 PNL_READ_HEADERS = {"X-User-Id": "pnl-read-user", "X-User-Role": "viewer"}
+PNL_BUSINESS_INSIGHTS_SAMPLE_PATHS = {
+    "/api/pnl/by-business-candidate-insights",
+    "/api/pnl/by-business-insights",
+}
+PNL_BUSINESS_INSIGHTS_READ_HEADERS = {"X-User-Id": "pnl-business-insights-read-user", "X-User-Role": "viewer"}
 PRODUCT_CATEGORY_PNL_SAMPLE_PATHS = {"/ui/pnl/product-category"}
 PRODUCT_CATEGORY_PNL_READ_HEADERS = {
     "X-User-Id": "product-category-pnl-read-user",
@@ -44,11 +55,8 @@ RISK_TENSOR_SAMPLE_PATHS = {"/api/risk/tensor"}
 RISK_TENSOR_READ_HEADERS = {"X-User-Id": "risk-tensor-read-user", "X-User-Role": "viewer"}
 AVERAGE_BALANCE_SAMPLE_PATHS = {"/api/analysis/adb"}
 AVERAGE_BALANCE_READ_HEADERS = {"X-User-Id": "average-balance-read-user", "X-User-Role": "viewer"}
-BOND_ANALYTICS_CACHE_KEY = "bond_analytics:materialize:formal"
-BOND_ANALYTICS_JOB_NAME = "bond_analytics_materialize"
-BOND_ANALYTICS_RULE_VERSION = "rv_bond_analytics_formal_materialize_v1"
-BOND_ANALYTICS_CACHE_VERSION = f"cv_bond_analytics_formal__{BOND_ANALYTICS_RULE_VERSION}"
-BOND_ANALYTICS_LOCK = "lock:duckdb:formal:bond-analytics:materialize"
+MARKET_DATA_RATES_SAMPLE_PATHS = {"/ui/market-data/rates"}
+MARKET_DATA_RATES_READ_HEADERS = {"X-User-Id": "macro-vendor-read-user", "X-User-Role": "viewer"}
 
 
 def _sample_file(sample_id: str, filename: str) -> Path:
@@ -64,35 +72,6 @@ def _load_json(sample_id: str, filename: str) -> dict[str, Any]:
 
 def _read_text(sample_id: str, filename: str) -> str:
     return _sample_file(sample_id, filename).read_text(encoding="utf-8")
-
-
-def _append_bond_analytics_completed_build(
-    governance_path: Path,
-    *,
-    report_date: str,
-    source_version: str,
-    run_id: str,
-) -> None:
-    from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
-    from backend.app.schemas.materialize import CacheBuildRunRecord
-
-    GovernanceRepository(base_dir=governance_path).append(
-        CACHE_BUILD_RUN_STREAM,
-        {
-            **CacheBuildRunRecord(
-                run_id=run_id,
-                job_name=BOND_ANALYTICS_JOB_NAME,
-                status="completed",
-                cache_key=BOND_ANALYTICS_CACHE_KEY,
-                cache_version=BOND_ANALYTICS_CACHE_VERSION,
-                lock=BOND_ANALYTICS_LOCK,
-                source_version=source_version or "sv_bond_analytics_golden_sample",
-                vendor_version="vv_none",
-                rule_version=BOND_ANALYTICS_RULE_VERSION,
-            ).model_dump(),
-            "report_date": report_date,
-        },
-    )
 
 
 def _extract(value: Any, path: tuple[Any, ...]) -> Any:
@@ -127,12 +106,15 @@ def _clear_runtime_modules() -> None:
         "backend.app.api.routes.balance_analysis",
         "backend.app.api.routes.executive",
         "backend.app.api.routes.pnl",
+        "backend.app.api.routes.positions",
         "backend.app.api.routes.product_category_pnl",
         "backend.app.api.routes.risk_tensor",
         "backend.app.services.balance_analysis_service",
         "backend.app.services.bond_dashboard_service",
         "backend.app.services.pnl_service",
         "backend.app.services.pnl_bridge_service",
+        "backend.app.services.pnl_by_business_candidate_insights",
+        "backend.app.services.positions_service",
         "backend.app.services.product_category_pnl_service",
         "backend.app.services.risk_tensor_service",
         "backend.app.tasks.product_category_pnl",
@@ -154,6 +136,159 @@ def _setup_pnl(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         "tests/test_pnl_api_contract.py",
     )
     module._materialize_three_pnl_dates(tmp_path, monkeypatch)
+
+
+def _pnl_business_insights_fi_row(
+    *,
+    report_date: str,
+    instrument_code: str,
+    interest_income: str,
+) -> dict[str, object]:
+    return {
+        "report_date": report_date,
+        "instrument_code": instrument_code,
+        "portfolio_name": "Insights Desk",
+        "cost_center": "CC-INS",
+        "invest_type_raw": "持有至到期",
+        "interest_income_514": interest_income,
+        "fair_value_change_516": "0.00",
+        "capital_gain_517": "0.00",
+        "manual_adjustment": "0.00",
+        "currency_basis": "CNY",
+        "source_version": f"sv_pnl_business_insights_{instrument_code}_{report_date}",
+        "rule_version": "rv_pnl_business_insights_gs_a",
+        "ingest_batch_id": f"batch-pnl-business-insights-{report_date}",
+        "trace_id": f"trace-pnl-business-insights-{instrument_code}-{report_date}",
+        "approval_status": "approved",
+        "event_semantics": "realized_formal",
+        "realized_flag": True,
+    }
+
+
+def _pnl_business_insights_balance_row(
+    *,
+    report_date: str,
+    instrument_code: str,
+    bond_type: str,
+    market_value_amount: str,
+) -> tuple:
+    return (
+        report_date,
+        instrument_code,
+        f"{bond_type} {instrument_code}",
+        "Insights Desk",
+        "CC-INS",
+        "asset",
+        bond_type,
+        bond_type,
+        bond_type,
+        bond_type,
+        "H",
+        "AC",
+        "asset",
+        "CNY",
+        "CNY",
+        market_value_amount,
+        market_value_amount,
+        "0.00000000",
+        False,
+        f"sv_pnl_business_insights_balance_{instrument_code}_{report_date}",
+        "rv_pnl_business_insights_gs_a",
+        f"ib-pnl-business-insights-{report_date}",
+        f"trace-pnl-business-insights-balance-{instrument_code}-{report_date}",
+    )
+
+
+def _setup_pnl_business_insights(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two ZQTZ business types across the exact baseline/monthly/current cutoffs.
+
+    2025-02-28 is the prior-year same-period baseline, 2025-12-31 closes the prior-year
+    monthly component, and 2026-01/02 supply the current YTD/monthly window.
+    """
+    task_module = load_module(
+        "backend.app.tasks.pnl_materialize",
+        "backend/app/tasks/pnl_materialize.py",
+    )
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    monkeypatch.setenv("MOSS_FORMAL_PNL_ENABLED", "true")
+    monkeypatch.setenv("MOSS_FORMAL_PNL_SCOPE_JSON", '["*"]')
+    get_settings.cache_clear()
+
+    fi_rows_by_date = {
+        "2025-02-28": [
+            _pnl_business_insights_fi_row(report_date="2025-02-28", instrument_code="TB001", interest_income="5.00"),
+            _pnl_business_insights_fi_row(report_date="2025-02-28", instrument_code="PF001", interest_income="2.00"),
+        ],
+        "2025-12-31": [
+            _pnl_business_insights_fi_row(report_date="2025-12-31", instrument_code="TB001", interest_income="5.00"),
+            _pnl_business_insights_fi_row(report_date="2025-12-31", instrument_code="PF001", interest_income="2.00"),
+        ],
+        "2026-01-31": [
+            _pnl_business_insights_fi_row(report_date="2026-01-31", instrument_code="TB001", interest_income="4.00"),
+            _pnl_business_insights_fi_row(report_date="2026-01-31", instrument_code="PF001", interest_income="3.00"),
+        ],
+        "2026-02-28": [
+            _pnl_business_insights_fi_row(report_date="2026-02-28", instrument_code="TB001", interest_income="3.50"),
+            _pnl_business_insights_fi_row(report_date="2026-02-28", instrument_code="PF001", interest_income="3.00"),
+        ],
+    }
+    for report_date, fi_rows in fi_rows_by_date.items():
+        task_module.materialize_pnl_facts.fn(
+            fi_rows=fi_rows,
+            nonstd_rows_by_type={},
+            report_date=report_date,
+            is_month_end=True,
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+
+    balance_module = load_module(
+        "backend.app.repositories.balance_analysis_repo",
+        "backend/app/repositories/balance_analysis_repo.py",
+    )
+    balances = {
+        "2025-02-28": {"TB001": "700.00000000", "PF001": "300.00000000"},
+        "2025-12-31": {"TB001": "680.00000000", "PF001": "320.00000000"},
+        "2026-01-31": {"TB001": "650.00000000", "PF001": "350.00000000"},
+        "2026-02-28": {"TB001": "600.00000000", "PF001": "400.00000000"},
+    }
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        balance_module.ensure_balance_analysis_tables(conn)
+        rows = [
+            _pnl_business_insights_balance_row(
+                report_date=report_date,
+                instrument_code="TB001",
+                bond_type="国债",
+                market_value_amount=amounts["TB001"],
+            )
+            for report_date, amounts in balances.items()
+        ] + [
+            _pnl_business_insights_balance_row(
+                report_date=report_date,
+                instrument_code="PF001",
+                bond_type="政策性金融债",
+                market_value_amount=amounts["PF001"],
+            )
+            for report_date, amounts in balances.items()
+        ]
+        conn.executemany(
+            """
+            insert into fact_formal_zqtz_balance_daily (
+              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+              account_category, asset_class, bond_type, sub_type, business_type_primary,
+              invest_type_std, accounting_basis, position_scope, currency_basis, currency_code,
+              market_value_amount, amortized_cost_amount, accrued_interest_amount, is_issuance_like,
+              source_version, rule_version, ingest_batch_id, trace_id
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+    finally:
+        conn.close()
 
 
 def _setup_product_category(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -192,7 +327,7 @@ def _setup_risk(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         "tests._golden_risk_service",
         "tests/test_risk_tensor_service.py",
     )
-    module._configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
+    module._configure_and_materialize_clean_risk_tensor(tmp_path, monkeypatch)
 
 
 def _setup_bridge_warn(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -349,6 +484,31 @@ def _setup_average_balance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     get_settings.cache_clear()
 
 
+def _append_bond_analytics_completed_build(
+    *,
+    governance_path: Path,
+    report_date: str,
+    source_version: str,
+    run_id: str,
+) -> None:
+    from backend.app.tasks.bond_analytics_materialize import CACHE_KEY, CACHE_VERSION, RULE_VERSION
+
+    governance_path.mkdir(parents=True, exist_ok=True)
+    record = {
+        "run_id": run_id,
+        "job_name": "bond_analytics_materialize",
+        "status": "completed",
+        "cache_key": CACHE_KEY,
+        "cache_version": CACHE_VERSION,
+        "source_version": source_version,
+        "vendor_version": "vv_none",
+        "rule_version": RULE_VERSION,
+        "report_date": report_date,
+    }
+    with (governance_path / "cache_build_run.jsonl").open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
 def _setup_bond_headline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 
@@ -358,9 +518,8 @@ def _setup_bond_headline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     )
 
     duckdb_path = tmp_path / "bond-headline.duckdb"
-    governance_path = tmp_path / "gov"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
-    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
     get_settings.cache_clear()
 
     repo = BondAnalyticsRepository(str(duckdb_path))
@@ -426,16 +585,10 @@ def _setup_bond_headline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
             ],
         )
     _append_bond_analytics_completed_build(
-        governance_path,
-        report_date="2026-03-30",
-        source_version="sv",
-        run_id="golden-bond-headline:2026-03-30",
-    )
-    _append_bond_analytics_completed_build(
-        governance_path,
+        governance_path=tmp_path / "gov",
         report_date="2026-03-31",
         source_version="sv",
-        run_id="golden-bond-headline:2026-03-31",
+        run_id="golden-sample:bond-headline:2026-03-31",
     )
 
 
@@ -445,7 +598,6 @@ def _setup_bond_analysis_action_attribution(tmp_path: Path, monkeypatch: pytest.
         "backend/app/services/bond_analytics_service.py",
     )
     service_mod._action_attribution_cache.clear()
-    governance_path = tmp_path / "governance"
 
     monkeypatch.setattr(
         service_mod,
@@ -455,17 +607,11 @@ def _setup_bond_analysis_action_attribution(tmp_path: Path, monkeypatch: pytest.
             (),
             {
                 "duckdb_path": str(tmp_path / "bond-analysis-action-attribution.duckdb"),
-                "governance_path": governance_path,
+                "governance_path": tmp_path / "governance",
                 "governance_sql_dsn": "",
                 "postgres_dsn": "",
             },
         )(),
-    )
-    _append_bond_analytics_completed_build(
-        governance_path,
-        report_date="2026-03-31",
-        source_version="sv_bond_analysis_action_attr_gs_a",
-        run_id="golden-bond-action-attribution:2026-03-31",
     )
 
     class Repo:
@@ -510,6 +656,12 @@ def _setup_bond_analysis_action_attribution(tmp_path: Path, monkeypatch: pytest.
 
     monkeypatch.setattr(service_mod, "BondAnalyticsRepository", Repo)
     monkeypatch.setattr(service_mod, "PnlRepository", PnlRepo)
+    _append_bond_analytics_completed_build(
+        governance_path=tmp_path / "governance",
+        report_date="2026-03-31",
+        source_version="sv_bond_analysis_action_attr_gs_a",
+        run_id="golden-sample:bond-analysis-action-attribution:2026-03-31",
+    )
 
 
 def _setup_concentration_monitor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -517,7 +669,6 @@ def _setup_concentration_monitor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
     )
-    governance_path = tmp_path / "governance"
 
     monkeypatch.setattr(
         service_mod,
@@ -527,7 +678,7 @@ def _setup_concentration_monitor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
             (),
             {
                 "duckdb_path": str(tmp_path / "concentration-monitor.duckdb"),
-                "governance_path": governance_path,
+                "governance_path": tmp_path / "governance",
                 "governance_sql_dsn": "",
                 "postgres_dsn": "",
             },
@@ -593,12 +744,6 @@ def _setup_concentration_monitor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
             return rows
 
     monkeypatch.setattr(service_mod, "_repo", lambda: Repo())
-    _append_bond_analytics_completed_build(
-        governance_path,
-        report_date="2026-03-31",
-        source_version="sv_concentration_monitor_gs_a",
-        run_id="golden-concentration-monitor:2026-03-31",
-    )
     monkeypatch.setattr(
         service_mod,
         "_fetch_credit_curves",
@@ -612,6 +757,214 @@ def _setup_concentration_monitor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
             "curve_unavailable": True,
         },
     )
+    _append_bond_analytics_completed_build(
+        governance_path=tmp_path / "governance",
+        report_date="2026-03-31",
+        source_version="sv_concentration_monitor_gs_a",
+        run_id="golden-sample:concentration-monitor:2026-03-31",
+    )
+
+
+def _setup_market_data_rates_fragment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import duckdb
+
+    duckdb_path = tmp_path / "market-data-rates-fragment.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_choice_macro_daily (
+              series_id varchar,
+              series_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              quality_flag varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar
+            )
+            """
+        )
+        conn.executemany(
+            """
+            insert into fact_choice_macro_daily values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    "EMM00166466",
+                    "中债国债到期收益率:10年",
+                    "2026-04-10",
+                    1.71,
+                    "daily",
+                    "%",
+                    "sv_market_data_rates_gs_a",
+                    "vv_choice_macro_gs_a",
+                    "rv_choice_macro_public_history_v1",
+                    "ok",
+                    "gs-mkt-rates-a-1",
+                ),
+                (
+                    "EMM00166466",
+                    "中债国债到期收益率:10年",
+                    "2026-04-09",
+                    1.72,
+                    "daily",
+                    "%",
+                    "sv_market_data_rates_gs_a",
+                    "vv_choice_macro_gs_a",
+                    "rv_choice_macro_public_history_v1",
+                    "ok",
+                    "gs-mkt-rates-a-2",
+                ),
+                (
+                    "EMM00166462",
+                    "中债国债到期收益率:5年",
+                    "2026-04-10",
+                    1.58,
+                    "daily",
+                    "%",
+                    "sv_market_data_rates_gs_a",
+                    "vv_choice_macro_gs_a",
+                    "rv_choice_macro_public_history_v1",
+                    "ok",
+                    "gs-mkt-rates-a-3",
+                ),
+                (
+                    "EMM00166498",
+                    "中债国开债到期收益率:5年",
+                    "2026-04-10",
+                    2.05,
+                    "daily",
+                    "%",
+                    "sv_market_data_rates_gs_a",
+                    "vv_choice_macro_gs_a",
+                    "rv_choice_macro_public_history_v1",
+                    "ok",
+                    "gs-mkt-rates-a-4",
+                ),
+                (
+                    "EMM00166502",
+                    "中债国开债到期收益率:10年",
+                    "2026-04-10",
+                    2.18,
+                    "daily",
+                    "%",
+                    "sv_market_data_rates_gs_a",
+                    "vv_choice_macro_gs_a",
+                    "rv_choice_macro_public_history_v1",
+                    "ok",
+                    "gs-mkt-rates-a-5",
+                ),
+                (
+                    "M001",
+                    "公开市场7天逆回购利率",
+                    "2026-04-10",
+                    1.75,
+                    "daily",
+                    "%",
+                    "sv_market_data_rates_gs_a",
+                    "vv_choice_macro_gs_a",
+                    "rv_choice_macro_public_history_v1",
+                    "ok",
+                    "gs-mkt-rates-a-6",
+                ),
+                (
+                    "M002",
+                    "DR007",
+                    "2026-04-10",
+                    1.83,
+                    "daily",
+                    "%",
+                    "sv_public_funding",
+                    "vv_public_repo",
+                    "rv_choice_macro_public_history_v1",
+                    "ok",
+                    "gs-mkt-rates-a-7",
+                ),
+            ],
+        )
+        conn.executemany(
+            """
+            insert into phase1_macro_vendor_catalog values (?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    "EMM00166466",
+                    "中债国债到期收益率:10年",
+                    "choice",
+                    "vv_choice_macro_gs_a",
+                    "daily",
+                    "%",
+                ),
+                (
+                    "EMM00166462",
+                    "中债国债到期收益率:5年",
+                    "choice",
+                    "vv_choice_macro_gs_a",
+                    "daily",
+                    "%",
+                ),
+                (
+                    "EMM00166498",
+                    "中债国开债到期收益率:5年",
+                    "choice",
+                    "vv_choice_macro_gs_a",
+                    "daily",
+                    "%",
+                ),
+                (
+                    "EMM00166502",
+                    "中债国开债到期收益率:10年",
+                    "choice",
+                    "vv_choice_macro_gs_a",
+                    "daily",
+                    "%",
+                ),
+                (
+                    "M001",
+                    "公开市场7天逆回购利率",
+                    "choice",
+                    "vv_choice_macro_gs_a",
+                    "daily",
+                    "%",
+                ),
+                (
+                    "M002",
+                    "DR007",
+                    "choice",
+                    "vv_public_repo",
+                    "daily",
+                    "%",
+                ),
+            ],
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    _grant_sample_read_scope(
+        tmp_path,
+        monkeypatch,
+        db_name="market-data-rates-read-scope.db",
+        resource="macro_vendor",
+    )
+    get_settings.cache_clear()
 
 
 def _setup_stock_analysis_observation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1068,6 +1421,81 @@ def _setup_ledger_pnl_summary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     )
 
 
+def _setup_bank_ledger_classification(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.test_ledger_import_flow import (
+        _configure_ledger_import_env,
+        _ledger_csv_bytes,
+        _ledger_row_values,
+        _scoped_import,
+    )
+
+    duckdb_path = _configure_ledger_import_env(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.ledger_import_service",
+        "backend/app/services/ledger_import_service.py",
+    )
+    asset_pairs = (
+        ("\u4ea4\u6613\u8d26\u6237", "\u4ea4\u6613\u6027\u8d44\u4ea7"),
+        ("\u94f6\u884c\u8d26\u6237", "\u4ea4\u6613\u6027\u8d44\u4ea7"),
+        ("\u94f6\u884c\u8d26\u6237", "\u53ef\u4f9b\u51fa\u552e\u7c7b\u8d44\u4ea7"),
+        ("\u94f6\u884c\u8d26\u6237", "\u5e94\u6536\u6295\u8d44\u6b3e\u9879"),
+        ("\u94f6\u884c\u8d26\u6237", "\u6301\u6709\u81f3\u5230\u671f\u7c7b\u8d44\u4ea7"),
+    )
+    rows = [
+        _ledger_row_values(
+            service_mod,
+            bond_code=f"ASSET-{index}",
+            account_category=account_category,
+            asset_class=asset_class,
+            face_amount="100000000",
+            as_of_date="2026-03-17",
+        )
+        for index, (account_category, asset_class) in enumerate(asset_pairs, start=1)
+    ]
+    rows.extend(
+        [
+            _ledger_row_values(
+                service_mod,
+                bond_code="LIABILITY-1",
+                account_category="\u53d1\u884c\u7c7b\u503a\u5238",
+                asset_class="\u53d1\u884c\u7c7b\u503a\u5238",
+                face_amount="200000000",
+                as_of_date="2026-03-17",
+            ),
+            _ledger_row_values(
+                service_mod,
+                bond_code="UNCLASSIFIED-MISSING",
+                account_category="",
+                asset_class="",
+                face_amount="300000000",
+                as_of_date="2026-03-17",
+            ),
+            _ledger_row_values(
+                service_mod,
+                bond_code="UNCLASSIFIED-UNKNOWN",
+                account_category="\u672a\u77e5\u8d26\u6237",
+                asset_class="\u672a\u77e5\u8d44\u4ea7",
+                face_amount="300000000",
+                as_of_date="2026-03-17",
+            ),
+            _ledger_row_values(
+                service_mod,
+                bond_code="UNCLASSIFIED-CONFLICT",
+                account_category="\u53d1\u884c\u7c7b\u503a\u5238",
+                asset_class="\u6301\u6709\u81f3\u5230\u671f\u7c7b\u8d44\u4ea7",
+                face_amount="300000000",
+                as_of_date="2026-03-17",
+            ),
+        ]
+    )
+    _scoped_import(
+        service_mod,
+        duckdb_path,
+        file_name="GS-BANK-LEDGER-CLASSIFICATION-A.csv",
+        content=_ledger_csv_bytes(service_mod, rows),
+    )
+
+
 def _setup_cashflow_projection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     service_mod = load_module(
         "backend.app.services.cashflow_projection_service",
@@ -1086,6 +1514,7 @@ def _setup_cashflow_projection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
                 "cost_center": "CF",
                 "position_scope": "asset",
                 "maturity_date": date(2026, 10, 30),
+                "value_date": date(2026, 4, 30),
                 "face_value_amount": Decimal("1000"),
                 "market_value_amount": Decimal("1000"),
                 "coupon_rate": Decimal("0"),
@@ -1127,7 +1556,6 @@ def _setup_cashflow_projection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
                 "maturity_date": date(2026, 10, 30),
                 "coupon_rate": Decimal("0"),
                 "ytm": Decimal("0"),
-                "macaulay_duration": Decimal("0.50"),
             }
         ]
 
@@ -1146,6 +1574,17 @@ def _setup_cashflow_projection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
         "fetch_bond_analytics_rows",
         fake_fetch_bond_analytics_rows,
     )
+
+
+def _setup_positions_lists(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    contract_mod = load_module(
+        "tests._golden_positions_api",
+        "tests/test_positions_api_contract.py",
+    )
+    duckdb_path = tmp_path / "positions-golden.duckdb"
+    contract_mod._seed_positions_db(duckdb_path)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
 
 
 def _run_sample_request(sample_id: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
@@ -1314,6 +1753,14 @@ def _run_request_payload(
             resource="cashflow_projection",
         )
         headers = CASHFLOW_PROJECTION_READ_HEADERS
+    elif request["path"] in POSITIONS_SAMPLE_PATHS:
+        _grant_sample_read_scope(
+            tmp_path,
+            monkeypatch,
+            db_name="positions-read-scope.db",
+            resource="positions",
+        )
+        headers = POSITIONS_READ_HEADERS
     elif request["path"] in PNL_SAMPLE_PATHS:
         _grant_sample_read_scope(
             tmp_path,
@@ -1322,6 +1769,14 @@ def _run_request_payload(
             resource="pnl",
         )
         headers = PNL_READ_HEADERS
+    elif request["path"] in PNL_BUSINESS_INSIGHTS_SAMPLE_PATHS:
+        _grant_sample_read_scope(
+            tmp_path,
+            monkeypatch,
+            db_name="pnl-business-insights-read-scope.db",
+            resource="pnl",
+        )
+        headers = PNL_BUSINESS_INSIGHTS_READ_HEADERS
     elif request["path"] in PRODUCT_CATEGORY_PNL_SAMPLE_PATHS:
         _grant_sample_read_scope(
             tmp_path,
@@ -1346,6 +1801,8 @@ def _run_request_payload(
             resource="adb_analysis",
         )
         headers = AVERAGE_BALANCE_READ_HEADERS
+    elif request["path"] in MARKET_DATA_RATES_SAMPLE_PATHS:
+        headers = MARKET_DATA_RATES_READ_HEADERS
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.request(
         request["method"],
@@ -1396,6 +1853,13 @@ def _validate_balance_overview(actual: dict[str, Any], expected: dict[str, Any])
             ("result_meta", "vendor_status"),
             ("result_meta", "fallback_mode"),
             ("result_meta", "scenario_flag"),
+            ("result_meta", "requested_report_date"),
+            ("result_meta", "resolved_report_date"),
+            ("result_meta", "as_of_date"),
+            ("result_meta", "date_basis"),
+            ("result_meta", "filters_applied"),
+            ("result_meta", "tables_used"),
+            ("result_meta", "evidence_rows"),
             ("result", "report_date"),
             ("result", "position_scope"),
             ("result", "currency_basis"),
@@ -1428,6 +1892,13 @@ def _validate_balance_workbook(actual: dict[str, Any], expected: dict[str, Any])
             ("result_meta", "vendor_status"),
             ("result_meta", "fallback_mode"),
             ("result_meta", "scenario_flag"),
+            ("result_meta", "requested_report_date"),
+            ("result_meta", "resolved_report_date"),
+            ("result_meta", "as_of_date"),
+            ("result_meta", "date_basis"),
+            ("result_meta", "filters_applied"),
+            ("result_meta", "tables_used"),
+            ("result_meta", "evidence_rows"),
             ("result", "report_date"),
             ("result", "position_scope"),
             ("result", "currency_basis"),
@@ -1512,6 +1983,9 @@ def _validate_product_category(actual: dict[str, Any], expected: dict[str, Any])
             ("result", "asset_total"),
             ("result", "liability_total"),
             ("result", "grand_total"),
+            ("result", "interest_spread"),
+            ("result", "interest_earning_spread"),
+            ("result", "liability_cost_decomposition"),
         ],
     )
     assert str(actual["result_meta"]["source_version"]).startswith("sv_product_category_")
@@ -1525,8 +1999,11 @@ def _validate_product_category_scenario(
     assert actual["result_meta"]["result_kind"] == "product_category_pnl.detail"
     assert actual["result_meta"]["formal_use_allowed"] is False
     assert actual["result_meta"]["vendor_version"] == "vv_none"
-    assert actual["result_meta"]["rule_version"] == "rv_product_category_pnl_v1"
-    assert actual["result_meta"]["cache_version"] == "cv_product_category_pnl_v1"
+    assert actual["result_meta"]["rule_version"] == "rv_product_category_pnl_v2"
+    assert actual["result_meta"]["cache_version"] == product_category_cache_version(
+        "scenario",
+        scenario_rate_pct=actual["result"]["scenario_rate_pct"],
+    )
     assert actual["result_meta"]["quality_flag"] == "ok"
     assert actual["result_meta"]["vendor_status"] == "ok"
     assert actual["result_meta"]["fallback_mode"] == "none"
@@ -1560,6 +2037,15 @@ def _validate_product_category_scenario(
 
     for total_key in ("asset_total", "liability_total", "grand_total"):
         assert actual["result"][total_key] == scenario_row_map[total_key]
+
+    for unchanged_section in (
+        "interest_spread",
+        "interest_earning_spread",
+        "liability_cost_decomposition",
+    ):
+        assert actual["result"][unchanged_section] == baseline_expected["result"][
+            unchanged_section
+        ], unchanged_section
 
     assert scenario_row_map["bond_investment"]["children"] == baseline_row_map["bond_investment"]["children"]
     assert Decimal(str(scenario_row_map["bond_tpl"]["cny_ftp"])) != Decimal(str(baseline_row_map["bond_tpl"]["cny_ftp"]))
@@ -1896,6 +2382,7 @@ def _validate_pnl_attr_workbench(actual: dict[str, Any], expected: dict[str, Any
             ("result", "total_volume_effect"),
             ("result", "total_rate_effect"),
             ("result", "total_interaction_effect"),
+            ("result", "total_recon_error"),
             ("result", "items"),
             ("result", "has_previous_data"),
         ],
@@ -1938,6 +2425,29 @@ def _validate_ledger_pnl_summary(actual: dict[str, Any], expected: dict[str, Any
     )
 
 
+def _validate_bank_ledger_classification(actual: dict[str, Any], expected: dict[str, Any]) -> None:
+    actual["trace"]["request_id"] = expected["trace"]["request_id"]
+    _assert_paths_equal(
+        actual,
+        expected,
+        [
+            ("data", "as_of_date"),
+            ("data", "classification_status"),
+            ("data", "classification_rule_version"),
+            ("data", "currency_breakdown"),
+            ("metadata", "source_version"),
+            ("metadata", "rule_version"),
+            ("metadata", "fallback"),
+            ("metadata", "stale"),
+            ("metadata", "no_data"),
+            ("metadata", "batch_id"),
+            ("trace", "requested_as_of_date"),
+            ("trace", "resolved_as_of_date"),
+            ("trace", "batch_id"),
+        ],
+    )
+
+
 def _validate_cashflow_projection(actual: dict[str, Any], expected: dict[str, Any]) -> None:
     actual["result_meta"]["trace_id"] = expected["result_meta"]["trace_id"]
     actual["result_meta"]["generated_at"] = expected["result_meta"]["generated_at"]
@@ -1973,9 +2483,49 @@ def _validate_cashflow_projection(actual: dict[str, Any], expected: dict[str, An
             ("result", "reinvestment_risk_12m"),
             ("result", "monthly_buckets"),
             ("result", "top_maturing_assets_12m"),
+            ("result", "floating_rate_proxy_count"),
+            ("result", "floating_rate_proxy_market_value"),
+            ("result", "payment_frequency_fallback_count"),
+            ("result", "payment_frequency_fallback_market_value"),
+            ("result", "bullet_value_date_fallback_count"),
+            ("result", "bullet_value_date_fallback_market_value"),
             ("result", "warnings"),
         ],
     )
+
+
+def _validate_market_data_rates_fragment(actual: dict[str, Any], expected: dict[str, Any]) -> None:
+    actual["result_meta"]["generated_at"] = expected["result_meta"]["generated_at"]
+    actual["result_meta"]["trace_id"] = expected["result_meta"]["trace_id"]
+    _assert_paths_equal(
+        actual,
+        expected,
+        [
+            ("result_meta", "basis"),
+            ("result_meta", "result_kind"),
+            ("result_meta", "formal_use_allowed"),
+            ("result_meta", "source_version"),
+            ("result_meta", "vendor_version"),
+            ("result_meta", "rule_version"),
+            ("result_meta", "cache_version"),
+            ("result_meta", "quality_flag"),
+            ("result_meta", "vendor_status"),
+            ("result_meta", "fallback_mode"),
+            ("result_meta", "scenario_flag"),
+            ("result_meta", "source_surface"),
+            ("result", "read_target"),
+        ],
+    )
+    actual_by_id = {str(item["series_id"]): item for item in actual["result"]["series"]}
+    expected_by_id = {str(item["series_id"]): item for item in expected["result"]["series"]}
+    assert set(actual_by_id) == set(expected_by_id)
+    for series_id, expected_item in expected_by_id.items():
+        actual_item = actual_by_id[series_id]
+        assert actual_item["trade_date"] == expected_item["trade_date"]
+        assert actual_item["value_numeric"] == expected_item["value_numeric"]
+        assert actual_item["unit"] == expected_item["unit"]
+        if "latest_change" in expected_item:
+            assert actual_item.get("latest_change") == expected_item["latest_change"]
 
 
 def _validate_stock_analysis_observation(actual: dict[str, Any], expected: dict[str, Any]) -> None:
@@ -2079,6 +2629,78 @@ def _validate_average_balance_monthly(actual: dict[str, Any], expected: dict[str
     )
 
 
+def _validate_pnl_business_insights(actual: dict[str, Any], expected: dict[str, Any]) -> None:
+    actual["result_meta"]["trace_id"] = expected["result_meta"]["trace_id"]
+    actual["result_meta"]["generated_at"] = expected["result_meta"]["generated_at"]
+    _assert_paths_equal(
+        actual,
+        expected,
+        [
+            ("result_meta", "basis"),
+            ("result_meta", "result_kind"),
+            ("result_meta", "formal_use_allowed"),
+            ("result_meta", "source_version"),
+            ("result_meta", "vendor_version"),
+            ("result_meta", "rule_version"),
+            ("result_meta", "cache_version"),
+            ("result_meta", "quality_flag"),
+            ("result_meta", "vendor_status"),
+            ("result_meta", "fallback_mode"),
+            ("result_meta", "scenario_flag"),
+            ("result_meta", "requested_report_date"),
+            ("result_meta", "resolved_report_date"),
+            ("result_meta", "as_of_date"),
+            ("result_meta", "filters_applied"),
+            ("result_meta", "tables_used"),
+            ("result", "result_version"),
+            ("result", "year"),
+            ("result", "as_of_date"),
+            ("result", "baseline_requested_report_date"),
+            ("result", "baseline_resolved_report_date"),
+            ("result", "baseline_fallback_mode"),
+            ("result", "component_evidence"),
+            ("result", "concentration"),
+            ("result", "negative_ftp_persistence"),
+            ("result", "share_drift"),
+            ("result", "scale_yield_quadrant"),
+            ("result", "reconciliation_diagnostics"),
+        ],
+    )
+
+
+def _validate_positions_list(actual: dict[str, Any], expected: dict[str, Any]) -> None:
+    _assert_paths_equal(
+        actual,
+        expected,
+        [
+            ("result_meta", "basis"),
+            ("result_meta", "result_kind"),
+            ("result_meta", "formal_use_allowed"),
+            ("result_meta", "source_version"),
+            ("result_meta", "vendor_version"),
+            ("result_meta", "rule_version"),
+            ("result_meta", "cache_version"),
+            ("result_meta", "quality_flag"),
+            ("result_meta", "vendor_status"),
+            ("result_meta", "fallback_mode"),
+            ("result_meta", "scenario_flag"),
+            ("result_meta", "requested_report_date"),
+            ("result_meta", "resolved_report_date"),
+            ("result_meta", "as_of_date"),
+            ("result_meta", "date_basis"),
+            ("result_meta", "filters_applied"),
+            ("result_meta", "tables_used"),
+            ("result_meta", "evidence_rows"),
+            ("result", "items"),
+            ("result", "total"),
+            ("result", "page"),
+            ("result", "page_size"),
+        ],
+    )
+    # MTR-POS-001 / MTR-POS-002 record-count anchor: evidence_rows == total.
+    assert actual["result_meta"]["evidence_rows"] == actual["result"]["total"]
+
+
 @dataclass(frozen=True)
 class CaptureReadyCase:
     setup: Any
@@ -2108,6 +2730,10 @@ CAPTURE_READY_CASES: dict[str, CaptureReadyCase] = {
         setup=_setup_stock_analysis_observation,
         validator=_validate_stock_analysis_observation,
     ),
+    "GS-MKT-RATES-FRAGMENT-A": CaptureReadyCase(
+        setup=_setup_market_data_rates_fragment,
+        validator=_validate_market_data_rates_fragment,
+    ),
     "GS-EXEC-OVERVIEW-A": CaptureReadyCase(setup=_setup_exec_overview, validator=_validate_exec_overview),
     "GS-EXEC-PNL-ATTR-A": CaptureReadyCase(setup=_setup_exec_pnl_attr, validator=_validate_exec_pnl_attr),
     "GS-EXEC-SUMMARY-A": CaptureReadyCase(setup=_setup_exec_summary, validator=_validate_exec_summary),
@@ -2115,6 +2741,10 @@ CAPTURE_READY_CASES: dict[str, CaptureReadyCase] = {
     "GS-LEDGER-PNL-SUMMARY-A": CaptureReadyCase(
         setup=_setup_ledger_pnl_summary,
         validator=_validate_ledger_pnl_summary,
+    ),
+    "GS-BANK-LEDGER-CLASSIFICATION-A": CaptureReadyCase(
+        setup=_setup_bank_ledger_classification,
+        validator=_validate_bank_ledger_classification,
     ),
     "GS-CASHFLOW-PROJECTION-A": CaptureReadyCase(
         setup=_setup_cashflow_projection,
@@ -2128,13 +2758,57 @@ CAPTURE_READY_CASES: dict[str, CaptureReadyCase] = {
         setup=_setup_average_balance,
         validator=_validate_average_balance_monthly,
     ),
+    "GS-PNL-BUSINESS-INSIGHTS-A": CaptureReadyCase(
+        setup=_setup_pnl_business_insights,
+        validator=_validate_pnl_business_insights,
+    ),
+    "GS-POSITIONS-BONDS-LIST-A": CaptureReadyCase(
+        setup=_setup_positions_lists,
+        validator=_validate_positions_list,
+    ),
+    "GS-POSITIONS-INTERBANK-LIST-A": CaptureReadyCase(
+        setup=_setup_positions_lists,
+        validator=_validate_positions_list,
+    ),
 }
+
+SPECIALIZED_CAPTURE_READY_CASE_TESTS: dict[str, tuple[str, str]] = {
+    "GS-LEDGER-PNL-NET-INTEREST-202606-A": (
+        "tests/test_ledger_pnl_net_interest_golden_sample.py",
+        "test_committed_synthetic_fixture_executes_the_production_calculation_chain",
+    ),
+}
+CAPTURE_READY_SAMPLE_IDS = frozenset(CAPTURE_READY_CASES) | frozenset(
+    SPECIALIZED_CAPTURE_READY_CASE_TESTS
+)
 
 SUPPORTING_ONLY_SAMPLE_IDS = {"GS-PORTFOLIO-HOME-A"}
 
 
 def test_capture_ready_golden_sample_files_exist() -> None:
     for sample_id in CAPTURE_READY_CASES:
+        for filename in ("request.json", "response.json", "assertions.md", "approval.md"):
+            assert _sample_file(sample_id, filename).exists()
+
+
+def test_specialized_capture_ready_cases_have_dedicated_gate_and_files() -> None:
+    from scripts.backend_release_suite import RELEASE_SUITE_TESTS
+
+    for sample_id, (test_path, test_name) in SPECIALIZED_CAPTURE_READY_CASE_TESTS.items():
+        assert sample_id not in CAPTURE_READY_CASES
+        assert (ROOT / test_path).exists()
+        assert test_path in RELEASE_SUITE_TESTS
+        module = load_module(
+            f"tests._specialized_capture_ready_{sample_id.lower().replace('-', '_')}",
+            test_path,
+        )
+        test_callable = getattr(module, test_name)
+        assert callable(test_callable)
+        module_marks = getattr(module, "pytestmark", ())
+        if not isinstance(module_marks, (list, tuple)):
+            module_marks = (module_marks,)
+        all_marks = (*module_marks, *getattr(test_callable, "pytestmark", ()))
+        assert not {mark.name for mark in all_marks} & {"skip", "skipif", "xfail"}
         for filename in ("request.json", "response.json", "assertions.md", "approval.md"):
             assert _sample_file(sample_id, filename).exists()
 
@@ -2162,12 +2836,43 @@ def test_supporting_only_golden_sample_files_exist_without_capture_ready_claim()
 def test_capture_ready_golden_sample_metadata_is_in_expected_state() -> None:
     for sample_id in CAPTURE_READY_CASES:
         approval = _read_text(sample_id, "approval.md")
-        assert "captured-awaiting-approval" in approval
+        if sample_id == "GS-PNL-BUSINESS-INSIGHTS-A":
+            assert "- Status: `approved`" in approval
+        else:
+            assert "captured-awaiting-approval" in approval
 
 
 def test_product_category_capture_ready_companion_scenario_files_exist() -> None:
     for filename in ("scenario.request.json",):
         assert _sample_file("GS-PROD-CAT-PNL-A", filename).exists()
+
+
+def test_bank_ledger_classification_sample_freezes_allowlist_and_fail_closed_pairs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _setup_bank_ledger_classification(tmp_path, monkeypatch)
+    conn = duckdb.connect(str(tmp_path / "moss.duckdb"), read_only=True)
+    try:
+        directions = dict(
+            conn.execute(
+                "select bond_code, direction from position_snapshot order by row_no"
+            ).fetchall()
+        )
+    finally:
+        conn.close()
+
+    assert directions == {
+        "ASSET-1": "ASSET",
+        "ASSET-2": "ASSET",
+        "ASSET-3": "ASSET",
+        "ASSET-4": "ASSET",
+        "ASSET-5": "ASSET",
+        "LIABILITY-1": "LIABILITY",
+        "UNCLASSIFIED-MISSING": "UNCLASSIFIED",
+        "UNCLASSIFIED-UNKNOWN": "UNCLASSIFIED",
+        "UNCLASSIFIED-CONFLICT": "UNCLASSIFIED",
+    }
 
 
 def test_product_category_sample_documents_approved_metric_boundary() -> None:

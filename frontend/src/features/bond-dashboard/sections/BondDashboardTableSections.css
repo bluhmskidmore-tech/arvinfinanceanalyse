@@ -1,0 +1,85 @@
+/*
+ * 04 组合与风险 / 05 业务类型指标分区专属样式，由 PortfolioRiskSection 与
+ * BusinessTypeSection import，供 PortfolioTable / SpreadTable / RiskIndicatorsPanel 使用。
+ * 依赖页级套件（BondDashboardPage.css 的 __panel / __surface / ant-table 密度），
+ * 本文件只做表格卡语言的增量：卡头、三面板等高、数值列等宽、合计行、指标列表。
+ * 颜色一律 --dh-api-* 语义链；圆角 var(--dh-api-radius)；字号下限 11px。
+ */
+
+/* 表格卡头：13px/600 + 发丝底线，比页级 __panel-title(700) 弱半档，让位给数据。 */
+.bond-dashboard-table-panel__title {
+  margin: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+/*
+ * 04 三面板等高：lg 覆盖页级 start 为 stretch（双类压 specificity，不依赖注入顺序）。
+ * 面板自身 align-content: start（页级 __panel），行数不齐时底部自然留白对齐。
+ * 列宽非等分：组合表现 6 列最宽（等分下合计行被截断，真实数据走查确认），
+ * 利差表 4 列次之，风险指标列表最窄且自适应。
+ */
+@media (min-width: 992px) {
+  .bond-dashboard-page__grid.bond-dashboard-table-grid--fill {
+    grid-template-columns: minmax(0, 1.45fr) minmax(0, 1.2fr) minmax(0, 0.95fr);
+    align-items: stretch;
+  }
+}
+
+/* 数值列：右对齐由列定义出 align，字体走等宽栈 + tabular（同 PositionsView 先例）。 */
+.bond-dashboard-table-panel .bond-dashboard-table-num-cell {
+  font-family: var(--moss-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 合计行（PortfolioTable summary）：panel-2 底 + 实线顶缝收口，密度与表体对齐。 */
+.bond-dashboard-table-panel .ant-table-summary > tr > td {
+  padding: 6px 10px;
+  border-top: 1px solid var(--dh-api-line);
+  border-bottom: 0;
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------- 风险指标标准列表 */
+
+.bond-dashboard-risk-list {
+  display: grid;
+}
+
+.bond-dashboard-risk-list__row {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.bond-dashboard-risk-list__row:last-child {
+  border-bottom: 0;
+}
+
+.bond-dashboard-risk-list__label {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* 数值默认 ink（首页纪律：语义色只用于涨跌/警戒，指标读数不上蓝）。 */
+.bond-dashboard-risk-list__value {
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

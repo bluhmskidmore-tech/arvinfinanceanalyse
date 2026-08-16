@@ -23,18 +23,21 @@ const productionBundleInputs = [
   "src/layouts/WorkbenchShellMarketTicker.tsx",
   "src/layouts/workbenchShellTicker.ts",
   "src/features/workbench/dashboard-home/DashboardHomePage.tsx",
+  "src/features/workbench/dashboard-home/DashboardHomeOptionTwoOverview.tsx",
+  "src/features/workbench/dashboard-home/DashboardHomeOptionTwoLayout.tsx",
+  "src/features/workbench/dashboard-home/dashboardHomeOptionTwoShared.ts",
   "src/features/workbench/dashboard-home/dashboardHomeFirstScreenView.ts",
   "src/features/workbench/dashboard-home/dashboardHomeFirstScreenMockView.ts",
-  "src/features/workbench/dashboard-home/TerminalHomeFirstScreen.tsx",
   "src/features/workbench/dashboard-home/DeferredTerminalHomeContent.tsx",
-  "src/features/workbench/dashboard-home/TerminalHomeContent.tsx",
+  "src/features/workbench/dashboard-home/DeferredTerminalHomeBody.tsx",
   "src/features/workbench/dashboard-home/useDashboardHomeFirstScreenViewModel.ts",
   "src/features/workbench/dashboard-home/useDashboardHomeSupplementalHydration.ts",
   "src/features/workbench/dashboard-home/useMockHomeFirstScreenView.ts",
   "src/features/workbench/dashboard-home/useDashboardHomeViewModel.ts",
   "src/features/workbench/dashboard-home/useDashboardHomeBodyData.ts",
   "src/features/workbench/dashboard-home/dashboardHomeShell.module.css",
-  "src/features/workbench/dashboard-home/dashboardHome.module.css",
+  "src/features/workbench/dashboard-home/dashboardHomeOptionTwo.module.css",
+  "src/features/workbench/dashboard-home/dashboardHomeHoldingDrawer.module.css",
   "src/styles/global.css",
   "src/styles/workbenchInstitutionalConsole.css",
   "src/styles/workbenchDeferredChrome.css",
@@ -328,8 +331,10 @@ async function sampleHome(page, baseUrl) {
   await page.waitForTimeout(FIRST_SCREEN_OBSERVATION_MS);
 
   const initialUrls = requestLog.map((entry) => entry.url);
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-  await waitForTrackedRequests(
+  await page.locator('[data-testid="dashboard-home-scroll-root"]').evaluate((node) => {
+    node.scrollTop = node.scrollHeight;
+  });
+  const trackedRequestsArrived = await waitForTrackedRequests(
     page,
     requestLog,
     [
@@ -341,6 +346,11 @@ async function sampleHome(page, baseUrl) {
     ],
     HOME_POST_FIRST_SCREEN_MAX_WAIT_MS,
   );
+  if (!trackedRequestsArrived) {
+    addFailure(
+      `home tracked data requests did not all arrive within ${HOME_POST_FIRST_SCREEN_MAX_WAIT_MS}ms.`,
+    );
+  }
 
   const allUrls = requestLog.map((entry) => entry.url);
   const formalNeedles = [
@@ -385,6 +395,7 @@ async function sampleHome(page, baseUrl) {
     "/assets/WorkbenchShellMarketTicker-",
     "/assets/workbenchShellTicker-",
   ];
+  const antdVendorNeedles = ["/assets/antd-vendor-"];
 
   const ready = {
     page: await page.locator('[data-testid="dashboard-home-page"]').count(),
@@ -406,6 +417,7 @@ async function sampleHome(page, baseUrl) {
     marketTickerMockChunk: countAny(initialUrls, marketTickerMockNeedles),
     firstScreenMockChunk: countAny(initialUrls, firstScreenMockNeedles),
     workbenchShellMarketTickerChunk: countAny(initialUrls, workbenchShellMarketTickerNeedles),
+    antdVendorChunk: countAny(initialUrls, antdVendorNeedles),
     echarts: countAny(initialUrls, echartsNeedles),
     fullDashboardHomeStylesheet: countAny(initialUrls, fullDashboardHomeStyleNeedles),
     firstScreenHomeStylesheet: countAny(initialUrls, firstScreenHomeStyleNeedles),
@@ -425,6 +437,7 @@ async function sampleHome(page, baseUrl) {
     marketTickerMockChunk: countAny(allUrls, marketTickerMockNeedles),
     firstScreenMockChunk: countAny(allUrls, firstScreenMockNeedles),
     workbenchShellMarketTickerChunk: countAny(allUrls, workbenchShellMarketTickerNeedles),
+    antdVendorChunk: countAny(allUrls, antdVendorNeedles),
     fullDashboardHomeStylesheet: countAny(allUrls, fullDashboardHomeStyleNeedles),
     failedResponses: failOnUnexpectedResponses("home", responseLog),
   };
@@ -471,6 +484,11 @@ async function sampleHome(page, baseUrl) {
   }
   if (initialCounts.echarts !== 0) {
     addFailure(`ECharts should stay out of the first-screen window, got ${initialCounts.echarts}`);
+  }
+  if (initialCounts.antdVendorChunk !== 0) {
+    addFailure(
+      `Ant Design should stay out of the first-screen window, got ${initialCounts.antdVendorChunk}`,
+    );
   }
   if (initialCounts.fullDashboardHomeStylesheet !== 0) {
     addFailure(
@@ -522,6 +540,11 @@ async function sampleHome(page, baseUrl) {
       `home should not load the first-screen mock view chunk, got ${allCounts.firstScreenMockChunk}`,
     );
   }
+  if (allCounts.antdVendorChunk !== 0) {
+    addFailure(
+      `home should not load the Ant Design vendor chunk, got ${allCounts.antdVendorChunk}`,
+    );
+  }
 
   return {
     route: "/",
@@ -563,6 +586,7 @@ async function sampleNonHomeShell(page, baseUrl) {
   const initialCounts = {
     institutionalStylesheet: countAny(initialUrls, ["/assets/workbenchInstitutionalConsole-"]),
     workbenchChromeStylesheet: countAny(initialUrls, ["/assets/workbenchDeferredChrome-"]),
+    antdVendorChunk: countAny(initialUrls, ["/assets/antd-vendor-"]),
   };
   const failedResponses = failOnUnexpectedResponses("cross-asset", responseLog);
   const allCounts = {
@@ -572,6 +596,7 @@ async function sampleNonHomeShell(page, baseUrl) {
       "/assets/WorkbenchShellMarketTicker-",
       "/assets/workbenchShellTicker-",
     ]),
+    antdVendorChunk: countAny(allUrls, ["/assets/antd-vendor-"]),
     failedResponses,
   };
 
@@ -586,6 +611,11 @@ async function sampleNonHomeShell(page, baseUrl) {
   if (initialCounts.workbenchChromeStylesheet < 1) {
     addFailure(
       `cross-asset workbench chrome stylesheet did not load in the first-screen window, got ${initialCounts.workbenchChromeStylesheet}.`,
+    );
+  }
+  if (initialCounts.antdVendorChunk < 1) {
+    addFailure(
+      `cross-asset Ant Design vendor chunk should load in the first-screen window, got ${initialCounts.antdVendorChunk}.`,
     );
   }
   if (allCounts.workbenchShellMarketTickerChunk < 1) {

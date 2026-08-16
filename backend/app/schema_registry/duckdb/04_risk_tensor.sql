@@ -12,6 +12,19 @@ create table if not exists fact_formal_risk_tensor_daily (
     cs01                          decimal(24, 8),
     portfolio_convexity           decimal(24, 8),
     portfolio_modified_duration   decimal(24, 8),
+    rate_risk_market_value        decimal(24, 8),
+    rate_risk_dv01                decimal(24, 8),
+    rate_risk_modified_duration   decimal(24, 8),
+    duration_excluded_market_value decimal(24, 8),
+    duration_excluded_count       integer,
+    missing_maturity_market_value decimal(24, 8),
+    missing_maturity_count        integer,
+    floating_rate_proxy_market_value decimal(24, 8),
+    floating_rate_proxy_count     integer,
+    payment_frequency_fallback_market_value decimal(24, 8),
+    payment_frequency_fallback_count integer,
+    bullet_value_date_fallback_market_value decimal(24, 8),
+    bullet_value_date_fallback_count integer,
     issuer_concentration_hhi      decimal(24, 8),
     issuer_top5_weight            decimal(24, 8),
     asset_cashflow_30d            decimal(24, 8),
@@ -27,6 +40,8 @@ create table if not exists fact_formal_risk_tensor_daily (
     warnings_json                 varchar,
     source_version                varchar,
     upstream_source_version       varchar,
+    upstream_rule_version         varchar,
+    upstream_cache_version        varchar,
     liability_source_version      varchar,
     liability_rule_version        varchar,
     rule_version                  varchar,
@@ -47,3 +62,33 @@ alter table fact_formal_risk_tensor_daily add column if not exists liability_sou
 alter table fact_formal_risk_tensor_daily add column if not exists liability_rule_version varchar
 -- MOSS:STMT
 alter table fact_formal_risk_tensor_daily add column if not exists regulatory_dv01 decimal(24, 8)
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists rate_risk_market_value decimal(24, 8)
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists rate_risk_dv01 decimal(24, 8)
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists rate_risk_modified_duration decimal(24, 8)
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists duration_excluded_market_value decimal(24, 8)
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists duration_excluded_count integer
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists upstream_rule_version varchar
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists upstream_cache_version varchar
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists missing_maturity_market_value decimal(24, 8)
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists missing_maturity_count integer
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists floating_rate_proxy_market_value decimal(24, 8)
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists floating_rate_proxy_count integer
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists payment_frequency_fallback_market_value decimal(24, 8)
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists payment_frequency_fallback_count integer
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists bullet_value_date_fallback_market_value decimal(24, 8)
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists bullet_value_date_fallback_count integer

@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 from typing import Annotated
 
+from backend.app.api.deps import ensure_read_allowed
 from backend.app.governance.settings import get_settings
 from backend.app.schemas.product_category_pnl import (
     ProductCategoryManualAdjustmentCreateRequest,
@@ -20,7 +21,9 @@ from backend.app.services.product_category_pnl_service import (
     export_product_category_manual_adjustments_csv,
     list_product_category_manual_adjustments,
     product_category_attribution_envelope,
+    product_category_attribution_history_envelope,
     product_category_dates_envelope,
+    product_category_history_envelope,
     product_category_pnl_envelope,
     refresh_product_category_pnl,
     restore_product_category_manual_adjustment,
@@ -31,6 +34,10 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import Response
 
 router = APIRouter(prefix="/ui/pnl/product-category")
+
+# The trend workspace requests at most a two-year monthly window; the cap keeps one
+# batch from turning into an unbounded read-model scan.
+MAX_HISTORY_REPORT_DATES = 36
 
 
 @router.get("/dates")
@@ -68,6 +75,56 @@ def detail(
         )
     except ProductCategoryReadModelNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ProductCategoryReadModelUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/history")
+def history(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_dates: str = Query(..., description="Comma-separated report dates"),
+    view: str = Query("monthly"),
+    scenario_rate_pct: float | None = Query(None),
+) -> dict[str, object]:
+    if view not in AVAILABLE_VIEWS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unsupported product-category view={view!r}; expected one of {AVAILABLE_VIEWS}",
+        )
+    parsed_dates = _parse_report_dates(report_dates)
+    settings = get_settings()
+    _ensure_product_category_pnl_read_allowed(auth, settings)
+    try:
+        return product_category_history_envelope(
+            settings.duckdb_path,
+            report_dates=parsed_dates,
+            view=view,
+            scenario_rate_pct=scenario_rate_pct,
+        )
+    except ProductCategoryReadModelUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/attribution/history")
+def attribution_history(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_dates: str = Query(..., description="Comma-separated report dates"),
+    compare: str = Query("mom"),
+) -> dict[str, object]:
+    if compare not in {"mom", "yoy"}:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unsupported product-category attribution compare={compare!r}; expected 'mom' or 'yoy'",
+        )
+    parsed_dates = _parse_report_dates(report_dates)
+    settings = get_settings()
+    _ensure_product_category_pnl_read_allowed(auth, settings)
+    try:
+        return product_category_attribution_history_envelope(
+            settings.duckdb_path,
+            report_dates=parsed_dates,
+            compare=compare,
+        )
     except ProductCategoryReadModelUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -151,6 +208,8 @@ def create_manual_adjustment(
         ensure_user_allowed(auth=auth, settings=settings, resource="product_category_pnl.adjustment", action="write")
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return create_product_category_manual_adjustment(settings, payload)
 
 
@@ -221,6 +280,8 @@ def revoke_manual_adjustment(
         ensure_user_allowed(auth=auth, settings=settings, resource="product_category_pnl.adjustment", action="write")
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
         return revoke_product_category_manual_adjustment(settings, adjustment_id=adjustment_id)
     except ValueError as exc:
@@ -228,17 +289,29 @@ def revoke_manual_adjustment(
 
 
 def _ensure_product_category_pnl_read_allowed(auth: AuthContext, settings) -> None:
-    try:
-        ensure_user_allowed(
-            auth=auth,
-            settings=settings,
-            resource="product_category_pnl",
-            action="read",
+    ensure_read_allowed(auth, "product_category_pnl", settings=settings, authorize=ensure_user_allowed)
+
+
+def _parse_report_dates(raw: str) -> list[str]:
+    """Deduplicate while preserving order so one batch never fans out beyond the page's window."""
+    seen: set[str] = set()
+    parsed: list[str] = []
+    for item in raw.split(","):
+        candidate = item.strip()
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        parsed.append(candidate)
+    if not parsed:
+        raise HTTPException(status_code=422, detail="report_dates must contain at least one report date")
+    if len(parsed) > MAX_HISTORY_REPORT_DATES:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"report_dates supports at most {MAX_HISTORY_REPORT_DATES} entries; received {len(parsed)}"
+            ),
         )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return parsed
 
 
 @router.post("/manual-adjustments/{adjustment_id}/edit")
@@ -252,6 +325,8 @@ def edit_manual_adjustment(
         ensure_user_allowed(auth=auth, settings=settings, resource="product_category_pnl.adjustment", action="write")
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
         return update_product_category_manual_adjustment(
             settings,
@@ -272,6 +347,8 @@ def restore_manual_adjustment(
         ensure_user_allowed(auth=auth, settings=settings, resource="product_category_pnl.adjustment", action="write")
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
         return restore_product_category_manual_adjustment(settings, adjustment_id=adjustment_id)
     except ValueError as exc:

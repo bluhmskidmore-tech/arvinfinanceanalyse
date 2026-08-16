@@ -74,27 +74,37 @@ def compute_bond_spreads(
     if not bond_rows or not treasury_curve:
         return []
 
-    full_curve = build_full_curve({str(key): safe_decimal(value) for key, value in treasury_curve.items()})
+    normalized_curve = {str(key): safe_decimal(value) for key, value in treasury_curve.items()}
+    full_curve = build_full_curve(normalized_curve)
     if not full_curve:
         return []
 
-    candidate_rows = [
-        row
-        for row in bond_rows
-        if str(row.get("asset_class_std") or "").strip() == "credit"
-        and str(row.get("tenor_bucket") or "").strip()
-        and row.get("ytm") is not None
-        and safe_decimal(row.get("market_value")) != ZERO
-    ]
-    total_credit_mv = sum((safe_decimal(row.get("market_value")) for row in candidate_rows), ZERO)
+    candidate_rows: list[tuple[dict[str, Any], Decimal]] = []
+    for row in bond_rows:
+        if (
+            str(row.get("asset_class_std") or "").strip() != "credit"
+            or not str(row.get("tenor_bucket") or "").strip()
+            or row.get("ytm") is None
+            or safe_decimal(row.get("market_value")) == ZERO
+        ):
+            continue
+        normalized_ytm_pct = _normalize_ytm_to_pct(row.get("ytm"))
+        if normalized_ytm_pct is None:
+            continue
+        candidate_rows.append((row, normalized_ytm_pct))
+    total_credit_mv = sum((safe_decimal(row.get("market_value")) for row, _ in candidate_rows), ZERO)
     if total_credit_mv == ZERO:
         return []
 
     spread_rows: list[BondSpreadRow] = []
-    for row in candidate_rows:
+    for row, ytm_pct in candidate_rows:
         tenor_bucket = str(row.get("tenor_bucket") or "").strip()
-        benchmark_yield = _resolve_benchmark_yield(full_curve, tenor_bucket)
-        ytm_pct = _normalize_ytm_to_pct(row.get("ytm"))
+        benchmark_yield = _resolve_actual_maturity_benchmark_yield(
+            normalized_curve,
+            row.get("years_to_maturity"),
+        )
+        if benchmark_yield is None:
+            benchmark_yield = _resolve_benchmark_yield(full_curve, tenor_bucket)
         market_value = safe_decimal(row.get("market_value"))
         face_value = safe_decimal(row.get("face_value"))
         if face_value == ZERO:
@@ -189,11 +199,48 @@ def _resolve_benchmark_yield(curve: dict[str, Decimal], tenor_bucket: str) -> De
     return interpolate_rate(points, tenor_to_years(tenor_bucket))
 
 
-def _normalize_ytm_to_pct(value: Any) -> Decimal:
+def _resolve_actual_maturity_benchmark_yield(
+    curve: dict[str, Decimal],
+    years_to_maturity: Any,
+) -> Decimal | None:
+    target_years = safe_decimal(years_to_maturity)
+    if target_years <= ZERO:
+        return None
+
+    points = build_curve_points(curve)
+    if not points:
+        return None
+    target = float(target_years)
+    if target <= points[0][0]:
+        return points[0][1]
+    if target >= points[-1][0]:
+        return points[-1][1]
+
+    for (left_years, left_rate), (right_years, right_rate) in zip(
+        points,
+        points[1:],
+        strict=False,
+    ):
+        if target <= right_years:
+            interval = Decimal(str(right_years - left_years))
+            elapsed = Decimal(str(target - left_years))
+            return left_rate + (right_rate - left_rate) * elapsed / interval
+    return points[-1][1]
+
+
+def _normalize_ytm_to_pct(value: Any) -> Decimal | None:
+    """`fact_formal_bond_analytics_daily.ytm` 为小数口径（0.0182 = 1.82%），显式 ×100。
+
+    |ytm| > 0.2（即年收益率绝对值 > 20%）视为脏数据返回 None、调用方跳过该券。
+    此前的 `<1 则 ×100` 启发式在百分数误存时会输出千 bp 级错误利差
+    （2026-07-19 审计固收 H-1）。
+    """
     ytm = safe_decimal(value)
     if ytm == ZERO:
         return ZERO
-    return ytm * Decimal("100") if abs(ytm) < Decimal("1") else ytm
+    if abs(ytm) > Decimal("0.2"):
+        return None
+    return ytm * Decimal("100")
 
 
 def _window_values(

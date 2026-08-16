@@ -1,12 +1,18 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { fireEvent, render as rtlRender, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ApiClientProvider } from "../api/clientContext";
 import { AgentPanel } from "../features/agent/AgentPanel";
+
+vi.mock("../app/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../app/navigation")>()),
+  isAgentFrontendEnabled: () => true,
+}));
 
 const AGENT_PAGE_CONTEXT_CHANGE_LABEL = "页面上下文已更新";
 const AGENT_QUESTION_INPUT_LABEL = "向 Agent 提问";
-const AGENT_CONVERSATION_LABEL = "Agent 对话记录";
 const REPO_PATH_LABEL = "GitNexus 仓库路径";
 
 function buildJsonResponse(payload: unknown, status = 200) {
@@ -56,6 +62,23 @@ function buildAgentResult({
   };
 }
 
+/** POST /api/agent/runs 不再同步短路返回 envelope；托管路径 mock 统一用终态 run payload。 */
+function buildManagedRunPayload(
+  result: ReturnType<typeof buildAgentResult>,
+  runId = "agent_run:panel-test",
+) {
+  return {
+    run_id: runId,
+    status: "completed",
+    provider: "hermes",
+    model: "gpt-5.5",
+    transport: "bridge",
+    toolsets: "file",
+    elapsed_seconds: 1,
+    result,
+  };
+}
+
 function renderAgentPanel() {
   return render(
     <AgentPanel
@@ -65,6 +88,10 @@ function renderAgentPanel() {
       defaultFilters={{ research_domain: "stock" }}
     />,
   );
+}
+
+function render(ui: ReactElement) {
+  return rtlRender(ui, { wrapper: ApiClientProvider });
 }
 
 type ScrollIntoViewArg = boolean | ScrollIntoViewOptions;
@@ -164,7 +191,7 @@ describe("AgentPanel", () => {
 
   it("announces page context changes in the embedded panel", async () => {
     const user = userEvent.setup();
-    fetchMock.mockResolvedValueOnce(buildJsonResponse(buildAgentResult()));
+    fetchMock.mockResolvedValueOnce(buildJsonResponse(buildManagedRunPayload(buildAgentResult())));
     const { rerender } = render(
       <AgentPanel
         pageId="test-page"
@@ -238,7 +265,7 @@ describe("AgentPanel", () => {
 
   it("resets the expanded composer height after submitting a multiline draft", async () => {
     const user = userEvent.setup();
-    fetchMock.mockResolvedValueOnce(buildJsonResponse(buildAgentResult()));
+    fetchMock.mockResolvedValueOnce(buildJsonResponse(buildManagedRunPayload(buildAgentResult())));
     renderAgentPanel();
 
     const input = screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL) as HTMLTextAreaElement;
@@ -377,55 +404,62 @@ describe("AgentPanel", () => {
     expect(screen.getByRole("button", { name: "\u7ec4\u5408\u6982\u89c8" })).toBeInTheDocument();
   });
 
-  it("keeps suggested governed intent actions in the same embedded conversation", async () => {
+  it("keeps execute_intent suggestions display-only in the read-only embedded panel", async () => {
     const user = userEvent.setup();
-    fetchMock
-      .mockResolvedValueOnce(
-        buildJsonResponse(
-          buildAgentResult({
-            suggestedActions: [
-              {
-                type: "execute_intent",
-                label: "\u7ec4\u5408\u6982\u89c8",
-                payload: { intent: "portfolio_overview" },
-                requires_confirmation: true,
-              },
-            ],
-          }),
-        ),
-      )
-      .mockResolvedValueOnce(
-        buildJsonResponse(
-          buildAgentResult({
-            answer: "Formal portfolio overview answered.",
-            resultKind: "agent.portfolio_overview",
-            qualityFlag: "ok",
-          }),
-        ),
-      );
+    fetchMock.mockResolvedValueOnce(
+      buildJsonResponse(
+        buildAgentResult({
+          suggestedActions: [
+            {
+              type: "execute_intent",
+              label: "组合概览",
+              payload: { intent: "portfolio_overview" },
+              requires_confirmation: true,
+            },
+            {
+              type: "inspect_drill",
+              label: "期限桶",
+              payload: { dimension: "term_bucket" },
+              requires_confirmation: false,
+            },
+          ],
+        }),
+      ),
+    );
+    renderAgentPanel();
+
+    expect(screen.getByText("只读")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "please judge current risk");
+    await user.click(screen.getByTestId("agent-panel-submit"));
+    await screen.findByTestId("agent-panel-answer");
+
+    const executeButton = screen.getByRole("button", { name: "组合概览" });
+    expect(executeButton).toBeDisabled();
+    expect(screen.getByText("只读 · 仅展示")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "确认执行：组合概览" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByText("更多建议 · 1 项"));
+    await user.click(screen.getByRole("button", { name: "期限桶" }));
+
+    expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveValue(
+      "请基于当前 evidence 继续下钻：期限桶",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces governance signals in the embedded copilot result", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(buildJsonResponse(buildAgentResult()));
     renderAgentPanel();
 
     await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "please judge current risk");
     await user.click(screen.getByTestId("agent-panel-submit"));
     await screen.findByTestId("agent-panel-answer");
-    await user.click(screen.getByRole("button", { name: "\u7ec4\u5408\u6982\u89c8" }));
-    expect(screen.getByRole("button", { name: "\u786e\u8ba4\u6267\u884c\uff1a\u7ec4\u5408\u6982\u89c8" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "\u786e\u8ba4\u6267\u884c\uff1a\u7ec4\u5408\u6982\u89c8" }));
 
-    expect(await screen.findByText("Formal portfolio overview answered.")).toBeInTheDocument();
-    expect(screen.getByLabelText(AGENT_CONVERSATION_LABEL)).toHaveTextContent(
-      "\u6267\u884c\u5efa\u8bae\u52a8\u4f5c\uff1a\u7ec4\u5408\u6982\u89c8",
-    );
-    const [, options] = fetchMock.mock.calls[1] ?? [];
-    expect(JSON.parse(String((options as RequestInit | undefined)?.body))).toMatchObject({
-      question: "\u7ec4\u5408\u6982\u89c8",
-      context: {
-        intent: "portfolio_overview",
-        conversation: {
-          recent_turns: [{ result_kind: "agent.analysis_chat" }],
-        },
-      },
-    });
+    const callout = screen.getByRole("status", { name: "数据可信状态提示" });
+    expect(callout).toHaveTextContent("证据质量存在预警，结论请人工复核");
+    expect(callout).toHaveTextContent("本结果不可作为正式口径，仅供分析参考");
   });
 
   it("keeps embedded conversation context when default question changes after an answer", async () => {
@@ -433,16 +467,22 @@ describe("AgentPanel", () => {
     fetchMock
       .mockResolvedValueOnce(
         buildJsonResponse(
-          buildAgentResult({
-            answer: "First embedded answer.",
-          }),
+          buildManagedRunPayload(
+            buildAgentResult({
+              answer: "First embedded answer.",
+            }),
+            "agent_run:embedded-context-first",
+          ),
         ),
       )
       .mockResolvedValueOnce(
         buildJsonResponse(
-          buildAgentResult({
-            answer: "Second embedded answer.",
-          }),
+          buildManagedRunPayload(
+            buildAgentResult({
+              answer: "Second embedded answer.",
+            }),
+            "agent_run:embedded-context-second",
+          ),
         ),
       );
 
@@ -524,12 +564,105 @@ describe("AgentPanel", () => {
     const turnStatus = await screen.findByRole("status", { name: "回答状态：please judge current risk" });
     expect(turnStatus).toHaveTextContent("本地查询");
     expect(screen.getByText("正在回答 · Shift+Enter 换行")).toBeInTheDocument();
-    expect(screen.getByTestId("agent-panel-submit")).toBeDisabled();
+    // 嵌入态回答中：composer 主按钮切换为可点击的停止入口，而不是禁用的发送按钮。
+    const pendingAction = screen.getByTestId("agent-panel-submit");
+    expect(pendingAction).toHaveTextContent("停止等待");
+    expect(pendingAction).not.toBeDisabled();
     release?.();
     await waitFor(() => {
       expect(screen.getByTestId("agent-panel-submit")).toBeDisabled();
     });
     await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "follow-up risk check");
     expect(screen.getByTestId("agent-panel-submit")).not.toBeDisabled();
+  });
+
+  it("stops a pending embedded answer from the composer stop action", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockReturnValueOnce(new Promise(() => undefined));
+    renderAgentPanel();
+
+    await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "stop embedded answer");
+    await user.click(screen.getByTestId("agent-panel-submit"));
+
+    const stopAction = screen.getByTestId("agent-panel-submit");
+    expect(stopAction).toHaveAccessibleName("停止等待当前回答：stop embedded answer");
+    await user.click(stopAction);
+
+    expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
+    expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveValue("stop embedded answer");
+    expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveFocus();
+  });
+
+  it("requests backend cancellation when stopping an embedded managed run with a known run id", async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(
+        buildJsonResponse({
+          run_id: "agent_run:embedded-cancel",
+          status: "queued",
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+          queued_at: "2026-05-07T08:00:00Z",
+        }),
+      )
+      .mockRejectedValueOnce(new TypeError("sse unavailable"))
+      .mockReturnValueOnce(new Promise(() => undefined))
+      .mockResolvedValueOnce(
+        buildJsonResponse({
+          run_id: "agent_run:embedded-cancel",
+          status: "cancelled",
+          provider: "hermes",
+        }),
+      );
+    renderAgentPanel();
+
+    await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "cancel embedded run");
+    await user.click(screen.getByTestId("agent-panel-submit"));
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+
+    await user.click(screen.getByTestId("agent-panel-submit"));
+
+    expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
+    await waitFor(() => {
+      const cancelCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/cancel"));
+      expect(cancelCall).toBeTruthy();
+      expect(String(cancelCall?.[0])).toContain("agent_run%3Aembedded-cancel/cancel");
+      expect((cancelCall?.[1] as RequestInit | undefined)?.method).toBe("POST");
+    });
+  });
+
+  it("stops a pending embedded answer with Escape without leaking Escape to the host drawer", async () => {
+    const user = userEvent.setup();
+    const hostKeydownSpy = vi.fn();
+    document.body.addEventListener("keydown", hostKeydownSpy);
+    try {
+      fetchMock.mockReturnValueOnce(new Promise(() => undefined));
+      renderAgentPanel();
+
+      await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "escape embedded answer");
+      await user.click(screen.getByTestId("agent-panel-submit"));
+      hostKeydownSpy.mockClear();
+
+      await user.keyboard("{Escape}");
+
+      expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
+      const escapesWhileLoading = hostKeydownSpy.mock.calls.filter(
+        ([event]) => (event as KeyboardEvent).key === "Escape",
+      );
+      expect(escapesWhileLoading).toHaveLength(0);
+
+      await user.keyboard("{Escape}");
+      const escapesAfterStop = hostKeydownSpy.mock.calls.filter(
+        ([event]) => (event as KeyboardEvent).key === "Escape",
+      );
+      expect(escapesAfterStop).toHaveLength(1);
+    } finally {
+      document.body.removeEventListener("keydown", hostKeydownSpy);
+    }
   });
 });

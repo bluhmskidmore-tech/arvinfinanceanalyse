@@ -1,17 +1,49 @@
 .page {
-  --cf-paper: var(--moss-color-card-bg, #ffffff);
-  --cf-paper-muted: color-mix(in srgb, var(--moss-color-neutral-50, #f5f7f9) 74%, var(--moss-color-neutral-100, #eceff3));
-  --cf-canvas: var(--moss-color-surface-base, #f5f7f9);
-  --cf-border: var(--moss-color-border-default, #e2e6ec);
-  --cf-border-strong: color-mix(in srgb, var(--moss-color-neutral-300, #d1d5db) 70%, var(--moss-color-neutral-400, #9ca3af));
-  --cf-text: var(--moss-color-text-primary, #1f2937);
-  --cf-subtle: var(--moss-color-text-secondary, #6b7280);
-  --cf-muted: var(--moss-color-text-muted, #8b95a1);
-  --cf-primary: var(--moss-color-primary-600, #1850a1);
-  --cf-accent: var(--moss-color-warning-600, #b35c05);
-  --cf-positive: var(--moss-color-success-600, #25714d);
-  --cf-negative: var(--moss-color-danger-600, #dc2626);
-  --cf-info: var(--moss-color-info-600, #2563eb);
+  /*
+   * ib 与 moss-color 系变量在 ThemedRouteBoundary 上已被算成钢蓝字面值再
+   * 继承（ledger-pnl 2026-08-12 结论），页根按 theme-dh-api 语义映射重声明，
+   * 令 --cf-* 别名与 PageDataSection / DataQualityBanner 在 Nocturne scope
+   * 内重新解析（pnl-by-business-insights 同款桥接，全 var 引用零字面量）。
+   */
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-surface: var(--dh-api-blue-soft);
+  --ib-radius: var(--dh-api-radius);
+  --ib-shadow: none;
+  --ib-warn: var(--dh-api-amber);
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
+  --ib-gold: var(--dh-api-gold);
+  --moss-color-text-primary: var(--dh-api-ink);
+  --moss-color-text-secondary: var(--dh-api-soft);
+  --moss-color-text-muted: var(--dh-api-muted);
+  --moss-color-danger-200: var(--dh-api-line);
+  --moss-color-danger-50: var(--dh-api-red-soft);
+  --moss-color-danger-800: var(--dh-api-red);
+  --moss-color-warning-200: var(--dh-api-line);
+  --moss-color-warning-50: var(--dh-api-amber-soft);
+  --moss-color-warning-900: var(--dh-api-amber);
+
+  /* IB aliases — no moss/hex fallbacks (Phase 4d-1b) */
+  --cf-paper: var(--ib-surface);
+  --cf-paper-muted: var(--ib-surface-muted);
+  --cf-canvas: var(--ib-paper);
+  --cf-border: var(--ib-hairline);
+  --cf-border-strong: var(--ib-hairline);
+  --cf-text: var(--ib-ink);
+  --cf-subtle: var(--ib-ink-secondary);
+  --cf-muted: var(--ib-ink-muted);
+  --cf-primary: var(--ib-accent);
+  --cf-accent: var(--ib-warn);
+  --cf-positive: var(--ib-up);
+  --cf-negative: var(--ib-down);
+  --cf-info: var(--ib-accent);
   max-width: 1280px;
   margin: 0 auto;
   color: var(--cf-text);
@@ -26,11 +58,11 @@
   margin-bottom: 16px;
   padding: 18px 20px;
   border: 1px solid var(--cf-border);
-  border-radius: 12px;
+  border-radius: var(--ib-radius);
   background:
     linear-gradient(135deg, var(--cf-paper), var(--cf-paper-muted)),
     var(--cf-paper);
-  box-shadow: 0 8px 20px rgba(22, 35, 46, 0.05);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--cf-text) 5%, transparent);
 }
 
 .heroMain {
@@ -45,7 +77,6 @@
   margin-bottom: 8px;
 }
 
-.eyebrow,
 .sectionEyebrow,
 .conclusionLabel,
 .filterLabel {
@@ -55,7 +86,6 @@
   color: var(--cf-muted);
 }
 
-.eyebrow,
 .sectionEyebrow {
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -81,7 +111,7 @@
   min-width: 0;
   padding: 12px;
   border: 1px solid var(--cf-border);
-  border-radius: 8px;
+  border-radius: var(--ib-radius);
   background: var(--cf-paper);
 }
 
@@ -106,7 +136,7 @@
 .sidePanel,
 .tablePanel {
   border: 1px solid var(--cf-border);
-  border-radius: 12px;
+  border-radius: var(--ib-radius);
   background: var(--cf-paper);
 }
 
@@ -118,7 +148,7 @@
   position: relative;
   overflow: hidden;
   padding: 24px;
-  box-shadow: 0 10px 26px rgba(22, 35, 46, 0.06);
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--cf-text) 6%, transparent);
 }
 
 .decisionDeck::before {
@@ -126,14 +156,20 @@
   inset: 0 auto 0 0;
   width: 6px;
   content: "";
-  background: var(--cf-positive);
+  /* Default rail: secondary ink — never --ib-up for positive duration gap */
+  background: var(--cf-subtle);
 }
 
+/* Positive duration gap = structural deviation: --ib-warn, NOT --ib-up/green */
 .decisionDeck_positive {
-  border-color: color-mix(in srgb, var(--cf-positive) 55%, var(--cf-border));
+  border-color: color-mix(in srgb, var(--cf-accent) 42%, var(--cf-border));
   background:
-    linear-gradient(90deg, color-mix(in srgb, var(--cf-positive) 16%, transparent), transparent 36%),
+    linear-gradient(90deg, color-mix(in srgb, var(--cf-accent) 15%, transparent), transparent 36%),
     linear-gradient(135deg, var(--cf-paper), var(--cf-paper-muted) 62%);
+}
+
+.decisionDeck_positive::before {
+  background: var(--cf-accent);
 }
 
 .decisionDeck_negative {
@@ -215,7 +251,7 @@
   gap: 10px;
   padding: 14px;
   border: 1px solid color-mix(in srgb, var(--cf-border) 82%, transparent);
-  border-radius: 8px;
+  border-radius: var(--ib-radius);
   background: var(--cf-paper);
 }
 
@@ -239,12 +275,32 @@
   text-align: right;
 }
 
+/*
+ * 决策条读数与 KPI 卡同读数同色（2026-07-19 决议：正缺口琥珀/中性，禁 up 绿；
+ * 负缺口与敏感度负值走 down 红仅标方向）。
+ */
+.decisionDeck strong.deckValue_warning {
+  color: var(--cf-accent);
+}
+
+.decisionDeck strong.deckValue_negative {
+  color: var(--cf-negative);
+}
+
+.decisionDeck strong.deckValue_positive {
+  color: color-mix(in srgb, var(--cf-positive) 82%, var(--cf-text));
+}
+
+.decisionDeck strong.deckValue_gapPositive {
+  color: var(--cf-subtle);
+}
+
 .contractStatus {
   display: grid;
   gap: 10px;
   padding: 14px 16px;
   border: 1px solid color-mix(in srgb, var(--cf-accent) 36%, var(--cf-border));
-  border-radius: 10px;
+  border-radius: var(--ib-radius);
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--cf-accent) 10%, transparent), transparent 40%),
     var(--cf-paper);
@@ -260,6 +316,12 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 8px 16px;
+  color: var(--cf-subtle);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.contractStatusNote {
   color: var(--cf-subtle);
   font-size: 12px;
   line-height: 1.6;
@@ -294,7 +356,8 @@
 .railBar {
   display: block;
   min-height: 10px;
-  border-radius: 999px 999px 2px 2px;
+  /* 迷你条是量值图形：圆角收敛 ≤2px，半圆头会吃掉可比长度。 */
+  border-radius: 2px 2px 0 0;
 }
 
 .railBar_positive {
@@ -309,12 +372,22 @@
   background: var(--cf-muted);
 }
 
+/* Missing month: hatched so it never reads as a flat zero month. */
+.railBar_missing {
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--cf-muted) 55%, transparent) 0 2px,
+    transparent 2px 4px
+  );
+  border: 1px dashed color-mix(in srgb, var(--cf-muted) 70%, transparent);
+}
+
 .panel,
 .chartPanel,
 .sidePanel,
 .tablePanel {
   padding: 16px;
-  box-shadow: 0 8px 18px rgba(22, 35, 46, 0.04);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--cf-text) 4%, transparent);
 }
 
 .sectionHeader {
@@ -353,7 +426,7 @@
   min-width: 0;
   padding: 14px 16px;
   border: 1px solid color-mix(in srgb, var(--cf-border) 82%, transparent);
-  border-radius: 8px;
+  border-radius: var(--ib-radius);
   background: linear-gradient(180deg, var(--cf-paper), var(--cf-paper-muted));
   transition:
     background 180ms ease,
@@ -411,7 +484,7 @@
 }
 
 .metricCell_positive strong {
-  color: color-mix(in srgb, var(--cf-positive) 82%, #1f2937);
+  color: color-mix(in srgb, var(--cf-positive) 82%, var(--cf-text));
 }
 
 .metricCell_negative strong {
@@ -420,6 +493,11 @@
 
 .metricCell_warning strong {
   color: var(--cf-accent);
+}
+
+/* Small positive duration gap: secondary ink — never --ib-up */
+.metricCell_gapPositive strong {
+  color: var(--cf-subtle);
 }
 
 .projectionGrid {
@@ -438,7 +516,7 @@
   display: grid;
   min-height: 260px;
   place-items: center;
-  border-radius: 8px;
+  border-radius: var(--ib-radius);
   background: var(--cf-paper-muted);
   color: var(--cf-muted);
 }
@@ -457,6 +535,10 @@
 
 .sidePanel_warning {
   border-left-color: var(--cf-accent);
+}
+
+.sidePanel_neutral {
+  border-left-color: var(--cf-muted);
 }
 
 .sideMetric {
@@ -478,8 +560,7 @@
   line-height: 1.2;
 }
 
-.sideMetric p,
-.sideNote {
+.sideMetric p {
   margin: 0;
   color: var(--cf-subtle);
   font-size: 12px;
@@ -510,7 +591,7 @@
 }
 
 .sidePanel_positive .riskHeader strong {
-  color: color-mix(in srgb, var(--cf-positive) 82%, #1f2937);
+  color: color-mix(in srgb, var(--cf-positive) 82%, var(--cf-text));
 }
 
 .riskHeader p,
@@ -533,7 +614,7 @@
   align-items: baseline;
   padding: 10px;
   border: 1px solid color-mix(in srgb, var(--cf-border) 72%, transparent);
-  border-radius: 8px;
+  border-radius: var(--ib-radius);
   background: var(--cf-paper);
 }
 
@@ -557,18 +638,31 @@
   overflow-wrap: anywhere;
 }
 
-.sideNote {
-  padding: 12px;
-  border: 1px solid color-mix(in srgb, var(--cf-info) 32%, var(--cf-border));
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--cf-info) 10%, var(--cf-paper));
-  color: color-mix(in srgb, var(--cf-info) 82%, var(--cf-text));
+/*
+ * antd 控件覆盖：antd token 已全局切 Nocturne（04d9613e，colorBgContainer
+ * 与 --cf-* 链同出 Nocturne 色源），原钢蓝底色已不存在；此块保留为页内
+ * scoped 等价防御层（decision-items 先例的历史兜底）。
+ */
+.datePanel :global(.ant-select-selector) {
+  border-color: var(--cf-border) !important;
+  background: var(--cf-paper-muted) !important;
+  color: var(--cf-text) !important;
+}
+
+.datePanel :global(.ant-select-arrow),
+.datePanel :global(.ant-select-selection-placeholder) {
+  color: var(--cf-muted) !important;
+}
+
+.tablePanel :global(.ant-table) {
+  background: var(--cf-paper) !important;
+  color: var(--cf-text);
 }
 
 .tablePanel :global(.ant-table-wrapper) {
   overflow: hidden;
   border: 1px solid var(--cf-border);
-  border-radius: 8px;
+  border-radius: var(--ib-radius);
 }
 
 .tablePanel :global(.ant-table-thead > tr > th) {
@@ -583,9 +677,28 @@
   font-size: 13px;
 }
 
+.warningBody {
+  display: grid;
+  gap: 8px;
+}
+
 .warningList {
   margin: 0;
   padding-left: 18px;
+}
+
+/* 英文原文默认折叠（risk-overview 口径提示先例），展开后仅作证据引用。 */
+.warningOriginals summary {
+  color: var(--cf-subtle);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.warningOriginals ul {
+  margin: 6px 0 0;
+  color: var(--cf-subtle);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 @media (max-width: 980px) {
@@ -643,7 +756,7 @@
   .sidePanel,
   .tablePanel,
   .decisionDeck {
-    border-radius: 12px;
+    border-radius: var(--ib-radius);
     padding: 14px;
   }
 

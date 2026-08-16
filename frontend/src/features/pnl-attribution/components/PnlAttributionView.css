@@ -1,22 +1,702 @@
+/*
+ * 损益归因 Nocturne 版式（业主既定路径：照经营日报首页标准，先例 /ledger-pnl，
+ * DESIGN.md Decisions Log 2026-08-12）。
+ *
+ * 色值全部走 --dh-api-* var/color-mix 链：--ib-* 在 ThemedRouteBoundary 边界
+ * 已被算成钢蓝字面值再继承，Nocturne scope 翻不动，页面 CSS 不得再引用。
+ * 边线两级：外框/面板边 --dh-api-line，行内分隔/次级边 --dh-api-line-soft。
+ * 圆角统一 var(--dh-api-radius)（语义圆点保持圆形例外）。
+ */
+
+/* ---- 页根与骨架 ---------------------------------------------------- */
+
+.pnl-attribution-page {
+  box-sizing: border-box;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 8px 4px 32px;
+  counter-reset: pnla-section;
+}
+
+.pnl-attribution-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 编号分区容器：分区头与区内内容 12px 节奏。 */
+.pnl-attribution-section {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pnl-attribution-panel {
+  padding: 14px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.pnl-attribution-panel--compact {
+  padding: 12px;
+}
+
+.pnl-attribution-section-body {
+  margin-top: 12px;
+}
+
+/* ---- 编号分区头（首页语言：CSS counter + 发丝线 + 右侧状态位） ------ */
+
+.pnl-attribution-section-head {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 10px;
+  min-height: 28px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  counter-increment: pnla-section;
+}
+
+.pnl-attribution-section-head::before {
+  content: counter(pnla-section, decimal-leading-zero);
+  grid-row: 1;
+  grid-column: 1;
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.pnl-attribution-section-head__title {
+  grid-row: 1;
+  grid-column: 2;
+  margin: 0;
+  overflow: hidden;
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pnl-attribution-section-head .pnl-attribution-section-lead__description {
+  grid-column: 2 / -1;
+}
+
+/* ---- 节头基元（card 变体供口径卡与页签内面板沿用） ------------------ */
+
+.pnl-attribution-section-lead {
+  display: grid;
+  min-width: 0;
+}
+
+.pnl-attribution-section-lead--card {
+  gap: 4px;
+}
+
+.pnl-attribution-section-lead__eyebrow {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pnl-attribution-section-lead__title {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.pnl-attribution-section-lead__description {
+  max-width: 900px;
+  margin: 0;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* ---- 数字通道与语义色（绿涨红跌，2026-08-11 决议） ------------------ */
+
+.pnl-attribution-tabular,
+.pnl-attribution-tone--positive,
+.pnl-attribution-tone--negative,
+.pnl-attribution-tone--neutral,
+.pnl-attribution-bridge-table__amount,
+.pnl-attribution-bridge-table__share,
+.pnl-attribution-compact-table__num,
+.pnl-attribution-product-category-summary-card__value,
+.pnl-attribution-meta-strip__value {
+  font-family: var(--moss-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.pnl-attribution-tone--positive {
+  color: var(--dh-api-green);
+}
+
+.pnl-attribution-tone--negative {
+  color: var(--dh-api-red);
+}
+
+.pnl-attribution-tone--neutral {
+  color: var(--dh-api-ink);
+}
+
+/* ---- 徽标与控件（32px 控件、徽标去大写宽字距） ---------------------- */
+
+.pnl-attribution-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.pnl-attribution-mode-badge[data-mode="real"] {
+  border-color: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-green) 8%, var(--dh-api-panel));
+  color: var(--dh-api-green);
+}
+
+.pnl-attribution-tab-button {
+  min-height: 32px;
+  padding: 5px 12px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  color: var(--dh-api-ink);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pnl-attribution-tab-button:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, var(--dh-api-line));
+}
+
+.pnl-attribution-tab-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* 激活态强化：accent 填充加深 + 底部 2px 指示条（inset 线承载激活语义，
+   与外壳 rail 激活制度同源），与未激活描边胶囊拉开对比。 */
+.pnl-attribution-tab-button--active {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 62%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 20%, var(--dh-api-panel));
+  box-shadow: inset 0 -2px 0 0 var(--dh-api-blue);
+  color: var(--dh-api-ink);
+}
+
+.pnl-attribution-tab-button--inline {
+  margin-left: 12px;
+}
+
+.pnl-attribution-tab-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.pnl-attribution-tab-row__compare-group {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* ---- 口径边界（02）：双口径卡 -------------------------------------- */
+
+.pnl-attribution-lens-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.pnl-attribution-lens-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.pnl-attribution-lens-status {
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.pnl-attribution-lens-source {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- 规模/利率损益变动桥 -------------------------------------------- */
+
+.pnl-attribution-bridge-panel {
+  overflow: hidden;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.pnl-attribution-bridge-panel__grid {
+  display: grid;
+  grid-template-columns: minmax(min(100%, 260px), 0.76fr) minmax(min(100%, 520px), 1.24fr);
+}
+
+.pnl-attribution-bridge-panel__summary {
+  display: grid;
+  align-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border-right: 1px solid var(--dh-api-line-soft);
+}
+
+.pnl-attribution-bridge-panel__title {
+  margin: 6px 0 0;
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.pnl-attribution-bridge-panel__value {
+  margin-top: 8px;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.pnl-attribution-bridge-panel__periods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+.pnl-attribution-bridge-panel__status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pnl-attribution-bridge-panel__status[data-status="closed"] {
+  background: color-mix(in srgb, var(--dh-api-green) 8%, var(--dh-api-panel));
+  color: var(--dh-api-green);
+}
+
+.pnl-attribution-bridge-panel__status[data-status="residual"] {
+  background: color-mix(in srgb, var(--dh-api-amber) 8%, var(--dh-api-panel));
+  color: var(--dh-api-amber);
+}
+
+.pnl-attribution-bridge-panel__details {
+  min-width: 0;
+  padding: 14px;
+}
+
+.pnl-attribution-bridge-panel__details-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.pnl-attribution-bridge-panel__details-title {
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.pnl-attribution-bridge-panel__unit {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+}
+
+.pnl-attribution-table-scroll {
+  overflow-x: auto;
+}
+
+.pnl-attribution-bridge-table,
+.pnl-attribution-compact-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.pnl-attribution-bridge-table {
+  min-width: 520px;
+}
+
+.pnl-attribution-bridge-table tr,
+.pnl-attribution-compact-table tr {
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.pnl-attribution-bridge-table th,
+.pnl-attribution-bridge-table td,
+.pnl-attribution-compact-table th,
+.pnl-attribution-compact-table td {
+  vertical-align: middle;
+}
+
+.pnl-attribution-bridge-table th {
+  padding: 6px 8px;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.pnl-attribution-bridge-table__left {
+  text-align: left;
+}
+
+.pnl-attribution-bridge-table__num {
+  text-align: right;
+}
+
+.pnl-attribution-bridge-table__row--material-residual {
+  background: color-mix(in srgb, var(--dh-api-amber) 8%, var(--dh-api-panel));
+}
+
+.pnl-attribution-bridge-table__label {
+  padding: 8px 0;
+  color: var(--dh-api-ink);
+  font-weight: 700;
+}
+
+/* 语义圆点：颜色承载归因分项语义，保持圆形（Shape Lock 圆点例外）。 */
+.pnl-attribution-bridge-table__dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 8px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+
+.pnl-attribution-bridge-table__dot--volume {
+  background: var(--dh-api-green);
+}
+
+.pnl-attribution-bridge-table__dot--rate {
+  background: var(--dh-api-blue);
+}
+
+.pnl-attribution-bridge-table__dot--interaction,
+.pnl-attribution-bridge-table__dot--neutral {
+  background: var(--dh-api-soft);
+}
+
+.pnl-attribution-bridge-table__dot--residual {
+  background: var(--dh-api-amber);
+}
+
+.pnl-attribution-bridge-table__formula {
+  padding: 8px;
+  color: var(--dh-api-soft);
+}
+
+.pnl-attribution-bridge-table__amount {
+  padding: 8px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.pnl-attribution-bridge-table__share {
+  padding: 8px 0;
+  color: var(--dh-api-soft);
+  text-align: right;
+}
+
+.pnl-attribution-bridge-panel__footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--dh-api-line-soft);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+/* ---- 产品分类 KPI 单框横带（首页 kpiRail 语言） ---------------------- */
+
+.pnl-attribution-product-category-workbench {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.pnl-attribution-product-category-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.pnl-attribution-product-category-summary-grid > * {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.pnl-attribution-product-category-summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 96px;
+  padding: 12px 14px;
+  border-right: 1px solid var(--dh-api-line);
+  background: transparent;
+}
+
+.pnl-attribution-product-category-summary-grid > :last-child {
+  border-right: 0;
+}
+
+/* 标签统一 2 行 clamp + min-height，防同排数值错位（§3）；完整文案入 title。 */
+.pnl-attribution-product-category-summary-card__label {
+  display: -webkit-box;
+  overflow: hidden;
+  min-height: 31px;
+  color: var(--dh-api-soft);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.pnl-attribution-product-category-summary-card__value {
+  color: var(--dh-api-ink);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.pnl-attribution-product-category-summary-card__sub-label {
+  margin-top: auto;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+}
+
+.pnl-attribution-empty-note {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+/* 错误态收缩面板：标题下只保留一行指引，错误正文收敛在区级横幅（§6 去重）。 */
+.pnl-attribution-collapsed-note {
+  margin: 0;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+/* ---- 紧凑表（表体 12px / 表头 11px muted / 发丝底边） ---------------- */
+
+.pnl-attribution-compact-table th {
+  padding: 6px 8px;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.pnl-attribution-compact-table td {
+  padding: 5px 8px;
+  line-height: 1.35;
+}
+
+.pnl-attribution-compact-table__left {
+  text-align: left;
+}
+
+.pnl-attribution-compact-table__num {
+  text-align: right;
+}
+
+.pnl-attribution-compact-table__closure-flag {
+  color: var(--dh-api-amber);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pnl-attribution-compact-table__cell--strong {
+  font-weight: 700;
+}
+
+/* ---- 结果元信息条（证据层字段；质量/降级已收敛到决策条） ------------ */
+
+.pnl-attribution-meta-strip {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.pnl-attribution-meta-strip__copy,
+.pnl-attribution-meta-strip__field {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.pnl-attribution-meta-strip__eyebrow {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.pnl-attribution-meta-strip__title {
+  color: var(--dh-api-ink);
+  font-size: 13px;
+}
+
+.pnl-attribution-meta-strip__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px 16px;
+  padding-top: 10px;
+  border-top: 1px solid var(--dh-api-line-soft);
+  font-size: 12px;
+}
+
+.pnl-attribution-meta-strip__label {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+}
+
+.pnl-attribution-meta-strip__value {
+  overflow: hidden;
+  color: var(--dh-api-ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- 页头（标题 20px/700、副文 12px muted、32px 控件行） ------------- */
+
+.pnl-attribution-page-header__inner,
+.pnl-attribution-page-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.pnl-attribution-page-header__inner {
+  justify-content: space-between;
+}
+
+.pnl-attribution-page-header__actions {
+  align-items: center;
+  gap: 12px;
+}
+
+.pnl-attribution-page-header__title {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.pnl-attribution-page-header__description {
+  max-width: 720px;
+  margin: 4px 0 0;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pnl-attribution-findings {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: color-mix(in srgb, var(--dh-api-amber) 8%, var(--dh-api-panel));
+}
+
+.pnl-attribution-findings[data-context="advanced"] {
+  background: var(--dh-api-panel-2);
+}
+
+.pnl-attribution-findings__title {
+  margin-bottom: 6px;
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pnl-attribution-findings__list {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ---- 归因决策条（01：本页主结论） ----------------------------------- */
+
 .pnl-attribution-decision-strip {
   display: grid;
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
   gap: 12px;
-  padding: 12px 16px;
-  border: 1px solid #e2e6ec;
-  border-radius: 6px;
-  background: #ffffff;
-  box-shadow: 0 1px 2px rgba(31, 41, 55, 0.04);
 }
 
-.pnl-attribution-decision-strip__header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+.pnl-attribution-decision-strip__body {
+  display: grid;
+  box-sizing: border-box;
+  max-width: 100%;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
 }
 
 .pnl-attribution-decision-strip__copy,
@@ -26,94 +706,103 @@
   gap: 4px;
 }
 
-.pnl-attribution-decision-strip__eyebrow {
-  color: #6b7280;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .pnl-attribution-decision-strip__title {
-  color: #1f2937;
-  font-size: 16px;
-  line-height: 1.5;
+  color: var(--dh-api-ink);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.4;
 }
 
 .pnl-attribution-decision-strip__detail {
-  color: #6b7280;
+  color: var(--dh-api-soft);
   font-size: 12px;
   line-height: 1.5;
 }
 
 .pnl-attribution-decision-strip__badge {
   display: inline-flex;
+  grid-row: 1;
+  grid-column: 3;
   align-items: center;
-  padding: 8px 12px;
-  border: 1px solid #eceff3;
-  border-radius: 999px;
-  background: #f5f7f9;
-  color: #6b7280;
-  font-size: 12px;
+  gap: 6px;
+  justify-self: end;
+  padding: 3px 8px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: transparent;
+  color: var(--dh-api-soft);
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
 }
 
+/* 状态圆点承载质量语义（§6），保持圆形。 */
+.pnl-attribution-decision-strip__badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dh-api-muted);
+}
+
 .pnl-attribution-decision-strip__badge[data-quality="ok"],
 .pnl-attribution-decision-strip__badge[data-quality="normal"] {
-  border-color: #aedfc8;
-  background: #ecf8f2;
-  color: #1d5c40;
+  border-color: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
+  color: var(--dh-api-green);
+}
+
+.pnl-attribution-decision-strip__badge[data-quality="ok"]::before,
+.pnl-attribution-decision-strip__badge[data-quality="normal"]::before {
+  background: var(--dh-api-green);
 }
 
 .pnl-attribution-decision-strip__badge[data-quality="warning"],
 .pnl-attribution-decision-strip__badge[data-quality="stale"] {
-  border-color: #fde0a8;
-  background: #fff9eb;
-  color: #8f4708;
+  border-color: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  color: var(--dh-api-amber);
+}
+
+.pnl-attribution-decision-strip__badge[data-quality="warning"]::before,
+.pnl-attribution-decision-strip__badge[data-quality="stale"]::before {
+  background: var(--dh-api-amber);
 }
 
 .pnl-attribution-decision-strip__badge[data-quality="error"],
 .pnl-attribution-decision-strip__badge[data-quality="missing"] {
-  border-color: #fecaca;
-  background: #fef2f2;
-  color: #b91c1c;
+  border-color: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
+  color: var(--dh-api-red);
+}
+
+.pnl-attribution-decision-strip__badge[data-quality="error"]::before,
+.pnl-attribution-decision-strip__badge[data-quality="missing"]::before {
+  background: var(--dh-api-red);
 }
 
 .pnl-attribution-decision-strip__grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
   gap: 8px 16px;
-  padding-top: 12px;
-  border-top: 1px solid #eceff3;
+  padding-top: 10px;
+  border-top: 1px solid var(--dh-api-line-soft);
   font-size: 12px;
 }
 
 .pnl-attribution-decision-strip__label {
-  color: #6b7280;
+  color: var(--dh-api-muted);
+  font-size: 11px;
 }
 
 .pnl-attribution-decision-strip__value {
   overflow: hidden;
-  color: #1f2937;
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-mono);
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.pnl-attribution-lens-source {
-  color: #6b7280;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.pnl-attribution-lens-status {
-  color: #374151;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.5;
-}
+/* ---- 高级归因表（保留类契约；红涨绿跌残留 __profit/__loss 已删除） ---- */
 
 .pnl-attribution-advanced-table-wrap {
   margin-top: 12px;
@@ -131,7 +820,7 @@
 }
 
 .pnl-attribution-advanced-table thead {
-  background: #f3f4f6;
+  background: var(--dh-api-panel);
 }
 
 .pnl-attribution-advanced-table--sticky thead {
@@ -140,12 +829,23 @@
 }
 
 .pnl-attribution-advanced-table tr {
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--dh-api-line-soft);
 }
 
 .pnl-attribution-advanced-table th,
 .pnl-attribution-advanced-table td {
-  padding: 8px;
+  padding: 6px 8px;
+}
+
+.pnl-attribution-advanced-table th {
+  border-bottom: 1px solid var(--dh-api-line);
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.pnl-attribution-advanced-table tbody tr:hover td {
+  background: var(--dh-api-panel-2);
 }
 
 .pnl-attribution-advanced-table__left {
@@ -153,59 +853,31 @@
 }
 
 .pnl-attribution-advanced-table__num {
+  font-family: var(--moss-font-mono);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
-.pnl-attribution-advanced-table__profit {
-  color: #b91c1c;
-}
-
-.pnl-attribution-advanced-table__loss {
-  color: #166534;
-}
-
 .pnl-attribution-advanced-table__info {
-  color: #2563eb;
+  color: var(--dh-api-ink);
 }
 
 .pnl-attribution-advanced-table__warning {
-  color: #d97706;
+  color: var(--dh-api-amber);
 }
 
 .pnl-attribution-advanced-table__neutral {
-  color: #111827;
+  color: var(--dh-api-ink);
 }
 
-.pnl-attribution-product-category-workbench {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.pnl-attribution-product-category-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  gap: 12px;
-}
-
-.pnl-attribution-product-category-summary-grid > * {
-  max-width: 100%;
-  min-width: 0;
-}
+/* ---- 移动端表格读数 -------------------------------------------------- */
 
 .pnl-attribution-mobile-table-readout {
   display: none;
 }
 
 .pnl-attribution-mobile-table-readout__header {
-  color: #1f2937;
+  color: var(--dh-api-ink);
   font-size: 13px;
   font-weight: 700;
 }
@@ -221,26 +893,94 @@
   min-width: 0;
   gap: 2px;
   padding: 8px 10px;
-  border: 1px solid #eceff3;
-  border-radius: 6px;
-  background: #f8fafc;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
 }
 
 .pnl-attribution-mobile-table-readout__label,
 .pnl-attribution-mobile-table-readout__note {
   overflow-wrap: anywhere;
-  color: #6b7280;
+  color: var(--dh-api-muted);
   font-size: 11px;
   line-height: 1.35;
 }
 
 .pnl-attribution-mobile-table-readout__value {
   overflow-wrap: anywhere;
-  color: #1f2937;
+  color: var(--dh-api-ink);
   font-size: 13px;
   font-weight: 700;
+  font-family: var(--moss-font-mono);
   font-variant-numeric: tabular-nums;
   line-height: 1.35;
+}
+
+/*
+ * ---- 共享溯源面板（FormalResultMetaPanel）在本页的 Nocturne 收敛 --------
+ * 组件基础样式面向浅色主题（16/14px 大圆角、999px 徽章胶囊、--ib-hairline
+ * 在路由边界被算成钢蓝字面值），页面 scope 内把圆角制度、边线、面色与徽章
+ * tone 变量拉回 --dh-api-* 链（迁法同 LedgerPnlPage.css）。
+ */
+
+.pnl-attribution-page .formal-result-meta-panel {
+  --formal-result-meta-border-soft: var(--dh-api-line-soft);
+  --formal-meta-badge-ok-bg: var(--dh-api-green-soft);
+  --formal-meta-badge-ok-ink: var(--dh-api-green);
+  --formal-meta-badge-ok-line: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
+  --formal-meta-badge-warn-bg: var(--dh-api-amber-soft);
+  --formal-meta-badge-warn-ink: var(--dh-api-amber);
+  --formal-meta-badge-warn-line: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  --formal-meta-badge-danger-bg: var(--dh-api-red-soft);
+  --formal-meta-badge-danger-ink: var(--dh-api-red);
+  --formal-meta-badge-danger-line: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
+
+  margin-top: 0;
+  padding: 14px;
+  border-color: var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.pnl-attribution-page .formal-result-meta-panel__title,
+.pnl-attribution-page .formal-result-meta-panel__heading {
+  color: var(--dh-api-ink);
+}
+
+.pnl-attribution-page .formal-result-meta-panel__subtitle,
+.pnl-attribution-page .formal-result-meta-panel__empty,
+.pnl-attribution-page .formal-result-meta-panel__label {
+  color: var(--dh-api-muted);
+}
+
+.pnl-attribution-page .formal-result-meta-panel__list {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+.pnl-attribution-page .formal-result-meta-panel__card {
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+}
+
+.pnl-attribution-page .formal-result-meta-panel__badge {
+  border-radius: var(--dh-api-radius);
+}
+
+/* ---- 断点 ------------------------------------------------------------ */
+
+@media (max-width: 1024px) {
+  .pnl-attribution-product-category-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pnl-attribution-product-category-summary-grid > :nth-child(2n) {
+    border-right: 0;
+  }
+
+  .pnl-attribution-product-category-summary-grid > :nth-child(-n + 2) {
+    border-bottom: 1px solid var(--dh-api-line);
+  }
 }
 
 @media (max-width: 720px) {
@@ -257,11 +997,11 @@
 
   .pnl-attribution-decision-strip {
     gap: 8px;
-    padding: 8px 10px;
   }
 
-  .pnl-attribution-decision-strip__header {
-    gap: 6px;
+  .pnl-attribution-decision-strip__body {
+    gap: 8px;
+    padding: 8px 10px;
   }
 
   .pnl-attribution-decision-strip__copy {
@@ -269,16 +1009,12 @@
   }
 
   .pnl-attribution-decision-strip__title {
-    font-size: 15px;
+    font-size: 14px;
     line-height: 1.35;
   }
 
   .pnl-attribution-decision-strip__detail {
     line-height: 1.4;
-  }
-
-  .pnl-attribution-decision-strip__badge {
-    padding: 6px 10px;
   }
 
   .pnl-attribution-decision-strip__grid {
@@ -292,7 +1028,17 @@
   }
 
   .pnl-attribution-product-category-summary-grid {
-    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pnl-attribution-product-category-summary-card {
+    min-height: 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--dh-api-line);
+  }
+
+  .pnl-attribution-product-category-summary-grid > :last-child {
+    border-bottom: 0;
   }
 
   .pnl-attribution-mobile-table-readout {
@@ -300,8 +1046,8 @@
     gap: 8px;
     margin-bottom: 10px;
     padding: 10px;
-    border: 1px solid #d7dde6;
-    border-radius: 6px;
-    background: #ffffff;
+    border: 1px solid var(--dh-api-line);
+    border-radius: var(--dh-api-radius);
+    background: var(--dh-api-panel);
   }
 }

@@ -5,11 +5,40 @@ from typing import Any, cast
 
 import pytest
 
+from backend.app.core_finance import livermore_stock_candidates as stock_module
 from backend.app.core_finance.livermore_stock_candidates import (
+    EXP3C_SHADOW_STOCK_CANDIDATE_POLICY,
     FORMULA_VERSION,
     StockCandidateSnapshot,
     compute_stock_candidates,
+    diagnose_stock_candidate_filters,
 )
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
+
+
+def test_stock_candidate_valid_int_rejects_non_integral_values() -> None:
+    # sector_rank is an ordinal rank: integral values pass through, but a
+    # fractional value is invalid data and must not be silently truncated.
+    assert stock_module._valid_int(2) == 2
+    assert stock_module._valid_int(2.0) == 2
+    assert stock_module._valid_int("3") == 3
+    assert stock_module._valid_int(2.9) is None
+    assert stock_module._valid_int("2.9") is None
+    assert stock_module._valid_int(None) is None
+    assert stock_module._valid_int(float("nan")) is None
+
+
+def test_stock_candidate_float_series_reuses_finite_float_history() -> None:
+    history = [10.0, 10.5, 11.0]
+
+    assert stock_module._float_series(history) is history
+    assert stock_module._float_series([1, "2.5"]) == [1.0, 2.5]
+    assert stock_module._float_series([10.0, float("nan")]) is None
 
 
 class _CountingHistory(list[float]):
@@ -52,6 +81,7 @@ def _snapshot(
     high_value: float,
     low_value: float,
     limit_ratio: float = 0.1,
+    daily_amount: float | None = None,
     one_word_board: bool = False,
     closed_up_limit: bool = False,
     pe: float | None = None,
@@ -76,6 +106,7 @@ def _snapshot(
         close_value=close_history[-1],
         turnover_free=turnover_history[-1],
         limit_ratio=limit_ratio,
+        daily_amount=daily_amount,
         one_word_board=one_word_board,
         closed_up_limit=closed_up_limit,
         close_history=close_history,
@@ -273,11 +304,17 @@ def test_stock_candidates_exclude_zero_prior_close_without_aborting_batch() -> N
             ),
         ],
     )
-
     payload = cast(dict[str, Any], result.payload)
     items = cast(list[dict[str, Any]], payload["items"])
+    diagnostic = diagnose_stock_candidate_filters(
+        as_of_date="2026-04-29",
+        market_state="WARM",
+        snapshots=[zero_prior_snapshot],
+    )
+
     assert payload["candidate_count"] == 1
     assert [row["stock_code"] for row in items] == ["000002.SZ"]
+    assert diagnostic["near_misses"][0]["fail_reasons"] == ["prior_close>0"]
 
 
 def test_stock_candidates_keep_only_top_six_ranked_breakouts_and_count_trimmed_tail() -> None:
@@ -438,10 +475,82 @@ def test_stock_candidates_apply_fundamental_overlay_when_factor_inputs_are_avail
         "valid_factor_count": 4,
         "selected_factor_count": 2,
         "top_fraction": 0.5,
+        "factor_missing_count": 0,
     }
     assert [row["stock_code"] for row in items] == ["000002.SZ", "000003.SZ"]
     assert all(row["factor_score"] is not None for row in items)
     assert float(items[0]["abnormal_turnover"]) > float(items[1]["abnormal_turnover"])
+
+
+def test_stock_candidates_fundamental_overlay_keeps_technically_eligible_stock_missing_factor_data() -> None:
+    closes = _close_history(start=10.0, step=0.1)
+    snapshots = [
+        _snapshot(
+            stock_code="000010.SZ",
+            stock_name="Quality With Factors",
+            sector_code="801001",
+            sector_name="AI",
+            sector_rank=1,
+            close_history=closes,
+            turnover_history=_turnover_history(baseline=0.5, current=1.8),
+            open_value=21.85,
+            high_value=21.91,
+            low_value=21.6,
+            pe=12.0,
+            pb=1.5,
+            ps=2.0,
+            roe=0.18,
+            gross_margin=0.35,
+            three_month_return=0.12,
+            twelve_month_return=0.20,
+            volatility=0.22,
+            dividend_yield=0.025,
+        ),
+        _snapshot(
+            stock_code="000020.SZ",
+            stock_name="Technically Eligible Missing PE",
+            sector_code="801002",
+            sector_name="Power",
+            sector_rank=2,
+            close_history=closes,
+            turnover_history=_turnover_history(baseline=0.5, current=1.3),
+            open_value=21.85,
+            high_value=21.91,
+            low_value=21.6,
+            pe=None,
+            pb=1.2,
+            ps=1.6,
+            roe=0.14,
+            gross_margin=0.30,
+        ),
+    ]
+
+    result = compute_stock_candidates(
+        as_of_date="2026-04-29",
+        market_state="HOT",
+        snapshots=snapshots,
+    )
+
+    payload = cast(dict[str, Any], result.payload)
+    items = cast(list[dict[str, Any]], payload["items"])
+
+    # Regression guard: a candidate that clears every technical filter must
+    # not silently disappear from the output just because it lacks one
+    # fundamental factor input (pe here). It stays in the output, ranked
+    # after the fully-scored candidate, but without a factor score.
+    assert payload["candidate_count"] == 2
+    assert [row["stock_code"] for row in items] == ["000010.SZ", "000020.SZ"]
+    assert items[0]["factor_score"] is not None
+    assert "factor_score" not in items[1]
+
+    assert payload["fundamental_overlay"] == {
+        "status": "applied",
+        "input_candidate_count": 2,
+        "valid_factor_count": 1,
+        "selected_factor_count": 1,
+        "top_fraction": 0.5,
+        "factor_missing_count": 1,
+    }
 
 
 def test_stock_candidates_can_emit_pre_truncation_universe_for_research() -> None:
@@ -641,3 +750,111 @@ def test_stock_candidates_exp3b_policy_keeps_entry_only_stricter_gate_and_sorts_
     assert exp3b_overheat.payload["selection_policy"] == "exp3b"
     assert exp3b_overheat.payload["candidate_count"] == 0
     assert exp3b_overheat.payload["items"] == []
+
+
+def test_stock_candidates_exp3c_shadow_keeps_official_policy_unchanged() -> None:
+    closes = _close_history(start=10.0, step=0.1)
+    shadow_only = _snapshot(
+        stock_code="600869.SH",
+        stock_name="Shadow Only",
+        sector_code="801001",
+        sector_name="AI",
+        sector_rank=1,
+        close_history=closes,
+        turnover_history=_turnover_history(baseline=0.5, current=1.0),
+        open_value=22.0,
+        high_value=21.905,
+        low_value=20.65,
+    )
+
+    official = compute_stock_candidates(
+        as_of_date="2026-06-12",
+        market_state="HOT",
+        snapshots=[shadow_only],
+        policy_name="exp3b",
+    )
+    shadow = compute_stock_candidates(
+        as_of_date="2026-06-12",
+        market_state="HOT",
+        snapshots=[shadow_only],
+        policy_name=EXP3C_SHADOW_STOCK_CANDIDATE_POLICY,
+    )
+
+    assert official.payload["candidate_count"] == 0
+    assert shadow.payload["selection_policy"] == "exp3c_shadow"
+    assert shadow.payload["candidate_count"] == 1
+
+
+def test_stock_candidates_emit_liquidity_observation_without_filtering() -> None:
+    closes = _close_history(start=10.0, step=0.1)
+    low_liquidity = _snapshot(
+        stock_code="000001.SZ",
+        stock_name="Low Amount",
+        sector_code="801001",
+        sector_name="AI",
+        sector_rank=1,
+        close_history=closes,
+        turnover_history=_turnover_history(baseline=0.5, current=1.5),
+        open_value=21.85,
+        high_value=21.92,
+        low_value=21.4,
+        daily_amount=120_000_000.0,
+    )
+    high_liquidity = _snapshot(
+        stock_code="000002.SZ",
+        stock_name="High Amount",
+        sector_code="801002",
+        sector_name="Bank",
+        sector_rank=2,
+        close_history=closes,
+        turnover_history=_turnover_history(baseline=0.5, current=1.4),
+        open_value=21.85,
+        high_value=21.92,
+        low_value=21.4,
+        daily_amount=260_000_000.0,
+    )
+
+    result = compute_stock_candidates(
+        as_of_date="2026-06-12",
+        market_state="HOT",
+        snapshots=[low_liquidity, high_liquidity],
+    )
+
+    payload = cast(dict[str, Any], result.payload)
+    items = cast(list[dict[str, Any]], payload["items"])
+    assert payload["candidate_count"] == 2
+    by_code = {str(row["stock_code"]): row for row in items}
+    assert by_code["000001.SZ"]["daily_amount"] == pytest.approx(120_000_000.0)
+    assert by_code["000001.SZ"]["liquidity_floor_pass"] is False
+    assert by_code["000002.SZ"]["daily_amount"] == pytest.approx(260_000_000.0)
+    assert by_code["000002.SZ"]["liquidity_floor_pass"] is True
+
+
+def test_diagnose_stock_candidate_filters_reports_first_zero_output_blocker() -> None:
+    closes = _close_history(start=10.0, step=0.1)
+    weak_close = _snapshot(
+        stock_code="600869.SH",
+        stock_name="Weak Close",
+        sector_code="801001",
+        sector_name="AI",
+        sector_rank=1,
+        close_history=closes,
+        turnover_history=_turnover_history(baseline=0.5, current=2.5),
+        open_value=22.0,
+        high_value=22.05,
+        low_value=21.0,
+    )
+
+    diagnostic = diagnose_stock_candidate_filters(
+        as_of_date="2026-06-12",
+        market_state="HOT",
+        snapshots=[weak_close],
+        policy_name="exp3b",
+    )
+
+    assert diagnostic["status"] == "ready"
+    assert diagnostic["selection_policy"] == "exp3b"
+    assert diagnostic["final_candidate_count"] == 0
+    assert any(row["step"] == "close_strength>=0.99" and row["pass"] == 0 for row in diagnostic["funnel"])
+    assert diagnostic["near_misses"][0]["stock_code"] == "600869.SH"
+    assert "close_strength" in diagnostic["near_misses"][0]["fail_reasons"]

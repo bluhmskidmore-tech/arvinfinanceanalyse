@@ -8,6 +8,7 @@ from backend.app.repositories.external_data_migrations_extra import (
     ensure_std_external_macro_schema,
 )
 from backend.app.repositories.raw_zone_repo import RawZoneRepository
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.schemas.external_data import ExternalDataCatalogEntry
 from backend.app.services.external_std_macro_etl_service import (
     ExternalStdMacroEtlService,
@@ -57,8 +58,9 @@ def test_external_std_macro_etl_idempotent(tmp_path) -> None:
         etl = ExternalStdMacroEtlService(rz, conn)
         p = str(raw_file)
         e = _entry("tushare.macro.test.series")
-        n1 = etl.materialize_from_raw(p, e, "batch-1")
-        n2 = etl.materialize_from_raw(p, e, "batch-1")
+        with repository_task_write_scope("backend.app.tasks.external_std_macro_etl_test"):
+            n1 = etl.materialize_from_raw(p, e, "batch-1")
+            n2 = etl.materialize_from_raw(p, e, "batch-1")
         assert n1 == 2
         assert n2 == 2
         c = conn.execute(

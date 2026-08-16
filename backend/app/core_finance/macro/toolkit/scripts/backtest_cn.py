@@ -11,25 +11,40 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
+import importlib.util
 import sys
 
-import akshare as ak
-import matplotlib
 import numpy as np
 import pandas as pd
 
-matplotlib.use("Agg")
+if __package__:
+    from backend.app.core_finance.macro.toolkit import akshare as ak
+else:
+    import akshare as ak
+
+if importlib.util.find_spec("matplotlib") is None:
+    matplotlib = None
+    mdates = None
+    plt = None
+else:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.dates as mdates
+    import matplotlib.pyplot as plt
+
 from datetime import datetime
 from pathlib import Path
 
-import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 
-_PKG = Path(__file__).resolve().parent.parent
-if str(_PKG) not in sys.path:
-    sys.path.insert(0, str(_PKG))
-from paths import ASSET_DIR, OUTPUT_DIR
+if __package__:
+    from backend.app.core_finance.macro.toolkit.paths import ASSET_DIR, OUTPUT_DIR
+else:
+    _PKG = Path(__file__).resolve().parent.parent
+    if str(_PKG) not in sys.path:
+        sys.path.insert(0, str(_PKG))
+    from paths import ASSET_DIR, OUTPUT_DIR
 
 ROOT = OUTPUT_DIR
 
@@ -100,7 +115,10 @@ def load_prices() -> pd.DataFrame:
     ]
     wind_ok = False
     try:
-        from WindPy import w as wind
+        if __package__:
+            from backend.app.core_finance.macro.toolkit.WindPy import w as wind
+        else:
+            from WindPy import w as wind
         r = wind.start(waitTime=8)
         if r.ErrorCode == 0:
             codes = ",".join(c for c, _ in BOND_ETFS)
@@ -111,9 +129,13 @@ def load_prices() -> pd.DataFrame:
                 for i, (_, name) in enumerate(BOND_ETFS):
                     s = pd.Series(data.Data[i], index=dates, name=name, dtype=float)
                     s = s[s.notna()]
+                    if s.empty:
+                        # 空序列不得入池：全NaN列会让风险平价窗口 dropna 后清空，静默退化为等权
+                        print(f"  [警告] {name}({BOND_ETFS[i][0]}) 无有效数据，跳过该资产")
+                        continue
                     series[name] = s
                     print(f"  {name}({BOND_ETFS[i][0]}): {len(s)} 条，最新 {s.index[-1].date()}")
-                wind_ok = True
+                wind_ok = any(name in series for _, name in BOND_ETFS)
             else:
                 print(f"  [警告] WindPy 兼容接口 wsd 返回错误码 {data.ErrorCode}，跳过债券ETF")
         else:
@@ -130,7 +152,11 @@ def load_prices() -> pd.DataFrame:
                                          start_date="20150101", end_date=today, adjust="qfq")
                 df["date"] = pd.to_datetime(df["日期"])
                 df = df.set_index("date").sort_index()
-                series[name] = pd.to_numeric(df["收盘"], errors="coerce")
+                s = pd.to_numeric(df["收盘"], errors="coerce").dropna()
+                if s.empty:
+                    print(f"  [警告] 债券ETF({symbol})备用接口无数据，跳过该资产")
+                    continue
+                series[name] = s
                 print(f"  {name}({symbol}) [akshare备用]: {len(series[name])} 条")
         except Exception:
             print("  [警告] 债券ETF备用接口也失败，将以5资产运行")
@@ -153,6 +179,13 @@ def load_prices() -> pd.DataFrame:
             if col != "bond_gov":
                 # 上市前用 bond_gov 填充（相关性高，近似替代）
                 prices[col] = prices[col].fillna(prices["bond_gov"])
+
+    # 兜底：窗口截取后仍全NaN的列（如历史全部早于回测窗口）必须剔除，
+    # 否则风险平价的滚动窗口 dropna 会整表清空，优化被静默禁用
+    all_nan_cols = [c for c in prices.columns if prices[c].isna().all()]
+    if all_nan_cols:
+        print(f"  [警告] 回测窗口内无数据，剔除资产: {', '.join(all_nan_cols)}")
+        prices = prices.drop(columns=all_nan_cols)
 
     print(f"\n合并后: {len(prices)} 个交易日，{len(prices.columns)} 个资产")
     print(f"  资产: {', '.join(prices.columns)}")
@@ -216,7 +249,7 @@ def signal_donchian(price: pd.Series, window=20) -> pd.Series:
 
 
 def signal_atr_pos(price: pd.Series, window=14, target_vol=0.01) -> pd.Series:
-    ret_std = np.log(price / price.shift(1)).rolling(window).std()
+    ret_std = price.pct_change().rolling(window).std()
     pos = (target_vol / ret_std.replace(0, np.nan)).clip(0, 1.0)
     ma_sig = signal_ma_cross(price)
     return (pos * ma_sig.clip(0, 1)).fillna(0.0)
@@ -298,7 +331,9 @@ def run_backtest(prices: pd.DataFrame) -> dict:
     assets = list(prices.columns)
     n_assets = len(assets)
     n_days = len(prices)
-    log_ret = np.log(prices / prices.shift(1))
+    # 口径统一：全链路使用简单收益（与 calc_metrics 的 (1+r).cumprod() 简单收益
+    # 复利口径一致），避免对数收益与简单收益混用导致年化/夏普/回撤/净值失真
+    simple_ret = prices.pct_change()
 
     # 预计算 CTA 合成信号
     print("  预计算 CTA 信号...")
@@ -308,7 +343,7 @@ def run_backtest(prices: pd.DataFrame) -> dict:
 
     # 预计算市场状态
     print("  预计算市场状态...")
-    hs300_ret = log_ret["hs300"].fillna(0)
+    hs300_ret = simple_ret["hs300"].fillna(0)
     regimes = []
     for i in range(n_days):
         regimes.append(market_regime(hs300_ret, i))
@@ -350,11 +385,11 @@ def run_backtest(prices: pd.DataFrame) -> dict:
     print("  运行回测...")
     for i in range(1, n_days):
         date = prices.index[i]
-        daily_ret = log_ret.iloc[i].fillna(0).values
+        daily_ret = simple_ret.iloc[i].fillna(0).values
 
         # ── 风险平价：月末重新优化 ──
         if date.month != last_rp_month and i >= RP_WINDOW:
-            ret_win = log_ret.iloc[max(0, i - RP_WINDOW):i].dropna()
+            ret_win = simple_ret.iloc[max(0, i - RP_WINDOW):i].dropna()
             if len(ret_win) >= 20:
                 w_rp = calc_rp_weights(ret_win, assets)
             last_rp_month = date.month
@@ -516,6 +551,8 @@ def calc_annual_returns(ret_df: pd.DataFrame) -> pd.DataFrame:
 # ============================================================
 
 def _set_style():
+    if plt is None or mdates is None:
+        raise RuntimeError("matplotlib is required for backtest chart generation")
     plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Arial Unicode MS"]
     plt.rcParams["axes.unicode_minus"] = False
     plt.rcParams["figure.dpi"] = 160
@@ -525,6 +562,7 @@ def _set_style():
 
 
 def plot_nav(ret_df: pd.DataFrame) -> Path:
+    _set_style()
     path = ASSET_DIR / "backtest_nav.png"
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 8),
                                     gridspec_kw={"height_ratios": [3, 1]}, sharex=True)
@@ -573,6 +611,7 @@ def plot_nav(ret_df: pd.DataFrame) -> Path:
 
 
 def plot_annual(annual_df: pd.DataFrame) -> Path:
+    _set_style()
     path = ASSET_DIR / "backtest_annual.png"
     strategies = [c for c in annual_df.columns if c != "年份"]
     years = annual_df["年份"].tolist()
@@ -608,6 +647,7 @@ def plot_annual(annual_df: pd.DataFrame) -> Path:
 
 
 def plot_metrics_heatmap(metrics_df: pd.DataFrame) -> Path:
+    _set_style()
     path = ASSET_DIR / "backtest_metrics.png"
     cols = ["年化收益%", "年化波动%", "夏普比率", "索提诺比率", "最大回撤%", "Calmar比率", "胜率%"]
     data = metrics_df.set_index("策略")[cols]
@@ -661,8 +701,6 @@ def main():
     print("  全策略综合回测框架")
     print(f"  运行时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print("=" * 65)
-
-    _set_style()
     prices = load_prices()
 
     print("\n[步骤2] 运行回测...")

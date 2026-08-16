@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { designTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 import {
   buildCorrelationMatrix,
   correlationColor,
@@ -38,17 +40,55 @@ function makeKpi(
   };
 }
 
+function makeDatedKpi(
+  key: string,
+  label: string,
+  points: Array<{ tradeDate: string; value: number }>,
+): ResolvedCrossAssetKpi {
+  return {
+    ...makeKpi(
+      key,
+      label,
+      points.map((point) => point.value),
+    ),
+    sparklinePoints: points,
+  };
+}
+
 describe("buildCorrelationMatrix", () => {
   it("returns empty matrix if fewer than 2 eligible kpis", () => {
-    const result = buildCorrelationMatrix([makeKpi("a", "A", [1, 2])]);
+    const result = buildCorrelationMatrix([
+      makeDatedKpi("a", "A", [
+        { tradeDate: "2026-04-01", value: 1 },
+        { tradeDate: "2026-04-02", value: 2 },
+      ]),
+    ]);
     expect(result.keys.length).toBe(0); // < 5 points → not eligible
   });
 
   it("computes NxN matrix for eligible kpis", () => {
     const kpis = [
-      makeKpi("a", "A", [1, 2, 3, 4, 5]),
-      makeKpi("b", "B", [2, 4, 6, 8, 10]),
-      makeKpi("c", "C", [5, 4, 3, 2, 1]),
+      makeDatedKpi("a", "A", [
+        { tradeDate: "2026-04-01", value: 1 },
+        { tradeDate: "2026-04-02", value: 2 },
+        { tradeDate: "2026-04-03", value: 3 },
+        { tradeDate: "2026-04-04", value: 4 },
+        { tradeDate: "2026-04-05", value: 5 },
+      ]),
+      makeDatedKpi("b", "B", [
+        { tradeDate: "2026-04-01", value: 2 },
+        { tradeDate: "2026-04-02", value: 4 },
+        { tradeDate: "2026-04-03", value: 6 },
+        { tradeDate: "2026-04-04", value: 8 },
+        { tradeDate: "2026-04-05", value: 10 },
+      ]),
+      makeDatedKpi("c", "C", [
+        { tradeDate: "2026-04-01", value: 5 },
+        { tradeDate: "2026-04-02", value: 4 },
+        { tradeDate: "2026-04-03", value: 3 },
+        { tradeDate: "2026-04-04", value: 2 },
+        { tradeDate: "2026-04-05", value: 1 },
+      ]),
     ];
     const m = buildCorrelationMatrix(kpis);
     expect(m.keys).toEqual(["a", "b", "c"]);
@@ -60,6 +100,89 @@ describe("buildCorrelationMatrix", () => {
     expect(m.cells[0][1].value).toBeCloseTo(1, 4);
     // A and C are perfectly anti-correlated
     expect(m.cells[0][2].value).toBeCloseTo(-1, 4);
+  });
+
+  it("excludes the zero-centered financial-conditions score from asset correlations", () => {
+    const matrix = buildCorrelationMatrix([
+      makeDatedKpi("financial_conditions", "金融条件指数", [
+        { tradeDate: "2026-04-01", value: -1.2 },
+        { tradeDate: "2026-04-02", value: -0.8 },
+        { tradeDate: "2026-04-03", value: -0.2 },
+        { tradeDate: "2026-04-04", value: 0.1 },
+        { tradeDate: "2026-04-05", value: -0.4 },
+      ]),
+      makeDatedKpi("csi300", "沪深300", [
+        { tradeDate: "2026-04-01", value: 3800 },
+        { tradeDate: "2026-04-02", value: 3820 },
+        { tradeDate: "2026-04-03", value: 3810 },
+        { tradeDate: "2026-04-04", value: 3840 },
+        { tradeDate: "2026-04-05", value: 3860 },
+      ]),
+      makeDatedKpi("cn_gov_10y", "10Y国债", [
+        { tradeDate: "2026-04-01", value: 2.1 },
+        { tradeDate: "2026-04-02", value: 2.08 },
+        { tradeDate: "2026-04-03", value: 2.09 },
+        { tradeDate: "2026-04-04", value: 2.05 },
+        { tradeDate: "2026-04-05", value: 2.04 },
+      ]),
+    ]);
+
+    expect(matrix.keys).toEqual(["csi300", "cn_gov_10y"]);
+  });
+
+  it("aligns each pair by common trade dates instead of sparkline positions", () => {
+    const matrix = buildCorrelationMatrix([
+      makeDatedKpi("cn_gov_10y", "10Y CN gov", [
+        { tradeDate: "2026-04-01", value: 1 },
+        { tradeDate: "2026-04-02", value: 100 },
+        { tradeDate: "2026-04-04", value: 2 },
+        { tradeDate: "2026-04-05", value: 3 },
+        { tradeDate: "2026-04-06", value: 4 },
+        { tradeDate: "2026-04-07", value: 5 },
+      ]),
+      makeDatedKpi("brent", "Brent", [
+        { tradeDate: "2026-04-01", value: 1 },
+        { tradeDate: "2026-04-03", value: -100 },
+        { tradeDate: "2026-04-04", value: 2 },
+        { tradeDate: "2026-04-05", value: 3 },
+        { tradeDate: "2026-04-06", value: 4 },
+        { tradeDate: "2026-04-07", value: 5 },
+      ]),
+    ]);
+
+    expect(matrix.cells[0][1].value).toBeCloseTo(1, 8);
+  });
+
+  it("does not emit cross-series correlations when dated observations are unavailable", () => {
+    const matrix = buildCorrelationMatrix([
+      makeKpi("cn_gov_10y", "10Y CN gov", [1, 2, 3, 4, 5]),
+      makeKpi("brent", "Brent", [2, 4, 6, 8, 10]),
+    ]);
+
+    expect(matrix.keys).toEqual([]);
+    expect(matrix.cells).toEqual([]);
+  });
+
+  it("returns an unavailable cell when a pair has fewer than five common trade dates", () => {
+    const matrix = buildCorrelationMatrix([
+      makeDatedKpi("cn_gov_10y", "10Y CN gov", [
+        { tradeDate: "2026-04-01", value: 1 },
+        { tradeDate: "2026-04-02", value: 2 },
+        { tradeDate: "2026-04-03", value: 3 },
+        { tradeDate: "2026-04-04", value: 4 },
+        { tradeDate: "2026-04-05", value: 5 },
+      ]),
+      makeDatedKpi("brent", "Brent", [
+        { tradeDate: "2026-04-02", value: 2 },
+        { tradeDate: "2026-04-03", value: 3 },
+        { tradeDate: "2026-04-04", value: 4 },
+        { tradeDate: "2026-04-05", value: 5 },
+        { tradeDate: "2026-04-06", value: 6 },
+      ]),
+    ]);
+
+    expect(matrix.keys).toEqual(["cn_gov_10y", "brent"]);
+    expect(matrix.cells[0][1].value).toBeNull();
   });
 });
 
@@ -77,7 +200,7 @@ describe("correlationColor", () => {
 
 describe("formatCorrelation", () => {
   it("formats null as dash", () => {
-    expect(formatCorrelation(null)).toBe("—");
+    expect(formatCorrelation(null)).toBe(EM_DASH);
   });
   it("formats number to 2 decimals", () => {
     expect(formatCorrelation(0.456)).toBe("0.46");
@@ -88,7 +211,7 @@ describe("identifyMarketRegime", () => {
   it("identifies risk-on when equity rising and bond yield not falling", () => {
     const kpis = [
       makeKpi("cn_gov_10y", "10Y国债", [1.9, 1.91, 1.92, 1.93, 1.95, 1.96, 1.97, 1.98, 1.99, 2.0]),
-      makeKpi("financial_conditions", "沪深300", [3800, 3820, 3850, 3870, 3900, 3920, 3950, 3980, 4000, 4050]),
+      makeKpi("csi300", "沪深300", [3800, 3820, 3850, 3870, 3900, 3920, 3950, 3980, 4000, 4050]),
       makeKpi("money_market_7d", "DR007", [1.8, 1.8, 1.81, 1.81, 1.82, 1.82, 1.82, 1.83, 1.83, 1.83]),
       makeKpi("brent", "布油", [65, 65, 66, 66, 66, 66, 66, 66, 66, 66], { format: "plain" }),
       makeKpi("steel", "钢", [3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600], { format: "plain" }),
@@ -100,7 +223,7 @@ describe("identifyMarketRegime", () => {
   it("identifies risk-off when equity falling and bond yield falling", () => {
     const kpis = [
       makeKpi("cn_gov_10y", "10Y国债", [2.0, 1.98, 1.96, 1.93, 1.90]),
-      makeKpi("financial_conditions", "沪深300", [4000, 3950, 3900, 3850, 3800]),
+      makeKpi("csi300", "沪深300", [4000, 3950, 3900, 3850, 3800]),
       makeKpi("money_market_7d", "DR007", [1.8, 1.8, 1.8, 1.8, 1.8]),
       makeKpi("brent", "布油", [65, 65, 65, 65, 65], { format: "plain" }),
       makeKpi("steel", "钢", [3600, 3600, 3600, 3600, 3600], { format: "plain" }),
@@ -112,7 +235,7 @@ describe("identifyMarketRegime", () => {
   it("returns mixed for unclear signals", () => {
     const kpis = [
       makeKpi("cn_gov_10y", "10Y国债", [2.0, 2.0, 2.0, 2.0, 2.0]),
-      makeKpi("financial_conditions", "沪深300", [4000, 4000, 4000, 4000, 4000]),
+      makeKpi("csi300", "沪深300", [4000, 4000, 4000, 4000, 4000]),
       makeKpi("money_market_7d", "DR007", [1.8, 1.8, 1.8, 1.8, 1.8]),
       makeKpi("brent", "布油", [65, 65, 65, 65, 65], { format: "plain" }),
       makeKpi("steel", "钢", [3600, 3600, 3600, 3600, 3600], { format: "plain" }),
@@ -179,6 +302,15 @@ describe("buildMomentumScoreboard", () => {
     expect(rows[0].chg1d).not.toBeNull();
     expect(rows[1].direction).toBe("down");
   });
+
+  it("does not calculate percentage momentum for the financial-conditions score", () => {
+    const rows = buildMomentumScoreboard([
+      makeKpi("financial_conditions", "金融条件指数", [-1.2, -0.8, -0.2, 0.1, -0.4]),
+      makeKpi("csi300", "沪深300", [3800, 3820, 3810, 3840, 3860]),
+    ]);
+
+    expect(rows.map((row) => row.key)).toEqual(["csi300"]);
+  });
 });
 
 describe("TREND_GROUPS", () => {
@@ -225,6 +357,15 @@ describe("detectVolatilityClustering", () => {
     ];
     const alert = detectVolatilityClustering(kpis);
     expect(alert.clusterCount).toBeGreaterThan(0);
+  });
+
+  it("does not classify financial-conditions score changes as asset volatility", () => {
+    const alert = detectVolatilityClustering([
+      makeKpi("financial_conditions", "金融条件指数", [-1, -0.8, -0.5, -0.1, 0.2, -0.2, -0.6, -1.1]),
+      makeKpi("csi300", "沪深300", [3800, 3810, 3820, 3815, 3830, 3840, 3850, 3860]),
+    ]);
+
+    expect(alert.assets.map((asset) => asset.key)).toEqual(["csi300"]);
   });
 });
 
@@ -280,7 +421,7 @@ describe("buildDriverWaterfall", () => {
   });
 
   it("renders backend contribution polarity without recalculating raw macro scores", () => {
-    const bars = buildDriverWaterfall({
+    const envWithRawScores = {
       liquidity_score: 0.2,
       rate_direction_score: 0.2,
       composite_contributions: [
@@ -289,11 +430,12 @@ describe("buildDriverWaterfall", () => {
         { component: "growth", signed_contribution: 0 },
       ],
       composite_score: 0.02,
-    } as Parameters<typeof buildDriverWaterfall>[0] & { liquidity_score: number; rate_direction_score: number });
+    };
+    const bars = buildDriverWaterfall(envWithRawScores);
     expect(bars[0].key).toBe("liquidity");
     expect(bars[0].value).toBe(-0.06);
     expect(bars[0].color).toBe("#16a34a"); // liquidity easing pulls restrictive composite down
-    expect(bars[1].color).toBe("#dc2626"); // positive contribution is bond-unfavorable
-    expect(bars[2].color).toBe("#94a3b8"); // neutral
+    expect(bars[1].color).toBe(designTokens.color.danger[600]); // positive contribution is bond-unfavorable
+    expect(bars[2].color).toBe(designTokens.color.cockpit.ink450); // neutral
   });
 });

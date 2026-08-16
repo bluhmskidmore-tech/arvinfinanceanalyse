@@ -1,8 +1,74 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createRealMacroToolkitClient } from "../api/macroToolkitClient";
+import { createMockMacroToolkitClient } from "../api/macroToolkitMockClient";
 
 describe("macroToolkitClient", () => {
+  it("keeps the M9 mock capability aligned with Choice credit history", async () => {
+    const envelope = await createMockMacroToolkitClient().getMacroToolkitScripts();
+    const capability = envelope.result.capabilities.find((item) => item.key === "credit_spread_risk");
+
+    expect(capability).toMatchObject({
+      data_status: "ready",
+      data_hit_count: 3,
+      data_required_count: 3,
+    });
+    expect(capability?.evidence.map((item) => item.series_id)).toEqual([
+      "EMM00166659",
+      "EMM00166462",
+      "EMM00166683",
+    ]);
+  });
+
+  it("keeps the M7 mock policy rate aligned with fresh Choice history", async () => {
+    const envelope = await createMockMacroToolkitClient().getMacroToolkitAnalysis();
+    const capability = envelope.result.capability_results.find(
+      (item) => item.key === "monetary_policy_stance",
+    );
+    const policyRate = capability?.input_evidence?.inputs?.find(
+      (item) => item.field === "policy_rate_7d",
+    );
+
+    expect(policyRate).toMatchObject({
+      available: true,
+      stale: false,
+      row_count: 706,
+      latest_date: "2026-07-20",
+      series_id: "EMM00088132",
+      source: "choice",
+      value: 1.4,
+    });
+    expect(capability?.warnings).not.toContain("POLICY_RATE_7D_STALE");
+  });
+
+  it("keeps the dual-frequency mock candidate read-only and leaves final target unevaluated", async () => {
+    const envelope = await createMockMacroToolkitClient().getMacroToolkitStrategySummaries();
+    const snapshot = envelope.result.macro_etf_strategy;
+    const candidate = snapshot?.dual_frequency;
+
+    expect(snapshot).toMatchObject({
+      boundary: "observation_only",
+      execution_enabled: false,
+    });
+    expect(candidate).toMatchObject({
+      data_status: {
+        status: "degraded",
+      },
+      fast: {
+        state: "defense",
+        multiplier: 0.4,
+      },
+      slow: {
+        cap: 0.62775,
+      },
+      survival: {
+        status: "not_evaluated",
+      },
+      pre_survival_target_total_weight: 0.2511,
+      final_target_total_weight: null,
+    });
+  });
+
   it("surfaces a timeout when toolkit read endpoints do not answer", async () => {
     vi.useFakeTimers();
     try {
@@ -62,11 +128,15 @@ describe("macroToolkitClient", () => {
         JSON.stringify({
           result_meta: { basis: "analytical" },
           result: {
-            refresh: { row_count: 2 },
+            refresh: {
+              status: "queued",
+              run_id: "cffex_member_rank_refresh:test",
+              row_count: null,
+            },
             cffex_member_rank: { status: "ok", row_count: 2 },
           },
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
+        { status: 202, headers: { "Content-Type": "application/json" } },
       ),
     ) as unknown as typeof fetch;
     const client = createRealMacroToolkitClient({
@@ -74,12 +144,13 @@ describe("macroToolkitClient", () => {
       baseUrl: "http://localhost:8000",
     });
 
-    await client.refreshCffexMemberRank({
+    const response = await client.refreshCffexMemberRank({
       tradeDate: "2026-04-30",
       contracts: ["T.CFE"],
       sources: ["choice"],
     });
 
+    expect(response.result.refresh.row_count).toBeNull();
     expect(fetchImpl).toHaveBeenCalledWith(
       "http://localhost:8000/ui/macro/toolkit/cffex-member-rank/refresh",
       expect.objectContaining({
@@ -153,14 +224,15 @@ describe("macroToolkitClient", () => {
           result_meta: { basis: "analytical" },
           result: {
             refresh: {
-              status: "completed",
+              status: "queued",
+              run_id: "macro_source_backfill_refresh:test",
               alias: "M0041813",
               series_ids: ["NCD.SHIBOR.3M"],
-              total_added: 42,
+              total_added: null,
             },
           },
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
+        { status: 202, headers: { "Content-Type": "application/json" } },
       ),
     ) as unknown as typeof fetch;
     const client = createRealMacroToolkitClient({
@@ -168,13 +240,14 @@ describe("macroToolkitClient", () => {
       baseUrl: "http://localhost:8000",
     });
 
-    await client.refreshMacroSourceBackfill({
+    const response = await client.refreshMacroSourceBackfill({
       alias: "M0041813",
       startDate: "2026-04-01",
       endDate: "2026-04-30",
       sources: ["tushare_macro"],
     });
 
+    expect(response.result.refresh.total_added).toBeNull();
     expect(fetchImpl).toHaveBeenCalledWith(
       "http://localhost:8000/ui/macro/toolkit/source-backfill/refresh",
       expect.objectContaining({
@@ -186,6 +259,53 @@ describe("macroToolkitClient", () => {
           sources: ["tushare_macro"],
         }),
       }),
+    );
+  });
+
+  it("reads CFFEX and source-backfill refresh status by encoded run id", async () => {
+    const fetchImpl = vi.fn(async (url: string | URL | Request) =>
+      new Response(
+        JSON.stringify({
+          result_meta: { basis: "analytical" },
+          result: String(url).includes("cffex-member-rank")
+            ? {
+                refresh: {
+                  status: "completed",
+                  run_id: "cffex_member_rank_refresh:test",
+                  row_count: 8,
+                },
+                cffex_member_rank: { status: "ok", row_count: 8 },
+              }
+            : {
+                refresh: {
+                  status: "completed",
+                  run_id: "macro_source_backfill_refresh:test",
+                  alias: "M0041813",
+                  series_ids: ["NCD.SHIBOR.3M"],
+                  total_added: 42,
+                },
+              },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ) as unknown as typeof fetch;
+    const client = createRealMacroToolkitClient({
+      fetchImpl,
+      baseUrl: "http://localhost:8000",
+    });
+
+    await client.getCffexMemberRankRefreshStatus("cffex_member_rank_refresh:test");
+    await client.getMacroSourceBackfillRefreshStatus("macro_source_backfill_refresh:test");
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/ui/macro/toolkit/cffex-member-rank/refresh-status?run_id=cffex_member_rank_refresh%3Atest",
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/ui/macro/toolkit/source-backfill/refresh-status?run_id=macro_source_backfill_refresh%3Atest",
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
     );
   });
 

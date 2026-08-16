@@ -6,7 +6,6 @@ import { vi } from "vitest";
 
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import type { ApiEnvelope, ResultMeta, SourcePreviewPayload } from "../api/contracts";
-import { routerFuture } from "../router/routerFuture";
 import OperationsAnalysisPage from "../features/workbench/pages/OperationsAnalysisPage";
 
 vi.mock("../features/workbench/business-analysis/RevenueCostBridge", () => ({
@@ -36,7 +35,7 @@ function renderPage(client: ApiClient) {
 
   return render(
     <Wrapper>
-      <MemoryRouter future={routerFuture}>
+      <MemoryRouter>
         <OperationsAnalysisPage />
       </MemoryRouter>
     </Wrapper>,
@@ -198,6 +197,8 @@ describe("OperationsAnalysisPage", () => {
         total_rows: 2,
         limit: 3,
         offset: 0,
+        as_of_date: "2026-04-10",
+        excluded_future_rows: 0,
         events: [
           {
             event_key: "evt-001",
@@ -331,8 +332,28 @@ describe("OperationsAnalysisPage", () => {
     expect(await screen.findByTestId("operations-entry-recommendation")).toBeInTheDocument();
     const heroProvenance = await screen.findByTestId("operations-hero-provenance");
     expect(heroProvenance).toHaveTextContent("物化/候选对账");
-    expect(heroProvenance).toHaveTextContent("静态示例");
+    // 端点路径与链路实现叙事收进 title；hero 正文只留业务口径声明。
+    expect(heroProvenance).not.toHaveTextContent("静态示例");
+    expect(heroProvenance).not.toHaveTextContent("/ui/pnl/product-category");
+    expect(heroProvenance.getAttribute("title")).toContain("/ui/pnl/product-category");
     expect(await screen.findByTestId("operations-contribution-table-provenance")).toHaveTextContent("口径 正式口径");
+    // 静态示例区默认折叠为一行 <details>，红胶囊声明保留在 summary 上。
+    expect(screen.getByTestId("operations-watch-sample-section")).not.toHaveAttribute("open");
+    expect(screen.getByTestId("operations-calendar-sample-section")).not.toHaveAttribute("open");
+    expect(screen.getByTestId("operations-tenor-sample-section")).not.toHaveAttribute("open");
+    expect(screen.getByTestId("operations-bridge-sample-section")).not.toHaveAttribute("open");
+    expect(screen.getByTestId("operations-watch-static-sample-badge")).toHaveTextContent(
+      "静态示例数据",
+    );
+    expect(screen.getByTestId("operations-calendar-static-sample-badge")).toHaveTextContent(
+      "静态示例数据",
+    );
+    expect(screen.getByTestId("operations-tenor-static-sample-badge")).toHaveTextContent(
+      "静态示例数据",
+    );
+    expect(screen.getByTestId("revenue-cost-bridge-sample-badge")).toHaveTextContent(
+      "示意数据·未接入正式口径",
+    );
   });
 
   it("does not claim evidence is sufficient when critical read surfaces are empty", async () => {

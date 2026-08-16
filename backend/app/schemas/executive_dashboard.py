@@ -14,7 +14,11 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from backend.app.schemas.common_numeric import Numeric
-from pydantic import BaseModel, Field, model_validator
+from backend.app.schemas.result_meta import ResultMeta
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+HomeIncomeTrendPointSourceStatus = Literal["ready", "partial"]
+HomeIncomeTrendSourceStatus = Literal["ready", "partial", "empty"]
 
 
 def _coerce_display_numeric(value: Any) -> Any:
@@ -62,6 +66,13 @@ class ExecutiveMetric(BaseModel):
 class OverviewPayload(BaseModel):
     title: str
     metrics: list[ExecutiveMetric]
+
+
+class ExecutiveOverviewEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+    result: OverviewPayload
 
 
 class SummaryPoint(BaseModel):
@@ -264,7 +275,7 @@ class HomeIncomeTrendPoint(BaseModel):
     benchmark_pnl: Numeric
     excess_pnl: Numeric
     basis: Literal["product_category_pnl_monthly"]
-    source_status: Literal["ready", "partial", "empty", "stale"]
+    source_status: HomeIncomeTrendPointSourceStatus
 
 
 class HomeIncomeTrendPayload(BaseModel):
@@ -272,7 +283,7 @@ class HomeIncomeTrendPayload(BaseModel):
 
     report_date: str
     window: int
-    source_status: Literal["ready", "partial", "empty", "stale"]
+    source_status: HomeIncomeTrendSourceStatus
     points: list[HomeIncomeTrendPoint] = Field(default_factory=list)
     missing_components: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)

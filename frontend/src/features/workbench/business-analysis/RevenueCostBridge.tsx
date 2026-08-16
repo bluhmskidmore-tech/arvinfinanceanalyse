@@ -1,7 +1,11 @@
 import type { EChartsOption } from "echarts";
 
 import { BaseChart } from "../../../components/charts/BaseChart";
-import { SectionCard } from "../../../components/SectionCard";
+// canvas 不消费 CSS 变量：示意瀑布取色走 nocturneTokens 常量组
+// （operations-analysis 页根已声明 Nocturne scope，risk-tensor 先例）。
+import { nocturneTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
+import styles from "./RevenueCostBridge.module.css";
 
 const STEPS = [
   { name: "债券资产收益", value: 68.56 },
@@ -33,9 +37,9 @@ function buildWaterfallParts() {
 }
 
 function buildOption(): EChartsOption {
-  const { placeholder, positive, negative, total, categories } = buildWaterfallParts();
+  const { placeholder, positive, negative, categories } = buildWaterfallParts();
   return {
-    color: ["rgba(0,0,0,0)", "#16a34a", "#dc2626"],
+    color: ["rgba(0,0,0,0)", nocturneTokens.color.green, nocturneTokens.color.red],
     grid: { left: 48, right: 24, top: 40, bottom: 72 },
     legend: { show: false },
     tooltip: {
@@ -55,15 +59,15 @@ function buildOption(): EChartsOption {
     xAxis: {
       type: "category",
       data: categories,
-      axisLabel: { interval: 0, rotate: 22, fontSize: 11, color: "#475569" },
-      axisLine: { lineStyle: { color: "#cbd5e1" } },
+      axisLabel: { interval: 0, rotate: 22, fontSize: 11, color: nocturneTokens.color.inkSoft },
+      axisLine: { lineStyle: { color: nocturneTokens.color.line } },
     },
     yAxis: {
       type: "value",
       name: "亿元",
-      nameTextStyle: { color: "#64748b", fontSize: 11 },
-      axisLabel: { color: "#64748b", fontSize: 11 },
-      splitLine: { lineStyle: { type: "dashed", color: "#e2e8f0" } },
+      nameTextStyle: { color: nocturneTokens.color.inkMuted, fontSize: 11 },
+      axisLabel: { color: nocturneTokens.color.inkMuted, fontSize: 11 },
+      splitLine: { lineStyle: { type: "dashed", color: nocturneTokens.color.lineSoft } },
     },
     series: [
       {
@@ -90,38 +94,21 @@ function buildOption(): EChartsOption {
         data: negative,
       },
     ],
-    graphic: [
-      {
-        type: "text",
-        left: "center",
-        top: 8,
-        style: {
-          text: `累计净经营贡献 ${total.toFixed(2)} 亿 · 净利差 29.5bp，净经营贡献主要来源于债券资产`,
-          fill: "#64748b",
-          fontSize: 11,
-        },
-      },
-    ],
   };
 }
 
+/**
+ * 收益成本桥示意瀑布（静态样例）。
+ * 「静态示例」红胶囊声明由页面折叠区 summary 承载（收敛为一处），
+ * 组件内只保留一行正式口径缺口说明。
+ */
 export function RevenueCostBridge() {
   return (
-    <SectionCard title="收益成本桥（示意）" noPadding>
-      <div style={{ padding: "0 16px 16px" }}>
-        <p
-          style={{
-            margin: "0 0 8px",
-            padding: "0 0 0 4px",
-            fontSize: 12,
-            color: "#64748b",
-            lineHeight: 1.55,
-          }}
-        >
-          债券与同业资产收益合计约 72.87 亿，抵减负债成本后得到净贡献（柱状为示意瀑布，单位亿元）。
-        </p>
-        <BaseChart option={buildOption()} height={300} />
-      </div>
-    </SectionCard>
+    <div className={styles.body}>
+      <p className={styles.note} data-testid="revenue-cost-bridge-sample-note">
+        正式口径读数：{EM_DASH}（未接入）；瀑布为静态样例，数值不代表正式读数。
+      </p>
+      <BaseChart option={buildOption()} height={300} />
+    </div>
   );
 }

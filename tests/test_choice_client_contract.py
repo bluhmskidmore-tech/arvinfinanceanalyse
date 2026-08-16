@@ -45,6 +45,80 @@ def test_choice_client_start_is_idempotent(monkeypatch):
     assert start_calls == [client.settings.choice_start_options]
 
 
+def test_choice_client_start_does_not_set_proxy_by_default(monkeypatch):
+    client_module = load_module(
+        "backend.app.repositories.choice_client_contract_no_proxy",
+        "backend/app/repositories/choice_client.py",
+    )
+
+    class FakeC:
+        def setproxy(self, *_args):
+            raise AssertionError("default Choice startup must not configure a proxy")
+
+        def start(self, _options: str):
+            return SimpleNamespace(ErrorCode=0)
+
+    monkeypatch.setattr(client_module, "configure_emquant_parent", lambda _p: None)
+    monkeypatch.setattr(client_module, "_get_em_c", lambda: FakeC())
+
+    client_module.ChoiceClient(settings=_make_settings()).start()
+
+
+def test_choice_client_start_sets_explicit_socks5_proxy_before_login(monkeypatch):
+    client_module = load_module(
+        "backend.app.repositories.choice_client_contract_proxy",
+        "backend/app/repositories/choice_client.py",
+    )
+    calls: list[tuple[object, ...]] = []
+
+    class FakeC:
+        def setproxy(self, *args):
+            calls.append(("setproxy", *args))
+            return SimpleNamespace(ErrorCode=0)
+
+        def start(self, options: str):
+            calls.append(("start", options))
+            return SimpleNamespace(ErrorCode=0)
+
+    monkeypatch.setattr(client_module, "configure_emquant_parent", lambda _p: None)
+    monkeypatch.setattr(client_module, "_get_em_c", lambda: FakeC())
+    settings = _make_settings(
+        choice_socks5_proxy_host="127.0.0.1",
+        choice_socks5_proxy_port=18081,
+    )
+
+    client_module.ChoiceClient(settings=settings).start()
+
+    assert calls == [
+        ("setproxy", 4, "127.0.0.1", 18081, False, "", ""),
+        ("start", settings.choice_start_options),
+    ]
+
+
+def test_choice_client_start_fails_closed_when_proxy_setup_fails(monkeypatch):
+    client_module = load_module(
+        "backend.app.repositories.choice_client_contract_proxy_failure",
+        "backend/app/repositories/choice_client.py",
+    )
+
+    class FakeC:
+        def setproxy(self, *_args):
+            return SimpleNamespace(ErrorCode=9, ErrorMsg="proxy rejected")
+
+        def start(self, _options: str):
+            raise AssertionError("login must not run after proxy setup fails")
+
+    monkeypatch.setattr(client_module, "configure_emquant_parent", lambda _p: None)
+    monkeypatch.setattr(client_module, "_get_em_c", lambda: FakeC())
+    settings = _make_settings(
+        choice_socks5_proxy_host="127.0.0.1",
+        choice_socks5_proxy_port=18081,
+    )
+
+    with pytest.raises(RuntimeError, match="proxy rejected"):
+        client_module.ChoiceClient(settings=settings).start()
+
+
 def test_choice_client_start_raises_import_error_when_em_c_unavailable(monkeypatch):
     client_module = load_module(
         "backend.app.repositories.choice_client_contract_b",

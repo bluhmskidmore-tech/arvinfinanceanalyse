@@ -133,7 +133,11 @@ formal-only derived later：
 
 单位约定：
 - 金额字段为原币金额
-- `ytm_value`、`coupon_rate` 统一为小数口径
+- `ytm_value`、`coupon_rate` 统一为**百分数口径**（1.82 表示 1.82%）。
+  2026-07-19 数据取证裁决（docs/audits/2026-07-19-system-calculation-audit.md 取证 1）：
+  实际落库中位数 2.38、P95 4.17，样例 SCP 券票息 1.82；此前本行误写为"小数口径"。
+  消费方必须用 `rate_units.normalize_percent_rate_to_decimal` 显式 ÷100，
+  禁止使用 >2 阈值启发式（会把 [0.2, 2) 灰区低票息当作小数放行）。
 
 ### 4.2 tyw_interbank_daily_snapshot
 
@@ -591,6 +595,106 @@ canonical grain：
 - 只作市场/宏观/情景增强
 - 是否允许 formal 使用由配置决定
 
+### 4.10 choice_stock_daily_observation
+
+用途：A 股日频行情观察表，供 Livermore 股票研究等分析路径读取；不是统一单位完成后的标准化 OHLCV 事实表。
+
+#### 单位契约
+
+表内存在两代 vendor 摄入；`amount` 与 `volume` 的存储单位随 `vendor_version` 变化，消费者不得把原始列视为跨全表同单位字段。
+
+| 代际 | `vendor_version` 特征 | 覆盖区间 | `amount` 存储单位 | `volume` 存储单位 | 价格类列 |
+| --- | --- | --- | --- | --- | --- |
+| Tushare 代际 | `like '%tushare%'`（`vv_choice_tushare_stock_*`） | 2024-01-02 至 2025-12-31（总 2,489,981 行，`amount` 非空 2,484,974 行） | 千元 | 手（100 股） | `open_value` / `high_value` / `low_value` / `close_value` 均为元 |
+| Choice native 代际 | 不含 `tushare`（例如 `vv_choice_stock_20260811_*`） | 2026-01-05 至今（总 760,368 行，`amount` 非空 755,704 行） | 元 | 股 | `open_value` / `high_value` / `low_value` / `close_value` 均为元 |
+
+代际边界为 **2025-12-31 → 2026-01-05**。两代际在 `(stock_code, trade_date)` 上零重叠。
+
+#### 证据摘要
+
+- Tushare 摄入使用 daily 接口字段 `ts_code` / `vol` / `amount`；该接口官方口径为 `amount` 千元、`vol` 手。
+- Tushare 代际 `amount / (volume × close)` 中位比值约为 `0.1`；全代际 `amount` 最大值为 `9.0e7`，按千元解释约为 900 亿元，量级合理。
+- Choice native 代际同一比值中位约为 `1.0`。平安银行（`000001.SZ`）在 2026-08-11 的观测为 `amount=749,686,462` 元、`volume=66,336,053` 股，与约 7.5 亿元实际成交额相符。
+
+#### 消费规则
+
+- `POLICY.entry_filters.min_daily_amount = 200_000_000.0` 的语义单位为**元**。
+- 任一读取 `amount` / `volume` 的绝对阈值比较，必须先按 `vendor_version` 将原始值归一化到元 / 股。
+- 任一跨代际时序计算（包括均线、量比及其派生信号），必须先按代际归一化；禁止直接拼接或比较原始 `amount` / `volume`。
+- **fail-closed 规则**：`vendor_version` 行值为 NULL / 空白、观察表缺失 `vendor_version` 列（旧 schema / 合成表）、或**非空但不匹配任一已知代际模式（未知 vendor）**时，`amount` / `volume` 一律输出 NULL 并告警，禁止原值透传或按 native 猜测（无法定标的原始值不得流入任何阈值比较、时序计算或对外展示/提示语料）。
+- **已知 vendor 模式白名单**：`like '%tushare%'` → 千元/手（覆盖主模式 `vv_choice_tushare_stock_*` 与盘后补充模式 `vv_livermore_supplement_tushare_sina_*`，后者数据来自 Tushare `pro.daily`，同为千元/手口径）；`vv_choice_stock_*` 前缀 → 元/股透传。新数据源接入必须同步登记：消费端 `backend/app/repositories/choice_stock_units.py`、摄入侧白名单 `DAILY_OBSERVATION_VENDOR_VERSION_PATTERNS`（`backend/app/tasks/choice_stock_materialize.py`）与本节。
+- 价格类列两代单位均为元，不适用上述金额和成交量换算。
+- `turn`（换手率，百分点）两代口径一致：Tushare 摄入优先取 `turnover_rate_f`（自由流通口径），缺失时回退 `turnover_rate`（总股本口径）；边界实证无尺度断裂（跨界均值比中位 0.90），`abnormal_turnover` 等相对量比跨代可比。消费者不应假设该列是严格单一口径的自由流通换手。
+
+#### `highlimit` / `lowlimit` 覆盖缺口（2026 段无数值价格）
+
+该两列为 VARCHAR，且存在字段语义冲突：Choice 上游 `HIGHLIMIT`/`LOWLIMIT` 是**是/否标志而非价格**（见 `config/choice_stock_catalog.json` 的 `daily_limit_flags` 描述）。Tushare 代际行内的数值价格来自权限兜底路径；choice_native 代际（2026-01-05 起）全部 760,368 行**不含可解析的数值价格**（0 行可 `try_cast`）。消费影响：`limit_ratio` 有完整规则兜底、`one_word_board` 用四价相等判定，均未失效；但 `closed_up_limit` 在 2026 段硬失效，`portfolio_paths` 的跌停顺延卖出在 2026 段会把跌停日误判为可卖。消费者不得假设该两列是跨代际可用的数值涨跌停价。
+
+数值涨跌停价以专用表 `stock_limit_price_daily` 另行落地：来源 `tushare.stk_limit`（`up_limit`/`down_limit`/`pre_close`，单位元），schema `backend/app/schema_registry/duckdb/40_stock_limit_price_daily.sql`，写路径仅 `backend/app/tasks/stock_limit_price_ingest.py`（vendor 白名单 `vv_tushare_stk_limit_*`，独立于本表两代单位换算），用途是替代本节标志列语义缺口，供 `portfolio_paths` 价格路径与 execution bars 按"新表优先 → observation try_cast 回退 → missing 维持 fail-open"三态消费（`resolve_limit_prices`）。回填任务已建立（`scripts/backfill_stock_limit_prices.py`，默认 dry-run）；**截至本契约更新，数值价尚未回填**（Tushare 网络恢复后按脚本打印的 runbook 执行），回填前 choice_native 段消费行为与本节缺口描述一致。
+
+#### `tradestatus` 语义（native 空串 = 正常交易日）
+
+该列同属 native 代际字段语义缺口家族（与上节 `highlimit`/`lowlimit` 标志化同源）：
+
+- Tushare 代际行带显式状态（`Trading` 等）；choice_native 代际（2026-01-05 起）**不提供状态字段，落地为空串**。空串/NULL/空白在该代际语义下即**正常交易日**，消费者不得把空状态一刀切判为不可交易（2026-08-12 前的旧词表曾因此把 976 个 20d 视角有行情 bar 的候选误报为 `matured_missing_bar`，K 线服务锚定日回退 2025-12-31）。
+- `复牌` 为**可交易**（复牌当日恢复交易；旧词表曾把复牌日误判为不可交易导致 forward 目标日顺延类冲突）。
+- `停牌一天`/`连续停牌` 等其余非空、不在可交易词表内的值为**不可交易**。
+- 数字/英文布尔式状态码（`"0"`/`"1"`/`"true"`/`"false"`/`"normal"`/`"trade"` 等）**不在两代 vendor 的契约词值内**：当前两代落地值均不含此类编码；若上游未来落入，按"未知非空值 fail-closed 判停牌"处理（卖出顺延方向保守，但踩踏风险 universe 会整体剔空导致指标失真）。运维观察点为**未知非空值占比**——占比异常升高说明上游状态词表换代，应先扩展 `field_normalization` 词表并更新本节，再恢复消费。
+- 唯一判定口径是 `backend/app/core_finance/field_normalization.py` 的 `is_tradestatus_tradable`（Python）与 `tradable_status_sql_condition`（SQL 片段，空串折叠进 IN 列表首项）；停牌方向用互补 helper `is_tradestatus_halted`（非空且不可交易；空串≠停牌；未知非空值 fail-closed 判停牌），SQL 侧用可交易条件的否定。消费点（outcome maturity 任务、candidate history 服务/仓储、K 线与行情读仓储、卖出顺延路径 `portfolio_paths`/`matched_baseline`/execution 物化、踩踏风险 universe、盘前检查导出）不得内联词表（2026-08-12 前旧完整匹配词表只认独词"停牌"，漏判"停牌一天"/"连续停牌"/"盘中停牌"，停牌日被误判可卖、卖出不顺延且卖在停牌陈旧价）。
+
+#### Batch3 治理状态
+
+`scripts/run_batch3_stock_strategy_research.py` 先前将该字段标为 `daily_amount_rmb_unconfirmed`，原因是当时仅有本地 pass-through lineage，尚无 vendor 单位证据。现已具备 Tushare 官方接口口径及上述代际交叉校验，可建议将该状态升级为 confirmed；该状态变更及其脚本内落实由 Batch3 维护者负责，不属于本文档变更范围。
+
+### 4.11 choice_stock_concept_membership_interval（概念成分时点化 SCD 区间表）
+
+用途：把 `choice_stock_concept_membership` 的"当前概念成分快照"派生为时点（point-in-time）SCD 区间读模型，供 theme_breakout 真实概念路径按 signal_date 做 as-of join，消除"用现在的概念成分回填历史"的前视偏差（`docs/strategy-reports/theme-breakout-decay-review.md` §10.3 Critical 项）。
+
+#### 源表语义与局限
+
+- 源表 `choice_stock_concept_membership`（schema 切片 21）每行是**某快照日抓取的当前成分**，`concept_source` 现存量全部为 `tushare_ths_current`（同花顺概念当前成分，探测式抓取：仅当日强势股被探测，每个快照日的股票集不同）。截至本节撰写，快照日共 4 个：2026-05-13 / 2026-07-08 / 2026-07-10 / 2026-07-14。
+- **探测式抓取的关键推论**：某股票缺席某快照日 = "当日未被观测"，**不代表**"退出了所有概念"。因此区间化必须按 `(stock_code, concept_source)` 的**自身观测日序列** diff，不能按全局快照日 diff。
+- 源表无法区分"被探测但无概念"与"未被探测"（前者不落行）；该歧义按未观测处理（保守，不闭合区间）。
+
+#### 表结构（schema 切片 44，迁移 v44）
+
+| 列 | 类型 | 语义 |
+| --- | --- | --- |
+| `stock_code` | varchar not null | 股票代码 |
+| `concept_code` | varchar not null | 概念代码（源行代码为空时回退概念名） |
+| `concept_name` | varchar | 概念名（取该区间最后一次观测行的值） |
+| `concept_source` | varchar not null | 源标识（现为 `tushare_ths_current`），区间化按源独立进行 |
+| `valid_from` | varchar not null | 首次观测到该成分的快照日（含） |
+| `valid_to` | varchar | 首个观测到该成分消失的快照日（**不含**，半开区间）；NULL = 开放区间（最近观测仍在册） |
+| `last_observed_date` | varchar not null | 该区间内最后一次观测到成分的快照日（消费端陈旧度依据） |
+| `field_key` / `source_version` / `vendor_version` / `rule_version` / `run_id` | varchar | 溯源列，取最后观测行 + 本次构建 run |
+
+自然键唯一索引：`(stock_code, concept_code, concept_source, valid_from)`（同一成分退出后再进入产生新行，SCD type 2）。
+
+#### 区间化算法（快照对比）
+
+对每个 `(stock_code, concept_source)`，取其观测日升序序列 `d_1 < d_2 < …`（观测日 = 该股在源表有行的快照日），fold：
+
+1. `d_1` 出现的成分开区间 `[d_1, NULL)`；
+2. 相邻观测日 `d_i → d_{i+1}`：`d_i` 有、`d_{i+1}` 无 → 闭合为 `[valid_from, d_{i+1})`（退出事件按"发现日"闭合，是无前视的最优近似）；两日都有 → 延续并更新 `last_observed_date`；仅 `d_{i+1}` 有 → 新开区间（进入事件）；
+3. 最后一个观测日仍在册的成分保持开放区间（`valid_to = NULL`）。
+
+构建是**全量快照集的确定性纯函数**（`build_membership_intervals`），持久化为单事务 delete-then-insert：同快照集重跑内容不变（幂等）；追加新快照日重跑即完成区间闭合与新开。源表缺失/为空时返回 `no_snapshots` 且**不清空**既有区间（防源部分不可用误清读模型）。
+
+#### 消费契约与 fail-closed 边界
+
+- as-of join：`valid_from <= signal_date and (valid_to is null or valid_to > signal_date)`（`livermore_market_read_repo.fetch_theme_concept_interval_rows`）。
+- **首快照（2026-05-13）之前**：无区间行匹配 → theme_breakout 真实概念路径无输入 → 维持既有 proxy 行业篮子回退（fail-closed，历史回放行为与接通前一致）。
+- 消费优先级：精确请求日 Choice 概念行（`concept_source='choice'`，时点性最强）> 区间表 as-of 行（real_concept）> 非时点 current overlay > proxy。
+- **末次快照之后**：开放区间继续生效（= "已知的最新在册状态"，无前视但有陈旧度）；`last_observed_date` 已落列供消费端做陈旧度预警。摄入停摆时该路径的陈旧度单调增长，运维观察点为 `max(last_observed_date)` 与当前日期的间距。
+- 消费端版本：`rv_livermore_theme_breakout_real_concept_interval_v7`（real_concept 分支首次生效，信号分布会变；公式本体零变化）。
+
+#### 写路径与运维 runbook
+
+- 唯一写者：`backend/app/tasks/concept_membership_intervalize.py::intervalize_concept_membership`（受 `lock:duckdb:concept-membership-intervalize` 锁保护）。
+- **每次概念快照摄入后必须重跑本任务**（摄入入口 `materialize_choice_stock_inputs`，Choice css 或 Tushare THS fallback 路径），否则区间表停留在上一快照集。
+- 外部网络恢复后的历史回灌：按日期升序逐日调用摄入（落快照）→ 全部落地后跑一次 intervalize 即可（全量重建，无需逐日跑）；回灌只影响 `valid_from >= 回灌首日` 的区间边界，不会伪造首快照前的历史。
+
 ## 5. 事实表清单
 
 - `fact_bond_monthly_avg`
@@ -690,7 +794,7 @@ canonical grain：
 ## 11. FX Source Drop Contract
 
 - Current `zqtz / tyw` formal balance FX acquisition contract is defined by [BALANCE_ANALYSIS_FX_SOURCE_RUNBOOK.md](BALANCE_ANALYSIS_FX_SOURCE_RUNBOOK.md).
-- Current normal governed formal route: `Choice catalog-driven middle-rate discovery -> Choice live fetch -> AkShare fallback -> fail closed`.
+- Current normal governed formal route: `Choice catalog-driven middle-rate discovery -> Choice live fetch -> ChinaMoney/CFETS official history -> AkShare fallback -> fail closed`.
 - Current first-wave formal candidate set is catalog-derived and normalizes to `AUD/EUR/USD/CAD/HKD -> CNY`.
 - Reverse vendor orientation such as `??????` must be inverted before persistence so DuckDB formal reads continue to use `base_currency -> CNY`.
 - Current repo-owned authority files:

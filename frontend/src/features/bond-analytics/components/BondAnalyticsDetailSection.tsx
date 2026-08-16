@@ -10,6 +10,7 @@ import {
   getBondAnalyticsModuleDefinition,
   type BondAnalyticsModuleKey,
 } from "../lib/bondAnalyticsModuleRegistry";
+import { DetailPanelSkeleton } from "./BondAnalyticsDetailPrimitives";
 import styles from "./BondAnalyticsDetailSection.module.css";
 
 const ReturnDecompositionView = lazy(() =>
@@ -183,12 +184,7 @@ export function BondAnalyticsDetailSection({
 
       <Suspense
         fallback={
-          <div
-            className={styles.loadingState}
-            data-testid="bond-analysis-detail-loading"
-          >
-            正在加载面板...
-          </div>
+          <DetailPanelSkeleton testId="bond-analysis-detail-loading" />
         }
       >
         <div className={styles.contentFrame} data-testid="bond-analysis-detail-content">

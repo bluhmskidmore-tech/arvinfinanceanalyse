@@ -1,0 +1,25 @@
+{
+  "contract_version": "candidate-source-version-impact-v1",
+  "report_month": "202606",
+  "reference_rule_version": "qdb-finance-2026-v1.0.0",
+  "current_rule_version": "qdb-finance-2026-v1.0.1",
+  "reference_result_sha256": "5fc917ef5a47a6bd59e6bf9c52166ed3895ae06ceed19d14cb077c9effb32a65",
+  "reference_ledger_sha256": "0ba128f1dca4084cfdf4aff410576f1945c11240a88778e00175cbc977e7493d",
+  "current_ledger_sha256": "29717578b92e107cc2fbcd5b66cd7c63191c24e1a7d245c103c94e235331c0b7",
+  "daily_sha256": "49e9a5b06c30656aaa07ef583d459dfff514ddd478640b0fb6f0b355d9758498",
+  "comparison_basis": "canonical_decimal_value",
+  "reference_metric_count": 186,
+  "reference_numeric_digest": "facdff7344db44cf08f0cb32bf365cdfc64bf6ec9002db4ff49aabfb86fc7ed5",
+  "serialization_only_metric_ids": [
+    "balance.deposit.retail.total::month_average",
+    "balance.loan.corporate.general::month_average",
+    "expense.interest.deposit.retail",
+    "income.fee.company.bill",
+    "income.fee.retail.credit_card",
+    "income.fee.retail.wealth",
+    "income.interest.loan.corporate",
+    "income.interest.loan.credit_card"
+  ],
+  "formal_use_allowed": false,
+  "certification_effect": "none"
+}

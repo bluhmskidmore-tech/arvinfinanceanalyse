@@ -1,6 +1,8 @@
 type AgentEvidencePanelProps = {
   tablesUsed: string[];
   filtersApplied: Record<string, unknown>;
+  sqlExecuted?: string[];
+  evidenceStrength?: string;
   evidenceRows: number;
   qualityFlag: string;
 };
@@ -10,6 +12,13 @@ const qualityLabels: Record<string, string> = {
   warning: "需留意",
   error: "异常",
   stale: "可能陈旧",
+};
+
+const evidenceStrengthLabels: Record<string, string> = {
+  governed_moss: "MOSS 受治理证据",
+  provider_runtime: "外部模型运行证据",
+  local_fallback: "本地降级回答",
+  mixed: "外部模型 + MOSS 上下文",
 };
 
 function formatEvidenceValue(value: unknown): string {
@@ -31,6 +40,8 @@ function formatFilterSummary(filtersApplied: Record<string, unknown>) {
 export function AgentEvidencePanel({
   tablesUsed,
   filtersApplied,
+  sqlExecuted = [],
+  evidenceStrength,
   evidenceRows,
   qualityFlag,
 }: AgentEvidencePanelProps) {
@@ -53,6 +64,14 @@ export function AgentEvidencePanel({
           <strong>{evidenceRows} 行</strong>
         </div>
         <div className="agent-side-panel__row">
+          <span>证据级别</span>
+          <strong>
+            {evidenceStrength
+              ? (evidenceStrengthLabels[evidenceStrength] ?? evidenceStrength)
+              : "未声明"}
+          </strong>
+        </div>
+        <div className="agent-side-panel__row">
           <span>质量</span>
           <strong>{qualityLabels[qualityFlag] ?? qualityFlag}</strong>
         </div>
@@ -61,6 +80,16 @@ export function AgentEvidencePanel({
         <summary>查看筛选参数</summary>
         <pre>{rawFilters}</pre>
       </details>
+      {sqlExecuted.length > 0 ? (
+        <details className="agent-side-panel__details" data-testid="agent-evidence-sql">
+          <summary>查看只读 SQL 披露 · {sqlExecuted.length} 条</summary>
+          <div className="agent-side-panel__sql-list">
+            {sqlExecuted.map((sql, index) => (
+              <pre key={`sql-${index}`}>{sql}</pre>
+            ))}
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }

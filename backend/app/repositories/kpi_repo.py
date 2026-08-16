@@ -5,11 +5,58 @@ from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from typing import TypedDict
 
 from backend.app.models.base import Base
 from backend.app.models.kpi import KpiMetric, KpiMetricValue, KpiOwner
-from sqlalchemy import create_engine, select
+from sqlalchemy import Table, create_engine, false, select
 from sqlalchemy.orm import sessionmaker
+
+
+class KpiOwnerRow(TypedDict):
+    owner_id: int
+    owner_name: str
+    org_unit: str
+    person_name: str | None
+    year: int
+    scope_type: str
+    scope_key: dict[str, object] | None
+    is_active: bool
+    created_at: str
+    updated_at: str
+
+
+class KpiPeriodMetricRow(TypedDict):
+    metric_id: int
+    metric_code: str
+    metric_name: str
+    major_category: str
+    indicator_category: str | None
+    target_value: str | None
+    unit: str | None
+    score_weight: str
+    period_actual_value: str | None
+    period_completion_ratio: str | None
+    period_progress_pct: str | None
+    period_score_value: str | None
+    period_start_date: str
+    period_end_date: str
+    data_date: str | None
+
+
+class KpiPeriodSummaryRow(TypedDict):
+    owner_id: int
+    owner_name: str
+    year: int
+    period_type: str
+    period_value: int | None
+    period_label: str
+    period_start_date: str
+    period_end_date: str
+    metrics: list[KpiPeriodMetricRow]
+    total: int
+    total_weight: str
+    total_score: str
 
 
 def _normalize_sqlalchemy_dsn(dsn: str) -> str:
@@ -68,19 +115,22 @@ class KpiRepository:
         )
         self._session_factory = sessionmaker(self.engine, future=True)
         if self.engine.dialect.name == "sqlite":
+            owner_table = KpiOwner.__table__
+            metric_table = KpiMetric.__table__
+            value_table = KpiMetricValue.__table__
+            # Declarative __table__ is typed as FromClause; at runtime these are Tables.
+            assert isinstance(owner_table, Table)
+            assert isinstance(metric_table, Table)
+            assert isinstance(value_table, Table)
             Base.metadata.create_all(
                 self.engine,
-                tables=[
-                    KpiOwner.__table__,
-                    KpiMetric.__table__,
-                    KpiMetricValue.__table__,
-                ],
+                tables=[owner_table, metric_table, value_table],
             )
 
     def session(self):
         return self._session_factory()
 
-    def list_owners(self, *, year: int | None = None, is_active: bool | None = None) -> list[dict[str, object]]:
+    def list_owners(self, *, year: int | None = None, is_active: bool | None = None) -> list[KpiOwnerRow]:
         with self.session() as session:
             stmt = select(KpiOwner)
             if year is not None:
@@ -112,7 +162,7 @@ class KpiRepository:
         year: int,
         period_type: str,
         period_value: int | None = None,
-    ) -> dict[str, object]:
+    ) -> KpiPeriodSummaryRow:
         start_date, end_date, period_label = _period_bounds(
             year=year,
             period_type=period_type,
@@ -134,7 +184,8 @@ class KpiRepository:
             metric_ids = [metric.metric_id for metric in metrics]
             values = session.execute(
                 select(KpiMetricValue)
-                .where(KpiMetricValue.metric_id.in_(metric_ids) if metric_ids else False)
+                # false() is the explicit form of the boolean-False coercion SQLAlchemy applies.
+                .where(KpiMetricValue.metric_id.in_(metric_ids) if metric_ids else false())
                 .where(KpiMetricValue.as_of_date >= start_date)
                 .where(KpiMetricValue.as_of_date <= end_date)
                 .order_by(
@@ -148,7 +199,7 @@ class KpiRepository:
         for row in values:
             latest_by_metric.setdefault(row.metric_id, row)
 
-        metric_rows: list[dict[str, object]] = []
+        metric_rows: list[KpiPeriodMetricRow] = []
         total_weight = Decimal("0")
         total_score = Decimal("0")
         for metric in metrics:

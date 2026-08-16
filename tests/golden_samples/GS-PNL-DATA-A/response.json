@@ -6,8 +6,8 @@
     "formal_use_allowed": true,
     "source_version": "fi-shared-v1__nonstd-shared-v1",
     "vendor_version": "vv_none",
-    "rule_version": "rv_pnl_phase2_materialize_v1",
-    "cache_version": "cv_pnl_formal__rv_pnl_phase2_materialize_v1",
+    "rule_version": "rv_pnl_phase2_materialize_v3",
+    "cache_version": "cv_pnl_formal__rv_pnl_phase2_materialize_v3",
     "quality_flag": "ok",
     "vendor_status": "ok",
     "fallback_mode": "none",
@@ -31,7 +31,7 @@
         "manual_adjustment": "0.50000000",
         "total_pnl": "11.50000000",
         "source_version": "fi-shared-v1",
-        "rule_version": "rv_pnl_phase2_materialize_v1",
+        "rule_version": "rv_pnl_phase2_materialize_v3",
         "ingest_batch_id": "batch-fi-shared",
         "trace_id": "trace-fi-shared"
       }
@@ -48,7 +48,7 @@
         "manual_adjustment": "0E-8",
         "total_pnl": "100.00000000",
         "source_version": "nonstd-shared-v1",
-        "rule_version": "rv_pnl_phase2_materialize_v1",
+        "rule_version": "rv_pnl_phase2_materialize_v3",
         "ingest_batch_id": "batch-bridge-shared",
         "trace_id": "trace-001,trace-002"
       }

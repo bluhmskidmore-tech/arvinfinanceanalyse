@@ -1,5 +1,3 @@
-import { Alert } from "antd";
-
 import type { ResultMeta } from "../../../api/contracts";
 import "./LiveResultMetaStrip.css";
 
@@ -10,7 +8,23 @@ type LiveResultMetaStripProps = {
   lead: string;
 };
 
-/** 紧贴主读面展示质量 / 供应商 / 降级，对应 contracts.ResultMeta（无额外 inline style=）。 */
+function qualityTone(quality: ResultMeta["quality_flag"]): "ok" | "warn" | "error" | "neutral" {
+  if (quality === "warning" || quality === "stale") {
+    return "warn";
+  }
+  if (quality === "error" || quality === "missing") {
+    return "error";
+  }
+  if (quality === "ok") {
+    return "ok";
+  }
+  return "neutral";
+}
+
+/**
+ * 行内来源/口径元信息条（DESIGN.md §6）：正文只保留口径 / 正式可用 / 质量 / 报告日，
+ * 供应商与降级仅在异常时占正文；版本、追踪编号等证据细节收进 title。
+ */
 export function LiveResultMetaStrip({ meta, testId, lead }: LiveResultMetaStripProps) {
   if (!meta) {
     return null;
@@ -44,45 +58,39 @@ export function LiveResultMetaStrip({ meta, testId, lead }: LiveResultMetaStripP
     value == null || value === "" ? emptyLabel : value;
   const reportDate = meta.resolved_report_date || meta.requested_report_date;
   const formalUseAllowedLabel = meta.formal_use_allowed ? "是" : "否";
-  const items = [
-    { label: `口径=${basisLabel[meta.basis] ?? meta.basis}` },
-    { label: `正式可用=${formalUseAllowedLabel}` },
-    { label: `质量=${qualityLabel[meta.quality_flag] ?? meta.quality_flag}` },
-    { label: `供应商状态=${vendorLabel[meta.vendor_status] ?? meta.vendor_status}` },
-    { label: `降级模式=${fallbackLabel}` },
-    { label: `报告日=${displayValue(reportDate)}` },
-    { label: `数据截至=${displayValue(meta.as_of_date)}` },
-    { label: `降级日期=${displayValue(meta.fallback_date)}` },
-    { label: `生成时间=${meta.generated_at}` },
-    { label: `供应商版本=${meta.vendor_version}`, long: true },
-    { label: `来源版本=${meta.source_version}`, long: true },
-    { label: `追踪编号=${meta.trace_id}`, long: true },
+  const summaryItems = [
+    { label: `口径=${basisLabel[meta.basis] ?? meta.basis}`, tone: "neutral" as const },
+    { label: `正式可用=${formalUseAllowedLabel}`, tone: meta.formal_use_allowed ? ("ok" as const) : ("warn" as const) },
+    { label: `质量=${qualityLabel[meta.quality_flag] ?? meta.quality_flag}`, tone: qualityTone(meta.quality_flag) },
+    { label: `报告日=${displayValue(reportDate)}`, tone: "neutral" as const },
+    ...(meta.vendor_status !== "ok"
+      ? [{ label: `供应商=${vendorLabel[meta.vendor_status] ?? meta.vendor_status}`, tone: "warn" as const }]
+      : []),
+    ...(meta.fallback_mode !== "none" ? [{ label: `降级=${fallbackLabel}`, tone: "warn" as const }] : []),
   ];
+  const detailTitle = [
+    `供应商=${vendorLabel[meta.vendor_status] ?? meta.vendor_status}`,
+    `降级=${fallbackLabel}`,
+    `截至=${displayValue(meta.as_of_date)}`,
+    `供应商版本=${meta.vendor_version}`,
+    `来源版本=${meta.source_version}`,
+    `追踪编号=${meta.trace_id}`,
+  ].join("；");
+
   return (
-    <Alert
+    <p
       className="live-result-meta-strip"
       data-testid={testId}
-      type="info"
-      showIcon
-      message={lead}
-      description={
-        <span className="live-result-meta-strip__items">
-          {items.map((item) => (
-            <span
-              className={[
-                "live-result-meta-strip__item",
-                item.long ? "live-result-meta-strip__item--long" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              key={item.label}
-              title={item.long ? item.label : undefined}
-            >
-              {item.label}
-            </span>
-          ))}
+      role="status"
+      aria-live="polite"
+      title={detailTitle}
+    >
+      <span className="live-result-meta-strip__lead">{lead}</span>
+      {summaryItems.map((item) => (
+        <span className="live-result-meta-strip__item" data-tone={item.tone} key={item.label}>
+          {item.label}
         </span>
-      }
-    />
+      ))}
+    </p>
   );
 }

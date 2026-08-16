@@ -7,12 +7,16 @@ Imported by adb_analysis_service for orchestration.
 
 from __future__ import annotations
 
+import logging
+import math
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
 import pandas as pd
 from backend.app.core_finance.adb_rate_normalize import normalize_rate_values
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Trend computation
@@ -80,7 +84,7 @@ def enrich_bonds_asset_frame(bonds_assets_df: pd.DataFrame) -> pd.DataFrame:
         df["category"] = df["bond_category"].apply(_clean_cat_local)
     else:
         df["category"] = df.apply(lambda r: classify_zqtz_asset_bond_label(r.to_dict()), axis=1)
-    df["balance"] = pd.to_numeric(df["market_value"], errors="coerce").fillna(0.0)
+    df["balance"] = _coerce_numeric_balance_with_warning(df, "market_value", "bonds_asset")
     df["rate_decimal"] = normalize_rate_values(df["yield_to_maturity"].tolist(), "yield_to_maturity")
     df["weighted"] = df["balance"] * df["rate_decimal"]
     return df
@@ -93,12 +97,13 @@ def enrich_bonds_liability_frame(bonds_liab_df: pd.DataFrame) -> pd.DataFrame:
         df["category"] = df["bond_category"].apply(_clean_cat_local)
     else:
         df["category"] = df["sub_type"].apply(_clean_cat_local)
-    df["balance"] = pd.to_numeric(df["market_value"], errors="coerce").fillna(0.0)
-    normalized = normalize_rate_values(df["coupon_rate"].tolist(), "coupon_rate")
-    df["rate_decimal"] = [
-        rate if coupon not in (None, 0, 0.0) else 0.0
-        for coupon, rate in zip(df["coupon_rate"].tolist(), normalized, strict=True)
-    ]
+    df["balance"] = _coerce_numeric_balance_with_warning(df, "market_value", "bonds_liability")
+    # Keep missing coupon rates nullable; explicit 0 remains 0% for zero-coupon liabilities.
+    df["rate_decimal"] = pd.Series(
+        normalize_rate_values(df["coupon_rate"].tolist(), "coupon_rate"),
+        index=df.index,
+        dtype=object,
+    )
     df["weighted"] = df["balance"] * df["rate_decimal"]
     return df
 
@@ -108,7 +113,7 @@ def enrich_interbank_frame(ib_df: pd.DataFrame) -> pd.DataFrame:
     from backend.app.core_finance.adb_analytics import _clean_cat_local
     df = ib_df.copy()
     df["category"] = df["product_type"].apply(_clean_cat_local)
-    df["balance"] = pd.to_numeric(df["amount"], errors="coerce").fillna(0.0)
+    df["balance"] = _coerce_numeric_balance_with_warning(df, "amount", "interbank")
     df["rate_decimal"] = normalize_rate_values(df["interest_rate"].tolist(), "interbank_interest_rate")
     df["weighted"] = df["balance"] * df["rate_decimal"]
     return df
@@ -122,34 +127,78 @@ def _clean_cat_local(v: object) -> str:
     return s if s else "其它"
 
 
+def _coerce_numeric_balance_with_warning(
+    df: pd.DataFrame,
+    column: str,
+    frame_name: str,
+) -> pd.Series:
+    numeric = pd.to_numeric(df[column], errors="coerce")
+    missing_mask = numeric.isna()
+    missing_count = int(missing_mask.sum())
+    if missing_count:
+        samples = [repr(value) for value in df.loc[missing_mask, column].head(3).tolist()]
+        logger.warning(
+            "ADB balance input %s.%s coerced %d row(s) to NaN before fillna(0.0); samples=%s",
+            frame_name,
+            column,
+            missing_count,
+            samples,
+        )
+    return numeric.fillna(0.0)
+
+
 # ---------------------------------------------------------------------------
 # Rate map
 # ---------------------------------------------------------------------------
 
-def build_rate_map(frames: list[pd.DataFrame]) -> tuple[dict[str, float | None], float | None]:
+def _finite_float(value: object) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def build_rate_map(
+    frames: list[pd.DataFrame],
+) -> tuple[dict[str, float | None], float | None, dict[str, float | None]]:
     """Compute per-category and overall weighted average rate from enriched frames."""
     if not frames:
-        return {}, None
-    totals: dict[str, tuple[float, float]] = {}
+        return {}, None, {}
+    totals: dict[str, tuple[float, float, float]] = {}
     total_balance = 0.0
+    total_rate_balance = 0.0
     total_weighted = 0.0
     for frame in frames:
         if frame.empty:
             continue
         for row in frame.itertuples(index=False):
+            balance_valid = getattr(row, "balance_valid", True)
+            if pd.isna(balance_valid) or not bool(balance_valid):
+                continue
             category = _clean_cat_local(getattr(row, "category", None))
-            balance = float(getattr(row, "balance", 0) or 0)
-            weighted = float(getattr(row, "weighted", 0) or 0)
-            cur_bal, cur_wgt = totals.get(category, (0.0, 0.0))
-            totals[category] = (cur_bal + balance, cur_wgt + weighted)
+            balance = _finite_float(getattr(row, "balance", 0) or 0)
+            if balance is None:
+                continue
+            rate = _finite_float(getattr(row, "rate_decimal", None))
+            weighted = balance * rate if rate is not None else 0.0
+            rate_balance = balance if rate is not None else 0.0
+            cur_bal, cur_rate_bal, cur_wgt = totals.get(category, (0.0, 0.0, 0.0))
+            totals[category] = (cur_bal + balance, cur_rate_bal + rate_balance, cur_wgt + weighted)
             total_balance += balance
+            total_rate_balance += rate_balance
             total_weighted += weighted
     rate_map: dict[str, float | None] = {
-        cat: round(wgt / bal * 100, 4) if bal > 0 else None
-        for cat, (bal, wgt) in totals.items()
+        cat: round(wgt / rate_bal * 100, 4) if rate_bal > 0 else None
+        for cat, (_bal, rate_bal, wgt) in totals.items()
     }
-    total_rate = round(total_weighted / total_balance * 100, 4) if total_balance > 0 else None
-    return rate_map, total_rate
+    coverage_map: dict[str, float | None] = {
+        cat: round(rate_bal / bal, 4) if bal > 0 else None
+        for cat, (bal, rate_bal, _wgt) in totals.items()
+    }
+    total_rate = round(total_weighted / total_rate_balance * 100, 4) if total_rate_balance > 0 else None
+    coverage_map["__total__"] = round(total_rate_balance / total_balance, 4) if total_balance > 0 else None
+    return rate_map, total_rate, coverage_map
 
 
 # ---------------------------------------------------------------------------
@@ -165,29 +214,37 @@ def build_comparison_rows(
     simulated: bool,
     end_date: date,
     stable_factor_fn: Any,
-) -> list[dict[str, float]]:
+    *,
+    insufficient_window: bool = False,
+) -> list[dict[str, float | None]]:
     """Build per-category spot/period-avg rows; sort by average balance (desc) for classification tables.
 
     When ``top_n`` is None, returns all categories (caller trims for display and totals).
+    When ``insufficient_window`` is True (window too short to support a period average and
+    simulation is not explicitly enabled), ``avg`` / ``deviation`` are None instead of a
+    synthesized or spot-echoing number (fail-visible: missing != zero).
     """
     categories = set(spot_map.keys()) | set(sum_map.keys())
-    rows: list[dict[str, float]] = []
+    rows: list[dict[str, float | None]] = []
     for category in categories:
         clean_key = _clean_cat_local(category)
         spot_value = spot_map.get(clean_key, Decimal("0")) or Decimal("0")
+        avg_value: Decimal | None
         if simulated:
             avg_value = spot_value * stable_factor_fn(f"{side}:{end_date}:{clean_key}")
+        elif insufficient_window:
+            avg_value = None
         else:
             avg_value = (sum_map.get(clean_key, Decimal("0")) or Decimal("0")) / num_days_dec
-        deviation = spot_value - avg_value
-        if spot_value == 0 and avg_value == 0:
+        deviation = spot_value - avg_value if avg_value is not None else None
+        if spot_value == 0 and (avg_value is None or avg_value == 0):
             continue
         rows.append(
             {
                 "category": clean_key,
                 "spot": float(spot_value),
-                "avg": float(avg_value),
-                "deviation": float(deviation),
+                "avg": float(avg_value) if avg_value is not None else None,
+                "deviation": float(deviation) if deviation is not None else None,
             }
         )
     rows.sort(key=lambda r: (r.get("avg") or 0.0, r.get("spot") or 0.0), reverse=True)
@@ -197,21 +254,35 @@ def build_comparison_rows(
 
 
 def enrich_breakdown(
-    rows: list[dict[str, float]],
-    total_avg: float,
+    rows: list[dict[str, float | None]],
+    total_avg: float | None,
     rate_map: dict[str, float | None],
+    rate_coverage_map: dict[str, float | None] | None = None,
 ) -> list[dict[str, Any]]:
-    """Attach proportion and weighted_rate to comparison breakdown rows."""
-    return [
-        {
-            "category": row["category"],
-            "spot_balance": float(row["spot"]),
-            "avg_balance": float(row["avg"]),
-            "proportion": round(float(row["avg"]) / total_avg * 100, 2) if total_avg > 0 else 0.0,
-            "weighted_rate": rate_map.get(row["category"]),
-        }
-        for row in rows
-    ]
+    """Attach proportion and weighted_rate to comparison breakdown rows.
+
+    ``avg`` may be None (insufficient window); then avg_balance/proportion stay None.
+    """
+    enriched: list[dict[str, Any]] = []
+    for row in rows:
+        avg = row["avg"]
+        if avg is None:
+            proportion = None
+        elif total_avg is not None and total_avg > 0:
+            proportion = round(float(avg) / total_avg * 100, 2)
+        else:
+            proportion = 0.0
+        enriched.append(
+            {
+                "category": row["category"],
+                "spot_balance": float(row["spot"]),
+                "avg_balance": float(avg) if avg is not None else None,
+                "proportion": proportion,
+                "weighted_rate": rate_map.get(row["category"]),
+                "rate_coverage_ratio": (rate_coverage_map or {}).get(row["category"]),
+            }
+        )
+    return enriched
 
 
 # ---------------------------------------------------------------------------

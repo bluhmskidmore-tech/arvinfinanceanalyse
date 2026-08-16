@@ -1,0 +1,421 @@
+.ledger-net-interest-detail .ant-drawer-content-wrapper {
+  max-width: 100vw;
+  box-shadow: none !important;
+  transition: none !important;
+}
+
+.ledger-net-interest-detail .ant-drawer-content,
+.ledger-net-interest-detail .ant-drawer-mask {
+  border-radius: 0;
+  transition: none !important;
+}
+
+.ledger-net-interest-detail .ant-drawer-header {
+  border-bottom: 1px solid var(--dh-api-line);
+  border-radius: 0;
+}
+
+.ledger-net-interest-detail .ant-drawer-body {
+  overflow-x: hidden;
+  padding: 16px;
+  background: var(--dh-api-panel-2);
+}
+
+.ledger-net-interest-detail__body {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  color: var(--dh-api-ink);
+}
+
+.ledger-net-interest-detail__header,
+.ledger-net-interest-detail__summary > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ledger-net-interest-detail__header h2 {
+  margin: 3px 0;
+  color: var(--dh-api-blue);
+  font-size: 18px;
+}
+
+.ledger-net-interest-detail__header span,
+.ledger-net-interest-detail__header code,
+.ledger-net-interest-detail__header > strong,
+.ledger-net-interest-detail__summary code,
+.ledger-net-interest-detail__boundary,
+.ledger-net-interest-detail__state span,
+.ledger-net-interest-detail__state small {
+  color: var(--dh-api-soft);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.ledger-net-interest-detail__summary,
+.ledger-net-interest-detail__analysis,
+.ledger-net-interest-detail__accounts,
+.ledger-net-interest-detail__state,
+.ledger-net-interest-detail__boundary {
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.ledger-net-interest-detail__summary > header,
+.ledger-net-interest-detail__boundary,
+.ledger-net-interest-detail__state {
+  padding: 11px 12px;
+}
+
+.ledger-net-interest-detail__summary > header {
+  border-bottom: 1px solid var(--moss-color-info-200);
+  background: var(--moss-color-info-50);
+}
+
+.ledger-net-interest-detail__summary > header > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.ledger-net-interest-detail__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.ledger-net-interest-detail__badges span {
+  padding: 2px 5px;
+  border: 1px solid var(--moss-color-info-200);
+  border-radius: var(--dh-api-radius);
+  color: var(--dh-api-blue);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.ledger-net-interest-detail__metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.ledger-net-interest-detail__metric-grid article {
+  display: grid;
+  gap: 3px;
+  padding: 11px 12px;
+  border-right: 1px solid var(--dh-api-line);
+}
+
+.ledger-net-interest-detail__metric-grid article:last-child {
+  border-right: 0;
+}
+
+.ledger-net-interest-detail__metric-grid span {
+  color: var(--dh-api-soft);
+  font-size: 11px;
+}
+
+.ledger-net-interest-detail__metric-grid strong,
+.ledger-net-interest-detail__accounts td {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ledger-net-interest-detail__analysis {
+  display: grid;
+  gap: 10px;
+  padding: 11px 12px;
+}
+
+.ledger-net-interest-detail__analysis-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ledger-net-interest-detail__analysis-heading > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.ledger-net-interest-detail__analysis h3,
+.ledger-net-interest-detail__analysis p {
+  margin: 0;
+}
+
+.ledger-net-interest-detail__analysis h3 {
+  color: var(--dh-api-blue);
+  font-size: 13px;
+}
+
+.ledger-net-interest-detail__analysis p,
+.ledger-net-interest-detail__narrow-hint {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ledger-net-interest-detail__candidate-warning {
+  flex: 0 0 auto;
+  padding: 3px 6px;
+  border: 1px solid var(--moss-color-warning-300);
+  border-radius: var(--dh-api-radius);
+  background: var(--moss-color-warning-50);
+  color: var(--dh-api-amber);
+  font-size: 11px;
+}
+
+.ledger-net-interest-detail__toolbar {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 132px auto auto auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.ledger-net-interest-detail__toolbar label {
+  display: grid;
+  gap: 3px;
+  color: var(--dh-api-soft);
+  font-size: 11px;
+}
+
+.ledger-net-interest-detail__toolbar input,
+.ledger-net-interest-detail__toolbar select {
+  width: 100%;
+  height: 32px;
+  padding: 5px 8px;
+  border: 1px solid var(--moss-color-neutral-300);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  color: var(--dh-api-ink);
+  font: inherit;
+  font-size: 11px;
+}
+
+.ledger-net-interest-detail__toolbar input:focus,
+.ledger-net-interest-detail__toolbar select:focus {
+  border-color: var(--dh-api-blue);
+  outline: 2px solid var(--moss-color-info-100);
+  outline-offset: 1px;
+}
+
+.ledger-net-interest-detail__count {
+  align-self: center;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.ledger-net-interest-detail__narrow-hint {
+  display: none;
+}
+
+.ledger-net-interest-detail__accounts {
+  min-width: 0;
+}
+
+.ledger-net-interest-detail__table-wrap {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.ledger-net-interest-detail__accounts table {
+  width: 100%;
+  min-width: 880px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.ledger-net-interest-detail__accounts th,
+.ledger-net-interest-detail__accounts td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--dh-api-line);
+  vertical-align: top;
+  text-align: left;
+}
+
+.ledger-net-interest-detail__accounts thead th {
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+.ledger-net-interest-detail__accounts thead th:nth-child(n + 2):nth-child(-n + 5),
+.ledger-net-interest-detail__numeric {
+  text-align: right !important;
+}
+
+.ledger-net-interest-detail__accounts tbody th {
+  display: grid;
+  max-width: 300px;
+  gap: 4px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.ledger-net-interest-detail__position {
+  width: max-content;
+  padding: 1px 4px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ledger-net-interest-detail__accounts tbody th small,
+.ledger-net-interest-detail__accounts details,
+.ledger-net-interest-detail__accounts li span,
+.ledger-net-interest-detail__accounts li code {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.ledger-net-interest-detail__accounts details summary {
+  cursor: pointer;
+  color: var(--dh-api-blue);
+  font-weight: 700;
+}
+
+.ledger-net-interest-detail__accounts ul {
+  display: grid;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ledger-net-interest-detail__accounts li {
+  display: grid;
+  gap: 2px;
+  padding-left: 7px;
+  border-left: 2px solid var(--moss-color-info-200);
+}
+
+.ledger-net-interest-detail__accounts li .ant-btn {
+  justify-self: start;
+  height: 24px;
+  padding: 0;
+  font-size: 12px;
+}
+
+.ledger-net-interest-detail__accounts tr[data-row-status="excluded_offset"] {
+  background: var(--moss-color-warning-50);
+}
+
+.ledger-net-interest-detail__empty {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  padding: 18px 12px;
+  color: var(--dh-api-soft);
+  font-size: 11px;
+}
+
+.ledger-net-interest-detail__empty strong {
+  color: var(--dh-api-blue);
+}
+
+.ledger-net-interest-detail__copy-feedback:not(:empty),
+.ledger-net-interest-detail__manual-copy {
+  border: 1px solid var(--moss-color-info-200);
+  border-radius: var(--dh-api-radius);
+  background: var(--moss-color-info-50);
+}
+
+.ledger-net-interest-detail__copy-feedback:not(:empty) {
+  padding: 8px 10px;
+  color: var(--dh-api-blue);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ledger-net-interest-detail__manual-copy {
+  display: grid;
+  gap: 5px;
+  padding: 9px 10px;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+.ledger-net-interest-detail__manual-copy textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  padding: 7px;
+  border: 1px solid var(--moss-color-neutral-300);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  color: var(--dh-api-ink);
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.ledger-net-interest-detail__state {
+  display: grid;
+  gap: 6px;
+}
+
+.ledger-net-interest-detail__state--error {
+  border-color: var(--moss-color-danger-300);
+  background: var(--moss-color-danger-50);
+}
+
+.ledger-net-interest-detail__state--warning {
+  border-color: var(--moss-color-warning-300);
+  background: var(--moss-color-warning-50);
+}
+
+.ledger-net-interest-detail__boundary {
+  display: grid;
+  gap: 4px;
+  line-height: 1.5;
+}
+
+.ledger-net-interest-detail__boundary strong {
+  color: var(--dh-api-blue);
+}
+
+@media (max-width: 520px) {
+  .ledger-net-interest-detail .ant-drawer-body {
+    padding: 10px;
+  }
+
+  .ledger-net-interest-detail__header,
+  .ledger-net-interest-detail__summary > header,
+  .ledger-net-interest-detail__analysis-heading {
+    display: grid;
+  }
+
+  .ledger-net-interest-detail__toolbar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .ledger-net-interest-detail__toolbar label:first-child,
+  .ledger-net-interest-detail__count {
+    grid-column: 1 / -1;
+  }
+
+  .ledger-net-interest-detail__narrow-hint {
+    display: block;
+  }
+
+  .ledger-net-interest-detail__metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ledger-net-interest-detail__metric-grid article:nth-child(2) {
+    border-right: 0;
+  }
+
+  .ledger-net-interest-detail__metric-grid article:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--dh-api-line);
+  }
+}

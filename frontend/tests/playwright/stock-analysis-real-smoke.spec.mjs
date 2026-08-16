@@ -35,6 +35,7 @@ test.describe("stock analysis real-data browser smoke", () => {
 
     await page.goto("/stock-analysis", { waitUntil: "domcontentloaded" });
     await expect(page.getByTestId("stock-analysis-page")).toBeVisible({ timeout: 60_000 });
+    await page.getByTestId("stock-analysis-deep-research-summary").click();
     await expect(page.getByTestId("stock-analysis-events-monitoring")).toContainText(eventsMonitoringTitle, {
       timeout: 60_000,
     });

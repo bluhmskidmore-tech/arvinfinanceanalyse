@@ -1,0 +1,87 @@
+{
+  "manifest_version": "cycle_macro_official_availability.v1",
+  "policy_note": "Exact reviewed bindings between official macro artifacts and materialized vendor versions. first_usable_trade_date is the first observed CA.CSI300 market date allowed for no-lookahead reads; run_id remains the actual materialization run.",
+  "artifacts": [
+    {
+      "source": "pbc_financial_statistics_release",
+      "artifact_kind": "artifact_set_manifest",
+      "artifact_manifest_sha256": "3b3cce029f072f21bed89229da04c247a9527732f32509d795835174a13b40bf",
+      "component_artifact_sha256s": [
+        "4434210d0447e96bcbeab8f02d6ac0436fb76a28e41a66f4f133ff46d8b1182e",
+        "8f71dd1e651d2e5d8e7120555a000c54a517c41fb01d94b39948183badab9769"
+      ]
+    },
+    {
+      "source": "pbc_financial_statistics_release",
+      "artifact_kind": "artifact_set_manifest",
+      "artifact_manifest_sha256": "dfe636f3083ab76e968aff7c1c84b0bb8a9732e15280520854aa74d2d933f6e9",
+      "component_artifact_sha256s": [
+        "4434210d0447e96bcbeab8f02d6ac0436fb76a28e41a66f4f133ff46d8b1182e",
+        "8f71dd1e651d2e5d8e7120555a000c54a517c41fb01d94b39948183badab9769",
+        "9ebce7e21c93d92980814be8f754dcc255ebe29dbbdf2531973e09361832c168"
+      ]
+    },
+    {
+      "source": "nbs_pmi_release",
+      "artifact_kind": "official_release_artifact",
+      "artifact_manifest_sha256": "204801316c86ecf848ba83fb5d9a2c6f46fd482c7d306caa5369816d1b965d45"
+    }
+  ],
+  "bindings": [
+    {
+      "source": "pbc_financial_statistics_release",
+      "series_id": "M0001385",
+      "vendor_version": "vv_backfill_macro_pbc_financial_statistics_release_20260710_3b3cce029f072f21_d6a4ad7591ceacd2",
+      "covered_period_start": "2026-04-01",
+      "covered_period_end": "2026-05-01",
+      "artifact_manifest_sha256": "3b3cce029f072f21bed89229da04c247a9527732f32509d795835174a13b40bf",
+      "mapping_version": "rv_pbc_financial_statistics_release_v1",
+      "rule_version": "rv_backfill_macro_v1",
+      "first_usable_trade_date": "2026-06-15"
+    },
+    {
+      "source": "pbc_financial_statistics_release",
+      "series_id": "M5525763",
+      "vendor_version": "vv_backfill_macro_pbc_financial_statistics_release_20260710_3b3cce029f072f21_1866fb4d34d45fb1",
+      "covered_period_start": "2026-04-01",
+      "covered_period_end": "2026-05-01",
+      "artifact_manifest_sha256": "3b3cce029f072f21bed89229da04c247a9527732f32509d795835174a13b40bf",
+      "mapping_version": "rv_pbc_financial_statistics_release_v1",
+      "rule_version": "rv_backfill_macro_v1",
+      "first_usable_trade_date": "2026-06-15"
+    },
+    {
+      "source": "pbc_financial_statistics_release",
+      "series_id": "M0001385",
+      "vendor_version": "vv_backfill_macro_pbc_financial_statistics_release_20260722_dfe636f3083ab76e_6a071d961fab615c",
+      "covered_period_start": "2026-04-01",
+      "covered_period_end": "2026-06-01",
+      "artifact_manifest_sha256": "dfe636f3083ab76e968aff7c1c84b0bb8a9732e15280520854aa74d2d933f6e9",
+      "mapping_version": "rv_pbc_financial_statistics_release_v1",
+      "rule_version": "rv_backfill_macro_v1",
+      "first_usable_trade_date": "2026-07-16"
+    },
+    {
+      "source": "pbc_financial_statistics_release",
+      "series_id": "M5525763",
+      "vendor_version": "vv_backfill_macro_pbc_financial_statistics_release_20260722_dfe636f3083ab76e_0ebbce6d30220d11",
+      "covered_period_start": "2026-04-01",
+      "covered_period_end": "2026-06-01",
+      "artifact_manifest_sha256": "dfe636f3083ab76e968aff7c1c84b0bb8a9732e15280520854aa74d2d933f6e9",
+      "mapping_version": "rv_pbc_financial_statistics_release_v1",
+      "rule_version": "rv_backfill_macro_v1",
+      "first_usable_trade_date": "2026-07-16"
+    },
+    {
+      "source": "nbs_pmi_release",
+      "series_id": "M0017126",
+      "vendor_version": "vv_backfill_macro_nbs_pmi_release_20260710_204801316c86ecf8_e6c278bdb0d88252",
+      "covered_period_start": "2025-06-01",
+      "covered_period_end": "2026-06-01",
+      "artifact_manifest_sha256": "204801316c86ecf848ba83fb5d9a2c6f46fd482c7d306caa5369816d1b965d45",
+      "mapping_version": "rv_nbs_pmi_release_v1",
+      "rule_version": "rv_backfill_macro_v1",
+      "first_usable_trade_date": "2026-07-01"
+    }
+  ]
+}

@@ -9,6 +9,17 @@ $powershellExe = (Get-Command powershell -ErrorAction Stop).Source
 $logRoot = Join-Path $root "tmp-governance\runtime-clean\logs"
 New-Item -ItemType Directory -Force $logRoot | Out-Null
 $script:ProcessInspectionAvailable = $true
+$allowedApiScriptNames = @("dev-api.ps1", "dev-agent-api.ps1")
+$apiScriptName = if ([string]::IsNullOrWhiteSpace($env:MOSS_DEV_API_SCRIPT)) {
+  "dev-api.ps1"
+} else {
+  [string]$env:MOSS_DEV_API_SCRIPT
+}
+if ($apiScriptName -notin $allowedApiScriptNames) {
+  throw "MOSS_DEV_API_SCRIPT must be one of: $($allowedApiScriptNames -join ', '). Received: $apiScriptName"
+}
+$apiLogName = [System.IO.Path]::GetFileNameWithoutExtension($apiScriptName)
+$agentDevMode = $apiScriptName -eq "dev-agent-api.ps1"
 
 function Wait-HttpEndpoint {
   param(
@@ -82,6 +93,32 @@ function Get-NativeScriptProcess {
   } catch {
     $script:ProcessInspectionAvailable = $false
     Write-Warning "process lookup failed for ${ScriptName}: $($_.Exception.Message)"
+    return $null
+  }
+}
+
+function Test-NativeWorkerProcess {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$Process
+  )
+
+  return (
+    $Process.Name -eq "python.exe" -and (
+      $Process.CommandLine -like "*backend.app.tasks.dev_worker_runner*" -or
+      $Process.CommandLine -like "*backend.app.tasks.worker_bootstrap*"
+    )
+  )
+}
+
+function Get-NativeWorkerProcess {
+  try {
+    return Get-CimInstance Win32_Process |
+      Where-Object { Test-NativeWorkerProcess -Process $_ } |
+      Select-Object -First 1
+  } catch {
+    $script:ProcessInspectionAvailable = $false
+    Write-Warning "process lookup failed for native worker: $($_.Exception.Message)"
     return $null
   }
 }
@@ -403,6 +440,12 @@ function Start-DevScriptDetached {
   $stdoutPath = Join-Path $logRoot "$logName.out.log"
   $stderrPath = Join-Path $logRoot "$logName.err.log"
   $alreadyRunning = Get-NativeScriptProcess -ScriptName $ScriptName
+  if (-not $alreadyRunning -and $ScriptName -eq "dev-worker.ps1" -and $script:ProcessInspectionAvailable) {
+    $alreadyRunning = Get-NativeWorkerProcess
+  }
+  if (-not $script:ProcessInspectionAvailable -and $ScriptName -eq "dev-worker.ps1") {
+    throw "Worker process inspection unavailable; refusing to launch dev-worker.ps1 because doing so can create a duplicate worker."
+  }
 
   if ($alreadyRunning) {
     Write-Host "$ScriptName already running (PID=$($alreadyRunning.ProcessId))" -ForegroundColor Yellow
@@ -426,14 +469,35 @@ function Start-DevScriptDetached {
     (Quote-CmdArgument $stderrPath)
   )
   $command = "cmd.exe /d /c " + '"' + $scriptCommand + '"'
-  $shell = New-Object -ComObject WScript.Shell
-  $shell.CurrentDirectory = $root
-  $launchResult = $shell.Run($command, 0, $false)
-  if ($launchResult -ne 0) {
-    throw "$ScriptName launcher failed with exit code $launchResult"
+  # The former COM launcher inherited Cursor's Windows Job, so its children
+  # were reaped with that Job. WMI creates the process under WmiPrvSE instead.
+  $startupInfo = New-CimInstance `
+    -ClassName Win32_ProcessStartup `
+    -ClientOnly `
+    -Property @{
+      ShowWindow = [uint16]0
+    }
+  $launchResult = Invoke-CimMethod `
+    -ClassName Win32_Process `
+    -MethodName Create `
+    -Arguments @{
+      CommandLine = $command
+      CurrentDirectory = $root
+      ProcessStartupInformation = $startupInfo
+    }
+  if ([int]$launchResult.ReturnValue -ne 0) {
+    throw "$ScriptName launcher failed with WMI return code $($launchResult.ReturnValue)"
   }
 
-  Start-Sleep -Milliseconds 250
+  $launchDeadline = (Get-Date).AddSeconds(5)
+  do {
+    Start-Sleep -Milliseconds 100
+    $process = Get-NativeScriptProcess -ScriptName $ScriptName
+  } while (
+    -not $process -and
+    $script:ProcessInspectionAvailable -and
+    (Get-Date) -lt $launchDeadline
+  )
   if (-not $script:ProcessInspectionAvailable) {
     Write-Warning "launched $ScriptName; process verification unavailable"
     return [pscustomobject]@{
@@ -444,7 +508,6 @@ function Start-DevScriptDetached {
     }
   }
 
-  $process = Get-NativeScriptProcess -ScriptName $ScriptName
   if (-not $process) {
     $stderr = Get-RecentLogLines -Path $stderrPath
     $stdout = Get-RecentLogLines -Path $stdoutPath
@@ -470,19 +533,19 @@ if ($LASTEXITCODE -ne 0) {
 
 $postgresPort = Wait-TcpPort -ListenHost "127.0.0.1" -Port 55432 -TimeoutSeconds 120 -Description "local Postgres dev cluster"
 
-$existingApiLaunch = Assert-PortAvailableForScriptStart -Port 7888 -ScriptName "dev-api.ps1" -Description "API"
+$existingApiLaunch = Assert-PortAvailableForScriptStart -Port 7888 -ScriptName $apiScriptName -Description "API"
 if ($existingApiLaunch) {
   $apiLaunch = [pscustomobject]@{
     Started = $false
     ProcessId = $existingApiLaunch.ProcessId
-    StdoutPath = Join-Path $logRoot "dev-api.out.log"
-    StderrPath = Join-Path $logRoot "dev-api.err.log"
+    StdoutPath = Join-Path $logRoot "$apiLogName.out.log"
+    StderrPath = Join-Path $logRoot "$apiLogName.err.log"
   }
 } else {
-  $apiLaunch = Start-DevScriptDetached -ScriptName "dev-api.ps1"
+  $apiLaunch = Start-DevScriptDetached -ScriptName $apiScriptName
 }
 $workerLaunch = Start-DevScriptDetached -ScriptName "dev-worker.ps1"
-$apiLogPaths = @($apiLaunch.StderrPath, $apiLaunch.StdoutPath, (Join-Path $logRoot "dev-api.err.log"), (Join-Path $logRoot "dev-api.out.log"))
+$apiLogPaths = @($apiLaunch.StderrPath, $apiLaunch.StdoutPath, (Join-Path $logRoot "$apiLogName.err.log"), (Join-Path $logRoot "$apiLogName.out.log"))
 $workerLogPaths = @($workerLaunch.StderrPath, $workerLaunch.StdoutPath, (Join-Path $logRoot "dev-worker.err.log"), (Join-Path $logRoot "dev-worker.out.log"))
 
 $workerHeartbeatPath = Join-Path $root "tmp-governance\runtime-clean\governance\dev-worker-heartbeat.json"
@@ -496,31 +559,36 @@ if ($LASTEXITCODE -ne 0) {
 
 $apiHealth = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/health" -Description "API health" -LogPaths $apiLogPaths
 $apiReady = Wait-JsonStatusOkEndpointWithLogs -Url "http://127.0.0.1:7888/health/ready" -Description "API readiness" -LogPaths $apiLogPaths
-$homeSnapshotWarm = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/ui/home/snapshot" -TimeoutSeconds 120 -Description "home snapshot warm cache" -LogPaths $apiLogPaths
-$apiReadyAfterHomeWarm = Wait-JsonStatusOkEndpointWithLogs -Url "http://127.0.0.1:7888/health/ready" -Description "API readiness after home snapshot warm cache" -LogPaths $apiLogPaths
-$apiReadyAfterHomeWarmPayload = $apiReadyAfterHomeWarm.Content | ConvertFrom-Json
-$homeSnapshotPrewarm = $apiReadyAfterHomeWarmPayload.checks.home_snapshot_prewarm
-if ($null -eq $homeSnapshotPrewarm) {
-  throw "API readiness after home snapshot warm cache did not expose checks.home_snapshot_prewarm. Restart the API so the home prewarm guard is active."
+if ($agentDevMode) {
+  $agentProjects = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/api/agent/projects" -Description "Agent projects" -LogPaths $apiLogPaths
+  $agentRuns = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/api/agent/runs?limit=1" -Description "Agent runs" -LogPaths $apiLogPaths
+} else {
+  $homeSnapshotWarm = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/ui/home/snapshot" -TimeoutSeconds 120 -Description "home snapshot warm cache" -LogPaths $apiLogPaths
+  $apiReadyAfterHomeWarm = Wait-JsonStatusOkEndpointWithLogs -Url "http://127.0.0.1:7888/health/ready" -Description "API readiness after home snapshot warm cache" -LogPaths $apiLogPaths
+  $apiReadyAfterHomeWarmPayload = $apiReadyAfterHomeWarm.Content | ConvertFrom-Json
+  $homeSnapshotPrewarm = $apiReadyAfterHomeWarmPayload.checks.home_snapshot_prewarm
+  if ($null -eq $homeSnapshotPrewarm) {
+    throw "API readiness after home snapshot warm cache did not expose checks.home_snapshot_prewarm. Restart the API so the home prewarm guard is active."
+  }
+  if ($homeSnapshotPrewarm.status -ne "ready") {
+    throw "Home snapshot prewarm is not ready: status=$($homeSnapshotPrewarm.status) error=$($homeSnapshotPrewarm.error)"
+  }
+  $bondDates = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/api/bond-analytics/dates" -Description "bond analytics dates" -LogPaths $apiLogPaths
+  $riskDates = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/api/risk/tensor/dates" -Description "risk tensor dates" -LogPaths $apiLogPaths
+  $riskDatesPayload = $riskDates.Content | ConvertFrom-Json
+  $riskReportDate = @($riskDatesPayload.result.report_dates) | Select-Object -First 1
+  if ([string]::IsNullOrWhiteSpace($riskReportDate)) {
+    throw "Risk tensor dates smoke returned no report_dates."
+  }
+  $riskTensorSmoke = Invoke-ConcurrentHttpSmoke `
+    -Url "http://127.0.0.1:7888/api/risk/tensor?report_date=$riskReportDate" `
+    -RequestCount 8 `
+    -Description "risk tensor detail concurrent smoke"
+  $riskDatesSmoke = Invoke-ConcurrentHttpSmoke `
+    -Url "http://127.0.0.1:7888/api/risk/tensor/dates" `
+    -RequestCount 4 `
+    -Description "risk tensor dates concurrent smoke"
 }
-if ($homeSnapshotPrewarm.status -ne "ready") {
-  throw "Home snapshot prewarm is not ready: status=$($homeSnapshotPrewarm.status) error=$($homeSnapshotPrewarm.error)"
-}
-$bondDates = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/api/bond-analytics/dates" -Description "bond analytics dates" -LogPaths $apiLogPaths
-$riskDates = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/api/risk/tensor/dates" -Description "risk tensor dates" -LogPaths $apiLogPaths
-$riskDatesPayload = $riskDates.Content | ConvertFrom-Json
-$riskReportDate = @($riskDatesPayload.result.report_dates) | Select-Object -First 1
-if ([string]::IsNullOrWhiteSpace($riskReportDate)) {
-  throw "Risk tensor dates smoke returned no report_dates."
-}
-$riskTensorSmoke = Invoke-ConcurrentHttpSmoke `
-  -Url "http://127.0.0.1:7888/api/risk/tensor?report_date=$riskReportDate" `
-  -RequestCount 8 `
-  -Description "risk tensor detail concurrent smoke"
-$riskDatesSmoke = Invoke-ConcurrentHttpSmoke `
-  -Url "http://127.0.0.1:7888/api/risk/tensor/dates" `
-  -RequestCount 4 `
-  -Description "risk tensor dates concurrent smoke"
 $frontendLaunch = Start-DevScriptDetached -ScriptName "dev-frontend.ps1"
 $frontendLogPaths = @($frontendLaunch.StderrPath, $frontendLaunch.StdoutPath, (Join-Path $logRoot "dev-frontend.err.log"), (Join-Path $logRoot "dev-frontend.out.log"))
 $frontendRoot = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:5888" -Description "frontend root" -LogPaths $frontendLogPaths
@@ -536,7 +604,7 @@ $apiProcess = Assert-NativeProcessRunning -Description "API" -Predicate {
   $_.Name -eq "python.exe" -and $_.CommandLine -like "*backend.app.main:app*"
 }
 $workerProcess = Assert-NativeProcessRunning -Description "worker" -Predicate {
-  $_.Name -eq "python.exe" -and $_.CommandLine -like "*backend.app.tasks.worker_bootstrap*"
+  Test-NativeWorkerProcess -Process $_
 }
 $frontendProcess = Assert-NativeProcessRunning -Description "frontend" -Predicate {
   $_.Name -eq "node.exe" -and
@@ -551,6 +619,7 @@ if ($auditSummary.dirty_rows -ne 0) {
 }
 
 Write-Host "Native MOSS dev stack launched." -ForegroundColor Cyan
+Write-Host "API script: $apiScriptName" -ForegroundColor DarkGray
 Write-Host "API:      http://127.0.0.1:7888" -ForegroundColor Gray
 Write-Host "Frontend: http://127.0.0.1:5888" -ForegroundColor Gray
 Write-Host "Postgres: postgresql://moss:moss@127.0.0.1:55432/moss" -ForegroundColor Gray
@@ -560,10 +629,15 @@ Write-Host "Frontend PID: $($frontendProcess.ProcessId)" -ForegroundColor DarkGr
 Write-Host "Postgres PID: $($postgresPort.OwningProcess)" -ForegroundColor DarkGray
 Write-Host "API health:   $($apiHealth.StatusCode)" -ForegroundColor DarkGray
 Write-Host "API ready:    $($apiReady.StatusCode)" -ForegroundColor DarkGray
-Write-Host "Home cache:   $($homeSnapshotWarm.StatusCode) snapshot warmed" -ForegroundColor DarkGray
-Write-Host "Home prewarm: $($homeSnapshotPrewarm.status) ($($homeSnapshotPrewarm.last_duration_ms) ms) error=$($homeSnapshotPrewarm.error)" -ForegroundColor DarkGray
-Write-Host "Bond dates:   $($bondDates.StatusCode)" -ForegroundColor DarkGray
-Write-Host "Risk tensor:  $($riskTensorSmoke.Count) detail + $($riskDatesSmoke.Count) dates concurrent checks, report_date=$riskReportDate" -ForegroundColor DarkGray
+if ($agentDevMode) {
+  Write-Host "Agent projects: $($agentProjects.StatusCode)" -ForegroundColor DarkGray
+  Write-Host "Agent runs:     $($agentRuns.StatusCode)" -ForegroundColor DarkGray
+} else {
+  Write-Host "Home cache:   $($homeSnapshotWarm.StatusCode) snapshot warmed" -ForegroundColor DarkGray
+  Write-Host "Home prewarm: $($homeSnapshotPrewarm.status) ($($homeSnapshotPrewarm.last_duration_ms) ms) error=$($homeSnapshotPrewarm.error)" -ForegroundColor DarkGray
+  Write-Host "Bond dates:   $($bondDates.StatusCode)" -ForegroundColor DarkGray
+  Write-Host "Risk tensor:  $($riskTensorSmoke.Count) detail + $($riskDatesSmoke.Count) dates concurrent checks, report_date=$riskReportDate" -ForegroundColor DarkGray
+}
 Write-Host "Frontend:     $($frontendRoot.StatusCode) root + $($frontendClientContext.StatusCode) client context module" -ForegroundColor DarkGray
 Write-Host "Worker smoke: $($workerHeartbeat.token)" -ForegroundColor DarkGray
 Write-Host "Lineage audit: clean" -ForegroundColor DarkGray

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
@@ -34,6 +35,8 @@ INTEREST_FIXED = "\u56fa\u5b9a"
 MONTH_LABEL_JAN = "2025\u5e741\u6708"
 MONTH_LABEL_FEB = "2025\u5e742\u6708"
 ADB_READ_HEADERS = {"X-User-Id": "adb-read-user", "X-User-Role": "viewer"}
+
+pytestmark = [pytest.mark.integration, pytest.mark.materialize]
 
 
 def _configure_adb_scope_store(tmp_path: Path, monkeypatch):
@@ -176,6 +179,54 @@ def _ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
         "backend/app/repositories/snapshot_repo.py",
     )
     snapshot_mod.ensure_snapshot_tables(conn)
+
+
+def _ensure_accounting_basis_fact_table(conn: duckdb.DuckDBPyConnection) -> None:
+    """会计计量分桶日均的源表（与 schema_registry/duckdb/08_product_category_pnl.sql 同构）。"""
+    conn.execute(
+        """
+        create table if not exists product_category_pnl_canonical_fact (
+          report_date varchar,
+          account_code varchar,
+          currency varchar,
+          account_name varchar,
+          beginning_balance decimal(24, 8),
+          ending_balance decimal(24, 8),
+          monthly_pnl decimal(24, 8),
+          daily_avg_balance decimal(24, 8),
+          annual_avg_balance decimal(24, 8),
+          days_in_period integer,
+          source_version varchar,
+          rule_version varchar
+        )
+        """
+    )
+
+
+def _insert_daily_average_account(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    report_date: str,
+    account_code: str,
+    daily_avg_balance: Decimal,
+    days_in_period: int = 30,
+    currency: str = "CNX",
+) -> None:
+    conn.execute(
+        """
+        insert into product_category_pnl_canonical_fact values
+        (?, ?, ?, ?, 0, 0, 0, ?, ?, ?, 'sv-daily-avg', 'rv-daily-avg')
+        """,
+        [
+            report_date,
+            account_code,
+            currency,
+            f"Account {account_code}",
+            daily_avg_balance,
+            daily_avg_balance,
+            days_in_period,
+        ],
+    )
 
 
 def _insert_zqtz(
@@ -463,6 +514,78 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
             principal=Decimal("50000000"),
             rate=Decimal("2.5"),
         )
+        _ensure_accounting_basis_fact_table(conn)
+        # 2025-06-02：TPL=1.0亿(141)、AC=1.8亿+0.4亿(142/143)、OCI=1.3亿(1440101)、
+        # 144020 前缀为排除控制项（不得计入任何桶）。
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-02",
+            account_code="14101010001",
+            daily_avg_balance=Decimal("100000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-02",
+            account_code="14201010001",
+            daily_avg_balance=Decimal("180000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-02",
+            account_code="14301010001",
+            daily_avg_balance=Decimal("40000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-02",
+            account_code="14401010001",
+            daily_avg_balance=Decimal("130000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-02",
+            account_code="14402010001",
+            daily_avg_balance=Decimal("888888888"),
+        )
+        # 2025-06-03：TPL=1.3亿、AC=2.0亿+0.2亿、OCI=1.5亿；144020 仍排除。
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-03",
+            account_code="14101010001",
+            daily_avg_balance=Decimal("130000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-03",
+            account_code="14201010001",
+            daily_avg_balance=Decimal("200000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-03",
+            account_code="14301010001",
+            daily_avg_balance=Decimal("20000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-03",
+            account_code="14401010001",
+            daily_avg_balance=Decimal("150000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-03",
+            account_code="14402010001",
+            daily_avg_balance=Decimal("999999999"),
+        )
+        # 非 CNX 币种干扰行：分桶固定 CNX 口径，不得计入。
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-03",
+            account_code="14101010002",
+            daily_avg_balance=Decimal("77000000"),
+            currency="CNY",
+        )
     finally:
         conn.close()
 
@@ -493,6 +616,12 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
     assert comparison.status_code == 200, comparison.text
     payload = comparison.json()
     assert payload["result_meta"]["basis"] == "analytical"
+    assert payload["result_meta"]["quality_flag"] == "ok"
+    assert payload["result_meta"]["fallback_mode"] == "none"
+    assert (
+        payload["result_meta"]["filters_applied"]["accounting_basis_currency"] == "CNX"
+    )
+    assert "product_category_pnl_canonical_fact" in payload["result_meta"]["tables_used"]
     payload = payload["result"]
     assert payload["num_days"] == 2
     assert payload["report_date"] == "2025-06-03"
@@ -508,6 +637,32 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
     assert "asset_yield" in payload
     assert "liability_cost" in payload
     assert "net_interest_margin" in payload
+    # 会计计量分桶日均：窗口末日（2025-06-03）口径。
+    basis_payload = payload["accounting_basis_daily_avg"]
+    assert basis_payload["currency_basis"] == "CNX"
+    assert basis_payload["daily_avg_total"] == 500000000
+    basis_rows = {row["basis_bucket"]: row for row in basis_payload["rows"]}
+    assert set(basis_rows) == {"AC", "OCI", "TPL"}
+    assert basis_rows["AC"]["daily_avg_balance"] == 220000000
+    assert basis_rows["AC"]["daily_avg_pct"] == 44
+    assert basis_rows["OCI"]["daily_avg_balance"] == 150000000
+    assert basis_rows["TPL"]["daily_avg_balance"] == 130000000
+    assert basis_rows["TPL"]["source_account_patterns"] == ["141%"]
+    assert set(basis_rows["AC"]["source_account_patterns"]) == {"142%", "143%"}
+    assert basis_rows["OCI"]["source_account_patterns"] == ["1440101%"]
+    assert sum(row["daily_avg_pct"] for row in basis_payload["rows"]) == pytest.approx(100.0)
+    assert basis_payload["excluded_controls"] == ["144020%"]
+    assert "accounting_basis_daily_avg_trend" in payload
+    basis_trend = payload["accounting_basis_daily_avg_trend"]
+    assert len(basis_trend) == 2
+    assert basis_trend[0]["report_date"] == "2025-06-02"
+    assert basis_trend[1]["report_date"] == "2025-06-03"
+    t0 = {row["basis_bucket"]: row for row in basis_trend[0]["rows"]}
+    assert t0["TPL"]["daily_avg_balance"] == 100000000
+    assert t0["AC"]["daily_avg_balance"] == 220000000
+    assert t0["OCI"]["daily_avg_balance"] == 130000000
+    assert basis_trend[0]["daily_avg_total"] == 450000000
+    assert sum(row["daily_avg_pct"] for row in basis_trend[0]["rows"]) == pytest.approx(100.0)
     assert payload["adb_denominator_basis"] == "formal_calendar"
     assert payload["coverage_days"] == 2
     assert payload["sample_filled"] is False
@@ -530,9 +685,14 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
     assert monthly_json["result_meta"]["result_kind"] == "adb.monthly"
     assert "filters_applied" in monthly_json["result_meta"]
     assert monthly_json["result_meta"]["filters_applied"].get("year") == 2025
+    assert (
+        monthly_json["result_meta"]["filters_applied"].get("accounting_basis_currency")
+        == "CNX"
+    )
     assert "tables_used" in monthly_json["result_meta"] and set(monthly_json["result_meta"]["tables_used"]) == {
         "fact_formal_zqtz_balance_daily",
         "fact_formal_tyw_balance_daily",
+        "product_category_pnl_canonical_fact",
     }
     monthly_payload = monthly_json["result"]
     assert len(monthly_payload["months"]) == 1
@@ -546,27 +706,233 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
     assert "mom_change_pct_liabilities" in monthly_payload["months"][0]
     assert "assets_mom_change" not in monthly_payload["months"][0]
     assert "liabilities_mom_change" not in monthly_payload["months"][0]
-    assert "accounting_basis_daily_avg_trend" not in monthly_payload
+    # f42b8ddca 曾把该断言翻转为 not in；业主拍板恢复分桶产出后翻回。
+    assert "accounting_basis_daily_avg_trend" in monthly_payload
+    assert len(monthly_payload["accounting_basis_daily_avg_trend"]) == 2
+    basis_trend_by_date = {
+        item["report_date"]: item
+        for item in monthly_payload["accounting_basis_daily_avg_trend"]
+    }
+    assert basis_trend_by_date["2025-06-02"]["report_month"] == "2025-06"
+    assert basis_trend_by_date["2025-06-03"]["report_month"] == "2025-06"
+    monthly_basis_rows = {
+        row["basis_bucket"]: row
+        for row in basis_trend_by_date["2025-06-03"]["rows"]
+    }
+    assert monthly_basis_rows["AC"]["daily_avg_balance"] == 220000000
+    assert monthly_basis_rows["OCI"]["daily_avg_balance"] == 150000000
+    assert monthly_basis_rows["TPL"]["daily_avg_balance"] == 130000000
 
 
-def test_adb_comparison_returns_500_on_service_error(tmp_path: Path, monkeypatch) -> None:
+def test_adb_accounting_basis_empty_when_source_table_missing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """product_category_pnl_canonical_fact 缺失时：对比信封分桶为 empty 形态，trend 为空列表。"""
     _seed_adb_read_scope(tmp_path, monkeypatch)
+    db_path = tmp_path / "adb-basis-empty.duckdb"
+    governance_dir = tmp_path / "governance"
+    conn = duckdb.connect(str(db_path))
+    try:
+        _ensure_tables(conn)
+        _insert_zqtz(
+            conn,
+            report_date="2025-06-02",
+            instrument_code="B-BASIS-EMPTY",
+            bond_type=BOND_GOV,
+            market_value=Decimal("100000000"),
+            is_issuance_like=False,
+        )
+        _insert_zqtz(
+            conn,
+            report_date="2025-06-03",
+            instrument_code="B-BASIS-EMPTY",
+            bond_type=BOND_GOV,
+            market_value=Decimal("200000000"),
+            is_issuance_like=False,
+        )
+    finally:
+        conn.close()
+
+    _materialize_balance_analysis(
+        db_path,
+        governance_dir,
+        monkeypatch,
+        report_dates=["2025-06-02", "2025-06-03"],
+    )
     main_mod = load_module("backend.app.main", "backend/app/main.py")
-    route_mod = load_module("backend.app.api.routes.adb_analysis", "backend/app/api/routes/adb_analysis.py")
     client = TestClient(main_mod.app)
-
-    def _boom(*_args, **_kwargs):
-        raise RuntimeError("adb comparison exploded")
-
-    monkeypatch.setattr(route_mod.adb_analysis_service, "adb_comparison_envelope", _boom)
 
     response = client.get(
         "/api/analysis/adb/comparison",
         params={"start_date": "2025-06-02", "end_date": "2025-06-03", "top_n": 5},
     )
 
-    assert response.status_code == 500, response.text
-    assert response.json()["detail"] == "Failed to get adb comparison: adb comparison exploded"
+    assert response.status_code == 200, response.text
+    payload = response.json()["result"]
+    basis_payload = payload["accounting_basis_daily_avg"]
+    assert basis_payload["currency_basis"] == "CNX"
+    assert basis_payload["daily_avg_total"] == 0.0
+    assert {row["basis_bucket"] for row in basis_payload["rows"]} == {"AC", "OCI", "TPL"}
+    for row in basis_payload["rows"]:
+        assert row["daily_avg_balance"] == 0.0
+        assert row["daily_avg_pct"] is None
+    assert basis_payload["excluded_controls"] == ["144020%"]
+    assert payload["accounting_basis_daily_avg_trend"] == []
+
+    monthly = client.get("/api/analysis/adb/monthly", params={"year": 2025})
+    assert monthly.status_code == 200, monthly.text
+    monthly_payload = monthly.json()["result"]
+    assert monthly_payload["accounting_basis_daily_avg_trend"] == []
+
+
+def test_adb_accounting_basis_excluded_control_rows_do_not_enter_buckets(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """源表仅有 144020% 排除控制行：不计入任何桶，总额为 0，pct 为 None，trend 为空。"""
+    _seed_adb_read_scope(tmp_path, monkeypatch)
+    db_path = tmp_path / "adb-basis-excluded-only.duckdb"
+    governance_dir = tmp_path / "governance"
+    conn = duckdb.connect(str(db_path))
+    try:
+        _ensure_tables(conn)
+        _ensure_accounting_basis_fact_table(conn)
+        _insert_zqtz(
+            conn,
+            report_date="2025-06-02",
+            instrument_code="B-BASIS-EXCL",
+            bond_type=BOND_GOV,
+            market_value=Decimal("100000000"),
+            is_issuance_like=False,
+        )
+        _insert_zqtz(
+            conn,
+            report_date="2025-06-03",
+            instrument_code="B-BASIS-EXCL",
+            bond_type=BOND_GOV,
+            market_value=Decimal("200000000"),
+            is_issuance_like=False,
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-02",
+            account_code="14402010001",
+            daily_avg_balance=Decimal("888888888"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-03",
+            account_code="14402010001",
+            daily_avg_balance=Decimal("999999999"),
+        )
+    finally:
+        conn.close()
+
+    _materialize_balance_analysis(
+        db_path,
+        governance_dir,
+        monkeypatch,
+        report_dates=["2025-06-02", "2025-06-03"],
+    )
+    main_mod = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_mod.app)
+
+    response = client.get(
+        "/api/analysis/adb/comparison",
+        params={"start_date": "2025-06-02", "end_date": "2025-06-03", "top_n": 5},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()["result"]
+    basis_payload = payload["accounting_basis_daily_avg"]
+    assert basis_payload["currency_basis"] == "CNX"
+    assert basis_payload["daily_avg_total"] == 0.0
+    for row in basis_payload["rows"]:
+        assert row["daily_avg_balance"] == 0.0
+        assert row["daily_avg_pct"] is None
+    assert basis_payload["excluded_controls"] == ["144020%"]
+    assert payload["accounting_basis_daily_avg_trend"] == []
+
+
+@pytest.mark.parametrize(
+    "path,params,service_attr,fixed_detail",
+    [
+        (
+            "/api/analysis/adb/comparison",
+            {"start_date": "2025-06-02", "end_date": "2025-06-03", "top_n": 5},
+            "adb_comparison_envelope",
+            "Failed to get adb comparison.",
+        ),
+        (
+            "/api/analysis/adb/monthly",
+            {"year": 2025},
+            "adb_monthly_envelope",
+            "Failed to get monthly adb.",
+        ),
+    ],
+)
+def test_adb_routes_map_service_errors_without_leaking_internal_detail(
+    path: str,
+    params: dict[str, object],
+    service_attr: str,
+    fixed_detail: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """RuntimeError→503、ValueError→422；其余异常 500 固定文案且不回显内部文本。"""
+    _seed_adb_read_scope(tmp_path, monkeypatch)
+    main_mod = load_module("backend.app.main", "backend/app/main.py")
+    route_mod = load_module("backend.app.api.routes.adb_analysis", "backend/app/api/routes/adb_analysis.py")
+    client = TestClient(main_mod.app)
+
+    def _raiser(exc: Exception):
+        def _boom(*_args, **_kwargs):
+            raise exc
+
+        return _boom
+
+    monkeypatch.setattr(route_mod.adb_analysis_service, service_attr, _raiser(RuntimeError("adb backend unavailable")))
+    unavailable = client.get(path, params=params)
+    assert unavailable.status_code == 503, unavailable.text
+    assert unavailable.json()["detail"] == "adb backend unavailable"
+
+    monkeypatch.setattr(route_mod.adb_analysis_service, service_attr, _raiser(ValueError("adb window invalid")))
+    invalid = client.get(path, params=params)
+    assert invalid.status_code == 422, invalid.text
+    assert invalid.json()["detail"] == "adb window invalid"
+
+    monkeypatch.setattr(
+        route_mod.adb_analysis_service,
+        service_attr,
+        _raiser(Exception("Binder Error: secret_table at C:\\secret\\moss.duckdb")),
+    )
+    broken = client.get(path, params=params)
+    assert broken.status_code == 500, broken.text
+    assert broken.json()["detail"] == fixed_detail
+    assert "secret" not in broken.text
+
+
+def test_adb_coverage_missing_source_returns_503_with_fixed_detail(tmp_path: Path, monkeypatch) -> None:
+    """FileNotFoundError 携带 DuckDB 路径：仅记日志，响应固定文案 503。"""
+    _seed_adb_read_scope(tmp_path, monkeypatch)
+    main_mod = load_module("backend.app.main", "backend/app/main.py")
+    route_mod = load_module("backend.app.api.routes.adb_analysis", "backend/app/api/routes/adb_analysis.py")
+    client = TestClient(main_mod.app)
+
+    def _missing(*_args, **_kwargs):
+        raise FileNotFoundError("DuckDB not found: C:\\secret\\moss.duckdb")
+
+    monkeypatch.setattr(route_mod.adb_analysis_service, "adb_coverage_diagnostics", _missing)
+
+    response = client.get(
+        "/api/analysis/adb/coverage",
+        params={"start_date": "2025-06-02", "end_date": "2025-06-03"},
+    )
+
+    assert response.status_code == 503, response.text
+    assert response.json()["detail"] == "ADB coverage source data is unavailable."
+    assert "secret" not in response.text
 
 
 def test_adb_comparison_normalizes_bond_rates_from_percent_inputs(tmp_path: Path, monkeypatch) -> None:
@@ -585,6 +951,16 @@ def test_adb_comparison_normalizes_bond_rates_from_percent_inputs(tmp_path: Path
             is_issuance_like=False,
             coupon_rate=Decimal("2.50"),
             ytm_value=Decimal("2.40"),
+        )
+        _insert_zqtz(
+            conn,
+            report_date="2025-05-16",
+            instrument_code="B-RATE-MISSING",
+            bond_type=BOND_CORP,
+            market_value=Decimal("100000000"),
+            is_issuance_like=False,
+            coupon_rate=Decimal("2.50"),
+            ytm_value=None,
         )
     finally:
         conn.close()
@@ -605,10 +981,110 @@ def test_adb_comparison_normalizes_bond_rates_from_percent_inputs(tmp_path: Path
 
     assert response.status_code == 200, response.text
     payload = response.json()["result"]
-    assert payload["simulated"] is True
+    # 单日窗口默认不再仿真日均（A1 治理）：simulated=False 且 reason 可见。
+    assert payload["simulated"] is False
+    assert payload["avg_unavailable_reason"] == "insufficient_window"
     assert payload["assets_breakdown"][0]["category"] == BOND_CORP_ZQTZ_CATEGORY
     assert payload["assets_breakdown"][0]["weighted_rate"] == 2.4
+    assert payload["assets_breakdown"][0]["rate_coverage_ratio"] == 0.5
     assert payload["asset_yield"] == 2.4
+    assert payload["asset_rate_coverage_ratio"] == 0.5
+
+
+def test_adb_comparison_liability_missing_coupon_excluded_from_rate_coverage(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _seed_adb_read_scope(tmp_path, monkeypatch)
+    db_path = tmp_path / "adb-liability-rate-coverage.duckdb"
+    governance_dir = tmp_path / "governance"
+    conn = duckdb.connect(str(db_path))
+    try:
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+              report_date date,
+              position_scope varchar,
+              currency_basis varchar,
+              market_value_amount decimal(18, 2),
+              ytm_value decimal(18, 6),
+              coupon_rate decimal(18, 6),
+              asset_class varchar,
+              bond_type varchar,
+              is_issuance_like boolean,
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.executemany(
+            """
+            insert into fact_formal_zqtz_balance_daily values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            [
+                (
+                    "2025-05-16",
+                    "liability",
+                    "CNY",
+                    Decimal("100000000"),
+                    Decimal("2.40"),
+                    None,
+                    BOND_ASSET_CLASS,
+                    BOND_GOV,
+                    True,
+                    "sv-adb",
+                    "rv-adb",
+                ),
+                (
+                    "2025-05-16",
+                    "liability",
+                    "CNY",
+                    Decimal("100000000"),
+                    Decimal("2.40"),
+                    Decimal("2.00"),
+                    BOND_ASSET_CLASS,
+                    BOND_GOV,
+                    True,
+                    "sv-adb",
+                    "rv-adb",
+                ),
+                (
+                    "2025-05-16",
+                    "liability",
+                    "CNY",
+                    Decimal("50000000"),
+                    Decimal("2.40"),
+                    Decimal("0"),
+                    BOND_ASSET_CLASS,
+                    BOND_GOV,
+                    True,
+                    "sv-adb",
+                    "rv-adb",
+                ),
+            ],
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    main_mod = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_mod.app)
+
+    response = client.get(
+        "/api/analysis/adb/comparison",
+        params={"start_date": "2025-05-16", "end_date": "2025-05-16", "top_n": 5},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()["result"]
+    assert payload["liability_cost"] == pytest.approx(1.3333)
+    assert payload["liability_rate_coverage_ratio"] == 0.6
+    assert payload["liabilities_breakdown"][0]["weighted_rate"] == pytest.approx(1.3333)
+    assert payload["liabilities_breakdown"][0]["rate_coverage_ratio"] == 0.6
 
 
 def test_adb_monthly_normalizes_rates_and_exposes_new_contract_fields(
@@ -691,6 +1167,9 @@ def test_adb_monthly_normalizes_rates_and_exposes_new_contract_fields(
     assert first_month["asset_yield"] == 2.4
     assert first_month["liability_cost"] == 1.5
     assert first_month["net_interest_margin"] == 0.9
+    # 月度官方压力口径：NIM（百分点）-50bp 平移，即 0.9 - 0.5。
+    assert first_month["nim_stress"]["nim_stressed"] == pytest.approx(0.4)
+    assert first_month["nim_stress"]["delta_bp"] == -50.0
     assert first_month["month_label"] == MONTH_LABEL_JAN
     assert first_month["mom_change_assets"] is None
     assert first_month["mom_change_pct_assets"] is None
@@ -712,6 +1191,83 @@ def test_adb_monthly_normalizes_rates_and_exposes_new_contract_fields(
         if item["category"] == BOND_CERT_ZQTZ_CATEGORY
     )
     assert null_rate_item["weighted_rate"] is None
+
+
+def test_adb_monthly_excludes_missing_rate_from_denominator_and_reports_coverage(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _seed_adb_read_scope(tmp_path, monkeypatch)
+    db_path = tmp_path / "adb-monthly-rate-coverage.duckdb"
+    governance_dir = tmp_path / "governance"
+    conn = duckdb.connect(str(db_path))
+    try:
+        _ensure_tables(conn)
+        _insert_zqtz(
+            conn,
+            report_date="2025-01-15",
+            instrument_code="B-MONTH-COVERED",
+            bond_type=BOND_CORP,
+            market_value=Decimal("100000000"),
+            is_issuance_like=False,
+            coupon_rate=Decimal("2.50"),
+            ytm_value=Decimal("2.40"),
+        )
+        _insert_zqtz(
+            conn,
+            report_date="2025-01-15",
+            instrument_code="B-MONTH-MISSING",
+            bond_type=BOND_CORP,
+            market_value=Decimal("100000000"),
+            is_issuance_like=False,
+            coupon_rate=Decimal("2.50"),
+            ytm_value=None,
+        )
+    finally:
+        conn.close()
+
+    _materialize_balance_analysis(
+        db_path,
+        governance_dir,
+        monkeypatch,
+        report_dates=["2025-01-15"],
+    )
+    main_mod = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_mod.app)
+
+    response = client.get("/api/analysis/adb/monthly", params={"year": 2025})
+
+    assert response.status_code == 200, response.text
+    payload = response.json()["result"]
+    first_month = payload["months"][0]
+    assert first_month["asset_yield"] == 2.4
+    assert first_month["asset_rate_coverage_ratio"] == 0.5
+    assert payload["ytd_asset_yield"] == 2.4
+    assert payload["ytd_asset_rate_coverage_ratio"] == 0.5
+    assert first_month["breakdown_assets"][0]["weighted_rate"] == 2.4
+    assert first_month["breakdown_assets"][0]["rate_coverage_ratio"] == 0.5
+    # 该月只有资产、无负债成本 → NIM 缺失，压力字段必须为 null 而非造数。
+    assert first_month["net_interest_margin"] is None
+    assert first_month["nim_stress"] == {"nim_stressed": None, "delta_bp": None}
+
+
+def test_adb_monthly_nim_stress_matches_daily_official_shift_scale() -> None:
+    """月度（百分点）与日度（小数比率）共用同一 -50bp 平移口径，仅单位换算不同。"""
+    from backend.app.services import liability_analytics_service as liability_svc
+
+    assert (
+        liability_svc.NIM_STRESS_SHOCK_PERCENT
+        == liability_svc.NIM_STRESS_SHOCK_DECIMAL * 100
+    )
+
+    daily = liability_svc._build_nim_stress(0.009)
+    monthly = liability_svc.build_nim_stress_percent_points(0.9)
+    assert daily["delta_bp"] == monthly["delta_bp"] == -50.0
+    assert monthly["nim_stressed"] == pytest.approx(0.4)
+    assert monthly["nim_stressed"] == pytest.approx(daily["nim_stressed"] * 100)
+
+    missing = liability_svc.build_nim_stress_percent_points(None)
+    assert missing == {"nim_stressed": None, "delta_bp": None}
 
 
 def test_adb_comparison_returns_analytical_envelope(tmp_path: Path, monkeypatch) -> None:
@@ -781,7 +1337,10 @@ def test_adb_comparison_reads_formal_facts_without_snapshot_tables(tmp_path: Pat
     payload = response.json()
     assert payload["result_meta"]["basis"] == "analytical"
     assert payload["result"]["report_date"] == "2025-12-31"
-    assert payload["result"]["total_avg_assets"] > 0
+    # 单日窗口日均不可得（insufficient_window），但 formal 表时点余额仍出数。
+    assert payload["result"]["total_spot_assets"] > 0
+    assert payload["result"]["total_avg_assets"] is None
+    assert payload["result"]["avg_unavailable_reason"] == "insufficient_window"
 
 
 def test_adb_comparison_ignores_snapshot_when_formal_tables_missing(tmp_path: Path, monkeypatch) -> None:
@@ -829,9 +1388,85 @@ def test_adb_comparison_ignores_snapshot_when_formal_tables_missing(tmp_path: Pa
     assert response.status_code == 200, response.text
     payload = response.json()["result"]
     assert payload["adb_denominator_basis"] == "snapshot_calendar"
-    assert payload["total_avg_assets"] == 0.0
+    assert payload["total_spot_assets"] is None
+    assert payload["total_avg_assets"] is None
+    assert payload["total_spot_liabilities"] is None
+    assert payload["total_avg_liabilities"] is None
+    assert payload["avg_unavailable_reason"] == "insufficient_window"
+    assert payload["spot_unavailable_reason"] == "no_data"
     assert payload["total_avg_interbank_assets"] == 0.0
     assert payload["coverage_days"] == 0
+
+
+def test_adb_comparison_supplements_missing_snapshot_dates_per_source(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _seed_adb_read_scope(tmp_path, monkeypatch)
+    db_path = tmp_path / "adb_per_source_fallback.duckdb"
+    governance_dir = tmp_path / "governance_per_source"
+    conn = duckdb.connect(str(db_path))
+    try:
+        _ensure_tables(conn)
+        _insert_zqtz(
+            conn,
+            report_date="2025-06-02",
+            instrument_code="B-PER-SOURCE",
+            bond_type=BOND_GOV,
+            market_value=Decimal("100000000"),
+            is_issuance_like=False,
+        )
+        _insert_tyw(
+            conn,
+            report_date="2025-06-02",
+            position_id="TYW-PER-SOURCE",
+            product_type=INTERBANK_PLACE,
+            position_side=POSITION_LIABILITY,
+            principal=Decimal("50000000"),
+            rate=Decimal("2.5"),
+        )
+    finally:
+        conn.close()
+
+    _materialize_balance_analysis(
+        db_path,
+        governance_dir,
+        monkeypatch,
+        report_dates=["2025-06-02"],
+    )
+
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            delete from fact_formal_tyw_balance_daily
+            where cast(report_date as varchar) = '2025-06-02'
+            """
+        )
+    finally:
+        conn.close()
+
+    adb_analysis_service = load_module(
+        "backend.app.services.adb_analysis_service",
+        "backend/app/services/adb_analysis_service.py",
+    )
+    adb_analysis_service.clear_adb_comparison_cache()
+
+    envelope = adb_analysis_service.adb_comparison_envelope(
+        "2025-06-02",
+        "2025-06-02",
+        top_n=10,
+    )
+    assert envelope["result_meta"]["quality_flag"] == "warning"
+    assert envelope["result_meta"]["fallback_mode"] == "latest_snapshot"
+    assert "tyw_interbank_daily_snapshot" in envelope["result_meta"]["tables_used"]
+    payload = envelope["result"]
+    assert payload["adb_denominator_basis"] == "formal+snapshot_calendar"
+    # 单日窗口日均为 None（insufficient_window）；时点余额与同业区间日均仍出数。
+    assert payload["total_spot_assets"] > 0
+    assert payload["total_avg_assets"] is None
+    assert payload["avg_unavailable_reason"] == "insufficient_window"
+    assert payload["total_avg_interbank_liabilities"] == pytest.approx(50_000_000.0)
 
 
 def test_adb_comparison_denominator_uses_calendar_span(
@@ -872,6 +1507,9 @@ def test_adb_comparison_denominator_uses_calendar_span(
     assert payload["num_days"] == 10
     assert payload["coverage_days"] == 5
     assert payload["adb_denominator_basis"] == "formal_calendar"
+    comparison_json = response.json()
+    assert comparison_json["result_meta"]["quality_flag"] == "ok"
+    assert comparison_json["result_meta"]["fallback_mode"] == "none"
     assert payload["sample_filled"] is True
     assert payload["sample_fill_method"] == "observed_days_scaled_to_calendar"
     # 样本补齐：5 个观测日各 1 亿，扩展到 10 天窗口后日均仍保持 1 亿
@@ -952,4 +1590,322 @@ def test_adb_comparison_liability_falls_back_past_blank_sub_type(tmp_path: Path,
     )
     assert response.status_code == 200, response.text
     rows = response.json()["result"]["liabilities_breakdown"]
-    assert any(r["category"] == BOND_GOV and r["avg_balance"] > 0 for r in rows)
+    # 单日窗口 avg_balance 为 None（insufficient_window），分类回退用时点余额验证。
+    assert any(r["category"] == BOND_GOV and r["spot_balance"] > 0 for r in rows)
+
+
+def test_adb_comparison_single_snapshot_window_returns_null_avg_with_reason(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A1 治理：单快照窗口默认不再用 MD5 因子合成日均。
+
+    日均输出为 null 语义 + reason="insufficient_window"；时点余额保持真实观测值。
+    """
+    _seed_adb_read_scope(tmp_path, monkeypatch)
+    db_path = tmp_path / "adb_single_snapshot.duckdb"
+    governance_dir = tmp_path / "gov_single_snapshot"
+    spot_value = Decimal("100000000")
+    conn = duckdb.connect(str(db_path))
+    try:
+        _ensure_tables(conn)
+        _insert_zqtz(
+            conn,
+            report_date="2025-06-02",
+            instrument_code="B-SINGLE",
+            bond_type=BOND_GOV,
+            market_value=spot_value,
+            is_issuance_like=False,
+        )
+    finally:
+        conn.close()
+
+    _materialize_balance_analysis(db_path, governance_dir, monkeypatch, report_dates=["2025-06-02"])
+
+    from backend.app.services import adb_analysis_service
+    from datetime import date as date_cls
+
+    payload, *_ = adb_analysis_service.get_adb_comparison(
+        str(db_path), date_cls(2025, 6, 2), date_cls(2025, 6, 2), top_n=20
+    )
+
+    assert payload["simulated"] is False
+    assert payload["avg_unavailable_reason"] == "insufficient_window"
+    assert payload["total_avg_assets"] is None
+    assert payload["total_avg_liabilities"] is None
+    assert payload["total_spot_assets"] == pytest.approx(float(spot_value))
+    assert payload["assets_breakdown"], "spot rows must still be visible"
+    for row in payload["assets_breakdown"]:
+        assert row["avg_balance"] is None
+        assert row["proportion"] is None
+        assert row["spot_balance"] > 0
+
+
+def test_adb_comparison_explicit_simulation_optin_stays_disclosed(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """显式 opt-in（owner 签核路径）仍可仿真，但必须通过 simulated=True 全程披露。"""
+    _seed_adb_read_scope(tmp_path, monkeypatch)
+    db_path = tmp_path / "adb_optin_simulation.duckdb"
+    governance_dir = tmp_path / "gov_optin_simulation"
+    conn = duckdb.connect(str(db_path))
+    try:
+        _ensure_tables(conn)
+        _insert_zqtz(
+            conn,
+            report_date="2025-06-02",
+            instrument_code="B-OPTIN",
+            bond_type=BOND_GOV,
+            market_value=Decimal("100000000"),
+            is_issuance_like=False,
+        )
+    finally:
+        conn.close()
+
+    _materialize_balance_analysis(db_path, governance_dir, monkeypatch, report_dates=["2025-06-02"])
+
+    from backend.app.services import adb_analysis_service
+    from datetime import date as date_cls
+
+    payload, *_ = adb_analysis_service.get_adb_comparison(
+        str(db_path),
+        date_cls(2025, 6, 2),
+        date_cls(2025, 6, 2),
+        top_n=20,
+        simulate_if_single_snapshot=True,
+    )
+
+    assert payload["simulated"] is True
+    assert payload["avg_unavailable_reason"] is None
+    assert payload["total_avg_assets"] is not None and payload["total_avg_assets"] > 0
+    assert all(row["avg_balance"] is not None for row in payload["assets_breakdown"])
+
+
+def _comparison_bond_row(
+    report_date: str,
+    amount: object,
+    *,
+    valid: bool,
+) -> dict[str, object]:
+    return {
+        "report_date": pd.Timestamp(report_date),
+        "market_value": amount,
+        "market_value_is_valid": valid,
+        "yield_to_maturity": 0.02,
+        "coupon_rate": 0.02,
+        "bond_category": BOND_GOV,
+        "asset_class": BOND_ASSET_CLASS,
+        "is_issuance_like": False,
+    }
+
+
+def _comparison_interbank_row(
+    report_date: str,
+    amount: object,
+    *,
+    valid: bool,
+    direction: str,
+) -> dict[str, object]:
+    return {
+        "report_date": pd.Timestamp(report_date),
+        "amount": amount,
+        "amount_is_valid": valid,
+        "interest_rate": 0.02,
+        "product_type": INTERBANK_PLACE,
+        "direction": direction,
+    }
+
+
+def _comparison_payload_from_frames(
+    monkeypatch,
+    *,
+    bonds_rows: list[dict[str, object]] | None = None,
+    interbank_rows: list[dict[str, object]] | None = None,
+    start_date: str = "2025-06-01",
+    end_date: str = "2025-06-02",
+) -> dict[str, object]:
+    from backend.app.services import adb_analysis_service
+
+    bonds_df = pd.DataFrame(bonds_rows or [])
+    interbank_df = pd.DataFrame(interbank_rows or [])
+
+    def _load_raw(*_args, **_kwargs):
+        return (
+            bonds_df,
+            interbank_df,
+            ["sv-comparison-validity"],
+            ["rv-comparison-validity"],
+            "formal_calendar",
+            ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"],
+            {
+                "converted_rows": 0,
+                "dropped_rows": 0,
+                "converted_by_currency": {},
+                "dropped_by_currency": {},
+            },
+        )
+
+    monkeypatch.setattr(adb_analysis_service, "_load_adb_raw_data", _load_raw)
+    payload, *_ = adb_analysis_service.get_adb_comparison(
+        "unused.duckdb",
+        date.fromisoformat(start_date),
+        date.fromisoformat(end_date),
+        top_n=200,
+    )
+    return payload
+
+
+def test_adb_comparison_excludes_invalid_end_row_and_locf_valid_balance(monkeypatch) -> None:
+    payload = _comparison_payload_from_frames(
+        monkeypatch,
+        bonds_rows=[
+            _comparison_bond_row("2025-06-01", Decimal("100"), valid=True),
+            _comparison_bond_row("2025-06-02", Decimal("900"), valid=False),
+        ],
+    )
+
+    assert payload["coverage_days"] == 1
+    assert payload["sample_fill_method"] == "observed_days_scaled_to_calendar"
+    assert payload["total_spot_assets"] == pytest.approx(100.0)
+    assert payload["total_avg_assets"] == pytest.approx(100.0)
+    assert payload["total_spot_liabilities"] is None
+    assert payload["total_avg_liabilities"] is None
+    assert payload["avg_unavailable_reason"] is None
+    assert payload["spot_unavailable_reason"] is None
+    assert payload["assets_breakdown"][0]["spot_balance"] == pytest.approx(100.0)
+
+
+def test_adb_comparison_all_invalid_balances_are_no_data(monkeypatch) -> None:
+    payload = _comparison_payload_from_frames(
+        monkeypatch,
+        bonds_rows=[_comparison_bond_row("2025-06-01", Decimal("100"), valid=False)],
+        interbank_rows=[
+            _comparison_interbank_row(
+                "2025-06-02",
+                Decimal("200"),
+                valid=False,
+                direction="LIABILITY",
+            )
+        ],
+    )
+
+    assert payload["coverage_days"] == 0
+    assert payload["sample_filled"] is False
+    assert payload["sample_fill_method"] == "none"
+    assert payload["total_spot_assets"] is None
+    assert payload["total_avg_assets"] is None
+    assert payload["total_spot_liabilities"] is None
+    assert payload["total_avg_liabilities"] is None
+    assert payload["avg_unavailable_reason"] == "no_data"
+    assert payload["spot_unavailable_reason"] == "no_data"
+    assert payload["assets_breakdown"] == []
+    assert payload["liabilities_breakdown"] == []
+
+
+@pytest.mark.parametrize("amount", [float("inf"), float("-inf"), float("nan")])
+def test_adb_comparison_requires_finite_balance_when_validity_flag_is_true(
+    amount: float,
+    monkeypatch,
+) -> None:
+    payload = _comparison_payload_from_frames(
+        monkeypatch,
+        interbank_rows=[
+            _comparison_interbank_row(
+                "2025-06-01",
+                amount,
+                valid=True,
+                direction="ASSET",
+            )
+        ],
+    )
+
+    assert payload["coverage_days"] == 0
+    assert payload["total_spot_assets"] is None
+    assert payload["total_avg_assets"] is None
+    assert payload["avg_unavailable_reason"] == "no_data"
+    assert payload["spot_unavailable_reason"] == "no_data"
+
+
+def test_adb_comparison_preserves_valid_zero_as_available_balance(monkeypatch) -> None:
+    payload = _comparison_payload_from_frames(
+        monkeypatch,
+        interbank_rows=[
+            _comparison_interbank_row(
+                "2025-06-01",
+                Decimal("100"),
+                valid=True,
+                direction="ASSET",
+            ),
+            _comparison_interbank_row(
+                "2025-06-02",
+                Decimal("0"),
+                valid=True,
+                direction="ASSET",
+            )
+        ],
+    )
+
+    assert payload["coverage_days"] == 2
+    assert payload["total_spot_assets"] == 0.0
+    assert payload["total_avg_assets"] == pytest.approx(50.0)
+    assert payload["total_spot_liabilities"] is None
+    assert payload["total_avg_liabilities"] is None
+    assert payload["avg_unavailable_reason"] is None
+    assert payload["spot_unavailable_reason"] is None
+
+
+def test_adb_comparison_single_side_invalid_uses_side_null_totals_only(monkeypatch) -> None:
+    payload = _comparison_payload_from_frames(
+        monkeypatch,
+        bonds_rows=[
+            _comparison_bond_row("2025-06-01", Decimal("100"), valid=True),
+            _comparison_bond_row("2025-06-02", Decimal("100"), valid=True),
+        ],
+        interbank_rows=[
+            _comparison_interbank_row(
+                "2025-06-02",
+                Decimal("500"),
+                valid=False,
+                direction="LIABILITY",
+            )
+        ],
+    )
+
+    assert payload["coverage_days"] == 2
+    assert payload["total_spot_assets"] == pytest.approx(100.0)
+    assert payload["total_avg_assets"] == pytest.approx(100.0)
+    assert payload["total_spot_liabilities"] is None
+    assert payload["total_avg_liabilities"] is None
+    assert payload["avg_unavailable_reason"] is None
+    assert payload["spot_unavailable_reason"] is None
+
+
+@pytest.mark.parametrize(
+    ("valid", "expected_spot", "expected_coverage", "expected_spot_reason"),
+    [
+        (True, 100.0, 1, None),
+        (False, None, 0, "no_data"),
+    ],
+)
+def test_adb_comparison_single_day_validity_preserves_reason_priority(
+    valid: bool,
+    expected_spot: float | None,
+    expected_coverage: int,
+    expected_spot_reason: str | None,
+    monkeypatch,
+) -> None:
+    payload = _comparison_payload_from_frames(
+        monkeypatch,
+        bonds_rows=[_comparison_bond_row("2025-06-01", Decimal("100"), valid=valid)],
+        start_date="2025-06-01",
+        end_date="2025-06-01",
+    )
+
+    assert payload["coverage_days"] == expected_coverage
+    assert payload["total_spot_assets"] == expected_spot
+    assert payload["total_avg_assets"] is None
+    assert payload["total_spot_liabilities"] is None
+    assert payload["total_avg_liabilities"] is None
+    assert payload["avg_unavailable_reason"] == "insufficient_window"
+    assert payload["spot_unavailable_reason"] == expected_spot_reason

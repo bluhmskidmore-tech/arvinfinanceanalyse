@@ -3,11 +3,22 @@
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.user_scope_repo import UserScopeRepository
 from tests.helpers import load_module
 from tests.test_fx_analytical_view_service import _seed_fx_duckdb, _write_catalog
 
 
-def test_fx_api_exposes_formal_status_and_analytical_groups(tmp_path, monkeypatch):
+def _grant_macro_vendor_read_scope() -> None:
+    settings = get_settings()
+    UserScopeRepository(settings.governance_sql_dsn or settings.postgres_dsn).grant_scope(
+        user_id="*",
+        role=None,
+        resource="macro_vendor",
+        action="read",
+    )
+
+
+def test_fx_api_exposes_formal_status_and_analytical_groups(tmp_path, monkeypatch, seed_wildcard_scope):
     catalog_path = tmp_path / "choice_macro_catalog.json"
     duckdb_path = tmp_path / "market-data.duckdb"
     _write_catalog(catalog_path)
@@ -15,6 +26,7 @@ def test_fx_api_exposes_formal_status_and_analytical_groups(tmp_path, monkeypatc
     monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", str(catalog_path))
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     get_settings.cache_clear()
+    _grant_macro_vendor_read_scope()
 
     main_module = load_module("backend.app.main", "backend/app/main.py")
     client = TestClient(main_module.app)

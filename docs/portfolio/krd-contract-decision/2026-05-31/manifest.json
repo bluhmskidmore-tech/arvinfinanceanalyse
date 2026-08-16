@@ -3,7 +3,7 @@
   "page_id": "PAGE-PORTFOLIO-HOME-001",
   "page_slug": "portfolio",
   "report_date": "2026-05-31",
-  "duckdb_path": "F:\\MOSS-V3\\data\\moss.duckdb",
+  "duckdb_path": "data/moss.duckdb",
   "export_status": "decision_required",
   "review_blockers": [
     "krd_contract_decision_required"
@@ -37,7 +37,7 @@
     "mapped_tenor_count": 3,
     "unsupported_tenor_count": 0,
     "nonzero_dv01_rows": 500,
-    "dv01_sum": "33365026.29770696"
+    "dv01_sum": "33365026.29780176"
   },
   "acceptance_criteria": {
     "strict_gate_command": "python scripts/portfolio_home_krd_remap_review_queue.py --require-clean",

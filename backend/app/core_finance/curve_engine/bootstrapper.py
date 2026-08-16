@@ -1,4 +1,22 @@
 """
+DORMANT: 无生产调用方（2026-08 复核：除 tests/test_bootstrapper.py 与
+curve_engine/__init__.py 的再导出外，仓库内无 bootstrap_zero_curve /
+direct_spot_result / cross_validate_spot_curve 调用点）。接线前必须：
+
+1. 单位与复利约定先对齐来源：入参 par、出参 zero 均为**百分数**（2.50 = 2.50%），
+   贴现按**年有效复利** D(t) = (1+r)^-t，既不是连续复利也不是半年复利。
+   与 Choice 直供 spot 曲线互换前必须确认对方口径，否则长端会系统性偏移。
+2. 输入必须是**平价收益率（par yield）**曲线；混入到期收益率或即期报价不会报错，
+   只会静默给出错误的零息曲线。
+3. ``cross_validate_spot_curve`` 在无重叠期限时返回 ``is_consistent=None``（不可比），
+   调用方不得把 ``None`` 当作"一致"处理。
+4. 补 vendor 交叉对照：当前仅有自洽性测试，没有对实盘 Choice spot 曲线的黄金对照。
+
+已知实现边界（不是缺陷，接线时按此理解）：
+- 半年付首节点已在提交 ``47b9d552`` 修正为从贴现票息中剥离（``has_intermediate_coupons``
+  分支），不得回退为"首节点 par == spot"。
+- 中间贴现因子按**对数线性**插值；超出最后观测期限时按最后一段的零息率平坦外推。
+
 Bootstrapper — derive zero-coupon (spot) rates from par yield curves.
 
 Two modes of operation:
@@ -46,11 +64,15 @@ class BootstrapResult:
 
 @dataclass(frozen=True, slots=True)
 class CrossValidationResult:
-    """Comparison between bootstrapped and vendor-provided spot curves."""
+    """Comparison between bootstrapped and vendor-provided spot curves.
+
+    ``is_consistent`` is ``None`` when the curves have no overlapping tenors
+    and therefore cannot be compared.
+    """
     max_abs_diff_bps: float
     mean_abs_diff_bps: float
     tenor_diffs: list[tuple[float, float]]  # (years, diff_bps)
-    is_consistent: bool  # True if max_abs_diff_bps < threshold
+    is_consistent: bool | None
 
 
 def bootstrap_zero_curve(
@@ -71,6 +93,13 @@ def bootstrap_zero_curve(
     -------
     BootstrapResult
         Zero-coupon curve points (also in percent) and discount factors.
+
+    Notes
+    -----
+    Short nodes without an intermediate coupon use ``par == spot`` and annual
+    effective compounding, ``D(t) = (1 + r) ** -t``.  Coupon-bearing nodes are
+    stripped from their periodic cash flows; returned zero rates use the same
+    annual effective convention.
     """
     sorted_pars = sorted(par_yields, key=lambda p: p.years)
     if not sorted_pars:
@@ -84,15 +113,16 @@ def bootstrap_zero_curve(
     for i, par_point in enumerate(sorted_pars):
         t = par_point.years
         c = float(par_point.rate) / 100.0  # pct → decimal
+        n_periods = max(1, int(round(t * coupon_frequency)))
+        has_intermediate_coupons = coupon_frequency > 1 and n_periods > 1
 
-        if t <= 1.0 or i == 0:
-            # Short end: treat par yield as zero-coupon rate directly.
+        if (t <= 1.0 or i == 0) and not has_intermediate_coupons:
+            # Coupon-free short end: treat par yield as zero-coupon directly.
             z = float(par_point.rate)
             df = 1.0 / (1.0 + c) ** t if (1.0 + c) > 0 and t > 0 else 1.0
         else:
             # Bootstrap: solve for the terminal discount factor.
             coupon_per_period = c / coupon_frequency
-            n_periods = max(1, int(round(t * coupon_frequency)))
 
             # Sum PV of intermediate coupons using known discount factors.
             pv_coupons = 0.0
@@ -172,7 +202,7 @@ def cross_validate_spot_curve(
             max_abs_diff_bps=0.0,
             mean_abs_diff_bps=0.0,
             tenor_diffs=[],
-            is_consistent=True,
+            is_consistent=None,
         )
 
     abs_diffs = [abs(d) for _, d in tenor_diffs]

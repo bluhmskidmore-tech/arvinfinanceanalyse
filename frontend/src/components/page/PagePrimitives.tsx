@@ -1,11 +1,12 @@
 import type { CSSProperties, ReactNode } from "react";
 
-import { shellTokens } from "../../theme/tokens";
+import type { NocturneThemeScope } from "../../theme/themeScopes";
 import {
   PAGE_V2_CONTRACT,
   pageInsetCardStyle,
   pageSurfacePanelStyle,
 } from "./PagePrimitiveStyles";
+import styles from "./PagePrimitives.module.css";
 
 type HeaderBadgeTone = "positive" | "accent" | "neutral";
 type SurfaceElement = "div" | "section" | "article";
@@ -26,26 +27,11 @@ export type PageHeaderProps = {
   style?: CSSProperties;
 };
 
-function headerBadgeStyle(tone: HeaderBadgeTone) {
-  if (tone === "positive") {
-    return {
-      background: shellTokens.colorBgSuccessSoft,
-      color: shellTokens.colorSuccess,
-    } as const;
-  }
-
-  if (tone === "accent") {
-    return {
-      background: shellTokens.colorAccentSoft,
-      color: shellTokens.colorAccent,
-    } as const;
-  }
-
-  return {
-    background: shellTokens.colorBgMuted,
-    color: shellTokens.colorTextSecondary,
-  } as const;
-}
+const headerBadgeToneClass: Record<HeaderBadgeTone, string> = {
+  positive: styles.headerBadgePositive,
+  accent: styles.headerBadgeAccent,
+  neutral: styles.headerBadgeNeutral,
+};
 
 export function PageHeader({
   title,
@@ -67,80 +53,23 @@ export function PageHeader({
   return (
     <section
       data-testid={testId}
-      className={className}
-      style={{
-        display: "grid",
-        gap: isCompact ? 10 : 18,
-        marginBottom: isCompact ? 0 : 28,
-        ...style,
-      }}
+      className={cx(styles.pageHeader, isCompact && styles.pageHeaderCompact, className)}
+      style={style}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: isCompact ? 12 : 16,
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ display: "grid", gap: isCompact ? 6 : 10, maxWidth: isCompact ? 760 : 920 }}>
-          <span
-            style={{
-              color: shellTokens.colorTextMuted,
-              fontSize: isCompact ? 10 : 11,
-              fontWeight: 700,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-            }}
-          >
-            {eyebrow}
-          </span>
-          <h1
-            data-testid={titleTestId}
-            style={{
-              margin: 0,
-              fontSize: isCompact ? 26 : 32,
-              fontWeight: 700,
-              letterSpacing: isCompact ? "0" : "-0.03em",
-              color: shellTokens.colorTextPrimary,
-            }}
-          >
+      <div className={styles.headerTop}>
+        <div className={styles.headerTitles}>
+          <span className={styles.headerEyebrow}>{eyebrow}</span>
+          <h1 data-testid={titleTestId} className={styles.headerTitle}>
             {title}
           </h1>
-          <p
-            data-testid={descriptionTestId}
-            style={{
-              margin: 0,
-              color: shellTokens.colorTextSecondary,
-              fontSize: isCompact ? 13 : 15,
-              lineHeight: isCompact ? 1.55 : 1.8,
-            }}
-          >
+          <p data-testid={descriptionTestId} className={styles.headerDescription}>
             {description}
           </p>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            justifyItems: "end",
-            gap: isCompact ? 8 : 12,
-          }}
-        >
+        <div className={styles.headerAside}>
           {badgeLabel ? (
-            <span
-              style={{
-                ...headerBadgeStyle(badgeTone),
-                display: "inline-flex",
-                alignItems: "center",
-                padding: isCompact ? "6px 12px" : "8px 14px",
-                borderRadius: 999,
-                fontSize: 12,
-                fontWeight: 700,
-                letterSpacing: "0.04em",
-              }}
-            >
+            <span className={cx(styles.headerBadge, headerBadgeToneClass[badgeTone])}>
               {badgeLabel}
             </span>
           ) : null}
@@ -177,6 +106,12 @@ export type PageV2ShellProps = {
   children: ReactNode;
   testId?: string;
   style?: CSSProperties;
+  /**
+   * Nocturne 换肤 scope 透传（MarketWorkbenchFrame themeScope 同款先例）：
+   * PageV2Shell 即页根时 scope 须落在 shell 根元素；不传时零影响。
+   * 类型收窄为 palette 字面量联合，拼写错误在编译期报错。
+   */
+  themeScope?: NocturneThemeScope;
 };
 
 export type PageV2SurfacePanelProps = {
@@ -193,46 +128,10 @@ export function PageSectionLead({
   style,
 }: PageSectionLeadProps) {
   return (
-    <div
-      style={{
-        display: "grid",
-        gap: 6,
-        marginTop: 28,
-        ...style,
-      }}
-    >
-      <span
-        style={{
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: "0.08em",
-          textTransform: "uppercase",
-          color: shellTokens.colorTextMuted,
-        }}
-      >
-        {eyebrow}
-      </span>
-      <h2
-        style={{
-          margin: 0,
-          fontSize: 18,
-          fontWeight: 700,
-          color: shellTokens.colorTextPrimary,
-        }}
-      >
-        {title}
-      </h2>
-      <p
-        style={{
-          margin: 0,
-          maxWidth: 860,
-          color: shellTokens.colorTextSecondary,
-          fontSize: 13,
-          lineHeight: 1.7,
-        }}
-      >
-        {description}
-      </p>
+    <div className={styles.sectionLead} style={style}>
+      <span className={styles.sectionLeadEyebrow}>{eyebrow}</span>
+      <h2 className={styles.sectionLeadTitle}>{title}</h2>
+      <p className={styles.sectionLeadDescription}>{description}</p>
     </div>
   );
 }
@@ -271,9 +170,14 @@ export function PageSurfacePanel({
   );
 }
 
-export function PageV2Shell({ children, testId, style }: PageV2ShellProps) {
+export function PageV2Shell({ children, testId, style, themeScope }: PageV2ShellProps) {
   return (
-    <div data-testid={testId} className="moss-page-v2-shell" style={style}>
+    <div
+      data-testid={testId}
+      data-moss-theme-scope={themeScope}
+      className="moss-page-v2-shell"
+      style={style}
+    >
       {children}
     </div>
   );

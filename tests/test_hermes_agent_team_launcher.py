@@ -4,6 +4,12 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_agent_mvp,
+]
 
 ROOT = Path(__file__).resolve().parents[1]
 

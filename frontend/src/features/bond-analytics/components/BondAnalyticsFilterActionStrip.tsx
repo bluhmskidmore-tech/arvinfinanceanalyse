@@ -1,4 +1,4 @@
-import { Button, Card, Select } from "antd";
+import { Button, Select } from "antd";
 
 import type {
   BondAnalyticsAccountingClassFilter,
@@ -10,9 +10,11 @@ import {
   BOND_ANALYTICS_ASSET_CLASS_FILTER_OPTIONS,
   BOND_ANALYTICS_SCENARIO_SET_OPTIONS,
   BOND_ANALYTICS_SPREAD_SCENARIO_PRESETS,
-  FIELD,
-  panelStyle,
 } from "./bondAnalyticsCockpitTokens";
+import styles from "./BondAnalyticsFilterActionStrip.module.css";
+
+/** 弹层锚在条内，避免 portal 落到 body 后逃出本页深色主题。 */
+const popupContainer = (trigger: HTMLElement) => trigger.parentElement ?? document.body;
 
 export interface BondAnalyticsFilterActionStripProps {
   assetClass: BondAnalyticsAssetClassFilter;
@@ -43,124 +45,111 @@ export function BondAnalyticsFilterActionStrip({
   analyticsRefreshError = null,
   lastAnalyticsRefreshRunId = null,
 }: BondAnalyticsFilterActionStripProps) {
+  const refreshState = analyticsRefreshError
+    ? "error"
+    : isAnalyticsRefreshing
+      ? "running"
+      : lastAnalyticsRefreshRunId
+        ? "complete"
+        : "idle";
+  const refreshStateLabel = analyticsRefreshError
+    ? "刷新异常"
+    : isAnalyticsRefreshing
+      ? "刷新中"
+      : lastAnalyticsRefreshRunId
+        ? "最近运行"
+        : "刷新状态";
+  const refreshStateText =
+    analyticsRefreshError ??
+    (isAnalyticsRefreshing
+      ? "正在刷新受治理总览状态..."
+      : lastAnalyticsRefreshRunId
+        ? `最近运行 ${lastAnalyticsRefreshRunId}`
+        : "尚未捕获刷新运行。");
+
   return (
-    <Card
-      size="small"
-      data-testid="bond-analysis-filter-action-strip"
-      style={panelStyle("#fcfdff")}
-      styles={{ body: { paddingBlock: 12 } }}
-    >
-      <div data-testid="bond-analysis-command-bar" style={{ display: "grid", gap: 12 }}>
+    <section data-testid="bond-analysis-filter-action-strip" className={styles.actionStrip}>
+      <div data-testid="bond-analysis-command-bar" className={styles.commandBar}>
+        <div className={styles.commandIntro}>
+          <span className={styles.fieldLabel}>复核入口</span>
+          <strong>参数与下钻边界</strong>
+          <p>
+            报告日、期间和刷新放在页面顶部；这里仅保留收益拆解、KRD 和信用迁移的下钻参数。
+          </p>
+        </div>
         <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 16,
-            flexWrap: "wrap",
-          }}
+          data-testid="bond-analysis-refresh-state"
+          className={styles.refreshState}
+          data-state={refreshState}
         >
-          <div style={{ display: "grid", gap: 4 }}>
-            <div style={FIELD}>下钻参数</div>
-            <div style={{ color: "#52657f", fontSize: 12, lineHeight: 1.6 }}>
-              报告日、期间和刷新放在页面顶部；这里保留收益拆解、KRD 和信用迁移的下钻参数。
-            </div>
-          </div>
-          <div
-            style={{
-              color: analyticsRefreshError ? "#a9342f" : "#52657f",
-              fontSize: 12,
-              lineHeight: 1.6,
-              minWidth: 220,
-              textAlign: "right",
-            }}
-          >
-            {analyticsRefreshError ??
-              (isAnalyticsRefreshing
-                ? "正在刷新受治理总览状态..."
-                : lastAnalyticsRefreshRunId
-                  ? `最近运行 ${lastAnalyticsRefreshRunId}`
-                  : "尚未捕获刷新运行。")}
-          </div>
+          <span className={styles.fieldLabel}>{refreshStateLabel}</span>
+          <strong>{refreshStateText}</strong>
+        </div>
+        <div className={styles.refreshAction}>
+          {onRefreshAnalytics ? (
+            <Button
+              type="default"
+              size="small"
+              loading={isAnalyticsRefreshing}
+              disabled={isAnalyticsRefreshing}
+              onClick={() => onRefreshAnalytics()}
+              data-testid="bond-analytics-refresh-button"
+            >
+              刷新分析
+            </Button>
+          ) : null}
         </div>
 
-        <details>
-          <summary
-            style={{
-              cursor: "pointer",
-              color: "#52657f",
-              fontSize: 12,
-              fontWeight: 700,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-            }}
-          >
-            展开高级筛选
-          </summary>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "flex-end",
-              gap: 12,
-              flexWrap: "wrap",
-              marginTop: 12,
-            }}
-          >
-            <div>
-              <div style={FIELD}>收益拆解 · 资产类</div>
+        <details className={styles.advancedPanel}>
+          <summary className={styles.advancedSummary}>高级筛选 / 参数调整</summary>
+          <div className={styles.filterGrid}>
+            <div className={styles.filterField}>
+              <div className={styles.fieldLabel}>收益拆解 · 资产类</div>
               <Select
                 value={assetClass}
                 onChange={(value) => onAssetClassChange(value as BondAnalyticsAssetClassFilter)}
                 options={[...BOND_ANALYTICS_ASSET_CLASS_FILTER_OPTIONS]}
-                style={{ width: 140 }}
+                className={styles.filterSelect}
                 size="small"
+                getPopupContainer={popupContainer}
               />
             </div>
-            <div>
-              <div style={FIELD}>收益拆解 · 会计口径</div>
+            <div className={styles.filterField}>
+              <div className={styles.fieldLabel}>收益拆解 · 会计口径</div>
               <Select
                 value={accountingClass}
                 onChange={(value) => onAccountingClassChange(value as BondAnalyticsAccountingClassFilter)}
                 options={[...BOND_ANALYTICS_ACCOUNTING_CLASS_FILTER_OPTIONS]}
-                style={{ width: 120 }}
+                className={styles.filterSelect}
                 size="small"
+                getPopupContainer={popupContainer}
               />
             </div>
-            <div>
-              <div style={FIELD}>KRD 情景集</div>
+            <div className={styles.filterField}>
+              <div className={styles.fieldLabel}>KRD 情景集</div>
               <Select
                 value={scenarioSet}
                 onChange={(value) => onScenarioSetChange(value as BondAnalyticsScenarioSetFilter)}
                 options={[...BOND_ANALYTICS_SCENARIO_SET_OPTIONS]}
-                style={{ width: 132 }}
+                className={styles.filterSelect}
                 size="small"
+                getPopupContainer={popupContainer}
               />
             </div>
-            <div>
-              <div style={FIELD}>信用迁移 · 利差(bp)</div>
+            <div className={styles.filterField}>
+              <div className={styles.fieldLabel}>信用迁移 · 利差(bp)</div>
               <Select
                 value={spreadScenarios}
                 onChange={onSpreadScenariosChange}
                 options={[...BOND_ANALYTICS_SPREAD_SCENARIO_PRESETS]}
-                style={{ width: 168 }}
+                className={styles.filterSelect}
                 size="small"
+                getPopupContainer={popupContainer}
               />
             </div>
-            {onRefreshAnalytics ? (
-              <Button
-                type="default"
-                size="small"
-                loading={isAnalyticsRefreshing}
-                disabled={isAnalyticsRefreshing}
-                onClick={() => onRefreshAnalytics()}
-                data-testid="bond-analytics-refresh-button"
-              >
-                刷新分析
-              </Button>
-            ) : null}
           </div>
         </details>
       </div>
-    </Card>
+    </section>
   );
 }

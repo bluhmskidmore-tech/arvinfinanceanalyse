@@ -12,8 +12,14 @@ from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 from tests.test_qdb_gl_monthly_analysis_core import _write_month_pair
 
-QDB_GL_MONTHLY_ANALYSIS_READ_HEADERS = {"X-User-Id": "qdb-gl-export-read-user", "X-User-Role": "viewer"}
+import pytest
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_qdb_gl,
+]
+
+QDB_GL_MONTHLY_ANALYSIS_READ_HEADERS = {"X-User-Id": "qdb-gl-export-read-user", "X-User-Role": "viewer"}
 
 def _grant_qdb_read(tmp_path, monkeypatch) -> None:
     sqlite_path = tmp_path / "qdb-gl-monthly-analysis-export-read-scope.db"
@@ -27,7 +33,6 @@ def _grant_qdb_read(tmp_path, monkeypatch) -> None:
         resource="qdb_gl_monthly_analysis",
         action="read",
     )
-
 
 def test_export_returns_valid_xlsx_with_required_sheets(tmp_path, monkeypatch):
     source_dir = tmp_path / "data_input" / "pnl_总账对账-日均"
@@ -84,7 +89,6 @@ def test_export_returns_valid_xlsx_with_required_sheets(tmp_path, monkeypatch):
     assert overview["A2"].value == "总资产(亿)"
 
     get_settings.cache_clear()
-
 
 def test_export_includes_segment_scale_compare_sheet_when_history_exists(tmp_path, monkeypatch):
     source_dir = tmp_path / "data_input" / "pnl_总账对账-日均"

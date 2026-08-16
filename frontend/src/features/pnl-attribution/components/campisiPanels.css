@@ -1,0 +1,340 @@
+/*
+ * Campisi 四组件（四效应 / 六效应 / 到期桶 / 决策级）共享面板样式。
+ * 2026-08-14 自四个组件的 73 处重复内联 style 对象提取（P1-内联样式债）；
+ * 动态值（进度条 width 百分比）保留组件内联，语义色经 data-tone 属性映射。
+ *
+ * 色值全部走 --dh-api-* var/color-mix 链（Nocturne scope 内解析为 --nct-*）；
+ * 禁止浅色 hex 与 --ib-*（路由边界已算成钢蓝字面值）。圆角统一
+ * var(--dh-api-radius)。表格对齐页面制度：表头 11px muted / 表体 12px /
+ * 发丝底边 / 数值右对齐等宽（DESIGN §3）。
+ */
+
+/* ---- 面板外框与通用文案 ---------------------------------------------- */
+
+.campisi-panel {
+  padding: 20px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.campisi-panel--stacked {
+  margin-top: 16px;
+}
+
+.campisi-panel__heading {
+  margin: 0;
+  font-size: 15px;
+}
+
+.campisi-panel__intro {
+  margin: 0 0 16px;
+  color: var(--dh-api-soft);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.campisi-panel__empty {
+  margin: 0;
+  color: var(--dh-api-soft);
+}
+
+.campisi-panel__footnote {
+  margin: 16px 0 0;
+  color: var(--dh-api-soft);
+}
+
+/* 口径/边界说明盒（分解口径、可用性披露、能力边界共用） */
+.campisi-panel__note {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* 未闭合警示：状态语义左条统一 2px（承载警示语义，非装饰）。 */
+.campisi-callout--warning {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border-left: 2px solid var(--dh-api-amber);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.campisi-callout__title {
+  margin-bottom: 4px;
+  font-weight: 700;
+}
+
+/* ---- 键值读数（标签 12px muted / 值 700 等宽） ----------------------- */
+
+.campisi-field-label {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+.campisi-field-value {
+  margin-top: 8px;
+  color: var(--dh-api-ink);
+  font-weight: 700;
+  font-family: var(--moss-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.campisi-tabular {
+  font-family: var(--moss-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.campisi-kv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 16px;
+}
+
+.campisi-kv-grid--spaced {
+  margin-top: 16px;
+}
+
+.campisi-view-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+/* ---- 决策级头条与口径胶囊 -------------------------------------------- */
+
+.campisi-headline {
+  margin-top: 8px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.campisi-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.campisi-chip {
+  padding: 8px 12px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+.campisi-disclosure {
+  margin-top: 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.campisi-disclosure[data-level="warning"] {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-amber) 8%, var(--dh-api-panel));
+  color: var(--dh-api-amber);
+}
+
+/* ---- 汇总/洞察双卡（一眼结论 / 怎么读差异） --------------------------- */
+
+.campisi-summary-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(220px, 1fr);
+  gap: 16px;
+  align-items: stretch;
+  margin-bottom: 16px;
+}
+
+.campisi-insight-box {
+  padding: 16px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+}
+
+.campisi-insight-box__label {
+  margin-bottom: 8px;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+.campisi-insight-box__headline {
+  margin-bottom: 8px;
+  color: var(--dh-api-ink);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.campisi-insight-box__body {
+  color: var(--dh-api-soft);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.campisi-derived-note {
+  margin-bottom: 12px;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+/* ---- 效应卡网格与进度条 ---------------------------------------------- */
+
+.campisi-effect-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+.campisi-effect {
+  padding: 12px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.campisi-effect__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.campisi-effect__name {
+  color: var(--dh-api-ink);
+  font-weight: 700;
+}
+
+/* 盈亏语义着色：绿涨红跌（Nocturne 去饱和），与 TONE_DH_CSS_VAR 同源。 */
+.campisi-effect__amount {
+  margin-bottom: 8px;
+  font-weight: 700;
+  font-family: var(--moss-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.campisi-effect__amount[data-tone="positive"] {
+  color: var(--dh-api-green);
+}
+
+.campisi-effect__amount[data-tone="negative"] {
+  color: var(--dh-api-red);
+}
+
+.campisi-effect__amount[data-tone="neutral"] {
+  color: var(--dh-api-muted);
+}
+
+.campisi-effect__track {
+  overflow: hidden;
+  height: 6px;
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+}
+
+/* 进度条填充：宽度百分比为动态值，保留组件内联。 */
+.campisi-effect__fill {
+  height: 100%;
+  border-radius: var(--dh-api-radius);
+}
+
+.campisi-effect__fill[data-tone="positive"] {
+  background: var(--dh-api-green);
+}
+
+.campisi-effect__fill[data-tone="negative"] {
+  background: var(--dh-api-red);
+}
+
+.campisi-effect__fill[data-tone="neutral"] {
+  background: var(--dh-api-muted);
+}
+
+/* ---- 指标小卡（六效应扩展） ------------------------------------------ */
+
+.campisi-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.campisi-metric {
+  padding: 12px;
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+}
+
+.campisi-metric__flag {
+  margin-top: 4px;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+}
+
+/* ---- 表格（表头 11px muted / 表体 12px / 发丝底边 / 数值右对齐等宽） -- */
+
+.campisi-table-wrap {
+  overflow: auto;
+  margin-top: 20px;
+}
+
+.campisi-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.campisi-table--spaced {
+  margin-top: 16px;
+}
+
+.campisi-table th {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.campisi-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-ink);
+}
+
+.campisi-table__numeric-head,
+.campisi-table__numeric-cell {
+  font-family: var(--moss-font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.campisi-table__numeric-cell[data-tone="positive"] {
+  color: var(--dh-api-green);
+}
+
+.campisi-table__numeric-cell[data-tone="negative"] {
+  color: var(--dh-api-red);
+}
+
+.campisi-table__numeric-cell[data-tone="neutral"] {
+  color: var(--dh-api-muted);
+}

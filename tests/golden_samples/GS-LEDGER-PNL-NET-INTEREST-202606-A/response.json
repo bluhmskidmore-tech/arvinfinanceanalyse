@@ -1,0 +1,118 @@
+{
+  "sample_contract_version": "ledger-pnl-net-interest-golden-v1",
+  "sample_id": "GS-LEDGER-PNL-NET-INTEREST-202606-A",
+  "report_month": "202606",
+  "rule_version": "qdb-finance-2026-v1.0.1",
+  "source_periods": [
+    {
+      "month": "202606",
+      "report_date": "2026-06-30",
+      "ledger_file_name": "总账对账202606.xlsx",
+      "ledger_sha256": "29717578b92e107cc2fbcd5b66cd7c63191c24e1a7d245c103c94e235331c0b7",
+      "locked_sha256": "29717578b92e107cc2fbcd5b66cd7c63191c24e1a7d245c103c94e235331c0b7",
+      "lock_status": "locked_match"
+    },
+    {
+      "month": "202605",
+      "report_date": "2026-05-31",
+      "ledger_file_name": "总账对账202605.xlsx",
+      "ledger_sha256": "dabefcb6b713d0a427bb09d53673940ecd5df8b98051c61592b0c89b3d505224",
+      "locked_sha256": "dabefcb6b713d0a427bb09d53673940ecd5df8b98051c61592b0c89b3d505224",
+      "lock_status": "locked_match"
+    },
+    {
+      "month": "202604",
+      "report_date": "2026-04-30",
+      "ledger_file_name": "总账对账202604.xlsx",
+      "ledger_sha256": "6b59d7b41b9b11aa8bff431b9d33e353b20751b024e959327dae619a2b84e977",
+      "locked_sha256": "6b59d7b41b9b11aa8bff431b9d33e353b20751b024e959327dae619a2b84e977",
+      "lock_status": "locked_match"
+    }
+  ],
+  "full_scope_status": "unavailable",
+  "full_scope_reason_code": "missing_required_sheet",
+  "bridge": {
+    "quality_status": "standard_candidate",
+    "foot_status": "passed",
+    "net_delta_yi": "-2.5631215418",
+    "component_contribution_total_yi": "-2.5631215418",
+    "reconciliation_delta_yi": "0"
+  },
+  "components": [
+    {
+      "metric_id": "income.interest.loan.total",
+      "formula_weight": 1,
+      "quality_status": "standard_candidate",
+      "foot_status": "passed",
+      "contributing_account_count": 21,
+      "account_contribution_total_yi": "-0.3473924741",
+      "contribution_reconciliation_yi": "0",
+      "rows_sha256": "e92473871f4768c200eec5fbec674c943512b961a816af74e1028a4c08bafda0",
+      "top_contributor": {
+        "account_code": "50106000001",
+        "contribution_to_net_delta_yi": "-0.1047455527",
+        "current_locator": "综本!G934"
+      }
+    },
+    {
+      "metric_id": "expense.interest.deposit.total",
+      "formula_weight": -1,
+      "quality_status": "standard_candidate",
+      "foot_status": "passed",
+      "contributing_account_count": 14,
+      "account_contribution_total_yi": "0.0830909629",
+      "contribution_reconciliation_yi": "0",
+      "rows_sha256": "17972a75ffe85500a13bc2b2786eef78c058359f410e4acdbd798efba73e771f",
+      "top_contributor": {
+        "account_code": "52101000001",
+        "contribution_to_net_delta_yi": "-0.1264796803",
+        "current_locator": "综本!G1092"
+      }
+    },
+    {
+      "metric_id": "income.interest.investment",
+      "formula_weight": 1,
+      "quality_status": "standard_candidate",
+      "foot_status": "passed",
+      "contributing_account_count": 18,
+      "account_contribution_total_yi": "-1.7260319538",
+      "contribution_reconciliation_yi": "0",
+      "rows_sha256": "e1938c17c95666c1ff4ccb0581fc5f1bccc42f54150297acb313ed434df2cfa3",
+      "top_contributor": {
+        "account_code": "51402010003",
+        "contribution_to_net_delta_yi": "-1.3160266974",
+        "current_locator": "综本!G1041"
+      }
+    },
+    {
+      "metric_id": "income.interest.interbank_net",
+      "formula_weight": 1,
+      "quality_status": "standard_candidate",
+      "foot_status": "passed",
+      "contributing_account_count": 19,
+      "account_contribution_total_yi": "-0.5727880768",
+      "contribution_reconciliation_yi": "0",
+      "rows_sha256": "4385913de9f039365fd61f833dd4c0ea461bae0c15501462daad9fa5237cdb4b",
+      "top_contributor": {
+        "account_code": "52201000001",
+        "contribution_to_net_delta_yi": "-0.7223470174",
+        "current_locator": "综本!G1106"
+      },
+      "excluded_offset": {
+        "account_code": "50206000001",
+        "row_status": "excluded_offset",
+        "effective_component_weight": "0",
+        "effective_net_weight": "0"
+      }
+    }
+  ],
+  "governance": {
+    "sample_status": "captured-awaiting-approval",
+    "owner": "TBD",
+    "approver": "TBD",
+    "metric_status": "candidate",
+    "formal_use_allowed": false,
+    "certification_effect": "none",
+    "driver_status": "unclear"
+  }
+}

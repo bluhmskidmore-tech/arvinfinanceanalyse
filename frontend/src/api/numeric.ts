@@ -5,6 +5,7 @@
  * pydantic mirror ``backend/app/schemas/common_numeric.py``.
  */
 import type { Numeric, NumericUnit } from "./contracts";
+import { formatRawAsNumeric } from "../utils/format";
 
 const NUMERIC_UNITS: ReadonlySet<NumericUnit> = new Set<NumericUnit>([
   "yuan",
@@ -80,6 +81,41 @@ export function parseNumeric(value: unknown): Numeric {
  */
 export function parseNumericOrNull(value: unknown): Numeric | null {
   return isNumeric(value) ? value : null;
+}
+
+/**
+ * Normalize an unknown backend value (governed ``Numeric``, plain number, or
+ * numeric string) into ``Numeric``. Already-valid ``Numeric`` passes through
+ * unchanged; anything else is coerced via ``formatRawAsNumeric``.
+ */
+export function normalizeNumeric(
+  value: unknown,
+  unit: NumericUnit,
+  signAware: boolean,
+  precision?: number,
+): Numeric {
+  const parsed = parseNumericOrNull(value);
+  if (parsed) {
+    return parsed;
+  }
+  return formatRawAsNumeric({
+    raw: decimalRaw(value),
+    unit,
+    sign_aware: signAware,
+    precision,
+  });
+}
+
+function decimalRaw(value: unknown): number | null {
+  const parsed = parseNumericOrNull(value);
+  if (parsed) {
+    return parsed.raw;
+  }
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const raw = typeof value === "number" ? value : Number.parseFloat(String(value));
+  return Number.isFinite(raw) ? raw : null;
 }
 
 function describeShape(value: unknown): string {

@@ -39,7 +39,49 @@ class ProductCategoryMetricValue(BaseModel):
 
     raw: Decimal
     display: str
-    unit: Literal["percent"] = "percent"
+    unit: Literal["percent", "bp"] = "percent"
+
+
+class ProductCategoryLiabilityCostDecompositionPayload(BaseModel):
+    """Liability cost rate split into an ex-CLN base and the drag CLN adds on top.
+
+    `cln_scale` keeps the liability-side negative sign of the source `cnx_scale` so it
+    stays reconcilable against the `credit_linked_notes` row; display layers are
+    expected to take the absolute value (e.g. render -1_934_725_622 as "19.35 亿").
+    Rate fields carry `unit="percent"` and display at 2 decimals; `cln_drag_bp` carries
+    `unit="bp"` and displays at 1 decimal (lowercase, space-separated, e.g. "1.4 bp"),
+    since the percent rates it derives from only resolve to 1bp.
+
+    `cln_drag_bp` is a difference of two rates scaled by 100, so it scales any upstream
+    sub-1e-8 drift by 100 too: the persisted read model and the canonical recompute
+    legitimately disagree in `raw` around the 7th decimal while publishing an identical
+    `display`. Compare this field across paths via `display` or a 1e-6 tolerance; do not
+    assert strict `raw` equality.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    liability_yield_pct: ProductCategoryMetricValue | None = None
+    liability_yield_ex_cln_pct: ProductCategoryMetricValue | None = None
+    cln_yield_pct: ProductCategoryMetricValue | None = None
+    cln_drag_bp: ProductCategoryMetricValue | None = None
+    cln_scale: Decimal | None = None
+
+    @model_validator(mode="after")
+    def validate_metric_units(
+        self,
+    ) -> ProductCategoryLiabilityCostDecompositionPayload:
+        for field_name in (
+            "liability_yield_pct",
+            "liability_yield_ex_cln_pct",
+            "cln_yield_pct",
+        ):
+            metric = getattr(self, field_name)
+            if metric is not None and metric.unit != "percent":
+                raise ValueError(f"{field_name} must use unit='percent'")
+        if self.cln_drag_bp is not None and self.cln_drag_bp.unit != "bp":
+            raise ValueError("cln_drag_bp must use unit='bp'")
+        return self
 
 
 class ProductCategoryInterestSpreadPayload(BaseModel):
@@ -51,6 +93,21 @@ class ProductCategoryInterestSpreadPayload(BaseModel):
     cny_asset_yield_pct: ProductCategoryMetricValue | None = None
     cny_liability_yield_pct: ProductCategoryMetricValue | None = None
     cny_spread_pct: ProductCategoryMetricValue | None = None
+
+    @model_validator(mode="after")
+    def validate_metric_units(self) -> ProductCategoryInterestSpreadPayload:
+        for field_name in (
+            "all_currency_asset_yield_pct",
+            "all_currency_liability_yield_pct",
+            "all_currency_spread_pct",
+            "cny_asset_yield_pct",
+            "cny_liability_yield_pct",
+            "cny_spread_pct",
+        ):
+            metric = getattr(self, field_name)
+            if metric is not None and metric.unit != "percent":
+                raise ValueError(f"{field_name} must use unit='percent'")
+        return self
 
 
 class ProductCategoryPnlPayload(BaseModel):
@@ -66,6 +123,12 @@ class ProductCategoryPnlPayload(BaseModel):
     grand_total: ProductCategoryPnlRow
     interest_spread: ProductCategoryInterestSpreadPayload = Field(
         default_factory=ProductCategoryInterestSpreadPayload
+    )
+    interest_earning_spread: ProductCategoryInterestSpreadPayload = Field(
+        default_factory=ProductCategoryInterestSpreadPayload
+    )
+    liability_cost_decomposition: ProductCategoryLiabilityCostDecompositionPayload = Field(
+        default_factory=ProductCategoryLiabilityCostDecompositionPayload
     )
 
 
@@ -133,6 +196,47 @@ class ProductCategoryDatesPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     report_dates: list[str]
+
+
+class ProductCategoryHistoryItem(BaseModel):
+    """One report date inside a batch history response.
+
+    A missing report date degrades to status='not_found' for that item only, so a
+    partially materialized history still returns the periods that do exist.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    report_date: str
+    status: Literal["ok", "not_found"]
+    detail: str | None = None
+    result: ProductCategoryPnlPayload | None = None
+    result_meta: dict[str, object] | None = None
+
+
+class ProductCategoryHistoryPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    view: str
+    scenario_rate_pct: float | None = None
+    items: list[ProductCategoryHistoryItem]
+
+
+class ProductCategoryAttributionHistoryItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    report_date: str
+    status: Literal["ok", "not_found"]
+    detail: str | None = None
+    result: ProductCategoryAttributionPayload | None = None
+    result_meta: dict[str, object] | None = None
+
+
+class ProductCategoryAttributionHistoryPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    compare: Literal["mom", "yoy"]
+    items: list[ProductCategoryAttributionHistoryItem]
 
 
 class ProductCategoryManualAdjustmentCreateRequest(BaseModel):

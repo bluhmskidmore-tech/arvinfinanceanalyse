@@ -7,10 +7,11 @@ import { DataQualityBanner } from "../../components/page/DataQualityBanner";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
 import { FilterBar } from "../../components/FilterBar";
 import { KpiCard } from "../../components/KpiCard";
+import { DataSourceBadge } from "../../components/StatusPill";
+import { PageAsyncSection } from "../../components/page/PageAsyncSection";
 import { SectionLead } from "../../components/page/SectionLead";
-import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
+import { EM_DASH } from "../../utils/format";
 import {
-  ASSESSMENT_CENTERS_2025,
   buildTeamPerformanceQ1CaliberModel,
   buildTeamPerformanceViewModel,
   formatConfidenceLabel,
@@ -28,7 +29,8 @@ const DEFAULT_AS_OF_DATE = "2025-12-31";
 const Q1_CALIBER_YEAR = 2026;
 const Q1_CALIBER_AS_OF_DATE = "2026-03-31";
 
-type CenterId = (typeof ASSESSMENT_CENTERS_2025)[number]["centerId"];
+/** 兜底口径标注：正常情况下以后端下发的 caliber_label 为准。 */
+const WORKBOOK_CALIBER_LABEL_FALLBACK = "静态底稿·非正式口径（后端下发）";
 
 function scoreTone(scoreRate: number | null) {
   if (scoreRate === null) {
@@ -227,7 +229,13 @@ export default function TeamPerformancePage() {
   const client = useApiClient();
   const [selectedYear] = useState(DEFAULT_YEAR);
   const [selectedDate, setSelectedDate] = useState("");
-  const [selectedCenterId, setSelectedCenterId] = useState<CenterId>("product-market");
+  const [selectedCenterId, setSelectedCenterId] = useState<string>("product-market");
+
+  const workbookQuery = useQuery({
+    queryKey: ["team-performance", "assessment-workbook", client.mode],
+    queryFn: () => client.getTeamPerformanceAssessmentWorkbook(),
+    retry: false,
+  });
 
   const datesQuery = useQuery({
     queryKey: ["team-performance", "formal-dates", client.mode],
@@ -301,15 +309,19 @@ export default function TeamPerformancePage() {
     retry: false,
   });
 
+  const workbook = workbookQuery.data?.result ?? null;
+  const workbookCaliberLabel = workbook?.caliber_label ?? WORKBOOK_CALIBER_LABEL_FALLBACK;
+
   const viewModel = useMemo(
     () =>
       buildTeamPerformanceViewModel({
+        workbook,
         byBusinessItems: byBusinessQuery.data?.result.items,
         productCategoryRows: productCategoryQuery.data?.result.rows,
         byBusinessMeta: byBusinessQuery.data?.result_meta ?? null,
         productCategoryMeta: productCategoryQuery.data?.result_meta ?? null,
       }),
-    [byBusinessQuery.data, productCategoryQuery.data],
+    [workbook, byBusinessQuery.data, productCategoryQuery.data],
   );
 
   const q1CaliberModel = useMemo(
@@ -335,10 +347,13 @@ export default function TeamPerformancePage() {
   }));
 
   const loading =
+    workbookQuery.isLoading ||
     datesQuery.isLoading ||
     (canLoadEvidence && (byBusinessQuery.isLoading || productCategoryQuery.isLoading));
   const error =
-    datesQuery.isError || (canLoadEvidence && (byBusinessQuery.isError || productCategoryQuery.isError));
+    workbookQuery.isError ||
+    datesQuery.isError ||
+    (canLoadEvidence && (byBusinessQuery.isError || productCategoryQuery.isError));
   const showNoSubstitution = !datesQuery.isLoading && !hasDefaultDate;
   const noMappedEvidence = canLoadEvidence && !loading && !error && viewModel.mappedCenterCount === 0;
   const q1CaliberLoading =
@@ -348,6 +363,11 @@ export default function TeamPerformancePage() {
     canLoadQ1CaliberEvidence &&
     (q1ByBusinessMonthlyQuery.isError || q1ProductCategoryQuery.isError);
   const resultMetaSections = [
+    {
+      key: "assessment-workbook",
+      title: "考核底稿（静态·非正式）",
+      meta: workbookQuery.data?.result_meta,
+    },
     {
       key: "by-business-ytd",
       title: "业务种类损益 YTD",
@@ -364,15 +384,19 @@ export default function TeamPerformancePage() {
   );
 
   return (
-    <section data-testid="team-performance-page" className="team-performance-page">
+    <section
+      data-testid="team-performance-page"
+      data-moss-theme-scope="team-performance"
+      className="team-performance-page"
+    >
       <div className="team-performance-page__hero">
         <div className="team-performance-page__hero-copy">
           <h1 data-testid="team-performance-page-title" className="team-performance-page__title">
-            Team Performance 工作损益分析
+            团队绩效工作损益分析
           </h1>
           <p className="team-performance-page__subtitle">
-            聚焦回答“2025 年各部室考核得分如何，相关工作损益证据是多少”。Excel
-            仍是方案底稿，页面只并排展示正式接口中可见的 YTD 损益证据。
+            聚焦回答“2025 年各部室考核得分如何，相关工作损益证据是多少”。考核底稿与汇总分
+            由后端静态下发（非正式口径），页面并排展示正式接口中可见的 YTD 损益证据。
           </p>
         </div>
         <span
@@ -414,17 +438,29 @@ export default function TeamPerformancePage() {
       </FilterBar>
 
       <SectionLead
-        eyebrow="Assessment"
+        eyebrow="考核总览"
         title="2025 部室考核矩阵"
         description="首屏先看各部室总分、映射证据覆盖情况和正式读链路状态。所有损益都明确标为“映射分析”，不替代正式中心归属口径。"
       />
+
+      <div>
+        <DataSourceBadge
+          status="analysis"
+          label={`考核得分：${workbookCaliberLabel}`}
+          testId="team-performance-demo-score-badge"
+          title={
+            workbook?.caliber_note ??
+            "2025 部室考核底稿与汇总分由后端静态底稿服务下发，未接入正式绩效考核读模型，不作正式口径"
+          }
+        />
+      </div>
 
       <div data-testid="team-performance-summary-cards" className="team-performance-page__summary-grid">
         <KpiCard
           label="工作簿总得分"
           value={viewModel.totalWorkbookScore.toFixed(2)}
           unit="分"
-          detail="直接汇总 Excel 底稿已有得分，不重算评分规则。"
+          detail={`${workbookCaliberLabel}：汇总分由后端按 Excel 底稿已有得分算好下发，不重算评分规则。`}
           tone="positive"
         />
         <KpiCard
@@ -462,7 +498,7 @@ export default function TeamPerformancePage() {
       <section data-testid="team-performance-q1-caliber" className="team-performance-page__q1-panel">
         <div className="team-performance-page__q1-header">
           <div>
-            <div className="team-performance-page__meta-eyebrow">Q1 Actual</div>
+            <div className="team-performance-page__meta-eyebrow">季度实际</div>
             <h2 className="team-performance-page__q1-title">2026 Q1实际口径拆解</h2>
             <p className="team-performance-page__q1-copy">
               只展示实际证据、来源行和口径状态；年度目标、达成判断和 Excel 外推数均不进入本区汇总。
@@ -502,7 +538,7 @@ export default function TeamPerformancePage() {
                     <span>{center.centerName}</span>
                     <strong>{formatYiFromYuan(center.includedTotalYuan)}</strong>
                     <em>
-                      纳入 {center.includedRuleCount} · 另列 {exceptionRules.length} · 待拆 {center.pendingRuleCount}
+                      纳入 {center.includedRuleCount}，另列 {exceptionRules.length}，待拆 {center.pendingRuleCount}
                     </em>
                   </div>
                   <div className="team-performance-page__q1-lane-grid">
@@ -600,7 +636,7 @@ export default function TeamPerformancePage() {
                       <div className="team-performance-page__q1-source-cell">
                         <span>{rule.sourceLabel}</span>
                         <code>{rule.rowId ?? "暂无独立行"}</code>
-                        <span>{rule.amountField ?? "-"}</span>
+                        <span>{rule.amountField ?? EM_DASH}</span>
                         <span>来源行：{rule.rowName}</span>
                       </div>
                     </td>
@@ -632,7 +668,7 @@ export default function TeamPerformancePage() {
           tone="warning"
           badge="待正式日期"
           title="2025 证据日期未就绪"
-          description="正式日期列表未包含 2025-12-31，因此当前页面只保留 2025 方案底稿视图，不会 silently substitute 2026。"
+          description="正式日期列表未包含 2025-12-31，因此当前页面只保留 2025 方案底稿视图，不会静默替代为 2026 数据。"
           facts={[
             { label: "考核年度", value: "锁定 2025" },
             { label: "目标日期", value: "2025-12-31" },
@@ -650,23 +686,28 @@ export default function TeamPerformancePage() {
           testId="team-performance-error"
           tone="error"
           badge="链路异常"
-          title="2025 工作损益证据加载失败"
-          description="请先恢复 `getPnlByBusinessYtd` 与 `getProductCategoryPnl` 的正式读链路，再查看部室映射分析。"
+          title="2025 考核底稿或工作损益证据加载失败"
+          description="请先恢复 `getTeamPerformanceAssessmentWorkbook`（考核底稿）、`getPnlByBusinessYtd` 与 `getProductCategoryPnl` 读链路，再查看部室矩阵与映射分析。"
           facts={[
-            { label: "失败范围", value: "正式 YTD 证据接口" },
+            { label: "失败范围", value: "考核底稿或正式 YTD 证据接口" },
             { label: "目标日期", value: selectedDate || DEFAULT_AS_OF_DATE },
-            { label: "页面策略", value: "保留底稿，不形成映射结论" },
+            { label: "页面策略", value: "不本地兜底底稿，不形成映射结论" },
           ]}
           impacts={[
-            "工作簿得分和指标底稿仍可继续查看。",
-            "重试成功后会按同一日期重新拉取两条证据链路。",
+            "考核底稿改由后端下发，底稿链路失败时矩阵与明细暂不可用。",
+            "重试成功后会重新拉取考核底稿与两条证据链路。",
           ]}
           action={
             <button
               type="button"
               className="team-performance-page__retry-button"
               onClick={() => {
-                void Promise.all([datesQuery.refetch(), byBusinessQuery.refetch(), productCategoryQuery.refetch()]);
+                void Promise.all([
+                  workbookQuery.refetch(),
+                  datesQuery.refetch(),
+                  byBusinessQuery.refetch(),
+                  productCategoryQuery.refetch(),
+                ]);
               }}
             >
               重试
@@ -694,23 +735,38 @@ export default function TeamPerformancePage() {
         />
       ) : null}
 
-      <AsyncSection
+      <PageAsyncSection
         title="部室工作损益矩阵"
         isLoading={loading}
         isError={false}
         isEmpty={false}
         fillHeight={false}
         onRetry={() => {
-          void Promise.all([datesQuery.refetch(), byBusinessQuery.refetch(), productCategoryQuery.refetch()]);
+          void Promise.all([
+            workbookQuery.refetch(),
+            datesQuery.refetch(),
+            byBusinessQuery.refetch(),
+            productCategoryQuery.refetch(),
+          ]);
         }}
       >
+        {selectedCenter ? (
         <div className="team-performance-page__section-stack">
           <section className="team-performance-page__panel">
             <SectionLead
-              eyebrow="Matrix"
+              eyebrow="部室对照"
               title="部室矩阵"
               description="按部室汇总显示 Excel 得分、映射损益、映射规模和覆盖状态。点击任一部室，下方查看对应的底稿指标和映射证据。"
             />
+
+            <div>
+              <DataSourceBadge
+                status="analysis"
+                label={`权重/得分列：${workbookCaliberLabel}`}
+                testId="team-performance-matrix-demo-badge"
+                title="矩阵中的权重、工作簿得分与得分率来自后端下发的静态考核底稿，未接入正式绩效考核读模型"
+              />
+            </div>
 
             <div className="team-performance-page__table-shell team-performance-page__table-shell--matrix">
               <table data-testid="team-performance-center-matrix" className="team-performance-page__table">
@@ -738,7 +794,7 @@ export default function TeamPerformancePage() {
                             type="button"
                             className="team-performance-page__matrix-button"
                             aria-label={center.centerName}
-                            onClick={() => setSelectedCenterId(center.centerId as CenterId)}
+                            onClick={() => setSelectedCenterId(center.centerId)}
                           >
                             <span className="team-performance-page__matrix-button-name">{center.centerName}</span>
                             <span className="team-performance-page__matrix-button-meta" aria-hidden="true">
@@ -785,7 +841,7 @@ export default function TeamPerformancePage() {
                       type="button"
                       className="team-performance-page__matrix-card-button"
                       aria-label={center.centerName}
-                      onClick={() => setSelectedCenterId(center.centerId as CenterId)}
+                      onClick={() => setSelectedCenterId(center.centerId)}
                     >
                       <div className="team-performance-page__matrix-card-header">
                         <div>
@@ -830,7 +886,7 @@ export default function TeamPerformancePage() {
 
           <section data-testid="team-performance-detail" className="team-performance-page__panel">
             <SectionLead
-              eyebrow="Detail"
+              eyebrow="部室下钻"
               title={`${selectedCenter.centerName} 明细`}
               description="左侧保留 Excel 底稿指标，右侧展示正式接口中的映射分析证据。页面不会重算得分，只显示方案底稿中的分值和完成情况。"
             />
@@ -1043,16 +1099,17 @@ export default function TeamPerformancePage() {
             </div>
           </section>
         </div>
+        ) : null}
 
         {visibleResultMetaSections.length > 0 ? (
           <section data-testid="team-performance-result-meta" className="team-performance-page__meta-shell">
             <div className="team-performance-page__meta-header">
               <div>
-                <div className="team-performance-page__meta-eyebrow">Evidence</div>
+                <div className="team-performance-page__meta-eyebrow">溯源证据</div>
                 <h3 className="team-performance-page__meta-title">结果元信息摘要</h3>
               </div>
               <p className="team-performance-page__meta-copy">
-                先看两条正式读链路的质量、降级和更新时间；完整口径、版本和追踪编号收在下方折叠区。
+                先看考核底稿（静态·非正式）与两条正式读链路的质量、降级和更新时间；完整口径、版本和追踪编号收在下方折叠区。
               </p>
             </div>
 
@@ -1061,7 +1118,9 @@ export default function TeamPerformancePage() {
                 <article key={section.key} className="team-performance-page__meta-card">
                   <div className="team-performance-page__meta-card-header">
                     <div>
-                      <div className="team-performance-page__meta-card-label">正式证据链路</div>
+                      <div className="team-performance-page__meta-card-label">
+                        {section.meta.basis === "formal" ? "正式证据链路" : "分析链路（非正式）"}
+                      </div>
                       <h4 className="team-performance-page__meta-card-title">{section.title}</h4>
                     </div>
                     <span
@@ -1105,7 +1164,7 @@ export default function TeamPerformancePage() {
             </details>
           </section>
         ) : null}
-      </AsyncSection>
+      </PageAsyncSection>
     </section>
   );
 }

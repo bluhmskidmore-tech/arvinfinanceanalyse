@@ -2,6 +2,11 @@
   "id": "ledger_pnl_unit_mismatch_001",
   "page": "ledger-pnl",
   "goal": "Fix a Ledger PnL unit mismatch without broad refactoring.",
+  "metric_ids": [
+    "MTR-LPN-001",
+    "MTR-LPN-002",
+    "MTR-LPN-003"
+  ],
   "allowed_scope": [
     "frontend/src/features/ledger-pnl/",
     "frontend/src/api/",
@@ -9,16 +14,22 @@
   ],
   "forbidden": [
     "backend/app/schema_registry/",
-    "frontend/src/api/client.ts"
+    "frontend/src/api/client.ts",
+    "scripts/agent_eval/",
+    ".github/workflows/"
   ],
   "required_evidence": [
     "moss-metric-contracts",
     "moss-lineage-evidence"
   ],
+  "evidence_probes": {
+    "moss-metric-contracts": ".codex-tmp/agent-eval/evidence/metric-contracts.json",
+    "moss-lineage-evidence": ".codex-tmp/agent-eval/evidence/lineage-evidence.json"
+  },
   "checks": [
-    "npm run test -- LedgerPnl",
-    "npm run debt:audit",
-    "npm run typecheck"
+    "npm --prefix frontend run test -- LedgerPnl",
+    "npm --prefix frontend run debt:audit",
+    "npm --prefix frontend run typecheck"
   ],
   "business_gates": [
     "unit_consistency",
@@ -31,6 +42,30 @@
     "page_loads",
     "no_console_errors",
     "fallback_or_stale_state_visible_when_applicable"
-  ]
+  ],
+  "gate_probes": {
+    "unit_consistency": "npm --prefix frontend run test -- LedgerPnlUnitContract",
+    "precision_and_rounding": "npm --prefix frontend run test -- LedgerPnlPrecisionContract",
+    "date_semantics": "npm --prefix frontend run test -- LedgerPnlDateSemanticsContract",
+    "null_zero_undefined_handling": "npm --prefix frontend run test -- LedgerPnlNullMatrixContract",
+    "no_frontend_official_metric_recalculation": "python -m pytest tests/test_no_finance_logic_in_frontend.py -q",
+    "page_loads": "npm --prefix frontend run test:a11y-smoke -- tests/playwright/ledger-pnl-probe.spec.mjs",
+    "no_console_errors": "npm --prefix frontend run test:a11y-smoke -- tests/playwright/ledger-pnl-probe.spec.mjs",
+    "fallback_or_stale_state_visible_when_applicable": "npm --prefix frontend run test -- LedgerPnlFallbackStateContract"
+  },
+  "probe_protected_paths": [
+    "tests/test_no_finance_logic_in_frontend.py",
+    "frontend/src/test/LedgerPnlUnitContract.test.tsx",
+    "frontend/src/test/LedgerPnlPrecisionContract.test.tsx",
+    "frontend/src/test/LedgerPnlDateSemanticsContract.test.tsx",
+    "frontend/src/test/LedgerPnlNullMatrixContract.test.tsx",
+    "frontend/src/test/LedgerPnlFallbackStateContract.test.tsx",
+    "frontend/tests/playwright/ledger-pnl-probe.spec.mjs"
+  ],
+  "gate_probe_gaps": {},
+  "probe_notes": {
+    "date_semantics": "ledger-pnl has no trade-date concept by contract: the only date basis is report_date = exact calendar month-end. The probe pins flow/point label-field binding, month-end semantics (no local date derivation), and YTD-vs-point compare-month arithmetic.",
+    "page_loads": "Playwright probe requires VITE_DATA_SOURCE=mock, MOSS_PLAYWRIGHT_USE_WEB_SERVER=1 and an installed Chromium; the spec self-skips outside mock mode. Runner environments provide these (CI job env / run.ps1 docs).",
+    "fallback_or_stale_state_visible_when_applicable": "Component-level probe covers 5 degradation shapes on the analysis workbench; page-level source-risk segments remain covered only in the ready direction."
+  }
 }
-

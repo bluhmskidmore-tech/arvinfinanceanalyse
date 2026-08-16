@@ -3,11 +3,20 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from typing import Any, ClassVar
 
-from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
+from backend.app.schemas.common_numeric import Numeric, NumericRawScale, NumericUnit, numeric_from_raw
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+# (unit, sign_aware) keeps the legacy "auto" pct heuristic;
+# (unit, sign_aware, raw_scale) declares the producing raw scale explicitly.
+_NumericFieldSpec = tuple[NumericUnit, bool] | tuple[NumericUnit, bool, NumericRawScale]
 
-def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) -> Any:
+
+def _coerce_value_to_numeric(
+    value: Any,
+    unit: NumericUnit,
+    sign_aware: bool,
+    raw_scale: NumericRawScale = "auto",
+) -> Any:
     if value is None:
         return None
     if isinstance(value, Numeric):
@@ -15,7 +24,9 @@ def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) ->
     if isinstance(value, dict) and {"raw", "unit", "display", "precision", "sign_aware"} <= set(value.keys()):
         return value
     if isinstance(value, Decimal):
-        return numeric_from_raw(raw=float(value), unit=unit, sign_aware=sign_aware).model_dump(mode="json")
+        return numeric_from_raw(
+            raw=float(value), unit=unit, sign_aware=sign_aware, raw_scale=raw_scale
+        ).model_dump(mode="json")
     if isinstance(value, str):
         normalized = value.strip().replace(",", "")
         if not normalized:
@@ -24,22 +35,28 @@ def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) ->
             raw = float(Decimal(normalized))
         except InvalidOperation:
             return value
-        return numeric_from_raw(raw=raw, unit=unit, sign_aware=sign_aware).model_dump(mode="json")
+        return numeric_from_raw(
+            raw=raw, unit=unit, sign_aware=sign_aware, raw_scale=raw_scale
+        ).model_dump(mode="json")
     if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return numeric_from_raw(raw=float(value), unit=unit, sign_aware=sign_aware).model_dump(mode="json")
+        return numeric_from_raw(
+            raw=float(value), unit=unit, sign_aware=sign_aware, raw_scale=raw_scale
+        ).model_dump(mode="json")
     return value
 
 
 def _apply_numeric_coercion(
-    field_map: dict[str, tuple[NumericUnit, bool]],
+    field_map: dict[str, _NumericFieldSpec],
     data: Any,
 ) -> Any:
     if not isinstance(data, dict):
         return data
     out = dict(data)
-    for field_name, (unit, sign_aware) in field_map.items():
+    for field_name, spec in field_map.items():
         if field_name in out:
-            out[field_name] = _coerce_value_to_numeric(out[field_name], unit, sign_aware)
+            unit, sign_aware = spec[0], spec[1]
+            raw_scale: NumericRawScale = spec[2] if len(spec) == 3 else "auto"
+            out[field_name] = _coerce_value_to_numeric(out[field_name], unit, sign_aware, raw_scale)
     return out
 
 
@@ -79,6 +96,24 @@ class LiabilityBucketAmountItem(BaseModel):
         return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
 
 
+class LiabilityNimStress(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    nim_stressed: Numeric | None = None
+    delta_bp: Numeric | None = None
+
+    # nim_stressed: liability_analytics_service._build_nim_stress -> nim(decimal ratio) - 0.005.
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
+        "nim_stressed": ("pct", True, "ratio"),
+        "delta_bp": ("bp", True),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
 class LiabilityYieldKpi(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -86,12 +121,15 @@ class LiabilityYieldKpi(BaseModel):
     liability_cost: Numeric | None = None
     market_liability_cost: Numeric | None = None
     nim: Numeric | None = None
+    nim_stress: LiabilityNimStress | None = None
 
-    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
-        "asset_yield": ("pct", True),
-        "liability_cost": ("pct", True),
-        "market_liability_cost": ("pct", True),
-        "nim": ("pct", True),
+    # All four: core_finance.liability_analytics_compat.compute_liability_yield_metrics
+    # -> weighted_rate over normalize_*_rate_decimal outputs (decimal ratios, 0.0255 == 2.55%).
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
+        "asset_yield": ("pct", True, "ratio"),
+        "liability_cost": ("pct", True, "ratio"),
+        "market_liability_cost": ("pct", True, "ratio"),
+        "nim": ("pct", True, "ratio"),
     }
 
     @model_validator(mode="before")
@@ -108,9 +146,11 @@ class LiabilityCounterpartyTopItem(BaseModel):
     type: str
     weighted_cost: Numeric | None = None
 
-    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+    # weighted_cost: compute_liability_counterparty -> weighted_num/weighted_den over
+    # normalize_interbank_rate_decimal outputs (decimal ratio).
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
         "value": ("yuan", False),
-        "weighted_cost": ("pct", True),
+        "weighted_cost": ("pct", True, "ratio"),
     }
 
     @model_validator(mode="before")
@@ -149,13 +189,16 @@ class LiabilityMonthlyBreakdownRow(BaseModel):
     pct: Numeric | None = None
     weighted_cost: Numeric | None = None
 
-    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+    # proportion/pct: compute_liabilities_monthly & monthly_breakdown_items/monthly_v1_term_items
+    # -> avg_value / total shares (decimal ratios). weighted_cost: weighted_num/weighted_den
+    # over normalized decimal rates (decimal ratio).
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
         "avg_balance": ("yuan", False),
         "avg_value": ("yuan", False),
-        "proportion": ("pct", False),
+        "proportion": ("pct", False, "ratio"),
         "amount": ("yuan", False),
-        "pct": ("pct", False),
-        "weighted_cost": ("pct", True),
+        "pct": ("pct", False, "ratio"),
+        "weighted_cost": ("pct", True, "ratio"),
     }
 
     @model_validator(mode="before")
@@ -175,6 +218,10 @@ class LiabilityMonthlyItem(BaseModel):
     avg_liability_cost: Numeric | None = None
     mom_change: Numeric | None = None
     mom_change_pct: Numeric | None = None
+    top10_share: Numeric | None = None
+    hhi: Numeric | None = None
+    population_count: int = Field(default=0, ge=0)
+    is_truncated: bool = False
     counterparty_top10: list[LiabilityMonthlyBreakdownRow] = Field(default_factory=list)
     by_institution_type: list[LiabilityMonthlyBreakdownRow] = Field(default_factory=list)
     structure_overview: list[LiabilityMonthlyBreakdownRow] = Field(default_factory=list)
@@ -186,13 +233,19 @@ class LiabilityMonthlyItem(BaseModel):
     counterparty_details: list[LiabilityMonthlyBreakdownRow] = Field(default_factory=list)
     num_days: int
 
-    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+    # avg_liability_cost: liability_analytics_compat.compute_liabilities_monthly L722
+    # weighted_num/weighted_den over normalize_*_rate_decimal outputs (decimal ratio).
+    # mom_change_pct: producer emits None only (compat L727-728, cached-route parity);
+    # no confirmed numeric-scale evidence, so it stays on the legacy "auto" heuristic.
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
         "avg_total_liabilities": ("yuan", False),
         "avg_interbank_liabilities": ("yuan", False),
         "avg_issued_liabilities": ("yuan", False),
-        "avg_liability_cost": ("pct", True),
+        "avg_liability_cost": ("pct", True, "ratio"),
         "mom_change": ("yuan", True),
         "mom_change_pct": ("pct", True),
+        "top10_share": ("pct", False, "ratio"),
+        "hhi": ("count", False),
     }
 
     @model_validator(mode="before")
@@ -211,6 +264,7 @@ class LiabilityRiskBucketsPayload(BaseModel):
     interbank_liabilities_term_buckets: list[LiabilityBucketAmountItem] = Field(default_factory=list)
     issued_liabilities_structure: list[LiabilityNameAmountItem] = Field(default_factory=list)
     issued_liabilities_term_buckets: list[LiabilityBucketAmountItem] = Field(default_factory=list)
+    missing_maturity_count: int = Field(default=0, ge=0)
 
 
 class LiabilityYieldHistoryPoint(BaseModel):
@@ -250,11 +304,17 @@ class LiabilityCounterpartyPayload(BaseModel):
 
     report_date: str
     total_value: Numeric
+    top10_share: Numeric | None = None
+    hhi: Numeric | None = None
+    population_count: int = Field(default=0, ge=0)
+    is_truncated: bool = False
     top_10: list[LiabilityCounterpartyTopItem]
     by_type: list[LiabilityCounterpartyByTypeItem]
 
-    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
         "total_value": ("yuan", False),
+        "top10_share": ("pct", False, "ratio"),
+        "hhi": ("count", False),
     }
 
     @model_validator(mode="before")
@@ -271,9 +331,11 @@ class LiabilitiesMonthlyPayload(BaseModel):
     ytd_avg_total_liabilities: Numeric | None = None
     ytd_avg_liability_cost: Numeric | None = None
 
-    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+    # ytd_avg_liability_cost: liability_analytics_compat.compute_liabilities_monthly
+    # L831-833 ytd_weighted_num/ytd_weighted_den over the same normalized decimal rates.
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
         "ytd_avg_total_liabilities": ("yuan", False),
-        "ytd_avg_liability_cost": ("pct", True),
+        "ytd_avg_liability_cost": ("pct", True, "ratio"),
     }
 
     @model_validator(mode="before")

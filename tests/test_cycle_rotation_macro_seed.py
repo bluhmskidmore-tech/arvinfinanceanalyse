@@ -13,7 +13,7 @@ from backend.app.tasks.cycle_rotation_macro_seed import (
 )
 
 
-def test_seed_fixture_makes_macro_score_ready(tmp_path: Path) -> None:
+def test_seed_fixture_rows_remain_observational_without_availability_evidence(tmp_path: Path) -> None:
     db_path = tmp_path / "macro.duckdb"
     conn = duckdb.connect(str(db_path))
     try:
@@ -74,9 +74,11 @@ def test_seed_fixture_makes_macro_score_ready(tmp_path: Path) -> None:
     assert "M5525763" in seed_payload["series_ids"]
 
     evidence = _load_cycle_input_evidence(duckdb_path=str(db_path), as_of_date=date(2026, 5, 8))
-    assert evidence.pmi_ready is True
-    assert evidence.credit_impulse_ready is True
+    assert evidence.pmi_ready is False
+    assert evidence.credit_impulse_ready is False
     assert evidence.price_spread_ready is True
+    assert "source_version" in evidence.pmi_evidence
+    assert "source_version" in evidence.credit_impulse_evidence
     assert evidence.macro_score is not None
     assert evidence.macro_score_ready is True
     assert "MacroScore" in evidence.macro_score_evidence

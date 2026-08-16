@@ -238,6 +238,18 @@ def _build_rule_reference_table() -> dict[str, Any]:
             "source_doc": "docs/BALANCE_ANALYSIS_SPEC_FOR_CODEX.md",
             "source_section": "13 当前 governed workbook 已支持的 section keys",
         },
+        {
+            "rule_id": "bal_campisi_benchmark_missing_null",
+            "rule_name": "Campisi 基准缺失口径",
+            "summary": (
+                "Campisi 归因的利差基准为在册'政策性金融债'加权票面利率；"
+                "在册无该基准（或基准行票面利率全部缺失）时，"
+                "'campisi_breakdown' 的利差(bp)与利差收入贡献列显式输出 null，"
+                "不允许把基准静默降级为 0（利差退化为票息本身）。"
+            ),
+            "source_doc": "docs/calc_rules.md",
+            "source_section": "14 禁止事项（不允许静默降级为 0 且不打标记）",
+        },
     ]
     return _table(
         "rule_reference",

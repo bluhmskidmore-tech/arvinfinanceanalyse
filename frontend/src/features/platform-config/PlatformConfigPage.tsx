@@ -2,105 +2,23 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "../../api/client";
-import { designTokens } from "../../theme/designSystem";
-import { displayTokens } from "../../theme/displayTokens";
 import type {
   HealthCheckStatus,
   HealthResponse,
   HealthStatusResponse,
   SourcePreviewSummary,
 } from "../../api/contracts";
-import { shellTokens as t } from "../../theme/tokens";
-import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../../components/KpiCard";
+import {
+  EvidencePanel,
+  PageHeader,
+  PageSectionLead,
+  PageStateSurface,
+} from "../../components/page/PagePrimitives";
+import { SkeletonBarStack } from "../../components/SkeletonBars";
+import { EM_DASH } from "../../utils/format";
 
-const summaryGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 16,
-} as const;
-
-const healthGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 16,
-} as const;
-
-const tableShellStyle = {
-  overflowX: "auto",
-  borderRadius: 16,
-  border: `1px solid ${t.colorBorder}`,
-  background: t.colorBgSurface,
-  marginTop: 18,
-} as const;
-
-const tableStyle = {
-  width: "100%",
-  borderCollapse: "collapse" as const,
-  fontSize: 13,
-} as const;
-
-const thStyle = {
-  textAlign: "left" as const,
-  padding: "10px 12px",
-  borderBottom: `1px solid ${t.colorBorder}`,
-  color: t.colorTextSecondary,
-  fontSize: 13,
-};
-
-const tdStyle = {
-  padding: "12px",
-  borderBottom: `1px solid ${t.colorBgMuted}`,
-  color: t.colorTextPrimary,
-};
-
-const sectionLeadWrapStyle = {
-  display: "grid",
-  gap: 6,
-  marginTop: 28,
-} as const;
-
-const sectionEyebrowStyle = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "#8090a8",
-} as const;
-
-const sectionTitleStyle = {
-  margin: 0,
-  fontSize: 18,
-  fontWeight: 600,
-  color: t.colorTextPrimary,
-} as const;
-
-const sectionDescriptionStyle = {
-  margin: 0,
-  maxWidth: 860,
-  color: t.colorTextSecondary,
-  fontSize: 13,
-  lineHeight: 1.7,
-} as const;
-
-const diagnosticBoundaryStyle = {
-  display: "grid",
-  gap: 8,
-  marginTop: 16,
-  marginBottom: 4,
-  padding: "14px 16px",
-  borderRadius: 12,
-  border: `1px solid ${t.colorBorder}`,
-  background: t.colorBgSurface,
-  color: t.colorTextSecondary,
-  fontSize: 12,
-  lineHeight: 1.6,
-} as const;
-
-const diagnosticBoundaryCodeStyle = {
-  color: t.colorTextPrimary,
-  fontWeight: 700,
-} as const;
+import styles from "./PlatformConfigPage.module.css";
 
 function resolveCheck(data: HealthResponse, key: string): HealthCheckStatus {
   const c = data.checks ?? {};
@@ -120,7 +38,7 @@ function resolveCheck(data: HealthResponse, key: string): HealthCheckStatus {
 function environmentLabel(data: HealthResponse): string {
   const raw = (data as HealthResponse & { environment?: unknown }).environment;
   if (raw === undefined || raw === null || String(raw).trim() === "") {
-    return "—";
+    return EM_DASH;
   }
   return String(raw);
 }
@@ -142,7 +60,7 @@ function healthProbeDisplay(q: {
   }
   const s = q.data?.status;
   if (s === undefined || String(s).trim() === "") {
-    return { value: "—", tone: "default" };
+    return { value: EM_DASH, tone: "default" };
   }
   const text = String(s);
   return { value: text, tone: text === "ok" ? "positive" : "default" };
@@ -150,35 +68,9 @@ function healthProbeDisplay(q: {
 
 function StatusBadge({ ok }: { ok: boolean }) {
   return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        padding: "4px 10px",
-        borderRadius: 999,
-        background: ok ? t.colorBgMuted : t.colorBorder,
-        color: ok ? t.colorSuccess : t.colorDanger,
-        fontSize: 12,
-        fontWeight: 600,
-        border: `1px solid ${ok ? t.colorBorderStrong : t.colorDanger}`,
-      }}
-    >
+    <span className={styles.statusBadge} data-ok={ok ? "true" : "false"}>
       {ok ? "正常" : "异常"}
     </span>
-  );
-}
-
-function SectionLead(props: {
-  eyebrow: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div style={sectionLeadWrapStyle}>
-      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
-      <h2 style={sectionTitleStyle}>{props.title}</h2>
-      <p style={sectionDescriptionStyle}>{props.description}</p>
-    </div>
   );
 }
 
@@ -220,8 +112,8 @@ export default function PlatformConfigPage() {
   const redis = health ? resolveCheck(health, "redis") : null;
   const pg = health ? resolveCheck(health, "postgresql") : null;
   const objectStore = health ? resolveCheck(health, "object_store") : null;
-  const envLabel = health ? environmentLabel(health) : "—";
-  const overallStatusLabel = health?.status ? String(health.status) : "—";
+  const envLabel = health ? environmentLabel(health) : EM_DASH;
+  const overallStatusLabel = health?.status ? String(health.status) : EM_DASH;
   const sourceCount = sources.length;
   const abnormalSourceCount = useMemo(
     () => sources.filter((summary) => !sourceRowOk(summary)).length,
@@ -236,70 +128,22 @@ export default function PlatformConfigPage() {
   const summaryProbe = healthProbeDisplay(healthSummaryQuery);
 
   return (
-    <section>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 16,
-          marginBottom: 24,
-        }}
-      >
-        <div>
-          <h1
-            data-testid="platform-config-page-title"
-            style={{
-              margin: 0,
-              fontSize: 32,
-              fontWeight: 600,
-              letterSpacing: "-0.03em",
-              color: t.colorTextPrimary,
-            }}
-          >
-            中台配置
-          </h1>
-          <p
-            style={{
-              marginTop: 10,
-              marginBottom: 0,
-              maxWidth: 860,
-              color: t.colorTextSecondary,
-              fontSize: 15,
-              lineHeight: 1.75,
-            }}
-          >
-            系统健康状态、数据源概览与治理信息。
-          </p>
-        </div>
-        <span
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            padding: "8px 12px",
-            borderRadius: 999,
-            background:
-              client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
-            color:
-              client.mode === "real"
-                ? displayTokens.apiMode.realForeground
-                : displayTokens.apiMode.mockForeground,
-            fontSize: 12,
-            fontWeight: 600,
-            letterSpacing: "0.04em",
-            textTransform: "uppercase",
-          }}
-        >
-          {client.mode === "real" ? "真实治理读链路" : "本地演示数据"}
-        </span>
-      </div>
+    <section className={styles.page} data-moss-theme-scope="platform-config">
+      <PageHeader
+        eyebrow="报表与数据"
+        title="中台配置"
+        titleTestId="platform-config-page-title"
+        description="系统健康状态、数据源概览与治理信息。"
+        badgeLabel={client.mode === "real" ? "真实治理读链路" : "本地演示数据"}
+        badgeTone={client.mode === "real" ? "positive" : "accent"}
+      />
 
-      <SectionLead
+      <PageSectionLead
         eyebrow="总览"
         title="平台概览"
         description="先看系统状态、运行环境和数据源摘要，再下钻到健康检查卡片与数据源表格，保持配置页的阅读顺序与其他标准壳层一致。"
       />
-      <div style={summaryGridStyle}>
+      <div className={styles.kpiGrid}>
         <div data-testid="platform-config-overall-status">
           <KpiCard
             title="系统状态"
@@ -312,7 +156,7 @@ export default function PlatformConfigPage() {
           <KpiCard
             title="存活探测"
             value={liveProbe.value}
-            detail="GET /health/live — 仅展示 status"
+            detail="GET /health/live，仅展示 status"
             valueVariant="text"
             tone={liveProbe.tone}
           />
@@ -321,7 +165,7 @@ export default function PlatformConfigPage() {
           <KpiCard
             title="简易状态"
             value={summaryProbe.value}
-            detail="GET /health — 仅展示 status"
+            detail="GET /health，仅展示 status"
             valueVariant="text"
             tone={summaryProbe.tone}
           />
@@ -330,40 +174,52 @@ export default function PlatformConfigPage() {
           <KpiCard title="系统环境" value={envLabel} detail="部署/运行环境标识" valueVariant="text" />
         </div>
         <div data-testid="platform-config-source-count">
-          <KpiCard title="数据源数量" value={String(sourceCount)} detail="当前源基础摘要中的来源数" valueVariant="text" />
+          <KpiCard title="数据源数量" value={String(sourceCount)} detail="当前源基础摘要中的来源数" />
         </div>
         <div data-testid="platform-config-abnormal-sources">
-          <KpiCard title="异常来源" value={String(abnormalSourceCount)} detail="行数为 0 或仍有人工复核的来源" valueVariant="text" />
+          <KpiCard title="异常来源" value={String(abnormalSourceCount)} detail="行数为 0 或仍有人工复核的来源" />
         </div>
         <div data-testid="platform-config-manual-review-rows">
-          <KpiCard title="人工复核行" value={String(manualReviewRows)} detail="来源摘要中的人工复核计数汇总" valueVariant="text" />
+          <KpiCard title="人工复核行" value={String(manualReviewRows)} detail="来源摘要中的人工复核计数汇总" />
         </div>
       </div>
 
-      <section data-testid="platform-config-diagnostic-boundary" style={diagnosticBoundaryStyle}>
-        <strong style={diagnosticBoundaryCodeStyle}>PAGE-CONTRACT-PENDING:/platform-config</strong>
-        <span>
-          MTR-PLT-001, MTR-PLT-002, and MTR-PLT-003 are candidate diagnostics only from
-          GET /ui/preview/source-foundation; health, status, and environment text cards are excluded and
-          not data-quality approval.
-        </span>
-      </section>
+      <PageStateSurface
+        variant="definition-pending"
+        testId="platform-config-diagnostic-boundary"
+        className={styles.contractNote}
+        title="PAGE-CONTRACT-PENDING:/platform-config"
+        description="MTR-PLT-001、MTR-PLT-002、MTR-PLT-003 仅为候选诊断指标，来自 GET /ui/preview/source-foundation；健康状态、状态文本与环境卡片不在此列，亦不构成数据质量审批。"
+      />
 
-      <div style={{ display: "grid", gap: 24 }}>
-        <SectionLead
+      <div className={styles.stack}>
+        <PageSectionLead
           eyebrow="健康"
           title="系统健康状态"
           description="分项来自 GET /health/ready 的检查项（含 DuckDB / Redis / PostgreSQL / 对象存储等），与上方「系统状态」同源；存活探测与简易状态已在平台概览由 /health/live、GET /health 并列展示。"
         />
-        <AsyncSection
-          title="系统健康状态"
-          isLoading={healthQuery.isLoading}
-          isError={healthQuery.isError}
-          isEmpty={false}
-          onRetry={() => void healthQuery.refetch()}
-        >
-          {health && duck && redis && pg && objectStore ? (
-            <div style={healthGridStyle}>
+        <EvidencePanel testId="platform-config-health-section">
+          {healthQuery.isLoading ? (
+            <PageStateSurface variant="loading" title="正在载入系统健康状态">
+              <SkeletonBarStack />
+            </PageStateSurface>
+          ) : healthQuery.isError ? (
+            <PageStateSurface
+              variant="error"
+              title="数据载入失败。"
+              description="当前页面保留重试入口，不在浏览器端自行拼接正式口径。"
+              actions={
+                <button
+                  type="button"
+                  className={styles.retryButton}
+                  onClick={() => void healthQuery.refetch()}
+                >
+                  重试
+                </button>
+              }
+            />
+          ) : health && duck && redis && pg && objectStore ? (
+            <div className={styles.kpiGrid}>
               <KpiCard
                 title="DuckDB 状态"
                 value={duck.ok ? "正常" : "异常"}
@@ -401,63 +257,80 @@ export default function PlatformConfigPage() {
               />
             </div>
           ) : null}
-        </AsyncSection>
+        </EvidencePanel>
 
-        <SectionLead
+        <PageSectionLead
           eyebrow="数据源"
           title="数据源列表"
           description="数据源列表继续展示最新批次、行数、更新时间和状态，作为治理页的只读汇总表。"
         />
-        <AsyncSection
-          title="数据源列表"
-          isLoading={sourcesQuery.isLoading}
-          isError={sourcesQuery.isError}
-          isEmpty={!sourcesQuery.isLoading && !sourcesQuery.isError && sources.length === 0}
-          onRetry={() => void sourcesQuery.refetch()}
-        >
-          <div style={tableShellStyle}>
-            <table data-testid="platform-config-sources-table" style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={thStyle} scope="col">
-                    数据源名称
-                  </th>
-                  <th style={thStyle} scope="col">
-                    最新批次
-                  </th>
-                  <th style={thStyle} scope="col">
-                    行数
-                  </th>
-                  <th style={thStyle} scope="col">
-                    最后更新时间
-                  </th>
-                  <th style={thStyle} scope="col">
-                    状态
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {sources.map((row, index) => {
-                  const ok = sourceRowOk(row);
-                  const key = `${row.source_family}:${row.ingest_batch_id ?? ""}:${index}`;
-                  return (
-                    <tr key={key}>
-                      <td style={tdStyle}>{row.source_family.toUpperCase()}</td>
-                      <td style={tdStyle}>{row.ingest_batch_id ?? "—"}</td>
-                      <td style={tdStyle}>{row.total_rows}</td>
-                      <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>
-                        {row.batch_created_at ?? "—"}
-                      </td>
-                      <td style={tdStyle}>
-                        <StatusBadge ok={ok} />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </AsyncSection>
+        <EvidencePanel testId="platform-config-sources-section">
+          {sourcesQuery.isLoading ? (
+            <PageStateSurface variant="loading" title="正在载入数据源列表">
+              <SkeletonBarStack />
+            </PageStateSurface>
+          ) : sourcesQuery.isError ? (
+            <PageStateSurface
+              variant="error"
+              title="数据载入失败。"
+              description="当前页面保留重试入口，不在浏览器端自行拼接正式口径。"
+              actions={
+                <button
+                  type="button"
+                  className={styles.retryButton}
+                  onClick={() => void sourcesQuery.refetch()}
+                >
+                  重试
+                </button>
+              }
+            />
+          ) : sources.length === 0 ? (
+            <PageStateSurface variant="empty" description="当前暂无可展示内容。" />
+          ) : (
+            <div className={styles.tableShell}>
+              <table data-testid="platform-config-sources-table" className={styles.table}>
+                <thead>
+                  <tr>
+                    <th className={styles.th} scope="col">
+                      数据源名称
+                    </th>
+                    <th className={styles.th} scope="col">
+                      最新批次
+                    </th>
+                    <th className={styles.th} scope="col">
+                      行数
+                    </th>
+                    <th className={styles.th} scope="col">
+                      最后更新时间
+                    </th>
+                    <th className={styles.th} scope="col">
+                      状态
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sources.map((row, index) => {
+                    const ok = sourceRowOk(row);
+                    const key = `${row.source_family}:${row.ingest_batch_id ?? ""}:${index}`;
+                    return (
+                      <tr key={key}>
+                        <td className={styles.td}>{row.source_family.toUpperCase()}</td>
+                        <td className={styles.td}>{row.ingest_batch_id ?? EM_DASH}</td>
+                        <td className={`${styles.td} ${styles.tdNumeric}`}>{row.total_rows}</td>
+                        <td className={`${styles.td} ${styles.tdNowrap}`}>
+                          {row.batch_created_at ?? EM_DASH}
+                        </td>
+                        <td className={styles.td}>
+                          <StatusBadge ok={ok} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </EvidencePanel>
       </div>
     </section>
   );

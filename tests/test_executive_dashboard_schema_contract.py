@@ -21,6 +21,11 @@ from backend.app.schemas.executive_dashboard import (
     SummaryPoint,
 )
 
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_executive,
+]
+
 
 def _assert_numeric_json_shape(x: object) -> None:
     assert isinstance(x, dict)

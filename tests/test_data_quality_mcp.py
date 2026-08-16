@@ -194,9 +194,16 @@ def test_data_quality_mcp_exposes_readiness_report_tool(tmp_path: Path) -> None:
 
         assert payload["status"] == "block"
         assert payload["duckdb_path"] == str(db_path)
-        assert payload["summary"]["blocking_issue_count"] == 1
-        assert payload["issues"][0]["code"] == "latest_date_before_target"
-        assert payload["issues"][0]["table"] == "fact_formal_yield_curve_daily"
+        assert payload["summary"]["blocking_issue_count"] >= 1
+        # DEFAULT_TABLE_SPECS can grow; this MCP test owns the seeded yield-curve stale-date issue.
+        yield_curve_issues = [
+            issue
+            for issue in payload["issues"]
+            if issue["code"] == "latest_date_before_target"
+            and issue["table"] == "fact_formal_yield_curve_daily"
+        ]
+        assert len(yield_curve_issues) == 1
+        assert yield_curve_issues[0]["details"] == {"latest": "2026-04-30", "target": "2026-06-05"}
     finally:
         server.close()
 

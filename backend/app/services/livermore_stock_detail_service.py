@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import date
 from pathlib import Path
 from typing import Any, cast
 
-import duckdb
+from backend.app.repositories.livermore_market_read_repo import (
+    TABLE_FACTOR,
+    TABLE_OBS,
+    LivermoreMarketReadRepository,
+)
 from backend.app.services.formal_result_runtime import (
     FallbackMode,
     QualityFlag,
@@ -13,14 +18,13 @@ from backend.app.services.formal_result_runtime import (
     build_result_envelope,
 )
 
+logger = logging.getLogger(__name__)
+
 RESULT_KIND = "market_data.livermore.stock_detail"
 RULE_VERSION = "rv_livermore_stock_detail_v1"
 CACHE_VERSION = "cv_livermore_stock_detail_v1"
 EMPTY_SOURCE_VERSION = "sv_livermore_stock_detail_empty"
 EMPTY_VENDOR_VERSION = "vv_none"
-
-TABLE_OBS = "choice_stock_daily_observation"
-TABLE_FACTOR = "choice_stock_factor_snapshot"
 
 
 def livermore_stock_detail_envelope(
@@ -49,9 +53,20 @@ def livermore_stock_detail_envelope(
             empty_factor=empty_factor,
         )
 
-    conn = duckdb.connect(str(path), read_only=True)
-    try:
-        end_bound = _resolve_end_trade_date(conn, stock_code=stock_code, as_of_date=as_of_date)
+    repo = LivermoreMarketReadRepository(str(path))
+    with repo.scoped_connection() as conn:
+        if conn is None:
+            return _missing_envelope(
+                stock_code=stock_code,
+                requested_as_of_date=requested_iso,
+                lookback=lookback,
+                empty_factor=empty_factor,
+            )
+        end_bound = repo.resolve_stock_end_trade_date(
+            stock_code=stock_code,
+            as_of_date=as_of_date,
+            conn=conn,
+        )
         if end_bound is None:
             return _missing_envelope(
                 stock_code=stock_code,
@@ -60,19 +75,17 @@ def livermore_stock_detail_envelope(
                 empty_factor=empty_factor,
             )
 
-        candle_rows = _fetch_candles(
-            conn,
+        candle_rows, unit_warnings = repo.fetch_candles(
             stock_code=stock_code,
             end_trade_date=end_bound,
             lookback=lookback,
+            conn=conn,
         )
-        factor_row = _fetch_factor_row(
-            conn,
+        factor_row = repo.fetch_factor_row(
             stock_code=stock_code,
             end_as_of=end_bound.isoformat(),
+            conn=conn,
         )
-    finally:
-        conn.close()
 
     if not candle_rows:
         return _missing_envelope(
@@ -100,6 +113,13 @@ def livermore_stock_detail_envelope(
         c.pop("source_version", None)
         c.pop("vendor_version", None)
 
+    if unit_warnings:
+        logger.warning(
+            "livermore stock-detail unit warnings for %s: %s",
+            stock_code,
+            "; ".join(unit_warnings),
+        )
+
     result_payload: dict[str, object] = {
         "basis": "analytical",
         "state": "ok",
@@ -120,7 +140,7 @@ def livermore_stock_detail_envelope(
         cache_version=CACHE_VERSION,
         source_version=str(lineage_src),
         rule_version=RULE_VERSION,
-        quality_flag=cast(QualityFlag, "ok"),
+        quality_flag=cast(QualityFlag, "warning" if unit_warnings else "ok"),
         vendor_version=str(lineage_vend),
         vendor_status=cast(VendorStatus, "ok"),
         fallback_mode=cast(FallbackMode, "none"),
@@ -175,100 +195,6 @@ def _missing_envelope(
         evidence_rows=0,
         result_payload=result_payload,
     )
-
-
-def _resolve_end_trade_date(conn: duckdb.DuckDBPyConnection, *, stock_code: str, as_of_date: date | None) -> date | None:
-    if as_of_date is not None:
-        row = conn.execute(
-            """
-            select max(trade_date) as mx
-            from choice_stock_daily_observation
-            where stock_code = ?
-              and trade_date <= ?
-            """,
-            [stock_code, as_of_date.isoformat()],
-        ).fetchone()
-    else:
-        row = conn.execute(
-            """
-            select max(trade_date) as mx
-            from choice_stock_daily_observation
-            where stock_code = ?
-            """,
-            [stock_code],
-        ).fetchone()
-    if row is None or row[0] is None:
-        return None
-    raw = str(row[0]).strip()
-    if not raw:
-        return None
-    try:
-        return date.fromisoformat(raw[:10])
-    except ValueError:
-        return None
-
-
-def _fetch_candles(
-    conn: duckdb.DuckDBPyConnection,
-    *,
-    stock_code: str,
-    end_trade_date: date,
-    lookback: int,
-) -> list[dict[str, Any]]:
-    upper = end_trade_date.isoformat()
-    result = conn.execute(
-        f"""
-        select
-          trade_date,
-          open_value,
-          high_value,
-          low_value,
-          close_value,
-          volume,
-          amount,
-          source_version,
-          vendor_version
-        from {TABLE_OBS}
-        where stock_code = ?
-          and trade_date <= ?
-        order by trade_date desc
-        limit ?
-        """,
-        [stock_code, upper, lookback],
-    )
-    cols = [d[0] for d in result.description]
-    return [dict(zip(cols, row, strict=True)) for row in result.fetchall()]
-
-
-def _fetch_factor_row(
-    conn: duckdb.DuckDBPyConnection,
-    *,
-    stock_code: str,
-    end_as_of: str,
-) -> dict[str, Any] | None:
-    result = conn.execute(
-        f"""
-        select
-          as_of_date,
-          pe,
-          pb,
-          roe,
-          dividend_yield,
-          source_version,
-          vendor_version
-        from {TABLE_FACTOR}
-        where stock_code = ?
-          and as_of_date <= ?
-        order by as_of_date desc
-        limit 1
-        """,
-        [stock_code, end_as_of],
-    )
-    row = result.fetchone()
-    if row is None:
-        return None
-    cols = [d[0] for d in result.description]
-    return dict(zip(cols, row, strict=True))
 
 
 def _normalize_candle_row(row: dict[str, Any]) -> dict[str, object]:

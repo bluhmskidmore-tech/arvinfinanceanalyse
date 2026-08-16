@@ -79,8 +79,11 @@ def delete_tyw_snapshots_for_report_dates(
 
 
 def _sql_value(value: object) -> object:
-    if isinstance(value, Decimal):
-        return float(value)
+    """Keep exact Python values for DuckDB parameter binding.
+
+    DuckDB accepts ``Decimal`` directly. Converting it to ``float`` here loses
+    precision before DECIMAL columns can apply their declared scale.
+    """
     return value
 
 
@@ -132,9 +135,10 @@ def replace_zqtz_snapshot_rows(
           trace_id,
           value_date,
           customer_attribute,
-          sub_type
+          sub_type,
+          interest_receivable_payable
         ) values (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
         """,
         [
@@ -170,11 +174,77 @@ def replace_zqtz_snapshot_rows(
                 _sql_value(r.get("value_date")),
                 r.get("customer_attribute") or "",
                 r.get("sub_type") or "",
+                _sql_value(r.get("interest_receivable_payable")),
             )
             for r in rows
         ],
     )
     return len(rows)
+
+
+def repair_zqtz_snapshot_coupon_rates(
+    conn: duckdb.DuckDBPyConnection,
+    repairs: list[dict[str, Any]],
+) -> int:
+    """Apply an exact, task-scoped coupon remediation without replacing snapshot rows."""
+
+    require_repository_task_write_scope("repair_zqtz_snapshot_coupon_rates")
+    changed_count = 0
+    conn.execute("begin transaction")
+    try:
+        for repair in repairs:
+            key_params = [repair["report_date"], repair["instrument_code"]]
+            current = conn.execute(
+                f"""
+                select coupon_rate, source_version, rule_version, trace_id
+                from {ZQTZ_TABLE}
+                where cast(report_date as varchar) = ?
+                  and cast(instrument_code as varchar) = ?
+                """,
+                key_params,
+            ).fetchall()
+            if len(current) != 1:
+                raise RuntimeError(
+                    "Coupon remediation target must resolve to exactly one snapshot row: "
+                    f"report_date={repair['report_date']}, "
+                    f"instrument_code={repair['instrument_code']}, rows={len(current)}."
+                )
+            expected_before = (
+                repair["before_coupon_rate"],
+                repair["source_version_before"],
+                repair["rule_version_before"],
+                repair["trace_id_before"],
+            )
+            if tuple(current[0]) != expected_before:
+                raise RuntimeError(
+                    "Coupon remediation target changed after preview: "
+                    f"report_date={repair['report_date']}, "
+                    f"instrument_code={repair['instrument_code']}."
+                )
+            conn.execute(
+                f"""
+                update {ZQTZ_TABLE}
+                set coupon_rate = ?,
+                    source_version = ?,
+                    rule_version = ?,
+                    trace_id = ?
+                where cast(report_date as varchar) = ?
+                  and cast(instrument_code as varchar) = ?
+                """,
+                [
+                    repair["after_coupon_rate"],
+                    repair["source_version_after"],
+                    repair["rule_version_after"],
+                    repair["trace_id_after"],
+                    *key_params,
+                ],
+            )
+            changed_count += 1
+        conn.execute("commit")
+    except Exception:
+        conn.execute("rollback")
+        raise
+    return changed_count
 
 
 def replace_tyw_snapshot_rows(
@@ -321,6 +391,9 @@ def merge_zqtz_rows_by_grain(rows_in_order: list[dict[str, Any]]) -> list[dict[s
         "amortized_cost_native",
         "accrued_interest_native",
     )
+    # Summed like the additive fields, but "unknown" must not collapse to 0:
+    # a genuine 0 receivable is an observation (coupon just paid), NULL is not.
+    nullable_additive_fields = ("interest_receivable_payable",)
     protected_fields = (
         "instrument_name",
         "portfolio_name",
@@ -366,6 +439,17 @@ def merge_zqtz_rows_by_grain(rows_in_order: list[dict[str, Any]]) -> list[dict[s
 
         for field in additive_fields:
             existing[field] = Decimal(str(existing.get(field) or 0)) + Decimal(str(row.get(field) or 0))
+
+        for field in nullable_additive_fields:
+            incoming = row.get(field)
+            if incoming is None:
+                continue
+            current = existing.get(field)
+            existing[field] = (
+                Decimal(str(incoming))
+                if current is None
+                else Decimal(str(current)) + Decimal(str(incoming))
+            )
 
         for field in weighted_fields:
             value = row.get(field)

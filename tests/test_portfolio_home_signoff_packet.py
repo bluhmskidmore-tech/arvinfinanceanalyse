@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.portfolio_home_business_owner_approval_packet import PORTFOLIO_HOME_SCORE_BLOCKERS
-
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKET = ROOT / "docs" / "portfolio" / "portfolio-home-full-closure-sign-off-packet.md"
@@ -14,7 +12,14 @@ SNAPSHOT = ROOT / "docs" / "portfolio" / "portfolio-home-evidence-snapshot.json"
 OPTION_B_NOTE = ROOT / "docs" / "portfolio" / "portfolio-home-option-b-execution-note.md"
 KRD_OWNER_SUMMARY = "docs/portfolio/krd-contract-decision/2026-05-31/owner_summary.md"
 MATURITY_OWNER_SUMMARY = "docs/portfolio/maturity-remediation/2026-05-31/owner_summary.md"
-CURRENT_SCORE_BLOCKERS = tuple(PORTFOLIO_HOME_SCORE_BLOCKERS)
+CURRENT_SCORE_BLOCKERS = (
+    "risk_tensor_quality_warning",
+    "krd_contract_decision_required",
+    "bond_matured_outstanding_reconciliation_required",
+    "tyw_liability_maturity_date_remediation_required",
+    "business_owner_approval",
+    "owner_decision_intake_blocked",
+)
 CURRENT_SCORE_BLOCKERS_MARKDOWN = ", ".join(
     f"`{blocker}`" for blocker in CURRENT_SCORE_BLOCKERS
 )
@@ -49,8 +54,8 @@ def test_portfolio_home_signoff_packet_documents_real_data_blockers() -> None:
 
     for required in (
         "quality_flag=warning",
-        "portfolio_dv01=105628442.39590558",
-        "krd_sum=105628442.39590558",
+        "portfolio_dv01=106224411.96420395",
+        "krd_sum=106224411.96420395",
         "Non-standard tenor buckets remapped to nearest KRD bucket: 20Y, 2Y, 6M",
         "missing_maturity_rows=114",
         "missing_maturity_market_value=37622164239.83000008",
@@ -64,14 +69,17 @@ def test_portfolio_home_signoff_packet_documents_real_data_blockers() -> None:
         "6M: all_rows=282, nonzero_dv01_rows=160, all_market_value=62550571662.68000010",
         "20Y: all_rows=39, nonzero_dv01_rows=39, all_market_value=22035562498.29000004",
         "200004, dv01=8246445.66600614, tenor_bucket=20Y, mapped_to=krd_30y",
-        "Risk warning consistency: `warning_consistency_status=mismatch`",
+        "Risk warning consistency: `warning_consistency_status=consistent`",
         "Risk warning decision status: `decision_status=blocked`",
-        "consistency_blockers=duration_exclusion_warning_mismatch",
-        "decision_blockers=risk_tensor_quality_warning, risk_tensor_warning_mismatch",
-        "duration_exclusion parsed row_count=120, market_value_sum=38318400505.50000008",
+        "consistency_blockers=none",
+        "decision_blockers=risk_tensor_quality_warning",
+        "duration_exclusion parsed row_count=120, market_value_sum=39109594105.50000008",
         "duration_exclusion recomputed row_count=120, market_value_sum=39109594105.50000008",
+        "Bond matured-outstanding sample, order by market_value desc:",
+        "J12006190202, maturity_date=2023-06-19, days_past_maturity=1077, market_value=463596800.00000000",
     ):
         assert required in text
+    assert "Bond missing maturity sample, order by market_value desc:" not in text
 
 
 def test_portfolio_home_signoff_packet_lists_full_score_gates_without_approval() -> None:
@@ -79,7 +87,7 @@ def test_portfolio_home_signoff_packet_lists_full_score_gates_without_approval()
 
     assert "## Full-Score Closure Gates" in text
     assert "Gate 1: KRD contract decision." in text
-    assert "Gate 2: maturity data remediation." in text
+    assert "Gate 2: maturity data remediation and matured-outstanding reconciliation." in text
     assert "Gate 3: capture-ready page governance." in text
     assert "Gate 4: business-owner approval." in text
     assert "Handoff status: `ready_for_risk_and_business_owner_review_pending_signature`" in text
@@ -87,8 +95,9 @@ def test_portfolio_home_signoff_packet_lists_full_score_gates_without_approval()
     assert "This handoff does not capture approval" in text
     assert "Full closure still requires KRD contract decision" in text
     assert (
-        "Full closure still requires KRD contract decision, maturity remediation or signed exclusion scope, "
-        "capture-ready page evidence, business-owner approval, and owner-decision intake reconciliation."
+        "Full closure still requires KRD contract decision, TYW maturity remediation or signed exclusion scope, "
+        "matured-bond source reconciliation, risk-warning reconciliation/rematerialization, capture-ready page "
+        "evidence, business-owner approval, and owner-decision intake reconciliation."
     ) in text
     assert "python scripts/portfolio_home_full_closure_evidence.py" in text
     assert "python scripts/portfolio_home_full_closure_evidence.py --require-clean" in text
@@ -100,6 +109,7 @@ def test_portfolio_home_signoff_packet_lists_full_score_gates_without_approval()
     assert "python scripts/portfolio_home_krd_contract_decision_export.py --output-dir docs/portfolio/krd-contract-decision --require-clean" in text
     assert "python scripts/portfolio_home_maturity_remediation_queue.py" in text
     assert "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty" in text
+    assert "python scripts/portfolio_home_matured_outstanding_queue.py" in text
     assert "python scripts/portfolio_home_maturity_remediation_export.py --output-dir docs/portfolio/maturity-remediation" in text
     assert "python scripts/portfolio_home_maturity_remediation_export.py --output-dir docs/portfolio/maturity-remediation --require-clean" in text
     assert "python scripts/portfolio_home_closure_artifact_presence_check.py --limit 3 --require-current" in text
@@ -145,7 +155,7 @@ def test_portfolio_home_signoff_packet_lists_full_score_gates_without_approval()
     assert "Evidence snapshot now exposes `score_blocker_action_coverage` in the gate summary and business-owner approval summary." in text
     assert "Evidence snapshot now exposes `owner_summary_paths` with the KRD contract decision owner summary and maturity remediation owner summary." in text
     assert "Evidence snapshot now exposes `generated_owner_fields_boundaries` so reviewers can see both KRD and maturity export manifests require `generated_owner_fields_must_be_blank=true`." in text
-    assert "Evidence snapshot now exposes `decision_gap_counts` with KRD owner decision gaps of 503 rows (summary 3, detail 500) and maturity owner decision gaps of 1569 rows (bond 114, TYW liability 1455)." in text
+    assert "Evidence snapshot now exposes `decision_gap_counts` with KRD owner decision gaps of 503 rows (summary 3, detail 500) and maturity owner decision gaps of 1455 rows (bond 0, TYW liability 1455)." in text
     assert "Evidence snapshot now exposes `note_gap_counts`; current real CSVs have blank owner decisions, so note/comment gaps are empty until a decision is filled without rationale." in text
     assert "Evidence snapshot now exposes `exact_bucket_schema_evidence` so reviewers can see whether the exact-bucket schema path has metric-contract, API-schema, rematerialization, and verifier evidence." in text
     assert "Owner action packet reports `handoff_status=owner_actions_required` and groups the current blockers into `risk_owner`, `data_owner`, and `business_owner` packets." in text
@@ -156,7 +166,7 @@ def test_portfolio_home_signoff_packet_lists_full_score_gates_without_approval()
     assert "Owner handoff Markdown summary states export-current system fields prove package freshness only; they do not approve KRD decisions, maturity remediation, signed exclusions, or business-owner closure." in text
     assert "Owner action packet carries KRD `note_gap_counts`, maturity `comment_gap_counts`, and `exact_bucket_schema_evidence` into the owner packets without changing approval status." in text
     assert "Owner action packet carries `owner_decision_intake_alignment.status=consistent` into the owner packets so owners can see activation evidence alignment before signing." in text
-    assert "Owner action packet assigns `risk_tensor_warning_mismatch` to the risk-owner packet, `duration_exclusion_warning_mismatch` to the data-owner packet, and `owner_decision_intake_blocked` to the business-owner packet so no score blocker is left unowned." in text
+    assert "Owner action packet assigns `risk_tensor_quality_warning` and `krd_contract_decision_required` to the risk-owner packet, the maturity and matured-outstanding blockers to the data-owner packet, and `owner_decision_intake_blocked` to the business-owner packet so no score blocker is left unowned." in text
     assert "Owner action packet strict clean gate exits non-zero while any owner packet remains blocked." in text
     assert "Business owner approval packet reports `packet_status=pending`, `activation_ready=false`, and `approval_action_item_count=19`." in text
     assert "Business owner approval packet lists sign-off, audit, evidence snapshot, owner action, KRD decision export, maturity remediation export, scorecard strict gate, and approval strict gate dependencies." in text
@@ -172,17 +182,17 @@ def test_portfolio_home_signoff_packet_lists_full_score_gates_without_approval()
     assert "Business owner approval packet also exposes `generated_owner_fields_boundaries`, so the approval entry point itself shows that KRD and maturity exports must keep generated owner fields blank." in text
     assert "Dependency consistency check strict gate exits 0 only when the KRD and maturity manifests plus CSV queues match the current scorecard evidence." in text
     assert "Dependency consistency check also exposes `generated_owner_fields_boundaries` directly, matching the scorecard and business-owner approval packet boundary summary." in text
-    assert "CSV summary currently reports `krd_summary_row_count=3`, `krd_detail_row_count=500`, `bond_missing_maturity_row_count=114`, `tyw_liability_missing_maturity_row_count=1455`, and blank owner/proposed fields." in text
+    assert "CSV summary currently reports `krd_summary_row_count=3`, `krd_detail_row_count=500`, `bond_missing_maturity_row_count=0`, `tyw_liability_missing_maturity_row_count=1455`, and blank owner/proposed fields." in text
     assert "Owner decision intake check reports `intake_status=pending_owner_decisions` and `intake_ready=false` until risk-owner CSV decisions, conditional KRD evidence, data-owner CSV decisions, scoped-exclusion evidence, and business-owner approval are all filled." in text
     assert "Owner decision intake check also exposes `csv_check_summary` and `generated_owner_fields_boundaries` at the top level before owner decisions are accepted." in text
     assert "Owner decision intake check also exposes `owner_input_boundary` so allowed pre-intake owner-field blockers are separated from active dependency blockers." in text
     assert "Owner decision intake strict ready gate exits non-zero in the current real-data state." in text
     assert "KRD manifest consistency checks `remap_tenor_count=3`, `nonzero_dv01_rows=500`, and `dv01_sum=33180977.63634484`." in text
-    assert "Maturity manifest consistency checks `bond_missing_maturity_rows=114`, `tyw_liability_missing_maturity_rows=1455`, `bond_missing_maturity_market_value=37622164239.83000008`, and `tyw_liability_missing_maturity_principal=43822652393.01000002`." in text
+    assert "Maturity manifest consistency checks `bond_missing_maturity_rows=0`, `tyw_liability_missing_maturity_rows=1455`, `bond_missing_maturity_market_value=0`, and `tyw_liability_missing_maturity_principal=43822652393.01000002`." in text
     assert "Business owner approval packet strict ready gate exits non-zero while the template is pending or any full-score blocker remains." in text
     assert "Full-closure evidence script reports `data_quality_status=blocked`." in text
     assert "Full-closure evidence strict clean gate exits non-zero while risk tensor and maturity blockers remain." in text
-    assert "Risk warning consistency strict gate exits non-zero while parsed and recomputed duration-exclusion evidence remains mismatched." in text
+    assert "Risk warning consistency strict gate exits 0 now that parsed and recomputed duration-exclusion evidence match." in text
     assert "Risk warning clean gate exits non-zero while `quality_flag=warning` remains." in text
     assert "KRD remap review queue reports `review_status=decision_required`." in text
     assert "KRD remap review queue exposes `decision_options=approve_nearest_bucket|require_exact_bucket_schema|reject` and `review_actions` for risk-owner decision." in text
@@ -192,13 +202,17 @@ def test_portfolio_home_signoff_packet_lists_full_score_gates_without_approval()
     assert "KRD contract decision owner summary shows `generated_owner_fields_must_be_blank=true` so generated CSV fields cannot be mistaken for captured owner decisions." in text
     assert "KRD contract decision export reports `export_status=decision_required`, `remap_tenor_count=3`, `nonzero_dv01_rows=500`, and `dv01_sum=33180977.63634484`." in text
     assert "KRD contract decision export strict clean gate exits non-zero until the risk-owner decision is captured in the metric contract or exact-bucket schema is implemented." in text
-    assert "Maturity remediation queue reports `remediation_status=blocked`." in text
+    assert (
+        "Maturity remediation queue reports `remediation_status=blocked` because the TYW liability "
+        "queue remains non-empty; the bond missing-maturity queue is empty."
+    ) in text
     assert "Maturity remediation queue exposes `remediation_scope` and `remediation_actions` for data-owner remediation or signed exclusion." in text
     assert "Maturity remediation queue strict empty gate exits non-zero while missing maturity rows remain." in text
     assert "Maturity remediation export writes full data-owner CSV queues plus a manifest under `docs/portfolio/maturity-remediation/2026-05-31/`." in text
     assert f"Maturity remediation export also writes the data-owner summary `{MATURITY_OWNER_SUMMARY}`." in text
     assert "Maturity remediation owner summary shows `generated_owner_fields_must_be_blank=true` so generated proposed dates or owner decisions cannot be mistaken for remediation evidence." in text
-    assert "Maturity remediation export reports `export_status=blocked`, `bond_missing_maturity_rows=114`, `tyw_liability_missing_maturity_rows=1455`, and blank `proposed_maturity_date` fields." in text
+    assert "Maturity remediation export reports `export_status=blocked`, `bond_missing_maturity_rows=0`, `tyw_liability_missing_maturity_rows=1455`, and blank `proposed_maturity_date` fields." in text
+    assert "Matured-outstanding queue reports six non-zero matured bond positions" in text
     assert "Maturity remediation export strict clean gate exits non-zero until the source remediation queue is empty or a signed scoped exclusion is captured." in text
     assert "Closure artifact presence check reports `status=current`, `current=true`, and no blockers." in text
     assert "Evidence packet guard requires the evidence snapshot, owner handoff packet, and this sign-off packet to carry the closure artifact presence command and currentness summary." in text
@@ -256,15 +270,14 @@ def test_portfolio_audit_references_signoff_packet_and_score_boundary() -> None:
     assert "Authoritative score blockers from the scorecard:" in audit
     assert (
         "`risk_tensor_quality_warning`, `krd_contract_decision_required`, "
-        "`bond_maturity_date_remediation_required`, "
+        "`bond_matured_outstanding_reconciliation_required`, "
         "`tyw_liability_maturity_date_remediation_required`, "
-        "`duration_exclusion_warning_mismatch`, `risk_tensor_warning_mismatch`, "
         "`business_owner_approval`, and `owner_decision_intake_blocked`"
     ) in audit
     assert "Residual evidence risks, not independent score blockers:" in audit
     assert (
         "GitNexus evidence was unavailable through this Codex App pass and should be rerun "
-        "when the MCP surface is exposed; it does not replace or add to the current eight score blockers."
+        "when the MCP surface is exposed; it does not replace or add to the current six score blockers."
     ) in audit
     assert (
         "`GS-PORTFOLIO-HOME-A` remains supporting-only; it proves neither capture-ready "
@@ -288,7 +301,8 @@ def test_portfolio_audit_references_signoff_packet_and_score_boundary() -> None:
     assert "scripts/portfolio_home_owner_decision_intake_check.py" in audit
     assert (
         "The scorecard combines the full-closure evidence, risk-warning consistency gate, "
-        "KRD review queue, maturity remediation queue, business-owner approval status, "
+        "KRD review queue, maturity remediation queue, matured-outstanding reconciliation gate, "
+        "business-owner approval status, "
         "owner-decision intake, approval-dependency consistency, and verification command coverage."
     ) in audit
     assert "The score method is `discrete_full_closure_gate`." in audit
@@ -296,9 +310,8 @@ def test_portfolio_audit_references_signoff_packet_and_score_boundary() -> None:
     assert "must not be allocated" in audit
     assert (
         "must not be allocated across `risk_tensor_quality_warning`, "
-        "`krd_contract_decision_required`, `bond_maturity_date_remediation_required`, "
+        "`krd_contract_decision_required`, `bond_matured_outstanding_reconciliation_required`, "
         "`tyw_liability_maturity_date_remediation_required`, "
-        "`duration_exclusion_warning_mismatch`, `risk_tensor_warning_mismatch`, "
         "`business_owner_approval`, or `owner_decision_intake_blocked` "
         "as pseudo-precision"
     ) in audit
@@ -327,7 +340,7 @@ def test_portfolio_audit_references_signoff_packet_and_score_boundary() -> None:
     assert "compact snapshot owner-decision intake summary now exposes `owner_input_boundary`, so filled owner CSV fields are visible as owner input rather than generated approval evidence" in audit
     assert "compact snapshot now exposes `scorecard_owner_decision_intake_gate_summary` and `owner_decision_intake_alignment` so direct intake evidence is checked against the full-score gate view" in audit
     assert "compact snapshot scorecard owner-decision gate summary now carries `owner_input_boundary`, and the alignment comparison includes it" in audit
-    assert "compact snapshot now exposes `decision_gap_counts` so reviewers can see KRD owner decision gaps of 503 rows and maturity owner decision gaps of 1569 rows without opening the CSV queues" in audit
+    assert "compact snapshot now exposes `decision_gap_counts` so reviewers can see KRD owner decision gaps of 503 rows and maturity owner decision gaps of 1455 rows (bond 0, TYW liability 1455) without opening the CSV queues" in audit
     assert "compact snapshot now exposes `note_gap_counts`; current real CSVs have blank owner decisions, so note/comment gaps are empty until a decision is filled without rationale" in audit
     assert "compact snapshot now exposes `exact_bucket_schema_evidence` so reviewers can see whether the exact-bucket schema path has metric-contract, API-schema, rematerialization, and verifier evidence" in audit
     assert "compact snapshot now exposes `score_blocker_action_coverage` in both the gate summary and business-owner approval packet summary" in audit
@@ -348,7 +361,7 @@ def test_portfolio_audit_references_signoff_packet_and_score_boundary() -> None:
     assert "owner handoff Markdown now states export-current system fields prove package freshness only and do not approve KRD decisions, maturity remediation, signed exclusions, or business-owner closure" in audit
     assert "owner packets now carry KRD `note_gap_counts`, maturity `comment_gap_counts`, and `exact_bucket_schema_evidence` without changing approval status" in audit
     assert "owner packets now carry `owner_decision_intake_alignment.status=consistent` so owners can see activation evidence alignment before signing" in audit
-    assert "owner packets assign `approval_dependency_consistency_blocked` and `owner_decision_intake_blocked` to the business owner so scorecard fallback blockers cannot be left unowned" in audit
+    assert "current owner packets assign `owner_decision_intake_blocked` to the business owner; if dependency drift appears, they also assign `approval_dependency_consistency_blocked`" in audit
     assert "strict clean mode exits non-zero until every owner packet is clean" in audit
     assert "strict clean mode also requires `score_blocker_action_coverage.status=clean`" in audit
     assert "scripts/portfolio_home_business_owner_approval_packet.py --limit 3" in audit
@@ -369,7 +382,7 @@ def test_portfolio_audit_references_signoff_packet_and_score_boundary() -> None:
     assert "scripts/portfolio_home_dependency_consistency_check.py --limit 3 --require-consistent" in audit
     assert "is the standalone approval-dependency consistency gate" in audit
     assert "It now exposes `generated_owner_fields_boundaries` directly, matching the scorecard and business-owner approval packet boundary summary." in audit
-    assert "CSV summary currently reports `krd_summary_row_count=3`, `krd_detail_row_count=500`, `bond_missing_maturity_row_count=114`, and `tyw_liability_missing_maturity_row_count=1455`" in audit
+    assert "CSV summary currently reports `krd_summary_row_count=3`, `krd_detail_row_count=500`, `bond_missing_maturity_row_count=0`, and `tyw_liability_missing_maturity_row_count=1455`" in audit
     assert "scripts/portfolio_home_owner_decision_intake_check.py --limit 3" in audit
     assert "is the post-owner-entry intake preflight" in audit
     assert "intake_status=pending_owner_decisions" in audit
@@ -396,7 +409,7 @@ def test_portfolio_audit_references_signoff_packet_and_score_boundary() -> None:
     assert MATURITY_OWNER_SUMMARY in audit
     assert "maturity owner summary now shows `generated_owner_fields_must_be_blank=true`" in audit
     assert "export_status=blocked" in audit
-    assert "bond_missing_maturity_rows=114" in audit
+    assert "current manifest reports `export_status=blocked`, `bond_missing_maturity_rows=0`, and `tyw_liability_missing_maturity_rows=1455`" in audit
     assert "tyw_liability_missing_maturity_rows=1455" in audit
     assert "proposed_maturity_date` fields remain blank" in audit
     assert "Its `score_blocker_actions` output maps each blocker to an owner, next action, evidence command, and exit criteria" in audit
@@ -408,7 +421,8 @@ def test_portfolio_audit_references_signoff_packet_and_score_boundary() -> None:
     assert "approval_dependency_consistency_blocked" in audit
     assert "Its `gates.approval_dependency_consistency` entry now exposes `generated_owner_fields_boundaries` so missing or false manifest acceptance criteria is visible from the scorecard gate itself." in audit
     assert "The scorecard now carries the material scale evidence directly in its gate payloads" in audit
-    assert "bond missing-maturity market value" in audit
+    assert "stale 114-row bond warning" in audit
+    assert "six-row matured-outstanding bond queue" in audit
     assert "TYW liability missing-maturity principal" in audit
     assert "The full-score path is now test-covered" in audit
     assert "current_score=100.00 / 100" in audit
@@ -429,4 +443,6 @@ def test_portfolio_option_b_execution_note_lists_current_score_blockers() -> Non
     for blocker in CURRENT_SCORE_BLOCKERS:
         assert f"- `{blocker}`" in note
     assert "owner_decision_intake_blocked" in note
+    assert "Reconcile the `6` matured non-zero bond positions at source" in note
+    assert "Remediate or approve scoped exclusion for `114` missing bond maturity rows" not in note
     assert "risk-owner CSV decisions, nearest-bucket approval or exact-bucket schema evidence, data-owner CSV decisions, scoped-exclusion evidence, and business-owner approval" in note

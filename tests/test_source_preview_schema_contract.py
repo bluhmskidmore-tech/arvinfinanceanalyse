@@ -19,6 +19,10 @@ from backend.app.schemas.source_preview import (
     ZqtzPreviewRow,
 )
 
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_source_preview,
+]
 
 def _minimal_summary() -> SourcePreviewSummary:
     return SourcePreviewSummary(
@@ -31,11 +35,9 @@ def _minimal_summary() -> SourcePreviewSummary:
         group_counts={"g": 1},
     )
 
-
 def test_source_preview_summary_minimal_valid() -> None:
     s = _minimal_summary()
     assert s.preview_mode == "tabular"
-
 
 def test_source_preview_payload_nests_summaries() -> None:
     inner = _minimal_summary()
@@ -43,24 +45,20 @@ def test_source_preview_payload_nests_summaries() -> None:
     assert len(payload.sources) == 1
     assert payload.sources[0].total_rows == 10
 
-
 def test_source_preview_history_page_pagination_fields() -> None:
     page = SourcePreviewHistoryPage(limit=50, offset=10, total_rows=200, rows=[_minimal_summary()])
     assert page.limit == 50
     assert page.offset == 10
     assert page.total_rows == 200
 
-
 @pytest.mark.parametrize("col_type", ["string", "number", "boolean"])
 def test_preview_column_accepts_literal_types(col_type: str) -> None:
     c = PreviewColumn(key="k", label="L", type=col_type)  # type: ignore[arg-type]
     assert c.type == col_type
 
-
 def test_preview_column_invalid_type_raises() -> None:
     with pytest.raises(ValidationError):
         PreviewColumn(key="k", label="L", type="object")  # type: ignore[arg-type]
-
 
 def test_preview_row_page_and_rule_trace_page_structure() -> None:
     col = PreviewColumn(key="c", label="C", type="string")
@@ -82,7 +80,6 @@ def test_preview_row_page_and_rule_trace_page_structure() -> None:
         rows=[],
     )
     assert rt.columns[0].type == "string"
-
 
 def test_representative_typed_rows_instantiate() -> None:
     z = ZqtzPreviewRow(

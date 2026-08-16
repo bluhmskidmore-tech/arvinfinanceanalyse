@@ -1,15 +1,10 @@
 ﻿import { useEffect, useState } from "react";
 import { Collapse } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
-import "../../../lib/agGridSetup";
-import { AgGridReact } from "ag-grid-react";
 import type { ColDef, ValueFormatterParams } from "ag-grid-community";
-import "ag-grid-community/styles/ag-grid.css";
-import "ag-grid-community/styles/ag-theme-alpine.css";
-import "../../../styles/agGridInstitutional.css";
 import "./BalanceAnalysisPage.css";
 
-import { useApiClient } from "../../../api/client";
+import { useApiClient } from "../../../api/clientContext";
 import type {
   BalanceAnalysisBasisBreakdownRow,
   BalanceAnalysisDecisionItemStatusRow,
@@ -27,23 +22,19 @@ import {
   AnalysisGrid,
   DataStatusStrip,
   EvidencePanel,
-  PageSectionLead,
   PageStateSurface,
 } from "../../../components/page/PagePrimitives";
-import { SectionCard } from "../../../components/SectionCard";
-import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
+import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import AdbAnalyticalPreview from "../components/AdbAnalyticalPreview";
 import BalanceAnalysisCockpit from "../cockpit/BalanceAnalysisCockpit";
 import { BalanceAnalysisToolbar } from "../cockpit/BalanceAnalysisToolbar";
-import dhStyles from "../../workbench/dashboard-home/dashboardHome.module.css";
-import type { BalanceStateSentinel } from "../components/BalanceAnalysisWorkbenchLayout";
+import { BalanceSectionHead } from "../components/BalanceSectionHead";
+import { DeferredBalanceAnalysisGrid } from "../components/DeferredBalanceAnalysisGrid";
 import { useBalanceAnalysisData } from "../hooks/useBalanceAnalysisData";
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { tabularNumsStyle } from "../../../theme/designSystem";
+import { actionButtonStyle } from "./BalanceAnalysisPage.styles";
 import {
-  actionButtonStyle,
-  tableShellStyle,
-} from "./BalanceAnalysisPage.styles";
-import {
+  type BalanceStateSentinel,
   buildBalanceAnalysisPageModel,
   buildBalanceCockpitViewModel,
   distributionChartBarWidthPercent,
@@ -70,6 +61,7 @@ import {
   type BalanceAnalysisSummaryGridRow,
 } from "./balanceAnalysisGridRows";
 
+import { EM_DASH } from "../../../utils/format";
 const primaryWorkbookTableKeys = [
   "bond_business_types",
   "rating_analysis",
@@ -226,13 +218,16 @@ function formatAdvancedAttributionWarningDisplay(warning: string): string {
   return "补充提示已记录。";
 }
 
+// 评级块色板走 Nocturne 链（DOM 内联消费用 var；--nct-accent-* 亮阶在
+// balance-analysis scope 的外壳块恒有定义），六档保持绿/紫/琥珀/亮紫/红/浅紫
+// 的评级区分度。
 const ratingBlockPalette = [
-  designTokens.color.success[400],
-  designTokens.color.info[400],
-  designTokens.color.warning[400],
-  designTokens.color.primary[400],
-  designTokens.color.danger[400],
-  designTokens.color.info[300],
+  "var(--dh-api-green)",
+  "var(--dh-api-blue)",
+  "var(--dh-api-amber)",
+  "var(--nct-accent-400)",
+  "var(--dh-api-red)",
+  "var(--nct-accent-300)",
 ] as const;
 
 function downloadBlobFile(filename: string, blob: Blob) {
@@ -325,23 +320,9 @@ function formatInvestAccountingDisplay(data: {
   const investType = data.invest_type_std == null ? "" : formatBalanceBusinessTextDisplay(data.invest_type_std);
   const accountingBasis =
     data.accounting_basis == null ? "" : formatBalanceBusinessTextDisplay(data.accounting_basis);
-  const parts = [investType, accountingBasis].filter((part) => part && part !== "—");
-  return parts.length > 0 ? parts.join(" / ") : "—";
+  const parts = [investType, accountingBasis].filter((part) => part && part !== EM_DASH);
+  return parts.length > 0 ? parts.join(" / ") : EM_DASH;
 }
-
-const balanceAnalysisGridDefaultColDef: ColDef = {
-  sortable: true,
-  filter: true,
-  resizable: true,
-  flex: 1,
-  minWidth: 100,
-  cellStyle: (params) =>
-    params.colDef?.cellClass === "ag-right-aligned-cell" ? { ...tabularNumsStyle } : undefined,
-};
-
-const balanceAnalysisGridLocaleText = {
-  noRowsToShow: "暂无数据",
-};
 
 const balanceSummaryColDefs: ColDef<BalanceAnalysisTableRow>[] = [
   {
@@ -428,7 +409,7 @@ const balanceDetailColDefs: ColDef<BalanceAnalysisDetailGridRow>[] = [
     field: "is_issuance_like",
     headerName: "发行类",
     valueFormatter: (p) =>
-      p.value === null || p.value === undefined ? "—" : p.value ? "是" : "否",
+      p.value === null || p.value === undefined ? EM_DASH : p.value ? "是" : "否",
   },
 ];
 
@@ -709,9 +690,7 @@ function renderMaturityGapPanel(table: BalanceAnalysisWorkbookTable) {
                 data-testid={`balance-analysis-maturity-gap-bar-${table.key}-${index}`}
                 style={{
                   width,
-                  background: positive
-                    ? `linear-gradient(90deg, ${designTokens.color.info[300]} 0%, ${designTokens.color.info[600]} 100%)`
-                    : `linear-gradient(90deg, ${designTokens.color.warning[300]} 0%, ${designTokens.color.warning[400]} 100%)`,
+                  background: positive ? "var(--ib-accent)" : "var(--ib-warn)",
                 }}
                 className="balance-analysis-mini-bar-fill"
               />
@@ -758,12 +737,12 @@ function renderIssuancePanel(table: BalanceAnalysisWorkbookTable) {
 }
 
 function withYiUnit(value: string): string {
-  return value === "—" ? value : `${value} 亿`;
+  return value === EM_DASH ? value : `${value} 亿`;
 }
 
 function formatSignedBalanceYuanToYi(value: number | null): string {
   if (value === null) {
-    return "—";
+    return EM_DASH;
   }
   const formatted = formatBalanceAmountToYiFromYuan(value);
   return value > 0 ? `+${formatted}` : formatted;
@@ -851,7 +830,7 @@ function renderWorkbookPrimaryPanel(table: BalanceAnalysisWorkbookTable) {
     return renderDistributionPanel(table, {
       labelKey: "bond_type",
       valueKey: "balance_amount",
-      color: `linear-gradient(90deg, ${designTokens.color.info[300]} 0%, ${designTokens.color.info[600]} 100%)`,
+      color: "var(--ib-accent)",
     });
   }
   if (table.key === "rating_analysis") {
@@ -870,7 +849,7 @@ function renderIndustryPanel(table: BalanceAnalysisWorkbookTable) {
   return renderDistributionPanel(table, {
     labelKey: "industry_name",
     valueKey: "balance_amount",
-    color: `linear-gradient(90deg, ${designTokens.color.success[200]} 0%, ${designTokens.color.success[500]} 100%)`,
+    color: "var(--ib-accent)",
   });
 }
 
@@ -1160,7 +1139,11 @@ function renderRiskAlertsPanel(
                 {formatBalanceGovernedSeverityDisplay(row.severity)}
               </span>
             </div>
-            <div className="balance-analysis-ledger-copy-text balance-analysis-ledger-copy-text--warning">
+            {/* title 保留后端原文（含源字段名），正文走显示层中文化。 */}
+            <div
+              className="balance-analysis-ledger-copy-text balance-analysis-ledger-copy-text--warning"
+              title={row.reason}
+            >
               {formatBalanceBusinessTextDisplay(row.reason)}
             </div>
             <div className="balance-analysis-ledger-meta-row balance-analysis-ledger-meta-row--warning">
@@ -1209,11 +1192,11 @@ export default function BalanceAnalysisPage() {
   const [decisionStatusComment, setDecisionStatusComment] = useState("");
   const {
     selectedReportDate,
+    unavailableRequestedReportDate,
     positionScope,
     currencyBasis,
     setSelectedReportDate,
     setPositionScope,
-    setCurrencyBasis,
     datesQuery,
     overviewQuery,
     detailQuery,
@@ -1236,6 +1219,7 @@ export default function BalanceAnalysisPage() {
     decisionRows,
     workbook,
     summaryTable,
+    detailSummaryRows,
     workbookTables,
     primaryWorkbookTables,
     secondaryWorkbookPanelTables,
@@ -1306,7 +1290,7 @@ export default function BalanceAnalysisPage() {
     summary: summaryTable,
     decisionItems: decisionItemsQuery.data?.result,
     workbook,
-    summaryRows: detailQuery.data?.result.summary ?? [],
+    summaryRows: detailSummaryRows,
     decisionRows,
     workbookDecisionRows,
     eventCalendarRows,
@@ -1339,8 +1323,14 @@ export default function BalanceAnalysisPage() {
           },
         ]
       : []),
+    // The date badge is excluded unless it is a real mismatch (already raised above);
+    // a still-unconfirmed report date is a loading/no-data state, not an anomaly.
     ...pageReadModel.statusBadges
-      .filter((badge) => ["danger", "warning"].includes(badge.tone))
+      .filter(
+        (badge) =>
+          ["danger", "warning"].includes(badge.tone) &&
+          (badge.key !== "date" || pageReadModel.dateStatus === "mismatch"),
+      )
       .map((badge): BalanceAttentionReason => ({
         key: `status-badge-${badge.key}`,
         sentinel: badge.key === "stale" ? "stale" : badge.key === "fallback" ? "fallback" : "error",
@@ -1455,13 +1445,22 @@ export default function BalanceAnalysisPage() {
     ["danger", "warning"].includes(badge.tone) &&
     (badge.key !== "date" || pageReadModel.dateStatus === "mismatch"),
   );
-  const reportDateUnavailable = !selectedReportDate && !datesQuery.isLoading;
-  const reportDateUnavailableTitle = datesQuery.isError
-    ? "报告日暂未接入"
-    : "当前没有可用报告日";
-  const reportDateUnavailableDescription = datesQuery.isError
-    ? "页面暂时拿不到报告日，先收起空指标和底稿区；重新读取后会展示缺口、规模和治理动作。"
-    : "等报告日返回后，会自动展示缺口、规模和治理动作；当前先保留筛选和读取入口。";
+  const availableReportDates = datesQuery.data?.result.report_dates ?? [];
+  const latestAvailableReportDate = availableReportDates[0] ?? "";
+  const hasUnavailableRequestedReportDate = Boolean(unavailableRequestedReportDate);
+  const reportDateUnavailable =
+    hasUnavailableRequestedReportDate ||
+    (!selectedReportDate && !datesQuery.isLoading && availableReportDates.length === 0);
+  const reportDateUnavailableTitle = hasUnavailableRequestedReportDate
+    ? "请求的报告日不可用"
+    : datesQuery.isError
+      ? "报告日暂未接入"
+      : "当前没有可用报告日";
+  const reportDateUnavailableDescription = hasUnavailableRequestedReportDate
+    ? `请求 ${unavailableRequestedReportDate} 不在当前正式报告日列表中，未回退到 ${latestAvailableReportDate}。请重新选择报告日。`
+    : datesQuery.isError
+      ? "页面暂时拿不到报告日，先收起空指标和底稿区；重新读取后会展示缺口、规模和治理动作。"
+      : "等报告日返回后，会自动展示缺口、规模和治理动作；当前先保留筛选和读取入口。";
   const reconciliationLinkModel = buildBalanceReconciliationLinkModel({
     reportDate: selectedReportDate,
     workbook,
@@ -1611,13 +1610,13 @@ export default function BalanceAnalysisPage() {
   return (
     <section
       data-testid="balance-analysis-page"
-      className={`${dhStyles.dhPage} balance-analysis-page`}
+      data-moss-theme-scope="balance-analysis"
+      className="balance-analysis-page"
     >
       <BalanceAnalysisToolbar
-        reportDates={datesQuery.data?.result.report_dates ?? []}
+        reportDates={availableReportDates}
         selectedReportDate={selectedReportDate}
         positionScope={positionScope}
-        currencyBasis={currencyBasis}
         sourceBadge={pageReadModel.sourceBadge}
         calibration={overview?.calibration}
         isRefreshing={isRefreshing}
@@ -1625,7 +1624,6 @@ export default function BalanceAnalysisPage() {
         isExportingWorkbook={isExportingWorkbook}
         onReportDateChange={setSelectedReportDate}
         onPositionScopeChange={setPositionScope}
-        onCurrencyBasisChange={setCurrencyBasis}
         onRefresh={() => void handleRefresh()}
         onExportCsv={() => void handleExport()}
         onExportWorkbook={() => void handleWorkbookExport()}
@@ -1656,17 +1654,14 @@ export default function BalanceAnalysisPage() {
       {reportDateUnavailable ? (
         <section
           data-testid="balance-analysis-report-date-empty"
-          className={`${dhStyles.dhCard} ${dhStyles.dhTerminalStateSurface}`}
+          className="balance-analysis-empty"
           data-state="empty"
         >
-          <span className={dhStyles.dhTerminalStateIcon}>
-            <ReloadOutlined aria-hidden />
-          </span>
           <b>{reportDateUnavailableTitle}</b>
           <small>{reportDateUnavailableDescription}</small>
           <button
             type="button"
-            className={dhStyles.dhRefreshBtn}
+            className="balance-analysis-btn"
             onClick={() => void datesQuery.refetch()}
           >
             <ReloadOutlined aria-hidden />
@@ -1707,14 +1702,16 @@ export default function BalanceAnalysisPage() {
           ) : null}
 
           <details
-            className="balance-analysis-evidence-details"
+            className="balance-analysis-details balance-analysis-details--sec balance-analysis-evidence-details"
             data-testid="balance-analysis-evidence-details"
             open={evidenceLedgerNeedsAttention}
           >
-        <summary className="balance-analysis-evidence-details__summary">
-          <span className="balance-analysis-evidence-details__eyebrow">证据链路</span>
-          <strong>{evidenceLedgerSummary}</strong>
-          <span>常规校验默认收起，需处理事项、降级或日期不一致时自动展开。</span>
+        <summary className="balance-analysis-details__summary">
+          <h2 className="balance-analysis-details__title">证据链路</h2>
+          <strong className="balance-analysis-details__meta">{evidenceLedgerSummary}</strong>
+          <span className="balance-analysis-details__hint">
+            常规校验默认收起，需处理事项、降级或日期不一致时自动展开。
+          </span>
         </summary>
         <AnalysisGrid columns={2} className="balance-analysis-ledger-grid">
           <EvidencePanel heading="读面证据" className="balance-analysis-ledger-panel">
@@ -1782,17 +1779,16 @@ export default function BalanceAnalysisPage() {
 
       <details
         data-testid="balance-analysis-formal-summary-details"
-        className="balance-analysis-stage-details balance-analysis-stage-details--summary"
+        className="balance-analysis-details balance-analysis-details--sec"
       >
-        <summary className="balance-analysis-stage-details__summary">
-          <span className="balance-analysis-stage-details__eyebrow">汇总</span>
-          <h2 className="balance-analysis-stage-details__heading">正式汇总驾驶舱</h2>
-          <span>
+        <summary className="balance-analysis-details__summary">
+          <h2 className="balance-analysis-details__title">正式汇总驾驶舱</h2>
+          <span className="balance-analysis-details__hint">
             分页汇总、明细汇总和明细下钻默认收起；首屏先保留缺口判断、规模证据和治理行动。
           </span>
         </summary>
-        <div className="balance-analysis-stage-details__content">
-        <AsyncSection
+        <div className="balance-analysis-details__content">
+        <PageAsyncSection
           title="资产负债汇总"
           isLoading={
             datesQuery.isLoading ||
@@ -1815,20 +1811,13 @@ export default function BalanceAnalysisPage() {
             ]);
           }}
         >
-          <div
-            className="ag-theme-alpine"
+          <DeferredBalanceAnalysisGrid<BalanceAnalysisTableRow>
             data-testid="balance-analysis-summary-table"
-            style={{ ...tableShellStyle, height: 360, width: "100%", padding: 0 }}
-          >
-            <AgGridReact<BalanceAnalysisTableRow>
-              theme="legacy"
-              rowData={summaryTable?.rows ?? []}
-              columnDefs={balanceSummaryColDefs}
-              defaultColDef={balanceAnalysisGridDefaultColDef}
-              localeText={balanceAnalysisGridLocaleText}
-              getRowId={(p) => getBalanceSummaryGridRowId(p.data)}
-            />
-          </div>
+            height={360}
+            rowData={summaryTable?.rows ?? []}
+            columnDefs={balanceSummaryColDefs}
+            getRowId={(p) => getBalanceSummaryGridRowId(p.data)}
+          />
           <div
             style={{
               display: "flex",
@@ -1862,25 +1851,18 @@ export default function BalanceAnalysisPage() {
               <div>明细下钻等待首屏数据完成…</div>
             ) : !detailQuery.isLoading &&
             !detailQuery.isError &&
-            (detailQuery.data?.result.summary?.length ?? 0) > 0 ? (
+            detailSummaryGridRows.length > 0 ? (
               <div className="balance-analysis-detail-drilldown__summary">
                 <div className="balance-analysis-detail-drilldown__eyebrow">
                   明细底稿返回的汇总切片
                 </div>
-                <div
-                  className="ag-theme-alpine"
+                <DeferredBalanceAnalysisGrid<BalanceAnalysisSummaryGridRow>
                   data-testid="balance-analysis-detail-summary-grid"
-                  style={{ ...tableShellStyle, height: 200, width: "100%" }}
-                >
-                  <AgGridReact<BalanceAnalysisSummaryGridRow>
-                    theme="legacy"
-                    rowData={detailSummaryGridRows}
-                    columnDefs={balanceDetailSummaryColDefs}
-                    defaultColDef={balanceAnalysisGridDefaultColDef}
-                    localeText={balanceAnalysisGridLocaleText}
-                    getRowId={(p) => p.data.__gridId}
-                  />
-                </div>
+                  height={200}
+                  rowData={detailSummaryGridRows}
+                  columnDefs={balanceDetailSummaryColDefs}
+                  getRowId={(p) => p.data.__gridId}
+                />
               </div>
             ) : null}
             {deferredAnalysisQueriesPending ? null : detailQuery.isError ? (
@@ -1890,74 +1872,62 @@ export default function BalanceAnalysisPage() {
             ) : detailQuery.isLoading ? (
               <div className="balance-analysis-detail-drilldown__loading">明细下钻加载中…</div>
             ) : (
-              <div
-                className="ag-theme-alpine"
+              <DeferredBalanceAnalysisGrid<BalanceAnalysisDetailGridRow>
                 data-testid="balance-analysis-table"
-                style={{ ...tableShellStyle, height: 320, width: "100%", padding: 0, marginTop: 8 }}
-              >
-                <AgGridReact<BalanceAnalysisDetailGridRow>
-                  theme="legacy"
-                  rowData={detailGridRows}
-                  columnDefs={balanceDetailColDefs}
-                  defaultColDef={balanceAnalysisGridDefaultColDef}
-                  localeText={balanceAnalysisGridLocaleText}
-                  getRowId={(p) => p.data.__gridId}
-                />
-              </div>
+                className="balance-analysis-detail-grid"
+                height={320}
+                rowData={detailGridRows}
+                columnDefs={balanceDetailColDefs}
+                getRowId={(p) => p.data.__gridId}
+              />
             )}
           </div>
-        </AsyncSection>
+        </PageAsyncSection>
         </div>
       </details>
 
       <details
         data-testid="balance-analysis-supplemental-panels"
-        className="balance-analysis-supplemental"
+        className="balance-analysis-details balance-analysis-details--sec"
       >
-        <summary className="balance-analysis-supplemental__summary">
-          <span className="balance-analysis-supplemental__eyebrow">分析口径</span>
-          <strong className="balance-analysis-supplemental__title">辅助分析口径</strong>
-          <span className="balance-analysis-supplemental__description">
+        <summary className="balance-analysis-details__summary">
+          <h2 className="balance-analysis-details__title">辅助分析口径</h2>
+          <span className="balance-analysis-details__hint">
             日均预览、会计口径拆解和高阶归因默认收起，作为解释正式结果的辅助材料，不替代正式结论。
           </span>
         </summary>
-        <div className="balance-analysis-supplemental__grid">
-          <SectionCard
+        <div className="balance-analysis-details__content balance-analysis-supplemental__grid">
+          <PageAsyncSection
             title="日均分析预览"
-            loading={deferredAnalysisQueriesPending || adbComparisonQuery.isLoading}
-            error={adbComparisonQuery.isError}
+            isLoading={deferredAnalysisQueriesPending || adbComparisonQuery.isLoading}
+            isError={adbComparisonQuery.isError}
+            isEmpty={false}
             onRetry={() => void adbComparisonQuery.refetch()}
           >
             {adbComparisonQuery.data ? <AdbAnalyticalPreview comparison={adbComparisonQuery.data} href={adbHref} /> : null}
-          </SectionCard>
-          <SectionCard
+          </PageAsyncSection>
+          <PageAsyncSection
             title="按会计口径分解"
-            loading={deferredAnalysisQueriesPending || basisBreakdownQuery.isLoading}
-            error={basisBreakdownQuery.isError}
+            isLoading={deferredAnalysisQueriesPending || basisBreakdownQuery.isLoading}
+            isError={basisBreakdownQuery.isError}
+            isEmpty={false}
             onRetry={() => void basisBreakdownQuery.refetch()}
-            noPadding
           >
-            <div
-              className="ag-theme-alpine"
+            <DeferredBalanceAnalysisGrid<BalanceAnalysisBasisBreakdownRow>
               data-testid="balance-analysis-basis-breakdown-grid"
-              style={{ ...tableShellStyle, height: 240, width: "100%" }}
-            >
-              <AgGridReact<BalanceAnalysisBasisBreakdownRow>
-                theme="legacy"
-                rowData={basisBreakdownQuery.data?.result.rows ?? []}
-                columnDefs={balanceBasisBreakdownColDefs}
-                defaultColDef={balanceAnalysisGridDefaultColDef}
-                localeText={balanceAnalysisGridLocaleText}
-                getRowId={(p) =>
-                  `${p.data.source_family}-${p.data.invest_type_std}-${p.data.accounting_basis}-${p.data.position_scope}-${p.data.currency_basis}`
-                }
-              />
-            </div>
-          </SectionCard>
-          <SectionCard
+              height={240}
+              rowData={basisBreakdownQuery.data?.result.rows ?? []}
+              columnDefs={balanceBasisBreakdownColDefs}
+              getRowId={(p) =>
+                `${p.data.source_family}-${p.data.invest_type_std}-${p.data.accounting_basis}-${p.data.position_scope}-${p.data.currency_basis}`
+              }
+            />
+          </PageAsyncSection>
+          <PageAsyncSection
             title="高阶归因"
-            loading={deferredAnalysisQueriesPending || advancedAttributionQuery.isLoading}
-            error={advancedAttributionQuery.isError}
+            isLoading={deferredAnalysisQueriesPending || advancedAttributionQuery.isLoading}
+            isError={advancedAttributionQuery.isError}
+            isEmpty={false}
             onRetry={() => void advancedAttributionQuery.refetch()}
           >
             {advancedAttributionQuery.data?.result ? (
@@ -2005,17 +1975,16 @@ export default function BalanceAnalysisPage() {
                 );
               })()
             ) : null}
-          </SectionCard>
+          </PageAsyncSection>
         </div>
       </details>
 
-      <div className="balance-analysis-governance-workbench-section">
-        <PageSectionLead
-          eyebrow="工作台"
+      <div className="balance-analysis-sec balance-analysis-governance-workbench-section">
+        <BalanceSectionHead
           title="治理闭环与工作簿底稿"
-          description="先处理决策事项、事件日历和风险预警；工作簿结构默认收起，作为下方可展开底稿。"
+          hint="先处理决策事项、事件日历和风险预警；工作簿结构默认收起，作为下方可展开底稿。"
         />
-        <AsyncSection
+        <PageAsyncSection
           title="治理闭环"
           isLoading={
             datesQuery.isLoading ||
@@ -2038,11 +2007,12 @@ export default function BalanceAnalysisPage() {
           }}
         >
           <div data-testid="balance-analysis-workbook-cockpit" className="balance-analysis-workbook-cockpit">
-            <details className="balance-analysis-workbook-main-details">
-              <summary className="balance-analysis-workbook-main-details__summary">
-                <span className="balance-analysis-workbook-full-details__eyebrow">工作簿图谱</span>
-                <strong>工作簿结构与分布面板</strong>
-                <span>默认收起，治理行动保持常驻；展开后查看债券分类、评级、期限缺口和支持面板。</span>
+            <details className="balance-analysis-details balance-analysis-details--sub balance-analysis-workbook-main-details">
+              <summary className="balance-analysis-details__summary">
+                <h3 className="balance-analysis-details__title">工作簿结构与分布面板</h3>
+                <span className="balance-analysis-details__hint">
+                  默认收起，治理行动保持常驻；展开后查看债券分类、评级、期限缺口和支持面板。
+                </span>
               </summary>
               <div className="balance-analysis-workbook-main">
                 {renderBalanceReconciliationLinkPanel(reconciliationLinkModel)}
@@ -2127,10 +2097,11 @@ export default function BalanceAnalysisPage() {
                     data-testid="balance-analysis-decision-error"
                     style={{
                       marginBottom: 12,
-                      borderRadius: 12,
-                      border: `1px solid ${designTokens.color.warning[200]}`,
-                      background: designTokens.color.warning[50],
-                      color: designTokens.color.warning[700],
+                      borderRadius: 2,
+                      border: "1px solid var(--ib-hairline)",
+                      borderLeft: "2px solid var(--ib-warn)",
+                      background: "var(--ib-paper)",
+                      color: "var(--ib-ink)",
                       padding: 12,
                       fontSize: 13,
                     }}
@@ -2367,12 +2338,13 @@ export default function BalanceAnalysisPage() {
 
           <details
             data-testid="balance-analysis-workbook-full-details"
-            className="balance-analysis-workbook-full-details"
+            className="balance-analysis-details balance-analysis-details--sub balance-analysis-workbook-full-details"
           >
-            <summary className="balance-analysis-workbook-full-details__summary">
-              <span className="balance-analysis-workbook-full-details__eyebrow">完整明细</span>
-              <strong>完整工作簿明细</strong>
-              <span>展开查看工作簿宽表，默认收起以保持结论和治理证据优先。</span>
+            <summary className="balance-analysis-details__summary">
+              <h3 className="balance-analysis-details__title">完整工作簿明细</h3>
+              <span className="balance-analysis-details__hint">
+                展开查看工作簿宽表，默认收起以保持结论和治理证据优先。
+              </span>
             </summary>
             <div
               data-testid="balance-analysis-workbook-secondary-grid"
@@ -2383,40 +2355,36 @@ export default function BalanceAnalysisPage() {
                   <div className="balance-analysis-workbook-secondary-grid__title">
                     {formatBalanceBusinessTextDisplay(table.title)}
                   </div>
-                  <div
-                    className="ag-theme-alpine"
-                    style={{ ...tableShellStyle, height: 280, width: "100%", padding: 0 }}
-                  >
-                    <AgGridReact
-                      theme="legacy"
-                      rowData={table.rows.map((row, index) =>
-                        Object.assign({}, row as object, { __gridId: `${table.key}-${index}` }),
-                      )}
-                      columnDefs={buildWorkbookGridColumnDefs(table.columns)}
-                      defaultColDef={balanceAnalysisGridDefaultColDef}
-                      localeText={balanceAnalysisGridLocaleText}
-                      getRowId={(p) => String((p.data as { __gridId: string }).__gridId)}
-                    />
-                  </div>
+                  <DeferredBalanceAnalysisGrid
+                    height={280}
+                    rowData={table.rows.map((row, index) =>
+                      Object.assign({}, row as object, { __gridId: `${table.key}-${index}` }),
+                    )}
+                    columnDefs={buildWorkbookGridColumnDefs(table.columns)}
+                    getRowId={(p) => String((p.data as { __gridId: string }).__gridId)}
+                  />
                 </div>
               ))}
             </div>
           </details>
-        </AsyncSection>
+        </PageAsyncSection>
       </div>
 
-      <details data-testid="balance-analysis-stage-details" className="balance-analysis-stage-details">
-        <summary className="balance-analysis-stage-details__summary">
-          <span className="balance-analysis-stage-details__eyebrow">场景核对</span>
-          <strong>完整场景阅读（与首屏同源）</strong>
-          <span>
+      <details
+        data-testid="balance-analysis-stage-details"
+        className="balance-analysis-details balance-analysis-details--sec"
+      >
+        <summary className="balance-analysis-details__summary">
+          <h2 className="balance-analysis-details__title">场景核对</h2>
+          <strong className="balance-analysis-details__meta">完整场景阅读（与首屏同源）</strong>
+          <span className="balance-analysis-details__hint">
             首屏已展示摘要、贡献、期限与风险读面；此处保留口径说明与核对提示，不再重复渲染同一组区块。
           </span>
         </summary>
-        <div className="balance-analysis-stage-details__content">
+        <div className="balance-analysis-details__content">
           <div className="balance-analysis-stage-warning">
             当前区块与首屏驾驶舱共用同一 stageModel 读面，报告日为{" "}
-            {pageModel.stageModel.summary.tags[0]?.label ?? "—"}；仍以页面上方正式总览、汇总、明细和受治理信号作为正式判断来源。
+            {pageModel.stageModel.summary.tags[0]?.label ?? EM_DASH}；仍以页面上方正式总览、汇总、明细和受治理信号作为正式判断来源。
             {pageModel.stageModel.hasRealData ? "" : " 当前筛选条件下未返回可展示的真实阶段切片。"}
           </div>
         </div>
@@ -2429,7 +2397,7 @@ export default function BalanceAnalysisPage() {
               items={[
                 {
                   key: "result-meta",
-                  label: "开发调试：结果元信息",
+                  label: "结果元信息（运维排障）",
                   forceRender: true,
                   children: (
                     <FormalResultMetaPanel

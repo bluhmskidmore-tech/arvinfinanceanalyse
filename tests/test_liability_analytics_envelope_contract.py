@@ -4,6 +4,12 @@ from pathlib import Path
 
 from tests.test_liability_analytics_api import _build_client
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_liability_analytics,
+]
 
 def test_liability_analytics_excluded_routes_do_not_emit_governed_envelopes(
     tmp_path: Path, monkeypatch

@@ -1,0 +1,386 @@
+/*
+ * crossAssetTerminalTheme.css — 跨资产驱动页深色终端主题（页面级实现）
+ *
+ * 深色主题豁免已获业主批准（批准日期 2026-07-23）。
+ *
+ * 映射策略：
+ * 1. 页面根节点同时挂载全局 `theme-dh-api`（提供 tokens.css L226-251 的
+ *    --dh-api-* 深色 token 定义）与本文件的 `.cross-asset-drivers-page--terminal`。
+ * 2. 本作用域将 CrossAssetDriversPage.css L446-492 的全量 --ca-* 自定义属性
+ *    重映射到 --dh-api-*：所有消费 var(--ca-*) 的现有组件零改动自动深色化。
+ *    映射选择器使用双类（.cross-asset-drivers-page.cross-asset-drivers-page--terminal，
+ *    特异度 0-2-0），保证覆盖 .cross-asset-drivers-page（0-1-0）上的浅色映射，
+ *    不依赖 import 顺序。
+ * 3. 对直接消费 var(--ib-*) 的挂载组件（KpiCard / PageAsyncSection /
+ *    PageDataSection / crossAssetPanelClass = .cross-asset-drivers-page__panel）
+ *    做定点覆盖；details/summary 与滚动条同步深色化。
+ * 4. 深色终端视觉靠背景递进（bg < panel < panel-2 < panel-3）+ 细边线，
+ *    阴影全部归零（--ca-shadow* = none，定点组件 box-shadow: none）。
+ * 5. 附录：S0-S5 装配布局壳类（.ca-term-*），仅供新装配结构使用。
+ *
+ * 硬约束：本文件零裸 hex 颜色；颜色仅允许 var(--dh-api-*) / var(--ca-*)
+ * / var(--ib-*) / transparent / currentColor / rgba(var() 内嵌) / color-mix。
+ */
+
+/* ============================================================
+ * 1. --ca-* → --dh-api-* 全量重映射（47 项，对照 L446-492）
+ * ============================================================ */
+.cross-asset-drivers-page.cross-asset-drivers-page--terminal {
+  /* --ib-* 同步重映射：pageInsetCardStyle 等内联 var() 引用与全局
+   * workbenchInstitutionalConsole.css 中直用 --ib-* 的规则随之翻深。
+   * 注意：不影响 CrossAssetDriversPage.css 的契约测试（该测试只扫描文件文本）。 */
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line-soft);
+  --ib-rule-strong: var(--dh-api-ink);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-hover: var(--dh-api-blue);
+  --ib-accent-surface: var(--dh-api-blue-soft);
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
+  --ib-warn: var(--dh-api-amber);
+  --ib-gold: var(--dh-api-amber);
+  --ib-radius: var(--dh-api-radius);
+  --ib-shadow: none;
+  /* Nocturne 偏格圆角归一：页面卡面大量直用全局 --moss-radius-sm（2px），
+     页 scope 内跟随 --dh-api-radius（Nocturne 8px），不动布局几何。 */
+  --moss-radius-sm: var(--dh-api-radius);
+
+  /* 基底 / 面板 */
+  --ca-paper: var(--dh-api-bg);
+  --ca-card: var(--dh-api-panel);
+  --ca-card-mute: var(--dh-api-panel-2);
+  --ca-surface-soft: var(--dh-api-panel-2);
+  --ca-surface-muted: var(--dh-api-panel-2);
+  --ca-panel-bg: var(--dh-api-panel);
+  --ca-panel-quiet-bg: var(--dh-api-panel-2);
+  --ca-on-dark: var(--dh-api-ink);
+
+  /* 文字 */
+  --ca-text: var(--dh-api-ink);
+  --ca-sub: var(--dh-api-soft);
+  --ca-muted: var(--dh-api-muted);
+
+  /* 强调 / 语义主色 */
+  --ca-accent: var(--dh-api-blue);
+  --ca-slate: var(--dh-api-blue);
+  --ca-sage: var(--dh-api-green);
+  --ca-burgundy: var(--dh-api-red);
+
+  /* 边线 */
+  --ca-border: var(--dh-api-line);
+  --ca-border-soft: var(--dh-api-line-soft);
+  --ca-border-muted: var(--dh-api-line-soft);
+  --ca-border-strong: var(--dh-api-ink);
+
+  /* positive（多 / 上行）→ green 系 */
+  --ca-positive-text: var(--dh-api-green);
+  --ca-positive-border: var(--dh-api-line);
+  --ca-positive-bg: var(--dh-api-green-soft);
+  --ca-positive-fill: var(--dh-api-green);
+
+  /* negative（空 / 下行）→ red 系 */
+  --ca-negative-text: var(--dh-api-red);
+  --ca-negative-border: var(--dh-api-line);
+  --ca-negative-bg: var(--dh-api-red-soft);
+  --ca-negative-fill: var(--dh-api-red);
+  --ca-negative-ring: var(--dh-api-line);
+
+  /* warning → amber 系 */
+  --ca-warning-text: var(--dh-api-amber);
+  --ca-warning-border: var(--dh-api-line);
+  --ca-warning-bg: var(--dh-api-amber-soft);
+  --ca-warning-fill: var(--dh-api-amber);
+  --ca-warning-ring: var(--dh-api-line);
+
+  /* info → blue 系 */
+  --ca-info-text: var(--dh-api-blue);
+  --ca-info-border: var(--dh-api-line);
+  --ca-info-bg: var(--dh-api-blue-soft);
+  --ca-info-fill: var(--dh-api-blue);
+  --ca-info-fill-soft: var(--dh-api-muted);
+
+  /* neutral */
+  --ca-neutral-text: var(--dh-api-soft);
+  --ca-neutral-border: var(--dh-api-line);
+  --ca-neutral-bg: var(--dh-api-panel-2);
+  --ca-neutral-fill: var(--dh-api-muted);
+  --ca-neutral-fill-strong: var(--dh-api-ink);
+
+  /* 形状 / 阴影：radius 对齐终端 6px，阴影归零 */
+  --ca-radius: var(--dh-api-radius);
+  --ca-shadow: none;
+  --ca-shadow-hover: none;
+  --ca-shadow-hero: none;
+
+  /* 页面基底 */
+  background: var(--dh-api-bg);
+  color: var(--dh-api-ink);
+}
+
+/* ============================================================
+ * 2. 定点覆盖：直接消费 var(--ib-*) 的挂载组件
+ * ============================================================ */
+
+/* crossAssetPanelClass = .cross-asset-drivers-page__panel
+ * 原文件 L5081-5094：border 直接用 var(--ib-hairline)，hover 用字面 rgba */
+.cross-asset-drivers-page--terminal .cross-asset-drivers-page__panel {
+  background: var(--dh-api-panel);
+  border-color: var(--dh-api-line);
+  box-shadow: none;
+}
+
+.cross-asset-drivers-page--terminal .cross-asset-drivers-page__panel:hover {
+  border-color: var(--dh-api-line);
+  box-shadow: none;
+}
+
+/* KpiCard（frontend/src/components/KpiCard.css，全量 --ib-*） */
+.cross-asset-drivers-page--terminal .kpi-card {
+  --kpi-value-color: var(--dh-api-ink);
+
+  background: var(--dh-api-panel);
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  box-shadow: none;
+}
+
+.cross-asset-drivers-page--terminal .kpi-card[data-tone="positive"] {
+  --kpi-value-color: var(--dh-api-green);
+}
+
+.cross-asset-drivers-page--terminal .kpi-card[data-tone="negative"],
+.cross-asset-drivers-page--terminal .kpi-card[data-tone="error"] {
+  --kpi-value-color: var(--dh-api-red);
+}
+
+.cross-asset-drivers-page--terminal .kpi-card[data-tone="warning"] {
+  --kpi-value-color: var(--dh-api-amber);
+}
+
+.cross-asset-drivers-page--terminal .kpi-card__icon {
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+}
+
+.cross-asset-drivers-page--terminal .kpi-card__title,
+.cross-asset-drivers-page--terminal .kpi-card__unit,
+.cross-asset-drivers-page--terminal .kpi-card__secondary {
+  color: var(--dh-api-muted);
+}
+
+/* PageAsyncSection / PageDataSection retry 按钮（--ib-hairline / --ib-surface） */
+.cross-asset-drivers-page--terminal .moss-page-async-section__retry,
+.cross-asset-drivers-page--terminal .moss-page-data-section__retry {
+  background: var(--dh-api-panel-2);
+  border-color: var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  color: var(--dh-api-ink);
+}
+
+.cross-asset-drivers-page--terminal .moss-page-async-section__retry:hover,
+.cross-asset-drivers-page--terminal .moss-page-data-section__retry:hover {
+  background: var(--dh-api-panel-3);
+  border-color: var(--dh-api-blue);
+}
+
+/* details / summary 深色化 */
+.cross-asset-drivers-page--terminal details {
+  border-color: var(--dh-api-line-soft);
+  color: var(--dh-api-ink);
+}
+
+.cross-asset-drivers-page--terminal summary {
+  color: var(--dh-api-soft);
+}
+
+.cross-asset-drivers-page--terminal summary:hover {
+  color: var(--dh-api-ink);
+}
+
+.cross-asset-drivers-page--terminal summary::marker,
+.cross-asset-drivers-page--terminal summary::-webkit-details-marker {
+  color: var(--dh-api-muted);
+}
+
+/* 滚动条深色化（color-scheme: dark 已由 theme-dh-api 提供，此处细化 webkit） */
+.cross-asset-drivers-page--terminal * {
+  scrollbar-color: var(--dh-api-panel-3) transparent;
+}
+
+.cross-asset-drivers-page--terminal ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.cross-asset-drivers-page--terminal ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cross-asset-drivers-page--terminal ::-webkit-scrollbar-thumb {
+  background: var(--dh-api-panel-3);
+  border: 2px solid var(--dh-api-bg);
+  border-radius: 999px;
+}
+
+.cross-asset-drivers-page--terminal ::-webkit-scrollbar-thumb:hover {
+  background: var(--dh-api-line);
+}
+
+/* ============================================================
+ * 3. S0-S5 装配布局壳类（.ca-term-*）
+ * ============================================================ */
+
+/* 区块容器：面板底 + 边线 + radius + 内边距，区块间距 14px */
+.ca-term-section {
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  box-shadow: none;
+}
+
+.ca-term-section + .ca-term-section {
+  margin-top: 14px;
+}
+
+/* 区块标题行：13px / 750 + hint 11px muted + 底部 1px line-soft 分隔 */
+.ca-term-section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+}
+
+.ca-term-section__hint {
+  flex-shrink: 0;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: normal;
+}
+
+/* 栅格：两列 / 三列 / 7:5 */
+.ca-term-grid--2,
+.ca-term-grid--3,
+.ca-term-grid--7-5 {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.ca-term-grid--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ca-term-grid--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ca-term-grid--7-5 {
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+}
+
+/* 状态 chip：22px 高、pill、panel-2 底、line-soft 边、11px */
+.ca-term-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 10px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: 999px;
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.ca-term-chip--ok,
+.ca-term-chip--warn,
+.ca-term-chip--stale,
+.ca-term-chip--error,
+.ca-term-chip--info {
+  padding-left: 8px;
+}
+
+.ca-term-chip--ok::before,
+.ca-term-chip--warn::before,
+.ca-term-chip--stale::before,
+.ca-term-chip--error::before,
+.ca-term-chip--info::before {
+  content: "";
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--dh-api-muted);
+}
+
+.ca-term-chip--ok {
+  color: var(--dh-api-green);
+}
+
+.ca-term-chip--ok::before {
+  background: var(--dh-api-green);
+}
+
+.ca-term-chip--warn {
+  color: var(--dh-api-amber);
+}
+
+.ca-term-chip--warn::before {
+  background: var(--dh-api-amber);
+}
+
+.ca-term-chip--stale {
+  color: var(--dh-api-muted);
+}
+
+.ca-term-chip--stale::before {
+  background: var(--dh-api-muted);
+}
+
+.ca-term-chip--error {
+  color: var(--dh-api-red);
+}
+
+.ca-term-chip--error::before {
+  background: var(--dh-api-red);
+}
+
+.ca-term-chip--info {
+  color: var(--dh-api-blue);
+}
+
+.ca-term-chip--info::before {
+  background: var(--dh-api-blue);
+}
+
+/* 数字：等宽表格数字 */
+.ca-term-num {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* 响应式：≤1100px 全部单列 */
+@media (max-width: 1100px) {
+  .ca-term-grid--2,
+  .ca-term-grid--3,
+  .ca-term-grid--7-5 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

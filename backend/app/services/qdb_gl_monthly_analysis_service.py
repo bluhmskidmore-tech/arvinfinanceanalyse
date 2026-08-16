@@ -747,18 +747,6 @@ def _apply_mapping_adjustments(
                 _apply_mapping_field_structured(row, field, adjustment.get("value"))
 
 
-def _apply_mapping_field(row: dict[str, Any], field: str, value: Any) -> None:
-    field_map = {
-        "industry_name": ["琛屼笟鍚嶇О"],
-        "category_name": ["鍚嶇О"],
-        "account_name": ["绉戠洰鍚嶇О", "鍚嶇О"],
-    }
-    for candidate_key in field_map.get(field, []):
-        if candidate_key in row:
-            row[candidate_key] = value
-            return
-
-
 def _row_matches_code(row: dict[str, Any], account_code: str) -> bool:
     for value in row.values():
         text = str(value or "").strip()

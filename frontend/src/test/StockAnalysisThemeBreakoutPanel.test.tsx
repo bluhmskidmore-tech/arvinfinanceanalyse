@@ -15,6 +15,7 @@ const leader = {
   turn: "2.1x",
   closeStrength: "0.92",
   tags: ["leader", "volume"],
+  sourceKindLabel: "当前概念覆盖",
 };
 
 const card: StockThemeBreakoutCard = {
@@ -31,6 +32,7 @@ const card: StockThemeBreakoutCard = {
   avgPctChangeLabel: "均涨 +3.2%",
   movementLabel: "扩散",
   latestEventLabel: "Latest event: sector breadth improved.",
+  sourceKindLabel: "当前概念覆盖",
   leaders: [leader],
 };
 
@@ -62,7 +64,7 @@ describe("StockAnalysisThemeBreakoutPanel", () => {
         cards={[card]}
         evidenceRows={[evidenceRow]}
         reviewItems={[reviewItem]}
-        emptyMessage="No theme breakouts."
+        emptyMessage="当前没有题材观察样本。"
       />,
     );
 
@@ -71,6 +73,7 @@ describe("StockAnalysisThemeBreakoutPanel", () => {
     expect(screen.getByTestId("stock-analysis-theme-evidence-state")).toHaveTextContent("Theme membership");
     expect(screen.getByTestId("stock-analysis-theme-review-items")).toHaveTextContent("Robotics");
     expect(screen.getByText("Needs review before promotion.")).toBeInTheDocument();
+    expect(screen.getAllByText("当前概念覆盖").length).toBeGreaterThanOrEqual(2);
   });
 
   it("renders the provided empty message when there are no breakout cards", () => {
@@ -79,11 +82,12 @@ describe("StockAnalysisThemeBreakoutPanel", () => {
         cards={[]}
         evidenceRows={[]}
         reviewItems={[]}
-        emptyMessage="No theme breakouts."
+        emptyMessage="当前没有题材观察样本。"
       />,
     );
 
-    expect(screen.getByText("No theme breakouts.")).toBeInTheDocument();
+    expect(screen.getByText("当前没有题材观察样本。")).toBeInTheDocument();
+    expect(screen.queryByText(/No theme/i)).not.toBeInTheDocument();
     expect(screen.queryByTestId("stock-analysis-theme-evidence-state")).not.toBeInTheDocument();
     expect(screen.queryByTestId("stock-analysis-theme-review-items")).not.toBeInTheDocument();
   });

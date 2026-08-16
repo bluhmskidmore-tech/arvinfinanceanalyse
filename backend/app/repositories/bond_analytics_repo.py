@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Any
 
 import duckdb
 from backend.app.core_finance.bond_analytics.engine import BondAnalyticsRow
@@ -12,11 +13,18 @@ from backend.app.core_finance.bond_analytics.read_models import (
     summarize_portfolio_risk,
 )
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
+from backend.app.repositories.duckdb_repo import catalog_presence_cached, read_only_connection
+from backend.app.repositories.fact_load_gates import (
+    commit_report_date_purge,
+    enforce_gate_outcome,
+    evaluate_bond_analytics_load,
+)
 from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 
 FACT_TABLE = "fact_formal_bond_analytics_daily"
 SNAPSHOT_TABLE = "zqtz_bond_daily_snapshot"
 BALANCE_ZQTZ_FACT_TABLE = "fact_formal_zqtz_balance_daily"
+RISK_TENSOR_FACT_TABLE = "fact_formal_risk_tensor_daily"
 
 _DASHBOARD_ASSET_GROUP_COLUMNS = frozenset({"bond_type", "rating", "portfolio_name", "tenor_bucket"})
 _DURATION_DENOMINATOR_SQL = (
@@ -62,6 +70,7 @@ _SNAPSHOT_COLUMNS = (
     "accrued_interest_cny",
     "coupon_rate",
     "ytm_value",
+    "value_date",
     "maturity_date",
     "next_call_date",
     "overdue_days",
@@ -98,8 +107,10 @@ _ANALYTICS_COLUMNS = (
     "coupon_rate",
     "interest_mode",
     "interest_payment_frequency",
+    "interest_payment_frequency_fallback_used",
     "interest_rate_style",
     "ytm",
+    "value_date",
     "maturity_date",
     "next_call_date",
     "years_to_maturity",
@@ -136,15 +147,9 @@ _RISK_INDICATORS_KEYS = (
     "weighted_convexity",
     "total_spread_dv01",
     "reinvestment_ratio_1y",
+    "weighted_convexity_coverage_ratio",
 )
 
-_DURATION_SCOPE_KEYS = (
-    "rate_risk_market_value",
-    "rate_risk_dv01",
-    "rate_risk_modified_duration",
-    "duration_excluded_market_value",
-    "duration_excluded_count",
-)
 _Q8 = Decimal("0.00000001")
 
 
@@ -157,7 +162,7 @@ class BondAnalyticsRepository:
         if conn is None:
             return []
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return []
             rows = conn.execute(
                 f"""
@@ -175,20 +180,23 @@ class BondAnalyticsRepository:
         if conn is None:
             return []
         try:
-            if not _table_exists(conn, SNAPSHOT_TABLE):
+            if not _table_exists(conn, self.path, SNAPSHOT_TABLE):
                 return []
-            snapshot_market_value_cny_expr = (
-                "s.market_value_cny"
-                if _column_exists(conn, SNAPSHOT_TABLE, "market_value_cny")
+            value_date_expr = (
+                "s.value_date"
+                if _column_exists(conn, self.path, SNAPSHOT_TABLE, "value_date")
                 else "null"
             )
             balance_join = ""
             accounting_basis_expr = "null"
-            face_value_cny_expr = "s.face_value_native"
-            market_value_cny_expr = snapshot_market_value_cny_expr
-            amortized_cost_cny_expr = "s.amortized_cost_native"
-            accrued_interest_cny_expr = "s.accrued_interest_native"
-            if _table_exists(conn, BALANCE_ZQTZ_FACT_TABLE):
+            # CNY closure is sourced only from the governed formal balance fact.
+            # Keep all CNY projections NULL until a matching formal row exists;
+            # the engine intentionally uses native values only for CNY-identity rows.
+            face_value_cny_expr = "null"
+            market_value_cny_expr = "null"
+            amortized_cost_cny_expr = "null"
+            accrued_interest_cny_expr = "null"
+            if _table_exists(conn, self.path, BALANCE_ZQTZ_FACT_TABLE):
                 balance_join = f"""
                 left join (
                   select
@@ -206,11 +214,43 @@ class BondAnalyticsRepository:
                     rating_key,
                     is_issuance_like_key,
                     currency_code_key,
-                    max(accounting_basis) as accounting_basis,
-                    sum(face_value_amount) as face_value_amount,
-                    sum(market_value_amount) as market_value_amount,
-                    sum(amortized_cost_amount) as amortized_cost_amount,
-                    sum(accrued_interest_amount) as accrued_interest_amount
+                    maturity_date_key,
+                    case
+                      when count(distinct accounting_basis) = 1 then max(accounting_basis)
+                      else null
+                    end as accounting_basis,
+                    case
+                      when count(*) = count(face_value_amount)
+                       and count(*) = count(market_value_amount)
+                       and count(*) = count(amortized_cost_amount)
+                       and count(*) = count(accrued_interest_amount)
+                      then sum(face_value_amount)
+                      else null
+                    end as face_value_amount,
+                    case
+                      when count(*) = count(face_value_amount)
+                       and count(*) = count(market_value_amount)
+                       and count(*) = count(amortized_cost_amount)
+                       and count(*) = count(accrued_interest_amount)
+                      then sum(market_value_amount)
+                      else null
+                    end as market_value_amount,
+                    case
+                      when count(*) = count(face_value_amount)
+                       and count(*) = count(market_value_amount)
+                       and count(*) = count(amortized_cost_amount)
+                       and count(*) = count(accrued_interest_amount)
+                      then sum(amortized_cost_amount)
+                      else null
+                    end as amortized_cost_amount,
+                    case
+                      when count(*) = count(face_value_amount)
+                       and count(*) = count(market_value_amount)
+                       and count(*) = count(amortized_cost_amount)
+                       and count(*) = count(accrued_interest_amount)
+                      then sum(accrued_interest_amount)
+                      else null
+                    end as accrued_interest_amount
                   from (
                     select
                       cast(report_date as varchar) as report_date,
@@ -227,6 +267,7 @@ class BondAnalyticsRepository:
                       trim(coalesce(rating, '')) as rating_key,
                       coalesce(is_issuance_like, false) as is_issuance_like_key,
                       upper(trim(coalesce(currency_code, ''))) as currency_code_key,
+                      cast(maturity_date as varchar) as maturity_date_key,
                       nullif(trim(accounting_basis), '') as accounting_basis,
                       face_value_amount,
                       market_value_amount,
@@ -250,7 +291,8 @@ class BondAnalyticsRepository:
                     industry_name_key,
                     rating_key,
                     is_issuance_like_key,
-                    currency_code_key
+                    currency_code_key,
+                    maturity_date_key
                 ) b
                   on cast(s.report_date as varchar) = b.report_date
                  and trim(coalesce(s.instrument_code, '')) = b.instrument_code_key
@@ -266,12 +308,17 @@ class BondAnalyticsRepository:
                  and trim(coalesce(s.rating, '')) = b.rating_key
                  and coalesce(s.is_issuance_like, false) = b.is_issuance_like_key
                  and upper(trim(coalesce(s.currency_code, ''))) = b.currency_code_key
+                 -- maturity_date 是连接键的一部分：同券展期/重分类会以两个到期日
+                 -- 各出一腿（面值一正一负，其余键完全相同），缺了它每条腿会拿到
+                 -- 两腿合计的 CNY 金额（模式与 sync_zqtz_snapshot_market_value_cny_
+                 -- from_formal 的连接条件一致；balance fact 天然键含 maturity_date）。
+                 and cast(s.maturity_date as varchar) is not distinct from b.maturity_date_key
                 """
                 accounting_basis_expr = "b.accounting_basis"
-                face_value_cny_expr = "coalesce(b.face_value_amount, s.face_value_native)"
-                market_value_cny_expr = f"coalesce(b.market_value_amount, {snapshot_market_value_cny_expr})"
-                amortized_cost_cny_expr = "coalesce(b.amortized_cost_amount, s.amortized_cost_native)"
-                accrued_interest_cny_expr = "coalesce(b.accrued_interest_amount, s.accrued_interest_native)"
+                face_value_cny_expr = "b.face_value_amount"
+                market_value_cny_expr = "b.market_value_amount"
+                amortized_cost_cny_expr = "b.amortized_cost_amount"
+                accrued_interest_cny_expr = "b.accrued_interest_amount"
             rows = conn.execute(
                 f"""
                 select s.report_date, s.instrument_code, s.instrument_name, s.portfolio_name, s.cost_center,
@@ -281,7 +328,7 @@ class BondAnalyticsRepository:
                        {market_value_cny_expr} as market_value_cny, s.amortized_cost_native,
                        {amortized_cost_cny_expr} as amortized_cost_cny, s.accrued_interest_native,
                        {accrued_interest_cny_expr} as accrued_interest_cny,
-                       s.coupon_rate, s.ytm_value, s.maturity_date, s.next_call_date,
+                       s.coupon_rate, s.ytm_value, {value_date_expr} as value_date, s.maturity_date, s.next_call_date,
                        s.overdue_days, s.is_issuance_like, s.interest_mode, s.source_version, s.rule_version,
                        s.ingest_batch_id, s.trace_id, s.sub_type, {accounting_basis_expr} as accounting_basis
                 from {SNAPSHOT_TABLE} s
@@ -302,14 +349,28 @@ class BondAnalyticsRepository:
         rows: list[BondAnalyticsRow],
     ) -> None:
         require_repository_task_write_scope("replace_bond_analytics_rows")
+        # Gate the batch before the delete/insert pair: a duplicate natural key
+        # must never reach storage, and the amount-impacting patterns must be on
+        # the record even when they are individually legal.
+        enforce_gate_outcome(
+            evaluate_bond_analytics_load(rows, table_name=FACT_TABLE),
+            table_name=FACT_TABLE,
+        )
         conn = duckdb.connect(self.path, read_only=False)
+        transaction_started = False
         try:
             conn.execute("begin transaction")
+            transaction_started = True
             ensure_bond_analytics_tables(conn)
-            conn.execute(
-                f"delete from {FACT_TABLE} where report_date = ?",
-                [report_date],
+            conn.execute("commit")
+            transaction_started = False
+
+            commit_report_date_purge(
+                conn, tables=(FACT_TABLE,), report_date=report_date
             )
+
+            conn.execute("begin transaction")
+            transaction_started = True
             if rows:
                 conn.executemany(
                     f"""
@@ -317,12 +378,13 @@ class BondAnalyticsRepository:
                       report_date, instrument_code, instrument_name, portfolio_name, cost_center,
                       asset_class_raw, asset_class_std, bond_type, issuer_name, industry_name, rating,
                       accounting_class, accounting_rule_id, currency_code, face_value, market_value_native, market_value,
-                      amortized_cost, accrued_interest, coupon_rate, interest_mode, interest_payment_frequency, interest_rate_style, ytm, maturity_date, next_call_date,
+                      amortized_cost, accrued_interest, coupon_rate, interest_mode, interest_payment_frequency,
+                      interest_payment_frequency_fallback_used, interest_rate_style, ytm, value_date, maturity_date, next_call_date,
                       years_to_maturity, tenor_bucket, macaulay_duration, modified_duration,
                       convexity, dv01, is_credit, spread_dv01, source_version, rule_version,
                       ingest_batch_id, trace_id
                     ) values (
-                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                     )
                     """,
                     [
@@ -349,8 +411,10 @@ class BondAnalyticsRepository:
                             row.coupon_rate,
                             row.interest_mode,
                             row.interest_payment_frequency,
+                            row.interest_payment_frequency_fallback_used,
                             row.interest_rate_style,
                             row.ytm,
+                            row.value_date.isoformat() if row.value_date else None,
                             row.maturity_date.isoformat() if row.maturity_date else None,
                             row.next_call_date.isoformat() if row.next_call_date else None,
                             row.years_to_maturity,
@@ -370,8 +434,44 @@ class BondAnalyticsRepository:
                     ],
                 )
             conn.execute("commit")
+            transaction_started = False
         except Exception:
-            conn.execute("rollback")
+            if transaction_started:
+                try:
+                    conn.execute("rollback")
+                except Exception:  # noqa: S110  # 回滚失败不得掩盖随后 raise 的原始写入异常
+                    pass
+            raise
+        finally:
+            conn.close()
+
+    def invalidate_report_date_facts(self, *, report_date: str) -> None:
+        """Remove stale bond/risk facts for one report date after closure failure."""
+
+        require_repository_task_write_scope("invalidate_report_date_facts")
+        conn = duckdb.connect(self.path, read_only=False)
+        transaction_started = False
+        try:
+            conn.execute("begin transaction")
+            transaction_started = True
+            if _table_exists(conn, self.path, FACT_TABLE):
+                conn.execute(
+                    f"delete from {FACT_TABLE} where report_date = ?",
+                    [report_date],
+                )
+            if _table_exists(conn, self.path, RISK_TENSOR_FACT_TABLE):
+                conn.execute(
+                    f"delete from {RISK_TENSOR_FACT_TABLE} where report_date = ?",
+                    [report_date],
+                )
+            conn.execute("commit")
+            transaction_started = False
+        except Exception:
+            if transaction_started:
+                try:
+                    conn.execute("rollback")
+                except Exception:  # noqa: S110  # 回滚失败不得掩盖随后 raise 的原始写入异常
+                    pass
             raise
         finally:
             conn.close()
@@ -387,31 +487,41 @@ class BondAnalyticsRepository:
         if conn is None:
             return []
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return []
             interest_mode_expr = (
                 "interest_mode"
-                if _column_exists(conn, FACT_TABLE, "interest_mode")
+                if _column_exists(conn, self.path, FACT_TABLE, "interest_mode")
                 else "'' as interest_mode"
             )
             interest_payment_frequency_expr = (
                 "interest_payment_frequency"
-                if _column_exists(conn, FACT_TABLE, "interest_payment_frequency")
+                if _column_exists(conn, self.path, FACT_TABLE, "interest_payment_frequency")
                 else "'annual' as interest_payment_frequency"
+            )
+            interest_payment_frequency_fallback_expr = (
+                "interest_payment_frequency_fallback_used"
+                if _column_exists(conn, self.path, FACT_TABLE, "interest_payment_frequency_fallback_used")
+                else "cast(null as boolean) as interest_payment_frequency_fallback_used"
             )
             interest_rate_style_expr = (
                 "interest_rate_style"
-                if _column_exists(conn, FACT_TABLE, "interest_rate_style")
+                if _column_exists(conn, self.path, FACT_TABLE, "interest_rate_style")
                 else "'unknown' as interest_rate_style"
             )
             next_call_date_expr = (
                 "next_call_date"
-                if _column_exists(conn, FACT_TABLE, "next_call_date")
+                if _column_exists(conn, self.path, FACT_TABLE, "next_call_date")
                 else "null as next_call_date"
+            )
+            value_date_expr = (
+                "value_date"
+                if _column_exists(conn, self.path, FACT_TABLE, "value_date")
+                else "null as value_date"
             )
             market_value_native_expr = (
                 "market_value_native"
-                if _column_exists(conn, FACT_TABLE, "market_value_native")
+                if _column_exists(conn, self.path, FACT_TABLE, "market_value_native")
                 else "null as market_value_native"
             )
             where_parts = ["report_date = ?"]
@@ -427,7 +537,8 @@ class BondAnalyticsRepository:
                 select report_date, instrument_code, instrument_name, portfolio_name, cost_center,
                        asset_class_raw, asset_class_std, bond_type, issuer_name, industry_name, rating,
                        accounting_class, accounting_rule_id, currency_code, face_value, {market_value_native_expr}, market_value,
-                       amortized_cost, accrued_interest, coupon_rate, {interest_mode_expr}, {interest_payment_frequency_expr}, {interest_rate_style_expr}, ytm, maturity_date, {next_call_date_expr},
+                       amortized_cost, accrued_interest, coupon_rate, {interest_mode_expr}, {interest_payment_frequency_expr},
+                       {interest_payment_frequency_fallback_expr}, {interest_rate_style_expr}, ytm, {value_date_expr}, maturity_date, {next_call_date_expr},
                        years_to_maturity, tenor_bucket, macaulay_duration, modified_duration,
                        convexity, dv01, is_credit, spread_dv01, source_version, rule_version,
                        ingest_batch_id, trace_id
@@ -453,31 +564,41 @@ class BondAnalyticsRepository:
         if conn is None:
             return {value: [] for value in requested}
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return {value: [] for value in requested}
             interest_mode_expr = (
                 "interest_mode"
-                if _column_exists(conn, FACT_TABLE, "interest_mode")
+                if _column_exists(conn, self.path, FACT_TABLE, "interest_mode")
                 else "'' as interest_mode"
             )
             interest_payment_frequency_expr = (
                 "interest_payment_frequency"
-                if _column_exists(conn, FACT_TABLE, "interest_payment_frequency")
+                if _column_exists(conn, self.path, FACT_TABLE, "interest_payment_frequency")
                 else "'annual' as interest_payment_frequency"
+            )
+            interest_payment_frequency_fallback_expr = (
+                "interest_payment_frequency_fallback_used"
+                if _column_exists(conn, self.path, FACT_TABLE, "interest_payment_frequency_fallback_used")
+                else "cast(null as boolean) as interest_payment_frequency_fallback_used"
             )
             interest_rate_style_expr = (
                 "interest_rate_style"
-                if _column_exists(conn, FACT_TABLE, "interest_rate_style")
+                if _column_exists(conn, self.path, FACT_TABLE, "interest_rate_style")
                 else "'unknown' as interest_rate_style"
             )
             next_call_date_expr = (
                 "next_call_date"
-                if _column_exists(conn, FACT_TABLE, "next_call_date")
+                if _column_exists(conn, self.path, FACT_TABLE, "next_call_date")
                 else "null as next_call_date"
+            )
+            value_date_expr = (
+                "value_date"
+                if _column_exists(conn, self.path, FACT_TABLE, "value_date")
+                else "null as value_date"
             )
             market_value_native_expr = (
                 "market_value_native"
-                if _column_exists(conn, FACT_TABLE, "market_value_native")
+                if _column_exists(conn, self.path, FACT_TABLE, "market_value_native")
                 else "null as market_value_native"
             )
             placeholders = ",".join(["?"] * len(requested))
@@ -486,7 +607,8 @@ class BondAnalyticsRepository:
                 select report_date, instrument_code, instrument_name, portfolio_name, cost_center,
                        asset_class_raw, asset_class_std, bond_type, issuer_name, industry_name, rating,
                        accounting_class, accounting_rule_id, currency_code, face_value, {market_value_native_expr}, market_value,
-                       amortized_cost, accrued_interest, coupon_rate, {interest_mode_expr}, {interest_payment_frequency_expr}, {interest_rate_style_expr}, ytm, maturity_date, {next_call_date_expr},
+                       amortized_cost, accrued_interest, coupon_rate, {interest_mode_expr}, {interest_payment_frequency_expr},
+                       {interest_payment_frequency_fallback_expr}, {interest_rate_style_expr}, ytm, {value_date_expr}, maturity_date, {next_call_date_expr},
                        years_to_maturity, tenor_bucket, macaulay_duration, modified_duration,
                        convexity, dv01, is_credit, spread_dv01, source_version, rule_version,
                        ingest_batch_id, trace_id
@@ -542,7 +664,7 @@ class BondAnalyticsRepository:
         if conn is None:
             return None
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return None
             row = conn.execute(
                 f"""
@@ -590,7 +712,7 @@ class BondAnalyticsRepository:
         if conn is None:
             return {}
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return {}
             placeholders = ", ".join(["?"] * len(dates))
             rows = conn.execute(
@@ -635,67 +757,12 @@ class BondAnalyticsRepository:
             return None
         return self.fetch_risk_overview_snapshot(report_date=report_dates[0])
 
-    def fetch_rate_risk_duration_scope(self, report_date: str) -> dict[str, object] | None:
-        conn = _connect_read_only(self.path)
-        if conn is None:
-            return None
-        try:
-            if not _table_exists(conn, FACT_TABLE):
-                return None
-            required_columns = ("market_value", "dv01", "modified_duration", "maturity_date")
-            if not all(_column_exists(conn, FACT_TABLE, column) for column in required_columns):
-                return None
-            row = conn.execute(
-                f"""
-                with scoped as (
-                  select
-                    coalesce(market_value, 0) as market_value,
-                    coalesce(dv01, 0) as dv01,
-                    coalesce(modified_duration, 0) as modified_duration,
-                    case
-                      when {_DURATION_DENOMINATOR_SQL}
-                      then 1 else 0
-                    end as in_duration_scope
-                  from {FACT_TABLE}
-                  where cast(report_date as varchar) = ?
-                )
-                select
-                  coalesce(sum(case when in_duration_scope = 1 then market_value else 0 end), 0)
-                    as rate_risk_market_value,
-                  coalesce(sum(case when in_duration_scope = 1 then dv01 else 0 end), 0)
-                    as rate_risk_dv01,
-                  case
-                    when coalesce(sum(case when in_duration_scope = 1 then market_value else 0 end), 0) > 0
-                    then sum(case when in_duration_scope = 1 then modified_duration * market_value else 0 end)
-                       / sum(case when in_duration_scope = 1 then market_value else 0 end)
-                    else 0
-                  end as rate_risk_modified_duration,
-                  coalesce(sum(case when in_duration_scope = 0 and market_value <> 0 then market_value else 0 end), 0)
-                    as duration_excluded_market_value,
-                  coalesce(sum(case when in_duration_scope = 0 and market_value <> 0 then 1 else 0 end), 0)
-                    as duration_excluded_count
-                from scoped
-                """,
-                [report_date],
-            ).fetchone()
-            if row is None:
-                return None
-            out = dict(zip(_DURATION_SCOPE_KEYS, row, strict=True))
-            out["duration_excluded_count"] = int(out["duration_excluded_count"] or 0)
-            for key in _DURATION_SCOPE_KEYS:
-                if key != "duration_excluded_count":
-                    out[key] = _decimal(out[key])
-            out["rate_risk_modified_duration"] = out["rate_risk_modified_duration"].quantize(_Q8)
-            return out
-        finally:
-            conn.close()
-
     def resolve_prior_curve_anchor_report_date(self, *, report_date: str) -> str | None:
         conn = _connect_read_only(self.path)
         if conn is None:
             return None
         try:
-            if not _table_exists(conn, BALANCE_ZQTZ_FACT_TABLE):
+            if not _table_exists(conn, self.path, BALANCE_ZQTZ_FACT_TABLE):
                 return None
             row = conn.execute(
                 f"""
@@ -723,7 +790,7 @@ class BondAnalyticsRepository:
             empty = _empty_dashboard_headline_kpis_row()
             return {"current": empty, "previous": empty if prev_report_date else None}
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 empty = _empty_dashboard_headline_kpis_row()
                 return {"current": empty, "previous": empty if prev_report_date else None}
             current = _fetch_one_period_headline_kpis(conn, report_date)
@@ -745,7 +812,7 @@ class BondAnalyticsRepository:
         if conn is None:
             return []
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return []
             rows = conn.execute(
                 f"""
@@ -772,7 +839,13 @@ class BondAnalyticsRepository:
             conn.close()
 
     def fetch_business_type_metrics(self, report_date: str) -> list[dict[str, object]]:
-        """Aggregate by bond_type: market_value, YTM and modified_duration (market-value weighted)."""
+        """Aggregate by bond_type: market_value, YTM and modified_duration (market-value weighted).
+
+        Rows missing ytm / modified_duration are excluded from that metric's
+        numerator and denominator alike (缺失≠0); an explicit 0 is a real
+        observation and keeps its weight. ``*_coverage_ratio`` reports the
+        market-value share actually carrying the field.
+        """
         ytm_norm = (
             "(case when ytm is null then null "
             "when ytm > 1 and ytm <= 100 then ytm / 100.0 else ytm end)"
@@ -781,16 +854,24 @@ class BondAnalyticsRepository:
         if conn is None:
             return []
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return []
             rows = conn.execute(
                 f"""
                 select
                   cast(bond_type as varchar) as name,
                   coalesce(sum(market_value), 0) as market_value,
-                  sum(({ytm_norm}) * market_value) / nullif(sum(market_value), 0) as weighted_avg_ytm,
-                  sum(coalesce(modified_duration, 0) * market_value)
-                    / nullif(sum(market_value), 0) as weighted_avg_duration
+                  -- 缺失≠0：缺 YTM/久期的持仓不得进入分母，否则加权值被系统性拉低。
+                  sum(({ytm_norm}) * market_value)
+                    / nullif(sum(case when ytm is not null then market_value else 0 end), 0)
+                    as weighted_avg_ytm,
+                  sum(modified_duration * market_value)
+                    / nullif(sum(case when modified_duration is not null then market_value else 0 end), 0)
+                    as weighted_avg_duration,
+                  sum(case when ytm is not null then abs(coalesce(market_value, 0)) else 0 end)
+                    / nullif(sum(abs(coalesce(market_value, 0))), 0) as weighted_avg_ytm_coverage_ratio,
+                  sum(case when modified_duration is not null then abs(coalesce(market_value, 0)) else 0 end)
+                    / nullif(sum(abs(coalesce(market_value, 0))), 0) as weighted_avg_duration_coverage_ratio
                 from {FACT_TABLE}
                 where cast(report_date as varchar) = ?
                   and bond_type is not null
@@ -806,6 +887,8 @@ class BondAnalyticsRepository:
                     "market_value": row[1],
                     "weighted_avg_ytm": row[2],
                     "weighted_avg_duration": row[3],
+                    "weighted_avg_ytm_coverage_ratio": row[4],
+                    "weighted_avg_duration_coverage_ratio": row[5],
                 }
                 for row in rows
             ]
@@ -817,7 +900,7 @@ class BondAnalyticsRepository:
         if conn is None:
             return []
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return []
             rows = conn.execute(
                 f"""
@@ -866,7 +949,7 @@ class BondAnalyticsRepository:
         if conn is None:
             return []
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return []
             rows = conn.execute(
                 f"""
@@ -915,7 +998,7 @@ class BondAnalyticsRepository:
         if conn is None:
             return []
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return []
             rows = conn.execute(
                 f"""
@@ -948,7 +1031,7 @@ class BondAnalyticsRepository:
         if conn is None:
             return []
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return []
             rows = conn.execute(
                 f"""
@@ -965,7 +1048,7 @@ class BondAnalyticsRepository:
                       when years_to_maturity <= 0.0192 then '7天内'
                       when years_to_maturity <= 0.0822 then '8-30天'
                       when years_to_maturity <= 0.2466 then '31-90天'
-                      when years_to_maturity <= 0.2740 then '91天-1年'
+                      when years_to_maturity <= 1 then '91天-1年'
                       when years_to_maturity <= 3 then '1-3年'
                       when years_to_maturity <= 5 then '3-5年'
                       else '5年以上'
@@ -995,7 +1078,7 @@ class BondAnalyticsRepository:
         if conn is None:
             return []
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return []
             rows = conn.execute(
                 f"""
@@ -1029,7 +1112,7 @@ class BondAnalyticsRepository:
         if conn is None:
             return _empty_dashboard_risk_indicators_row()
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return _empty_dashboard_risk_indicators_row()
             row = conn.execute(
                 f"""
@@ -1048,9 +1131,11 @@ class BondAnalyticsRepository:
                     then sum(case when is_credit then market_value else 0 end) / sum(market_value)
                     else 0
                   end as credit_ratio,
+                  -- 缺失≠0：缺凸性的持仓不得进入分母，否则加权凸性被系统性拉低。
                   case
-                    when coalesce(sum(market_value), 0) > 0
-                    then sum(convexity * market_value) / sum(market_value)
+                    when coalesce(sum(case when convexity is not null then market_value else 0 end), 0) > 0
+                    then sum(convexity * market_value)
+                       / sum(case when convexity is not null then market_value else 0 end)
                     else 0
                   end as weighted_convexity,
                   coalesce(sum(spread_dv01), 0) as total_spread_dv01,
@@ -1058,7 +1143,10 @@ class BondAnalyticsRepository:
                     when coalesce(sum(face_value), 0) > 0
                     then sum(case when years_to_maturity <= 1 then face_value else 0 end) / sum(face_value)
                     else 0
-                  end as reinvestment_ratio_1y
+                  end as reinvestment_ratio_1y,
+                  sum(case when convexity is not null then abs(coalesce(market_value, 0)) else 0 end)
+                    / nullif(sum(abs(coalesce(market_value, 0))), 0)
+                    as weighted_convexity_coverage_ratio
                 from {FACT_TABLE}
                 where cast(report_date as varchar) = ?
                 """,
@@ -1069,6 +1157,177 @@ class BondAnalyticsRepository:
             return _normalize_dashboard_risk_row(dict(zip(_RISK_INDICATORS_KEYS, row, strict=True)))
         finally:
             conn.close()
+
+
+    def list_campisi_decision_analytics_report_dates(
+        self,
+        *,
+        conn: duckdb.DuckDBPyConnection | None = None,
+    ) -> list[str]:
+        if conn is not None:
+            return self._list_campisi_decision_report_dates_impl(conn, FACT_TABLE, "report_date")
+        try:
+            with read_only_connection(self.path) as scoped:
+                return self._list_campisi_decision_report_dates_impl(scoped, FACT_TABLE, "report_date")
+        except (OSError, duckdb.Error):
+            return []
+
+    def fetch_campisi_decision_analytics_rows(
+        self,
+        report_date: str,
+        *,
+        conn: duckdb.DuckDBPyConnection | None = None,
+    ) -> list[dict[str, Any]]:
+        if conn is not None:
+            return self._fetch_campisi_decision_analytics_rows_impl(conn, report_date)
+        try:
+            with read_only_connection(self.path) as scoped:
+                return self._fetch_campisi_decision_analytics_rows_impl(scoped, report_date)
+        except (OSError, duckdb.Error):
+            return []
+
+    def _list_campisi_decision_report_dates_impl(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        table_name: str,
+        date_col: str,
+    ) -> list[str]:
+        if not _campisi_decision_table_exists(conn, table_name):
+            return []
+        rows = conn.execute(
+            f"""
+            select distinct cast({date_col} as varchar) as report_date
+            from {table_name}
+            where {date_col} is not null
+            order by report_date desc
+            """
+        ).fetchall()
+        return [str(row[0])[:10] for row in rows]
+
+    def _fetch_campisi_decision_analytics_rows_impl(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        report_date: str,
+    ) -> list[dict[str, Any]]:
+        """Aggregate formal bond-analytics rows for Campisi decision-grade reads.
+
+        Weighting excludes missing coupon_rate / ytm / years_to_maturity /
+        modified_duration / convexity from both the numerator and denominator
+        (缺失≠0). Explicit 0 remains a valid zero-coupon / zero-ytm /
+        zero-convexity observation and stays in the weighted average.
+        Coverage ratios are the MV-weighted share of rows carrying the field.
+        """
+        if not _campisi_decision_table_exists(conn, FACT_TABLE):
+            return []
+        return _campisi_decision_duckdb_rows(
+            conn,
+            """
+            select
+                instrument_code,
+                max(instrument_name) as instrument_name,
+                portfolio_name,
+                cost_center,
+                max(asset_class_std) as asset_class_std,
+                max(bond_type) as bond_type,
+                max(rating) as rating,
+                accounting_class,
+                currency_code,
+                sum(coalesce(face_value, 0)) as face_value,
+                sum(coalesce(market_value, 0)) as market_value,
+                sum(coalesce(amortized_cost, 0)) as amortized_cost,
+                sum(coalesce(accrued_interest, 0)) as accrued_interest,
+                -- 缺失≠0：缺字段的行不得 coalesce 成 0 拉低加权值；显式 0 才是真实观测。
+                case
+                    when sum(case when coupon_rate is not null then abs(coalesce(market_value, 0)) else 0 end) = 0
+                        then avg(coupon_rate)
+                    else sum(coupon_rate * abs(coalesce(market_value, 0)))
+                         / sum(case when coupon_rate is not null then abs(coalesce(market_value, 0)) else 0 end)
+                end as coupon_rate,
+                case
+                    when sum(case when ytm is not null then abs(coalesce(market_value, 0)) else 0 end) = 0
+                        then avg(ytm)
+                    else sum(ytm * abs(coalesce(market_value, 0)))
+                         / sum(case when ytm is not null then abs(coalesce(market_value, 0)) else 0 end)
+                end as ytm,
+                min(maturity_date) as maturity_date,
+                case
+                    when sum(case when years_to_maturity is not null then abs(coalesce(market_value, 0)) else 0 end) = 0
+                        then avg(years_to_maturity)
+                    else sum(years_to_maturity * abs(coalesce(market_value, 0)))
+                         / sum(case when years_to_maturity is not null then abs(coalesce(market_value, 0)) else 0 end)
+                end as years_to_maturity,
+                max(tenor_bucket) as tenor_bucket,
+                case
+                    when sum(case when modified_duration is not null then abs(coalesce(market_value, 0)) else 0 end) = 0
+                        then avg(modified_duration)
+                    else sum(modified_duration * abs(coalesce(market_value, 0)))
+                         / sum(case when modified_duration is not null then abs(coalesce(market_value, 0)) else 0 end)
+                end as modified_duration,
+                case
+                    when sum(case when convexity is not null then abs(coalesce(market_value, 0)) else 0 end) = 0
+                        then avg(convexity)
+                    else sum(convexity * abs(coalesce(market_value, 0)))
+                         / sum(case when convexity is not null then abs(coalesce(market_value, 0)) else 0 end)
+                end as convexity,
+                case
+                    when sum(abs(coalesce(market_value, 0))) = 0 then null
+                    else sum(case when coupon_rate is not null then abs(coalesce(market_value, 0)) else 0 end)
+                         / sum(abs(coalesce(market_value, 0)))
+                end as coupon_rate_coverage_ratio,
+                case
+                    when sum(abs(coalesce(market_value, 0))) = 0 then null
+                    else sum(case when ytm is not null then abs(coalesce(market_value, 0)) else 0 end)
+                         / sum(abs(coalesce(market_value, 0)))
+                end as ytm_coverage_ratio,
+                case
+                    when sum(abs(coalesce(market_value, 0))) = 0 then null
+                    else sum(case when years_to_maturity is not null then abs(coalesce(market_value, 0)) else 0 end)
+                         / sum(abs(coalesce(market_value, 0)))
+                end as years_to_maturity_coverage_ratio,
+                case
+                    when sum(abs(coalesce(market_value, 0))) = 0 then null
+                    else sum(case when modified_duration is not null then abs(coalesce(market_value, 0)) else 0 end)
+                         / sum(abs(coalesce(market_value, 0)))
+                end as modified_duration_coverage_ratio,
+                case
+                    when sum(abs(coalesce(market_value, 0))) = 0 then null
+                    else sum(case when convexity is not null then abs(coalesce(market_value, 0)) else 0 end)
+                         / sum(abs(coalesce(market_value, 0)))
+                end as convexity_coverage_ratio,
+                sum(coalesce(dv01, 0)) as dv01,
+                max(case when coalesce(is_credit, false) then 1 else 0 end) as is_credit,
+                sum(coalesce(spread_dv01, 0)) as spread_dv01,
+                count(*) as source_row_count
+            from fact_formal_bond_analytics_daily
+            where cast(report_date as date) = cast(? as date)
+            group by instrument_code, portfolio_name, cost_center, accounting_class, currency_code
+            """,
+            [report_date],
+        )
+
+
+
+
+def _campisi_decision_table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
+    try:
+        return bool(
+            conn.execute(
+                "select count(*) from information_schema.tables where table_name = ?",
+                [table_name],
+            ).fetchone()[0]
+        )
+    except duckdb.Error:
+        return False
+
+
+def _campisi_decision_duckdb_rows(
+    conn: duckdb.DuckDBPyConnection,
+    sql: str,
+    params: list[Any] | tuple[Any, ...] = (),
+) -> list[dict[str, Any]]:
+    cursor = conn.execute(sql, params)
+    columns = [column[0] for column in cursor.description]
+    return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
 
 
 def _normalize_dashboard_risk_row(data: dict[str, object]) -> dict[str, object]:
@@ -1087,11 +1346,12 @@ def _empty_dashboard_headline_kpis_row() -> dict[str, object]:
         "unrealized_pnl": z,
         "total_amortized_cost": z,
         "total_accrued_interest": z,
-        "weighted_ytm": z,
-        "weighted_duration": z,
+        "weighted_ytm": None,
+        "weighted_duration": None,
         "weighted_coupon": z,
         "credit_spread_median": None,
         "total_dv01": z,
+        "weighted_coupon_coverage_ratio": z,
     }
 
 
@@ -1108,13 +1368,20 @@ def _fetch_one_period_headline_kpis(
           coalesce(sum(market_value - amortized_cost), 0) as unrealized_pnl,
           coalesce(sum(amortized_cost), 0) as total_amortized_cost,
           coalesce(sum(accrued_interest), 0) as total_accrued_interest,
+          -- 缺失≠0：缺票息的持仓不得进入分母，否则加权票息被系统性拉低。
           case
-            when coalesce(sum(face_value), 0) > 0
-            then sum(coupon_rate * face_value) / sum(face_value)
+            when coalesce(sum(case when coupon_rate is not null then face_value else 0 end), 0) > 0
+            then sum(coupon_rate * face_value)
+               / sum(case when coupon_rate is not null then face_value else 0 end)
             else 0
           end as weighted_coupon,
           median(case when is_credit then ytm end) as credit_spread_median,
-          coalesce(sum(dv01), 0) as total_dv01
+          coalesce(sum(dv01), 0) as total_dv01,
+          case
+            when coalesce(sum(face_value), 0) > 0
+            then sum(case when coupon_rate is not null then face_value else 0 end) / sum(face_value)
+            else 0
+          end as weighted_coupon_coverage_ratio
         from {FACT_TABLE}
         where cast(report_date as varchar) = ?
         """,
@@ -1135,13 +1402,14 @@ def _fetch_one_period_headline_kpis(
         "weighted_coupon": _decimal(row[6]),
         "credit_spread_median": None if row[7] is None else _decimal(row[7]),
         "total_dv01": _decimal(row[8]),
+        "weighted_coupon_coverage_ratio": _decimal(row[9]),
     }
 
 
 def _fetch_one_period_weighted_rate_duration_kpis(
     conn: duckdb.DuckDBPyConnection,
     report_date: str,
-) -> dict[str, Decimal]:
+) -> dict[str, Decimal | None]:
     row = conn.execute(
         f"""
         select
@@ -1150,14 +1418,14 @@ def _fetch_one_period_weighted_rate_duration_kpis(
             then sum(
               case when {_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL} then ytm * market_value else 0 end
             ) / sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL})
-            else 0
+            else null
           end as weighted_ytm,
           case
             when coalesce(sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL}), 0) > 0
             then sum(
               case when {_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL} then modified_duration * market_value else 0 end
             ) / sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL})
-            else 0
+            else null
           end as weighted_duration
         from {FACT_TABLE}
         where cast(report_date as varchar) = ?
@@ -1166,10 +1434,10 @@ def _fetch_one_period_weighted_rate_duration_kpis(
         [report_date],
     ).fetchone()
     if row is None:
-        return {"weighted_ytm": Decimal("0"), "weighted_duration": Decimal("0")}
+        return {"weighted_ytm": None, "weighted_duration": None}
     return {
-        "weighted_ytm": _decimal(row[0]),
-        "weighted_duration": _decimal(row[1]),
+        "weighted_ytm": None if row[0] is None else _decimal(row[0]),
+        "weighted_duration": None if row[1] is None else _decimal(row[1]),
     }
 
 
@@ -1183,6 +1451,7 @@ def _empty_dashboard_risk_indicators_row() -> dict[str, object]:
         "weighted_convexity": z,
         "total_spread_dv01": z,
         "reinvestment_ratio_1y": z,
+        "weighted_convexity_coverage_ratio": z,
     }
 
 
@@ -1191,31 +1460,37 @@ def ensure_bond_analytics_tables(conn: duckdb.DuckDBPyConnection) -> None:
     apply_pending_migrations_on_connection(conn)
 
 
-def _table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
-    row = conn.execute(
-        """
-        select 1
-        from information_schema.tables
-        where table_name = ?
-        limit 1
-        """,
-        [table_name],
-    ).fetchone()
-    return row is not None
+def _table_exists(conn: duckdb.DuckDBPyConnection, path: str, table_name: str) -> bool:
+    def _probe() -> bool:
+        row = conn.execute(
+            """
+            select 1
+            from information_schema.tables
+            where table_name = ?
+            limit 1
+            """,
+            [table_name],
+        ).fetchone()
+        return row is not None
+
+    return catalog_presence_cached(path, "table", table_name, _probe)
 
 
-def _column_exists(conn: duckdb.DuckDBPyConnection, table_name: str, column_name: str) -> bool:
-    row = conn.execute(
-        """
-        select 1
-        from information_schema.columns
-        where table_name = ?
-          and column_name = ?
-        limit 1
-        """,
-        [table_name, column_name],
-    ).fetchone()
-    return row is not None
+def _column_exists(conn: duckdb.DuckDBPyConnection, path: str, table_name: str, column_name: str) -> bool:
+    def _probe() -> bool:
+        row = conn.execute(
+            """
+            select 1
+            from information_schema.columns
+            where table_name = ?
+              and column_name = ?
+            limit 1
+            """,
+            [table_name, column_name],
+        ).fetchone()
+        return row is not None
+
+    return catalog_presence_cached(path, "column", f"{table_name}.{column_name}", _probe)
 
 
 def _connect_read_only(path: str) -> duckdb.DuckDBPyConnection | None:

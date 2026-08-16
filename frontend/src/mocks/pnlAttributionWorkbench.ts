@@ -46,6 +46,7 @@ export const mockVolumeRateAttribution: VolumeRateAttributionPayload = {
   total_volume_effect: y(8_000_000),
   total_rate_effect: y(5_500_000),
   total_interaction_effect: y(1_500_000),
+  total_recon_error: y(0),
   has_previous_data: true,
   items: [
     {
@@ -371,6 +372,18 @@ export const mockCarryRollDown: CarryRollDownPayload = {
   ],
 };
 
+const mockRiskCoverage = () => ({
+  total_row_count: 100,
+  covered_row_count: 100,
+  excluded_row_count: 0,
+  total_market_value: yScale(12_000_000_000),
+  covered_market_value: yScale(12_000_000_000),
+  excluded_market_value: yScale(0),
+  coverage_pct: pp(100),
+  excluded_pct: pp(0),
+  exclusions: [],
+});
+
 export const mockSpreadAttribution: SpreadAttributionPayload = {
   report_date: "2026-03-31",
   start_date: "2026-03-01",
@@ -379,6 +392,7 @@ export const mockSpreadAttribution: SpreadAttributionPayload = {
   treasury_10y_end: rp(2.2),
   treasury_10y_change: bpv(-8),
   total_market_value: yScale(12_000_000_000),
+  risk_coverage: mockRiskCoverage(),
   portfolio_duration: rp(3.8),
   total_treasury_effect: y(22_000_000),
   total_spread_effect: y(-4_000_000),
@@ -394,6 +408,7 @@ export const mockKrdAttribution: KRDAttributionPayload = {
   start_date: "2026-03-01",
   end_date: "2026-03-31",
   total_market_value: yScale(12_000_000_000),
+  risk_coverage: mockRiskCoverage(),
   portfolio_duration: rp(3.8),
   portfolio_dv01: dv(4_200_000),
   total_duration_effect: y(18_000_000),

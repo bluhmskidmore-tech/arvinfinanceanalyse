@@ -1,8 +1,7 @@
 {
-  "catalog_version": "2026-05-20.cycle-rotation-macro.v1",
-  "policy_note": "PMI / social-financing YoY inputs for cycle MacroScore; refresh via macro_backfill or seed_cycle_rotation_macro script.",
+  "catalog_version": "2026-07-11.cycle-rotation-macro.v2",
+  "policy_note": "Observation-only PMI / social-financing YoY inputs for cycle MacroScore; production refresh uses macro_backfill only.",
   "refresh_path": [
-    "scripts/seed_cycle_rotation_macro.py --duckdb-path <target.duckdb> --fixture tests/fixtures/cycle_rotation_macro_monthly.json",
     "python -m backend.app.tasks.macro_backfill --series-names 制造业PMI 社会融资规模存量:同比 M2:同比"
   ],
   "series": [
@@ -13,7 +12,9 @@
       "unit": "index",
       "theme": "macro_leading",
       "backfill_series_name_aliases": ["制造业PMI", "PMI"],
-      "tushare_api": "cn_pmi"
+      "tushare_api": "cn_pmi",
+      "tushare_field": "PMI010000",
+      "excluded_series_ids": ["M0017127"]
     },
     {
       "series_id": "M5525763",
@@ -23,7 +24,8 @@
       "theme": "macro_leading",
       "backfill_series_name_aliases": ["社会融资规模存量:同比", "社融"],
       "tushare_api": "sf_month",
-      "tushare_transform": "derive_yoy_pct_from_stk_endval"
+      "tushare_transform": "derive_yoy_pct_from_stk_endval",
+      "credit_impulse_priority": "primary"
     },
     {
       "series_id": "M0001385",
@@ -32,6 +34,7 @@
       "unit": "%",
       "theme": "macro_leading",
       "backfill_series_name_aliases": ["M2:同比", "M2"],
+      "tushare_api": "cn_m",
       "credit_impulse_fallback": true
     }
   ]

@@ -1,0 +1,14 @@
+{
+  "series_id": "nbs.macro.cn_gdp.quarterly",
+  "series_name": "China GDP YoY (NBS official release)",
+  "listing_url": "https://www.stats.gov.cn/sj/xwfbh/fbhwd/",
+  "allowed_hosts": [
+    "stats.gov.cn",
+    "www.stats.gov.cn"
+  ],
+  "frequency": "quarterly",
+  "unit": "pct",
+  "rule_version": "rv_nbs_gdp_release_v1",
+  "catalog_version": "m2b.nbs_gdp_release.v1",
+  "max_document_bytes": 2000000
+}

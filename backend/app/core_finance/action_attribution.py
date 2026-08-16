@@ -24,6 +24,9 @@ ACTION_TYPE_NAMES: dict[str, str] = {
     "REDUCE_DURATION": "减久期",
     "SWITCH": "换券/结构调整",
     "ADJUST": "持仓调整",
+    # 存续且久期/市值均无显著变化（未落入以上任一动作分桶）的持仓，
+    # 仅在 by_action_type 中以汇总行披露，不生成 action_details 明细行。
+    "UNALLOCATED": "存续未变动（未分配）",
 }
 
 
@@ -50,14 +53,21 @@ def build_action_attribution_success_payload(
     computed_at: str,
 ) -> dict[str, Any]:
     warn_parts: list[str | None] = [str(w) for w in (raw.get("warnings") or [])]
+    warn_parts.extend(
+        [
+            "ACTION_ATTRIBUTION_DV01_UNAVAILABLE",
+            "ACTION_ATTRIBUTION_ACCOUNTING_PNL_DERIVED_COPY",
+        ]
+    )
     if not prior_snapshot_date:
         warn_parts.append("ACTION_ATTRIBUTION_NO_PRIOR_SNAPSHOT")
     warn_parts.extend(pnl_warning_codes)
     warnings = _ordered_unique_warnings(warn_parts)
 
-    missing_inputs: list[str] = []
+    missing_inputs: list[str] = ["action_level_dv01"]
     if not pnl_by_key:
         missing_inputs.append("fact_formal_pnl_fi_capital_gain_517")
+    missing_inputs.append("independent_accounting_pnl")
 
     return {
         "report_date": report_date,
@@ -73,10 +83,13 @@ def build_action_attribution_success_payload(
         "duration_change_from_actions": raw["duration_change_from_actions"],
         "period_start_dv01": raw["period_start_dv01"],
         "period_end_dv01": raw["period_end_dv01"],
-        "status": "ready",
+        "status": "partial",
         "available_components": ["snapshot_diff", "capital_gain_517_allocation"],
         "missing_inputs": missing_inputs,
-        "blocked_components": [],
+        "blocked_components": [
+            "dv01_attribution",
+            "independent_accounting_pnl_reconciliation",
+        ],
         "computed_at": computed_at,
         "warnings": warnings,
         "warnings_detail": [
@@ -213,6 +226,20 @@ def compute_action_attribution_bonds(
     duration_epsilon: Decimal = Decimal("0.15"),
     mv_ratio_epsilon: Decimal = Decimal("0.02"),
 ) -> dict[str, Any]:
+    """按期初/期末快照对比 + 区间 PnL 归因到粗粒度「动作」。
+
+    占位说明：本函数尚无独立的会计口径（accrual/OCI 等）PnL 来源，
+    因此每条 detail 与 by_action_type 汇总行的 ``pnl_accounting`` /
+    ``total_pnl_accounting`` 目前直接复制自 ``pnl_economic``，并非真实的
+    会计口径重算结果。前端会直接渲染该字段（见 ActionAttributionView），
+    在接入真实会计口径来源前保留复制值以避免破坏契约，但消费方不应将其
+    视为独立于经济口径的会计真值。
+
+    闭合语义：``keys_union``（期初∪期末持仓键）覆盖的 PnL 应等于
+    ``by_action_type`` 各行之和。存续且久期变动 ≤ ``duration_epsilon`` 且
+    市值变动比例 < ``mv_ratio_epsilon`` 的持仓不生成 action_details 明细行，
+    其 PnL 会汇总进 ``by_action_type`` 的 ``UNALLOCATED`` 行以保持闭合。
+    """
     warnings: list[str] = []
     if not positions_end:
         warnings.append("NO_POSITIONS_END")
@@ -231,6 +258,8 @@ def compute_action_attribution_bonds(
             end_map[_key(ln.instrument_id, ln.book_id)] = ln
 
     details: list[dict[str, Any]] = []
+    # 记录已生成 detail 行的持仓键，用于之后定位「存续无显著变化」的未分配残余。
+    covered_keys: set[str] = set()
     action_id = 1
 
     # 新增
@@ -247,10 +276,11 @@ def compute_action_attribution_bonds(
                     "pnl_economic": float(pnl),
                     "pnl_accounting": float(pnl),
                     "delta_duration": float(e.mod_dur),
-                    "delta_dv01": 0.0,
-                    "delta_spread_dv01": 0.0,
+                    "delta_dv01": None,
+                    "delta_spread_dv01": None,
                 }
             )
+            covered_keys.add(k)
             action_id += 1
 
     # 卖出
@@ -268,10 +298,11 @@ def compute_action_attribution_bonds(
                     "pnl_economic": float(pnl),
                     "pnl_accounting": float(pnl),
                     "delta_duration": float(-s.mod_dur),
-                    "delta_dv01": 0.0,
-                    "delta_spread_dv01": 0.0,
+                    "delta_dv01": None,
+                    "delta_spread_dv01": None,
                 }
             )
+            covered_keys.add(k)
             action_id += 1
 
     # 存续：久期、类别、市值显著变化
@@ -298,10 +329,11 @@ def compute_action_attribution_bonds(
                     "pnl_economic": float(pnl),
                     "pnl_accounting": float(pnl),
                     "delta_duration": float(dur_delta),
-                    "delta_dv01": 0.0,
-                    "delta_spread_dv01": 0.0,
+                    "delta_dv01": None,
+                    "delta_spread_dv01": None,
                 }
             )
+            covered_keys.add(k)
             action_id += 1
         elif abs(dur_delta) > duration_epsilon and ratio_change < mv_ratio_epsilon:
             pnl = pnl_by_key.get(k, Decimal("0"))
@@ -316,10 +348,11 @@ def compute_action_attribution_bonds(
                     "pnl_economic": float(pnl),
                     "pnl_accounting": float(pnl),
                     "delta_duration": float(dur_delta),
-                    "delta_dv01": 0.0,
-                    "delta_spread_dv01": 0.0,
+                    "delta_dv01": None,
+                    "delta_spread_dv01": None,
                 }
             )
+            covered_keys.add(k)
             action_id += 1
         elif ratio_change >= mv_ratio_epsilon:
             pnl = pnl_by_key.get(k, Decimal("0"))
@@ -334,10 +367,11 @@ def compute_action_attribution_bonds(
                     "pnl_economic": float(pnl),
                     "pnl_accounting": float(pnl),
                     "delta_duration": float(dur_delta),
-                    "delta_dv01": 0.0,
-                    "delta_spread_dv01": 0.0,
+                    "delta_dv01": None,
+                    "delta_spread_dv01": None,
                 }
             )
+            covered_keys.add(k)
             action_id += 1
 
     keys_union = set(start_map) | set(end_map)
@@ -368,6 +402,27 @@ def compute_action_attribution_bonds(
             }
         )
 
+    # 未分配残余：存续且久期/市值均无显著变化（或其他未落入以上分桶）的持仓
+    # 不生成 action_details 明细行，但其 PnL 仍计入 total_period_pnl；此处显式
+    # 汇总一行披露，使 by_action_type 合计与 total_pnl_from_actions 闭合。
+    allocated = sum((Decimal(str(d["pnl_economic"])) for d in details), Decimal("0"))
+    unallocated_keys = keys_union - covered_keys
+    unallocated_pnl = total_period_pnl - allocated
+    reconciliation_epsilon = Decimal("0.01")
+    if unallocated_keys and abs(unallocated_pnl) > reconciliation_epsilon:
+        unallocated_count = len(unallocated_keys)
+        by_type.append(
+            {
+                "action_type": "UNALLOCATED",
+                "action_type_name": ACTION_TYPE_NAMES["UNALLOCATED"],
+                "action_count": unallocated_count,
+                "total_pnl_economic": float(unallocated_pnl),
+                "total_pnl_accounting": float(unallocated_pnl),
+                "avg_pnl_per_action": float(unallocated_pnl / Decimal(unallocated_count)),
+            }
+        )
+        allocated += unallocated_pnl
+
     # 组合久期（市值加权）
     def _wavg(lines: dict[str, _Line]) -> tuple[Decimal, Decimal]:
         mv_tot = sum((x.market_value for x in lines.values()), Decimal("0"))
@@ -383,7 +438,9 @@ def compute_action_attribution_bonds(
     if not pnl_by_key:
         warnings.append("ACTION_ATTRIBUTION_NO_PNL_ALLOCATION")
 
-    allocated = sum((Decimal(str(d["pnl_economic"])) for d in details), Decimal("0"))
+    # `allocated` 现已包含上面追加的 UNALLOCATED 汇总行，因此正常情况下应与
+    # total_period_pnl 精确闭合；此检查仅用于捕捉真正的异常缺口（例如未来
+    # 引入新分桶但遗漏归集、或存在浮点误差之外的计算错误）。
     if keys_union and abs(total_period_pnl - allocated) > Decimal("0.01"):
         warnings.append("ACTION_ATTRIBUTION_PNL_NOT_FULLY_IN_DETAILS")
 
@@ -397,8 +454,8 @@ def compute_action_attribution_bonds(
         "period_start_duration": float(dur_s),
         "period_end_duration": float(dur_e),
         "duration_change_from_actions": float(dur_e - dur_s),
-        "period_start_dv01": 0.0,
-        "period_end_dv01": 0.0,
+        "period_start_dv01": None,
+        "period_end_dv01": None,
         "warnings": warnings,
     }
 
@@ -414,7 +471,7 @@ def _empty(period_start: date, period_end: date, warnings: list[str]) -> dict[st
         "period_start_duration": 0.0,
         "period_end_duration": 0.0,
         "duration_change_from_actions": 0.0,
-        "period_start_dv01": 0.0,
-        "period_end_dv01": 0.0,
+        "period_start_dv01": None,
+        "period_end_dv01": None,
         "warnings": warnings,
     }

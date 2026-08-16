@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-import duckdb
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.market_read_repo import MarketReadRepository
 from backend.app.schemas.ncd_proxy import NcdFundingProxyPayload, NcdFundingProxyRow
 from backend.app.services.formal_result_runtime import (
     QualityFlag,
@@ -42,13 +42,17 @@ class _ProxyPayloadResult:
     vendor_version: str
 
 
-def load_ncd_funding_proxy_payload() -> NcdFundingProxyPayload:
-    return _load_ncd_funding_proxy_result().payload
+def load_ncd_funding_proxy_payload(duckdb_path: str | None = None) -> NcdFundingProxyPayload:
+    return _load_ncd_funding_proxy_result(duckdb_path).payload
 
 
-def _load_ncd_funding_proxy_result() -> _ProxyPayloadResult:
-    settings = get_settings()
-    landed_result = _load_landed_ncd_funding_proxy_result(str(settings.duckdb_path))
+def _load_ncd_funding_proxy_result(duckdb_path: str | None = None) -> _ProxyPayloadResult:
+    if duckdb_path is None:
+        settings = get_settings()
+        resolved_duckdb_path = str(settings.duckdb_path)
+    else:
+        resolved_duckdb_path = str(duckdb_path)
+    landed_result = _load_landed_ncd_funding_proxy_result(resolved_duckdb_path)
     if landed_result is not None:
         return landed_result
 
@@ -70,15 +74,12 @@ def _load_landed_ncd_funding_proxy_result(duckdb_path: str) -> _ProxyPayloadResu
     duckdb_file = Path(duckdb_path)
     if not duckdb_file.exists():
         return None
-    try:
-        conn = duckdb.connect(str(duckdb_file), read_only=True)
-    except duckdb.Error:
-        return None
 
-    try:
-        candidate = _load_landed_shibor_candidate(conn)
-    finally:
-        conn.close()
+    repo = MarketReadRepository(str(duckdb_file), guard_path_exists=True)
+    with repo.scoped_connection() as conn:
+        if conn is None:
+            return None
+        candidate = _load_landed_shibor_candidate(repo.fetch_ncd_proxy_rows(conn=conn))
 
     if candidate is None:
         return None
@@ -111,8 +112,8 @@ def _load_landed_ncd_funding_proxy_result(duckdb_path: str) -> _ProxyPayloadResu
     )
 
 
-def _load_landed_shibor_candidate(conn: duckdb.DuckDBPyConnection) -> _ProxyCandidate | None:
-    candidates = _load_landed_shibor_candidates(conn)
+def _load_landed_shibor_candidate(rows: Iterable[dict[str, object]]) -> _ProxyCandidate | None:
+    candidates = _load_landed_shibor_candidates(rows)
     complete_candidates = [
         candidate
         for candidate in candidates.values()
@@ -129,9 +130,11 @@ def _load_landed_shibor_candidate(conn: duckdb.DuckDBPyConnection) -> _ProxyCand
     )
 
 
-def _load_landed_shibor_candidates(conn: duckdb.DuckDBPyConnection) -> dict[str, _ProxyCandidate]:
+def _load_landed_shibor_candidates(
+    rows: Iterable[dict[str, object]],
+) -> dict[str, _ProxyCandidate]:
     latest: dict[str, dict[str, _ProxyPoint]] = {"choice": {}, "tushare": {}}
-    for row in _iter_landed_shibor_rows(conn):
+    for row in rows:
         series_id = str(row["series_id"] or "")
         series_name = str(row["series_name"] or "")
         tenor = _shibor_tenor_from_text(f"{series_id} {series_name}")
@@ -159,96 +162,6 @@ def _load_landed_shibor_candidates(conn: duckdb.DuckDBPyConnection) -> dict[str,
         for vendor_name, points in latest.items()
         if points
     }
-
-
-def _iter_landed_shibor_rows(conn: duckdb.DuckDBPyConnection) -> list[dict[str, object]]:
-    rows: list[dict[str, object]] = []
-    if _relation_exists(conn, "choice_market_snapshot"):
-        rows.extend(
-            _fetch_landed_shibor_rows(
-                conn,
-                """
-                select
-                  series_id,
-                  series_name,
-                  vendor_name,
-                  cast(trade_date as timestamp) as trade_date,
-                  cast(value_numeric as double) as value_numeric,
-                  source_version,
-                  vendor_version
-                from choice_market_snapshot
-                where value_numeric is not null
-                  and (
-                    lower(series_id) like '%shibor%'
-                    or lower(series_name) like '%shibor%'
-                  )
-                """,
-            )
-        )
-    if _relation_exists(conn, "fact_choice_macro_daily"):
-        if _relation_exists(conn, "phase1_macro_vendor_catalog"):
-            fact_sql = """
-                select
-                  f.series_id,
-                  f.series_name,
-                  c.vendor_name,
-                  cast(f.trade_date as timestamp) as trade_date,
-                  cast(f.value_numeric as double) as value_numeric,
-                  f.source_version,
-                  f.vendor_version
-                from fact_choice_macro_daily f
-                left join phase1_macro_vendor_catalog c on c.series_id = f.series_id
-                where f.value_numeric is not null
-                  and (
-                    lower(f.series_id) like '%shibor%'
-                    or lower(f.series_name) like '%shibor%'
-                  )
-            """
-        else:
-            fact_sql = """
-                select
-                  series_id,
-                  series_name,
-                  cast(null as varchar) as vendor_name,
-                  cast(trade_date as timestamp) as trade_date,
-                  cast(value_numeric as double) as value_numeric,
-                  source_version,
-                  vendor_version
-                from fact_choice_macro_daily
-                where value_numeric is not null
-                  and (
-                    lower(series_id) like '%shibor%'
-                    or lower(series_name) like '%shibor%'
-                  )
-            """
-        rows.extend(_fetch_landed_shibor_rows(conn, fact_sql))
-    return rows
-
-
-def _fetch_landed_shibor_rows(conn: duckdb.DuckDBPyConnection, sql: str) -> list[dict[str, object]]:
-    try:
-        cursor = conn.execute(sql)
-        columns = [column[0] for column in cursor.description]
-        return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
-    except duckdb.Error:
-        return []
-
-
-def _relation_exists(conn: duckdb.DuckDBPyConnection, relation_name: str) -> bool:
-    row = conn.execute(
-        """
-        select 1
-        from information_schema.tables
-        where table_name = ?
-        union all
-        select 1
-        from information_schema.views
-        where table_name = ?
-        limit 1
-        """,
-        [relation_name, relation_name],
-    ).fetchone()
-    return row is not None
 
 
 def _shibor_tenor_from_text(text: str) -> str | None:
@@ -301,8 +214,13 @@ def _optional_text(value: object) -> str | None:
     return text or None
 
 
-def ncd_funding_proxy_envelope() -> dict[str, object]:
-    result = _load_ncd_funding_proxy_result()
+def ncd_funding_proxy_envelope(duckdb_path: str | None = None) -> dict[str, object]:
+    if duckdb_path is None:
+        settings = get_settings()
+        resolved_duckdb_path = str(settings.duckdb_path)
+    else:
+        resolved_duckdb_path = str(duckdb_path)
+    result = _load_ncd_funding_proxy_result(resolved_duckdb_path)
     payload = result.payload
     quality_flag: QualityFlag = "ok" if payload.rows else "warning"
     vendor_status: VendorStatus = "ok" if payload.rows else "vendor_unavailable"
@@ -318,7 +236,24 @@ def ncd_funding_proxy_envelope() -> dict[str, object]:
         vendor_status=vendor_status,
         fallback_mode="none",
         result_payload=payload.model_dump(mode="json", by_alias=True),
+        tables_used=_ncd_proxy_tables_used(resolved_duckdb_path),
+        evidence_rows=len(payload.rows),
+        source_surface="market_data",
+        as_of_date=payload.as_of_date,
+        resolved_report_date=payload.as_of_date,
     )
+
+
+def _ncd_proxy_tables_used(duckdb_path: str) -> list[str]:
+    duckdb_file = Path(duckdb_path)
+    if not duckdb_file.exists():
+        return []
+
+    repo = MarketReadRepository(str(duckdb_file), guard_path_exists=True)
+    with repo.scoped_connection() as conn:
+        if conn is None:
+            return []
+        return repo.ncd_proxy_tables_used(conn=conn)
 
 
 def _build_proxy_row(

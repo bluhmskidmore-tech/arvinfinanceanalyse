@@ -7,8 +7,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EXECUTIVE_SERVICE = ROOT / "backend" / "app" / "services" / "executive_service.py"
 PNL_BRIDGE_SERVICE = ROOT / "backend" / "app" / "services" / "pnl_bridge_service.py"
+PNL_ATTRIBUTION_SERVICE = ROOT / "backend" / "app" / "services" / "pnl_attribution_service.py"
 ACCOUNTING_MOVEMENT_SERVICE = (
     ROOT / "backend" / "app" / "services" / "accounting_asset_movement_service.py"
+)
+CAMPISI_ATTRIBUTION_SERVICE = (
+    ROOT / "backend" / "app" / "services" / "campisi_attribution_service.py"
+)
+ADB_ANALYSIS_SERVICE = ROOT / "backend" / "app" / "services" / "adb_analysis_service.py"
+MACRO_BOND_LINKAGE_SERVICE = (
+    ROOT / "backend" / "app" / "services" / "macro_bond_linkage_service.py"
 )
 CFFEX_MEMBER_RANK_SERVICE = ROOT / "backend" / "app" / "services" / "cffex_member_rank_service.py"
 TUSHARE_NEWS_INGEST_SERVICE = ROOT / "backend" / "app" / "services" / "tushare_news_ingest_service.py"
@@ -113,6 +121,60 @@ def test_pnl_bridge_service_avoids_storage_bypass():
     _assert_service_avoids_direct_storage_and_formal_sql(PNL_BRIDGE_SERVICE, text)
 
 
+def test_pnl_attribution_service_avoids_storage_bypass():
+    text = _read_source(PNL_ATTRIBUTION_SERVICE)
+    _assert_service_avoids_direct_storage_and_formal_sql(PNL_ATTRIBUTION_SERVICE, text)
+
+
+def test_campisi_attribution_service_avoids_storage_bypass():
+    # W2 迁移完成：decision_grade 取数已按表主人原则迁入 pnl/bond_analytics/
+    # balance_analysis/yield_curve/risk_tensor 各 repo。
+    text = _read_source(CAMPISI_ATTRIBUTION_SERVICE)
+    _assert_service_avoids_direct_storage_and_formal_sql(CAMPISI_ATTRIBUTION_SERVICE, text)
+
+
+def test_adb_analysis_service_avoids_storage_bypass():
+    # W2 迁移完成：formal/snapshot 读取全部经 adb_analysis_repo。
+    text = _read_source(ADB_ANALYSIS_SERVICE)
+    _assert_service_avoids_direct_storage_and_formal_sql(ADB_ANALYSIS_SERVICE, text)
+
+
+def test_macro_bond_linkage_service_avoids_storage_bypass():
+    # W2 迁移完成：宏观/曲线/风险张量读取全部经 macro_bond_linkage_repo。
+    text = _read_source(MACRO_BOND_LINKAGE_SERVICE)
+    _assert_service_avoids_direct_storage_and_formal_sql(MACRO_BOND_LINKAGE_SERVICE, text)
+
+
+# W3 第一小批收敛完成的外围服务：直连均已迁入对应 repositories。
+_W3_CONVERGED_SERVICES = (
+    "market_data_livermore_service.py",
+    "livermore_candidate_history_service.py",
+    "livermore_gate_supplement_compute_service.py",
+    "livermore_stock_detail_service.py",
+    "livermore_sector_rank_series_service.py",
+    "livermore_readiness_probe.py",
+    "market_data_ncd_proxy_service.py",
+    "stock_kline_analysis_service.py",
+    "research_radar_service.py",
+    "dexter_research_context_builder.py",
+    "choice_news_service.py",
+    "external_data_service.py",
+)
+
+
+def test_w3_converged_services_avoid_duckdb_connect():
+    violations: list[str] = []
+    for name in _W3_CONVERGED_SERVICES:
+        path = SERVICES_DIR / name
+        assert path.is_file(), f"Missing converged service module: {path}"
+        if "duckdb.connect(" in _read_source(path):
+            violations.append(name)
+    assert not violations, (
+        "W3-converged services must not regress to duckdb.connect; "
+        "use repositories for storage access: " + ", ".join(violations)
+    )
+
+
 def test_accounting_asset_movement_service_avoids_writable_duckdb_and_low_level_materializer():
     text = _read_source(ACCOUNTING_MOVEMENT_SERVICE)
     assert ACCOUNTING_MOVEMENT_SERVICE.is_file()
@@ -120,6 +182,11 @@ def test_accounting_asset_movement_service_avoids_writable_duckdb_and_low_level_
     assert "duckdb.connect(duckdb_path, read_only=False)" not in text
     assert "materialize_accounting_asset_movement_on_connection" not in text
     assert ".fn(" not in text
+
+
+def test_accounting_asset_movement_service_avoids_storage_bypass():
+    text = _read_source(ACCOUNTING_MOVEMENT_SERVICE)
+    _assert_service_avoids_direct_storage_and_formal_sql(ACCOUNTING_MOVEMENT_SERVICE, text)
 
 
 def test_cffex_member_rank_service_delegates_storage_writes_to_tasks():

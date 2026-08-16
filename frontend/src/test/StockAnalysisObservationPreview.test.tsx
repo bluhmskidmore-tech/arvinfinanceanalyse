@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { StockAnalysisObservationPreview } from "../features/stock-analysis/components/StockAnalysisObservationPreview";
@@ -100,7 +100,9 @@ describe("StockAnalysisObservationPreview", () => {
       />,
     );
 
-    fireEvent.click(screen.getByTestId("factor-preview-row-600000.SH"));
+    const factorRow = screen.getByTestId("factor-preview-row-600000.SH");
+    fireEvent.click(within(factorRow).getByRole("button", { name: "查看Factor Alpha（600000.SH）详情" }));
+    expect(onOpenFactorDetail).toHaveBeenCalledTimes(1);
     expect(onOpenFactorDetail).toHaveBeenCalledWith(factorCandidate);
 
     const meanReversionRow = screen.getByTestId("mean-reversion-preview-row-000002.SZ");

@@ -49,7 +49,7 @@ _WORKFLOWS: tuple[FinancialWorkflow, ...] = (
         governance_notes=[
             "Keeps formal PnL calculations inside existing MOSS intent handlers.",
             "Does not write adjustments or trigger downstream posting workflows.",
-            "Current phase returns a plan card only; no multi-intent execution is performed.",
+            "Plan card is the default; multi-intent execution requires explicit context.workflow_mode=execute.",
         ],
     ),
     FinancialWorkflow(
@@ -61,7 +61,7 @@ _WORKFLOWS: tuple[FinancialWorkflow, ...] = (
         output_kind="workflow_plan",
         governance_notes=[
             "Uses MOSS duration, credit exposure, and risk tensor evidence paths when executed later.",
-            "Current response is non-formal and has no evidence rows.",
+            "Plan responses are non-formal with no evidence rows; execute mode aggregates evidence from the mapped MOSS intents.",
             "External agents cannot bypass MOSS result_meta, lineage, or audit contracts.",
         ],
     ),
@@ -90,6 +90,10 @@ def list_financial_workflows() -> list[FinancialWorkflow]:
 def get_financial_workflow(workflow_id: str) -> FinancialWorkflow | None:
     normalized = str(workflow_id or "").strip().lower().replace("-", "_")
     return _WORKFLOW_BY_ID.get(normalized)
+
+
+def is_financial_workflow_id(workflow_id: str) -> bool:
+    return get_financial_workflow(workflow_id) is not None
 
 
 def resolve_financial_workflow(

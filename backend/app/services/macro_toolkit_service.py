@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import io
+import json
+import logging
 import os
 import subprocess
 import sys
+import threading
 import uuid
-from collections.abc import Callable
+from _thread import LockType
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal, cast
 
 import duckdb
 import pandas as pd
@@ -23,114 +29,312 @@ from backend.app.core_finance.macro.toolkit.runner import (
     iter_toolkit_scripts,
     run_toolkit_script,
 )
-from backend.app.core_finance.macro.toolkit.system_sources import load_series_by_alias
-from backend.app.governance.locks import LockDefinition, acquire_lock
-from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
-from backend.app.security.auth_context import AuthContext
-from backend.app.services.cffex_member_rank_service import materialize_cffex_member_rank
-from backend.app.tasks.choice_stock_materialize import (
-    materialize_choice_stock_factor_snapshot,
-    materialize_choice_stock_inputs,
+from backend.app.core_finance.macro.toolkit.system_sources import (
+    load_series_by_aliases,
+    normalize_macro_alias,
+    normalize_macro_source_names,
 )
-from backend.app.tasks.commodity_daily_ingest import run_commodity_daily_ingest, run_commodity_daily_ingest_task
-from fastapi import BackgroundTasks
+from backend.app.governance.locks import LockDefinition, acquire_lock
+from backend.app.repositories.cffex_member_rank_repo import (
+    normalize_cffex_contract,
+    normalize_cffex_sources,
+)
+from backend.app.repositories.choice_stock_units import (
+    amount_rmb_sql,
+    scale_unknown_sql,
+)
+from backend.app.repositories.governance_repo import (
+    CACHE_BUILD_RUN_STREAM,
+    GovernanceRepository,
+)
+from backend.app.security.auth_context import AuthContext
+
+# ---------------------------------------------------------------------------
+# 门面 re-export：以下名字的实现已按内聚拆分到同级 macro_toolkit_service_* 子模块，
+# 逐名显式重新导入，保持本模块的公开 / monkeypatch 命名空间完全不变。
+# ---------------------------------------------------------------------------
+from backend.app.services.macro_toolkit_service_commodity_inputs import (
+    DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS,
+    _commodity_futures_coverage,
+    _commodity_futures_missing_nanhua,
+    _commodity_futures_nanhua_input,
+    _normalize_commodity_trade_date,
+)
+from backend.app.services.macro_toolkit_service_model_chain import (
+    _MODEL_CHAIN_DAILY_CHAIN_RECEIPT_NAME,
+    _MODEL_CHAIN_DCC_META_COLUMNS,
+    _MODEL_CHAIN_DETAIL_HEADLINE,
+    _MODEL_CHAIN_FINAL_SIGNAL_ARTIFACT,
+    _MODEL_CHAIN_FRESHNESS_RECEIPT_NAME,
+    _MODEL_CHAIN_MISSING_HEADLINE,
+    _MODEL_CHAIN_MONITOR_LOG_TAIL_ROWS,
+    _MODEL_CHAIN_NA_TEXT,
+    _MODEL_CHAIN_STEP_DEFINITIONS,
+    _MODEL_CHAIN_TREND_MAX_POINTS,
+    _MODEL_CHAIN_TREND_SIGNAL_SYMBOLS,
+    _load_model_chain_frame,
+    _model_chain_as_of,
+    _model_chain_backtest_headline,
+    _model_chain_cell_text,
+    _model_chain_contains,
+    _model_chain_crisis_headline,
+    _model_chain_crisis_trend_series,
+    _model_chain_cta_headline,
+    _model_chain_daily_chain_summary,
+    _model_chain_dcc_headline,
+    _model_chain_dcc_trend_series,
+    _model_chain_final_signal_as_of_date,
+    _model_chain_final_signal_headline,
+    _model_chain_final_signal_trend_series,
+    _model_chain_freshness_summary,
+    _model_chain_garch_headline,
+    _model_chain_latest_date_text,
+    _model_chain_max_row,
+    _model_chain_merrill_headline,
+    _model_chain_merrill_trend_series,
+    _model_chain_model_payload,
+    _model_chain_monitor_alerts_headline,
+    _model_chain_performance_headline,
+    _model_chain_rebalance_headline,
+    _model_chain_receipt_summary,
+    _model_chain_regime_headline,
+    _model_chain_risk_monitor_headline,
+    _model_chain_risk_parity_headline,
+    _model_chain_scheduler_payload,
+    _model_chain_signal_trend_value,
+    _model_chain_table,
+    _model_chain_trend_column,
+    _model_chain_trend_payload,
+    _model_chain_trend_points,
+    build_model_chain_results,
+)
+from backend.app.services.macro_toolkit_service_readiness import (
+    _MACRO_MODEL_DEFINITIONS,
+    _MONTHLY_CADENCE_ARTIFACTS,
+    _is_generation_evidence_artifact,
+    _is_history_artifact,
+    _is_monthly_cadence_artifact,
+    _macro_artifact_receipt,
+    _macro_generation_freshness,
+    _macro_monthly_output_freshness,
+    _macro_output_content_dates,
+    _macro_output_freshness,
+    _macro_output_health,
+    _macro_output_health_status,
+    _macro_output_modified_date,
+    _macro_readiness_date_basis,
+    _macro_readiness_degraded_reason,
+    _macro_readiness_evidence_level,
+    _macro_run_blocker,
+    _macro_run_data_asof,
+    _macro_run_degraded_reason,
+    _macro_run_manifest,
+)
+from backend.app.services.macro_toolkit_service_support import (
+    MACRO_TOOLKIT_FORMAL_USE_ALLOWED,
+    MACRO_TOOLKIT_MODEL_READINESS_SURFACE,
+    MACRO_TOOLKIT_OBSERVATION_ONLY,
+    MACRO_TOOLKIT_OUTPUT_DATE_COLUMNS,
+    MACRO_TOOLKIT_RUN_CHAIN_ENDPOINT,
+    ThemeOverlayRefreshMode,
+    _WRITE_REFRESH_PUBLIC_FAILURE_CATEGORIES,
+    _WRITE_REFRESH_PUBLIC_STATUSES,
+    _WRITE_REFRESH_RETRY_PENDING_AFTER,
+    _choice_stock_base_table_status,
+    _choice_stock_daily_observation_status_with_freshness,
+    _choice_stock_factor_snapshot_status_with_freshness,
+    _choice_stock_table_freshness,
+    _choice_stock_table_status,
+    _choice_stock_theme_overlay_source_version,
+    _coerce_frame_date,
+    _float_or_none,
+    _int_or_zero,
+    _latest_result_field,
+    _normalize_idempotency_key,
+    _normalize_theme_overlay_mode,
+    _normalize_write_refresh_public_record,
+    _optional_int,
+    _optional_text,
+    _public_text_list,
+    _public_text_mapping,
+    _result_row_count,
+    _tail_text,
+    _unique_texts,
+    _write_refresh_quality_flag,
+    _write_refresh_record_blocks_dispatch,
+    _write_refresh_record_is_within_retry_window,
+)
+
+
+def materialize_choice_stock_factor_snapshot(*args: object, **kwargs: object) -> object:
+    from backend.app.tasks.choice_stock_materialize import (
+        materialize_choice_stock_factor_snapshot as _fn,
+    )
+
+    return _fn(*args, **kwargs)
+
+
+def materialize_choice_stock_inputs(*args: object, **kwargs: object) -> object:
+    from backend.app.tasks.choice_stock_materialize import (
+        materialize_choice_stock_inputs as _fn,
+    )
+
+    return _fn(*args, **kwargs)
+
+
+def append_choice_stock_refresh_completion(*args: object, **kwargs: object) -> object:
+    from backend.app.tasks.choice_stock_observation_manifest import (
+        append_choice_stock_refresh_completion as _fn,
+    )
+
+    return _fn(*args, **kwargs)
+
+
+def build_choice_stock_observation_manifest(*args: object, **kwargs: object) -> object:
+    from backend.app.tasks.choice_stock_observation_manifest import (
+        build_choice_stock_observation_manifest as _fn,
+    )
+
+    return _fn(*args, **kwargs)
+
+
+def verify_choice_stock_daily_observation_landing(*args: object, **kwargs: object) -> object:
+    from backend.app.tasks.choice_stock_observation_manifest import (
+        verify_choice_stock_daily_observation_landing as _fn,
+    )
+
+    return _fn(*args, **kwargs)
+
+
+def refresh_choice_stock_theme_overlay(*args: object, **kwargs: object) -> object:
+    from backend.app.tasks.choice_stock_theme_overlay_refresh import (
+        refresh_choice_stock_theme_overlay as _fn,
+    )
+
+    return _fn(*args, **kwargs)
+
+
+def run_commodity_daily_ingest(*args: object, **kwargs: object) -> object:
+    from backend.app.tasks.commodity_daily_ingest import run_commodity_daily_ingest as _fn
+
+    return _fn(*args, **kwargs)
+
+
+class _RunCommodityDailyIngestTaskProxy:
+    def send(self, **kwargs: object) -> object:
+        from backend.app.tasks.commodity_daily_ingest import (
+            run_commodity_daily_ingest_task as _actor,
+        )
+
+        return _actor.send(**kwargs)
+
+    def __getattr__(self, name: str) -> object:
+        from backend.app.tasks.commodity_daily_ingest import (
+            run_commodity_daily_ingest_task as _actor,
+        )
+
+        return getattr(_actor, name)
+
+
+run_commodity_daily_ingest_task = _RunCommodityDailyIngestTaskProxy()
+
+class _RunCffexMemberRankRefreshTaskProxy:
+    def send(self, **kwargs: object) -> object:
+        from backend.app.tasks.macro_toolkit_write_refresh import (
+            run_cffex_member_rank_refresh_task as _actor,
+        )
+
+        return _actor.send(**kwargs)
+
+    def __getattr__(self, name: str) -> object:
+        from backend.app.tasks.macro_toolkit_write_refresh import (
+            run_cffex_member_rank_refresh_task as _actor,
+        )
+
+        return getattr(_actor, name)
+
+
+run_cffex_member_rank_refresh_task = _RunCffexMemberRankRefreshTaskProxy()
+
+class _RunMacroSourceBackfillRefreshTaskProxy:
+    def send(self, **kwargs: object) -> object:
+        from backend.app.tasks.macro_toolkit_write_refresh import (
+            run_macro_source_backfill_refresh_task as _actor,
+        )
+
+        return _actor.send(**kwargs)
+
+    def __getattr__(self, name: str) -> object:
+        from backend.app.tasks.macro_toolkit_write_refresh import (
+            run_macro_source_backfill_refresh_task as _actor,
+        )
+
+        return getattr(_actor, name)
+
+
+run_macro_source_backfill_refresh_task = _RunMacroSourceBackfillRefreshTaskProxy()
+
+
+class _RunChoiceStockRefreshTaskProxy:
+    def send(self, **kwargs: object) -> object:
+        from backend.app.tasks.choice_stock_refresh import (
+            run_choice_stock_refresh_task as _actor,
+        )
+
+        return _actor.send(**kwargs)
+
+    def __getattr__(self, name: str) -> object:
+        from backend.app.tasks.choice_stock_refresh import (
+            run_choice_stock_refresh_task as _actor,
+        )
+
+        return getattr(_actor, name)
+
+
+run_choice_stock_refresh_task = _RunChoiceStockRefreshTaskProxy()
+
+logger = logging.getLogger(__name__)
 
 CHOICE_STOCK_REFRESH_JOB_NAME = "choice_stock_refresh"
 CHOICE_STOCK_REFRESH_CACHE_KEY = "choice_stock.history_and_factor_snapshot"
 CHOICE_STOCK_REFRESH_CACHE_VERSION = "choice_stock_refresh_v1"
 CHOICE_STOCK_REFRESH_LOCK = "lock:choice_stock_refresh"
 CHOICE_STOCK_REFRESH_RULE_VERSION = "rv_choice_stock_materialization_front_layer_v1"
-_CHOICE_STOCK_REFRESH_IN_FLIGHT_STATUSES = {"queued", "running"}
-DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS = ("RB", "I", "CU", "AL", "SC", "AU", "NHCI")
+CHOICE_STOCK_THEME_OVERLAY_VENDOR_VERSION = "vv_tushare_ths_current_overlay_v1"
+_CHOICE_STOCK_REFRESH_IN_FLIGHT_STATUSES = {"queued", "running", "retrying"}
 COMMODITY_FUTURES_REFRESH_JOB_NAME = "commodity_futures_daily_ingest"
 COMMODITY_FUTURES_REFRESH_CACHE_KEY = "commodity_futures.daily"
 COMMODITY_FUTURES_REFRESH_CACHE_VERSION = "commodity_futures_daily_v1"
 COMMODITY_FUTURES_REFRESH_RULE_VERSION = "rv_commodity_daily_v1"
+CFFEX_MEMBER_RANK_REFRESH_JOB_NAME = "cffex_member_rank_refresh"
+CFFEX_MEMBER_RANK_REFRESH_CACHE_KEY = "macro_toolkit.cffex_member_rank"
+CFFEX_MEMBER_RANK_REFRESH_CACHE_VERSION = "cffex_member_rank_refresh_v1"
+CFFEX_MEMBER_RANK_REFRESH_RULE_VERSION = "rv_cffex_member_rank_async_v1"
+_CFFEX_REFRESH_IN_FLIGHT_STATUSES = {"queued", "running", "retrying"}
+MACRO_SOURCE_BACKFILL_JOB_NAME = "macro_source_backfill_refresh"
+MACRO_SOURCE_BACKFILL_CACHE_KEY = "macro_toolkit.source_backfill"
+MACRO_SOURCE_BACKFILL_CACHE_VERSION = "macro_source_backfill_v1"
+MACRO_SOURCE_BACKFILL_RULE_VERSION = "rv_macro_source_backfill_async_v1"
+_MACRO_SOURCE_REFRESH_IN_FLIGHT_STATUSES = {"queued", "running", "retrying"}
+_WRITE_REFRESH_MAX_RETRIES = 3
 EQUITY_PRICE_LOOKBACK_DAYS = 260
 EQUITY_PRICE_MIN_OBSERVATIONS = 80
 EQUITY_PRICE_MAX_STOCKS = 500
 A_SHARE_RISK_LOOKBACK_DAYS = 35
 A_SHARE_RISK_MAX_STOCKS = 8000
-MACRO_TOOLKIT_OBSERVATION_ONLY = True
-MACRO_TOOLKIT_FORMAL_USE_ALLOWED = False
-MACRO_TOOLKIT_OUTPUT_DATE_COLUMNS = ("日期", "date", "trade_date", "as_of_date")
+_CANONICAL_ISO_DATE_COLUMNS = {
+    ("choice_stock_daily_observation", "trade_date"),
+    ("fact_formal_risk_tensor_daily", "report_date"),
+    ("fact_formal_yield_curve_daily", "trade_date"),
+    ("fact_formal_bond_analytics_daily", "report_date"),
+}
+_DateColumnCacheKey = tuple[str, int, int, str, str]
+_CANONICAL_ISO_DATE_CACHE: dict[_DateColumnCacheKey, bool] = {}
+_CANONICAL_ISO_DATE_CACHE_LOCK = threading.Lock()
+_CANONICAL_ISO_DATE_PROBE_LOCKS: dict[_DateColumnCacheKey, LockType] = {}
+_CANONICAL_ISO_DATE_CACHE_MAX_ENTRIES = 64
 MACRO_TOOLKIT_CHAIN_LOCK = LockDefinition(key="lock:macro_toolkit:script-chain", ttl_seconds=900)
-MACRO_TOOLKIT_RUN_CHAIN_ENDPOINT = "/ui/macro/toolkit/scripts/run-chain"
-MACRO_TOOLKIT_MODEL_READINESS_SURFACE = "/macro-toolkit#macro-toolkit-model-readiness-detail"
 MACRO_TOOLKIT_SCRIPT_ARTIFACT_SURFACE = "/macro-toolkit#macro-toolkit-script-artifact-detail"
-
-_MACRO_MODEL_DEFINITIONS: tuple[dict[str, object], ...] = (
-    {
-        "id": "merrill_clock",
-        "label": "Merrill Clock",
-        "script_name": "merrill_clock_cn",
-        "expected_outputs": ("merrill_clock_latest.csv", "merrill_clock_history.csv"),
-        "notes": ("Macro cycle and asset allocation candidate signal.",),
-    },
-    {
-        "id": "crisis_score",
-        "label": "Crisis Score",
-        "script_name": "crisis_score_cn",
-        "expected_outputs": ("crisis_score_latest.csv", "crisis_score_history.csv"),
-        "notes": ("Stress score candidate signal.",),
-    },
-    {
-        "id": "bond_futures_basis",
-        "label": "Bond Futures Basis / IRR / Safety Margin",
-        "script_name": "bond_futures_data",
-        "expected_outputs": ("bond_futures_latest.csv", "bond_futures_history.csv"),
-        "notes": ("Treasury futures basis and safety-margin evidence.",),
-    },
-    {
-        "id": "bond_futures_four_factor",
-        "label": "Bond Futures Four-Factor Trend",
-        "script_name": "bond_futures_signals",
-        "expected_outputs": ("bond_signals_latest.csv",),
-        "notes": ("MA, channel, MACD and Bollinger style treasury-futures signal evidence.",),
-    },
-    {
-        "id": "funding_conditions",
-        "label": "Funding Conditions / Flow",
-        "script_name": "merrill_clock_cn",
-        "expected_outputs": ("merrill_clock_latest.csv",),
-        "notes": ("Funding condition is evidenced through DR007/NCD inputs and Merrill liquidity momentum, not a standalone formal metric.",),
-    },
-    {
-        "id": "crowding",
-        "label": "Crowding",
-        "script_name": "crowding_cn",
-        "expected_outputs": ("crowding_latest.csv", "crowding_history.csv"),
-        "notes": ("Crowding candidate signal.",),
-    },
-    {
-        "id": "dcc_garch",
-        "label": "DCC-GARCH",
-        "script_name": "dcc_garch_cn",
-        "expected_outputs": ("dcc_latest.csv", "dcc_results.csv"),
-        "notes": ("Dynamic conditional correlation candidate signal.",),
-    },
-    {
-        "id": "cta_trend",
-        "label": "CTA Trend",
-        "script_name": "cta_trend_cn",
-        "expected_outputs": ("cta_results.csv",),
-        "notes": ("CTA trend candidate signal.",),
-    },
-    {
-        "id": "final_signal",
-        "label": "Final Signal Aggregator",
-        "script_name": "signal_aggregator",
-        "expected_outputs": ("final_signal.csv",),
-        "notes": ("Aggregates macro, bond futures, crisis and crowding evidence.",),
-    },
-    {
-        "id": "risk_monitor",
-        "label": "Risk Monitor",
-        "script_name": "risk_monitor",
-        "expected_outputs": ("risk_state.csv", "risk_log.csv"),
-        "notes": ("Risk warning threshold monitor.",),
-    },
-)
 
 _CURVE_TYPE_TO_ID = {
     "treasury": "CN_GOVT",
@@ -159,6 +363,7 @@ _CURVE_ALIAS_POINTS = (
     ("DR007.IB", "CN_DR", "7D"),
     ("M0041653", "CN_RRP", "7D"),
     ("M0041813", "CN_NCD", "3M"),
+    ("CA.US_GOV_10Y", "US_GOVT", "10Y"),
 )
 
 
@@ -372,25 +577,423 @@ def _run_macro_toolkit_chain_unlocked(
     }
 
 
+def queue_macro_source_backfill(
+    *,
+    duckdb_path: str,
+    governance_path: str,
+    alias: str,
+    series_id: str,
+    series_name: str,
+    backfill_mode: str,
+    start_date: str,
+    end_date: str,
+    sources: tuple[str, ...],
+    idempotency_key: str | None = None,
+) -> MacroToolkitActionResult:
+    try:
+        start = date.fromisoformat(start_date)
+        end = date.fromisoformat(end_date)
+    except ValueError as exc:
+        raise ValueError("start_date and end_date must be ISO dates (YYYY-MM-DD).") from exc
+    if end < start:
+        raise ValueError("end_date must be on or after start_date.")
+    normalized_alias = normalize_macro_alias(alias)
+    normalized_sources = normalize_macro_source_names(sources)
+    if not normalized_sources:
+        raise ValueError("sources must contain at least one value.")
+    normalized_mode = str(backfill_mode or "").strip()
+    if normalized_mode not in {"macro_series", "crisis_score_inputs"}:
+        raise ValueError(f"Unsupported macro source backfill mode: {backfill_mode}")
+    normalized_idempotency_key = _normalize_idempotency_key(idempotency_key)
+    request_fingerprint = hashlib.sha256(
+        repr(
+            (
+                str(Path(duckdb_path).resolve()),
+                normalized_alias,
+                str(series_id).strip(),
+                str(series_name).strip(),
+                normalized_mode,
+                start_date,
+                end_date,
+                normalized_sources,
+            )
+        ).encode("utf-8")
+    ).hexdigest()
+    trigger_lock = LockDefinition(
+        key=f"lock:{MACRO_SOURCE_BACKFILL_JOB_NAME}:trigger:{request_fingerprint[:12]}",
+        ttl_seconds=30,
+    )
+    repo = GovernanceRepository(base_dir=governance_path)
+    try:
+        with acquire_lock(trigger_lock, base_dir=governance_path, timeout_seconds=0.1):
+            records = _macro_source_backfill_refresh_records(repo)
+            if normalized_idempotency_key is not None:
+                for record in reversed(records):
+                    if str(record.get("request_fingerprint") or "") != request_fingerprint:
+                        continue
+                    if str(record.get("idempotency_key") or "").strip() == normalized_idempotency_key:
+                        status = str(record.get("status") or "queued")
+                        return MacroToolkitActionResult(
+                            payload=_normalize_macro_source_backfill_refresh_record(
+                                record,
+                                idempotency_replay=True,
+                            ),
+                            quality_flag=_write_refresh_quality_flag(status),
+                            fallback_mode="none",
+                            as_of_date=end_date,
+                        )
+
+            latest_by_run_id: dict[str, dict[str, object]] = {}
+            for record in records:
+                if str(record.get("request_fingerprint") or "") == request_fingerprint:
+                    latest_by_run_id[str(record.get("run_id") or "")] = record
+            if any(
+                _write_refresh_record_blocks_dispatch(
+                    record,
+                    in_flight_statuses=_MACRO_SOURCE_REFRESH_IN_FLIGHT_STATUSES,
+                )
+                for record in latest_by_run_id.values()
+            ):
+                raise MacroToolkitConflictError("Macro source backfill is already in progress.")
+
+            queued_at = datetime.now(UTC).isoformat()
+            run_id = f"{MACRO_SOURCE_BACKFILL_JOB_NAME}:{end_date}:{uuid.uuid4().hex[:12]}"
+            queued_payload = {
+                "run_id": run_id,
+                "job_name": MACRO_SOURCE_BACKFILL_JOB_NAME,
+                "status": "queued",
+                "trigger_mode": "async",
+                "cache_key": MACRO_SOURCE_BACKFILL_CACHE_KEY,
+                "cache_version": MACRO_SOURCE_BACKFILL_CACHE_VERSION,
+                "lock": trigger_lock.key,
+                "source_version": "sv_pending",
+                "vendor_version": "vv_pending",
+                "rule_version": MACRO_SOURCE_BACKFILL_RULE_VERSION,
+                "report_date": end_date,
+                "alias": normalized_alias,
+                "series_ids": [str(series_id).strip()],
+                "series_names": [str(series_name).strip()],
+                "backfill_mode": normalized_mode,
+                "start_date": start_date,
+                "end_date": end_date,
+                "sources": list(normalized_sources),
+                "duckdb_path": str(duckdb_path),
+                "total_added": None,
+                "total_fetched": None,
+                "processed_count": None,
+                "queued_at": queued_at,
+                "request_fingerprint": request_fingerprint,
+                "idempotency_key": normalized_idempotency_key,
+            }
+            repo.append(CACHE_BUILD_RUN_STREAM, queued_payload)
+            try:
+                run_macro_source_backfill_refresh_task.send(
+                    duckdb_path=str(duckdb_path),
+                    governance_dir=str(governance_path),
+                    run_id=run_id,
+                    alias=normalized_alias,
+                    series_id=str(series_id).strip(),
+                    series_name=str(series_name).strip(),
+                    backfill_mode=normalized_mode,
+                    start_date=start_date,
+                    end_date=end_date,
+                    sources=normalized_sources,
+                    request_fingerprint=request_fingerprint,
+                    idempotency_key=normalized_idempotency_key,
+                )
+            except Exception as exc:
+                repo.append(
+                    CACHE_BUILD_RUN_STREAM,
+                    {
+                        **queued_payload,
+                        "status": "failed",
+                        "trigger_mode": "terminal",
+                        "finished_at": datetime.now(UTC).isoformat(),
+                        "error_message": str(exc),
+                        "failure_category": "queue_dispatch_failure",
+                        "failure_reason": "queue_dispatch_failed",
+                    },
+                )
+                raise MacroToolkitQueueError("Macro source backfill queue dispatch failed.") from exc
+    except TimeoutError as exc:
+        raise MacroToolkitConflictError("Macro source backfill is already in progress.") from exc
+
+    return MacroToolkitActionResult(
+        payload=_normalize_macro_source_backfill_refresh_record(
+            queued_payload,
+            idempotency_replay=False,
+        ),
+        quality_flag="warning",
+        fallback_mode="none",
+        as_of_date=end_date,
+    )
+
+
+def _macro_source_backfill_refresh_records(repo: GovernanceRepository) -> list[dict[str, object]]:
+    return [
+        record
+        for record in repo.read_all(CACHE_BUILD_RUN_STREAM)
+        if str(record.get("job_name") or "") == MACRO_SOURCE_BACKFILL_JOB_NAME
+        and str(record.get("cache_key") or "") == MACRO_SOURCE_BACKFILL_CACHE_KEY
+    ]
+
+
+def macro_source_backfill_refresh_status(
+    governance_path: str | Path,
+    *,
+    run_id: str,
+) -> dict[str, object]:
+    run_id_text = str(run_id or "").strip()
+    if not run_id_text:
+        raise ValueError("Macro source backfill refresh run_id is required.")
+    records = _macro_source_backfill_refresh_records(
+        GovernanceRepository(base_dir=governance_path)
+    )
+    latest = next(
+        (
+            record
+            for record in reversed(records)
+            if str(record.get("run_id") or "") == run_id_text
+        ),
+        None,
+    )
+    if latest is None:
+        raise ValueError(
+            f"Macro source backfill refresh run not found: {run_id_text}"
+        )
+    return _normalize_macro_source_backfill_refresh_record(latest)
+
+
 def refresh_cffex_member_rank(
     *,
     duckdb_path: str | Path,
+    governance_path: str | Path,
     trade_date: str | None,
     contracts: tuple[str, ...],
     sources: tuple[str, ...],
+    idempotency_key: str | None = None,
 ) -> MacroToolkitActionResult:
-    payload = materialize_cffex_member_rank(
-        duckdb_path=duckdb_path,
-        trade_date=trade_date,
-        contracts=contracts,
-        sources=sources,
+    normalized_idempotency_key = _normalize_idempotency_key(idempotency_key)
+    normalized_contracts = tuple(
+        dict.fromkeys(
+            normalize_cffex_contract(item) for item in contracts if str(item).strip()
+        )
     )
+    normalized_sources = normalize_cffex_sources(sources)
+    if not normalized_contracts or not normalized_sources:
+        raise ValueError("contracts and sources must contain at least one value.")
+    normalized_trade_date = str(trade_date or "").strip() or None
+    if normalized_trade_date is not None:
+        try:
+            date.fromisoformat(normalized_trade_date)
+        except ValueError as exc:
+            raise ValueError("trade_date must be an ISO date (YYYY-MM-DD).") from exc
+    request_fingerprint = hashlib.sha256(
+        repr(
+            (
+                str(Path(duckdb_path).resolve()),
+                normalized_trade_date,
+                normalized_contracts,
+                normalized_sources,
+            )
+        ).encode("utf-8")
+    ).hexdigest()
+    trigger_lock = LockDefinition(
+        key=f"lock:{CFFEX_MEMBER_RANK_REFRESH_JOB_NAME}:trigger:{request_fingerprint[:12]}",
+        ttl_seconds=30,
+    )
+    repo = GovernanceRepository(base_dir=governance_path)
+    try:
+        with acquire_lock(trigger_lock, base_dir=governance_path, timeout_seconds=0.1):
+            records = _cffex_member_rank_refresh_records(repo)
+            if normalized_idempotency_key is not None:
+                for record in reversed(records):
+                    if str(record.get("request_fingerprint") or "") != request_fingerprint:
+                        continue
+                    if str(record.get("idempotency_key") or "").strip() == normalized_idempotency_key:
+                        status = str(record.get("status") or "queued")
+                        return MacroToolkitActionResult(
+                            payload=_normalize_cffex_member_rank_refresh_record(
+                                record,
+                                idempotency_replay=True,
+                            ),
+                            quality_flag=_write_refresh_quality_flag(status),
+                            fallback_mode="none",
+                            as_of_date=normalized_trade_date,
+                        )
+
+            latest_by_run_id: dict[str, dict[str, object]] = {}
+            for record in records:
+                if str(record.get("request_fingerprint") or "") == request_fingerprint:
+                    latest_by_run_id[str(record.get("run_id") or "")] = record
+            if any(
+                _write_refresh_record_blocks_dispatch(
+                    record,
+                    in_flight_statuses=_CFFEX_REFRESH_IN_FLIGHT_STATUSES,
+                )
+                for record in latest_by_run_id.values()
+            ):
+                raise MacroToolkitConflictError("CFFEX member-rank refresh is already in progress.")
+
+            queued_at = datetime.now(UTC).isoformat()
+            run_id = f"{CFFEX_MEMBER_RANK_REFRESH_JOB_NAME}:{normalized_trade_date or 'latest'}:{uuid.uuid4().hex[:12]}"
+            queued_payload = {
+                "run_id": run_id,
+                "job_name": CFFEX_MEMBER_RANK_REFRESH_JOB_NAME,
+                "status": "queued",
+                "trigger_mode": "async",
+                "cache_key": CFFEX_MEMBER_RANK_REFRESH_CACHE_KEY,
+                "cache_version": CFFEX_MEMBER_RANK_REFRESH_CACHE_VERSION,
+                "lock": trigger_lock.key,
+                "source_version": "sv_pending",
+                "vendor_version": "vv_pending",
+                "rule_version": CFFEX_MEMBER_RANK_REFRESH_RULE_VERSION,
+                "report_date": normalized_trade_date,
+                "trade_date": normalized_trade_date,
+                "contracts": list(normalized_contracts),
+                "sources": list(normalized_sources),
+                "duckdb_path": str(duckdb_path),
+                "row_count": None,
+                "queued_at": queued_at,
+                "request_fingerprint": request_fingerprint,
+                "idempotency_key": normalized_idempotency_key,
+            }
+            repo.append(CACHE_BUILD_RUN_STREAM, queued_payload)
+            try:
+                run_cffex_member_rank_refresh_task.send(
+                    duckdb_path=str(duckdb_path),
+                    governance_dir=str(governance_path),
+                    run_id=run_id,
+                    trade_date=normalized_trade_date,
+                    contracts=normalized_contracts,
+                    sources=normalized_sources,
+                    request_fingerprint=request_fingerprint,
+                    idempotency_key=normalized_idempotency_key,
+                )
+            except Exception as exc:
+                repo.append(
+                    CACHE_BUILD_RUN_STREAM,
+                    {
+                        **queued_payload,
+                        "status": "failed",
+                        "trigger_mode": "terminal",
+                        "finished_at": datetime.now(UTC).isoformat(),
+                        "error_message": str(exc),
+                        "failure_category": "queue_dispatch_failure",
+                        "failure_reason": "queue_dispatch_failed",
+                    },
+                )
+                raise MacroToolkitQueueError("CFFEX member-rank refresh queue dispatch failed.") from exc
+    except TimeoutError as exc:
+        raise MacroToolkitConflictError("CFFEX member-rank refresh is already in progress.") from exc
+
     return MacroToolkitActionResult(
-        payload=payload,
-        quality_flag="ok" if int(payload.get("row_count") or 0) > 0 else "warning",
+        payload=_normalize_cffex_member_rank_refresh_record(
+            queued_payload,
+            idempotency_replay=False,
+        ),
+        quality_flag="warning",
         fallback_mode="none",
-        as_of_date=_optional_text(payload.get("trade_date")),
+        as_of_date=normalized_trade_date,
     )
+
+
+def _cffex_member_rank_refresh_records(repo: GovernanceRepository) -> list[dict[str, object]]:
+    return [
+        record
+        for record in repo.read_all(CACHE_BUILD_RUN_STREAM)
+        if str(record.get("job_name") or "") == CFFEX_MEMBER_RANK_REFRESH_JOB_NAME
+        and str(record.get("cache_key") or "") == CFFEX_MEMBER_RANK_REFRESH_CACHE_KEY
+    ]
+
+
+def cffex_member_rank_refresh_status(
+    governance_path: str | Path,
+    *,
+    run_id: str,
+) -> dict[str, object]:
+    run_id_text = str(run_id or "").strip()
+    if not run_id_text:
+        raise ValueError("CFFEX member-rank refresh run_id is required.")
+    records = _cffex_member_rank_refresh_records(
+        GovernanceRepository(base_dir=governance_path)
+    )
+    latest = next(
+        (
+            record
+            for record in reversed(records)
+            if str(record.get("run_id") or "") == run_id_text
+        ),
+        None,
+    )
+    if latest is None:
+        raise ValueError(
+            f"CFFEX member-rank refresh run not found: {run_id_text}"
+        )
+    return _normalize_cffex_member_rank_refresh_record(latest)
+
+
+def _normalize_cffex_member_rank_refresh_record(
+    record: dict[str, object],
+    *,
+    idempotency_replay: bool | None = None,
+) -> dict[str, object]:
+    normalized = _normalize_write_refresh_public_record(
+        record,
+        job_name=CFFEX_MEMBER_RANK_REFRESH_JOB_NAME,
+        cache_key=CFFEX_MEMBER_RANK_REFRESH_CACHE_KEY,
+        cache_version=CFFEX_MEMBER_RANK_REFRESH_CACHE_VERSION,
+        rule_version=CFFEX_MEMBER_RANK_REFRESH_RULE_VERSION,
+        idempotency_replay=idempotency_replay,
+    )
+    normalized.update(
+        {
+            "trade_date": _optional_text(
+                record.get("trade_date") or record.get("report_date")
+            ),
+            "contracts": _public_text_list(record.get("contracts")),
+            "sources": _public_text_list(record.get("sources")),
+            "row_count": _optional_int(record.get("row_count")),
+        }
+    )
+    return normalized
+
+
+def _normalize_macro_source_backfill_refresh_record(
+    record: dict[str, object],
+    *,
+    idempotency_replay: bool | None = None,
+) -> dict[str, object]:
+    normalized = _normalize_write_refresh_public_record(
+        record,
+        job_name=MACRO_SOURCE_BACKFILL_JOB_NAME,
+        cache_key=MACRO_SOURCE_BACKFILL_CACHE_KEY,
+        cache_version=MACRO_SOURCE_BACKFILL_CACHE_VERSION,
+        rule_version=MACRO_SOURCE_BACKFILL_RULE_VERSION,
+        idempotency_replay=idempotency_replay,
+    )
+    normalized.update(
+        {
+            "alias": _optional_text(record.get("alias")),
+            "series_ids": _public_text_list(record.get("series_ids")),
+            "series_names": _public_text_list(record.get("series_names")),
+            "backfill_mode": _optional_text(record.get("backfill_mode")),
+            "start_date": _optional_text(record.get("start_date")),
+            "end_date": _optional_text(record.get("end_date")),
+            "sources": _public_text_list(record.get("sources")),
+            "total_added": _optional_int(record.get("total_added")),
+            "total_fetched": _optional_int(record.get("total_fetched")),
+            "processed_count": _optional_int(record.get("processed_count")),
+            "source_by_series": _public_text_mapping(
+                record.get("source_by_series")
+            ),
+            "vendor_versions": _public_text_mapping(record.get("vendor_versions")),
+            # 失败明细（series/alias -> 原因）不得在 normalize 白名单中丢弃，
+            # 否则 blocked/partial/failed 的 source 级原因对状态查询不可见。
+            "errors": _public_text_mapping(record.get("errors")),
+        }
+    )
+    return normalized
 
 
 def refresh_commodity_futures(
@@ -456,17 +1059,19 @@ def refresh_commodity_futures(
 
 def queue_choice_stock_refresh(
     *,
-    background_tasks: BackgroundTasks,
     duckdb_path: str,
     catalog_path: str,
     governance_path: str,
+    archive_root: str = "",
     as_of_date: str,
     refresh_history: bool,
     refresh_factors: bool,
     factor_max_stock_count: int | None,
+    theme_overlay_mode: ThemeOverlayRefreshMode = "off",
     permission: dict[str, object],
     idempotency_key: str | None = None,
 ) -> MacroToolkitActionResult:
+    normalized_theme_overlay_mode = _normalize_theme_overlay_mode(theme_overlay_mode)
     normalized_idempotency_key = _normalize_idempotency_key(idempotency_key)
     try:
         with acquire_lock(
@@ -481,15 +1086,19 @@ def queue_choice_stock_refresh(
                     refresh_history=refresh_history,
                     refresh_factors=refresh_factors,
                     factor_max_stock_count=factor_max_stock_count,
+                    theme_overlay_mode=normalized_theme_overlay_mode,
                     idempotency_key=normalized_idempotency_key,
                 )
                 if existing_idempotent_run is not None:
+                    normalized_existing = _normalize_choice_stock_refresh_record(
+                        existing_idempotent_run,
+                        idempotency_replay=True,
+                    )
                     return MacroToolkitActionResult(
-                        payload={
-                            **_normalize_choice_stock_refresh_record(existing_idempotent_run),
-                            "idempotency_replay": True,
-                        },
-                        quality_flag="ok",
+                        payload=normalized_existing,
+                        quality_flag=_write_refresh_quality_flag(
+                            str(normalized_existing.get("status") or "")
+                        ),
                         fallback_mode="none",
                         as_of_date=as_of_date,
                     )
@@ -510,32 +1119,64 @@ def queue_choice_stock_refresh(
                 refresh_history=refresh_history,
                 refresh_factors=refresh_factors,
                 factor_max_stock_count=factor_max_stock_count,
+                theme_overlay_mode=normalized_theme_overlay_mode,
                 permission=permission,
                 idempotency_key=normalized_idempotency_key,
             )
             append_choice_stock_refresh_run(governance_path, queued_payload)
-            background_tasks.add_task(
-                _run_choice_stock_refresh_job,
-                duckdb_path=duckdb_path,
-                catalog_path=catalog_path,
-                governance_path=governance_path,
-                run_id=run_id,
-                as_of_date=as_of_date,
-                queued_at=queued_at,
-                refresh_history=refresh_history,
-                refresh_factors=refresh_factors,
-                factor_max_stock_count=factor_max_stock_count,
-                permission=permission,
-                idempotency_key=normalized_idempotency_key,
-            )
+            try:
+                run_choice_stock_refresh_task.send(
+                    duckdb_path=duckdb_path,
+                    catalog_path=catalog_path,
+                    governance_path=governance_path,
+                    archive_root=archive_root,
+                    run_id=run_id,
+                    as_of_date=as_of_date,
+                    queued_at=queued_at,
+                    refresh_history=refresh_history,
+                    refresh_factors=refresh_factors,
+                    factor_max_stock_count=factor_max_stock_count,
+                    theme_overlay_mode=normalized_theme_overlay_mode,
+                    permission=permission,
+                    idempotency_key=normalized_idempotency_key,
+                )
+            except Exception as exc:
+                append_choice_stock_refresh_run(
+                    governance_path,
+                    build_choice_stock_refresh_run_payload(
+                        run_id=run_id,
+                        status="failed",
+                        as_of_date=as_of_date,
+                        queued_at=queued_at,
+                        finished_at=datetime.now(UTC).isoformat(),
+                        refresh_history=refresh_history,
+                        refresh_factors=refresh_factors,
+                        factor_max_stock_count=factor_max_stock_count,
+                        theme_overlay_mode=normalized_theme_overlay_mode,
+                        theme_overlay_status=(
+                            "not_run" if normalized_theme_overlay_mode != "off" else None
+                        ),
+                        error_message=str(exc),
+                        failure_category="queue_dispatch_failure",
+                        failure_reason=type(exc).__name__,
+                        permission=permission,
+                        idempotency_key=normalized_idempotency_key,
+                    ),
+                )
+                raise MacroToolkitQueueError(
+                    "Choice stock refresh queue dispatch failed."
+                ) from exc
     except TimeoutError as exc:
         raise MacroToolkitConflictError(
             f"Choice stock refresh already in progress for as_of_date={as_of_date}."
         ) from exc
 
     return MacroToolkitActionResult(
-        payload={**queued_payload, "idempotency_replay": False},
-        quality_flag="ok",
+        payload=_normalize_choice_stock_refresh_record(
+            queued_payload,
+            idempotency_replay=False,
+        ),
+        quality_flag="warning",
         fallback_mode="none",
         as_of_date=as_of_date,
     )
@@ -556,6 +1197,11 @@ def build_choice_stock_refresh_run_payload(
     refresh_history: bool = True,
     refresh_factors: bool = True,
     factor_max_stock_count: int | None = None,
+    theme_overlay_mode: ThemeOverlayRefreshMode = "off",
+    theme_overlay_status: str | None = None,
+    theme_overlay_message: str | None = None,
+    theme_overlay_member_count: int | None = None,
+    theme_overlay_run_id: str | None = None,
     history_row_count: int | None = None,
     factor_row_count: int | None = None,
     source_version: object | None = None,
@@ -565,7 +1211,13 @@ def build_choice_stock_refresh_run_payload(
     failure_reason: str | None = None,
     permission: dict[str, object] | None = None,
     idempotency_key: str | None = None,
+    attempt_count: int | None = None,
+    retryable: bool = False,
 ) -> dict[str, object]:
+    normalized_theme_overlay_mode = _normalize_theme_overlay_mode(theme_overlay_mode)
+    normalized_theme_overlay_status = _optional_text(theme_overlay_status) or (
+        "off" if normalized_theme_overlay_mode == "off" else "pending"
+    )
     return {
         "run_id": run_id,
         "job_name": CHOICE_STOCK_REFRESH_JOB_NAME,
@@ -583,10 +1235,21 @@ def build_choice_stock_refresh_run_payload(
         "error_message": error_message,
         "failure_category": failure_category,
         "failure_reason": failure_reason,
+        "attempt_count": attempt_count,
+        "retryable": retryable,
         "created_at": datetime.now(UTC).isoformat(),
         "refresh_history": refresh_history,
         "refresh_factors": refresh_factors,
         "factor_max_stock_count": factor_max_stock_count,
+        "theme_overlay_mode": normalized_theme_overlay_mode,
+        "theme_overlay_status": normalized_theme_overlay_status,
+        "theme_overlay_message": _optional_text(theme_overlay_message),
+        "theme_overlay_member_count": (
+            0
+            if normalized_theme_overlay_mode == "off" and theme_overlay_member_count is None
+            else _optional_int(theme_overlay_member_count)
+        ),
+        "theme_overlay_run_id": _optional_text(theme_overlay_run_id),
         "history_row_count": history_row_count,
         "factor_row_count": factor_row_count,
         "permission": permission or build_choice_stock_refresh_permission_payload(),
@@ -650,7 +1313,13 @@ def latest_choice_stock_inflight_refresh(
             continue
         by_run_id[str(record.get("run_id") or "")] = record
     for record in reversed(list(by_run_id.values())):
-        if str(record.get("status") or "") in _CHOICE_STOCK_REFRESH_IN_FLIGHT_STATUSES:
+        if (
+            _write_refresh_record_blocks_dispatch(
+                record,
+                in_flight_statuses=_CHOICE_STOCK_REFRESH_IN_FLIGHT_STATUSES,
+            )
+            or _choice_stock_refresh_overlay_pending(record)
+        ):
             return record
     return None
 
@@ -662,8 +1331,10 @@ def latest_choice_stock_refresh_for_idempotency_key(
     refresh_history: bool,
     refresh_factors: bool,
     factor_max_stock_count: int | None,
+    theme_overlay_mode: ThemeOverlayRefreshMode = "off",
     idempotency_key: str,
 ) -> dict[str, object] | None:
+    normalized_theme_overlay_mode = _normalize_theme_overlay_mode(theme_overlay_mode)
     for record in reversed(_choice_stock_refresh_records(governance_path)):
         if str(record.get("report_date") or "") != as_of_date:
             continue
@@ -674,6 +1345,8 @@ def latest_choice_stock_refresh_for_idempotency_key(
         if bool(record.get("refresh_factors")) != refresh_factors:
             continue
         if _optional_int(record.get("factor_max_stock_count")) != factor_max_stock_count:
+            continue
+        if _normalize_theme_overlay_mode(record.get("theme_overlay_mode") or "off") != (normalized_theme_overlay_mode):
             continue
         return record
     return None
@@ -687,7 +1360,7 @@ def build_choice_stock_refresh_permission_payload(auth: AuthContext | None = Non
         "role": auth.role if auth else None,
         "identity_source": auth.identity_source if auth else None,
         "resource": "macro_toolkit.choice_stock",
-        "actions": ["history", "factor_snapshot"],
+        "actions": ["history", "factor_snapshot", "theme_overlay"],
     }
 
 
@@ -810,7 +1483,12 @@ def commodity_futures_status(duckdb_path: str | Path) -> dict[str, object]:
             }
         finally:
             conn.close()
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        logger.warning(
+            "DuckDB query failed surface=commodity_futures_status table=fact_commodity_futures_daily error=%s: %s",
+            type(exc).__name__,
+            exc,
+        )
         return {
             **base,
             "materialized": False,
@@ -823,89 +1501,6 @@ def commodity_futures_status(duckdb_path: str | Path) -> dict[str, object]:
         }
 
 
-def _commodity_futures_coverage(products: list[dict[str, object]]) -> dict[str, object]:
-    available_products = [
-        str(item["product_code"])
-        for item in products
-        if str(item.get("product_code") or "") in DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS
-        and int(item.get("row_count") or 0) > 0
-    ]
-    return {
-        "target_product_count": len(DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS),
-        "available_product_count": len(available_products),
-        "available_products": available_products,
-        "missing_products": [
-            product for product in DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS if product not in set(available_products)
-        ],
-        "products": products,
-    }
-
-
-def _commodity_futures_missing_nanhua(status: str) -> dict[str, object]:
-    return {
-        "status": status,
-        "product_code": "NHCI",
-        "series_id": "NH0100.NHF",
-        "system_series_id": "NHCI.NH",
-        "latest_trade_date": None,
-        "latest_value": None,
-        "row_count": 0,
-        "source_version": None,
-        "vendor_version": None,
-        "rule_version": None,
-    }
-
-
-def _normalize_commodity_trade_date(value: object) -> str | None:
-    text = str(value or "").strip()
-    if len(text) == 8 and text.isdigit():
-        return f"{text[:4]}-{text[4:6]}-{text[6:8]}"
-    if len(text) >= 10:
-        return text[:10]
-    return text or None
-
-
-def _commodity_futures_nanhua_input(conn: duckdb.DuckDBPyConnection) -> dict[str, object]:
-    row = conn.execute(
-        """
-        with normalized as (
-          select
-            trade_date,
-            close_value,
-            source_version,
-            vendor_version,
-            rule_version,
-            case
-              when regexp_matches(cast(trade_date as varchar), '^[0-9]{8}$')
-                then try_strptime(cast(trade_date as varchar), '%Y%m%d')::date
-              else try_cast(left(cast(trade_date as varchar), 10) as date)
-            end as normalized_trade_date
-          from fact_commodity_futures_daily
-          where product_code = 'NHCI'
-        )
-        select trade_date, close_value, count(*) over () as row_count, source_version, vendor_version, rule_version
-        from normalized
-        order by normalized_trade_date desc nulls last, trade_date desc
-        limit 1
-        """
-    ).fetchone()
-    if not row:
-        return _commodity_futures_missing_nanhua("missing")
-    trade_date, latest_value, row_count, source_version, vendor_version, rule_version = row
-    return {
-        "status": "hit",
-        "product_code": "NHCI",
-        "series_id": "NH0100.NHF",
-        "system_series_id": "NHCI.NH",
-        "latest_trade_date": _normalize_commodity_trade_date(trade_date),
-        "latest_value": float(latest_value) if latest_value is not None else None,
-        "row_count": int(row_count or 0),
-        "source_version": str(source_version) if source_version is not None else None,
-        "vendor_version": str(vendor_version) if vendor_version is not None else None,
-        "rule_version": str(rule_version) if rule_version is not None else None,
-    }
-
-
 def load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[str, object] | None:
     if duckdb_path is None:
         return None
@@ -914,15 +1509,42 @@ def load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[s
         return None
     try:
         conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
-        return None
+    except duckdb.Error as exc:
+        warning = (
+            f"DUCKDB_QUERY_FAILED: table=choice_stock_daily_observation "
+            f"error={type(exc).__name__}: {exc}"
+        )
+        logger.warning(warning)
+        return {
+            "prices": None,
+            "observations": None,
+            "financials": None,
+            "as_of_date": None,
+            "tables_used": [],
+            "source_versions": [],
+            "vendor_versions": [],
+            "warnings": [warning],
+            "data_status": "unavailable",
+        }
+    unit_warnings: list[str] = []
     try:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
         if "choice_stock_daily_observation" not in tables:
             return None
+        canonical_dates = _duckdb_date_column_is_canonical_iso(
+            conn,
+            "choice_stock_daily_observation",
+            "trade_date",
+            database_path=path,
+        )
+        latest_date_select = (
+            "try_cast(max(trade_date) as date)"
+            if canonical_dates
+            else "max(try_cast(trade_date as date))"
+        )
         latest_row = conn.execute(
-            """
-            select max(try_cast(trade_date as date))
+            f"""
+            select {latest_date_select}
             from choice_stock_daily_observation
             where close_value is not null
               and close_value > 0
@@ -932,56 +1554,144 @@ def load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[s
         if latest_trade_date is None:
             return None
         start_date = latest_trade_date - timedelta(days=EQUITY_PRICE_LOOKBACK_DAYS)
-        frame = conn.execute(
-            f"""
-            with latest_sample as (
-              select stock_code
-              from choice_stock_daily_observation
-              where try_cast(trade_date as date) = ?
-                and close_value is not null
-                and close_value > 0
-              order by coalesce(amount, 0) desc, stock_code asc
-              limit {EQUITY_PRICE_MAX_STOCKS}
+        sample_date_expression = (
+            "trade_date" if canonical_dates else "try_cast(trade_date as date)"
+        )
+        daily_date_expression = (
+            "daily.trade_date"
+            if canonical_dates
+            else "try_cast(daily.trade_date as date)"
+        )
+        date_parameters = (
+            [
+                latest_trade_date.isoformat(),
+                start_date.isoformat(),
+                latest_trade_date.isoformat(),
+            ]
+            if canonical_dates
+            else [latest_trade_date, start_date, latest_trade_date]
+        )
+
+        def load_observations(
+            amount_projection: str,
+            unknown_projection: str,
+            vendor_projection: str,
+            sample_rank_expression: str,
+        ) -> pd.DataFrame:
+            # 样本排序键同样按 vendor 代际归一化为元:单日样本内两代零重叠,
+            # 序关系本不受统一倍数影响,但 NULL/空白 vendor 行(无法定标)按
+            # raw 值可能虚占 top-N 名额、下游又归一化为 NULL 浪费槽位。
+            return conn.execute(
+                f"""
+                with latest_sample as (
+                  select stock_code
+                  from choice_stock_daily_observation
+                  where {sample_date_expression} = ?
+                    and close_value is not null
+                    and close_value > 0
+                  order by coalesce({sample_rank_expression}, 0) desc, stock_code asc
+                  limit {EQUITY_PRICE_MAX_STOCKS}
+                )
+                select
+                  try_cast(daily.trade_date as date) as trade_date,
+                  daily.stock_code,
+                  daily.close_value,
+                  {amount_projection},
+                  daily.pctchange,
+                  daily.turn,
+                  daily.amplitude,
+                  daily.highlimit,
+                  daily.lowlimit,
+                  daily.source_version,
+                  {vendor_projection},
+                  {unknown_projection}
+                from choice_stock_daily_observation daily
+                join latest_sample sample
+                  on sample.stock_code = daily.stock_code
+                where {daily_date_expression} > ?
+                  and {daily_date_expression} <= ?
+                  and daily.close_value is not null
+                  and daily.close_value > 0
+                order by {daily_date_expression} asc, daily.stock_code asc
+                """,
+                date_parameters,
+            ).df()
+
+        # docs/data_contracts.md §4.10: amount 跨 vendor 代际统一为人民币元。
+        try:
+            frame = load_observations(
+                amount_rmb_sql(table_alias="daily", alias="amount"),
+                scale_unknown_sql(
+                    "amount",
+                    table_alias="daily",
+                    alias="_amount_scale_unknown",
+                ),
+                "daily.vendor_version",
+                amount_rmb_sql(alias=None),
             )
-            select
-              daily.try_cast_date as trade_date,
-              daily.stock_code,
-              daily.close_value,
-              daily.amount,
-              daily.pctchange,
-              daily.turn,
-              daily.amplitude,
-              daily.highlimit,
-              daily.lowlimit,
-              daily.source_version,
-              daily.vendor_version
-            from (
-              select
-                try_cast(trade_date as date) as try_cast_date,
-                stock_code,
-                close_value,
-                amount,
-                pctchange,
-                turn,
-                amplitude,
-                highlimit,
-                lowlimit,
-                source_version,
-                vendor_version
-              from choice_stock_daily_observation
-            ) daily
-            join latest_sample sample
-              on sample.stock_code = daily.stock_code
-            where daily.try_cast_date > ?
-              and daily.try_cast_date <= ?
-              and daily.close_value is not null
-              and daily.close_value > 0
-            order by daily.try_cast_date asc, daily.stock_code asc
-            """,
-            [latest_trade_date, start_date, latest_trade_date],
-        ).df()
-    except duckdb.Error:
-        return None
+        except duckdb.BinderException as exc:
+            if "vendor_version" not in str(exc).casefold():
+                raise
+            warning = (
+                "choice_stock_daily_observation 缺少 vendor_version，"
+                "低拥挤策略 amount 无法定标，已按 NULL 输出（fail-closed）。"
+            )
+            logger.warning(warning)
+            unit_warnings.append(warning)
+            frame = load_observations(
+                "cast(null as double) as amount",
+                "false as _amount_scale_unknown",
+                "cast(null as varchar) as vendor_version",
+                "amount",
+            )
+        unknown_scale = (
+            frame.pop("_amount_scale_unknown")
+            if "_amount_scale_unknown" in frame.columns
+            else None
+        )
+        if unknown_scale is not None:
+            unknown_count = int(pd.Series(unknown_scale).fillna(False).astype(bool).sum())
+            if unknown_count:
+                warning = (
+                    "choice_stock_daily_observation 有 "
+                    f"{unknown_count} 行 amount 非空但 vendor_version 为 NULL，"
+                    "低拥挤策略 amount 已按未知单位置空。"
+                )
+                logger.warning(warning)
+                unit_warnings.append(warning)
+        financials = None
+        if not frame.empty:
+            try:
+                financials = _load_equity_strategy_factor_snapshot_from_conn(
+                    conn,
+                    latest_trade_date.isoformat(),
+                )
+            except duckdb.Error as exc:
+                warning = (
+                    f"DUCKDB_QUERY_FAILED: table=choice_stock_factor_snapshot "
+                    f"date={latest_trade_date.isoformat()} "
+                    f"error={type(exc).__name__}: {exc}"
+                )
+                logger.warning(warning)
+                unit_warnings.append(warning)
+                financials = None
+    except duckdb.Error as exc:
+        warning = (
+            f"DUCKDB_QUERY_FAILED: table=choice_stock_daily_observation "
+            f"error={type(exc).__name__}: {exc}"
+        )
+        logger.warning(warning)
+        return {
+            "prices": None,
+            "observations": None,
+            "financials": None,
+            "as_of_date": None,
+            "tables_used": [],
+            "source_versions": [],
+            "vendor_versions": [],
+            "warnings": [*unit_warnings, warning],
+            "data_status": "unavailable",
+        }
     finally:
         conn.close()
 
@@ -1009,7 +1719,6 @@ def load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[s
             "lowlimit",
         ]
     ].copy()
-    financials = load_equity_strategy_factor_snapshot(path, latest_trade_date.isoformat())
     return {
         "prices": prices.astype("float64"),
         "observations": observations,
@@ -1021,7 +1730,25 @@ def load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[s
         ],
         "source_versions": _unique_texts(frame["source_version"].tolist()),
         "vendor_versions": _unique_texts(frame["vendor_version"].tolist()),
+        "warnings": unit_warnings,
     }
+
+
+def equity_strategy_summary_warnings(
+    price_context: dict[str, object] | None,
+    warnings: Iterable[object] | None = None,
+) -> list[str]:
+    """合并策略自身告警与 price_context 中的单位类告警（docs/data_contracts.md §4.10）。
+
+    ``load_equity_strategy_price_context`` 已将 ``vendor_version`` 缺列 / 行级 NULL
+    的 fail-closed 告警写入 ``context["warnings"]``；A股策略 summary 的构造方
+    （目前在 ``backend/app/api/routes/macro_toolkit.py``）应改用本函数拼装最终
+    ``warnings`` 字段，而不是丢弃 ``price_context`` 中的单位降级信息。
+    """
+    context_warnings = (
+        price_context.get("warnings") if isinstance(price_context, dict) else None
+    )
+    return _unique_texts([*(warnings or []), *(context_warnings or [])])
 
 
 def load_equity_strategy_factor_snapshot(
@@ -1031,50 +1758,74 @@ def load_equity_strategy_factor_snapshot(
 ) -> pd.DataFrame | None:
     try:
         conn = duckdb.connect(str(duckdb_path), read_only=True)
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        logger.warning(
+            "DuckDB query failed surface=equity_factor_snapshot table=choice_stock_factor_snapshot date=%s error=%s: %s",
+            as_of_date,
+            type(exc).__name__,
+            exc,
+        )
         return None
     try:
-        tables = {row[0] for row in conn.execute("show tables").fetchall()}
-        if "choice_stock_factor_snapshot" not in tables:
-            return None
-        factor_date_row = conn.execute(
-            """
-            select max(try_cast(as_of_date as date))
-            from choice_stock_factor_snapshot
-            where try_cast(as_of_date as date) <= try_cast(? as date)
-            """,
-            [as_of_date],
-        ).fetchone()
-        factor_as_of_date = factor_date_row[0] if factor_date_row else None
-        if factor_as_of_date is None:
-            return None
-        rows = conn.execute(
-            """
-            select
-              stock_code,
-              pe,
-              pb,
-              ps,
-              roe,
-              gross_margin,
-              three_month_return,
-              twelve_month_return,
-              volatility,
-              dividend_yield,
-              industry,
-              source_version,
-              vendor_version,
-              rule_version,
-              run_id
-            from choice_stock_factor_snapshot
-            where try_cast(as_of_date as date) = ?
-            """,
-            [factor_as_of_date],
-        ).fetchall()
-    except duckdb.Error:
+        return _load_equity_strategy_factor_snapshot_from_conn(
+            conn,
+            as_of_date,
+            stock_codes=stock_codes,
+        )
+    except duckdb.Error as exc:
+        logger.warning(
+            "DuckDB query failed surface=equity_factor_snapshot table=choice_stock_factor_snapshot date=%s error=%s: %s",
+            as_of_date,
+            type(exc).__name__,
+            exc,
+        )
         return None
     finally:
         conn.close()
+
+
+def _load_equity_strategy_factor_snapshot_from_conn(
+    conn: duckdb.DuckDBPyConnection,
+    as_of_date: str,
+    stock_codes: list[str] | None = None,
+) -> pd.DataFrame | None:
+    tables = {row[0] for row in conn.execute("show tables").fetchall()}
+    if "choice_stock_factor_snapshot" not in tables:
+        return None
+    factor_date_row = conn.execute(
+        """
+        select max(try_cast(as_of_date as date))
+        from choice_stock_factor_snapshot
+        where try_cast(as_of_date as date) <= try_cast(? as date)
+        """,
+        [as_of_date],
+    ).fetchone()
+    factor_as_of_date = factor_date_row[0] if factor_date_row else None
+    if factor_as_of_date is None:
+        return None
+    rows = conn.execute(
+        """
+        select
+          stock_code,
+          pe,
+          pb,
+          ps,
+          roe,
+          gross_margin,
+          three_month_return,
+          twelve_month_return,
+          volatility,
+          dividend_yield,
+          industry,
+          source_version,
+          vendor_version,
+          rule_version,
+          run_id
+        from choice_stock_factor_snapshot
+        where try_cast(as_of_date as date) = ?
+        """,
+        [factor_as_of_date],
+    ).fetchall()
     if not rows:
         return None
     frame = pd.DataFrame(
@@ -1133,14 +1884,37 @@ def load_a_share_stampede_risk_context(duckdb_path: str | Path | None) -> dict[s
         return None
     try:
         conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
-        return None
+    except duckdb.Error as exc:
+        warning = (
+            f"DUCKDB_QUERY_FAILED: table=choice_stock_daily_observation "
+            f"error={type(exc).__name__}: {exc}"
+        )
+        logger.warning(warning)
+        return {
+            "observations": pd.DataFrame(),
+            "theme_frame": None,
+            "tables_used": [],
+            "warnings": [warning],
+            "data_status": "unavailable",
+        }
+    warnings: list[str] = []
     try:
         if not _duckdb_table_exists(conn, "choice_stock_daily_observation"):
             return None
+        canonical_dates = _duckdb_date_column_is_canonical_iso(
+            conn,
+            "choice_stock_daily_observation",
+            "trade_date",
+            database_path=path,
+        )
+        latest_date_select = (
+            "try_cast(max(trade_date) as date)"
+            if canonical_dates
+            else "max(try_cast(trade_date as date))"
+        )
         latest_row = conn.execute(
-            """
-            select max(try_cast(trade_date as date))
+            f"""
+            select {latest_date_select}
             from choice_stock_daily_observation
             where close_value is not null
               and close_value > 0
@@ -1150,91 +1924,133 @@ def load_a_share_stampede_risk_context(duckdb_path: str | Path | None) -> dict[s
         if latest_trade_date is None:
             return None
         start_date = latest_trade_date - timedelta(days=A_SHARE_RISK_LOOKBACK_DAYS)
-        rows = conn.execute(
-            f"""
-            with latest_sample as (
-              select stock_code
-              from choice_stock_daily_observation
-              where try_cast(trade_date as date) = ?
-                and close_value is not null
-                and close_value > 0
-              order by coalesce(amount, 0) desc, stock_code asc
-              limit {A_SHARE_RISK_MAX_STOCKS}
-            )
-            select
-              daily.try_cast_date as trade_date,
-              daily.stock_code,
-              daily.open_value,
-              daily.high_value,
-              daily.low_value,
-              daily.close_value,
-              daily.amount,
-              daily.pctchange,
-              daily.turn,
-              daily.amplitude,
-              daily.tradestatus,
-              try_cast(daily.highlimit as double) as highlimit,
-              try_cast(daily.lowlimit as double) as lowlimit,
-              daily.source_version,
-              daily.vendor_version
-            from (
-              select
-                try_cast(trade_date as date) as try_cast_date,
-                stock_code,
-                open_value,
-                high_value,
-                low_value,
-                close_value,
-                amount,
-                pctchange,
-                turn,
-                amplitude,
-                tradestatus,
-                highlimit,
-                lowlimit,
-                source_version,
-                vendor_version
-              from choice_stock_daily_observation
-            ) daily
-            join latest_sample sample
-              on sample.stock_code = daily.stock_code
-            where daily.try_cast_date > ?
-              and daily.try_cast_date <= ?
-              and daily.close_value is not null
-              and daily.close_value > 0
-            order by daily.try_cast_date asc, daily.stock_code asc
-            """,
-            [latest_trade_date, start_date, latest_trade_date],
-        ).fetchall()
-        if not rows:
-            return None
-        observations = pd.DataFrame(
-            rows,
-            columns=[
-                "trade_date",
-                "stock_code",
-                "open_value",
-                "high_value",
-                "low_value",
-                "close_value",
-                "amount",
-                "pctchange",
-                "turn",
-                "amplitude",
-                "tradestatus",
-                "highlimit",
-                "lowlimit",
-                "source_version",
-                "vendor_version",
-            ],
+        sample_date_expression = (
+            "trade_date" if canonical_dates else "try_cast(trade_date as date)"
         )
+        daily_date_expression = (
+            "daily.trade_date"
+            if canonical_dates
+            else "try_cast(daily.trade_date as date)"
+        )
+        date_parameters = (
+            [
+                latest_trade_date.isoformat(),
+                start_date.isoformat(),
+                latest_trade_date.isoformat(),
+            ]
+            if canonical_dates
+            else [latest_trade_date, start_date, latest_trade_date]
+        )
+
+        def load_observations(
+            amount_projection: str,
+            unknown_projection: str,
+            vendor_projection: str,
+            sample_rank_expression: str,
+        ) -> pd.DataFrame:
+            # 样本排序键按 vendor 代际归一化为元(理由同低拥挤策略加载器)。
+            return conn.execute(
+                f"""
+                with latest_sample as (
+                  select stock_code
+                  from choice_stock_daily_observation
+                  where {sample_date_expression} = ?
+                    and close_value is not null
+                    and close_value > 0
+                  order by coalesce({sample_rank_expression}, 0) desc, stock_code asc
+                  limit {A_SHARE_RISK_MAX_STOCKS}
+                )
+                select
+                  try_cast(daily.trade_date as date) as trade_date,
+                  daily.stock_code,
+                  daily.open_value,
+                  daily.high_value,
+                  daily.low_value,
+                  daily.close_value,
+                  {amount_projection},
+                  daily.pctchange,
+                  daily.turn,
+                  daily.amplitude,
+                  daily.tradestatus,
+                  try_cast(daily.highlimit as double) as highlimit,
+                  try_cast(daily.lowlimit as double) as lowlimit,
+                  daily.source_version,
+                  {vendor_projection},
+                  {unknown_projection}
+                from choice_stock_daily_observation daily
+                join latest_sample sample
+                  on sample.stock_code = daily.stock_code
+                where {daily_date_expression} > ?
+                  and {daily_date_expression} <= ?
+                  and daily.close_value is not null
+                  and daily.close_value > 0
+                order by {daily_date_expression} asc, daily.stock_code asc
+                """,
+                date_parameters,
+            ).df()
+
+        # docs/data_contracts.md §4.10: 全市场 amount 跨 vendor 代际统一为人民币元。
+        try:
+            observations = load_observations(
+                amount_rmb_sql(table_alias="daily", alias="amount"),
+                scale_unknown_sql(
+                    "amount",
+                    table_alias="daily",
+                    alias="_amount_scale_unknown",
+                ),
+                "daily.vendor_version",
+                amount_rmb_sql(alias=None),
+            )
+        except duckdb.BinderException as exc:
+            if "vendor_version" not in str(exc).casefold():
+                raise
+            warning = (
+                "choice_stock_daily_observation 缺少 vendor_version，"
+                "A 股踩踏风险 amount 无法定标，已按 NULL 输出（fail-closed）。"
+            )
+            logger.warning(warning)
+            warnings.append(warning)
+            observations = load_observations(
+                "cast(null as double) as amount",
+                "false as _amount_scale_unknown",
+                "cast(null as varchar) as vendor_version",
+                "amount",
+            )
+        unknown_scale = (
+            observations.pop("_amount_scale_unknown")
+            if "_amount_scale_unknown" in observations.columns
+            else None
+        )
+        if unknown_scale is not None:
+            unknown_count = int(pd.Series(unknown_scale).fillna(False).astype(bool).sum())
+            if unknown_count:
+                warning = (
+                    "choice_stock_daily_observation 有 "
+                    f"{unknown_count} 行 amount 非空但 vendor_version 为 NULL，"
+                    "A 股踩踏风险 amount 已按未知单位置空。"
+                )
+                logger.warning(warning)
+                warnings.append(warning)
+        if observations.empty:
+            return None
         tables_used = ["choice_stock_daily_observation"]
-        warnings: list[str] = []
         _merge_a_share_universe(conn, observations, latest_trade_date, tables_used, warnings)
         _merge_a_share_limit_quality(conn, observations, latest_trade_date, tables_used)
         theme_frame = _load_a_share_theme_frame(conn, latest_trade_date, tables_used)
-    except duckdb.Error:
-        return None
+    except duckdb.Error as exc:
+        warning = (
+            f"DUCKDB_QUERY_FAILED: table=choice_stock_daily_observation "
+            f"date={latest_trade_date.isoformat() if 'latest_trade_date' in locals() and latest_trade_date is not None else '-'} "
+            f"error={type(exc).__name__}: {exc}"
+        )
+        logger.warning(warning)
+        return {
+            "observations": pd.DataFrame(),
+            "theme_frame": None,
+            "tables_used": [],
+            "warnings": [*warnings, warning],
+            "data_status": "unavailable",
+        }
     finally:
         conn.close()
     return {
@@ -1246,44 +2062,73 @@ def load_a_share_stampede_risk_context(duckdb_path: str | Path | None) -> dict[s
 
 
 def load_macro_curve_rows(duckdb_path: str | Path, report_date: date) -> list[dict[str, object]]:
-    rows: list[dict[str, object]] = []
     path = Path(duckdb_path)
+    conn: duckdb.DuckDBPyConnection | None = None
     if path.exists():
         try:
             conn = duckdb.connect(str(path), read_only=True)
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            logger.warning(
+                "DuckDB query failed surface=macro_curve_rows table=fact_formal_yield_curve_daily date=%s error=%s: %s",
+                report_date.isoformat(),
+                type(exc).__name__,
+                exc,
+            )
             conn = None
+    try:
+        return _load_macro_curve_rows_from_conn(conn, duckdb_path, report_date)
+    finally:
         if conn is not None:
-            try:
-                if _duckdb_table_exists(conn, "fact_formal_yield_curve_daily"):
-                    formal_rows = conn.execute(
-                        """
-                        select
-                          cast(trade_date as varchar) as biz_date,
-                          lower(curve_type) as curve_type,
-                          tenor,
-                          cast(rate_pct as double) as rate_value
-                        from fact_formal_yield_curve_daily
-                        where try_cast(trade_date as date) <= ?
-                        """,
-                        [report_date],
-                    ).fetchall()
-                    for biz_date, curve_type, tenor, rate_value in formal_rows:
-                        curve_id = _CURVE_TYPE_TO_ID.get(str(curve_type))
-                        if curve_id and rate_value is not None:
-                            rows.append(
-                                {
-                                    "biz_date": str(biz_date)[:10],
-                                    "curve_id": curve_id,
-                                    "tenor": str(tenor),
-                                    "rate_value": float(rate_value),
-                                }
-                            )
-            finally:
-                conn.close()
+            conn.close()
 
+
+def _load_macro_curve_rows_from_conn(
+    conn: duckdb.DuckDBPyConnection | None,
+    duckdb_path: str | Path,
+    report_date: date,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    if conn is not None and _duckdb_table_exists(conn, "fact_formal_yield_curve_daily"):
+        canonical_dates = _duckdb_date_column_is_canonical_iso(
+            conn,
+            "fact_formal_yield_curve_daily",
+            "trade_date",
+            database_path=duckdb_path,
+        )
+        trade_date_expression = (
+            "trade_date" if canonical_dates else "try_cast(trade_date as date)"
+        )
+        formal_rows = conn.execute(
+            f"""
+            select
+              cast(trade_date as varchar) as biz_date,
+              lower(curve_type) as curve_type,
+              tenor,
+              cast(rate_pct as double) as rate_value
+            from fact_formal_yield_curve_daily
+            where {trade_date_expression} <= ?
+            """,
+            [report_date.isoformat() if canonical_dates else report_date],
+        ).fetchall()
+        for biz_date, curve_type, tenor, rate_value in formal_rows:
+            curve_id = _CURVE_TYPE_TO_ID.get(str(curve_type))
+            if curve_id and rate_value is not None:
+                rows.append(
+                    {
+                        "biz_date": str(biz_date)[:10],
+                        "curve_id": curve_id,
+                        "tenor": str(tenor),
+                        "rate_value": float(rate_value),
+                    }
+                )
+
+    frames_by_alias = load_series_by_aliases(
+        tuple(alias for alias, _, _ in _CURVE_ALIAS_POINTS),
+        end=report_date.isoformat(),
+        duckdb_path=duckdb_path,
+    )
     for alias, curve_id, tenor in _CURVE_ALIAS_POINTS:
-        frame = load_series_by_alias(alias, end=report_date.isoformat(), duckdb_path=duckdb_path)
+        frame = frames_by_alias[alias]
         if frame.empty:
             continue
         for _, sample in frame.iterrows():
@@ -1313,23 +2158,59 @@ def load_latest_risk_tensor_row(
         return None
     try:
         conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        logger.warning(
+            "DuckDB query failed surface=risk_tensor table=fact_formal_risk_tensor_daily date=%s error=%s: %s",
+            report_date.isoformat(),
+            type(exc).__name__,
+            exc,
+        )
         return None
     try:
-        if not _duckdb_table_exists(conn, "fact_formal_risk_tensor_daily"):
-            return None
-        frame = conn.execute(
-            """
-            select *
-            from fact_formal_risk_tensor_daily
-            where try_cast(report_date as date) <= ?
-            order by try_cast(report_date as date) desc
-            limit 1
-            """,
-            [report_date],
-        ).fetchdf()
+        return _load_latest_risk_tensor_row_from_conn(conn, report_date, path)
     finally:
         conn.close()
+
+
+def _load_latest_risk_tensor_row_from_conn(
+    conn: duckdb.DuckDBPyConnection | None,
+    report_date: date,
+    duckdb_path: str | Path,
+) -> dict[str, object] | None:
+    if conn is None or not _duckdb_table_exists(conn, "fact_formal_risk_tensor_daily"):
+        return None
+    canonical_dates = _duckdb_date_column_is_canonical_iso(
+        conn,
+        "fact_formal_risk_tensor_daily",
+        "report_date",
+        database_path=duckdb_path,
+    )
+    report_date_expression = (
+        "report_date"
+        if canonical_dates
+        else "try_cast(report_date as date)"
+    )
+    frame = conn.execute(
+        f"""
+        select
+          total_market_value,
+          issuer_top5_weight,
+          portfolio_dv01,
+          bond_count,
+          asset_cashflow_30d,
+          asset_cashflow_90d,
+          liability_cashflow_30d,
+          liability_cashflow_90d,
+          liquidity_gap_30d,
+          liquidity_gap_90d,
+          liquidity_gap_30d_ratio
+        from fact_formal_risk_tensor_daily
+        where {report_date_expression} <= ?
+        order by {report_date_expression} desc
+        limit 1
+        """,
+        [report_date.isoformat() if canonical_dates else report_date],
+    ).fetchdf()
     if frame.empty:
         return None
     return dict(frame.iloc[0])
@@ -1344,31 +2225,63 @@ def load_latest_bond_positions(
         return []
     try:
         conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        logger.warning(
+            "DuckDB query failed surface=bond_positions table=fact_formal_bond_positions_daily date=%s error=%s: %s",
+            report_date.isoformat(),
+            type(exc).__name__,
+            exc,
+        )
         return []
     try:
-        if not _duckdb_table_exists(conn, "fact_formal_bond_analytics_daily"):
-            return []
-        frame = conn.execute(
-            """
-            with latest as (
-              select max(try_cast(report_date as date)) as report_date
-              from fact_formal_bond_analytics_daily
-              where try_cast(report_date as date) <= ?
-            )
-            select
-              cast(market_value as double) as market_value,
-              maturity_date,
-              cast(coupon_rate as double) as coupon_rate
-            from fact_formal_bond_analytics_daily, latest
-            where try_cast(fact_formal_bond_analytics_daily.report_date as date) = latest.report_date
-              and coalesce(cast(market_value as double), 0) > 0
-            limit 5000
-            """,
-            [report_date],
-        ).fetchdf()
+        return _load_latest_bond_positions_from_conn(conn, report_date, path)
     finally:
         conn.close()
+
+
+def _load_latest_bond_positions_from_conn(
+    conn: duckdb.DuckDBPyConnection | None,
+    report_date: date,
+    duckdb_path: str | Path,
+) -> list[dict[str, object]]:
+    if conn is None or not _duckdb_table_exists(conn, "fact_formal_bond_analytics_daily"):
+        return []
+    canonical_dates = _duckdb_date_column_is_canonical_iso(
+        conn,
+        "fact_formal_bond_analytics_daily",
+        "report_date",
+        database_path=duckdb_path,
+    )
+    if canonical_dates:
+        report_date_expression = "report_date"
+        latest_max_expression = "max(report_date)"
+        join_date_expression = "fact_formal_bond_analytics_daily.report_date"
+        date_parameter: object = report_date.isoformat()
+    else:
+        report_date_expression = "try_cast(report_date as date)"
+        latest_max_expression = "max(try_cast(report_date as date))"
+        join_date_expression = (
+            "try_cast(fact_formal_bond_analytics_daily.report_date as date)"
+        )
+        date_parameter = report_date
+    frame = conn.execute(
+        f"""
+        with latest as (
+          select {latest_max_expression} as report_date
+          from fact_formal_bond_analytics_daily
+          where {report_date_expression} <= ?
+        )
+        select
+          cast(market_value as double) as market_value,
+          maturity_date,
+          cast(coupon_rate as double) as coupon_rate
+        from fact_formal_bond_analytics_daily, latest
+        where {join_date_expression} = latest.report_date
+          and coalesce(cast(market_value as double), 0) > 0
+        limit 5000
+        """,
+        [date_parameter],
+    ).fetchdf()
     if frame.empty:
         return []
     positions: list[dict[str, object]] = []
@@ -1384,6 +2297,33 @@ def load_latest_bond_positions(
             }
         )
     return positions
+
+
+def load_macro_capability_context(
+    duckdb_path: str | Path,
+    report_date: date,
+) -> tuple[list[dict[str, object]], dict[str, object] | None, list[dict[str, object]]]:
+    path = Path(duckdb_path)
+    conn: duckdb.DuckDBPyConnection | None = None
+    if path.exists():
+        try:
+            conn = duckdb.connect(str(path), read_only=True)
+        except duckdb.Error as exc:
+            logger.warning(
+                "DuckDB query failed surface=macro_capability_context table=fact_formal_yield_curve_daily date=%s error=%s: %s",
+                report_date.isoformat(),
+                type(exc).__name__,
+                exc,
+            )
+            conn = None
+    try:
+        curve_rows = _load_macro_curve_rows_from_conn(conn, duckdb_path, report_date)
+        risk_tensor = _load_latest_risk_tensor_row_from_conn(conn, report_date, path)
+        positions = _load_latest_bond_positions_from_conn(conn, report_date, path)
+        return curve_rows, risk_tensor, positions
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def _merge_a_share_universe(
@@ -1492,8 +2432,12 @@ def default_choice_stock_refresh_as_of_date(duckdb_path: str | Path) -> str:
                         return str(row[0])[:10]
             finally:
                 conn.close()
-        except duckdb.Error:
-            pass
+        except duckdb.Error as exc:
+            logger.warning(
+                "DuckDB query failed surface=choice_stock_refresh_as_of_date table=choice_stock_daily_observation error=%s: %s",
+                type(exc).__name__,
+                exc,
+            )
     return date.today().isoformat()
 
 
@@ -1502,16 +2446,29 @@ def _run_choice_stock_refresh_job(
     duckdb_path: str,
     catalog_path: str,
     governance_path: str,
+    archive_root: str = "",
     run_id: str,
     as_of_date: str,
     queued_at: str,
     refresh_history: bool,
     refresh_factors: bool,
     factor_max_stock_count: int | None,
+    theme_overlay_mode: ThemeOverlayRefreshMode = "off",
     permission: dict[str, object],
     idempotency_key: str | None = None,
 ) -> None:
+    normalized_theme_overlay_mode = _normalize_theme_overlay_mode(theme_overlay_mode)
     normalized_idempotency_key = _normalize_idempotency_key(idempotency_key)
+    attempt_count = (
+        sum(
+            1
+            for record in _choice_stock_refresh_records(governance_path)
+            if str(record.get("run_id") or "") == run_id
+            and str(record.get("status") or "") == "running"
+        )
+        + 1
+    )
+    theme_overlay_run_id = f"{run_id}:theme-overlay" if normalized_theme_overlay_mode != "off" else None
     started_at = datetime.now(UTC).isoformat()
     append_choice_stock_refresh_run(
         governance_path,
@@ -1524,8 +2481,11 @@ def _run_choice_stock_refresh_job(
             refresh_history=refresh_history,
             refresh_factors=refresh_factors,
             factor_max_stock_count=factor_max_stock_count,
+            theme_overlay_mode=normalized_theme_overlay_mode,
+            theme_overlay_run_id=theme_overlay_run_id,
             permission=permission,
             idempotency_key=normalized_idempotency_key,
+            attempt_count=attempt_count,
         ),
     )
     history_result: dict[str, object] | None = None
@@ -1543,32 +2503,55 @@ def _run_choice_stock_refresh_job(
                 duckdb_path=duckdb_path,
                 max_stock_count=factor_max_stock_count,
             )
-        append_choice_stock_refresh_run(
-            governance_path,
-            build_choice_stock_refresh_run_payload(
-                run_id=run_id,
-                status="completed",
-                as_of_date=as_of_date,
-                queued_at=queued_at,
-                started_at=started_at,
-                finished_at=datetime.now(UTC).isoformat(),
-                refresh_history=refresh_history,
-                refresh_factors=refresh_factors,
-                factor_max_stock_count=factor_max_stock_count,
-                history_row_count=_result_row_count(history_result),
-                factor_row_count=_result_row_count(factor_result),
-                source_version=_latest_result_field("source_version", factor_result, history_result),
-                vendor_version=_latest_result_field("vendor_version", factor_result, history_result),
-                permission=permission,
-                idempotency_key=normalized_idempotency_key,
-            ),
+        finished_at = datetime.now(UTC).isoformat()
+        completed_payload = build_choice_stock_refresh_run_payload(
+            run_id=run_id,
+            status="completed",
+            as_of_date=as_of_date,
+            queued_at=queued_at,
+            started_at=started_at,
+            finished_at=finished_at,
+            refresh_history=refresh_history,
+            refresh_factors=refresh_factors,
+            factor_max_stock_count=factor_max_stock_count,
+            theme_overlay_mode=normalized_theme_overlay_mode,
+            theme_overlay_run_id=theme_overlay_run_id,
+            history_row_count=_result_row_count(history_result),
+            factor_row_count=_result_row_count(factor_result),
+            source_version=_latest_result_field("source_version", factor_result, history_result),
+            vendor_version=_latest_result_field("vendor_version", factor_result, history_result),
+            permission=permission,
+            idempotency_key=normalized_idempotency_key,
+            attempt_count=attempt_count,
+        )
+        observation_manifest = None
+        if refresh_history:
+            if history_result is None:
+                raise RuntimeError("Choice-stock history refresh completed without a result payload")
+            daily_observation_row_count = verify_choice_stock_daily_observation_landing(
+                duckdb_path=duckdb_path,
+                history_result=history_result,
+                report_date=as_of_date,
+            )
+            observation_manifest = build_choice_stock_observation_manifest(
+                history_result=history_result,
+                refresh_run_id=run_id,
+                report_date=as_of_date,
+                daily_observation_row_count=daily_observation_row_count,
+                created_at=finished_at,
+            )
+        append_choice_stock_refresh_completion(
+            governance_repo=GovernanceRepository(base_dir=governance_path),
+            completed_run_payload=completed_payload,
+            observation_manifest=observation_manifest,
         )
     except Exception as exc:
+        retry_pending = attempt_count <= _WRITE_REFRESH_MAX_RETRIES
         append_choice_stock_refresh_run(
             governance_path,
             build_choice_stock_refresh_run_payload(
                 run_id=run_id,
-                status="failed",
+                status="retrying" if retry_pending else "failed",
                 as_of_date=as_of_date,
                 queued_at=queued_at,
                 started_at=started_at,
@@ -1576,6 +2559,9 @@ def _run_choice_stock_refresh_job(
                 refresh_history=refresh_history,
                 refresh_factors=refresh_factors,
                 factor_max_stock_count=factor_max_stock_count,
+                theme_overlay_mode=normalized_theme_overlay_mode,
+                theme_overlay_status=("not_run" if normalized_theme_overlay_mode != "off" else None),
+                theme_overlay_run_id=theme_overlay_run_id,
                 history_row_count=_result_row_count(history_result),
                 factor_row_count=_result_row_count(factor_result),
                 source_version=_latest_result_field("source_version", factor_result, history_result),
@@ -1585,8 +2571,79 @@ def _run_choice_stock_refresh_job(
                 failure_reason=str(exc),
                 permission=permission,
                 idempotency_key=normalized_idempotency_key,
+                attempt_count=attempt_count,
+                retryable=retry_pending,
             ),
         )
+        raise
+
+    if normalized_theme_overlay_mode == "off":
+        return
+
+    assert theme_overlay_run_id is not None
+    try:
+        theme_overlay_result = refresh_choice_stock_theme_overlay(
+            mode=normalized_theme_overlay_mode,
+            duckdb_path=duckdb_path,
+            governance_dir=governance_path,
+            archive_root=archive_root,
+            expected_report_date=as_of_date,
+            run_id=theme_overlay_run_id,
+            source_version=_choice_stock_theme_overlay_source_version(
+                parent_run_id=run_id,
+                report_date=as_of_date,
+            ),
+            vendor_version=CHOICE_STOCK_THEME_OVERLAY_VENDOR_VERSION,
+        )
+    except Exception:
+        logger.exception("Choice-stock theme overlay refresh raised for run_id=%s", run_id)
+        theme_overlay_result = {
+            "status": ("archive_failed" if normalized_theme_overlay_mode == "archive" else "dry_run_failed"),
+            "message": "Theme overlay refresh failed; see server logs.",
+            "member_count": 0,
+            "run_id": theme_overlay_run_id,
+        }
+
+    theme_overlay_status = str(
+        theme_overlay_result.get("overlay_status") or theme_overlay_result.get("status") or "unknown"
+    )
+    theme_overlay_message = _optional_text(theme_overlay_result.get("message"))
+    if theme_overlay_status not in {"completed", "dry_run"}:
+        if theme_overlay_message != "Theme overlay refresh failed; see server logs.":
+            logger.warning(
+                "Choice-stock theme overlay ended with status=%s for run_id=%s: %s",
+                theme_overlay_status,
+                run_id,
+                theme_overlay_message,
+            )
+        theme_overlay_message = "Theme overlay refresh failed; see server logs."
+
+    append_choice_stock_refresh_run(
+        governance_path,
+        build_choice_stock_refresh_run_payload(
+            run_id=run_id,
+            status="completed",
+            as_of_date=as_of_date,
+            queued_at=queued_at,
+            started_at=started_at,
+            finished_at=datetime.now(UTC).isoformat(),
+            refresh_history=refresh_history,
+            refresh_factors=refresh_factors,
+            factor_max_stock_count=factor_max_stock_count,
+            theme_overlay_mode=normalized_theme_overlay_mode,
+            theme_overlay_status=theme_overlay_status,
+            theme_overlay_message=theme_overlay_message,
+            theme_overlay_member_count=_optional_int(theme_overlay_result.get("member_count")) or 0,
+            theme_overlay_run_id=(_optional_text(theme_overlay_result.get("run_id")) or theme_overlay_run_id),
+            history_row_count=_result_row_count(history_result),
+            factor_row_count=_result_row_count(factor_result),
+            source_version=_latest_result_field("source_version", factor_result, history_result),
+            vendor_version=_latest_result_field("vendor_version", factor_result, history_result),
+            permission=permission,
+            idempotency_key=normalized_idempotency_key,
+            attempt_count=attempt_count,
+        ),
+    )
 
 
 def _run_toolkit_script_inline(name: str, argv: list[str], *, output_dir: str | Path) -> tuple[str, str, int]:
@@ -1738,127 +2795,6 @@ def _macro_model_readiness_payload(
     }
 
 
-def _macro_readiness_degraded_reason(
-    *,
-    readiness: str,
-    script_available: bool,
-    missing_outputs: list[str],
-    stale_outputs: list[str],
-    degraded_outputs: list[str],
-) -> str | None:
-    if not script_available:
-        return "script_unavailable"
-    if missing_outputs:
-        return "missing_expected_outputs"
-    if stale_outputs:
-        return "stale_expected_outputs"
-    if degraded_outputs:
-        return "indeterminate_output_dates"
-    if readiness == "registered_only":
-        return "no_expected_outputs_registered"
-    return None
-
-
-def _macro_readiness_evidence_level(*, readiness: str, present_count: int) -> str:
-    if readiness == "artifact_backed":
-        return "fresh_artifacts"
-    if present_count:
-        return "partial_artifacts"
-    return "registered_script_only"
-
-
-def _macro_readiness_date_basis(outputs: list[dict[str, object]]) -> str:
-    statuses = {str(item["freshness_status"]) for item in outputs}
-    if not outputs or statuses == {"missing"}:
-        return "missing"
-    bases = {
-        str(item["freshness_basis"])
-        for item in outputs
-        if item.get("freshness_basis") and item["freshness_status"] != "missing"
-    }
-    if "csv_content" in bases:
-        return "csv_content"
-    if "file_modified_date" in bases:
-        return "file_modified_date"
-    return "unknown"
-
-
-def _macro_artifact_receipt(
-    *,
-    model_id: str,
-    script_name: str,
-    readiness: str,
-    outputs: list[dict[str, object]],
-    degraded_reason: str | None,
-    data_asof: str | None,
-) -> dict[str, object]:
-    return {
-        "status": readiness,
-        "model_id": model_id,
-        "script_name": script_name,
-        "artifact_paths": sorted(str(item["name"]) for item in outputs if item["freshness_status"] != "missing"),
-        "missing_artifacts": sorted(str(item["name"]) for item in outputs if item["freshness_status"] == "missing"),
-        "degraded_reason": degraded_reason,
-        "data_asof": data_asof,
-        "generated_at": datetime.now(UTC).isoformat(),
-        "runtime_endpoint": MACRO_TOOLKIT_RUN_CHAIN_ENDPOINT,
-        "page_surface": MACRO_TOOLKIT_MODEL_READINESS_SURFACE,
-        "formal_use_allowed": MACRO_TOOLKIT_FORMAL_USE_ALLOWED,
-        "observation_only": MACRO_TOOLKIT_OBSERVATION_ONLY,
-    }
-
-
-def _macro_output_health(
-    name: str,
-    file_payload: dict[str, object] | None,
-    *,
-    reference_date: str | None,
-) -> dict[str, object]:
-    if file_payload is None:
-        return {
-            "name": name,
-            "freshness_status": "missing",
-            "freshness_basis": "missing",
-            "modified_at": None,
-            "modified_date": None,
-            "content_date": None,
-            "content_date_min": None,
-            "content_date_max": None,
-            "content_date_invalid_count": 0,
-            "reference_date": reference_date,
-        }
-    modified_at = str(file_payload.get("modified_at") or "").strip() or None
-    modified_date = _macro_output_modified_date(modified_at)
-    content_dates = _macro_output_content_dates(file_payload)
-    content_date = content_dates["max"]
-    content_date_min = content_dates["min"]
-    content_date_max = content_dates["max"]
-    content_date_invalid_count = int(content_dates["invalid_count"] or 0)
-    has_content_date_column = bool(content_dates["date_column"])
-    freshness_basis = "csv_content" if has_content_date_column else "file_modified_date"
-    freshness_status = (
-        "invalid_date"
-        if content_date_invalid_count
-        else "mixed"
-        if content_date_min and content_date_max and content_date_min != content_date_max
-        else "unknown"
-        if has_content_date_column and not content_date
-        else _macro_output_freshness(content_date or modified_date, reference_date)
-    )
-    return {
-        "name": name,
-        "freshness_status": freshness_status,
-        "freshness_basis": freshness_basis,
-        "modified_at": modified_at,
-        "modified_date": modified_date,
-        "content_date": content_date,
-        "content_date_min": content_date_min,
-        "content_date_max": content_date_max,
-        "content_date_invalid_count": content_date_invalid_count,
-        "reference_date": reference_date,
-    }
-
-
 def _model_readiness_status(
     *,
     script_available: bool,
@@ -1881,108 +2817,6 @@ def _model_readiness_status(
     if degraded_outputs:
         return "degraded"
     return "artifact_backed"
-
-
-def _macro_output_modified_date(modified_at: str | None) -> str | None:
-    if not modified_at:
-        return None
-    try:
-        parsed = datetime.fromisoformat(modified_at.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.date().isoformat()
-    return parsed.astimezone(UTC).date().isoformat()
-
-
-def _macro_output_content_dates(file_payload: dict[str, object]) -> dict[str, str | int | None]:
-    path_value = file_payload.get("path")
-    if not path_value:
-        return {"min": None, "max": None, "invalid_count": 0, "date_column": None}
-    path = Path(str(path_value))
-    if not path.is_file():
-        return {"min": None, "max": None, "invalid_count": 0, "date_column": None}
-    try:
-        columns = pd.read_csv(path, nrows=0).columns
-        date_column = next((column for column in MACRO_TOOLKIT_OUTPUT_DATE_COLUMNS if column in columns), None)
-        if date_column is None:
-            return {"min": None, "max": None, "invalid_count": 0, "date_column": None}
-        frame = pd.read_csv(path, usecols=[date_column])
-    except (OSError, UnicodeError, pd.errors.EmptyDataError, pd.errors.ParserError):
-        return {"min": None, "max": None, "invalid_count": 0, "date_column": None}
-    if frame.empty:
-        return {"min": None, "max": None, "invalid_count": 0, "date_column": date_column}
-    raw_dates = frame[date_column].dropna()
-    parsed = pd.to_datetime(raw_dates, errors="coerce")
-    invalid_count = int(parsed.isna().sum())
-    parsed = parsed.dropna()
-    if parsed.empty:
-        return {"min": None, "max": None, "invalid_count": invalid_count, "date_column": date_column}
-    return {
-        "min": parsed.min().date().isoformat(),
-        "max": parsed.max().date().isoformat(),
-        "invalid_count": invalid_count,
-        "date_column": date_column,
-    }
-
-
-def _macro_output_freshness(output_date: str | None, reference_date: str | None) -> str:
-    if not output_date:
-        return "unknown"
-    if not reference_date:
-        return "present"
-    try:
-        output_day = date.fromisoformat(output_date[:10])
-        reference_day = date.fromisoformat(reference_date[:10])
-    except ValueError:
-        return "unknown"
-    if output_day > reference_day:
-        return "future"
-    return "current" if output_day == reference_day else "stale"
-
-
-def _macro_run_manifest() -> list[dict[str, object]]:
-    labels_by_script = {
-        "merrill_clock_cn": "Merrill Clock",
-        "crisis_score_cn": "Crisis Score",
-        "bond_futures_data": "Bond Futures Basis / IRR / Safety Margin",
-        "bond_futures_signals": "Bond Futures Four-Factor Trend",
-        "crowding_cn": "Crowding",
-        "dcc_garch_cn": "DCC-GARCH",
-        "cta_trend_cn": "CTA Trend",
-        "signal_aggregator": "Final Signal Aggregator",
-        "risk_monitor": "Risk Monitor",
-    }
-    outputs_by_script: dict[str, list[str]] = {}
-    for model in _MACRO_MODEL_DEFINITIONS:
-        script_name = str(model["script_name"])
-        outputs_by_script.setdefault(script_name, [])
-        outputs_by_script[script_name].extend(str(name) for name in model["expected_outputs"])
-    ordered_scripts = (
-        "merrill_clock_cn",
-        "crisis_score_cn",
-        "bond_futures_data",
-        "bond_futures_signals",
-        "crowding_cn",
-        "dcc_garch_cn",
-        "cta_trend_cn",
-        "signal_aggregator",
-        "risk_monitor",
-    )
-    registry = {script.name: script for script in iter_toolkit_scripts()}
-    manifest: list[dict[str, object]] = []
-    for order, script_name in enumerate(ordered_scripts, start=1):
-        script = registry[script_name]
-        manifest.append(
-            {
-                "order": order,
-                "script_name": script_name,
-                "label": labels_by_script[script_name],
-                "expected_outputs": sorted(set(outputs_by_script.get(script_name, []))),
-                "available": script.path.exists(),
-            }
-        )
-    return manifest
 
 
 def _dry_run_receipt(step: dict[str, object], *, chain_id: str, output_dir: str | Path) -> dict[str, object]:
@@ -2049,49 +2883,9 @@ def _run_receipt(
     }
 
 
-def _macro_run_degraded_reason(*, status: str, missing_outputs: list[str]) -> str | None:
-    if status != "completed":
-        return "script_execution_not_completed"
-    if missing_outputs:
-        return "missing_expected_outputs_after_run"
-    return None
-
-
-def _macro_run_blocker(
-    *,
-    degraded_reason: str | None,
-    script_name: str,
-    missing_outputs: list[str],
-) -> dict[str, object] | None:
-    if degraded_reason != "missing_expected_outputs_after_run":
-        return None
-    return {
-        "type": degraded_reason,
-        "script_name": script_name,
-        "missing_outputs": missing_outputs,
-    }
-
-
-def _macro_run_data_asof(*, expected_outputs: list[str], outputs: list[dict[str, object]]) -> str | None:
-    files_by_name = {str(item["name"]): item for item in outputs}
-    content_dates: list[str] = []
-    for name in expected_outputs:
-        content_date = _macro_output_health(name, files_by_name.get(name), reference_date=None).get("content_date")
-        if content_date:
-            content_dates.append(str(content_date))
-    return max(content_dates, default=None)
-
-
 def _missing_expected_outputs(step: dict[str, object], *, output_dir: str | Path) -> list[str]:
     output_names = {str(item["name"]) for item in output_files(output_dir)}
     return [str(name) for name in step.get("expected_outputs") or [] if str(name) not in output_names]
-
-
-def _tail_text(value: str | bytes | None, limit: int = 12000) -> str:
-    if value is None:
-        return ""
-    text = value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value
-    return text[-limit:]
 
 
 def _choice_stock_refresh_records(governance_path: str | Path) -> list[dict[str, object]]:
@@ -2114,11 +2908,69 @@ def _choice_stock_refresh_trigger_lock(*, as_of_date: str) -> LockDefinition:
     )
 
 
-def _normalize_choice_stock_refresh_record(record: dict[str, object]) -> dict[str, object]:
-    normalized = dict(record)
-    normalized["trigger_mode"] = _choice_stock_refresh_trigger_mode(str(normalized.get("status") or ""))
-    normalized.setdefault("permission", build_choice_stock_refresh_permission_payload())
+def _normalize_choice_stock_refresh_record(
+    record: dict[str, object],
+    *,
+    idempotency_replay: bool | None = None,
+) -> dict[str, object]:
+    public_record = dict(record)
+    overlay_pending = _choice_stock_refresh_overlay_pending(public_record)
+    if overlay_pending:
+        public_record["status"] = "running"
+    normalized = _normalize_write_refresh_public_record(
+        public_record,
+        job_name=CHOICE_STOCK_REFRESH_JOB_NAME,
+        cache_key=CHOICE_STOCK_REFRESH_CACHE_KEY,
+        cache_version=CHOICE_STOCK_REFRESH_CACHE_VERSION,
+        rule_version=CHOICE_STOCK_REFRESH_RULE_VERSION,
+        idempotency_replay=idempotency_replay,
+    )
+    normalized.update(
+        {
+            "refresh_history": public_record.get("refresh_history") is True,
+            "refresh_factors": public_record.get("refresh_factors") is True,
+            "factor_max_stock_count": _optional_int(
+                public_record.get("factor_max_stock_count")
+            ),
+            "history_row_count": _optional_int(
+                public_record.get("history_row_count")
+            ),
+            "factor_row_count": _optional_int(
+                public_record.get("factor_row_count")
+            ),
+            "theme_overlay_mode": _normalize_theme_overlay_mode(
+                public_record.get("theme_overlay_mode")
+            ),
+            "theme_overlay_status": _optional_text(
+                public_record.get("theme_overlay_status")
+            ),
+            "theme_overlay_message": _optional_text(
+                public_record.get("theme_overlay_message")
+            ),
+            "theme_overlay_member_count": _optional_int(
+                public_record.get("theme_overlay_member_count")
+            ),
+            "theme_overlay_run_id": _optional_text(
+                public_record.get("theme_overlay_run_id")
+            ),
+            "permission": (
+                public_record.get("permission")
+                if isinstance(public_record.get("permission"), dict)
+                else build_choice_stock_refresh_permission_payload()
+            ),
+        }
+    )
+    if overlay_pending:
+        normalized["choice_completion_status"] = "completed"
     return normalized
+
+
+def _choice_stock_refresh_overlay_pending(record: dict[str, object]) -> bool:
+    return (
+        str(record.get("status") or "") == "completed"
+        and str(record.get("theme_overlay_mode") or "off") in {"dry_run", "archive"}
+        and str(record.get("theme_overlay_status") or "") == "pending"
+    )
 
 
 def _choice_stock_refresh_trigger_mode(status: str) -> str:
@@ -2191,7 +3043,12 @@ def _choice_stock_materialization_base_statuses_cache(
 ) -> tuple[dict[str, object], dict[str, object]]:
     try:
         conn = duckdb.connect(duckdb_path, read_only=True)
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        logger.warning(
+            "DuckDB query failed surface=choice_stock_materialization table=choice_stock_daily_observation error=%s: %s",
+            type(exc).__name__,
+            exc,
+        )
         return (
             _choice_stock_base_table_status("unreadable_database"),
             _choice_stock_base_table_status("unreadable_database"),
@@ -2221,7 +3078,12 @@ def _choice_stock_daily_observation_base_status_from_conn(
             from choice_stock_daily_observation
             """
         ).fetchone()
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        logger.warning(
+            "DuckDB query failed surface=choice_stock_daily_observation_status table=choice_stock_daily_observation error=%s: %s",
+            type(exc).__name__,
+            exc,
+        )
         return _choice_stock_base_table_status("unreadable_table")
     row_count = _int_or_zero(row[0] if row else 0)
     latest_trade_date = str(row[3])[:10] if row and row[3] is not None else None
@@ -2262,7 +3124,12 @@ def _choice_stock_factor_snapshot_base_status_from_conn(
             from choice_stock_factor_snapshot
             """
         ).fetchone()
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        logger.warning(
+            "DuckDB query failed surface=choice_stock_factor_snapshot_status table=choice_stock_factor_snapshot error=%s: %s",
+            type(exc).__name__,
+            exc,
+        )
         return _choice_stock_base_table_status("unreadable_table")
     row_count = _int_or_zero(row[0] if row else 0)
     as_of_date = str(row[2])[:10] if row and row[2] is not None else None
@@ -2275,176 +3142,6 @@ def _choice_stock_factor_snapshot_base_status_from_conn(
     }
 
 
-def _choice_stock_daily_observation_status_with_freshness(
-    status: dict[str, object],
-    *,
-    reference_date: str | None = None,
-) -> dict[str, object]:
-    latest_trade_date = str(status.get("latest_trade_date") or "")[:10] or None
-    return {
-        **status,
-        **_choice_stock_table_freshness(latest_trade_date, reference_date),
-    }
-
-
-def _choice_stock_factor_snapshot_status_with_freshness(
-    status: dict[str, object],
-    *,
-    reference_date: str | None = None,
-) -> dict[str, object]:
-    as_of_date = str(status.get("as_of_date") or "")[:10] or None
-    return {
-        **status,
-        **_choice_stock_table_freshness(as_of_date, reference_date),
-    }
-
-
-def _choice_stock_base_table_status(status: str) -> dict[str, object]:
-    return {
-        "materialized": False,
-        "status": status,
-        "row_count": 0,
-        "stock_count": 0,
-    }
-
-
-def _choice_stock_table_status(status: str, *, reference_date: str | None = None) -> dict[str, object]:
-    return {
-        **_choice_stock_base_table_status(status),
-        **_choice_stock_table_freshness(None, reference_date),
-    }
-
-
-def _choice_stock_table_freshness(data_date: str | None, reference_date: str | None) -> dict[str, object]:
-    if not data_date:
-        return {
-            "freshness_status": "missing",
-            "reference_date": reference_date,
-            "stale_days": None,
-            "fallback_mode": "missing",
-            "fallback_date": None,
-        }
-    if not reference_date:
-        return {
-            "freshness_status": "unknown",
-            "reference_date": None,
-            "stale_days": None,
-            "fallback_mode": "unknown",
-            "fallback_date": None,
-        }
-    try:
-        data_day = date.fromisoformat(data_date[:10])
-        reference_day = date.fromisoformat(reference_date[:10])
-    except ValueError:
-        return {
-            "freshness_status": "unknown",
-            "reference_date": reference_date,
-            "stale_days": None,
-            "fallback_mode": "unknown",
-            "fallback_date": None,
-        }
-    raw_stale_days = (reference_day - data_day).days
-    stale_days = max(raw_stale_days, 0)
-    if raw_stale_days <= 1:
-        status = "current"
-    elif raw_stale_days <= 7:
-        status = "lagging"
-    else:
-        status = "stale"
-    fallback_mode = "none" if status == "current" else "latest_available"
-    return {
-        "freshness_status": status,
-        "reference_date": reference_day.isoformat(),
-        "stale_days": stale_days,
-        "fallback_mode": fallback_mode,
-        "fallback_date": data_day.isoformat() if fallback_mode == "latest_available" else None,
-    }
-
-
-def _result_row_count(result: dict[str, object] | None) -> int | None:
-    if not result:
-        return None
-    value = result.get("row_count")
-    return None if value is None else int(value)
-
-
-def _latest_result_field(field_name: str, *results: dict[str, object] | None) -> object | None:
-    for result in results:
-        if result and result.get(field_name):
-            return result[field_name]
-    return None
-
-
-def _optional_text(value: object | None) -> str | None:
-    text = str(value or "").strip()
-    return text or None
-
-
-def _normalize_idempotency_key(value: str | None) -> str | None:
-    text = str(value or "").strip()
-    return text or None
-
-
-def _optional_int(value: object | None) -> int | None:
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _int_or_zero(value: object) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 0
-
-
-def _float_or_none(value: object) -> float | None:
-    if value is None:
-        return None
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError):
-        return None
-    if pd.isna(parsed):
-        return None
-    return parsed
-
-
-def _coerce_frame_date(value: object) -> date | None:
-    if value is None:
-        return None
-    if pd.isna(value):
-        return None
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    if hasattr(value, "date"):
-        try:
-            return value.date()
-        except (AttributeError, TypeError, ValueError):
-            return None
-    try:
-        return date.fromisoformat(str(value)[:10])
-    except ValueError:
-        return None
-
-
-def _unique_texts(values: list[object]) -> list[str]:
-    seen: set[str] = set()
-    output: list[str] = []
-    for value in values:
-        text = str(value or "").strip()
-        if not text or text in seen:
-            continue
-        seen.add(text)
-        output.append(text)
-    return output
-
-
 def _duckdb_table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
     try:
         row = conn.execute(
@@ -2455,6 +3152,102 @@ def _duckdb_table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bo
             """,
             [table_name],
         ).fetchone()
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        logger.warning(
+            "DuckDB query failed surface=duckdb_table_exists table=%s error=%s: %s",
+            table_name,
+            type(exc).__name__,
+            exc,
+        )
         return False
     return bool(row and row[0])
+
+
+def _duckdb_date_column_is_canonical_iso(
+    conn: duckdb.DuckDBPyConnection,
+    table_name: str,
+    column_name: str,
+    *,
+    database_path: str | Path | None = None,
+) -> bool:
+    if (table_name, column_name) not in _CANONICAL_ISO_DATE_COLUMNS:
+        raise ValueError(f"unsupported date column: {table_name}.{column_name}")
+    cache_key = _duckdb_date_column_cache_key(database_path, table_name, column_name)
+    if cache_key is None:
+        return _probe_duckdb_date_column_is_canonical_iso(conn, table_name, column_name)
+
+    with _CANONICAL_ISO_DATE_CACHE_LOCK:
+        if cache_key in _CANONICAL_ISO_DATE_CACHE:
+            return _CANONICAL_ISO_DATE_CACHE[cache_key]
+        probe_lock = _CANONICAL_ISO_DATE_PROBE_LOCKS.setdefault(
+            cache_key,
+            threading.Lock(),
+        )
+
+    with probe_lock:
+        with _CANONICAL_ISO_DATE_CACHE_LOCK:
+            if cache_key in _CANONICAL_ISO_DATE_CACHE:
+                return _CANONICAL_ISO_DATE_CACHE[cache_key]
+        try:
+            result = _probe_duckdb_date_column_is_canonical_iso(
+                conn,
+                table_name,
+                column_name,
+            )
+        except Exception:
+            with _CANONICAL_ISO_DATE_CACHE_LOCK:
+                if _CANONICAL_ISO_DATE_PROBE_LOCKS.get(cache_key) is probe_lock:
+                    _CANONICAL_ISO_DATE_PROBE_LOCKS.pop(cache_key, None)
+            raise
+        with _CANONICAL_ISO_DATE_CACHE_LOCK:
+            _CANONICAL_ISO_DATE_CACHE[cache_key] = result
+            while len(_CANONICAL_ISO_DATE_CACHE) > _CANONICAL_ISO_DATE_CACHE_MAX_ENTRIES:
+                oldest_key = next(iter(_CANONICAL_ISO_DATE_CACHE))
+                _CANONICAL_ISO_DATE_CACHE.pop(oldest_key, None)
+            if _CANONICAL_ISO_DATE_PROBE_LOCKS.get(cache_key) is probe_lock:
+                _CANONICAL_ISO_DATE_PROBE_LOCKS.pop(cache_key, None)
+        return result
+
+
+def _duckdb_date_column_cache_key(
+    database_path: str | Path | None,
+    table_name: str,
+    column_name: str,
+) -> _DateColumnCacheKey | None:
+    if database_path is None:
+        return None
+    try:
+        resolved_path = Path(database_path).resolve(strict=True)
+        stat = resolved_path.stat()
+    except OSError:
+        return None
+    return (
+        os.path.normcase(str(resolved_path)),
+        stat.st_mtime_ns,
+        stat.st_size,
+        table_name,
+        column_name,
+    )
+
+
+def _probe_duckdb_date_column_is_canonical_iso(
+    conn: duckdb.DuckDBPyConnection,
+    table_name: str,
+    column_name: str,
+) -> bool:
+    row = conn.execute(
+        f"""
+        select 1
+        from (
+          select
+            {column_name} as raw_date,
+            try_cast({column_name} as date) as parsed_date
+          from {table_name}
+          where {column_name} is not null
+        ) dates
+        where parsed_date is null
+           or cast(parsed_date as varchar) != raw_date
+        limit 1
+        """
+    ).fetchone()
+    return row is None

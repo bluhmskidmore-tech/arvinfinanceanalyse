@@ -15,19 +15,44 @@ CANONICAL_TASK_MODULES: tuple[str, ...] = (
     "backend.app.tasks.pnl_materialize",
     "backend.app.tasks.balance_analysis_materialize",
     "backend.app.tasks.formal_balance_pipeline",
+    "backend.app.tasks.accounting_asset_movement",
     "backend.app.tasks.bond_analytics_materialize",
+    "backend.app.tasks.risk_tensor_materialize",
     "backend.app.tasks.product_category_pnl",
     "backend.app.tasks.snapshot_materialize",
     "backend.app.tasks.fx_mid_materialize",
     "backend.app.tasks.commodity_daily_ingest",
+    "backend.app.tasks.crisis_score_inputs_refresh",
+    "backend.app.tasks.nbs_gdp_release_ingest",
     "backend.app.tasks.choice_macro",
+    "backend.app.tasks.tushare_macro_ingest",
+    "backend.app.tasks.home_macro_release_refresh",
     "backend.app.tasks.choice_news",
     "backend.app.tasks.stock_factor_refresh",
     "backend.app.tasks.research_calendar_upstream_fetch",
+    "backend.app.tasks.choice_stock_refresh",
+    "backend.app.tasks.macro_toolkit_refresh",
+    "backend.app.tasks.macro_toolkit_freshness_refresh",
+    "backend.app.tasks.macro_toolkit_write_refresh",
+    "backend.app.tasks.livermore_position_snapshot_materialize",
+    "backend.app.tasks.agent_run",
+    "backend.app.tasks.agent_run_stream_compaction",
+    "backend.app.tasks.livermore_gate_supplement",
+    "backend.app.tasks.ledger_import",
+    "backend.app.tasks.yield_curve_materialize",
+    "backend.app.tasks.tushare_stock_disclosure",
+    "backend.app.tasks.risk_coupon_window_repair",
+    "backend.app.tasks.bond_dv01_limit_config_import",
+    "backend.app.tasks.fx_mid_backfill",
 )
 
 
 # Ensure the Redis broker is configured before loading actor modules that use
 # direct @dramatiq.actor decoration.
-import_module("backend.app.tasks.broker").get_broker()
+active_broker = import_module("backend.app.tasks.broker").get_broker()
+from backend.app.tasks.hermes_stream_middleware import (  # noqa: E402
+    register_hermes_stream_runtime_middleware,
+)
+
+register_hermes_stream_runtime_middleware(active_broker)
 LOADED_TASK_MODULES = tuple(import_module(module_path) for module_path in CANONICAL_TASK_MODULES)

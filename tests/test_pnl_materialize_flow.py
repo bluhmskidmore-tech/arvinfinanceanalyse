@@ -11,6 +11,17 @@ from backend.app.governance.settings import get_settings
 from tests.helpers import load_module
 
 
+def test_pnl_materialize_rule_version_tracks_vat_normalization_policy() -> None:
+    task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.pnl_materialize",
+            "backend/app/tasks/pnl_materialize.py",
+        )
+
+    assert task_module.RULE_VERSION == "rv_pnl_phase2_materialize_v3"
+
+
 def test_pnl_materialize_task_writes_fact_tables_and_governance_records(tmp_path):
     task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
     if task_module is None:
@@ -158,6 +169,264 @@ def test_pnl_materialize_task_writes_fact_tables_and_governance_records(tmp_path
     assert manifests[-1]["source_version"] == payload["source_version"]
 
 
+def test_pnl_materialize_applies_vat_to_taxable_fi_and_jm_514(tmp_path) -> None:
+    task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.pnl_materialize",
+            "backend/app/tasks/pnl_materialize.py",
+        )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    task_module.materialize_pnl_facts.fn(
+        report_date="2026-06-30",
+        is_month_end=True,
+        fi_rows=[
+            {
+                "report_date": "2026-06-30",
+                "instrument_code": "NCD-TAXABLE",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "交易性金融资产",
+                "asset_class": "同业存单",
+                "interest_income_514": "106.00",
+                "currency_basis": "CNY",
+                "source_version": "src-fi-tax",
+            },
+            {
+                "report_date": "2026-06-30",
+                "instrument_code": "GOV-EXEMPT",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "A",
+                "asset_class": "国债",
+                "interest_income_514": "106.00",
+                "currency_basis": "CNY",
+                "source_version": "src-fi-tax",
+            },
+            {
+                "report_date": "2026-06-30",
+                "instrument_code": "NCD-EXACT",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "交易性金融资产",
+                "asset_class": "同业存单",
+                "interest_income_514": "206700.0",
+                "currency_basis": "CNY",
+                "source_version": "src-fi-tax",
+            },
+            {
+                "report_date": "2026-06-30",
+                "instrument_code": "T-GOV-EXEMPT",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "T",
+                "asset_class": "国债",
+                "interest_income_514": "106.00",
+                "currency_basis": "CNY",
+                "source_version": "src-fi-tax",
+            },
+            {
+                "report_date": "2026-06-30",
+                "instrument_code": "H-GOV-EXEMPT",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "H",
+                "asset_class": "国债",
+                "interest_income_514": "106.00",
+                "currency_basis": "CNY",
+                "source_version": "src-fi-tax",
+            },
+        ],
+        nonstd_rows_by_type={
+            "514": [
+                {
+                    "voucher_date": "2026-06-30",
+                    "account_code": "51401000004",
+                    "asset_code": "JM0001",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "dc_flag": "贷",
+                    "event_type": "interest",
+                    "raw_amount": "106.00",
+                    "source_file": "非标514-20260101-0630(1).xlsx",
+                    "source_version": "src-nonstd-tax",
+                },
+                {
+                    "voucher_date": "2026-06-30",
+                    "account_code": "51401000004",
+                    "asset_code": "J40001",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "dc_flag": "贷",
+                    "event_type": "interest",
+                    "raw_amount": "106.00",
+                    "source_file": "非标514-20260101-0630(1).xlsx",
+                    "source_version": "src-nonstd-tax",
+                },
+                {
+                    "voucher_date": "2026-06-30",
+                    "account_code": "51401000004",
+                    "asset_code": "JM0002",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "dc_flag": "贷",
+                    "event_type": "interest",
+                    "raw_amount": "206700.0",
+                    "source_file": "非标514-20260101-0630(1).xlsx",
+                    "source_version": "src-nonstd-tax",
+                },
+            ]
+        },
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(tmp_path / "governance"),
+        formal_pnl_enabled=True,
+        formal_pnl_scope_json='["*"]',
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        fi_rows = conn.execute(
+            """
+            select instrument_code, interest_income_514
+            from fact_formal_pnl_fi
+            order by instrument_code
+            """
+        ).fetchall()
+        nonstd_rows = conn.execute(
+            """
+            select bond_code, interest_income_514
+            from fact_nonstd_pnl_bridge
+            order by bond_code
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert fi_rows == [
+        ("GOV-EXEMPT", Decimal("106.00000000")),
+        ("H-GOV-EXEMPT", Decimal("106.00000000")),
+        ("NCD-EXACT", Decimal("195000.00000000")),
+        ("NCD-TAXABLE", Decimal("100.00000000")),
+        ("T-GOV-EXEMPT", Decimal("106.00000000")),
+    ]
+    assert nonstd_rows == [
+        ("J40001", Decimal("106.00000000")),
+        ("JM0001", Decimal("100.00000000")),
+        ("JM0002", Decimal("195000.00000000")),
+    ]
+
+
+def test_pnl_materialize_recognizes_2026h1_cumulative_fi_517_after_vat(tmp_path) -> None:
+    task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.pnl_materialize",
+            "backend/app/tasks/pnl_materialize.py",
+        )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    task_module.materialize_pnl_facts.fn(
+        report_date="2026-06-30",
+        is_month_end=True,
+        fi_rows=[
+            {
+                "report_date": "2026-06-30",
+                "instrument_code": "FI-517-A",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "A",
+                "asset_class": "企业债",
+                "interest_income_514": "0",
+                "fair_value_change_516": "5",
+                "capital_gain_517": "-106",
+                "event_type": "fi_cumulative_realized_517",
+                "currency_basis": "CNY",
+                "source_version": "src-fi-517",
+            },
+            {
+                "report_date": "2026-06-30",
+                "instrument_code": "FI-517-H",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "H",
+                "asset_class": "企业债",
+                "interest_income_514": "0",
+                "fair_value_change_516": "5",
+                "capital_gain_517": "-212",
+                "event_type": "fi_cumulative_realized_517",
+                "currency_basis": "CNY",
+                "source_version": "src-fi-517",
+            },
+            {
+                "report_date": "2026-06-30",
+                "instrument_code": "FI-517-T",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "T",
+                "asset_class": "企业债",
+                "interest_income_514": "0",
+                "fair_value_change_516": "5",
+                "capital_gain_517": "-318",
+                "event_type": "fi_cumulative_realized_517",
+                "currency_basis": "CNY",
+                "source_version": "src-fi-517",
+            },
+        ],
+        nonstd_rows_by_type={},
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(tmp_path / "governance"),
+        formal_pnl_enabled=True,
+        formal_pnl_scope_json='["*"]',
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select instrument_code, fair_value_change_516, capital_gain_517, total_pnl
+            from fact_formal_pnl_fi
+            order by instrument_code
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [
+        ("FI-517-A", Decimal("0E-8"), Decimal("100.00000000"), Decimal("100.00000000")),
+        ("FI-517-H", Decimal("0E-8"), Decimal("200.00000000"), Decimal("200.00000000")),
+        ("FI-517-T", Decimal("5.00000000"), Decimal("300.00000000"), Decimal("305.00000000")),
+    ]
+
+
+def test_formal_fi_fact_projection_preserves_source_classification_metadata() -> None:
+    pnl_module = load_module("backend.app.core_finance.pnl", "backend/app/core_finance/pnl.py")
+
+    normalized = pnl_module.normalize_fi_pnl_records(
+        [
+            {
+                "report_date": "2026-03-31",
+                "instrument_code": "2605287",
+                "instrument_name": "26山东债19",
+                "portfolio_name": "FIOA",
+                "cost_center": "50101002",
+                "invest_type_raw": "A",
+                "asset_class": "地方政府债券",
+                "interest_income_514": "0",
+                "fair_value_change_516": "0",
+                "capital_gain_517": "192000",
+                "event_type": "fi_cumulative_realized_517",
+                "currency_basis": "CNY",
+            }
+        ]
+    )
+
+    fact_row = pnl_module.build_formal_pnl_fi_fact_rows(normalized)[0]
+
+    assert fact_row.instrument_name == "26山东债19"
+    assert fact_row.asset_class == "地方政府债券"
+
+
 def test_pnl_materialize_holds_global_duckdb_writer_lock(tmp_path, monkeypatch):
     task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
     if task_module is None:
@@ -239,7 +508,11 @@ def test_pnl_materialize_failed_terminal_preserves_computed_source_version(tmp_p
             "backend/app/repositories/governance_repo.py",
         )
 
-    original_append_many_atomic = governance_mod.GovernanceRepository.append_many_atomic
+    # Patch the class binding the worker actually uses: tests.helpers.load_module
+    # may have replaced backend.app.repositories.governance_repo in sys.modules
+    # after the task module bound GovernanceRepository, so patching the current
+    # sys.modules class would miss the class the worker instantiates.
+    original_append_many_atomic = task_module.GovernanceRepository.append_many_atomic
 
     def fail_completed_terminal_write(self, entries):
         if any(stream == governance_mod.CACHE_MANIFEST_STREAM for stream, _payload in entries):
@@ -247,7 +520,7 @@ def test_pnl_materialize_failed_terminal_preserves_computed_source_version(tmp_p
         return original_append_many_atomic(self, entries)
 
     monkeypatch.setattr(
-        governance_mod.GovernanceRepository,
+        task_module.GovernanceRepository,
         "append_many_atomic",
         fail_completed_terminal_write,
     )
@@ -382,6 +655,147 @@ def test_pnl_materialize_task_converts_usd_fi_rows_with_month_end_fx(tmp_path):
     ]
 
 
+@pytest.mark.parametrize("invalid_rate", ["0", "-7.2", "NaN", "Infinity", "-Infinity"])
+def test_load_pnl_fx_rates_rejects_nonpositive_or_nonfinite_rate(
+    tmp_path,
+    invalid_rate,
+):
+    task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.pnl_materialize",
+            "backend/app/tasks/pnl_materialize.py",
+        )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fx_daily_mid (
+              trade_date varchar,
+              base_currency varchar,
+              quote_currency varchar,
+              mid_rate varchar,
+              source_name varchar,
+              is_business_day boolean,
+              is_carry_forward boolean,
+              source_version varchar,
+              observed_trade_date varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fx_daily_mid values
+            ('2025-12-31', 'USD', 'CNY', ?, 'CFETS', true, false, 'sv_fx_invalid', '2025-12-31')
+            """,
+            [invalid_rate],
+        )
+    finally:
+        conn.close()
+
+    with pytest.raises(ValueError, match="finite and greater than zero"):
+        task_module._load_pnl_fx_rates(
+            duckdb_path=duckdb_path,
+            report_date="2025-12-31",
+            fi_rows=[{"fx_base_currency": "USD"}],
+            nonstd_rows_by_type={},
+        )
+
+
+def test_pnl_materialize_task_converts_j1_nonstd_rows_with_month_end_fx(tmp_path) -> None:
+    task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.pnl_materialize",
+            "backend/app/tasks/pnl_materialize.py",
+        )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fx_daily_mid (
+              trade_date varchar,
+              base_currency varchar,
+              quote_currency varchar,
+              mid_rate decimal(24, 8),
+              source_name varchar,
+              is_business_day boolean,
+              is_carry_forward boolean,
+              source_version varchar,
+              observed_trade_date varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fx_daily_mid values
+            ('2026-06-30', 'USD', 'CNY', 7.20000000, 'CFETS', true, false, 'sv_fx_usd', '2026-06-30')
+            """
+        )
+    finally:
+        conn.close()
+
+    task_module.materialize_pnl_facts.fn(
+        report_date="2026-06-30",
+        is_month_end=True,
+        fi_rows=[],
+        nonstd_rows_by_type={
+            "514": [
+                {
+                    "voucher_date": "2026-06-30",
+                    "account_code": "51401000004",
+                    "asset_code": "J12006190502",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "dc_flag": "贷",
+                    "event_type": "interest",
+                    "raw_amount": "106.00",
+                    "fx_base_currency": "USD",
+                    "source_file": "非标514-20260101-0630.xlsx",
+                    "source_version": "src-j1",
+                },
+                {
+                    "voucher_date": "2026-06-30",
+                    "account_code": "51401000004",
+                    "asset_code": "J40001",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "dc_flag": "贷",
+                    "event_type": "interest",
+                    "raw_amount": "106.00",
+                    "source_file": "非标514-20260101-0630.xlsx",
+                    "source_version": "src-j4",
+                },
+            ]
+        },
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(tmp_path / "governance"),
+        formal_pnl_enabled=True,
+        formal_pnl_scope_json='["*"]',
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select bond_code, interest_income_514, total_pnl, source_version
+            from fact_nonstd_pnl_bridge
+            order by bond_code
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [
+        ("J12006190502", Decimal("763.20000000"), Decimal("763.20000000"), "src-j1__sv_fx_usd"),
+        ("J40001", Decimal("106.00000000"), Decimal("106.00000000"), "src-j4"),
+    ]
+
+
 def test_pnl_materialize_task_fails_when_only_prior_business_day_fx_exists(tmp_path):
     task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
     if task_module is None:
@@ -448,7 +862,173 @@ def test_pnl_materialize_task_fails_when_only_prior_business_day_fx_exists(tmp_p
         )
 
 
-def test_pnl_materialize_task_accepts_same_date_non_business_day_fx_carry_forward(tmp_path):
+def test_pnl_materialize_task_accepts_weekend_fx_carry_forward(tmp_path):
+    task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.pnl_materialize",
+            "backend/app/tasks/pnl_materialize.py",
+        )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fx_daily_mid (
+              trade_date varchar,
+              base_currency varchar,
+              quote_currency varchar,
+              mid_rate decimal(24, 8),
+              source_name varchar,
+              is_business_day boolean,
+              is_carry_forward boolean,
+              source_version varchar,
+              observed_trade_date varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fx_daily_mid values
+            ('2026-01-03', 'USD', 'CNY', 7.10000000, 'CFETS', false, true, 'sv_fx_carry', '2026-01-02')
+            """
+        )
+    finally:
+        conn.close()
+
+    task_module.materialize_pnl_facts.fn(
+        report_date="2026-01-03",
+        is_month_end=True,
+        fi_rows=[
+            {
+                "report_date": "2026-01-03",
+                "instrument_code": "240002.IB",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "交易性金融资产",
+                "interest_income_514": "10.00",
+                "fair_value_change_516": "-2.00",
+                "capital_gain_517": "1.00",
+                "manual_adjustment": "0.50",
+                "currency_basis": "CNY",
+                "fx_base_currency": "USD",
+                "source_version": "src-v-usd",
+                "approval_status": "approved",
+                "event_semantics": "realized_incremental",
+                "realized_flag": True,
+            }
+        ],
+        nonstd_rows_by_type={},
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(tmp_path / "governance"),
+        formal_pnl_enabled=True,
+        formal_pnl_scope_json='["*"]',
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        row = conn.execute(
+            """
+            select interest_income_514, total_pnl, source_version
+            from fact_formal_pnl_fi
+            where report_date = '2026-01-03'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row == (
+        Decimal("71.00000000"),
+        Decimal("67.45000000"),
+        "src-v-usd__sv_fx_carry",
+    )
+
+
+def test_pnl_materialize_task_accepts_cfets_currency_holiday_fx_carry_forward(tmp_path):
+    task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.pnl_materialize",
+            "backend/app/tasks/pnl_materialize.py",
+        )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fx_daily_mid (
+              trade_date varchar,
+              base_currency varchar,
+              quote_currency varchar,
+              mid_rate decimal(24, 8),
+              source_name varchar,
+              is_business_day boolean,
+              is_carry_forward boolean,
+              source_version varchar,
+              observed_trade_date varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fx_daily_mid values
+            ('2026-01-19', 'USD', 'CNY', 7.10000000, 'CFETS', false, true, 'sv_fx_usd_holiday', '2026-01-16')
+            """
+        )
+    finally:
+        conn.close()
+
+    task_module.materialize_pnl_facts.fn(
+        report_date="2026-01-19",
+        is_month_end=True,
+        fi_rows=[
+            {
+                "report_date": "2026-01-19",
+                "instrument_code": "240002.IB",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "TRADING_ASSET",
+                "interest_income_514": "10.00",
+                "fair_value_change_516": "-2.00",
+                "capital_gain_517": "1.00",
+                "manual_adjustment": "0.50",
+                "currency_basis": "CNY",
+                "fx_base_currency": "USD",
+                "source_version": "src-v-usd",
+                "approval_status": "approved",
+                "event_semantics": "realized_incremental",
+                "realized_flag": True,
+            }
+        ],
+        nonstd_rows_by_type={},
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(tmp_path / "governance"),
+        formal_pnl_enabled=True,
+        formal_pnl_scope_json='["*"]',
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        row = conn.execute(
+            """
+            select interest_income_514, total_pnl, source_version
+            from fact_formal_pnl_fi
+            where report_date = '2026-01-19'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row == (
+        Decimal("71.00000000"),
+        Decimal("67.45000000"),
+        "src-v-usd__sv_fx_usd_holiday",
+    )
+
+
+def test_pnl_materialize_task_rejects_business_day_fx_carry_forward(tmp_path):
     task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
     if task_module is None:
         task_module = load_module(
@@ -483,52 +1063,35 @@ def test_pnl_materialize_task_accepts_same_date_non_business_day_fx_carry_forwar
     finally:
         conn.close()
 
-    task_module.materialize_pnl_facts.fn(
-        report_date="2025-12-31",
-        is_month_end=True,
-        fi_rows=[
-            {
-                "report_date": "2025-12-31",
-                "instrument_code": "240002.IB",
-                "portfolio_name": "FI Desk",
-                "cost_center": "CC100",
-                "invest_type_raw": "交易性金融资产",
-                "interest_income_514": "10.00",
-                "fair_value_change_516": "-2.00",
-                "capital_gain_517": "1.00",
-                "manual_adjustment": "0.50",
-                "currency_basis": "CNY",
-                "fx_base_currency": "USD",
-                "source_version": "src-v-usd",
-                "approval_status": "approved",
-                "event_semantics": "realized_incremental",
-                "realized_flag": True,
-            }
-        ],
-        nonstd_rows_by_type={},
-        duckdb_path=str(duckdb_path),
-        governance_dir=str(tmp_path / "governance"),
-        formal_pnl_enabled=True,
-        formal_pnl_scope_json='["*"]',
-    )
-
-    conn = duckdb.connect(str(duckdb_path), read_only=True)
-    try:
-        row = conn.execute(
-            """
-            select interest_income_514, total_pnl, source_version
-            from fact_formal_pnl_fi
-            where report_date = '2025-12-31'
-            """
-        ).fetchone()
-    finally:
-        conn.close()
-
-    assert row == (
-        Decimal("71.00000000"),
-        Decimal("67.45000000"),
-        "src-v-usd__sv_fx_carry",
-    )
+    with pytest.raises(ValueError, match="carry-forward is only allowed"):
+        task_module.materialize_pnl_facts.fn(
+            report_date="2025-12-31",
+            is_month_end=True,
+            fi_rows=[
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "240002.IB",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "invest_type_raw": "TRADING_ASSET",
+                    "interest_income_514": "10.00",
+                    "fair_value_change_516": "-2.00",
+                    "capital_gain_517": "1.00",
+                    "manual_adjustment": "0.50",
+                    "currency_basis": "CNY",
+                    "fx_base_currency": "USD",
+                    "source_version": "src-v-usd",
+                    "approval_status": "approved",
+                    "event_semantics": "realized_incremental",
+                    "realized_flag": True,
+                }
+            ],
+            nonstd_rows_by_type={},
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(tmp_path / "governance"),
+            formal_pnl_enabled=True,
+            formal_pnl_scope_json='["*"]',
+        )
 
 
 def test_pnl_materialize_task_rejects_contradictory_fx_carry_forward_metadata(tmp_path):
@@ -629,6 +1192,22 @@ def test_pnl_materialize_task_rebuilds_same_report_date_without_duplicate_rows(t
                 "fair_value_change_516": "-3.25",
                 "capital_gain_517": "1.75",
                 "manual_adjustment": "0.50",
+                "currency_basis": "CNY",
+                "source_version": "src-v1",
+                "approval_status": "approved",
+                "event_semantics": "realized_incremental",
+                "realized_flag": True,
+            },
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "240002.IB",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "交易性金融资产",
+                "interest_income_514": "5.00",
+                "fair_value_change_516": "0.00",
+                "capital_gain_517": "0.00",
+                "manual_adjustment": "0.00",
                 "currency_basis": "CNY",
                 "source_version": "src-v1",
                 "approval_status": "approved",

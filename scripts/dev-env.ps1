@@ -1,6 +1,8 @@
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
+. "$root\scripts\dev-python.ps1"
+$devEnvPython = Resolve-DevPython -RequiredModules @("duckdb")
 
 $env:MOSS_ENVIRONMENT = "development"
 $env:MOSS_POSTGRES_DSN = "postgresql://moss:moss@127.0.0.1:55432/moss"
@@ -17,8 +19,7 @@ $env:MOSS_MINIO_BUCKET = "moss-artifacts"
 
 $clusterHelper = Join-Path $root "scripts\dev_postgres_cluster.py"
 if (Test-Path $clusterHelper) {
-  $python = (Get-Command python -ErrorAction Stop).Source
-  $json = & $python $clusterHelper print-env --repo-root $root
+  $json = & $devEnvPython $clusterHelper print-env --repo-root $root
   if ($LASTEXITCODE -ne 0) {
     throw "Failed to load local PostgreSQL dev cluster environment"
   }
@@ -38,7 +39,6 @@ function Assert-DevBootstrapStorageReady {
     throw "[$ProbeLabel] MOSS_DUCKDB_PATH is empty after loading dev-env.ps1"
   }
 
-  $python = (Get-Command python -ErrorAction Stop).Source
   $probe = @'
 import os
 import sys
@@ -94,7 +94,7 @@ raise SystemExit(
   $probeFile = [System.IO.Path]::ChangeExtension([System.IO.Path]::GetTempFileName(), ".py")
   try {
     Set-Content -Path $probeFile -Value $probe -Encoding UTF8
-    $probeOutput = & $python $probeFile 2>&1
+    $probeOutput = & $devEnvPython $probeFile 2>&1
     if ($LASTEXITCODE -ne 0) {
       if ($probeOutput) {
         throw ($probeOutput | Out-String).Trim()

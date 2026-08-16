@@ -61,6 +61,82 @@ def test_phase2_fi_standardization_maps_raw_rows_into_governed_contract():
     ]
 
 
+def test_phase2_fi_standardization_removes_vat_from_taxable_514_only() -> None:
+    taxable_asset_classes = [
+        "同业存单",
+        "短期融资券",
+        "中期票据",
+        "企业债",
+        "资产支持证券",
+        "铁道债",
+    ]
+    rows = normalize_fi_pnl_records(
+        [
+            {
+                "report_date": "2026-06-30",
+                "instrument_code": f"TAXABLE-{index}",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "交易性金融资产",
+                "asset_class": asset_class,
+                "interest_income_514": Decimal("106.00"),
+                "currency_basis": "CNY",
+            }
+            for index, asset_class in enumerate(taxable_asset_classes)
+        ]
+        + [
+            {
+                "report_date": "2026-06-30",
+                "instrument_code": "GOV-EXEMPT",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "交易性金融资产",
+                "asset_class": "国债",
+                "interest_income_514": Decimal("106.00"),
+                "currency_basis": "CNY",
+            },
+        ]
+    )
+
+    for row in rows[:-1]:
+        assert row.interest_income_514 == Decimal("100")
+        assert row.total_pnl == Decimal("100")
+    assert rows[-1].interest_income_514 == Decimal("106.00")
+    assert rows[-1].total_pnl == Decimal("106.00")
+
+
+@pytest.mark.parametrize(
+    ("report_date", "expected_interest"),
+    [
+        ("2025-12-31", Decimal("106.00")),
+        ("2026-01-31", Decimal("100")),
+        ("2026-06-30", Decimal("100")),
+        ("2026-07-31", Decimal("106.00")),
+    ],
+)
+def test_phase2_fi_vat_policy_is_limited_to_2026_h1(
+    report_date: str,
+    expected_interest: Decimal,
+) -> None:
+    [row] = normalize_fi_pnl_records(
+        [
+            {
+                "report_date": report_date,
+                "instrument_code": "NCD-DATE-SCOPE",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "交易性金融资产",
+                "asset_class": "同业存单",
+                "interest_income_514": Decimal("106.00"),
+                "currency_basis": "CNY",
+            }
+        ]
+    )
+
+    assert row.interest_income_514 == expected_interest
+    assert row.total_pnl == expected_interest
+
+
 def test_phase2_nonstd_standardization_builds_signed_amount_before_formal_use():
     assert normalize_nonstd_journal_entries(
         [
@@ -335,6 +411,83 @@ def test_phase2_nonstd_bridge_uses_month_end_mtd_semantics():
             trace_id="trace-001,trace-002",
         )
     ]
+
+
+def test_phase2_nonstd_bridge_removes_vat_from_jm_514_only() -> None:
+    entries = [
+        NonStdJournalEntry(
+            voucher_date=date(2026, 6, 30),
+            account_code="51401000004",
+            asset_code="JM0001",
+            portfolio_name="FI Desk",
+            cost_center="CC100",
+            journal_type="514",
+            signed_amount=Decimal("106.00"),
+            dc_flag="贷",
+            event_type="interest",
+            source_file="非标514-20260101-0630(1).xlsx",
+        ),
+        NonStdJournalEntry(
+            voucher_date=date(2026, 6, 30),
+            account_code="51401000004",
+            asset_code="J40001",
+            portfolio_name="FI Desk",
+            cost_center="CC100",
+            journal_type="514",
+            signed_amount=Decimal("106.00"),
+            dc_flag="贷",
+            event_type="interest",
+            source_file="非标514-20260101-0630(1).xlsx",
+        ),
+    ]
+
+    rows = build_nonstd_pnl_bridge_rows(
+        entries,
+        target_date=date(2026, 6, 30),
+        is_month_end=True,
+    )
+    by_code = {row.bond_code: row for row in rows}
+
+    assert by_code["JM0001"].interest_income_514 == Decimal("100")
+    assert by_code["JM0001"].total_pnl == Decimal("100")
+    assert by_code["J40001"].interest_income_514 == Decimal("106.00")
+    assert by_code["J40001"].total_pnl == Decimal("106.00")
+
+
+@pytest.mark.parametrize(
+    ("voucher_date", "expected_interest"),
+    [
+        (date(2025, 12, 31), Decimal("106.00")),
+        (date(2026, 1, 31), Decimal("100")),
+        (date(2026, 6, 30), Decimal("100")),
+        (date(2026, 7, 31), Decimal("106.00")),
+    ],
+)
+def test_phase2_jm_vat_policy_is_limited_to_2026_h1(
+    voucher_date: date,
+    expected_interest: Decimal,
+) -> None:
+    entry = NonStdJournalEntry(
+        voucher_date=voucher_date,
+        account_code="51401000004",
+        asset_code="JM-DATE-SCOPE",
+        portfolio_name="FI Desk",
+        cost_center="CC100",
+        journal_type="514",
+        signed_amount=Decimal("106.00"),
+        dc_flag="贷",
+        event_type="interest",
+        source_file="非标514-date-scope.xlsx",
+    )
+
+    [row] = build_nonstd_pnl_bridge_rows(
+        [entry],
+        target_date=voucher_date,
+        is_month_end=True,
+    )
+
+    assert row.interest_income_514 == expected_interest
+    assert row.total_pnl == expected_interest
 
 
 def test_phase2_nonstd_bridge_normalizes_lineage_versions_with_double_underscore_separator():

@@ -1,7 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import type { ChoiceMacroLatestPoint, ResultMeta } from "../../../api/contracts";
-import { buildMarketDataTerminalModel } from "./marketDataTerminalModel";
+import type { ChoiceMacroLatestPoint, ChoiceMacroRecentPoint, ResultMeta } from "../../../api/contracts";
+import {
+  buildCatalogVendorNameMap,
+  buildMarketDataActiveFilterSummary,
+  buildMarketDataTerminalModel,
+  buildTerminalSparklineValues,
+  buildTerminalTickerItems,
+  classifyTerminalSource,
+  filterMoneyMarketRows,
+  filterRateQuoteRows,
+  filterTerminalTickerItems,
+  matchesSourceFilter,
+  resolveLatestMarketDataTradeDate,
+  type MarketDataBondFuturesSection,
+} from "./marketDataTerminalModel";
 
 function meta(partial: Partial<ResultMeta> = {}): ResultMeta {
   return {
@@ -37,6 +50,16 @@ function point(partial: Partial<ChoiceMacroLatestPoint> & Pick<ChoiceMacroLatest
     latest_change: 0.012,
     recent_points: [],
     ...partial,
+  };
+}
+
+function recentPoint(trade_date: string, value_numeric: number): ChoiceMacroRecentPoint {
+  return {
+    trade_date,
+    value_numeric,
+    source_version: "sv_market_rates",
+    vendor_version: "vv_market_rates",
+    quality_flag: "ok",
   };
 }
 
@@ -119,5 +142,309 @@ describe("buildMarketDataTerminalModel", () => {
     expect(model.bondFutures.rows).toEqual([]);
     expect(model.bondTrades.rows).toEqual([]);
     expect(model.creditTrades.rows).toEqual([]);
+  });
+
+  it("marks missing previous trading day delta instead of saying the rate was flat", () => {
+    const model = buildMarketDataTerminalModel({
+      ratesEnvelope: {
+        result_meta: meta(),
+        result: {
+          read_target: "duckdb",
+          series: [
+            point({
+              series_id: "EMM00166458",
+              series_name: "中债国债到期收益率:1年",
+              latest_change: null,
+            }),
+          ],
+        },
+      },
+    });
+
+    expect(model.rateQuotes.rows[0]).toMatchObject({
+      seriesId: "EMM00166458",
+      deltaText: "缺前值",
+    });
+  });
+
+  it("resolves the latest available formal rates trade date", () => {
+    expect(
+      resolveLatestMarketDataTradeDate({
+        result_meta: meta(),
+        result: {
+          read_target: "duckdb",
+          series: [
+            point({ series_id: "EMM00166458", trade_date: "2026-06-11" }),
+            point({ series_id: "EMM00166462", trade_date: "2026-06-12" }),
+            point({ series_id: "EMM00166466", trade_date: "bad-date" }),
+          ],
+        },
+      }),
+    ).toBe("2026-06-12");
+  });
+
+  it("builds bond futures rankings from the CFFEX member-rank envelope", () => {
+    const model = buildMarketDataTerminalModel({
+      ratesEnvelope: {
+        result_meta: meta(),
+        result: {
+          read_target: "duckdb",
+          series: [],
+        },
+      },
+      bondFuturesRankingsEnvelope: {
+        result_meta: meta({
+          basis: "analytical",
+          result_kind: "market_data.bond_futures_rankings",
+          formal_use_allowed: false,
+          source_version: "sv_test_cffex_rank",
+          vendor_version: "vv_test_tushare",
+          rule_version: "rv_cffex_member_rank_choice_tushare_v1",
+          cache_version: "cv_market_data_bond_futures_rankings_v1",
+          source_surface: "market_data",
+          tables_used: ["fact_cffex_member_rank_daily", "vw_cffex_member_rank_daily"],
+          evidence_rows: 1,
+        }),
+        result: {
+          read_target: "duckdb",
+          as_of_date: "2026-06-11",
+          requested_trade_date: null,
+          contract: "T.CFE",
+          rows: [
+            {
+              trade_date: "2026-06-11",
+              contract: "T.CFE",
+              product_code: "T",
+              exchange: "CFFEX",
+              member_name: "中信期货",
+              source_vendor: "tushare",
+              source_row_no: 1,
+              volume: 12345,
+              volume_change: 101,
+              long_holding: 23456,
+              long_change: 202,
+              short_holding: 21000,
+              short_change: -50,
+              source_version: "sv_test_cffex_rank",
+              vendor_version: "vv_test_tushare",
+              rule_version: "rv_cffex_member_rank_choice_tushare_v1",
+            },
+          ],
+          warnings: [],
+        },
+      },
+    });
+
+    const bondFutures = model.bondFutures as MarketDataBondFuturesSection;
+    expect(bondFutures.status).toBe("ready");
+    expect(bondFutures.source).toMatchObject({
+      basis: "analytical",
+      sourceVersion: "sv_test_cffex_rank",
+      vendorVersion: "vv_test_tushare",
+    });
+    expect(bondFutures.rows).toEqual([
+      expect.objectContaining({
+        key: "T.CFE:中信期货:1",
+        tradeDate: "2026-06-11",
+        contract: "T.CFE",
+        memberName: "中信期货",
+        volumeText: "12,345",
+        longHoldingText: "23,456",
+        shortHoldingText: "21,000",
+      }),
+    ]);
+  });
+
+  it("builds terminal ticker items from formal/latest rows without recomputing values", () => {
+    const model = buildMarketDataTerminalModel({
+      ratesEnvelope: {
+        result_meta: meta(),
+        result: {
+          read_target: "duckdb",
+          series: [
+            point({
+              series_id: "EMM00166466",
+              series_name: "中债国债到期收益率:10年",
+              value_numeric: 1.94,
+              latest_change: -0.012,
+              recent_points: [
+                recentPoint("2026-04-28", 1.96),
+                recentPoint("2026-04-29", 1.952),
+              ],
+            }),
+            point({
+              series_id: "EMM00166502",
+              series_name: "中债政策性金融债到期收益率(国开行)10年",
+              value_numeric: 2.05,
+              latest_change: 0.004,
+            }),
+            point({
+              series_id: "CA.DR007",
+              series_name: "存款类机构质押式回购加权利率:DR007",
+              value_numeric: 1.82,
+              latest_change: -0.006,
+              fetch_mode: "latest",
+            }),
+          ],
+        },
+      },
+    });
+
+    const items = buildTerminalTickerItems(model);
+    expect(items.map((item) => item.key)).toEqual(["cgb10y", "cdb10y", "dr007"]);
+    expect(items[0]).toMatchObject({
+      label: "10年国债",
+      value: "1.94%",
+      delta: "-1bp",
+      seriesId: "EMM00166466",
+      tone: "down",
+      sparklineValues: [1.96, 1.952, 1.94],
+    });
+    expect(items[1]).toMatchObject({
+      label: "10年国开",
+      value: "2.05%",
+      delta: "+0.4bp",
+      tone: "up",
+    });
+  });
+
+  it("builds sparkline values from recent_points without inventing extra samples", () => {
+    const values = buildTerminalSparklineValues(
+      point({
+        series_id: "EMM00166466",
+        value_numeric: 1.94,
+        recent_points: [
+          recentPoint("2026-04-28", 1.96),
+          recentPoint("2026-04-29", 1.952),
+        ],
+      }),
+    );
+    expect(values).toEqual([1.96, 1.952, 1.94]);
+  });
+
+  it("filters rate quote rows by hero curve selection", () => {
+    const rows = buildMarketDataTerminalModel({
+      ratesEnvelope: {
+        result_meta: meta(),
+        result: {
+          read_target: "duckdb",
+          series: [
+            point({ series_id: "EMM00166466", series_name: "中债国债到期收益率:10年" }),
+            point({ series_id: "EMM00166502", series_name: "中债政策性金融债到期收益率(国开行)10年" }),
+          ],
+        },
+      },
+    }).rateQuotes.rows;
+
+    expect(filterRateQuoteRows(rows, "treasury").every((row) => row.variety === "国债")).toBe(true);
+    expect(filterRateQuoteRows(rows, "cdb").every((row) => row.variety === "国开")).toBe(true);
+    expect(filterRateQuoteRows(rows, "both")).toHaveLength(2);
+  });
+
+  it("builds active filter summary labels for hero strip", () => {
+    expect(
+      buildMarketDataActiveFilterSummary({
+        curveFilter: "both",
+        creditSegment: "both",
+        sourceFilter: "all",
+      }),
+    ).toBe("全部");
+    expect(
+      buildMarketDataActiveFilterSummary({
+        curveFilter: "treasury",
+        creditSegment: "both",
+        sourceFilter: "choice",
+      }),
+    ).toBe("国债 + Choice");
+    expect(
+      buildMarketDataActiveFilterSummary({
+        curveFilter: "both",
+        creditSegment: "urban",
+        sourceFilter: "internal",
+      }),
+    ).toBe("城投 + 内部");
+  });
+
+  it("classifies choice vs internal sources from lineage tokens and catalog vendor_name", () => {
+    expect(classifyTerminalSource("sv_choice_macro", "vv_public_repo")).toBe("choice");
+    expect(classifyTerminalSource("sv_public_bond", "vv_public_repo")).toBe("internal");
+    expect(classifyTerminalSource("sv_public_funding", "vv_public_repo", "choice")).toBe("choice");
+    expect(classifyTerminalSource("sv_public_bond", "vv_public_repo", "internal")).toBe("internal");
+    const catalogVendorNames = buildCatalogVendorNameMap([
+      { series_id: "M002", vendor_name: "choice" },
+      { series_id: "EMM00166466", vendor_name: "choice" },
+    ]);
+    expect(
+      matchesSourceFilter(
+        {
+          seriesId: "M002",
+          sourceVersion: "sv_public_funding",
+          vendorVersion: "vv_public_repo",
+        },
+        "choice",
+        catalogVendorNames,
+      ),
+    ).toBe(true);
+    expect(
+      matchesSourceFilter(
+        {
+          seriesId: "EMM00166466",
+          sourceVersion: "sv_public_bond",
+          vendorVersion: "vv_public_repo",
+        },
+        "choice",
+        catalogVendorNames,
+      ),
+    ).toBe(true);
+    expect(
+      matchesSourceFilter(
+        {
+          seriesId: "EMM00166466",
+          sourceVersion: "sv_public_bond",
+          vendorVersion: "vv_public_repo",
+        },
+        "choice",
+      ),
+    ).toBe(false);
+  });
+
+  it("filters ticker items by hero curve and source without recomputing values", () => {
+    const model = buildMarketDataTerminalModel({
+      ratesEnvelope: {
+        result_meta: meta(),
+        result: {
+          read_target: "duckdb",
+          series: [
+            point({
+              series_id: "EMM00166466",
+              series_name: "中债国债到期收益率:10年",
+              source_version: "sv_choice_macro",
+              vendor_version: "vv_choice_macro",
+            }),
+            point({
+              series_id: "EMM00166502",
+              series_name: "中债政策性金融债到期收益率(国开行)10年",
+              source_version: "sv_public_bond",
+              vendor_version: "vv_public_repo",
+            }),
+            point({
+              series_id: "CA.DR007",
+              series_name: "存款类机构质押式回购加权利率:DR007",
+              source_version: "sv_choice_macro",
+              vendor_version: "vv_choice_macro",
+            }),
+          ],
+        },
+      },
+    });
+
+    const items = buildTerminalTickerItems(model);
+    expect(
+      filterTerminalTickerItems(items, "treasury", "choice", model).map((item) => item.key),
+    ).toEqual(["cgb10y", "dr007"]);
+    expect(filterMoneyMarketRows(model.moneyMarket.rows, "internal")).toHaveLength(0);
+    expect(
+      filterRateQuoteRows(model.rateQuotes.rows, "cdb", "internal").map((row) => row.seriesId),
+    ).toEqual(["EMM00166502"]);
   });
 });

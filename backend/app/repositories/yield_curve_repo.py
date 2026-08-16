@@ -11,9 +11,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Any
 
 import duckdb
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
+from backend.app.repositories.duckdb_repo import read_only_connection
 from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 from backend.app.schemas.yield_curve import YieldCurveSnapshot
 
@@ -117,7 +119,9 @@ class YieldCurveRepository:
         requested = [str(trade_date) for trade_date in dict.fromkeys(trade_dates) if str(trade_date or "")]
         if not requested:
             return {}
-        empty = {trade_date: (None, None) for trade_date in requested}
+        empty: dict[str, tuple[Decimal | None, str | None]] = {
+            trade_date: (None, None) for trade_date in requested
+        }
         conn = _connect(self.path, read_only=True)
         if conn is None:
             return empty
@@ -200,6 +204,50 @@ class YieldCurveRepository:
             if row is None or row[0] in (None, ""):
                 return None
             return str(row[0])
+        finally:
+            conn.close()
+
+    def fetch_prior_trade_dates_many(self, requests: list[tuple[str, str]]) -> dict[tuple[str, str], str | None]:
+        normalized = [
+            (str(curve_type).strip(), str(trade_date).strip())
+            for curve_type, trade_date in dict.fromkeys(requests)
+            if str(curve_type or "").strip() and str(trade_date or "").strip()
+        ]
+        if not normalized:
+            return {}
+        out: dict[tuple[str, str], str | None] = {key: None for key in normalized}
+        conn = _connect(self.path, read_only=True)
+        if conn is None:
+            return out
+        try:
+            if not _relation_exists(conn, READ_VIEW):
+                return out
+            requested_sql = " union all ".join("select ? as curve_type, ? as trade_date" for _ in normalized)
+            params: list[object] = []
+            for curve_type, trade_date in normalized:
+                params.extend([curve_type, trade_date])
+            rows = conn.execute(
+                f"""
+                with requested as (
+                  {requested_sql}
+                )
+                select
+                  r.curve_type,
+                  r.trade_date,
+                  max(cast(y.trade_date as varchar)) as prior_trade_date
+                from requested r
+                left join {READ_VIEW} y
+                  on y.curve_type = r.curve_type
+                 and cast(y.trade_date as varchar) < r.trade_date
+                group by r.curve_type, r.trade_date
+                """,
+                params,
+            ).fetchall()
+            for curve_type, trade_date, prior_trade_date in rows:
+                out[(str(curve_type), str(trade_date))] = (
+                    str(prior_trade_date) if prior_trade_date not in (None, "") else None
+                )
+            return out
         finally:
             conn.close()
 
@@ -329,6 +377,29 @@ class YieldCurveRepository:
         finally:
             conn.close()
 
+    def fetch_curve_snapshots_many(
+        self,
+        keys: list[tuple[str, str]],
+    ) -> dict[tuple[str, str], dict[str, object] | None]:
+        normalized = [
+            (str(trade_date).strip(), str(curve_type).strip())
+            for trade_date, curve_type in dict.fromkeys(keys)
+            if str(trade_date or "").strip() and str(curve_type or "").strip()
+        ]
+        if not normalized:
+            return {}
+        out: dict[tuple[str, str], dict[str, object] | None] = {key: None for key in normalized}
+        conn = _connect(self.path, read_only=True)
+        if conn is None:
+            return out
+        try:
+            if not _relation_exists(conn, FORMAL_FACT_TABLE):
+                return out
+            out.update(_fetch_curve_snapshots_on_connection_many(conn, normalized))
+            return out
+        finally:
+            conn.close()
+
     def resolve_curve_snapshot(
         self,
         requested_trade_date: str,
@@ -398,7 +469,7 @@ class YieldCurveRepository:
         ]
         if not normalized:
             return {}
-        empty = {
+        empty: dict[tuple[str, str], tuple[dict[str, object] | None, str | None]] = {
             key: (None, f"No {key[1]} curve available for requested trade_date={key[0]}.")
             for key in normalized
         }
@@ -498,6 +569,83 @@ class YieldCurveRepository:
             raise
         finally:
             conn.close()
+
+
+    def fetch_campisi_decision_curve_points(
+        self,
+        *,
+        requested_date: str,
+        curve_type: str,
+        conn: duckdb.DuckDBPyConnection | None = None,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        if conn is not None:
+            return self._fetch_campisi_decision_curve_points_impl(conn, requested_date=requested_date, curve_type=curve_type)
+        try:
+            with read_only_connection(self.path) as scoped:
+                return self._fetch_campisi_decision_curve_points_impl(
+                    scoped,
+                    requested_date=requested_date,
+                    curve_type=curve_type,
+                )
+        except (OSError, duckdb.Error):
+            return [], None
+
+    def _fetch_campisi_decision_curve_points_impl(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        *,
+        requested_date: str,
+        curve_type: str,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        if not _campisi_decision_table_exists(conn, FORMAL_FACT_TABLE):
+            return [], None
+        row = conn.execute(
+            """
+            select max(cast(trade_date as date))
+            from fact_formal_yield_curve_daily
+            where curve_type = ?
+              and cast(trade_date as date) <= cast(? as date)
+            """,
+            [curve_type, requested_date],
+        ).fetchone()
+        resolved = str(row[0])[:10] if row and row[0] is not None else None
+        if not resolved:
+            return [], None
+        records = _campisi_decision_duckdb_rows(
+            conn,
+            """
+            select tenor, rate_pct
+            from fact_formal_yield_curve_daily
+            where curve_type = ?
+              and cast(trade_date as date) = cast(? as date)
+            """,
+            [curve_type, resolved],
+        )
+        return records, resolved
+
+
+
+
+def _campisi_decision_table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
+    try:
+        return bool(
+            conn.execute(
+                "select count(*) from information_schema.tables where table_name = ?",
+                [table_name],
+            ).fetchone()[0]
+        )
+    except duckdb.Error:
+        return False
+
+
+def _campisi_decision_duckdb_rows(
+    conn: duckdb.DuckDBPyConnection,
+    sql: str,
+    params: list[Any] | tuple[Any, ...] = (),
+) -> list[dict[str, Any]]:
+    cursor = conn.execute(sql, params)
+    columns = [column[0] for column in cursor.description]
+    return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
 
 
 def ensure_yield_curve_tables(conn: duckdb.DuckDBPyConnection) -> None:

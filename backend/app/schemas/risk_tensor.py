@@ -7,62 +7,8 @@ from typing import Any, ClassVar
 
 from backend.app.core_finance.risk_tensor import PortfolioRiskTensor
 from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
-from pydantic import BaseModel, Field, model_validator
-
-
-class Dv01StressScenario(BaseModel):
-    scenario_key: str
-    label: str
-    shock_bp: Numeric
-    estimated_pnl_impact: Numeric
-
-
-class Dv01ControlAction(BaseModel):
-    key: str
-    title: str
-    status: str
-    evidence: str
-    action: str
-
-
-class RiskTensorChangeMetric(BaseModel):
-    key: str
-    label: str
-    current: Numeric
-    previous: Numeric
-    delta: Numeric
-    current_display: str
-    previous_display: str
-    delta_display: str
-    direction: str
-    tone: str
-    interpretation: str
-
-
-class RiskTensorPriorPeriodChange(BaseModel):
-    status: str
-    comparison_report_date: date | None = None
-    summary: str
-    dominant_krd_bucket: str
-    previous_dominant_krd_bucket: str | None = None
-    dominant_krd_shifted: bool = False
-    metrics: list[RiskTensorChangeMetric] = Field(default_factory=list)
-
-
-class Dv01ControlsPayload(BaseModel):
-    basis: str
-    limit_status: str
-    approved_limit_dv01: Numeric | None = None
-    limit_usage_ratio: Numeric | None = None
-    volatility_status: str
-    daily_rate_volatility_bp: Numeric | None = None
-    dominant_krd_bucket: str
-    dominant_krd: Numeric
-    stress_scenarios: list[Dv01StressScenario] = Field(default_factory=list)
-    operating_judgement: str
-    control_actions: list[Dv01ControlAction] = Field(default_factory=list)
-    control_message: str
-    action_hint: str
+from backend.app.schemas.result_meta import ResultMeta
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) -> Any:
@@ -105,15 +51,15 @@ class RiskTensorPayload(BaseModel):
     report_date: date
     portfolio_dv01: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=False))
     regulatory_dv01: Numeric | None = None
-    krd_1y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=True))
-    krd_3y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=True))
-    krd_5y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=True))
-    krd_7y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=True))
-    krd_10y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=True))
-    krd_30y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=True))
+    krd_1y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=True))
+    krd_3y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=True))
+    krd_5y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=True))
+    krd_7y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=True))
+    krd_10y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=True))
+    krd_30y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=True))
     cs01: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=False))
     portfolio_convexity: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=False))
-    portfolio_modified_duration: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=False))
+    portfolio_modified_duration: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="years", sign_aware=False))
     issuer_concentration_hhi: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=False))
     issuer_top5_weight: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=False))
     asset_cashflow_30d: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=False))
@@ -124,29 +70,36 @@ class RiskTensorPayload(BaseModel):
     liquidity_gap_90d: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=True))
     liquidity_gap_30d_ratio: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=True))
     total_market_value: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=False))
-    rate_risk_market_value: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=False))
-    rate_risk_dv01: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=False))
-    rate_risk_modified_duration: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=False))
-    duration_excluded_market_value: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=False))
-    duration_excluded_count: int = 0
+    rate_risk_market_value: Numeric
+    rate_risk_dv01: Numeric
+    rate_risk_modified_duration: Numeric
+    duration_excluded_market_value: Numeric
+    duration_excluded_count: int
+    missing_maturity_market_value: Numeric | None = None
+    missing_maturity_count: int | None = None
+    floating_rate_proxy_market_value: Numeric | None = None
+    floating_rate_proxy_count: int | None = None
+    payment_frequency_fallback_market_value: Numeric | None = None
+    payment_frequency_fallback_count: int | None = None
+    bullet_value_date_fallback_market_value: Numeric | None = None
+    bullet_value_date_fallback_count: int | None = None
+    projection_quality_status: str = "available"
     bond_count: int = 0
     quality_flag: str = "ok"
     warnings: list[str] = Field(default_factory=list)
-    prior_period_change: RiskTensorPriorPeriodChange | None = None
-    dv01_controls: Dv01ControlsPayload | None = None
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "portfolio_dv01": ("dv01", False),
         "regulatory_dv01": ("dv01", False),
-        "krd_1y": ("ratio", True),
-        "krd_3y": ("ratio", True),
-        "krd_5y": ("ratio", True),
-        "krd_7y": ("ratio", True),
-        "krd_10y": ("ratio", True),
-        "krd_30y": ("ratio", True),
+        "krd_1y": ("dv01", True),
+        "krd_3y": ("dv01", True),
+        "krd_5y": ("dv01", True),
+        "krd_7y": ("dv01", True),
+        "krd_10y": ("dv01", True),
+        "krd_30y": ("dv01", True),
         "cs01": ("dv01", False),
         "portfolio_convexity": ("ratio", False),
-        "portfolio_modified_duration": ("ratio", False),
+        "portfolio_modified_duration": ("years", False),
         "issuer_concentration_hhi": ("ratio", False),
         "issuer_top5_weight": ("ratio", False),
         "asset_cashflow_30d": ("yuan", False),
@@ -159,8 +112,12 @@ class RiskTensorPayload(BaseModel):
         "total_market_value": ("yuan", False),
         "rate_risk_market_value": ("yuan", False),
         "rate_risk_dv01": ("dv01", False),
-        "rate_risk_modified_duration": ("ratio", False),
+        "rate_risk_modified_duration": ("years", False),
         "duration_excluded_market_value": ("yuan", False),
+        "missing_maturity_market_value": ("yuan", False),
+        "floating_rate_proxy_market_value": ("yuan", False),
+        "payment_frequency_fallback_market_value": ("yuan", False),
+        "bullet_value_date_fallback_market_value": ("yuan", False),
     }
 
     @model_validator(mode="before")
@@ -171,3 +128,66 @@ class RiskTensorPayload(BaseModel):
     @classmethod
     def from_tensor(cls, tensor: PortfolioRiskTensor) -> RiskTensorPayload:
         return cls(**asdict(tensor))
+
+
+class RiskTensorBlockedReportDate(BaseModel):
+    report_date: str
+    reason: str
+
+
+class RiskTensorDatesPayload(BaseModel):
+    report_dates: list[str] = Field(default_factory=list)
+    blocked_report_dates: list[RiskTensorBlockedReportDate] = Field(default_factory=list)
+
+
+class RiskTensorHistoryWindow(BaseModel):
+    # `from` is a Python keyword, so the wire name has to come from an alias.
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_: str = Field(alias="from")
+    to: str
+
+
+class RiskTensorHistoryPoint(BaseModel):
+    report_date: str
+    # `risk_tensor_service._history_scalar` stringifies the stored decimal and
+    # keeps None as None, so these are nullable strings rather than Numeric blocks.
+    portfolio_dv01: str | None
+    regulatory_dv01: str | None
+    portfolio_modified_duration: str | None
+    portfolio_convexity: str | None
+    cs01: str | None
+    issuer_concentration_hhi: str | None
+    issuer_top5_weight: str | None
+    liquidity_gap_30d: str | None
+
+
+class RiskTensorHistoryPayload(BaseModel):
+    report_date: str
+    periods: int
+    window: RiskTensorHistoryWindow
+    points: list[RiskTensorHistoryPoint] = Field(default_factory=list)
+
+
+class _RiskTensorEnvelope(BaseModel):
+    """Top-level shape shared by the `/api/risk/tensor*` reads.
+
+    `extra="forbid"` keeps an undeclared response key loud instead of letting
+    FastAPI drop it on the way out.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+
+
+class RiskTensorEnvelope(_RiskTensorEnvelope):
+    result: RiskTensorPayload
+
+
+class RiskTensorDatesEnvelope(_RiskTensorEnvelope):
+    result: RiskTensorDatesPayload
+
+
+class RiskTensorHistoryEnvelope(_RiskTensorEnvelope):
+    result: RiskTensorHistoryPayload

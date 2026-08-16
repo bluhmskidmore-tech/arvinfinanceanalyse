@@ -1,5 +1,5 @@
 .formal-result-meta-panel {
-  --formal-result-meta-border-soft: #e4e9f0;
+  --formal-result-meta-border-soft: var(--ib-hairline);
 
   margin-top: 24px;
   padding: 16px;
@@ -92,4 +92,6 @@
 
 .formal-result-meta-panel__value {
   margin: 0;
+  /* trace/version 等长标识无断字点，不折行会溢出卡片边界。 */
+  overflow-wrap: anywhere;
 }

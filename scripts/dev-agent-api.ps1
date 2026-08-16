@@ -3,23 +3,29 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
+# Security note: MOSS_AGENT_DEV_SCOPE_BYPASS skips Agent scope checks only for
+# loopback API clients (127.0.0.1/::1). Non-loopback clients are rejected.
 $env:MOSS_AGENT_ENABLED = "true"
+$env:MOSS_AGENT_DEV_SCOPE_BYPASS = "true"
 $env:MOSS_AGENT_PROVIDER = "hermes"
 $env:MOSS_AGENT_HERMES_HOME = "/home/hermes/.hermes"
 $env:MOSS_AGENT_HERMES_TRANSPORT = "cli"
 $env:MOSS_AGENT_HERMES_BRIDGE_URL = "http://127.0.0.1:7891"
 $env:MOSS_AGENT_HERMES_MODEL = "gpt-5.4-mini"
 $env:MOSS_AGENT_HERMES_TOOLSETS = "file"
+$env:MOSS_AGENT_HERMES_TIMEOUT_SECONDS = "12"
 $env:MOSS_DEV_API_SCRIPT = "dev-agent-api.ps1"
 $env:MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS = "1"
 
 Write-Host "[MOSS Agent] Repo root: $root" -ForegroundColor Cyan
 Write-Host "[MOSS Agent] MOSS_AGENT_ENABLED=$($env:MOSS_AGENT_ENABLED)" -ForegroundColor DarkGray
+Write-Host "[MOSS Agent] MOSS_AGENT_DEV_SCOPE_BYPASS=$($env:MOSS_AGENT_DEV_SCOPE_BYPASS)" -ForegroundColor DarkGray
 Write-Host "[MOSS Agent] MOSS_AGENT_PROVIDER=$($env:MOSS_AGENT_PROVIDER)" -ForegroundColor DarkGray
 Write-Host "[MOSS Agent] MOSS_AGENT_HERMES_HOME=$($env:MOSS_AGENT_HERMES_HOME)" -ForegroundColor DarkGray
 Write-Host "[MOSS Agent] MOSS_AGENT_HERMES_TRANSPORT=$($env:MOSS_AGENT_HERMES_TRANSPORT)" -ForegroundColor DarkGray
 Write-Host "[MOSS Agent] MOSS_AGENT_HERMES_BRIDGE_URL=$($env:MOSS_AGENT_HERMES_BRIDGE_URL)" -ForegroundColor DarkGray
 Write-Host "[MOSS Agent] MOSS_AGENT_HERMES_TOOLSETS=$($env:MOSS_AGENT_HERMES_TOOLSETS)" -ForegroundColor DarkGray
+Write-Host "[MOSS Agent] MOSS_AGENT_HERMES_TIMEOUT_SECONDS=$($env:MOSS_AGENT_HERMES_TIMEOUT_SECONDS)" -ForegroundColor DarkGray
 Write-Host "[MOSS Agent] MOSS_DEV_API_SCRIPT=$($env:MOSS_DEV_API_SCRIPT)" -ForegroundColor DarkGray
 Write-Host "[MOSS Agent] MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS=$($env:MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS)" -ForegroundColor DarkGray
 

@@ -1,3 +1,4 @@
+import { EM_DASH } from "../utils/format";
 import { StatusPill, type StatusPillStatus } from "./StatusPill";
 import "./CalendarList.css";
 
@@ -44,7 +45,7 @@ export function CalendarList({ items }: CalendarListProps) {
               <span className="calendar-list__issuer">{it.issuerLabel.trim()}</span>
             ) : null}
           </div>
-          <span className="calendar-list__amount">{it.amount ?? "—"}</span>
+          <span className="calendar-list__amount">{it.amount ?? EM_DASH}</span>
           <div className="calendar-list__level">
             <StatusPill status={levelToStatus[it.level]} label={levelLabel[it.level]} />
           </div>
@@ -60,7 +61,7 @@ export function CalendarList({ items }: CalendarListProps) {
                 {it.sourceLabel?.trim() ? `${it.sourceLabel.trim()} · 打开原文` : "查看原文"}
               </a>
             ) : null}
-            {!it.note && !it.sourceUrl ? <span>—</span> : null}
+            {!it.note && !it.sourceUrl ? <span>{EM_DASH}</span> : null}
           </div>
         </div>
       ))}

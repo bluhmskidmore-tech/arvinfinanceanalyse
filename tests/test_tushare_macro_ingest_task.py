@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+import duckdb
 import pytest
 
 from backend.app.repositories.raw_zone_repo import RawZoneRepository
@@ -55,10 +56,21 @@ def test_run_tushare_macro_ingest_once_e2e_mocked(
     assert out["ingest_batch_id"] == "task-batch-1"
     results = out["results"]
     assert len(results) == len(TUSHARE_M2A_SERIES)
+    assert out["status"] == "success"
     for item in results:
+        assert item["materialized_rows"] == 1
         p = Path(str(item["raw_zone_path"]))
         assert p.is_file()
     assert (gov / "source_manifest.jsonl").is_file()
+    conn = duckdb.connect(str(db), read_only=True)
+    try:
+        stored_rows = conn.execute(
+            "select count(*) from std_external_macro_daily where ingest_batch_id = ?",
+            ["task-batch-1"],
+        ).fetchone()
+        assert stored_rows == (len(TUSHARE_M2A_SERIES),)
+    finally:
+        conn.close()
 
 
 def test_run_tushare_macro_ingest_once_auto_batch_id(
@@ -85,7 +97,7 @@ def test_run_tushare_macro_ingest_once_auto_batch_id(
                 "vendor_kind": "tushare_macro",
                 "series_id": series_id,
                 "fetched_at": "2026-01-01T00:00:00+00:00",
-                "rows": [],
+                "rows": [{"trade_date": "2024-01-01", "value": 1.0}],
             }
 
     monkeypatch.setitem(task_globals, "VendorAdapter", _ApiStub)

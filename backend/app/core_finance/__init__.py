@@ -25,7 +25,9 @@ from backend.app.core_finance.pnl import (
     build_nonstd_pnl_bridge_rows,
     compute_nonstd_signed_ledger_amount,
     compute_pnl_by_business_yield_and_ftp,
+    normalize_fi_interest_income_514,
     normalize_fi_pnl_records,
+    normalize_nonstd_interest_income_514,
     normalize_nonstd_journal_entries,
 )
 from backend.app.core_finance.pnl_bridge import PnlBridgeRow, build_pnl_bridge_rows
@@ -73,11 +75,13 @@ __all__ = [
     "build_nonstd_pnl_bridge_rows",
     "compute_nonstd_signed_ledger_amount",
     "compute_pnl_by_business_yield_and_ftp",
+    "normalize_fi_interest_income_514",
     "compute_duration_gap",
     "derive_accounting_basis",
     "derive_invest_type_std",
     "build_balance_analysis_workbook_payload",
     "normalize_fi_pnl_records",
+    "normalize_nonstd_interest_income_514",
     "normalize_nonstd_journal_entries",
     "project_bond_cashflows",
     "project_liability_cashflows",

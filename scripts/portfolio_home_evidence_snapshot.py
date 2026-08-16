@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -54,6 +56,129 @@ OWNER_HANDOFF_COMPLETENESS_ALIGNMENT_FIELDS = [
 def snapshot_sha256(snapshot: dict[str, object]) -> str:
     canonical = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+_WINDOWS_ABSOLUTE_PATH = re.compile(r"^[A-Za-z]:[\\/]")
+_PYTHON_EXECUTABLE_NAME = re.compile(
+    r"^python(?:3(?:\.\d+)*)?(?:\.exe)?$",
+    re.IGNORECASE,
+)
+
+
+def _portable_repo_path(value: object, *, repo_root: Path) -> object:
+    """Normalize paths owned by this repository without masking external paths."""
+
+    if not isinstance(value, str):
+        return value
+    normalized = value.replace("\\", "/")
+    if not (Path(value).is_absolute() or _WINDOWS_ABSOLUTE_PATH.match(normalized)):
+        return normalized
+    try:
+        relative = Path(value).resolve().relative_to(repo_root.resolve())
+    except (OSError, ValueError):
+        return normalized
+    return relative.as_posix()
+
+
+def _portable_docs_path(
+    value: object,
+    *,
+    docs_root: Path | None,
+    repo_root: Path,
+    logical_docs_root: str,
+) -> object:
+    """Map the runtime docs root to a stable logical path when it is supplied."""
+
+    if not isinstance(value, str) or docs_root is None:
+        return value
+    normalized = value.replace("\\", "/")
+    candidate = Path(value)
+    if not (candidate.is_absolute() or _WINDOWS_ABSOLUTE_PATH.match(normalized)):
+        candidate = Path(repo_root) / candidate
+    docs_base = Path(docs_root)
+    if not docs_base.is_absolute():
+        docs_base = Path(repo_root) / docs_base
+    try:
+        relative = candidate.resolve().relative_to(docs_base.resolve())
+    except (OSError, ValueError):
+        return value
+    logical = logical_docs_root.strip("/\\") or "docs"
+    return f"{logical}/{relative.as_posix()}" if relative.parts else logical
+
+
+def _portable_path(
+    value: object,
+    *,
+    repo_root: Path,
+    docs_root: Path | None,
+    logical_docs_root: str,
+) -> object:
+    docs_path = _portable_docs_path(
+        value,
+        docs_root=docs_root,
+        repo_root=repo_root,
+        logical_docs_root=logical_docs_root,
+    )
+    if docs_path != value:
+        return docs_path
+    return _portable_repo_path(value, repo_root=repo_root)
+
+
+def portable_verification_report(
+    report: dict[str, object],
+    *,
+    repo_root: Path = ROOT,
+    docs_root: Path | None = None,
+    logical_docs_root: str = "docs",
+) -> dict[str, object]:
+    """Make embedded verifier evidence stable across worktrees and Python installs.
+
+    The raw verifier report remains available to callers for diagnostics.  Only the
+    copy embedded in evidence snapshots is normalized: Python executable paths become
+    the stable ``python`` token, while paths within this repository become repo-
+    relative.  Absolute paths outside the repository are left untouched.
+    """
+
+    normalized = copy.deepcopy(report)
+    if not isinstance(normalized, dict):
+        return {}
+    if "docs_root" in normalized:
+        normalized["docs_root"] = _portable_path(
+            normalized.get("docs_root"),
+            repo_root=repo_root,
+            docs_root=docs_root,
+            logical_docs_root=logical_docs_root,
+        )
+    results = normalized.get("results")
+    if not isinstance(results, list):
+        return normalized
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        argv = result.get("argv")
+        if not isinstance(argv, list):
+            continue
+        portable_argv: list[object] = []
+        for index, token in enumerate(argv):
+            if (
+                index == 0
+                and isinstance(token, str)
+                and _PYTHON_EXECUTABLE_NAME.fullmatch(
+                    Path(token.replace("\\", "/")).name,
+                )
+            ):
+                portable_argv.append("python")
+            else:
+                portable_argv.append(
+                    _portable_path(
+                        token,
+                        repo_root=repo_root,
+                        docs_root=docs_root,
+                        logical_docs_root=logical_docs_root,
+                    )
+                )
+        result["argv"] = portable_argv
+    return normalized
 
 
 def _gate_summary(scorecard: dict[str, object]) -> dict[str, object]:
@@ -258,6 +383,11 @@ def build_snapshot(
         expected_state=expected_state,
         docs_root=Path(docs_root),
     )
+    portable_verifier = portable_verification_report(
+        verifier,
+        repo_root=ROOT,
+        docs_root=Path(docs_root),
+    )
     artifact_presence = build_artifact_presence_report(
         duckdb_path=duckdb_path,
         report_date=report_date,
@@ -356,8 +486,8 @@ def build_snapshot(
         "page_id": scorecard["page_id"],
         "page_slug": scorecard["page_slug"],
         "report_date": scorecard["report_date"],
-        "duckdb_path": scorecard["duckdb_path"],
-        "template_path": scorecard["template_path"],
+        "duckdb_path": _portable_repo_path(scorecard["duckdb_path"], repo_root=ROOT),
+        "template_path": _portable_repo_path(scorecard["template_path"], repo_root=ROOT),
         "current_score": scorecard["current_score"],
         "remaining_gap": scorecard["remaining_gap"],
         "score_status": scorecard["score_status"],
@@ -419,8 +549,8 @@ def build_snapshot(
         "owner_decision_intake_summary": owner_decision_intake_summary,
         "scorecard_owner_decision_intake_gate_summary": scorecard_owner_gate_summary,
         "owner_decision_intake_alignment": owner_intake_alignment,
-        "verification_scope": verification_scope_summary(verifier),
-        "verification_report": verifier,
+        "verification_scope": verification_scope_summary(portable_verifier),
+        "verification_report": portable_verifier,
     }
 
 

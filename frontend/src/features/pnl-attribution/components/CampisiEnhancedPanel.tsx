@@ -1,19 +1,24 @@
 import type { CampisiEnhancedPayload } from "../../../api/contracts";
-import { DataSection } from "../../../components/DataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { PageDataSection } from "../../../components/page/PageDataSection";
+import { EM_DASH } from "../../../utils/format";
+import { buildMetricCards } from "./campisiEnhancedPanelSupport";
+import "./campisiPanels.css";
 
-const cardStyle = {
-  padding: designTokens.space[5],
-  borderRadius: designTokens.radius.sm,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: "#ffffff",
-  boxShadow: "0 1px 2px rgba(31, 41, 55, 0.04)",
-} as const;
+// 本面板挂在 Nocturne 深色路由（theme-dh-api + pnl-attribution scope）下：
+// 布局与面色收敛到共享 campisiPanels.css（--dh-api-* var 链），禁止浅色 hex、
+// designTokens 浅色 neutral 或 --ib-*（路由边界已算成钢蓝字面值）直灌。
 
 function toYi(value: number) {
   return (value / 100_000_000).toFixed(2);
 }
+
+/** 后端 `basis`：formal-bridge 路径的判定依据，不靠数值形态猜。 */
+const FORMAL_BRIDGE_BASIS = "formal_report_pnl_bridge";
+
+const NOT_DECOMPOSED_BADGE_TEXT = "该路径不拆分";
+const NOT_DECOMPOSED_HINT =
+  "formal-bridge 一阶分解框架不产出该二阶项，金额为未拆分的 0，贡献并入「剩余/选券」。";
 
 type Props = {
   data: CampisiEnhancedPayload | null;
@@ -23,71 +28,52 @@ type Props = {
 
 export function CampisiEnhancedPanel({ data, state, onRetry }: Props) {
   const totals = data?.totals;
+  const isFormalBridge = data?.basis === FORMAL_BRIDGE_BASIS;
+  const metricCards = buildMetricCards(totals, isFormalBridge);
 
   return (
-    <DataSection
+    <PageDataSection
       title="Campisi 六效应归因（扩展）"
       state={state}
       onRetry={onRetry}
     >
-      <div style={cardStyle}>
-        <p
-          style={{
-            margin: `0 0 ${designTokens.space[4]}px`,
-            fontSize: designTokens.fontSize[13],
-            color: designTokens.color.neutral[700],
-            lineHeight: designTokens.lineHeight.normal,
-          }}
-        >
-          将凸性、交叉项与再投资从选券残差中拆出，保留扩展归因的总量与资产类别分布。
+      <div className="campisi-panel">
+        <p className="campisi-panel__intro">
+          {isFormalBridge
+            ? "formal-bridge 路径：凸性、交叉项与再投资不在本路径拆分，其贡献并入「剩余/选券」，三张卡以 — 标注未拆分；其余分量之和仍等于总收益。"
+            : "将凸性、交叉项与再投资从选券残差中拆出，保留扩展归因的总量与资产类别分布。"}
         </p>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-            gap: designTokens.space[3],
-          }}
-        >
-          {[
-            ["票息", totals?.income_return],
-            ["国债曲线", totals?.treasury_effect],
-            ["利差", totals?.spread_effect],
-            ["凸性", totals?.convexity_effect],
-            ["交叉项", totals?.cross_effect],
-            ["再投资", totals?.reinvestment_effect],
-            ["剩余/选券", totals?.selection_effect],
-            ["总收益", totals?.total_return],
-          ].map(([label, value]) => (
-            <div
-              key={label}
-              style={{
-                padding: designTokens.space[3],
-                borderRadius: designTokens.radius.md,
-                background: designTokens.color.neutral[50],
-              }}
-            >
+        {data?.decomposition_basis ? (
+          <div
+            data-testid="campisi-enhanced-decomposition-basis"
+            className="campisi-panel__note"
+          >
+            分解口径：{data.decomposition_basis}
+          </div>
+        ) : null}
+        <div className="campisi-metric-grid">
+          {metricCards.map(({ key, label, value, notDecomposed }) => (
+            <div key={key} className="campisi-metric">
+              <div className="campisi-field-label">{label}</div>
               <div
-                style={{
-                  fontSize: designTokens.fontSize[12],
-                  color: designTokens.color.neutral[700],
-                }}
+                data-testid={`campisi-enhanced-amount-${key}`}
+                className="campisi-field-value"
               >
-                {label}
+                {notDecomposed || value === undefined ? EM_DASH : `${toYi(Number(value))} 亿`}
               </div>
-              <div
-                style={{
-                  marginTop: designTokens.space[2],
-                  fontWeight: 700,
-                  color: designTokens.color.neutral[900],
-                  ...tabularNumsStyle,
-                }}
-              >
-                {value === undefined ? "—" : `${toYi(Number(value))} 亿`}
-              </div>
+              {notDecomposed ? (
+                <div
+                  data-testid={`campisi-enhanced-not-decomposed-${key}`}
+                  title={NOT_DECOMPOSED_HINT}
+                  className="campisi-metric__flag"
+                >
+                  {NOT_DECOMPOSED_BADGE_TEXT}
+                </div>
+              ) : null}
             </div>
           ))}
         </div>
       </div>
-    </DataSection>
+    </PageDataSection>
   );
 }

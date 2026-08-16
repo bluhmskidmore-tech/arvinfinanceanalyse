@@ -3,13 +3,15 @@ import {
   FireOutlined,
   LineChartOutlined,
 } from "@ant-design/icons";
-import { Collapse } from "antd";
+import {
+  StockAnalysisAccordion as Accordion,
+  StockAnalysisAccordionItem as AccordionItem,
+} from "./StockAnalysisAccordion";
 
 import type { LivermoreUnsupportedOutput } from "../../../api/contracts";
 import type { StockRiskExitRow } from "../lib/stockAnalysisPageModel";
 import {
   SA_CARD_TITLE,
-  SA_FIRST_CARD,
   SA_SECTION_DESC,
   SA_SECTION_HEAD,
 } from "../lib/stockAnalysisPageChrome";
@@ -68,29 +70,33 @@ export function StockAnalysisRiskExitRows({
                 {riskStatusLabel(row.status)}
               </em>
             </div>
+            {!row.entryCostAvailable ? (
+              <p
+                className="stock-analysis-page__rail-risk-flag"
+                data-testid={`stock-risk-row-${row.stockCode}-cost-missing`}
+              >
+                成本价缺失
+              </p>
+            ) : null}
             <div className="stock-analysis-page__rail-risk-meta">
               <span className="stock-analysis-page__tabular">收 {row.latestClose}</span>
               <span className="stock-analysis-page__tabular">距 {row.distanceToExitPct}</span>
               <span className="stock-analysis-page__tabular">线 {row.exitWatchPrice}</span>
             </div>
-            <Collapse
-              ghost
-              bordered={false}
-              destroyOnHidden
+            <Accordion
               className="stock-analysis-page__candidate-collapse stock-analysis-page__rail-collapse"
-              items={[
-                {
-                  key: `${row.stockCode}-risk-reason`,
-                  label: "供数原因",
-                  children: (
-                    <div className="text-xs text-neutral-600">
-                      <p className="m-0">{row.reason}</p>
-                      <p className="m-0 mt-1 text-neutral-500">退出观察价 {row.exitWatchPrice}</p>
-                    </div>
-                  ),
-                },
-              ]}
-            />
+            >
+              <AccordionItem
+                key={`${row.stockCode}-risk-reason`}
+                aria-label="供数原因"
+                title="供数原因"
+              >
+                <div className="stock-analysis-page__collapse-detail">
+                  <p>{row.reason}</p>
+                  <p className="stock-analysis-page__collapse-detail--muted">退出观察价 {row.exitWatchPrice}</p>
+                </div>
+              </AccordionItem>
+            </Accordion>
           </div>
         );
       })}
@@ -113,13 +119,15 @@ export function StockAnalysisRiskExitSection({
   unsupportedOutput?: LivermoreUnsupportedOutput | null;
   onOpenRiskDetail: (row: StockRiskExitRow) => void;
 }) {
+  const blockedSummary = unsupportedOutput ? riskExitBlockedSummary(unsupportedOutput.reason) : null;
+
   return (
-    <section className={SA_FIRST_CARD} data-testid="stock-analysis-risk-section">
+    <section data-testid="stock-analysis-risk-section">
       <div className={SA_SECTION_HEAD}>
-        <div className="min-w-0">
+        <div className="stock-analysis-page__min-w-0">
           <h2 className={SA_CARD_TITLE}>风险退出观察</h2>
           <p className={SA_SECTION_DESC}>
-            {riskTriggeredCount} 触发 · {riskWatchCount} 观察
+            {blockedSummary ? `风险退出不可用 · ${blockedSummary}` : `${riskTriggeredCount} 触发 · ${riskWatchCount} 观察`}
           </p>
         </div>
       </div>
@@ -128,24 +136,34 @@ export function StockAnalysisRiskExitSection({
         aria-label="风险退出统计"
         data-testid="stock-analysis-risk-strip"
       >
-        <div data-tone={riskTriggeredCount > 0 ? "negative" : "positive"}>
-          <FireOutlined aria-hidden="true" />
-          <span>触发</span>
-          <strong>{riskTriggeredCount}</strong>
-        </div>
-        <div data-tone={riskWatchCount > 0 ? "warning" : "positive"}>
-          <LineChartOutlined aria-hidden="true" />
-          <span>观察</span>
-          <strong>{riskWatchCount}</strong>
-        </div>
-        <div data-tone={unsupportedOutput ? "warning" : "positive"}>
-          <DatabaseOutlined aria-hidden="true" />
-          <span>供数</span>
-          <strong>{unsupportedOutput ? "待补" : "接通"}</strong>
-        </div>
+        {blockedSummary ? (
+          <div data-tone="negative">
+            <DatabaseOutlined aria-hidden="true" />
+            <span>风险退出</span>
+            <strong>阻断 · {blockedSummary}</strong>
+          </div>
+        ) : (
+          <>
+            <div data-tone={riskTriggeredCount > 0 ? "negative" : "positive"}>
+              <FireOutlined aria-hidden="true" />
+              <span>触发</span>
+              <strong>{riskTriggeredCount}</strong>
+            </div>
+            <div data-tone={riskWatchCount > 0 ? "warning" : "positive"}>
+              <LineChartOutlined aria-hidden="true" />
+              <span>观察</span>
+              <strong>{riskWatchCount}</strong>
+            </div>
+            <div data-tone="positive">
+              <DatabaseOutlined aria-hidden="true" />
+              <span>供数</span>
+              <strong>接通</strong>
+            </div>
+          </>
+        )}
       </div>
       {confluenceError ? (
-        <p className="text-xs font-semibold text-neutral-600">联动观察暂不可用。</p>
+        <p className="stock-analysis-page__rail-error-copy">联动观察暂不可用。</p>
       ) : null}
       {unsupportedOutput ? (
         <div className="stock-analysis-page__rail-warning">
@@ -154,33 +172,29 @@ export function StockAnalysisRiskExitSection({
               <DatabaseOutlined />
             </span>
             <span>
-              <strong>风险退出待补</strong>
-              <p className="m-0">{riskExitBlockedSummary(unsupportedOutput.reason)}</p>
+              <strong>风险退出不可用</strong>
+              <p>{blockedSummary}</p>
             </span>
           </div>
           {unsupportedOutput.reason ? (
-            <Collapse
-              ghost
-              bordered={false}
-              destroyOnHidden
+            <Accordion
               className="stock-analysis-page__candidate-collapse stock-analysis-page__rail-collapse"
-              items={[
-                {
-                  key: "risk-exit-unsupported-reason",
-                  label: "供数原因",
-                  children: (
-                    <p className="m-0 text-xs">
-                      {riskExitBlockedDetail(unsupportedOutput.reason, unsupportedOutput.key)}
-                    </p>
-                  ),
-                },
-              ]}
-            />
+            >
+              <AccordionItem
+                key="risk-exit-unsupported-reason"
+                aria-label="供数原因"
+                title="供数原因"
+              >
+                <p className="stock-analysis-page__collapse-detail stock-analysis-page__collapse-detail--compact">
+                  {riskExitBlockedDetail(unsupportedOutput.reason, unsupportedOutput.key)}
+                </p>
+              </AccordionItem>
+            </Accordion>
           ) : null}
         </div>
       ) : null}
       <StockAnalysisRiskExitRows
-        rows={rows}
+        rows={unsupportedOutput ? [] : rows}
         unsupported={Boolean(unsupportedOutput)}
         onOpenRiskDetail={onOpenRiskDetail}
       />

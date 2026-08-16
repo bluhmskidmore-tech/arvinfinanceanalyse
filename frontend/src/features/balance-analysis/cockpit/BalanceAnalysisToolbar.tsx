@@ -1,28 +1,20 @@
 import {
-  CalendarOutlined,
   DownloadOutlined,
   FileExcelOutlined,
-  FilterOutlined,
   ReloadOutlined,
-  SafetyCertificateOutlined,
-  SwapOutlined,
 } from "@ant-design/icons";
 
 import type {
-  BalanceCurrencyBasis,
   BalancePageCalibration,
   BalancePositionScope,
 } from "../../../api/contracts";
 import { CalibrationBadge } from "../../../components/CalibrationBadge";
 import type { BalanceAnalysisPageReadModel } from "../pages/balanceAnalysisPageModel";
-import dhStyles from "../../workbench/dashboard-home/dashboardHome.module.css";
-import toolbarStyles from "./balanceAnalysisToolbar.module.css";
 
 type BalanceAnalysisToolbarProps = {
   reportDates: readonly string[];
   selectedReportDate: string;
   positionScope: BalancePositionScope;
-  currencyBasis: BalanceCurrencyBasis;
   sourceBadge: BalanceAnalysisPageReadModel["sourceBadge"];
   calibration?: BalancePageCalibration | null;
   isRefreshing: boolean;
@@ -30,17 +22,19 @@ type BalanceAnalysisToolbarProps = {
   isExportingWorkbook: boolean;
   onReportDateChange: (value: string) => void;
   onPositionScopeChange: (value: BalancePositionScope) => void;
-  onCurrencyBasisChange: (value: BalanceCurrencyBasis) => void;
   onRefresh: () => void;
   onExportCsv: () => void;
   onExportWorkbook: () => void;
 };
 
+/**
+ * 首页标准包页头：20px 页题 + 12px 副题 + 模式徽标（无胶囊/大写宽字距），
+ * 下方 32px 工具条（原生 select + 操作按钮）。
+ */
 export function BalanceAnalysisToolbar({
   reportDates,
   selectedReportDate,
   positionScope,
-  currencyBasis,
   sourceBadge,
   calibration,
   isRefreshing,
@@ -48,77 +42,90 @@ export function BalanceAnalysisToolbar({
   isExportingWorkbook,
   onReportDateChange,
   onPositionScopeChange,
-  onCurrencyBasisChange,
   onRefresh,
   onExportCsv,
   onExportWorkbook,
 }: BalanceAnalysisToolbarProps) {
+  const hasUnavailableSelectedDate = Boolean(
+    selectedReportDate && !reportDates.includes(selectedReportDate),
+  );
   return (
-    <header
-      data-testid="balance-analysis-filter-tray"
-      className={`${dhStyles.dhTopbar} ${toolbarStyles.baTopbarStack}`}
-    >
-      <div className={toolbarStyles.baTopbarRow}>
-        <div className={dhStyles.dhTopbarLeft}>
-          <div className={dhStyles.dhTitleBrand}>
-            <span className={dhStyles.dhTitleBar} aria-hidden="true" />
-            <span className={dhStyles.dhTitleMark} aria-hidden="true">
-              A
-            </span>
-            <h1 data-testid="balance-analysis-page-title" className={dhStyles.dhTitle}>
-              资产负债分析
-            </h1>
-          </div>
-          <span className={dhStyles.dhDateLabel}>报告日</span>
-          <label className={toolbarStyles.baToolbarSelect}>
-            <CalendarOutlined aria-hidden />
-            <select
-              aria-label="balance-report-date"
-              value={selectedReportDate}
-              onChange={(event) => onReportDateChange(event.target.value)}
-            >
-              {reportDates.map((reportDate) => (
-                <option key={reportDate} value={reportDate}>
-                  {reportDate}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className={toolbarStyles.baToolbarSelect}>
-            <FilterOutlined aria-hidden />
-            <select
-              aria-label="balance-position-scope"
-              value={positionScope}
-              onChange={(event) => onPositionScopeChange(event.target.value as BalancePositionScope)}
-            >
-              <option value="all">全部头寸</option>
-              <option value="asset">资产</option>
-              <option value="liability">负债</option>
-            </select>
-          </label>
-          <label className={toolbarStyles.baToolbarSelect}>
-            <SwapOutlined aria-hidden />
-            <select
-              aria-label="balance-currency-basis"
-              value={currencyBasis}
-              onChange={(event) => onCurrencyBasisChange(event.target.value as BalanceCurrencyBasis)}
-            >
-              <option value="CNY">人民币</option>
-              <option value="native">原币</option>
-            </select>
-          </label>
+    <header data-testid="balance-analysis-filter-tray" className="balance-analysis-topbar">
+      <div className="balance-analysis-topbar__head">
+        <div className="balance-analysis-topbar__copy">
+          <h1 data-testid="balance-analysis-page-title" className="balance-analysis-topbar__title">
+            资产负债分析
+          </h1>
+          <p
+            data-testid="balance-analysis-page-subtitle"
+            className="balance-analysis-topbar__subtitle"
+          >
+            当前报告日正式口径下的资产、负债、净头寸与期限缺口。
+          </p>
         </div>
-
-        <div className={dhStyles.dhTopbarRight}>
+        <div className="balance-analysis-topbar__badges">
           <CalibrationBadge calibration={calibration} />
-          <span className={dhStyles.dhStatusPill} data-tone={sourceBadge.tone}>
-            <SafetyCertificateOutlined aria-hidden />
+          <span className="balance-analysis-topbar__mode-badge" data-tone={sourceBadge.tone}>
             {sourceBadge.label}
           </span>
+        </div>
+      </div>
+      <div className="balance-analysis-topbar__controls">
+        <label className="balance-analysis-topbar__field">
+          <span className="balance-analysis-topbar__field-label">报告日</span>
+          <select
+            aria-label="balance-report-date"
+            className="balance-analysis-topbar__select"
+            value={selectedReportDate}
+            onChange={(event) => onReportDateChange(event.target.value)}
+          >
+            {hasUnavailableSelectedDate ? (
+              <option value={selectedReportDate} disabled>
+                {`${selectedReportDate}（不可用）`}
+              </option>
+            ) : null}
+            {reportDates.map((reportDate) => (
+              <option key={reportDate} value={reportDate}>
+                {reportDate}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="balance-analysis-topbar__field">
+          <span className="balance-analysis-topbar__field-label">头寸范围</span>
+          <select
+            aria-label="balance-position-scope"
+            className="balance-analysis-topbar__select"
+            value={positionScope}
+            onChange={(event) => onPositionScopeChange(event.target.value as BalancePositionScope)}
+          >
+            <option value="all">全部头寸</option>
+            <option value="asset">资产</option>
+            <option value="liability">负债</option>
+          </select>
+        </label>
+        <label className="balance-analysis-topbar__field">
+          <span className="balance-analysis-topbar__field-label">币种口径</span>
+          <select
+            aria-label="balance-currency-basis"
+            className="balance-analysis-topbar__select"
+            value="CNY"
+            disabled
+          >
+            <option value="CNY">人民币（CNY）</option>
+          </select>
+        </label>
+        <p
+          data-testid="balance-analysis-currency-basis-note"
+          className="balance-analysis-topbar__subtitle"
+        >
+          原币需逐币种明细，当前不做跨币种总量。
+        </p>
+        <div className="balance-analysis-topbar__actions">
           <button
             data-testid="balance-analysis-refresh-button"
             type="button"
-            className={dhStyles.dhRefreshBtn}
+            className="balance-analysis-btn"
             onClick={onRefresh}
             disabled={!selectedReportDate || isRefreshing}
           >
@@ -128,7 +135,7 @@ export function BalanceAnalysisToolbar({
           <button
             data-testid="balance-analysis-export-button"
             type="button"
-            className={toolbarStyles.baToolbarAction}
+            className="balance-analysis-btn"
             onClick={onExportCsv}
             disabled={!selectedReportDate || isExportingCsv}
           >
@@ -138,7 +145,7 @@ export function BalanceAnalysisToolbar({
           <button
             data-testid="balance-analysis-workbook-export-button"
             type="button"
-            className={toolbarStyles.baToolbarActionPrimary}
+            className="balance-analysis-btn balance-analysis-btn--primary"
             onClick={onExportWorkbook}
             disabled={!selectedReportDate || isExportingWorkbook}
           >
@@ -147,9 +154,6 @@ export function BalanceAnalysisToolbar({
           </button>
         </div>
       </div>
-      <p data-testid="balance-analysis-page-subtitle" className={toolbarStyles.baToolbarSubtitle}>
-        当前报告日正式口径下的资产、负债、净头寸与期限缺口。
-      </p>
     </header>
   );
 }

@@ -16,6 +16,7 @@ from backend.app.core_finance.liability_analytics_compat import (
     ONE_HUNDRED_MILLION,
     ZERO,
     clean_text,
+    compute_liability_yield_metrics,
     is_interbank_cd,
     is_interest_bearing_bond_asset,
     monthly_v1_bucket_name,
@@ -23,9 +24,7 @@ from backend.app.core_finance.liability_analytics_compat import (
     normalize_interbank_rate_decimal,
     to_decimal,
     to_float,
-    weighted_rate,
     zqtz_asset_amount,
-    zqtz_asset_yield_weight,
     zqtz_liability_amount,
 )
 
@@ -39,49 +38,47 @@ SHORT_TERM_PRESSURE_YI = Decimal("100")      # 1Y maturity > 100亿 → warning
 LIABILITY_COST_HIGH_THRESHOLD = Decimal("0.035")  # cost ≥ 3.5% → watch
 
 
+def _kpi_decimal(value: float | None) -> Decimal | None:
+    return None if value is None else Decimal(str(value))
+
+
 def compute_cockpit_warnings(
     report_date: str,
     zqtz_rows: list[dict[str, Any]],
     tyw_rows: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    """Return ``{ report_date, watch_items: [...], alert_events: [...] }``."""
+    """Return ``{ report_date, watch_items: [...], alert_events: [...] }``.
+
+    NIM 与负债成本直接复用 ``compute_liability_yield_metrics``（calc_rules §12.6
+    钉住的正式 KPI 口径）：NIM = 资产收益率 − 市场化负债成本（市场化负债缺失时
+    回退整体负债成本），避免同页出现「KPI 为正、告警净息差为负」的口径矛盾。
+    """
     report_dt = date.fromisoformat(report_date)
 
-    # --- Rebuild lightweight aggregates from the same data as risk_buckets / yield_metrics ---
-    asset_pairs: list[tuple[Decimal, Decimal | None]] = []
-    liability_pairs: list[tuple[Decimal, Decimal | None]] = []
+    # --- NIM / 负债成本：与页面收益-成本 KPI 完全同源（同一函数计算） ---
+    kpi = compute_liability_yield_metrics(report_date, zqtz_rows, tyw_rows)["kpi"]
+    liability_cost = _kpi_decimal(kpi["liability_cost"])
+    nim = _kpi_decimal(kpi["nim"])
 
+    # --- Rebuild lightweight aggregates from the same data as risk_buckets ---
     total_liability = ZERO
     short_term_liability = ZERO  # ≤1Y bucket
 
     for row in zqtz_rows:
-        if bool(row.get("is_issuance_like")):
-            amount = zqtz_liability_amount(row)
-            rate = normalize_bond_rate_decimal(row.get("coupon_rate"))
-            if rate is None:
-                rate = normalize_bond_rate_decimal(row.get("interest_rate"))
-            liability_pairs.append((amount, rate))
-            if amount > ZERO:
-                total_liability += amount
-                bucket = monthly_v1_bucket_name(report_dt, row.get("maturity_date"))
-                if bucket in ("0-3M", "3-6M", "6-12M", "Matured"):
-                    short_term_liability += amount
-        elif is_interest_bearing_bond_asset(row):
-            amount = zqtz_asset_yield_weight(row)
-            ytm = normalize_bond_rate_decimal(row.get("ytm_value"))
-            coupon = normalize_bond_rate_decimal(row.get("coupon_rate"))
-            interest_rate_val = normalize_bond_rate_decimal(row.get("interest_rate"))
-            rate = ytm or coupon or interest_rate_val
-            asset_pairs.append((amount, rate))
+        if not bool(row.get("is_issuance_like")):
+            continue
+        amount = zqtz_liability_amount(row)
+        if amount > ZERO:
+            total_liability += amount
+            bucket = monthly_v1_bucket_name(report_dt, row.get("maturity_date"))
+            if bucket in ("0-3M", "3-6M", "6-12M", "Matured"):
+                short_term_liability += amount
 
     counterparty_totals: dict[str, Decimal] = defaultdict(lambda: ZERO)
     for row in tyw_rows:
-        amount = to_decimal(row.get("principal_native"))
-        rate = normalize_interbank_rate_decimal(row.get("funding_cost_rate"))
         if bool(row.get("is_asset_side")):
-            asset_pairs.append((amount, rate))
             continue
-        liability_pairs.append((amount, rate))
+        amount = to_decimal(row.get("principal_native"))
         if amount > ZERO:
             total_liability += amount
             bucket = monthly_v1_bucket_name(report_dt, row.get("maturity_date"))
@@ -89,14 +86,6 @@ def compute_cockpit_warnings(
                 short_term_liability += amount
             cp = clean_text(row.get("counterparty_name"), "其他")
             counterparty_totals[cp] += amount
-
-    asset_yield = weighted_rate(asset_pairs)
-    liability_cost = weighted_rate(liability_pairs)
-    nim = (
-        asset_yield - liability_cost
-        if asset_yield is not None and liability_cost is not None
-        else None
-    )
 
     short_term_yi = short_term_liability / ONE_HUNDRED_MILLION
 
@@ -111,14 +100,14 @@ def compute_cockpit_warnings(
     watch_items: list[dict[str, Any]] = []
     alert_events: list[dict[str, Any]] = []
 
-    # NIM warning
+    # NIM warning（与收益-成本 KPI 同口径：市场化负债成本，缺失时回退整体成本）
     if nim is not None and nim <= NIM_WARNING_THRESHOLD:
         alert_events.append({
             "id": "alert_nim_negative",
             "severity": "high",
             "title": "净息差为负",
             "occurred_at": report_date,
-            "detail": f"NIM = {to_float(nim):.4%}，负债成本已超过资产收益率。",
+            "detail": f"NIM = {to_float(nim):.4%}，市场化口径负债成本已不低于资产收益率（与收益-成本 KPI 同口径）。",
         })
     elif nim is not None and nim <= NIM_WATCH_THRESHOLD:
         watch_items.append({
@@ -227,7 +216,9 @@ def compute_contribution_split(
                 continue
             ytm = normalize_bond_rate_decimal(row.get("ytm_value"))
             coupon = normalize_bond_rate_decimal(row.get("coupon_rate"))
-            rate = ytm or coupon
+            # 同上：0 视为未采集，显式回退到下一候选，与
+            # liability_analytics_compat.compute_liability_yield_metrics 保持一致。
+            rate = ytm if ytm not in (None, ZERO) else coupon
             # Classify: 利率债 vs 信用债 (simplified)
             asset_class = str(row.get("asset_class") or "").strip()
             bond_type = str(row.get("bond_type") or "").strip()

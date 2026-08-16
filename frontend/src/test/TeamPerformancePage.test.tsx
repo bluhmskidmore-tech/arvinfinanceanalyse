@@ -125,6 +125,7 @@ function q1MonthlyPayload(items: PnlByBusinessMonthlyItem[]): PnlByBusinessMonth
     year: 2026,
     as_of_date: "2026-03-31",
     source_tables: ["fact_formal_pnl_fi", "fact_formal_zqtz_balance_daily"],
+    management_change: null,
     months: [
       {
         month_key: "2026-03",
@@ -212,20 +213,44 @@ function emptyProductPayload(): ProductCategoryPnlPayload {
     asset_total: asset,
     liability_total: liability,
     grand_total: grand,
-    interest_spread: null,
+    interest_spread: {
+      all_currency_asset_yield_pct: null,
+      all_currency_liability_yield_pct: null,
+      all_currency_spread_pct: null,
+      cny_asset_yield_pct: null,
+      cny_liability_yield_pct: null,
+      cny_spread_pct: null,
+    },
+    interest_earning_spread: {
+      all_currency_asset_yield_pct: null,
+      all_currency_liability_yield_pct: null,
+      all_currency_spread_pct: null,
+      cny_asset_yield_pct: null,
+      cny_liability_yield_pct: null,
+      cny_spread_pct: null,
+    },
+    liability_cost_decomposition: {
+      liability_yield_pct: null,
+      liability_yield_ex_cln_pct: null,
+      cln_yield_pct: null,
+      cln_drag_bp: null,
+      cln_scale: null,
+    },
   };
 }
 
 describe("TeamPerformancePage", () => {
-  it("keeps page state surfaces on the homepage blue-gray token family", () => {
+  it("keeps page surfaces on the IB light token family without bare hex colors", () => {
     const css = readFileSync(
       resolve(process.cwd(), "src/features/team-performance/TeamPerformancePage.css"),
       "utf8",
     );
 
-    expect(css).not.toMatch(/#fffdf8|#fffaf4|moss-color-warm-|designTokens\.color\.warm/);
-    expect(css).toContain("#f8fafc");
-    expect(css).toContain("#ffffff");
+    expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    expect(css).not.toMatch(/moss-color-warm-|designTokens\.color\.warm/);
+    expect(css).toContain("var(--ib-surface)");
+    expect(css).toContain("var(--ib-surface-muted)");
+    expect(css).toContain("var(--ib-radius, 2px)");
   });
 
   it("locks to 2025-12-31 and renders the matrix, detail panel, warnings, and meta evidence", async () => {
@@ -256,7 +281,7 @@ describe("TeamPerformancePage", () => {
         items: [
           byBusinessRow({
             row_key: "asset_zqtz_detail_structured_finance_broker",
-            business_type: "其中：结构化融资（券商）",
+            business_type: "其中：结构化产业基金（产业基金部分）",
             total_pnl: "3500000",
             current_balance: "800000000",
           }),
@@ -311,7 +336,7 @@ describe("TeamPerformancePage", () => {
       result: q1MonthlyPayload([
         monthlyBusinessItem({
           row_key: "asset_zqtz_detail_structured_finance_broker",
-          business_type: "其中：结构化融资（券商）",
+          business_type: "其中：结构化产业基金（产业基金部分）",
           total_pnl: "3000000",
           ftp_cost: "500000",
           ftp_net_pnl: "2500000",
@@ -464,7 +489,6 @@ describe("TeamPerformancePage", () => {
             business_net_income: "-300000",
           }),
         ],
-        interest_spread: null,
       } satisfies ProductCategoryPnlPayload,
     }));
 
@@ -477,7 +501,7 @@ describe("TeamPerformancePage", () => {
     });
 
     expect(await screen.findByTestId("team-performance-page-title")).toHaveTextContent(
-      "Team Performance 工作损益分析",
+      "团队绩效工作损益分析",
     );
 
     await waitFor(() => {
@@ -497,8 +521,18 @@ describe("TeamPerformancePage", () => {
     expect(screen.getByLabelText("team-performance-report-date")).toHaveValue("2025-12-31");
 
     const summary = await screen.findByTestId("team-performance-summary-cards");
-    expect(summary).toHaveTextContent("409.28");
+    await waitFor(() => {
+      expect(summary).toHaveTextContent("409.28");
+    });
     expect(summary).toHaveTextContent("8");
+    expect(summary).toHaveTextContent("静态底稿·非正式口径（后端下发）");
+    expect(summary).not.toHaveTextContent("前端演示数据");
+    expect(screen.getByTestId("team-performance-demo-score-badge")).toHaveTextContent(
+      "考核得分：静态底稿·非正式口径（后端下发）",
+    );
+    expect(screen.getByTestId("team-performance-matrix-demo-badge")).toHaveTextContent(
+      "权重/得分列：静态底稿·非正式口径（后端下发）",
+    );
 
     expect(await screen.findByTestId("team-performance-warning-banner")).toHaveTextContent(
       "映射分析不代表正式中心归属",
@@ -532,6 +566,7 @@ describe("TeamPerformancePage", () => {
     );
 
     const meta = await screen.findByTestId("team-performance-result-meta");
+    expect(meta).toHaveTextContent("team_performance.assessment_workbook");
     expect(meta).toHaveTextContent("pnl.by_business_ytd");
     expect(meta).toHaveTextContent("product_category_pnl.detail");
 
@@ -548,7 +583,7 @@ describe("TeamPerformancePage", () => {
     expect(q1Caliber).toHaveTextContent("汇兑损益及衍生聚合行暂不强行归属");
     expect(q1Caliber).toHaveTextContent("汇兑损益及衍生");
     expect(q1Caliber).toHaveTextContent("产业基金");
-    expect(q1Caliber).toHaveTextContent("来源行：其中：结构化融资（券商）");
+    expect(q1Caliber).toHaveTextContent("来源行：其中：结构化产业基金（产业基金部分）");
     expect(q1Caliber).not.toHaveTextContent("2026计划");
     expect(q1Caliber).not.toHaveTextContent("完成率");
   });
@@ -653,8 +688,54 @@ describe("TeamPerformancePage", () => {
     });
 
     expect(await screen.findByTestId("team-performance-error")).toHaveTextContent(
-      "2025 工作损益证据加载失败",
+      "2025 考核底稿或工作损益证据加载失败",
     );
     expect(screen.getByRole("button", { name: "重试" })).toBeInTheDocument();
+  });
+
+  it("renders an error state when the backend assessment workbook cannot be loaded", async () => {
+    const base = createApiClient({ mode: "mock" });
+
+    const getTeamPerformanceAssessmentWorkbook = vi.fn(async () => {
+      throw new Error("workbook failed");
+    });
+    const getFormalPnlDates = vi.fn(async () => ({
+      result_meta: buildMeta("pnl.dates", "trace-dates-workbook-error"),
+      result: {
+        report_dates: ["2025-12-31"],
+        formal_fi_report_dates: ["2025-12-31"],
+        nonstd_bridge_report_dates: ["2025-12-31"],
+      } satisfies PnlDatesPayload,
+    }));
+    const getPnlByBusinessYtd = vi.fn(async () => ({
+      result_meta: buildMeta("pnl.by_business_ytd", "trace-by-business-workbook-error"),
+      result: {
+        year: 2025,
+        period_type: "yearly",
+        period_label: "2025 年累计",
+        period_start_date: "2025-01-01",
+        period_end_date: "2025-12-31",
+        total_pnl: "0",
+        source_tables: ["fact_formal_pnl_fi"],
+        items: [],
+      } satisfies PnlByBusinessYtdPayload,
+    }));
+    const getProductCategoryPnl = vi.fn(async () => ({
+      result_meta: buildMeta("product_category_pnl.detail", "trace-product-workbook-error"),
+      result: emptyProductPayload(),
+    }));
+
+    renderTeamPerformance({
+      ...base,
+      getTeamPerformanceAssessmentWorkbook,
+      getFormalPnlDates,
+      getPnlByBusinessYtd,
+      getProductCategoryPnl,
+    });
+
+    expect(await screen.findByTestId("team-performance-error")).toHaveTextContent(
+      "2025 考核底稿或工作损益证据加载失败",
+    );
+    expect(getTeamPerformanceAssessmentWorkbook).toHaveBeenCalled();
   });
 });

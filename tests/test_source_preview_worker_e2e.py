@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import (
+
     CACHE_BUILD_RUN_STREAM,
     GovernanceRepository,
 )
@@ -25,13 +26,16 @@ from tests.test_bond_analytics_materialize_flow import (
 )
 from tests.test_product_category_pnl_flow import _write_month_pair
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_source_preview,
+]
 
 def _subprocess_creationflags() -> int:
     # CREATE_NO_WINDOW + stdio redirects can raise OSError(50) on some Windows/Python builds.
     if os.name == "nt":
         return 0
     return getattr(subprocess, "CREATE_NO_WINDOW", 0)
-
 
 def _write_minimal_fx_official_csv(path: Path) -> None:
     """Formal FX path for worker e2e: bypass Choice/AkShare when credentials are absent."""
@@ -40,7 +44,6 @@ def _write_minimal_fx_official_csv(path: Path) -> None:
         "2025-12-31,USD,CNY,7.20000000,TEST_CSV,true,false\n",
         encoding="utf-8-sig",
     )
-
 
 def _grant_refresh_scope(tmp_path, monkeypatch, *, user_id: str, resource: str) -> None:
     sqlite_path = tmp_path / f"{user_id}-scope.db"
@@ -52,7 +55,6 @@ def _grant_refresh_scope(tmp_path, monkeypatch, *, user_id: str, resource: str) 
         action="refresh",
     )
 
-
 def _grant_read_scope(*, resource: str) -> None:
     UserScopeRepository(get_settings().postgres_dsn).grant_scope(
         user_id="*",
@@ -60,7 +62,6 @@ def _grant_read_scope(*, resource: str) -> None:
         resource=resource,
         action="read",
     )
-
 
 def test_source_preview_refresh_real_worker_e2e(tmp_path, monkeypatch):
     redis_server = _redis_server_path()
@@ -149,7 +150,6 @@ def test_source_preview_refresh_real_worker_e2e(tmp_path, monkeypatch):
         get_settings.cache_clear()
         _reset_source_preview_modules()
 
-
 def test_product_category_refresh_real_worker_e2e(tmp_path, monkeypatch):
     redis_server = _redis_server_path()
     if redis_server is None:
@@ -232,7 +232,6 @@ def test_product_category_refresh_real_worker_e2e(tmp_path, monkeypatch):
         _stop_process(redis_proc)
         get_settings.cache_clear()
         _reset_source_preview_modules()
-
 
 def test_balance_analysis_refresh_real_worker_e2e(tmp_path, monkeypatch):
     redis_server = _redis_server_path()
@@ -319,7 +318,6 @@ def test_balance_analysis_refresh_real_worker_e2e(tmp_path, monkeypatch):
         get_settings.cache_clear()
         _reset_source_preview_modules()
 
-
 def test_bond_analytics_refresh_real_worker_e2e(tmp_path, monkeypatch):
     redis_server = _redis_server_path()
     if redis_server is None:
@@ -398,7 +396,6 @@ def test_bond_analytics_refresh_real_worker_e2e(tmp_path, monkeypatch):
         get_settings.cache_clear()
         _reset_source_preview_modules()
 
-
 def _redis_server_path() -> str | None:
     if os.name == "nt":
         candidate = Path(r"C:\Program Files\Redis\redis-server.exe")
@@ -410,14 +407,12 @@ def _redis_server_path() -> str | None:
             return str(candidate)
     return None
 
-
 def _find_free_port() -> int:
     sock = socket.socket()
     sock.bind(("127.0.0.1", 0))
     port = int(sock.getsockname()[1])
     sock.close()
     return port
-
 
 def _start_redis_server(*, redis_server: str, port: int, work_dir: Path) -> subprocess.Popen:
     creationflags = _subprocess_creationflags()
@@ -440,7 +435,6 @@ def _start_redis_server(*, redis_server: str, port: int, work_dir: Path) -> subp
         stderr=subprocess.DEVNULL,
         creationflags=creationflags,
     )
-
 
 def _start_worker_subprocess(*, redis_port: int) -> subprocess.Popen:
     env = os.environ.copy()
@@ -465,7 +459,6 @@ def _start_worker_subprocess(*, redis_port: int) -> subprocess.Popen:
         creationflags=creationflags,
     )
 
-
 def _wait_for_port(port: int, timeout_seconds: float = 10.0) -> None:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
@@ -475,7 +468,6 @@ def _wait_for_port(port: int, timeout_seconds: float = 10.0) -> None:
                 return
         time.sleep(0.1)
     raise AssertionError(f"Timed out waiting for TCP port {port}")
-
 
 def _wait_for_completed_status(
     *,
@@ -497,19 +489,33 @@ def _wait_for_completed_status(
         time.sleep(0.2)
     raise AssertionError(f"Timed out waiting for completed source preview refresh: {latest_payload}")
 
-
 def _stop_process(proc: subprocess.Popen | None) -> None:
     if proc is None:
         return
     if proc.poll() is not None:
         return
+    if os.name == "nt":
+        # terminate() only reaches the direct child (the venv launcher and,
+        # via its kill-on-close job, the dramatiq main process). The dramatiq
+        # CLI's multiprocessing worker/fork children break away from that job
+        # and have no parent-death watchdog on Windows, so they survive as
+        # orphan "spawn_main" processes unless the whole tree is terminated.
+        subprocess.run(
+            ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+            capture_output=True,
+            check=False,
+        )
+        try:
+            proc.wait(timeout=5)
+            return
+        except subprocess.TimeoutExpired:
+            pass
     proc.terminate()
     try:
         proc.wait(timeout=5)
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.wait(timeout=5)
-
 
 def _reset_source_preview_modules() -> None:
     prefixes = (

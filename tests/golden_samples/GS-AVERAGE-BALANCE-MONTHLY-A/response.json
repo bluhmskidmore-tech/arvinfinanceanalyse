@@ -12,11 +12,13 @@
     "fallback_mode": "none",
     "scenario_flag": false,
     "filters_applied": {
-      "year": 2025
+      "year": 2025,
+      "accounting_basis_currency": "CNX"
     },
     "tables_used": [
       "fact_formal_zqtz_balance_daily",
-      "fact_formal_tyw_balance_daily"
+      "fact_formal_tyw_balance_daily",
+      "product_category_pnl_canonical_fact"
     ]
   },
   "result": {

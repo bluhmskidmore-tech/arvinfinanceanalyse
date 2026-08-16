@@ -1,17 +1,21 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { RouterProvider } from "react-router-dom";
 
+import { AppProviders } from "../app/providers";
 import { createApiClient, type ApiClient } from "../api/client";
+import { LedgerRequestError } from "../api/ledgerClient";
 import type {
   LedgerApiResponse,
   LedgerDashboardData,
   LedgerDatesData,
+  LedgerImportResponse,
   LedgerPositionsData,
   LedgerPositionsOptions,
 } from "../api/ledgerClient";
 import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
-import { renderWorkbenchApp } from "./renderWorkbenchApp";
+import { createWorkbenchMemoryRouter, renderWorkbenchApp } from "./renderWorkbenchApp";
 
 const metadata = {
   source_version: "sv_ledger_test",
@@ -140,6 +144,8 @@ function buildClient(
     datesError: Error;
     dashboard: (asOfDate: string) => LedgerApiResponse<LedgerDashboardData>;
     positions: (options: LedgerPositionsOptions) => Promise<LedgerApiResponse<LedgerPositionsData>>;
+    importLedger: (file: File) => Promise<LedgerImportResponse>;
+    importStatus: (runId: string, signal?: AbortSignal) => Promise<LedgerImportResponse>;
   }>,
 ): ApiClient {
   const base = createApiClient({ mode: "real" });
@@ -156,14 +162,42 @@ function buildClient(
         ? overrides.dashboard(asOfDate)
         : envelope<LedgerDashboardData>({
             as_of_date: "2026-03-17",
-            asset_face_amount: 3289.07,
-            liability_face_amount: 1231.77,
-            net_face_exposure: 2057.31,
-            alert_count: 0,
+            classification_status: "ready",
+            classification_rule_version: "rv_ledger_classification_v2",
+            currency_breakdown: [
+              { currency: "CNY", asset_face_amount: 3289.07, liability_face_amount: 1231.77, net_face_exposure: 2057.31, classification_total_row_count: 2, unclassified_row_count: 0, unclassified_face_amount: 0, classification_coverage_pct: 100 },
+              { currency: "USD", asset_face_amount: 2, liability_face_amount: null, net_face_exposure: 2, classification_total_row_count: 1, unclassified_row_count: 0, unclassified_face_amount: 0, classification_coverage_pct: 100 },
+            ],
           }),
     ),
     getLedgerPositions: vi.fn(async (options: LedgerPositionsOptions) =>
       overrides?.positions ? overrides.positions(options) : positionsPayload(options),
+    ),
+    importLedger: vi.fn(async (file: File): Promise<LedgerImportResponse> =>
+      overrides?.importLedger
+        ? overrides.importLedger(file)
+        : {
+            data: {
+              run_id: "ledger_import:test",
+              status: "queued",
+              file_name: file.name,
+            },
+            trace: { request_id: "req_import_test", run_id: "ledger_import:test" },
+          },
+    ),
+    getLedgerImportStatus: vi.fn(async (runId: string, signal?: AbortSignal): Promise<LedgerImportResponse> =>
+      overrides?.importStatus
+        ? overrides.importStatus(runId, signal)
+        : {
+            data: {
+              run_id: runId,
+              status: "succeeded",
+              file_name: "ledger.xlsx",
+              batch_id: 9,
+              finished_at: "2026-07-11T04:00:00Z",
+            },
+            trace: { request_id: "req_status_test", run_id: runId },
+          },
     ),
   };
 }
@@ -173,26 +207,85 @@ describe("LedgerDashboardPage", () => {
     await preloadWorkbenchRouteModules("bank-ledger-dashboard");
   }, 20_000);
 
-  it("renders ledger KPI units, trace metadata, and raw-yuan position rows", async () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("renders imported currency-bucket KPIs without an alert card", async () => {
     const client = buildClient();
     renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
 
     expect(await screen.findByTestId("ledger-dashboard-page")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByLabelText("ledger-dashboard-as-of-date")).toHaveValue("2026-03-17");
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 亿元");
-      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("1231.77 亿元");
-      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("2057.31 亿元");
-    });
-    expect(screen.getByTestId("ledger-dashboard-evidence")).toHaveTextContent("sv_ledger_test");
-    expect(screen.getByTestId("ledger-dashboard-evidence")).toHaveTextContent("requested_as_of_date");
+    expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent("position_snapshot");
+    expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent("历史回填已完成");
+    expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent("golden sample 待审批");
+    expect(screen.getByTestId("ledger-dashboard-governance-boundary")).not.toHaveTextContent("golden/backfill work remains pending");
+    // 外壳治理横幅收敛为中文摘要；英文治理记录原文默认折叠在「候选导入」卡内。
+    expect(screen.getByTestId("workbench-governance-banner")).toHaveTextContent("候选台账读模型，未获正式批准");
+    expect(screen.getByTestId("workbench-governance-banner")).not.toHaveTextContent("Candidate imported position_snapshot");
+    expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent("治理记录原文（英文）");
+    expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent("UNCLASSIFIED");
+    // 「无数据 否」直译修正为事件表述。
+    expect(screen.getByTestId("ledger-dashboard-evidence")).toHaveTextContent("无数据回退");
+    expect(screen.getByTestId("ledger-dashboard-evidence")).not.toHaveTextContent("无数据 否");
+    await waitFor(() => expect(screen.getByLabelText("ledger-dashboard-currency")).toHaveValue("CNY"));
+    expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 CNY/1亿");
+    expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("1231.77 CNY/1亿");
+    expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("2057.31 CNY/1亿");
+    expect(screen.queryByTestId("ledger-dashboard-kpi-alerts")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId(/ledger-dashboard-kpi-/)).toHaveLength(3);
     expect(await screen.findByText("asset-key")).toBeInTheDocument();
-    expect(screen.getByTestId("ledger-dashboard-positions-table")).toHaveTextContent("100,000,000.00");
   });
+  it("shows classification quality and drills into materialized UNCLASSIFIED rows", async () => {
+    const user = userEvent.setup();
+    const client = buildClient();
+    renderWorkbenchApp(["/bank-ledger-dashboard?as_of_date=2026-03-17"], { client });
 
+    const panel = await screen.findByTestId("ledger-dashboard-classification-quality");
+    await waitFor(() => expect(panel).toHaveTextContent("覆盖率 100.00%"));
+    expect(panel).toHaveTextContent("未分类 0 行");
+    await user.click(within(panel).getByRole("button", { name: "查看未分类明细" }));
+
+    await waitFor(() => expect(client.getLedgerPositions).toHaveBeenLastCalledWith(
+      expect.objectContaining({ direction: "UNCLASSIFIED", asOfDate: "2026-03-17" }),
+    ));
+    expect(screen.getByRole("button", { name: "未分类" })).toHaveClass("is-active");
+  });
+  it("fails closed and explains legacy classification batches", async () => {
+    const client = buildClient({
+      dashboard: (asOfDate) => envelope<LedgerDashboardData>({
+        as_of_date: asOfDate,
+        classification_status: "legacy_unassessed",
+        classification_rule_version: "rv_ledger_classification_v2",
+        currency_breakdown: [{
+          currency: "CNY",
+          asset_face_amount: null,
+          liability_face_amount: null,
+          net_face_exposure: null,
+          classification_total_row_count: 2,
+          unclassified_row_count: null,
+          unclassified_face_amount: null,
+          classification_coverage_pct: null,
+        }],
+      }),
+    });
+    renderWorkbenchApp(["/bank-ledger-dashboard?as_of_date=2026-03-17&direction=UNCLASSIFIED"], { client });
+
+    const panel = await screen.findByTestId("ledger-dashboard-classification-quality");
+    await waitFor(() => expect(panel).toHaveTextContent("旧规则批次不可评估"));
+    expect(within(panel).queryByRole("button", { name: "查看未分类明细" })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "全部" })).toHaveClass("is-active"));
+    expect(
+      vi.mocked(client.getLedgerPositions).mock.calls.some(
+        ([options]) => options.direction === "UNCLASSIFIED",
+      ),
+    ).toBe(false);
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(3);
+  });
   it("drills from the asset KPI into ASSET positions without changing date口径", async () => {
     const user = userEvent.setup();
     const client = buildClient();
@@ -206,6 +299,7 @@ describe("LedgerDashboardPage", () => {
     await waitFor(() => {
       expect(client.getLedgerPositions).toHaveBeenLastCalledWith({
         asOfDate: "2026-03-17",
+        currency: "CNY",
         direction: "ASSET",
         page: 1,
         pageSize: 20,
@@ -215,16 +309,83 @@ describe("LedgerDashboardPage", () => {
     expect(screen.queryByText("liability-key")).not.toBeInTheDocument();
   });
 
+  it("hydrates currency when the same route URL changes after mount", async () => {
+    const client = buildClient();
+    const router = createWorkbenchMemoryRouter([
+      "/bank-ledger-dashboard?as_of_date=2026-03-17&currency=CNY",
+    ]);
+    render(
+      <AppProviders client={client}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    await waitFor(() => expect(screen.getByLabelText("ledger-dashboard-currency")).toHaveValue("CNY"));
+    const observedSearches: string[] = [];
+    const unsubscribe = router.subscribe((state) => observedSearches.push(state.location.search));
+    await router.navigate("/bank-ledger-dashboard?as_of_date=2026-03-17&currency=USD");
+
+    await waitFor(() => expect(screen.getByLabelText("ledger-dashboard-currency")).toHaveValue("USD"));
+    expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("2.00 USD/1亿");
+    await waitFor(() => expect(client.getLedgerPositions).toHaveBeenLastCalledWith(expect.objectContaining({ currency: "USD" })));
+    await waitFor(() => expect(router.state.location.search).toContain("currency=USD"));
+    unsubscribe();
+    expect(observedSearches.filter((search) => search.includes("currency=CNY"))).toEqual([]);
+  });
+  it("writes UNCLASSIFIED to the URL and restores it through back and forward history", async () => {
+    const user = userEvent.setup();
+    const client = buildClient();
+    const router = createWorkbenchMemoryRouter([
+      "/bank-ledger-dashboard?as_of_date=2026-03-17&currency=CNY",
+    ]);
+    render(
+      <AppProviders client={client}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    const quality = await screen.findByTestId("ledger-dashboard-classification-quality");
+    await waitFor(() => expect(quality).toHaveTextContent("覆盖率 100.00%"));
+    await user.click(within(quality).getByRole("button", { name: "查看未分类明细" }));
+    await waitFor(() => expect(router.state.location.search).toContain("direction=UNCLASSIFIED"));
+    expect(screen.getByRole("button", { name: "未分类" })).toHaveClass("is-active");
+
+    await router.navigate(-1);
+    await waitFor(() => expect(router.state.location.search).not.toContain("direction="));
+    await waitFor(() => expect(screen.getByRole("button", { name: "全部" })).toHaveClass("is-active"));
+
+    await router.navigate(1);
+    await waitFor(() => expect(router.state.location.search).toContain("direction=UNCLASSIFIED"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "未分类" })).toHaveClass("is-active"));
+    expect(client.getLedgerPositions).toHaveBeenLastCalledWith(
+      expect.objectContaining({ direction: "UNCLASSIFIED", currency: "CNY" }),
+    );
+  });
+  it("switches currency and keeps positions and drill requests in the same bucket", async () => {
+    const user = userEvent.setup();
+    const client = buildClient();
+    renderWorkbenchApp(["/bank-ledger-dashboard?as_of_date=2026-03-17"], { client });
+
+    const currency = await screen.findByLabelText("ledger-dashboard-currency");
+    await waitFor(() => expect(currency).toHaveValue("CNY"));
+    await user.selectOptions(currency, "USD");
+    await waitFor(() => expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("2.00 USD/1亿"));
+    await waitFor(() => expect(client.getLedgerPositions).toHaveBeenLastCalledWith(expect.objectContaining({ currency: "USD" })));
+    await user.click(within(screen.getByTestId("ledger-dashboard-kpi-asset")).getByRole("button"));
+    await waitFor(() => expect(client.getLedgerPositions).toHaveBeenLastCalledWith(expect.objectContaining({ currency: "USD", direction: "ASSET" })));
+  });
   it("surfaces fallback dates instead of silently treating them as current data", async () => {
     const client = buildClient({
       dashboard: (asOfDate) =>
         envelope<LedgerDashboardData>(
           {
             as_of_date: "2026-03-17",
-            asset_face_amount: 3289.07,
-            liability_face_amount: 1231.77,
-            net_face_exposure: 2057.31,
-            alert_count: 0,
+            classification_status: "ready",
+            classification_rule_version: "rv_ledger_classification_v2",
+            currency_breakdown: [
+              { currency: "CNY", asset_face_amount: 3289.07, liability_face_amount: 1231.77, net_face_exposure: 2057.31, classification_total_row_count: 2, unclassified_row_count: 0, unclassified_face_amount: 0, classification_coverage_pct: 100 },
+              { currency: "USD", asset_face_amount: 2, liability_face_amount: null, net_face_exposure: 2, classification_total_row_count: 1, unclassified_row_count: 0, unclassified_face_amount: 0, classification_coverage_pct: 100 },
+            ],
           },
           {
             metadata: { stale: true, fallback: true },
@@ -256,10 +417,45 @@ describe("LedgerDashboardPage", () => {
     renderWorkbenchApp(["/bank-ledger-dashboard?as_of_date=2026-03-17"], { client });
 
     await waitFor(() => {
-      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 亿元");
+      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 CNY/1亿");
     });
     expect(screen.queryByText("加载失败")).not.toBeInTheDocument();
     expect(client.getLedgerDashboard).toHaveBeenCalledWith("2026-03-17");
+  });
+
+  it("explains dashboard loading failure with reason, scope, and a retry action", async () => {
+    const user = userEvent.setup();
+    let dashboardReads = 0;
+    const client = buildClient({
+      dashboard: () => {
+        dashboardReads += 1;
+        if (dashboardReads === 1) {
+          throw new Error("LEDGER_READ_FAILED: 后端服务不可用(502)");
+        }
+        return envelope<LedgerDashboardData>({
+          as_of_date: "2026-03-17",
+          classification_status: "ready",
+          classification_rule_version: "rv_ledger_classification_v2",
+          currency_breakdown: [
+            { currency: "CNY", asset_face_amount: 3289.07, liability_face_amount: 1231.77, net_face_exposure: 2057.31, classification_total_row_count: 2, unclassified_row_count: 0, unclassified_face_amount: 0, classification_coverage_pct: 100 },
+          ],
+        });
+      },
+    });
+
+    renderWorkbenchApp(["/bank-ledger-dashboard?as_of_date=2026-03-17"], { client });
+
+    const status = await screen.findByTestId("ledger-dashboard-status");
+    expect(status).toHaveTextContent("加载失败：LEDGER_READ_FAILED: 后端服务不可用(502)");
+    expect(status).toHaveTextContent("影响范围：KPI、分类质量与持仓明细暂不可用。");
+
+    await user.click(within(status).getByRole("button", { name: "重试" }));
+
+    await waitFor(() => expect(client.getLedgerDashboard).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 CNY/1亿"),
+    );
+    expect(screen.queryByTestId("ledger-dashboard-status")).not.toBeInTheDocument();
   });
 
   it("surfaces positions loading failure independently from dashboard KPIs", async () => {
@@ -272,7 +468,7 @@ describe("LedgerDashboardPage", () => {
     renderWorkbenchApp(["/bank-ledger-dashboard?as_of_date=2026-03-17"], { client });
 
     await waitFor(() => {
-      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 亿元");
+      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 CNY/1亿");
     });
     expect(await screen.findByTestId("ledger-dashboard-positions-status")).toHaveTextContent("明细加载失败");
   });
@@ -302,7 +498,7 @@ describe("LedgerDashboardPage", () => {
       "明细已回退到 2026-03-17",
     );
     expect(screen.getByTestId("ledger-dashboard-evidence")).toHaveTextContent("req_positions_fallback");
-    expect(screen.getByTestId("ledger-dashboard-evidence")).toHaveTextContent("positions trace");
+    expect(screen.getByTestId("ledger-dashboard-evidence")).toHaveTextContent("持仓溯源");
   });
 
   it("surfaces positions no-data state from the positions endpoint", async () => {
@@ -373,7 +569,416 @@ describe("LedgerDashboardPage", () => {
     renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
 
     expect(await screen.findByTestId("ledger-dashboard-status")).toHaveTextContent("暂无数据");
-    expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("--");
+    expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("—");
+    const quality = screen.getByTestId("ledger-dashboard-classification-quality");
+    expect(quality).toHaveTextContent("暂无可评估分类质量");
+    expect(within(quality).queryByRole("button", { name: "查看未分类明细" })).not.toBeInTheDocument();
     expect(client.getLedgerDashboard).not.toHaveBeenCalled();
+  });
+
+  it("drops cached UNCLASSIFIED detail when refreshed classification is not ready", async () => {
+    const user = userEvent.setup();
+    let dashboardReads = 0;
+    const client = buildClient({
+      dashboard: () => {
+        dashboardReads += 1;
+        if (dashboardReads === 1) {
+          return envelope<LedgerDashboardData>({
+            as_of_date: "2026-03-17",
+            classification_status: "ready",
+            classification_rule_version: "rv_ledger_classification_v2",
+            currency_breakdown: [{
+              currency: "CNY",
+              asset_face_amount: 1,
+              liability_face_amount: null,
+              net_face_exposure: 1,
+              classification_total_row_count: 1,
+              unclassified_row_count: 1,
+              unclassified_face_amount: 1,
+              classification_coverage_pct: 0,
+            }],
+          });
+        }
+        return envelope<LedgerDashboardData>({
+          as_of_date: "2026-03-17",
+          classification_status: "legacy_unassessed",
+          classification_rule_version: "rv_ledger_classification_v2",
+          currency_breakdown: [{
+            currency: "CNY",
+            asset_face_amount: null,
+            liability_face_amount: null,
+            net_face_exposure: null,
+            classification_total_row_count: 1,
+            unclassified_row_count: null,
+            unclassified_face_amount: null,
+            classification_coverage_pct: null,
+          }],
+        });
+      },
+      positions: async (options) => {
+        const response = positionsPayload({ ...options, direction: undefined });
+        if (options.direction !== "UNCLASSIFIED") {
+          return { ...response, data: { ...response.data, items: [], total: 0 } };
+        }
+        const cached = {
+          ...response.data.items[0],
+          position_key: "cached-u-key",
+          direction: "UNCLASSIFIED" as const,
+          trace: { position_key: "cached-u-key", batch_id: 7, row_no: 1 },
+        };
+        return { ...response, data: { ...response.data, items: [cached], total: 1 } };
+      },
+      importLedger: async (file) => ({
+        data: { run_id: "ledger_import:invalidate-u", status: "queued", file_name: file.name },
+        trace: { request_id: "req_invalidate_u", run_id: "ledger_import:invalidate-u" },
+      }),
+      importStatus: async (runId) => ({
+        data: { run_id: runId, status: "succeeded", file_name: "ledger.csv", batch_id: 8 },
+        trace: { request_id: "req_invalid_materialization", run_id: runId },
+      }),
+    });
+    renderWorkbenchApp([
+      "/bank-ledger-dashboard?as_of_date=2026-03-17&currency=CNY&direction=UNCLASSIFIED",
+    ], { client });
+
+    expect(await screen.findByText("cached-u-key")).toBeInTheDocument();
+    const file = new File(["ledger"], "ledger.csv", { type: "text/csv" });
+    await user.upload(screen.getByLabelText("台账文件"), file);
+    await user.click(screen.getByRole("button", { name: "开始导入" }));
+
+    const quality = await screen.findByTestId("ledger-dashboard-classification-quality");
+    await waitFor(() => expect(quality).toHaveTextContent("旧规则批次不可评估"));
+    expect(within(quality).queryByRole("button", { name: "查看未分类明细" })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("cached-u-key")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "全部" })).toHaveClass("is-active"));
+    expect(
+      vi.mocked(client.getLedgerPositions).mock.calls.filter(
+        ([options]) => options.direction === "UNCLASSIFIED",
+      ),
+    ).toHaveLength(2);
+  });
+  it("uploads a ledger file and polls running through succeeded", async () => {
+    const user = userEvent.setup();
+    const statusResponses: LedgerImportResponse[] = [
+      {
+        data: {
+          run_id: "ledger_import:progress",
+          status: "running",
+          file_name: "ledger.xlsx",
+          started_at: "2026-07-11T04:00:01Z",
+        },
+        trace: { request_id: "req_running", run_id: "ledger_import:progress" },
+      },
+      {
+        data: {
+          run_id: "ledger_import:progress",
+          status: "succeeded",
+          file_name: "ledger.xlsx",
+          batch_id: 12,
+          finished_at: "2026-07-11T04:00:02Z",
+        },
+        trace: { request_id: "req_succeeded", run_id: "ledger_import:progress" },
+      },
+    ];
+    let dashboardReads = 0;
+    let positionReads = 0;
+    const client = buildClient({
+      dashboard: () => {
+        dashboardReads += 1;
+        if (dashboardReads === 1) {
+          return envelope<LedgerDashboardData>({
+            as_of_date: "2026-03-17",
+            classification_status: "ready",
+            classification_rule_version: "rv_ledger_classification_v2",
+            currency_breakdown: [
+              { currency: "CNY", asset_face_amount: 3289.07, liability_face_amount: 1231.77, net_face_exposure: 2057.31, classification_total_row_count: 2, unclassified_row_count: 0, unclassified_face_amount: 0, classification_coverage_pct: 100 },
+            ],
+          });
+        }
+        return envelope<LedgerDashboardData>(
+          {
+            as_of_date: "2026-03-17",
+            classification_status: "ready",
+            classification_rule_version: "rv_ledger_classification_v2",
+            currency_breakdown: [
+              { currency: "CNY", asset_face_amount: 4000, liability_face_amount: 1000, net_face_exposure: 3000, classification_total_row_count: 2, unclassified_row_count: 0, unclassified_face_amount: 0, classification_coverage_pct: 100 },
+            ],
+          },
+          { metadata: { batch_id: 12 }, trace: { batch_id: 12 } },
+        );
+      },
+      positions: async (options) => {
+        positionReads += 1;
+        const response = positionsPayload(options);
+        if (positionReads === 1) return response;
+        const imported = {
+          ...response.data.items[0],
+          position_key: "imported-batch-12-row",
+          batch_id: 12,
+          bond_code: "IMPORTED-012",
+          face_amount: 250000000,
+          trace: { position_key: "imported-batch-12-row", batch_id: 12, row_no: 1 },
+        };
+        return {
+          ...response,
+          data: { ...response.data, items: [imported], total: 1 },
+          metadata: { ...response.metadata, batch_id: 12 },
+          trace: { ...response.trace, batch_id: 12 },
+        };
+      },
+      importLedger: async (file) => ({
+        data: { run_id: "ledger_import:progress", status: "queued", file_name: file.name },
+        trace: { request_id: "req_queued", run_id: "ledger_import:progress" },
+      }),
+      importStatus: async () => statusResponses.shift() ?? statusResponses[0],
+    });
+    vi.mocked(client.getLedgerDates)
+      .mockResolvedValueOnce(envelope<LedgerDatesData>({ items: ["2026-03-17"] }))
+      .mockResolvedValueOnce(
+        envelope<LedgerDatesData>(
+          { items: ["2026-03-18", "2026-03-17"] },
+          { metadata: { batch_id: 12 }, trace: { batch_id: 12 } },
+        ),
+      );
+    renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
+    const file = new File(["ledger"], "ledger.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+
+    await user.upload(await screen.findByLabelText("台账文件"), file);
+    await user.click(screen.getByRole("button", { name: "开始导入" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("正在校验并导入");
+    expect(screen.getByRole("button", { name: "正在导入" })).toBeDisabled();
+    expect(await screen.findByText("导入完成", {}, { timeout: 3_000 })).toBeInTheDocument();
+    expect(screen.getByTestId("ledger-import-status")).toHaveTextContent("batch_id 12");
+    expect(client.getLedgerDates).toHaveBeenCalledTimes(2);
+    expect(client.getLedgerDashboard).toHaveBeenCalledTimes(2);
+    expect(client.getLedgerPositions).toHaveBeenCalledTimes(2);
+    expect(await screen.findByText("imported-batch-12-row")).toBeInTheDocument();
+    expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("4000.00 CNY/1亿");
+    expect(screen.getByTestId("ledger-dashboard-evidence")).toHaveTextContent("12");
+    expect(screen.getByLabelText("ledger-dashboard-as-of-date")).toContainHTML("2026-03-18");
+  });
+
+  it("renders duplicate as a successful terminal outcome", async () => {
+    const user = userEvent.setup();
+    const client = buildClient({
+      importStatus: async (runId) => ({
+        data: {
+          run_id: runId,
+          status: "duplicate",
+          file_name: "ledger.csv",
+          duplicate_of_batch_id: 7,
+          finished_at: "2026-07-11T04:00:02Z",
+        },
+        trace: { request_id: "req_duplicate", run_id: runId },
+      }),
+    });
+    renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
+
+    await user.upload(
+      await screen.findByLabelText("台账文件"),
+      new File(["ledger"], "ledger.csv", { type: "text/csv" }),
+    );
+    await user.click(screen.getByRole("button", { name: "开始导入" }));
+
+    expect(await screen.findByText("文件内容已存在，未新增批次")).toBeInTheDocument();
+    expect(screen.getByTestId("ledger-import-status")).toHaveTextContent("duplicate_of_batch_id 7");
+    expect(screen.queryByText("导入失败")).not.toBeInTheDocument();
+  });
+
+  it("restores a pending run from session storage without re-uploading", async () => {
+    window.sessionStorage.setItem(
+      "moss.ledgerImport.pendingRun.v1",
+      JSON.stringify({ run_id: "ledger_import:restored", mode: "real", file_name: "restored.xlsx" }),
+    );
+    const client = buildClient();
+
+    renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
+
+    expect(await screen.findByText("导入完成")).toBeInTheDocument();
+    expect(client.getLedgerImportStatus).toHaveBeenCalledWith(
+      "ledger_import:restored",
+      expect.any(AbortSignal),
+    );
+    expect(client.importLedger).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem("moss.ledgerImport.pendingRun.v1")).toBeNull();
+  });
+
+  it("keeps polling errors separate from a confirmed import failure", async () => {
+    window.sessionStorage.setItem(
+      "moss.ledgerImport.pendingRun.v1",
+      JSON.stringify({ run_id: "ledger_import:unknown", mode: "real", file_name: "unknown.xlsx" }),
+    );
+    const client = buildClient({
+      importStatus: async () => {
+        throw new Error("network unavailable");
+      },
+    });
+
+    renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("当前无法确认导入状态");
+    expect(screen.queryByText("导入失败")).not.toBeInTheDocument();
+    expect(window.sessionStorage.getItem("moss.ledgerImport.pendingRun.v1")).toContain(
+      "ledger_import:unknown",
+    );
+  });
+
+  it("shows a confirmed failure with safe facts and permits resubmission", async () => {
+    const user = userEvent.setup();
+    const client = buildClient({
+      importStatus: async (runId) => ({
+        data: {
+          run_id: runId,
+          status: "failed",
+          file_name: "invalid.xlsx",
+          error_category: "invalid_file",
+          error_message: "Ledger file validation failed.",
+          finished_at: "2026-07-11T04:00:02Z",
+        },
+        trace: { request_id: "req_failed", run_id: runId },
+      }),
+    });
+    renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
+    await user.upload(
+      await screen.findByLabelText("台账文件"),
+      new File(["invalid"], "invalid.xlsx", {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "开始导入" }));
+
+    expect(await screen.findByText("导入失败")).toBeInTheDocument();
+    expect(screen.getByTestId("ledger-import-status")).toHaveTextContent("invalid_file");
+    expect(screen.getByTestId("ledger-import-status")).toHaveTextContent(
+      "Ledger file validation failed.",
+    );
+    expect(screen.getByLabelText("台账文件")).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "开始导入" }));
+    expect(client.importLedger).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a forbidden status run recoverable and retries on demand", async () => {
+    const user = userEvent.setup();
+    window.sessionStorage.setItem(
+      "moss.ledgerImport.pendingRun.v1",
+      JSON.stringify({ run_id: "ledger_import:forbidden", mode: "real", file_name: "forbidden.xlsx" }),
+    );
+    let attempts = 0;
+    const client = buildClient({
+      importStatus: async (runId) => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new LedgerRequestError(
+            "Ledger read access denied.",
+            "LEDGER_READ_FORBIDDEN",
+            403,
+            false,
+          );
+        }
+        return {
+          data: {
+            run_id: runId,
+            status: "succeeded",
+            file_name: "forbidden.xlsx",
+            batch_id: 11,
+          },
+          trace: { request_id: "req_recovered", run_id: runId },
+        };
+      },
+    });
+    renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("无权查询导入状态");
+    expect(window.sessionStorage.getItem("moss.ledgerImport.pendingRun.v1")).toContain(
+      "ledger_import:forbidden",
+    );
+    await user.click(screen.getByRole("button", { name: "继续查询" }));
+
+    expect(await screen.findByText("导入完成")).toBeInTheDocument();
+    expect(client.getLedgerImportStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears a stale restored run when the backend returns not found", async () => {
+    window.sessionStorage.setItem(
+      "moss.ledgerImport.pendingRun.v1",
+      JSON.stringify({ run_id: "ledger_import:stale", mode: "real", file_name: "stale.xlsx" }),
+    );
+    const client = buildClient({
+      importStatus: async () => {
+        throw new LedgerRequestError(
+          "Ledger import run was not found.",
+          "LEDGER_IMPORT_RUN_NOT_FOUND",
+          404,
+          false,
+        );
+      },
+    });
+
+    renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("导入任务记录不存在");
+    expect(screen.getByLabelText("台账文件")).toBeEnabled();
+    expect(screen.getByRole("button", { name: "开始导入" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "继续查询" })).not.toBeInTheDocument();
+    expect(window.sessionStorage.getItem("moss.ledgerImport.pendingRun.v1")).toBeNull();
+  });
+
+  it("aborts an in-flight status request when the page unmounts", async () => {
+    window.sessionStorage.setItem(
+      "moss.ledgerImport.pendingRun.v1",
+      JSON.stringify({ run_id: "ledger_import:inflight", mode: "real", file_name: "inflight.xlsx" }),
+    );
+    let observedSignal: AbortSignal | undefined;
+    let requestRejected = false;
+    const client = buildClient({
+      importStatus: async (_runId, signal) => {
+        observedSignal = signal;
+        return new Promise<LedgerImportResponse>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => {
+            requestRejected = true;
+            reject(new DOMException("Aborted", "AbortError"));
+          });
+        });
+      },
+    });
+
+    const view = renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
+    await waitFor(() => expect(observedSignal).toBeDefined());
+
+    view.unmount();
+
+    expect(observedSignal?.aborted).toBe(true);
+    await waitFor(() => expect(requestRejected).toBe(true));
+  });
+
+  it("times out and aborts a status request that never settles", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    window.sessionStorage.setItem(
+      "moss.ledgerImport.pendingRun.v1",
+      JSON.stringify({ run_id: "ledger_import:timeout", mode: "real", file_name: "timeout.xlsx" }),
+    );
+    let observedSignal: AbortSignal | undefined;
+    const client = buildClient({
+      importStatus: async (_runId, signal) => {
+        observedSignal = signal;
+        return new Promise<LedgerImportResponse>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+        });
+      },
+    });
+
+    renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
+    await waitFor(() => expect(observedSignal).toBeDefined());
+    await vi.advanceTimersByTimeAsync(10_001);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("导入状态请求超时");
+    expect(observedSignal?.aborted).toBe(true);
+    expect(window.sessionStorage.getItem("moss.ledgerImport.pendingRun.v1")).toContain(
+      "ledger_import:timeout",
+    );
   });
 });

@@ -255,6 +255,43 @@ describe("CreditSpreadView", () => {
     expect(screen.getByText("信用集中度")).toBeInTheDocument();
   });
 
+  // 缺失 ≠ 0（2026-08 假零修复）：affected_bonds 后端缺失时 client 透传 null，表格渲染 —，
+  // 不得改写成「影响 0 只债券」。
+  it("renders EM_DASH for missing affected_bonds instead of a fake zero", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsCreditSpreadMigration: vi.fn(async () => ({
+        result_meta: createResultMeta(),
+        result: createCreditSpreadResult({
+          migration_scenarios: [
+            {
+              scenario_name: "mig_missing_count",
+              from_rating: "AA",
+              to_rating: "A",
+              affected_bonds: null,
+              affected_market_value: yuan(200_000_000),
+              pnl_impact: yuan(-500_000),
+            },
+          ],
+        }),
+      })),
+      getCreditSpreadAnalysisDetail: vi.fn(async () => ({
+        result_meta: createResultMeta({
+          result_kind: "credit_spread_analysis.detail",
+        }),
+        result: createCreditSpreadDetailResult(),
+      })),
+    };
+
+    renderWithProviders(client, <CreditSpreadView reportDate="2026-03-31" />);
+
+    expect(await screen.findByText("mig_missing_count")).toBeInTheDocument();
+    const scenarioRow = screen.getByText("mig_missing_count").closest("tr");
+    expect(scenarioRow).not.toBeNull();
+    expect(within(scenarioRow as HTMLElement).getByText("—")).toBeInTheDocument();
+    expect(within(scenarioRow as HTMLElement).queryByText("0")).not.toBeInTheDocument();
+  });
+
   it("surfaces stale and fallback metadata from the credit spread detail envelope", async () => {
     const client = {
       ...createApiClient({ mode: "mock" }),

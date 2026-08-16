@@ -20,16 +20,30 @@
 
 ## AGENTS 作用域
 
-当前仓库中能直接影响阅读和改动方式的 `AGENTS.md` 有四层：
+仓库里受版本控制的代理规则文件共 **9 份**（5 份 `AGENTS.md` + 4 份 `CLAUDE.md`，2026-08-13 以
+`git ls-files` 核对）。`AGENTS.md` 是项目权威策略，同目录的 `CLAUDE.md` 是补充的工作流指引。
 
 | 作用域 | 文件 | 作用 |
 | --- | --- | --- |
-| repo 全局 | `AGENTS.md` | 定义当前任务优先级、scope discipline、页面规则、验证要求。 |
-| backend/app 子树 | `backend/app/AGENTS.md` | 固定后端层级方向，强调 formal compute 与写入边界。 |
-| tests 子树 | `tests/AGENTS.md` | 定义测试边界与默认可验证范围。 |
+| repo 全局 | `AGENTS.md` | 任务优先级、scope discipline、业务证据要求、GitNexus 与验证协议。 |
+| repo 全局 | `CLAUDE.md` | Claude Code 工作流补充；显式声明不覆盖 `AGENTS.md`。 |
+| `frontend/` 子树 | `frontend/AGENTS.md` | **全仓最长、最具操作性的一份**：Tier 1/2/3 改动分级、`src/pageModel` 原语强制、`EM_DASH` 占位符禁令、深色路由着色约束、`debt:audit` 触发条件。 |
+| `frontend/` 子树 | `frontend/CLAUDE.md` | 前端工作流补充。 |
+| `backend/app/` 子树 | `backend/app/AGENTS.md` | 固定后端层级方向，强调 formal compute 与写入边界。 |
+| `backend/` 子树 | `backend/CLAUDE.md` | 后端导航、边界与验证命令（含解释器纪律）。 |
+| `tests/` 子树 | `tests/AGENTS.md` | 测试边界、marker 注册与默认可验证范围。 |
+| `tests/` 子树 | `tests/CLAUDE.md` | 测试选择与验证命令。 |
 | docs bundle 子树 | `docs/codex_prd_merged_bundle/AGENTS.md` | 仅约束 bundle 快照目录，不是运行时代码约束。 |
 
-如果你修改的是根目录、`docs/`、`frontend/`、`scripts/` 等位置，主要受顶层 `AGENTS.md` 约束；只有改到 `backend/app/` 或 `tests/` 子树时，才需要额外叠加对应局部规则。
+**改前端必须先读 `frontend/AGENTS.md`**——根 `AGENTS.md` 对此是硬性要求（「Frontend work must
+follow `frontend/AGENTS.md`」），不是可选参考。同理，改 `backend/app/`、`tests/` 时叠加对应子树规则。
+只有改根目录、`docs/`、`scripts/`、`config/` 这类没有局部规则文件的位置，才是仅受顶层 `AGENTS.md` 约束。
+
+复核当前列表：
+
+```powershell
+git ls-files | Select-String -Pattern '(^|/)(AGENTS|CLAUDE)\.md$'
+```
 
 ## 分层结构
 
@@ -96,11 +110,14 @@ F:\MOSS-V3
 |- docs/
 |- sample_data/
 |- scripts/
-|- sql/
 |- tests/
 |- docker-compose.yml
+|- pytest.ini
 `- README.md
 ```
+
+（早先版本在这棵树里列过一个根级 `sql/` 目录，仓库中并不存在；DuckDB schema 定义在
+`backend/app/schema_registry/duckdb/`。）
 
 ## 后端地图
 
@@ -108,29 +125,25 @@ F:\MOSS-V3
 
 ### `backend/app/api/routes/`
 
-这里按领域拆分 FastAPI 路由文件，当前可见的路由模块包括：
+这里按领域拆分 FastAPI 路由文件，当前共 **35 个模块**（不含 `__init__.py`，2026-08-13 核对）：
 
-- `balance_analysis.py`
-- `bond_analytics.py`
-- `bond_dashboard.py`
-- `cashflow_projection.py`
-- `credit_spread_analysis.py`
-- `cube_query.py`
-- `executive.py`
-- `external_data.py`
-- `kpi.py`
-- `ledger_pnl.py`
-- `liability_analytics.py`
-- `market_data_ncd_proxy.py`
-- `pnl.py`
-- `pnl_attribution.py`
-- `positions.py`
-- `product_category_pnl.py`
-- `research_calendar.py`
-- `risk_tensor.py`
-- `source_preview.py`
+| 领域 | 模块 |
+| --- | --- |
+| 余额 / 资产负债 | `balance_analysis.py`、`accounting_asset_movement.py`、`adb_analysis.py`、`liability_analytics.py`、`cashflow_projection.py` |
+| 损益 / 归因 | `pnl.py`、`pnl_attribution.py`、`product_category_pnl.py`、`campisi_attribution.py`、`ledger.py`、`ledger_pnl.py`、`qdb_gl_monthly_analysis.py` |
+| 债券 / 风险 | `bond_analytics.py`、`bond_dashboard.py`、`credit_spread_analysis.py`、`risk_tensor.py`、`positions.py` |
+| 宏观 / 市场 | `macro_bond_linkage.py`、`macro_etf_strategy.py`、`macro_toolkit.py`、`macro_vendor.py`、`market_data_livermore.py`、`market_data_ncd_proxy.py`、`strategy_reports.py`、`choice_news.py`、`research_calendar.py` |
+| 高管 / 看板 / KPI | `executive.py`、`dashboard.py`、`kpi.py` |
+| Agent | `agent.py`、`agent_workspace.py` |
+| 平台 / 数据面 | `health.py`、`cube_query.py`、`external_data.py`、`source_preview.py` |
 
-存在这些路由文件，不代表它们都在当前 repo-wide 主线边界内；是否可动、可放量、可视为正式面，仍要回到顶层边界文档判断。
+复核：
+
+```powershell
+Get-ChildItem backend/app/api/routes -Filter *.py | Where-Object { $_.Name -ne '__init__.py' } | Measure-Object
+```
+
+存在这些路由文件，不代表它们都在当前 repo-wide 主线边界内；是否可动、可放量、可视为正式面，仍要回到顶层边界文档判断。尤其注意 `agent.*`、`source_preview`、`macro_*`、`choice_news`、`market_data_*`、`qdb_gl_monthly_analysis` 属于当前默认排除面。
 
 ### `backend/app/core_finance/`
 
@@ -184,45 +197,40 @@ F:\MOSS-V3
 
 ### `frontend/src/features/`
 
-这里是最核心的页面级目录，按业务域拆分，当前包含：
+这里是最核心的页面级目录，按业务域拆分，当前共 **33 个**（2026-08-13 核对）：
 
-- `average-balance`
-- `balance-analysis`
-- `bond-analytics`
-- `bond-dashboard`
-- `cashflow-projection`
-- `cross-asset`
-- `cube-query`
-- `executive-dashboard`
-- `ledger-pnl`
-- `liability-analytics`
-- `market-data`
-- `pnl`
-- `pnl-attribution`
-- `positions`
-- `product-category-pnl`
-- `risk-overview`
-- `risk-tensor`
-- `source-preview`
-- `workbench`
+`agent`、`average-balance`、`balance-analysis`、`balance-movement-analysis`、`bond-analytics`、
+`bond-dashboard`、`bond-trading-desk`、`cashflow-projection`、`concentration-monitor`、`cross-asset`、
+`cube-query`、`decision-items`、`executive-dashboard`、`kpi-performance`、`ledger-dashboard`、
+`ledger-pnl`、`liability-analytics`、`macro-toolkit`、`market-data`、`market-finance`、`news-events`、
+`platform-config`、`pnl`、`pnl-attribution`、`pnl-business-insights`、`positions`、
+`product-category-pnl`、`prototype`、`risk-tensor`、`source-preview`、`stock-analysis`、
+`team-performance`、`workbench`
 
-其中 `routes.tsx` 已验证存在的工作台路径包括：
+复核：
 
-- `/balance-analysis`
-- `/liability-analytics`
-- `/pnl`
-- `/pnl-bridge`
-- `/pnl-attribution`
-- `/product-category-pnl`
-- `/risk-tensor`
-- `/market-data`
-- `/bond-dashboard`
-- `/bond-analysis`
-- `/positions`
-- `/average-balance`
-- `/ledger-pnl`
-- `/cube-query`
-- `/cross-asset`
+```powershell
+Get-ChildItem frontend/src/features -Directory | Measure-Object
+```
+
+注意 **没有** `risk-overview` 特性目录（早先版本误列过）。`/risk-overview` 确实是一条注册路由，
+但它没有独立 feature 目录，落到 `WorkbenchPlaceholderPage`。改动最密集的 `stock-analysis` 和前后端
+`agent` 也曾整体缺失于本清单。
+
+### 工作台路由
+
+`frontend/src/router/routes.tsx` 只显式声明少量重定向和特例；**绝大多数工作台路由是从
+`frontend/src/mocks/navigation.ts` 的 `primaryWorkbenchNavigation` 生成的**（`buildWorkbenchChildRoutes()`）。
+要看当前有哪些路径，读那个导航常量，不要靠本文抄一份会漂移的路径表：
+
+```powershell
+Select-String -Path frontend/src/mocks/navigation.ts -Pattern '^\s*path:\s*"/'
+```
+
+`routes.tsx` 里另外显式声明的是：`/pnl-formal-v1`、`/cross-asset-drivers`、`/dashboard`、
+`/product-category-pnl/audit`、`/prototype/equity-cockpit`（受开关控制），以及
+`macro-analysis`、`adb`、`liabilities`、`bonds`、`bond-analytics-advanced`、`market`、`assets`
+这几条历史路径的重定向。
 
 ### 共享前端层
 

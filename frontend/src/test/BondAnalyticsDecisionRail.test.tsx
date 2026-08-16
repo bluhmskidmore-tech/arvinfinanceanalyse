@@ -75,7 +75,10 @@ describe("BondAnalyticsDecisionRail", () => {
     expect(screen.queryByText("观察三隐藏")).not.toBeInTheDocument();
     expect(screen.queryByText("不应渲染")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "打开当前下钻" }));
+    expect(screen.getByTestId("bond-analysis-decision-rail")).toBeInTheDocument();
+    expect(screen.getByTestId("bond-analysis-decision-trust")).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("bond-analysis-decision-next-action"));
     expect(onOpenModuleDetail).toHaveBeenCalledTimes(1);
     expect(onOpenModuleDetail).toHaveBeenCalledWith("action-attribution");
   });

@@ -5,13 +5,21 @@ import type {
   PnlByBusinessMonthlyPayload,
   PnlByBusinessYtdItem,
   ProductCategoryPnlRow,
+  TeamPerformanceAssessmentIndicator,
+  TeamPerformanceAssessmentWorkbookPayload,
 } from "../../api/contracts";
+import { buildMockTeamPerformanceAssessmentWorkbookPayload } from "../../api/teamPerformanceMockClient";
+import { EM_DASH } from "../../pageModel";
 import {
   type AssessmentIndicator2025,
   type CenterPnlMapping2025,
   Q1_CENTER_CALIBER_RULES,
   buildTeamPerformanceQ1CaliberModel,
   buildTeamPerformanceViewModel,
+  formatRatePct,
+  formatScore,
+  formatWanFromYuan,
+  formatYiFromYuan,
 } from "./teamPerformancePageModel";
 
 function assessmentIndicator(
@@ -43,6 +51,68 @@ function assessmentIndicator(
     score: partial.score ?? null,
     sourceRow: partial.sourceRow,
     blockLabel: partial.blockLabel,
+  };
+}
+
+/** 模拟后端 `_build_center_summaries`：把 camelCase 底稿行转成后端下发的 workbook payload。 */
+function workbookFromIndicators(
+  indicators: AssessmentIndicator2025[],
+  mappings: CenterPnlMapping2025[] = [],
+): TeamPerformanceAssessmentWorkbookPayload {
+  const toBackendIndicator = (
+    item: AssessmentIndicator2025,
+  ): TeamPerformanceAssessmentIndicator => ({
+    center_id: item.centerId,
+    center_name: item.centerName,
+    indicator_category: item.indicatorCategory,
+    metric: item.metric,
+    target: item.target,
+    weight: item.weight,
+    scoring_text: item.scoringText,
+    actual: item.actual,
+    progress: item.progress,
+    score: item.score,
+    source_row: item.sourceRow,
+    block_label: item.blockLabel ?? null,
+  });
+  const centerIds: string[] = [];
+  for (const item of indicators) {
+    if (!centerIds.includes(item.centerId)) {
+      centerIds.push(item.centerId);
+    }
+  }
+  const centers = centerIds.map((centerId) => {
+    const centerIndicators = indicators.filter((item) => item.centerId === centerId);
+    const weightTotal = centerIndicators.reduce((sum, item) => sum + item.weight, 0);
+    const workbookScore = centerIndicators.reduce((sum, item) => sum + (item.score ?? 0), 0);
+    return {
+      center_id: centerId,
+      center_name: centerIndicators[0].centerName,
+      weight_total: weightTotal,
+      workbook_score: workbookScore,
+      has_pending_score: centerIndicators.some((item) => item.score === null),
+      score_rate: weightTotal > 0 ? workbookScore / weightTotal : null,
+      indicators: centerIndicators.map(toBackendIndicator),
+    };
+  });
+  return {
+    assessment_year: 2025,
+    caliber_label: "静态底稿·非正式口径（后端下发）",
+    caliber_note: "测试用底稿。",
+    source_label: "测试用底稿。",
+    centers,
+    mappings: mappings.map((mapping) => ({
+      center_id: mapping.centerId,
+      endpoint: mapping.endpoint,
+      row_id: mapping.rowId,
+      pnl_field: mapping.pnlField ?? null,
+      scale_field: mapping.scaleField ?? null,
+      confidence: mapping.confidence,
+      note: mapping.note ?? null,
+      additive: mapping.additive ?? null,
+    })),
+    total_workbook_score: centers.reduce((sum, center) => sum + center.workbook_score, 0),
+    total_center_count: centers.length,
   };
 }
 
@@ -104,6 +174,7 @@ function byBusinessMonthlyPayload(items: PnlByBusinessMonthlyItem[]): PnlByBusin
     year: 2026,
     as_of_date: "2026-03-31",
     source_tables: ["fact_formal_pnl_fi", "fact_formal_zqtz_balance_daily"],
+    management_change: null,
     months: [
       {
         month_key: "2026-03",
@@ -162,7 +233,7 @@ function productRow(
 }
 
 describe("teamPerformancePageModel", () => {
-  it("sums workbook scores while preserving pending-score flags", () => {
+  it("consumes backend-aggregated workbook scores while preserving pending-score flags", () => {
     const indicators: AssessmentIndicator2025[] = [
       assessmentIndicator({
         centerId: "demo-center",
@@ -192,7 +263,9 @@ describe("teamPerformancePageModel", () => {
       }),
     ];
 
-    const viewModel = buildTeamPerformanceViewModel({ indicators });
+    const viewModel = buildTeamPerformanceViewModel({
+      workbook: workbookFromIndicators(indicators),
+    });
 
     expect(viewModel.totalWorkbookScore).toBe(9);
     expect(viewModel.centers).toHaveLength(1);
@@ -200,15 +273,26 @@ describe("teamPerformancePageModel", () => {
       weightTotal: 15,
       workbookScore: 9,
       hasPendingScore: true,
+      scoreRate: 9 / 15,
     });
+  });
+
+  it("returns an empty pending model when the backend workbook is not loaded", () => {
+    const viewModel = buildTeamPerformanceViewModel();
+
+    expect(viewModel.centers).toHaveLength(0);
+    expect(viewModel.totalWorkbookScore).toBe(0);
+    expect(viewModel.totalCenterCount).toBe(0);
+    expect(viewModel.warnings.join(" ")).toContain("考核底稿尚未从后端加载");
   });
 
   it("builds mapped pnl and scale totals from by-business and product-category evidence", () => {
     const viewModel = buildTeamPerformanceViewModel({
+      workbook: buildMockTeamPerformanceAssessmentWorkbookPayload(),
       byBusinessItems: [
         byBusinessRow({
           row_key: "asset_zqtz_detail_structured_finance_broker",
-          business_type: "其中：结构化融资（券商）",
+          business_type: "其中：结构化产业基金（产业基金部分）",
           total_pnl: "3500000",
           current_balance: "800000000",
         }),
@@ -281,8 +365,7 @@ describe("teamPerformancePageModel", () => {
     ];
 
     const viewModel = buildTeamPerformanceViewModel({
-      indicators,
-      mappings,
+      workbook: workbookFromIndicators(indicators, mappings),
       productCategoryRows: [
         productRow({
           category_id: "intermediate_business_income",
@@ -328,8 +411,7 @@ describe("teamPerformancePageModel", () => {
     ];
 
     const viewModel = buildTeamPerformanceViewModel({
-      indicators,
-      mappings,
+      workbook: workbookFromIndicators(indicators, mappings),
       productCategoryRows: [
         productRow({
           category_id: "intermediate_business_income",
@@ -352,7 +434,9 @@ describe("teamPerformancePageModel", () => {
   });
 
   it("surfaces unmapped metrics in center coverage warnings", () => {
-    const viewModel = buildTeamPerformanceViewModel();
+    const viewModel = buildTeamPerformanceViewModel({
+      workbook: buildMockTeamPerformanceAssessmentWorkbookPayload(),
+    });
 
     const productAndMarketCenter = viewModel.centers.find(
       (center) => center.centerId === "product-market",
@@ -484,7 +568,7 @@ describe("teamPerformancePageModel", () => {
         }),
         byBusinessRow({
           row_key: "asset_zqtz_detail_structured_finance_broker",
-          business_type: "其中：结构化融资（券商）",
+          business_type: "其中：结构化产业基金（产业基金部分）",
           total_pnl: "250000000",
         }),
       ],
@@ -505,7 +589,7 @@ describe("teamPerformancePageModel", () => {
         }),
         monthlyBusinessItem({
           row_key: "asset_zqtz_detail_structured_finance_broker",
-          business_type: "其中：结构化融资（券商）",
+          business_type: "其中：结构化产业基金（产业基金部分）",
           total_pnl: "250000000",
           ftp_cost: "80000000",
           ftp_net_pnl: "170000000",
@@ -535,7 +619,7 @@ describe("teamPerformancePageModel", () => {
       byBusinessItems: [
         byBusinessRow({
           row_key: "asset_zqtz_detail_structured_finance_broker",
-          business_type: "其中：结构化融资（券商）",
+          business_type: "其中：结构化产业基金（产业基金部分）",
           total_pnl: "30000000",
           source_note: "ZQTZSHOW 其中项：instrument_code prefix=J4",
         }),
@@ -543,7 +627,7 @@ describe("teamPerformancePageModel", () => {
       byBusinessMonthly: byBusinessMonthlyPayload([
         monthlyBusinessItem({
           row_key: "asset_zqtz_detail_structured_finance_broker",
-          business_type: "其中：结构化融资（券商）",
+          business_type: "其中：结构化产业基金（产业基金部分）",
           total_pnl: "30000000",
           ftp_cost: "5000000",
           ftp_net_pnl: "25000000",
@@ -559,7 +643,7 @@ describe("teamPerformancePageModel", () => {
     expect(productMarket?.rules[0]).toMatchObject({
       businessLabel: "产业基金",
       rowId: "asset_zqtz_detail_structured_finance_broker",
-      rowName: "其中：结构化融资（券商）",
+      rowName: "其中：结构化产业基金（产业基金部分）",
       allocation: "include",
       evidenceStatus: "direct",
       amountField: "ftp_net_pnl",
@@ -634,6 +718,9 @@ describe("teamPerformancePageModel", () => {
       amountYuan: 70000000,
       contributionYuan: 70000000,
     });
+    expect(buildMockTeamPerformanceAssessmentWorkbookPayload().mappings.find(
+      (mapping) => mapping.row_id === "asset_zqtz_detail_structured_finance_broker",
+    )?.note).toContain("结构化产业基金（产业基金部分）");
   });
 
   it("does not silently fall back to raw total_pnl when FTP-net monthly evidence is missing", () => {
@@ -663,5 +750,29 @@ describe("teamPerformancePageModel", () => {
     const labels = Q1_CENTER_CALIBER_RULES.map((rule) => rule.businessLabel);
 
     expect(labels).not.toEqual(expect.arrayContaining(["营收", "线性外推合计", "全年预测"]));
+  });
+});
+
+// 锁定本页格式化器的 zh-CN locale 语义（千分位 + 去尾零）与缺失值占位：
+// 这是它们不能替换为共享 `fixedOrDash`/`pctOrDash`（toFixed，恒定小数位）的原因。
+describe("teamPerformancePageModel display formatters", () => {
+  it("formats wan/yi amounts with zh-CN grouping and trimmed trailing zeros", () => {
+    expect(formatWanFromYuan(123_456_789)).toBe("12,345.68 万元");
+    expect(formatWanFromYuan(5_300_000)).toBe("530 万元");
+    expect(formatYiFromYuan(123_456_789)).toBe("1.23 亿元");
+    expect(formatYiFromYuan(800_000_000)).toBe("8 亿元");
+  });
+
+  it("renders missing amounts and rates as a bare em dash without unit suffix", () => {
+    expect(formatWanFromYuan(null)).toBe(EM_DASH);
+    expect(formatYiFromYuan(null)).toBe(EM_DASH);
+    expect(formatRatePct(null)).toBe(EM_DASH);
+  });
+
+  it("formats score rate as trimmed percentage and pending score with its own placeholder", () => {
+    expect(formatRatePct(0.6)).toBe("60%");
+    expect(formatRatePct(0.8567)).toBe("85.67%");
+    expect(formatScore(9)).toBe("9 分");
+    expect(formatScore(null)).toBe("待补分");
   });
 });

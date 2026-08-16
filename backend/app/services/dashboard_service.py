@@ -1,6 +1,7 @@
 """Consolidated dashboard KPIs — analytical basis, reads formal facts + DuckDB aggregates."""
 from __future__ import annotations
 
+import logging
 import uuid
 from copy import deepcopy
 from decimal import Decimal
@@ -19,6 +20,18 @@ from backend.app.schemas.dashboard import (
 )
 from backend.app.services.formal_result_runtime import build_result_envelope
 from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
+
+logger = logging.getLogger(__name__)
+
+
+def _degraded_log_level(exc: BaseException) -> int:
+    """Program defects stay separable from expected data gaps in the log stream."""
+    return (
+        logging.WARNING
+        if isinstance(exc, (TypeError, KeyError, AttributeError))
+        else logging.DEBUG
+    )
+
 
 _DASHBOARD_CACHE_VERSION = "cv_dashboard_analytical_v1"
 _DASHBOARD_RULE_VERSION = "rv_dashboard_read_v1"
@@ -104,12 +117,14 @@ def _pct_change_numeric(chg_amt: Decimal, prev: Decimal) -> Numeric:
     if prev <= 0:
         return null_numeric(unit="pct", precision=2, sign_aware=True)
     pct = (chg_amt / prev) * Decimal("100")
+    # raw_scale="percent": pct is percent-points; a <1% change must not be kept as a ratio.
     return numeric_from_raw(
         raw=float(pct),
         unit="pct",
         precision=2,
         sign_aware=True,
         signed_format=True,
+        raw_scale="percent",
     )
 
 
@@ -221,8 +236,15 @@ def _fetch_bond_metrics_for_dates(
         try:
             out.update(fetch_many(report_dates))
             return out
-        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
-            pass
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+            logger.log(
+                _degraded_log_level(exc),
+                "degraded: dashboard bond core metrics batch falls back to per-date reads"
+                " [report_dates=%r] %s: %s",
+                report_dates,
+                type(exc).__name__,
+                exc,
+            )
     for d in report_dates:
         out[d] = repo.fetch_bond_core_metrics(d)
     return out
@@ -240,8 +262,16 @@ def _fetch_tyw_metrics_for_dates(
         try:
             out.update(fetch_many(report_dates, asset_side=asset_side))
             return out
-        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
-            pass
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+            logger.log(
+                _degraded_log_level(exc),
+                "degraded: dashboard tyw core metrics batch falls back to per-date reads"
+                " [report_dates=%r asset_side=%r] %s: %s",
+                report_dates,
+                asset_side,
+                type(exc).__name__,
+                exc,
+            )
     for d in report_dates:
         out[d] = repo.fetch_tyw_core_metrics(d, asset_side=asset_side)
     return out
@@ -321,6 +351,9 @@ def _compute_core_metrics(report_date: str | None = None) -> dict[str, object]:
     b_cur, b_wy, b_top, b_cur_has_rows = bond_by_date.get(anchor, _empty_metric_result())
     a_cur, a_wy, a_top, a_cur_has_rows = asset_by_date.get(anchor, _empty_metric_result())
     l_cur, l_wy, l_top, l_cur_has_rows = liability_by_date.get(anchor, _empty_metric_result())
+    # anchor 在三个来源都无行（如用户传入不存在的 report_date）时，0.00 是"无数据"
+    # 而非"真零"，quality_flag 必须降级，让消费端能区分。
+    anchor_has_rows = b_cur_has_rows or a_cur_has_rows or l_cur_has_rows
 
     body = CoreMetricsPayload(
         report_date=anchor,
@@ -357,7 +390,7 @@ def _compute_core_metrics(report_date: str | None = None) -> dict[str, object]:
         cache_version=_DASHBOARD_CACHE_VERSION,
         source_version=_DASHBOARD_SOURCE_VERSION,
         rule_version=_DASHBOARD_RULE_VERSION,
-        quality_flag="ok",
+        quality_flag="ok" if anchor_has_rows else "warning",
         result_payload=body.model_dump(mode="json"),
         tables_used=[FACT_TABLE, TYW_FACT],
         evidence_rows=len(b_top) + len(a_top) + len(l_top),

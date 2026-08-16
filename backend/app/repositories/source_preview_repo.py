@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Iterator
+from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
+from typing import Any, Literal
 
 import duckdb
 from backend.app.core_finance.source_preview_parsers import (
@@ -10,7 +13,9 @@ from backend.app.core_finance.source_preview_parsers import (
     build_source_version,
     parse_source_file,
 )
+from backend.app.core_finance.source_rules import describe_source_file
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
+from backend.app.repositories.duckdb_repo import read_only_connection
 from backend.app.repositories.governance_repo import (
     SOURCE_MANIFEST_STREAM,
     GovernanceRepository,
@@ -23,7 +28,6 @@ from backend.app.schemas.source_preview import (
     SourcePreviewPayload,
     SourcePreviewSummary,
 )
-from backend.app.services.source_rules import describe_source_file
 
 MANIFEST_ELIGIBLE_STATUSES = {"completed", "rerun"}
 PREVIEW_TABLES = (
@@ -41,6 +45,16 @@ PREVIEW_TABLES = (
 SUPPORTED_PREVIEW_SOURCE_FAMILIES = frozenset(
     {"zqtz", "tyw", "pnl", "pnl_514", "pnl_516", "pnl_517"}
 )
+SOURCE_PREVIEW_STORAGE_UNAVAILABLE = "Source preview storage is temporarily unavailable."
+
+
+@contextmanager
+def _source_preview_read_connection(duckdb_path: str) -> Iterator[duckdb.DuckDBPyConnection]:
+    try:
+        with read_only_connection(duckdb_path) as conn:
+            yield conn
+    except duckdb.IOException as exc:
+        raise RuntimeError(SOURCE_PREVIEW_STORAGE_UNAVAILABLE) from exc
 
 
 def summarize_source_file(path: Path) -> dict[str, object]:
@@ -171,39 +185,37 @@ def load_source_preview_payload(duckdb_path: str) -> SourcePreviewPayload:
     if not duckdb_file.exists():
         return SourcePreviewPayload(sources=[])
 
-    conn = duckdb.connect(str(duckdb_file), read_only=True)
     try:
-        summary_rows = conn.execute(
-            """
-            with ranked as (
-              select ingest_batch_id, batch_created_at, source_family, report_date, report_start_date, report_end_date,
-                   report_granularity, source_file, total_rows,
-                   manual_review_count, source_version, rule_version, preview_mode,
-                   row_number() over (
-                     partition by source_family
-                     order by batch_created_at desc, ingest_batch_id desc
-                   ) as rn
-              from phase1_source_preview_summary
-            )
-            select ingest_batch_id, batch_created_at, source_family, report_date, report_start_date, report_end_date,
-                   report_granularity, source_file, total_rows,
-                   manual_review_count, source_version, rule_version, preview_mode
-            from ranked
-            where rn = 1
-            order by source_family, report_date, source_file
-            """
-        ).fetchall()
-        group_rows = conn.execute(
-            """
-            select ingest_batch_id, source_family, group_label, row_count
-            from phase1_source_preview_groups
-            order by ingest_batch_id, source_family, group_label
-            """
-        ).fetchall()
+        with _source_preview_read_connection(str(duckdb_file)) as conn:
+            summary_rows = conn.execute(
+                """
+                with ranked as (
+                  select ingest_batch_id, batch_created_at, source_family, report_date, report_start_date, report_end_date,
+                       report_granularity, source_file, total_rows,
+                       manual_review_count, source_version, rule_version, preview_mode,
+                       row_number() over (
+                         partition by source_family
+                         order by batch_created_at desc, ingest_batch_id desc
+                       ) as rn
+                  from phase1_source_preview_summary
+                )
+                select ingest_batch_id, batch_created_at, source_family, report_date, report_start_date, report_end_date,
+                       report_granularity, source_file, total_rows,
+                       manual_review_count, source_version, rule_version, preview_mode
+                from ranked
+                where rn = 1
+                order by source_family, report_date, source_file
+                """
+            ).fetchall()
+            group_rows = conn.execute(
+                """
+                select ingest_batch_id, source_family, group_label, row_count
+                from phase1_source_preview_groups
+                order by ingest_batch_id, source_family, group_label
+                """
+            ).fetchall()
     except duckdb.Error:
         return SourcePreviewPayload(sources=[])
-    finally:
-        conn.close()
 
     grouped_counts: dict[tuple[str, str], dict[str, int]] = {}
     for ingest_batch_id, source_family, group_label, row_count in group_rows:
@@ -257,28 +269,29 @@ def load_source_preview_history_payload(
         return SourcePreviewHistoryPage(limit=limit, offset=offset, total_rows=0, rows=[])
 
     where_clause, params = _history_query_parts(source_family)
-    conn = duckdb.connect(str(duckdb_file), read_only=True)
     try:
-        total_rows = conn.execute(
-            f"select count(*) from phase1_source_preview_summary {where_clause}",
-            params,
-        ).fetchone()[0]
-        rows = conn.execute(
-            f"""
-            select ingest_batch_id, batch_created_at, source_family, report_date, report_start_date, report_end_date,
-                   report_granularity, source_file, total_rows, manual_review_count,
-                   source_version, rule_version, preview_mode
-            from phase1_source_preview_summary
-            {where_clause}
-            order by batch_created_at desc, ingest_batch_id desc, source_family asc
-            limit ? offset ?
-            """,
-            [*params, limit, offset],
-        ).fetchall()
+        with _source_preview_read_connection(str(duckdb_file)) as conn:
+            count_row = conn.execute(
+                f"select count(*) from phase1_source_preview_summary {where_clause}",
+                params,
+            ).fetchone()
+            # select count(*) 恒返回一行；assert 仅用于类型收窄，不改变行为。
+            assert count_row is not None
+            total_rows = count_row[0]
+            rows = conn.execute(
+                f"""
+                select ingest_batch_id, batch_created_at, source_family, report_date, report_start_date, report_end_date,
+                       report_granularity, source_file, total_rows, manual_review_count,
+                       source_version, rule_version, preview_mode
+                from phase1_source_preview_summary
+                {where_clause}
+                order by batch_created_at desc, ingest_batch_id desc, source_family asc
+                limit ? offset ?
+                """,
+                [*params, limit, offset],
+            ).fetchall()
     except duckdb.Error:
         return SourcePreviewHistoryPage(limit=limit, offset=offset, total_rows=0, rows=[])
-    finally:
-        conn.close()
 
     return SourcePreviewHistoryPage(
         limit=limit,
@@ -493,28 +506,29 @@ def _read_paged_table(
     order_clause: str,
     limit: int,
     offset: int,
-) -> tuple[int, list[tuple[object, ...]], list[str]] | None:
-    conn = duckdb.connect(str(duckdb_file), read_only=True)
+) -> tuple[int, list[tuple[Any, ...]], list[str]] | None:
     try:
-        total_rows = conn.execute(
-            f"select count(*) from {table_name} {where_clause}",
-            params,
-        ).fetchone()[0]
-        rows = conn.execute(
-            f"""
-            {select_clause}
-            from {table_name}
-            {where_clause}
-            {order_clause}
-            limit ? offset ?
-            """,
-            [*params, limit, offset],
-        ).fetchall()
-        columns = [item[0] for item in conn.description]
+        with _source_preview_read_connection(str(duckdb_file)) as conn:
+            count_row = conn.execute(
+                f"select count(*) from {table_name} {where_clause}",
+                params,
+            ).fetchone()
+            # select count(*) 恒返回一行；assert 仅用于类型收窄，不改变行为。
+            assert count_row is not None
+            total_rows = count_row[0]
+            rows = conn.execute(
+                f"""
+                {select_clause}
+                from {table_name}
+                {where_clause}
+                {order_clause}
+                limit ? offset ?
+                """,
+                [*params, limit, offset],
+            ).fetchall()
+            columns = [item[0] for item in conn.description]
     except duckdb.Error:
         return None
-    finally:
-        conn.close()
 
     return int(total_rows), rows, columns
 
@@ -643,7 +657,7 @@ def _build_trace_columns(columns: list[str]) -> list[PreviewColumn]:
     ]
 
 
-def _preview_column_type(column: str) -> str:
+def _preview_column_type(column: str) -> Literal["string", "number", "boolean"]:
     if column in {"row_locator", "trace_step"}:
         return "number"
     if column in {"manual_review_needed"}:
@@ -658,20 +672,24 @@ def _select_manifest_rows(
     archive_root: str | None = None,
 ) -> list[dict[str, object]]:
     resolved_archive_root = Path(archive_root).resolve() if archive_root else None
-    eligible_rows = [
+    scoped_rows = [
         row
         for row in manifest_rows
         if str(row.get("status", "")) in MANIFEST_ELIGIBLE_STATUSES
         and row.get("archived_path")
-        and _is_eligible_archived_path(str(row["archived_path"]), resolved_archive_root)
     ]
     if source_families is not None:
         allowed = {str(family) for family in source_families}
-        eligible_rows = [
+        scoped_rows = [
             row
-            for row in eligible_rows
+            for row in scoped_rows
             if str(row.get("source_family", "")) in allowed
         ]
+    eligible_rows = [
+        row
+        for row in scoped_rows
+        if _is_eligible_archived_path(str(row["archived_path"]), resolved_archive_root)
+    ]
     if ingest_batch_id is not None:
         return [
             row
@@ -760,7 +778,8 @@ def ensure_source_preview_schema_tables(conn: duckdb.DuckDBPyConnection) -> None
 
 def _write_preview_tables(
     duckdb_path: str,
-    summaries: list[dict[str, object]],
+    # summaries 为内部构造的异构 payload（含嵌套 dict），与仓库既有 dict[str, Any] 口径一致。
+    summaries: list[dict[str, Any]],
     row_records: list[dict[str, object]],
     trace_records: list[dict[str, object]],
 ) -> None:
@@ -1035,7 +1054,7 @@ def _write_preview_tables(
         if transaction_started:
             try:
                 conn.execute("rollback")
-            except Exception:
+            except Exception:  # noqa: S110  # 回滚失败不得掩盖随后 raise 的原始写入异常
                 pass
         raise
     finally:
@@ -1043,16 +1062,17 @@ def _write_preview_tables(
 
 
 def _table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
-    return bool(
-        conn.execute(
-            """
-            select count(*)
-            from information_schema.tables
-            where table_name = ?
-            """,
-            [table_name],
-        ).fetchone()[0]
-    )
+    count_row = conn.execute(
+        """
+        select count(*)
+        from information_schema.tables
+        where table_name = ?
+        """,
+        [table_name],
+    ).fetchone()
+    # select count(*) 恒返回一行；assert 仅用于类型收窄，不改变行为。
+    assert count_row is not None
+    return bool(count_row[0])
 
 
 def _row_table_name(source_family: str) -> str:
@@ -1130,22 +1150,20 @@ def _source_preview_batch_version_cached(
         params.append(ingest_batch_id)
     where_clause = f"where {' and '.join(filters)}"
 
-    conn = duckdb.connect(str(duckdb_file), read_only=True)
     try:
-        row = conn.execute(
-            f"""
-            select source_version
-            from phase1_source_preview_summary
-            {where_clause}
-            order by batch_created_at desc, ingest_batch_id desc
-            limit 1
-            """,
-            params,
-        ).fetchone()
+        with _source_preview_read_connection(str(duckdb_file)) as conn:
+            row = conn.execute(
+                f"""
+                select source_version
+                from phase1_source_preview_summary
+                {where_clause}
+                order by batch_created_at desc, ingest_batch_id desc
+                limit 1
+                """,
+                params,
+            ).fetchone()
     except duckdb.Error:
         return "sv_preview_empty"
-    finally:
-        conn.close()
 
     if row is None:
         return "sv_preview_empty"
@@ -1153,22 +1171,20 @@ def _source_preview_batch_version_cached(
 
 
 def _latest_batch_id_for_family(duckdb_path: str, source_family: str) -> str | None:
-    conn = duckdb.connect(duckdb_path, read_only=True)
     try:
-        row = conn.execute(
-            """
-            select ingest_batch_id
-            from phase1_source_preview_summary
-            where source_family = ?
-            order by batch_created_at desc, ingest_batch_id desc
-            limit 1
-            """,
-            [source_family],
-        ).fetchone()
+        with _source_preview_read_connection(duckdb_path) as conn:
+            row = conn.execute(
+                """
+                select ingest_batch_id
+                from phase1_source_preview_summary
+                where source_family = ?
+                order by batch_created_at desc, ingest_batch_id desc
+                limit 1
+                """,
+                [source_family],
+            ).fetchone()
     except duckdb.Error:
         return None
-    finally:
-        conn.close()
     return str(row[0]) if row and row[0] else None
 
 

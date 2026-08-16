@@ -1,6 +1,6 @@
+import subprocess
 from dataclasses import replace
 from pathlib import Path
-import subprocess
 
 import duckdb
 import pytest
@@ -10,18 +10,25 @@ from tests.helpers import ROOT, load_module
 EXPECTED_DEV_USER_SCOPE_GRANTS = {
     ("*", None, "choice_news.data", "read"),
     ("anonymous", "viewer", "accounting_asset_movement", "read"),
+    ("anonymous", "viewer", "adb_analysis", "read"),
     ("anonymous", "viewer", "balance_analysis", "read"),
     ("anonymous", "viewer", "bond_analytics", "read"),
     ("anonymous", "viewer", "bond_dashboard", "read"),
     ("anonymous", "viewer", "cashflow_projection", "read"),
     ("anonymous", "viewer", "dashboard", "read"),
     ("anonymous", "viewer", "executive", "read"),
+    ("anonymous", "viewer", "agent", "read"),
+    ("anonymous", "viewer", "kpi", "read"),
     ("anonymous", "viewer", "ledger_pnl", "read"),
+    ("anonymous", "viewer", "macro_bond_linkage", "read"),
     ("anonymous", "viewer", "macro_toolkit", "read"),
     ("anonymous", "viewer", "macro_vendor", "read"),
+    ("anonymous", "viewer", "market_data_ncd_proxy", "read"),
     ("anonymous", "viewer", "pnl_attribution", "read"),
     ("anonymous", "viewer", "product_category_pnl", "read"),
+    ("anonymous", "viewer", "qdb_gl_monthly_analysis", "read"),
     ("anonymous", "viewer", "research_calendar", "read"),
+    ("anonymous", "viewer", "risk_tensor", "read"),
 }
 
 
@@ -75,6 +82,7 @@ def test_dev_postgres_cluster_env_mapping_prefers_seeded_storage_root(tmp_path):
 
     assert env["MOSS_POSTGRES_DSN"] == "postgresql://moss:moss@127.0.0.1:55432/moss"
     assert env["MOSS_GOVERNANCE_SQL_DSN"] == "postgresql://moss:moss@127.0.0.1:55432/moss"
+    assert env["MOSS_AGENT_DEV_SCOPE_BYPASS"] == "true"
     assert env["MOSS_REDIS_DSN"] == "redis://127.0.0.1:6379/11"
     assert env["MOSS_DUCKDB_PATH"] == str(repo_root / "data" / "moss.duckdb")
     assert env["MOSS_GOVERNANCE_PATH"] == str(repo_root / "data" / "governance")
@@ -448,7 +456,7 @@ def test_wait_for_postgres_ready_can_target_application_database(monkeypatch):
     assert seen == ["moss"]
 
 
-def test_command_up_starts_postgres_with_synchronous_nowait_pg_ctl(tmp_path, monkeypatch):
+def test_command_up_starts_postgres_without_inheritable_capture_pipe(tmp_path, monkeypatch):
     module = load_module(
         "scripts.dev_postgres_cluster",
         "scripts/dev_postgres_cluster.py",
@@ -497,10 +505,50 @@ def test_command_up_starts_postgres_with_synchronous_nowait_pg_ctl(tmp_path, mon
     assert "-w" not in pg_ctl_start
     assert "start" in pg_ctl_start
     assert run_kwargs["check"] is True
-    assert run_kwargs["stdout"] is subprocess.PIPE
-    assert run_kwargs["stderr"] is subprocess.STDOUT
+    assert run_kwargs["stdin"] is subprocess.DEVNULL
+    assert run_kwargs["stdout"] is subprocess.DEVNULL
+    assert run_kwargs["stderr"] is subprocess.DEVNULL
     assert payload["running"] is True
     assert payload["action"] == "up"
+
+
+def test_command_up_refuses_foreign_listener_before_sql_or_migrations(tmp_path, monkeypatch):
+    module = load_module(
+        "scripts.dev_postgres_cluster",
+        "scripts/dev_postgres_cluster.py",
+    )
+
+    repo_root = tmp_path / "repo"
+    data_dir = repo_root / "tmp-governance" / "pgdev" / "data"
+    data_dir.mkdir(parents=True)
+    config = module.DevPostgresClusterConfig(
+        repo_root=repo_root,
+        bin_dir=repo_root / "pgbin",
+        cluster_root=repo_root / "tmp-governance" / "pgdev",
+        data_dir=data_dir,
+        log_file=repo_root / "tmp-governance" / "pgdev" / "postgres.log",
+        runtime_root=repo_root / "tmp-governance" / "runtime-clean",
+        runtime_duckdb_path=repo_root / "tmp-governance" / "runtime-clean" / "moss.duckdb",
+        runtime_governance_path=repo_root / "tmp-governance" / "runtime-clean" / "governance",
+        runtime_archive_path=repo_root / "tmp-governance" / "runtime-clean" / "archive",
+        runtime_data_input_path=repo_root / "tmp-governance" / "runtime-clean" / "data_input",
+    )
+    side_effects: list[str] = []
+
+    monkeypatch.setattr(module, "_is_port_open", lambda _host, _port: True)
+    monkeypatch.setattr(module, "_is_expected_cluster_running", lambda _config: False)
+    monkeypatch.setattr(module, "_wait_for_postgres_ready", lambda *_args, **_kwargs: side_effects.append("wait"))
+    monkeypatch.setattr(module, "_ensure_role_and_database", lambda _config: side_effects.append("role"))
+    monkeypatch.setattr(
+        module,
+        "_apply_alembic_migrations_and_grants",
+        lambda _config: side_effects.append("migrations"),
+    )
+
+    with pytest.raises(RuntimeError, match="already occupied by a different process"):
+        module.command_up(config)
+
+    assert side_effects == []
 
 
 def test_apply_alembic_migrations_and_grants_retries_transient_connection_timeout(
@@ -604,7 +652,7 @@ def test_seed_dev_user_scopes_grants_local_read_surfaces_once(tmp_path, monkeypa
     assert command.count("INSERT INTO user_role_scope") == len(module.DEV_USER_SCOPE_GRANTS)
 
 
-def test_resolve_python_executable_prefers_path_python(monkeypatch):
+def test_resolve_python_executable_prefers_current_interpreter(monkeypatch):
     module = load_module(
         "scripts.dev_postgres_cluster",
         "scripts/dev_postgres_cluster.py",
@@ -613,4 +661,4 @@ def test_resolve_python_executable_prefers_path_python(monkeypatch):
     monkeypatch.setattr(module.shutil, "which", lambda name: r"C:\Python\python.exe" if name == "python" else None)
     monkeypatch.setattr(module.sys, "executable", r"C:\Fallback\python.exe")
 
-    assert module._resolve_python_executable() == r"C:\Python\python.exe"
+    assert module._resolve_python_executable() == r"C:\Fallback\python.exe"

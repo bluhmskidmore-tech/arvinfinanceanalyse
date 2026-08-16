@@ -35,7 +35,7 @@ def main() -> None:
 
     duckdb_path = args.duckdb_path or str(get_settings().duckdb_path)
     if args.csv_path:
-        payload = materialize_livermore_position_snapshot(
+        payload = materialize_livermore_position_snapshot.fn(
             as_of_date=args.as_of_date,
             csv_path=args.csv_path,
             duckdb_path=args.duckdb_path,

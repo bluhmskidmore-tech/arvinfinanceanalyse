@@ -1,0 +1,296 @@
+.product-category-governance-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(176px, auto);
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+}
+
+.product-category-governance-strip__health {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+}
+
+.product-category-governance-strip__health[data-health-state="ready"] {
+  border-color: var(--moss-color-success-200);
+}
+
+.product-category-governance-strip__health[data-health-state="degraded"],
+.product-category-governance-strip__health[data-health-state="empty"] {
+  border-color: var(--moss-color-warning-200);
+  background: var(--moss-color-warning-50);
+}
+
+.product-category-governance-strip__health[data-health-state="error"] {
+  border-color: var(--moss-color-danger-200);
+  background: var(--moss-color-danger-50);
+}
+
+.product-category-governance-strip__health-marker {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: var(--moss-color-neutral-500);
+}
+
+.product-category-governance-strip__health[data-health-state="ready"]
+  .product-category-governance-strip__health-marker {
+  background: var(--ib-up);
+}
+
+.product-category-governance-strip__health[data-health-state="degraded"]
+  .product-category-governance-strip__health-marker,
+.product-category-governance-strip__health[data-health-state="empty"]
+  .product-category-governance-strip__health-marker {
+  background: var(--moss-color-warning-500);
+}
+
+.product-category-governance-strip__health[data-health-state="error"]
+  .product-category-governance-strip__health-marker {
+  background: var(--ib-down);
+}
+
+.product-category-governance-strip__health-content {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  flex: 1;
+}
+
+.product-category-governance-strip__health-copy {
+  min-width: max-content;
+}
+
+.product-category-governance-strip__health-copy strong,
+.product-category-governance-strip__health-copy span {
+  display: block;
+}
+
+.product-category-governance-strip__health-copy strong {
+  color: var(--moss-color-neutral-900);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.product-category-governance-strip__health[data-health-state="ready"]
+  .product-category-governance-strip__health-copy strong {
+  color: var(--ib-up);
+}
+
+.product-category-governance-strip__health-copy span {
+  margin-top: 1px;
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.product-category-governance-strip__judgement {
+  flex: 0 0 auto;
+  padding-inline-start: 10px;
+  border-inline-start: 1px solid var(--moss-color-neutral-200);
+  color: var(--moss-color-neutral-700);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.product-category-governance-strip__judgement[data-judgement-state="allowed"] {
+  color: var(--ib-up);
+}
+
+.product-category-governance-strip__judgement[data-judgement-state="blocked"] {
+  color: var(--ib-down);
+}
+
+.product-category-governance-strip__facts {
+  display: flex;
+  align-items: center;
+  gap: 6px 12px;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+.product-category-governance-strip__facts > div {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+
+.product-category-governance-strip__facts dt,
+.product-category-governance-strip__facts dd {
+  margin: 0;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.product-category-governance-strip__facts dt {
+  color: var(--moss-color-neutral-600);
+}
+
+.product-category-governance-strip__facts dd {
+  overflow: hidden;
+  color: var(--moss-color-neutral-700);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+}
+
+.product-category-governance-strip__health button {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 1px solid var(--moss-color-primary-300);
+  border-radius: var(--ib-radius, 2px);
+  color: var(--moss-color-primary-700);
+  background: var(--moss-color-primary-50);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.product-category-governance-strip__health button:hover {
+  border-color: var(--moss-color-primary-500);
+  background: var(--moss-color-primary-100);
+}
+
+.product-category-governance-strip__evidence {
+  min-width: 0;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface-muted, var(--moss-color-neutral-50));
+}
+
+.product-category-governance-strip__evidence[open] {
+  grid-column: 1 / -1;
+}
+
+.product-category-governance-strip__evidence > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 6px 10px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--moss-color-neutral-700);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.product-category-governance-strip__evidence > summary::-webkit-details-marker {
+  display: none;
+}
+
+.product-category-governance-strip__evidence > summary strong {
+  margin-left: auto;
+  color: var(--moss-color-warning-700);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.product-category-governance-strip__evidence > summary::after {
+  content: "+";
+  color: var(--moss-color-neutral-500);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.product-category-governance-strip__evidence[open] > summary::after {
+  content: "−";
+}
+
+.product-category-governance-strip__evidence-body {
+  display: grid;
+  gap: 7px;
+  padding: 0 10px 10px;
+  border-top: 1px solid var(--moss-color-neutral-200);
+}
+
+.product-category-governance-strip__as-of-date,
+.product-category-governance-strip__notice,
+.product-category-governance-strip__formal-scenario-distinct {
+  margin: 0;
+  padding-top: 7px;
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.product-category-governance-strip__notice {
+  color: var(--moss-color-warning-700);
+}
+
+.product-category-governance-strip__formal-scenario-distinct {
+  color: var(--moss-color-neutral-800);
+}
+
+@media (max-width: 960px) {
+  .product-category-governance-strip {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .product-category-governance-strip__health,
+  .product-category-governance-strip__health-content {
+    align-items: flex-start;
+  }
+
+  .product-category-governance-strip__health-content,
+  .product-category-governance-strip__facts {
+    flex-wrap: wrap;
+  }
+
+  .product-category-governance-strip__facts {
+    overflow: visible;
+  }
+}
+
+@media (max-width: 480px) {
+  .product-category-governance-strip__health {
+    padding: 9px 10px;
+  }
+
+  .product-category-governance-strip__health-content {
+    gap: 6px;
+  }
+
+  .product-category-governance-strip__health-copy {
+    min-width: 100%;
+  }
+
+  .product-category-governance-strip__judgement {
+    padding-inline-start: 0;
+    border-inline-start: 0;
+  }
+
+  .product-category-governance-strip__facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .product-category-governance-strip__facts > div,
+  .product-category-governance-strip__facts dt,
+  .product-category-governance-strip__facts dd {
+    min-width: 0;
+    white-space: normal;
+  }
+
+  .product-category-governance-strip__evidence > summary strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

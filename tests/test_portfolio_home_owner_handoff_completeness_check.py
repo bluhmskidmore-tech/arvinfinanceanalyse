@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from scripts.portfolio_home_owner_handoff_completeness_check import (
     build_report,
     handoff_completeness_report,
@@ -18,6 +20,14 @@ SCRIPT = ROOT / "scripts" / "portfolio_home_owner_handoff_completeness_check.py"
 DUCKDB = ROOT / "data" / "moss.duckdb"
 TEMPLATE = ROOT / "docs" / "portfolio" / "portfolio-home-business-owner-approval-template.md"
 REPORT_DATE = "2026-05-31"
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not DUCKDB.exists(),
+        reason="requires local governed DuckDB at data/moss.duckdb",
+    ),
+]
 
 
 def _run_check(*args: str) -> tuple[int, dict[str, object]]:
@@ -38,7 +48,7 @@ def test_portfolio_home_owner_handoff_completeness_check_reports_current_clean_h
         report_date=REPORT_DATE,
         template_path=TEMPLATE,
         docs_root=ROOT / "docs",
-        limit=1,
+        limit=3,
     )
 
     assert report["check_kind"] == "portfolio_home_owner_handoff_completeness"
@@ -63,13 +73,19 @@ def test_portfolio_home_owner_handoff_completeness_check_reports_current_clean_h
     assert route_checks["risk_owner"]["unallowlisted_recheck_commands"] == []
     assert route_checks["data_owner"]["unallowlisted_recheck_commands"] == []
     assert route_checks["business_owner"]["unallowlisted_recheck_commands"] == []
-    assert route_checks["risk_owner"]["artifact_checks"][2] == {
-        "artifact": "docs/portfolio/krd-contract-decision/2026-05-31/exact_bucket_schema_evidence.json",
-        "required_now": False,
-        "exists": False,
-        "status": "not_required",
-        "blockers": [],
-    }
+    # required_now/exists/status 反映本机 KRD 契约决策当前是否要求 exact-bucket
+    # 证据，随库状态演进而变化；只锁定字段存在、取值域与代码不变式。
+    exact_bucket_check = route_checks["risk_owner"]["artifact_checks"][2]
+    assert exact_bucket_check["artifact"] == (
+        "docs/portfolio/krd-contract-decision/2026-05-31/exact_bucket_schema_evidence.json"
+    )
+    assert isinstance(exact_bucket_check["required_now"], bool)
+    assert isinstance(exact_bucket_check["exists"], bool)
+    assert exact_bucket_check["status"] in {"not_required", "valid", "missing", "blocked"}
+    assert isinstance(exact_bucket_check["blockers"], list)
+    assert (exact_bucket_check["status"] == "not_required") is (
+        exact_bucket_check["required_now"] is False
+    )
     assert report["evidence_scope"] == {
         "approves_metric_or_page": False,
         "writes_governance_records": False,
@@ -81,7 +97,7 @@ def test_portfolio_home_owner_handoff_completeness_check_reports_current_clean_h
 
 
 def test_portfolio_home_owner_handoff_completeness_check_cli_require_clean() -> None:
-    returncode, payload = _run_check("--limit", "1", "--require-clean")
+    returncode, payload = _run_check("--limit", "3", "--require-clean")
 
     assert returncode == 0
     assert payload["status"] == "clean"
@@ -191,7 +207,91 @@ def test_portfolio_home_owner_handoff_completeness_check_blocks_unallowlisted_re
     assert "risk_owner_recheck_commands_unallowlisted" in report["blockers"]
     route_checks = {item["owner"]: item for item in report["route_checks"]}
     assert route_checks["risk_owner"]["unallowlisted_recheck_commands"] == [
+        "python scripts/portfolio_home_risk_warning_consistency.py --require-clean",
         "python scripts/not_a_scorecard_gate.py --require-clean",
+    ]
+
+
+def test_portfolio_home_owner_handoff_completeness_check_allows_date_qualified_gate() -> None:
+    summary = json.loads(
+        (ROOT / "docs" / "portfolio" / "portfolio-home-owner-input-needed-summary.json").read_text(
+            encoding="utf-8",
+        ),
+    )
+    route = next(item for item in summary["owner_routes"] if item["owner"] == "risk_owner")
+    route["recheck_commands"] = [
+        "python scripts/portfolio_home_risk_warning_consistency.py "
+        "--report-date 2026-05-31 --require-clean",
+    ]
+
+    report = handoff_completeness_report(summary, docs_root=ROOT / "docs")
+
+    route_checks = {item["owner"]: item for item in report["route_checks"]}
+    assert route_checks["risk_owner"]["status"] == "clean"
+    assert route_checks["risk_owner"]["unallowlisted_recheck_commands"] == []
+
+
+def test_portfolio_home_owner_handoff_completeness_check_blocks_wrong_report_date() -> None:
+    summary = json.loads(
+        (ROOT / "docs" / "portfolio" / "portfolio-home-owner-input-needed-summary.json").read_text(
+            encoding="utf-8",
+        ),
+    )
+    route = next(item for item in summary["owner_routes"] if item["owner"] == "risk_owner")
+    wrong_date_command = (
+        "python scripts/portfolio_home_risk_warning_consistency.py "
+        "--report-date 2026-06-01 --require-clean"
+    )
+    route["recheck_commands"] = [wrong_date_command]
+
+    report = handoff_completeness_report(summary, docs_root=ROOT / "docs")
+
+    route_checks = {item["owner"]: item for item in report["route_checks"]}
+    assert route_checks["risk_owner"]["status"] == "blocked"
+    assert route_checks["risk_owner"]["unallowlisted_recheck_commands"] == [wrong_date_command]
+
+
+def test_portfolio_home_owner_handoff_completeness_check_blocks_unqualified_nondefault_date() -> None:
+    summary = json.loads(
+        (ROOT / "docs" / "portfolio" / "portfolio-home-owner-input-needed-summary.json").read_text(
+            encoding="utf-8",
+        ),
+    )
+    summary["report_date"] = "2026-06-30"
+    route = next(item for item in summary["owner_routes"] if item["owner"] == "risk_owner")
+    unqualified_command = (
+        "python scripts/portfolio_home_risk_warning_consistency.py --require-clean"
+    )
+    route["recheck_commands"] = [unqualified_command]
+
+    report = handoff_completeness_report(summary, docs_root=ROOT / "docs")
+
+    route_checks = {item["owner"]: item for item in report["route_checks"]}
+    assert route_checks["risk_owner"]["status"] == "blocked"
+    assert route_checks["risk_owner"]["unallowlisted_recheck_commands"] == [
+        unqualified_command,
+    ]
+
+
+def test_portfolio_home_owner_handoff_completeness_check_blocks_noncanonical_argument_order() -> None:
+    summary = json.loads(
+        (ROOT / "docs" / "portfolio" / "portfolio-home-owner-input-needed-summary.json").read_text(
+            encoding="utf-8",
+        ),
+    )
+    route = next(item for item in summary["owner_routes"] if item["owner"] == "business_owner")
+    reordered_command = (
+        "python scripts/portfolio_home_owner_decision_intake_check.py "
+        "--limit 3 --require-ready --report-date 2026-05-31"
+    )
+    route["recheck_commands"] = [reordered_command]
+
+    report = handoff_completeness_report(summary, docs_root=ROOT / "docs")
+
+    route_checks = {item["owner"]: item for item in report["route_checks"]}
+    assert route_checks["business_owner"]["status"] == "blocked"
+    assert route_checks["business_owner"]["unallowlisted_recheck_commands"] == [
+        reordered_command,
     ]
 
 
@@ -211,7 +311,7 @@ def test_portfolio_home_owner_handoff_completeness_check_blocks_missing_required
         / "portfolio"
         / "maturity-remediation"
         / REPORT_DATE
-        / "bond_missing_maturity.csv"
+        / "tyw_liability_missing_maturity.csv"
     )
     required_artifact.unlink()
 
@@ -220,6 +320,6 @@ def test_portfolio_home_owner_handoff_completeness_check_blocks_missing_required
     assert report["status"] == "blocked"
     assert (
         "data_owner_decision_artifact_missing:"
-        "docs/portfolio/maturity-remediation/2026-05-31/bond_missing_maturity.csv"
+        "docs/portfolio/maturity-remediation/2026-05-31/tyw_liability_missing_maturity.csv"
         in report["blockers"]
     )

@@ -5,15 +5,21 @@ import json
 import logging
 import math
 import os
+import re
 import time
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Any, cast
 
 import duckdb
+import pandas as pd
+import requests
 from backend.app.config import choice_runtime
+from backend.app.governance.locks import acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_client import ChoiceClient
 from backend.app.repositories.choice_stock_adapter import (
@@ -21,10 +27,7 @@ from backend.app.repositories.choice_stock_adapter import (
     choice_stock_history_start_date,
     load_choice_stock_request_plan,
 )
-from backend.app.repositories.tushare_adapter import (
-    import_tushare_pro,
-    resolve_tushare_token_with_settings_fallback,
-)
+from backend.app.repositories.tushare_adapter import resolve_tushare_token_with_settings_fallback
 from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text
 from backend.app.services.runtime_cache import get_runtime_cache
 
@@ -36,6 +39,8 @@ CHOICE_STOCK_MATERIALIZATION_COVERAGE_CACHE_TTL_SECONDS = 120.0
 
 TUSHARE_FALLBACK_RETRY_ATTEMPTS = 3
 TUSHARE_FALLBACK_RETRY_DELAY_SECONDS = 1.0
+TUSHARE_PRO_API_URL = "https://api.tushare.pro"
+TUSHARE_PRO_TIMEOUT_SECONDS = (10.0, 30.0)
 
 REQUIRED_CHOICE_STOCK_REQUEST_ITEMS: tuple[tuple[str, str], ...] = (
     ("stock_universe", "a_share_universe_sector_001004"),
@@ -63,6 +68,27 @@ TUSHARE_FALLBACK_AUDIT_STATUS = "completed_tushare_fallback"
 TUSHARE_THS_CONCEPT_FALLBACK_AUDIT_STATUS = "completed_tushare_ths_fallback"
 TUSHARE_THS_CONCEPT_FIELD_KEY = "tushare_ths_concept_membership"
 
+OHLCV_FIELD_KEY = "daily_ohlcv_amount"
+# choice_stock_daily_observation 两代 vendor 单位代际边界(权威契约 docs/data_contracts.md §4.10):
+# tushare 代际(amount=千元/volume=手)封存于 2025-12-31(含),choice_native 代际(amount=元/
+# volume=股)自 2026-01-05(含)起,两代在 (stock_code, trade_date) 上零重叠。语义与
+# scripts/run_portfolio_backtest.py 的 CHOICE_NATIVE_ERA_START 一致(各自独立定义)。
+TUSHARE_ERA_LAST_TRADE_DATE = "2025-12-31"
+CHOICE_NATIVE_ERA_START_DATE = "2026-01-05"
+# daily observation vendor_version 已知代际模式白名单(消费端按 %tushare% 子串定标,
+# 见 backend/app/repositories/choice_stock_units.py)。supplement 模式来自
+# scripts/supplement_livermore_after_close_inputs.py:其 OHLCV 来自 Tushare pro.daily
+# (千元/手口径),vendor 含 tushare 子串使消费端正确 ×1000/×100。
+DAILY_OBSERVATION_VENDOR_VERSION_PATTERNS = (
+    r"^vv_choice_tushare_stock_\d{8}_[0-9a-f]{12}$",
+    r"^vv_choice_stock_\d{8}_[0-9a-f]{12}$",
+    r"^vv_livermore_supplement_tushare_sina_\d{8}_[0-9a-f]{12}$",
+)
+DQ_IDENTITY_SAMPLE_ROWS = 100
+DQ_IDENTITY_EXPECTED_RATIO_TUSHARE = 0.1
+DQ_IDENTITY_EXPECTED_RATIO_NATIVE = 1.0
+DQ_IDENTITY_RELATIVE_TOLERANCE = 0.30
+
 
 def _get_em_c() -> Any | None:
     return choice_runtime._get_em_c()
@@ -83,6 +109,18 @@ class ChoiceStockRequestError(RuntimeError):
         super().__init__(error_msg)
         self.error_code = error_code
         self.error_msg = error_msg
+
+
+class ChoiceStockVendorEraViolationError(RuntimeError):
+    """daily_ohlcv_amount 行的 vendor 代际标签与 trade_date 代际区间冲突(契约 docs/data_contracts.md §4.10)。"""
+
+
+class ChoiceStockOhlcvMixedSourceError(RuntimeError):
+    """同一 run 内 daily_ohlcv_amount 数据混合了 Choice native 与 Tushare fallback 来源,无法单标签定标。"""
+
+
+class ChoiceStockUnknownVendorVersionError(RuntimeError):
+    """vendor_version 不在 choice_stock_daily_observation 已知代际模式白名单内(契约 docs/data_contracts.md §4.10)。"""
 
 
 class _DefaultChoiceStockClient:
@@ -110,9 +148,38 @@ class _DefaultChoiceStockClient:
         return cmod.sector(*args, merged)
 
 
+class _TushareRestApi:
+    def __init__(self, token: str) -> None:
+        self._token = token
+
+    def query(self, api_name: str, fields: str = "", **kwargs: object) -> pd.DataFrame:
+        response = requests.post(
+            TUSHARE_PRO_API_URL,
+            json={
+                "api_name": api_name,
+                "token": self._token,
+                "params": kwargs,
+                "fields": fields,
+            },
+            timeout=TUSHARE_PRO_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("code") != 0:
+            raise RuntimeError(str(payload.get("msg") or f"Tushare {api_name} request failed."))
+        data = payload.get("data") or {}
+        return pd.DataFrame(data.get("items") or [], columns=data.get("fields") or [])
+
+    def __getattr__(self, name: str) -> Any:
+        return partial(self.query, name)
+
+
 class _DefaultTushareStockClient:
     def __init__(self) -> None:
         self._pro: object | None = None
+
+    def stock_basic(self, **kwargs: object) -> object:
+        return self._api().stock_basic(**kwargs)
 
     def trade_cal(self, **kwargs: object) -> object:
         return self._api().trade_cal(**kwargs)
@@ -140,8 +207,7 @@ class _DefaultTushareStockClient:
             token = resolve_tushare_token_with_settings_fallback(get_settings())
             if not token:
                 raise RuntimeError("MOSS_TUSHARE_TOKEN or settings.tushare_token is required for Tushare stock fallback.")
-            ts = import_tushare_pro()
-            self._pro = ts.pro_api(token)
+            self._pro = _TushareRestApi(token)
         return self._pro
 
 
@@ -160,7 +226,19 @@ def materialize_choice_stock_inputs(
     client: object | None = None,
     tushare_client: object | None = None,
     enable_tushare_concept_fallback: bool = False,
+    allow_cross_era_backfill: bool = False,
 ) -> dict[str, object]:
+    """Materialize the Choice stock front layer (with Tushare fallbacks) for one date.
+
+    Concept-membership note: rows landed into ``choice_stock_concept_membership``
+    (Choice css path or the Tushare THS ``enable_tushare_concept_fallback`` path)
+    are current-state snapshots, not point-in-time facts. After every ingest that
+    lands concept rows, run
+    ``backend.app.tasks.concept_membership_intervalize.intervalize_concept_membership``
+    so the SCD interval read model ``choice_stock_concept_membership_interval``
+    closes/opens intervals against the new snapshot date (contract:
+    docs/data_contracts.md §4.11).
+    """
     settings = get_settings()
     resolved_date = _normalize_date(as_of_date)
     resolved_duckdb_path = str(duckdb_path or settings.duckdb_path)
@@ -188,24 +266,50 @@ def materialize_choice_stock_inputs(
     concept_rows: list[dict[str, object]] = []
     movement_rows: list[dict[str, object]] = []
     daily_by_key: dict[tuple[str, str], dict[str, object]] = {}
+    # daily_ohlcv_amount 数据的实际来源集合("choice" / "tushare");daily observation 的
+    # vendor_version 只跟随该集合,不受其他 field_key 请求 fallback 影响。
+    ohlcv_source_tags: set[str] = set()
 
     try:
         current_request = universe_request
-        universe_result = _call_choice(choice_client, universe_request, stock_codes=[], as_of_date=resolved_date)
-        universe_rows = _normalize_sector_universe(universe_result, universe_request)
+        choice_front_layer_error: Exception | None = None
+        try:
+            universe_result = _call_choice(choice_client, universe_request, stock_codes=[], as_of_date=resolved_date)
+            universe_rows = _normalize_sector_universe(universe_result, universe_request)
+        except Exception as exc:
+            choice_front_layer_error = exc
+            fallback_client = tushare_client or _DefaultTushareStockClient()
+            universe_rows = _load_tushare_stock_universe_rows(
+                fallback_client,
+                as_of_date=resolved_date,
+                request=universe_request,
+            )
         stock_codes = sorted({_text(row.get("stock_code")) for row in universe_rows if _text(row.get("stock_code"))})
         if not stock_codes:
             raise RuntimeError("Choice stock universe returned no stock codes.")
 
-        request_audits.append(
-            _build_request_audit(
-                run_id=run_id,
-                as_of_date=resolved_date,
-                request=universe_request,
-                row_count=len(universe_rows),
-                stock_codes=[],
+        if choice_front_layer_error is None:
+            request_audits.append(
+                _build_request_audit(
+                    run_id=run_id,
+                    as_of_date=resolved_date,
+                    request=universe_request,
+                    row_count=len(universe_rows),
+                    stock_codes=[],
+                )
             )
-        )
+        else:
+            request_audits.append(
+                _build_tushare_fallback_request_audit(
+                    run_id=run_id,
+                    as_of_date=resolved_date,
+                    request=universe_request,
+                    row_count=len(universe_rows),
+                    stock_codes=[],
+                    vendor_indicator="stock_basic",
+                    error=choice_front_layer_error,
+                )
+            )
 
         for request in plan.requests:
             if request.field_key == universe_request.field_key:
@@ -214,6 +318,86 @@ def materialize_choice_stock_inputs(
             audit_status = "completed"
             audit_error_code = 0
             audit_error_msg = ""
+            if choice_front_layer_error is not None:
+                if request.input_family == "sector_membership":
+                    sector_rows.extend(
+                        _tushare_sector_membership_rows(
+                            universe_rows,
+                            request=request,
+                            as_of_date=resolved_date,
+                        )
+                    )
+                    request_audits.append(
+                        _build_tushare_fallback_request_audit(
+                            run_id=run_id,
+                            as_of_date=resolved_date,
+                            request=request,
+                            row_count=len(sector_rows),
+                            stock_codes=stock_codes,
+                            vendor_indicator="stock_basic.industry",
+                            error=choice_front_layer_error,
+                        )
+                    )
+                    continue
+                if request.call == "csd":
+                    start_date, end_date = _request_date_range(request, as_of_date=resolved_date)
+                    if (
+                        tushare_cache is None
+                        or tushare_cache.start_date != start_date
+                        or tushare_cache.end_date != end_date
+                    ):
+                        tushare_cache = _TushareStockFallbackCache(
+                            client=tushare_client or _DefaultTushareStockClient(),
+                            stock_codes=stock_codes,
+                            start_date=start_date,
+                            end_date=end_date,
+                        )
+                    csd_rows = tushare_cache.rows_for_request(request)
+                    if request.field_key == OHLCV_FIELD_KEY:
+                        ohlcv_source_tags.add("tushare")
+                    _merge_daily_rows(daily_by_key, csd_rows, request)
+                    request_audits.append(
+                        _build_request_audit(
+                            run_id=run_id,
+                            as_of_date=resolved_date,
+                            request=request,
+                            row_count=len(csd_rows),
+                            stock_codes=stock_codes,
+                            status=TUSHARE_FALLBACK_AUDIT_STATUS,
+                            error_code=_choice_error_details(choice_front_layer_error)[0],
+                            error_msg=_choice_stock_unavailable_fallback_message(choice_front_layer_error),
+                        )
+                    )
+                    continue
+                if request.input_family == "limit_up_quality" and request.field_key == "point_in_time_limit_streaks":
+                    if tushare_cache is None:
+                        tushare_cache = _TushareStockFallbackCache(
+                            client=tushare_client or _DefaultTushareStockClient(),
+                            stock_codes=stock_codes,
+                            start_date=choice_stock_history_start_date(resolved_date),
+                            end_date=resolved_date,
+                        )
+                    limit_rows_for_request = tushare_cache.rows_for_request(request)
+                    normalized_limit_rows = _normalize_limit_quality_rows(
+                        limit_rows_for_request,
+                        request,
+                        as_of_date=resolved_date,
+                    )
+                    limit_rows.extend(normalized_limit_rows)
+                    request_audits.append(
+                        _build_tushare_fallback_request_audit(
+                            run_id=run_id,
+                            as_of_date=resolved_date,
+                            request=request,
+                            row_count=len(normalized_limit_rows),
+                            stock_codes=stock_codes,
+                            vendor_indicator="daily,stk_limit",
+                            error=choice_front_layer_error,
+                        )
+                    )
+                    continue
+                if request.input_family in {"concept_membership", "intraday_movement"}:
+                    continue
             if request.call == "css":
                 result = _call_choice(choice_client, request, stock_codes=stock_codes, as_of_date=resolved_date)
                 css_rows = _normalize_css_rows(result, request)
@@ -236,6 +420,8 @@ def materialize_choice_stock_inputs(
                         as_of_date=resolved_date,
                     ):
                         csd_rows.extend(_normalize_csd_rows(result, request, default_date=resolved_date))
+                    if request.field_key == OHLCV_FIELD_KEY:
+                        ohlcv_source_tags.add("choice")
                 except ChoiceStockRequestError as exc:
                     if exc.error_code != CHOICE_CSD_PERMISSION_DENIED_ERROR_CODE:
                         raise
@@ -251,7 +437,11 @@ def materialize_choice_stock_inputs(
                             start_date=start_date,
                             end_date=end_date,
                         )
+                    # permission-denied fallback 整体替换 csd_rows,单请求内不混源;
+                    # OHLCV 来源标记与替换后的行保持一致。
                     csd_rows = tushare_cache.rows_for_request(request)
+                    if request.field_key == OHLCV_FIELD_KEY:
+                        ohlcv_source_tags.add("tushare")
                     audit_status = TUSHARE_FALLBACK_AUDIT_STATUS
                     audit_error_code = exc.error_code
                     audit_error_msg = f"Choice csd unavailable; filled from Tushare stock fallback: {exc.error_msg}"
@@ -338,83 +528,109 @@ def materialize_choice_stock_inputs(
     )
     vendor_prefix = "vv_choice_tushare_stock" if _used_tushare_fallback(request_audits) else "vv_choice_stock"
     vendor_version = f"{vendor_prefix}_{resolved_date.replace('-', '')}_{source_version.removeprefix('sv_choice_stock_')}"
+    # daily observation 行的 vendor_version 只跟随 OHLCV 数据本身的实际来源(契约 §4.10 的
+    # 单位代际标签),与其他 field_key 请求是否 fallback 无关;run/audit 等表保留 run 级标签。
+    daily_vendor_prefix = _resolve_daily_observation_vendor_prefix(
+        ohlcv_source_tags=ohlcv_source_tags,
+        daily_row_count=len(daily_rows),
+        as_of_date=resolved_date,
+    )
+    daily_vendor_version = (
+        f"{daily_vendor_prefix}_{resolved_date.replace('-', '')}_{source_version.removeprefix('sv_choice_stock_')}"
+    )
+    _assert_daily_rows_within_vendor_era(
+        daily_rows,
+        vendor_version=daily_vendor_version,
+        allow_cross_era_backfill=allow_cross_era_backfill,
+    )
     completed_at = datetime.now(UTC).isoformat()
     row_count = len(universe_rows) + len(sector_rows) + len(daily_rows) + len(limit_rows)
     row_count += len(concept_rows) + len(movement_rows)
 
     duckdb_file = Path(resolved_duckdb_path)
     duckdb_file.parent.mkdir(parents=True, exist_ok=True)
-    conn = duckdb.connect(str(duckdb_file), read_only=False)
-    try:
-        ensure_choice_stock_schema(conn)
-        conn.execute("begin transaction")
-        _delete_as_of_rows(
-            conn,
-            resolved_date,
-            history_start_date=choice_stock_history_start_date(resolved_date),
-        )
-        _insert_run(
-            conn,
-            run_id=run_id,
-            as_of_date=resolved_date,
-            status="completed",
-            catalog_path=resolved_catalog_path,
-            source_version=source_version,
-            vendor_version=vendor_version,
-            request_count=len(request_audits),
-            row_count=row_count,
-            started_at=started_at,
-            completed_at=completed_at,
-            error_message="",
-        )
-        _insert_request_audits(
-            conn,
-            request_audits=request_audits,
-            source_version=source_version,
-            vendor_version=vendor_version,
-        )
-        _insert_universe(conn, rows=universe_rows, run_id=run_id, source_version=source_version, vendor_version=vendor_version)
-        _insert_sector_membership(
-            conn,
-            rows=sector_rows,
-            run_id=run_id,
-            source_version=source_version,
-            vendor_version=vendor_version,
-        )
-        _insert_daily_observations(
-            conn,
-            rows=daily_rows,
-            run_id=run_id,
-            source_version=source_version,
-            vendor_version=vendor_version,
-        )
-        _insert_limit_quality(
-            conn,
-            rows=limit_rows,
-            run_id=run_id,
-            source_version=source_version,
-            vendor_version=vendor_version,
-        )
-        _insert_concept_membership(
-            conn,
-            rows=concept_rows,
-            run_id=run_id,
-            source_version=source_version,
-            vendor_version=vendor_version,
-        )
-        _insert_intraday_movement_events(
-            conn,
-            rows=movement_rows,
-            run_id=run_id,
-            source_version=source_version,
-            vendor_version=vendor_version,
-        )
-        conn.execute("commit")
-    except Exception:
-        conn.execute("rollback")
-        raise
-    finally:
-        conn.close()
+    with acquire_lock(resolve_duckdb_writer_lock(duckdb_file), base_dir=duckdb_file.parent):
+        conn = duckdb.connect(str(duckdb_file), read_only=False)
+        try:
+            ensure_choice_stock_schema(conn)
+            conn.execute("begin transaction")
+            _delete_as_of_rows(
+                conn,
+                resolved_date,
+                history_start_date=choice_stock_history_start_date(resolved_date),
+            )
+            _insert_run(
+                conn,
+                run_id=run_id,
+                as_of_date=resolved_date,
+                status="completed",
+                catalog_path=resolved_catalog_path,
+                source_version=source_version,
+                vendor_version=vendor_version,
+                request_count=len(request_audits),
+                row_count=row_count,
+                started_at=started_at,
+                completed_at=completed_at,
+                error_message="",
+            )
+            _insert_request_audits(
+                conn,
+                request_audits=request_audits,
+                source_version=source_version,
+                vendor_version=vendor_version,
+            )
+            _insert_universe(conn, rows=universe_rows, run_id=run_id, source_version=source_version, vendor_version=vendor_version)
+            _insert_sector_membership(
+                conn,
+                rows=sector_rows,
+                run_id=run_id,
+                source_version=source_version,
+                vendor_version=vendor_version,
+            )
+            _insert_daily_observations(
+                conn,
+                rows=daily_rows,
+                run_id=run_id,
+                source_version=source_version,
+                vendor_version=daily_vendor_version,
+            )
+            _insert_limit_quality(
+                conn,
+                rows=limit_rows,
+                run_id=run_id,
+                source_version=source_version,
+                vendor_version=vendor_version,
+            )
+            _insert_concept_membership(
+                conn,
+                rows=concept_rows,
+                run_id=run_id,
+                source_version=source_version,
+                vendor_version=vendor_version,
+            )
+            _insert_intraday_movement_events(
+                conn,
+                rows=movement_rows,
+                run_id=run_id,
+                source_version=source_version,
+                vendor_version=vendor_version,
+            )
+            conn.execute("commit")
+            # 首版观察模式:写入完成后自动执行 DQ 守卫检查,失败仅告警不回滚。
+            try:
+                dq_checks = run_choice_stock_daily_observation_dq_checks(
+                    conn,
+                    run_id=run_id,
+                    expected_vendor_version=daily_vendor_version,
+                )
+            except Exception:
+                logger.exception("choice_stock daily observation DQ checks crashed for run_id=%s", run_id)
+                dq_checks = {"status": "error", "issues": ["dq checks crashed; see task log"], "checks": {}}
+        except Exception:
+            conn.execute("rollback")
+            raise
+        finally:
+            conn.close()
 
     return {
         "status": "completed",
@@ -425,6 +641,8 @@ def materialize_choice_stock_inputs(
         "row_count": row_count,
         "source_version": source_version,
         "vendor_version": vendor_version,
+        "daily_vendor_version": daily_vendor_version,
+        "dq_checks": dq_checks,
     }
 
 
@@ -447,90 +665,97 @@ def materialize_choice_stock_factor_snapshot(
     if not duckdb_file.exists():
         raise RuntimeError(f"Choice stock DuckDB does not exist: {duckdb_file}")
 
-    conn = duckdb.connect(str(duckdb_file), read_only=False)
-    try:
-        ensure_choice_stock_schema(conn)
-        universe_rows = _load_factor_snapshot_universe(conn, resolved_date, max_stock_count=max_stock_count)
-        if not universe_rows:
-            raise RuntimeError(f"Choice stock universe is not materialized for {resolved_date}.")
-        stock_codes = [str(row["stock_code"]) for row in universe_rows]
-        price_metrics = _load_stock_price_factor_metrics(conn, resolved_date, stock_codes)
-        client = tushare_client or _DefaultTushareStockClient()
-        daily_basic = _load_tushare_daily_basic_factors(client, resolved_date, stock_codes)
-        financial = _load_tushare_financial_factors(client, resolved_date, stock_codes)
-        choice_fallback_used = False
-        vendor_inputs = ["tushare.daily_basic", "tushare.fina_indicator"]
-        if use_choice_financial_fallback and CHOICE_CSS_FINANCIAL_INDICATORS.strip():
-            needs_choice = sorted(
-                {
-                    code
+    with acquire_lock(resolve_duckdb_writer_lock(duckdb_file), base_dir=duckdb_file.parent):
+        conn = duckdb.connect(str(duckdb_file), read_only=False)
+        try:
+            ensure_choice_stock_schema(conn)
+            universe_rows = _load_factor_snapshot_universe(conn, resolved_date, max_stock_count=max_stock_count)
+            if not universe_rows:
+                raise RuntimeError(f"Choice stock universe is not materialized for {resolved_date}.")
+            stock_codes = [str(row["stock_code"]) for row in universe_rows]
+            price_metrics = _load_stock_price_factor_metrics(conn, resolved_date, stock_codes)
+            client = tushare_client or _DefaultTushareStockClient()
+            daily_basic = _load_tushare_daily_basic_factors(client, resolved_date, stock_codes)
+            financial = _load_tushare_financial_factors(client, resolved_date, stock_codes)
+            choice_fallback_used = False
+            vendor_inputs = ["tushare.daily_basic", "tushare.fina_indicator"]
+            if use_choice_financial_fallback and CHOICE_CSS_FINANCIAL_INDICATORS.strip():
+                required_choice_fields_by_code = {
+                    code: {
+                        field_key
+                        for field_key in ("roe", "gross_margin")
+                        if financial.get(code, {}).get(field_key) is None
+                    }
                     for code in stock_codes
-                    if financial.get(code, {}).get("roe") is None
-                    or financial.get(code, {}).get("gross_margin") is None
+                }
+                needs_choice = sorted(code for code, missing_fields in required_choice_fields_by_code.items() if missing_fields)
+                if needs_choice:
+                    try:
+                        c_client = choice_stock_client if choice_stock_client is not None else _DefaultChoiceStockClient()
+                        patch = _load_choice_css_financial_factors(
+                            c_client,
+                            resolved_date,
+                            needs_choice,
+                            required_fields_by_code=required_choice_fields_by_code,
+                        )
+                        choice_fallback_used = bool(patch)
+                        for stock_code, values in patch.items():
+                            merged = dict(financial.get(stock_code, {}))
+                            if merged.get("roe") is None and values.get("roe") is not None:
+                                merged["roe"] = values["roe"]
+                            if merged.get("gross_margin") is None and values.get("gross_margin") is not None:
+                                merged["gross_margin"] = values["gross_margin"]
+                            financial[stock_code] = merged
+                        if choice_fallback_used:
+                            vendor_inputs.append(f"choice.css({CHOICE_CSS_FINANCIAL_INDICATORS})")
+                    except Exception:
+                        logger.exception(
+                            "Choice css financial fallback failed for %s (continuing with Tushare financials only)",
+                            resolved_date,
+                        )
+            rows = _build_factor_snapshot_rows(
+                as_of_date=resolved_date,
+                universe_rows=universe_rows,
+                daily_basic=daily_basic,
+                financial=financial,
+                price_metrics=price_metrics,
+            )
+            if not rows:
+                raise RuntimeError(
+                    f"No stock factor rows could be materialized for {resolved_date}; "
+                    "check choice_stock_universe coverage."
+                )
+
+            source_version = _build_source_version(
+                {
+                    "as_of_date": resolved_date,
+                    "rows": rows,
+                    "input_tables": ["choice_stock_universe", "choice_stock_sector_membership", "choice_stock_daily_observation"],
+                    "vendor_inputs": vendor_inputs,
                 }
             )
-            if needs_choice:
-                try:
-                    c_client = choice_stock_client if choice_stock_client is not None else _DefaultChoiceStockClient()
-                    patch = _load_choice_css_financial_factors(c_client, resolved_date, needs_choice)
-                    choice_fallback_used = bool(patch)
-                    for stock_code, values in patch.items():
-                        merged = dict(financial.get(stock_code, {}))
-                        if merged.get("roe") is None and values.get("roe") is not None:
-                            merged["roe"] = values["roe"]
-                        if merged.get("gross_margin") is None and values.get("gross_margin") is not None:
-                            merged["gross_margin"] = values["gross_margin"]
-                        financial[stock_code] = merged
-                    if choice_fallback_used:
-                        vendor_inputs.append(f"choice.css({CHOICE_CSS_FINANCIAL_INDICATORS})")
-                except Exception:
-                    logger.exception(
-                        "Choice css financial fallback failed for %s (continuing with Tushare financials only)",
-                        resolved_date,
-                    )
-        rows = _build_factor_snapshot_rows(
-            as_of_date=resolved_date,
-            universe_rows=universe_rows,
-            daily_basic=daily_basic,
-            financial=financial,
-            price_metrics=price_metrics,
-        )
-        if not rows:
-            raise RuntimeError(
-                f"No stock factor rows could be materialized for {resolved_date}; "
-                "check choice_stock_universe coverage."
+            vv_tag = "choice_tushare" if choice_fallback_used else "tushare"
+            vendor_version = (
+                f"vv_{vv_tag}_stock_factor_{resolved_date.replace('-', '')}_"
+                f"{source_version.removeprefix('sv_choice_stock_')}"
             )
+            completed_at = datetime.now(UTC).isoformat()
 
-        source_version = _build_source_version(
-            {
-                "as_of_date": resolved_date,
-                "rows": rows,
-                "input_tables": ["choice_stock_universe", "choice_stock_sector_membership", "choice_stock_daily_observation"],
-                "vendor_inputs": vendor_inputs,
-            }
-        )
-        vv_tag = "choice_tushare" if choice_fallback_used else "tushare"
-        vendor_version = (
-            f"vv_{vv_tag}_stock_factor_{resolved_date.replace('-', '')}_"
-            f"{source_version.removeprefix('sv_choice_stock_')}"
-        )
-        completed_at = datetime.now(UTC).isoformat()
-
-        conn.execute("begin transaction")
-        conn.execute("delete from choice_stock_factor_snapshot where as_of_date = ?", [resolved_date])
-        _insert_factor_snapshot(
-            conn,
-            rows=rows,
-            run_id=run_id,
-            source_version=source_version,
-            vendor_version=vendor_version,
-        )
-        conn.execute("commit")
-    except Exception:
-        _rollback_quietly(conn)
-        raise
-    finally:
-        conn.close()
+            conn.execute("begin transaction")
+            conn.execute("delete from choice_stock_factor_snapshot where as_of_date = ?", [resolved_date])
+            _insert_factor_snapshot(
+                conn,
+                rows=rows,
+                run_id=run_id,
+                source_version=source_version,
+                vendor_version=vendor_version,
+            )
+            conn.execute("commit")
+        except Exception:
+            _rollback_quietly(conn)
+            raise
+        finally:
+            conn.close()
 
     return {
         "status": "completed",
@@ -551,9 +776,17 @@ def load_choice_stock_materialization_coverage(
     duckdb_path: str,
     as_of_date: str | date,
     required_items: tuple[tuple[str, str], ...] = REQUIRED_CHOICE_STOCK_REQUEST_ITEMS,
+    conn: duckdb.DuckDBPyConnection | None = None,
 ) -> ChoiceStockMaterializationCoverage:
     resolved_date = _normalize_date(as_of_date)
     path = Path(duckdb_path)
+    if conn is not None:
+        return _load_choice_stock_materialization_coverage_uncached(
+            path=path,
+            resolved_date=resolved_date,
+            required_items=required_items,
+            conn=conn,
+        )
     if not path.exists():
         return _coverage(
             as_of_date=resolved_date,
@@ -578,6 +811,7 @@ def load_choice_stock_materialization_coverage(
                 path=path,
                 resolved_date=resolved_date,
                 required_items=required_items,
+                conn=conn,
             ),
         )
 
@@ -585,6 +819,7 @@ def load_choice_stock_materialization_coverage(
         path=path,
         resolved_date=resolved_date,
         required_items=required_items,
+        conn=conn,
     )
 
 
@@ -613,16 +848,20 @@ def _load_choice_stock_materialization_coverage_uncached(
     path: Path,
     resolved_date: str,
     required_items: tuple[tuple[str, str], ...],
+    conn: duckdb.DuckDBPyConnection | None = None,
 ) -> ChoiceStockMaterializationCoverage:
-    try:
-        conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
-        return _coverage(
-            as_of_date=resolved_date,
-            status="not_materialized",
-            completed=[],
-            missing=_format_required_items(required_items),
-        )
+    owns_conn = conn is None
+    if owns_conn:
+        try:
+            conn = duckdb.connect(str(path), read_only=True)
+        except duckdb.Error:
+            return _coverage(
+                as_of_date=resolved_date,
+                status="not_materialized",
+                completed=[],
+                missing=_format_required_items(required_items),
+            )
+    assert conn is not None
     try:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
         required_tables = {
@@ -649,7 +888,8 @@ def _load_choice_stock_materialization_coverage_uncached(
             missing=_format_required_items(required_items),
         )
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
 
     completed = audited & landed
     missing = [item for item in _format_required_items(required_items) if item not in completed]
@@ -835,6 +1075,8 @@ def _load_choice_css_financial_factors(
     client: object,
     as_of_date: str,
     stock_codes: list[str],
+    *,
+    required_fields_by_code: dict[str, set[str]] | None = None,
 ) -> dict[str, dict[str, float]]:
     """Point-in-time ROE / gross margin via Choice css (covers sparse Tushare fina_indicator).
 
@@ -853,23 +1095,24 @@ def _load_choice_css_financial_factors(
         as_of_date,
         base_options=_choice_client_default_options(client),
     )
-    merged: dict[str, dict[str, float]] = {}
+    normalized_codes = sorted({str(code) for code in stock_codes if str(code)})
+    requested_codes = set(normalized_codes)
     chunk_size = max(40, CHOICE_CSS_FINANCIAL_CHUNK_SIZE)
+    bulk_values: dict[str, dict[str, float]] = {}
+    incomplete_codes = set(requested_codes)
+    resolved_required_fields_by_code = {
+        code: set(required_fields_by_code.get(code, ())) if required_fields_by_code is not None else {"roe", "gross_margin"}
+        for code in normalized_codes
+    }
 
-    for chunk in _stock_code_chunks(sorted({str(code) for code in stock_codes if str(code)}), chunk_size):
-        try:
-            result = client.css(",".join(chunk), indicators_raw, options=options)
-        except Exception:
-            logger.exception("Choice css financial chunk raised (%s codes)", len(chunk))
-            continue
-        if int(getattr(result, "ErrorCode", 0)) != 0:
-            logger.warning(
-                "Choice css financial chunk skipped: error=%s %s",
-                getattr(result, "ErrorCode", "?"),
-                getattr(result, "ErrorMsg", ""),
-            )
-            continue
-
+    def parse_result(
+        result: object,
+        *,
+        required_fields: dict[str, set[str]],
+    ) -> tuple[set[str], set[str], dict[str, dict[str, float]]]:
+        observed_codes: set[str] = set()
+        complete_codes: set[str] = set()
+        parsed_values: dict[str, dict[str, float]] = {}
         parsed = _extract_result_rows(result, default_date=as_of_date)
         for row in parsed:
             stock_code = _text(
@@ -885,6 +1128,7 @@ def _load_choice_css_financial_factors(
                 )
             if not stock_code:
                 continue
+            observed_codes.add(stock_code)
 
             roe_val: float | None = None
             gm_val: float | None = None
@@ -904,8 +1148,78 @@ def _load_choice_css_financial_factors(
                 bucket["roe"] = roe_val
             if gm_val is not None:
                 bucket["gross_margin"] = gm_val
-            if bucket:
-                merged[stock_code] = bucket
+            if bucket and stock_code in requested_codes:
+                parsed_values[stock_code] = bucket
+                required = required_fields.get(stock_code, set())
+                if not required or required.issubset(bucket):
+                    complete_codes.add(stock_code)
+            elif stock_code in requested_codes and not required_fields.get(stock_code, set()):
+                complete_codes.add(stock_code)
+        return observed_codes, complete_codes, parsed_values
+
+    try:
+        bulk_result = client.css(",".join(normalized_codes), indicators_raw, options=options)
+        if int(getattr(bulk_result, "ErrorCode", 0)) == 0:
+            observed_codes, complete_codes, bulk_values = parse_result(
+                bulk_result,
+                required_fields=resolved_required_fields_by_code,
+            )
+            incomplete_codes = requested_codes - complete_codes
+            if observed_codes == requested_codes and not incomplete_codes:
+                return bulk_values
+            logger.warning(
+                "Choice css full-market financial response was incomplete (%s/%s codes observed, %s/%s codes complete); falling back to chunks.",
+                len(observed_codes),
+                len(requested_codes),
+                len(complete_codes),
+                len(requested_codes),
+            )
+        else:
+            logger.warning(
+                "Choice css full-market financial request failed: error=%s %s; falling back to chunks.",
+                getattr(bulk_result, "ErrorCode", "?"),
+                getattr(bulk_result, "ErrorMsg", ""),
+            )
+            incomplete_codes = requested_codes
+    except Exception as exc:
+        logger.warning(
+            "Choice css full-market financial request or parsing raised; falling back to chunks: %s",
+            exc,
+        )
+        bulk_values = {}
+        incomplete_codes = requested_codes
+    else:
+        incomplete_codes = requested_codes - set(
+            code
+            for code, fields in resolved_required_fields_by_code.items()
+            if fields.issubset(set(bulk_values.get(code, {})))
+        )
+
+    merged: dict[str, dict[str, float]] = {code: dict(values) for code, values in bulk_values.items()}
+    for chunk in _stock_code_chunks(sorted(incomplete_codes), chunk_size):
+        try:
+            result = client.css(",".join(chunk), indicators_raw, options=options)
+        except Exception:
+            logger.exception("Choice css financial chunk raised (%s codes)", len(chunk))
+            continue
+        if int(getattr(result, "ErrorCode", 0)) != 0:
+            logger.warning(
+                "Choice css financial chunk skipped: error=%s %s",
+                getattr(result, "ErrorCode", "?"),
+                getattr(result, "ErrorMsg", ""),
+            )
+            continue
+
+        remaining_required_fields = {
+            code: resolved_required_fields_by_code.get(code, set()) - set(merged.get(code, {}))
+            for code in chunk
+        }
+        _, _, chunk_values = parse_result(result, required_fields=remaining_required_fields)
+        for stock_code, values in chunk_values.items():
+            bucket = merged.setdefault(stock_code, {})
+            for field_key, numeric in values.items():
+                if bucket.get(field_key) is None:
+                    bucket[field_key] = numeric
     return merged
 
 
@@ -977,7 +1291,8 @@ def _load_tushare_financial_factors(
                     "roe": _percent_points_to_ratio(_record_float(selected, "roe")),
                     "gross_margin": _percent_points_to_ratio(_record_float(selected, "grossprofit_margin")),
                 }
-            except Exception:
+            except Exception as exc:
+                logger.warning("fina_indicator per-stock fallback failed for %s: %s; skipping", stock_code, exc)
                 continue
 
     return rows
@@ -1120,6 +1435,8 @@ class _TushareStockFallbackCache:
             return self._trade_status_rows()
         if request.field_key == "daily_limit_flags":
             return self._limit_rows_for_as_of_date()
+        if request.field_key == "point_in_time_limit_streaks":
+            return self._limit_quality_rows_for_end_date()
         raise RuntimeError(f"No Tushare stock fallback mapping is defined for {request.field_key}.")
 
     def _sector_strength_rows(self) -> list[dict[str, object]]:
@@ -1181,6 +1498,27 @@ class _TushareStockFallbackCache:
             }
             for (trade_date, stock_code), row in self._limit_by_key().items()
         ]
+
+    def _limit_quality_rows_for_end_date(self) -> list[dict[str, object]]:
+        rows: list[dict[str, object]] = []
+        daily_by_key = self._daily_by_key()
+        limit_by_key = self._limit_by_key()
+        normalized_end_date = _normalize_date(self.end_date)
+        for stock_code in sorted(self.stock_codes):
+            daily_row = daily_by_key.get((normalized_end_date, stock_code), {})
+            limit_row = limit_by_key.get((normalized_end_date, stock_code), {})
+            close_value = _record_float(daily_row, "close")
+            rows.append(
+                {
+                    "trade_date": normalized_end_date,
+                    "stock_code": stock_code,
+                    "ISSURGEDLIMIT": _limit_flag(close_value, _record_float(limit_row, "up_limit")),
+                    "ISDECLINELIMIT": _limit_flag(close_value, _record_float(limit_row, "down_limit")),
+                    "HLIMITEDAYS": "0",
+                    "LLIMITEDDAYS": "0",
+                }
+            )
+        return rows
 
     def _trade_date_values(self) -> list[str]:
         if self._trade_dates is None:
@@ -1257,6 +1595,118 @@ class _TushareStockFallbackCache:
                     rows[key] = record
             self._limit_rows = rows
         return self._limit_rows
+
+
+def _load_tushare_stock_universe_rows(
+    client: object,
+    *,
+    as_of_date: str,
+    request: ChoiceStockRequestPlanItem,
+) -> list[dict[str, object]]:
+    frame = _call_tushare_with_retry(
+        client,
+        "stock_basic",
+        exchange="",
+        list_status="L",
+        fields="ts_code,name,industry,list_date,list_status",
+    )
+    as_of_compact = _compact_date(as_of_date)
+    rows: dict[str, dict[str, object]] = {}
+    for record in _records_from_tabular_payload(frame):
+        stock_code = _record_text(record, "ts_code")
+        if not _is_a_share_stock_code(stock_code):
+            continue
+        list_status = _record_text(record, "list_status").upper()
+        if list_status and list_status != "L":
+            continue
+        list_date = _record_text(record, "list_date")
+        if list_date and _compact_date(list_date) > as_of_compact:
+            continue
+        rows[stock_code] = {
+            "as_of_date": as_of_date,
+            "stock_code": stock_code,
+            "stock_name": _record_text(record, "name"),
+            "industry": _record_text(record, "industry"),
+            "field_key": request.field_key,
+        }
+    return [rows[key] for key in sorted(rows)]
+
+
+def _tushare_sector_membership_rows(
+    universe_rows: list[dict[str, object]],
+    *,
+    request: ChoiceStockRequestPlanItem,
+    as_of_date: str,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for row in universe_rows:
+        stock_code = _text(row.get("stock_code"))
+        if not stock_code:
+            continue
+        rows.append(
+            {
+                "as_of_date": as_of_date,
+                "stock_code": stock_code,
+                "sw2021": _text(row.get("industry")),
+                "sw2021code": _tushare_industry_code(row.get("industry")),
+                "field_key": request.field_key,
+            }
+        )
+    return rows
+
+
+def _is_a_share_stock_code(stock_code: str) -> bool:
+    return stock_code.endswith((".SH", ".SZ", ".BJ"))
+
+
+def _tushare_industry_code(industry: object) -> str:
+    normalized = _text(industry)
+    if not normalized:
+        return ""
+    return f"tushare:{hashlib.sha1(normalized.encode('utf-8')).hexdigest()[:10]}"
+
+
+def _limit_flag(close_value: float | None, limit_value: float | None) -> str:
+    if close_value is None or limit_value is None:
+        return "0"
+    tolerance = max(0.000001, abs(limit_value) * 0.000001)
+    return "1" if abs(close_value - limit_value) <= tolerance else "0"
+
+
+def select_tushare_ths_current_overlay_probe_stock_codes(
+    daily_by_key: dict[tuple[str, str], dict[str, object]],
+    *,
+    as_of_date: str,
+    stock_codes: list[str],
+) -> list[str]:
+    """Select current-overlay probes without enabling the PIT concept fallback."""
+    return _tushare_ths_concept_probe_stock_codes(
+        daily_by_key,
+        as_of_date=as_of_date,
+        stock_codes=stock_codes,
+    )
+
+
+def load_tushare_ths_current_overlay_members(
+    client: object | None = None,
+    *,
+    as_of_date: str,
+    stock_codes: list[str],
+) -> list[dict[str, object]]:
+    """Load current THS memberships in the non-PIT overlay field contract."""
+    rows = _load_tushare_ths_concept_membership_rows(
+        client or _DefaultTushareStockClient(),
+        as_of_date=as_of_date,
+        stock_codes=stock_codes,
+    )
+    return [
+        {
+            "stock_code": row["stock_code"],
+            "theme_key": row["concept_code"],
+            "theme_name": row["concept_name"],
+        }
+        for row in rows
+    ]
 
 
 def _load_tushare_ths_concept_membership_rows(
@@ -1457,6 +1907,206 @@ def _used_tushare_fallback(request_audits: list[dict[str, object]]) -> bool:
     )
 
 
+def _resolve_daily_observation_vendor_prefix(
+    *,
+    ohlcv_source_tags: set[str],
+    daily_row_count: int,
+    as_of_date: str,
+) -> str:
+    """按 daily_ohlcv_amount 数据的实际来源决定 daily observation 的 vendor 前缀。
+
+    当前请求结构下 OHLCV 请求要么整体走 Choice native、要么整体被 Tushare fallback 替换
+    (permission-denied 时丢弃已取的 Choice 分片),单 run 内不产生行级混源;若未来结构变化
+    导致混源,fail-loud 拒绝写入,不允许混源单标签。
+    """
+
+    if len(ohlcv_source_tags) > 1:
+        raise ChoiceStockOhlcvMixedSourceError(
+            f"daily_ohlcv_amount data for {as_of_date} mixes sources {sorted(ohlcv_source_tags)} in one run; "
+            "a single vendor_version cannot label mixed-unit rows (docs/data_contracts.md §4.10). "
+            "Refusing to write; split the run per source before retrying."
+        )
+    if not ohlcv_source_tags and daily_row_count > 0:
+        raise ChoiceStockOhlcvMixedSourceError(
+            f"daily observation rows for {as_of_date} exist but no daily_ohlcv_amount source was recorded; "
+            "cannot determine the amount/volume unit generation (docs/data_contracts.md §4.10). Refusing to write."
+        )
+    return "vv_choice_tushare_stock" if "tushare" in ohlcv_source_tags else "vv_choice_stock"
+
+
+def assert_known_choice_stock_daily_vendor_version(vendor_version: str) -> None:
+    """断言 vendor_version 命中 choice_stock_daily_observation 已知代际模式白名单。
+
+    供本模块及旁路写入脚本(supplement / as-of copy)共享;未知模式 fail-loud,
+    防止消费端(按 vendor 定标单位)遇到无法定标的新 vendor。
+    """
+
+    normalized = str(vendor_version or "").strip()
+    if not normalized or not any(re.match(pattern, normalized) for pattern in DAILY_OBSERVATION_VENDOR_VERSION_PATTERNS):
+        raise ChoiceStockUnknownVendorVersionError(
+            f"vendor_version {vendor_version!r} is not in the known choice_stock_daily_observation "
+            "generation whitelist; consumers cannot determine amount/volume units "
+            "(docs/data_contracts.md §4.10). Register the pattern in "
+            "DAILY_OBSERVATION_VENDOR_VERSION_PATTERNS and the unit contract before writing."
+        )
+
+
+def assert_choice_stock_vendor_era(
+    trade_dates: Iterable[object],
+    *,
+    vendor_version: str,
+    allow_cross_era_backfill: bool = False,
+) -> None:
+    """历史重放代际守卫:拒绝把某代 vendor 标签写进另一代的 trade_date 封存区。
+
+    契约 docs/data_contracts.md §4.10 声明两代在 (stock_code, trade_date) 上零重叠:
+    tushare 单位代际(amount=千元/volume=手,vendor 含 tushare 子串)止于
+    TUSHARE_ERA_LAST_TRADE_DATE,choice_native 代际(amount=元/volume=股)始于
+    CHOICE_NATIVE_ERA_START_DATE。仅显式传入 ``allow_cross_era_backfill=True``
+    (受控重物化/受控盘后补充)才可绕过。供本模块及旁路写入脚本共享。
+    """
+
+    if allow_cross_era_backfill:
+        return
+    normalized_dates = {str(value) for value in trade_dates if str(value or "").strip()}
+    if not normalized_dates:
+        return
+    is_tushare_generation = "tushare" in vendor_version.lower()
+    if is_tushare_generation:
+        violating_dates = sorted(value for value in normalized_dates if value >= CHOICE_NATIVE_ERA_START_DATE)
+        rule = (
+            f"tushare-generation vendor_version must not write trade_date >= {CHOICE_NATIVE_ERA_START_DATE} "
+            "(choice_native era)"
+        )
+    else:
+        violating_dates = sorted(value for value in normalized_dates if value <= TUSHARE_ERA_LAST_TRADE_DATE)
+        rule = (
+            f"native-generation vendor_version must not write trade_date <= {TUSHARE_ERA_LAST_TRADE_DATE} "
+            "(sealed tushare era)"
+        )
+    if violating_dates:
+        preview = ", ".join(violating_dates[:5])
+        raise ChoiceStockVendorEraViolationError(
+            f"Vendor era guard rejected the write: {rule}; vendor_version={vendor_version}, "
+            f"{len(violating_dates)} violating trade_date(s) (first: {preview}). "
+            "Per docs/data_contracts.md §4.10 the two unit generations must stay zero-overlap on "
+            "(stock_code, trade_date). Pass allow_cross_era_backfill=True only for a deliberate, "
+            "controlled re-materialization."
+        )
+
+
+def _assert_daily_rows_within_vendor_era(
+    daily_rows: list[dict[str, object]],
+    *,
+    vendor_version: str,
+    allow_cross_era_backfill: bool,
+) -> None:
+    assert_choice_stock_vendor_era(
+        (row.get("trade_date") for row in daily_rows),
+        vendor_version=vendor_version,
+        allow_cross_era_backfill=allow_cross_era_backfill,
+    )
+
+
+def run_choice_stock_daily_observation_dq_checks(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    run_id: str,
+    expected_vendor_version: str,
+) -> dict[str, object]:
+    """写入完成后的轻量 DQ 守卫检查(观察模式:仅告警,不回滚)。
+
+    检查项:
+    1. 本次写入行 vendor_version 非空非空白且匹配已知代际模式白名单;
+    2. 本次写入范围内 (stock_code, trade_date) 无重复;
+    3. 抽样恒等式:amount/(volume*close) 中位比值落在该代际预期
+       (native≈1.0、tushare≈0.1,容差 ±30%),偏出则告警疑似单位错标。
+    """
+
+    issues: list[str] = []
+    checks: dict[str, object] = {}
+
+    vendor_rows = conn.execute(
+        "select distinct coalesce(vendor_version, '') from choice_stock_daily_observation where run_id = ?",
+        [run_id],
+    ).fetchall()
+    vendors = [str(row[0]) for row in vendor_rows]
+    bad_vendors = [
+        vendor
+        for vendor in vendors
+        if not vendor.strip() or not any(re.match(pattern, vendor) for pattern in DAILY_OBSERVATION_VENDOR_VERSION_PATTERNS)
+    ]
+    checks["vendor_version_whitelist"] = {
+        "distinct_vendor_versions": vendors,
+        "unknown_or_blank": bad_vendors,
+    }
+    if bad_vendors:
+        issues.append(
+            f"vendor_version outside the known generation whitelist (or blank): {bad_vendors}; "
+            "consumers cannot determine amount/volume units (docs/data_contracts.md §4.10)"
+        )
+
+    duplicate_key_count = int(
+        conn.execute(
+            """
+            select count(*) from (
+                select stock_code, trade_date
+                from choice_stock_daily_observation
+                where run_id = ?
+                group by stock_code, trade_date
+                having count(*) > 1
+            )
+            """,
+            [run_id],
+        ).fetchone()[0]
+    )
+    checks["duplicate_keys"] = {"duplicate_key_count": duplicate_key_count}
+    if duplicate_key_count:
+        issues.append(f"{duplicate_key_count} duplicated (stock_code, trade_date) key(s) within this run's write scope")
+
+    # 伪随机可重复抽样:按 hash 排序取前 N 行,避免依赖 DuckDB SAMPLE 语法差异。
+    median_ratio_row = conn.execute(
+        """
+        select median(amount / (volume * close_value)) from (
+            select amount, volume, close_value
+            from choice_stock_daily_observation
+            where run_id = ?
+              and amount is not null and volume is not null and close_value is not null
+              and volume > 0 and close_value > 0
+            order by hash(stock_code || '|' || trade_date)
+            limit ?
+        )
+        """,
+        [run_id, DQ_IDENTITY_SAMPLE_ROWS],
+    ).fetchone()
+    median_ratio = float(median_ratio_row[0]) if median_ratio_row and median_ratio_row[0] is not None else None
+    expected_ratio = (
+        DQ_IDENTITY_EXPECTED_RATIO_TUSHARE
+        if "tushare" in expected_vendor_version.lower()
+        else DQ_IDENTITY_EXPECTED_RATIO_NATIVE
+    )
+    lower_bound = expected_ratio * (1 - DQ_IDENTITY_RELATIVE_TOLERANCE)
+    upper_bound = expected_ratio * (1 + DQ_IDENTITY_RELATIVE_TOLERANCE)
+    checks["amount_volume_close_identity"] = {
+        "median_ratio": median_ratio,
+        "expected_ratio": expected_ratio,
+        "tolerance_bounds": [lower_bound, upper_bound],
+        "sample_rows": DQ_IDENTITY_SAMPLE_ROWS,
+    }
+    if median_ratio is not None and not (lower_bound <= median_ratio <= upper_bound):
+        issues.append(
+            f"suspected unit mislabeling: sampled median amount/(volume*close) = {median_ratio:.4f} "
+            f"but vendor generation of {expected_vendor_version} expects ~{expected_ratio} "
+            f"(tolerance [{lower_bound:.4f}, {upper_bound:.4f}])"
+        )
+
+    status = "passed" if not issues else "warning"
+    if issues:
+        for issue in issues:
+            logger.warning("choice_stock daily observation DQ check failed for run_id=%s: %s", run_id, issue)
+    return {"status": status, "issues": issues, "checks": checks}
+
+
 def _build_request_audit(
     *,
     run_id: str,
@@ -1486,6 +2136,37 @@ def _build_request_audit(
         "error_code": error_code,
         "error_msg": error_msg,
     }
+
+
+def _build_tushare_fallback_request_audit(
+    *,
+    run_id: str,
+    as_of_date: str,
+    request: ChoiceStockRequestPlanItem,
+    row_count: int,
+    stock_codes: list[str],
+    vendor_indicator: str,
+    error: Exception,
+) -> dict[str, object]:
+    error_code, _error_msg = _choice_error_details(error)
+    audit = _build_request_audit(
+        run_id=run_id,
+        as_of_date=as_of_date,
+        request=request,
+        row_count=row_count,
+        stock_codes=stock_codes,
+        status=TUSHARE_FALLBACK_AUDIT_STATUS,
+        error_code=error_code,
+        error_msg=_choice_stock_unavailable_fallback_message(error),
+    )
+    audit["call"] = "tushare"
+    audit["vendor_indicator"] = vendor_indicator
+    return audit
+
+
+def _choice_stock_unavailable_fallback_message(error: Exception) -> str:
+    _error_code, error_msg = _choice_error_details(error)
+    return f"Choice stock unavailable; filled from Tushare stock fallback: {error_msg}"
 
 
 def _persist_failed_materialization(
@@ -1527,39 +2208,44 @@ def _persist_failed_materialization(
     completed_at = datetime.now(UTC).isoformat()
     duckdb_file = Path(duckdb_path)
     duckdb_file.parent.mkdir(parents=True, exist_ok=True)
-    conn: duckdb.DuckDBPyConnection | None = None
     try:
-        conn = duckdb.connect(str(duckdb_file), read_only=False)
-        ensure_choice_stock_schema(conn)
-        conn.execute("begin transaction")
-        _insert_run(
-            conn,
-            run_id=run_id,
-            as_of_date=as_of_date,
-            status="failed",
-            catalog_path=catalog_path,
-            source_version=source_version,
-            vendor_version=vendor_version,
-            request_count=len(audits),
-            row_count=0,
-            started_at=started_at,
-            completed_at=completed_at,
-            error_message=error_msg,
-        )
-        _insert_request_audits(
-            conn,
-            request_audits=audits,
-            source_version=source_version,
-            vendor_version=vendor_version,
-        )
-        conn.execute("commit")
+        with acquire_lock(resolve_duckdb_writer_lock(duckdb_file), base_dir=duckdb_file.parent):
+            conn: duckdb.DuckDBPyConnection | None = None
+            try:
+                conn = duckdb.connect(str(duckdb_file), read_only=False)
+                ensure_choice_stock_schema(conn)
+                conn.execute("begin transaction")
+                _insert_run(
+                    conn,
+                    run_id=run_id,
+                    as_of_date=as_of_date,
+                    status="failed",
+                    catalog_path=catalog_path,
+                    source_version=source_version,
+                    vendor_version=vendor_version,
+                    request_count=len(audits),
+                    row_count=0,
+                    started_at=started_at,
+                    completed_at=completed_at,
+                    error_message=error_msg,
+                )
+                _insert_request_audits(
+                    conn,
+                    request_audits=audits,
+                    source_version=source_version,
+                    vendor_version=vendor_version,
+                )
+                conn.execute("commit")
+            except Exception:
+                logger.exception("Failed to persist failed-materialization audit record for run_id=%s", run_id)
+                if conn is not None:
+                    _rollback_quietly(conn)
+            finally:
+                if conn is not None:
+                    conn.close()
     except Exception:
+        # Lock acquisition failed; audit persistence must never mask the original error.
         logger.exception("Failed to persist failed-materialization audit record for run_id=%s", run_id)
-        if conn is not None:
-            _rollback_quietly(conn)
-    finally:
-        if conn is not None:
-            conn.close()
 
 
 def _choice_error_details(error: Exception) -> tuple[int, str]:

@@ -1,12 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useApiClient } from "../../../api/client";
 import { FilterBar } from "../../../components/FilterBar";
 import type { DataSectionState } from "../../../components/DataSection.types";
-import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import type {
   AdvancedAttributionSummary,
-  CampisiAttributionPayload,
   CampisiDecisionGradePayload,
   CampisiEnhancedPayload,
   CampisiFourEffectsPayload,
@@ -14,751 +12,93 @@ import type {
   CarryRollDownPayload,
   KRDAttributionPayload,
   PnlCompositionPayload,
-  ProductCategoryAttributionEffects,
   ProductCategoryAttributionPayload,
-  ProductCategoryAttributionRow,
   ProductCategoryPnlPayload,
-  ProductCategoryPnlRow,
   ResultMeta,
   SpreadAttributionPayload,
   TPLMarketCorrelationPayload,
   VolumeRateAttributionPayload,
 } from "../../../api/contracts";
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 import { derivePnlDataSectionState } from "../adapters/pnlAttributionAdapter";
-import { AdvancedAttributionChart } from "./AdvancedAttributionChart";
-import { AttributionWaterfallChart } from "./AttributionWaterfallChart";
-import { CampisiAttributionPanel } from "./CampisiAttributionPanel";
-import { CampisiDecisionGradePanel } from "./CampisiDecisionGradePanel";
-import { CampisiEnhancedPanel } from "./CampisiEnhancedPanel";
-import { CampisiMaturityBucketPanel } from "./CampisiMaturityBucketPanel";
 import { PnLCompositionChart } from "./PnLCompositionChart";
 import { TPLMarketChart, type ProductCategoryTplMonthlyPoint } from "./TPLMarketChart";
-import { VolumeRateAnalysisChart } from "./VolumeRateAnalysisChart";
+import { AdvancedAttributionTabPanels } from "./PnlAttributionAdvancedTab";
+import { ProductCategoryTabPanels } from "./PnlAttributionProductCategoryTab";
+import {
+  VolumeRateBridgePanel,
+  VolumeRateTabCharts,
+} from "./PnlAttributionVolumeRateTab";
+import { cx } from "./pnlAttributionClassNames";
+import {
+  PnlAttributionErrorRegion,
+  SectionLead,
+} from "./pnlAttributionPrimitives";
 import "./PnlAttributionView.css";
 import {
   buildVolumeRateBridgeSummary,
   type DualReportDateResolution,
-  formatYi,
+  findProductCategoryReportDateForPeriod,
+  formatGeneratedAtDisplay,
   formatMetaDateLabel,
   resolveDualReportDates,
-  type VolumeRateBridgeSummary,
+  selectProductCategoryTplRow,
+  summarizePnlAttributionError,
   type PnlAttributionTab,
 } from "./pnlAttributionViewModel";
-import {
-  formatProductCategoryAttributionEffect,
-  formatProductCategoryRowDisplayValue,
-  formatProductCategoryValue,
-  formatProductCategoryYieldValue,
-} from "../../product-category-pnl/pages/productCategoryPnlPageModel";
 
-const shellStyle = {
-  display: "flex",
-  flexDirection: "column" as const,
-  gap: designTokens.space[5],
-};
-
-const pageSurfaceColor = "#ffffff";
-const pageSubtleSurfaceColor = designTokens.color.neutral[50];
-const pageBorderColor = designTokens.color.neutral[200];
-const pageBorderSoftColor = designTokens.color.neutral[100];
-const pageTextColor = designTokens.color.neutral[900];
-const pageMutedTextColor = designTokens.color.neutral[600];
-
-const headerCardStyle = {
-  padding: designTokens.space[5],
-  borderRadius: designTokens.radius.sm,
-  border: `1px solid ${pageBorderColor}`,
-  background: pageSurfaceColor,
-  boxShadow: "0 1px 2px rgba(31, 41, 55, 0.04)",
-} as const;
-
-const modeBadgeStyle = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-  borderRadius: 999,
-  fontSize: designTokens.fontSize[12],
-  fontWeight: 600,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase",
-} as const;
-
-const sectionLeadWrapStyle = {
-  display: "grid",
-  gap: designTokens.space[2],
-} as const;
-
-const sectionEyebrowStyle = {
-  fontSize: designTokens.fontSize[11],
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: pageMutedTextColor,
-} as const;
-
-const sectionTitleStyle = {
-  margin: 0,
-  fontSize: designTokens.fontSize[18],
-  fontWeight: 600,
-  color: pageTextColor,
-} as const;
-
-const sectionDescriptionStyle = {
-  margin: 0,
-  maxWidth: 900,
-  color: pageMutedTextColor,
-  fontSize: designTokens.fontSize[13],
-  lineHeight: designTokens.lineHeight.relaxed,
-} as const;
-
-const tabBarStyle = {
-  display: "flex",
-  flexWrap: "wrap" as const,
-  gap: designTokens.space[2],
-  alignItems: "center",
-};
-
-function tabStyle(
+function tabButtonClassName(
   active: boolean,
   variant: "default" | "advanced" = "default",
 ) {
-  const base = {
-    padding: `${designTokens.space[3]}px ${designTokens.space[4]}px`,
-    borderRadius: designTokens.radius.sm,
-    fontWeight: 600,
-    fontSize: designTokens.fontSize[14],
-    cursor: "pointer",
-    border: "1px solid",
-    boxShadow: active ? "0 1px 2px rgba(31, 41, 55, 0.08)" : "none",
-  } as const;
-  if (variant === "advanced") {
-    return {
-      ...base,
-      borderColor: active ? pageTextColor : pageBorderColor,
-      background: active ? pageTextColor : pageSurfaceColor,
-      color: active ? pageSurfaceColor : pageTextColor,
-    };
-  }
-  return {
-    ...base,
-    borderColor: active ? pageTextColor : pageBorderColor,
-    background: active ? pageTextColor : pageSurfaceColor,
-    color: active ? pageSurfaceColor : pageTextColor,
-  };
-}
-
-const PRODUCT_CATEGORY_TPL_ROW_ID = "bond_tpl";
-
-function findProductCategoryReportDateForPeriod(
-  reportDates: readonly string[],
-  period: string,
-): string | null {
-  const periodPrefix = `${period}-`;
-  return reportDates.find((date) => date.startsWith(periodPrefix)) ?? null;
-}
-
-function selectProductCategoryTplRow(
-  payload: ProductCategoryPnlPayload,
-): ProductCategoryPnlRow | null {
-  return (
-    payload.rows.find((row) => row.category_id === PRODUCT_CATEGORY_TPL_ROW_ID) ??
-    null
-  );
-}
-
-function SectionLead(props: {
-  eyebrow: string;
-  title: string;
-  description: string;
-  testId?: string;
-}) {
-  return (
-    <div data-testid={props.testId} style={sectionLeadWrapStyle}>
-      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
-      <h2 style={sectionTitleStyle}>{props.title}</h2>
-      <p style={sectionDescriptionStyle}>{props.description}</p>
-    </div>
+  return cx(
+    "pnl-attribution-tab-button",
+    active && "pnl-attribution-tab-button--active",
+    variant === "advanced" && "pnl-attribution-tab-button--advanced",
   );
 }
 
 function LensBoundaryPanel() {
-  const lensCardStyle = {
-    ...headerCardStyle,
-    padding: designTokens.space[4],
-    display: "grid",
-    gap: designTokens.space[2],
-  } as const;
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-        gap: designTokens.space[4],
-      }}
-    >
-      <section
-        data-testid="pnl-attribution-product-category-lens-card"
-        aria-label="产品分类经营归因口径边界"
-        style={lensCardStyle}
-      >
-        <SectionLead
-          eyebrow="产品分类经营口径"
-          title="经营净收入归因"
-          description="经营净收入、FTP 后；来源为产品分类正式读模型，只消费产品分类 monthly / YTD / attribution 接口。"
-        />
-        <div className="pnl-attribution-lens-status" data-testid="pnl-attribution-product-category-lens-status">
-          证据状态：正式读模型已就绪；报告日由页面日期协调器校验。
-        </div>
-        <div className="pnl-attribution-lens-source">
-          Source: /ui/pnl/product-category, /ui/pnl/product-category/attribution
-        </div>
-      </section>
-      <section
-        data-testid="pnl-attribution-formal-lens-card"
-        aria-label="正式 FI 与债券分析归因口径边界"
-        style={lensCardStyle}
-      >
-        <SectionLead
-          eyebrow="正式 FI / 债券分析口径"
-          title="会计损益与债券市场归因"
-          description="含非标桥接、未扣 FTP、非产品分类经营净收入；仅用于正式 FI、TPL 市场和债券分析归因。"
-        />
-        <div className="pnl-attribution-lens-status" data-testid="pnl-attribution-formal-lens-status">
-          证据状态：正式归因口径已就绪；TPL 市场例外在工作台中单独标注。
-        </div>
-        <div className="pnl-attribution-lens-source">Source: /api/pnl-attribution/*</div>
-      </section>
-    </div>
-  );
-}
-
-function formatPct(value: number | undefined): string {
-  if (value === undefined || !Number.isFinite(value)) {
-    return "—";
-  }
-  return `${value.toFixed(1)}%`;
-}
-
-function valueTone(
-  value: number | undefined,
-  fallback = designTokens.color.neutral[900],
-) {
-  if (value === undefined) {
-    return fallback;
-  }
-  return value >= 0
-    ? designTokens.color.semantic.profit
-    : designTokens.color.semantic.loss;
-}
-
-function VolumeRateBridgePanel(props: {
-  data: VolumeRateAttributionPayload;
-  summary: VolumeRateBridgeSummary;
-}) {
-  const { data, summary } = props;
-  const residualIsMaterial =
-    summary.unexplainedEffect !== undefined &&
-    Math.abs(summary.unexplainedEffect) > 10_000;
-  const statusSurface =
-    summary.status === "closed"
-      ? {
-          background: designTokens.color.success[50],
-          borderColor: designTokens.color.success[200],
-          color: designTokens.color.success[700],
-        }
-      : summary.status === "residual"
-        ? {
-            background: designTokens.color.warning[50],
-            borderColor: designTokens.color.warning[200],
-            color: designTokens.color.warning[700],
-          }
-        : {
-            background: designTokens.color.neutral[50],
-            borderColor: designTokens.color.neutral[200],
-            color: designTokens.color.neutral[700],
-          };
-  const denominator =
-    summary.pnlChange !== undefined && Math.abs(summary.pnlChange) > 10_000
-      ? summary.pnlChange
-      : undefined;
-  const bridgeRows = [
-    {
-      label: "规模效应",
-      formula: "Δ规模 × 上期收益率",
-      value: summary.volumeEffect,
-      accent: designTokens.color.success[600],
-    },
-    {
-      label: "利率效应",
-      formula: "上期规模 × Δ收益率",
-      value: summary.rateEffect,
-      accent: designTokens.color.primary[600],
-    },
-    {
-      label: "交叉效应",
-      formula: "Δ规模 × Δ收益率",
-      value: summary.interactionEffect,
-      accent: designTokens.color.neutral[600],
-    },
-    {
-      label: "未解释差额",
-      formula: residualIsMaterial ? "缺规模或未匹配分类" : "闭合容差内",
-      value: summary.unexplainedEffect,
-      accent: residualIsMaterial
-        ? designTokens.color.warning[600]
-        : designTokens.color.neutral[500],
-      isResidual: true,
-    },
-  ];
-
-  return (
-    <div
-      data-testid="volume-rate-bridge-panel"
-      style={{
-        borderRadius: designTokens.radius.sm,
-        border: `1px solid ${pageBorderColor}`,
-        background: pageSurfaceColor,
-        boxShadow: "0 1px 2px rgba(31, 41, 55, 0.04)",
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns:
-            "minmax(min(100%, 260px), 0.76fr) minmax(min(100%, 520px), 1.24fr)",
-          gap: 0,
-          padding: designTokens.space[5],
-        }}
-      >
-        <div
-          style={{
-            display: "grid",
-            alignContent: "space-between",
-            gap: designTokens.space[4],
-            paddingRight: designTokens.space[5],
-            borderRight: `1px solid ${pageBorderSoftColor}`,
-          }}
+    <div className="pnl-attribution-section">
+      <SectionLead title="口径边界" description="" />
+      <div className="pnl-attribution-lens-grid">
+        <section
+          data-testid="pnl-attribution-product-category-lens-card"
+          aria-label="产品分类经营归因口径边界"
+          className="pnl-attribution-lens-card"
         >
-          <div>
-            <div style={sectionEyebrowStyle}>规模 / 利率效应</div>
-            <h3
-              style={{
-                margin: `${designTokens.space[2]}px 0 0`,
-                fontSize: designTokens.fontSize[20],
-                color: pageTextColor,
-              }}
-            >
-              损益变动桥
-            </h3>
-            <div
-              style={{
-                marginTop: designTokens.space[3],
-                fontSize: designTokens.fontSize[30],
-                fontWeight: 800,
-                color: valueTone(summary.pnlChange),
-                ...tabularNumsStyle,
-              }}
-            >
-              {formatYi(summary.pnlChange)}
-            </div>
-            <div
-              style={{
-                display: "flex",
-                gap: designTokens.space[2],
-                flexWrap: "wrap",
-                marginTop: designTokens.space[3],
-                fontSize: designTokens.fontSize[12],
-                color: pageMutedTextColor,
-              }}
-            >
-              <span>
-                {data.previous_period} {formatYi(summary.previousPnl)}
-              </span>
-              <span>→</span>
-              <span>
-                {data.current_period} {formatYi(summary.currentPnl)}
-              </span>
-            </div>
-          </div>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: designTokens.space[3],
-              padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-              borderRadius: designTokens.radius.sm,
-              border: `1px solid ${statusSurface.borderColor}`,
-              background: statusSurface.background,
-              color: statusSurface.color,
-              fontSize: designTokens.fontSize[12],
-              fontWeight: 700,
-            }}
-          >
-            <span>{summary.statusLabel}</span>
-            <span style={tabularNumsStyle}>
-              解释覆盖 {formatPct(summary.coveragePct)}
-            </span>
-          </div>
-        </div>
-
-        <div style={{ minWidth: 0, paddingLeft: designTokens.space[5] }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: designTokens.space[3],
-              alignItems: "baseline",
-              marginBottom: designTokens.space[3],
-            }}
-          >
-            <div
-              style={{
-                color: pageTextColor,
-                fontSize: designTokens.fontSize[14],
-                fontWeight: 700,
-              }}
-            >
-              变动拆分
-            </div>
-            <div
-              style={{
-                color: pageMutedTextColor,
-                fontSize: designTokens.fontSize[12],
-              }}
-            >
-              单位：亿元
-            </div>
-          </div>
-          <div style={{ overflowX: "auto" }}>
-            <table
-              style={{
-                width: "100%",
-                minWidth: 520,
-                borderCollapse: "collapse",
-                fontSize: designTokens.fontSize[12],
-              }}
-            >
-              <thead>
-                <tr
-                  style={{ borderBottom: `1px solid ${pageBorderSoftColor}` }}
-                >
-                  <th
-                    style={{
-                      padding: `${designTokens.space[2]}px 0`,
-                      textAlign: "left",
-                      color: pageMutedTextColor,
-                    }}
-                  >
-                    项目
-                  </th>
-                  <th
-                    style={{
-                      padding: `${designTokens.space[2]}px`,
-                      textAlign: "left",
-                      color: pageMutedTextColor,
-                    }}
-                  >
-                    计算口径
-                  </th>
-                  <th
-                    style={{
-                      padding: `${designTokens.space[2]}px`,
-                      textAlign: "right",
-                      color: pageMutedTextColor,
-                    }}
-                  >
-                    金额
-                  </th>
-                  <th
-                    style={{
-                      padding: `${designTokens.space[2]}px 0`,
-                      textAlign: "right",
-                      color: pageMutedTextColor,
-                    }}
-                  >
-                    占变动
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {bridgeRows.map((row) => {
-                  const share =
-                    denominator !== undefined && row.value !== undefined
-                      ? Math.abs(row.value / denominator) * 100
-                      : undefined;
-                  return (
-                    <tr
-                      key={row.label}
-                      style={{
-                        borderBottom: `1px solid ${pageBorderSoftColor}`,
-                        background:
-                          row.isResidual && residualIsMaterial
-                            ? "rgba(255, 249, 235, 0.62)"
-                            : "transparent",
-                      }}
-                    >
-                      <td
-                        style={{
-                          padding: `${designTokens.space[3]}px 0`,
-                          color: pageTextColor,
-                          fontWeight: 700,
-                        }}
-                      >
-                        <span
-                          style={{
-                            display: "inline-block",
-                            width: 7,
-                            height: 7,
-                            borderRadius: 999,
-                            background: row.accent,
-                            marginRight: designTokens.space[2],
-                            verticalAlign: "middle",
-                          }}
-                        />
-                        {row.label}
-                      </td>
-                      <td
-                        style={{
-                          padding: `${designTokens.space[3]}px ${designTokens.space[2]}px`,
-                          color: pageMutedTextColor,
-                        }}
-                      >
-                        {row.formula}
-                      </td>
-                      <td
-                        style={{
-                          padding: `${designTokens.space[3]}px ${designTokens.space[2]}px`,
-                          textAlign: "right",
-                          color: valueTone(row.value),
-                          fontWeight: 800,
-                          ...tabularNumsStyle,
-                        }}
-                      >
-                        {formatYi(row.value)}
-                      </td>
-                      <td
-                        style={{
-                          padding: `${designTokens.space[3]}px 0`,
-                          textAlign: "right",
-                          color: pageMutedTextColor,
-                          ...tabularNumsStyle,
-                        }}
-                      >
-                        {formatPct(share)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: designTokens.space[3],
-          flexWrap: "wrap",
-          padding: `${designTokens.space[3]}px ${designTokens.space[5]}px`,
-          borderTop: `1px solid ${pageBorderSoftColor}`,
-          background: pageSubtleSurfaceColor,
-          color: pageMutedTextColor,
-          fontSize: designTokens.fontSize[12],
-        }}
-      >
-        <span>损益变动 = 当期损益 - 上期损益</span>
-        <span style={tabularNumsStyle}>
-          {formatYi(summary.volumeEffect)} + {formatYi(summary.rateEffect)} +{" "}
-          {formatYi(summary.interactionEffect)} +{" "}
-          {formatYi(summary.unexplainedEffect)} = {formatYi(summary.pnlChange)}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-const productCategoryEffectColumns: Array<
-  [keyof ProductCategoryAttributionEffects, string]
-> = [
-  ["day_effect", "天数"],
-  ["scale_effect", "规模"],
-  ["rate_effect", "利率"],
-  ["ftp_effect", "FTP"],
-  ["direct_effect", "直接"],
-  ["unexplained_effect", "未解释"],
-  ["closure_error", "闭合"],
-];
-
-const compactTableStyle = {
-  width: "100%",
-  borderCollapse: "collapse" as const,
-  fontSize: designTokens.fontSize[12],
-};
-
-const compactCellStyle = {
-  padding: `${designTokens.space[3]}px ${designTokens.space[2]}px`,
-  borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
-  verticalAlign: "middle" as const,
-};
-
-function ProductCategoryMobileReadoutField(props: {
-  label: string;
-  value: string;
-  note?: string;
-}) {
-  return (
-    <div className="pnl-attribution-mobile-table-readout__field">
-      <span className="pnl-attribution-mobile-table-readout__label">
-        {props.label}
-      </span>
-      <span className="pnl-attribution-mobile-table-readout__value">
-        {props.value}
-      </span>
-      {props.note ? (
-        <span className="pnl-attribution-mobile-table-readout__note">
-          {props.note}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
-function ProductCategoryMobileReadout(props: {
-  testId: string;
-  title: string;
-  fields: Array<{ label: string; value: string; note?: string }>;
-}) {
-  return (
-    <div
-      className="pnl-attribution-mobile-table-readout"
-      data-testid={props.testId}
-    >
-      <div className="pnl-attribution-mobile-table-readout__header">
-        {props.title}
-      </div>
-      <div className="pnl-attribution-mobile-table-readout__grid">
-        {props.fields.map((field) => (
-          <ProductCategoryMobileReadoutField
-            key={field.label}
-            label={field.label}
-            note={field.note}
-            value={field.value}
+          <SectionLead
+            variant="card"
+            eyebrow="产品分类经营口径"
+            title="经营净收入归因"
+            description="经营净收入、FTP 后；来源为产品分类正式读模型，只消费产品分类 monthly / YTD / attribution 接口。"
           />
-        ))}
+          <div className="pnl-attribution-lens-status" data-testid="pnl-attribution-product-category-lens-status">
+            证据状态：正式读模型已就绪；报告日由页面日期协调器校验。
+          </div>
+          <div className="pnl-attribution-lens-source">
+            来源：/ui/pnl/product-category, /ui/pnl/product-category/attribution
+          </div>
+        </section>
+        <section
+          data-testid="pnl-attribution-formal-lens-card"
+          aria-label="正式 FI 与债券分析归因口径边界"
+          className="pnl-attribution-lens-card"
+        >
+          <SectionLead
+            variant="card"
+            eyebrow="正式 FI / 债券分析口径"
+            title="会计损益与债券市场归因"
+            description="含非标桥接、未扣 FTP、非产品分类经营净收入；仅用于正式 FI、TPL 市场和债券分析归因。"
+          />
+          <div className="pnl-attribution-lens-status" data-testid="pnl-attribution-formal-lens-status">
+            证据状态：正式归因口径已就绪；TPL 市场例外在工作台中单独标注。
+          </div>
+          <div className="pnl-attribution-lens-source">来源：/api/pnl-attribution/*</div>
+        </section>
       </div>
     </div>
-  );
-}
-
-function productCategoryEffectDisplayValue(
-  value: ProductCategoryAttributionEffects[keyof ProductCategoryAttributionEffects],
-) {
-  return `${formatProductCategoryAttributionEffect(value)} 亿元`;
-}
-
-function pickProductCategoryAttributionHeadlineRow(
-  rows: ProductCategoryAttributionRow[],
-) {
-  return rows.find((row) => row.category_id === "grand_total") ?? rows[0];
-}
-
-function pickLargestProductCategoryEffect(row: ProductCategoryAttributionRow) {
-  return productCategoryEffectColumns
-    .filter(([key]) => key !== "closure_error")
-    .map(([key, label]) => ({
-      key,
-      label,
-      value: row.effects[key],
-      magnitude: Math.abs(Number(row.effects[key])),
-    }))
-    .filter((effect) => Number.isFinite(effect.magnitude))
-    .sort((left, right) => right.magnitude - left.magnitude)[0];
-}
-
-function ProductCategoryAttributionMobileReadout(props: {
-  rows: ProductCategoryAttributionRow[];
-}) {
-  const row = pickProductCategoryAttributionHeadlineRow(props.rows);
-  const largestEffect = pickLargestProductCategoryEffect(row);
-  return (
-    <ProductCategoryMobileReadout
-      testId="pnl-attribution-product-category-attribution-mobile-readout"
-      title="移动归因读数"
-      fields={[
-        {
-          label: "经营变动",
-          value: productCategoryEffectDisplayValue(
-            row.effects.delta_business_net_income,
-          ),
-          note: row.category_name,
-        },
-        {
-          label: "最大拆分项",
-          value: largestEffect
-            ? `${largestEffect.label} ${productCategoryEffectDisplayValue(largestEffect.value)}`
-            : "-",
-        },
-        {
-          label: "未解释差异",
-          value: productCategoryEffectDisplayValue(row.effects.unexplained_effect),
-        },
-        {
-          label: "闭合误差",
-          value: productCategoryEffectDisplayValue(row.effects.closure_error),
-        },
-        {
-          label: "状态",
-          value: row.state,
-        },
-      ]}
-    />
-  );
-}
-
-function pickProductCategoryYtdHeadlineRow(rows: ProductCategoryPnlRow[]) {
-  return (
-    rows.find((row) => row.category_id === "grand_total") ??
-    rows.find((row) => row.is_total && row.category_name.includes("合计")) ??
-    rows[rows.length - 1]
-  );
-}
-
-function ProductCategoryYtdMobileReadout(props: {
-  rows: ProductCategoryPnlRow[];
-}) {
-  const row = pickProductCategoryYtdHeadlineRow(props.rows);
-  return (
-    <ProductCategoryMobileReadout
-      testId="pnl-attribution-product-category-ytd-mobile-readout"
-      title="移动YTD读数"
-      fields={[
-        {
-          label: "累计净营收",
-          value: `${formatProductCategoryRowDisplayValue(
-            row,
-            row.business_net_income,
-          )} 亿元`,
-          note: row.category_name,
-        },
-        {
-          label: "累计规模",
-          value: `${formatProductCategoryRowDisplayValue(row, row.cnx_scale)} 亿元`,
-        },
-        {
-          label: "加权收益率",
-          value: `${formatProductCategoryYieldValue(row.weighted_yield)}%`,
-        },
-        {
-          label: "展示行数",
-          value: String(props.rows.length),
-        },
-      ]}
-    />
   );
 }
 
@@ -771,19 +111,22 @@ function PnlAttributionSourceDateMessage(props: {
     return (
       <div
         data-testid="pnl-attribution-date-loading"
-        style={{ ...headerCardStyle, padding: designTokens.space[4] }}
+        className="pnl-attribution-panel pnl-attribution-panel--compact"
       >
         正在加载产品分类与正式 FI 报告日...
       </div>
     );
   }
   if (props.dateError) {
+    // 中文结论正文；原始错误（含接口路径）收进 title（§6 证据层）。
+    const summary = summarizePnlAttributionError(props.dateError);
     return (
       <div
         data-testid="pnl-attribution-date-error"
-        style={{ ...headerCardStyle, padding: designTokens.space[4] }}
+        className="pnl-attribution-panel pnl-attribution-panel--compact"
+        title={summary?.detail}
       >
-        报告日来源加载失败：{props.dateError}
+        报告日来源加载失败：{summary?.message ?? props.dateError}
       </div>
     );
   }
@@ -800,7 +143,7 @@ function PnlAttributionSourceDateMessage(props: {
     return (
       <div
         data-testid="pnl-attribution-source-date-warning"
-        style={{ ...headerCardStyle, padding: designTokens.space[4] }}
+        className="pnl-attribution-panel pnl-attribution-panel--compact"
       >
         {source}来源当前无可用报告日；另一套口径仍可独立查看，不再强制共同日期。
       </div>
@@ -810,7 +153,7 @@ function PnlAttributionSourceDateMessage(props: {
     return (
       <div
         data-testid="pnl-attribution-date-mismatch"
-        style={{ ...headerCardStyle, padding: designTokens.space[4] }}
+        className="pnl-attribution-panel pnl-attribution-panel--compact"
       >
         两套口径报告日不一致：正式 FI / 债券分析{" "}
         {props.resolution.formalReportDate}；产品分类{" "}
@@ -821,315 +164,9 @@ function PnlAttributionSourceDateMessage(props: {
   return null;
 }
 
-function ProductCategorySummaryCard(props: {
-  label: string;
-  value: string;
-  subLabel: string;
-}) {
-  return (
-    <div style={{ ...headerCardStyle, padding: designTokens.space[4] }}>
-      <div
-        style={{
-          fontSize: designTokens.fontSize[12],
-          color: designTokens.color.neutral[700],
-        }}
-      >
-        {props.label}
-      </div>
-      <div
-        style={{
-          fontSize: designTokens.fontSize[20],
-          fontWeight: 700,
-          color: pageTextColor,
-          ...tabularNumsStyle,
-        }}
-      >
-        {props.value}
-      </div>
-      <div
-        style={{
-          fontSize: designTokens.fontSize[12],
-          color: designTokens.color.neutral[500],
-        }}
-      >
-        {props.subLabel}
-      </div>
-    </div>
-  );
-}
-
-function ProductCategoryAttributionTable(props: {
-  rows: ProductCategoryAttributionRow[];
-}) {
-  if (props.rows.length === 0) {
-    return (
-      <div style={{ color: designTokens.color.neutral[600] }}>
-        产品分类月度归因暂无可展示行。
-      </div>
-    );
-  }
-  return (
-    <>
-      <ProductCategoryAttributionMobileReadout rows={props.rows} />
-      <div
-        data-testid="pnl-attribution-product-category-attribution-raw-grid"
-        style={{ overflowX: "auto" }}
-      >
-      <table
-        data-testid="pnl-attribution-product-category-attribution-table"
-        style={compactTableStyle}
-      >
-        <thead>
-          <tr>
-            <th style={{ ...compactCellStyle, textAlign: "left" }}>产品分类</th>
-            <th style={{ ...compactCellStyle, textAlign: "right" }}>变动</th>
-            {productCategoryEffectColumns.map(([, label]) => (
-              <th
-                key={label}
-                style={{ ...compactCellStyle, textAlign: "right" }}
-              >
-                {label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {props.rows.map((row) => (
-            <tr key={row.category_id}>
-              <td
-                style={{
-                  ...compactCellStyle,
-                  fontWeight: row.level === 0 ? 700 : 500,
-                }}
-              >
-                {row.category_name}
-              </td>
-              <td
-                style={{
-                  ...compactCellStyle,
-                  textAlign: "right",
-                  ...tabularNumsStyle,
-                }}
-              >
-                {formatProductCategoryAttributionEffect(
-                  row.effects.delta_business_net_income,
-                )}
-              </td>
-              {productCategoryEffectColumns.map(([key]) => (
-                <td
-                  key={key}
-                  style={{
-                    ...compactCellStyle,
-                    textAlign: "right",
-                    ...tabularNumsStyle,
-                  }}
-                >
-                  {formatProductCategoryAttributionEffect(row.effects[key])}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      </div>
-    </>
-  );
-}
-
-function ProductCategoryYtdTable(props: { rows: ProductCategoryPnlRow[] }) {
-  if (props.rows.length === 0) {
-    return (
-      <div style={{ color: designTokens.color.neutral[600] }}>
-        产品分类 YTD 汇总暂无可展示行。
-      </div>
-    );
-  }
-  return (
-    <>
-      <ProductCategoryYtdMobileReadout rows={props.rows} />
-      <div
-        data-testid="pnl-attribution-product-category-ytd-raw-grid"
-        style={{ overflowX: "auto" }}
-      >
-      <table
-        data-testid="pnl-attribution-product-category-ytd-table"
-        style={compactTableStyle}
-      >
-        <thead>
-          <tr>
-            <th style={{ ...compactCellStyle, textAlign: "left" }}>产品分类</th>
-            <th style={{ ...compactCellStyle, textAlign: "right" }}>规模</th>
-            <th style={{ ...compactCellStyle, textAlign: "right" }}>净营收</th>
-            <th style={{ ...compactCellStyle, textAlign: "right" }}>收益率</th>
-          </tr>
-        </thead>
-        <tbody>
-          {props.rows.map((row) => (
-            <tr key={row.category_id}>
-              <td
-                style={{
-                  ...compactCellStyle,
-                  fontWeight: row.is_total ? 700 : 500,
-                }}
-              >
-                {row.category_name}
-              </td>
-              <td
-                style={{
-                  ...compactCellStyle,
-                  textAlign: "right",
-                  ...tabularNumsStyle,
-                }}
-              >
-                {formatProductCategoryRowDisplayValue(row, row.cnx_scale)}
-              </td>
-              <td
-                style={{
-                  ...compactCellStyle,
-                  textAlign: "right",
-                  ...tabularNumsStyle,
-                }}
-              >
-                {formatProductCategoryRowDisplayValue(
-                  row,
-                  row.business_net_income,
-                )}
-              </td>
-              <td
-                style={{
-                  ...compactCellStyle,
-                  textAlign: "right",
-                  ...tabularNumsStyle,
-                }}
-              >
-                {formatProductCategoryYieldValue(row.weighted_yield)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      </div>
-    </>
-  );
-}
-
-function ProductCategoryAttributionWorkbench(props: {
-  monthlyData: ProductCategoryPnlPayload | null;
-  ytdData: ProductCategoryPnlPayload | null;
-  attributionData: ProductCategoryAttributionPayload | null;
-  isLoading: boolean;
-  error: string | null;
-  onRetry: () => void;
-}) {
-  if (props.isLoading) {
-    return (
-      <div
-        data-testid="pnl-attribution-product-category-tab"
-        style={{ ...headerCardStyle, padding: designTokens.space[4] }}
-      >
-        产品分类归因加载中...
-      </div>
-    );
-  }
-  if (props.error) {
-    return (
-      <div
-        data-testid="pnl-attribution-product-category-tab"
-        style={{ ...headerCardStyle, padding: designTokens.space[4] }}
-      >
-        产品分类来源加载失败：{props.error}
-        <button
-          type="button"
-          onClick={props.onRetry}
-          style={{ ...tabStyle(false), marginLeft: designTokens.space[3] }}
-        >
-          重试
-        </button>
-      </div>
-    );
-  }
-  if (!props.monthlyData && !props.ytdData && !props.attributionData) {
-    return (
-      <div
-        data-testid="pnl-attribution-product-category-tab"
-        style={{ ...headerCardStyle, padding: designTokens.space[4] }}
-      >
-        产品分类来源暂无可用报告日数据。
-      </div>
-    );
-  }
-
-  const totals = props.attributionData?.totals;
-  const attributionRows = totals
-    ? [totals.asset_total, totals.liability_total, totals.grand_total]
-    : (props.attributionData?.rows.slice(0, 8) ?? []);
-  const ytdRows = props.ytdData
-    ? [
-        ...props.ytdData.rows.slice(0, 8),
-        props.ytdData.asset_total,
-        props.ytdData.liability_total,
-        props.ytdData.grand_total,
-      ]
-    : [];
-  const headline = totals?.grand_total.effects;
-  return (
-    <div
-      data-testid="pnl-attribution-product-category-tab"
-      className="pnl-attribution-product-category-workbench"
-      style={{ display: "grid", gap: designTokens.space[4] }}
-    >
-      <div
-        className="pnl-attribution-product-category-summary-grid"
-      >
-        <ProductCategorySummaryCard
-          label="月度净营收"
-          value={`${formatProductCategoryValue(props.monthlyData?.grand_total.business_net_income)} 亿元`}
-          subLabel={props.monthlyData?.report_date ?? "-"}
-        />
-        <ProductCategorySummaryCard
-          label="YTD 净营收"
-          value={`${formatProductCategoryValue(props.ytdData?.grand_total.business_net_income)} 亿元`}
-          subLabel={props.ytdData?.report_date ?? "-"}
-        />
-        <ProductCategorySummaryCard
-          label="月度变动"
-          value={`${formatProductCategoryAttributionEffect(headline?.delta_business_net_income)} 亿元`}
-          subLabel={props.attributionData?.compare === "yoy" ? "同比" : "环比"}
-        />
-        <ProductCategorySummaryCard
-          label="未解释差异"
-          value={`${formatProductCategoryAttributionEffect(headline?.unexplained_effect)} 亿元`}
-          subLabel={props.attributionData?.state ?? "-"}
-        />
-      </div>
-      <div style={{ ...headerCardStyle, padding: designTokens.space[4] }}>
-        <SectionLead
-          eyebrow="产品分类归因"
-          title="月度经营差异拆分"
-          description="直接复用产品分类已开放的 monthly attribution，不把 YTD 汇总硬套到规模/利率公式。"
-        />
-        <div style={{ marginTop: designTokens.space[3] }}>
-          <ProductCategoryAttributionTable rows={attributionRows} />
-        </div>
-      </div>
-
-      <div style={{ ...headerCardStyle, padding: designTokens.space[4] }}>
-        <SectionLead
-          eyebrow="产品分类 YTD"
-          title="累计汇总对照"
-          description="YTD 只作为产品分类汇总对照，保持产品分类页已计算好的口径。"
-        />
-        <div style={{ marginTop: designTokens.space[3] }}>
-          <ProductCategoryYtdTable rows={ytdRows} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function compactMetaValue(value: unknown): string {
   if (value === null || value === undefined || value === "") {
-    return "—";
+    return EM_DASH;
   }
   if (typeof value === "boolean") {
     return value ? "是" : "否";
@@ -1144,160 +181,80 @@ function compactMetaStatus(value: ResultMeta["quality_flag"]) {
   if (value === "warning") {
     return {
       label: "预警",
-      borderColor: designTokens.color.warning[200],
-      background: designTokens.color.warning[50],
-      color: designTokens.color.warning[700],
+      quality: "warning",
     };
   }
   if (value === "error" || value === "missing") {
     return {
       label: value === "missing" ? "缺失" : "错误",
-      borderColor: designTokens.color.danger[200],
-      background: designTokens.color.danger[50],
-      color: designTokens.color.danger[700],
+      quality: value,
     };
   }
   if (value === "stale") {
     return {
       label: "陈旧",
-      borderColor: designTokens.color.warning[200],
-      background: designTokens.color.warning[50],
-      color: designTokens.color.warning[700],
+      quality: "stale",
     };
   }
   return {
     label: "正常",
-    borderColor: designTokens.color.success[200],
-    background: designTokens.color.success[50],
-    color: designTokens.color.success[700],
+    quality: "normal",
   };
 }
 
+/**
+ * 结果元信息条只保留证据层字段（口径/结果类型/日期/trace/规则版本）；
+ * 质量与降级状态按 §6 去重只在归因决策条露出一次。
+ */
 function CurrentViewMetaStrip(props: {
   title: string;
   meta: ResultMeta;
   testId: string;
 }) {
-  const quality = compactMetaStatus(props.meta.quality_flag);
-  const fallback =
-    props.meta.fallback_mode === "none"
-      ? "未降级"
-      : compactMetaValue(props.meta.fallback_mode);
-  const fields = [
-    [
-      "口径",
-      props.meta.basis === "formal"
-        ? "正式口径"
-        : compactMetaValue(props.meta.basis),
-    ],
-    ["结果类型", compactMetaValue(props.meta.result_kind)],
-    ["数据截至日", compactMetaValue(props.meta.as_of_date)],
-    ["生成时间", compactMetaValue(props.meta.generated_at)],
-    ["追踪编号", compactMetaValue(props.meta.trace_id)],
-    ["规则版本", compactMetaValue(props.meta.rule_version)],
+  // 生成时间收敛为 YYYY-MM-DD HH:mm，微秒级 ISO 原值只进 title（§6 证据层）。
+  const generatedAt = formatGeneratedAtDisplay(props.meta.generated_at);
+  const fields: Array<{ label: string; text: string; title?: string }> = [
+    {
+      label: "口径",
+      text:
+        props.meta.basis === "formal"
+          ? "正式口径"
+          : compactMetaValue(props.meta.basis),
+    },
+    { label: "结果类型", text: compactMetaValue(props.meta.result_kind) },
+    { label: "数据截至日", text: compactMetaValue(props.meta.as_of_date) },
+    { label: "生成时间", text: generatedAt.text, title: generatedAt.title },
+    { label: "追踪编号", text: compactMetaValue(props.meta.trace_id) },
+    { label: "规则版本", text: compactMetaValue(props.meta.rule_version) },
   ];
 
   return (
     <section
       data-testid={props.testId}
-      style={{
-        display: "grid",
-        gap: designTokens.space[3],
-        padding: `${designTokens.space[3]}px ${designTokens.space[4]}px`,
-        borderRadius: designTokens.radius.sm,
-        border: `1px solid ${pageBorderColor}`,
-        background: pageSurfaceColor,
-        boxShadow: "0 1px 2px rgba(31, 41, 55, 0.04)",
-      }}
+      className="pnl-attribution-meta-strip"
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: designTokens.space[3],
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ display: "grid", gap: designTokens.space[1] }}>
-          <span
-            style={{
-              fontSize: designTokens.fontSize[11],
-              fontWeight: 700,
-              color: pageMutedTextColor,
-            }}
-          >
-            当前视图结果元信息
-          </span>
-          <strong
-            style={{
-              color: pageTextColor,
-              fontSize: designTokens.fontSize[14],
-            }}
-          >
-            {props.title}
-          </strong>
-        </div>
-        <div
-          style={{
-            display: "flex",
-            gap: designTokens.space[2],
-            flexWrap: "wrap",
-          }}
-        >
-          <span
-            style={{
-              ...modeBadgeStyle,
-              letterSpacing: 0,
-              textTransform: "none",
-              border: `1px solid ${quality.borderColor}`,
-              background: quality.background,
-              color: quality.color,
-            }}
-          >
-            {quality.label}
-          </span>
-          <span
-            style={{
-              ...modeBadgeStyle,
-              letterSpacing: 0,
-              textTransform: "none",
-              border: `1px solid ${pageBorderSoftColor}`,
-              background: pageSubtleSurfaceColor,
-              color: pageMutedTextColor,
-            }}
-          >
-            {fallback}
-          </span>
-        </div>
+      <div className="pnl-attribution-meta-strip__copy">
+        <span className="pnl-attribution-meta-strip__eyebrow">
+          当前视图结果元信息
+        </span>
+        <strong className="pnl-attribution-meta-strip__title">
+          {props.title}
+        </strong>
       </div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          gap: `${designTokens.space[2]}px ${designTokens.space[4]}px`,
-          paddingTop: designTokens.space[3],
-          borderTop: `1px solid ${pageBorderSoftColor}`,
-          fontSize: designTokens.fontSize[12],
-        }}
-      >
-        {fields.map(([label, value]) => (
+      <div className="pnl-attribution-meta-strip__grid">
+        {fields.map((field) => (
           <div
-            key={label}
-            style={{ display: "grid", gap: designTokens.space[1], minWidth: 0 }}
+            key={field.label}
+            className="pnl-attribution-meta-strip__field"
           >
-            <span style={{ color: pageMutedTextColor }}>{label}</span>
+            <span className="pnl-attribution-meta-strip__label">
+              {field.label}
+            </span>
             <span
-              title={value}
-              style={{
-                color: pageTextColor,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                ...tabularNumsStyle,
-              }}
+              title={field.title || field.text}
+              className="pnl-attribution-meta-strip__value"
             >
-              {value}
+              {field.text}
             </span>
           </div>
         ))}
@@ -1316,7 +273,7 @@ function pnlAttributionLensSummary(activeTab: PnlAttributionTab) {
   }
   if (activeTab === "tpl-market") {
     return {
-      label: "TPL hybrid exception",
+      label: "TPL 混合口径例外",
       detail: "市场序列来自 /api/pnl-attribution/tpl-market；bond_tpl 月度行来自 /ui/pnl/product-category。",
       source: "/api/pnl-attribution/tpl-market + /ui/pnl/product-category",
     };
@@ -1347,12 +304,12 @@ function formatDateResolutionSummary(
       ? resolution.productCategoryReportDate
       : resolution.formalReportDate;
   if (!resolution.hasFormalDate || !resolution.hasProductCategoryDate) {
-    return `缺少来源；当前可用报告日 ${activeDate ?? "—"}`;
+    return `缺少来源；当前可用报告日 ${activeDate ?? EM_DASH}`;
   }
   if (!resolution.datesAligned) {
-    return `日期分离：正式 FI ${resolution.formalReportDate ?? "—"} / 产品分类 ${resolution.productCategoryReportDate ?? "—"}`;
+    return `日期分离：正式 FI ${resolution.formalReportDate ?? EM_DASH} / 产品分类 ${resolution.productCategoryReportDate ?? EM_DASH}`;
   }
-  return `共同报告日 ${activeDate ?? "—"}`;
+  return `共同报告日 ${activeDate ?? EM_DASH}`;
 }
 
 function PnlAttributionDecisionStrip(props: {
@@ -1385,20 +342,21 @@ function PnlAttributionDecisionStrip(props: {
         : props.activeTab === "product-category"
           ? "先看经营归因闭合"
           : props.activeTab === "tpl-market"
-            ? "核对 hybrid 来源"
+            ? "核对混合口径来源"
             : props.activeTab === "advanced"
               ? "复核 Campisi 决策级"
               : "检查正式 FI 归因";
+  // 治理字段标签中文化；value 中的 candidate_or_pending 等为证据引用保留英文。
+  // 质量状态只在分区头徽标露出一次（§6 去重），不再重复成字段行。
   const fields = [
-    ["Page status", "candidate_or_pending"],
-    ["Formal use", "formal_use_allowed=false"],
-    ["Owner approval", "owner approval pending"],
-    ["Closure", "closure_approved=false"],
+    ["页面状态", "candidate_or_pending"],
+    ["正式使用", "formal_use_allowed=false"],
+    ["业主批准", "owner approval pending"],
+    ["口径闭合", "closure_approved=false"],
     ["当前口径", lens.label],
     ["报告日", dateSummary],
     ["来源", lens.source],
     ["视图期间", props.currentViewDateTitle],
-    ["质量", quality?.label ?? "待加载"],
     ["降级", fallback],
     ["比较", props.compareType === "mom" ? "环比" : "同比"],
     ["下一步", action],
@@ -1409,18 +367,8 @@ function PnlAttributionDecisionStrip(props: {
       data-testid="pnl-attribution-decision-strip"
       className="pnl-attribution-decision-strip"
     >
-      <div className="pnl-attribution-decision-strip__header">
-        <div className="pnl-attribution-decision-strip__copy">
-          <span className="pnl-attribution-decision-strip__eyebrow">
-            归因决策条
-          </span>
-          <strong className="pnl-attribution-decision-strip__title">
-            {lens.label}
-          </strong>
-          <span className="pnl-attribution-decision-strip__detail">
-            {lens.detail}
-          </span>
-        </div>
+      <div className="pnl-attribution-section-head pnl-attribution-decision-strip__head">
+        <h2 className="pnl-attribution-section-head__title">归因决策条</h2>
         <span
           className="pnl-attribution-decision-strip__badge"
           data-quality={qualityState}
@@ -1428,20 +376,30 @@ function PnlAttributionDecisionStrip(props: {
           {quality?.label ?? "待加载"}
         </span>
       </div>
-      <div className="pnl-attribution-decision-strip__grid">
-        {fields.map(([label, value]) => (
-          <div className="pnl-attribution-decision-strip__field" key={label}>
-            <span className="pnl-attribution-decision-strip__label">
-              {label}
-            </span>
-            <span
-              className="pnl-attribution-decision-strip__value"
-              title={value}
-            >
-              {value}
-            </span>
-          </div>
-        ))}
+      <div className="pnl-attribution-decision-strip__body">
+        <div className="pnl-attribution-decision-strip__copy">
+          <strong className="pnl-attribution-decision-strip__title">
+            {lens.label}
+          </strong>
+          <span className="pnl-attribution-decision-strip__detail">
+            {lens.detail}
+          </span>
+        </div>
+        <div className="pnl-attribution-decision-strip__grid">
+          {fields.map(([label, value]) => (
+            <div className="pnl-attribution-decision-strip__field" key={label}>
+              <span className="pnl-attribution-decision-strip__label">
+                {label}
+              </span>
+              <span
+                className="pnl-attribution-decision-strip__value"
+                title={value}
+              >
+                {value}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -1504,8 +462,6 @@ export function PnlAttributionView({ reportDate }: Props) {
   const [krdData, setKrdData] = useState<KRDAttributionPayload | null>(null);
   const [advancedSummary, setAdvancedSummary] =
     useState<AdvancedAttributionSummary | null>(null);
-  const [campisiData, setCampisiData] =
-    useState<CampisiAttributionPayload | null>(null);
   const [campisiFourEffects, setCampisiFourEffects] =
     useState<CampisiFourEffectsPayload | null>(null);
   const [campisiEnhanced, setCampisiEnhanced] =
@@ -1540,7 +496,7 @@ export function PnlAttributionView({ reportDate }: Props) {
     try {
       const [businessDatesEnvelope, productCategoryDatesEnvelope] =
         await Promise.all([
-          client.getFormalPnlDates("formal"),
+          client.getFormalPnlDates(),
           client.getProductCategoryDates(),
         ]);
       const businessDates = businessDatesEnvelope.result.formal_fi_report_dates
@@ -1565,10 +521,17 @@ export function PnlAttributionView({ reportDate }: Props) {
     }
   }, [client, reportDate]);
 
+  // 请求序号守卫：loadData 一次要写十余个 setState；快速切换页签 /
+  // 环比同比 / 报告日时，只允许最新一次请求落地，防止先发后至的
+  // 响应用旧口径覆盖正式归因数据。
+  const loadDataRequestSeqRef = useRef(0);
+
   const loadData = useCallback(async () => {
     if (!effectiveReportDate) {
       return;
     }
+    const requestId = ++loadDataRequestSeqRef.current;
+    const isStale = () => requestId !== loadDataRequestSeqRef.current;
     setLoading(true);
     setError(null);
     setCampisiDecisionGradeError(null);
@@ -1578,6 +541,7 @@ export function PnlAttributionView({ reportDate }: Props) {
           reportDate: effectiveReportDate,
           compareType,
         });
+        if (isStale()) return;
         setVolumeRateData(data.result);
         setVolumeRateMeta(data.result_meta);
       } else if (activeTab === "tpl-market") {
@@ -1585,6 +549,7 @@ export function PnlAttributionView({ reportDate }: Props) {
           months: 12,
           reportDate: effectiveReportDate,
         });
+        if (isStale()) return;
         setTplMarketData(data.result);
         setTplMarketMeta(data.result_meta);
         const productCategoryDates = dateResolution?.productCategoryDates.length
@@ -1616,6 +581,7 @@ export function PnlAttributionView({ reportDate }: Props) {
             };
           }),
         );
+        if (isStale()) return;
         setTplProductCategoryMonthlyPoints(productCategoryTplPoints);
       } else if (activeTab === "composition") {
         const data = await client.getPnlCompositionBreakdown({
@@ -1623,6 +589,7 @@ export function PnlAttributionView({ reportDate }: Props) {
           includeTrend: true,
           trendMonths: 6,
         });
+        if (isStale()) return;
         setCompositionData(data.result);
         setCompositionMeta(data.result_meta);
       } else if (activeTab === "product-category") {
@@ -1640,6 +607,7 @@ export function PnlAttributionView({ reportDate }: Props) {
             compare: compareType,
           }),
         ]);
+        if (isStale()) return;
         setProductCategoryMonthlyData(monthly.result);
         setProductCategoryMonthlyMeta(monthly.result_meta);
         setProductCategoryYtdData(ytd.result);
@@ -1652,7 +620,6 @@ export function PnlAttributionView({ reportDate }: Props) {
           spread,
           krd,
           summary,
-          campisi,
           campisiFour,
           campisiEnhancedData,
           campisiBuckets,
@@ -1667,10 +634,6 @@ export function PnlAttributionView({ reportDate }: Props) {
             lookbackDays: 30,
           }),
           client.getPnlAdvancedAttributionSummary(effectiveReportDate),
-          client.getPnlCampisiAttribution({
-            endDate: effectiveReportDate,
-            lookbackDays: 30,
-          }),
           client.getPnlCampisiFourEffects({
             endDate: effectiveReportDate,
             lookbackDays: 30,
@@ -1684,6 +647,7 @@ export function PnlAttributionView({ reportDate }: Props) {
             lookbackDays: 30,
           }),
         ]);
+        if (isStale()) return;
         setCarryRollDownData(carry.result);
         setCarryMeta(carry.result_meta);
         setSpreadData(spread.result);
@@ -1692,7 +656,6 @@ export function PnlAttributionView({ reportDate }: Props) {
         setKrdMeta(krd.result_meta);
         setAdvancedSummary(summary.result);
         setAdvancedSummaryMeta(summary.result_meta);
-        setCampisiData(campisi.result);
         setCampisiFourEffects(campisiFour.result);
         setCampisiFourMeta(campisiFour.result_meta);
         setCampisiEnhanced(campisiEnhancedData.result);
@@ -1706,9 +669,11 @@ export function PnlAttributionView({ reportDate }: Props) {
             endDate: effectiveReportDate,
             lookbackDays: 30,
           });
+          if (isStale()) return;
           setCampisiDecisionGrade(campisiDecision.result);
           setCampisiDecisionGradeMeta(campisiDecision.result_meta);
         } catch (decisionError: unknown) {
+          if (isStale()) return;
           setCampisiDecisionGrade(null);
           setCampisiDecisionGradeMeta(null);
           setCampisiDecisionGradeError(
@@ -1719,10 +684,13 @@ export function PnlAttributionView({ reportDate }: Props) {
         }
       }
     } catch (e: unknown) {
+      if (isStale()) return;
       const msg = e instanceof Error ? e.message : "加载失败";
       setError(msg);
     } finally {
-      setLoading(false);
+      if (!isStale()) {
+        setLoading(false);
+      }
     }
   }, [
     activeTab,
@@ -1745,6 +713,9 @@ export function PnlAttributionView({ reportDate }: Props) {
     activeTab === "advanced"
       ? (advancedSummary?.key_insights ?? [])
       : [];
+  // 同一次 loadData 失败会打空整个页签：错误在区级收敛为一条横幅，
+  // 不再逐面板重复（§6 去重；§11.3 同一状态文案 3 处以上为一票否决项）。
+  const errorSummary = summarizePnlAttributionError(error);
   const volumeRateBridgeSummary = buildVolumeRateBridgeSummary(volumeRateData);
   const currentViewMeta =
     activeTab === "volume-rate"
@@ -1768,60 +739,6 @@ export function PnlAttributionView({ reportDate }: Props) {
     productCategoryYtdData,
   });
   const currentViewMetaTitle = `${currentViewDate.label}：${currentViewDate.value}`;
-  const advancedMetaRows: [string, ResultMeta | null][] =
-    activeTab === "advanced"
-      ? [
-          ["Carry / Roll-down", carryMeta],
-          ["利差归因", spreadMeta],
-          ["KRD归因", krdMeta],
-          ["高级摘要", advancedSummaryMeta],
-          ["Campisi 四效应", campisiFourMeta],
-          ["Campisi 六效应", campisiEnhancedMeta],
-          ["Campisi 到期桶", campisiMaturityMeta],
-          ["Campisi 决策级", campisiDecisionGradeMeta],
-        ]
-      : [];
-  const advancedMetaSections = advancedMetaRows.map(([title, meta], index) => ({
-    key: `advanced-${index}`,
-    title,
-    meta,
-  }));
-  const productCategoryMetaSections =
-    activeTab === "product-category"
-      ? [
-          {
-            key: "product-category-attribution",
-            title: "产品分类月度归因",
-            meta: productCategoryAttributionMeta,
-          },
-          {
-            key: "product-category-monthly",
-            title: "产品分类月度汇总",
-            meta: productCategoryMonthlyMeta,
-          },
-          {
-            key: "product-category-ytd",
-            title: "产品分类 YTD 汇总",
-            meta: productCategoryYtdMeta,
-          },
-        ]
-      : [];
-
-  const volumeRateState: DataSectionState = derivePnlDataSectionState({
-    meta: volumeRateMeta,
-    isLoading: loading && activeTab === "volume-rate",
-    isError: error !== null && activeTab === "volume-rate",
-    errorMessage: error,
-    isEmpty: !volumeRateData || (volumeRateData.items?.length ?? 0) === 0,
-  });
-
-  const waterfallState: DataSectionState = derivePnlDataSectionState({
-    meta: volumeRateMeta,
-    isLoading: loading && activeTab === "volume-rate",
-    isError: error !== null && activeTab === "volume-rate",
-    errorMessage: error,
-    isEmpty: false,
-  });
 
   const tplMarketState: DataSectionState = derivePnlDataSectionState({
     meta: tplMarketMeta,
@@ -1839,119 +756,26 @@ export function PnlAttributionView({ reportDate }: Props) {
     isEmpty: !compositionData,
   });
 
-  const productCategoryState: DataSectionState = derivePnlDataSectionState({
-    meta:
-      productCategoryAttributionMeta ??
-      productCategoryMonthlyMeta ??
-      productCategoryYtdMeta,
-    isLoading: loading && activeTab === "product-category",
-    isError: error !== null && activeTab === "product-category",
-    errorMessage: error,
-    isEmpty:
-      !productCategoryMonthlyData &&
-      !productCategoryYtdData &&
-      !productCategoryAttributionData,
-  });
-
-  const advancedCarryState: DataSectionState = derivePnlDataSectionState({
-    meta: carryMeta,
-    isLoading: loading && activeTab === "advanced",
-    isError: error !== null && activeTab === "advanced",
-    errorMessage: error,
-    isEmpty: !carryRollDownData || (carryRollDownData.items?.length ?? 0) === 0,
-  });
-
-  const campisiFourState: DataSectionState = derivePnlDataSectionState({
-    meta: campisiFourMeta,
-    isLoading: loading && activeTab === "advanced",
-    isError: error !== null && activeTab === "advanced",
-    errorMessage: error,
-    isEmpty: !(campisiFourEffects ?? campisiData),
-  });
-
-  const campisiEnhancedState: DataSectionState = derivePnlDataSectionState({
-    meta: campisiEnhancedMeta,
-    isLoading: loading && activeTab === "advanced",
-    isError: error !== null && activeTab === "advanced",
-    errorMessage: error,
-    isEmpty: !campisiEnhanced,
-  });
-
-  const campisiMaturityState: DataSectionState = derivePnlDataSectionState({
-    meta: campisiMaturityMeta,
-    isLoading: loading && activeTab === "advanced",
-    isError: error !== null && activeTab === "advanced",
-    errorMessage: error,
-    isEmpty: !campisiMaturityBuckets,
-  });
-
-  const campisiDecisionGradeState: DataSectionState = derivePnlDataSectionState({
-    meta: campisiDecisionGradeMeta,
-    isLoading: loading && activeTab === "advanced",
-    isError:
-      (error !== null || campisiDecisionGradeError !== null) &&
-      activeTab === "advanced",
-    errorMessage: campisiDecisionGradeError ?? error,
-    isEmpty: !campisiDecisionGrade,
-  });
-
   return (
-    <div style={shellStyle}>
-      <div style={headerCardStyle}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: designTokens.space[4],
-            flexWrap: "wrap",
-          }}
-        >
-          <div>
+    <div className="pnl-attribution-shell">
+      <div className="pnl-attribution-page-header">
+        <div className="pnl-attribution-page-header__inner">
+          <div className="pnl-attribution-page-header__copy">
             <h2
               data-testid="pnl-attribution-page-title"
-              style={{
-                margin: 0,
-                fontSize: designTokens.fontSize[20],
-                fontWeight: 700,
-                color: pageTextColor,
-              }}
+              className="pnl-attribution-page-header__title"
             >
               损益归因分析
             </h2>
-            <p
-              style={{
-                margin: `${designTokens.space[2]}px 0 0`,
-                fontSize: designTokens.fontSize[13],
-                color: pageMutedTextColor,
-                maxWidth: 640,
-                lineHeight: designTokens.lineHeight.normal,
-              }}
-            >
+            <p className="pnl-attribution-page-header__description">
               本页保留产品分类经营口径与正式 FI / 债券分析口径；两套数据分开取数、
               分开元信息，不再跨口径汇总或闭合。
             </p>
           </div>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              gap: designTokens.space[3],
-              flexWrap: "wrap",
-            }}
-          >
+          <div className="pnl-attribution-page-header__actions">
             <span
-              style={{
-                ...modeBadgeStyle,
-                background:
-                  client.mode === "real"
-                    ? designTokens.color.success[50]
-                    : pageSubtleSurfaceColor,
-                color:
-                  client.mode === "real"
-                    ? designTokens.color.success[600]
-                    : pageMutedTextColor,
-                border: `1px solid ${client.mode === "real" ? designTokens.color.success[200] : pageBorderSoftColor}`,
-              }}
+              className="pnl-attribution-mode-badge"
+              data-mode={client.mode}
             >
               {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
             </span>
@@ -1959,11 +783,7 @@ export function PnlAttributionView({ reportDate }: Props) {
               type="button"
               onClick={() => void loadData()}
               disabled={loading || dateLoading}
-              style={{
-                ...tabStyle(false),
-                alignSelf: "flex-start",
-                opacity: loading || dateLoading ? 0.6 : 1,
-              }}
+              className="pnl-attribution-tab-button"
             >
               {loading ? "刷新中…" : "刷新"}
             </button>
@@ -1972,40 +792,13 @@ export function PnlAttributionView({ reportDate }: Props) {
 
         {keyFindings.length > 0 && (
           <div
-            style={{
-              marginTop: designTokens.space[4],
-              padding: designTokens.space[4],
-              borderRadius: designTokens.radius.md,
-              border: "1px solid",
-              borderColor:
-                activeTab === "advanced"
-                  ? pageBorderColor
-                  : designTokens.color.warning[200],
-              background:
-                activeTab === "advanced"
-                  ? pageSubtleSurfaceColor
-                  : designTokens.color.warning[50],
-            }}
+            className="pnl-attribution-findings"
+            data-context={activeTab === "advanced" ? "advanced" : "default"}
           >
-            <div
-              style={{
-                fontWeight: 700,
-                fontSize: designTokens.fontSize[13],
-                marginBottom: designTokens.space[2],
-                color: pageTextColor,
-              }}
-            >
+            <div className="pnl-attribution-findings__title">
               {activeTab === "advanced" ? "高级归因要点" : "关键发现"}
             </div>
-            <ul
-              style={{
-                margin: 0,
-                paddingLeft: designTokens.space[6],
-                color: pageMutedTextColor,
-                fontSize: designTokens.fontSize[13],
-                lineHeight: designTokens.lineHeight.normal,
-              }}
-            >
+            <ul className="pnl-attribution-findings__list">
               {keyFindings.map((t, i) => (
                 <li key={i}>{t}</li>
               ))}
@@ -2032,31 +825,30 @@ export function PnlAttributionView({ reportDate }: Props) {
         isLoading={dateLoading}
       />
 
-      <div style={{ ...headerCardStyle, padding: designTokens.space[4] }}>
+      <div className="pnl-attribution-section">
         <SectionLead
-          eyebrow="工作台"
           title="双口径归因工作台"
-          description="产品分类经营归因只读取 /ui/pnl/product-category；正式 FI / 债券分析主要读取 /api/pnl-attribution/*。TPL 市场页签是明确的 hybrid exception：/api/pnl-attribution/tpl-market 提供市场序列，/ui/pnl/product-category 提供 bond_tpl 月度行。"
+          description="产品分类经营归因只读取 /ui/pnl/product-category；正式 FI / 债券分析主要读取 /api/pnl-attribution/*。TPL 市场页签是明确的混合口径例外：/api/pnl-attribution/tpl-market 提供市场序列，/ui/pnl/product-category 提供 bond_tpl 月度行。"
           testId="pnl-attribution-workbench-lead"
         />
-        <FilterBar style={{ ...tabBarStyle, marginTop: designTokens.space[4] }}>
+        <FilterBar className="pnl-attribution-tab-row">
           <button
             type="button"
-            style={tabStyle(activeTab === "volume-rate")}
+            className={tabButtonClassName(activeTab === "volume-rate")}
             onClick={() => setActiveTab("volume-rate")}
           >
             规模 / 利率效应
           </button>
           <button
             type="button"
-            style={tabStyle(activeTab === "tpl-market")}
+            className={tabButtonClassName(activeTab === "tpl-market")}
             onClick={() => setActiveTab("tpl-market")}
           >
             TPL 市场相关性
           </button>
           <button
             type="button"
-            style={tabStyle(activeTab === "composition")}
+            className={tabButtonClassName(activeTab === "composition")}
             onClick={() => setActiveTab("composition")}
           >
             损益构成
@@ -2064,37 +856,31 @@ export function PnlAttributionView({ reportDate }: Props) {
           <button
             data-testid="pnl-attribution-tab-product-category"
             type="button"
-            style={tabStyle(activeTab === "product-category")}
+            className={tabButtonClassName(activeTab === "product-category")}
             onClick={() => setActiveTab("product-category")}
           >
             产品分类归因
           </button>
           <button
             type="button"
-            style={tabStyle(activeTab === "advanced", "advanced")}
+            className={tabButtonClassName(activeTab === "advanced", "advanced")}
             onClick={() => setActiveTab("advanced")}
           >
             高级归因 + Campisi
           </button>
           {(activeTab === "volume-rate" ||
             activeTab === "product-category") && (
-            <div
-              style={{
-                marginLeft: "auto",
-                display: "flex",
-                gap: designTokens.space[2],
-              }}
-            >
+            <div className="pnl-attribution-tab-row__compare-group">
               <button
                 type="button"
-                style={tabStyle(compareType === "mom")}
+                className={tabButtonClassName(compareType === "mom")}
                 onClick={() => setCompareType("mom")}
               >
                 环比
               </button>
               <button
                 type="button"
-                style={tabStyle(compareType === "yoy")}
+                className={tabButtonClassName(compareType === "yoy")}
                 onClick={() => setCompareType("yoy")}
               >
                 同比
@@ -2105,7 +891,6 @@ export function PnlAttributionView({ reportDate }: Props) {
       </div>
 
       <SectionLead
-        eyebrow="分析"
         title="当前归因视图"
         description="下方内容随页签切换；请按当前口径阅读来源、单位、报告日和质量提示。"
         testId="pnl-attribution-current-view-lead"
@@ -2130,105 +915,83 @@ export function PnlAttributionView({ reportDate }: Props) {
         />
       ) : null}
 
-      {activeTab === "advanced" ? (
-        <FormalResultMetaPanel
-          testId="pnl-attribution-advanced-view-meta"
-          title="高级归因结果元信息"
-          emptyText={loading ? "加载中…" : "当前还没有可展示的高级归因元信息。"}
-          sections={advancedMetaSections}
+      {errorSummary ? (
+        /* 错误态区级收敛：一条中文横幅 + 面板收缩，错误正文全页只出现一次（§6）。 */
+        <PnlAttributionErrorRegion
+          activeTab={activeTab}
+          summary={errorSummary}
+          onRetry={() => void loadData()}
         />
-      ) : null}
-
-      {activeTab === "product-category" ? (
-        <FormalResultMetaPanel
-          testId="pnl-attribution-product-category-view-meta"
-          title="产品分类来源元信息"
-          emptyText={
-            loading ? "加载中..." : "当前还没有可展示的产品分类来源元信息。"
-          }
-          sections={productCategoryMetaSections}
-        />
-      ) : null}
-
-      {activeTab === "volume-rate" ? (
+      ) : (
         <>
-          <AttributionWaterfallChart
-            data={volumeRateData}
-            state={waterfallState}
-            onRetry={() => void loadData()}
-          />
-          <VolumeRateAnalysisChart
-            data={volumeRateData}
-            state={volumeRateState}
-            onRetry={() => void loadData()}
-          />
+          {activeTab === "advanced" ? (
+            <AdvancedAttributionTabPanels
+              carryData={carryRollDownData}
+              spreadData={spreadData}
+              krdData={krdData}
+              summaryData={advancedSummary}
+              campisiData={null}
+              campisiFourEffects={campisiFourEffects}
+              campisiEnhanced={campisiEnhanced}
+              campisiMaturityBuckets={campisiMaturityBuckets}
+              campisiDecisionGrade={campisiDecisionGrade}
+              carryMeta={carryMeta}
+              spreadMeta={spreadMeta}
+              krdMeta={krdMeta}
+              summaryMeta={advancedSummaryMeta}
+              campisiFourMeta={campisiFourMeta}
+              campisiEnhancedMeta={campisiEnhancedMeta}
+              campisiMaturityMeta={campisiMaturityMeta}
+              campisiDecisionGradeMeta={campisiDecisionGradeMeta}
+              isLoading={loading}
+              errorMessage={error}
+              decisionGradeErrorMessage={campisiDecisionGradeError}
+              onRetry={() => void loadData()}
+            />
+          ) : null}
+
+          {activeTab === "product-category" ? (
+            <ProductCategoryTabPanels
+              monthlyData={productCategoryMonthlyData}
+              ytdData={productCategoryYtdData}
+              attributionData={productCategoryAttributionData}
+              monthlyMeta={productCategoryMonthlyMeta}
+              ytdMeta={productCategoryYtdMeta}
+              attributionMeta={productCategoryAttributionMeta}
+              isLoading={loading}
+              errorMessage={error}
+              onRetry={() => void loadData()}
+            />
+          ) : null}
+
+          {activeTab === "volume-rate" ? (
+            <VolumeRateTabCharts
+              data={volumeRateData}
+              meta={volumeRateMeta}
+              isLoading={loading}
+              errorMessage={error}
+              onRetry={() => void loadData()}
+            />
+          ) : null}
+
+          {activeTab === "tpl-market" ? (
+            <TPLMarketChart
+              data={tplMarketData}
+              state={tplMarketState}
+              onRetry={() => void loadData()}
+              productCategoryTplMonthlyPoints={tplProductCategoryMonthlyPoints}
+            />
+          ) : null}
+
+          {activeTab === "composition" ? (
+            <PnLCompositionChart
+              data={compositionData}
+              state={compositionState}
+              onRetry={() => void loadData()}
+            />
+          ) : null}
         </>
-      ) : null}
-
-      {activeTab === "tpl-market" ? (
-        <TPLMarketChart
-          data={tplMarketData}
-          state={tplMarketState}
-          onRetry={() => void loadData()}
-          productCategoryTplMonthlyPoints={tplProductCategoryMonthlyPoints}
-        />
-      ) : null}
-
-      {activeTab === "composition" ? (
-        <PnLCompositionChart
-          data={compositionData}
-          state={compositionState}
-          onRetry={() => void loadData()}
-        />
-      ) : null}
-
-      {activeTab === "product-category" ? (
-        <ProductCategoryAttributionWorkbench
-          monthlyData={productCategoryMonthlyData}
-          ytdData={productCategoryYtdData}
-          attributionData={productCategoryAttributionData}
-          isLoading={productCategoryState.kind === "loading"}
-          error={
-            productCategoryState.kind === "error"
-              ? (productCategoryState.message ?? "加载失败")
-              : null
-          }
-          onRetry={() => void loadData()}
-        />
-      ) : null}
-
-      {activeTab === "advanced" ? (
-        <>
-          <CampisiDecisionGradePanel
-            data={campisiDecisionGrade}
-            state={campisiDecisionGradeState}
-            onRetry={() => void loadData()}
-          />
-          <CampisiAttributionPanel
-            data={campisiFourEffects ?? campisiData}
-            state={campisiFourState}
-            onRetry={() => void loadData()}
-          />
-          <CampisiEnhancedPanel
-            data={campisiEnhanced}
-            state={campisiEnhancedState}
-            onRetry={() => void loadData()}
-          />
-          <CampisiMaturityBucketPanel
-            data={campisiMaturityBuckets}
-            state={campisiMaturityState}
-            onRetry={() => void loadData()}
-          />
-          <AdvancedAttributionChart
-            carryData={carryRollDownData}
-            spreadData={spreadData}
-            krdData={krdData}
-            summaryData={advancedSummary}
-            state={advancedCarryState}
-            onRetry={() => void loadData()}
-          />
-        </>
-      ) : null}
+      )}
     </div>
   );
 }

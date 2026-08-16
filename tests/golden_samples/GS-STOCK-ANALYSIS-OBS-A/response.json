@@ -260,6 +260,14 @@
         "reason": "Choice stock catalog is missing; missing or unconfirmed required input families: stock_universe, stock_ohlcv, stock_status, limit_up_quality."
       },
       {
+        "key": "uptrend_momentum_candidates",
+        "reason": "Uptrend momentum watchlist is paused unless the market gate is WARM or HOT."
+      },
+      {
+        "key": "fresh_trend_watchlist",
+        "reason": "Fresh trend watchlist is observation-only and runs only when the market gate is WARM, HOT, or OVERHEAT."
+      },
+      {
         "key": "mean_reversion_candidates",
         "reason": "Choice stock catalog is missing; missing or unconfirmed required input families: stock_universe, stock_ohlcv, stock_status."
       },

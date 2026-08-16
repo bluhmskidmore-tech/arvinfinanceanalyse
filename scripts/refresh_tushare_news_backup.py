@@ -160,7 +160,8 @@ def main(argv: list[str] | None = None) -> int:
         dry_run=args.dry_run,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
-    return 0
+    status = str(result.get("status") or "").lower()
+    return 0 if status in {"completed", "dry_run", "queued"} else 1
 
 
 if __name__ == "__main__":

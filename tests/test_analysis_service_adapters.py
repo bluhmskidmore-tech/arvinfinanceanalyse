@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import sys
 from datetime import date
+from decimal import Decimal
 from types import SimpleNamespace
+
+import duckdb
+import pytest
 
 from tests.helpers import load_module
 
@@ -60,6 +64,32 @@ def test_product_category_adapter_returns_unified_analysis_envelope(tmp_path, mo
     assert result.result.rows
     assert result.result.summary["asset_total"]["category_id"] == "asset_total"
     assert result.result.attribution
+
+    conn = duckdb.connect(str(duckdb_path))
+    try:
+        conn.execute(
+            """
+            update product_category_pnl_formal_read_model
+            set rule_version = 'rv_product_category_pnl_v1'
+            where report_date = '2026-02-28' and view = 'monthly'
+            """
+        )
+    finally:
+        conn.close()
+
+    with pytest.raises(
+        adapter_module.ProductCategoryPnlStorageError,
+        match="rule_version mismatch",
+    ):
+        adapter.execute(
+            schema_module.AnalysisQuery(
+                consumer="analysis_service",
+                analysis_key="product_category_pnl",
+                report_date="2026-02-28",
+                basis="formal",
+                view="monthly",
+            )
+        )
 
 
 def test_product_category_adapter_scenario_basis_reads_formal_once_and_overlays_rate(
@@ -141,6 +171,115 @@ def test_product_category_adapter_scenario_basis_reads_formal_once_and_overlays_
         raise AssertionError("missing asset_total")
 
     assert _asset_total_ftp(formal_only.result.rows) != _asset_total_ftp(scenario_result.result.rows)
+
+
+def test_product_category_adapter_recomputes_zero_persisted_baseline_and_totals(tmp_path):
+    schema_module = load_module(
+        "backend.app.schemas.analysis_service",
+        "backend/app/schemas/analysis_service.py",
+    )
+    task_module = sys.modules.get("backend.app.tasks.product_category_pnl") or load_module(
+        "backend.app.tasks.product_category_pnl",
+        "backend/app/tasks/product_category_pnl.py",
+    )
+    flow_module = load_module(
+        "tests.test_product_category_pnl_flow",
+        "tests/test_product_category_pnl_flow.py",
+    )
+    adapter_module = load_module(
+        "backend.app.services.analysis_adapters",
+        "backend/app/services/analysis_adapters.py",
+    )
+
+    source_dir = tmp_path / "data_input" / "pnl_总账对账-日均"
+    source_dir.mkdir(parents=True)
+    flow_module._write_month_pair(source_dir, "202601", january=True)
+    duckdb_path = tmp_path / "moss.duckdb"
+    task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(tmp_path / "governance"),
+    )
+
+    conn = duckdb.connect(str(duckdb_path))
+    try:
+        conn.execute(
+            """
+            update product_category_pnl_formal_read_model
+            set baseline_ftp_rate_pct = 0,
+                cnx_scale = case when category_id in ('interbank_lending_assets', 'asset_total') then 43800 else 0 end,
+                cny_scale = case when category_id in ('interbank_lending_assets', 'asset_total') then 36500 else 0 end,
+                foreign_scale = case when category_id in ('interbank_lending_assets', 'asset_total') then 7300 else 0 end,
+                cnx_cash = case when category_id in ('interbank_lending_assets', 'asset_total', 'grand_total') then 120 else 0 end,
+                cny_cash = case when category_id in ('interbank_lending_assets', 'asset_total', 'grand_total') then 100 else 0 end,
+                foreign_cash = case when category_id in ('interbank_lending_assets', 'asset_total', 'grand_total') then 20 else 0 end,
+                cny_ftp = 0,
+                foreign_ftp = 0,
+                cny_net = case when category_id in ('interbank_lending_assets', 'asset_total', 'grand_total') then 100 else 0 end,
+                foreign_net = case when category_id in ('interbank_lending_assets', 'asset_total', 'grand_total') then 20 else 0 end,
+                business_net_income = case when category_id in ('interbank_lending_assets', 'asset_total', 'grand_total') then 120 else 0 end
+            where report_date = '2026-01-31' and view = 'monthly'
+            """
+        )
+        assert conn.execute(
+            """
+            select count(*) from product_category_pnl_formal_read_model
+            where report_date = '2026-01-31' and view = 'monthly'
+              and baseline_ftp_rate_pct <> 0
+            """
+        ).fetchone()[0] == 0
+    finally:
+        conn.close()
+
+    adapter = adapter_module.ProductCategoryPnlAnalysisAdapter(str(duckdb_path))
+    query = {
+        "consumer": "analysis_service",
+        "analysis_key": "product_category_pnl",
+        "report_date": "2026-01-31",
+        "view": "monthly",
+    }
+    formal = adapter.execute(schema_module.AnalysisQuery(**query, basis="formal"))
+    scenario = adapter.execute(
+        schema_module.AnalysisQuery(**query, basis="scenario", scenario_rate_pct=2.5)
+    )
+    zero_scenario = adapter.execute(
+        schema_module.AnalysisQuery(**query, basis="scenario", scenario_rate_pct=0)
+    )
+    assert formal.result_meta.rule_version == "rv_product_category_pnl_v2"
+    assert formal.result_meta.cache_version == (
+        "cv_product_category_pnl_formal__rv_product_category_pnl_v2"
+    )
+    assert scenario.result_meta.rule_version == "rv_product_category_pnl_v2"
+    scenario_cache_prefix = (
+        "cv_product_category_pnl_scenario__rv_product_category_pnl_v2__ph_"
+    )
+    assert scenario.result_meta.cache_version.startswith(scenario_cache_prefix)
+    assert len(scenario.result_meta.cache_version.removeprefix(scenario_cache_prefix)) == 12
+    assert scenario.result_meta.cache_version != formal.result_meta.cache_version
+    assert zero_scenario.result_meta.cache_version != scenario.result_meta.cache_version
+    formal_rows = {str(row["category_id"]): row for row in formal.result.rows}
+    scenario_rows = {str(row["category_id"]): row for row in scenario.result.rows}
+    zero_scenario_rows = {
+        str(row["category_id"]): row for row in zero_scenario.result.rows
+    }
+
+    assert {
+        Decimal(str(row["baseline_ftp_rate_pct"]))
+        for row in formal.result.rows
+    } == {Decimal("1.60")}
+    for category_id in ("asset_total", "grand_total"):
+        assert tuple(
+            Decimal(str(formal_rows[category_id][field]))
+            for field in ("cny_ftp", "foreign_ftp", "business_net_income")
+        ) == (Decimal("49.6"), Decimal("9.92"), Decimal("60.48"))
+        assert tuple(
+            Decimal(str(scenario_rows[category_id][field]))
+            for field in ("cny_ftp", "foreign_ftp", "business_net_income")
+        ) == (Decimal("77.5"), Decimal("15.5"), Decimal("27"))
+        assert tuple(
+            Decimal(str(zero_scenario_rows[category_id][field]))
+            for field in ("cny_ftp", "foreign_ftp", "business_net_income")
+        ) == (Decimal("0"), Decimal("0"), Decimal("120"))
 
 
 def test_bond_action_placeholder_envelope_shape():

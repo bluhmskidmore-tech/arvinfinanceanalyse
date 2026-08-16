@@ -1,3 +1,11 @@
+// 共享格式化层（单文件双轨，2026-08-12 登记）：
+// - 治理 API（"Governed Numeric helpers" 分节起）：EM_DASH / formatYi / formatWan /
+//   formatPercent / formatBp / formatNumeric / formatRawAsNumeric 及
+//   *AsYiPlain / *AsWanPlain 系列（万元系 2026-08-13 增补，与亿元系对称）。
+//   缺省值语义：null/undefined/NaN 一律显示 EM_DASH（"—"）；真零显示 "0.00"，
+//   与缺失必须不同形；空串输入不得经 Number("") 变 0。语义由 format.test.ts 固化。
+// - legacy fmt* 双轨（fmtYi/fmtBp/fmtPct/fmtChange/fmtRate/fmtCount）：
+//   legacy 待收敛，新代码禁用。仅存量组件消费；迁移按页面逐个收口，不做批量替换。
 const zhNumberFormat = new Intl.NumberFormat("zh-CN");
 
 export function fmtYi(v: number): string {
@@ -33,7 +41,14 @@ export function fmtCount(v: number, unit = "项"): string {
 
 import type { Numeric, NumericUnit } from "../api/contracts";
 
-const NULL_DISPLAY = "—";
+/**
+ * Canonical missing-value placeholder (DESIGN.md §6).
+ * All tables/metrics must render missing values as this em dash;
+ * do not use "-" or "--" variants.
+ */
+export const EM_DASH = "—";
+
+const NULL_DISPLAY = EM_DASH;
 
 function signPrefix(raw: number, signed: boolean): string {
   if (!signed) return "";
@@ -43,28 +58,41 @@ function signPrefix(raw: number, signed: boolean): string {
 /**
  * Null-tolerant yuan-in-yi formatter.
  * Converts ``raw`` (yuan) to a "XX.XX 亿" display string with optional leading ``+``.
+ * ``null``/``undefined``/``NaN`` render as ``EM_DASH``.
  */
 export function formatYi(raw: number | null | undefined, signed: boolean): string {
-  if (raw === null || raw === undefined) return NULL_DISPLAY;
+  if (raw === null || raw === undefined || Number.isNaN(raw)) return NULL_DISPLAY;
   const yi = raw / 100_000_000;
   return `${signPrefix(yi, signed)}${yi.toFixed(2)} 亿`;
 }
 
 /**
+ * Null-tolerant yuan-in-wan formatter（与 ``formatYi`` 对称的万元系入口）。
+ * Converts ``raw`` (yuan) to a "XX.XX 万" display string with optional leading ``+``.
+ * ``null``/``undefined``/``NaN`` render as ``EM_DASH``.
+ */
+export function formatWan(raw: number | null | undefined, signed: boolean): string {
+  if (raw === null || raw === undefined || Number.isNaN(raw)) return NULL_DISPLAY;
+  const wan = raw / 10_000;
+  return `${signPrefix(wan, signed)}${wan.toFixed(2)} 万`;
+}
+
+/**
  * Null-tolerant ratio-as-percent formatter. ``raw`` is a decimal ratio
- * (e.g. 0.0255 → "+2.55%").
+ * (e.g. 0.0255 → "+2.55%"). ``null``/``undefined``/``NaN`` render as ``EM_DASH``.
  */
 export function formatPercent(raw: number | null | undefined, signed: boolean): string {
-  if (raw === null || raw === undefined) return NULL_DISPLAY;
+  if (raw === null || raw === undefined || Number.isNaN(raw)) return NULL_DISPLAY;
   const pct = raw * 100;
   return `${signPrefix(pct, signed)}${pct.toFixed(2)}%`;
 }
 
 /**
  * Null-tolerant basis-point formatter. ``raw`` is already in bp.
+ * ``null``/``undefined``/``NaN`` render as ``EM_DASH``.
  */
 export function formatBp(raw: number | null | undefined, signed: boolean): string {
-  if (raw === null || raw === undefined) return NULL_DISPLAY;
+  if (raw === null || raw === undefined || Number.isNaN(raw)) return NULL_DISPLAY;
   return `${signPrefix(raw, signed)}${raw.toFixed(1)} bp`;
 }
 
@@ -87,7 +115,10 @@ export function formatRawAsNumeric(opts: {
   precision?: number;
 }): Numeric {
   const { raw, unit, sign_aware } = opts;
-  const rawNorm = raw === undefined || raw === null ? null : raw;
+  // NaN 与 null/undefined 同视为缺失：display 走 EM_DASH，raw 归一为 null，
+  // 避免 NaN 泄漏进 Numeric.raw（JSON 序列化也无法表达 NaN）。
+  const rawNorm =
+    raw === undefined || raw === null || Number.isNaN(raw) ? null : raw;
 
   let display: string;
   let precision: number;
@@ -159,9 +190,27 @@ const WAN_PER_YI = 10_000;
  */
 export function formatYuanAmountAsYiPlain(raw: string | number | null | undefined): string {
   if (raw === null || raw === undefined || raw === "") return NULL_DISPLAY;
+  if (typeof raw === "number" && !Number.isFinite(raw)) return NULL_DISPLAY;
   const n = Number.parseFloat(String(raw).replace(/,/g, ""));
   if (!Number.isFinite(n)) return String(raw);
   return (n / YUAN_PER_YI).toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+const YUAN_PER_WAN = 10_000;
+
+/**
+ * 人民币元 → 万元数值串（不含“万”后缀），与 ``formatYuanAmountAsYiPlain`` 对称，
+ * 供 KpiCard 等以 `unit="万元"` 展示的场景使用。
+ */
+export function formatYuanAmountAsWanPlain(raw: string | number | null | undefined): string {
+  if (raw === null || raw === undefined || raw === "") return NULL_DISPLAY;
+  if (typeof raw === "number" && !Number.isFinite(raw)) return NULL_DISPLAY;
+  const n = Number.parseFloat(String(raw).replace(/,/g, ""));
+  if (!Number.isFinite(n)) return String(raw);
+  return (n / YUAN_PER_WAN).toLocaleString("zh-CN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
@@ -172,6 +221,7 @@ export function formatYuanAmountAsYiPlain(raw: string | number | null | undefine
  */
 export function formatWanAmountAsYiPlain(raw: string | number | null | undefined): string {
   if (raw === null || raw === undefined || raw === "") return NULL_DISPLAY;
+  if (typeof raw === "number" && !Number.isFinite(raw)) return NULL_DISPLAY;
   const n = Number.parseFloat(String(raw).replace(/,/g, ""));
   if (!Number.isFinite(n)) return String(raw);
   return (n / WAN_PER_YI).toLocaleString("zh-CN", {

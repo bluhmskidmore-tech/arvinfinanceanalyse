@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import base64
+import logging
 import re
 from importlib import import_module
+from pathlib import Path
 from typing import Annotated
 from uuid import uuid4
 
@@ -11,17 +14,31 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse, Response
 
 router = APIRouter(prefix="/api")
+logger = logging.getLogger(__name__)
+MAX_LEDGER_MULTIPART_OVERHEAD_BYTES = 64 * 1024
+
+
+class _LedgerImportTooLargeError(ValueError):
+    pass
 
 
 def _svc():
     return import_module("backend.app.services.ledger_import_service")
 
 
+def _import_task():
+    return import_module("backend.app.tasks.ledger_import")
+
+
+def _run_svc():
+    return import_module("backend.app.services.ledger_import_run_service")
+
+
 def _analytics_svc():
     return import_module("backend.app.services.ledger_analytics_service")
 
 
-@router.post("/ledger/import")
+@router.post("/ledger/import", status_code=202)
 async def import_ledger(
     request: Request,
     auth: Annotated[AuthContext, Depends(get_auth_context)],
@@ -36,11 +53,31 @@ async def import_ledger(
             message=str(exc),
             retryable=False,
         )
-    service = _svc().LedgerImportService(str(settings.duckdb_path))
+    except RuntimeError as exc:
+        return _error_response(
+            status_code=503,
+            code="LEDGER_AUTH_UNAVAILABLE",
+            message=str(exc),
+            retryable=True,
+        )
     try:
         _reject_unknown_query_params(request, set())
-        file_name, content = await _extract_multipart_file(request)
-        payload = service.import_file(file_name=file_name, content=content)
+        service_module = _svc()
+        file_name, content = await _extract_multipart_file(
+            request,
+            max_file_bytes=service_module.MAX_LEDGER_IMPORT_BYTES,
+        )
+        file_name = _run_svc().normalize_ledger_import_file_name(file_name)
+        suffix = Path(file_name).suffix.lower()
+        if suffix not in service_module.SUPPORTED_SUFFIXES:
+            raise ValueError(f"Unsupported ledger import file type: {suffix or '<none>'}")
+    except _LedgerImportTooLargeError as exc:
+        return _error_response(
+            status_code=413,
+            code="LEDGER_IMPORT_TOO_LARGE",
+            message=str(exc),
+            retryable=False,
+        )
     except ValueError as exc:
         return _error_response(
             status_code=400,
@@ -48,17 +85,139 @@ async def import_ledger(
             message=str(exc),
             retryable=False,
         )
-    except RuntimeError as exc:
+
+    run_id = f"ledger_import:{uuid4().hex}"
+    request_id = f"req_ledger_{uuid4().hex[:12]}"
+    run_service = _run_svc()
+    transition_args = {
+        "governance_dir": settings.governance_path,
+        "governance_backend": settings.governance_backend,
+        "governance_sql_dsn": settings.governance_sql_dsn,
+        "job_state_dsn": settings.job_state_dsn,
+        "run_id": run_id,
+        "file_name": file_name,
+    }
+    try:
+        run_service.record_ledger_import_transition(status="queued", **transition_args)
+    except Exception as exc:  # noqa: BLE001  # 治理后端（jsonl/sql）写入异常面无界；已 error 日志并返回结构化 503
+        logger.error(
+            "Ledger import queued transition failed run_id=%s error_type=%s.",
+            run_id,
+            type(exc).__name__,
+        )
         return _error_response(
             status_code=503,
             code="LEDGER_LOADING_FAILURE",
-            message=str(exc),
+            message="Ledger import status is unavailable.",
+            retryable=True,
+        )
+    try:
+        task_module = _import_task()
+        task_module.run_ledger_import.send(
+            file_name=file_name,
+            content_base64=base64.b64encode(content).decode("ascii"),
+            duckdb_path=str(settings.duckdb_path),
+            run_id=run_id,
+            governance_dir=str(settings.governance_path),
+        )
+    except Exception as exc:  # noqa: BLE001  # broker 入队（vendor SDK）异常面无界；已 error 日志并返回结构化 503
+        logger.error(
+            "Ledger import queue dispatch failed run_id=%s error_type=%s.",
+            run_id,
+            type(exc).__name__,
+        )
+        try:
+            run_service.record_ledger_import_transition(
+                status="failed",
+                error_category="dispatch_failed",
+                error_message="Ledger import queue dispatch failed.",
+                **transition_args,
+            )
+        except Exception as transition_exc:  # noqa: BLE001  # 失败迁移落账属清理路径，不得掩盖原始 503 响应；已 error 日志
+            logger.error(
+                "Ledger import dispatch failure transition failed run_id=%s error_type=%s.",
+                run_id,
+                type(transition_exc).__name__,
+            )
+        return _error_response(
+            status_code=503,
+            code="LEDGER_LOADING_FAILURE",
+            message="Ledger import queue dispatch failed.",
             retryable=True,
         )
 
-    if payload.get("error", {}).get("code") == "LEDGER_IMPORT_DUPLICATE":
-        return JSONResponse(status_code=409, content=payload)
-    return payload
+    return JSONResponse(
+        status_code=202,
+        content={
+            "data": {
+                "status": "queued",
+                "run_id": run_id,
+                "file_name": file_name,
+            },
+            "trace": {
+                "request_id": request_id,
+                "run_id": run_id,
+            },
+        },
+    )
+
+
+@router.get("/ledger/import-status")
+def get_ledger_import_status(
+    request: Request,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    run_id: str | None = Query(None),
+):
+    settings = get_settings()
+    try:
+        _reject_unknown_query_params(request, {"run_id"})
+        normalized_run_id = str(run_id or "").strip()
+        if not normalized_run_id:
+            raise ValueError("run_id is required.")
+        auth_error = _ledger_read_auth_error(auth, settings)
+        if auth_error is not None:
+            return auth_error
+        run_service = _run_svc()
+        try:
+            data = run_service.get_ledger_import_run_status(
+                governance_dir=settings.governance_path,
+                governance_backend=settings.governance_backend,
+                governance_sql_dsn=settings.governance_sql_dsn,
+                run_id=normalized_run_id,
+            )
+        except run_service.LedgerImportRunNotFoundError:
+            return _error_response(
+                status_code=404,
+                code="LEDGER_IMPORT_RUN_NOT_FOUND",
+                message="Ledger import run was not found.",
+                retryable=False,
+            )
+        return {
+            "data": data,
+            "trace": {
+                "request_id": f"req_ledger_{uuid4().hex[:12]}",
+                "run_id": normalized_run_id,
+            },
+        }
+    except ValueError as exc:
+        return _error_response(
+            status_code=400,
+            code="LEDGER_IMPORT_STATUS_INVALID_REQUEST",
+            message=str(exc),
+            retryable=False,
+        )
+    except Exception as exc:  # noqa: BLE001  # 端点顶层兜底：治理读取跨后端异常面无界；已 error 日志并返回结构化 503
+        logger.error(
+            "Ledger import status read failed run_id=%s error_type=%s.",
+            str(run_id or "").strip(),
+            type(exc).__name__,
+        )
+        return _error_response(
+            status_code=503,
+            code="LEDGER_IMPORT_STATUS_UNAVAILABLE",
+            message="Ledger import status is unavailable.",
+            retryable=True,
+        )
 
 
 @router.get("/ledger/imports")
@@ -160,6 +319,7 @@ def ledger_positions(
     account_category_std: str | None = Query(None),
     asset_class_std: str | None = Query(None),
     cost_center: str | None = Query(None),
+    currency: str | None = Query(None),
     page: int = Query(1),
     page_size: int = Query(50),
 ):
@@ -176,6 +336,7 @@ def ledger_positions(
                 "account_category_std",
                 "asset_class_std",
                 "cost_center",
+                "currency",
                 "page",
                 "page_size",
             },
@@ -188,6 +349,7 @@ def ledger_positions(
             account_category_std=account_category_std,
             asset_class_std=asset_class_std,
             cost_center=cost_center,
+            currency=currency,
         )
         auth_error = _ledger_read_auth_error(auth, settings)
         if auth_error is not None:
@@ -225,6 +387,7 @@ def export_ledger_positions(
     account_category_std: str | None = Query(None),
     asset_class_std: str | None = Query(None),
     cost_center: str | None = Query(None),
+    currency: str | None = Query(None),
     format: str = Query("xlsx"),
 ):
     settings = get_settings()
@@ -242,6 +405,7 @@ def export_ledger_positions(
                 "account_category_std",
                 "asset_class_std",
                 "cost_center",
+                "currency",
                 "format",
             },
         )
@@ -253,6 +417,7 @@ def export_ledger_positions(
             account_category_std=account_category_std,
             asset_class_std=asset_class_std,
             cost_center=cost_center,
+            currency=currency,
         )
         auth_error = _ledger_read_auth_error(auth, settings)
         if auth_error is not None:
@@ -335,16 +500,28 @@ def _error_response(
     )
 
 
-async def _extract_multipart_file(request: Request) -> tuple[str, bytes]:
+async def _extract_multipart_file(
+    request: Request,
+    *,
+    max_file_bytes: int,
+) -> tuple[str, bytes]:
     content_type = request.headers.get("content-type", "")
     boundary = _multipart_boundary(content_type)
     if boundary is None:
         raise ValueError("Content-Type must be multipart/form-data with a file field.")
 
-    body = await request.body()
+    body = await _read_bounded_request_body(
+        request,
+        max_body_bytes=max_file_bytes + MAX_LEDGER_MULTIPART_OVERHEAD_BYTES,
+    )
     marker = b"--" + boundary
     for raw_part in body.split(marker):
-        part = raw_part.strip(b"\r\n")
+        # RFC 2046：boundary 前后的 CRLF 属于分隔符本身，只允许精确剥离一个；
+        # strip(b"\r\n") 会把 payload 结尾任意数量的 CR/LF 字节一并剥掉，
+        # 静默截断以换行结尾的 CSV 内容。
+        part = raw_part[2:] if raw_part.startswith(b"\r\n") else raw_part
+        if part.endswith(b"\r\n"):
+            part = part[:-2]
         if not part or part == b"--":
             continue
         if part.endswith(b"--"):
@@ -366,13 +543,40 @@ async def _extract_multipart_file(request: Request) -> tuple[str, bytes]:
         filename = _multipart_filename(disposition)
         if not filename:
             raise ValueError("Multipart file field is missing filename.")
-        if payload.endswith(b"\r\n"):
-            payload = payload[:-2]
+        # 分隔用 CRLF 已在 part 级精确剥离一次，这里不得再剥，否则会截掉文件自身的结尾换行。
         if not payload:
             raise ValueError("Uploaded ledger file is empty.")
+        if len(payload) > max_file_bytes:
+            raise _LedgerImportTooLargeError(
+                f"Ledger import file is too large. Maximum size is {max_file_bytes} bytes."
+            )
         return filename, payload
 
     raise ValueError("Missing multipart file field named 'file'.")
+
+
+async def _read_bounded_request_body(request: Request, *, max_body_bytes: int) -> bytes:
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            declared_bytes = int(content_length)
+        except ValueError as exc:
+            raise ValueError("Content-Length must be a non-negative integer.") from exc
+        if declared_bytes < 0:
+            raise ValueError("Content-Length must be a non-negative integer.")
+        if declared_bytes > max_body_bytes:
+            raise _LedgerImportTooLargeError(
+                "Ledger import request is too large."
+            )
+
+    chunks: list[bytes] = []
+    received_bytes = 0
+    async for chunk in request.stream():
+        received_bytes += len(chunk)
+        if received_bytes > max_body_bytes:
+            raise _LedgerImportTooLargeError("Ledger import request is too large.")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _multipart_boundary(content_type: str) -> bytes | None:

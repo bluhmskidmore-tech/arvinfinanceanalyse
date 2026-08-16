@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal
 
 from backend.app.models.base import Base
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, Text
@@ -32,9 +33,10 @@ class KpiMetric(Base):
     major_category: Mapped[str] = mapped_column(Text, nullable=False)
     indicator_category: Mapped[str | None] = mapped_column(Text, nullable=True)
     metric_name: Mapped[str] = mapped_column(Text, nullable=False)
-    target_value: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
+    # Numeric columns return Decimal at runtime (asdecimal defaults to True).
+    target_value: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
     target_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    score_weight: Mapped[float] = mapped_column(Numeric(18, 6), nullable=False)
+    score_weight: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
     unit: Mapped[str | None] = mapped_column(Text, nullable=True)
     scoring_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     scoring_rule_type: Mapped[str] = mapped_column(Text, nullable=False)
@@ -52,11 +54,12 @@ class KpiMetricValue(Base):
     value_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     metric_id: Mapped[int] = mapped_column(ForeignKey("kpi_metric.metric_id"), nullable=False, index=True)
     as_of_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
-    actual_value: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
+    # Numeric columns return Decimal at runtime (asdecimal defaults to True).
+    actual_value: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
     actual_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    completion_ratio: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
-    progress_pct: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
-    score_value: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
+    completion_ratio: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    progress_pct: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    score_value: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
     source: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

@@ -15,11 +15,11 @@ export function StockAnalysisCycleRuleSummary({
   framework: CycleRuleSummaryFramework;
 }) {
   return (
-    <div className="stock-analysis-page__cycle-formulas" data-testid="stock-analysis-cycle-rule-summary">
-      <strong>轮动规则</strong>
+    <div className="stock-analysis-page__cycle-formulas flex flex-col gap-1 p-3 bg-default-100/50 rounded-lg text-sm text-default-700" data-testid="stock-analysis-cycle-rule-summary">
+      <strong className="text-foreground">轮动规则</strong>
       <span>{cycleRuleSummary(framework.layers)}</span>
-      {framework.observation_only ? <small>只读观察，不生成交易指令</small> : null}
-      <small>{cycleCadenceLabel(framework.rebalance_cadence)}</small>
+      {framework.observation_only && <small className="text-warning">只读观察，不生成交易指令</small>}
+      <small className="text-default-500">{cycleCadenceLabel(framework.rebalance_cadence)}</small>
     </div>
   );
 }

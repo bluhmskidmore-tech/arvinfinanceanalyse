@@ -1,0 +1,123 @@
+{
+  "schema_version": "fable_extension_study_contract_v1",
+  "study_version": "rv_fable_extension_study_v1",
+  "research_only": true,
+  "formal_use_allowed": false,
+  "actionable": false,
+  "study_question": "Does signal-date distance above MA20 explain subsequent source-executable Livermore candidate returns, and does that relation differ by the Livermore market-gate state?",
+  "primary_universe": {
+    "signal_kind": "stock_candidate",
+    "entry_executable": true,
+    "logical_key": [
+      "signal_date",
+      "stock_code"
+    ],
+    "blocked_source_rows_retained_for_accountability": true
+  },
+  "primary_feature": {
+    "name": "ma20_extension",
+    "formula": "signal_close_value / signal_sma20_value - 1",
+    "as_of": "signal_date_close",
+    "unit": "decimal_ratio",
+    "lookahead_safe": true,
+    "threshold_search_allowed": false
+  },
+  "extension_bins": [
+    "lt_0",
+    "0_5",
+    "5_10",
+    "10_15",
+    "15_plus"
+  ],
+  "extension_bin_boundaries": {
+    "lt_0": "x < 0",
+    "0_5": "0 <= x <= 0.05",
+    "5_10": "0.05 < x <= 0.10",
+    "10_15": "0.10 < x <= 0.15",
+    "15_plus": "x > 0.15"
+  },
+  "primary_endpoint": {
+    "horizon": 20,
+    "field": "return_20d_net_adj",
+    "basis": "net_next_open_adjusted",
+    "unit": "decimal_return",
+    "missing_fallback_allowed": false
+  },
+  "sensitivity_endpoint": {
+    "horizon": 20,
+    "field": "return_20d_net",
+    "basis": "net_next_open_unadjusted",
+    "unit": "decimal_return",
+    "may_replace_primary": false
+  },
+  "secondary_horizons": [
+    5,
+    10
+  ],
+  "gate_state": {
+    "taxonomy": "livermore_market_gate_not_hason_macro_cycle",
+    "as_of": "signal_date_close",
+    "entry_effective": "next_tradable_open",
+    "stored_lineage": {
+      "field": "livermore_candidate_execution_history.market_state",
+      "label": "stored_signal_state"
+    },
+    "replayed_lineage": {
+      "source": "backend.app.core_finance.gate_exposure_series.load_gate_exposure_by_date",
+      "label": "replayed_signal_state",
+      "source_field_must_be_reported": true
+    },
+    "lineage_conflicts_must_be_reported": true,
+    "lineages_must_not_be_silently_merged": true
+  },
+  "maturity": {
+    "calendar_table": "choice_stock_daily_observation",
+    "session_rule": "distinct_valid_trading_dates_strictly_after_signal_date",
+    "valid_close_rule": "finite close_value > 0",
+    "valid_status_rule": "tradestatus must explicitly denote trading when the column exists",
+    "evaluation_clock": "latest_valid_market_date_not_system_date",
+    "categories": [
+      "complete_adjusted",
+      "matured_adjustment_missing",
+      "matured_missing_bar",
+      "natural_pending"
+    ]
+  },
+  "inference": {
+    "bootstrap_unit": "signal_date",
+    "bootstrap_iterations": 2000,
+    "bootstrap_seed": 20260721,
+    "confidence_interval": 0.95,
+    "continuous_effect_scale": "return_change_per_10_percentage_point_extension",
+    "holdout_method": "chronological_date_split",
+    "holdout_train_fraction": 0.7
+  },
+  "sample_gates": {
+    "minimum_primary_coverage": 0.95,
+    "minimum_overall_rows": 200,
+    "minimum_overall_dates": 40,
+    "minimum_bin_rows": 30,
+    "minimum_bin_dates": 10,
+    "minimum_cell_rows": 20,
+    "minimum_cell_dates": 8
+  },
+  "promotion": {
+    "hard_rule_allowed": false,
+    "candidate_retention_floor": 0.6,
+    "separate_governed_review_required": true,
+    "required_evidence": [
+      "primary_adjusted_coverage_gate_passes",
+      "overall_sample_gate_passes",
+      "chronological_holdout_direction_is_consistent",
+      "bin_relation_is_not_inconclusive",
+      "cost_basis_remains_comparable",
+      "candidate_retention_floor_passes"
+    ]
+  },
+  "prohibited_outputs": [
+    "allocation_advice",
+    "position_change_command",
+    "trade_instruction",
+    "execution_approval"
+  ]
+}

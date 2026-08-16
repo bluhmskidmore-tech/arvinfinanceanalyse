@@ -7,6 +7,13 @@ from backend.app.agent.runtime.toolset_policy import normalize_read_only_toolset
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.services import dexter_agent_service, hermes_agent_service
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_agent_mvp,
+]
+
 
 def _toolsets_arg(args: list[str]) -> str:
     assert "--toolsets" in args

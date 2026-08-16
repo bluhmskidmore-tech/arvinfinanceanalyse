@@ -137,11 +137,11 @@ ZQTZ_ASSET_BOND_ROWS: tuple[dict[str, Any], ...] = (
     },
     {
         "row_key": "asset_zqtz_detail_structured_finance_broker",
-        "row_label": "其中：结构化融资（券商）",
+        "row_label": "结构化融资（券商）",
         "sort_order": 85,
         "bond_types": _ZQTZ_PREFIX_BUCKET_BOND_TYPES,
         "instrument_prefixes": ("J4",),
-        "source_note": "ZQTZSHOW 其中项：instrument_code prefix=J4",
+        "source_note": "ZQTZSHOW 其中项：instrument_code prefix=J4（结构化融资（券商））",
     },
     {
         "row_key": "asset_zqtz_detail_foreign_currency_delegated",
@@ -306,3 +306,17 @@ def classify_zqtz_asset_bond_label(row: Mapping[str, Any]) -> str:
         if _row_matches_definition(row, row_def):
             return str(row_def["row_label"])
     return "其它"
+
+
+def is_parent_zqtz_business_row(row_key: str, business_type: str, source_note: object) -> bool:
+    """判断某条 ZQTZ 业务种类行是否为父级行（而非"其中"明细行）。
+
+    唯一权威实现：由 pnl-by-business 的 live 路径（``pnl_service``）与
+    precompute 路径（``pnl_by_business_precompute``）共用，避免两路径各自
+    维护一份判定逻辑而产生口径漂移。
+    """
+    if "_detail_" in row_key:
+        return False
+    if business_type.startswith("其中"):
+        return False
+    return "其中项" not in str(source_note or "")

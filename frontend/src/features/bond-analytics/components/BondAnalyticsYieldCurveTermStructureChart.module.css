@@ -14,12 +14,6 @@
   margin-bottom: 4px;
 }
 
-.spinWrap {
-  display: flex;
-  justify-content: center;
-  padding: var(--moss-space-6);
-}
-
 .chart {
   height: 280px;
   width: 100%;
@@ -29,13 +23,4 @@
 .chart > div {
   height: 100% !important;
   width: 100% !important;
-}
-
-.empty {
-  border: 1px dashed var(--moss-color-neutral-300);
-  border-radius: var(--moss-radius-md);
-  padding: var(--moss-space-4);
-  text-align: center;
-  color: var(--moss-color-neutral-400);
-  font-size: 13px;
 }

@@ -1,0 +1,374 @@
+{
+  "report_kind": "calculation_p1_owner_decision_snapshot",
+  "generated_at": "2026-08-06T22:30:00+08:00",
+  "repo_root": ".",
+  "audit_date": "2026-06-10",
+  "state_as_of": "2026-08-06",
+  "historical_baseline": {
+    "as_of": "2026-06-10T21:25:00+08:00",
+    "open_decision_ids": [
+      "P1-01",
+      "P1-02",
+      "P1-03",
+      "P1-04",
+      "P1-05",
+      "P1-06",
+      "P1-07",
+      "P1-09",
+      "P1-10",
+      "P1-11"
+    ],
+    "open_decision_count": 10,
+    "scope": "Historical source snapshot only; current owner intake is represented by matrix.open_decision_ids and capture_template.row_ids."
+  },
+  "refresh_command": "python scripts\\refresh_calculation_p1_owner_decision_snapshot.py",
+  "status": {
+    "overall": "owner_decision_required",
+    "fail_closed": true,
+    "chooses_or_approves_conventions": false,
+    "changes_code": false,
+    "approves_metrics": false,
+    "approves_pages": false,
+    "captures_business_owner_approval": false,
+    "certifies_routes": false
+  },
+  "matrix": {
+    "path": "docs/audits/2026-06-10-calculation-p1-owner-decision-matrix.md",
+    "latest_verification_refresh": "2026-08-06T22:30:00+08:00",
+    "open_decision_ids": [
+      "P1-01",
+      "P1-02",
+      "P1-03",
+      "P1-04",
+      "P1-05",
+      "P1-06",
+      "P1-10",
+      "P1-11"
+    ],
+    "open_decision_count": 8,
+    "expected_open_decision_ids": [
+      "P1-01",
+      "P1-02",
+      "P1-03",
+      "P1-04",
+      "P1-05",
+      "P1-06",
+      "P1-10",
+      "P1-11"
+    ],
+    "expected_open_decision_count": 8,
+    "missing_open_decision_ids": [],
+    "unexpected_open_decision_ids": [],
+    "candidate_options_by_id": {
+      "P1-01": {
+        "A": "source values are decimals",
+        "B": "source values are percentages and must be divided by 100",
+        "C": "source must carry explicit unit metadata and fail if absent"
+      },
+      "P1-02": {
+        "A": "all source rates are decimals",
+        "B": "all source rates are percentages",
+        "C": "source supplies explicit unit metadata"
+      },
+      "P1-03": {
+        "A": "`attribution_daily` convention, `-MD * (y_realized - y_prior) * MV`",
+        "B": "current `pnl_bridge` convention",
+        "C": "report both with explicit labels"
+      },
+      "P1-04": {
+        "A": "require independent position and ledger source anchors",
+        "B": "keep current same-source comparison but label it non-control"
+      },
+      "P1-05": {
+        "A": "period average scale",
+        "B": "sum of month-end snapshots",
+        "C": "weighted daily average when daily facts exist"
+      },
+      "P1-06": {
+        "A": "nonzero explained/residual with zero actual is warning/undefined",
+        "B": "force ratio to 0 and mark ok"
+      },
+      "P1-10": {
+        "A": "backend DTO only",
+        "B": "frontend may derive display aggregates",
+        "C": "frontend derives only clearly non-formal UI helpers"
+      },
+      "P1-11": {
+        "A": "backend provides governed matrix",
+        "B": "frontend aggregates rows and owns bucket mapping"
+      }
+    },
+    "candidate_option_letters_by_id": {
+      "P1-01": [
+        "A",
+        "B",
+        "C"
+      ],
+      "P1-02": [
+        "A",
+        "B",
+        "C"
+      ],
+      "P1-03": [
+        "A",
+        "B",
+        "C"
+      ],
+      "P1-04": [
+        "A",
+        "B"
+      ],
+      "P1-05": [
+        "A",
+        "B",
+        "C"
+      ],
+      "P1-06": [
+        "A",
+        "B"
+      ],
+      "P1-10": [
+        "A",
+        "B",
+        "C"
+      ],
+      "P1-11": [
+        "A",
+        "B"
+      ]
+    },
+    "capture_template_candidate_options_match_matrix": true,
+    "p1_08_in_open_rows": false,
+    "verified_closed_ids": [
+      "P1-08"
+    ],
+    "owner_decision_closed_ids": [
+      "P1-07",
+      "P1-09"
+    ],
+    "owner_decision_closed_acceptance": {
+      "expected_ids": [
+        "P1-07",
+        "P1-09"
+      ],
+      "records_by_id": {
+        "P1-07": {
+          "selected_option": "B",
+          "selected_decision": "Option B - liquidity remains looseness-positive but enters composite with inverse sign",
+          "status": "implemented-and-verified",
+          "matrix_evidence": "Option B selected and implemented: `liquidity_score` remains looseness-positive, `composite_score` remains bond-unfavorable/tightness-positive, and the composite formula uses `-0.3*liquidity_score`; regression isolates liquidity movement and checks `build_macro_context_v1` formula/polarity metadata.",
+          "capture_evidence": "`tests/test_macro_bond_linkage.py`; `build_macro_context_v1` formula/polarity metadata；前端 polarity copy",
+          "checks": {
+            "matrix_row_present": true,
+            "capture_row_present": true,
+            "matrix_selected_option_matches": true,
+            "capture_selected_option_matches": true,
+            "status_matches": true,
+            "matrix_evidence_complete": true,
+            "capture_evidence_complete": true
+          }
+        },
+        "P1-09": {
+          "selected_option": "A",
+          "selected_decision": "Option A - backend current_balance_pct is authoritative",
+          "status": "implemented-and-verified",
+          "matrix_evidence": "Option A selected and implemented: `MTR-BMV-005` binds the formal display to backend `AccountingAssetMovementRowPayload.current_balance_pct`; `resolveBucketSharePct` accepts only that value, and model/page regressions prove backend precedence, missing-share `—`, and fail-closed chart behavior.",
+          "capture_evidence": "`docs/metric_dictionary.md` `MTR-BMV-005`; `balanceMovementShareModel.test.ts`; `BalanceMovementAnalysisPage.test.tsx`; typecheck/target ESLint",
+          "checks": {
+            "matrix_row_present": true,
+            "capture_row_present": true,
+            "matrix_selected_option_matches": true,
+            "capture_selected_option_matches": true,
+            "status_matches": true,
+            "matrix_evidence_complete": true,
+            "capture_evidence_complete": true
+          }
+        }
+      },
+      "all_accepted": true
+    },
+    "p1_08_verified_closed": true,
+    "p1_08_regression": {
+      "command": "npm.cmd test -- src/features/bond-dashboard/utils/format.test.ts src/test/BondDashboardPage.test.tsx",
+      "rerun_at": "2026-06-10T19:29:53+08:00"
+    }
+  },
+  "engineering_prework_map": {
+    "mapped_ids": [
+      "P1-01",
+      "P1-02",
+      "P1-03",
+      "P1-04",
+      "P1-05",
+      "P1-06",
+      "P1-10",
+      "P1-11"
+    ],
+    "mapped_count": 8,
+    "missing_ids": [],
+    "unexpected_ids": [],
+    "boundary_checks": {
+      "does_not_choose_or_approve_convention": true,
+      "does_not_change_code": true,
+      "does_not_certify_routes_pages": true,
+      "matrix_non_approval_boundary": true,
+      "capture_template_non_approval_boundary": true,
+      "capture_template_candidate_option_contract": true,
+      "capture_template_candidate_options_match_matrix": true
+    }
+  },
+  "capture_template": {
+    "path": "docs/audits/2026-06-10-owner-decision-capture-template.zh.md",
+    "row_ids": [
+      "P1-01",
+      "P1-02",
+      "P1-03",
+      "P1-04",
+      "P1-05",
+      "P1-06",
+      "P1-10",
+      "P1-11"
+    ],
+    "row_count": 8,
+    "missing_ids": [],
+    "unexpected_ids": [],
+    "pending_count": 8,
+    "captured_statuses": [
+      "approved-for-implementation",
+      "deferred",
+      "rejected"
+    ],
+    "candidate_contract_options_by_id": {
+      "P1-01": {
+        "A": "source values are decimals",
+        "B": "source values are percentages and must be divided by 100",
+        "C": "source must carry explicit unit metadata and fail if absent"
+      },
+      "P1-02": {
+        "A": "all source rates are decimals",
+        "B": "all source rates are percentages",
+        "C": "source supplies explicit unit metadata"
+      },
+      "P1-03": {
+        "A": "`attribution_daily` convention, `-MD * (y_realized - y_prior) * MV`",
+        "B": "current `pnl_bridge` convention",
+        "C": "report both with explicit labels"
+      },
+      "P1-04": {
+        "A": "require independent position and ledger source anchors",
+        "B": "keep current same-source comparison but label it non-control"
+      },
+      "P1-05": {
+        "A": "period average scale",
+        "B": "sum of month-end snapshots",
+        "C": "weighted daily average when daily facts exist"
+      },
+      "P1-06": {
+        "A": "nonzero explained/residual with zero actual is warning/undefined",
+        "B": "force ratio to 0 and mark ok"
+      },
+      "P1-10": {
+        "A": "backend DTO only",
+        "B": "frontend may derive display aggregates",
+        "C": "frontend derives only clearly non-formal UI helpers"
+      },
+      "P1-11": {
+        "A": "backend provides governed matrix",
+        "B": "frontend aggregates rows and owns bucket mapping"
+      }
+    },
+    "invalid_status_by_id": {},
+    "invalid_selected_decision_by_id": {},
+    "invalid_selected_decision_count": 0,
+    "captured_decision_count": 0,
+    "captured_decision_ids": [],
+    "incomplete_decision_count": 8,
+    "incomplete_decision_ids": [
+      "P1-01",
+      "P1-02",
+      "P1-03",
+      "P1-04",
+      "P1-05",
+      "P1-06",
+      "P1-10",
+      "P1-11"
+    ],
+    "incomplete_fields_by_id": {
+      "P1-01": [
+        "selected_decision",
+        "owner_rationale",
+        "implementation_owner",
+        "verification_gate",
+        "status"
+      ],
+      "P1-02": [
+        "selected_decision",
+        "owner_rationale",
+        "implementation_owner",
+        "verification_gate",
+        "status"
+      ],
+      "P1-03": [
+        "selected_decision",
+        "owner_rationale",
+        "implementation_owner",
+        "verification_gate",
+        "status"
+      ],
+      "P1-04": [
+        "selected_decision",
+        "owner_rationale",
+        "implementation_owner",
+        "verification_gate",
+        "status"
+      ],
+      "P1-05": [
+        "selected_decision",
+        "owner_rationale",
+        "implementation_owner",
+        "verification_gate",
+        "status"
+      ],
+      "P1-06": [
+        "selected_decision",
+        "owner_rationale",
+        "implementation_owner",
+        "verification_gate",
+        "status"
+      ],
+      "P1-10": [
+        "selected_decision",
+        "owner_rationale",
+        "implementation_owner",
+        "verification_gate",
+        "status"
+      ],
+      "P1-11": [
+        "selected_decision",
+        "owner_rationale",
+        "implementation_owner",
+        "verification_gate",
+        "status"
+      ]
+    }
+  },
+  "meeting_record": {
+    "required_field_count": 8,
+    "field_count": 8,
+    "filled_required_field_count": 0,
+    "missing_required_fields": [
+      "会议日期",
+      "主持人",
+      "业务 owner",
+      "Metric governance 代表",
+      "Engineering owner",
+      "QA / evidence owner",
+      "记录人",
+      "本次结论状态"
+    ],
+    "is_complete": false
+  },
+  "drift_errors": [],
+  "closure_gate": "Business owner and metric governance must select the authoritative convention for the remaining P1-01 through P1-06, P1-10, and P1-11 rows before implementation closure. P1-07 and P1-09 are already verified closed after their recorded owner decisions. After that, docs/calc_rules.md, contracts, implementation, and targeted tests must move each selected row to verified-closed evidence without reopening P1-07, P1-08, or P1-09.",
+  "boundary": "This snapshot is read-only owner-decision intake evidence. It does not choose or approve any calculation convention, change implementation code, approve metrics or pages, capture business-owner approval, or certify routes."
+}

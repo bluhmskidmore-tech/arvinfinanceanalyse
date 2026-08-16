@@ -7,7 +7,9 @@ import {
   primaryWorkbenchNavigation,
   workbenchNavigation,
   type WorkbenchSection,
-} from "../mocks/navigation";
+} from "../app/navigation";
+import { AgentLabRoute } from "./AgentLabRoute";
+import { AgentWorkbenchRoute } from "./AgentWorkbenchRoute";
 import { WorkbenchRouteFallback } from "./WorkbenchRouteFallback";
 import { WorkbenchNotFoundPage, WorkbenchRouteErrorBoundary } from "./WorkbenchRouteStatusPages";
 
@@ -18,6 +20,9 @@ const DashboardHomePage = lazy(
 const ModuleWorkbenchHomePage = lazy(
   () => import("../features/workbench/module-home/ModuleWorkbenchHomePage"),
 );
+const RiskOverviewPage = lazy(
+  () => import("../features/workbench/module-home/RiskOverviewPage"),
+);
 const PortfolioHomePage = lazy(
   () => import("../features/workbench/module-home/PortfolioHomePage"),
 );
@@ -27,9 +32,14 @@ const MarketHomePage = lazy(
 const OperationsAnalysisPage = lazy(
   () => import("../features/workbench/pages/OperationsAnalysisPage"),
 );
+const MarketFinanceWorkbenchPage = lazy(
+  () => import("../features/market-finance/pages/MarketFinanceWorkbenchPage"),
+);
 const PnlPage = lazy(() => import("../features/pnl/PnlPage"));
-const FormalPnlV1Page = lazy(() => import("../features/pnl/FormalPnlV1Page"));
 const PnlByBusinessPage = lazy(() => import("../features/pnl/PnlByBusinessPage"));
+const PnlByBusinessInsightsPage = lazy(
+  () => import("../features/pnl-business-insights/PnlByBusinessInsightsPage"),
+);
 const PnlBridgePage = lazy(() => import("../features/pnl/PnlBridgePage"));
 const PnlAttributionPage = lazy(
   () => import("../features/pnl-attribution/pages/PnlAttributionPage"),
@@ -64,6 +74,9 @@ const CashflowProjectionPage = lazy(
 const BondAnalyticsView = lazy(
   () => import("../features/bond-analytics/components/BondAnalyticsView"),
 );
+const BondTradingDeskPage = lazy(
+  () => import("../features/bond-trading-desk/pages/BondTradingDeskPage"),
+);
 const BondDashboardPage = lazy(
   () => import("../features/bond-dashboard/pages/BondDashboardPage"),
 );
@@ -93,18 +106,17 @@ const MarketDataPage = lazy(
 const MacroToolkitPage = lazy(
   () => import("../features/macro-toolkit/pages/MacroToolkitPage"),
 );
+const MacroObservationPage = lazy(
+  () => import("../features/macro-observation/pages/MacroObservationPage"),
+);
 const CubeQueryPage = lazy(() => import("../features/cube-query/pages/CubeQueryPage"));
 const StockAnalysisPage = lazy(
   () => import("../features/stock-analysis/pages/StockAnalysisPage"),
-);
-const EquityCockpitPrototypePage = lazy(
-  () => import("../features/prototype/EquityCockpitPrototypePage"),
 );
 const DecisionItemsPage = lazy(
   () => import("../features/decision-items/pages/DecisionItemsPage"),
 );
 const NewsEventsPage = lazy(() => import("../features/news-events/NewsEventsPage"));
-const AgentWorkbenchPage = lazy(() => import("../features/agent/AgentWorkbenchPage"));
 
 function routeElement(element: ReactNode) {
   return (
@@ -117,14 +129,6 @@ function routeElement(element: ReactNode) {
 function themedRouteElement(element: ReactNode) {
   return routeElement(<ThemedRouteBoundary>{element}</ThemedRouteBoundary>);
 }
-
-function parseEnvDataSourceMode() {
-  const raw = import.meta.env.VITE_DATA_SOURCE;
-  return typeof raw === "string" ? raw.trim().toLowerCase() : "";
-}
-
-const equityPrototypeRouteEnabled =
-  import.meta.env.DEV === true && parseEnvDataSourceMode() === "mock";
 
 function placeholderRoute(section: WorkbenchSection): RouteObject {
   return {
@@ -142,7 +146,7 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       };
     }
 
-    if (section.readiness !== "live") {
+    if (section.readiness !== "live" && section.path !== "/agent") {
       return placeholderRoute(section);
     }
 
@@ -150,6 +154,13 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       return {
         path: section.path.slice(1),
         element: themedRouteElement(<OperationsAnalysisPage />),
+      };
+    }
+
+    if (section.path === "/market-finance") {
+      return {
+        path: section.path.slice(1),
+        element: themedRouteElement(<MarketFinanceWorkbenchPage />),
       };
     }
 
@@ -170,7 +181,7 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
     if (section.path === "/risk-overview") {
       return {
         path: section.path.slice(1),
-        element: themedRouteElement(<ModuleWorkbenchHomePage kind="risk" />),
+        element: themedRouteElement(<RiskOverviewPage />),
       };
     }
 
@@ -220,6 +231,20 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       return {
         path: section.path.slice(1),
         element: themedRouteElement(<PnlPage />),
+      };
+    }
+
+    if (section.path === "/pnl-by-business") {
+      return {
+        path: section.path.slice(1),
+        element: themedRouteElement(<PnlByBusinessPage />),
+      };
+    }
+
+    if (section.path === "/pnl-by-business-insights") {
+      return {
+        path: section.path.slice(1),
+        element: themedRouteElement(<PnlByBusinessInsightsPage />),
       };
     }
 
@@ -279,6 +304,13 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       };
     }
 
+    if (section.path === "/bond-trading-desk") {
+      return {
+        path: section.path.slice(1),
+        element: themedRouteElement(<BondTradingDeskPage />),
+      };
+    }
+
     if (section.path === "/cross-asset") {
       return {
         path: section.path.slice(1),
@@ -296,7 +328,7 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
     if (section.path === "/macro-observation") {
       return {
         path: section.path.slice(1),
-        element: themedRouteElement(<MacroToolkitPage mode="observation" />),
+        element: themedRouteElement(<MacroObservationPage />),
       };
     }
 
@@ -331,7 +363,7 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
     if (section.path === "/agent") {
       return {
         path: section.path.slice(1),
-        element: themedRouteElement(<AgentWorkbenchPage />),
+        element: themedRouteElement(<AgentWorkbenchRoute />),
       };
     }
 
@@ -400,70 +432,72 @@ export const workbenchRoutes: RouteObject[] = [
     errorElement: routeElement(<WorkbenchRouteErrorBoundary />),
     children: [
       {
-        path: "macro-analysis",
-        element: <Navigate to="/market-data" replace />,
-      },
-      {
-        path: "adb",
-        element: <Navigate to="/average-balance" replace />,
-      },
-      {
-        path: "pnl-by-business",
-        element: themedRouteElement(<PnlByBusinessPage />),
-      },
-      {
-        path: "pnl-formal-v1",
-        element: themedRouteElement(<FormalPnlV1Page />),
-      },
-      {
-        path: "liabilities",
-        element: <Navigate to="/liability-analytics" replace />,
-      },
-      {
-        path: "bonds",
-        element: <Navigate to="/bond-dashboard" replace />,
-      },
-      {
-        path: "bond-analytics-advanced",
-        element: <Navigate to="/bond-analysis" replace />,
-      },
-      {
-        path: "market",
-        element: <Navigate to="/market-data" replace />,
-      },
-      {
-        path: "cross-asset-drivers",
-        element: themedRouteElement(<CrossAssetPage />),
-      },
-      {
-        path: "assets",
-        element: <Navigate to="/bond-dashboard" replace />,
-      },
-      ...buildWorkbenchChildRoutes(),
-      {
-        path: "dashboard",
-        element: routeElement(<DashboardHomePage />),
-      },
-      {
-        path: "政策与资金面",
-        element: routeElement(<DashboardHomePage />),
-      },
-      {
-        path: "product-category-pnl/audit",
-        element: themedRouteElement(<ProductCategoryAdjustmentAuditPage />),
-      },
-      {
-        path: "*",
-        element: themedRouteElement(<WorkbenchNotFoundPage />),
+        /*
+         * 子路由级错误边界（pathless layout）：单页渲染崩溃或懒加载 chunk 失败时，
+         * 错误页只替换 WorkbenchShell 的 Outlet 内容区，导航壳层保持可用；
+         * 根级 errorElement 仅兜底壳层自身故障。
+         */
+        errorElement: routeElement(<WorkbenchRouteErrorBoundary />),
+        children: [
+          {
+            path: "macro-analysis",
+            element: <Navigate to="/market-data" replace />,
+          },
+          {
+            path: "adb",
+            element: <Navigate to="/average-balance" replace />,
+          },
+          {
+            path: "pnl-formal-v1",
+            element: <Navigate to="/pnl" replace />,
+          },
+          {
+            path: "liabilities",
+            element: <Navigate to="/liability-analytics" replace />,
+          },
+          {
+            path: "bonds",
+            element: <Navigate to="/bond-dashboard" replace />,
+          },
+          {
+            path: "bond-analytics-advanced",
+            element: <Navigate to="/bond-analysis" replace />,
+          },
+          {
+            path: "market",
+            element: <Navigate to="/market-data" replace />,
+          },
+          {
+            path: "cross-asset-drivers",
+            element: <Navigate to="/cross-asset" replace />,
+          },
+          {
+            path: "assets",
+            element: <Navigate to="/bond-dashboard" replace />,
+          },
+          ...buildWorkbenchChildRoutes(),
+          {
+            path: "agent-lab",
+            element: themedRouteElement(<AgentLabRoute />),
+          },
+          {
+            path: "dashboard",
+            element: routeElement(<DashboardHomePage />),
+          },
+          {
+            path: "政策与资金面",
+            element: <Navigate to="/" replace />,
+          },
+          {
+            path: "product-category-pnl/audit",
+            element: themedRouteElement(<ProductCategoryAdjustmentAuditPage />),
+          },
+          {
+            path: "*",
+            element: themedRouteElement(<WorkbenchNotFoundPage />),
+          },
+        ],
       },
     ],
   },
-  ...(equityPrototypeRouteEnabled
-    ? [
-        {
-          path: "/prototype/equity-cockpit",
-          element: themedRouteElement(<EquityCockpitPrototypePage />),
-        } satisfies RouteObject,
-      ]
-    : []),
 ];

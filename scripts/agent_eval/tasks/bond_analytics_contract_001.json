@@ -1,0 +1,71 @@
+{
+  "id": "bond_analytics_contract_001",
+  "page": "bond-analysis",
+  "goal": "Fix a bond-analysis display-contract defect (duration years, DV01 万元/bp, yield % vs bp axes) without broad refactoring.",
+  "metric_ids": [
+    "MTR-BOND-ACT-001",
+    "MTR-BOND-ACT-002",
+    "MTR-BOND-ACT-003",
+    "MTR-BOND-ACT-004",
+    "MTR-BOND-ACT-005",
+    "MTR-BOND-ACT-006"
+  ],
+  "allowed_scope": [
+    "frontend/src/features/bond-analytics/",
+    "frontend/src/api/",
+    "frontend/src/test/"
+  ],
+  "forbidden": [
+    "backend/app/schema_registry/",
+    "backend/app/core_finance/",
+    "frontend/src/api/client.ts",
+    "scripts/agent_eval/",
+    ".github/workflows/"
+  ],
+  "required_evidence": [
+    "moss-metric-contracts",
+    "moss-lineage-evidence"
+  ],
+  "evidence_probes": {
+    "moss-metric-contracts": ".codex-tmp/agent-eval/evidence/bond-analytics-metric-contracts.json",
+    "moss-lineage-evidence": ".codex-tmp/agent-eval/evidence/bond-analytics-lineage-evidence.json"
+  },
+  "checks": [
+    "npm --prefix frontend run test -- BondAnalytics",
+    "npm --prefix frontend run debt:audit",
+    "npm --prefix frontend run typecheck"
+  ],
+  "business_gates": [
+    "unit_consistency",
+    "precision_and_rounding",
+    "date_semantics",
+    "null_zero_undefined_handling",
+    "no_frontend_official_metric_recalculation"
+  ],
+  "page_gates": [
+    "page_loads",
+    "no_console_errors",
+    "fallback_or_stale_state_visible_when_applicable"
+  ],
+  "gate_probes": {
+    "unit_consistency": "npm --prefix frontend run test -- BondAnalyticsUnitContract",
+    "precision_and_rounding": "npm --prefix frontend run test -- bondAnalyticsFormatters",
+    "date_semantics": "python -m pytest tests/test_bond_analytics_api.py -q",
+    "null_zero_undefined_handling": "npm --prefix frontend run test -- BondAnalyticsHomeCalculations",
+    "no_frontend_official_metric_recalculation": "python -m pytest tests/test_no_finance_logic_in_frontend.py -q",
+    "fallback_or_stale_state_visible_when_applicable": "npm --prefix frontend run test -- BondAnalyticsView"
+  },
+  "probe_protected_paths": [
+    "tests/test_bond_analytics_api.py",
+    "tests/test_no_finance_logic_in_frontend.py",
+    "frontend/src/test/BondAnalyticsUnitContract.test.tsx",
+    "frontend/src/test/bondAnalyticsFormatters.test.ts",
+    "frontend/src/test/BondAnalyticsHomeCalculations.test.ts",
+    "frontend/src/test/BondAnalyticsView.test.tsx",
+    "frontend/src/test/BondAnalyticsViewContent.test.tsx"
+  ],
+  "gate_probe_gaps": {
+    "page_loads": "Needs a bond-analysis scoped Playwright spec; BondAnalyticsView.test.tsx is a jsdom component test and test:a11y-smoke is site-wide, so neither measures a real /bond-analysis page load.",
+    "no_console_errors": "Same as page_loads; requires a scoped browser spec that fails on console errors for /bond-analysis."
+  }
+}

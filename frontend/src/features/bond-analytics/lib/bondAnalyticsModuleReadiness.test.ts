@@ -68,11 +68,33 @@ describe("bondAnalyticsModuleReadiness", () => {
     expect(hasPlaceholderWarning(["real content is available"])).toBe(false);
   });
 
+  it("prefers structured placeholder warning codes when present", () => {
+    expect(
+      hasPlaceholderWarning(
+        ["upstream warning text changed"],
+        ["bond_analytics_placeholder_warning"],
+      ),
+    ).toBe(true);
+  });
+
   it("classifies partial warning signals", () => {
     expect(
       classifyWarningSignals([
         "roll_down / rate_effect / spread_effect / trading require Phase 3 curve and trade data",
       ]),
+    ).toEqual({
+      hasPlaceholderSignals: false,
+      hasPartialSignals: true,
+      hasAnyWarnings: true,
+    });
+  });
+
+  it("classifies structured warning codes before falling back to regex prose", () => {
+    expect(
+      classifyWarningSignals(
+        ["message body no longer matches legacy regex"],
+        ["credit_spread_weighted_avg_spread_input_unavailable"],
+      ),
     ).toEqual({
       hasPlaceholderSignals: false,
       hasPartialSignals: true,
@@ -130,5 +152,20 @@ describe("bondAnalyticsModuleReadiness", () => {
     expect(readiness.statusLabel).toBe("eligible");
     expect(readiness.summary?.primaryValue).toBe("3");
     expect(readiness.summary?.secondaryValue).toBe(yuan(2500000).display);
+  });
+
+  it("blocks promotion from structured warning codes even when prose changes", () => {
+    const readiness = deriveActionAttributionReadiness({
+      actionAttribution: createActionAttribution({
+        total_actions: 3,
+        total_pnl_from_actions: yuan(2500000),
+        warnings: ["contract text revised"],
+        warning_codes: ["bond_analytics_placeholder_warning"],
+      }),
+      actionAttributionMeta: createResultMeta(),
+    });
+
+    expect(readiness.tier).toBe("status");
+    expect(readiness.statusLabel).toBe("placeholder-blocked");
   });
 });

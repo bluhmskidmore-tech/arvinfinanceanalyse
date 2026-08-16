@@ -1,72 +1,20 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/client";
 import { FilterBar } from "../../../components/FilterBar";
+import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import type {
   ProductCategoryManualAdjustmentQuery,
   ProductCategoryManualAdjustmentRequest,
 } from "../../../api/contracts";
-import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import MonthlyOperatingAnalysisAuditPage from "./MonthlyOperatingAnalysisAuditPage";
 import { nextDefaultReportDateIfUnset } from "./productCategoryPnlPageModel";
 import { buildProductCategoryAuditListExportQuery } from "./productCategoryAdjustmentAuditPageModel";
-import { designTokens } from "../../../theme/designSystem";
-import { displayTokens } from "../../../theme/displayTokens";
-
-const pageHeaderStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: 16,
-  padding: 20,
-  borderRadius: 18,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: designTokens.color.neutral[50],
-  marginBottom: 18,
-} as const;
-
-const chipTypography = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "8px 12px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 600,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase" as const,
-} as const;
-
-const sectionLeadWrapStyle = {
-  display: "grid",
-  gap: 6,
-  marginBottom: 14,
-} as const;
-
-const sectionEyebrowStyle = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: designTokens.color.neutral[500],
-} as const;
-
-const sectionTitleStyle = {
-  margin: 0,
-  fontSize: 18,
-  fontWeight: 600,
-  color: designTokens.color.neutral[900],
-} as const;
-
-const sectionDescriptionStyle = {
-  margin: 0,
-  maxWidth: 900,
-  color: designTokens.color.neutral[600],
-  fontSize: 13,
-  lineHeight: 1.7,
-} as const;
+import "./ProductCategoryAuditPages.css";
+import "./ProductCategoryPnlPage.css";
 
 const DEFAULT_FILTERS: ProductCategoryManualAdjustmentQuery = {
   adjustmentId: "",
@@ -178,10 +126,10 @@ function SectionLead(props: {
   testId?: string;
 }) {
   return (
-    <div data-testid={props.testId} style={sectionLeadWrapStyle}>
-      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
-      <h2 style={sectionTitleStyle}>{props.title}</h2>
-      <p style={sectionDescriptionStyle}>{props.description}</p>
+    <div data-testid={props.testId} className="product-category-section-lead">
+      <span className="product-category-section-lead__eyebrow">{props.eyebrow}</span>
+      <h2 className="product-category-section-lead__title">{props.title}</h2>
+      <p className="product-category-section-lead__description">{props.description}</p>
     </div>
   );
 }
@@ -416,55 +364,46 @@ function LegacyProductCategoryAdjustmentAuditBody() {
   }
 
   return (
-    <section data-testid="product-category-audit-page">
-      <div style={pageHeaderStyle}>
+    <section
+      data-testid="product-category-audit-page"
+      data-moss-theme-scope="product-category-pnl"
+    >
+      <div className="product-category-audit-page-header">
         <div>
-          <h1 data-testid="product-category-audit-page-title" style={{ margin: 0, fontSize: 28, fontWeight: 700 }}>产品损益调整审计</h1>
-          <p data-testid="product-category-audit-boundary-copy" style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 14 }}>
+          <h1 data-testid="product-category-audit-page-title" className="product-category-audit-page-title">
+            产品损益调整审计
+          </h1>
+          <p
+            data-testid="product-category-audit-boundary-copy"
+            className="product-category-audit-boundary-copy"
+          >
             查看产品类别损益的手工调整当前状态、完整事件时间线和刷新结果。
           </p>
-          <p style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 12 }}>
+          <p className="product-category-audit-meta-copy">
             审计视图只记录调整事件与刷新证据，不直接改写正式读模型。
           </p>
           {lastRefreshRunId ? (
-            <p style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 12 }}>
-              最近刷新任务：{lastRefreshRunId}
-            </p>
+            <p className="product-category-audit-meta-copy">最近刷新任务：{lastRefreshRunId}</p>
           ) : null}
           {lastAdjustmentId ? (
-            <p style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 12 }}>
-              最近录入调整：{lastAdjustmentId}
-            </p>
+            <p className="product-category-audit-meta-copy">最近录入调整：{lastAdjustmentId}</p>
           ) : null}
-          {adjustmentError ? (
-            <p style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.danger[700], fontSize: 12 }}>
-              {adjustmentError}
-            </p>
-          ) : null}
+          {adjustmentError ? <p className="product-category-audit-meta-copy--danger-spaced">{adjustmentError}</p> : null}
           {exportError ? (
-            <p
-              data-testid="product-category-audit-export-error"
-              style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.danger[700], fontSize: 12 }}
-            >
+            <p data-testid="product-category-audit-export-error" className="product-category-audit-meta-copy--danger-spaced">
               {exportError}
             </p>
           ) : null}
         </div>
-        <FilterBar style={{ justifyContent: "flex-end" }}>
+        <FilterBar className="product-category-audit-filter-bar--end">
           <span
-            style={{
-              ...chipTypography,
-              background:
-                client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
-              color:
-                client.mode === "real"
-                  ? displayTokens.apiMode.realForeground
-                  : displayTokens.apiMode.mockForeground,
-            }}
+            className={`product-category-audit-chip ${
+              client.mode === "real" ? "product-category-audit-chip--real" : "product-category-audit-chip--mock"
+            }`}
           >
             {client.mode === "real" ? "正式只读链路" : "本地离线契约回放"}
           </span>
-          <a href="/product-category-pnl">返回产品损益页</a>
+          <Link to="/product-category-pnl">返回产品损益页</Link>
           <button
             type="button"
             data-testid="audit-export-button"
@@ -501,19 +440,8 @@ function LegacyProductCategoryAdjustmentAuditBody() {
         description="筛选条件只驱动调整审计查询、分页和导出请求，不改变产品类别损益正式基线。"
         testId="product-category-audit-filter-lead"
       />
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
-          gap: 12,
-          marginBottom: 18,
-          padding: 18,
-          borderRadius: 18,
-          border: `1px solid ${designTokens.color.neutral[200]}`,
-          background: designTokens.color.neutral[50],
-        }}
-      >
-        <label style={{ display: "grid", gap: 8 }}>
+      <div className="product-category-audit-filter-panel">
+        <label className="product-category-audit-field">
           选择报表月份
           <select
             aria-label="审计-报表月份"
@@ -527,7 +455,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
             ))}
           </select>
         </label>
-        <label style={{ display: "grid", gap: 8 }}>
+        <label className="product-category-audit-field">
           调整ID
           <input
             data-testid="audit-filter-adjustment-id"
@@ -535,7 +463,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
             onChange={(event) => updateFilter("adjustmentId", event.target.value)}
           />
         </label>
-        <label style={{ display: "grid", gap: 8 }}>
+        <label className="product-category-audit-field">
           科目代码
           <input
             data-testid="audit-filter-account-code"
@@ -543,7 +471,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
             onChange={(event) => updateFilter("accountCode", event.target.value)}
           />
         </label>
-        <label style={{ display: "grid", gap: 8 }}>
+        <label className="product-category-audit-field">
           审批状态
           <select
             data-testid="audit-filter-approval-status"
@@ -556,7 +484,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
             <option value="rejected">已拒绝</option>
           </select>
         </label>
-        <label style={{ display: "grid", gap: 8 }}>
+        <label className="product-category-audit-field">
           事件类型
           <select
             data-testid="audit-filter-event-type"
@@ -570,7 +498,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
             <option value="restored">restored</option>
           </select>
         </label>
-        <label style={{ display: "grid", gap: 8 }}>
+        <label className="product-category-audit-field">
           当前列表排序字段
           <select
             data-testid="audit-current-sort-field"
@@ -589,7 +517,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
             ))}
           </select>
         </label>
-        <label style={{ display: "grid", gap: 8 }}>
+        <label className="product-category-audit-field">
           当前列表排序方向
           <select
             data-testid="audit-current-sort-dir"
@@ -608,7 +536,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
             ))}
           </select>
         </label>
-        <label style={{ display: "grid", gap: 8 }}>
+        <label className="product-category-audit-field">
           事件列表排序字段
           <select
             data-testid="audit-event-sort-field"
@@ -627,7 +555,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
             ))}
           </select>
         </label>
-        <label style={{ display: "grid", gap: 8 }}>
+        <label className="product-category-audit-field">
           事件列表排序方向
           <select
             data-testid="audit-event-sort-dir"
@@ -646,7 +574,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
             ))}
           </select>
         </label>
-        <label style={{ display: "grid", gap: 8 }}>
+        <label className="product-category-audit-field">
           创建时间起点（UTC）
           <input
             data-testid="audit-created-at-from"
@@ -655,7 +583,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
             onChange={(event) => updateFilter("createdAtFrom", event.target.value)}
           />
         </label>
-        <label style={{ display: "grid", gap: 8 }}>
+        <label className="product-category-audit-field">
           创建时间终点（UTC）
           <input
             data-testid="audit-created-at-to"
@@ -664,14 +592,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
             onChange={(event) => updateFilter("createdAtTo", event.target.value)}
           />
         </label>
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            paddingTop: 26,
-          }}
-        >
+        <label className="product-category-audit-field--checkbox">
           <input
             type="checkbox"
             data-testid="audit-exact-adjustment-id"
@@ -680,7 +601,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
           />
           调整ID精确匹配
         </label>
-        <label style={{ display: "grid", gap: 8 }}>
+        <label className="product-category-audit-field">
           每页事件数
           <select
             data-testid="audit-page-size-select"
@@ -697,7 +618,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
             ))}
           </select>
         </label>
-        <div style={{ display: "flex", alignItems: "end" }}>
+        <div className="product-category-audit-filter-actions">
           <button
             type="button"
             data-testid="audit-apply-filters"
@@ -706,7 +627,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
             应用筛选
           </button>
         </div>
-        <div style={{ display: "flex", alignItems: "end" }}>
+        <div className="product-category-audit-filter-actions">
           <button
             type="button"
             data-testid="audit-reset-time-range"
@@ -732,33 +653,16 @@ function LegacyProductCategoryAdjustmentAuditBody() {
         testId="product-category-audit-manual-lead"
       />
       {showManualForm ? (
-        <div
-          data-testid="audit-manual-form"
-          style={{
-            display: "grid",
-            gap: 12,
-            marginBottom: 18,
-            padding: 18,
-            borderRadius: 18,
-            border: `1px solid ${designTokens.color.neutral[200]}`,
-            background: designTokens.color.neutral[50],
-          }}
-        >
-          <div style={{ fontWeight: 600 }}>
+        <div data-testid="audit-manual-form" className="product-category-manual-form">
+          <div className="product-category-manual-form__title">
             {editingAdjustmentId ? "编辑手工调整" : "新建手工调整"}
           </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-              gap: 12,
-            }}
-          >
-            <label style={{ display: "grid", gap: 6 }}>
+          <div className="product-category-manual-form__grid">
+            <label className="product-category-manual-form__field">
               报表日期
               <input aria-label="审计-报表日期" value={draft.report_date} readOnly />
             </label>
-            <label style={{ display: "grid", gap: 6 }}>
+            <label className="product-category-manual-form__field">
               操作方式
               <select
                 aria-label="审计-操作方式"
@@ -772,7 +676,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
                 <option value="OVERRIDE">覆盖</option>
               </select>
             </label>
-            <label style={{ display: "grid", gap: 6 }}>
+            <label className="product-category-manual-form__field">
               币种
               <select
                 aria-label="审计-币种"
@@ -785,7 +689,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
                 <option value="CNY">CNY</option>
               </select>
             </label>
-            <label style={{ display: "grid", gap: 6 }}>
+            <label className="product-category-manual-form__field">
               科目代码
               <input
                 aria-label="审计-科目代码"
@@ -793,7 +697,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
                 onChange={(event) => updateField("account_code", event.target.value)}
               />
             </label>
-            <label style={{ display: "grid", gap: 6 }}>
+            <label className="product-category-manual-form__field">
               科目名称
               <input
                 aria-label="审计-科目名称"
@@ -801,7 +705,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
                 onChange={(event) => updateField("account_name", event.target.value)}
               />
             </label>
-            <label style={{ display: "grid", gap: 6 }}>
+            <label className="product-category-manual-form__field">
               审批状态
               <select
                 aria-label="审计-审批状态"
@@ -825,7 +729,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
               ["daily_avg_balance", "月日均"],
               ["annual_avg_balance", "年日均"],
             ].map(([field, label]) => (
-              <label key={field} style={{ display: "grid", gap: 6 }}>
+              <label key={field} className="product-category-manual-form__field">
                 {label}
                 <input
                   aria-label={`审计-${label}`}
@@ -840,7 +744,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
               </label>
             ))}
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
+          <div className="product-category-manual-form__actions">
             <button
               type="button"
               data-testid="audit-manual-submit"
@@ -870,7 +774,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
         testId="product-category-audit-timeline-lead"
       />
       <div data-testid="product-category-audit-list-timeline-async">
-        <AsyncSection
+        <PageAsyncSection
           title="调整审计"
           isLoading={adjustmentsQuery.isLoading}
           isError={adjustmentsQuery.isError}
@@ -882,11 +786,11 @@ function LegacyProductCategoryAdjustmentAuditBody() {
           }
           onRetry={() => void adjustmentsQuery.refetch()}
         >
-        <div style={{ display: "grid", gap: 18 }}>
-          <div data-testid="audit-current-state" style={{ display: "grid", gap: 10 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ fontWeight: 600 }}>当前状态（{currentTotal}）</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div className="product-category-audit-history">
+          <div data-testid="audit-current-state" className="product-category-audit-history-section">
+            <div className="product-category-audit-history-header">
+              <div className="product-category-audit-history-title">当前状态（{currentTotal}）</div>
+              <div className="product-category-audit-pagination">
                 <select
                   data-testid="audit-current-page-size-select"
                   value={String(currentLimit)}
@@ -901,7 +805,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
                     </option>
                   ))}
                 </select>
-                <span style={{ color: designTokens.color.neutral[600], fontSize: 12 }}>
+                <span className="product-category-audit-pagination__meta">
                   {currentTotal === 0
                     ? "0 / 0"
                     : `${currentOffset + 1}-${Math.min(currentOffset + currentLimit, currentTotal)} / ${currentTotal}`}
@@ -929,22 +833,14 @@ function LegacyProductCategoryAdjustmentAuditBody() {
             {(adjustmentsQuery.data?.adjustments ?? []).map((item) => (
               <div
                 key={`audit-current-${item.adjustment_id}`}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1.2fr 0.8fr 0.8fr 0.8fr auto auto auto",
-                  gap: 12,
-                  alignItems: "center",
-                  padding: 12,
-                  borderRadius: 12,
-                  border: `1px solid ${designTokens.color.neutral[200]}`,
-                }}
+                className="product-category-audit-adjustment-row"
               >
                 <div>
-                  <div style={{ fontWeight: 600 }}>{item.account_code}</div>
-                  <div style={{ color: designTokens.color.neutral[600], fontSize: 12 }}>
+                  <div className="product-category-audit-adjustment-primary">{item.account_code}</div>
+                  <div className="product-category-audit-adjustment-secondary">
                     {item.account_name || "未填写科目名称"}
                   </div>
-                  <div style={{ color: designTokens.color.neutral[500], fontSize: 12 }}>
+                  <div className="product-category-audit-adjustment-tertiary">
                     最近事件：{item.event_type}
                   </div>
                 </div>
@@ -995,11 +891,11 @@ function LegacyProductCategoryAdjustmentAuditBody() {
             ))}
           </div>
 
-          <div data-testid="audit-event-list" style={{ display: "grid", gap: 10 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ fontWeight: 600 }}>完整事件时间线（{eventTotal}）</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ color: designTokens.color.neutral[600], fontSize: 12 }}>
+          <div data-testid="audit-event-list" className="product-category-audit-history-section">
+            <div className="product-category-audit-history-header">
+              <div className="product-category-audit-history-title">完整事件时间线（{eventTotal}）</div>
+              <div className="product-category-audit-pagination">
+                <span className="product-category-audit-pagination__meta">
                   {eventTotal === 0
                     ? "0 / 0"
                     : `${eventOffset + 1}-${Math.min(eventOffset + eventLimit, eventTotal)} / ${eventTotal}`}
@@ -1026,15 +922,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
               <div
                 key={`audit-event-${item.adjustment_id}-${item.created_at}-${item.event_type}`}
                 data-testid={`audit-event-${item.adjustment_id}-${item.event_type}`}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1.2fr 1fr 1fr 1fr 1fr",
-                  gap: 12,
-                  padding: 12,
-                  borderRadius: 12,
-                  border: `1px dashed ${designTokens.color.neutral[200]}`,
-                  background: "#fcfdff",
-                }}
+                className="product-category-audit-event-row product-category-audit-event-row--timeline"
               >
                 <div>{item.created_at}</div>
                 <div>{item.account_code}</div>
@@ -1045,7 +933,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
             ))}
           </div>
         </div>
-        </AsyncSection>
+        </PageAsyncSection>
       </div>
     </section>
   );

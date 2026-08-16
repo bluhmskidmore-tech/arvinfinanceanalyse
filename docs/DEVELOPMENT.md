@@ -121,8 +121,27 @@
 常见组合：
 
 - 前端页面改动：`npm run lint`、`npm run typecheck`、相关 Vitest。
-- 后端接口/计算改动：目标 pytest + 必要时 `python scripts/backend_release_suite.py`。
+- 后端接口/计算改动：目标 pytest + 必要时 `.\.venv\Scripts\python.exe scripts\backend_release_suite.py`。
 - 文档或边界改动：相关文档契约测试。
+
+后端命令一律用 `.\.venv\Scripts\python.exe`（POSIX 下 `.venv/bin/python`）。裸 `python` 在开发机上
+经常被无关 venv 遮蔽——最坏情况不是报错，而是跑在另一套依赖上给出无效的绿灯。
+
+## 开发边界与债务止增
+
+开始一个页面或工作流后，可以把允许改动的路径显式列出；默认只报告，
+加 `--strict` 才阻断：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\audit_worktree_scope.py `
+  --allow frontend/src/features/<domain> `
+  --allow tests/<target-test>.py `
+  --strict
+```
+
+`npm run debt:audit` 除前端内联样式和 `api/client.ts` 外，也冻结了当前六个
+高维护成本文件的行数上限。新增能力应进入对应域模块，不再扩大 MCP 主文件、
+MCP 全量测试、共享 contracts、产品类别损益页面/模型和 PnL 总服务。
 
 ## 文档和 authority
 

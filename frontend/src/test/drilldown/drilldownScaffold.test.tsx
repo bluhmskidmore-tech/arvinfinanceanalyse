@@ -32,7 +32,3 @@ describe("drilldown 测试支架（中性）", () => {
     expect(b.label).toBe("b");
   });
 });
-
-describe.skip("drilldown 集成占位（待页面与契约明确后启用）", () => {
-  // row / trace：在此补充真实用例；勿硬编码 API 字段或最终路由结构。
-});

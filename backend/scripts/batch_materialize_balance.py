@@ -1,8 +1,7 @@
 """
 批量物化脚本 — 将 zqtz/tyw 快照表中所有 report_date 物化到 fact_formal_* 正式表。
 
-用法:
-  cd f:\MOSS-V3
+用法（在仓库根目录执行）:
   python -m backend.scripts.batch_materialize_balance [--dry-run] [--start 2026-01-01] [--end 2026-05-03] [--audit]
 
 选项:

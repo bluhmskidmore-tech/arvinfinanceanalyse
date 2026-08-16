@@ -1,0 +1,35 @@
+{
+  "cssPath": "frontend/src/features/workbench/dashboard-home/dashboardHome.module.css",
+  "tsxFiles": [
+    "frontend/src/features/workbench/module-home/MarketHomePage.tsx",
+    "frontend/src/features/workbench/module-home/MarketPanelSummary.tsx",
+    "frontend/src/features/workbench/module-home/MarketStructureTabPanel.tsx",
+    "frontend/src/features/workbench/module-home/MarketDepthPanel.tsx",
+    "frontend/src/features/workbench/module-home/MarketDecisionMatrix.tsx",
+    "frontend/src/features/workbench/module-home/MarketDeskIntelStrip.tsx",
+    "frontend/src/features/workbench/module-home/MarketActionQueue.tsx",
+    "frontend/src/features/workbench/module-home/MarketKeyRateCard.tsx",
+    "frontend/src/features/workbench/module-home/MarketCurveSpreadBand.tsx",
+    "frontend/src/features/workbench/module-home/MarketCrisisExplainBand.tsx",
+    "frontend/src/features/workbench/module-home/MarketCrossAssetBars.tsx",
+    "frontend/src/features/workbench/module-home/MarketCrossAssetGapBlock.tsx",
+    "frontend/src/features/workbench/module-home/PortfolioHomePage.tsx",
+    "frontend/src/features/workbench/module-home/PortfolioHomeLayout.tsx",
+    "frontend/src/features/workbench/module-home/PortfolioHoldingsHeroBand.tsx",
+    "frontend/src/features/workbench/module-home/PortfolioDistributionPanel.tsx",
+    "frontend/src/features/workbench/module-home/PortfolioStructureTabPanel.tsx",
+    "frontend/src/features/workbench/module-home/PortfolioRiskTickerBar.tsx",
+    "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx",
+    "frontend/src/features/balance-analysis/cockpit/BalanceAnalysisCockpit.tsx",
+    "frontend/src/features/balance-analysis/cockpit/BalanceAnalysisToolbar.tsx",
+    "frontend/src/features/balance-analysis/components/BalanceSummaryRow.tsx",
+    "frontend/src/features/balance-analysis/components/BalanceStageTerminalPanel.tsx",
+    "frontend/src/features/balance-analysis/components/BalanceContributionRow.tsx"
+  ],
+  "wildcards": [
+    "dhMuted", "dhUpRed", "dhDownGreen"
+  ],
+  "finalMarker": null,
+  "mockUrl": "http://127.0.0.1:5897/market-overview",
+  "realUrl": "http://localhost:5888/market-overview"
+}

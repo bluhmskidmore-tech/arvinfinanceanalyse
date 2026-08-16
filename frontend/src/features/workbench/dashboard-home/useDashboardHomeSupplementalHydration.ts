@@ -2,12 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { apiQueryKeys } from "../../../api/queryKeys";
-import { sanitizeMetricCopy } from "../../executive-dashboard/lib/sanitizeMetricCopy";
+import { sanitizeMetricCopy } from "./lib/sanitizeMetricCopy";
 import {
   mapToHomeFirstScreenView,
   type MapToHomeFirstScreenViewInput,
 } from "./dashboardHomeFirstScreenView";
-import type { DashboardHomeFirstScreenHydration } from "./dashboardHomeFirstScreenTypes";
+import type {
+  DashboardHomeFirstScreenHydration,
+  HomeSupplementalApiState,
+} from "./dashboardHomeFirstScreenTypes";
 import type { DashboardHomeSnapshotBoundary } from "./useDashboardHomeFirstScreenViewModel";
 import { useMockHomeFirstScreenView } from "./useMockHomeFirstScreenView";
 
@@ -16,9 +19,12 @@ type IdleWindow = Window & {
   cancelIdleCallback?: (handle: number) => void;
 };
 
-const FIRST_SCREEN_HYDRATION_IDLE_MIN_DELAY_MS = 600;
-const FIRST_SCREEN_HYDRATION_IDLE_TIMEOUT_MS = 1_200;
-const FIRST_SCREEN_HYDRATION_TIMEOUT_FALLBACK_MS = 900;
+// Aligned with the body tiers (150/250/200): these two queries enrich the
+// *first-screen* KPI strip, and the previous 600/1200/900 gate pushed the
+// heaviest of them (headline-kpis) into the very last request wave.
+const FIRST_SCREEN_HYDRATION_IDLE_MIN_DELAY_MS = 150;
+const FIRST_SCREEN_HYDRATION_IDLE_TIMEOUT_MS = 250;
+const FIRST_SCREEN_HYDRATION_TIMEOUT_FALLBACK_MS = 200;
 
 function useFirstScreenHydrationGate(reportDate: string | undefined, enabled: boolean) {
   const [readyReportDate, setReadyReportDate] = useState<string | null>(null);
@@ -86,16 +92,16 @@ export function useDashboardHomeSupplementalHydration(
   const {
     dataClient,
     snapshotQuery,
-    isLiveDataFallback,
     adapterOutput,
     snapshotResult,
     snapshotMeta,
-    initialEffectiveReportDate,
     supplementalReportDate,
     reportDateDataWarning,
   } = snapshotBoundary;
 
-  const useMockFallback = dataClient.mode !== "real" || isLiveDataFallback;
+  // real 模式不允许任何 mock UI 可达路径：useMockFallback 只看数据源模式，
+  // 不再挂接 isLiveDataFallback 之类的运行时回退信号。
+  const useMockFallback = dataClient.mode !== "real";
   const mockFirstScreenView = useMockHomeFirstScreenView(useMockFallback);
   const snapshotReportDate = snapshotResult?.report_date?.trim() || "";
   const hasSupplementalReportDate = Boolean(supplementalReportDate);
@@ -133,13 +139,42 @@ export function useDashboardHomeSupplementalHydration(
     staleTime: 60_000,
     enabled: !useMockFallback && hasDeferredSupplementalReportDate && hasFirstScreenHydrationData,
   });
+  const supplementalQueriesEnabled =
+    !useMockFallback &&
+    hasDeferredSupplementalReportDate &&
+    hasFirstScreenHydrationData;
+  const supplementalState = useMemo<HomeSupplementalApiState>(
+    () =>
+      !hasSupplementalReportDate
+        ? { kind: "backend-gap", label: "等待主快照报告日" }
+        : useMockFallback
+          ? { kind: "backend-gap", label: "样例模式未请求" }
+          : !supplementalQueriesEnabled
+            ? { kind: "loading", label: "等待补充查询" }
+            : bondHeadlineQuery.isError && portfolioHeadlinesQuery.isError
+              ? { kind: "error", label: "补充查询失败" }
+              : bondHeadlineQuery.isError || portfolioHeadlinesQuery.isError
+                ? { kind: "partial", label: "补充查询部分失败" }
+                : bondHeadlineQuery.isSuccess && portfolioHeadlinesQuery.isSuccess
+                  ? { kind: "ready", label: "补充查询已完成" }
+                  : { kind: "loading", label: "补充查询读取中" },
+    [
+      bondHeadlineQuery.isError,
+      bondHeadlineQuery.isSuccess,
+      hasSupplementalReportDate,
+      portfolioHeadlinesQuery.isError,
+      portfolioHeadlinesQuery.isSuccess,
+      supplementalQueriesEnabled,
+      useMockFallback,
+    ],
+  );
 
   const sanitizedMetrics = useMemo(
     () =>
       (adapterOutput.overview.vm?.metrics ?? []).map((metric) => sanitizeMetricCopy(metric)),
     [adapterOutput.overview.vm?.metrics],
   );
-  const effectiveReportDate = snapshotReportDate || initialEffectiveReportDate;
+  const effectiveReportDate = snapshotReportDate;
   const snapshotUnavailable =
     dataClient.mode === "real" && snapshotQuery.isError && !snapshotResult;
   const snapshotLoading =
@@ -147,18 +182,18 @@ export function useDashboardHomeSupplementalHydration(
   const snapshotStale =
     dataClient.mode === "real" && Boolean(reportDateDataWarning) && Boolean(snapshotResult);
 
-  const alertCount = useMemo(() => {
-    if (useMockFallback) {
-      return 3;
-    }
-    const missing = snapshotResult?.domains_missing?.length ?? 0;
-    return missing > 0 ? missing : adapterOutput.verdict?.tone === "warning" ? 1 : 0;
-  }, [adapterOutput.verdict?.tone, snapshotResult?.domains_missing?.length, useMockFallback]);
+  // No governed alert feed is hydrated here. Data-quality gaps must not become
+  // synthetic risk tasks or links to the decision queue.
+  const alertCount = 0;
 
   const firstScreenInput = useMemo<MapToHomeFirstScreenViewInput>(
     () => ({
       reportDate: effectiveReportDate,
       useMockFallback,
+      domainsEffectiveDate: adapterOutput.domainsEffectiveDate,
+      domainsMissing: adapterOutput.domainsMissing,
+      productCategoryHeadline: adapterOutput.productCategoryHeadline,
+      snapshotMode: snapshotResult?.mode,
       verdict: adapterOutput.verdict,
       metrics: sanitizedMetrics,
       attribution: adapterOutput.attribution.vm,
@@ -169,16 +204,22 @@ export function useDashboardHomeSupplementalHydration(
       snapshotUnavailable,
       snapshotStale,
       snapshotLoading,
+      staleWarning: reportDateDataWarning,
     }),
     [
       adapterOutput.attribution.vm,
+      adapterOutput.domainsEffectiveDate,
+      adapterOutput.domainsMissing,
+      adapterOutput.productCategoryHeadline,
       adapterOutput.verdict,
       alertCount,
       bondHeadlineQuery.data?.result,
       effectiveReportDate,
       portfolioHeadlinesQuery.data?.result,
+      reportDateDataWarning,
       sanitizedMetrics,
       snapshotMeta,
+      snapshotResult?.mode,
       snapshotStale,
       snapshotLoading,
       snapshotUnavailable,
@@ -196,6 +237,7 @@ export function useDashboardHomeSupplementalHydration(
       decisionRail: view.decisionRail,
       terminalKpis: view.terminalKpis,
       keyRiskStrip: view.keyRiskStrip,
+      supplementalState,
     }),
     [
       view.decisionRail,
@@ -203,6 +245,7 @@ export function useDashboardHomeSupplementalHydration(
       view.keyRiskStrip,
       view.reportDate,
       view.terminalKpis,
+      supplementalState,
     ],
   );
 }

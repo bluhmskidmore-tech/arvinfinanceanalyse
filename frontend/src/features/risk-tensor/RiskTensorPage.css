@@ -1,3 +1,80 @@
+.risk-tensor-page.theme-dh-api {
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line-soft);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-surface: var(--dh-api-blue-soft);
+  --ib-radius: var(--dh-api-radius);
+  --ib-shadow: none;
+  --ib-warn: var(--dh-api-amber);
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
+  --moss-color-border-default: var(--dh-api-line);
+  --moss-color-card-bg: var(--dh-api-panel);
+  --moss-color-danger-200: var(--dh-api-line);
+  --moss-color-danger-50: var(--dh-api-red-soft);
+  --moss-color-danger-600: var(--dh-api-red);
+  --moss-color-danger-700: var(--dh-api-red);
+  --moss-color-info-300: var(--dh-api-line);
+  --moss-color-info-50: var(--dh-api-blue-soft);
+  --moss-color-info-600: var(--dh-api-blue);
+  --moss-color-neutral-200: var(--dh-api-line);
+  --moss-color-neutral-50: var(--dh-api-panel-2);
+  --moss-color-neutral-500: var(--dh-api-muted);
+  --moss-color-neutral-600: var(--dh-api-soft);
+  --moss-color-neutral-900: var(--dh-api-ink);
+  --moss-color-success-200: var(--dh-api-line);
+  --moss-color-success-50: var(--dh-api-green-soft);
+  --moss-color-success-600: var(--dh-api-green);
+  --moss-color-text-muted: var(--dh-api-soft);
+  --moss-color-text-primary: var(--dh-api-ink);
+  --moss-color-warning-200: var(--dh-api-line);
+  --moss-color-warning-300: var(--dh-api-line-soft);
+  --moss-color-warning-50: var(--dh-api-amber-soft);
+  --moss-color-warning-600: var(--dh-api-amber);
+  --moss-shadow-card: none;
+
+  display: grid;
+  gap: 16px;
+  min-height: 100%;
+  background: var(--dh-api-bg);
+  color: var(--dh-api-ink);
+}
+
+/*
+ * 共享溯源面板（FormalResultMetaPanel）徽章 tone 在本页的 Nocturne 收敛：
+ * 徽章色经组件的 --formal-meta-badge-* 变量出口（回退值为浅色字面量），
+ * 页 scope 内拉回 --dh-api-* 链（ledger-pnl / positions 同款先例）；
+ * 面板文字墨色由页根 neutral-900/600/500 重映射兜底。
+ */
+.risk-tensor-page .formal-result-meta-panel {
+  --formal-result-meta-border-soft: var(--dh-api-line-soft);
+  --formal-meta-badge-ok-bg: var(--dh-api-green-soft);
+  --formal-meta-badge-ok-ink: var(--dh-api-green);
+  --formal-meta-badge-ok-line: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
+  --formal-meta-badge-warn-bg: var(--dh-api-amber-soft);
+  --formal-meta-badge-warn-ink: var(--dh-api-amber);
+  --formal-meta-badge-warn-line: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  --formal-meta-badge-danger-bg: var(--dh-api-red-soft);
+  --formal-meta-badge-danger-ink: var(--dh-api-red);
+  --formal-meta-badge-danger-line: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
+}
+
+/*
+ * 页级主读被拦截/失败（data-read-state="blocked"）时，溯源面板的
+ * 「正常 / 未降级」ok 徽章降为中性，避免绿徽章与页级失败并立造成误读；
+ * warn / danger 徽章语义保留。
+ */
+.risk-tensor-page[data-read-state="blocked"] .formal-result-meta-panel {
+  --formal-meta-badge-ok-bg: var(--dh-api-panel-2);
+  --formal-meta-badge-ok-ink: var(--dh-api-muted);
+  --formal-meta-badge-ok-line: var(--dh-api-line);
+}
+
 .risk-tensor-brief {
   display: grid;
   gap: 12px;
@@ -20,7 +97,7 @@
   min-height: 40px;
   padding: 8px 34px 8px 11px;
   border: 1px solid var(--moss-color-border-default);
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-card-bg);
   color: var(--moss-color-text-primary);
   font-size: 14px;
@@ -34,7 +111,7 @@
   padding: 12px 14px;
   border: 1px solid var(--moss-color-danger-200);
   border-left: 4px solid var(--moss-color-danger-600);
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-danger-50);
 }
 
@@ -55,7 +132,7 @@
   padding: 14px;
   border: 1px solid var(--moss-color-warning-200);
   border-left: 4px solid var(--moss-color-warning-600);
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-warning-50);
 }
 
@@ -80,7 +157,7 @@
   padding: 12px 14px;
   border: 1px solid var(--moss-color-warning-200);
   border-left: 4px solid var(--moss-color-warning-600);
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-warning-50);
 }
 
@@ -104,7 +181,7 @@
   padding: 16px 18px;
   border: 1px solid var(--moss-color-border-default);
   border-left: 4px solid var(--moss-color-info-600);
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: color-mix(in srgb, var(--moss-color-info-50) 44%, var(--moss-color-card-bg));
 }
 
@@ -171,7 +248,7 @@
 }
 
 .risk-tensor-brief__link-button:focus-visible {
-  border-radius: 4px;
+  border-radius: var(--ib-radius, 2px);
   outline: 2px solid var(--moss-color-info-600);
   outline-offset: 2px;
 }
@@ -181,7 +258,7 @@
   max-width: 100%;
   padding: 6px 10px;
   border: 1px solid var(--moss-color-danger-200);
-  border-radius: 6px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-card-bg);
   color: var(--moss-color-danger-600);
   cursor: pointer;
@@ -210,7 +287,7 @@
 .risk-tensor-brief__badges span {
   padding: 5px 8px;
   border: 1px solid var(--moss-color-neutral-200);
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-card-bg);
   color: var(--moss-color-text-muted);
   font-size: 11px;
@@ -229,7 +306,7 @@
   min-width: 0;
   padding: 5px 8px;
   border: 1px solid var(--moss-color-warning-200);
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-card-bg);
   color: var(--moss-color-text-muted);
   font-size: 12px;
@@ -250,7 +327,7 @@
   margin: 0 0 10px;
   padding: 10px;
   border: 1px solid var(--moss-color-warning-200);
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-card-bg);
 }
 
@@ -264,7 +341,7 @@
   max-width: 100%;
   padding: 4px 8px;
   border: 1px solid var(--moss-color-warning-200);
-  border-radius: 6px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-warning-50);
   color: var(--moss-color-warning-600);
   font-size: 12px;
@@ -308,7 +385,7 @@
 .risk-tensor-quality-detail__trace-action {
   padding: 4px 9px;
   border: 1px solid var(--moss-color-warning-200);
-  border-radius: 6px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-warning-50);
   color: var(--moss-color-warning-600);
   cursor: pointer;
@@ -344,7 +421,7 @@
   padding: 8px;
   overflow: auto;
   border: 1px solid var(--moss-color-warning-200);
-  border-radius: 6px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-card-bg);
   color: var(--moss-color-text-muted);
   font-family: var(--moss-font-mono);
@@ -365,7 +442,7 @@
   margin-top: 7px;
   padding: 8px;
   border: 1px solid var(--moss-color-neutral-200);
-  border-radius: 6px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-neutral-50);
 }
 
@@ -419,7 +496,7 @@
   margin-top: 7px;
   padding: 8px;
   border: 1px solid var(--moss-color-warning-200);
-  border-radius: 6px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-warning-50);
 }
 
@@ -471,7 +548,7 @@
   margin: 0 0 10px;
   padding: 9px 10px;
   border: 1px solid var(--moss-color-danger-200);
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-danger-50);
 }
 
@@ -494,6 +571,178 @@
   margin-bottom: 24px;
 }
 
+.risk-tensor-page__hero h1 {
+  margin: 0;
+  color: var(--ib-ink);
+  font-family: var(--ib-serif);
+  font-size: 32px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.risk-tensor-page__hero p {
+  max-width: 860px;
+  margin: 10px 0 0;
+  color: var(--ib-ink-secondary);
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.risk-tensor-control-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.risk-tensor-report-date-status {
+  padding: 10px 12px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+  color: var(--ib-ink);
+  font-size: 14px;
+}
+
+.risk-tensor-report-date-status__hint {
+  margin-left: 8px;
+  color: var(--ib-ink-muted);
+  font-size: 13px;
+}
+
+.risk-tensor-chart-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: stretch;
+  margin-top: 24px;
+}
+
+.risk-tensor-chart-column {
+  flex: 1 1 calc(50% - 8px);
+  min-width: 280px;
+  max-width: 100%;
+}
+
+.risk-tensor-radar-card {
+  height: 100%;
+  min-height: 400px;
+  padding: 20px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+  box-shadow: var(--ib-shadow);
+}
+
+.risk-tensor-radar-card__title {
+  margin-bottom: 8px;
+  color: var(--ib-ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.risk-tensor-chart {
+  width: 100%;
+}
+
+.risk-tensor-chart--radar {
+  height: 400px;
+}
+
+.risk-tensor-chart--krd {
+  height: 320px;
+}
+
+.risk-tensor-tenor-drill {
+  margin-top: 24px;
+  padding: 16px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+}
+
+.risk-tensor-tenor-drill__title {
+  color: var(--ib-ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.risk-tensor-tenor-drill__desc {
+  margin-top: 6px;
+  color: var(--ib-ink-secondary);
+  font-size: 13px;
+}
+
+.risk-tensor-tenor-drill__current {
+  margin-top: 14px;
+  color: var(--ib-ink);
+  font-size: 14px;
+}
+
+.risk-tensor-tenor-drill__value {
+  margin-top: 8px;
+  color: var(--ib-ink-secondary);
+  font-size: 13px;
+}
+
+.risk-tensor-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.risk-tensor-chip-button {
+  padding: 8px 12px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: 999px;
+  background: var(--ib-surface);
+  color: var(--ib-ink);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.risk-tensor-chip-button[aria-pressed="true"] {
+  border-color: var(--ib-accent);
+  background: var(--ib-accent-surface);
+  color: var(--ib-accent);
+}
+
+.risk-tensor-chip-button:focus-visible {
+  outline: 2px solid var(--ib-accent);
+  outline-offset: 2px;
+}
+
+.risk-tensor-quality-detail {
+  margin-top: 20px;
+  padding: 12px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface-muted);
+  color: var(--ib-ink);
+  font-size: 14px;
+}
+
+.risk-tensor-quality-detail[data-tone="warning"],
+.risk-tensor-quality-detail[data-tone="error"],
+.risk-tensor-quality-detail[data-tone="stale"] {
+  border-color: color-mix(in srgb, var(--ib-warn) 42%, var(--ib-hairline));
+  background: color-mix(in srgb, var(--ib-warn) 10%, var(--ib-surface));
+}
+
+.risk-tensor-quality-detail__title {
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.risk-tensor-quality-detail__warnings {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--ib-ink-secondary);
+}
+
 .risk-tensor-brief__tiles {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -502,9 +751,13 @@
 
 .risk-tensor-section-heading {
   margin: 24px 0 12px;
-  color: var(--moss-color-text-primary);
+  color: var(--ib-ink);
   font-size: 16px;
   font-weight: 600;
+}
+
+.risk-tensor-section-heading--flush {
+  margin-top: 0;
 }
 
 .risk-tensor-summary-grid {
@@ -525,7 +778,7 @@
   min-height: 32px;
   padding: 7px 10px;
   border: 1px solid var(--moss-color-neutral-200);
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-card-bg);
   color: var(--moss-color-text-primary);
   cursor: pointer;
@@ -549,7 +802,7 @@
   margin: 0 0 10px;
   padding: 8px 10px;
   border: 1px solid var(--moss-color-warning-200);
-  border-radius: 6px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-warning-50);
   color: var(--moss-color-warning-600);
   font-size: 12px;
@@ -562,7 +815,7 @@
   margin-top: 8px;
   padding: 8px 10px;
   border: 1px solid var(--moss-color-warning-200);
-  border-radius: 6px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-warning-50);
   color: var(--moss-color-warning-600);
   font-size: 12px;
@@ -579,7 +832,7 @@
   min-height: 128px;
   padding: 13px;
   border: 1px solid var(--moss-color-neutral-200);
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-card-bg);
   color: inherit;
   font: inherit;
@@ -690,7 +943,7 @@ button.risk-tensor-brief__tile:focus-visible {
   margin-top: 18px;
   padding: 16px;
   border: 1px solid var(--moss-color-border-default);
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background:
     linear-gradient(180deg, var(--moss-color-card-bg), var(--moss-color-neutral-50)),
     var(--moss-color-card-bg);
@@ -722,7 +975,7 @@ button.risk-tensor-brief__tile:focus-visible {
 .risk-tensor-prior-change__header strong {
   padding: 7px 9px;
   border: 1px solid var(--moss-color-neutral-200);
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-card-bg);
   color: var(--moss-color-text-muted);
   font-size: 12px;
@@ -748,7 +1001,7 @@ button.risk-tensor-brief__tile:focus-visible {
   min-width: 0;
   padding: 12px;
   border: 1px solid var(--moss-color-neutral-200);
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-card-bg);
 }
 
@@ -799,11 +1052,11 @@ button.risk-tensor-prior-change__metric:focus-visible {
   margin-top: 18px;
   padding: 18px;
   border: 1px solid var(--moss-color-border-default);
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background:
     linear-gradient(180deg, var(--moss-color-card-bg), var(--moss-color-neutral-50)),
     var(--moss-color-card-bg);
-  box-shadow: 0 10px 24px rgba(22, 35, 46, 0.06);
+  box-shadow: var(--moss-shadow-card);
 }
 
 .risk-tensor-dv01-controls__header {
@@ -840,7 +1093,7 @@ button.risk-tensor-prior-change__metric:focus-visible {
   min-width: 124px;
   padding: 8px 10px;
   border: 1px solid var(--moss-color-warning-200);
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-warning-50);
   color: var(--moss-color-text-muted);
   font-size: 11px;
@@ -864,7 +1117,7 @@ button.risk-tensor-prior-change__metric:focus-visible {
 .risk-tensor-dv01-controls__scenario {
   min-width: 0;
   border: 1px solid var(--moss-color-neutral-200);
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-card-bg);
 }
 
@@ -929,7 +1182,7 @@ button.risk-tensor-prior-change__metric:focus-visible {
   min-width: 0;
   padding: 13px;
   border: 1px dashed var(--moss-color-neutral-200);
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-neutral-50);
 }
 
@@ -952,7 +1205,7 @@ button.risk-tensor-prior-change__metric:focus-visible {
   margin-top: 10px;
   padding: 13px;
   border: 1px solid var(--moss-color-neutral-200);
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-card-bg);
 }
 
@@ -984,7 +1237,7 @@ button.risk-tensor-prior-change__metric:focus-visible {
   min-width: 0;
   padding: 13px;
   border: 1px solid var(--moss-color-neutral-200);
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-card-bg);
 }
 
@@ -1011,6 +1264,224 @@ button.risk-tensor-prior-change__metric:focus-visible {
   border-top: 1px solid var(--moss-color-neutral-200);
 }
 
+.risk-tensor-scenario-stress {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid var(--moss-color-border-default);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--moss-color-card-bg);
+  box-shadow: var(--moss-shadow-card);
+}
+
+.risk-tensor-scenario-stress__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.risk-tensor-scenario-stress__header span,
+.risk-tensor-scenario-stress__summary span,
+.risk-tensor-scenario-stress__card-head span {
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.risk-tensor-scenario-stress__header h2 {
+  margin: 4px 0 0;
+  color: var(--moss-color-text-primary);
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
+.risk-tensor-scenario-stress__header p {
+  max-width: 900px;
+  margin: 6px 0 0;
+  color: var(--moss-color-text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.risk-tensor-scenario-stress__header > strong {
+  padding: 7px 10px;
+  border: 1px solid var(--moss-color-warning-200);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--moss-color-warning-50);
+  color: var(--moss-color-warning-600);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.risk-tensor-scenario-stress__summary,
+.risk-tensor-scenario-stress__grid {
+  display: grid;
+  gap: 10px;
+}
+
+.risk-tensor-scenario-stress__summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.risk-tensor-scenario-stress__summary > div,
+.risk-tensor-scenario-stress__card {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--moss-color-neutral-50);
+}
+
+.risk-tensor-scenario-stress__summary strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--moss-color-text-primary);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.risk-tensor-scenario-stress__summary p,
+.risk-tensor-scenario-stress__card p,
+.risk-tensor-scenario-stress__card small,
+.risk-tensor-scenario-stress__empty p,
+.risk-tensor-scenario-stress__footer span {
+  margin: 6px 0 0;
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.risk-tensor-scenario-stress__warning,
+.risk-tensor-scenario-stress__empty {
+  padding: 10px 12px;
+  border: 1px solid var(--moss-color-warning-200);
+  border-left: 4px solid var(--moss-color-warning-600);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--moss-color-warning-50);
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.risk-tensor-scenario-stress__empty span {
+  color: var(--moss-color-warning-600);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.risk-tensor-scenario-stress__grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.risk-tensor-scenario-stress__card {
+  display: grid;
+  gap: 8px;
+  background: var(--moss-color-card-bg);
+}
+
+.risk-tensor-scenario-stress__card[data-tone="danger"] {
+  border-color: var(--moss-color-danger-200);
+  background: var(--moss-color-danger-50);
+}
+
+.risk-tensor-scenario-stress__card[data-tone="warning"] {
+  border-color: var(--moss-color-warning-200);
+  background: var(--moss-color-warning-50);
+}
+
+.risk-tensor-scenario-stress__card[data-tone="ok"] {
+  border-color: var(--moss-color-success-200);
+  background: var(--moss-color-success-50);
+}
+
+.risk-tensor-scenario-stress__card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.risk-tensor-scenario-stress__card-head strong {
+  color: var(--moss-color-text-muted);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.risk-tensor-scenario-stress__card h3 {
+  margin: 0;
+  color: var(--moss-color-text-primary);
+  font-size: 15px;
+  font-weight: 750;
+  letter-spacing: 0;
+  line-height: 1.35;
+}
+
+.risk-tensor-scenario-stress__impact {
+  color: var(--moss-color-text-primary);
+  font-size: 18px;
+  font-weight: 760;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.risk-tensor-scenario-stress__card[data-tone="danger"] .risk-tensor-scenario-stress__impact {
+  color: var(--moss-color-danger-600);
+}
+
+.risk-tensor-scenario-stress__card[data-tone="warning"] .risk-tensor-scenario-stress__impact {
+  color: var(--moss-color-warning-600);
+}
+
+.risk-tensor-scenario-stress__card[data-tone="ok"] .risk-tensor-scenario-stress__impact {
+  color: var(--moss-color-success-600);
+}
+
+.risk-tensor-scenario-stress__card dl {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+}
+
+.risk-tensor-scenario-stress__card dl div {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.risk-tensor-scenario-stress__card dt,
+.risk-tensor-scenario-stress__card dd {
+  margin: 0;
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.risk-tensor-scenario-stress__card dd {
+  color: var(--moss-color-text-primary);
+}
+
+.risk-tensor-scenario-stress__footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.risk-tensor-scenario-stress__footer span {
+  margin: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--moss-color-neutral-50);
+}
+
 @media (max-width: 1180px) {
   .risk-tensor-brief__tiles {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1021,6 +1492,10 @@ button.risk-tensor-prior-change__metric:focus-visible {
   }
 
   .risk-tensor-dv01-controls__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .risk-tensor-scenario-stress__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1050,7 +1525,9 @@ button.risk-tensor-prior-change__metric:focus-visible {
   .risk-tensor-brief__tiles,
   .risk-tensor-dv01-controls__grid,
   .risk-tensor-dv01-controls__stress,
-  .risk-tensor-dv01-controls__actions {
+  .risk-tensor-dv01-controls__actions,
+  .risk-tensor-scenario-stress__summary,
+  .risk-tensor-scenario-stress__grid {
     grid-template-columns: 1fr;
   }
 }

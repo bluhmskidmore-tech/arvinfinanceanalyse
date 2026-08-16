@@ -102,6 +102,8 @@ function payload(overrides: Partial<DV01RiskPayload> = {}): DV01RiskPayload {
   return {
     report_date: "2026-03-31",
     accounting_class: "OCI",
+    dv01_basis: "face_value_modified_duration",
+    scenario_pnl_basis: "face_value_dv01_linear",
     total_face_value: yuan(10_000_000_000),
     total_market_value: yuan(10_500_000_000),
     face_weighted_modified_duration: ratio(3.43),
@@ -374,6 +376,51 @@ function actionPlanPayload(overrides: Partial<DV01ActionPlanPayload> = {}): DV01
   };
 }
 
+// Mirrors what the backend emits once it finds no governed limit and no caller
+// threshold: exposure is disclosed in full, every limit-derived figure is zero.
+function noLimitActionPlanPayload(): DV01ActionPlanPayload {
+  const zeroDv01 = formatRawAsNumeric({ raw: 0, unit: "dv01", sign_aware: true });
+  const graded = actionPlanPayload();
+  return actionPlanPayload({
+    risk_level: "no_limit_configured",
+    policy_basis: "no_limit_configured",
+    threshold_note:
+      "未接入正式 DV01 限额，调用方也未提供页面阈值；本次仅披露 DV01 敞口，不判定限额突破，不输出减仓/对冲建议。",
+    limit_source: "unconfigured",
+    limit_source_version: "unconfigured",
+    limit_rule_version: "rv_dv01_no_limit_configured_v1",
+    limit_effective_date: null,
+    limit_dv01: dv01(0),
+    warning_dv01: dv01(0),
+    limit_usage: ratio(0, 2),
+    remaining_limit_dv01: zeroDv01,
+    dv01_to_reduce: zeroDv01,
+    suggested_hedge_units: ratio(0, 2),
+    breach_count: 0,
+    scenario_breaches: [],
+    tenor_actions: graded.tenor_actions.map((row) => ({
+      ...row,
+      suggested_reduction_dv01: zeroDv01,
+    })),
+    issuer_actions: graded.issuer_actions.map((row) => ({
+      ...row,
+      suggested_reduction_dv01: zeroDv01,
+    })),
+    bond_actions: graded.bond_actions.map((row) => ({
+      ...row,
+      suggested_reduction_dv01: zeroDv01,
+    })),
+    warnings: [
+      "未接入正式 DV01 限额，调用方也未提供页面阈值；本次仅披露 DV01 敞口，不判定限额突破，不输出减仓/对冲建议。",
+    ],
+  });
+}
+
+function kpiValue(panel: HTMLElement, label: string): string {
+  const card = within(panel).getByText(label).parentElement;
+  return (card?.textContent ?? "").replace(label, "").trim();
+}
+
 function limitConfigStatusPayload(
   overrides: Partial<DV01LimitConfigStatusPayload> = {},
 ): DV01LimitConfigStatusPayload {
@@ -555,7 +602,7 @@ describe("DV01RiskView", () => {
     expect(screen.getByText("105.00 亿")).toBeInTheDocument();
     expect(screen.getByText("面值加权修正久期")).toBeInTheDocument();
     expect(screen.getByText("3.43 年")).toBeInTheDocument();
-    expect(screen.getByText("总 DV01")).toBeInTheDocument();
+    expect(screen.getByText("总 DV01（元/bp）")).toBeInTheDocument();
     expect(screen.getByText("3,546,830")).toBeInTheDocument();
     expect(screen.getAllByText("持仓数").length).toBeGreaterThan(0);
     expect(screen.getByText("574")).toBeInTheDocument();
@@ -565,7 +612,7 @@ describe("DV01RiskView", () => {
     expect(within(shockTable).getByText("-0.35 亿")).toBeInTheDocument();
     expect(within(shockTable).getByText("+0.35 亿")).toBeInTheDocument();
 
-    expect(screen.getByText("期限桶 DV01")).toBeInTheDocument();
+    expect(screen.getByText("期限桶 DV01（元/bp）")).toBeInTheDocument();
     const tenorTable = screen.getByTestId("dv01-risk-tenor-table");
     expect(within(tenorTable).getByText("3-5Y")).toBeInTheDocument();
     expect(within(tenorTable).getByText("3.80 年")).toBeInTheDocument();
@@ -914,6 +961,65 @@ describe("DV01RiskView", () => {
     expect(panel).toHaveTextContent("1,000,000");
   });
 
+  it("labels an unconfigured DV01 limit as its own state, never as the page threshold fallback", async () => {
+    const getDv01Risk = vi.fn(async () => ({
+      result_meta: resultMeta(),
+      result: payload(),
+    }));
+    const getDv01ActionPlan = vi.fn(async () => ({
+      result_meta: actionPlanMeta(),
+      result: noLimitActionPlanPayload(),
+    }));
+
+    renderView(getDv01Risk, undefined, undefined, getDv01ActionPlan);
+
+    const panel = await screen.findByTestId("dv01-action-plan-panel");
+    expect(kpiValue(panel, "风险状态")).toBe("未配置限额");
+    expect(panel).toHaveTextContent("限额未配置，无判级口径");
+    expect(panel).toHaveTextContent("本页不判定限额突破、不输出减仓或对冲建议");
+    // The fallback wording claims a page threshold is still monitoring the book,
+    // which is the opposite of what "no limit configured" means.
+    expect(panel).not.toHaveTextContent("页面预警阈值 fallback");
+    expect(panel).not.toHaveTextContent("正式限额未接入，风险动作仅用于预警排查");
+    expect(panel).not.toHaveTextContent("正式限额口径");
+    expect(panel).not.toHaveTextContent("可接受");
+    expect(panel).not.toHaveTextContent("超限");
+  });
+
+  it("neutralises limit-derived DV01 figures while still disclosing the exposure", async () => {
+    const getDv01Risk = vi.fn(async () => ({
+      result_meta: resultMeta(),
+      result: payload(),
+    }));
+    const getDv01ActionPlan = vi.fn(async () => ({
+      result_meta: actionPlanMeta(),
+      result: noLimitActionPlanPayload(),
+    }));
+
+    renderView(getDv01Risk, undefined, undefined, getDv01ActionPlan);
+
+    const panel = await screen.findByTestId("dv01-action-plan-panel");
+    // A zero here would read as "0% used" / "nothing left to reduce".
+    expect(kpiValue(panel, "使用率")).toBe("不适用");
+    expect(kpiValue(panel, "剩余额度")).toBe("不适用");
+    expect(kpiValue(panel, "需压降 DV01（元/bp）")).toBe("不适用");
+    expect(kpiValue(panel, "建议对冲手数")).toBe("不适用");
+    expect(kpiValue(panel, "限额 DV01（元/bp）")).toBe("未配置");
+    expect(kpiValue(panel, "预警 DV01（元/bp）")).toBe("未配置");
+    // breach_count is 0 because nothing was graded, not because the book is clean.
+    expect(panel).toHaveTextContent("触发 不适用");
+    expect(panel).not.toHaveTextContent("触发 0 项");
+
+    expect(panel).toHaveTextContent("持仓 12");
+    const tenorTable = within(panel).getByTestId("dv01-action-plan-tenors-table");
+    expect(tenorTable).toHaveTextContent("7-10Y");
+    expect(tenorTable).toHaveTextContent("900,000");
+    expect(tenorTable).toHaveTextContent("78.26%");
+    expect(tenorTable).toHaveTextContent("不适用");
+    expect(within(panel).getByTestId("dv01-action-plan-issuers-table")).toHaveTextContent("发行人A");
+    expect(within(panel).getByTestId("dv01-action-plan-bonds-table")).toHaveTextContent("BOND-1");
+  });
+
   it("renders movement attribution, anomaly bonds, and methodology checks", async () => {
     const getDv01Risk = vi.fn(async () => ({
       result_meta: resultMeta(),
@@ -969,10 +1075,10 @@ describe("DV01RiskView", () => {
     expect(panel).toHaveTextContent("面值 30.00 亿");
     expect(panel).toHaveTextContent("市值 30.80 亿");
     expect(panel).toHaveTextContent("久期 3.20 年");
-    expect(panel).toHaveTextContent("DV01 880,000");
+    expect(panel).toHaveTextContent("DV01（元/bp） 880,000");
     expect(panel).toHaveTextContent("当前筛选 2 / 2");
     expect(panel).toHaveTextContent("搜索只改变明细可见行");
-    expect(screen.getByText("总 DV01")).toBeInTheDocument();
+    expect(screen.getByText("总 DV01（元/bp）")).toBeInTheDocument();
     expect(screen.getByText("3,546,830")).toBeInTheDocument();
     const table = within(panel).getByTestId("dv01-reconciliation-table");
     expect(within(table).getByText("BOND-1")).toBeInTheDocument();
@@ -985,7 +1091,7 @@ describe("DV01RiskView", () => {
     expect(panel).toHaveTextContent("面值 30.00 亿");
     expect(panel).toHaveTextContent("市值 30.80 亿");
     expect(panel).toHaveTextContent("久期 3.20 年");
-    expect(panel).toHaveTextContent("DV01 880,000");
+    expect(panel).toHaveTextContent("DV01（元/bp） 880,000");
     expect(screen.getByText("3,546,830")).toBeInTheDocument();
     expect(within(table).getByText("BOND-2")).toBeInTheDocument();
     expect(within(table).queryByText("BOND-1")).not.toBeInTheDocument();

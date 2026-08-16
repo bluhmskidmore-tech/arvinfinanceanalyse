@@ -133,8 +133,8 @@ describe("PlatformConfigPage", () => {
     expect(boundary).toHaveTextContent("MTR-PLT-001");
     expect(boundary).toHaveTextContent("MTR-PLT-002");
     expect(boundary).toHaveTextContent("MTR-PLT-003");
-    expect(boundary).toHaveTextContent("candidate diagnostics only");
-    expect(boundary).toHaveTextContent("not data-quality approval");
+    expect(boundary).toHaveTextContent("仅为候选诊断指标");
+    expect(boundary).toHaveTextContent("亦不构成数据质量审批");
 
     expect(screen.getByText("Redis 状态")).toBeInTheDocument();
     expect(screen.getByText("PostgreSQL 状态")).toBeInTheDocument();

@@ -4,22 +4,26 @@ import math
 import statistics
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import cast
+from typing import Any, cast
+
+from backend.app.core_finance.strategy_policy import POLICY, StockCandidatePolicyDefinition
 
 EPS = 1e-12
 FORMULA_VERSION = "rv_livermore_stock_candidates_bundle_v7"
 DEFAULT_STOCK_CANDIDATE_POLICY = "default"
 EXP3B_STOCK_CANDIDATE_POLICY = "exp3b"
-MIN_HISTORY = 120
-EMA_WINDOW = 10
-MAX_RANKED = 6
-MAX_BREAKOUT_EXTENSION_NORM = 0.35
-GAP_NORM_MIN = 0.0
-ABNORMAL_TURNOVER_MIN_V7 = 1.2
-ABNORMAL_TURNOVER_MAX_V7 = 2.0
-CROWDED_LEADER_TURNOVER_BLOCK = 2.0
-DEFAULT_FUNDAMENTAL_TOP_FRACTION = 0.5
-WARM_FUNDAMENTAL_TOP_FRACTION = 1 / 3
+EXP3C_SHADOW_STOCK_CANDIDATE_POLICY = "exp3c_shadow"
+MIN_HISTORY = POLICY.entry_filters.min_history
+EMA_WINDOW = POLICY.entry_filters.ema_window
+MAX_RANKED = POLICY.entry_filters.max_ranked
+MIN_DAILY_AMOUNT = POLICY.entry_filters.min_daily_amount
+MAX_BREAKOUT_EXTENSION_NORM = POLICY.entry_filters.max_breakout_extension_norm
+GAP_NORM_MIN = POLICY.entry_filters.gap_norm_min
+ABNORMAL_TURNOVER_MIN_V7 = POLICY.entry_filters.abnormal_turnover_range[0]
+ABNORMAL_TURNOVER_MAX_V7 = POLICY.entry_filters.abnormal_turnover_range[1]
+CROWDED_LEADER_TURNOVER_BLOCK = POLICY.entry_filters.crowded_leader_turnover_block
+DEFAULT_FUNDAMENTAL_TOP_FRACTION = POLICY.entry_filters.default_fundamental_top_fraction
+WARM_FUNDAMENTAL_TOP_FRACTION = POLICY.entry_filters.warm_fundamental_top_fraction
 
 
 @dataclass(frozen=True)
@@ -35,6 +39,7 @@ class StockCandidateSnapshot:
     close_value: object
     turnover_free: object
     limit_ratio: object
+    daily_amount: object = None
     one_word_board: bool = False
     closed_up_limit: bool = False
     close_history: Sequence[object] = ()
@@ -55,45 +60,11 @@ class StockCandidateResult:
     payload: dict[str, object]
 
 
-@dataclass(frozen=True)
-class _StockCandidatePolicy:
-    name: str
-    active_market_states: frozenset[str]
-    close_strength_min: float
-    gap_norm_max: float
-    abnormal_turnover_min: float
-    abnormal_turnover_max: float
-    close_strength_first: bool = False
+_StockCandidatePolicy = StockCandidatePolicyDefinition
 
 
 _POLICY_BY_NAME: dict[str, _StockCandidatePolicy] = {
-    DEFAULT_STOCK_CANDIDATE_POLICY: _StockCandidatePolicy(
-        name=DEFAULT_STOCK_CANDIDATE_POLICY,
-        active_market_states=frozenset({"WARM", "HOT", "OVERHEAT"}),
-        close_strength_min=0.95,
-        gap_norm_max=0.45,
-        abnormal_turnover_min=1.2,
-        abnormal_turnover_max=2.0,
-    ),
-    EXP3B_STOCK_CANDIDATE_POLICY: _StockCandidatePolicy(
-        name=EXP3B_STOCK_CANDIDATE_POLICY,
-        active_market_states=frozenset({"WARM", "HOT"}),
-        close_strength_min=0.99,
-        gap_norm_max=0.35,
-        abnormal_turnover_min=1.2,
-        abnormal_turnover_max=2.4,
-        close_strength_first=True,
-    ),
-    # v6_compat: looser turnover band for OVERHEAT fallback (win_5d -4.3pp under v7).
-    # Registered for market_data_livermore_service wiring; not active until OVERHEAT maps here.
-    "v6_compat": _StockCandidatePolicy(
-        name="v6_compat",
-        active_market_states=frozenset({"WARM", "HOT", "OVERHEAT"}),
-        close_strength_min=0.95,
-        gap_norm_max=0.45,
-        abnormal_turnover_min=1.0,
-        abnormal_turnover_max=3.5,
-    ),
+    policy.name: policy for policy in POLICY.entry_filters.stock_candidate_policies
 }
 ACTIVE_MARKET_STATES = set(_POLICY_BY_NAME[DEFAULT_STOCK_CANDIDATE_POLICY].active_market_states)
 
@@ -172,6 +143,61 @@ def compute_stock_candidates(
     )
 
 
+def diagnose_stock_candidate_filters(
+    *,
+    as_of_date: str,
+    market_state: str,
+    snapshots: list[StockCandidateSnapshot],
+    policy_name: str = DEFAULT_STOCK_CANDIDATE_POLICY,
+) -> dict[str, object]:
+    policy = _resolve_policy(policy_name)
+    candidate_payload = compute_stock_candidates(
+        as_of_date=as_of_date,
+        market_state=market_state,
+        snapshots=snapshots,
+        include_universe=True,
+        policy_name=policy.name,
+    ).payload
+    candidate_items = cast(list[dict[str, object]], candidate_payload.get("items") or [])
+    if market_state not in policy.active_market_states:
+        return {
+            "status": "ready",
+            "as_of_date": as_of_date,
+            "market_state": market_state,
+            "selection_policy": policy.name,
+            "input_stock_count": len(snapshots),
+            "final_candidate_count": 0,
+            "candidate_items": [],
+            "funnel": [
+                {
+                    "step": "policy_active_market_state",
+                    "before": len(snapshots),
+                    "pass": 0,
+                    "fail_at_step": len(snapshots),
+                }
+            ],
+            "near_misses": [],
+        }
+
+    diagnostics = [
+        _snapshot_filter_diagnostic(snapshot, market_state=market_state, policy=policy)
+        for snapshot in snapshots
+    ]
+    funnel = _filter_funnel(diagnostics, policy=policy)
+    near_misses = _filter_near_misses(diagnostics, policy=policy)
+    return {
+        "status": "ready",
+        "as_of_date": as_of_date,
+        "market_state": market_state,
+        "selection_policy": policy.name,
+        "input_stock_count": len(snapshots),
+        "final_candidate_count": int(candidate_payload.get("candidate_count") or len(candidate_items)),
+        "candidate_items": candidate_items,
+        "funnel": funnel,
+        "near_misses": near_misses,
+    }
+
+
 def _candidate_row(
     snapshot: StockCandidateSnapshot,
     *,
@@ -190,6 +216,7 @@ def _candidate_row(
     close_value = _valid_float(snapshot.close_value)
     turnover_free = _valid_float(snapshot.turnover_free)
     limit_ratio = _valid_float(snapshot.limit_ratio)
+    daily_amount = _valid_float(snapshot.daily_amount)
     if (
         sector_rank is None
         or open_value is None
@@ -209,6 +236,8 @@ def _candidate_row(
     if snapshot.one_word_board or snapshot.closed_up_limit:
         return None, False
 
+    # Max of the prior 55 closes (signal bar excluded): closes[-56:-1] spans
+    # 55 elements. Diagnostic label: breakout_above_55d_close_high.
     breakout_level = max(closes[-56:-1])
     ema10 = _ema_latest(closes, EMA_WINDOW)
     ma20 = _moving_average(closes, 20)
@@ -226,11 +255,7 @@ def _candidate_row(
     if sector_rank == 1 and abnormal_turnover >= CROWDED_LEADER_TURNOVER_BLOCK:
         return None, False
 
-    atu_in_band = policy.abnormal_turnover_min <= abnormal_turnover
-    if policy.abnormal_turnover_max == ABNORMAL_TURNOVER_MAX_V7:
-        atu_in_band = atu_in_band and abnormal_turnover < policy.abnormal_turnover_max
-    else:
-        atu_in_band = atu_in_band and abnormal_turnover <= policy.abnormal_turnover_max
+    atu_in_band = _abnormal_turnover_allowed(abnormal_turnover=abnormal_turnover, policy=policy)
 
     signal = (
         close_value > breakout_level
@@ -262,6 +287,8 @@ def _candidate_row(
         "gap_norm": round(gap_norm, 6),
         "breakout_extension_norm": round(breakout_extension_norm, 6),
         "abnormal_turnover": round(abnormal_turnover, 6),
+        "daily_amount": _round_optional(daily_amount),
+        "liquidity_floor_pass": None if daily_amount is None else daily_amount >= MIN_DAILY_AMOUNT,
         "selection_policy": policy.name,
         "pe": _round_optional(snapshot.pe),
         "pb": _round_optional(snapshot.pb),
@@ -273,6 +300,229 @@ def _candidate_row(
         "volatility": _round_optional(snapshot.volatility),
         "dividend_yield": _round_optional(snapshot.dividend_yield),
     }, False
+
+
+def _snapshot_filter_diagnostic(
+    snapshot: StockCandidateSnapshot,
+    *,
+    market_state: str,
+    policy: _StockCandidatePolicy,
+) -> dict[str, Any]:
+    failures: list[str] = []
+    metrics: dict[str, float | int | None] = {}
+
+    closes = _float_series(snapshot.close_history)
+    turns = _float_series(snapshot.turnover_history)
+    if closes is None or turns is None or len(closes) < MIN_HISTORY or len(turns) < MIN_HISTORY:
+        failures.append("history>=120")
+
+    sector_rank = _valid_int(snapshot.sector_rank)
+    open_value = _valid_float(snapshot.open_value)
+    high_value = _valid_float(snapshot.high_value)
+    low_value = _valid_float(snapshot.low_value)
+    close_value = _valid_float(snapshot.close_value)
+    turnover_free = _valid_float(snapshot.turnover_free)
+    limit_ratio = _valid_float(snapshot.limit_ratio)
+    if (
+        sector_rank is None
+        or open_value is None
+        or high_value is None
+        or low_value is None
+        or close_value is None
+        or turnover_free is None
+        or limit_ratio is None
+    ):
+        failures.append("numeric_inputs")
+
+    if sector_rank is not None:
+        metrics["sector_rank"] = sector_rank
+        if sector_rank > 3:
+            failures.append("sector_rank<=3")
+    if limit_ratio is not None and limit_ratio <= 0:
+        failures.append("limit_ratio>0")
+    if closes is not None and len(closes) >= MIN_HISTORY and closes[-2] <= 0:
+        failures.append("prior_close>0")
+    if snapshot.one_word_board:
+        failures.append("not_one_word_board")
+    if snapshot.closed_up_limit:
+        failures.append("not_closed_up_limit")
+
+    if (
+        closes is not None
+        and turns is not None
+        and len(closes) >= MIN_HISTORY
+        and len(turns) >= MIN_HISTORY
+        and sector_rank is not None
+        and open_value is not None
+        and high_value is not None
+        and low_value is not None
+        and close_value is not None
+        and turnover_free is not None
+        and limit_ratio is not None
+        and limit_ratio > 0
+        and closes[-2] > 0
+    ):
+        breakout_level = max(closes[-56:-1])
+        ma20 = _moving_average(closes, 20)
+        ma60 = _moving_average(closes, 60)
+        ma120 = _moving_average(closes, 120)
+        close_strength = _close_strength(close=close_value, low=low_value, high=high_value)
+        gap_norm = _gap_norm(open_value=open_value, prior_close=closes[-2], limit_ratio=limit_ratio)
+        breakout_extension_norm = _breakout_extension_norm(
+            close_value=close_value,
+            breakout_level=breakout_level,
+            limit_ratio=limit_ratio,
+        )
+        abnormal_turnover = _abnormal_turnover(turnover_free=turnover_free, turns=turns)
+        metrics.update(
+            {
+                "breakout_level": round(breakout_level, 6),
+                "close_strength": round(close_strength, 6),
+                "gap_norm": round(gap_norm, 6),
+                "breakout_extension_norm": round(breakout_extension_norm, 6),
+                "abnormal_turnover": round(abnormal_turnover, 6),
+            }
+        )
+        if sector_rank == 1 and abnormal_turnover >= CROWDED_LEADER_TURNOVER_BLOCK:
+            failures.append("not_crowded_leader_turnover")
+        if close_value <= breakout_level:
+            failures.append("breakout_above_55d_close_high")
+        if not (ma20 > ma60 > ma120):
+            failures.append("ma20>ma60>ma120")
+        if close_strength < policy.close_strength_min:
+            failures.append(_close_strength_step(policy))
+        if not (GAP_NORM_MIN <= gap_norm <= policy.gap_norm_max):
+            failures.append(_gap_norm_step(policy))
+        if not _breakout_extension_allowed(
+            market_state=market_state,
+            breakout_extension_norm=breakout_extension_norm,
+        ):
+            failures.append(_breakout_extension_step())
+        if not _abnormal_turnover_allowed(abnormal_turnover=abnormal_turnover, policy=policy):
+            failures.append(_abnormal_turnover_step(policy))
+
+    return {
+        "stock_code": snapshot.stock_code,
+        "stock_name": snapshot.stock_name,
+        "fail_reasons": failures,
+        "metrics": metrics,
+    }
+
+
+def _filter_funnel(
+    diagnostics: list[dict[str, Any]],
+    *,
+    policy: _StockCandidatePolicy,
+) -> list[dict[str, int | str]]:
+    remaining = diagnostics
+    rows: list[dict[str, int | str]] = []
+    for step in _diagnostic_step_order(policy):
+        before = len(remaining)
+        passed = [row for row in remaining if step not in row["fail_reasons"]]
+        pass_count = len(passed)
+        rows.append(
+            {
+                "step": step,
+                "before": before,
+                "pass": pass_count,
+                "fail_at_step": before - pass_count,
+            }
+        )
+        remaining = passed
+    return rows
+
+
+def _filter_near_misses(
+    diagnostics: list[dict[str, Any]],
+    *,
+    policy: _StockCandidatePolicy,
+    limit: int = 5,
+) -> list[dict[str, object]]:
+    failed = [row for row in diagnostics if row["fail_reasons"]]
+    step_rank = {step: index for index, step in enumerate(_diagnostic_step_order(policy))}
+    ordered = sorted(
+        failed,
+        key=lambda row: (
+            -_first_failed_step_rank(row["fail_reasons"], step_rank),
+            len(row["fail_reasons"]),
+            str(row["stock_code"]),
+        ),
+    )
+    return [
+        {
+            "stock_code": str(row["stock_code"]),
+            "stock_name": str(row["stock_name"]),
+            "fail_reasons": [_failure_reason_label(str(reason)) for reason in row["fail_reasons"]],
+            "metrics": row["metrics"],
+        }
+        for row in ordered[:limit]
+    ]
+
+
+def _first_failed_step_rank(fail_reasons: list[str], step_rank: dict[str, int]) -> int:
+    ranks = [step_rank.get(reason, -1) for reason in fail_reasons]
+    return min(ranks) if ranks else -1
+
+
+def _failure_reason_label(step: str) -> str:
+    if step.startswith("close_strength"):
+        return "close_strength"
+    if step.startswith("gap_norm"):
+        return "gap_norm"
+    if step.startswith("breakout_extension"):
+        return "breakout_extension"
+    if step.startswith("abnormal_turnover"):
+        return "abnormal_turnover"
+    return step
+
+
+def _diagnostic_step_order(policy: _StockCandidatePolicy) -> list[str]:
+    return [
+        "history>=120",
+        "numeric_inputs",
+        "sector_rank<=3",
+        "limit_ratio>0",
+        "not_one_word_board",
+        "not_closed_up_limit",
+        "not_crowded_leader_turnover",
+        "breakout_above_55d_close_high",
+        "ma20>ma60>ma120",
+        _close_strength_step(policy),
+        _gap_norm_step(policy),
+        "breakout_extension<=0.35",
+        _abnormal_turnover_step(policy),
+    ]
+
+
+def _close_strength_step(policy: _StockCandidatePolicy) -> str:
+    return f"close_strength>={policy.close_strength_min:g}"
+
+
+def _gap_norm_step(policy: _StockCandidatePolicy) -> str:
+    return f"gap_norm_{GAP_NORM_MIN:g}_to_{policy.gap_norm_max:g}"
+
+
+def _breakout_extension_step() -> str:
+    return f"breakout_extension<={MAX_BREAKOUT_EXTENSION_NORM:g}"
+
+
+def _abnormal_turnover_step(policy: _StockCandidatePolicy) -> str:
+    return (
+        f"abnormal_turnover_{policy.abnormal_turnover_min:g}_to_"
+        f"{policy.abnormal_turnover_max:g}"
+    )
+
+
+def _abnormal_turnover_allowed(
+    *,
+    abnormal_turnover: float,
+    policy: _StockCandidatePolicy,
+) -> bool:
+    if abnormal_turnover < policy.abnormal_turnover_min:
+        return False
+    if policy.abnormal_turnover_max_inclusive:
+        return abnormal_turnover <= policy.abnormal_turnover_max
+    return abnormal_turnover < policy.abnormal_turnover_max
 
 
 def _build_payload(
@@ -371,9 +621,11 @@ def _apply_fundamental_overlay(
     market_state: str,
 ) -> tuple[list[dict[str, object]], dict[str, object]]:
     valid_rows: list[tuple[dict[str, object], dict[str, float | None]]] = []
+    missing_rows: list[dict[str, object]] = []
     for row in items:
         factor_inputs = _fundamental_factor_inputs(row)
         if factor_inputs is None:
+            missing_rows.append(row)
             continue
         valid_rows.append((row, factor_inputs))
 
@@ -384,6 +636,7 @@ def _apply_fundamental_overlay(
             "valid_factor_count": 0,
             "selected_factor_count": len(items),
             "top_fraction": None,
+            "factor_missing_count": len(missing_rows),
         }
 
     scored_rows = _score_fundamental_rows(valid_rows)
@@ -396,12 +649,19 @@ def _apply_fundamental_overlay(
         row["factor_score"] = round(score, 4)
         row["factor_overlay_rank"] = rank
 
-    return [row for row, _score in scored_rows if str(row["stock_code"]) in selected_codes], {
+    selected_rows = [row for row, _score in scored_rows if str(row["stock_code"]) in selected_codes]
+    # Rows missing any required factor input (pe/pb/ps/roe/gross_margin) never
+    # enter the fundamental scoring, but must still surface downstream: append
+    # them in their original technical order rather than dropping them, so a
+    # technically-eligible candidate does not silently vanish just because its
+    # factor data is incomplete.
+    return selected_rows + missing_rows, {
         "status": "applied",
         "input_candidate_count": len(items),
         "valid_factor_count": len(valid_rows),
         "selected_factor_count": selected_count,
         "top_fraction": round(top_fraction, 6),
+        "factor_missing_count": len(missing_rows),
     }
 
 
@@ -508,6 +768,13 @@ def _resolve_policy(policy_name: str) -> _StockCandidatePolicy:
 
 
 def _float_series(values: Sequence[object]) -> list[float] | None:
+    if type(values) is list:
+        for value in values:
+            if type(value) is not float or not math.isfinite(value):
+                break
+        else:
+            return cast(list[float], values)
+
     converted = [_valid_float(value) for value in values]
     if any(value is None for value in converted):
         return None
@@ -515,6 +782,13 @@ def _float_series(values: Sequence[object]) -> list[float] | None:
 
 
 def _valid_float(value: object) -> float | None:
+    if type(value) is float:
+        return value if math.isfinite(value) else None
+    if type(value) is int:
+        try:
+            return float(value)
+        except OverflowError:
+            return None
     if value is None:
         return None
     text = str(value).strip()
@@ -533,5 +807,9 @@ def _round_optional(value: object, ndigits: int = 6) -> float | None:
 
 
 def _valid_int(value: object) -> int | None:
+    # Used for ordinal fields (sector_rank): a fractional value is invalid
+    # data, so reject it instead of silently truncating (e.g. 2.9 -> 2).
     number = _valid_float(value)
-    return None if number is None else int(number)
+    if number is None or not number.is_integer():
+        return None
+    return int(number)

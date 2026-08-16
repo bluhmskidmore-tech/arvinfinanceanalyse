@@ -1,0 +1,685 @@
+{
+  "schema_version": "ci-skip-registry-v1",
+  "description": "受控的环境/数据依赖型 pytest 跳过清单。守卫测试 tests/test_ci_skip_registry.py 会静态扫描 scan_roots 下的 *.py（纯文本、不执行被扫测试），任何未登记的新增依赖型跳过（pytest.mark.skipif / pytest.skip( / importorskip，最后一项含 pytest. 前缀与裸用法）都会导致守卫失败；新增跳过必须先在本文件登记并说明原因分类、依赖资产与合成替代情况。",
+  "as_of": "2026-08-14",
+  "scan_roots": ["tests", "backend/tests"],
+  "kinds": {
+    "skipif": "pytest.mark.skipif",
+    "skip_call": "pytest.skip(",
+    "importorskip": "importorskip"
+  },
+  "categories": ["real-data", "redis", "postgres", "symlink", "system-db", "other"],
+  "entries": [
+    {
+      "file": "tests/liability_v1_harness.py",
+      "expected_counts": {"skip_call": 3},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "real-data",
+          "reason": "负债 V1 回放样本 manifest.json 缺失时跳过，需人工从模板填充真实 V1 载荷",
+          "depends_on": ["tests/fixtures/liability_v1_samples/manifest.json（人工维护，模板为 manifest.template.json）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "真实或经审批的准真实样本就绪后才允许回放"
+        },
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "other",
+          "reason": "manifest 存在但 replay_enabled=false 时跳过；治理开关而非环境缺失",
+          "depends_on": ["manifest.replay_enabled 治理开关"],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled"
+        },
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "system-db",
+          "reason": "回放要求设置 manifest 指定的 DuckDB 路径环境变量（默认 MOSS_DUCKDB_PATH）",
+          "depends_on": ["env MOSS_DUCKDB_PATH（或 manifest.duckdb_path_env 指定变量）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_candidate_financial_indicator_component_detail_service.py",
+      "expected_counts": {"skipif": 5},
+      "occurrences": [
+        {
+          "kind": "skipif",
+          "count": 5,
+          "category": "real-data",
+          "reason": "组件明细服务的真实源回放断言，依赖本地受治理总账工作簿 202604/202605/202606",
+          "depends_on": [
+            "data_input/pnl_总账对账-日均/总账对账202604.xlsx",
+            "data_input/pnl_总账对账-日均/总账对账202605.xlsx",
+            "data_input/pnl_总账对账-日均/总账对账202606.xlsx"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "synthesize",
+          "note": "envelope 主对账路径已被 tests/test_finance_metric_component_detail_synthetic.py 间接覆盖（同一服务入口）；本文件独有的 stale-parent/桥阻断/源哈希漂移治理分支尚无合成版，待后续批次迁移"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_candidate_financial_indicator_period_comparison_service.py",
+      "expected_counts": {"skipif": 1},
+      "occurrences": [
+        {
+          "kind": "skipif",
+          "count": 1,
+          "category": "real-data",
+          "reason": "期间比较真实源回放断言，依赖本地受治理总账与日均工作簿",
+          "depends_on": [
+            "data_input/pnl_总账对账-日均/总账对账202604.xlsx",
+            "data_input/pnl_总账对账-日均/总账对账202605.xlsx",
+            "data_input/pnl_总账对账-日均/总账对账202606.xlsx",
+            "data_input/pnl_总账对账-日均/日均202605.xlsx"
+          ],
+          "has_synthetic_alternative": true,
+          "recommendation": "synthesize",
+          "note": "合成版 tests/test_candidate_financial_indicator_period_comparison_service_synthetic.py（fixture: tests/synthetic_ledger_pnl_fixture.py）走同一磁盘 xlsx->解析->规则->桥->schema 路径，CI 可跑；真实回放保留为黄金锚点（真实 sha 锁、missing_required_sheet 缺口分支仅真实源可复现）"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_data_quality_mcp.py",
+      "expected_counts": {"importorskip": 2},
+      "occurrences": [
+        {
+          "kind": "importorskip",
+          "count": 2,
+          "category": "other",
+          "reason": "构建临时质量/就绪 DuckDB 前防御性检查 duckdb Python 包",
+          "depends_on": ["python package duckdb（requirements 内必装）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "CI 恒定安装 duckdb，实际不触发；保留为依赖缺失时的清晰跳过而非 ImportError"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_finance_metric_component_detail.py",
+      "expected_counts": {"skipif": 5},
+      "occurrences": [
+        {
+          "kind": "skipif",
+          "count": 5,
+          "category": "real-data",
+          "reason": "组件明细核心计算的真实账目黄金断言，依赖本地受治理总账工作簿 202604/202605/202606",
+          "depends_on": [
+            "data_input/pnl_总账对账-日均/总账对账202604.xlsx",
+            "data_input/pnl_总账对账-日均/总账对账202605.xlsx",
+            "data_input/pnl_总账对账-日均/总账对账202606.xlsx"
+          ],
+          "has_synthetic_alternative": true,
+          "recommendation": "synthesize",
+          "note": "合成版 tests/test_finance_metric_component_detail_synthetic.py（fixture: tests/synthetic_ledger_pnl_fixture.py）覆盖精确对账/top 源定位/抵消户三个核心场景（经服务 envelope 触达同一 core 计算）；account_set_mismatch 与 failed-foot 两个 fail-closed 场景暂未合成，真实回放保留为黄金锚点"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_finance_metric_xlsx.py",
+      "expected_counts": {"skip_call": 1},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "real-data",
+          "reason": "真实 202606 源对的 OOXML 二进制证据与黄金行数断言（1944 行主账、微贷表头行等）",
+          "depends_on": [
+            "data_input/pnl_总账对账-日均/总账对账202606.xlsx",
+            "data_input/pnl_总账对账-日均/日均202606.xlsx"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "断言依赖真实文件的 sha256 与 OOXML 结构特征，合成文件无法替代黄金锚点；解析逻辑分支已由同文件合成用例覆盖"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_formal_compute_lineage.py",
+      "expected_counts": {"skip_call": 1},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "postgres",
+          "reason": "live Postgres sql-authority 血缘解析验证，未配置 DSN 时跳过",
+          "depends_on": ["env MOSS_TEST_POSTGRES_DSN", "可达的 PostgreSQL 实例"],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "CI 提供 Postgres service container 并设置 DSN 即自动激活；jsonl 后端路径已有常规覆盖"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_ledger_analytics_api.py",
+      "expected_counts": {"skip_call": 1},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "real-data",
+          "reason": "银行台账真实包 20260317 黄金 KPI 断言，样本缺失时跳过",
+          "depends_on": [
+            "env MOSS_BANK_LEDGER_PACK_DIR 或本机只读包 bank_ledger_codex_pack/sample_ledgers/ZQTZSHOW-20260317.xls"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "真实银行台账含敏感数据不入库；如需 CI 激活应先评估脱敏样本包"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_ledger_classification_backfill.py",
+      "expected_counts": {"skip_call": 1},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "symlink",
+          "reason": "构造硬链接（os.link）攻击面样本失败时跳过；文件系统链接能力缺失",
+          "depends_on": ["操作系统硬链接创建能力"],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "属 hard link 而非 symbolic link，同归文件系统链接能力一族；Linux CI 天然可用"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_ledger_financial_indicator_summary.py",
+      "expected_counts": {"skip_call": 1},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "real-data",
+          "reason": "财务指标汇总真实总账源回放断言，本地真实台账源目录缺失时跳过",
+          "depends_on": [
+            "data_input/*总账对账*日均*/ 目录（本机受治理真实源，位于 gitignore 的 data_input/ 下）"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "2026-08-12 并行会话新增用例；由 ci_skip_registry 守卫拦截后登记"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_ledger_financial_indicator_summary_cny.py",
+      "expected_counts": {"skip_call": 1},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "real-data",
+          "reason": "CNY 口径恒等校验真实总账源回放断言，本地真实台账源目录缺失时跳过",
+          "depends_on": [
+            "data_input/*总账对账*日均*/ 目录（本机受治理真实源，位于 gitignore 的 data_input/ 下）"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "2026-08-12 并行会话新增用例；由 ci_skip_registry 守卫拦截后登记"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_ledger_import_flow.py",
+      "expected_counts": {"skip_call": 3},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 3,
+          "category": "real-data",
+          "reason": "银行台账真实包 7 个 xls 样本导入与 20260317 黄金计数断言，包或样本缺失时跳过",
+          "depends_on": [
+            "env MOSS_BANK_LEDGER_PACK_DIR 或本机只读包 bank_ledger_codex_pack/sample_ledgers/（ZQTZSHOW-20260301(3)/0303/0310/0311/0312/0314/0317 共 7 个 xls）"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "导入管线逻辑分支已由同文件合成 csv/xls 用例覆盖；真实包断言保留为受控黄金锚点"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_ledger_import_worker_e2e.py",
+      "expected_counts": {"skip_call": 1},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "redis",
+          "reason": "真实 dramatiq worker 端到端测试需要本机 redis-server 可执行文件",
+          "depends_on": ["redis-server 可执行文件（PATH 内）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "e2e 语义要求真实 broker，fakeredis 无法等价替代；CI 安装 redis 后自动激活"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_ledger_pnl_net_interest_golden_sample.py",
+      "expected_counts": {"skipif": 1},
+      "occurrences": [
+        {
+          "kind": "skipif",
+          "count": 1,
+          "category": "real-data",
+          "reason": "真实净利息源回放与捕获快照一致性断言，依赖本地受治理总账工作簿 202604/202605/202606",
+          "depends_on": [
+            "data_input/pnl_总账对账-日均/总账对账202604.xlsx",
+            "data_input/pnl_总账对账-日均/总账对账202605.xlsx",
+            "data_input/pnl_总账对账-日均/总账对账202606.xlsx"
+          ],
+          "has_synthetic_alternative": true,
+          "recommendation": "keep-controlled",
+          "note": "同文件已有 tests/fixtures/ledger_pnl/net_interest_202606_normalized_replay.json 合成回放走完整生产计算链；真实回放保留为黄金锚点"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_macro_report_asset_service.py",
+      "expected_counts": {"skip_call": 1},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "symlink",
+          "reason": "构造符号链接拒收样本失败时跳过；Windows 主机缺少符号链接权限",
+          "depends_on": ["操作系统符号链接创建能力（Windows 需开发者模式或 SeCreateSymbolicLinkPrivilege）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "能力探测型跳过，Linux CI 天然激活"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_macro_toolkit_refresh.py",
+      "expected_counts": {"skip_call": 1},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "system-db",
+          "reason": "integration 标记的真实冒烟：对系统 DuckDB（get_settings().duckdb_path）跑 performance_metrics_cn 脚本",
+          "depends_on": ["系统 DuckDB 数据库文件（MOSS_DUCKDB_PATH / settings.duckdb_path）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "刻意针对本机真实库的端到端冒烟；常规逻辑已由同文件 tmp_path 用例覆盖"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_portfolio_home_blocker_closure_matrix_check.py",
+      "expected_counts": {"skipif": 1},
+      "occurrences": [
+        {
+          "kind": "skipif",
+          "count": 1,
+          "category": "system-db",
+          "reason": "portfolio-home 阻塞项收口矩阵检查依赖本机治理 DuckDB 当前状态，库缺失时整文件跳过（附 integration 标记）",
+          "depends_on": ["data/moss.duckdb（本机治理系统库）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "synthesize",
+          "note": "同簇 tests/test_portfolio_home_closure_scorecard.py 已有 _create_schema/tmp_path 合成模式可迁移"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_portfolio_home_business_owner_approval_packet.py",
+      "expected_counts": {"skipif": 1},
+      "occurrences": [
+        {
+          "kind": "skipif",
+          "count": 1,
+          "category": "system-db",
+          "reason": "portfolio-home 业务所有者审批包测试依赖本机治理 DuckDB 当前状态，库缺失时整文件跳过（附 integration 标记）",
+          "depends_on": ["data/moss.duckdb（本机治理系统库）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "synthesize",
+          "note": "同簇 tests/test_portfolio_home_closure_scorecard.py 已有 _create_schema/tmp_path 合成模式可迁移"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_portfolio_home_closure_artifact_presence_check.py",
+      "expected_counts": {"skipif": 1},
+      "occurrences": [
+        {
+          "kind": "skipif",
+          "count": 1,
+          "category": "system-db",
+          "reason": "portfolio-home 收口工件在场检查依赖本机治理 DuckDB 当前状态，库缺失时整文件跳过（附 integration 标记）",
+          "depends_on": ["data/moss.duckdb（本机治理系统库）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "synthesize",
+          "note": "同簇 tests/test_portfolio_home_closure_scorecard.py 已有 _create_schema/tmp_path 合成模式可迁移"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_portfolio_home_dependency_consistency_check.py",
+      "expected_counts": {"skipif": 1},
+      "occurrences": [
+        {
+          "kind": "skipif",
+          "count": 1,
+          "category": "system-db",
+          "reason": "portfolio-home 依赖一致性检查依赖本机治理 DuckDB 当前状态，库缺失时整文件跳过（附 integration 标记）",
+          "depends_on": ["data/moss.duckdb（本机治理系统库）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "synthesize",
+          "note": "同簇 tests/test_portfolio_home_closure_scorecard.py 已有 _create_schema/tmp_path 合成模式可迁移"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_portfolio_home_evidence_packet_guard.py",
+      "expected_counts": {"skipif": 1},
+      "occurrences": [
+        {
+          "kind": "skipif",
+          "count": 1,
+          "category": "system-db",
+          "reason": "portfolio-home 证据包守卫测试依赖本机治理 DuckDB 当前状态，库缺失时整文件跳过（附 integration 标记）",
+          "depends_on": ["data/moss.duckdb（本机治理系统库）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "synthesize",
+          "note": "同簇 tests/test_portfolio_home_closure_scorecard.py 已有 _create_schema/tmp_path 合成模式可迁移"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_portfolio_home_evidence_snapshot.py",
+      "expected_counts": {"skipif": 1},
+      "occurrences": [
+        {
+          "kind": "skipif",
+          "count": 1,
+          "category": "system-db",
+          "reason": "portfolio-home 证据快照测试对本机治理 DuckDB 当前封锁状态做快照断言，库缺失时整文件跳过（附 integration 标记）",
+          "depends_on": ["data/moss.duckdb（本机治理系统库）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "synthesize",
+          "note": "同簇 tests/test_portfolio_home_closure_scorecard.py 已有 _create_schema/tmp_path 合成模式可迁移；精确本机状态值断言已改为结构断言"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_portfolio_home_full_score_preflight.py",
+      "expected_counts": {"skipif": 1},
+      "occurrences": [
+        {
+          "kind": "skipif",
+          "count": 1,
+          "category": "system-db",
+          "reason": "portfolio-home 满分预检 build_preflight_for_test 默认落到 DEFAULT_DUCKDB=data/moss.duckdb，库缺失时整文件跳过（附 integration 标记）",
+          "depends_on": ["data/moss.duckdb（本机治理系统库）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "synthesize",
+          "note": "同文件多数用例已用 monkeypatch stub 隔离，仅个别用例读真实库"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_portfolio_home_owner_action_packet.py",
+      "expected_counts": {"skipif": 1},
+      "occurrences": [
+        {
+          "kind": "skipif",
+          "count": 1,
+          "category": "system-db",
+          "reason": "portfolio-home 所有者行动包测试依赖本机治理 DuckDB 当前状态，库缺失时整文件跳过（附 integration 标记）",
+          "depends_on": ["data/moss.duckdb（本机治理系统库）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "synthesize",
+          "note": "同簇 tests/test_portfolio_home_closure_scorecard.py 已有 _create_schema/tmp_path 合成模式可迁移"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_portfolio_home_owner_decision_intake_check.py",
+      "expected_counts": {"skipif": 1},
+      "occurrences": [
+        {
+          "kind": "skipif",
+          "count": 1,
+          "category": "system-db",
+          "reason": "portfolio-home 所有者决策接收检查依赖本机治理 DuckDB 当前状态，库缺失时整文件跳过（附 integration 标记）",
+          "depends_on": ["data/moss.duckdb（本机治理系统库）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "synthesize",
+          "note": "同簇 tests/test_portfolio_home_closure_scorecard.py 已有 _create_schema/tmp_path 合成模式可迁移"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_portfolio_home_owner_handoff_completeness_check.py",
+      "expected_counts": {"skipif": 1},
+      "occurrences": [
+        {
+          "kind": "skipif",
+          "count": 1,
+          "category": "system-db",
+          "reason": "portfolio-home 所有者交接完整性检查依赖本机治理 DuckDB 当前状态，库缺失时整文件跳过（附 integration 标记）",
+          "depends_on": ["data/moss.duckdb（本机治理系统库）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "synthesize",
+          "note": "同簇 tests/test_portfolio_home_closure_scorecard.py 已有 _create_schema/tmp_path 合成模式可迁移"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_portfolio_home_owner_handoff_packet.py",
+      "expected_counts": {"skipif": 1},
+      "occurrences": [
+        {
+          "kind": "skipif",
+          "count": 1,
+          "category": "system-db",
+          "reason": "portfolio-home 所有者交接包测试依赖本机治理 DuckDB 当前状态，库缺失时整文件跳过（附 integration 标记）",
+          "depends_on": ["data/moss.duckdb（本机治理系统库）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "synthesize",
+          "note": "同簇 tests/test_portfolio_home_closure_scorecard.py 已有 _create_schema/tmp_path 合成模式可迁移"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_portfolio_home_owner_input_needed_summary.py",
+      "expected_counts": {"skipif": 1},
+      "occurrences": [
+        {
+          "kind": "skipif",
+          "count": 1,
+          "category": "system-db",
+          "reason": "portfolio-home 所有者待输入摘要测试依赖本机治理 DuckDB 当前状态，库缺失时整文件跳过（附 integration 标记）",
+          "depends_on": ["data/moss.duckdb（本机治理系统库）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "synthesize",
+          "note": "同簇 tests/test_portfolio_home_closure_scorecard.py 已有 _create_schema/tmp_path 合成模式可迁移"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_qdb_gl_monthly_analysis_core.py",
+      "expected_counts": {"skipif": 1},
+      "occurrences": [
+        {
+          "kind": "skipif",
+          "count": 1,
+          "category": "real-data",
+          "reason": "202603 真实总账对账/日均工作簿回放黄金断言，依赖本地 data_input 下的真实数据目录；共用一个 pytest.mark.skipif 标记对象，装饰 14 个 test_real_202603_* 用例",
+          "depends_on": [
+            "data_input/*总账对账*日均*/ 目录（本机受治理真实源，位于 gitignore 的 data_input/ 下）"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "同文件其余用例已用内存合成 openpyxl workbook 覆盖逻辑分支；真实回放保留为黄金锚点"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_project_mcp_servers.py",
+      "expected_counts": {"importorskip": 4},
+      "occurrences": [
+        {
+          "kind": "importorskip",
+          "count": 4,
+          "category": "other",
+          "reason": "构建临时数据目录证据 DuckDB 前防御性检查 duckdb Python 包",
+          "depends_on": ["python package duckdb（requirements 内必装）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "CI 恒定安装 duckdb，实际不触发"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_macro_model_chain_results.py",
+      "expected_counts": {"skip_call": 1},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "real-data",
+          "reason": "宏观模型链真实输出比对需要本机 macro toolkit 真实输出目录，缺失时跳过",
+          "depends_on": ["data/macro_toolkit/output/（本机真实输出，位于 gitignore 的 data/ 下）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "2026-08-12 并行会话新增的真实数据比对用例；由 ci_skip_registry 守卫首次拦截后登记"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_pytest_temp_isolation.py",
+      "expected_counts": {"skip_call": 1},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "other",
+          "reason": "显式传入 --basetemp 时进程级默认 basetemp 断言不适用；流程语义跳过而非环境缺失",
+          "depends_on": ["pytest 调用方式（未显式指定 --basetemp）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_source_preview_worker_e2e.py",
+      "expected_counts": {"skip_call": 4},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 4,
+          "category": "redis",
+          "reason": "source_preview 真实 worker 端到端测试需要本机 redis-server 可执行文件",
+          "depends_on": ["redis-server 可执行文件（PATH 内）", "data_input/ZQTZSHOW-20251231.xls 与 TYWLSHOW-20251231.xls（仓库内样本，复制到临时目录）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "e2e 语义要求真实 broker；CI 安装 redis 后自动激活"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_stock_analysis_theme_overlay_archive.py",
+      "expected_counts": {"skip_call": 2},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 2,
+          "category": "symlink",
+          "reason": "构造目录/文件符号链接逃逸样本失败时跳过；Windows 主机缺少符号链接权限",
+          "depends_on": ["操作系统符号链接创建能力"],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "能力探测型跳过，Linux CI 天然激活"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_stock_analysis_theme_overlay_reader.py",
+      "expected_counts": {"skip_call": 1},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "symlink",
+          "reason": "构造归档对象符号链接 fail-closed 样本失败时跳过；Windows 主机缺少符号链接权限",
+          "depends_on": ["操作系统符号链接创建能力"],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "能力探测型跳过，Linux CI 天然激活"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_supply_auction_calendar_boundary_guards.py",
+      "expected_counts": {"skip_call": 2},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 2,
+          "category": "other",
+          "reason": "专用 supply/auction 功能文件尚未落地时结构守卫不适用；feature-gated 业务性跳过",
+          "depends_on": ["supply/auction 专用功能文件落地（backend/frontend）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "功能文件落地后守卫自动激活，无外部环境依赖"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_api_contract_baseline_gate.py",
+      "expected_counts": {"skip_call": 1},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "other",
+          "reason": "基线门禁自证用例按排序规则选中首个标量响应属性；若该属性在提交基线中本就非 required，'失去 required 保障'场景不适用而跳过（数据形状防御，非环境缺失）",
+          "depends_on": ["contracts/openapi/openapi.default.json（仓库内提交的 OpenAPI 基线，被选标量属性需处于 required 列表）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "当前提交基线下不触发（2026-08-14 实跑该文件全部通过、无 skip）；若触发说明被选属性已是可选，该场景本身失效而非环境缺失"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_api_contract_tooling.py",
+      "expected_counts": {"skip_call": 1},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "other",
+          "reason": "对打印的 Schemathesis 命令做真实 CLI 选项识别校验，需要本机安装 schemathesis CLI（未声明于 backend/pyproject.toml 的可选工具），缺失时跳过",
+          "depends_on": ["schemathesis CLI（解释器同目录 Scripts/ 或 PATH 内可执行文件）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "命令串形状（含 --url、禁 --app）已由同文件 test_api_contract_script_prints_offline_schemathesis_command 在无 CLI 下覆盖；仅真实选项校验受 CLI 在场门控，本机 .venv 已安装故不触发"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_snapshot_row_parse.py",
+      "expected_counts": {"skip_call": 1},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "real-data",
+          "reason": "应收/应付利息列在三种历史 ZQTZSHOW 归档版式（44/45/46 列）上的真实样本回放断言，本机归档样本缺失时跳过",
+          "depends_on": ["data/archive/ZQTZSHOW/files/ 下 20240101/20250320/2025.11.01 三个归档 xls 样本（本机治理归档，位于 gitignore 的 data/ 下）"],
+          "has_synthetic_alternative": true,
+          "recommendation": "keep-controlled",
+          "note": "同文件 _FakeBook 合成用例已覆盖表头变体、空值置 null、缺列置 null 逻辑分支；真实归档样本保留为三种列数版式的黄金锚点。2026-08-14 工作区未提交并行改动新增，由 ci_skip_registry 守卫拦截后登记"
+        }
+      ]
+    }
+  ]
+}

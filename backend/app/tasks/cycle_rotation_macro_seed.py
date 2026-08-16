@@ -13,6 +13,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 import duckdb  # noqa: E402
+from backend.app.governance.locks import acquire_lock, resolve_duckdb_writer_lock  # noqa: E402
 from backend.app.repositories.duckdb_migrations import (  # noqa: E402
     apply_pending_migrations_on_connection,
     ensure_choice_macro_schema_if_missing,
@@ -120,46 +121,108 @@ def upsert_macro_seed_rows(
 ) -> int:
     if not rows:
         return 0
-    written = 0
+
+    # Keep first occurrence per key to match prior row-by-row first-writer semantics.
+    deduped: list[MacroSeedRow] = []
+    seen_keys: set[tuple[str, str]] = set()
     for row in rows:
-        existing = conn.execute(
-            """
-            select source_version
-            from fact_choice_macro_daily
-            where series_id = ? and trade_date = ?
-            limit 1
-            """,
-            [row.series_id, row.trade_date],
-        ).fetchone()
-        if existing:
-            if not overwrite_existing:
-                continue
+        key = (row.series_id, row.trade_date)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        deduped.append(row)
+
+    conn.execute(
+        """
+        create or replace temp table _cycle_macro_seed_stage (
+          series_id varchar,
+          series_name varchar,
+          trade_date varchar,
+          value_numeric double,
+          frequency varchar,
+          unit varchar
+        )
+        """
+    )
+    try:
+        conn.executemany(
+            "insert into _cycle_macro_seed_stage values (?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    row.series_id,
+                    row.series_name,
+                    row.trade_date,
+                    row.value_numeric,
+                    row.frequency,
+                    row.unit,
+                )
+                for row in deduped
+            ],
+        )
+        if overwrite_existing:
             conn.execute(
-                "delete from fact_choice_macro_daily where series_id = ? and trade_date = ?",
-                [row.series_id, row.trade_date],
+                """
+                delete from fact_choice_macro_daily as f
+                using _cycle_macro_seed_stage as s
+                where f.series_id = s.series_id and f.trade_date = s.trade_date
+                """
             )
-        conn.execute(
+            written_rows = conn.execute(
+                """
+                insert into fact_choice_macro_daily (
+                  series_id, series_name, trade_date, value_numeric, frequency, unit,
+                  source_version, vendor_version, rule_version, quality_flag, run_id
+                )
+                select
+                  s.series_id,
+                  s.series_name,
+                  s.trade_date,
+                  s.value_numeric,
+                  s.frequency,
+                  s.unit,
+                  ?,
+                  ?,
+                  ?,
+                  'ok',
+                  ?
+                from _cycle_macro_seed_stage s
+                returning series_id
+                """,
+                [source_version, vendor_version, RULE_VERSION, run_id],
+            ).fetchall()
+            return len(written_rows)
+
+        written_rows = conn.execute(
             """
             insert into fact_choice_macro_daily (
               series_id, series_name, trade_date, value_numeric, frequency, unit,
               source_version, vendor_version, rule_version, quality_flag, run_id
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ok', ?)
+            )
+            select
+              s.series_id,
+              s.series_name,
+              s.trade_date,
+              s.value_numeric,
+              s.frequency,
+              s.unit,
+              ?,
+              ?,
+              ?,
+              'ok',
+              ?
+            from _cycle_macro_seed_stage s
+            where not exists (
+              select 1
+              from fact_choice_macro_daily f
+              where f.series_id = s.series_id and f.trade_date = s.trade_date
+            )
+            returning series_id
             """,
-            [
-                row.series_id,
-                row.series_name,
-                row.trade_date,
-                row.value_numeric,
-                row.frequency,
-                row.unit,
-                source_version,
-                vendor_version,
-                RULE_VERSION,
-                run_id,
-            ],
-        )
-        written += 1
-    return written
+            [source_version, vendor_version, RULE_VERSION, run_id],
+        ).fetchall()
+        return len(written_rows)
+    finally:
+        conn.execute("drop table if exists _cycle_macro_seed_stage")
 
 
 def materialize_cycle_rotation_macro_fixture(
@@ -180,21 +243,22 @@ def materialize_cycle_rotation_macro_fixture(
     source_version = str(fixture.get("source_version") or "sv_cycle_rotation_macro_fixture_v1")
     vendor_version = str(fixture.get("vendor_version") or "vv_cycle_rotation_macro_fixture_v1")
 
-    conn = duckdb.connect(str(db_path), read_only=False)
-    try:
-        apply_pending_migrations_on_connection(conn)
-        ensure_choice_macro_schema_if_missing(conn)
-        catalog_inserted = ensure_cycle_rotation_macro_catalog(conn, config)
-        row_count = upsert_macro_seed_rows(
-            conn,
-            rows=rows,
-            source_version=source_version,
-            vendor_version=vendor_version,
-            run_id=run_id,
-            overwrite_existing=overwrite_existing,
-        )
-    finally:
-        conn.close()
+    with acquire_lock(resolve_duckdb_writer_lock(db_path), base_dir=db_path.parent):
+        conn = duckdb.connect(str(db_path), read_only=False)
+        try:
+            apply_pending_migrations_on_connection(conn)
+            ensure_choice_macro_schema_if_missing(conn)
+            catalog_inserted = ensure_cycle_rotation_macro_catalog(conn, config)
+            row_count = upsert_macro_seed_rows(
+                conn,
+                rows=rows,
+                source_version=source_version,
+                vendor_version=vendor_version,
+                run_id=run_id,
+                overwrite_existing=overwrite_existing,
+            )
+        finally:
+            conn.close()
 
     series_ids = sorted({row.series_id for row in rows})
     return {

@@ -1,0 +1,90 @@
+{
+  "id": "pnl_attribution_contract_001",
+  "page": "pnl-attribution",
+  "goal": "Fix a PnL Attribution workbench display defect (units, precision, date binding, null semantics, closure visibility) without broad refactoring.",
+  "metric_ids": [
+    "MTR-PAT-001",
+    "MTR-PAT-002",
+    "MTR-PAT-003",
+    "MTR-PAT-004",
+    "MTR-PAT-005",
+    "MTR-PAT-006",
+    "MTR-PAT-007",
+    "MTR-PAT-101",
+    "MTR-PAT-102",
+    "MTR-PAT-103",
+    "MTR-PAT-201",
+    "MTR-PAT-205",
+    "MTR-PAT-301",
+    "MTR-PAT-303",
+    "MTR-PAT-304",
+    "MTR-PAT-305",
+    "MTR-PAT-309"
+  ],
+  "allowed_scope": [
+    "frontend/src/features/pnl-attribution/",
+    "frontend/src/api/",
+    "frontend/src/test/"
+  ],
+  "forbidden": [
+    "backend/app/schema_registry/",
+    "backend/app/core_finance/",
+    "frontend/src/api/client.ts",
+    "scripts/agent_eval/",
+    ".github/workflows/"
+  ],
+  "required_evidence": [
+    "moss-metric-contracts",
+    "moss-lineage-evidence"
+  ],
+  "evidence_probes": {
+    "moss-metric-contracts": ".codex-tmp/agent-eval/evidence/metric-contracts.json",
+    "moss-lineage-evidence": ".codex-tmp/agent-eval/evidence/lineage-evidence.json"
+  },
+  "checks": [
+    "npm --prefix frontend run test -- pnl-attribution PnlAttribution AdvancedAttributionChart TPLMarketChart PnlCompositionChart CampisiAttributionPanel CampisiDecisionGradePanel AttributionWaterfallChart",
+    "npm --prefix frontend run typecheck"
+  ],
+  "business_gates": [
+    "unit_consistency",
+    "precision_and_rounding",
+    "date_semantics",
+    "null_zero_undefined_handling",
+    "attribution_closure_residual_visible",
+    "no_frontend_official_metric_recalculation"
+  ],
+  "page_gates": [
+    "page_loads",
+    "no_console_errors",
+    "fallback_or_stale_state_visible_when_applicable"
+  ],
+  "gate_probes": {
+    "unit_consistency": "npm --prefix frontend run test -- AdvancedAttributionChart TPLMarketChart VolumeRateAnalysisChart",
+    "precision_and_rounding": "npm --prefix frontend run test -- PnlAttributionView PnlCompositionChart",
+    "date_semantics": "npm --prefix frontend run test -- PnlAttributionPage PnlAttributionView",
+    "null_zero_undefined_handling": "npm --prefix frontend run test -- TPLMarketChart PnlCompositionChart VolumeRateAnalysisChart",
+    "attribution_closure_residual_visible": "npm --prefix frontend run test -- PnlAttributionView CampisiAttributionPanel",
+    "no_frontend_official_metric_recalculation": "python -m pytest tests/test_no_finance_logic_in_frontend.py -q",
+    "fallback_or_stale_state_visible_when_applicable": "npm --prefix frontend run test -- pnlAttributionAdapter VolumeRateAnalysisChart DataSection"
+  },
+  "probe_protected_paths": [
+    "tests/test_no_finance_logic_in_frontend.py",
+    "frontend/src/test/AdvancedAttributionChart.test.tsx",
+    "frontend/src/test/TPLMarketChart.test.tsx",
+    "frontend/src/test/PnlAttributionPage.test.tsx",
+    "frontend/src/test/PnlCompositionChart.test.tsx",
+    "frontend/src/test/CampisiAttributionPanel.test.tsx",
+    "frontend/src/test/DataSection.test.tsx",
+    "frontend/src/components/page/PageDataSection.test.tsx",
+    "frontend/src/features/pnl-attribution/components/AdvancedAttributionChart.labels.test.tsx",
+    "frontend/src/features/pnl-attribution/components/VolumeRateAnalysisChart.states.test.tsx",
+    "frontend/src/features/pnl-attribution/components/PnLCompositionChart.states.test.tsx",
+    "frontend/src/features/pnl-attribution/components/PnlAttributionView.test.ts",
+    "frontend/src/features/pnl-attribution/pages/PnlAttributionPage.test.tsx",
+    "frontend/src/features/pnl-attribution/adapters/pnlAttributionAdapter.test.ts"
+  ],
+  "gate_probe_gaps": {
+    "page_loads": "Needs a pnl-attribution scoped Playwright spec; test:a11y-smoke is site-wide and does not isolate this page.",
+    "no_console_errors": "Same as page_loads; requires a scoped spec that fails on console errors."
+  }
+}

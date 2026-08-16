@@ -7,7 +7,7 @@ import { designTokens } from "../../../theme/designSystem";
 import { displayTokens } from "../../../theme/displayTokens";
 import { FilterBar } from "../../../components/FilterBar";
 import type { SourcePreviewColumn } from "../../../api/contracts";
-import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
+import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import { KpiCard } from "../../../components/KpiCard";
 import {
   buildSourcePreviewHistoryQuery,
@@ -20,7 +20,7 @@ import {
 const sectionShell: CSSProperties = {
   height: "100%",
   padding: 24,
-  borderRadius: 20,
+  borderRadius: designTokens.radius.sm,
   background: "#fbfcfe",
   border: "1px solid #e4ebf5",
   boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
@@ -522,8 +522,9 @@ export default function SourcePreviewPage() {
         <div style={sectionHeaderRow}>
           <span style={{ fontWeight: 600 }}>规则预览摘要</span>
         </div>
-        <AsyncSection
+        <PageAsyncSection
           title="规则预览摘要"
+          hideHeading
           isLoading={previewQuery.isLoading}
           isError={previewQuery.isError}
           isEmpty={isEmpty}
@@ -549,14 +550,14 @@ export default function SourcePreviewPage() {
                   <KpiCard
                     title={source.source_family.toUpperCase()}
                     value={`共 ${source.total_rows} 行`}
-                    detail={`报告日期：${source.report_date ?? "—"} · ${groups || "暂无分组"} · 待人工复核 ${source.manual_review_count} 行`}
+                    detail={`报告日期 ${source.report_date ?? "—"}，${groups || "暂无分组"}，待人工复核 ${source.manual_review_count} 行`}
                     valueVariant="text"
                   />
                 </div>
               );
             })}
           </div>
-        </AsyncSection>
+        </PageAsyncSection>
       </section>
 
       <SectionLead
@@ -654,7 +655,7 @@ export default function SourcePreviewPage() {
             marginTop: 18,
           }}
         >
-          <AsyncSection
+          <PageAsyncSection
             title="行级预览"
             isLoading={rowsQuery.isLoading}
             isError={rowsQuery.isError}
@@ -703,9 +704,9 @@ export default function SourcePreviewPage() {
               </span>
               <span data-testid="source-preview-rows-total">行数 {rowsTotal}</span>
             </div>
-          </AsyncSection>
+          </PageAsyncSection>
 
-          <AsyncSection
+          <PageAsyncSection
             title="规则轨迹"
             isLoading={tracesQuery.isLoading}
             isError={tracesQuery.isError}
@@ -754,7 +755,7 @@ export default function SourcePreviewPage() {
               </span>
               <span data-testid="source-preview-traces-total">轨迹数 {tracesTotal}</span>
             </div>
-          </AsyncSection>
+          </PageAsyncSection>
         </div>
       </section>
     </section>

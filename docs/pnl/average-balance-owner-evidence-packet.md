@@ -1,6 +1,6 @@
 # Average Balance Owner Evidence Packet
 
-Page ID: `GAP-AVERAGE-BALANCE-PAGE`
+Page ID: `PAGE-ADB-001`
 Page slug: `average-balance`
 Primary API: `/api/analysis/adb`
 Business contract status: `evidence-pending`

@@ -119,6 +119,72 @@ describe("runPollingTask", () => {
     }
   });
 
+  it("rejects without calling start when the signal is already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const start = vi.fn(async () => ({
+      status: "queued",
+      run_id: "job:aborted",
+    }));
+    const getStatus = vi.fn();
+
+    await expect(
+      runPollingTask({
+        start,
+        getStatus,
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow("任务轮询已取消");
+    expect(start).not.toHaveBeenCalled();
+    expect(getStatus).not.toHaveBeenCalled();
+  });
+
+  it("stops polling immediately when the signal aborts during the wait interval", async () => {
+    const controller = new AbortController();
+    const start = vi.fn(async () => ({
+      status: "queued",
+      run_id: "job:cancel",
+    }));
+    const getStatus = vi.fn(async () => ({
+      status: "running",
+      run_id: "job:cancel",
+    }));
+
+    const pollingPromise = runPollingTask({
+      start,
+      getStatus,
+      intervalMs: 60_000,
+      maxAttempts: 5,
+      signal: controller.signal,
+    });
+    const guardedPromise = pollingPromise.catch((error: unknown) => error);
+
+    await vi.waitFor(() => expect(getStatus).toHaveBeenCalledTimes(1));
+    controller.abort();
+
+    // 中断发生在 60s 等待间隔内：必须立即 reject，而不是等计时器走完。
+    const settled = await guardedPromise;
+    expect(settled).toBeInstanceOf(Error);
+    expect((settled as Error).message).toBe("任务轮询已取消");
+    expect(getStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates a custom abort reason error", async () => {
+    const controller = new AbortController();
+    controller.abort(new Error("页面已卸载"));
+    const start = vi.fn();
+    const getStatus = vi.fn();
+
+    await expect(
+      runPollingTask({
+        start,
+        getStatus,
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow("页面已卸载");
+    expect(start).not.toHaveBeenCalled();
+  });
+
   it("throws a timeout error that includes the last run id and status", async () => {
     const start = vi.fn(async () => ({
       status: "queued",

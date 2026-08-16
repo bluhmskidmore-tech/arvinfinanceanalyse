@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
+import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
@@ -170,6 +172,8 @@ def _insert_tyw(
 
 
 def _seed_positions_db(path: Path) -> None:
+    # zqtz 快照的 ytm_value / coupon_rate 落库为百分数口径（3.0 = 3%），与
+    # rate_units.normalize_percent_rate_to_decimal 的取证裁决一致。
     conn = duckdb.connect(str(path), read_only=False)
     try:
         _ensure_tables(conn)
@@ -182,8 +186,8 @@ def _seed_positions_db(path: Path) -> None:
             bond_type="GOV",
             issuer_name="发行人甲",
             market_value=Decimal("100"),
-            ytm=Decimal("0.03"),
-            coupon=Decimal("0.025"),
+            ytm=Decimal("3.0"),
+            coupon=Decimal("2.5"),
             is_issuance_like=False,
         )
         _insert_zqtz(
@@ -193,8 +197,8 @@ def _seed_positions_db(path: Path) -> None:
             bond_type="GOV",
             issuer_name="发行人甲",
             market_value=Decimal("120"),
-            ytm=Decimal("0.031"),
-            coupon=Decimal("0.025"),
+            ytm=Decimal("3.1"),
+            coupon=Decimal("2.5"),
             is_issuance_like=False,
         )
         _insert_zqtz(
@@ -204,8 +208,8 @@ def _seed_positions_db(path: Path) -> None:
             bond_type="CREDIT",
             issuer_name="发行人乙",
             market_value=Decimal("200"),
-            ytm=Decimal("0.04"),
-            coupon=Decimal("0.035"),
+            ytm=Decimal("4.0"),
+            coupon=Decimal("3.5"),
             is_issuance_like=True,
         )
         _insert_zqtz(
@@ -215,8 +219,8 @@ def _seed_positions_db(path: Path) -> None:
             bond_type="CREDIT",
             issuer_name="发行人乙",
             market_value=Decimal("50"),
-            ytm=Decimal("0.045"),
-            coupon=Decimal("0.04"),
+            ytm=Decimal("4.5"),
+            coupon=Decimal("4.0"),
             is_issuance_like=False,
         )
         _insert_tyw(
@@ -250,7 +254,13 @@ def _assert_envelope(payload: dict[str, Any], *, result_kind: str) -> None:
     for key in ("trace_id", "basis", "source_version", "rule_version", "cache_version", "result_kind"):
         assert key in meta, f"result_meta missing {key!r}"
         assert meta[key] not in (None, ""), f"result_meta.{key} must be non-empty"
-    assert meta["basis"] == "formal"
+    # 快照聚合面无正式化批准记录（docs/metric_dictionary.md：positions 仅
+    # MTR-POS-001/002 candidate，"列表与统计 DTO 未升为 MTR-*"，GAP-POS-LIST 开放），
+    # 与列表端点一致锁定 analytical 候选语义。
+    assert meta["basis"] == "analytical"
+    assert meta["formal_use_allowed"] is False
+    assert meta["scenario_flag"] is False
+    assert meta["quality_flag"] == "warning"
     assert meta["result_kind"] == result_kind
 
 
@@ -314,6 +324,88 @@ def test_positions_read_surfaces_require_explicit_read_scope(tmp_path, monkeypat
     for path, params in read_requests:
         response = client.get(path, params=params, headers=POSITIONS_READ_HEADERS)
         assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
+
+
+def test_positions_envelope_runtime_cache_reuses_result_with_fresh_trace(
+    tmp_path, monkeypatch
+) -> None:
+    """同参重复调用只算一次（TTL 缓存命中），但每次响应刷新 trace_id。
+
+    与 balance_analysis.read_models 同款：键含 DuckDB 文件身份，文件变更自然失效。
+    """
+    from backend.app.services.runtime_cache import clear_runtime_cache
+
+    svc = load_module(
+        "backend.app.services.positions_service",
+        "backend/app/services/positions_service.py",
+    )
+    clear_runtime_cache("positions.read_models")
+    db = tmp_path / "positions-cache.duckdb"
+    db.write_bytes(b"")
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
+    get_settings.cache_clear()
+
+    calls = {"n": 0}
+
+    class _StubRepo:
+        def list_bond_sub_types(self, report_date: str) -> list[str]:
+            calls["n"] += 1
+            return ["利率债"]
+
+        def collect_lineage_versions(self, **_kwargs: object) -> tuple[list[str], list[str]]:
+            return (["sv_stub"], ["rv_stub"])
+
+    monkeypatch.setattr(svc, "_repo", lambda: _StubRepo())
+
+    first = svc.bond_sub_types_envelope("2026-01-10")
+    second = svc.bond_sub_types_envelope("2026-01-10")
+    assert calls["n"] == 1, "同参第二次调用应命中缓存，不再触发仓储查询"
+    assert first["result"] == second["result"]
+    assert first["result_meta"]["trace_id"] != second["result_meta"]["trace_id"]
+    meta_first = {k: v for k, v in first["result_meta"].items() if k != "trace_id"}
+    meta_second = {k: v for k, v in second["result_meta"].items() if k != "trace_id"}
+    assert meta_first == meta_second
+
+    svc.bond_sub_types_envelope("2026-01-11")
+    assert calls["n"] == 2, "不同参数是不同缓存键"
+    clear_runtime_cache("positions.read_models")
+
+
+def test_positions_read_surface_allows_development_fallback_without_explicit_scope(
+    tmp_path, monkeypatch
+) -> None:
+    """development 环境 + 匿名 viewer 回退身份可读（与 balance_analysis 读路由对齐）。
+
+    显式头部身份缺 scope 时仍 403，由上面的契约测试锁定。
+    """
+    route_mod = load_module(
+        "backend.app.api.routes.positions",
+        "backend/app/api/routes/positions.py",
+    )
+    monkeypatch.setattr(
+        route_mod.positions_service,
+        "bond_sub_types_envelope",
+        lambda report_date: {
+            "result_meta": {"result_kind": "positions.bonds.sub_types"},
+            "result": {"sub_types": []},
+        },
+    )
+    sqlite_path = tmp_path / "positions-dev-fallback.db"
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "development")
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", "")
+    monkeypatch.delenv("MOSS_USER_ID", raising=False)
+    monkeypatch.delenv("MOSS_USER_ROLE", raising=False)
+    monkeypatch.delenv(ROLE_HEADER_TRUST_ENV, raising=False)
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(route_mod.router)
+    client = TestClient(app)
+
+    response = client.get("/api/positions/bonds/sub_types")
+
+    assert response.status_code == 200
+    assert response.json()["result_meta"]["result_kind"] == "positions.bonds.sub_types"
 
 
 def test_positions_endpoints_envelope_and_empty_db(tmp_path, monkeypatch) -> None:
@@ -508,7 +600,8 @@ def test_positions_stats_rating_industry_customer(tmp_path, monkeypatch) -> None
         params={"customer_name": "发行人乙", "report_date": "2026-01-10"},
     )
     assert det.status_code == 200
-    assert det.json()["result"]["bond_count"] == 2
+    # B002 是发行腿（is_issuance_like），与聚合口径一致地从资产对手方钻取中排除。
+    assert det.json()["result"]["bond_count"] == 1
 
     tr = client.get(
         "/api/positions/customer/trend",
@@ -771,8 +864,8 @@ def test_positions_bond_weighted_rates_exclude_missing_rate_denominator(
             bond_type="Gov",
             issuer_name="Issuer-Gov",
             market_value=Decimal("100"),
-            ytm=Decimal("0.03"),
-            coupon=Decimal("0.04"),
+            ytm=Decimal("3.0"),
+            coupon=Decimal("4.0"),
             is_issuance_like=False,
         )
         _insert_zqtz(
@@ -897,6 +990,115 @@ def test_positions_interbank_rates_treat_low_values_as_percent(tmp_path, monkeyp
     assert split_result["liability_total_weighted_rate"] == "0.00720000"
 
 
+def test_positions_bond_rates_low_percent_not_passthrough_and_dirty_values_rejected(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """百分数口径无条件 /100：0.5（=0.5%）→ 0.005；>20% 与负值按脏数据置空并从加权分母剔除。
+
+    旧 `>1 and <=100` 启发式会把 0.5 当作小数 50% 直通，使低票息券按百倍计入
+    加权收益率；权威口径见 rate_units.normalize_percent_rate_to_decimal。
+    """
+    db = tmp_path / "pos-low-percent-rate.duckdb"
+    conn = duckdb.connect(str(db), read_only=False)
+    try:
+        _ensure_tables(conn)
+        _insert_zqtz(
+            conn,
+            report_date="2026-01-10",
+            instrument_code="LOW-PCT",
+            bond_type="Conv",
+            issuer_name="Issuer-Conv",
+            market_value=Decimal("100"),
+            ytm=Decimal("0.5"),
+            coupon=Decimal("0.2"),
+            is_issuance_like=False,
+        )
+        _insert_zqtz(
+            conn,
+            report_date="2026-01-10",
+            instrument_code="DIRTY-HIGH",
+            bond_type="Conv",
+            issuer_name="Issuer-Conv",
+            market_value=Decimal("100"),
+            ytm=Decimal("20720.93"),
+            coupon=Decimal("25.0"),
+            is_issuance_like=False,
+        )
+        _insert_zqtz(
+            conn,
+            report_date="2026-01-10",
+            instrument_code="DIRTY-NEG",
+            bond_type="Conv",
+            issuer_name="Issuer-Conv",
+            market_value=Decimal("100"),
+            ytm=Decimal("-3.0"),
+            coupon=Decimal("-1.0"),
+            is_issuance_like=False,
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
+    client = _authorized_positions_client(tmp_path, monkeypatch)
+
+    bond_response = client.get(
+        "/api/positions/bonds",
+        params={"report_date": "2026-01-10", "sub_type": "Conv", "page": 1, "page_size": 10},
+    )
+    assert bond_response.status_code == 200
+    items = {item["bond_code"]: item for item in bond_response.json()["result"]["items"]}
+    assert items["LOW-PCT"]["yield_rate"] == "0.00500000"
+    assert items["DIRTY-HIGH"]["yield_rate"] is None
+    assert items["DIRTY-NEG"]["yield_rate"] is None
+
+    counterparty_response = client.get(
+        "/api/positions/counterparty/bonds",
+        params={
+            "start_date": "2026-01-10",
+            "end_date": "2026-01-10",
+            "sub_type": "Conv",
+            "top_n": 10,
+            "page": 1,
+            "page_size": 10,
+        },
+    )
+    assert counterparty_response.status_code == 200
+    counterparty_body = counterparty_response.json()["result"]
+    assert counterparty_body["total_weighted_rate"] == "0.00500000"
+    assert counterparty_body["total_weighted_coupon_rate"] == "0.00200000"
+    assert counterparty_body["ytm_rate_coverage"]["covered_amount"] == "100.00000000"
+    assert counterparty_body["ytm_rate_coverage"]["missing_amount"] == "200.00000000"
+    assert counterparty_body["ytm_rate_coverage"]["missing_count"] == 2
+    assert counterparty_body["coupon_rate_coverage"]["missing_count"] == 2
+
+
+def test_positions_customer_drilldowns_exclude_issuance_like_rows(tmp_path, monkeypatch) -> None:
+    """customer/details 与 customer/trend 与聚合口径一致：发行腿属负债口径不计入资产对手方。"""
+    db = tmp_path / "pos.duckdb"
+    _seed_positions_db(db)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
+    client = _authorized_positions_client(tmp_path, monkeypatch)
+
+    details = client.get(
+        "/api/positions/customer/details",
+        params={"customer_name": "发行人乙", "report_date": "2026-01-10"},
+    )
+    assert details.status_code == 200
+    details_body = details.json()["result"]
+    assert details_body["bond_count"] == 1
+    assert details_body["items"][0]["bond_code"] == "B003"
+    assert details_body["total_market_value"] == "50.00000000"
+
+    trend = client.get(
+        "/api/positions/customer/trend",
+        params={"customer_name": "发行人乙", "end_date": "2026-01-10", "days": 5},
+    )
+    assert trend.status_code == 200
+    trend_items = trend.json()["result"]["items"]
+    assert trend_items == [{"date": "2026-01-10", "balance": "50.00000000"}]
+
+
 def test_positions_optional_report_date_routes_fall_back_to_latest_snapshot_date(tmp_path, monkeypatch) -> None:
     db = tmp_path / "pos.duckdb"
     _seed_positions_db(db)
@@ -914,3 +1116,66 @@ def test_positions_optional_report_date_routes_fall_back_to_latest_snapshot_date
     assert details.status_code == 200
     assert details.json()["result"]["report_date"] == "2026-01-12"
     assert details.json()["result"]["bond_count"] == 1
+
+
+@pytest.mark.parametrize(
+    ("path", "params"),
+    [
+        ("/api/positions/bonds", {"report_date": "not-a-date"}),
+        (
+            "/api/positions/counterparty/bonds",
+            {"start_date": "2026-99-01", "end_date": "2026-01-31"},
+        ),
+        ("/api/positions/bonds/sub_types", {"report_date": "2026-02-30"}),
+        (
+            "/api/positions/customer/details",
+            {"customer_name": "发行人甲", "report_date": "bad"},
+        ),
+        (
+            "/api/positions/customer/trend",
+            {"customer_name": "发行人甲", "end_date": "2026-13-01"},
+        ),
+    ],
+)
+def test_positions_routes_reject_malformed_dates_with_422(
+    tmp_path,
+    monkeypatch,
+    path: str,
+    params: dict[str, str],
+) -> None:
+    db = tmp_path / "pos.duckdb"
+    _seed_positions_db(db)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
+    client = _authorized_positions_client(tmp_path, monkeypatch)
+
+    response = client.get(path, params=params)
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/positions/counterparty/bonds",
+        "/api/positions/counterparty/interbank/split",
+        "/api/positions/stats/rating",
+        "/api/positions/stats/industry",
+    ],
+)
+def test_positions_range_routes_reject_start_after_end(
+    tmp_path,
+    monkeypatch,
+    path: str,
+) -> None:
+    db = tmp_path / "pos.duckdb"
+    _seed_positions_db(db)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
+    client = _authorized_positions_client(tmp_path, monkeypatch)
+
+    response = client.get(
+        path,
+        params={"start_date": "2026-02-01", "end_date": "2026-01-31"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "start_date must be on or before end_date."

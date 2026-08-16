@@ -3,7 +3,20 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-PROVISIONAL_FORMULA_VERSION = "rv_livermore_sector_rank_provisional_v1"
+FORMULA_VERSION = "rv_livermore_sector_strength_observation_v1"
+PROVISIONAL_FORMULA_VERSION = FORMULA_VERSION
+FORMULA_STATUS = "signed_off"
+FORMULA_NOTE = (
+    "Daily sector strength observation rank is a signed-off analytical formula: "
+    "50% pctchange percentile, 30% turn percentile, and 20% amplitude percentile; "
+    "it supports review prioritization and sector filtering, not trading instructions; "
+    "multi-day momentum persistence, sector money flow, and crowding are not part of this version."
+)
+FORMULA_COMPONENT_WEIGHTS = {
+    "pctchange_percentile": 0.5,
+    "turn_percentile": 0.3,
+    "amplitude_percentile": 0.2,
+}
 MIN_RANKABLE_SECTORS = 3
 DEFAULT_LEADER_CONSTITUENTS_PER_SECTOR = 3
 LEADER_CONSTITUENT_METHOD = "top_turn_same_day"
@@ -106,8 +119,11 @@ def compute_sector_rank(
         ready=True,
         payload={
             "as_of_date": as_of_date,
-            "formula_version": PROVISIONAL_FORMULA_VERSION,
-            "is_provisional": True,
+            "formula_version": FORMULA_VERSION,
+            "is_provisional": False,
+            "formula_status": FORMULA_STATUS,
+            "formula_note": FORMULA_NOTE,
+            "formula_component_weights": FORMULA_COMPONENT_WEIGHTS,
             "sector_count": len(items),
             "excluded_constituent_count": excluded_constituents,
             "excluded_sector_count": excluded_sectors,

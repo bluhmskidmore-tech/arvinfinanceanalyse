@@ -69,6 +69,13 @@ def _rate_coverage(
     }
 
 
+# zqtz 快照利率（ytm_value / coupon_rate）为百分数口径：无条件 /100；负值与 >20%
+# 视为脏数据置 None。对齐 core_finance.rate_units.normalize_percent_rate_to_decimal
+# 与 bond_analytics/engine.py 的权威口径（旧 `>1 and <=100` 启发式会把 ≤1% 的
+# 低票息券当成小数直通，按几十倍计入加权收益率）。
+RATE_DIRTY_MAX_PERCENT = Decimal("20")
+
+
 def _normalize_rate_decimal(val: object | None, *, is_interbank: bool) -> Decimal | None:
     if val is None:
         return None
@@ -76,9 +83,9 @@ def _normalize_rate_decimal(val: object | None, *, is_interbank: bool) -> Decima
     if is_interbank:
         rate = rate / ONE_HUNDRED
         return rate.quantize(Q8, rounding=ROUND_HALF_UP)
-    if rate > 1 and rate <= ONE_HUNDRED:
-        rate = rate / ONE_HUNDRED
-    return rate.quantize(Q8, rounding=ROUND_HALF_UP)
+    if not rate.is_finite() or rate < 0 or rate > RATE_DIRTY_MAX_PERCENT:
+        return None
+    return (rate / ONE_HUNDRED).quantize(Q8, rounding=ROUND_HALF_UP)
 
 
 def _fmt_rate(val: object | None, *, is_interbank: bool) -> str | None:
@@ -96,8 +103,8 @@ def _normalized_rate_sql(column: str, *, is_interbank: bool) -> str:
         )
     return (
         f"(case when {column} is null then null "
-        f"when {column} > 1 and {column} <= 100 then {column} / 100 "
-        f"else {column} end)"
+        f"when {column} < 0 or {column} > 20 then null "
+        f"else {column} / 100 end)"
     )
 
 
@@ -127,14 +134,15 @@ class PositionsRepository(DuckDBRepository):
 
     def resolve_latest_report_date(self) -> str | None:
         latest_dates: list[str] = []
-        if self._table_exists("zqtz_bond_daily_snapshot"):
-            rows = self._fetch_rows("select max(report_date) from zqtz_bond_daily_snapshot")
-            if rows and rows[0][0] is not None:
-                latest_dates.append(str(rows[0][0]))
-        if self._table_exists("tyw_interbank_daily_snapshot"):
-            rows = self._fetch_rows("select max(report_date) from tyw_interbank_daily_snapshot")
-            if rows and rows[0][0] is not None:
-                latest_dates.append(str(rows[0][0]))
+        with self.scoped_connection():
+            if self._table_exists("zqtz_bond_daily_snapshot"):
+                rows = self._fetch_rows("select max(report_date) from zqtz_bond_daily_snapshot")
+                if rows and rows[0][0] is not None:
+                    latest_dates.append(str(rows[0][0]))
+            if self._table_exists("tyw_interbank_daily_snapshot"):
+                rows = self._fetch_rows("select max(report_date) from tyw_interbank_daily_snapshot")
+                if rows and rows[0][0] is not None:
+                    latest_dates.append(str(rows[0][0]))
         return max(latest_dates) if latest_dates else None
 
     def collect_lineage_versions(
@@ -147,34 +155,35 @@ class PositionsRepository(DuckDBRepository):
     ) -> tuple[list[str], list[str]]:
         src: list[str] = []
         rule: list[str] = []
-        if self._table_exists("zqtz_bond_daily_snapshot"):
-            rows = self._fetch_rows(
-                f"""
-                select distinct source_version, rule_version
-                from zqtz_bond_daily_snapshot
-                where {zqtz_where_sql}
-                """,
-                zqtz_params,
-            )
-            for s, r in rows:
-                if s:
-                    src.append(str(s))
-                if r:
-                    rule.append(str(r))
-        if self._table_exists("tyw_interbank_daily_snapshot"):
-            rows = self._fetch_rows(
-                f"""
-                select distinct source_version, rule_version
-                from tyw_interbank_daily_snapshot
-                where {tyw_where_sql}
-                """,
-                tyw_params,
-            )
-            for s, r in rows:
-                if s:
-                    src.append(str(s))
-                if r:
-                    rule.append(str(r))
+        with self.scoped_connection():
+            if self._table_exists("zqtz_bond_daily_snapshot"):
+                rows = self._fetch_rows(
+                    f"""
+                    select distinct source_version, rule_version
+                    from zqtz_bond_daily_snapshot
+                    where {zqtz_where_sql}
+                    """,
+                    zqtz_params,
+                )
+                for s, r in rows:
+                    if s:
+                        src.append(str(s))
+                    if r:
+                        rule.append(str(r))
+            if self._table_exists("tyw_interbank_daily_snapshot"):
+                rows = self._fetch_rows(
+                    f"""
+                    select distinct source_version, rule_version
+                    from tyw_interbank_daily_snapshot
+                    where {tyw_where_sql}
+                    """,
+                    tyw_params,
+                )
+                for s, r in rows:
+                    if s:
+                        src.append(str(s))
+                    if r:
+                        rule.append(str(r))
         return src, rule
 
     def list_bond_sub_types(self, report_date: str) -> list[str]:
@@ -201,8 +210,6 @@ class PositionsRepository(DuckDBRepository):
         page_size: int,
         include_issued: bool,
     ) -> tuple[list[dict[str, object]], int]:
-        if not self._table_exists("zqtz_bond_daily_snapshot"):
-            return [], 0
         where = ["report_date = ?::date"]
         params: list[object] = [report_date]
         if sub_type:
@@ -212,24 +219,27 @@ class PositionsRepository(DuckDBRepository):
             where.append("NOT COALESCE(is_issuance_like, FALSE)")
         where_sql = " AND ".join(where)
 
-        count_rows = self._fetch_rows(
-            f"select count(*) from zqtz_bond_daily_snapshot where {where_sql}",
-            params,
-        )
-        total = int(count_rows[0][0]) if count_rows else 0
-        offset = max(page - 1, 0) * max(page_size, 1)
-        limit = max(page_size, 1)
-        rows = self._fetch_rows(
-            f"""
-            select instrument_code, issuer_name, bond_type, asset_class,
-                   market_value_native, face_value_native, amortized_cost_native, ytm_value
-            from zqtz_bond_daily_snapshot
-            where {where_sql}
-            order by instrument_code, portfolio_name, cost_center
-            limit ? offset ?
-            """,
-            [*params, limit, offset],
-        )
+        with self.scoped_connection():
+            if not self._table_exists("zqtz_bond_daily_snapshot"):
+                return [], 0
+            count_rows = self._fetch_rows(
+                f"select count(*) from zqtz_bond_daily_snapshot where {where_sql}",
+                params,
+            )
+            total = int(count_rows[0][0]) if count_rows else 0
+            offset = max(page - 1, 0) * max(page_size, 1)
+            limit = max(page_size, 1)
+            rows = self._fetch_rows(
+                f"""
+                select instrument_code, issuer_name, bond_type, asset_class,
+                       market_value_native, face_value_native, amortized_cost_native, ytm_value
+                from zqtz_bond_daily_snapshot
+                where {where_sql}
+                order by instrument_code, portfolio_name, cost_center
+                limit ? offset ?
+                """,
+                [*params, limit, offset],
+            )
         items: list[dict[str, object]] = []
         for row in rows:
             market_value = Decimal(str(row[4] or 0))
@@ -276,8 +286,6 @@ class PositionsRepository(DuckDBRepository):
         page: int,
         page_size: int,
     ) -> tuple[list[dict[str, object]], int]:
-        if not self._table_exists("tyw_interbank_daily_snapshot"):
-            return [], 0
         where = ["report_date = ?::date"]
         params: list[object] = [report_date]
         if product_type:
@@ -290,24 +298,27 @@ class PositionsRepository(DuckDBRepository):
                 where.append(f"NOT ({_asset_side_predicate()})")
         where_sql = " AND ".join(where)
 
-        count_rows = self._fetch_rows(
-            f"select count(*) from tyw_interbank_daily_snapshot where {where_sql}",
-            params,
-        )
-        total = int(count_rows[0][0]) if count_rows else 0
-        offset = max(page - 1, 0) * max(page_size, 1)
-        limit = max(page_size, 1)
-        rows = self._fetch_rows(
-            f"""
-            select position_id, counterparty_name, product_type, position_side,
-                   principal_native, funding_cost_rate, maturity_date
-            from tyw_interbank_daily_snapshot
-            where {where_sql}
-            order by position_id
-            limit ? offset ?
-            """,
-            [*params, limit, offset],
-        )
+        with self.scoped_connection():
+            if not self._table_exists("tyw_interbank_daily_snapshot"):
+                return [], 0
+            count_rows = self._fetch_rows(
+                f"select count(*) from tyw_interbank_daily_snapshot where {where_sql}",
+                params,
+            )
+            total = int(count_rows[0][0]) if count_rows else 0
+            offset = max(page - 1, 0) * max(page_size, 1)
+            limit = max(page_size, 1)
+            rows = self._fetch_rows(
+                f"""
+                select position_id, counterparty_name, product_type, position_side,
+                       principal_native, funding_cost_rate, maturity_date
+                from tyw_interbank_daily_snapshot
+                where {where_sql}
+                order by position_id
+                limit ? offset ?
+                """,
+                [*params, limit, offset],
+            )
         items: list[dict[str, object]] = []
         for row in rows:
             items.append(
@@ -797,6 +808,8 @@ class PositionsRepository(DuckDBRepository):
                 "bond_count": 0,
                 "items": [],
             }
+        # 与 aggregate_counterparty_bonds(exclude_issued=True) 同口径：发行腿属负债
+        # 口径，不得计入资产对手方钻取明细。
         rows = self._fetch_rows(
             """
             select instrument_code, bond_type, asset_class, market_value_native,
@@ -804,6 +817,7 @@ class PositionsRepository(DuckDBRepository):
             from zqtz_bond_daily_snapshot
             where report_date = ?::date
               and issuer_name = ?
+              and NOT COALESCE(is_issuance_like, FALSE)
             order by instrument_code
             """,
             [report_date, customer_name],
@@ -853,12 +867,14 @@ class PositionsRepository(DuckDBRepository):
                 "days": d,
                 "items": [],
             }
+        # 与 aggregate_counterparty_bonds(exclude_issued=True) 同口径排除发行腿。
         rows = self._fetch_rows(
             """
             select report_date, sum(market_value_native) as bal
             from zqtz_bond_daily_snapshot
             where issuer_name = ?
               and report_date between (?::date - (CAST(? AS INTEGER) - 1)) and ?::date
+              and NOT COALESCE(is_issuance_like, FALSE)
             group by report_date
             order by report_date asc
             """,

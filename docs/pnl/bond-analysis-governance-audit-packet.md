@@ -27,6 +27,9 @@ This packet does not write governance records, approve page closure, promote fix
 - UI/API payload review evidence: `tests/golden_samples/GS-BOND-ANALYSIS-ACTION-ATTR-A/response.json`
 - Live smoke evidence review: `docs/audits/2026-06-09-bond-analysis-live-smoke-evidence.md`
 - Live smoke command reference: `scripts/codex-page-smoke.ps1 -PageSlug bond-analysis`
+- Full page verification: `scripts/codex-verify-page.ps1 -PageSlug bond-analysis -Run` -> `passed: candidate governance tests, bond analytics backend tests, frontend tests, browser a11y smoke, typecheck, debt audit, and production build`
+- Golden sample capture-ready verification: `python -m pytest tests/test_golden_samples_capture_ready.py -q` -> `passed: 28 tests`
+- Owner boundary verification: `python -m pytest tests/test_bond_analysis_business_owner_approval_status.py tests/test_golden_samples_capture_ready.py -q` -> `passed: 36 tests; owner approval remains fail-closed`
 - Business owner approval: `pending`
 - Business owner approval captured: `false`
 

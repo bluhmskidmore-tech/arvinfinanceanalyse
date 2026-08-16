@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import date
 from decimal import Decimal
 
@@ -14,6 +15,41 @@ def _module():
         "backend.app.core_finance.bond_analytics.engine",
         "backend/app/core_finance/bond_analytics/engine.py",
     )
+
+
+def _foreign_bond_snapshot_row() -> dict[str, object]:
+    return {
+        "report_date": date(2026, 3, 31),
+        "instrument_code": "USD-CLOSURE-001",
+        "instrument_name": "USD formal CNY closure bond",
+        "portfolio_name": "Portfolio",
+        "cost_center": "CC-USD",
+        "account_category": "bank book",
+        "accounting_basis": "FVOCI",
+        "asset_class": "credit bond",
+        "bond_type": "corporate bond",
+        "issuer_name": "Issuer",
+        "industry_name": "Industry",
+        "rating": "A",
+        "currency_code": "USD",
+        "face_value_native": Decimal("100"),
+        "face_value_cny": Decimal("700"),
+        "market_value_native": Decimal("100"),
+        "market_value_cny": Decimal("720"),
+        "amortized_cost_native": Decimal("98"),
+        "amortized_cost_cny": Decimal("686"),
+        "accrued_interest_native": Decimal("1"),
+        "accrued_interest_cny": Decimal("7"),
+        "coupon_rate": Decimal("3.0"),
+        "ytm_value": Decimal("4.0"),
+        "maturity_date": date(2031, 3, 31),
+        "interest_mode": "annual",
+        "is_issuance_like": False,
+        "source_version": "sv_snapshot_usd",
+        "rule_version": "rv_snapshot_usd",
+        "ingest_batch_id": "ib_usd",
+        "trace_id": "trace_usd",
+    }
 
 
 def test_compute_bond_analytics_rows_filters_issuance_like_and_derives_credit_metrics() -> None:
@@ -37,8 +73,9 @@ def test_compute_bond_analytics_rows_filters_issuance_like_and_derives_credit_me
             "market_value_native": Decimal("95"),
             "amortized_cost_native": Decimal("93"),
             "accrued_interest_native": Decimal("1.2"),
-            "coupon_rate": Decimal("0.03"),
-            "ytm_value": Decimal("0.035"),
+            "coupon_rate": Decimal("3.0"),
+            "ytm_value": Decimal("3.5"),
+            "value_date": date(2024, 3, 31),
             "maturity_date": date(2031, 3, 31),
             "interest_mode": "半年付息",
             "is_issuance_like": False,
@@ -64,8 +101,8 @@ def test_compute_bond_analytics_rows_filters_issuance_like_and_derives_credit_me
             "market_value_native": Decimal("200"),
             "amortized_cost_native": Decimal("200"),
             "accrued_interest_native": Decimal("0"),
-            "coupon_rate": Decimal("0.02"),
-            "ytm_value": Decimal("0.021"),
+            "coupon_rate": Decimal("2.0"),
+            "ytm_value": Decimal("2.1"),
             "maturity_date": date(2027, 3, 31),
             "is_issuance_like": True,
             "source_version": "sv_snapshot_1",
@@ -92,10 +129,13 @@ def test_compute_bond_analytics_rows_filters_issuance_like_and_derives_credit_me
         Decimal("0.035"),
         coupon_frequency=2,
     )
+    # W-fi-2026-08 P4：凸性走标准现金流二阶导，需与久期使用同一组 (时点, 金额)。
     expected_convexity = common.estimate_convexity(
         expected_macaulay,
         Decimal("0.035"),
         coupon_frequency=2,
+        coupon_rate=Decimal("0.03"),
+        years_to_maturity=expected_years,
     )
 
     assert row.instrument_code == "BOND-001"
@@ -105,7 +145,9 @@ def test_compute_bond_analytics_rows_filters_issuance_like_and_derives_credit_me
     assert row.accounting_rule_id == "R010"
     assert row.interest_mode == "半年付息"
     assert row.interest_payment_frequency == "semi-annual"
+    assert row.interest_payment_frequency_fallback_used is False
     assert row.interest_rate_style == "unknown"
+    assert row.value_date == date(2024, 3, 31)
     assert row.years_to_maturity == expected_years
     assert row.tenor_bucket == "5Y"
     assert row.macaulay_duration == expected_macaulay
@@ -118,6 +160,467 @@ def test_compute_bond_analytics_rows_filters_issuance_like_and_derives_credit_me
     assert row.rule_version == "rv_snapshot_1"
     assert row.ingest_batch_id == "ib_1"
     assert row.trace_id == "trace_1"
+
+
+def test_compute_bond_analytics_rows_preserves_annual_frequency_fallback_provenance() -> None:
+    module = _module()
+    report_date = date(2026, 3, 31)
+
+    rows = module.compute_bond_analytics_rows(
+        [
+            {
+                "report_date": report_date,
+                "instrument_code": "BOND-FIXED-FALLBACK",
+                "currency_code": "CNY",
+                "face_value_native": Decimal("100"),
+                "market_value_native": Decimal("90"),
+                "coupon_rate": Decimal("3"),
+                "ytm_value": Decimal("3.5"),
+                "maturity_date": date(2027, 3, 31),
+                "interest_mode": "fixed",
+                "is_issuance_like": False,
+            }
+        ],
+        report_date,
+    )
+
+    assert rows[0].interest_payment_frequency == "annual"
+    assert rows[0].interest_payment_frequency_fallback_used is True
+
+
+def test_bullet_bond_macaulay_equals_remaining_term() -> None:
+    """bullet（到期一次还本付息）唯一现金流落在到期日：Macaulay = 剩余年限。
+
+    修复前 ``coupon_frequency_per_year("bullet") == 1`` 被 engine 当成年付跑
+    多期 Macaulay，虚构了中途票息现金流、把久期拉向票息时点（5Y/3% 券
+    低估约 5.7%）。``cashflow_projection`` 的 bullet 建模（单笔
+    ``_bullet_coupon_amount`` 落在到期日）一直是单笔口径，两处必须一致。
+    """
+    module = _module()
+    report_date = date(2026, 3, 31)
+
+    rows = module.compute_bond_analytics_rows(
+        [
+            {
+                "report_date": report_date,
+                "instrument_code": "BOND-BULLET",
+                "currency_code": "CNY",
+                "face_value_native": Decimal("100"),
+                "market_value_native": Decimal("100"),
+                "coupon_rate": Decimal("3.0"),
+                "ytm_value": Decimal("3.5"),
+                "maturity_date": date(2031, 3, 31),
+                "interest_mode": "到期一次还本付息",
+                "is_issuance_like": False,
+            }
+        ],
+        report_date,
+    )
+
+    row = rows[0]
+    years = Decimal("1826") / Decimal("365")
+    assert row.interest_payment_frequency == "bullet"
+    assert row.years_to_maturity == years
+    # 单笔现金流：Macaulay 恒等于剩余年限（不再被虚构的年付票息拉短）。
+    assert row.macaulay_duration == years
+    assert row.modified_duration == common.estimate_modified_duration(
+        years, Decimal("0.035"), coupon_frequency=1
+    )
+    # 凸性取同一时点的单笔闭式解 t(t + 1/f)/(1 + y/f)²。
+    assert row.convexity == common._single_cashflow_convexity(years, Decimal("0.035"), 1)
+
+
+def test_compute_macaulay_single_cashflow_at_maturity_flag() -> None:
+    """common 层入口：single_cashflow_at_maturity=True 走单笔路径。
+
+    同参数不带标志时（多期年付）Macaulay 必须严格小于剩余年限——
+    这就是修复前 bullet 券被低估的差值来源。
+    """
+    years = Decimal("5")
+    bullet_duration, bullet_convexity = common.compute_macaulay_duration_and_convexity(
+        coupon_rate=Decimal("0.03"),
+        ytm=Decimal("0.035"),
+        years_to_maturity=years,
+        coupon_frequency=1,
+        single_cashflow_at_maturity=True,
+    )
+    coupon_duration, _ = common.compute_macaulay_duration_and_convexity(
+        coupon_rate=Decimal("0.03"),
+        ytm=Decimal("0.035"),
+        years_to_maturity=years,
+        coupon_frequency=1,
+    )
+
+    assert bullet_duration == years
+    assert bullet_convexity == common._single_cashflow_convexity(years, Decimal("0.035"), 1)
+    assert coupon_duration < years
+
+
+def _par_fallback_snapshot_row(**overrides: object) -> dict[str, object]:
+    row: dict[str, object] = {
+        "report_date": date(2026, 1, 1),
+        "instrument_code": "PAR-FB-001",
+        "instrument_name": "有票息缺 ytm 债",
+        "portfolio_name": "组合A",
+        "cost_center": "CC1",
+        "account_category": "可供出售类资产",
+        "asset_class": "债券资产",
+        "bond_type": "企业债",
+        "currency_code": "CNY",
+        "face_value_native": Decimal("100"),
+        "market_value_native": Decimal("95"),
+        "amortized_cost_native": Decimal("93"),
+        "accrued_interest_native": Decimal("1"),
+        "coupon_rate": Decimal("3.0"),  # percent 口径 → 0.03
+        "ytm_value": None,  # ytm 缺失
+        # 2026-01-01 → 2035-12-30 恰 3650 天 → years_to_maturity = 10（整）
+        "maturity_date": date(2035, 12, 30),
+        "interest_mode": "annual",
+        "is_issuance_like": False,
+    }
+    row.update(overrides)
+    return row
+
+
+def test_compute_bond_analytics_rows_par_fallback_for_coupon_bond_missing_ytm(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """有票息缺 ytm 的行：三项指标按 par 假设（ytm=coupon）计算，聚合告警可观测。
+
+    黄金手算（10Y=3650 天、年付 3%、par ytm=3%；闭式独立推导，未经被测函数）：
+      Macaulay  = (1.03/0.03)(1 - 1.03^-10)      = 8.786108921879104...
+      修正久期  = Macaulay / 1.03                 = 8.530202836775829...
+      凸性      = Σ t(t+1)·CF_t/1.03^t / P / 1.03²= 87.066004719213807...
+      DV01      = 100 × 修正久期 / 10000          = 0.0853020283677582...
+    旧缺陷下 Macaulay=修正久期=10（零息假设）、DV01=0.1，系统性高估。
+
+    凸性黄金值于 W-fi-2026-08 P4 由久期型近似 ``D(D+1)/1.03² = 81.046110763505234``
+    更新为标准现金流凸性 ``87.066004719213807``（par 券的付息时点方差
+    ``M² = C·1.03² − D² − D`` 被旧式整体丢掉，低估 6.91%）。
+    """
+    module = _module()
+    report_date = date(2026, 1, 1)
+    with caplog.at_level(
+        logging.WARNING, logger="backend.app.core_finance.bond_analytics.engine"
+    ):
+        rows = module.compute_bond_analytics_rows(
+            [_par_fallback_snapshot_row()], report_date
+        )
+
+    assert len(rows) == 1
+    row = rows[0]
+    tol = Decimal("0.000001")
+    assert row.years_to_maturity == Decimal("10")
+    assert abs(row.macaulay_duration - Decimal("8.786108921879104")) < tol
+    assert abs(row.modified_duration - Decimal("8.530202836775829")) < tol
+    assert abs(row.convexity - Decimal("87.066004719213807")) < tol
+    assert abs(row.dv01 - Decimal("0.085302028367758")) < tol
+    # 不再等于剩余年限（旧回退值 10）。
+    assert row.macaulay_duration < row.years_to_maturity
+
+    fallback_warnings = [
+        message
+        for message in caplog.messages
+        if "par-assumption duration" in message
+    ]
+    assert len(fallback_warnings) == 1
+    assert common.YTM_PAR_FALLBACK_RULE_ID in fallback_warnings[0]
+    assert "1 coupon-bond rows" in fallback_warnings[0]
+    assert "market_value_cny=95" in fallback_warnings[0]
+    # 日志级行清单：带具体回退债券代码；未超上限不出现“…共 N 只”截断尾。
+    assert "instrument_codes=PAR-FB-001" in fallback_warnings[0]
+    assert "…共" not in fallback_warnings[0]
+
+
+def test_compute_bond_analytics_rows_par_fallback_code_list_truncates_beyond_20(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """超过 20 只回退券时：单条告警只列前 20 个代码，以“…共 N 只”收尾。"""
+    module = _module()
+    report_date = date(2026, 1, 1)
+    codes = [f"PAR-FB-{i:03d}" for i in range(1, 26)]  # 25 只，超过生产上限 20
+    with caplog.at_level(
+        logging.WARNING, logger="backend.app.core_finance.bond_analytics.engine"
+    ):
+        rows = module.compute_bond_analytics_rows(
+            [_par_fallback_snapshot_row(instrument_code=code) for code in codes],
+            report_date,
+        )
+
+    assert len(rows) == 25
+    fallback_warnings = [
+        message
+        for message in caplog.messages
+        if "par-assumption duration" in message
+    ]
+    # 保持单条聚合 WARNING，不逐券告警。
+    assert len(fallback_warnings) == 1
+    message = fallback_warnings[0]
+    assert "25 coupon-bond rows" in message
+    for code in codes[:20]:
+        assert code in message
+    for code in codes[20:]:
+        assert code not in message
+    assert message.endswith("…共 25 只")
+
+
+def test_compute_bond_analytics_rows_zero_coupon_missing_ytm_unchanged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """真实零息券（coupon=0）+ ytm 缺失：仍回退剩余年限（正确口径），不触发任何回退告警。
+
+    真实 0 是合法观测值，必须与「票息缺失」分开：这里断言数值口径与输入分级都不受
+    诚实性披露改造影响。
+    """
+    module = _module()
+    report_date = date(2026, 1, 1)
+    with caplog.at_level(
+        logging.WARNING, logger="backend.app.core_finance.bond_analytics.engine"
+    ):
+        rows = module.compute_bond_analytics_rows(
+            [
+                _par_fallback_snapshot_row(
+                    instrument_code="ZERO-FB-001",
+                    coupon_rate=Decimal("0"),
+                )
+            ],
+            report_date,
+        )
+
+    row = rows[0]
+    assert row.coupon_rate == Decimal("0")
+    assert row.coupon_rate_input_status == module.RATE_INPUT_STATUS_OBSERVED
+    assert row.ytm_input_status == module.RATE_INPUT_STATUS_MISSING
+    # 零息券的 Macaulay=剩余年限本就正确，但修正久期未按 ytm 折现，标记为近似。
+    assert row.duration_quality_flag == module.DURATION_QUALITY_YTM_UNAVAILABLE
+    assert row.macaulay_duration == Decimal("10")
+    assert row.modified_duration == Decimal("10")
+    # W-fi-2026-08 P4：零息单笔现金流的标准凸性 t(t+1/f)/(1+y/f)²，f=1 且 y=0 → 10×11。
+    # 旧实现在 ytm<=0 时特判 D²=100，在 y=0 处相对 y→0⁺ 有 D 大小的跳变。
+    assert row.convexity == Decimal("110")
+    assert row.dv01 == Decimal("100") * Decimal("10") / Decimal("10000")
+    assert not [m for m in caplog.messages if "par-assumption duration" in m]
+    assert not [m for m in caplog.messages if "remaining-term duration proxy" in m]
+
+
+def test_classify_rate_input_separates_true_zero_missing_and_dirty() -> None:
+    """归一入口必须把「真实 0」「缺失」「脏值」分成三类，而不是统一成 None。"""
+    module = _module()
+
+    assert module._classify_rate_input(Decimal("0")) == (
+        Decimal("0"),
+        module.RATE_INPUT_STATUS_OBSERVED,
+    )
+    assert module._classify_rate_input(Decimal("3.0")) == (
+        Decimal("0.03"),
+        module.RATE_INPUT_STATUS_OBSERVED,
+    )
+    assert module._classify_rate_input(None) == (None, module.RATE_INPUT_STATUS_MISSING)
+    assert module._classify_rate_input("") == (None, module.RATE_INPUT_STATUS_MISSING)
+    assert module._classify_rate_input("   ") == (None, module.RATE_INPUT_STATUS_MISSING)
+    # > 20%、负数、非数值都是脏值：有值但不可用，与「字段为空」成因不同。
+    assert module._classify_rate_input(Decimal("25")) == (None, module.RATE_INPUT_STATUS_DIRTY)
+    assert module._classify_rate_input(Decimal("-0.5")) == (None, module.RATE_INPUT_STATUS_DIRTY)
+    assert module._classify_rate_input("abc") == (None, module.RATE_INPUT_STATUS_DIRTY)
+
+
+def test_compute_bond_analytics_rows_distinguishes_true_zero_missing_and_dirty_coupon(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """票息三类输入必须可区分：真实 0 正常计算，缺失/脏值带明确质量标记。
+
+    缺失与脏值行的久期/DV01/凸性数值与零息券完全一致（``estimate_duration`` 在
+    ``coupon_rate<=0`` 时返回剩余年限），因此**只能**靠行级标记区分——这正是审计
+    「缺失数据仍产生看似正式的久期、DV01」所指的缺陷。
+    """
+    module = _module()
+    report_date = date(2026, 1, 1)
+    with caplog.at_level(
+        logging.WARNING, logger="backend.app.core_finance.bond_analytics.engine"
+    ):
+        true_zero, missing, dirty = module.compute_bond_analytics_rows(
+            [
+                _par_fallback_snapshot_row(
+                    instrument_code="ZERO-TRUE-001",
+                    coupon_rate=Decimal("0"),
+                    ytm_value=Decimal("3.0"),
+                ),
+                _par_fallback_snapshot_row(
+                    instrument_code="COUPON-MISSING-001",
+                    coupon_rate=None,
+                    ytm_value=Decimal("3.0"),
+                ),
+                _par_fallback_snapshot_row(
+                    instrument_code="COUPON-DIRTY-001",
+                    coupon_rate=Decimal("25"),  # > 20% 脏值 → 归一拒收
+                    ytm_value=Decimal("3.0"),
+                ),
+            ],
+            report_date,
+        )
+
+    # 真实零息券：合法观测值，正常计算路径，不打降级标记。
+    assert true_zero.coupon_rate == Decimal("0")
+    assert true_zero.coupon_rate_input_status == module.RATE_INPUT_STATUS_OBSERVED
+    assert true_zero.ytm_input_status == module.RATE_INPUT_STATUS_OBSERVED
+    assert true_zero.duration_quality_flag == module.DURATION_QUALITY_OBSERVED
+    assert true_zero.macaulay_duration == Decimal("10")
+
+    # 缺失与脏值：数值上无法与零息券区分，故必须由标记区分。
+    assert missing.coupon_rate is None
+    assert missing.coupon_rate_input_status == module.RATE_INPUT_STATUS_MISSING
+    assert missing.duration_quality_flag == module.DURATION_QUALITY_COUPON_UNAVAILABLE
+    assert dirty.coupon_rate is None
+    assert dirty.coupon_rate_input_status == module.RATE_INPUT_STATUS_DIRTY
+    assert dirty.duration_quality_flag == module.DURATION_QUALITY_COUPON_UNAVAILABLE
+    assert missing.coupon_rate_input_status != dirty.coupon_rate_input_status
+    for row in (missing, dirty):
+        assert row.macaulay_duration == true_zero.macaulay_duration
+        assert row.dv01 == true_zero.dv01
+
+    proxy_warnings = [
+        message for message in caplog.messages if "remaining-term duration proxy" in message
+    ]
+    assert len(proxy_warnings) == 1
+    assert module.COUPON_UNAVAILABLE_RULE_ID in proxy_warnings[0]
+    assert "2 rows with missing/dirty coupon_rate" in proxy_warnings[0]
+    assert "market_value_cny=190" in proxy_warnings[0]
+    assert "COUPON-MISSING-001,COUPON-DIRTY-001" in proxy_warnings[0]
+    # 零息券不得混入告警清单。
+    assert "ZERO-TRUE-001" not in proxy_warnings[0]
+
+
+@pytest.mark.parametrize(
+    ("ytm_value", "expected_ytm_status"),
+    [
+        (None, "missing"),
+        (Decimal("25"), "dirty"),  # > 20% 脏值
+    ],
+)
+def test_compute_bond_analytics_rows_flags_par_fallback_for_missing_and_dirty_ytm(
+    ytm_value: object,
+    expected_ytm_status: str,
+) -> None:
+    """有票息、ytm 缺失/脏值：同走 par 假设，但两种成因由 ytm_input_status 区分。"""
+    module = _module()
+    report_date = date(2026, 1, 1)
+
+    row = module.compute_bond_analytics_rows(
+        [_par_fallback_snapshot_row(ytm_value=ytm_value)],
+        report_date,
+    )[0]
+
+    assert row.ytm is None
+    assert row.coupon_rate_input_status == module.RATE_INPUT_STATUS_OBSERVED
+    assert row.ytm_input_status == expected_ytm_status
+    assert row.duration_quality_flag == module.DURATION_QUALITY_YTM_PAR_FALLBACK
+    # par 假设数值口径不变（10Y/3% 年付黄金手算）。
+    assert abs(row.macaulay_duration - Decimal("8.786108921879104")) < Decimal("0.000001")
+
+
+def test_compute_bond_analytics_rows_marks_observed_rates_and_missing_maturity() -> None:
+    """观测值齐全的行标记为 observed；缺到期日的行标记为 maturity_unavailable。"""
+    module = _module()
+    report_date = date(2026, 1, 1)
+
+    observed, no_maturity = module.compute_bond_analytics_rows(
+        [
+            _par_fallback_snapshot_row(
+                instrument_code="OBSERVED-001",
+                ytm_value=Decimal("3.5"),
+            ),
+            _par_fallback_snapshot_row(
+                instrument_code="NO-TERM-001",
+                coupon_rate=None,
+                ytm_value=None,
+                maturity_date=None,
+            ),
+        ],
+        report_date,
+    )
+
+    assert observed.coupon_rate_input_status == module.RATE_INPUT_STATUS_OBSERVED
+    assert observed.ytm_input_status == module.RATE_INPUT_STATUS_OBSERVED
+    assert observed.duration_quality_flag == module.DURATION_QUALITY_OBSERVED
+
+    # 三项指标按 0 记是「久期不可得」的标记，与利率输入无关，不得冒充观测支撑。
+    assert no_maturity.macaulay_duration == Decimal("0")
+    assert no_maturity.dv01 == Decimal("0")
+    assert no_maturity.duration_quality_flag == module.DURATION_QUALITY_MATURITY_UNAVAILABLE
+    assert no_maturity.coupon_rate_input_status == module.RATE_INPUT_STATUS_MISSING
+    assert no_maturity.ytm_input_status == module.RATE_INPUT_STATUS_MISSING
+
+
+def test_compute_bond_analytics_rows_separates_matured_from_missing_maturity() -> None:
+    """已到期与缺到期日必须用不同标记（W-fi-2026-08 P2）。
+
+    两者数值同为 0，但成因完全不同：已到期的债久期真的是 0；缺到期日的行久期
+    **不适用**（2026-07-31 实测的 127 笔 434.00 亿全是公募基金与 ETF），必须整行移出
+    久期分母并单独披露。此前两者共用 ``no_remaining_term``，消费方无从区分。
+    """
+    module = _module()
+    report_date = date(2026, 1, 1)
+
+    matured, no_maturity = module.compute_bond_analytics_rows(
+        [
+            _par_fallback_snapshot_row(
+                instrument_code="MATURED-001",
+                maturity_date=date(2025, 12, 31),
+            ),
+            _par_fallback_snapshot_row(
+                instrument_code="NO-MATURITY-001",
+                maturity_date=None,
+            ),
+        ],
+        report_date,
+    )
+
+    assert matured.macaulay_duration == no_maturity.macaulay_duration == Decimal("0")
+    assert matured.dv01 == no_maturity.dv01 == Decimal("0")
+    assert matured.duration_quality_flag == module.DURATION_QUALITY_NO_REMAINING_TERM
+    assert no_maturity.duration_quality_flag == module.DURATION_QUALITY_MATURITY_UNAVAILABLE
+    assert matured.duration_quality_flag != no_maturity.duration_quality_flag
+
+
+def test_compute_bond_analytics_rows_discloses_missing_maturity_exposure(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """缺到期日的敞口必须聚合披露（行数 / 市值 / 代码 / rule_id）。
+
+    对标 ``risk_tensor.missing_maturity_count`` / ``missing_maturity_market_value``
+    的正面样板：测量并披露缺口，而不是拿占位常数把它糊过去。
+    """
+    module = _module()
+    report_date = date(2026, 1, 1)
+
+    with caplog.at_level(logging.WARNING):
+        module.compute_bond_analytics_rows(
+            [
+                _par_fallback_snapshot_row(
+                    instrument_code="SA0106070101",
+                    maturity_date=None,
+                    market_value_native=Decimal("100"),
+                ),
+                _par_fallback_snapshot_row(
+                    instrument_code="SA5110300101",
+                    maturity_date=None,
+                    market_value_native=Decimal("40"),
+                ),
+            ],
+            report_date,
+        )
+
+    disclosure = [
+        record.message
+        for record in caplog.records
+        if module.MISSING_MATURITY_RULE_ID in record.message
+        and "rows without maturity_date" in record.message
+    ]
+    assert len(disclosure) == 1
+    assert "2 rows without maturity_date" in disclosure[0]
+    assert "market_value_cny=140" in disclosure[0]
+    assert "SA0106070101" in disclosure[0]
+    assert "SA5110300101" in disclosure[0]
 
 
 def test_compute_bond_analytics_rows_uses_formal_cny_values_and_accounting_basis() -> None:
@@ -143,9 +646,11 @@ def test_compute_bond_analytics_rows_uses_formal_cny_values_and_accounting_basis
             "market_value_native": Decimal("100"),
             "market_value_cny": Decimal("720"),
             "amortized_cost_native": Decimal("98"),
+            "amortized_cost_cny": Decimal("686"),
             "accrued_interest_native": Decimal("1"),
-            "coupon_rate": Decimal("0.03"),
-            "ytm_value": Decimal("0.04"),
+            "accrued_interest_cny": Decimal("7"),
+            "coupon_rate": Decimal("3.0"),
+            "ytm_value": Decimal("4.0"),
             "maturity_date": date(2031, 3, 31),
             "interest_mode": "annual",
             "is_issuance_like": False,
@@ -165,53 +670,88 @@ def test_compute_bond_analytics_rows_uses_formal_cny_values_and_accounting_basis
     assert row.face_value == Decimal("700")
     assert row.market_value_native == Decimal("100")
     assert row.market_value == Decimal("720")
+    assert row.amortized_cost == Decimal("686")
+    assert row.accrued_interest == Decimal("7")
     assert row.dv01 == Decimal("700") * row.modified_duration / Decimal("10000")
 
 
-def test_compute_bond_analytics_rows_falls_back_to_native_face_value_when_cny_face_missing() -> None:
+@pytest.mark.parametrize("identity_currency", ["CNY", "RMB"])
+def test_compute_bond_analytics_rows_keeps_cny_rmb_identity_on_native_amounts(
+    identity_currency: str,
+) -> None:
     module = _module()
-    report_date = date(2026, 3, 31)
-    snapshot_rows = [
-        {
-            "report_date": report_date,
-            "instrument_code": "USD-NATIVE-FACE-001",
-            "instrument_name": "USD bond without formal CNY face",
-            "portfolio_name": "Portfolio",
-            "cost_center": "CC-USD",
-            "account_category": "bank book",
-            "accounting_basis": "FVOCI",
-            "asset_class": "credit bond",
-            "bond_type": "corporate bond",
-            "issuer_name": "Issuer",
-            "industry_name": "Industry",
-            "rating": "A",
-            "currency_code": "USD",
-            "face_value_native": Decimal("100"),
-            "market_value_native": Decimal("98"),
-            "market_value_cny": Decimal("686"),
-            "amortized_cost_native": Decimal("97"),
-            "amortized_cost_cny": Decimal("679"),
-            "accrued_interest_native": Decimal("1"),
-            "accrued_interest_cny": Decimal("7"),
-            "coupon_rate": Decimal("0.03"),
-            "ytm_value": Decimal("0.04"),
-            "maturity_date": date(2031, 3, 31),
-            "interest_mode": "annual",
-            "is_issuance_like": False,
-            "source_version": "sv_snapshot_usd",
-            "rule_version": "rv_snapshot_usd",
-            "ingest_batch_id": "ib_usd",
-            "trace_id": "trace_usd",
-        }
-    ]
+    snapshot_row = _foreign_bond_snapshot_row()
+    snapshot_row["currency_code"] = identity_currency
+    for field_name in (
+        "face_value_cny",
+        "market_value_cny",
+        "amortized_cost_cny",
+        "accrued_interest_cny",
+    ):
+        snapshot_row.pop(field_name)
 
-    row = module.compute_bond_analytics_rows(snapshot_rows, report_date)[0]
+    row = module.compute_bond_analytics_rows(
+        [snapshot_row],
+        date(2026, 3, 31),
+    )[0]
 
+    assert row.currency_code == identity_currency
     assert row.face_value == Decimal("100")
-    assert row.market_value == Decimal("686")
-    assert row.accrued_interest == Decimal("7")
-    assert row.dv01 == Decimal("100") * row.modified_duration / Decimal("10000")
-    assert row.dv01 != row.market_value * row.modified_duration / Decimal("10000")
+    assert row.market_value == Decimal("100")
+    assert row.amortized_cost == Decimal("98")
+    assert row.accrued_interest == Decimal("1")
+
+
+def test_compute_bond_analytics_rows_requires_formal_cny_closure_for_cnx() -> None:
+    module = _module()
+    snapshot_row = _foreign_bond_snapshot_row()
+    snapshot_row["currency_code"] = "CNX"
+    for field_name in (
+        "face_value_cny",
+        "market_value_cny",
+        "amortized_cost_cny",
+        "accrued_interest_cny",
+    ):
+        snapshot_row.pop(field_name)
+
+    with pytest.raises(
+        ValueError,
+        match=r"formal CNY closure unavailable:.*instrument_code=USD-CLOSURE-001.*face_value_cny",
+    ):
+        module.compute_bond_analytics_rows(
+            [snapshot_row],
+            date(2026, 3, 31),
+        )
+
+
+@pytest.mark.parametrize(
+    ("missing_field", "invalid_value"),
+    [
+        ("face_value_cny", None),
+        ("market_value_cny", None),
+        ("amortized_cost_cny", None),
+        ("accrued_interest_cny", None),
+        ("face_value_cny", ""),
+        ("face_value_cny", Decimal("NaN")),
+        ("market_value_cny", Decimal("Infinity")),
+    ],
+)
+def test_compute_bond_analytics_rows_rejects_foreign_bond_without_formal_cny_closure(
+    missing_field: str,
+    invalid_value: object,
+) -> None:
+    module = _module()
+    snapshot_row = _foreign_bond_snapshot_row()
+    snapshot_row[missing_field] = invalid_value
+
+    with pytest.raises(
+        ValueError,
+        match=rf"formal CNY closure unavailable:.*instrument_code=USD-CLOSURE-001.*{missing_field}",
+    ):
+        module.compute_bond_analytics_rows(
+            [snapshot_row],
+            date(2026, 3, 31),
+        )
 
 
 def test_compute_bond_analytics_rows_uses_formal_cny_cost_and_accrued_for_foreign_bond() -> None:
@@ -240,8 +780,8 @@ def test_compute_bond_analytics_rows_uses_formal_cny_cost_and_accrued_for_foreig
             "amortized_cost_cny": Decimal("686"),
             "accrued_interest_native": Decimal("1"),
             "accrued_interest_cny": Decimal("7"),
-            "coupon_rate": Decimal("0.03"),
-            "ytm_value": Decimal("0.04"),
+            "coupon_rate": Decimal("3.0"),
+            "ytm_value": Decimal("4.0"),
             "maturity_date": date(2031, 3, 31),
             "interest_mode": "annual",
             "is_issuance_like": False,
@@ -284,8 +824,8 @@ def test_compute_bond_analytics_rows_uses_payment_frequency_for_duration_and_con
             "market_value_native": Decimal("100"),
             "amortized_cost_native": Decimal("98"),
             "accrued_interest_native": Decimal("1"),
-            "coupon_rate": Decimal("0.03"),
-            "ytm_value": Decimal("0.04"),
+            "coupon_rate": Decimal("3.0"),
+            "ytm_value": Decimal("4.0"),
             "maturity_date": maturity_date,
             "interest_mode": "semi-annual",
             "is_issuance_like": False,
@@ -311,10 +851,13 @@ def test_compute_bond_analytics_rows_uses_payment_frequency_for_duration_and_con
         Decimal("0.04"),
         coupon_frequency=2,
     )
+    # W-fi-2026-08 P4：凸性走标准现金流二阶导，需与久期使用同一组 (时点, 金额)。
     expected_convexity = common.estimate_convexity(
         expected_macaulay,
         Decimal("0.04"),
         coupon_frequency=2,
+        coupon_rate=Decimal("0.03"),
+        years_to_maturity=years_to_maturity,
     )
 
     assert row.interest_payment_frequency == "semi-annual"
@@ -324,16 +867,19 @@ def test_compute_bond_analytics_rows_uses_payment_frequency_for_duration_and_con
 
 
 @pytest.mark.parametrize(
-    ("interest_mode", "expected_payment_frequency", "expected_coupon_frequency"),
+    ("interest_mode", "expected_payment_frequency", "single_cashflow_at_maturity"),
     [
-        ("unknown-mode", "annual", 1),
-        ("bullet", "bullet", 1),
+        # 未知取值：回退年付多期口径（保持既有行为）。
+        ("unknown-mode", "annual", False),
+        # bullet（到期一次还本付息）：唯一现金流在到期日，走单笔口径，
+        # 不再按年付虚构中途票息（B7 审计第 3② 项）。
+        ("bullet", "bullet", True),
     ],
 )
-def test_compute_bond_analytics_rows_uses_annual_frequency_for_unknown_and_bullet_modes(
+def test_compute_bond_analytics_rows_frequency_convention_for_unknown_and_bullet_modes(
     interest_mode: str,
     expected_payment_frequency: str,
-    expected_coupon_frequency: int,
+    single_cashflow_at_maturity: bool,
 ) -> None:
     module = _module()
     report_date = date(2026, 3, 31)
@@ -357,8 +903,8 @@ def test_compute_bond_analytics_rows_uses_annual_frequency_for_unknown_and_bulle
             "market_value_native": Decimal("100"),
             "amortized_cost_native": Decimal("98"),
             "accrued_interest_native": Decimal("1"),
-            "coupon_rate": Decimal("0.03"),
-            "ytm_value": Decimal("0.04"),
+            "coupon_rate": Decimal("3.0"),
+            "ytm_value": Decimal("4.0"),
             "maturity_date": maturity_date,
             "interest_mode": interest_mode,
             "is_issuance_like": False,
@@ -371,11 +917,12 @@ def test_compute_bond_analytics_rows_uses_annual_frequency_for_unknown_and_bulle
 
     row = module.compute_bond_analytics_rows(snapshot_rows, report_date)[0]
     years_to_maturity = Decimal(str((maturity_date - report_date).days)) / Decimal("365")
-    expected_macaulay = common.compute_macaulay_duration(
+    expected_macaulay, _ = common.compute_macaulay_duration_and_convexity(
         Decimal("0.03"),
         Decimal("0.04"),
         years_to_maturity,
-        coupon_frequency=expected_coupon_frequency,
+        coupon_frequency=1,
+        single_cashflow_at_maturity=single_cashflow_at_maturity,
     )
 
     assert row.interest_payment_frequency == expected_payment_frequency
@@ -404,8 +951,8 @@ def test_compute_bond_analytics_rows_uses_face_value_basis_for_dv01() -> None:
             "market_value_native": Decimal("500"),
             "amortized_cost_native": Decimal("98"),
             "accrued_interest_native": Decimal("1"),
-            "coupon_rate": Decimal("0.0147"),
-            "ytm_value": Decimal("0.016359"),
+            "coupon_rate": Decimal("1.47"),
+            "ytm_value": Decimal("1.6359"),
             "maturity_date": date(2028, 2, 14),
             "interest_mode": "annual",
             "is_issuance_like": False,
@@ -447,8 +994,8 @@ def test_compute_bond_analytics_rows_keeps_cny_market_value_native_when_cny_back
             "market_value_cny": Decimal("-100"),
             "amortized_cost_native": Decimal("98"),
             "accrued_interest_native": Decimal("1"),
-            "coupon_rate": Decimal("0.03"),
-            "ytm_value": Decimal("0.04"),
+            "coupon_rate": Decimal("3.0"),
+            "ytm_value": Decimal("4.0"),
             "maturity_date": date(2031, 3, 31),
             "interest_mode": "annual",
             "is_issuance_like": False,
@@ -506,8 +1053,8 @@ def test_compute_bond_analytics_rows_uses_rate_classification_and_zero_spread_dv
             "market_value_native": Decimal("998"),
             "amortized_cost_native": Decimal("997"),
             "accrued_interest_native": Decimal("3"),
-            "coupon_rate": Decimal("0.02"),
-            "ytm_value": Decimal("0.018"),
+            "coupon_rate": Decimal("2.0"),
+            "ytm_value": Decimal("1.8"),
             "maturity_date": date(2027, 1, 15),
             "is_issuance_like": False,
             "source_version": "sv_snapshot_2",
@@ -528,6 +1075,62 @@ def test_compute_bond_analytics_rows_uses_rate_classification_and_zero_spread_dv
     assert row.interest_payment_frequency == "annual"
     assert row.interest_rate_style == "unknown"
     assert row.spread_dv01 == Decimal("0")
+
+
+def test_compute_bond_analytics_rows_normalizes_gray_zone_percent_rates() -> None:
+    """灰区回归锁定：票息 1.82（=1.82%）必须 ÷100，不得当作小数 182%。
+
+    2026-07-19 取证：zqtz 快照利率为百分数口径，[0.2, 2) 灰区每天约 550 只券。
+    旧的 >2 启发式会放行 1.82 → 久期被 182% 的 ytm 压扁、DV01 全错。
+    """
+    module = _module()
+    report_date = date(2026, 6, 30)
+    snapshot_rows = [
+        {
+            "report_date": report_date,
+            "instrument_code": "SCP-GRAY-001",
+            "instrument_name": "低票息超短融",
+            "portfolio_name": "组合灰区",
+            "cost_center": "CC-GRAY",
+            "account_category": "交易性金融资产",
+            "asset_class": "债券资产",
+            "bond_type": "短期融资券",
+            "issuer_name": "发行人G",
+            "industry_name": "城投",
+            "rating": "AAA",
+            "currency_code": "CNY",
+            "face_value_native": Decimal("1000000"),
+            "market_value_native": Decimal("1000000"),
+            "amortized_cost_native": Decimal("1000000"),
+            "accrued_interest_native": Decimal("0"),
+            "coupon_rate": Decimal("1.82"),
+            "ytm_value": Decimal("1.82"),
+            "maturity_date": date(2027, 6, 30),
+            "interest_mode": "年付",
+            "is_issuance_like": False,
+            "source_version": "sv_snapshot_gray",
+            "rule_version": "rv_snapshot_gray",
+            "ingest_batch_id": "ib_gray",
+            "trace_id": "trace_gray",
+        }
+    ]
+
+    row = module.compute_bond_analytics_rows(snapshot_rows, report_date)[0]
+
+    assert row.coupon_rate == Decimal("0.0182")
+    assert row.ytm == Decimal("0.0182")
+    expected_macaulay = common.estimate_duration(
+        date(2027, 6, 30),
+        report_date,
+        coupon_rate=Decimal("0.0182"),
+        ytm=Decimal("0.0182"),
+        bond_code="SCP-GRAY-001",
+    )
+    expected_modified = common.estimate_modified_duration(expected_macaulay, Decimal("0.0182"))
+    assert row.macaulay_duration == expected_macaulay
+    assert row.modified_duration == expected_modified
+    # 1 年期券修正久期应接近 1，远不是被 182% ytm 压扁的 ~0.35
+    assert row.modified_duration > Decimal("0.9")
 
 
 def test_compute_bond_analytics_rows_normalizes_percent_rates_before_duration_math() -> None:
@@ -600,9 +1203,13 @@ def test_compute_bond_analytics_rows_backfills_missing_lineage_with_deterministi
             "rating": "AA+",
             "currency_code": "USD",
             "face_value_native": Decimal("50"),
+            "face_value_cny": Decimal("350"),
             "market_value_native": Decimal("48"),
+            "market_value_cny": Decimal("336"),
             "amortized_cost_native": Decimal("49"),
+            "amortized_cost_cny": Decimal("343"),
             "accrued_interest_native": Decimal("0.4"),
+            "accrued_interest_cny": Decimal("2.8"),
             "coupon_rate": None,
             "ytm_value": None,
             "maturity_date": None,
@@ -653,8 +1260,8 @@ def test_compute_bond_analytics_rows_rejects_report_date_mismatch() -> None:
             "market_value_native": Decimal("100"),
             "amortized_cost_native": Decimal("100"),
             "accrued_interest_native": Decimal("0"),
-            "coupon_rate": Decimal("0.02"),
-            "ytm_value": Decimal("0.02"),
+            "coupon_rate": Decimal("2.0"),
+            "ytm_value": Decimal("2.0"),
             "maturity_date": date(2027, 3, 31),
             "is_issuance_like": False,
             "source_version": "sv_snapshot_4",
@@ -666,3 +1273,81 @@ def test_compute_bond_analytics_rows_rejects_report_date_mismatch() -> None:
 
     with pytest.raises(ValueError, match="report_date"):
         module.compute_bond_analytics_rows(snapshot_rows, requested_report_date)
+
+
+def test_normalize_rate_decimal_uses_percent_caliber() -> None:
+    """Engine rate normalization must follow rate_units.normalize_percent_rate_to_decimal.
+
+    Snapshot rates are stored in percent form (1.82 = 1.82%; evidenced
+    2026-07-19), so every value is divided by 100 and > 20 (rates above 20%)
+    is rejected as dirty data. No gray-zone heuristic is allowed.
+    """
+    module = _module()
+
+    # Percent-form values are always divided by 100.
+    assert module._normalize_rate_decimal(Decimal("3.5")) == Decimal("0.035")
+    # Gray-zone low coupons (the old > 2 heuristic wrongly kept these as decimals).
+    assert module._normalize_rate_decimal(Decimal("1.82")) == Decimal("0.0182")
+    assert module._normalize_rate_decimal(Decimal("0.85")) == Decimal("0.0085")
+    # Sub-percent yields are still percent-form (0.09 = 0.09%).
+    assert module._normalize_rate_decimal(Decimal("0.09")) == Decimal("0.0009")
+    # > 20 is dirty data -> None.
+    assert module._normalize_rate_decimal(Decimal("25")) is None
+    # Negative rates are rejected as dirty data.
+    assert module._normalize_rate_decimal(Decimal("-0.5")) is None
+    assert module._normalize_rate_decimal(None) is None
+    assert module._normalize_rate_decimal("") is None
+
+
+def test_compute_bond_analytics_rows_treats_dirty_rates_as_missing() -> None:
+    module = _module()
+    report_date = date(2026, 3, 31)
+    snapshot_rows = [
+        {
+            "report_date": report_date,
+            "instrument_code": "TB-DIRTY-001",
+            "instrument_name": "脏利率债",
+            "portfolio_name": "组合脏数据",
+            "cost_center": "CC-DIRTY",
+            "account_category": "持有至到期投资",
+            "asset_class": "债券资产",
+            "bond_type": "国债",
+            "issuer_name": "财政部",
+            "industry_name": "政府",
+            "rating": "AAA",
+            "currency_code": "CNY",
+            "face_value_native": Decimal("100"),
+            "market_value_native": Decimal("100"),
+            "amortized_cost_native": Decimal("100"),
+            "accrued_interest_native": Decimal("0"),
+            "coupon_rate": Decimal("25"),
+            "ytm_value": Decimal("25"),
+            "maturity_date": date(2031, 3, 31),
+            "interest_mode": "年付",
+            "is_issuance_like": False,
+            "source_version": "sv_snapshot_dirty",
+            "rule_version": "rv_snapshot_dirty",
+            "ingest_batch_id": "ib_dirty",
+            "trace_id": "trace_dirty",
+        }
+    ]
+
+    rows = module.compute_bond_analytics_rows(snapshot_rows, report_date)
+
+    assert len(rows) == 1
+    row = rows[0]
+    # Dirty rates (> 20) are treated as missing rather than silently divided by 100.
+    assert row.coupon_rate is None
+    assert row.ytm is None
+    # 但「脏值」与「字段为空」在行级仍可区分，且该行久期不得冒充观测支撑。
+    assert row.coupon_rate_input_status == module.RATE_INPUT_STATUS_DIRTY
+    assert row.ytm_input_status == module.RATE_INPUT_STATUS_DIRTY
+    assert row.duration_quality_flag == module.DURATION_QUALITY_COUPON_UNAVAILABLE
+    expected_macaulay = common.estimate_duration(
+        date(2031, 3, 31),
+        report_date,
+        coupon_rate=Decimal("0"),
+        ytm=Decimal("0"),
+        bond_code="TB-DIRTY-001",
+    )
+    assert row.macaulay_duration == expected_macaulay

@@ -1,13 +1,16 @@
 """Contract tests for bond-analytics portfolio headlines & top holdings (formal envelope)."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
+from backend.app.repositories.user_scope_repo import UserScopeRepository
+from backend.app.schemas.materialize import CacheBuildRunRecord
 from tests.helpers import load_module
 
 REPORT_DATE = "2026-03-31"
@@ -82,6 +85,31 @@ def _replace_bond_headline_rows(repo: Any, *, report_date: str, rows: list[Any])
         repo.replace_bond_analytics_rows(report_date=report_date, rows=rows)
 
 
+def _append_completed_bond_analytics_build_run(governance_dir: Any, *, report_date: str) -> None:
+    from backend.app.services import bond_analytics_service as service
+
+    now = datetime.now(UTC).isoformat()
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_BUILD_RUN_STREAM,
+        CacheBuildRunRecord(
+            run_id=f"bond-headlines-contract-{report_date}",
+            job_name=service.JOB_NAME,
+            status="completed",
+            cache_key=service.CACHE_KEY,
+            cache_version=service.CACHE_VERSION,
+            lock=service.BOND_ANALYTICS_LOCK.key,
+            source_version="sv",
+            vendor_version="vv_none",
+            rule_version=service.RULE_VERSION,
+            report_date=report_date,
+            queued_at=now,
+            started_at=now,
+            finished_at=now,
+            created_at=now,
+        ).model_dump(),
+    )
+
+
 def _assert_formal_envelope(payload: dict[str, Any]) -> None:
     assert "result_meta" in payload
     assert "result" in payload
@@ -93,11 +121,22 @@ def _assert_formal_envelope(payload: dict[str, Any]) -> None:
         assert meta[key] not in (None, ""), f"result_meta.{key} must be non-empty"
 
 
-def test_portfolio_headlines_empty_duckdb(tmp_path, monkeypatch) -> None:
+def _grant_bond_analytics_read_scope() -> None:
+    settings = get_settings()
+    UserScopeRepository(settings.governance_sql_dsn or settings.postgres_dsn).grant_scope(
+        user_id="*",
+        role=None,
+        resource="bond_analytics",
+        action="read",
+    )
+
+
+def test_portfolio_headlines_empty_duckdb(tmp_path, monkeypatch, seed_wildcard_scope) -> None:
     duckdb_path = tmp_path / "empty.duckdb"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
     get_settings.cache_clear()
+    _grant_bond_analytics_read_scope()
     try:
         client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
         response = client.get(
@@ -117,13 +156,19 @@ def test_portfolio_headlines_empty_duckdb(tmp_path, monkeypatch) -> None:
         get_settings.cache_clear()
 
 
-def test_portfolio_headlines_weighted_yield_and_duration_exclude_other_or_no_maturity_assets(tmp_path, monkeypatch) -> None:
+def test_portfolio_headlines_weighted_yield_and_duration_exclude_other_or_no_maturity_assets(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+) -> None:
     from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 
     duckdb_path = tmp_path / "portfolio-headlines.duckdb"
+    governance_dir = tmp_path / "gov"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
-    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()
+    _grant_bond_analytics_read_scope()
     try:
         repo = BondAnalyticsRepository(str(duckdb_path))
         _replace_bond_headline_rows(
@@ -165,6 +210,7 @@ def test_portfolio_headlines_weighted_yield_and_duration_exclude_other_or_no_mat
                 ),
             ],
         )
+        _append_completed_bond_analytics_build_run(governance_dir, report_date=REPORT_DATE)
 
         client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
         response = client.get(
@@ -181,11 +227,12 @@ def test_portfolio_headlines_weighted_yield_and_duration_exclude_other_or_no_mat
         get_settings.cache_clear()
 
 
-def test_top_holdings_empty_duckdb(tmp_path, monkeypatch) -> None:
+def test_top_holdings_empty_duckdb(tmp_path, monkeypatch, seed_wildcard_scope) -> None:
     duckdb_path = tmp_path / "empty.duckdb"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
     get_settings.cache_clear()
+    _grant_bond_analytics_read_scope()
     try:
         client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
         response = client.get(

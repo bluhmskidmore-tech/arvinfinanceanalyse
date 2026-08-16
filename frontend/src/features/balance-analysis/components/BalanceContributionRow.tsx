@@ -1,10 +1,3 @@
-import "../../../lib/agGridSetup";
-import { AgGridReact } from "ag-grid-react";
-import type { ColDef, RowStyle } from "ag-grid-community";
-import "ag-grid-community/styles/ag-grid.css";
-import "ag-grid-community/styles/ag-theme-alpine.css";
-import "../../../styles/agGridInstitutional.css";
-
 import { AlertList } from "../../../components/AlertList";
 import { useBalanceAnalysisThreeColumnGridStyle } from "./balanceAnalysisLayout";
 import { BalanceStageTerminalPanel } from "./BalanceStageTerminalPanel";
@@ -19,28 +12,27 @@ type BalanceContributionRowProps = {
   variant?: "default" | "terminal";
 };
 
-const contributionColDefs: ColDef<BalanceStageContributionRow>[] = [
-  { field: "item", headerName: "项目", flex: 1, minWidth: 110 },
-  { field: "assetBal", headerName: "资产余额(亿元)", flex: 1, minWidth: 116 },
-  { field: "assetPct", headerName: "占比", width: 72 },
-  { field: "liabBal", headerName: "负债余额(亿元)", flex: 1, minWidth: 116 },
-  { field: "liabPct", headerName: "占比", width: 72 },
-  { field: "netGap", headerName: "净缺口(亿元)", flex: 1, minWidth: 108 },
-];
+const contributionColumns = [
+  { field: "item", headerName: "项目" },
+  { field: "assetBal", headerName: "资产余额(亿元)" },
+  { field: "assetPct", headerName: "占比" },
+  { field: "liabBal", headerName: "负债余额(亿元)" },
+  { field: "liabPct", headerName: "占比" },
+  { field: "netGap", headerName: "净缺口(亿元)" },
+] as const satisfies ReadonlyArray<{
+  field: keyof Pick<
+    BalanceStageContributionRow,
+    "item" | "assetBal" | "assetPct" | "liabBal" | "liabPct" | "netGap"
+  >;
+  headerName: string;
+}>;
 
-const tableShellStyle = {
-  overflowX: "auto" as const,
-  borderRadius: 10,
-  border: "1px solid #eef2f7",
-  background: "#ffffff",
-};
-
-function getStageContributionRowStyle(row?: BalanceStageContributionRow): RowStyle | undefined {
-  if (row?.rowKind === "gap") {
-    return { background: "#fbf1f0", color: "#b94743", fontWeight: 700 };
+function contributionRowClass(row: BalanceStageContributionRow): string | undefined {
+  if (row.rowKind === "gap") {
+    return rowStyles.contributionRowGap;
   }
-  if (row?.rowKind === "empty") {
-    return { color: "#8a99af", fontStyle: "italic" };
+  if (row.rowKind === "empty") {
+    return rowStyles.contributionRowEmpty;
   }
   return undefined;
 }
@@ -53,18 +45,28 @@ export function BalanceContributionRow({
   const isTerminal = variant === "terminal";
 
   const tablePanel = (
-    <div
-      className={`ag-theme-alpine ${isTerminal ? rowStyles.agGridTerminal : ""}`}
-      style={isTerminal ? undefined : { ...tableShellStyle, height: 300, width: "100%" }}
-    >
-      <AgGridReact<BalanceStageContributionRow>
-        theme="legacy"
-        rowData={model.rows}
-        columnDefs={contributionColDefs}
-        defaultColDef={{ sortable: false, resizable: true }}
-        getRowId={(p) => p.data.item}
-        getRowStyle={(p) => getStageContributionRowStyle(p.data)}
-      />
+    <div className={rowStyles.contributionTableShell}>
+      <table
+        className={`balance-analysis-table ${rowStyles.contributionTable}`}
+        data-testid="balance-analysis-contribution-table"
+      >
+        <thead>
+          <tr>
+            {contributionColumns.map((column) => (
+              <th key={column.field}>{column.headerName}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {model.rows.map((row) => (
+            <tr key={row.item} className={contributionRowClass(row)}>
+              {contributionColumns.map((column) => (
+                <td key={column.field}>{row[column.field]}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 

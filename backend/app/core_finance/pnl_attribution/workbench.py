@@ -7,12 +7,15 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from datetime import date, datetime
 from decimal import Decimal
+from math import isfinite
 from typing import Any, Literal
 
 from backend.app.core_finance.bond_analytics.common import (
     build_curve_points,
     build_full_curve,
+    get_tenor_bucket,
     interpolate_rate,
 )
 from backend.app.core_finance.bond_analytics.read_models import (
@@ -194,6 +197,12 @@ def _build_volume_rate_from_group_aggregates(
             }
         )
 
+    total_attrib_sum = (total_vol + total_rate + total_ix) if has_prior else None
+    total_recon_error = (
+        total_pnl_change - total_attrib_sum
+        if total_pnl_change is not None and total_attrib_sum is not None
+        else None
+    )
     return {
         "current_period": current_period,
         "previous_period": previous_period,
@@ -204,6 +213,7 @@ def _build_volume_rate_from_group_aggregates(
         "total_volume_effect": total_vol if has_prior else None,
         "total_rate_effect": total_rate if has_prior else None,
         "total_interaction_effect": total_ix if has_prior else None,
+        "total_recon_error": total_recon_error,
         "items": items,
         "has_previous_data": has_prior,
     }
@@ -221,6 +231,13 @@ def _tenor_bucket_mid_years(tenor: str) -> float:
     fixed = {"1Y": 1.0, "2Y": 2.0, "3Y": 3.0, "5Y": 5.0, "7Y": 7.0, "10Y": 10.0, "20Y": 20.0, "30Y": 30.0}
     if t in fixed:
         return fixed[t]
+    if t.endswith("M"):
+        try:
+            months = float(t[:-1])
+            if months > 0:
+                return months / 12.0
+        except ValueError:
+            pass
     if "-" in t and t.endswith("Y"):
         body = t[:-1]
         parts = body.split("-")
@@ -232,10 +249,27 @@ def _tenor_bucket_mid_years(tenor: str) -> float:
     return 5.0
 
 
+def _finite_float(value: object | None) -> float | None:
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if isfinite(parsed) else None
+
+
 def _weighted_ytm_float(rows: list[dict[str, Any]]) -> float | None:
-    """Market-value-weighted average YTM; returns float (not Decimal) or None if no MV."""
-    num = sum(_f(r.get("market_value")) * _f(r.get("ytm")) for r in rows)
-    den = sum(_f(r.get("market_value")) for r in rows)
+    """Market-value-weighted average YTM over rows with an explicit finite YTM."""
+    num = 0.0
+    den = 0.0
+    for row in rows:
+        ytm = _finite_float(row.get("ytm"))
+        market_value = _finite_float(row.get("market_value"))
+        if ytm is None or market_value is None:
+            continue
+        num += market_value * ytm
+        den += market_value
     if den <= 0:
         return None
     return num / den
@@ -266,6 +300,144 @@ def _roll_down_slope_bp(
 
 def _rows_for_bucket(all_rows: list[dict[str, Any]], tenor_bucket: str) -> list[dict[str, Any]]:
     return [r for r in all_rows if str(r.get("tenor_bucket") or "") == tenor_bucket]
+
+
+def _rows_with_current_tenor_bucket(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Apply one current tenor policy to both comparison dates without mutating facts."""
+    normalized: list[dict[str, Any]] = []
+    for row in rows:
+        years = _finite_float(row.get("years_to_maturity"))
+        if years is None or years <= 0:
+            normalized.append(row)
+            continue
+        tenor = get_tenor_bucket(years)
+        if tenor == str(row.get("tenor_bucket") or ""):
+            normalized.append(row)
+            continue
+        normalized_row = dict(row)
+        normalized_row["tenor_bucket"] = tenor
+        normalized.append(normalized_row)
+    return normalized
+
+
+RiskCoverageExclusionReason = Literal[
+    "no_maturity",
+    "missing_maturity",
+    "matured_or_expired",
+    "nonpositive_duration",
+]
+
+
+def _as_date(value: object | None) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
+
+
+def _risk_exclusion_reason(
+    row: dict[str, Any],
+    *,
+    report_date: str,
+) -> RiskCoverageExclusionReason | None:
+    """Return why a row cannot enter maturity-based duration attribution.
+
+    An explicit blank bond-ledger maturity is the governed no-maturity signal,
+    so it is never inferred from duration or a legacy tenor bucket. Rows from
+    older in-memory callers that do not carry a maturity_date key remain
+    compatible when they provide positive years to maturity and positive
+    modified duration.
+    """
+    years = _finite_float(row.get("years_to_maturity"))
+    has_maturity_field = "maturity_date" in row
+    maturity_value = row.get("maturity_date")
+    if has_maturity_field and (
+        maturity_value is None or not str(maturity_value).strip()
+    ):
+        return "no_maturity"
+    if has_maturity_field and _as_date(maturity_value) is None:
+        return "missing_maturity"
+    if not has_maturity_field and years is None:
+        return "missing_maturity"
+
+    market_value = _finite_float(row.get("market_value"))
+    if market_value == 0:
+        return None
+
+    maturity = _as_date(maturity_value)
+    as_of = _as_date(report_date)
+    if maturity is not None and as_of is not None and maturity <= as_of:
+        return "matured_or_expired"
+    if years is None:
+        return "nonpositive_duration"
+    if years <= 0:
+        return "matured_or_expired"
+
+    duration = _finite_float(row.get("modified_duration"))
+    if duration is None or duration <= 0:
+        return "nonpositive_duration"
+    return None
+
+
+def _partition_maturity_risk_rows(
+    rows: list[dict[str, Any]],
+    *,
+    report_date: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Split covered rows from rows that cannot support maturity risk math."""
+    covered: list[dict[str, Any]] = []
+    excluded: dict[RiskCoverageExclusionReason, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        reason = _risk_exclusion_reason(row, report_date=report_date)
+        if reason is None:
+            covered.append(row)
+        else:
+            excluded[reason].append(row)
+
+    total_mv = sum(_f(row.get("market_value")) for row in rows)
+    covered_mv = sum(_f(row.get("market_value")) for row in covered)
+    excluded_mv = sum(
+        _f(row.get("market_value"))
+        for reason_rows in excluded.values()
+        for row in reason_rows
+    )
+    coverage_pct = covered_mv / total_mv * 100.0 if total_mv != 0 else 0.0
+    excluded_pct = excluded_mv / total_mv * 100.0 if total_mv != 0 else 0.0
+    reason_order: tuple[RiskCoverageExclusionReason, ...] = (
+        "no_maturity",
+        "missing_maturity",
+        "matured_or_expired",
+        "nonpositive_duration",
+    )
+    exclusions = [
+        {
+            "reason": reason,
+            "row_count": len(excluded[reason]),
+            "market_value": sum(_f(row.get("market_value")) for row in excluded[reason]),
+        }
+        for reason in reason_order
+        if excluded[reason]
+    ]
+    return covered, {
+        "total_row_count": len(rows),
+        "covered_row_count": len(covered),
+        "excluded_row_count": len(rows) - len(covered),
+        "total_market_value": total_mv,
+        "covered_market_value": covered_mv,
+        "excluded_market_value": excluded_mv,
+        "coverage_pct": round(coverage_pct, 4),
+        "excluded_pct": round(excluded_pct, 4),
+        "exclusions": exclusions,
+    }
 
 
 def build_volume_rate_attribution(
@@ -633,8 +805,16 @@ def build_spread_attribution(
     treasury_10y_start_pct: float | None,
     treasury_10y_end_pct: float | None,
 ) -> dict[str, Any]:
-    risk_end = summarize_portfolio_risk(bond_rows_end)
-    total_mv = float(risk_end["total_market_value"])
+    covered_end, risk_coverage = _partition_maturity_risk_rows(
+        bond_rows_end,
+        report_date=report_date,
+    )
+    covered_start, _ = _partition_maturity_risk_rows(
+        bond_rows_start,
+        report_date=start_date,
+    )
+    risk_end = summarize_portfolio_risk(covered_end)
+    total_mv = float(risk_coverage["total_market_value"])
     port_dur = float(risk_end["portfolio_modified_duration"])
 
     dt_pct = (
@@ -645,8 +825,8 @@ def build_spread_attribution(
     dt_dec = (dt_pct / 100.0) if dt_pct is not None else None
     d_bp = (dt_pct * 100.0) if dt_pct is not None else None
 
-    y_end = _weighted_ytm_float(bond_rows_end)
-    y_start = _weighted_ytm_float(bond_rows_start)
+    y_end = _weighted_ytm_float(covered_end)
+    y_start = _weighted_ytm_float(covered_start)
     dy_bond_dec = (y_end - y_start) if y_end is not None and y_start is not None else None
     spread_chg_dec = (
         (dy_bond_dec - dt_dec) if dy_bond_dec is not None and dt_dec is not None else None
@@ -655,11 +835,11 @@ def build_spread_attribution(
     items: list[dict[str, Any]] = []
     t_eff_tot = s_eff_tot = 0.0
     by_ac: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for r in bond_rows_end:
+    for r in covered_end:
         by_ac[str(r.get("asset_class_std") or "未分类")].append(r)
 
     by_ac_s: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for r in bond_rows_start:
+    for r in covered_start:
         by_ac_s[str(r.get("asset_class_std") or "未分类")].append(r)
 
     for ac, rows_e in sorted(by_ac.items()):
@@ -730,6 +910,7 @@ def build_spread_attribution(
         "total_price_change": round(total_price, 4),
         "primary_driver": driver,
         "interpretation": interp,
+        "risk_coverage": risk_coverage,
         "items": items,
     }
 
@@ -743,13 +924,23 @@ def build_krd_attribution(
     bond_rows_start: list[dict[str, Any]],
     treasury_shift_bp: float | None,
 ) -> dict[str, Any]:
-    risk = summarize_portfolio_risk(bond_rows_end)
-    total_mv = float(risk["total_market_value"])
+    normalized_end = _rows_with_current_tenor_bucket(bond_rows_end)
+    normalized_start = _rows_with_current_tenor_bucket(bond_rows_start)
+    covered_end, risk_coverage = _partition_maturity_risk_rows(
+        normalized_end,
+        report_date=report_date,
+    )
+    covered_start, _ = _partition_maturity_risk_rows(
+        normalized_start,
+        report_date=start_date,
+    )
+    risk = summarize_portfolio_risk(covered_end)
+    total_mv = float(risk_coverage["total_market_value"])
     port_dur = float(risk["portfolio_modified_duration"])
     port_dv01 = float(risk["portfolio_dv01"])
-    dist_end = build_krd_distribution(bond_rows_end)
+    dist_end = build_krd_distribution(covered_end)
     by_bucket_start: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for r in bond_rows_start:
+    for r in covered_start:
         by_bucket_start[str(r.get("tenor_bucket") or "")].append(r)
 
     buckets_out: list[dict[str, Any]] = []
@@ -759,23 +950,25 @@ def build_krd_attribution(
         tenor = str(b["tenor_bucket"])
         mv = float(b["market_value"])
         w = (mv / total_mv * 100.0) if total_mv > 0 else 0.0
-        krd = float(b["krd"])
+        # Bucket metric is avg modified duration (not true KRD contribution).
+        avg_md = float(b.get("avg_modified_duration", b["krd"]))
         rows_s = by_bucket_start.get(tenor, [])
-        ye = _weighted_ytm_float(_rows_for_bucket(bond_rows_end, tenor))
+        rows_e = _rows_for_bucket(covered_end, tenor)
+        ye = _weighted_ytm_float(rows_e)
         ys = _weighted_ytm_float(rows_s)
         ychg = ((ye - ys) * 10000.0) if ye is not None and ys is not None else None
-        contrib = -mv * krd * (shift_bp / 10000.0)
+        contrib = -mv * avg_md * (shift_bp / 10000.0)
         total_dur_eff += contrib
-        bond_count = len(_rows_for_bucket(bond_rows_end, tenor))
         buckets_out.append(
             {
                 "tenor": tenor,
                 "tenor_years": _tenor_bucket_mid_years(tenor),
                 "market_value": mv,
                 "weight": round(w, 4),
-                "bond_count": bond_count,
-                "bucket_duration": krd,
-                "krd": round(krd, 4),
+                "bond_count": len(rows_e),
+                "bucket_duration": avg_md,
+                "avg_modified_duration": round(avg_md, 4),
+                "krd": round(avg_md, 4),  # deprecated alias of avg_modified_duration
                 "yield_change": ychg,
                 "duration_contribution": round(contrib, 4),
                 "contribution_pct": 0.0,
@@ -794,7 +987,10 @@ def build_krd_attribution(
             max_val = b["duration_contribution"]
             max_tenor = str(b["tenor"])
     curve_type = "parallel"
-    interp = "组合 KRD 桶贡献基于关键久期近似与国债平移假设。"
+    interp = (
+        "期限桶久期效应按期末市值、桶内平均修正久期与同一 10Y 国债收益率平移估算；"
+        "各桶 Δyield 仅作诊断展示，不参与贡献计算，非逐关键期限 KRD。"
+    )
     return {
         "report_date": report_date,
         "start_date": start_date,
@@ -805,6 +1001,7 @@ def build_krd_attribution(
         "total_duration_effect": round(total_dur_eff, 4),
         "curve_shift_type": curve_type,
         "curve_interpretation": interp,
+        "risk_coverage": risk_coverage,
         "buckets": buckets_out,
         "max_contribution_tenor": max_tenor,
         "max_contribution_value": round(float(max_val), 4),

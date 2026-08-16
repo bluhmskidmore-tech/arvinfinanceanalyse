@@ -128,8 +128,8 @@ def test_choice_funding_probe_dry_run_payload_uses_default_catalog():
     assert payload["opportunity_id"] == "choice_funding_conditions"
     assert payload["choice_api_function"] == "edb"
     assert payload["wrapper_status"] == "available"
-    assert payload["total_candidates"] == 30
-    assert payload["batch_count"] == 3
+    assert payload["total_candidates"] == 31
+    assert payload["batch_count"] == 4
     assert payload["landing_targets"] == ["fact_choice_macro_daily", "choice_market_snapshot"]
     first_batch = payload["batches"][0]
     assert first_batch["batch_index"] == 1
@@ -159,14 +159,14 @@ def test_choice_funding_probe_execute_summarizes_success_and_failure_without_wri
 
     assert payload["status"] == "partial"
     assert payload["execute"] is True
-    assert payload["completed_batches"] == 2
+    assert payload["completed_batches"] == 3
     assert payload["failed_batches"] == 1
     assert payload["write_performed"] is False
-    assert len(payload["probe_results"]) == 3
+    assert len(payload["probe_results"]) == 4
     assert payload["probe_results"][0]["status"] == "completed"
     assert payload["probe_results"][1]["status"] == "failed"
     assert "Choice entitlement denied" in payload["probe_results"][1]["error_message"]
-    assert len(calls) == 3
+    assert len(calls) == 4
 
 
 def test_choice_funding_probe_execute_treats_nonzero_error_code_as_failed():
@@ -188,7 +188,7 @@ def test_choice_funding_probe_execute_treats_nonzero_error_code_as_failed():
 
     assert payload["status"] == "failed"
     assert payload["completed_batches"] == 0
-    assert payload["failed_batches"] == 1
+    assert payload["failed_batches"] == 2
     result = payload["probe_results"][0]
     assert result["status"] == "failed"
     assert result["error_code"] == 10001012
@@ -390,9 +390,9 @@ def test_choice_funding_probe_execute_can_limit_batches():
 
     assert payload["status"] == "completed"
     assert payload["batch_count"] == 1
-    assert payload["total_candidates"] == 30
+    assert payload["total_candidates"] == 31
     assert payload["selected_batch_count"] == 1
-    assert payload["available_batch_count"] == 3
+    assert payload["available_batch_count"] == 4
     assert len(calls) == 1
     assert len(payload["probe_results"]) == 1
 
@@ -403,8 +403,8 @@ def test_choice_funding_probe_cli_emits_json_dry_run(capsys):
     assert exit_code == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "dry_run"
-    assert payload["batch_count"] == 2
-    assert payload["total_candidates"] == 30
+    assert payload["batch_count"] == 3
+    assert payload["total_candidates"] == 31
     assert payload["preflight"]["status"] == "skipped"
 
 
@@ -460,7 +460,7 @@ def test_choice_funding_probe_cli_writes_output_path(tmp_path: Path, capsys):
     file_payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert stdout_payload == file_payload
     assert file_payload["batch_count"] == 1
-    assert file_payload["available_batch_count"] == 2
+    assert file_payload["available_batch_count"] == 3
     assert file_payload["selected_batch_count"] == 1
 
 

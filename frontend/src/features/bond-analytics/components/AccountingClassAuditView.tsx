@@ -1,14 +1,22 @@
 import { useEffect, useState } from "react";
-import { Card, Statistic, Row, Col, Table, Tag, Alert, Spin } from "antd";
+import { Card, Statistic, Row, Col, Table, Tag, Alert } from "antd";
 import { useApiClient } from "../../../api/client";
 import type { Numeric } from "../../../api/contracts";
 import type { AccountingClassAuditResponse } from "../types";
+import { EM_DASH } from "../../../utils/format";
 import { formatPct, formatYi } from "../utils/formatters";
+import {
+  DetailEmptyNote,
+  DetailPanelSkeleton,
+  formatDetailComputedAt,
+  withNumericColumns,
+} from "./BondAnalyticsDetailPrimitives";
+import detailStyles from "./BondAnalyticsDetailPrimitives.module.css";
 import { SectionLead } from "./SectionLead";
 
 function matchLabel(raw: string | null): string {
   if (raw === null || raw === undefined || raw === "") {
-    return "—";
+    return EM_DASH;
   }
   const m: Record<string, string> = {
     exact: "精确匹配",
@@ -20,52 +28,76 @@ function matchLabel(raw: string | null): string {
   return m[raw.toLowerCase()] ?? raw;
 }
 
+/** 规则 ID 保留审计价值，但剥掉技术前缀（accounting_rule_id:R02 → R02）；完整原值进 title 供复核。 */
+function ruleIdCell(raw: string | null) {
+  if (raw === null || raw === undefined || raw === "") {
+    return EM_DASH;
+  }
+  const compact = raw.replace(/^accounting_rule_id\s*[:：]\s*/i, "");
+  return <span title={raw}>{compact}</span>;
+}
+
 interface Props {
   reportDate: string;
 }
 
-const auditColumns = [
-  { title: "资产类别", dataIndex: "asset_class", key: "asset_class", width: 200 },
-  { title: "持仓数", dataIndex: "position_count", key: "position_count", width: 80 },
-  { title: "市值", dataIndex: "market_value", key: "market_value", width: 120, render: formatYi },
-  {
-    title: "权重",
-    dataIndex: "market_value_weight",
-    key: "market_value_weight",
-    width: 80,
-    render: (v: Numeric) => formatPct(v),
-  },
-  { title: "推断分类", dataIndex: "infer_accounting_class", key: "infer_accounting_class", width: 90 },
-  { title: "映射分类", dataIndex: "map_accounting_class", key: "map_accounting_class", width: 90 },
-  { title: "推断规则", dataIndex: "infer_rule_id", key: "infer_rule_id", width: 80 },
-  {
-    title: "推断匹配",
-    dataIndex: "infer_match",
-    key: "infer_match",
-    width: 88,
-    render: (v: string | null) => matchLabel(v),
-  },
-  { title: "映射规则", dataIndex: "map_rule_id", key: "map_rule_id", width: 80 },
-  {
-    title: "映射匹配",
-    dataIndex: "map_match",
-    key: "map_match",
-    width: 88,
-    render: (v: string | null) => matchLabel(v),
-  },
-  {
-    title: "状态",
-    key: "flags",
-    width: 140,
-    render: (_: unknown, row: { is_divergent: boolean; is_map_unclassified: boolean }) => (
-      <>
-        {row.is_divergent && <Tag color="error">分歧</Tag>}
-        {row.is_map_unclassified && <Tag color="warning">未分类</Tag>}
-        {!row.is_divergent && !row.is_map_unclassified && <Tag color="success">一致</Tag>}
-      </>
-    ),
-  },
-];
+const auditColumns = withNumericColumns(
+  [
+    { title: "资产类别", dataIndex: "asset_class", key: "asset_class", width: 200 },
+    { title: "持仓数", dataIndex: "position_count", key: "position_count", width: 80 },
+    { title: "市值", dataIndex: "market_value", key: "market_value", width: 120, render: formatYi },
+    {
+      title: "权重",
+      dataIndex: "market_value_weight",
+      key: "market_value_weight",
+      width: 80,
+      render: (v: Numeric) => formatPct(v),
+    },
+    { title: "推断分类", dataIndex: "infer_accounting_class", key: "infer_accounting_class", width: 90 },
+    { title: "映射分类", dataIndex: "map_accounting_class", key: "map_accounting_class", width: 90 },
+    {
+      title: "推断规则",
+      dataIndex: "infer_rule_id",
+      key: "infer_rule_id",
+      width: 80,
+      render: (v: string | null) => ruleIdCell(v),
+    },
+    {
+      title: "推断匹配",
+      dataIndex: "infer_match",
+      key: "infer_match",
+      width: 88,
+      render: (v: string | null) => matchLabel(v),
+    },
+    {
+      title: "映射规则",
+      dataIndex: "map_rule_id",
+      key: "map_rule_id",
+      width: 80,
+      render: (v: string | null) => ruleIdCell(v),
+    },
+    {
+      title: "映射匹配",
+      dataIndex: "map_match",
+      key: "map_match",
+      width: 88,
+      render: (v: string | null) => matchLabel(v),
+    },
+    {
+      title: "状态",
+      key: "flags",
+      width: 140,
+      render: (_: unknown, row: { is_divergent: boolean; is_map_unclassified: boolean }) => (
+        <>
+          {row.is_divergent && <Tag color="error">分歧</Tag>}
+          {row.is_map_unclassified && <Tag color="warning">未分类</Tag>}
+          {!row.is_divergent && !row.is_map_unclassified && <Tag color="success">一致</Tag>}
+        </>
+      ),
+    },
+  ],
+  ["position_count", "market_value", "market_value_weight"],
+);
 
 export function AccountingClassAuditView({ reportDate }: Props) {
   const client = useApiClient();
@@ -93,12 +125,12 @@ export function AccountingClassAuditView({ reportDate }: Props) {
     };
   }, [client, reportDate]);
 
-  if (loading) return <Spin style={{ display: "block", margin: "40px auto" }} />;
+  if (loading) return <DetailPanelSkeleton testId="accounting-class-audit-loading" />;
   if (error) return <Alert type="error" message={`加载失败：${error}`} />;
   if (!data) return null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className={detailStyles.view}>
       <SectionLead
         eyebrow="会计分类"
         title="会计分类审计概览"
@@ -106,11 +138,11 @@ export function AccountingClassAuditView({ reportDate }: Props) {
         testId="accounting-class-audit-shell-lead"
       />
       {data.computed_at ? (
-        <div style={{ fontSize: 12, color: "#8090a8" }} data-testid="accounting-class-audit-computed-at">
-          计算时间：{data.computed_at}
+        <div style={{ fontSize: 12, color: "var(--dh-api-muted)" }} data-testid="accounting-class-audit-computed-at">
+          计算时间：{formatDetailComputedAt(data.computed_at)}
         </div>
       ) : null}
-      <Row gutter={16}>
+      <Row gutter={[12, 12]} className={detailStyles.kpiGrid}>
         <Col span={6}>
           <Card size="small">
             <Statistic title="资产类别数（去重）" value={data.distinct_asset_classes} />
@@ -121,7 +153,7 @@ export function AccountingClassAuditView({ reportDate }: Props) {
             <Statistic
               title="分歧分类"
               value={data.divergent_asset_classes}
-              valueStyle={data.divergent_asset_classes > 0 ? { color: "#cf1322" } : undefined}
+              valueStyle={data.divergent_asset_classes > 0 ? { color: "var(--dh-api-red)" } : undefined}
             />
           </Card>
         </Col>
@@ -130,7 +162,7 @@ export function AccountingClassAuditView({ reportDate }: Props) {
             <Statistic
               title="映射为其他（other）"
               value={data.map_unclassified_asset_classes}
-              valueStyle={data.map_unclassified_asset_classes > 0 ? { color: "#faad14" } : undefined}
+              valueStyle={data.map_unclassified_asset_classes > 0 ? { color: "var(--dh-api-amber)" } : undefined}
             />
           </Card>
         </Col>
@@ -140,7 +172,7 @@ export function AccountingClassAuditView({ reportDate }: Props) {
           </Card>
         </Col>
       </Row>
-      <Row gutter={16}>
+      <Row gutter={[12, 12]} className={detailStyles.kpiGrid}>
         <Col span={8}>
           <Card size="small" data-testid="accounting-audit-total-positions">
             <Statistic title="持仓笔数（顶层）" value={data.total_positions} />
@@ -151,7 +183,7 @@ export function AccountingClassAuditView({ reportDate }: Props) {
             <Statistic
               title="分歧持仓数"
               value={data.divergent_position_count}
-              valueStyle={data.divergent_position_count > 0 ? { color: "#cf1322" } : undefined}
+              valueStyle={data.divergent_position_count > 0 ? { color: "var(--dh-api-red)" } : undefined}
             />
           </Card>
         </Col>
@@ -161,19 +193,19 @@ export function AccountingClassAuditView({ reportDate }: Props) {
               title="分歧持仓市值"
               value={formatYi(data.divergent_market_value)}
               valueStyle={
-                Number(data.divergent_market_value.raw) !== 0 ? { color: "#cf1322" } : undefined
+                Number(data.divergent_market_value.raw) !== 0 ? { color: "var(--dh-api-red)" } : undefined
               }
             />
           </Card>
         </Col>
       </Row>
-      <Row gutter={16}>
+      <Row gutter={[12, 12]} className={detailStyles.kpiGrid}>
         <Col span={12}>
           <Card size="small">
             <Statistic
               title="映射未分类持仓数"
               value={data.map_unclassified_position_count}
-              valueStyle={data.map_unclassified_position_count > 0 ? { color: "#faad14" } : undefined}
+              valueStyle={data.map_unclassified_position_count > 0 ? { color: "var(--dh-api-amber)" } : undefined}
             />
           </Card>
         </Col>
@@ -183,7 +215,7 @@ export function AccountingClassAuditView({ reportDate }: Props) {
               title="映射未分类市值"
               value={formatYi(data.map_unclassified_market_value)}
               valueStyle={
-                Number(data.map_unclassified_market_value.raw) !== 0 ? { color: "#faad14" } : undefined
+                Number(data.map_unclassified_market_value.raw) !== 0 ? { color: "var(--dh-api-amber)" } : undefined
               }
             />
           </Card>
@@ -197,7 +229,7 @@ export function AccountingClassAuditView({ reportDate }: Props) {
         testId="accounting-class-audit-rules-lead"
       />
       <Card size="small">
-        <div style={{ fontSize: 13, color: "#5c6b82", marginBottom: 12 }}>
+        <div style={{ fontSize: 13, color: "var(--dh-api-muted)", marginBottom: 12 }}>
           <p style={{ margin: "0 0 8px" }}>
             本审计对比两条会计分类路径：
           </p>
@@ -217,7 +249,7 @@ export function AccountingClassAuditView({ reportDate }: Props) {
         description="明细表继续展示后端行数据，保留分歧、未分类和一致状态标记。"
         testId="accounting-class-audit-detail-lead"
       />
-      {data.rows.length > 0 && (
+      {data.rows.length > 0 ? (
         <Card title="审计明细" size="small">
           <Table
             dataSource={data.rows}
@@ -228,6 +260,10 @@ export function AccountingClassAuditView({ reportDate }: Props) {
             scroll={{ x: 1200 }}
           />
         </Card>
+      ) : (
+        <DetailEmptyNote testId="accounting-class-audit-empty">
+          暂无会计分类审计明细
+        </DetailEmptyNote>
       )}
 
       {data.warnings.length > 0 && (

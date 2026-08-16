@@ -110,6 +110,41 @@ class LiabilityAnalyticsRepository:
             dates,
         )
 
+    def _fetch_snapshot_zqtz_rows_for_dates(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        dates: list[str],
+    ) -> list[dict[str, Any]]:
+        if not dates or not self._table_exists(conn, "zqtz_bond_daily_snapshot"):
+            return []
+        placeholders = ", ".join(["?::date"] * len(dates))
+        return self._fetch_dict_rows(
+            conn,
+            f"""
+            select report_date, instrument_code, instrument_name, asset_class, bond_type, is_issuance_like,
+                   face_value_native, market_value_native, amortized_cost_native,
+                   coupon_rate, ytm_value, maturity_date, source_version, rule_version,
+                   cast(NULL as varchar) as asset_type
+            from zqtz_bond_daily_snapshot
+            where report_date in ({placeholders})
+            order by report_date desc, instrument_code
+            """,
+            dates,
+        )
+
+    def _fetch_zqtz_rows_for_dates_with_connection(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        dates: list[str],
+    ) -> dict[str, list[dict[str, Any]]]:
+        formal_rows = self._fetch_formal_zqtz_cny_yield_rows_for_dates(conn, dates)
+        rows_by_date = self._group_rows_by_report_date(formal_rows)
+        missing_dates = [d for d in dates if d not in rows_by_date]
+        if missing_dates:
+            snapshot_rows = self._fetch_snapshot_zqtz_rows_for_dates(conn, missing_dates)
+            rows_by_date.update(self._group_rows_by_report_date(snapshot_rows))
+        return rows_by_date
+
     def _fetch_formal_zqtz_cny_yield_rows_for_dates(
         self,
         conn: duckdb.DuckDBPyConnection,
@@ -217,25 +252,7 @@ class LiabilityAnalyticsRepository:
             conn.close()
 
     def fetch_zqtz_rows(self, report_date: str) -> list[dict[str, Any]]:
-        conn = self._connect()
-        if conn is None:
-            return []
-        try:
-            if not self._table_exists(conn, "zqtz_bond_daily_snapshot"):
-                return []
-            return self._fetch_dict_rows(
-                conn,
-                """
-                select report_date, instrument_code, instrument_name, asset_class, bond_type, is_issuance_like,
-                       face_value_native, market_value_native, amortized_cost_native,
-                       coupon_rate, ytm_value, maturity_date, source_version, rule_version
-                from zqtz_bond_daily_snapshot
-                where report_date = ?::date
-                """,
-                [report_date],
-            )
-        finally:
-            conn.close()
+        return self.fetch_zqtz_rows_for_dates([report_date]).get(str(report_date).strip(), [])
 
     def fetch_zqtz_rows_for_dates(self, report_dates: list[str]) -> dict[str, list[dict[str, Any]]]:
         dates = [str(d).strip() for d in report_dates if str(d or "").strip()]
@@ -245,24 +262,9 @@ class LiabilityAnalyticsRepository:
         if conn is None:
             return {}
         try:
-            if not self._table_exists(conn, "zqtz_bond_daily_snapshot"):
-                return {}
-            placeholders = ", ".join(["?::date"] * len(dates))
-            rows = self._fetch_dict_rows(
-                conn,
-                f"""
-                select report_date, instrument_code, instrument_name, asset_class, bond_type, is_issuance_like,
-                       face_value_native, market_value_native, amortized_cost_native,
-                       coupon_rate, ytm_value, maturity_date, source_version, rule_version
-                from zqtz_bond_daily_snapshot
-                where report_date in ({placeholders})
-                order by report_date desc, instrument_code
-                """,
-                dates,
-            )
+            return self._fetch_zqtz_rows_for_dates_with_connection(conn, dates)
         finally:
             conn.close()
-        return self._group_rows_by_report_date(rows)
 
     def fetch_zqtz_yield_rows_for_dates(self, report_dates: list[str]) -> dict[str, list[dict[str, Any]]]:
         dates = [str(d).strip() for d in report_dates if str(d or "").strip()]

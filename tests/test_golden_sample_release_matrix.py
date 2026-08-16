@@ -42,4 +42,7 @@ def test_release_suite_gates_page_finance_and_references_mcp_boundary_checks():
     assert "tests/test_live_route_page_contract_completeness.py" in module.RELEASE_SUITE_TESTS
     assert "tests/test_no_finance_logic_in_frontend.py" in module.RELEASE_SUITE_TESTS
     assert "tests/test_project_mcp_servers.py" not in module.RELEASE_SUITE_TESTS
-    assert module.GOVERNANCE_MCP_SUITE_TESTS == ["tests/test_project_mcp_servers.py"]
+    assert module.GOVERNANCE_MCP_FAST_SUITE_TESTS == [
+        "tests/test_project_mcp_fast_contracts.py"
+    ]
+    assert module.GOVERNANCE_MCP_FULL_SUITE_TESTS == ["tests/test_project_mcp_servers.py"]

@@ -3,13 +3,22 @@ import type {
   ChoiceMacroLatestPayload,
   ChoiceMacroLatestPoint,
   FxAnalyticalPayload,
+  FxFormalStatusPayload,
   MacroBondLinkagePayload,
   MacroBondLinkageTopCorrelation,
+  MarketDataBondFuturesRankingsPayload,
+  MarketDataCoverageSection,
+  MarketDataCoverageSummaryPayload,
   MacroVendorPayload,
   ResultMeta,
 } from "../../../api/contracts";
 import type { EChartsOption } from "../../../lib/echarts";
-import { designTokens } from "../../../theme/designSystem";
+import { nocturneTokens } from "../../../theme/designSystem";
+import { EM_DASH, textOrDash } from "../../../pageModel";
+import {
+  buildMarketDataChartTooltip,
+  marketDataChartTheme,
+} from "../lib/charts/marketDataChartTheme";
 import type { MarketOverviewMetric } from "./MarketDataHeroSection";
 import { RATE_TREND_DEFINITIONS } from "./marketDataMacroConstants";
 import {
@@ -20,16 +29,21 @@ import {
   buildLivermoreStrategyModel,
   type LivermoreStrategyModel,
 } from "../lib/livermoreStrategyModel";
+import { isLinkageSelfCorrelation } from "../lib/marketDataLinkageFormat";
 import {
   buildMarketDataTerminalModel,
+  buildTerminalTickerItems,
+  type MarketCreditSegmentFilter,
   type MarketDataTerminalModel,
+  type MarketTerminalTickerItem,
 } from "../lib/marketDataTerminalModel";
 
 export type SpreadTenorSlot = "3Y" | "5Y" | "10Y";
+export type { MarketCreditSegmentFilter };
 
 const SPREAD_TENOR_SLOTS: SpreadTenorSlot[] = ["3Y", "5Y", "10Y"];
 
-type SpreadSlot = {
+export type SpreadSlot = {
   tenor: SpreadTenorSlot;
   point: MacroBondLinkageTopCorrelation | null;
 };
@@ -43,6 +57,7 @@ export type MarketDataStatusBadges = {
 export type MarketDataEvidenceLines = {
   formalRates: string;
   macroLatest: string;
+  fxFormal: string;
   fxAnalytical: string;
   ncdProxy: string;
   livermore: string;
@@ -54,6 +69,8 @@ export type MarketDataPageModel = MarketDataCategoryStore & {
   latestSeries: ChoiceMacroLatestPoint[];
   fxAnalyticalGroups: FxAnalyticalPayload["groups"];
   terminalModel: MarketDataTerminalModel;
+  coverageSummary: MarketDataCoverageSummaryPayload | null;
+  coverageSections: MarketDataCoverageSection[];
   rateTrendChartOption: EChartsOption | null;
   livermoreStrategy: LivermoreStrategyModel | null;
   macroBondLinkage: Partial<MacroBondLinkagePayload>;
@@ -64,6 +81,8 @@ export type MarketDataPageModel = MarketDataCategoryStore & {
   nonSpreadTopCorrelations: MacroBondLinkageTopCorrelation[];
   macroMeta: ResultMeta | undefined;
   formalRatesMeta: ResultMeta | undefined;
+  fxFormalStatus: FxFormalStatusPayload | null;
+  fxFormalMeta: ResultMeta | undefined;
   fxAnalyticalMeta: ResultMeta | undefined;
   ncdFundingProxyMeta: ResultMeta | undefined;
   rateQuotesSource: MarketDataTerminalModel["rateQuotes"]["source"];
@@ -71,14 +90,19 @@ export type MarketDataPageModel = MarketDataCategoryStore & {
   isFormalBasis: boolean;
   statusBadges: MarketDataStatusBadges;
   evidenceLines: MarketDataEvidenceLines;
-  overviewMetrics: MarketOverviewMetric[];
+  terminalTickerItems: MarketTerminalTickerItem[];
+  terminalKpiMetrics: MarketOverviewMetric[];
+  pipelineOverviewMetrics: MarketOverviewMetric[];
 };
 
 type BuildMarketDataPageModelInput = {
   catalogEnvelope?: ApiEnvelope<MacroVendorPayload>;
   latestEnvelope?: ApiEnvelope<ChoiceMacroLatestPayload>;
   fxAnalyticalEnvelope?: ApiEnvelope<FxAnalyticalPayload>;
+  fxFormalStatusEnvelope?: ApiEnvelope<FxFormalStatusPayload>;
   formalRatesEnvelope?: ApiEnvelope<ChoiceMacroLatestPayload>;
+  bondFuturesRankingsEnvelope?: ApiEnvelope<MarketDataBondFuturesRankingsPayload>;
+  coverageSummaryEnvelope?: ApiEnvelope<MarketDataCoverageSummaryPayload>;
   macroBondLinkageEnvelope?: ApiEnvelope<MacroBondLinkagePayload>;
   livermoreStrategyEnvelope?: Parameters<typeof buildLivermoreStrategyModel>[0]["envelope"];
   ncdFundingProxyMeta?: ResultMeta;
@@ -94,6 +118,13 @@ function recentTimelineForMacroPoint(point: ChoiceMacroLatestPoint | undefined) 
   }
   return map;
 }
+
+/** 走势线取色与期限结构图对齐：国债=蓝紫 accent、国开=绿、SHIBOR=琥珀。 */
+const RATE_TREND_SERIES_COLORS = [
+  nocturneTokens.color.blue,
+  nocturneTokens.color.green,
+  nocturneTokens.color.amber,
+] as const;
 
 export function buildMarketDataRateTrendChartOption(
   series: ChoiceMacroLatestPoint[],
@@ -119,29 +150,66 @@ export function buildMarketDataRateTrendChartOption(
     }
   }
   const categories = [...dateSet].sort((a, b) => a.localeCompare(b));
-  const lineSeries = RATE_TREND_DEFINITIONS.map((def, i) => ({
-    name: def.name,
-    type: "line" as const,
-    smooth: true,
-    showSymbol: categories.length <= 36,
-    connectNulls: true,
-    data: categories.map((d) => maps[i].get(d) ?? null),
-  }));
+  const lineSeries = RATE_TREND_DEFINITIONS.map((def, i) => {
+    const color = RATE_TREND_SERIES_COLORS[i] ?? nocturneTokens.color.accent400;
+    return {
+      name: def.name,
+      type: "line" as const,
+      smooth: true,
+      symbol: "circle" as const,
+      symbolSize: 4,
+      showSymbol: categories.length <= 36,
+      connectNulls: true,
+      itemStyle: { color },
+      lineStyle: { color, width: i === 0 ? 2 : 1.5 },
+      areaStyle:
+        i === 0
+          ? {
+              color: {
+                type: "linear" as const,
+                x: 0,
+                y: 0,
+                x2: 0,
+                y2: 1,
+                colorStops: [
+                  { offset: 0, color: nocturneTokens.color.blueSoft },
+                  { offset: 1, color: `${nocturneTokens.color.blue}00` },
+                ],
+              },
+            }
+          : undefined,
+      data: categories.map((d) => maps[i].get(d) ?? null),
+    };
+  });
   return {
-    color: [
-      designTokens.color.info[500],
-      designTokens.color.semantic.up,
-      designTokens.color.warning[400],
-    ],
-    tooltip: { trigger: "axis" },
-    legend: { bottom: 0 },
+    color: [...RATE_TREND_SERIES_COLORS],
+    tooltip: buildMarketDataChartTooltip({
+      trigger: "axis",
+      axisPointer: marketDataChartTheme.axisPointerLine,
+    }),
+    legend: {
+      bottom: 0,
+      type: "plain" as const,
+      itemWidth: 14,
+      itemHeight: 8,
+      textStyle: { ...marketDataChartTheme.axisLabel, color: nocturneTokens.color.inkSoft },
+    },
     grid: { left: 52, right: 20, top: 28, bottom: 52 },
-    xAxis: { type: "category", boundaryGap: false, data: categories },
+    xAxis: {
+      type: "category",
+      boundaryGap: false,
+      data: categories,
+      axisLabel: marketDataChartTheme.axisLabel,
+      axisLine: marketDataChartTheme.axisLine,
+    },
     yAxis: {
       type: "value",
       scale: true,
       name: unit || undefined,
-      axisLabel: { formatter: "{value}" },
+      splitNumber: 4,
+      nameTextStyle: marketDataChartTheme.axisLabel,
+      axisLabel: { ...marketDataChartTheme.axisLabel, formatter: "{value}" },
+      splitLine: marketDataChartTheme.splitLine,
     },
     series: lineSeries,
   };
@@ -155,22 +223,170 @@ function correlationStrength(point: MacroBondLinkageTopCorrelation) {
   );
 }
 
-function buildSpreadSlots(
+function creditSegmentMatches(seriesName: string, creditSegment: MarketCreditSegmentFilter): boolean {
+  if (creditSegment === "both") {
+    return true;
+  }
+  if (creditSegment === "mtn") {
+    return seriesName.includes("中票");
+  }
+  return seriesName.includes("城投");
+}
+
+export function buildSpreadSlots(
   topCorrelations: MacroBondLinkageTopCorrelation[] | undefined,
+  creditSegment: MarketCreditSegmentFilter = "both",
+  spreadTenorCorrelations?: MacroBondLinkageTopCorrelation[] | undefined,
 ): SpreadSlot[] {
+  const dedicatedPool = (spreadTenorCorrelations ?? []).filter(
+    (item) =>
+      item.target_family === "credit_spread" && creditSegmentMatches(item.series_name, creditSegment),
+  );
+  if (dedicatedPool.length > 0) {
+    return SPREAD_TENOR_SLOTS.map((tenor) => ({
+      tenor,
+      point: dedicatedPool.find((item) => item.target_tenor === tenor) ?? null,
+    }));
+  }
+
+  const spreadPool = (topCorrelations ?? []).filter(
+    (item) =>
+      item.target_family === "credit_spread" && creditSegmentMatches(item.series_name, creditSegment),
+  );
+
   return SPREAD_TENOR_SLOTS.map((tenor) => ({
     tenor,
     point:
-      (topCorrelations ?? [])
-        .filter((item) => item.target_family === "credit_spread" && item.target_tenor === tenor)
+      spreadPool
+        .filter((item) => item.target_tenor === tenor)
         .sort((left, right) => correlationStrength(right) - correlationStrength(left))[0] ?? null,
   }));
 }
 
-function buildOverviewMetrics(input: {
+/** 格式化后 ±0（如 "+0.0bp"）视为零变动：不给方向色（DESIGN §4 零变动归中性）。 */
+function formattedDeltaIsZero(delta: string): boolean {
+  const numeric = delta.match(/[-+]?\d+(?:\.\d+)?/);
+  return numeric != null && Number.parseFloat(numeric[0]) === 0;
+}
+
+function terminalKpiTone(delta: string): MarketOverviewMetric["tone"] {
+  if (formattedDeltaIsZero(delta)) {
+    return "default";
+  }
+  if (delta.startsWith("+")) {
+    return "negative";
+  }
+  if (delta.startsWith("-")) {
+    return "positive";
+  }
+  return "default";
+}
+
+export function buildTerminalKpiMetricsFromTickerItems(
+  items: MarketTerminalTickerItem[],
+): MarketOverviewMetric[] {
+  return items.map((item) => ({
+    testId: `market-data-terminal-kpi-${item.key}`,
+    title: item.label,
+    value: item.value,
+    // vendor 序列代码属技术标识，收进 title（DESIGN §7），正文单行保持 1 个 "·"。
+    detail: `${item.delta} · ${item.tradeDate}`,
+    detailTitle: `${item.delta} · ${item.tradeDate} · ${item.seriesId}`,
+    tone: terminalKpiTone(item.delta),
+    valueVariant: "metric",
+    sparklineValues: item.sparklineValues,
+    sparklineTone: formattedDeltaIsZero(item.delta) ? "flat" : item.tone,
+  }));
+}
+
+const BRIDGE_KPI_PRIORITY = [
+  "market-data-terminal-kpi-cgb10y",
+  "market-data-terminal-kpi-dr007",
+  "market-data-terminal-kpi-cdb10y",
+  "market-data-terminal-kpi-cgb5y",
+] as const;
+
+export function buildBridgeKpiMetrics(
+  metrics: readonly MarketOverviewMetric[],
+  options?: { maxItems?: number },
+): MarketOverviewMetric[] {
+  const maxItems = options?.maxItems ?? 4;
+  const byTestId = new Map(metrics.map((metric) => [metric.testId, metric]));
+  const picked: MarketOverviewMetric[] = [];
+
+  for (const testId of BRIDGE_KPI_PRIORITY) {
+    const metric = byTestId.get(testId);
+    if (metric) {
+      picked.push(metric);
+    }
+    if (picked.length >= maxItems) {
+      return picked;
+    }
+  }
+
+  for (const metric of metrics) {
+    if (picked.some((item) => item.testId === metric.testId)) {
+      continue;
+    }
+    picked.push(metric);
+    if (picked.length >= maxItems) {
+      break;
+    }
+  }
+
+  return picked;
+}
+
+export function pickRailHighlightMetric(
+  metrics: readonly MarketOverviewMetric[],
+): MarketOverviewMetric | null {
+  const dr007 = metrics.find((metric) => metric.testId.includes("dr007"));
+  if (dr007) {
+    return dr007;
+  }
+  return metrics[0] ?? null;
+}
+
+export function buildMarketDataBasisChipLabel(input: {
+  basisLabel: string;
+  formalUseAllowedLabel: string;
+  formalUseBlocked: boolean;
+  watchDate: string;
+}): string {
+  const allowed = input.formalUseBlocked ? "暂不可正式使用" : input.formalUseAllowedLabel;
+  return `${input.basisLabel} · 正式使用 ${allowed} · 观察日 ${input.watchDate}`;
+}
+
+function buildTerminalKpiMetrics(terminalModel: MarketDataTerminalModel): MarketOverviewMetric[] {
+  return buildTerminalKpiMetricsFromTickerItems(buildTerminalTickerItems(terminalModel));
+}
+
+export function buildFxFormalStatusCollapseLabel(input: {
+  payload: FxFormalStatusPayload | null | undefined;
+  isLoading: boolean;
+  isError: boolean;
+}): string {
+  if (input.isLoading) {
+    return "正式外汇中间价（加载中…）";
+  }
+  if (input.isError) {
+    return "正式外汇中间价（加载失败）";
+  }
+  const payload = input.payload;
+  if (!payload) {
+    return "正式外汇中间价";
+  }
+  const carryForwardNote =
+    payload.carry_forward_count > 0 ? `（沿用 ${payload.carry_forward_count}）` : "";
+  return `正式外汇中间价 · 已落地 ${payload.materialized_count}/${payload.candidate_count}${carryForwardNote}`;
+}
+
+function buildPipelineOverviewMetrics(input: {
   catalogCount: number;
   categoryStore: MarketDataCategoryStore;
   fxAnalyticalGroupCount: number;
+  fxFormalStatus?: FxFormalStatusPayload | null;
+  fxFormalMeta?: ResultMeta;
 }): MarketOverviewMetric[] {
   const { categoryStore } = input;
   return [
@@ -215,21 +431,33 @@ function buildOverviewMetrics(input: {
             : "default",
     },
     {
+      testId: "market-data-fx-formal-materialized",
+      title: "正式外汇物化",
+      value: `${input.fxFormalStatus?.materialized_count ?? 0} / ${input.fxFormalStatus?.candidate_count ?? 0}`,
+      detail: `物化/候选对数 · 最新交易日 ${input.fxFormalStatus?.latest_trade_date ?? EM_DASH} · 沿用 ${input.fxFormalStatus?.carry_forward_count ?? 0}`,
+      tone:
+        input.fxFormalMeta?.formal_use_allowed === false
+          ? "warning"
+          : (input.fxFormalStatus?.materialized_count ?? 0) === 0
+            ? "warning"
+            : "default",
+    },
+    {
       testId: "market-data-fx-analytical-group-count",
       title: "外汇观察分组",
       value: String(input.fxAnalyticalGroupCount),
-      detail: "后端返回的分析口径外汇分组数量。",
+      detail: "后端返回的分析口径外汇分组数量（与正式外汇状态分离）。",
     },
     {
       testId: "market-data-fx-analytical-series-count",
-      title: "外汇观察序列",
+      title: "外汇观察条目",
       value: String(categoryStore.fxAnalyticalSeriesCount),
-      detail: "分析口径外汇观察值与正式外汇状态保持分离。",
+      detail: "分析口径外汇序列与事件背景均不进入正式外汇状态。",
     },
     {
       testId: "market-data-linkage-report-date",
       title: "联动报告日",
-      value: categoryStore.linkageReportDate || "—",
+      value: textOrDash(categoryStore.linkageReportDate),
       detail: "宏观-债市联动分析使用的报告日期。",
       valueVariant: "text",
       tone: categoryStore.linkageReportDate ? "default" : "warning",
@@ -240,6 +468,7 @@ function buildOverviewMetrics(input: {
 function buildEvidenceLines(input: {
   formalRatesMeta?: ResultMeta;
   latestMeta?: ResultMeta;
+  fxFormalMeta?: ResultMeta;
   fxAnalyticalMeta?: ResultMeta;
   ncdFundingProxyMeta?: ResultMeta;
   livermoreMeta?: ResultMeta;
@@ -248,10 +477,65 @@ function buildEvidenceLines(input: {
   return {
     formalRates: metaEvidenceLine("formal rates", input.formalRatesMeta),
     macroLatest: metaEvidenceLine("macro latest", input.latestMeta),
+    fxFormal: metaEvidenceLine("FX formal", input.fxFormalMeta),
     fxAnalytical: metaEvidenceLine("FX analytical", input.fxAnalyticalMeta),
     ncdProxy: metaEvidenceLine("NCD proxy", input.ncdFundingProxyMeta),
     livermore: metaEvidenceLine("Livermore", input.livermoreMeta),
     linkage: metaEvidenceLine("macro-bond linkage", input.macroBondLinkageMeta),
+  };
+}
+
+function buildStatusBadges(input: {
+  formalRatesMeta?: ResultMeta;
+  hasTerminalRows: boolean;
+}): MarketDataStatusBadges {
+  const { formalRatesMeta, hasTerminalRows } = input;
+  if (!formalRatesMeta) {
+    return {
+      readinessVerdict: "接入中",
+      overviewReadinessLabel: "待确认",
+      secondaryLabel: "查看数据诊断",
+    };
+  }
+  if (formalRatesMeta.quality_flag === "error") {
+    return {
+      readinessVerdict: "不可用",
+      overviewReadinessLabel: "技术异常",
+      secondaryLabel: "查看数据诊断",
+    };
+  }
+  if (formalRatesMeta.formal_use_allowed === false) {
+    return {
+      readinessVerdict: "仅分析使用",
+      overviewReadinessLabel: "暂不可正式使用",
+      secondaryLabel: "不可用于正式决策",
+    };
+  }
+  if (!hasTerminalRows) {
+    return {
+      readinessVerdict: "部分缺失",
+      overviewReadinessLabel: "暂无数据",
+      secondaryLabel: "查看数据诊断",
+    };
+  }
+  if (formalRatesMeta.quality_flag === "stale") {
+    return {
+      readinessVerdict: "数据延迟",
+      overviewReadinessLabel: "需刷新",
+      secondaryLabel: "不可直接外推",
+    };
+  }
+  if (formalRatesMeta.fallback_mode !== "none" || formalRatesMeta.vendor_status !== "ok") {
+    return {
+      readinessVerdict: "部分缺失",
+      overviewReadinessLabel: "需复核",
+      secondaryLabel: "保留来源提示",
+    };
+  }
+  return {
+    readinessVerdict: "数据正常",
+    overviewReadinessLabel: "数据正常",
+    secondaryLabel: "可用于当前观察",
   };
 }
 
@@ -262,6 +546,7 @@ export function buildMarketDataPageModel(input: BuildMarketDataPageModelInput): 
   const terminalModel = buildMarketDataTerminalModel({
     ratesEnvelope: input.formalRatesEnvelope,
     latestEnvelope: input.latestEnvelope,
+    bondFuturesRankingsEnvelope: input.bondFuturesRankingsEnvelope,
   });
   const categoryStore = buildMarketDataCategoryStore({
     catalog,
@@ -269,15 +554,25 @@ export function buildMarketDataPageModel(input: BuildMarketDataPageModelInput): 
     fxAnalyticalGroups,
   });
   const macroBondLinkage: Partial<MacroBondLinkagePayload> = input.macroBondLinkageEnvelope?.result ?? {};
-  const spreadSlots = buildSpreadSlots(macroBondLinkage.top_correlations);
+  const spreadSlots = buildSpreadSlots(
+    macroBondLinkage.top_correlations,
+    "both",
+    macroBondLinkage.spread_tenor_correlations,
+  );
   const formalRatesMeta = input.formalRatesEnvelope?.result_meta;
+  const fxFormalStatus = input.fxFormalStatusEnvelope?.result ?? null;
+  const fxFormalMeta = input.fxFormalStatusEnvelope?.result_meta;
   const macroMeta =
     formalRatesMeta ?? input.latestEnvelope?.result_meta ?? input.catalogEnvelope?.result_meta;
-  const sourcePendingCount = [
+  const inferredSourcePendingCount = [
     terminalModel.bondFutures.status,
     terminalModel.bondTrades.status,
     terminalModel.creditTrades.status,
   ].filter((status) => status === "source-pending").length;
+  const coverageSummary = input.coverageSummaryEnvelope?.result ?? null;
+  const coverageSections = coverageSummary?.sections ?? [];
+  const sourcePendingCount =
+    coverageSummary?.headline.source_pending_count ?? inferredSourcePendingCount;
 
   return {
     ...categoryStore,
@@ -285,6 +580,8 @@ export function buildMarketDataPageModel(input: BuildMarketDataPageModelInput): 
     latestSeries,
     fxAnalyticalGroups,
     terminalModel,
+    coverageSummary,
+    coverageSections,
     rateTrendChartOption: buildMarketDataRateTrendChartOption(latestSeries),
     livermoreStrategy: input.livermoreStrategyEnvelope
       ? buildLivermoreStrategyModel({ envelope: input.livermoreStrategyEnvelope })
@@ -295,39 +592,106 @@ export function buildMarketDataPageModel(input: BuildMarketDataPageModelInput): 
     hasPortfolioImpact: Object.keys(macroBondLinkage.portfolio_impact ?? {}).length > 0,
     spreadSlots,
     nonSpreadTopCorrelations: (macroBondLinkage.top_correlations ?? []).filter(
-      (item) => item.target_family !== "credit_spread",
+      (item) => item.target_family !== "credit_spread" && !isLinkageSelfCorrelation(item),
     ),
     macroMeta,
     formalRatesMeta,
+    fxFormalStatus,
+    fxFormalMeta,
     fxAnalyticalMeta: input.fxAnalyticalEnvelope?.result_meta,
     ncdFundingProxyMeta: input.ncdFundingProxyMeta,
     rateQuotesSource: terminalModel.rateQuotes.source,
     sourcePendingCount,
     isFormalBasis: formalRatesMeta?.basis === "formal" && formalRatesMeta.formal_use_allowed === true,
-    statusBadges: {
-      readinessVerdict: macroMeta?.quality_flag === "error" ? "读面异常" : "读面就绪",
-      overviewReadinessLabel: "读面就绪",
-      secondaryLabel: "辅助观察",
-    },
+    statusBadges: buildStatusBadges({
+      formalRatesMeta,
+      hasTerminalRows:
+        terminalModel.rateQuotes.rows.length > 0 || terminalModel.moneyMarket.rows.length > 0,
+    }),
     evidenceLines: buildEvidenceLines({
       formalRatesMeta,
       latestMeta: input.latestEnvelope?.result_meta,
+      fxFormalMeta,
       fxAnalyticalMeta: input.fxAnalyticalEnvelope?.result_meta,
       ncdFundingProxyMeta: input.ncdFundingProxyMeta,
       livermoreMeta: input.livermoreStrategyEnvelope?.result_meta,
       macroBondLinkageMeta: input.macroBondLinkageEnvelope?.result_meta,
     }),
-    overviewMetrics: buildOverviewMetrics({
+    terminalTickerItems: buildTerminalTickerItems(terminalModel),
+    terminalKpiMetrics: buildTerminalKpiMetrics(terminalModel),
+    pipelineOverviewMetrics: buildPipelineOverviewMetrics({
       catalogCount: catalog.length,
       categoryStore,
       fxAnalyticalGroupCount: fxAnalyticalGroups.length,
+      fxFormalStatus,
+      fxFormalMeta,
     }),
   };
 }
 
 export function metaEvidenceLine(label: string, meta: ResultMeta | undefined) {
   if (!meta) {
-    return `${label}: basis=pending formal_use_allowed=pending quality=pending fallback=pending vendor_status=pending source=pending`;
+    return `${label}: 未接入 / 部分缺失 / 查看数据诊断`;
   }
-  return `${label}: basis=${meta.basis} formal_use_allowed=${meta.formal_use_allowed} quality=${meta.quality_flag} fallback=${meta.fallback_mode} vendor_status=${meta.vendor_status} source=${meta.source_version}`;
+  const parts = [
+    evidenceBasisLabel(meta),
+    evidenceQualityLabel(meta),
+    evidenceFormalUseLabel(meta),
+    ...evidenceCaveatLabels(meta),
+  ];
+  return `${label}: ${parts.join(" / ")}`;
+}
+
+function evidenceBasisLabel(meta: ResultMeta): string {
+  if (meta.basis === "formal") {
+    return meta.formal_use_allowed === true ? "正式可用" : "暂不可正式使用";
+  }
+  if (meta.basis === "analytical") return "仅分析使用";
+  if ((meta.basis as string) === "proxy") return "代理数据";
+  if (meta.basis === "mock") return "演示数据";
+  return "待确认";
+}
+
+function evidenceQualityLabel(meta: ResultMeta): string {
+  if (meta.quality_flag === "ok") return "数据正常";
+  if (meta.quality_flag === "stale") return "数据延迟";
+  if (meta.quality_flag === "error") return "不可用";
+  return "部分缺失";
+}
+
+function evidenceFormalUseLabel(meta: ResultMeta): string {
+  if (meta.formal_use_allowed === true && meta.quality_flag === "ok" && meta.fallback_mode === "none") {
+    return "可正式使用";
+  }
+  if (meta.formal_use_allowed === true) return "需复核";
+  return "暂不可用于正式决策";
+}
+
+function evidenceCaveatLabels(meta: ResultMeta): string[] {
+  const caveats: string[] = [];
+  if (meta.fallback_mode && meta.fallback_mode !== "none") {
+    caveats.push("数据延迟");
+  }
+  if (meta.vendor_status && meta.vendor_status !== "ok") {
+    caveats.push("来源需复核");
+  }
+  return caveats;
+}
+
+/** 页头 meta 带来源摘要：避免多路 vendor 版本串成一行撑破布局。 */
+export function formatMarketWorkbenchSourceSummary(
+  vendorVersions: string[],
+  fallback: string,
+): { value: string; hint?: string } {
+  if (vendorVersions.length === 0) {
+    return { value: fallback };
+  }
+  if (vendorVersions.length === 1) {
+    return { value: vendorVersions[0] };
+  }
+  const full = vendorVersions.join(" / ");
+  return {
+    value: `${vendorVersions.length} 路供应商版本`,
+    hint: full,
+  };
 }

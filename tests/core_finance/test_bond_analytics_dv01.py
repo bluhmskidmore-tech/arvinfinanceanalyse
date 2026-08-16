@@ -9,6 +9,7 @@ from backend.app.core_finance.bond_analytics.dv01 import (
     build_dv01_action_tenor_payloads,
     build_dv01_movement_attribution_payloads,
     build_dv01_movement_bond_payloads,
+    build_dv01_shock_scenario_payloads,
     build_dv01_tenor_bucket_payloads,
     build_dv01_top_bond_payloads,
     build_dv01_top_issuer_payloads,
@@ -19,6 +20,8 @@ from backend.app.core_finance.bond_analytics.dv01 import (
     parse_dv01_shocks,
     total_abs_dv01,
 )
+
+ZERO = Decimal("0")
 
 
 def _rows() -> list[dict[str, object]]:
@@ -80,6 +83,18 @@ def test_dv01_core_keeps_face_weighted_duration_and_parallel_shock_order() -> No
         Decimal("-10"),
         Decimal("25"),
         Decimal("-25"),
+    ]
+
+
+def test_dv01_core_shock_pnl_uses_total_dv01_face_value_basis() -> None:
+    scenarios = build_dv01_shock_scenario_payloads(
+        total_dv01=Decimal("0.02"),
+        shocks=[Decimal("100")],
+    )
+
+    assert [(row["shock_bp"], row["estimated_pnl"]) for row in scenarios] == [
+        (Decimal("100"), Decimal("-2.00")),
+        (Decimal("-100"), Decimal("2.00")),
     ]
 
 
@@ -214,6 +229,87 @@ def test_dv01_core_builds_action_plan_payloads() -> None:
     assert bond_actions[0]["dv01_share"] == Decimal("800") / Decimal("1150")
     assert bond_actions[0]["suggested_reduction_dv01"] == Decimal("250") * Decimal("800") / Decimal("1150")
     assert bond_actions[1]["instrument_code"] == "B-001"
+
+
+def test_dv01_action_risk_level_reports_no_limit_configured_instead_of_breach() -> None:
+    """An unconfigured limit must never be graded as a breach."""
+    assert dv01_action_risk_level(
+        total_dv01=Decimal("103065354"),
+        warning_dv01=ZERO,
+        limit_dv01=ZERO,
+        has_rows=True,
+        limit_configured=False,
+    ) == "no_limit_configured"
+    # A zero limit is indistinguishable from "unset" and must not grade a breach
+    # even when the caller still claims the limit is configured.
+    assert dv01_action_risk_level(
+        total_dv01=Decimal("103065354"),
+        warning_dv01=ZERO,
+        limit_dv01=ZERO,
+        has_rows=True,
+    ) == "no_limit_configured"
+    # An empty scope still reports no_data first.
+    assert dv01_action_risk_level(
+        total_dv01=ZERO,
+        warning_dv01=ZERO,
+        limit_dv01=ZERO,
+        has_rows=False,
+        limit_configured=False,
+    ) == "no_data"
+    # A real limit keeps grading exactly as before.
+    assert dv01_action_risk_level(
+        total_dv01=Decimal("1150"),
+        warning_dv01=Decimal("900"),
+        limit_dv01=Decimal("1000"),
+        has_rows=True,
+        limit_configured=True,
+    ) == "breach"
+
+
+def test_build_dv01_action_scenario_payloads_emits_nothing_without_a_limit() -> None:
+    """Shock loss thresholds are limit-derived, so they cannot exist without one."""
+    assert build_dv01_action_scenario_payloads(
+        total_dv01=Decimal("103065354"),
+        warning_dv01=ZERO,
+        limit_dv01=ZERO,
+        has_rows=True,
+        shocks=[Decimal("10"), Decimal("25")],
+        limit_configured=False,
+    ) == []
+    assert build_dv01_action_scenario_payloads(
+        total_dv01=Decimal("103065354"),
+        warning_dv01=ZERO,
+        limit_dv01=ZERO,
+        has_rows=True,
+        shocks=[Decimal("10")],
+    ) == []
+    assert len(
+        build_dv01_action_scenario_payloads(
+            total_dv01=Decimal("1150"),
+            warning_dv01=Decimal("900"),
+            limit_dv01=Decimal("1000"),
+            has_rows=True,
+            shocks=[Decimal("10"), Decimal("25")],
+        )
+    ) == 2
+
+
+def test_suggested_reduction_is_zero_when_there_is_nothing_to_reduce() -> None:
+    """With no limit the service passes dv01_to_reduce=0; no hedge size may leak out."""
+    rows = [
+        _movement_row("A-001", face="1000000", duration="8", dv01="800", accounting_class="OCI"),
+        _movement_row("B-001", face="500000", duration="7", dv01="350", accounting_class="OCI"),
+    ]
+    total_abs = total_abs_dv01(rows)
+    for payloads in (
+        build_dv01_action_tenor_payloads(rows, total_abs_dv01=total_abs, dv01_to_reduce=ZERO, top_n=5),
+        build_dv01_action_issuer_payloads(rows, total_abs_dv01=total_abs, dv01_to_reduce=ZERO, top_n=5),
+        build_dv01_action_bond_payloads(rows, total_abs_dv01=total_abs, dv01_to_reduce=ZERO, top_n=5),
+    ):
+        assert payloads
+        assert all(row["suggested_reduction_dv01"] == ZERO for row in payloads)
+        # Exposure itself stays visible; only the advice is withheld.
+        assert all(row["dv01"] != ZERO for row in payloads)
 
 
 def _movement_row(

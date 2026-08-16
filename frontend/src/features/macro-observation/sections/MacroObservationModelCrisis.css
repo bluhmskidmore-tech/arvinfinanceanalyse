@@ -1,0 +1,334 @@
+/*
+ * 03 模型与策略证据 + 04 危机分证据 分区专属样式。
+ * 颜色一律走 --dh-api-* / --moss-* 变量链（本文件 0 hex 基线）；
+ * 卡片/表格密度对齐 MacroObservationPage.css 的 Nocturne 配方。
+ */
+
+/* ------------------------------------------------ 03 模型与策略：布局 */
+
+.macro-observation-modelstrategy-stack {
+  display: grid;
+  gap: var(--moss-space-3);
+  min-width: 0;
+}
+
+.macro-observation-modelstrategy-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: var(--moss-space-3);
+  /* 不等高网格 start，禁止 stretch 空白（DESIGN.md §5）。 */
+  align-items: start;
+}
+
+.macro-observation-modelstrategy-side {
+  display: grid;
+  gap: var(--moss-space-3);
+  min-width: 0;
+}
+
+.macro-observation-modelstrategy-panel {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+/* ------------------------------------------- 03：状态徽标（tone soft 底） */
+
+.macro-observation-modelstrategy-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 1px 7px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.macro-observation-modelstrategy-badge[data-tone="positive"] {
+  background: var(--dh-api-green-soft);
+  color: var(--dh-api-green);
+}
+
+.macro-observation-modelstrategy-badge[data-tone="warning"] {
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-amber);
+}
+
+.macro-observation-modelstrategy-badge[data-tone="negative"] {
+  background: var(--dh-api-red-soft);
+  color: var(--dh-api-red);
+}
+
+/* --------------------------------------------- 03：模型就绪简表细节 */
+
+/* 说明列（degraded_reason）降权为 muted 11px，允许换行不截断。 */
+.macro-observation-modelstrategy-note-cell {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+/* 边界细注：仅观察语义（formal_use_allowed=false / observation_only）。 */
+.macro-observation-modelstrategy-boundary {
+  margin: 0;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.macro-observation-modelstrategy-empty {
+  margin: 0;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* ------------------------------------------------- 03：Hason 摘要卡 */
+
+.macro-observation-modelstrategy-hason-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.macro-observation-modelstrategy-hason-name {
+  overflow: hidden;
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.macro-observation-modelstrategy-readiness-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+
+.macro-observation-modelstrategy-readiness-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dh-api-soft);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.macro-observation-modelstrategy-readiness-item strong {
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.macro-observation-modelstrategy-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dh-api-muted);
+}
+
+.macro-observation-modelstrategy-dot[data-kind="ready"] {
+  background: var(--dh-api-green);
+}
+
+.macro-observation-modelstrategy-dot[data-kind="partial"] {
+  background: var(--dh-api-amber);
+}
+
+.macro-observation-modelstrategy-dot[data-kind="missing"] {
+  background: var(--dh-api-red);
+}
+
+/* ------------------------------------- 03：策略数据状态 / 摘要小结卡 */
+
+.macro-observation-modelstrategy-stat-label {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.macro-observation-modelstrategy-stat-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: normal;
+  word-break: keep-all;
+  font-variant-numeric: tabular-nums;
+}
+
+.macro-observation-modelstrategy-stat-note {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.macro-observation-modelstrategy-summaries {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--moss-space-3);
+}
+
+.macro-observation-modelstrategy-summary-card {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+}
+
+/* 来源链全表同句时收敛到表上方一次（§6 去重）。 */
+.macro-observation-modelstrategy-chain-note {
+  margin: 0;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+/* strategy_data_status.reason：不可用原因琥珀左线细注（P0 可见）。 */
+.macro-observation-modelstrategy-reason {
+  margin: 0;
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid var(--dh-api-amber);
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.macro-observation-modelstrategy-reason strong {
+  margin-right: 8px;
+  color: var(--dh-api-amber);
+  font-weight: 600;
+}
+
+/* -------------------------------------------------- 04 危机分：布局 */
+
+.macro-observation-crisis-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+  gap: var(--moss-space-3);
+  align-items: start;
+}
+
+.macro-observation-crisis-readout {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+/* 危机分大字徽标行已按 §6 去重删除（读数保留在 01 KPI 与 02 信号带）。 */
+
+.macro-observation-crisis-headline {
+  margin: 0;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.macro-observation-crisis-coverage-note {
+  display: block;
+  margin-top: 2px;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.macro-observation-crisis-empty {
+  margin: 0;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* 修复入口细注：动作留在工具页，本区只放链接。 */
+.macro-observation-crisis-link-note {
+  margin: 0;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+/* ---------------------------------------------- 04：历史折线图容器 */
+
+.macro-observation-crisis-chart-panel {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.macro-observation-crisis-chart {
+  min-width: 0;
+}
+
+.macro-observation-crisis-chart-host {
+  min-width: 0;
+}
+
+/* echarts-for-react 无 style 时注入 inline height:300px，需 !important
+   收敛到设计高度（PositionsBondsSections.css 图表画布同款先例）。 */
+.macro-observation-crisis-chart-canvas {
+  width: 100%;
+  height: 240px !important;
+}
+
+/* 无历史序列占位（禁止演示数据冒充）。 */
+.macro-observation-crisis-placeholder {
+  display: grid;
+  place-items: center;
+  min-height: 160px;
+  margin: 0;
+  border: 1px dashed var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+/* ---------------------------------------------------------- 响应式 */
+
+@media (max-width: 1280px) {
+  .macro-observation-modelstrategy-layout,
+  .macro-observation-crisis-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .macro-observation-modelstrategy-summaries {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

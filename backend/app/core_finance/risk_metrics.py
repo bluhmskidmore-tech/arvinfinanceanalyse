@@ -1,4 +1,6 @@
 """
+DORMANT: 无生产调用方，接线前必须补黄金测试（见 PRD v0.3 B3/FI-P2-09）。
+
 风险集中度与压力情景（纯函数，自 V1 risk_analysis_service 口径迁入）。
 """
 

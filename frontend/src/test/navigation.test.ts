@@ -2,13 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   findWorkbenchSectionByPath,
+  getVisibleWorkbenchNavigation,
+  isAgentFrontendEnabled,
   primaryWorkbenchNavigationGroups,
   primaryWorkbenchNavigation,
   resolveWorkbenchPathAlias,
   secondaryWorkbenchNavigation,
   workbenchNavigation,
   workbenchPathAliases,
-} from "../mocks/navigation";
+} from "../app/navigation";
 
 describe("workbench navigation mocks", () => {
   it("has unique keys and unique paths", () => {
@@ -18,15 +20,43 @@ describe("workbench navigation mocks", () => {
     expect(new Set(paths).size).toBe(paths.length);
   });
 
-  it("shows the live Hermes Agent route in primary navigation", () => {
+  it("keeps MOSS Chat hidden as a controlled direct-route pilot", () => {
     const agent = workbenchNavigation.find((s) => s.key === "agent");
     expect(agent).toBeDefined();
-    expect(agent?.readiness).toBe("live");
-    expect(agent?.readinessLabel).toBe("Hermes");
-    expect(agent?.navigationVisibility).toBeUndefined();
+    expect(agent?.label).toBe("MOSS Chat");
+    expect(agent?.readiness).toBe("gated");
+    expect(agent?.readinessLabel).toBe("受控试用");
+    expect(agent?.navigationVisibility).toBe("hidden");
     expect(agent?.path).toBe("/agent");
-    expect(primaryWorkbenchNavigation.some((s) => s.key === "agent")).toBe(true);
+    expect(agent?.readinessNote).toContain("开发态显式开启前端开关");
+    expect(agent?.readinessNote).toContain("默认与生产环境保持关闭");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "agent")).toBe(false);
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "agent")).toBe(false);
+    expect(isAgentFrontendEnabled()).toBe(false);
+  });
+
+  it("exposes MOSS Chat only with the explicit Vite development opt-in", () => {
+    const enabledEnvironment = {
+      DEV: true,
+      VITE_MOSS_AGENT_FRONTEND_ENABLED: "true",
+    };
+
+    expect(isAgentFrontendEnabled(enabledEnvironment)).toBe(true);
+    expect(getVisibleWorkbenchNavigation(enabledEnvironment).some((s) => s.key === "agent")).toBe(
+      true,
+    );
+    expect(
+      isAgentFrontendEnabled({
+        DEV: false,
+        VITE_MOSS_AGENT_FRONTEND_ENABLED: "true",
+      }),
+    ).toBe(false);
+    expect(
+      isAgentFrontendEnabled({
+        DEV: true,
+        VITE_MOSS_AGENT_FRONTEND_ENABLED: undefined,
+      }),
+    ).toBe(false);
   });
 
   it("excludes hidden entries from primaryWorkbenchNavigation", () => {
@@ -84,6 +114,20 @@ describe("workbench navigation mocks", () => {
     expect(section?.readiness).toBe("live");
     expect(section?.readinessLabel).toBe("已开放");
     expect(section?.governanceStatus).toBeUndefined();
+  });
+
+  it("presents pnl-by-business-insights as the approved formal analysis route", () => {
+    const section = workbenchNavigation.find(
+      (item) => item.key === "pnl-by-business-insights",
+    );
+
+    expect(section?.label).toBe("业务结构与FTP后收益分析");
+    expect(section?.readiness).toBe("live");
+    expect(section?.readinessLabel).toBe("已开放");
+    expect(section?.governanceStatus).toBeUndefined();
+    expect(section?.readinessNote).toContain("/api/pnl/by-business-insights");
+    expect(section?.readinessNote).not.toContain("candidate");
+    expect(section?.readinessNote).not.toContain("formal_use_allowed=false");
   });
 
   it("promotes risk-overview into the live primary navigation", () => {
@@ -222,6 +266,7 @@ describe("workbench navigation mocks", () => {
   it("resolves V1 bookmark path aliases for nav grouping", () => {
     expect(resolveWorkbenchPathAlias("/market")).toBe("/market-data");
     expect(resolveWorkbenchPathAlias("/assets")).toBe("/bond-dashboard");
+    expect(resolveWorkbenchPathAlias("/agent-lab")).toBe("/agent");
   });
 
   it("promotes pnl-attribution into the live primary navigation", () => {
@@ -261,6 +306,21 @@ describe("workbench navigation mocks", () => {
     const ledger = workbenchNavigation.find((s) => s.key === "bank-ledger-dashboard");
     expect(ledger?.path).toBe("/bank-ledger-dashboard");
     expect(ledger?.readiness).toBe("live");
+    expect(ledger?.governanceStatus).toBe("temporary-exception");
+    expect(ledger?.readinessNote).toContain("imported position_snapshot");
+    expect(ledger?.readinessNote).toContain("import-time rv_ledger_classification_v2");
+    expect(ledger?.readinessNote).toContain("UNCLASSIFIED");
+    expect(ledger?.readinessNote).toContain("legacy batches fail closed");
+    expect(ledger?.readinessNote).toContain("invalid_materialization");
+    expect(ledger?.readinessNote).toContain("past-only fallback");
+    expect(ledger?.readinessNote).toContain("formal use");
+    expect(ledger?.readinessNote).toContain("owner approval");
+    expect(ledger?.readinessNote).toContain("UNKNOWN");
+    expect(ledger?.readinessNote).toContain("Historical backfill completed");
+    expect(ledger?.readinessNote).toContain("golden sample captured-awaiting-approval");
+    expect(ledger?.readinessNote).not.toContain("golden evidence");
+    expect(ledger?.readinessNote).toContain("same source hash cannot be replayed");
+    expect(ledger?.readinessNote).not.toContain("source-blocked");
     expect(primaryWorkbenchNavigation.some((s) => s.key === "bank-ledger-dashboard")).toBe(true);
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "bank-ledger-dashboard")).toBe(false);
   });
@@ -349,6 +409,22 @@ describe("workbench navigation mocks", () => {
     expect(adb).toBeDefined();
     expect(adbAliasSection?.key).toBe("average-balance");
     expect(averageBalanceSection?.key).toBe("average-balance");
+  });
+
+  it("maps registered sub-routes to their owning section via slash-boundary prefix matching", () => {
+    const auditSection = findWorkbenchSectionByPath(
+      "/product-category-pnl/audit",
+      workbenchNavigation,
+    );
+    expect(auditSection?.key).toBe("product-category-pnl");
+    // "/" 边界防误配：/pnl-bridge 不是 /pnl 的子路由。
+    expect(findWorkbenchSectionByPath("/pnl-bridge", workbenchNavigation)?.key).toBe("pnl-bridge");
+    expect(findWorkbenchSectionByPath("/pnl", workbenchNavigation)?.key).toBe("pnl");
+  });
+
+  it("resolves the legacy /pnl-formal-v1 alias to the canonical pnl section", () => {
+    expect(resolveWorkbenchPathAlias("/pnl-formal-v1")).toBe("/pnl");
+    expect(findWorkbenchSectionByPath("/pnl-formal-v1", workbenchNavigation)?.key).toBe("pnl");
   });
 
   it("does not resolve unknown paths to the dashboard section", () => {

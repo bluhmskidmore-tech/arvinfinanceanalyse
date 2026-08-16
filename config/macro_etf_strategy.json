@@ -1,0 +1,86 @@
+{
+  "initial_capital": 200000.0,
+  "universe": {
+    "512480": {
+      "name": "半导体ETF",
+      "role": "attack",
+      "exchange": "SH",
+      "limit_pct": 0.1
+    },
+    "159819": {
+      "name": "人工智能ETF",
+      "role": "attack",
+      "exchange": "SZ",
+      "limit_pct": 0.1
+    },
+    "512400": {
+      "name": "有色金属ETF",
+      "role": "cycle",
+      "exchange": "SH",
+      "limit_pct": 0.1
+    },
+    "512000": {
+      "name": "券商ETF",
+      "role": "defense",
+      "exchange": "SH",
+      "limit_pct": 0.1
+    },
+    "510880": {
+      "name": "红利ETF",
+      "role": "defense",
+      "exchange": "SH",
+      "limit_pct": 0.1
+    }
+  },
+  "role_base_weight": {
+    "attack": 0.45,
+    "cycle": 0.25,
+    "defense": 0.3
+  },
+  "base_position": 0.65,
+  "macro_sensitivity": 0.25,
+  "min_position": 0.3,
+  "max_position": 0.9,
+  "trend_fast": 20,
+  "trend_slow": 60,
+  "crowding_window": 60,
+  "crowding_threshold": 0.9,
+  "crowding_shift": 0.1,
+  "sector_stop_loss": -0.08,
+  "portfolio_dd_guard": -0.1,
+  "dd_recover": -0.05,
+  "guard_scaler": 0.5,
+  "rebalance_weekday": 0,
+  "cost_rate": 0.0005,
+  "lot_size": 100,
+  "min_trade_value": 2000.0,
+  "cash_buffer_pct": 0.01,
+  "max_single_order_pct": 0.25,
+  "max_turnover_pct": 0.8,
+  "limit_guard_ratio": 0.95,
+  "history_min_days": 130,
+  "max_data_lag_days": 3,
+  "earnings_windows": [
+    [
+      "2026-07-10",
+      "2026-07-20"
+    ],
+    [
+      "2026-08-20",
+      "2026-08-31"
+    ],
+    [
+      "2026-10-20",
+      "2026-10-31"
+    ]
+  ],
+  "earnings_attack_scaler": 0.8,
+  "risk_events": [
+    "2026-07-29",
+    "2026-09-16",
+    "2026-10-28",
+    "2026-12-09"
+  ],
+  "event_lookahead": 3,
+  "event_position_scaler": 0.9
+}

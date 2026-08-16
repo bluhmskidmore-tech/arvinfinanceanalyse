@@ -5,14 +5,14 @@ and payload shapes. This suite asserts only the shared write-refresh invariants.
 """
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, timedelta
-import json
 from pathlib import Path
 from threading import Event, Lock, Thread
-from typing import Any
+from typing import Any, Protocol, cast
 
 import pytest
 from fastapi import FastAPI
@@ -27,11 +27,23 @@ from tests.test_bond_analytics_materialize_flow import (
     _seed_bond_snapshot_rows,
     seed_yield_curves_for_bond_analytics_tests,
 )
-from tests.test_product_category_pnl_flow import _write_month_pair as _write_product_category_month_pair
-from tests.test_qdb_gl_monthly_analysis_core import _write_month_pair as _write_qdb_month_pair
-
+from tests.test_product_category_pnl_flow import (
+    _write_month_pair as _write_product_category_month_pair,
+)
+from tests.test_qdb_gl_monthly_analysis_core import (
+    _write_month_pair as _write_qdb_month_pair,
+)
 
 Request = dict[str, Any]
+
+
+class _SettingsGetterWithCacheClear(Protocol):
+    def __call__(self) -> object: ...
+
+    def cache_clear(self) -> None: ...
+
+
+get_settings = cast(_SettingsGetterWithCacheClear, get_settings)
 
 
 @dataclass(frozen=True)
@@ -45,6 +57,8 @@ class RefreshEndpointAdapter:
     setup: Callable[[Path, Any], tuple[TestClient, list[object]]]
     refresh_payload: Callable[[dict[str, Any]], dict[str, Any]]
     side_effect_count: Callable[[list[object]], int] = len
+    expected_status: int = 200
+    exposes_idempotency_key: bool = True
 
 
 def _post(client: TestClient, adapter: RefreshEndpointAdapter, request: Request, *, key: str | None):
@@ -76,6 +90,14 @@ def _refresh_run_id(refresh: dict[str, Any]) -> object:
     if isinstance(materialize_result, dict) and "run_id" in materialize_result:
         return materialize_result["run_id"]
     return refresh["run_id"]
+
+
+def _materialize_result_run_id(payload: dict[str, Any]) -> str:
+    materialize_result = payload.get("materialize_result")
+    assert isinstance(materialize_result, dict)
+    run_id = materialize_result.get("run_id")
+    assert isinstance(run_id, str)
+    return run_id
 
 
 def _assert_different_target_identity(
@@ -192,7 +214,6 @@ def _setup_bond_analytics(tmp_path: Path, monkeypatch: Any) -> tuple[TestClient,
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
     )
-    monkeypatch.setattr(service_mod, "_prepare_yield_curve_inputs_for_refresh", lambda **kwargs: calls.append(kwargs))
     monkeypatch.setattr(service_mod.materialize_bond_analytics_facts, "send", lambda **kwargs: calls.append(kwargs))
     return _main_client(), calls
 
@@ -262,17 +283,25 @@ def _setup_macro_choice_stock(tmp_path: Path, monkeypatch: Any) -> tuple[TestCli
     calls: list[object] = []
     route_mod = load_module("backend.app.api.routes.macro_toolkit", "backend/app/api/routes/macro_toolkit.py")
     service_mod = route_mod.macro_toolkit_service
-    monkeypatch.setattr(
-        service_mod,
-        "materialize_choice_stock_inputs",
-        lambda **kwargs: calls.append(("history", kwargs))
-        or {"status": "completed", "row_count": 111, "source_version": "sv_history"},
-    )
+
+    def fake_materialize_choice_stock_inputs(**kwargs: object) -> dict[str, object]:
+        calls.append(("history", kwargs))
+        return {"status": "completed", "row_count": 111, "source_version": "sv_history"}
+
+    def fake_materialize_choice_stock_factor_snapshot(**kwargs: object) -> dict[str, object]:
+        calls.append(("factor", kwargs))
+        return {"status": "completed", "row_count": 222, "source_version": "sv_factor"}
+
+    monkeypatch.setattr(service_mod, "materialize_choice_stock_inputs", fake_materialize_choice_stock_inputs)
     monkeypatch.setattr(
         service_mod,
         "materialize_choice_stock_factor_snapshot",
-        lambda **kwargs: calls.append(("factor", kwargs))
-        or {"status": "completed", "row_count": 222, "source_version": "sv_factor"},
+        fake_materialize_choice_stock_factor_snapshot,
+    )
+    monkeypatch.setattr(
+        service_mod.run_choice_stock_refresh_task,
+        "send",
+        lambda **kwargs: calls.append(("dispatch", kwargs)),
     )
 
     app = FastAPI()
@@ -295,16 +324,11 @@ def _setup_livermore_gate_supplement(tmp_path: Path, monkeypatch: Any) -> tuple[
         "backend/app/services/livermore_gate_supplement_compute_service.py",
     )
 
-    def fake_materialize(*, duckdb_path: str, rows: list[dict[str, object]]) -> dict[str, object]:
-        calls.append({"duckdb_path": duckdb_path, "rows": rows})
-        return {
-            "status": "completed",
-            "run_id": f"livermore-gate-supplement-run-{len(calls)}",
-            "row_count": len(rows),
-        }
-
-    monkeypatch.setattr(service_mod, "_load_csi300_daily_returns", _fake_livermore_gate_daily_returns)
-    monkeypatch.setattr(service_mod, "materialize_livermore_gate_supplement_daily", fake_materialize)
+    monkeypatch.setattr(
+        service_mod.run_livermore_gate_supplement_refresh_task,
+        "send",
+        lambda **kwargs: calls.append(kwargs),
+    )
     return _main_client(), calls
 
 
@@ -376,7 +400,7 @@ def test_livermore_gate_supplement_idempotency_key_serializes_same_target_refres
                 lookback_days=30,
                 idempotency_key=" livermore-gate-supplement-concurrent ",
             )
-        except BaseException as exc:
+        except Exception as exc:  # noqa: BLE001
             with results_lock:
                 errors.append(exc)
             return
@@ -399,7 +423,7 @@ def test_livermore_gate_supplement_idempotency_key_serializes_same_target_refres
     assert errors == []
     assert len(results) == 2
     assert len(calls) == 1
-    run_ids = {payload["materialize_result"]["run_id"] for payload in results}
+    run_ids = {_materialize_result_run_id(payload) for payload in results}
     assert len(run_ids) == 1
     replay_flags = [payload["idempotency_replay"] for payload in results]
     assert replay_flags.count(False) == 1
@@ -473,7 +497,7 @@ def test_livermore_gate_supplement_idempotency_key_replays_after_short_lock_time
                 lookback_days=30,
                 idempotency_key=" livermore-gate-supplement-timeout ",
             )
-        except BaseException as exc:
+        except Exception as exc:  # noqa: BLE001
             with results_lock:
                 errors.append(exc)
             return
@@ -496,7 +520,7 @@ def test_livermore_gate_supplement_idempotency_key_replays_after_short_lock_time
     assert errors == []
     assert len(results) == 2
     assert len(calls) == 1
-    run_ids = {payload["materialize_result"]["run_id"] for payload in results}
+    run_ids = {_materialize_result_run_id(payload) for payload in results}
     assert run_ids == {"livermore-gate-supplement-timeout-run-1"}
     replay_flags = [payload["idempotency_replay"] for payload in results]
     assert replay_flags.count(False) == 1
@@ -546,8 +570,8 @@ def test_livermore_gate_supplement_idempotency_key_does_not_replay_across_duckdb
 
     assert first_payload["idempotency_replay"] is False
     assert second_payload["idempotency_replay"] is False
-    assert first_payload["materialize_result"]["run_id"] == "livermore-gate-supplement-target-run-1"
-    assert second_payload["materialize_result"]["run_id"] == "livermore-gate-supplement-target-run-2"
+    assert _materialize_result_run_id(first_payload) == "livermore-gate-supplement-target-run-1"
+    assert _materialize_result_run_id(second_payload) == "livermore-gate-supplement-target-run-2"
     assert [call["duckdb_path"] for call in calls] == [str(first_duckdb_path), str(second_duckdb_path)]
 
     records = [
@@ -580,7 +604,7 @@ def test_livermore_gate_supplement_without_idempotency_key_keeps_bounded_lock_ti
     def fake_acquire_lock(*args: object, **kwargs: object):
         del args
         timeout_seconds = kwargs.get("timeout_seconds")
-        attempts.append(float(timeout_seconds) if timeout_seconds is not None else None)
+        attempts.append(float(timeout_seconds) if isinstance(timeout_seconds, (int, float)) else None)
         raise TimeoutError("simulated no-key Livermore refresh lock timeout")
         yield
 
@@ -717,7 +741,7 @@ ENDPOINTS = (
         different_target={"params": {"report_date": "2026-03-30"}},
         setup=_setup_bond_analytics,
         refresh_payload=_top_level_payload,
-        side_effect_count=lambda calls: len(calls) // 2,
+        side_effect_count=len,
     ),
     RefreshEndpointAdapter(
         family="key-date",
@@ -764,7 +788,8 @@ ENDPOINTS = (
         },
         setup=_setup_macro_choice_stock,
         refresh_payload=_macro_choice_stock_payload,
-        side_effect_count=lambda calls: len(calls) // 2,
+        expected_status=202,
+        exposes_idempotency_key=False,
     ),
     RefreshEndpointAdapter(
         family="key-date-window",
@@ -775,6 +800,7 @@ ENDPOINTS = (
         different_target={"params": {"as_of_date": "2026-04-30", "lookback_days": 31}},
         setup=_setup_livermore_gate_supplement,
         refresh_payload=_livermore_gate_supplement_payload,
+        expected_status=202,
     ),
 )
 
@@ -792,7 +818,7 @@ def test_refresh_idempotency_key_is_optional(adapter: RefreshEndpointAdapter, tm
     finally:
         get_settings.cache_clear()
 
-    assert response.status_code == 200, response.text
+    assert response.status_code == adapter.expected_status, response.text
     refresh = adapter.refresh_payload(response.json())
     assert refresh.get("idempotency_replay") in (None, False)
     assert adapter.side_effect_count(calls) == 1
@@ -812,12 +838,15 @@ def test_refresh_replays_same_normalized_idempotency_key(
     finally:
         get_settings.cache_clear()
 
-    assert first_response.status_code == 200, first_response.text
-    assert second_response.status_code == 200, second_response.text
+    assert first_response.status_code == adapter.expected_status, first_response.text
+    assert second_response.status_code == adapter.expected_status, second_response.text
     first_refresh = adapter.refresh_payload(first_response.json())
     second_refresh = adapter.refresh_payload(second_response.json())
     assert _refresh_run_id(second_refresh) == _refresh_run_id(first_refresh)
-    assert second_refresh["idempotency_key"] == adapter.idempotency_key.strip()
+    if adapter.exposes_idempotency_key:
+        assert second_refresh["idempotency_key"] == adapter.idempotency_key.strip()
+    else:
+        assert "idempotency_key" not in second_refresh
     assert second_refresh["idempotency_replay"] is True
     assert adapter.side_effect_count(calls) == 1
 
@@ -840,8 +869,8 @@ def test_refresh_does_not_replay_same_key_for_different_target(
     finally:
         get_settings.cache_clear()
 
-    assert first_response.status_code == 200, first_response.text
-    assert second_response.status_code == 200, second_response.text
+    assert first_response.status_code == adapter.expected_status, first_response.text
+    assert second_response.status_code == adapter.expected_status, second_response.text
     first_refresh = adapter.refresh_payload(first_response.json())
     second_refresh = adapter.refresh_payload(second_response.json())
     assert _refresh_run_id(second_refresh) != _refresh_run_id(first_refresh)

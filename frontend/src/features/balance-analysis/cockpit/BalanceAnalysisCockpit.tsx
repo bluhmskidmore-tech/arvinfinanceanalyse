@@ -4,7 +4,6 @@ import {
   BarChartOutlined,
   BuildOutlined,
   FileTextOutlined,
-  InfoCircleOutlined,
   LineChartOutlined,
   PieChartOutlined,
   SafetyCertificateOutlined,
@@ -13,16 +12,15 @@ import {
 
 import { BalanceBottomRow } from "../components/BalanceBottomRow";
 import { BalanceContributionRow } from "../components/BalanceContributionRow";
+import { BalanceSectionHead } from "../components/BalanceSectionHead";
 import { BalanceSummaryRow } from "../components/BalanceSummaryRow";
 import type { BalanceHeadlineCard } from "../pages/balanceAnalysisPageModel";
 import type {
   BalanceCockpitViewModel,
   BalanceStageRealDataModel,
 } from "../pages/balanceAnalysisPageModel";
-import dhStyles from "../../workbench/dashboard-home/dashboardHome.module.css";
-import styles from "./balanceAnalysisCockpit.module.css";
-import toolbarStyles from "./balanceAnalysisToolbar.module.css";
 
+import { EM_DASH } from "../../../utils/format";
 type BalanceAnalysisCockpitProps = {
   model: BalanceCockpitViewModel;
   stageModel: BalanceStageRealDataModel;
@@ -40,54 +38,22 @@ const workbookIcons: Record<string, ReactNode> = {
   decision_items: <AuditOutlined aria-hidden />,
 };
 
-function MiniDonut({ pct }: { pct: number }) {
-  const clamped = Math.max(0, Math.min(100, pct));
-  const radius = 14;
-  const circumference = 2 * Math.PI * radius;
-  const dash = (clamped / 100) * circumference;
-  return (
-    <svg width={36} height={36} viewBox="0 0 36 36" aria-hidden>
-      <circle cx={18} cy={18} r={radius} fill="none" stroke="#e2e8f0" strokeWidth={5} />
-      <circle
-        cx={18}
-        cy={18}
-        r={radius}
-        fill="none"
-        stroke="#1850a1"
-        strokeWidth={5}
-        strokeDasharray={`${dash} ${circumference}`}
-        transform="rotate(-90 18 18)"
-      />
-    </svg>
-  );
-}
-
 function scrollToPanel(panelId: string) {
   const target =
     document.querySelector(`[data-testid="${panelId}"]`) ?? document.getElementById(panelId);
   target?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-function KpiCard({ kpi }: { kpi: BalanceCockpitViewModel["scaleKpis"][number] }) {
+function KpiCell({ kpi }: { kpi: BalanceCockpitViewModel["scaleKpis"][number] }) {
   return (
-    <article className={`${dhStyles.dhCard} ${dhStyles.dhTerminalKpi}`}>
-      <div className={dhStyles.dhTerminalKpiTop}>
-        <span>{kpi.label}</span>
-      </div>
-      {kpi.variant === "donut" ? (
-        <div className={toolbarStyles.baKpiDonutWrap}>
-          <MiniDonut pct={kpi.donutPct ?? 0} />
-          <div className={`${dhStyles.dhTerminalKpiValue} ${dhStyles.dhNum}`}>
-            {kpi.value}
-            {kpi.unit ? <small>{kpi.unit}</small> : null}
-          </div>
-        </div>
-      ) : (
-        <div className={`${dhStyles.dhTerminalKpiValue} ${dhStyles.dhNum}`}>
-          {kpi.value}
-          {kpi.value !== "—" ? <small>{kpi.unit}</small> : null}
-        </div>
-      )}
+    <article className="balance-analysis-kpi-cell">
+      <span className="balance-analysis-kpi-cell__label" title={kpi.label}>
+        {kpi.label}
+      </span>
+      <strong className="balance-analysis-kpi-cell__value">
+        {kpi.value}
+        {kpi.value !== EM_DASH && kpi.unit ? <small>{kpi.unit}</small> : null}
+      </strong>
     </article>
   );
 }
@@ -98,73 +64,78 @@ export default function BalanceAnalysisCockpit({
   headlineCards,
 }: BalanceAnalysisCockpitProps) {
   return (
-    <div className={styles.baCockpitStack} data-testid="balance-workbench">
-      <section
-        data-testid="balance-analysis-priority-board"
-        className={`${dhStyles.dhCard} ${dhStyles.dhTerminalJudgement} ${styles.baJudgementCompact}`}
-        aria-label="缺口判断摘要"
-      >
-        <span className={dhStyles.dhTerminalEyebrow}>首屏结论</span>
-        <h2>{model.judgementLine}</h2>
-        <div className={styles.baJudgementFoot}>正式口径 · 净头寸与期限缺口</div>
-      </section>
-
-      <div data-testid="balance-analysis-cockpit">
-        <section className={dhStyles.dhTerminalHero} data-testid="balance-analysis-cockpit-kpis">
-          {model.scaleKpis.map((kpi) => (
-            <KpiCard key={kpi.key} kpi={kpi} />
-          ))}
+    <div className="balance-analysis-stack" data-testid="balance-workbench">
+      <div data-testid="balance-analysis-cockpit" className="balance-analysis-stack">
+        <section className="balance-analysis-sec">
+          <BalanceSectionHead title="当日结论" meta="正式口径 · 净头寸与期限缺口" />
+          <section
+            data-testid="balance-analysis-priority-board"
+            className="balance-analysis-conclusion"
+            aria-label="缺口判断摘要"
+          >
+            <p className="balance-analysis-conclusion__body">{model.judgementLine}</p>
+          </section>
+          <section
+            data-testid="balance-analysis-cockpit-kpis"
+            className="balance-analysis-kpi-band"
+          >
+            {model.scaleKpis.map((kpi) => (
+              <KpiCell key={kpi.key} kpi={kpi} />
+            ))}
+          </section>
+          <section
+            data-testid="balance-analysis-cockpit-ops-kpis"
+            className="balance-analysis-ops-strip"
+          >
+            {model.opsKpis.map((kpi) => (
+              <div key={kpi.key} className="balance-analysis-ops-item">
+                <span className="balance-analysis-ops-item__label">{kpi.label}</span>
+                <strong className="balance-analysis-ops-item__value">
+                  {kpi.value}
+                  {kpi.value !== EM_DASH && kpi.unit ? <small>{kpi.unit}</small> : null}
+                </strong>
+              </div>
+            ))}
+          </section>
         </section>
 
-        <section className={styles.baOpsKpiRow} data-testid="balance-analysis-cockpit-ops-kpis">
-          {model.opsKpis.map((kpi) => (
-            <KpiCard key={kpi.key} kpi={kpi} />
-          ))}
-        </section>
-
-        <section data-testid="balance-analysis-cockpit-stage" className={styles.baStageSection}>
-          <div className={styles.baStageSectionHead}>
-            <strong>真实数据读面</strong>
-            <span>摘要 · 贡献 · 期限 · 风险</span>
-          </div>
-          <div className={styles.baStageStack}>
+        <section data-testid="balance-analysis-cockpit-stage" className="balance-analysis-sec">
+          <BalanceSectionHead title="资产负债读面" meta="摘要 / 贡献 / 期限 / 风险" />
+          <div className="balance-analysis-stage-stack">
             <BalanceSummaryRow model={stageModel.summary} variant="terminal" />
             <BalanceContributionRow model={stageModel.contribution} variant="terminal" />
             <BalanceBottomRow model={stageModel.bottom} variant="terminal" />
           </div>
         </section>
 
-        <article
-          className={`${dhStyles.dhCard} ${dhStyles.dhTerminalPanel}`}
-          data-testid="balance-analysis-workbench-grid"
-        >
-          <div className={dhStyles.dhTerminalPanelHead}>
-            <h3>Workbook 分析入口</h3>
-            <span className={dhStyles.dhMuted}>{model.workbookSummary}</span>
-          </div>
-          <div className={styles.baWorkbookBottom}>
+        <section data-testid="balance-analysis-workbench-grid" className="balance-analysis-sec">
+          <BalanceSectionHead
+            title="工作簿分析入口"
+            meta={model.workbookSummary}
+            hint="底稿默认折叠；ADB 预览与高级归因标为「分析面」，不混入正式 workbook。"
+          />
+          <div className="balance-analysis-quicknav">
             {model.workbookNav.map((item) => (
               <button
                 key={item.key}
                 type="button"
-                className={`${dhStyles.dhCard} ${dhStyles.dhTerminalQuick}`}
+                className="balance-analysis-quicknav__item"
                 data-testid={`balance-analysis-workbook-nav-${item.key}`}
                 onClick={() => scrollToPanel(item.panelId)}
               >
-                <span>{workbookIcons[item.key]}</span>
+                <span className="balance-analysis-quicknav__icon">{workbookIcons[item.key]}</span>
                 <b>{item.label}</b>
-                <em>跳转</em>
               </button>
             ))}
           </div>
-          <p className={styles.baWorkbookNote}>
-            <InfoCircleOutlined aria-hidden /> 底稿默认折叠；ADB 预览与高级归因标为「分析面」，不混入正式
-            workbook。
-          </p>
-        </article>
+        </section>
       </div>
 
-      <div data-testid="balance-analysis-overview-cards" className={toolbarStyles.baOverviewCompat} aria-hidden>
+      <div
+        data-testid="balance-analysis-overview-cards"
+        className="balance-analysis-visually-hidden"
+        aria-hidden
+      >
         {headlineCards.map((card) => (
           <span key={card.key}>
             {card.label} {card.value}

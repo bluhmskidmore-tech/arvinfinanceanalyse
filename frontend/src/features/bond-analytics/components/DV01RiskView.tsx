@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Radio, Spin, Table } from "antd";
-import type { ColumnsType } from "antd/es/table";
+import { Alert, Radio, Table } from "antd";
+import type { ColumnsType, ColumnType } from "antd/es/table";
 
 import { useApiClient } from "../../../api/client";
 import type {
@@ -14,6 +14,7 @@ import type {
   DV01MovementAttributionItem,
   DV01MovementBondItem,
   DV01ReconciliationRow,
+  DV01RiskLevel,
   DV01ShockScenario,
   DV01TenorBucket,
   DV01TopBondItem,
@@ -22,6 +23,7 @@ import type {
 } from "../../../api/contracts";
 import { apiQueryKeys } from "../../../api/queryKeys";
 import { tabularNumsStyle } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type {
   BondAnalyticsDV01AccountingClassFilter,
@@ -31,12 +33,23 @@ import type {
   DV01RiskResponse,
 } from "../types";
 import { formatPct, formatYi } from "../utils/formatters";
+import {
+  DetailEmptyNote,
+  DetailPanelSkeleton,
+  withNumericColumns,
+} from "./BondAnalyticsDetailPrimitives";
+import detailStyles from "./BondAnalyticsDetailPrimitives.module.css";
 import { SectionLead } from "./SectionLead";
 import styles from "./DV01RiskView.module.css";
 
 const DEFAULT_SHOCK_BPS = "1,10,25,50";
 const DV01_LIMIT_REVIEW_PACKAGE_DIR = ".tmp\\bond_dv01_limit_config_review_package";
 const TOP_N_OPTIONS = [10, 20, 30, 50, 100] as const;
+// Backend marker for "no governed limit exists at all". It is the opposite of a
+// page threshold fallback: nothing is being measured, so nothing can breach.
+const DV01_NO_LIMIT_CONFIGURED = "no_limit_configured";
+const DV01_UNCONFIGURED_TEXT = "未配置";
+const DV01_NOT_APPLICABLE_TEXT = "不适用";
 
 type DV01AccountingOption = {
   label: string;
@@ -55,17 +68,17 @@ interface Props {
 }
 
 function formatNumeric(value: Numeric | null | undefined): string {
-  return value?.display || "—";
+  return value?.display || EM_DASH;
 }
 
 function formatMoneyYi(value: Numeric | null | undefined): string {
-  return value ? formatYi(value) : "—";
+  return value ? formatYi(value) : EM_DASH;
 }
 
 function formatSignedMoneyYi(value: Numeric | null | undefined): string {
-  if (!value) return "—";
+  if (!value) return EM_DASH;
   const raw = bondNumericRaw(value);
-  if (raw === null) return value.display || "—";
+  if (raw === null) return value.display || EM_DASH;
   const absYi = Math.abs(raw) / 100_000_000;
   const sign = raw > 0 ? "+" : raw < 0 ? "-" : "";
   return `${sign}${absYi.toLocaleString("zh-CN", {
@@ -76,7 +89,7 @@ function formatSignedMoneyYi(value: Numeric | null | undefined): string {
 
 function formatDurationYears(value: Numeric | null | undefined): string {
   const display = formatNumeric(value);
-  return display === "—" ? display : `${display} 年`;
+  return display === EM_DASH ? display : `${display} 年`;
 }
 
 function formatCount(value: number): string {
@@ -84,7 +97,7 @@ function formatCount(value: number): string {
 }
 
 function nullableText(value: string | null | undefined): string {
-  return value?.trim() || "—";
+  return value?.trim() || EM_DASH;
 }
 
 function joinDisplayList(values: string[] | null | undefined): string {
@@ -145,7 +158,7 @@ const tenorColumns: ColumnsType<DV01TenorBucket> = [
     onCell: () => ({ style: tabularNumsStyle }),
   },
   {
-    title: "DV01",
+    title: "DV01（元/bp）",
     dataIndex: "dv01",
     key: "dv01",
     render: formatNumeric,
@@ -213,7 +226,7 @@ const topBondColumns: ColumnsType<DV01TopBondItem> = [
     onCell: () => ({ style: tabularNumsStyle }),
   },
   {
-    title: "DV01",
+    title: "DV01（元/bp）",
     dataIndex: "dv01",
     key: "dv01",
     render: formatNumeric,
@@ -252,7 +265,7 @@ const topIssuerColumns: ColumnsType<DV01TopIssuerItem> = [
     onCell: () => ({ style: tabularNumsStyle }),
   },
   {
-    title: "DV01",
+    title: "DV01（元/bp）",
     dataIndex: "dv01",
     key: "dv01",
     render: formatNumeric,
@@ -318,7 +331,7 @@ const reconciliationColumns: ColumnsType<DV01ReconciliationRow> = [
     width: 110,
   },
   {
-    title: "DV01",
+    title: "DV01（元/bp）",
     dataIndex: "dv01",
     key: "dv01",
     render: formatNumeric,
@@ -341,7 +354,7 @@ const reconciliationColumns: ColumnsType<DV01ReconciliationRow> = [
 const movementAttributionColumns: ColumnsType<DV01MovementAttributionItem> = [
   { title: "解释项", dataIndex: "driver_label", key: "driver_label" },
   {
-    title: "DV01 变动",
+    title: "DV01 变动（元/bp）",
     dataIndex: "dv01_delta",
     key: "dv01_delta",
     render: formatNumeric,
@@ -383,7 +396,7 @@ const movementBondColumns: ColumnsType<DV01MovementBondItem> = [
   { title: "上期分类", dataIndex: "previous_accounting_class", key: "previous_accounting_class", render: nullableText, width: 90 },
   { title: "本期分类", dataIndex: "current_accounting_class", key: "current_accounting_class", render: nullableText, width: 90 },
   {
-    title: "上期 DV01",
+    title: "上期 DV01（元/bp）",
     dataIndex: "previous_dv01",
     key: "previous_dv01",
     render: formatNumeric,
@@ -391,7 +404,7 @@ const movementBondColumns: ColumnsType<DV01MovementBondItem> = [
     width: 120,
   },
   {
-    title: "本期 DV01",
+    title: "本期 DV01（元/bp）",
     dataIndex: "current_dv01",
     key: "current_dv01",
     render: formatNumeric,
@@ -399,7 +412,7 @@ const movementBondColumns: ColumnsType<DV01MovementBondItem> = [
     width: 120,
   },
   {
-    title: "DV01 变动",
+    title: "DV01 变动（元/bp）",
     dataIndex: "dv01_delta",
     key: "dv01_delta",
     render: formatNumeric,
@@ -441,7 +454,7 @@ const methodologyCheckColumns: ColumnsType<DV01MovementBondItem> = [
     width: 140,
   },
   {
-    title: "系统 DV01",
+    title: "系统 DV01（元/bp）",
     dataIndex: "current_dv01",
     key: "current_dv01",
     render: formatNumeric,
@@ -505,13 +518,13 @@ const actionScenarioColumns: ColumnsType<DV01ActionScenarioBreach> = [
     render: formatMoneyYi,
     onCell: () => ({ style: tabularNumsStyle }),
   },
-  { title: "状态", dataIndex: "risk_level", key: "risk_level" },
+  { title: "状态", dataIndex: "risk_level", key: "risk_level", render: riskLevelLabel },
 ];
 
-const actionTenorColumns: ColumnsType<DV01ActionTenorItem> = [
+const actionTenorColumns: ColumnType<DV01ActionTenorItem>[] = [
   { title: "期限桶", dataIndex: "tenor_bucket", key: "tenor_bucket" },
   {
-    title: "DV01",
+    title: "DV01（元/bp）",
     dataIndex: "dv01",
     key: "dv01",
     render: formatNumeric,
@@ -525,7 +538,7 @@ const actionTenorColumns: ColumnsType<DV01ActionTenorItem> = [
     onCell: () => ({ style: tabularNumsStyle }),
   },
   {
-    title: "建议压降 DV01",
+    title: "建议压降 DV01（元/bp）",
     dataIndex: "suggested_reduction_dv01",
     key: "suggested_reduction_dv01",
     render: formatNumeric,
@@ -540,10 +553,10 @@ const actionTenorColumns: ColumnsType<DV01ActionTenorItem> = [
   },
 ];
 
-const actionIssuerColumns: ColumnsType<DV01ActionIssuerItem> = [
+const actionIssuerColumns: ColumnType<DV01ActionIssuerItem>[] = [
   { title: "发行人", dataIndex: "issuer_name", key: "issuer_name" },
   {
-    title: "DV01",
+    title: "DV01（元/bp）",
     dataIndex: "dv01",
     key: "dv01",
     render: formatNumeric,
@@ -557,7 +570,7 @@ const actionIssuerColumns: ColumnsType<DV01ActionIssuerItem> = [
     onCell: () => ({ style: tabularNumsStyle }),
   },
   {
-    title: "建议压降 DV01",
+    title: "建议压降 DV01（元/bp）",
     dataIndex: "suggested_reduction_dv01",
     key: "suggested_reduction_dv01",
     render: formatNumeric,
@@ -572,7 +585,7 @@ const actionIssuerColumns: ColumnsType<DV01ActionIssuerItem> = [
   },
 ];
 
-const actionBondColumns: ColumnsType<DV01ActionBondItem> = [
+const actionBondColumns: ColumnType<DV01ActionBondItem>[] = [
   { title: "债券代码", dataIndex: "instrument_code", key: "instrument_code", fixed: "left", width: 120 },
   {
     title: "债券名称",
@@ -608,7 +621,7 @@ const actionBondColumns: ColumnsType<DV01ActionBondItem> = [
     width: 110,
   },
   {
-    title: "DV01",
+    title: "DV01（元/bp）",
     dataIndex: "dv01",
     key: "dv01",
     render: formatNumeric,
@@ -616,7 +629,7 @@ const actionBondColumns: ColumnsType<DV01ActionBondItem> = [
     width: 120,
   },
   {
-    title: "建议压降 DV01",
+    title: "建议压降 DV01（元/bp）",
     dataIndex: "suggested_reduction_dv01",
     key: "suggested_reduction_dv01",
     render: formatNumeric,
@@ -625,41 +638,79 @@ const actionBondColumns: ColumnsType<DV01ActionBondItem> = [
   },
 ];
 
+// Typed by DV01RiskLevel so a newly graded level fails the build here instead of
+// leaking its raw backend code into the UI.
+const RISK_LEVEL_LABELS: Record<DV01RiskLevel, string> = {
+  ok: "可接受",
+  watch: "关注",
+  breach: "超限",
+  no_data: "无数据",
+  no_limit_configured: "未配置限额",
+};
+
 function riskLevelLabel(value: string | null | undefined): string {
-  if (value === "breach") return "超限";
-  if (value === "watch") return "关注";
-  if (value === "ok") return "可接受";
-  if (value === "no_data") return "无数据";
-  return value || "—";
+  if (!value) return EM_DASH;
+  const label: string | undefined = RISK_LEVEL_LABELS[value as DV01RiskLevel];
+  return label ?? value;
+}
+
+function isDv01LimitUnconfigured(data: DV01ActionPlanResponse | null | undefined): boolean {
+  return (
+    data?.risk_level === DV01_NO_LIMIT_CONFIGURED ||
+    data?.policy_basis === DV01_NO_LIMIT_CONFIGURED
+  );
 }
 
 function actionPolicyBasisLabel(value: string | null | undefined): string {
   if (value === "formal_limit") return "正式限额口径";
+  if (value === DV01_NO_LIMIT_CONFIGURED) return "限额未配置，无判级口径";
   return "页面预警阈值 fallback";
 }
 
 function actionPolicyBasisDescription(value: string | null | undefined): string {
   if (value === "formal_limit") return "动作计划按已接入的正式 DV01 限额计算。";
+  if (value === DV01_NO_LIMIT_CONFIGURED) {
+    return "正式限额和页面阈值都没有，本页不判定限额突破、不输出减仓或对冲建议，只披露 DV01 敞口；先在治理流补齐正式限额配置才能恢复监控。";
+  }
   return "正式限额未接入，风险动作仅用于预警排查；正式超限结论以 business-approved 限额验收通过后为准。";
+}
+
+function actionBreachCountLabel(data: DV01ActionPlanResponse | null): string {
+  // Without a limit the backend reports 0 because nothing was graded, not
+  // because the book is clean.
+  if (isDv01LimitUnconfigured(data)) return DV01_NOT_APPLICABLE_TEXT;
+  return `${formatCount(data?.breach_count ?? 0)} 项`;
+}
+
+function suppressReductionColumn<T>(
+  columns: ColumnType<T>[],
+  unconfigured: boolean,
+): ColumnType<T>[] {
+  if (!unconfigured) return columns;
+  return columns.map((column) =>
+    column.key === "suggested_reduction_dv01"
+      ? { ...column, render: () => DV01_NOT_APPLICABLE_TEXT }
+      : column,
+  );
 }
 
 function limitConfigOverallLabel(value: string | null | undefined): string {
   if (value === "ready") return "整体已配置";
   if (value === "incomplete") return "整体未完成";
-  return value || "—";
+  return value || EM_DASH;
 }
 
 function limitConfigStatusLabel(value: string | null | undefined): string {
   if (value === "ready") return "已配置";
   if (value === "missing") return "未配置";
   if (value === "invalid") return "配置无效";
-  return value || "—";
+  return value || EM_DASH;
 }
 
 function limitConfigAcceptanceLabel(value: string | null | undefined): string {
   if (value === "ready") return "已通过";
   if (value === "blocked") return "未通过";
-  return value || "—";
+  return value || EM_DASH;
 }
 
 function numericKey(value: Numeric | null | undefined): string {
@@ -931,13 +982,11 @@ function DV01LimitConfigStatusPanel({
           description={error instanceof Error ? error.message : String(error)}
         />
       ) : isLoading && !data ? (
-        <div className={styles.loadingState} data-testid="dv01-limit-config-status-loading">
-          <Spin />
-        </div>
+        <DetailPanelSkeleton testId="dv01-limit-config-status-loading" />
       ) : !data || !selectedRow ? (
-        <div className={styles.emptyState} data-testid="dv01-limit-config-status-empty-state">
+        <DetailEmptyNote testId="dv01-limit-config-status-empty-state">
           该报告日暂无 DV01 正式限额配置状态
-        </div>
+        </DetailEmptyNote>
       ) : (
         <>
           {data.warnings.length > 0 ? (
@@ -958,9 +1007,9 @@ function DV01LimitConfigStatusPanel({
             <KpiCard label="无效分类" value={joinDisplayList(data.invalid_accounting_classes)} />
             <KpiCard label="会计分类" value={selectedRow.accounting_class} />
             <KpiCard label="配置状态" value={limitConfigStatusLabel(selectedRow.status)} />
-            <KpiCard label="正式限额 DV01" value={formatNumeric(selectedRow.limit_dv01)} />
-            <KpiCard label="预警 DV01" value={formatNumeric(selectedRow.warning_dv01)} />
-            <KpiCard label="对冲目标 DV01" value={formatNumeric(selectedRow.hedge_target_dv01)} />
+            <KpiCard label="正式限额 DV01（元/bp）" value={formatNumeric(selectedRow.limit_dv01)} />
+            <KpiCard label="预警 DV01（元/bp）" value={formatNumeric(selectedRow.warning_dv01)} />
+            <KpiCard label="对冲目标 DV01（元/bp）" value={formatNumeric(selectedRow.hedge_target_dv01)} />
             <KpiCard label="限额来源" value={nullableText(selectedRow.limit_source)} />
             <KpiCard label="来源版本" value={nullableText(selectedRow.limit_source_version)} />
             <KpiCard label="规则版本" value={nullableText(selectedRow.limit_rule_version)} />
@@ -1031,29 +1080,45 @@ function DV01LimitConfigStatusPanel({
 }
 
 function DV01ActionLimitKpis({ data }: { data: DV01ActionPlanResponse }) {
+  const unconfigured = isDv01LimitUnconfigured(data);
+  // The backend zeroes every limit-derived figure when no limit exists; printing
+  // those zeros would read as "0% used, nothing to reduce" instead of "nothing
+  // is being measured".
+  const limitDerived = (value: Numeric | null | undefined, placeholder: string) =>
+    unconfigured ? placeholder : formatNumeric(value);
   return (
     <div className={styles.movementSummaryGrid}>
       <KpiCard label="风险状态" value={riskLevelLabel(data.risk_level)} />
       <KpiCard label="限额来源" value={nullableText(data.limit_source)} />
       <KpiCard label="限额版本" value={nullableText(data.limit_source_version)} />
-      <KpiCard label="预警 DV01" value={formatNumeric(data.warning_dv01)} />
-      <KpiCard label="限额 DV01" value={formatNumeric(data.limit_dv01)} />
-      <KpiCard label="使用率" value={formatNumeric(data.limit_usage)} />
-      <KpiCard label="剩余额度" value={formatNumeric(data.remaining_limit_dv01)} />
-      <KpiCard label="需压降 DV01" value={formatNumeric(data.dv01_to_reduce)} />
-      <KpiCard label="每手对冲 DV01" value={formatNumeric(data.hedge_instrument_dv01)} />
-      <KpiCard label="建议对冲手数" value={formatNumeric(data.suggested_hedge_units)} />
+      <KpiCard label="预警 DV01（元/bp）" value={limitDerived(data.warning_dv01, DV01_UNCONFIGURED_TEXT)} />
+      <KpiCard label="限额 DV01（元/bp）" value={limitDerived(data.limit_dv01, DV01_UNCONFIGURED_TEXT)} />
+      <KpiCard label="使用率" value={limitDerived(data.limit_usage, DV01_NOT_APPLICABLE_TEXT)} />
+      <KpiCard
+        label="剩余额度"
+        value={limitDerived(data.remaining_limit_dv01, DV01_NOT_APPLICABLE_TEXT)}
+      />
+      <KpiCard
+        label="需压降 DV01（元/bp）"
+        value={limitDerived(data.dv01_to_reduce, DV01_NOT_APPLICABLE_TEXT)}
+      />
+      <KpiCard label="每手对冲 DV01（元/bp）" value={formatNumeric(data.hedge_instrument_dv01)} />
+      <KpiCard
+        label="建议对冲手数"
+        value={limitDerived(data.suggested_hedge_units, DV01_NOT_APPLICABLE_TEXT)}
+      />
     </div>
   );
 }
 
 function DV01ActionDetailTables({ data }: { data: DV01ActionPlanResponse }) {
+  const unconfigured = isDv01LimitUnconfigured(data);
   return (
     <>
       <Table<DV01ActionScenarioBreach>
         data-testid="dv01-action-plan-scenarios-table"
         dataSource={data.scenario_breaches}
-        columns={actionScenarioColumns}
+        columns={withNumericColumns(actionScenarioColumns)}
         rowKey={(row) => `${row.scenario_name}|${numericKey(row.shock_bp)}|${row.risk_level}`}
         pagination={false}
         size="small"
@@ -1065,7 +1130,9 @@ function DV01ActionDetailTables({ data }: { data: DV01ActionPlanResponse }) {
           <Table<DV01ActionTenorItem>
             data-testid="dv01-action-plan-tenors-table"
             dataSource={data.tenor_actions}
-            columns={actionTenorColumns}
+            columns={withNumericColumns(
+              suppressReductionColumn(actionTenorColumns, unconfigured),
+            )}
             rowKey={(row) => `${row.tenor_bucket}|${numericKey(row.dv01)}|${numericKey(row.suggested_reduction_dv01)}`}
             pagination={false}
             size="small"
@@ -1077,7 +1144,9 @@ function DV01ActionDetailTables({ data }: { data: DV01ActionPlanResponse }) {
           <Table<DV01ActionIssuerItem>
             data-testid="dv01-action-plan-issuers-table"
             dataSource={data.issuer_actions}
-            columns={actionIssuerColumns}
+            columns={withNumericColumns(
+              suppressReductionColumn(actionIssuerColumns, unconfigured),
+            )}
             rowKey={(row) => `${row.issuer_name}|${numericKey(row.dv01)}|${numericKey(row.suggested_reduction_dv01)}`}
             pagination={false}
             size="small"
@@ -1088,7 +1157,9 @@ function DV01ActionDetailTables({ data }: { data: DV01ActionPlanResponse }) {
       <Table<DV01ActionBondItem>
         data-testid="dv01-action-plan-bonds-table"
         dataSource={data.bond_actions}
-        columns={actionBondColumns}
+        columns={withNumericColumns(
+          suppressReductionColumn(actionBondColumns, unconfigured),
+        )}
         rowKey={actionBondRowKey}
         pagination={false}
         size="small"
@@ -1116,7 +1187,7 @@ function DV01ActionPlanPanel({
           <h3 className={styles.panelTitle}>DV01 风险动作</h3>
           <div className={styles.reconciliationMeta}>
             {data?.threshold_note || "页面预警阈值，不代表正式限额。"} · 当前状态 {riskLevelLabel(data?.risk_level)} · 触发{" "}
-            {formatCount(data?.breach_count ?? 0)} 项 · 规则 {nullableText(data?.limit_rule_version)} · 生效{" "}
+            {actionBreachCountLabel(data)} · 规则 {nullableText(data?.limit_rule_version)} · 生效{" "}
             {limitEffectiveDateLabel(data?.limit_effective_date)}
           </div>
         </div>
@@ -1133,13 +1204,11 @@ function DV01ActionPlanPanel({
           description={error instanceof Error ? error.message : String(error)}
         />
       ) : isLoading && !data ? (
-        <div className={styles.loadingState} data-testid="dv01-action-plan-loading">
-          <Spin />
-        </div>
+        <DetailPanelSkeleton testId="dv01-action-plan-loading" />
       ) : !data ? (
-        <div className={styles.emptyState} data-testid="dv01-action-plan-empty-state">
+        <DetailEmptyNote testId="dv01-action-plan-empty-state">
           该报告日/分类暂无债券 DV01 风险动作数据
-        </div>
+        </DetailEmptyNote>
       ) : (
         <>
           {data.warnings.length > 0 ? (
@@ -1161,9 +1230,9 @@ function DV01ActionPlanPanel({
           />
           <DV01ActionLimitKpis data={data} />
           {data.risk_level === "no_data" ? (
-            <div className={styles.emptyState} data-testid="dv01-action-plan-empty-state">
+            <DetailEmptyNote testId="dv01-action-plan-empty-state">
               该报告日/分类暂无债券 DV01 风险动作数据
-            </div>
+            </DetailEmptyNote>
           ) : (
             <DV01ActionDetailTables data={data} />
           )}
@@ -1190,7 +1259,7 @@ function DV01MovementPanel({
         <div>
           <h3 className={styles.panelTitle}>较上一报告日变化</h3>
           <div className={styles.reconciliationMeta}>
-            上一报告日 {data?.previous_report_date ?? "—"} · 本期 DV01 {formatNumeric(data?.current_total_dv01)} · 上期 DV01{" "}
+            上一报告日 {data?.previous_report_date ?? EM_DASH} · 本期 DV01（元/bp） {formatNumeric(data?.current_total_dv01)} · 上期 DV01（元/bp）{" "}
             {formatNumeric(data?.previous_total_dv01)} · 变动 {formatNumeric(data?.delta_dv01)}
           </div>
         </div>
@@ -1207,13 +1276,11 @@ function DV01MovementPanel({
           description={error instanceof Error ? error.message : String(error)}
         />
       ) : isLoading && !data ? (
-        <div className={styles.loadingState} data-testid="dv01-movement-loading">
-          <Spin />
-        </div>
+        <DetailPanelSkeleton testId="dv01-movement-loading" />
       ) : !data || data.source_status === "empty" ? (
-        <div className={styles.emptyState} data-testid="dv01-movement-empty-state">
+        <DetailEmptyNote testId="dv01-movement-empty-state">
           该报告日/分类暂无可对比的 DV01 变化数据
-        </div>
+        </DetailEmptyNote>
       ) : (
         <>
           {data.warnings.length > 0 ? (
@@ -1227,15 +1294,15 @@ function DV01MovementPanel({
             />
           ) : null}
           <div className={styles.movementSummaryGrid}>
-            <KpiCard label="本期总 DV01" value={formatNumeric(data.current_total_dv01)} />
-            <KpiCard label="上期总 DV01" value={formatNumeric(data.previous_total_dv01)} />
-            <KpiCard label="DV01 变动" value={formatNumeric(data.delta_dv01)} />
+            <KpiCard label="本期总 DV01（元/bp）" value={formatNumeric(data.current_total_dv01)} />
+            <KpiCard label="上期总 DV01（元/bp）" value={formatNumeric(data.previous_total_dv01)} />
+            <KpiCard label="DV01 变动（元/bp）" value={formatNumeric(data.delta_dv01)} />
             <KpiCard label="本期加权久期" value={formatDurationYears(data.current_face_weighted_modified_duration)} />
           </div>
           <Table<DV01MovementAttributionItem>
             data-testid="dv01-movement-attribution-table"
             dataSource={data.attribution}
-            columns={movementAttributionColumns}
+            columns={withNumericColumns(movementAttributionColumns)}
             rowKey={(row) => `${row.driver_key}|${numericKey(row.dv01_delta)}|${row.position_count}`}
             pagination={false}
             size="small"
@@ -1247,7 +1314,7 @@ function DV01MovementPanel({
               <Table<DV01MovementBondItem>
                 data-testid="dv01-movement-anomaly-table"
                 dataSource={data.anomaly_bonds}
-                columns={movementBondColumns}
+                columns={withNumericColumns(movementBondColumns)}
                 rowKey={(row) => movementBondRowKey("anomaly", row)}
                 pagination={false}
                 size="small"
@@ -1259,7 +1326,7 @@ function DV01MovementPanel({
               <Table<DV01MovementBondItem>
                 data-testid="dv01-methodology-check-table"
                 dataSource={data.methodology_checks}
-                columns={methodologyCheckColumns}
+                columns={withNumericColumns(methodologyCheckColumns)}
                 rowKey={(row) => movementBondRowKey("methodology", row)}
                 pagination={false}
                 size="small"
@@ -1298,7 +1365,7 @@ function DV01ReconciliationPanel({
           <h3 className={styles.panelTitle}>单券明细对账</h3>
           <div className={styles.reconciliationMeta}>
             后端合计：面值 {formatMoneyYi(data?.total_face_value)} · 市值 {formatMoneyYi(data?.total_market_value)} · 久期{" "}
-            {formatDurationYears(data?.face_weighted_modified_duration)} · DV01 {formatNumeric(data?.total_dv01)} · 持仓{" "}
+            {formatDurationYears(data?.face_weighted_modified_duration)} · DV01（元/bp） {formatNumeric(data?.total_dv01)} · 持仓{" "}
             {formatCount(data?.position_count ?? 0)}
           </div>
           <div className={styles.reconciliationMeta}>
@@ -1338,18 +1405,16 @@ function DV01ReconciliationPanel({
           description={error instanceof Error ? error.message : String(error)}
         />
       ) : isLoading && !data ? (
-        <div className={styles.loadingState} data-testid="dv01-reconciliation-loading">
-          <Spin />
-        </div>
+        <DetailPanelSkeleton testId="dv01-reconciliation-loading" />
       ) : !data || rows.length === 0 ? (
-        <div className={styles.emptyState} data-testid="dv01-reconciliation-empty-state">
+        <DetailEmptyNote testId="dv01-reconciliation-empty-state">
           该报告日/分类暂无债券 DV01 明细数据
-        </div>
+        </DetailEmptyNote>
       ) : (
         <Table<DV01ReconciliationRow>
           data-testid="dv01-reconciliation-table"
           dataSource={filteredRows}
-          columns={reconciliationColumns}
+          columns={withNumericColumns(reconciliationColumns)}
           rowKey={reconciliationRowKey}
           pagination={{ pageSize: 20, showSizeChanger: true }}
           size="small"
@@ -1450,7 +1515,7 @@ export function DV01RiskView({ reportDate }: Props) {
   }
 
   return (
-    <div className={styles.shell} data-testid="dv01-risk-view">
+    <div className={`${styles.shell} ${detailStyles.view}`} data-testid="dv01-risk-view">
       <SectionLead
         eyebrow="DV01 风险"
         title="当前报告日利率风险横截面"
@@ -1493,9 +1558,7 @@ export function DV01RiskView({ reportDate }: Props) {
       </div>
 
       {query.isLoading && !data ? (
-        <div className={styles.loadingState} data-testid="dv01-risk-loading">
-          <Spin />
-        </div>
+        <DetailPanelSkeleton testId="dv01-risk-loading" />
       ) : query.isError ? (
         <Alert
           type="error"
@@ -1523,14 +1586,14 @@ export function DV01RiskView({ reportDate }: Props) {
               label="面值加权修正久期"
               value={formatDurationYears(data.face_weighted_modified_duration)}
             />
-            <KpiCard label="总 DV01" value={formatNumeric(data.total_dv01)} />
+            <KpiCard label="总 DV01（元/bp）" value={formatNumeric(data.total_dv01)} />
             <KpiCard label="持仓数" value={formatCount(data.position_count)} />
           </div>
 
           {!hasData ? (
-            <div className={styles.emptyState} data-testid="dv01-risk-empty-state">
+            <DetailEmptyNote testId="dv01-risk-empty-state">
               该报告日/分类暂无债券 DV01 数据
-            </div>
+            </DetailEmptyNote>
           ) : (
             <>
               {data.shock_scenarios.length > 0 ? (
@@ -1539,7 +1602,7 @@ export function DV01RiskView({ reportDate }: Props) {
                   <Table<DV01ShockScenario>
                     data-testid="dv01-risk-shocks-table"
                     dataSource={data.shock_scenarios}
-                    columns={shockColumns}
+                    columns={withNumericColumns(shockColumns)}
                     rowKey={(row) => `${row.scenario_name}|${numericKey(row.shock_bp)}`}
                     pagination={false}
                     size="small"
@@ -1549,11 +1612,11 @@ export function DV01RiskView({ reportDate }: Props) {
               ) : null}
 
               <section className={styles.panel}>
-                <h3 className={styles.panelTitle}>期限桶 DV01</h3>
+                <h3 className={styles.panelTitle}>期限桶 DV01（元/bp）</h3>
                 <Table<DV01TenorBucket>
                   data-testid="dv01-risk-tenor-table"
                   dataSource={data.tenor_buckets}
-                  columns={tenorColumns}
+                  columns={withNumericColumns(tenorColumns)}
                   rowKey={(row) => `${row.tenor_bucket}|${numericKey(row.dv01)}|${row.position_count}`}
                   pagination={false}
                   size="small"
@@ -1567,7 +1630,7 @@ export function DV01RiskView({ reportDate }: Props) {
                   <Table<DV01TopBondItem>
                     data-testid="dv01-risk-top-bonds-table"
                     dataSource={data.top_bonds}
-                    columns={topBondColumns}
+                    columns={withNumericColumns(topBondColumns)}
                     rowKey={actionBondRowKey}
                     pagination={false}
                     size="small"
@@ -1580,7 +1643,7 @@ export function DV01RiskView({ reportDate }: Props) {
                   <Table<DV01TopIssuerItem>
                     data-testid="dv01-risk-top-issuers-table"
                     dataSource={data.top_issuers}
-                    columns={topIssuerColumns}
+                    columns={withNumericColumns(topIssuerColumns)}
                     rowKey={(row) => `${row.issuer_name}|${numericKey(row.dv01)}|${row.position_count}`}
                     pagination={false}
                     size="small"

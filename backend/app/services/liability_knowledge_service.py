@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
-import os
 import re
 from pathlib import Path
 
@@ -11,6 +9,7 @@ from backend.app.schemas.liability_knowledge import (
     LiabilityKnowledgeNote,
 )
 from backend.app.services.formal_result_runtime import build_result_envelope
+from backend.app.services.obsidian_vault import read_note_text, resolve_obsidian_vault_path
 
 LIABILITY_KNOWLEDGE_CACHE_VERSION = "cv_liability_knowledge_v1"
 LIABILITY_KNOWLEDGE_RULE_VERSION = "rv_liability_knowledge_v1"
@@ -21,6 +20,9 @@ _LIABILITY_NOTE_FILENAMES = (
     "债券投资、久期与利率风险传导链.md",
     "金融市场条线经营分析标准提纲.md",
 )
+
+_resolve_obsidian_vault_path = resolve_obsidian_vault_path
+_read_note_text = read_note_text
 
 
 def liability_knowledge_brief_envelope() -> dict[str, object]:
@@ -111,57 +113,6 @@ def _load_note(note_path: Path) -> LiabilityKnowledgeNote:
         key_questions=questions,
         source_path=str(note_path),
     )
-
-
-def _resolve_obsidian_vault_path() -> Path | None:
-    explicit = str(os.getenv("MOSS_OBSIDIAN_VAULT_PATH", "")).strip()
-    if explicit:
-        return Path(explicit).expanduser()
-
-    config_candidates: list[Path] = []
-    appdata = str(os.getenv("APPDATA", "")).strip()
-    if appdata:
-        config_candidates.append(Path(appdata) / "Obsidian" / "obsidian.json")
-    config_candidates.append(Path.home() / "AppData" / "Roaming" / "Obsidian" / "obsidian.json")
-    config_candidates.append(Path.home() / ".config" / "Obsidian" / "obsidian.json")
-
-    for candidate in config_candidates:
-        if not candidate.exists():
-            continue
-        try:
-            payload = json.loads(candidate.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        vaults = payload.get("vaults")
-        if not isinstance(vaults, dict):
-            continue
-        ranked: list[tuple[int, int, str]] = []
-        for entry in vaults.values():
-            if not isinstance(entry, dict):
-                continue
-            path_value = str(entry.get("path") or "").strip()
-            if not path_value:
-                continue
-            ranked.append(
-                (
-                    1 if bool(entry.get("open")) else 0,
-                    int(entry.get("ts") or 0),
-                    path_value,
-                )
-            )
-        if ranked:
-            ranked.sort(reverse=True)
-            return Path(ranked[0][2]).expanduser()
-    return None
-
-
-def _read_note_text(note_path: Path) -> str:
-    for encoding in ("utf-8", "utf-8-sig", "gb18030"):
-        try:
-            return note_path.read_text(encoding=encoding)
-        except UnicodeDecodeError:
-            continue
-    return note_path.read_text(encoding="utf-8", errors="ignore")
 
 
 def _extract_title(text: str, *, fallback: str) -> str:

@@ -16,7 +16,8 @@ const EXT_RE = /\.(tsx?|css|module\.css)$/i;
 /** @type {RegExp} */
 const HEX_RE = /#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g;
 const PRIVATE_SHADOW_RE = /\bboxShadow\s*:|box-shadow\s*:/;
-const TOKEN_SHADOW_RE = /designTokens\.shadow|shellTokens\.shadow|var\(--moss-shadow-/;
+const TOKEN_SHADOW_RE =
+  /designTokens\.shadow|shellTokens\.shadow|ibTokens\.shadow|var\(--moss-shadow-[^)]+\)|var\(--ib-shadow\)/;
 const NONE_SHADOW_RE = /\bboxShadow\s*:\s*["']?none["']?|box-shadow\s*:\s*none\b/;
 const LARGE_RADIUS_RE = /\bborderRadius\s*:\s*(?:1[89]|[2-9]\d)|border-radius\s*:\s*(?:1[89]|[2-9]\d)px/;
 const TOKEN_RADIUS_RE = /designTokens\.radius|shellTokens\.radius|var\(--moss-radius-/;
@@ -42,15 +43,38 @@ function gitRevExists(ref) {
   return r.ok;
 }
 
+function resolveUpstreamRef() {
+  const r = git([
+    "rev-parse",
+    "--abbrev-ref",
+    "--symbolic-full-name",
+    "@{upstream}",
+  ]);
+  const ref = r.ok ? r.out.trim() : "";
+  return ref && gitRevExists(ref) ? ref : null;
+}
+
+function resolveMergeBase(left, right) {
+  const r = git(["merge-base", left, right]);
+  const ref = r.ok ? r.out.trim() : "";
+  return ref && gitRevExists(ref) ? ref : null;
+}
+
 function resolveBaseRef() {
   const fromEnv = (process.env.BASE_REF ?? "").trim();
-  const candidates = fromEnv.length
-    ? [fromEnv]
-    : ["origin/codex/choice-stock-field-catalog", "origin/main"];
-  for (const c of candidates) {
-    if (gitRevExists(c)) return c;
+  if (fromEnv && gitRevExists(fromEnv)) {
+    return fromEnv;
   }
-  if (gitRevExists("HEAD")) return "HEAD";
+
+  const upstream = resolveUpstreamRef();
+  if (upstream) {
+    return resolveMergeBase("HEAD", upstream) ?? upstream;
+  }
+
+  if (gitRevExists("origin/main")) {
+    return resolveMergeBase("HEAD", "origin/main") ?? "origin/main";
+  }
+
   return "HEAD";
 }
 
@@ -190,6 +214,30 @@ function parseGitDiffAdditions(diffText) {
   return [...merged.entries()].map(([p, additions]) => ({ path: p, additions }));
 }
 
+function collectRemovedLineCounts(diffText) {
+  const removed = new Map();
+  for (const raw of diffText.split(/\r?\n/)) {
+    if (!raw.startsWith("-") || raw.startsWith("---")) continue;
+    const line = raw.slice(1);
+    const key = line.trim();
+    if (!key) continue;
+    removed.set(key, (removed.get(key) ?? 0) + 1);
+  }
+  return removed;
+}
+
+function consumeMovedLine(line, removedLineCounts) {
+  const key = line.trim();
+  const count = removedLineCounts.get(key) ?? 0;
+  if (count <= 0) return false;
+  if (count === 1) {
+    removedLineCounts.delete(key);
+  } else {
+    removedLineCounts.set(key, count - 1);
+  }
+  return true;
+}
+
 function runDiff(baseRef, cached) {
   const scope = ["--", "frontend/src"];
   const args = cached
@@ -218,6 +266,7 @@ function runWorkspaceDiff(cached) {
 
 function auditDiff(diffText, allowlist) {
   const parsed = parseGitDiffAdditions(diffText);
+  const removedLineCounts = collectRemovedLineCounts(diffText);
   /** @type {string[]} */
   const hexFailures = [];
   /** @type {string[]} */
@@ -238,6 +287,7 @@ function auditDiff(diffText, allowlist) {
 
     for (const { line } of additions) {
       if (isCommentOnlyLine(line)) continue;
+      if (consumeMovedLine(line, removedLineCounts)) continue;
       const bad = findBadHexesInLine(line, allowlist);
       if (bad.length) {
         for (const b of bad) {
@@ -441,6 +491,28 @@ function runSelfTest() {
   const ns = auditDiff(noShadowDiff, allow);
   if (ns.shadowFailures.length !== 0) {
     die("self-test: boxShadow none should not be treated as private shadow", 2);
+  }
+
+  const ibTokenShadowDiff = [
+    "diff --git a/frontend/src/x/IbShadow.css b/frontend/src/x/IbShadow.css",
+    "+++ b/frontend/src/x/IbShadow.css",
+    `+  box-shadow: var(--ib-shadow);`,
+    `+  box-shadow: var(--moss-shadow-card);`,
+    `+  boxShadow: ibTokens.shadow,`,
+  ].join("\n");
+  const ibs = auditDiff(ibTokenShadowDiff, allow);
+  if (ibs.shadowFailures.length !== 0) {
+    die("self-test: official IB shadow tokens should not be treated as private shadow", 2);
+  }
+
+  const ibFallbackShadowDiff = [
+    "diff --git a/frontend/src/x/IbShadowFallback.css b/frontend/src/x/IbShadowFallback.css",
+    "+++ b/frontend/src/x/IbShadowFallback.css",
+    `+  box-shadow: var(--ib-shadow, 0 1px 2px rgba(16, 24, 29, 0.05));`,
+  ].join("\n");
+  const ibf = auditDiff(ibFallbackShadowDiff, allow);
+  if (ibf.shadowFailures.length === 0) {
+    die("self-test: IB shadow token with raw fallback should remain a private shadow failure", 2);
   }
 
   const largeRadiusDiff = [

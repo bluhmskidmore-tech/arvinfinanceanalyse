@@ -24,6 +24,11 @@ from backend.app.schemas.macro_vendor import (
     MacroVendorSeries,
 )
 
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_macro_data,
+]
+
 
 def _minimal_series() -> ChoiceMacroSeriesConfig:
     return ChoiceMacroSeriesConfig(
@@ -135,6 +140,8 @@ def test_macro_vendor_payload_default_read_target():
         ],
     )
     assert payload.read_target == "duckdb"
+    assert payload.series[0].theme == "unknown"
+    assert payload.series[0].tags == []
 
 
 def test_choice_macro_recent_point_default_quality_flag():

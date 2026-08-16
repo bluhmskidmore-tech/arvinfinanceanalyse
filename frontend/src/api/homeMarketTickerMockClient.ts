@@ -1,12 +1,14 @@
 import type { HomeMarketTickerClientMethods } from "./homeMarketTickerClient";
 import type {
-  ApiEnvelope,
   ChoiceMacroLatestPayload,
   ChoiceMacroLatestPoint,
-  ChoiceNewsEventsPayload,
   ResearchCalendarEvent,
 } from "./contracts";
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
+import {
+  buildMockChoiceNewsBatchEnvelope,
+  buildMockChoiceNewsEnvelope,
+} from "../mocks/choiceNewsMocks";
 
 const delay = async () => new Promise<void>((resolve) => setTimeout(resolve, 40));
 
@@ -70,82 +72,20 @@ const MOCK_RATES_PAYLOAD: ChoiceMacroLatestPayload = {
     macroPoint("M003", "China 1Y government bond yield", 1.56, "%", 0.03, [
       1.51, 1.53, 1.54, 1.56,
     ]),
-    macroPoint("EMM01843735", "China financial conditions index", 98.6, "index", 0.35, [
-      97.9, 98.1, 98.3, 98.6,
+    macroPoint("EMM01843735", "China financial conditions index", -1.54, "z-score", -0.03, [
+      -1.43, -1.48, -1.51, -1.54,
+    ]),
+    macroPoint("CA.CSI300", "沪深300指数收盘价", 4102.25, "index", 17.13, [
+      4060.12, 4088.34, 4119.38, 4102.25,
+    ]),
+    macroPoint("CA.CSI300_PCT_CHG", "沪深300涨跌幅", -0.42, "%", -0.05, [
+      0.31, 0.18, -0.12, -0.42,
     ]),
     macroPoint("CA.USDCNY", "USD/CNY spot", 7.14, "CNY/USD", 0.0064, [
       7.11, 7.12, 7.13, 7.14,
     ]),
   ],
 };
-
-const MOCK_NEWS_EVENTS: ChoiceNewsEventsPayload["events"] = [
-  {
-    event_key: "home_market_news_001",
-    received_at: "2026-04-10T09:01:00Z",
-    group_id: "home_market",
-    content_type: "sectornews",
-    serial_id: 1001,
-    request_id: 501,
-    error_code: 0,
-    error_msg: "",
-    topic_code: "S888010007API",
-    item_index: 0,
-    payload_text: "\u8d44\u91d1\u9762\u5e73\u7a33\uff0c\u957f\u7aef\u5229\u7387\u7a84\u5e45\u9707\u8361\u3002",
-    payload_json: null,
-  },
-  {
-    event_key: "home_market_news_002",
-    received_at: "2026-04-10T10:15:00Z",
-    group_id: "home_market",
-    content_type: "bondnews",
-    serial_id: 1002,
-    request_id: 502,
-    error_code: 0,
-    error_msg: "",
-    topic_code: "tushare.news",
-    item_index: 0,
-    payload_text: "\u503a\u5238\u4e00\u7ea7\u4f9b\u7ed9\u8282\u594f\u4fdd\u6301\u7a33\u5b9a\u3002",
-    payload_json: null,
-  },
-];
-
-function buildMockChoiceNewsEnvelope(options: {
-  limit: number;
-  offset: number;
-  groupId?: string;
-  topicCode?: string;
-  stockCode?: string;
-  errorOnly?: boolean;
-  receivedFrom?: string;
-  receivedTo?: string;
-}): ApiEnvelope<ChoiceNewsEventsPayload> {
-  const stockCode = options.stockCode?.trim().toUpperCase() || null;
-  const filtered = MOCK_NEWS_EVENTS.filter((event) => {
-    if (options.groupId?.trim() && event.group_id !== options.groupId.trim()) return false;
-    if (options.topicCode?.trim() && event.topic_code !== options.topicCode.trim()) return false;
-    if (options.errorOnly && event.error_code === 0) return false;
-    if (options.receivedFrom?.trim() && event.received_at < options.receivedFrom.trim()) return false;
-    if (options.receivedTo?.trim() && event.received_at > options.receivedTo.trim()) return false;
-    if (stockCode) {
-      const haystack = `${event.payload_text ?? ""}\n${event.payload_json ?? ""}`.toUpperCase();
-      return haystack.includes(stockCode) || haystack.includes(stockCode.split(".", 1)[0]);
-    }
-    return true;
-  });
-  const result: ChoiceNewsEventsPayload = {
-    total_rows: filtered.length,
-    limit: options.limit,
-    offset: options.offset,
-    events: filtered.slice(options.offset, options.offset + options.limit),
-  };
-  if (stockCode) {
-    result.stock_code = stockCode;
-    result.stock_filter_mode = "payload_text_or_json_best_effort";
-    result.stock_filter_tokens = [stockCode, stockCode.split(".", 1)[0]].filter(Boolean);
-  }
-  return buildMockApiEnvelope("news.choice.latest", result);
-}
 
 function buildMockResearchCalendarEvents(reportDate?: string): ResearchCalendarEvent[] {
   const baseDate = reportDate?.trim() || "2026-04-18";
@@ -190,7 +130,13 @@ export function createMockHomeMarketTickerClient(): HomeMarketTickerClientMethod
     },
     async getChoiceNewsEvents(options) {
       await delay();
+      // Choice 新闻 mock 单一来源：与 marketDataMockClient 共用同一份事件集，
+      // 避免首页轻量 ticker 与市场数据域各自漂移。
       return buildMockChoiceNewsEnvelope(options);
+    },
+    async getChoiceNewsEventsBatch(options) {
+      await delay();
+      return buildMockChoiceNewsBatchEnvelope(options);
     },
     async getResearchCalendarEvents(options) {
       await delay();

@@ -166,7 +166,7 @@ function renderView(clientOverrides?: Record<string, unknown>) {
               source_account_patterns: [],
             },
           ],
-          accounting_controls: ["示例控制项"],
+          accounting_controls: ["142%", "143%", "1440101%", "141%"],
           excluded_controls: [],
         },
         accounting_basis_daily_avg_trend: [
@@ -385,10 +385,11 @@ describe("AverageBalanceView", () => {
     expect(screen.getByTestId("average-balance-page-subtitle")).toHaveTextContent(
       "期末是否偏离日均",
     );
+    // 页头 brief 行不再与副题逐字重复，改为差异化口径边界句（testid 保留）。
     const analysisBrief = screen.getByTestId("average-balance-analysis-brief");
-    expect(analysisBrief).toHaveTextContent("期末是否偏离日均");
-    expect(analysisBrief).toHaveTextContent("偏离由资产/负债哪类驱动");
-    expect(analysisBrief).toHaveTextContent("月度日均结构和 NIM");
+    expect(analysisBrief).toHaveTextContent("口径边界");
+    expect(analysisBrief).toHaveTextContent("债券投资（ZQTZ）与同业（TYW）读模型");
+    expect(analysisBrief).not.toHaveTextContent("日均分析回答什么");
     expect(screen.getByRole("heading", { name: "区间日均分析" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "日均分析" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "月度统计" })).toBeInTheDocument();
@@ -400,6 +401,11 @@ describe("AverageBalanceView", () => {
     expect(await screen.findByText("区间天数：104 天")).toBeInTheDocument();
     expect(screen.getByTestId("adb-denominator-summary")).toHaveTextContent("分母=");
     expect(screen.getByTestId("adb-accounting-basis-section")).toHaveTextContent("FVOCI");
+    // SQL LIKE 前缀模式（"142%" 等）在显示层读作科目前缀，尾部 % 通配符不再直出。
+    expect(screen.getByTestId("adb-accounting-basis-section")).toHaveTextContent(
+      "控制项：科目前缀 142 / 143 / 1440101 / 141",
+    );
+    expect(screen.getByTestId("adb-accounting-basis-section")).not.toHaveTextContent("142%");
     expect(screen.getByTestId("adb-accounting-basis-trend-chart")).toBeInTheDocument();
     expect(
       screen.getByText("当前区间仅 1 天时，日均为稳态模拟，便于演示图表逻辑"),
@@ -413,7 +419,7 @@ describe("AverageBalanceView", () => {
     expect(screen.getByText("偏离度（负债）")).toBeInTheDocument();
     expect(screen.getByText("同业日均资产")).toBeInTheDocument();
     expect(screen.getByText("同业日均负债")).toBeInTheDocument();
-    expect(screen.getAllByText("TYW 正式余额·区间日均").length).toBe(2);
+    expect(screen.getAllByText("TYW 正式余额（区间日均）").length).toBe(2);
     expect(screen.getByText("资产加权平均YTM")).toBeInTheDocument();
     expect(screen.getByText("负债加权平均票息")).toBeInTheDocument();
     expect(screen.getByText("利差（YTM−票息）")).toBeInTheDocument();
@@ -476,8 +482,80 @@ describe("AverageBalanceView", () => {
 
     const yoyCategory = await screen.findByTestId("adb-daily-yoy-category");
     await waitFor(() => expect(yoyCategory).toHaveTextContent("new-asset-book"));
-    expect(yoyCategory).toHaveTextContent("缺去年同期");
+    // 缺去年同期在行内是安静的 EM_DASH，不再逐行重复原因文案。
+    expect(yoyCategory).toHaveTextContent("—");
+    expect(yoyCategory).not.toHaveTextContent("缺去年同期");
     expect(yoyCategory).not.toHaveTextContent("Infinity");
+    // 总规模行仍有去年值（非整列缺失）：区块头不出现整列缺失说明。
+    expect(screen.queryByTestId("adb-yoy-prior-missing-notice")).not.toBeInTheDocument();
+  });
+
+  it("shows a single block-head notice when the prior-year read model has no coverage at all", async () => {
+    renderView({
+      async getAdbComparison(startDate: string, endDate: string, _opts?: { topN?: number }) {
+        const current = await createApiClient({ mode: "mock" }).getAdbComparison(startDate, endDate, _opts);
+        if (startDate.startsWith("2025")) {
+          return {
+            ...current,
+            report_date: "2025-04-14",
+            start_date: startDate,
+            end_date: endDate,
+            total_spot_assets: null,
+            total_avg_assets: null,
+            total_spot_liabilities: null,
+            total_avg_liabilities: null,
+            avg_unavailable_reason: "no_data" as const,
+            spot_unavailable_reason: "no_data" as const,
+            assets_breakdown: [],
+            liabilities_breakdown: [],
+          };
+        }
+        return {
+          ...current,
+          assets_breakdown: [
+            {
+              category: "债券投资",
+              spot_balance: 300_000_000,
+              avg_balance: 260_000_000,
+              proportion: 52,
+              weighted_rate: 2.8,
+            },
+          ],
+          liabilities_breakdown: [],
+        };
+      },
+    });
+
+    const notice = await screen.findByTestId("adb-yoy-prior-missing-notice");
+    expect(notice).toHaveTextContent("2025 年同期读模型未覆盖");
+    expect(notice).toHaveTextContent("整列缺失");
+    // 行内保持安静 EM_DASH，原因只在区块头出现一次。
+    expect(screen.getByTestId("adb-daily-yoy-category")).not.toHaveTextContent("缺去年同期");
+  });
+
+  it("flags negative deviation beyond the absolute threshold with the same warning chain", async () => {
+    renderView({
+      async getAdbComparison(startDate: string, endDate: string, _opts?: { topN?: number }) {
+        const current = await createApiClient({ mode: "mock" }).getAdbComparison(startDate, endDate, _opts);
+        if (startDate.startsWith("2025")) {
+          return { ...current, report_date: "2025-04-14", start_date: startDate, end_date: endDate };
+        }
+        // 期末显著低于日均（-9.45%）：绝对值判据下与正偏离同样预警。
+        // 负债侧压回 +2%（阈值内），确保全局警示只能由资产负偏离触发。
+        return {
+          ...current,
+          total_spot_assets: 452_750_000,
+          total_avg_assets: 500_000_000,
+          total_spot_liabilities: 204_000_000,
+          total_avg_liabilities: 200_000_000,
+        };
+      },
+    });
+
+    const deviationCard = (await screen.findByText("偏离度（资产）")).closest(".adb-kpi");
+    expect(deviationCard).toHaveTextContent("-9.45%");
+    expect(deviationCard?.querySelector(".adb-kpi-warn-icon")).toBeInTheDocument();
+    expect(await screen.findByText(/偏离度绝对值 > 5%/)).toBeInTheDocument();
   });
 
   it("preserves missing comparison average balance as unavailable instead of zero", async () => {
@@ -535,6 +613,90 @@ describe("AverageBalanceView", () => {
     expect(screen.getByTestId("adb-daily-yoy-category")).toHaveTextContent("—");
     expect(screen.getByTestId("adb-daily-yoy-category")).not.toHaveTextContent("-0.50");
     expect(screen.getByText("true-zero-adb").closest("tr")).toHaveTextContent("0.00");
+  });
+
+  it("renders deviation KPIs as unavailable and skips the dressing warning when the average denominator is zero", async () => {
+    renderView({
+      async getAdbComparison(startDate: string, endDate: string, _opts?: { topN?: number }) {
+        const current = await createApiClient({ mode: "mock" }).getAdbComparison(startDate, endDate, _opts);
+        if (startDate.startsWith("2025")) {
+          return { ...current, report_date: "2025-04-14", start_date: startDate, end_date: endDate };
+        }
+        // 分母（日均总额）为 0：偏离度无法计算，不得显示 "+0.00%"、也不得触发“窗口粉饰”预警。
+        return { ...current, total_avg_assets: 0, total_avg_liabilities: 0 };
+      },
+    });
+
+    const assetDeviationLabel = await screen.findByText("偏离度（资产）");
+    expect(assetDeviationLabel.closest(".adb-kpi")).toHaveTextContent("—");
+    expect(assetDeviationLabel.closest(".adb-kpi")).not.toHaveTextContent("%");
+    const liabilityDeviationLabel = screen.getByText("偏离度（负债）");
+    expect(liabilityDeviationLabel.closest(".adb-kpi")).toHaveTextContent("—");
+    expect(screen.queryByText(/窗口粉饰/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the deviation KPI null-safe and shows an explicit unavailable hint when the interval average total is missing", async () => {
+    renderView({
+      async getAdbComparison(startDate: string, endDate: string, _opts?: { topN?: number }) {
+        if (startDate.startsWith("2025")) {
+          return {
+            report_date: "2025-04-14",
+            start_date: startDate,
+            end_date: endDate,
+            calendar_days_inclusive: 1,
+            adb_denominator_basis: "formal_calendar" as const,
+            num_days: 1,
+            coverage_days: 1,
+            simulated: false,
+            total_spot_assets: 500000000,
+            total_avg_assets: 480000000,
+            total_spot_liabilities: 210000000,
+            total_avg_liabilities: 205000000,
+            total_avg_interbank_assets: 0,
+            total_avg_interbank_liabilities: 0,
+            asset_yield: 2.4,
+            liability_cost: 1.6,
+            net_interest_margin: 0.8,
+            assets_breakdown: [],
+            liabilities_breakdown: [],
+          };
+        }
+        return {
+          report_date: "2026-04-14",
+          start_date: startDate,
+          end_date: endDate,
+          calendar_days_inclusive: 1,
+          adb_denominator_basis: "formal_calendar" as const,
+          num_days: 1,
+          coverage_days: 1,
+          simulated: false,
+          // 单日观测窗口不足：区间日均按后端约定为 null，不能被伪零覆盖。
+          total_spot_assets: 550000000,
+          total_avg_assets: null,
+          avg_unavailable_reason: "insufficient_window" as const,
+          total_spot_liabilities: 230000000,
+          total_avg_liabilities: 225000000,
+          total_avg_interbank_assets: 0,
+          total_avg_interbank_liabilities: 0,
+          asset_yield: 2.5,
+          liability_cost: 1.7,
+          net_interest_margin: 0.8,
+          assets_breakdown: [],
+          liabilities_breakdown: [],
+        };
+      },
+    });
+
+    const avgAssetsCard = (await screen.findByText("日均总资产")).closest(".adb-kpi");
+    expect(avgAssetsCard).toHaveTextContent("—");
+    expect(avgAssetsCard).toHaveTextContent("观测窗口不足，日均不可用");
+
+    const deviationCard = screen.getByText("偏离度（资产）").closest(".adb-kpi");
+    expect(deviationCard).toHaveTextContent("—");
+    expect(deviationCard?.querySelector(".adb-kpi-warn-icon")).not.toBeInTheDocument();
+
+    // 负债侧偏离 ~2.2%（低于 5% 阈值）且资产侧因缺数不参与比较：不应出现全局偏离警示。
+    expect(screen.queryByText(/偏离度 > 5%/)).not.toBeInTheDocument();
   });
 
   it("renders missing accounting-basis daily average balances as unavailable instead of zero", async () => {
@@ -705,8 +867,8 @@ describe("AverageBalanceView", () => {
 
     await user.click(await screen.findByRole("tab", { name: "月度统计" }));
 
-    const ytdAssetCard = (await screen.findByText("年初至今日均资产")).closest(".ant-card");
-    const ytdLiabilityCard = screen.getByText("年初至今日均负债").closest(".ant-card");
+    const ytdAssetCard = (await screen.findByText("年初至今日均资产")).closest(".adb-kpi");
+    const ytdLiabilityCard = screen.getByText("年初至今日均负债").closest(".adb-kpi");
     expect(ytdAssetCard).toHaveTextContent("—");
     expect(ytdLiabilityCard).toHaveTextContent("—");
 
@@ -793,6 +955,8 @@ describe("AverageBalanceView", () => {
           asset_yield: 2.55,
           liability_cost: 1.75,
           net_interest_margin: 0.8,
+          asset_rate_coverage_ratio: 0.5,
+          liability_rate_coverage_ratio: 1,
           assets_breakdown: [],
           liabilities_breakdown: [],
         };
@@ -814,7 +978,9 @@ describe("AverageBalanceView", () => {
     });
 
     expect(await screen.findByTestId("adb-coverage-diagnostics")).toBeInTheDocument();
+    expect(await screen.findByTestId("adb-rate-coverage-warning")).toHaveTextContent("50.0%");
     await user.click(screen.getByText("快照 vs formal 覆盖诊断（只读）"));
+    expect(await screen.findByTestId("adb-rate-coverage-diagnostics")).toHaveTextContent("50.0%");
     expect(await screen.findByTestId("adb-coverage-missing-list")).toHaveTextContent("2026-02-01");
   });
 
@@ -826,7 +992,7 @@ describe("AverageBalanceView", () => {
           start_date: "2026-01-01",
           end_date: "2026-04-14",
           calendar_days_inclusive: 104,
-          adb_denominator_basis: "formal_calendar" as const,
+          adb_denominator_basis: "formal+snapshot_calendar" as const,
           num_days: 104,
           coverage_days: 104,
           simulated: false,
@@ -858,7 +1024,11 @@ describe("AverageBalanceView", () => {
             resolved_report_date: "2026-04-14",
             as_of_date: "2026-04-14",
             date_basis: "adb_comparison_report_date",
-            tables_used: ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"],
+            tables_used: [
+              "fact_formal_zqtz_balance_daily",
+              "fact_formal_tyw_balance_daily",
+              "tyw_interbank_daily_snapshot",
+            ],
             filters_applied: {
               start_date: "2026-01-01",
               end_date: "2026-04-14",
@@ -883,7 +1053,13 @@ describe("AverageBalanceView", () => {
     expect(meta).toHaveTextContent("日期基准 adb_comparison_report_date");
     expect(meta).toHaveTextContent("fact_formal_zqtz_balance_daily");
     expect(meta).toHaveTextContent("fact_formal_tyw_balance_daily");
+    expect(meta).toHaveTextContent("tyw_interbank_daily_snapshot");
     expect(meta).toHaveTextContent("证据行 104");
+
+    const snapshotWarning = await screen.findByTestId("adb-snapshot-fallback-warning");
+    expect(snapshotWarning).toHaveTextContent("快照补数降级");
+    expect(snapshotWarning).toHaveTextContent("部分日期由快照补数");
+    expect(snapshotWarning).toHaveTextContent("非正式口径");
   });
 });
 

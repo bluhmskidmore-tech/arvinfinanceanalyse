@@ -1,0 +1,20 @@
+{
+  "updated": "2026-07-03",
+  "scores": {
+    "domestic_liquidity": 0.6,
+    "external_liquidity": -0.5,
+    "price_recovery": 0.2,
+    "earnings_cycle": 0.3,
+    "policy_support": 0.4,
+    "geopolitical": 0.1
+  },
+  "weights": {
+    "domestic_liquidity": 0.25,
+    "external_liquidity": 0.2,
+    "price_recovery": 0.15,
+    "earnings_cycle": 0.2,
+    "policy_support": 0.1,
+    "geopolitical": 0.1
+  },
+  "notes": "每月或重大事件后更新 scores([-1,1], 正=利多A股)"
+}

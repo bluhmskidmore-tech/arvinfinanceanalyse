@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
+from types import SimpleNamespace
 
 import duckdb
 
@@ -21,6 +23,90 @@ def _load_tasks():
             "backend/app/tasks/snapshot_materialize.py",
         )
     return ingest_mod, snap_mod
+
+
+def test_snapshot_materialize_explicit_local_archive_path_overrides_object_store_settings(
+    tmp_path,
+    monkeypatch,
+):
+    _ingest_mod, snap_mod = _load_tasks()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    explicit_archive_root = tmp_path / "explicit-archive"
+    archive_file = explicit_archive_root / "ZQTZSHOW" / "files" / "ZQTZSHOW-20251231.xls"
+    archive_file.parent.mkdir(parents=True)
+    explicit_payload = b"payload-from-explicit-local-archive"
+    archive_file.write_bytes(explicit_payload)
+
+    snap_mod.SourceManifestRepository(
+        governance_repo=snap_mod.GovernanceRepository(base_dir=governance_dir),
+    ).add_many(
+        [
+            {
+                "source_family": "zqtz",
+                "report_date": "2025-12-31",
+                "source_file": archive_file.name,
+                "source_version": "sv-explicit-archive",
+                "ingest_batch_id": "ib-explicit-archive",
+                "archived_path": str(archive_file),
+            }
+        ]
+    )
+
+    settings_archive_root = tmp_path / "settings-archive"
+    monkeypatch.setattr(
+        snap_mod,
+        "get_settings",
+        lambda: SimpleNamespace(
+            duckdb_path=tmp_path / "settings.duckdb",
+            governance_path=tmp_path / "settings-governance",
+            object_store_mode="minio",
+            local_archive_path=settings_archive_root,
+            minio_endpoint="network-object-store.invalid:9000",
+            minio_access_key="unused",
+            minio_secret_key="unused",
+            minio_bucket="unused",
+        ),
+    )
+
+    store_args: list[dict[str, object]] = []
+    real_store_type = snap_mod.ObjectStoreRepository
+
+    def _build_store(**kwargs):
+        store_args.append(dict(kwargs))
+        return real_store_type(**kwargs)
+
+    parsed_payloads: list[bytes] = []
+
+    def _parse_explicit_payload(**kwargs):
+        parsed_payloads.append(kwargs["file_bytes"])
+        return [{"sentinel": "parsed-explicit-archive"}]
+
+    monkeypatch.setattr(snap_mod, "ObjectStoreRepository", _build_store)
+    monkeypatch.setattr(snap_mod, "parse_zqtz_snapshot_rows_from_bytes", _parse_explicit_payload)
+    monkeypatch.setattr(snap_mod, "merge_zqtz_rows_by_grain", lambda rows: rows)
+    monkeypatch.setattr(
+        snap_mod,
+        "replace_zqtz_snapshot_rows",
+        lambda _conn, rows, **_kwargs: len(rows),
+    )
+
+    payload = snap_mod.materialize_standard_snapshots.fn(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        source_families=["zqtz"],
+        report_date="2025-12-31",
+        local_archive_path=str(explicit_archive_root),
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["zqtz_rows"] == 1
+    assert payload["tyw_rows"] == 0
+    assert parsed_payloads == [explicit_payload]
+    assert len(store_args) == 1
+    assert store_args[0]["mode"] == "local"
+    assert Path(str(store_args[0]["local_archive_path"])).resolve() == explicit_archive_root.resolve()
 
 
 def test_snapshot_tables_materialize_from_manifest_archives(tmp_path, monkeypatch):
@@ -58,6 +144,17 @@ def test_snapshot_tables_materialize_from_manifest_archives(tmp_path, monkeypatc
         assert "rule_version" in zcols
         assert "ingest_batch_id" in zcols
         assert "trace_id" in zcols
+        assert "interest_receivable_payable" in zcols
+
+        populated_interest = conn.execute(
+            """
+            select count(*)
+            from zqtz_bond_daily_snapshot
+            where interest_receivable_payable is not null
+              and interest_receivable_payable <> 0
+            """
+        ).fetchone()[0]
+        assert populated_interest > 0
 
         tcols = [r[1] for r in conn.execute("pragma table_info('tyw_interbank_daily_snapshot')").fetchall()]
         assert "source_version" in tcols

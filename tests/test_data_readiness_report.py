@@ -320,6 +320,86 @@ def test_report_allows_configured_latest_date_lag_with_observation(tmp_path: Pat
     assert "previous business day: 2026-05-29" in markdown
 
 
+def test_default_formal_specs_use_frequency_appropriate_dynamic_freshness() -> None:
+    specs = {spec.table: spec for spec in DEFAULT_TABLE_SPECS}
+
+    for table in (
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+        "fact_formal_bond_analytics_daily",
+        "fact_formal_risk_tensor_daily",
+        "fact_formal_yield_curve_daily",
+        "fx_daily_mid",
+    ):
+        assert specs[table].target_latest_date is None
+        assert specs[table].freshness_policy == "previous_business_day"
+
+    for table in (
+        "fact_formal_pnl_fi",
+        "fact_nonstd_pnl_bridge",
+        "product_category_pnl_canonical_fact",
+        "product_category_pnl_formal_read_model",
+        "fact_accounting_asset_movement_monthly",
+    ):
+        assert specs[table].target_latest_date is None
+        assert specs[table].freshness_policy == "previous_month_end"
+
+def test_report_blocks_daily_table_stale_against_dynamic_as_of_date(tmp_path: Path) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = _connect(duckdb_path)
+    try:
+        conn.execute("create table formal_daily (report_date varchar)")
+        conn.execute("insert into formal_daily values ('2026-06-30')")
+    finally:
+        conn.close()
+
+    report = build_data_readiness_report(
+        duckdb_path,
+        specs=[
+            TableSpec(
+                label="formal daily",
+                table="formal_daily",
+                date_column="report_date",
+                required_meta_columns=(),
+                freshness_policy="previous_business_day",
+            )
+        ],
+        as_of_date="2026-07-16",
+    )
+
+    assert report["status"] == "block"
+    issue = report["tables"][0]["issues"][0]
+    assert issue["code"] == "latest_date_before_target"
+    assert issue["details"] == {"latest": "2026-06-30", "target": "2026-07-15"}
+
+
+def test_report_accepts_previous_completed_month_end_for_monthly_table(tmp_path: Path) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = _connect(duckdb_path)
+    try:
+        conn.execute("create table formal_monthly (report_date varchar)")
+        conn.execute("insert into formal_monthly values ('2026-06-30')")
+    finally:
+        conn.close()
+
+    report = build_data_readiness_report(
+        duckdb_path,
+        specs=[
+            TableSpec(
+                label="formal monthly",
+                table="formal_monthly",
+                date_column="report_date",
+                required_meta_columns=(),
+                freshness_policy="previous_month_end",
+            )
+        ],
+        as_of_date="2026-07-16",
+    )
+
+    assert report["status"] == "pass"
+    assert report["tables"][0]["issues"] == []
+
+
 def test_report_flags_stock_and_bond_specific_data_quality_blockers(tmp_path: Path) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     conn = _connect(duckdb_path)

@@ -13,7 +13,22 @@ from backend.app.governance.settings import get_settings
 from backend.app.repositories.user_scope_repo import UserScopeRepository
 from tests.helpers import load_module
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_agent_mvp,
+]
+
 REPORT_DATE = "2026-03-31"
+RISK_TENSOR_PROJECTION_QUALITY_FIELDS = (
+    "missing_maturity_market_value",
+    "missing_maturity_count",
+    "floating_rate_proxy_market_value",
+    "floating_rate_proxy_count",
+    "payment_frequency_fallback_market_value",
+    "payment_frequency_fallback_count",
+    "bullet_value_date_fallback_market_value",
+    "bullet_value_date_fallback_count",
+)
 
 
 @pytest.fixture(autouse=True)
@@ -154,6 +169,10 @@ def _seed_agent_balance_tables(duckdb_path: Path) -> None:
 
 
 def _seed_agent_risk_tensor_tables(duckdb_path: Path, governance_dir: Path) -> None:
+    risk_task_module = load_module(
+        "backend.app.tasks.risk_tensor_materialize",
+        "backend/app/tasks/risk_tensor_materialize.py",
+    )
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
         conn.execute(
@@ -187,11 +206,26 @@ def _seed_agent_risk_tensor_tables(duckdb_path: Path, governance_dir: Path) -> N
               liquidity_gap_90d double,
               liquidity_gap_30d_ratio double,
               total_market_value double,
+              rate_risk_market_value double,
+              rate_risk_dv01 double,
+              rate_risk_modified_duration double,
+              duration_excluded_market_value double,
+              duration_excluded_count integer,
+              missing_maturity_market_value double,
+              missing_maturity_count integer,
+              floating_rate_proxy_market_value double,
+              floating_rate_proxy_count integer,
+              payment_frequency_fallback_market_value double,
+              payment_frequency_fallback_count integer,
+              bullet_value_date_fallback_market_value double,
+              bullet_value_date_fallback_count integer,
               bond_count integer,
               quality_flag varchar,
               warnings_json varchar,
               source_version varchar,
               upstream_source_version varchar,
+              upstream_rule_version varchar,
+              upstream_cache_version varchar,
               rule_version varchar,
               cache_version varchar,
               trace_id varchar
@@ -207,9 +241,9 @@ def _seed_agent_risk_tensor_tables(duckdb_path: Path, governance_dir: Path) -> N
         conn.execute(
             """
             insert into fact_formal_risk_tensor_daily values
-            (?, 12.34, 1.00, 2.00, 3.00, 2.50, 2.10, 1.10, 0.88, 0.45, 4.20, 0.12, 0.34, 100, 0, 0, 0, 0, 250, 0.40, 1500, 3, 'ok', '[]', 'sv_risk_tensor_1', 'sv_bond_analytics_1', 'rv_risk_tensor_1', 'cv_risk_tensor_1', 'tr-risk-1')
+            (?, 12.34, 1.00, 2.00, 3.00, 2.50, 2.10, 1.10, 0.88, 0.45, 4.20, 0.12, 0.34, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 250, 0.40, 1500, 1500, 12.34, 4.20, 0, 0, 3, 'ok', '[]', 'sv_risk_tensor_1', 'sv_bond_analytics_1', 'rv_bond_analytics_1', 'cv_bond_analytics_1', ?, ?, 'tr-risk-1')
             """,
-            [REPORT_DATE],
+            [REPORT_DATE, risk_task_module.RULE_VERSION, risk_task_module.CACHE_VERSION],
         )
     finally:
         conn.close()
@@ -417,7 +451,7 @@ def _seed_agent_pnl_bridge_tables(duckdb_path: Path, governance_dir: Path) -> No
         conn.execute(
             """
             insert into fact_formal_pnl_fi values
-            (?, 'BOND-001', '缁勫悎A', 'CC100', 'H', 'AC', 'CNY', 10, 5, 2, 0, 17, 'sv_fi_bridge_1', 'rv_fi_bridge_1', 'batch-1', 'tr-fi-bridge-1')
+            (?, 'BOND-001', '缁勫悎A', 'CC100', 'H', 'AC', 'CNY', 10, 0, 2, 0, 12, 'sv_fi_bridge_1', 'rv_fi_bridge_1', 'batch-1', 'tr-fi-bridge-1')
             """,
             [REPORT_DATE],
         )
@@ -560,7 +594,7 @@ def test_agent_query_enabled_path_returns_real_envelope_and_audit(tmp_path, monk
     audit_payload = json.loads(audit_path.read_text(encoding="utf-8").splitlines()[-1])
     assert audit_payload["user_id"] == "u_smoke"
     assert audit_payload["query_text"] == "PnL summary"
-    assert audit_payload["tools_used"] == ["analysis_view_tool", "evidence_tool"]
+    assert audit_payload["tools_used"] == ["analysis_view_tool", "evidence_tool", "intent:pnl_summary"]
     assert audit_payload["tables_used"] == ["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge"]
 
 
@@ -579,8 +613,6 @@ def test_agent_query_enabled_path_returns_real_portfolio_overview_and_audit(tmp_
         "/api/agent/query",
         json={
             "question": "portfolio overview",
-            "position_scope": "asset",
-            "currency_basis": "CNY",
             "context": {"user_id": "u_balance"},
         },
     )
@@ -597,11 +629,36 @@ def test_agent_query_enabled_path_returns_real_portfolio_overview_and_audit(tmp_
     assert payload["evidence"]["filters_applied"] == {
         "report_date": REPORT_DATE,
         "report_date_resolution": "latest_default",
-        "position_scope": "asset",
+        "position_scope": "all",
         "currency_basis": "CNY",
     }
     assert payload["evidence"]["evidence_rows"] == 2
-    assert any(card["title"] == "Total Market Value" for card in payload["cards"])
+    market_value_card = next(card for card in payload["cards"] if card["title"] == "Total Market Value")
+    assert market_value_card["value"] == "1,500.00000000 元"
+    assert market_value_card["spec"] == {
+        "metric_id": "MTR-BAL-001",
+        "source_field": "total_market_value_amount",
+        "raw_value": "1500.00000000",
+        "raw_unit": "yuan",
+        "raw_precision": 8,
+        "numeric": {
+            "raw": 1500.0,
+            "unit": "yuan",
+            "display": "1,500.00000000 元",
+            "precision": 8,
+            "sign_aware": False,
+        },
+    }
+    assert payload["result_meta"]["amount_currency_basis"] == "CNY"
+    assert payload["result_meta"]["requested_report_date"] is None
+    assert payload["result_meta"]["resolved_report_date"] == REPORT_DATE
+    assert payload["result_meta"]["as_of_date"] == REPORT_DATE
+    assert payload["result_meta"]["date_basis"] == "balance_analysis_report_date"
+    assert payload["result_meta"]["fallback_date"] is None
+    assert payload["result_meta"]["source_surface"] == "formal_balance"
+    assert payload["result_meta"]["tables_used"] == payload["evidence"]["tables_used"]
+    assert payload["result_meta"]["filters_applied"] == payload["evidence"]["filters_applied"]
+    assert payload["result_meta"]["evidence_rows"] == payload["evidence"]["evidence_rows"]
     assert REPORT_DATE in payload["answer"]
 
     audit_path = governance_dir / "agent_audit.jsonl"
@@ -609,7 +666,7 @@ def test_agent_query_enabled_path_returns_real_portfolio_overview_and_audit(tmp_
     audit_payload = json.loads(audit_path.read_text(encoding="utf-8").splitlines()[-1])
     assert audit_payload["user_id"] == "u_balance"
     assert audit_payload["query_text"] == "portfolio overview"
-    assert audit_payload["tools_used"] == ["analysis_view_tool", "evidence_tool"]
+    assert audit_payload["tools_used"] == ["analysis_view_tool", "evidence_tool", "intent:portfolio_overview"]
     assert audit_payload["tables_used"] == [
         "fact_formal_zqtz_balance_daily",
         "fact_formal_tyw_balance_daily",
@@ -640,7 +697,14 @@ def test_agent_query_enabled_path_returns_real_risk_tensor_and_audit(tmp_path, m
     assert payload["result_meta"]["basis"] == "formal"
     assert payload["result_meta"]["result_kind"] == "agent.risk_tensor"
     assert payload["result_meta"]["formal_use_allowed"] is True
+    assert payload["result_meta"]["rule_version"] == "rv_risk_tensor_formal_materialize_v6"
     assert payload["evidence"]["tables_used"] == ["fact_formal_risk_tensor_daily"]
+    assert payload["evidence"]["sql_executed"]
+    assert all(sql.lower().startswith(("select", "with")) for sql in payload["evidence"]["sql_executed"])
+    assert any("from fact_formal_risk_tensor_daily" in sql for sql in payload["evidence"]["sql_executed"])
+    disclosed = " ".join(payload["evidence"]["sql_executed"]).lower()
+    for field_name in RISK_TENSOR_PROJECTION_QUALITY_FIELDS:
+        assert field_name in disclosed
     assert payload["evidence"]["filters_applied"] == {
         "report_date": REPORT_DATE,
         "report_date_resolution": "explicit",
@@ -654,7 +718,7 @@ def test_agent_query_enabled_path_returns_real_risk_tensor_and_audit(tmp_path, m
     audit_payload = json.loads(audit_path.read_text(encoding="utf-8").splitlines()[-1])
     assert audit_payload["user_id"] == "u_risk"
     assert audit_payload["query_text"] == "risk tensor KRD"
-    assert audit_payload["tools_used"] == ["analysis_view_tool", "evidence_tool"]
+    assert audit_payload["tools_used"] == ["analysis_view_tool", "evidence_tool", "intent:risk_tensor"]
     assert audit_payload["tables_used"] == ["fact_formal_risk_tensor_daily"]
 
 
@@ -716,6 +780,10 @@ def test_agent_query_enabled_path_returns_real_market_data_and_audit(tmp_path, m
     assert payload["result_meta"]["result_kind"] == "agent.market_data"
     assert payload["result_meta"]["formal_use_allowed"] is False
     assert payload["evidence"]["tables_used"] == ["fact_choice_macro_daily", "fx_daily_mid"]
+    assert payload["evidence"]["sql_executed"]
+    assert all(sql.lower().startswith(("select", "with")) for sql in payload["evidence"]["sql_executed"])
+    assert any("from fact_choice_macro_daily" in sql for sql in payload["evidence"]["sql_executed"])
+    assert any("from fx_daily_mid" in sql for sql in payload["evidence"]["sql_executed"])
     series_val = int(next(c["value"] for c in payload["cards"] if c["title"] == "Series Count"))
     fx_formal_val = int(next(c["value"] for c in payload["cards"] if c["title"] == "Formal FX Candidates"))
     assert payload["evidence"]["evidence_rows"] == series_val + fx_formal_val
@@ -788,6 +856,9 @@ def test_agent_query_enabled_path_returns_real_news_and_audit(tmp_path, monkeypa
     assert payload["result_meta"]["formal_use_allowed"] is False
     assert payload["evidence"]["tables_used"] == ["choice_news_event"]
     assert payload["evidence"]["evidence_rows"] == 1
+    assert payload["evidence"]["sql_executed"]
+    assert all(sql.lower().startswith(("select", "with")) for sql in payload["evidence"]["sql_executed"])
+    assert any("from choice_news_event" in sql for sql in payload["evidence"]["sql_executed"])
     assert any(card["title"] == "Event Count" for card in payload["cards"])
 
     audit_path = governance_dir / "agent_audit.jsonl"
@@ -824,6 +895,9 @@ def test_agent_query_enabled_path_returns_real_product_pnl_and_audit(tmp_path, m
     assert payload["result_meta"]["result_kind"] == "agent.product_pnl"
     assert payload["result_meta"]["formal_use_allowed"] is True
     assert payload["evidence"]["tables_used"] == ["product_category_pnl_formal_read_model"]
+    assert payload["evidence"]["sql_executed"]
+    assert all(sql.lower().startswith(("select", "with")) for sql in payload["evidence"]["sql_executed"])
+    assert any("from product_category_pnl_formal_read_model" in sql for sql in payload["evidence"]["sql_executed"])
     assert payload["evidence"]["filters_applied"] == {
         "report_date": REPORT_DATE,
         "report_date_resolution": "latest_default",
@@ -865,12 +939,19 @@ def test_agent_query_enabled_path_returns_real_pnl_bridge_and_audit(tmp_path, mo
     assert payload["result_meta"]["result_kind"] == "agent.pnl_bridge"
     assert payload["result_meta"]["formal_use_allowed"] is True
     assert payload["evidence"]["tables_used"] == ["fact_formal_pnl_fi", "fact_formal_zqtz_balance_daily"]
+    assert payload["evidence"]["sql_executed"]
+    assert all(sql.lower().startswith("select") for sql in payload["evidence"]["sql_executed"])
+    assert any("from fact_formal_pnl_fi" in sql for sql in payload["evidence"]["sql_executed"])
+    assert any("from fact_formal_zqtz_balance_daily" in sql for sql in payload["evidence"]["sql_executed"])
     assert payload["evidence"]["filters_applied"] == {
         "report_date": REPORT_DATE,
         "report_date_resolution": "latest_default",
     }
     assert payload["evidence"]["evidence_rows"] == 1
-    assert any(card["title"] == "Explained PnL" for card in payload["cards"])
+    explained_card = next(card for card in payload["cards"] if card["title"] == "Explained PnL")
+    assert explained_card["value"].endswith(" yuan")
+    assert explained_card["spec"]["numeric"]["unit"] == "yuan"
+    assert explained_card["spec"]["numeric"]["display"] in explained_card["value"]
 
     audit_path = governance_dir / "agent_audit.jsonl"
     assert audit_path.exists()
@@ -883,7 +964,7 @@ def test_agent_query_enabled_path_returns_real_pnl_bridge_and_audit(tmp_path, mo
 def test_agent_query_enabled_path_returns_real_duration_risk_and_audit(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "moss-duration.duckdb"
     governance_dir = tmp_path / "governance-duration"
-    _seed_agent_bond_analytics_tables(duckdb_path)
+    _seed_agent_risk_tensor_tables(duckdb_path, governance_dir)
 
     _enable_local_agent(monkeypatch)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -896,6 +977,7 @@ def test_agent_query_enabled_path_returns_real_duration_risk_and_audit(tmp_path,
         json={
             "question": "duration",
             "context": {"user_id": "u_duration"},
+            "page_context": {"page_id": "bond-analytics"},
         },
     )
 
@@ -904,16 +986,41 @@ def test_agent_query_enabled_path_returns_real_duration_risk_and_audit(tmp_path,
     assert payload["result_meta"]["basis"] == "formal"
     assert payload["result_meta"]["result_kind"] == "agent.duration_risk"
     assert payload["result_meta"]["formal_use_allowed"] is True
-    assert payload["evidence"]["tables_used"] == ["fact_formal_bond_analytics_daily"]
-    assert payload["evidence"]["evidence_rows"] == 2
-    assert any(card["title"] == "Portfolio DV01" for card in payload["cards"])
+    assert payload["result_meta"]["requested_report_date"] is None
+    assert payload["result_meta"]["resolved_report_date"] == REPORT_DATE
+    assert payload["result_meta"]["as_of_date"] == REPORT_DATE
+    assert payload["result_meta"]["date_basis"] == "formal_snapshot"
+    assert payload["result_meta"]["source_surface"] == "risk_tensor"
+    assert payload["result_meta"]["amount_currency_basis"] == "CNY"
+    assert payload["evidence"]["tables_used"] == ["fact_formal_risk_tensor_daily"]
+    assert payload["evidence"]["evidence_rows"] == 3
+    assert payload["result_meta"]["tables_used"] == payload["evidence"]["tables_used"]
+    assert payload["result_meta"]["filters_applied"] == payload["evidence"]["filters_applied"]
+
+    cards = {card["title"]: card for card in payload["cards"]}
+    assert "Portfolio Duration" not in cards
+    assert cards["Portfolio Modified Duration"]["spec"]["metric_id"] == "MTR-RSK-010"
+    assert cards["Portfolio Modified Duration"]["spec"]["numeric"]["unit"] == "years"
+    assert cards["Portfolio Modified Duration"]["spec"]["numeric"]["display"] == "4.20"
+    assert cards["Portfolio DV01"]["spec"]["metric_id"] == "MTR-RSK-001"
+    assert cards["Portfolio DV01"]["spec"]["numeric"]["unit"] == "dv01"
+    assert cards["Portfolio DV01"]["spec"]["numeric"]["display"] == "12.34"
+    assert cards["Portfolio Convexity"]["spec"]["metric_id"] == "MTR-RSK-009"
+    assert cards["Rate Risk Market Value"]["spec"]["metric_id"] == "MTR-RSK-021"
+    assert cards["Rate Risk Market Value"]["spec"]["numeric"]["unit"] == "yuan"
+    assert cards["Duration Excluded Market Value"]["spec"]["metric_id"] == "MTR-RSK-104"
+    assert cards["Duration Excluded Market Value"]["spec"]["numeric"]["unit"] == "yuan"
+    assert cards["Duration Excluded Count"]["spec"]["metric_id"] == "MTR-RSK-103"
+    assert cards["Duration Excluded Count"]["spec"]["numeric"]["precision"] == 0
+    assert "组合修正久期" in payload["answer"]
+    assert "CNY/1bp" in payload["answer"]
 
     audit_path = governance_dir / "agent_audit.jsonl"
     assert audit_path.exists()
     audit_payload = json.loads(audit_path.read_text(encoding="utf-8").splitlines()[-1])
     assert audit_payload["user_id"] == "u_duration"
     assert audit_payload["query_text"] == "duration"
-    assert audit_payload["tables_used"] == ["fact_formal_bond_analytics_daily"]
+    assert audit_payload["tables_used"] == ["fact_formal_risk_tensor_daily"]
 
 
 def test_agent_query_enabled_path_returns_real_credit_exposure_and_audit(tmp_path, monkeypatch):
@@ -993,3 +1100,49 @@ def test_agent_query_enabled_path_returns_local_analysis_chat_for_chinese_questi
     assert audit_payload["user_id"] == "u_analysis_chat"
     assert audit_payload["query_text"] == question
     assert audit_payload["tables_used"] == []
+
+
+def test_agent_query_explicit_research_radar_stays_local_even_when_provider_is_dexter(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss-research-radar.duckdb"
+    governance_dir = tmp_path / "governance-research-radar"
+    _seed_agent_news_tables(duckdb_path)
+
+    monkeypatch.setenv("MOSS_AGENT_ENABLED", "true")
+    monkeypatch.setenv("MOSS_AGENT_PROVIDER", "dexter")
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _set_trusted_agent_user(monkeypatch, "u_research_radar")
+
+    main_module = _fresh_main_module()
+    route_module = importlib.import_module("backend.app.api.routes.agent")
+    monkeypatch.setattr(
+        route_module,
+        "execute_dexter_agent_query",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("research radar must stay local")),
+    )
+
+    client = TestClient(main_module.app)
+    response = client.post(
+        "/api/agent/query",
+        json={
+            "question": "研究速读",
+            "basis": "analytical",
+            "context": {
+                "intent": "research_radar_brief",
+                "workflow_id": "research_radar_brief",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["basis"] == "analytical"
+    assert payload["result_meta"]["result_kind"] == "agent.research_radar_brief"
+    assert payload["result_meta"]["formal_use_allowed"] is False
+    assert payload["result_meta"]["scenario_flag"] is False
+    assert payload["cards"][1]["title"] == "原始事件证据"
+    cards_by_title = {card["title"]: card for card in payload["cards"]}
+    assert "跨篇对比" in cards_by_title
+    assert "候选情景建议" in cards_by_title
+    assert all(row["human_review_required"] is True for row in cards_by_title["候选情景建议"]["data"])
+    assert any(row["href"] == "/news-events" for row in cards_by_title["下一步检查"]["data"])

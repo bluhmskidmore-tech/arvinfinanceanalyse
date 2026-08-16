@@ -1,0 +1,78 @@
+{
+  "id": "balance_analysis_contract_001",
+  "page": "balance-analysis",
+  "goal": "Close a balance-analysis (PAGE-BALANCE-001) page-contract defect - report-date semantics, ADB averaging window, unit conversion, or null handling - without broad refactoring.",
+  "metric_ids": [
+    "MTR-BAL-001",
+    "MTR-BAL-002",
+    "MTR-BAL-003",
+    "MTR-BAL-004",
+    "MTR-BAL-005",
+    "MTR-BAL-006",
+    "MTR-BAL-101",
+    "MTR-BAL-102",
+    "MTR-BAL-103",
+    "MTR-BAL-104",
+    "MTR-BAL-105",
+    "MTR-BAL-201",
+    "MTR-BAL-202",
+    "MTR-BAL-203"
+  ],
+  "allowed_scope": [
+    "frontend/src/features/balance-analysis/",
+    "frontend/src/api/",
+    "frontend/src/test/"
+  ],
+  "forbidden": [
+    "backend/app/schema_registry/",
+    "backend/app/core_finance/",
+    "frontend/src/api/client.ts",
+    "scripts/agent_eval/",
+    ".github/workflows/"
+  ],
+  "required_evidence": [
+    "moss-metric-contracts",
+    "moss-lineage-evidence"
+  ],
+  "evidence_probes": {
+    "moss-metric-contracts": ".codex-tmp/agent-eval/evidence/metric-contracts.json",
+    "moss-lineage-evidence": ".codex-tmp/agent-eval/evidence/lineage-evidence.json"
+  },
+  "checks": [
+    "npm --prefix frontend run test -- BalanceAnalysis",
+    "npm --prefix frontend run debt:audit",
+    "npm --prefix frontend run typecheck",
+    "python -m pytest tests/test_balance_analysis_api.py -q"
+  ],
+  "business_gates": [
+    "unit_consistency",
+    "precision_and_rounding",
+    "date_semantics",
+    "null_zero_undefined_handling",
+    "no_frontend_official_metric_recalculation"
+  ],
+  "page_gates": [
+    "page_loads",
+    "no_console_errors",
+    "fallback_or_stale_state_visible_when_applicable"
+  ],
+  "gate_probes": {
+    "unit_consistency": "npm --prefix frontend run test -- balanceAnalysisPageModel",
+    "precision_and_rounding": "npm --prefix frontend run test -- balanceAnalysisPageModel",
+    "date_semantics": "npm --prefix frontend run test -- BalanceAnalysisDateSemanticsContract",
+    "null_zero_undefined_handling": "npm --prefix frontend run test -- balanceAnalysisPageModel",
+    "no_frontend_official_metric_recalculation": "python -m pytest tests/test_no_finance_logic_in_frontend.py -q",
+    "fallback_or_stale_state_visible_when_applicable": "npm --prefix frontend run test -- BalanceAnalysisPage"
+  },
+  "probe_protected_paths": [
+    "tests/test_no_finance_logic_in_frontend.py",
+    "tests/test_balance_analysis_api.py",
+    "frontend/src/test/BalanceAnalysisDateSemanticsContract.test.tsx",
+    "frontend/src/test/BalanceAnalysisPage.test.tsx",
+    "frontend/src/features/balance-analysis/pages/balanceAnalysisPageModel.test.ts"
+  ],
+  "gate_probe_gaps": {
+    "page_loads": "Needs a balance-analysis scoped Playwright spec; frontend/tests/playwright has ledger-pnl and dashboard specs but nothing that isolates /balance-analysis, and test:a11y-smoke is site-wide.",
+    "no_console_errors": "Same as page_loads; requires a scoped Playwright spec that fails on console errors for /balance-analysis."
+  }
+}

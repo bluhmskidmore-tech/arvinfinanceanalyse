@@ -1,15 +1,113 @@
+/*
+ * 2026-08-13 债务清零：裸 hex 同值收敛（dashboardHome.module.css
+ * “consolidated bare hex — single definition each” 先例）——每个浅色字面量
+ * 只保留下方一处定义，占位一律 var(--agent-hex-*)，零视觉变化。
+ * 本页根已挂 data-moss-theme-scope="agent"（Nocturne 已注册、皮肤未迁），
+ * 后续 Nocturne 迁移时在此单点换源即可。全部 .agent-* 消费类均渲染于
+ * .agent-workbench-shell 后代链（无 antd portal 逃逸，已核）。
+ */
 .agent-workbench-shell {
+  --agent-hex-1f7a4d: #1f7a4d;
+  --agent-hex-33a36b: #33a36b;
+  --agent-hex-667085: #667085;
+  --agent-hex-8a4b0f: #8a4b0f;
+  --agent-hex-9fb0c6: #9fb0c6;
+  --agent-hex-a33a2f: #a33a2f;
+  --agent-hex-a7c7f7: #a7c7f7;
+  --agent-hex-a9bad0: #a9bad0;
+  --agent-hex-b42318: #b42318;
+  --agent-hex-b8cbe6: #b8cbe6;
+  --agent-hex-b9c6d8: #b9c6d8;
+  --agent-hex-badbcc: #badbcc;
+  --agent-hex-c7d1df: #c7d1df;
+  --agent-hex-c7d3e2: #c7d3e2;
+  --agent-hex-c7d8ef: #c7d8ef;
+  --agent-hex-cfd8e6: #cfd8e6;
+  --agent-hex-cfe0f4: #cfe0f4;
+  --agent-hex-d4e3f7: #d4e3f7;
+  --agent-hex-d7dee8: #d7dee8;
+  --agent-hex-d7e8f8: #d7e8f8;
+  --agent-hex-d8e0ea: #d8e0ea;
+  --agent-hex-dbe4ef: #dbe4ef;
+  --agent-hex-dce5f2: #dce5f2;
+  --agent-hex-dfe5ee: #dfe5ee;
+  --agent-hex-edf1f6: #edf1f6;
+  --agent-hex-eef6ff: #eef6ff;
+  --agent-hex-f08a8a: #f08a8a;
+  --agent-hex-f0fbf5: #f0fbf5;
+  --agent-hex-f2c2bd: #f2c2bd;
+  --agent-hex-f4b5b5: #f4b5b5;
+  --agent-hex-f5fbff: #f5fbff;
+  --agent-hex-f6f9fe: #f6f9fe;
+  --agent-hex-f6faff: #f6faff;
+  --agent-hex-f8d38d: #f8d38d;
+  --agent-hex-f8fafc: #f8fafc;
+  --agent-hex-f8fbff: #f8fbff;
+  --agent-hex-fbfcfe: #fbfcfe;
+  --agent-hex-fbfdff: #fbfdff;
+  --agent-hex-fecaca: #fecaca;
+  --agent-hex-fff1f1: #fff1f1;
+  --agent-hex-fff7f6: #fff7f6;
+  --agent-hex-fff7f7: #fff7f7;
+  --agent-hex-fff8eb: #fff8eb;
+  --agent-hex-ffffff: #ffffff;
+}
+
+.agent-workbench-shell {
+  position: relative;
   display: grid;
   gap: 14px;
   min-width: 0;
 }
 
+.agent-workbench-shell:not(.agent-workbench-shell--embedded) {
+  width: min(100%, 1040px);
+  margin: 0 auto;
+}
+
+.agent-workbench-shell:not(.agent-workbench-shell--embedded) > .agent-chat-composer {
+  order: 2;
+}
+
+.agent-workbench-shell:not(.agent-workbench-shell--embedded) > .agent-runtime-strip {
+  order: 3;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.agent-workbench-shell:not(.agent-workbench-shell--embedded) > .agent-quick-entry {
+  order: 4;
+}
+
+.agent-workbench-shell:not(.agent-workbench-shell--embedded) > .agent-conversation {
+  order: 5;
+}
+
+.agent-workbench-shell:not(.agent-workbench-shell--embedded) > .agent-composer-dock {
+  order: 6;
+}
+
+.agent-workbench-shell:not(.agent-workbench-shell--embedded) > .agent-repo-memory {
+  order: 7;
+}
+
 .agent-workbench-header {
+  position: relative;
   display: flex;
   align-items: end;
-  justify-content: space-between;
+  justify-content: center;
   gap: 16px;
   min-width: 0;
+  padding: 24px 120px 4px;
+  text-align: center;
 }
 
 .agent-workbench-header h1 {
@@ -21,7 +119,7 @@
 }
 
 .agent-workbench-header p {
-  max-width: 860px;
+  max-width: 640px;
   margin: 8px 0 0;
   color: var(--moss-color-text-secondary);
   font-size: 14px;
@@ -37,18 +135,10 @@
   text-transform: uppercase;
 }
 
-.agent-workbench-header__cue {
-  flex: 0 0 auto;
-  padding: 7px 10px;
-  border: 1px solid #d7dee8;
-  border-radius: 8px;
-  background: #fff;
-  color: var(--moss-color-text-muted);
-  font-size: 11px;
-  font-weight: 800;
-}
-
 .agent-workbench-header__actions {
+  position: absolute;
+  top: 26px;
+  right: 2px;
   display: flex;
   flex: 0 0 auto;
   align-items: center;
@@ -61,9 +151,9 @@
   gap: 6px;
   min-height: 34px;
   padding: 0 11px;
-  border: 1px solid #cfd8e6;
-  border-radius: 8px;
-  background: #ffffff;
+  border: 1px solid var(--agent-hex-cfd8e6);
+  border-radius: 999px;
+  background: var(--agent-hex-ffffff);
   color: var(--moss-color-text-secondary);
   cursor: pointer;
   font-size: 13px;
@@ -71,9 +161,9 @@
 }
 
 .agent-workbench-header__new-chat:hover:not(:disabled) {
-  border-color: #b8cbe6;
+  border-color: var(--agent-hex-b8cbe6);
   color: var(--moss-color-link);
-  background: #f8fbff;
+  background: var(--agent-hex-f8fbff);
 }
 
 .agent-workbench-header__new-chat:disabled {
@@ -87,7 +177,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px 10px;
-  padding: 2px 0;
+  padding: 0 2px;
   border: 0;
   background: transparent;
 }
@@ -104,13 +194,14 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  min-height: 26px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--moss-color-text-primary);
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--agent-hex-edf1f6);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--moss-color-card-bg) 86%, var(--moss-color-neutral-50));
+  color: var(--moss-color-text-secondary);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 700;
 }
 
 .agent-runtime-strip__provider {
@@ -123,8 +214,8 @@
   width: 8px;
   height: 8px;
   border-radius: 999px;
-  background: var(--moss-color-success-500);
-  box-shadow: 0 0 0 3px rgba(var(--moss-color-success-rgb), 0.12);
+  background: var(--agent-dot-ok, var(--moss-color-success-500));
+  box-shadow: 0 0 0 3px var(--agent-pulse-ring, rgba(var(--moss-color-success-rgb), 0.12));
 }
 
 .agent-runtime-strip__dot--active {
@@ -138,7 +229,7 @@
 .agent-runtime-strip__details summary {
   display: inline-flex;
   align-items: center;
-  min-height: 26px;
+  min-height: 24px;
   padding: 0 2px;
   border: 1px solid transparent;
   border-radius: 999px;
@@ -164,7 +255,7 @@
 }
 
 .agent-runtime-strip__details summary:hover {
-  border-color: #b8cbe6;
+  border-color: var(--agent-hex-b8cbe6);
   color: var(--moss-color-link);
   background: var(--moss-color-info-50);
 }
@@ -194,15 +285,15 @@
   gap: 2px;
   min-width: 0;
   padding: 7px 9px;
-  border: 1px solid #edf1f6;
+  border: 1px solid var(--agent-hex-edf1f6);
   border-radius: 7px;
-  background: #fbfcfe;
+  background: var(--agent-hex-fbfcfe);
 }
 
 .agent-runtime-strip__item span {
   overflow: hidden;
   color: var(--moss-color-text-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   text-overflow: ellipsis;
   text-transform: uppercase;
@@ -226,9 +317,9 @@
   gap: 8px 12px;
   min-width: 0;
   padding: 9px 10px;
-  border: 1px solid #c7d8ef;
+  border: 1px solid var(--agent-hex-c7d8ef);
   border-radius: 8px;
-  background: #f6f9fe;
+  background: var(--agent-hex-f6f9fe);
   color: var(--moss-color-text-secondary);
   font-size: 12px;
   line-height: 1.4;
@@ -249,7 +340,7 @@
   max-width: min(100%, 320px);
   padding: 3px 6px;
   border-radius: 6px;
-  background: #ffffff;
+  background: var(--agent-hex-ffffff);
   color: var(--moss-color-text-muted);
   font-family: inherit;
   font-size: 11px;
@@ -258,12 +349,12 @@
 }
 
 .agent-restore-status--error {
-  border-color: #f2c2bd;
-  background: #fff7f6;
+  border-color: var(--agent-hex-f2c2bd);
+  background: var(--agent-hex-fff7f6);
 }
 
 .agent-restore-status--error strong {
-  color: #a33a2f;
+  color: var(--agent-hex-a33a2f);
 }
 
 .agent-page-context {
@@ -305,7 +396,7 @@
 }
 
 .agent-page-context summary:hover {
-  border-color: #b8cbe6;
+  border-color: var(--agent-hex-b8cbe6);
   color: var(--moss-color-link);
   background: var(--moss-color-info-50);
 }
@@ -322,9 +413,9 @@
 
 .agent-page-context__code {
   padding: 8px 10px;
-  border: 1px solid #edf1f6;
+  border: 1px solid var(--agent-hex-edf1f6);
   border-radius: 7px;
-  background: #fbfcfe;
+  background: var(--agent-hex-fbfcfe);
   color: var(--moss-color-text-secondary);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
@@ -337,45 +428,58 @@
   gap: 4px 8px;
   min-width: 0;
   padding: 8px 10px;
-  border: 1px solid #badbcc;
+  border: 1px solid var(--agent-hex-badbcc);
   border-radius: 8px;
-  background: #f0fbf5;
+  background: var(--agent-hex-f0fbf5);
   color: var(--moss-color-text-secondary);
   font-size: 12px;
   line-height: 1.4;
 }
 
 .agent-context-change-notice strong {
-  color: #1f7a4d;
+  color: var(--agent-hex-1f7a4d);
   font-weight: 780;
 }
 
+/* 脉冲环颜色经变量出口下发（Nocturne scope 重定义；回退值 = 原字面量，嵌入态零变化）。 */
 @keyframes agentPulse {
   0%,
   100% {
-    box-shadow: 0 0 0 3px rgba(var(--moss-color-success-rgb), 0.12);
+    box-shadow: 0 0 0 3px var(--agent-pulse-ring, rgba(var(--moss-color-success-rgb), 0.12));
     transform: scale(1);
   }
   50% {
-    box-shadow: 0 0 0 6px rgba(var(--moss-color-success-rgb), 0.04);
+    box-shadow: 0 0 0 6px var(--agent-pulse-ring-wide, rgba(var(--moss-color-success-rgb), 0.04));
     transform: scale(1.08);
   }
 }
 
 .agent-chat-composer {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   margin: 0 0 8px;
-  padding: 12px;
-  border: 1px solid #dfe5ee;
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  padding: 14px;
+  border: 1px solid var(--agent-hex-d8e0ea);
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--moss-color-card-bg) 94%, var(--moss-color-neutral-50));
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    background 150ms ease;
+}
+
+.agent-chat-composer:focus-within {
+  border-color: var(--agent-hex-b8cbe6);
+  background: var(--agent-hex-ffffff);
+  box-shadow:
+    0 0 0 3px rgba(var(--moss-color-primary-rgb), 0.08),
+    0 16px 34px rgba(15, 23, 42, 0.12);
 }
 
 .agent-chat-composer--compact {
-  gap: 8px;
-  padding: 10px;
+  gap: 9px;
+  padding: 11px;
 }
 
 .agent-chat-composer--compact .agent-chat-composer__input {
@@ -410,21 +514,23 @@
 
 .agent-quick-entry {
   display: grid;
+  width: 100%;
   min-width: 0;
   margin: 0;
-  border: 1px solid var(--moss-color-neutral-100);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--moss-color-card-bg) 88%, var(--moss-color-neutral-50));
+  border: 0;
+  background: transparent;
 }
 
 .agent-quick-entry > summary {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-height: 38px;
-  padding: 0 10px;
-  color: var(--moss-color-text-secondary);
+  justify-content: flex-start;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 30px;
+  padding: 0 2px;
+  color: var(--moss-color-text-muted);
   cursor: pointer;
   list-style: none;
 }
@@ -447,7 +553,7 @@
 
 .agent-quick-entry > summary:hover {
   color: var(--moss-color-link);
-  background: color-mix(in srgb, var(--moss-color-info-50) 60%, var(--moss-color-card-bg));
+  background: transparent;
 }
 
 .agent-quick-entry > summary:focus-visible {
@@ -456,13 +562,13 @@
 }
 
 .agent-quick-entry__title {
-  color: var(--moss-color-text-primary);
+  color: var(--moss-color-text-secondary);
   font-size: 13px;
   font-weight: 760;
 }
 
 .agent-quick-entry__meta {
-  margin-left: auto;
+  margin-left: 0;
   overflow: hidden;
   color: var(--moss-color-text-muted);
   font-size: 12px;
@@ -493,9 +599,9 @@
   gap: 10px;
   margin: 12px 0 8px;
   padding: 12px;
-  border: 1px solid #dfe5ee;
+  border: 1px solid var(--agent-hex-dfe5ee);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--agent-hex-ffffff);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
@@ -516,7 +622,7 @@
 
 .agent-financial-workflows__header > span {
   padding: 4px 8px;
-  border: 1px solid #d7dee8;
+  border: 1px solid var(--agent-hex-d7dee8);
   border-radius: 999px;
   color: var(--moss-color-text-muted);
   font-size: 12px;
@@ -542,17 +648,17 @@
   gap: 5px;
   min-height: 96px;
   padding: 11px 12px;
-  border: 1px solid #d7dee8;
+  border: 1px solid var(--agent-hex-d7dee8);
   border-radius: 8px;
-  background: #fbfdff;
+  background: var(--agent-hex-fbfdff);
   color: var(--moss-color-text-secondary);
   cursor: pointer;
   text-align: left;
 }
 
 .agent-financial-workflows__button:hover {
-  border-color: #b9c6d8;
-  background: #f6faff;
+  border-color: var(--agent-hex-b9c6d8);
+  background: var(--agent-hex-f6faff);
 }
 
 .agent-financial-workflows__button:disabled {
@@ -580,21 +686,21 @@
 
 .agent-conversation {
   display: grid;
-  gap: 18px;
+  gap: 26px;
   min-width: 0;
-  padding: 12px;
-  border: 1px solid #dfe5ee;
-  border-radius: 8px;
-  background: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  padding: 8px 2px 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .agent-turn {
   display: grid;
-  gap: 12px;
+  gap: 14px;
   min-width: 0;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #edf1f6;
+  padding-bottom: 0;
+  border-bottom: 0;
 }
 
 .agent-turn:last-child {
@@ -603,21 +709,24 @@
 }
 
 .agent-conversation__bottom {
-  min-height: 72px;
+  min-height: 1px;
   scroll-margin-bottom: 280px;
 }
 
 .agent-message {
+  position: relative;
   display: grid;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
 }
 
 .agent-message__speaker {
-  color: var(--moss-color-text-muted);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .agent-message__body {
@@ -634,16 +743,16 @@
   display: grid;
   justify-items: end;
   gap: 6px;
-  max-width: min(720px, 86%);
+  max-width: min(720px, 88%);
   min-width: 0;
 }
 
 .agent-message--user .agent-message__body {
-  max-width: min(720px, 86%);
-  padding: 10px 12px;
-  border: 1px solid #b8cbe6;
-  border-radius: 8px;
-  background: #eef6ff;
+  max-width: min(720px, 88%);
+  padding: 11px 14px;
+  border: 1px solid var(--agent-hex-d4e3f7);
+  border-radius: 18px 18px 6px 18px;
+  background: color-mix(in srgb, var(--moss-color-info-50) 72%, var(--agent-hex-ffffff));
   color: var(--moss-color-text-primary);
   font-size: 14px;
   line-height: 1.65;
@@ -667,9 +776,9 @@
   gap: 5px;
   min-height: 26px;
   padding: 0 8px;
-  border: 1px solid #d7dee8;
+  border: 1px solid var(--agent-hex-d7dee8);
   border-radius: 999px;
-  background: #ffffff;
+  background: var(--agent-hex-ffffff);
   color: var(--moss-color-text-secondary);
   cursor: pointer;
   font-size: 12px;
@@ -677,9 +786,9 @@
 }
 
 .agent-user-bubble__edit:hover:not(:disabled) {
-  border-color: #b8cbe6;
+  border-color: var(--agent-hex-b8cbe6);
   color: var(--moss-color-link);
-  background: #f8fbff;
+  background: var(--agent-hex-f8fbff);
 }
 
 .agent-user-bubble__edit:focus-visible {
@@ -710,30 +819,37 @@
 .agent-message--assistant .agent-message__body {
   display: grid;
   gap: 12px;
+  width: min(100%, 820px);
 }
 
 .agent-wait-status {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   margin: 0;
-  padding: 12px 14px;
-  border: 1px solid #cfe0f4;
-  border-radius: 8px;
-  background: #f6faff;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--moss-color-text-secondary);
 }
 
 .agent-wait-status__copy {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
+  max-width: min(100%, 620px);
+  padding: 12px 14px;
+  border: 1px solid var(--agent-hex-d8e0ea);
+  border-radius: 18px 18px 18px 6px;
+  background: var(--agent-hex-ffffff);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.07);
 }
 
 .agent-wait-status__title {
   color: var(--moss-color-text-primary);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 750;
 }
 
@@ -747,13 +863,13 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 26px;
-  padding: 0 9px;
-  border: 1px solid #dce5f2;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--agent-hex-dce5f2);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
-  color: #667085;
-  font-size: 12px;
+  background: var(--agent-hex-f8fafc);
+  color: var(--agent-hex-667085);
+  font-size: 11px;
   font-weight: 760;
 }
 
@@ -761,22 +877,22 @@
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: #c7d1df;
+  background: var(--agent-hex-c7d1df);
 }
 
 .agent-run-progress__step--complete {
-  border-color: #badbcc;
-  background: #f0fbf5;
-  color: #1f7a4d;
+  border-color: var(--agent-hex-badbcc);
+  background: var(--agent-hex-f0fbf5);
+  color: var(--agent-hex-1f7a4d);
 }
 
 .agent-run-progress__step--complete .agent-run-progress__dot {
-  background: #33a36b;
+  background: var(--agent-hex-33a36b);
 }
 
 .agent-run-progress__step--current {
-  border-color: #a7c7f7;
-  background: #eef6ff;
+  border-color: var(--agent-hex-a7c7f7);
+  background: var(--agent-hex-eef6ff);
   color: var(--moss-color-primary-700);
 }
 
@@ -789,7 +905,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 8px;
+  gap: 5px 8px;
   min-width: 0;
 }
 
@@ -802,6 +918,7 @@
 .agent-thinking__text {
   color: var(--moss-color-text-secondary);
   font-size: 13px;
+  line-height: 1.55;
 }
 
 .agent-thinking__dots {
@@ -832,6 +949,7 @@
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+  padding-top: 4px;
   font-size: 13px;
   line-height: 1.55;
 }
@@ -845,7 +963,7 @@
   align-items: center;
   min-height: 26px;
   padding: 0 9px;
-  border: 1px solid #d7dee8;
+  border: 1px solid var(--agent-hex-d7dee8);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.74);
   color: var(--moss-color-text-secondary);
@@ -855,9 +973,9 @@
 }
 
 .agent-wait-status__details summary:hover {
-  border-color: #b8cbe6;
+  border-color: var(--agent-hex-b8cbe6);
   color: var(--moss-color-link);
-  background: #ffffff;
+  background: var(--agent-hex-ffffff);
 }
 
 .agent-wait-status__details summary:focus-visible {
@@ -888,18 +1006,18 @@
 .agent-wait-status__stop {
   min-height: 26px;
   padding: 0 9px;
-  border: 1px solid #f4b5b5;
+  border: 1px solid var(--agent-hex-f4b5b5);
   border-radius: 999px;
-  background: #fff7f7;
-  color: #b42318;
+  background: var(--agent-hex-fff7f7);
+  color: var(--agent-hex-b42318);
   cursor: pointer;
   font-size: 12px;
   font-weight: 760;
 }
 
 .agent-wait-status__stop:hover {
-  border-color: #f08a8a;
-  background: #fff1f1;
+  border-color: var(--agent-hex-f08a8a);
+  background: var(--agent-hex-fff1f1);
 }
 
 @keyframes agentThinkingDot {
@@ -917,7 +1035,7 @@
 
 .agent-result-shell {
   display: grid;
-  gap: 14px;
+  gap: 12px;
 }
 
 .agent-result-grid {
@@ -950,9 +1068,9 @@
   gap: 6px;
   min-height: 30px;
   padding: 0 10px;
-  border: 1px solid #d7dee8;
+  border: 1px solid var(--agent-hex-d7dee8);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--agent-hex-ffffff);
   color: var(--moss-color-text-secondary);
   cursor: pointer;
   font-size: 12px;
@@ -960,9 +1078,9 @@
 }
 
 .agent-result-toolbar__button:hover:not(:disabled) {
-  border-color: #b8cbe6;
+  border-color: var(--agent-hex-b8cbe6);
   color: var(--moss-color-link);
-  background: #f8fbff;
+  background: var(--agent-hex-f8fbff);
 }
 
 .agent-result-toolbar__button:disabled {
@@ -983,11 +1101,11 @@
 }
 
 .agent-copy-feedback--success {
-  color: #1f7a4d;
+  color: var(--agent-hex-1f7a4d);
 }
 
 .agent-copy-feedback--error {
-  color: #b42318;
+  color: var(--agent-hex-b42318);
 }
 
 .agent-result-details {
@@ -999,9 +1117,9 @@
   align-items: center;
   min-height: 30px;
   padding: 0 10px;
-  border: 1px solid #d7dee8;
+  border: 1px solid var(--agent-hex-d7dee8);
   border-radius: 999px;
-  background: #ffffff;
+  background: var(--agent-hex-ffffff);
   color: var(--moss-color-text-secondary);
   cursor: pointer;
   font-size: 12px;
@@ -1009,9 +1127,9 @@
 }
 
 .agent-result-details summary:hover {
-  border-color: #b8cbe6;
+  border-color: var(--agent-hex-b8cbe6);
   color: var(--moss-color-link);
-  background: #f8fbff;
+  background: var(--agent-hex-f8fbff);
 }
 
 .agent-result-details summary:focus-visible {
@@ -1027,34 +1145,35 @@
 .agent-answer-message {
   display: grid;
   min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--moss-color-border-default);
-  border-radius: 10px;
-  background: var(--moss-color-card-bg);
-  box-shadow: var(--moss-shadow-card);
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .agent-answer-panel {
   padding: 20px;
-  border: 1px solid #e4e9f0;
-  border-radius: 16px;
-  background: #ffffff;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--moss-color-text-primary);
   font-size: 15px;
   line-height: 1.75;
 }
 
 .agent-answer-message .agent-answer-panel {
-  padding: 18px 20px 16px;
+  padding: 2px 0 4px;
   border: 0;
   border-radius: 0;
   background: transparent;
 }
 
 .agent-answer-message .agent-result-toolbar {
-  padding: 10px 12px;
-  border-top: 1px solid var(--moss-color-border-default);
-  background: color-mix(in srgb, var(--moss-color-card-bg) 82%, var(--moss-color-surface-base));
+  justify-content: flex-start;
+  padding: 2px 0 0;
+  border-top: 0;
+  background: transparent;
 }
 
 .agent-answer-panel p {
@@ -1084,6 +1203,12 @@
   .agent-answer-panel p {
     animation: none;
   }
+
+  /* DESIGN.md §8：加载/进行中指示在 reduce 下退化为静态（保留元素与颜色） */
+  .agent-runtime-strip__dot--active,
+  .agent-thinking__dots span {
+    animation: none;
+  }
 }
 
 .agent-follow-up-chips {
@@ -1099,7 +1224,7 @@
   padding: 0 10px;
   border: 1px solid var(--moss-color-info-100);
   border-radius: 999px;
-  background: #f8fbff;
+  background: var(--agent-hex-f8fbff);
   color: var(--moss-color-text-secondary);
   cursor: pointer;
   font-size: 12px;
@@ -1107,9 +1232,9 @@
 }
 
 .agent-follow-up-chips__button:hover:not(:disabled) {
-  border-color: #b8cbe6;
+  border-color: var(--agent-hex-b8cbe6);
   color: var(--moss-color-link);
-  background: #eef6ff;
+  background: var(--agent-hex-eef6ff);
 }
 
 .agent-follow-up-chips__button--primary {
@@ -1319,6 +1444,12 @@
   display: none;
 }
 
+.agent-side-panel__sql-list {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
 .agent-side-panel__details pre {
   margin: 6px 0 0;
   color: var(--moss-color-text-secondary);
@@ -1435,6 +1566,11 @@
   background: var(--moss-color-info-50);
 }
 
+.agent-suggested-actions__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .agent-suggested-actions__button--confirm {
   border-color: var(--moss-color-warning-300);
   background: var(--moss-color-warning-50);
@@ -1507,14 +1643,30 @@
   gap: 8px;
 }
 
-.agent-next-drill-row span {
+.agent-next-drill-row button {
   padding: 6px 10px;
-  border: 1px solid #dbe4ef;
+  border: 1px solid var(--agent-hex-dbe4ef);
   border-radius: 999px;
-  background: #f8fbff;
+  background: var(--agent-hex-f8fbff);
   color: var(--moss-color-text-secondary);
   font-size: 12px;
   font-weight: 700;
+  cursor: pointer;
+}
+
+.agent-next-drill-row button:hover:not(:disabled) {
+  border-color: var(--agent-hex-b8cbe6);
+  color: var(--moss-color-link);
+}
+
+.agent-next-drill-row button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.agent-next-drill-row button:focus-visible {
+  outline: 2px solid var(--moss-color-link);
+  outline-offset: 2px;
 }
 
 .agent-chat-composer__quick-row,
@@ -1547,8 +1699,8 @@
 .agent-chat-composer__quick-button,
 .agent-chat-composer__tool-button,
 .agent-chat-composer__secondary-action {
-  border: 1px solid #d7dee8;
-  background: #fff;
+  border: 1px solid var(--agent-hex-d7dee8);
+  background: var(--agent-hex-ffffff);
   color: var(--moss-color-text-secondary);
   cursor: pointer;
   font-weight: 650;
@@ -1556,14 +1708,14 @@
 
 .agent-chat-composer__quick-button {
   padding: 7px 10px;
-  border-radius: 8px;
+  border-radius: 999px;
   font-size: 12px;
 }
 
 .agent-chat-composer__quick-button:hover,
 .agent-chat-composer__tool-button:hover,
 .agent-chat-composer__secondary-action:hover {
-  border-color: #b9c6d8;
+  border-color: var(--agent-hex-b9c6d8);
   color: var(--moss-color-link);
 }
 
@@ -1585,21 +1737,20 @@
   min-height: 78px;
   max-height: 220px;
   padding: 10px 12px 36px;
-  border: 1px solid #cfd8e6;
-  border-radius: 8px;
+  border: 0;
+  border-radius: 16px;
   outline: none;
   resize: vertical;
   overflow-y: auto;
-  background: #fff;
+  background: transparent;
   color: var(--moss-color-text-primary);
   font-size: 15px;
   line-height: 1.55;
-  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+  box-shadow: none;
 }
 
 .agent-chat-composer__input:focus {
-  border-color: var(--moss-color-link);
-  box-shadow: 0 0 0 3px rgba(var(--moss-color-primary-rgb), 0.12);
+  box-shadow: none;
 }
 
 .agent-chat-composer__clear {
@@ -1608,7 +1759,7 @@
   bottom: 8px;
   min-height: 24px;
   padding: 0 8px;
-  border: 1px solid #d7dee8;
+  border: 1px solid var(--agent-hex-d7dee8);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.92);
   color: var(--moss-color-text-secondary);
@@ -1618,9 +1769,9 @@
 }
 
 .agent-chat-composer__clear:hover {
-  border-color: #b8cbe6;
+  border-color: var(--agent-hex-b8cbe6);
   color: var(--moss-color-link);
-  background: #f8fbff;
+  background: var(--agent-hex-f8fbff);
 }
 
 .agent-chat-composer__send {
@@ -1628,9 +1779,9 @@
   min-height: 42px;
   padding: 11px 18px;
   border: none;
-  border-radius: 8px;
+  border-radius: 999px;
   background: var(--moss-color-primary-600);
-  color: #fff;
+  color: var(--agent-hex-ffffff);
   cursor: pointer;
   font-size: 15px;
   font-weight: 760;
@@ -1662,9 +1813,9 @@
 .agent-chat-composer__queue {
   min-height: 42px;
   padding: 9px 12px;
-  border: 1px solid #b8cbe6;
-  border-radius: 8px;
-  background: #f8fbff;
+  border: 1px solid var(--agent-hex-b8cbe6);
+  border-radius: 999px;
+  background: var(--agent-hex-f8fbff);
   color: var(--moss-color-link);
   cursor: pointer;
   font-size: 13px;
@@ -1677,15 +1828,15 @@
 }
 
 .agent-chat-composer__send--stop {
-  border: 1px solid #f4b5b5;
-  background: #fff7f7;
-  color: #b42318;
+  border: 1px solid var(--agent-hex-f4b5b5);
+  background: var(--agent-hex-fff7f7);
+  color: var(--agent-hex-b42318);
   box-shadow: none;
 }
 
 .agent-chat-composer__send--stop:hover {
-  border-color: #f08a8a;
-  background: #fff1f1;
+  border-color: var(--agent-hex-f08a8a);
+  background: var(--agent-hex-fff1f1);
 }
 
 .agent-chat-composer__send:disabled,
@@ -1776,9 +1927,9 @@
 .agent-chat-composer__field select {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #d7dee8;
+  border: 1px solid var(--agent-hex-d7dee8);
   border-radius: 8px;
-  background: #fff;
+  background: var(--agent-hex-ffffff);
   color: var(--moss-color-text-primary);
   outline: none;
 }
@@ -1846,26 +1997,26 @@
 }
 
 .agent-callout--error {
-  border: 1px solid #fecaca;
-  background: #fff7f7;
-  color: #b42318;
+  border: 1px solid var(--agent-hex-fecaca);
+  background: var(--agent-hex-fff7f7);
+  color: var(--agent-hex-b42318);
 }
 
 .agent-callout--warning {
-  border: 1px solid #f8d38d;
-  background: #fff8eb;
-  color: #8a4b0f;
+  border: 1px solid var(--agent-hex-f8d38d);
+  background: var(--agent-hex-fff8eb);
+  color: var(--agent-hex-8a4b0f);
 }
 
 .agent-callout--stopped {
-  border: 1px solid #d7dee8;
-  background: #f8fafc;
+  border: 1px solid var(--agent-hex-d7dee8);
+  background: var(--agent-hex-f8fafc);
   color: var(--moss-color-text-secondary);
 }
 
 .agent-callout--empty {
-  border: 1px solid #d7e8f8;
-  background: #f5fbff;
+  border: 1px solid var(--agent-hex-d7e8f8);
+  background: var(--agent-hex-f5fbff);
   color: var(--moss-color-text-secondary);
 }
 
@@ -1873,13 +2024,13 @@
   position: sticky;
   bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   z-index: 4;
-  margin-top: -8px;
-  padding-top: 8px;
+  margin-top: -2px;
+  padding-top: 18px;
   padding-bottom: env(safe-area-inset-bottom, 0px);
   background: linear-gradient(
     180deg,
     rgba(251, 252, 254, 0),
-    color-mix(in srgb, var(--moss-color-card-bg) 92%, var(--moss-color-surface-base))
+    color-mix(in srgb, var(--moss-color-card-bg) 94%, var(--moss-color-surface-base)) 36%
   );
 }
 
@@ -1890,9 +2041,9 @@
   gap: 10px 12px;
   margin-bottom: 8px;
   padding: 10px 12px;
-  border: 1px dashed #a9bad0;
+  border: 1px dashed var(--agent-hex-a9bad0);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--moss-color-card-bg) 88%, #eef6ff);
+  background: color-mix(in srgb, var(--moss-color-card-bg) 88%, var(--agent-hex-eef6ff));
   box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
 }
 
@@ -1921,9 +2072,9 @@
   align-items: center;
   min-height: 20px;
   padding: 0 7px;
-  border: 1px solid #cfe0f4;
+  border: 1px solid var(--agent-hex-cfe0f4);
   border-radius: 999px;
-  background: #ffffff;
+  background: var(--agent-hex-ffffff);
   color: var(--moss-color-text-secondary);
   font-size: 12px;
   font-weight: 760;
@@ -1986,7 +2137,7 @@
   min-width: 0;
   gap: 6px;
   padding: 0 10px;
-  border: 1px solid #c7d3e2;
+  border: 1px solid var(--agent-hex-c7d3e2);
   border-radius: 6px;
   background: var(--moss-color-card-bg);
   color: var(--moss-color-text-secondary);
@@ -1997,7 +2148,7 @@
 }
 
 .agent-queued-draft__action:hover {
-  border-color: #9fb0c6;
+  border-color: var(--agent-hex-9fb0c6);
   color: var(--moss-color-text-primary);
 }
 
@@ -2016,18 +2167,22 @@
 
 .agent-composer-dock .agent-chat-composer {
   margin-bottom: 0;
-  border-color: #cfd8e6;
+  border-color: var(--agent-hex-d8e0ea);
   box-shadow:
-    0 -1px 0 rgba(207, 216, 230, 0.82),
-    0 14px 32px rgba(15, 23, 42, 0.12);
+    0 -1px 0 rgba(207, 216, 230, 0.58),
+    0 16px 36px rgba(15, 23, 42, 0.12);
 }
 
 @media (max-width: 720px) {
   .agent-workbench-header {
     display: grid;
+    justify-items: start;
+    padding: 8px 2px 0;
+    text-align: left;
   }
 
   .agent-workbench-header__actions {
+    position: static;
     flex-wrap: wrap;
   }
 
@@ -2053,16 +2208,16 @@
   }
 
   .agent-quick-entry > summary {
-    align-items: flex-start;
-    flex-wrap: wrap;
-    min-height: 0;
-    padding: 9px 10px;
+    align-items: center;
+    flex-wrap: nowrap;
+    min-height: 30px;
+    padding: 0 2px;
   }
 
   .agent-quick-entry__meta {
-    flex-basis: 100%;
+    flex-basis: auto;
     margin-left: 0;
-    white-space: normal;
+    white-space: nowrap;
   }
 
   .agent-chat-composer__header,
@@ -2111,4 +2266,400 @@
   .agent-result-side {
     position: static;
   }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Nocturne 换肤（2026-08-13，业主指示按首页色系；仅换色，不动版式）。
+   scope 属性只落在 /agent 页根（workbench 变体），以下收敛只在
+   [data-moss-theme-scope="agent"] 内生效；嵌入态 AgentPanel（其他页面
+   抽屉复用同一批类名）保持上方基线不变，跟随各自宿主页主题。
+   浅色字面量按语义家族收敛 --dh-api-* var/color-mix 链（该 scope 下
+   即 Nocturne 色板），不新增色值；--moss-color-primary-rgb /
+   success-rgb 通道值在 scope 未重映射，消费处改 color-mix 链
+   （脉冲环经上方 --agent-pulse-ring 变量出口）。
+   ══════════════════════════════════════════════════════════════ */
+[data-moss-theme-scope="agent"] {
+  /* 桥变量在 ThemedRouteBoundary 上已被算成钢蓝字面值再继承（ledger-pnl
+     2026-08-12 结论），页根按语义映射重声明使其在 scope 内重新解析
+     （pnl-by-business-insights 同款桥接，全 var 引用零字面量）；
+     --ib-radius 随 Nocturne 圆角制度归一 8px。 */
+  --moss-color-text-primary: var(--dh-api-ink);
+  --moss-color-text-secondary: var(--dh-api-soft);
+  --moss-color-text-muted: var(--dh-api-muted);
+  --moss-color-link: var(--dh-api-blue);
+  --moss-color-card-bg: var(--dh-api-panel);
+  --moss-color-border-default: var(--dh-api-line);
+  --moss-color-surface-base: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-hairline: var(--dh-api-line);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-radius: var(--dh-api-radius);
+  --agent-dot-ok: var(--dh-api-green);
+  --agent-pulse-ring: color-mix(in srgb, var(--dh-api-green) 12%, transparent);
+  --agent-pulse-ring-wide: color-mix(in srgb, var(--dh-api-green) 4%, transparent);
+}
+
+[data-moss-theme-scope="agent"] .agent-workbench-header__eyebrow {
+  color: var(--dh-api-blue);
+}
+
+[data-moss-theme-scope="agent"] .agent-workbench-header__new-chat {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel);
+}
+
+[data-moss-theme-scope="agent"] .agent-workbench-header__new-chat:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, var(--dh-api-panel));
+}
+
+[data-moss-theme-scope="agent"] .agent-runtime-strip__state {
+  border-color: var(--dh-api-line-soft);
+  background: color-mix(in srgb, var(--dh-api-panel) 86%, var(--dh-api-panel-3));
+}
+
+[data-moss-theme-scope="agent"] .agent-runtime-strip__details summary:hover,
+[data-moss-theme-scope="agent"] .agent-page-context summary:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: var(--dh-api-blue-soft);
+}
+
+[data-moss-theme-scope="agent"] .agent-runtime-strip__item {
+  border-color: var(--dh-api-line-soft);
+  background: var(--dh-api-panel);
+}
+
+[data-moss-theme-scope="agent"] .agent-restore-status {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel);
+}
+
+[data-moss-theme-scope="agent"] .agent-restore-status code {
+  background: var(--dh-api-panel-2);
+}
+
+[data-moss-theme-scope="agent"] .agent-restore-status--error {
+  border-color: color-mix(in srgb, var(--dh-api-red) 40%, transparent);
+  background: var(--dh-api-red-soft);
+}
+
+[data-moss-theme-scope="agent"] .agent-restore-status--error strong {
+  color: var(--dh-api-red);
+}
+
+[data-moss-theme-scope="agent"] .agent-page-context__code {
+  border-color: var(--dh-api-line-soft);
+  background: var(--dh-api-panel);
+}
+
+[data-moss-theme-scope="agent"] .agent-context-change-notice {
+  border-color: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
+  background: var(--dh-api-green-soft);
+}
+
+[data-moss-theme-scope="agent"] .agent-context-change-notice strong {
+  color: var(--dh-api-green);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer {
+  border-color: var(--dh-api-line);
+  background: color-mix(in srgb, var(--dh-api-panel) 94%, var(--dh-api-panel-3));
+  box-shadow: var(--moss-shadow-card);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer:focus-within {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: var(--dh-api-panel);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
+}
+
+[data-moss-theme-scope="agent"] .agent-quick-entry .agent-financial-workflows {
+  border-color: var(--dh-api-line-soft);
+}
+
+[data-moss-theme-scope="agent"] .agent-financial-workflows {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel);
+  box-shadow: var(--moss-shadow-card);
+}
+
+[data-moss-theme-scope="agent"] .agent-financial-workflows__header > span {
+  border-color: var(--dh-api-line);
+}
+
+[data-moss-theme-scope="agent"] .agent-financial-workflows__button {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel-2);
+}
+
+[data-moss-theme-scope="agent"] .agent-financial-workflows__button:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, var(--dh-api-panel));
+}
+
+[data-moss-theme-scope="agent"] .agent-message--user .agent-message__body {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 22%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 10%, var(--dh-api-panel));
+}
+
+[data-moss-theme-scope="agent"] .agent-user-bubble__edit {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel);
+}
+
+[data-moss-theme-scope="agent"] .agent-user-bubble__edit:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, var(--dh-api-panel));
+}
+
+[data-moss-theme-scope="agent"] .agent-wait-status__copy {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel);
+  box-shadow: var(--moss-shadow-card);
+}
+
+[data-moss-theme-scope="agent"] .agent-run-progress__step {
+  border-color: var(--dh-api-line-soft);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+}
+
+[data-moss-theme-scope="agent"] .agent-run-progress__dot {
+  background: var(--dh-api-muted);
+}
+
+[data-moss-theme-scope="agent"] .agent-run-progress__step--complete {
+  border-color: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
+  background: var(--dh-api-green-soft);
+  color: var(--dh-api-green);
+}
+
+[data-moss-theme-scope="agent"] .agent-run-progress__step--complete .agent-run-progress__dot {
+  background: var(--dh-api-green);
+}
+
+[data-moss-theme-scope="agent"] .agent-run-progress__step--current {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 10%, var(--dh-api-panel));
+  color: var(--dh-api-blue);
+}
+
+[data-moss-theme-scope="agent"] .agent-run-progress__step--current .agent-run-progress__dot {
+  background: var(--dh-api-blue);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--dh-api-blue) 14%, transparent);
+}
+
+[data-moss-theme-scope="agent"] .agent-thinking__label {
+  color: var(--dh-api-blue);
+}
+
+[data-moss-theme-scope="agent"] .agent-thinking__dots span {
+  background: var(--dh-api-blue);
+}
+
+[data-moss-theme-scope="agent"] .agent-wait-status__details summary {
+  border-color: var(--dh-api-line);
+  background: color-mix(in srgb, var(--dh-api-panel) 74%, transparent);
+}
+
+[data-moss-theme-scope="agent"] .agent-wait-status__details summary:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: var(--dh-api-panel);
+}
+
+[data-moss-theme-scope="agent"] .agent-wait-status__stop,
+[data-moss-theme-scope="agent"] .agent-chat-composer__send--stop {
+  border-color: color-mix(in srgb, var(--dh-api-red) 40%, transparent);
+  background: var(--dh-api-red-soft);
+  color: var(--dh-api-red);
+}
+
+[data-moss-theme-scope="agent"] .agent-wait-status__stop:hover,
+[data-moss-theme-scope="agent"] .agent-chat-composer__send--stop:hover {
+  border-color: color-mix(in srgb, var(--dh-api-red) 55%, transparent);
+  background: color-mix(in srgb, var(--dh-api-red) 20%, transparent);
+}
+
+[data-moss-theme-scope="agent"] .agent-result-toolbar__button,
+[data-moss-theme-scope="agent"] .agent-result-details summary {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel);
+}
+
+[data-moss-theme-scope="agent"] .agent-result-toolbar__button:hover:not(:disabled),
+[data-moss-theme-scope="agent"] .agent-result-details summary:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, var(--dh-api-panel));
+}
+
+[data-moss-theme-scope="agent"] .agent-copy-feedback--success {
+  color: var(--dh-api-green);
+}
+
+[data-moss-theme-scope="agent"] .agent-copy-feedback--error {
+  color: var(--dh-api-red);
+}
+
+[data-moss-theme-scope="agent"] .agent-follow-up-chips__button {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 22%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, var(--dh-api-panel));
+}
+
+[data-moss-theme-scope="agent"] .agent-follow-up-chips__button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 12%, var(--dh-api-panel));
+}
+
+[data-moss-theme-scope="agent"] .agent-follow-up-chips__button--primary {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+}
+
+[data-moss-theme-scope="agent"] .agent-follow-up-chips__details summary:hover,
+[data-moss-theme-scope="agent"] .agent-chat-composer__advanced > summary:hover,
+[data-moss-theme-scope="agent"] .agent-chat-composer__process-details summary:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 22%, transparent);
+  background: var(--dh-api-blue-soft);
+}
+
+[data-moss-theme-scope="agent"] .agent-result-side .agent-side-panel {
+  background: color-mix(in srgb, var(--dh-api-panel) 88%, var(--dh-api-panel-3));
+}
+
+[data-moss-theme-scope="agent"] .agent-result-side-drawer > summary {
+  background: color-mix(in srgb, var(--dh-api-panel) 90%, var(--dh-api-panel-3));
+}
+
+[data-moss-theme-scope="agent"] .agent-result-side-drawer > summary:hover {
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, var(--dh-api-panel));
+}
+
+[data-moss-theme-scope="agent"] .agent-suggested-actions__button {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: var(--dh-api-blue-soft);
+}
+
+[data-moss-theme-scope="agent"] .agent-suggested-actions__button:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 45%, transparent);
+  background: var(--dh-api-blue-soft);
+}
+
+[data-moss-theme-scope="agent"] .agent-suggested-actions__button--confirm {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 40%, transparent);
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-amber);
+}
+
+[data-moss-theme-scope="agent"] .agent-suggested-actions__badge--warning {
+  color: var(--dh-api-amber);
+}
+
+[data-moss-theme-scope="agent"] .agent-next-drill-row button {
+  border-color: var(--dh-api-line);
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, var(--dh-api-panel));
+}
+
+[data-moss-theme-scope="agent"] .agent-next-drill-row button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__quick-button,
+[data-moss-theme-scope="agent"] .agent-chat-composer__tool-button,
+[data-moss-theme-scope="agent"] .agent-chat-composer__secondary-action {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__quick-button:hover,
+[data-moss-theme-scope="agent"] .agent-chat-composer__tool-button:hover,
+[data-moss-theme-scope="agent"] .agent-chat-composer__secondary-action:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__clear {
+  border-color: var(--dh-api-line);
+  background: color-mix(in srgb, var(--dh-api-panel) 92%, transparent);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__clear:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, var(--dh-api-panel));
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__send {
+  background: var(--dh-api-blue);
+  color: var(--dh-api-ink);
+  box-shadow: var(--moss-shadow-card);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__send:hover:not(:disabled) {
+  background: var(--ib-accent-hover);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__queue {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, var(--dh-api-panel));
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__send--stop:hover {
+  box-shadow: none;
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__send:disabled {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel-2);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__field input,
+[data-moss-theme-scope="agent"] .agent-chat-composer__field select {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel-2);
+}
+
+[data-moss-theme-scope="agent"] .agent-callout--error {
+  border-color: color-mix(in srgb, var(--dh-api-red) 40%, transparent);
+  background: var(--dh-api-red-soft);
+  color: var(--dh-api-red);
+}
+
+[data-moss-theme-scope="agent"] .agent-callout--warning {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 40%, transparent);
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-amber);
+}
+
+[data-moss-theme-scope="agent"] .agent-callout--stopped {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel-2);
+}
+
+[data-moss-theme-scope="agent"] .agent-callout--empty {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 22%, transparent);
+  background: var(--dh-api-blue-soft);
+}
+
+[data-moss-theme-scope="agent"] .agent-queued-draft {
+  border-color: var(--dh-api-line);
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, var(--dh-api-panel));
+  box-shadow: var(--moss-shadow-card);
+}
+
+[data-moss-theme-scope="agent"] .agent-queued-draft__count {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel);
+}
+
+[data-moss-theme-scope="agent"] .agent-queued-draft__action {
+  border-color: var(--dh-api-line);
+}
+
+[data-moss-theme-scope="agent"] .agent-queued-draft__action:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+}
+
+[data-moss-theme-scope="agent"] .agent-composer-dock .agent-chat-composer {
+  border-color: var(--dh-api-line);
+  box-shadow: var(--moss-shadow-card);
 }

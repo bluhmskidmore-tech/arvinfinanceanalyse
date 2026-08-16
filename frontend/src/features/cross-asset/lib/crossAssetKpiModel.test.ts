@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { ChoiceMacroLatestPoint } from "../../../api/contracts";
+import { createMockHomeMarketTickerClient } from "../../../api/homeMarketTickerMockClient";
+import { createMockMarketDataClient } from "../../../api/marketDataMockClient";
 
-import { maxCrossAssetHeadlineTradeDate, resolveCrossAssetKpis } from "./crossAssetKpiModel";
+import { crossAssetTrendLines, maxCrossAssetHeadlineTradeDate, resolveCrossAssetKpis } from "./crossAssetKpiModel";
 
 function macroPoint(
   seriesId: string,
@@ -31,6 +33,23 @@ function macroPoint(
 }
 
 describe("crossAssetKpiModel", () => {
+  it("keeps mock financial-conditions inputs on the zero-centered score scale", async () => {
+    const payloads = await Promise.all([
+      createMockHomeMarketTickerClient().getChoiceMacroLatest(),
+      createMockMarketDataClient().getChoiceMacroLatest(),
+    ]);
+
+    for (const payload of payloads) {
+      const point = payload.result.series.find((row) => row.series_id === "EMM01843735");
+      expect(point).toMatchObject({
+        value_numeric: -1.54,
+        unit: "z-score",
+        latest_change: -0.03,
+      });
+      expect(Math.abs(point?.value_numeric ?? Number.POSITIVE_INFINITY)).toBeLessThan(10);
+    }
+  });
+
   it("prefers E1000180 over EMM00166466 for China10Y", () => {
     const series = [
       macroPoint("EMM00166466", 1.94, [
@@ -50,7 +69,23 @@ describe("crossAssetKpiModel", () => {
     expect(cn?.tradeDate).toBe("2026-03-01");
   });
 
-  it("uses the fresher Tushare/public CSI300 when the Choice financial-condition point is stale by date", () => {
+  it("preserves sorted trade-date/value observations for resolved single-series KPIs", () => {
+    const cn = resolveCrossAssetKpis([
+      macroPoint("E1000180", 1.88, [
+        ["2026-03-01", 1.88],
+        ["2026-02-27", 1.9],
+        ["2026-02-28", 1.89],
+      ]),
+    ]).find((kpi) => kpi.key === "cn_gov_10y");
+
+    expect(cn?.sparklinePoints).toEqual([
+      { tradeDate: "2026-02-27", value: 1.9 },
+      { tradeDate: "2026-02-28", value: 1.89 },
+      { tradeDate: "2026-03-01", value: 1.88 },
+    ]);
+  });
+
+  it("keeps financial conditions and CSI300 in separate semantic slots regardless of freshness", () => {
     const series = [
       macroPoint("EMM01843735", -1.54, [
         ["2025-12-30", -1.48],
@@ -62,12 +97,25 @@ describe("crossAssetKpiModel", () => {
       ], { vendor_version: "vv_tushare_index_daily" }),
     ];
 
-    const financialConditions = resolveCrossAssetKpis(series).find((k) => k.key === "financial_conditions");
+    const kpis = resolveCrossAssetKpis(series);
+    const financialConditions = kpis.find((k) => k.key === "financial_conditions");
+    const csi300 = kpis.find((k) => k.key === "csi300");
 
-    expect(financialConditions?.resolvedSeriesId).toBe("CA.CSI300");
-    expect(financialConditions?.sourceKind).toBe("public");
-    expect(financialConditions?.label).toBe("沪深300指数");
-    expect(financialConditions?.tradeDate).toBe("2026-04-10");
+    expect(financialConditions).toMatchObject({
+      resolvedSeriesId: "EMM01843735",
+      sourceKind: "choice",
+      label: "金融条件指数",
+      tradeDate: "2025-12-31",
+      unit: "z-score",
+    });
+    expect(csi300).toMatchObject({
+      resolvedSeriesId: "CA.CSI300",
+      sourceKind: "public",
+      label: "沪深300指数",
+      tradeDate: "2026-04-10",
+      unit: "point",
+      valueLabel: "4102.3点",
+    });
   });
 
   it("resolves CSI300 valuation and mega-cap concentration supplement slots", () => {
@@ -113,7 +161,7 @@ describe("crossAssetKpiModel", () => {
     expect(kpis.find((k) => k.key === "aluminum")?.valueLabel).toBe("24,430");
   });
 
-  it("keeps raw-point change labels unitless for index and valuation evidence", () => {
+  it("preserves absolute point changes for index and valuation evidence", () => {
     const kpis = resolveCrossAssetKpis([
       macroPoint("CA.CSI300", 4102.25, [
         ["2026-04-09", 4085.12],
@@ -125,8 +173,32 @@ describe("crossAssetKpiModel", () => {
       ], { unit: "x", latest_change: 0.22, vendor_name: "tushare" }),
     ]);
 
-    expect(kpis.find((k) => k.key === "financial_conditions")?.changeLabel).toBe("+17.13");
+    expect(kpis.find((k) => k.key === "csi300")?.changeLabel).toBe("+17.13点");
     expect(kpis.find((k) => k.key === "csi300_pe")?.changeLabel).toBe("+0.22");
+  });
+
+  it("keeps the strictly-positive plus prefix boundary on signed change labels", () => {
+    const kpis = resolveCrossAssetKpis([
+      macroPoint("E1000180", 1.88, [
+        ["2026-02-28", 1.9],
+        ["2026-03-01", 1.88],
+      ]),
+      macroPoint("E1003238", 3.95, [
+        ["2026-02-28", 3.96],
+        ["2026-03-01", 3.95],
+      ], { latest_change: 0 }),
+      macroPoint("CA.USDCNY", 7.1235, [
+        ["2026-02-28", 7.1112],
+        ["2026-03-01", 7.1235],
+      ], { latest_change: 0.0123 }),
+    ]);
+
+    // percent 日变动折算 bp：严格正才带 "+"，零不带符号。
+    expect(kpis.find((k) => k.key === "cn_gov_10y")?.changeLabel).toBe("+1.0bp");
+    expect(kpis.find((k) => k.key === "us_gov_10y")?.changeLabel).toBe("0.0bp");
+    const fx = kpis.find((k) => k.key === "usdcny");
+    expect(fx?.valueLabel).toBe("7.1235");
+    expect(fx?.changeLabel).toBe("+0.0123");
   });
 
   it("prefers E1003238 over EMG for US 10Y", () => {
@@ -192,6 +264,39 @@ describe("crossAssetKpiModel", () => {
     expect(spread?.sparkline.length).toBeGreaterThan(0);
   });
 
+  it("keeps only common trade dates on a derived spread series", () => {
+    const spread = resolveCrossAssetKpis([
+      macroPoint("EMM00166466", 2.5, [
+        ["2026-04-01", 2.0],
+        ["2026-04-02", 2.1],
+        ["2026-04-04", 2.2],
+        ["2026-04-05", 2.3],
+        ["2026-04-06", 2.4],
+        ["2026-04-07", 2.5],
+      ]),
+      macroPoint("CA.US_GOV_10Y", 4.5, [
+        ["2026-04-01", 4.0],
+        ["2026-04-03", 4.1],
+        ["2026-04-04", 4.2],
+        ["2026-04-05", 4.3],
+        ["2026-04-06", 4.4],
+        ["2026-04-07", 4.5],
+      ]),
+    ]).find((kpi) => kpi.key === "gov_spread");
+
+    expect(spread?.sparklinePoints?.map((point) => point.tradeDate)).toEqual([
+      "2026-04-01",
+      "2026-04-04",
+      "2026-04-05",
+      "2026-04-06",
+      "2026-04-07",
+    ]);
+    expect(spread?.sparklinePoints).toHaveLength(5);
+    for (const point of spread?.sparklinePoints ?? []) {
+      expect(point.value).toBeCloseTo(-200, 8);
+    }
+  });
+
   it("falls back to CDB–gov spread when US leg is missing", () => {
     const series = [
       macroPoint("EMM00166466", 2.0, [
@@ -233,5 +338,23 @@ describe("crossAssetKpiModel", () => {
     expect(liquidity?.label).toBe("DR007");
     expect(liquidity?.resolvedSeriesId).toBe("CA.DR007");
     expect(liquidity?.sourceKind).toBe("public");
+  });
+
+  it("keeps zero-centered financial conditions out of first-value-100 trend lines", () => {
+    const lines = crossAssetTrendLines([
+      macroPoint("EMM01843735", -0.4, [
+        ["2026-04-08", -1.2],
+        ["2026-04-09", 0.1],
+        ["2026-04-10", -0.4],
+      ]),
+      macroPoint("CA.CSI300", 4102.25, [
+        ["2026-04-08", 4060.2],
+        ["2026-04-09", 4085.12],
+        ["2026-04-10", 4102.25],
+      ]),
+    ]);
+
+    expect(lines.map((line) => line.name)).toContain("沪深300指数");
+    expect(lines.map((line) => line.name)).not.toContain("金融条件指数");
   });
 });

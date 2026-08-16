@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 from decimal import Decimal
 import json
 import subprocess
@@ -55,12 +56,17 @@ def _create_schema(path: Path) -> None:
         connection.close()
 
 
-def _insert_consistent_warning_data(path: Path, *, duration_rows: int = 3) -> None:
+def _insert_consistent_warning_data(
+    path: Path, *, duration_rows: int = 3, include_zero_dv01_fallback_row: bool = False
+) -> None:
     warnings = [
         "Non-standard tenor buckets remapped to nearest KRD bucket: 2Y, 6M",
         (
             f"{duration_rows} rows carry market_value=60.00000000 and are excluded from portfolio "
-            "duration denominator: 2 without maturity_date; 1 with non-positive modified_duration. "
+            "duration denominator: 2 without maturity_date (market_value=40.00000000); "
+            "0 matured on or before report_date with outstanding market_value "
+            "(market_value=0.00000000); 1 future-dated with non-positive "
+            "modified_duration (market_value=20.00000000). "
             "DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated."
         ),
         "Excluded 2 rows without maturity_date from liquidity gap calculation.",
@@ -80,6 +86,11 @@ def _insert_consistent_warning_data(path: Path, *, duration_rows: int = 3) -> No
                 [REPORT_DATE, "1Y", Decimal("0"), Decimal("30"), None, None],
                 [REPORT_DATE, "3Y", Decimal("0"), Decimal("10"), None, None],
                 [REPORT_DATE, "5Y", Decimal("0"), Decimal("20"), "2031-05-31", Decimal("0")],
+                *(
+                    [[REPORT_DATE, "20Y", Decimal("0E-8"), Decimal("0"), "2046-05-31", Decimal("1")]]
+                    if include_zero_dv01_fallback_row
+                    else []
+                ),
             ],
         )
         connection.executemany(
@@ -149,112 +160,47 @@ def test_portfolio_home_risk_warning_consistency_allows_consistent_warning_but_b
     }
     assert evidence["consistency_blockers"] == []
     assert evidence["decision_blockers"] == ["risk_tensor_quality_warning"]
-    assert evidence["warning_resolution_matrix"] == [
-        {
-            "warning_key": "krd_bucket_remap",
-            "owner": "risk_owner",
-            "current_status": "blocked",
-            "current_evidence": {
-                "parsed": ["2Y", "6M"],
-                "recomputed": ["2Y", "6M"],
-            },
-            "evidence_command": "python scripts/portfolio_home_krd_remap_review_queue.py --require-clean",
-            "exit_criteria": (
-                "Risk owner approves nearest-bucket KRD mapping or supplies exact-bucket "
-                "schema evidence; KRD review queue exits 0."
-            ),
-            "evidence_scope": {
-                "captures_owner_decision": False,
-                "remediates_source_data": False,
-                "approves_metric_or_page": False,
-                "certification_effect": "none",
-            },
-        },
-        {
-            "warning_key": "duration_denominator_exclusion",
-            "owner": "data_owner",
-            "current_status": "blocked",
-            "current_evidence": {
-                "parsed": {
-                    "row_count": 3,
-                    "market_value_sum": "60.00000000",
-                    "missing_maturity_rows": 2,
-                    "nonpositive_duration_rows": 1,
-                },
-                "recomputed": {
-                    "row_count": 3,
-                    "market_value_sum": "60.00000000",
-                    "missing_maturity_rows": 2,
-                    "nonpositive_duration_rows": 1,
-                },
-            },
-            "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
-            "exit_criteria": (
-                "Data owner remediates missing maturity dates or captures signed scoped "
-                "exclusion; maturity remediation queue exits 0."
-            ),
-            "evidence_scope": {
-                "captures_owner_decision": False,
-                "remediates_source_data": False,
-                "approves_metric_or_page": False,
-                "certification_effect": "none",
-            },
-        },
-        {
-            "warning_key": "bond_liquidity_gap_missing_maturity",
-            "owner": "data_owner",
-            "current_status": "blocked",
-            "current_evidence": {
-                "parsed": {"missing_maturity_rows": 2},
-                "recomputed": {"missing_maturity_rows": 2},
-            },
-            "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
-            "exit_criteria": (
-                "Bond missing maturity rows are remediated or signed scoped exclusion "
-                "evidence is captured; maturity remediation queue exits 0."
-            ),
-            "evidence_scope": {
-                "captures_owner_decision": False,
-                "remediates_source_data": False,
-                "approves_metric_or_page": False,
-                "certification_effect": "none",
-            },
-        },
-        {
-            "warning_key": "tyw_liability_gap_missing_maturity",
-            "owner": "data_owner",
-            "current_status": "blocked",
-            "current_evidence": {
-                "parsed": {"missing_maturity_rows": 1},
-                "recomputed": {"missing_maturity_rows": 1},
-            },
-            "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
-            "exit_criteria": (
-                "TYW liability missing maturity rows are remediated or signed scoped "
-                "exclusion evidence is captured; maturity remediation queue exits 0."
-            ),
-            "evidence_scope": {
-                "captures_owner_decision": False,
-                "remediates_source_data": False,
-                "approves_metric_or_page": False,
-                "certification_effect": "none",
-            },
-        },
+    resolution = {
+        row["warning_key"]: row
+        for row in evidence["warning_resolution_matrix"]
+    }
+    assert list(resolution) == [
+        "krd_bucket_remap",
+        "duration_no_maturity",
+        "matured_or_expired_outstanding",
+        "nonpositive_duration",
+        "bond_liquidity_gap_no_maturity",
+        "tyw_liability_gap_missing_maturity",
     ]
+    assert resolution["krd_bucket_remap"]["current_status"] == "blocked"
+    assert resolution["duration_no_maturity"]["owner"] == "none"
+    assert resolution["duration_no_maturity"]["current_status"] == "informational"
+    assert resolution["matured_or_expired_outstanding"]["current_status"] == "clean"
+    assert resolution["nonpositive_duration"]["current_status"] == "blocked"
+    assert resolution["bond_liquidity_gap_no_maturity"]["current_status"] == "informational"
+    assert resolution["tyw_liability_gap_missing_maturity"]["current_status"] == "blocked"
+    assert resolution["krd_bucket_remap"]["evidence_command"] == (
+        f"python scripts/portfolio_home_krd_remap_review_queue.py "
+        f"--report-date {REPORT_DATE} --require-clean"
+    )
+    assert resolution["tyw_liability_gap_missing_maturity"]["evidence_command"] == (
+        f"python scripts/portfolio_home_maturity_remediation_queue.py "
+        f"--report-date {REPORT_DATE} --require-empty"
+    )
     assert evidence["parsed_warnings"]["krd_buckets"] == ["2Y", "6M"]
     assert evidence["recomputed_warnings"]["krd_buckets"] == ["2Y", "6M"]
-    assert evidence["parsed_warnings"]["duration_exclusion"] == {
+    expected_duration = {
         "row_count": 3,
         "market_value_sum": "60.00000000",
-        "missing_maturity_rows": 2,
+        "no_maturity_rows": 2,
+        "no_maturity_market_value": "40.00000000",
+        "matured_or_expired_outstanding_rows": 0,
+        "matured_or_expired_outstanding_market_value": "0.00000000",
         "nonpositive_duration_rows": 1,
+        "nonpositive_duration_market_value": "20.00000000",
     }
-    assert evidence["recomputed_warnings"]["duration_exclusion"] == {
-        "row_count": 3,
-        "market_value_sum": "60.00000000",
-        "missing_maturity_rows": 2,
-        "nonpositive_duration_rows": 1,
-    }
+    assert evidence["parsed_warnings"]["duration_exclusion"] == expected_duration
+    assert evidence["recomputed_warnings"]["duration_exclusion"] == expected_duration
     preview = evidence["risk_tensor_rematerialization_preview"]
     assert preview["preview_basis"] == "current_formal_facts_read_only"
     assert preview["writes_database"] is False
@@ -269,9 +215,12 @@ def test_portfolio_home_risk_warning_consistency_allows_consistent_warning_but_b
         "Non-standard tenor buckets remapped to nearest KRD bucket: 2Y, 6M",
         (
             "3 rows carry market_value=60.00000000 and are excluded from portfolio "
-            "duration denominator: 2 without maturity_date; 1 with non-positive "
-            "modified_duration. DV01 totals remain sourced from row dv01; duration "
-            "metrics ignore these rows until inputs are remediated."
+            "duration denominator: 2 without maturity_date (market_value=40.00000000); "
+            "0 matured on or before report_date with outstanding market_value "
+            "(market_value=0.00000000); 1 future-dated with non-positive "
+            "modified_duration (market_value=20.00000000). DV01 totals remain sourced "
+            "from row dv01; duration metrics ignore these rows until inputs are "
+            "remediated."
         ),
         "Excluded 2 rows without maturity_date from liquidity gap calculation.",
         "Excluded 1 liability rows without maturity_date from liquidity gap calculation.",
@@ -297,6 +246,25 @@ def test_portfolio_home_risk_warning_consistency_allows_consistent_warning_but_b
     )
     assert returncode == 1
     assert payload["decision_status"] == "blocked"
+
+
+def test_portfolio_home_risk_warning_consistency_ignores_zero_dv01_fallback_rows(
+    tmp_path: Path,
+) -> None:
+    duckdb_path = tmp_path / "warning-zero-fallback.duckdb"
+    _create_schema(duckdb_path)
+    _insert_consistent_warning_data(duckdb_path, include_zero_dv01_fallback_row=True)
+
+    evidence = build_evidence(duckdb_path=duckdb_path, report_date=REPORT_DATE)
+
+    assert evidence["warning_consistency_status"] == "consistent"
+    assert evidence["consistency_blockers"] == []
+    assert evidence["parsed_warnings"]["krd_buckets"] == ["2Y", "6M"]
+    assert evidence["recomputed_warnings"]["krd_buckets"] == ["2Y", "6M"]
+    assert evidence["risk_tensor_rematerialization_preview"]["current_consistency_blockers"] == []
+    assert evidence["risk_tensor_rematerialization_preview"]["preview_consistency_status"] == "consistent"
+
+
 
 
 def test_portfolio_home_risk_warning_consistency_blocks_mismatched_warning_numbers(
@@ -384,4 +352,194 @@ def test_portfolio_home_risk_warning_consistency_require_clean_allows_clean_tens
     assert [
         row["current_status"]
         for row in payload["warning_resolution_matrix"]
-    ] == ["clean", "clean", "clean", "clean"]
+    ] == ["clean", "informational", "clean", "clean", "informational", "clean"]
+
+
+def test_portfolio_home_risk_warning_consistency_separates_matured_outstanding(
+    tmp_path: Path,
+) -> None:
+    duckdb_path = tmp_path / "matured-outstanding.duckdb"
+    _create_schema(duckdb_path)
+    warnings = [
+        (
+            "3 rows carry market_value=60.00000000 and are excluded from portfolio "
+            "duration denominator: 1 without maturity_date (market_value=30.00000000); "
+            "1 matured on or before report_date with outstanding market_value "
+            "(market_value=20.00000000); 1 future-dated with non-positive "
+            "modified_duration (market_value=10.00000000). DV01 totals remain sourced "
+            "from row dv01; duration metrics ignore these rows until inputs are remediated."
+        ),
+        "Excluded 1 rows without maturity_date from liquidity gap calculation.",
+    ]
+    connection = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        connection.execute(
+            "insert into fact_formal_risk_tensor_daily values (?, 'warning', ?)",
+            [REPORT_DATE, json.dumps(warnings)],
+        )
+        connection.executemany(
+            "insert into fact_formal_bond_analytics_daily values (?, ?, ?, ?, ?, ?)",
+            [
+                [REPORT_DATE, "5Y", Decimal("1"), Decimal("50"), "2031-05-31", Decimal("1")],
+                [REPORT_DATE, "5Y", Decimal("0"), Decimal("30"), None, Decimal("0")],
+                [REPORT_DATE, "5Y", Decimal("0"), Decimal("20"), REPORT_DATE, Decimal("0")],
+                [REPORT_DATE, "5Y", Decimal("0"), Decimal("10"), "2027-05-31", Decimal("0")],
+            ],
+        )
+    finally:
+        connection.close()
+
+    evidence = build_evidence(duckdb_path=duckdb_path, report_date=REPORT_DATE)
+
+    expected_duration = {
+        "row_count": 3,
+        "market_value_sum": "60.00000000",
+        "no_maturity_rows": 1,
+        "no_maturity_market_value": "30.00000000",
+        "matured_or_expired_outstanding_rows": 1,
+        "matured_or_expired_outstanding_market_value": "20.00000000",
+        "nonpositive_duration_rows": 1,
+        "nonpositive_duration_market_value": "10.00000000",
+    }
+    assert evidence["parsed_warnings"]["duration_exclusion"] == expected_duration
+    assert evidence["recomputed_warnings"]["duration_exclusion"] == expected_duration
+    assert evidence["warning_consistency_status"] == "consistent"
+    breakdown = {
+        row["exclusion_reason"]: row
+        for row in evidence["duration_exclusion_delta_detail"][
+            "recomputed_breakdown_by_reason"
+        ]
+    }
+    assert breakdown["no_maturity"]["row_count"] == 1
+    assert breakdown["matured_or_expired_outstanding"]["row_count"] == 1
+    assert breakdown["nonpositive_duration"]["row_count"] == 1
+    resolution = {
+        row["warning_key"]: row
+        for row in evidence["warning_resolution_matrix"]
+    }
+    matured_resolution = resolution["matured_or_expired_outstanding"]
+    assert matured_resolution["owner"] == "data_owner"
+    assert matured_resolution["current_status"] == "blocked"
+    assert matured_resolution["evidence_command"] == (
+        "python scripts/portfolio_home_matured_outstanding_queue.py "
+        f"--report-date {REPORT_DATE} --require-empty"
+    )
+    assert matured_resolution["exit_criteria"] == (
+        "Matured or unparseable non-zero bond positions are reconciled at source, and "
+        "the matured-outstanding strict queue exits 0; exception evidence cannot close "
+        "this blocker."
+    )
+
+
+def test_portfolio_home_risk_warning_consistency_routes_unparseable_maturity_to_reconciliation_blocker(
+    tmp_path: Path,
+) -> None:
+    duckdb_path = tmp_path / "unparseable-maturity.duckdb"
+    _create_schema(duckdb_path)
+    _insert_consistent_warning_data(duckdb_path)
+    connection = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        connection.execute(
+            "insert into fact_formal_bond_analytics_daily values (?, ?, ?, ?, ?, ?)",
+            [
+                REPORT_DATE,
+                "1Y",
+                Decimal("0.3"),
+                Decimal("75"),
+                "not-a-date",
+                Decimal("0.7"),
+            ],
+        )
+    finally:
+        connection.close()
+
+    evidence = build_evidence(duckdb_path=duckdb_path, report_date=REPORT_DATE)
+
+    assert evidence["warning_consistency_status"] == "mismatch"
+    assert evidence["consistency_blockers"] == [
+        "duration_exclusion_warning_mismatch"
+    ]
+    assert evidence["decision_status"] == "blocked"
+    assert "risk_tensor_warning_mismatch" in evidence["decision_blockers"]
+    recomputed_duration = evidence["recomputed_warnings"]["duration_exclusion"]
+    assert recomputed_duration["matured_or_expired_outstanding_rows"] == 1
+    assert (
+        recomputed_duration["matured_or_expired_outstanding_market_value"]
+        == "75.00000000"
+    )
+
+    resolution = {
+        row["warning_key"]: row
+        for row in evidence["warning_resolution_matrix"]
+    }
+    matured_resolution = resolution["matured_or_expired_outstanding"]
+    assert matured_resolution["owner"] == "data_owner"
+    assert matured_resolution["current_status"] == "blocked"
+    assert matured_resolution["current_evidence"] == {
+        "parsed": {"row_count": 0, "market_value": "0.00000000"},
+        "recomputed": {"row_count": 1, "market_value": "75.00000000"},
+    }
+    assert matured_resolution["evidence_command"] == (
+        "python scripts/portfolio_home_matured_outstanding_queue.py "
+        f"--report-date {REPORT_DATE} --require-empty"
+    )
+
+    samples = evidence["duration_exclusion_delta_detail"][
+        "top_recomputed_rows_by_market_value"
+    ]
+    unparseable_sample = next(
+        row for row in samples if row["maturity_date"] == "not-a-date"
+    )
+    assert unparseable_sample["exclusion_reason"] == "matured_or_expired_outstanding"
+
+
+def test_build_evidence_rejects_malformed_report_date_before_database_connect(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    import scripts.portfolio_home_risk_warning_consistency as risk_warning_mod
+
+    def forbidden_connect(*args, **kwargs):
+        raise AssertionError("malformed report_date must be rejected before database connect")
+
+    monkeypatch.setattr(risk_warning_mod.duckdb, "connect", forbidden_connect)
+
+    try:
+        build_evidence(
+            duckdb_path=tmp_path / "must-not-be-opened.duckdb",
+            report_date="not-a-date",
+        )
+    except argparse.ArgumentTypeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("malformed report_date must be rejected")
+
+    assert message == "invalid report date 'not-a-date'; expected YYYY-MM-DD"
+
+
+def test_cli_rejects_malformed_report_date_without_duckdb_failure_or_clean_payload(
+    tmp_path: Path,
+) -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--duckdb-path",
+            str(tmp_path / "must-not-be-opened.duckdb"),
+            "--report-date",
+            "not-a-date",
+            "--require-clean",
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+        text=True,
+    )
+
+    assert completed.returncode == 2
+    assert completed.stdout == ""
+    assert "invalid report date 'not-a-date'; expected YYYY-MM-DD" in completed.stderr
+    assert "_duckdb" not in completed.stderr
+    assert "ConversionException" not in completed.stderr
+    assert '"decision_status": "clean"' not in completed.stdout

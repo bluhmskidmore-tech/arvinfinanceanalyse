@@ -1,0 +1,333 @@
+/*
+ * Nocturne 页根重映射（risk-tensor / ledger-pnl 同款先例）：boundary 层的
+ * --ib-* 深色替换在 boundary 元素上按钢蓝 --dh-api-* 取值后向下继承，页根
+ * scope 翻转够不到（变量继承不回流），须在 scope 元素上重代入一次；
+ * --moss-color-text-primary 供 PageAsyncSection 标题。仅换色，不动版式。
+ */
+.news-events-page {
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line-soft);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-surface: var(--dh-api-blue-soft);
+  --ib-radius: var(--dh-api-radius);
+  --ib-shadow: none;
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
+  --ib-warn: var(--dh-api-amber);
+  --moss-color-text-primary: var(--dh-api-ink);
+}
+
+.news-events-page {
+  min-height: 100%;
+  padding: 24px;
+  background: var(--ib-paper);
+}
+
+.news-events-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+/* 深色终端页不使用衬线刊头；页 h1 收敛到 20px（DESIGN §3 页标题档）。 */
+.news-events-page__title {
+  margin-top: 0;
+  margin-bottom: 8px;
+  color: var(--ib-ink);
+  font-family: var(--moss-font-sans);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.news-events-page__intro {
+  margin-top: 0;
+  margin-bottom: 0;
+  color: var(--ib-ink-secondary);
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.news-events-page__mode-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: 999px;
+  background: var(--ib-surface-muted);
+  color: var(--ib-ink-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.news-events-page__mode-badge[data-mode="real"] {
+  background: color-mix(in srgb, var(--ib-up) 8%, var(--ib-surface));
+  color: var(--ib-up);
+}
+
+.news-events-page__mode-badge[data-mode="mock"] {
+  background: color-mix(in srgb, var(--ib-accent) 8%, var(--ib-surface));
+  color: var(--ib-accent);
+}
+
+.news-events-page__quality-hint {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--ib-warn) 40%, var(--ib-hairline));
+  border-left: 2px solid var(--ib-warn);
+  border-radius: var(--ib-radius, 2px);
+  background: color-mix(in srgb, var(--ib-warn) 8%, var(--ib-surface));
+  color: var(--ib-warn);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.news-events-page__compare-section {
+  height: auto;
+  padding: 24px;
+  margin-bottom: 20px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+  box-shadow: none;
+}
+
+.news-events-page__section-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.news-events-page__section-header-title {
+  color: var(--ib-ink);
+  font-weight: 650;
+}
+
+.news-events-page__section-header-meta {
+  color: var(--ib-ink-muted);
+  font-size: 12px;
+}
+
+.news-events-page__pager-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  color: var(--ib-ink-secondary);
+  font-size: 13px;
+}
+
+.news-events-page__summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+/* 筛选控件右置在分区头一行内（卡套卡拍平后不再有独立筛选卡）。 */
+.news-events-page__filter-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.news-events-page__filter-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ib-ink-secondary);
+  font-size: 13px;
+}
+
+.news-events-page__filter-label select {
+  max-width: 260px;
+}
+
+.news-events-page__filter-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ib-ink-secondary);
+  font-size: 13px;
+}
+
+.news-events-page__section-lead {
+  display: grid;
+  gap: 6px;
+  margin-top: 28px;
+}
+
+.news-events-page__section-eyebrow {
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.news-events-page__section-title {
+  margin: 0;
+  color: var(--ib-ink);
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.news-events-page__section-description {
+  margin: 0;
+  max-width: 860px;
+  color: var(--ib-ink-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.news-events-page__analytical-boundary {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--ib-hairline);
+  border-left: 2px solid var(--ib-warn);
+  border-radius: var(--ib-radius, 2px);
+  background: color-mix(in srgb, var(--ib-warn) 6%, var(--ib-surface));
+  color: var(--ib-ink-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.news-events-page__boundary-code {
+  color: var(--ib-ink);
+  font-weight: 700;
+}
+
+/* 治理元信息 13 项默认折叠；展开后按键值两列排布，不再单行铺开。 */
+.news-events-page__meta-fold {
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+}
+
+.news-events-page__meta-summary {
+  width: fit-content;
+  color: var(--ib-ink-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.news-events-page__meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 16px;
+  margin-top: 8px;
+}
+
+.news-events-page__meta-grid > span {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .news-events-page__meta-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.news-events-page__compare-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.news-events-page__compare-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface-muted);
+}
+
+.news-events-page__compare-card-title {
+  color: var(--ib-ink);
+  font-weight: 650;
+}
+
+.news-events-page__compare-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--ib-ink-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.news-events-page__compare-empty {
+  color: var(--ib-ink-muted);
+  font-size: 13px;
+}
+
+.news-events-page__table-scroll {
+  overflow-x: auto;
+}
+
+.news-events-page__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.news-events-page__table-head-row {
+  text-align: left;
+  border-bottom: 1px solid var(--ib-hairline);
+}
+
+.news-events-page__table-head-cell {
+  padding: 10px 8px;
+  color: var(--ib-ink-secondary);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.news-events-page__table-head-cell--wrap {
+  white-space: normal;
+}
+
+.news-events-page__table-row {
+  border-bottom: 1px solid var(--ib-hairline);
+}
+
+.news-events-page__table-row--error {
+  background: color-mix(in srgb, var(--ib-down) 6%, var(--ib-surface));
+}
+
+.news-events-page__table-cell {
+  padding: 10px 8px;
+  color: var(--ib-ink);
+  vertical-align: top;
+}
+
+.news-events-page__table-cell--nowrap {
+  white-space: nowrap;
+}
+
+.news-events-page__table-cell--summary {
+  white-space: normal;
+  word-break: break-word;
+  max-width: 480px;
+}
+
+/* 错误行的错误码染语义红，与行底色一致指向同一事实。 */
+.news-events-page__table-row--error .news-events-page__error-code-cell {
+  color: var(--dh-api-red);
+  font-weight: 600;
+}

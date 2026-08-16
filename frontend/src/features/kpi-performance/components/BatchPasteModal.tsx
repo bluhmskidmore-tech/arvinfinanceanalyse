@@ -4,8 +4,14 @@ import { Alert, Button, Input, Modal, Table, Tag, Typography } from "antd";
 
 import type { KpiMetricWithValue, KpiOwner } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
+import { EM_DASH } from "../../../utils/format";
 
 const { Paragraph, Text } = Typography;
+
+/** 单次批量粘贴的最大导入行数；超限拒绝解析，提示分批导入。 */
+export const BATCH_PASTE_MAX_ROWS = 500;
+/** 预览表分页大小，避免一次渲染全部行。 */
+const PREVIEW_PAGE_SIZE = 50;
 
 export type BatchPasteModalProps = {
   open: boolean;
@@ -37,6 +43,7 @@ export function BatchPasteModal({
   const client = useApiClient();
   const [pasteText, setPasteText] = React.useState("");
   const [parsedRows, setParsedRows] = React.useState<ParsedRow[]>([]);
+  const [parseError, setParseError] = React.useState<string | null>(null);
   const [importing, setImporting] = React.useState(false);
   const [importResult, setImportResult] = React.useState<{
     success: number;
@@ -55,9 +62,20 @@ export function BatchPasteModal({
   const handleParse = React.useCallback(() => {
     if (!pasteText.trim()) {
       setParsedRows([]);
+      setParseError(null);
       return;
     }
     const lines = pasteText.trim().split("\n");
+    const nonEmptyLineCount = lines.filter((line) => line.trim()).length;
+    if (nonEmptyLineCount > BATCH_PASTE_MAX_ROWS) {
+      setParsedRows([]);
+      setImportResult(null);
+      setParseError(
+        `共 ${nonEmptyLineCount} 行，超出单次最大导入 ${BATCH_PASTE_MAX_ROWS} 行，请分批粘贴导入。`,
+      );
+      return;
+    }
+    setParseError(null);
     const rows: ParsedRow[] = [];
     lines.forEach((line, index) => {
       const trimmedLine = line.trim();
@@ -161,6 +179,7 @@ export function BatchPasteModal({
   const handleClear = React.useCallback(() => {
     setPasteText("");
     setParsedRows([]);
+    setParseError(null);
     setImportResult(null);
   }, []);
 
@@ -174,9 +193,16 @@ export function BatchPasteModal({
 
   return (
     <Modal
+      rootClassName="kpi-modal-v2 kpi-modal-v2--batch"
+      /* portal 主题逃逸：同 MetricEditModal，modalRender 包 Nocturne scope 容器。 */
+      modalRender={(node) => (
+        <div className="theme-dh-api" data-moss-theme-scope="kpi">
+          {node}
+        </div>
+      )}
       title={
-        <span>
-          <InboxOutlined style={{ marginRight: 8 }} />
+        <span className="kpi-modal-v2__title-inline">
+          <InboxOutlined className="kpi-modal-v2__title-icon" />
           批量导入
         </span>
       }
@@ -199,46 +225,55 @@ export function BatchPasteModal({
         </Button>,
       ]}
     >
-      <Paragraph type="secondary" style={{ marginBottom: 16 }}>
+      <Paragraph type="secondary" className="kpi-modal-v2__subtitle">
         {owner.owner_name} · {asOfDate}
       </Paragraph>
       <Alert
         type="info"
         showIcon
-        style={{ marginBottom: 16 }}
+        className="kpi-modal-v2__alert kpi-modal-v2__alert--intro"
         message="使用说明"
         description={
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
+          <ul className="kpi-modal-v2__help-list">
             <li>从 Excel 复制后粘贴到文本框</li>
             <li>
               格式：<Text code>指标代码 [Tab] 实际值 [Tab] 序时进度</Text>（序时进度可选）
             </li>
-            <li>点击「解析」预览，再「导入」</li>
+            <li>点击「解析」预览，再「导入」；单次最多 {BATCH_PASTE_MAX_ROWS} 行</li>
           </ul>
         }
       />
-      <div style={{ marginBottom: 8 }}>
+      <div className="kpi-modal-v2__field-label">
         <Text strong>粘贴数据</Text>
       </div>
       <Input.TextArea
+        className="kpi-modal-v2__paste-area"
         value={pasteText}
         onChange={(e) => setPasteText(e.target.value)}
         placeholder="从 Excel 粘贴…"
         rows={6}
-        style={{ fontFamily: "monospace", marginBottom: 8 }}
       />
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+      <div className="kpi-modal-v2__toolbar">
         <Text type="secondary">当前共 {metrics.length} 个指标</Text>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div className="kpi-modal-v2__toolbar-actions">
           <Button onClick={handleClear}>清空</Button>
           <Button type="primary" onClick={handleParse}>
             解析
           </Button>
         </div>
       </div>
+      {parseError ? (
+        <Alert
+          type="error"
+          showIcon
+          className="kpi-modal-v2__alert"
+          message="超出导入行数上限"
+          description={parseError}
+        />
+      ) : null}
       {parsedRows.length > 0 ? (
         <>
-          <div style={{ marginBottom: 8, display: "flex", justifyContent: "space-between" }}>
+          <div className="kpi-modal-v2__preview-header">
             <Text strong>预览</Text>
             <Text>
               <Text type="success">有效 {stats.valid}</Text>
@@ -248,8 +283,13 @@ export function BatchPasteModal({
             </Text>
           </div>
           <Table
+            className="kpi-modal-v2__table"
             size="small"
-            pagination={false}
+            pagination={{
+              pageSize: PREVIEW_PAGE_SIZE,
+              hideOnSinglePage: true,
+              showSizeChanger: false,
+            }}
             scroll={{ y: 220 }}
             dataSource={parsedRows.map((r, i) => ({ ...r, key: i }))}
             columns={[
@@ -258,19 +298,19 @@ export function BatchPasteModal({
               {
                 title: "指标名称",
                 dataIndex: "metric",
-                render: (_: unknown, row: ParsedRow) => row.metric?.metric_name || "-",
+                render: (_: unknown, row: ParsedRow) => row.metric?.metric_name || EM_DASH,
               },
               {
                 title: "实际值",
                 dataIndex: "actualValue",
                 align: "right",
-                render: (t: string) => t || "-",
+                render: (t: string) => t || EM_DASH,
               },
               {
                 title: "序时进度",
                 dataIndex: "progressPct",
                 align: "right",
-                render: (t: string) => (t ? `${t}%` : "-"),
+                render: (t: string) => (t ? `${t}%` : EM_DASH),
               },
               {
                 title: "状态",
@@ -292,10 +332,10 @@ export function BatchPasteModal({
             <Alert
               type="error"
               showIcon
-              style={{ marginTop: 12 }}
+              className="kpi-modal-v2__alert"
               message="以下行将被跳过"
               description={
-                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                <ul className="kpi-modal-v2__help-list">
                   {parsedRows
                     .filter((r) => r.status === "invalid")
                     .slice(0, 5)
@@ -315,7 +355,7 @@ export function BatchPasteModal({
         <Alert
           type={importResult.failed === 0 ? "success" : "warning"}
           showIcon
-          style={{ marginTop: 16 }}
+          className="kpi-modal-v2__alert"
           message="导入结果"
           description={
             <>
@@ -323,7 +363,7 @@ export function BatchPasteModal({
                 成功 {importResult.success} 条，失败 {importResult.failed} 条
               </div>
               {importResult.errors.length > 0 ? (
-                <ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+                <ul className="kpi-modal-v2__help-list kpi-modal-v2__help-list--stacked">
                   {importResult.errors.map((e, i) => (
                     <li key={i}>{e}</li>
                   ))}

@@ -9,6 +9,7 @@ type AgentSuggestedAction = {
 type AgentSuggestedActionsPanelProps = {
   actions: AgentSuggestedAction[];
   formatValue: (value: unknown) => string;
+  readOnly?: boolean;
   activePayload: Record<string, unknown> | null;
   pendingConfirmationKey: string | null;
   getActionKey: (action: AgentSuggestedAction) => string;
@@ -18,6 +19,7 @@ type AgentSuggestedActionsPanelProps = {
 export function AgentSuggestedActionsPanel({
   actions,
   formatValue,
+  readOnly = false,
   activePayload,
   pendingConfirmationKey,
   getActionKey,
@@ -41,8 +43,17 @@ export function AgentSuggestedActionsPanel({
   }
 
   function renderActionItem(action: AgentSuggestedAction, index: number) {
-    const isPendingConfirmation = action.requires_confirmation && getActionKey(action) === pendingConfirmationKey;
+    const isReadOnlyExecuteAction = readOnly && action.type === "execute_intent";
+    const isPendingConfirmation =
+      !isReadOnlyExecuteAction &&
+      action.requires_confirmation &&
+      getActionKey(action) === pendingConfirmationKey;
     const actionLabel = isPendingConfirmation ? `确认执行：${action.label}` : action.label;
+    const badgeLabel = isReadOnlyExecuteAction
+      ? "只读 · 仅展示"
+      : action.requires_confirmation
+        ? "需确认后执行"
+        : "可直接继续";
 
     return (
       <article className="agent-suggested-actions__item" key={`${action.type}-${action.label}-${index}`}>
@@ -54,6 +65,7 @@ export function AgentSuggestedActionsPanel({
                 ? "agent-suggested-actions__button agent-suggested-actions__button--confirm"
                 : "agent-suggested-actions__button"
             }
+            disabled={isReadOnlyExecuteAction}
             onClick={(event) => {
               if (!action.requires_confirmation || isPendingConfirmation) {
                 closeSecondaryActionsDrawer(event.currentTarget);
@@ -65,12 +77,12 @@ export function AgentSuggestedActionsPanel({
           </button>
           <span
             className={
-              action.requires_confirmation
+              !isReadOnlyExecuteAction && action.requires_confirmation
                 ? "agent-suggested-actions__badge agent-suggested-actions__badge--warning"
                 : "agent-suggested-actions__badge"
             }
           >
-            {action.requires_confirmation ? "需确认后执行" : "可直接继续"}
+            {badgeLabel}
           </span>
         </div>
         <details className="agent-suggested-actions__details">

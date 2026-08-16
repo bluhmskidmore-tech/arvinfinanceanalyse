@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Numeric, ReturnDecompositionPayload } from "../../../api/contracts";
+import { nocturneTokens } from "../../../theme/designSystem";
 import {
   buildReturnDecompositionWaterfallOption,
   RETURN_DECOMPOSITION_WATERFALL_CATEGORY_COUNT,
@@ -57,7 +58,9 @@ describe("returnDecompositionWaterfallOption", () => {
     expect(RETURN_DECOMPOSITION_WATERFALL_CATEGORY_COUNT).toBe(8);
   });
 
-  it("emits finite series values for missing and non-finite decomposition raw values", () => {
+  // 缺失 ≠ 0（2026-08 假零修复）：缺失/非有限效应柱保留 null 断开，不再补 0 画假柱；
+  // 累计 helper 跳过缺失项继续，真实 0 与负值照常成柱。
+  it("breaks bars (null) for missing and non-finite decomposition raw values", () => {
     const option = buildReturnDecompositionWaterfallOption(
       rd({
         carry: num({ raw: null }),
@@ -73,11 +76,31 @@ describe("returnDecompositionWaterfallOption", () => {
     const series = option.series as Array<{ data?: unknown[] }>;
     expect(series).toHaveLength(2);
 
-    const helperData = series[0]?.data as number[];
-    const effectData = series[1]?.data as Array<{ value: number }>;
+    const helperData = series[0]?.data as Array<number | null>;
+    const effectData = series[1]?.data as Array<{ value: number | null }>;
 
-    expect(helperData.every(Number.isFinite)).toBe(true);
-    expect(effectData.map((item) => item.value)).toEqual([0, 0, 3, 0, 4, 0, 2, 0]);
-    expect(effectData.every((item) => Number.isFinite(item.value))).toBe(true);
+    expect(helperData.every((item) => item === null || Number.isFinite(item))).toBe(true);
+    expect(effectData.map((item) => item.value)).toEqual([null, 0, 3, null, 4, null, 2, null]);
+    // 累计 helper 跳过缺失项；正值柱底 = 加柱前的累计（-3 之后 +4 的柱底为 -3），负值柱底 = 累计+v。
+    expect(helperData).toEqual([null, 0, -3, null, -3, null, -1, 0]);
+  });
+
+  it("colors positive contribution bars green and negative bars red (2026-08-11 决议)", () => {
+    const option = buildReturnDecompositionWaterfallOption(
+      rd({
+        carry: num({ raw: 5 }),
+        roll_down: num({ raw: -2 }),
+        rate_effect: num({ raw: 1 }),
+        spread_effect: num({ raw: 1 }),
+        fx_effect: num({ raw: 1 }),
+        convexity_effect: num({ raw: 1 }),
+        trading: num({ raw: 1 }),
+        explained_pnl: num({ raw: 8 }),
+      }),
+    );
+    const series = option.series as Array<{ data?: Array<{ itemStyle?: { color?: string } }> }>;
+    const effectData = series[1]?.data ?? [];
+    expect(effectData[0]?.itemStyle?.color).toBe(nocturneTokens.color.green);
+    expect(effectData[1]?.itemStyle?.color).toBe(nocturneTokens.color.red);
   });
 });

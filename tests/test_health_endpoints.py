@@ -78,7 +78,44 @@ def test_ready_endpoint_returns_200_and_check_payload(monkeypatch: pytest.Monkey
     }
 
 
-def test_ready_health_payload_keeps_prewarm_out_of_dependency_status(monkeypatch: pytest.MonkeyPatch):
+def test_ready_endpoint_returns_503_when_a_dependency_is_degraded(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """降级必须体现在状态码上：外部探活只看 HTTP 状态，不会解析 body。"""
+    health_module = load_module(
+        "backend.app.api.routes.health",
+        "backend/app/api/routes/health.py",
+    )
+
+    degraded_payload = {
+        "status": "degraded",
+        "checks": {
+            "postgresql": {"ok": True},
+            "duckdb": {"ok": False, "error": "database is locked"},
+            "redis": {"ok": True},
+            "object_store": {"ok": True},
+        },
+    }
+    monkeypatch.setattr(health_module, "get_settings", lambda: object())
+    monkeypatch.setattr(
+        health_module,
+        "ready_health_payload",
+        lambda _settings: degraded_payload,
+    )
+
+    app = FastAPI()
+    app.include_router(health_module.router)
+    client = TestClient(app)
+
+    response = client.get("/health/ready")
+
+    assert response.status_code == 503
+    assert response.json() == degraded_payload
+
+
+def test_ready_health_payload_keeps_prewarm_out_of_dependency_status(
+    monkeypatch: pytest.MonkeyPatch,
+):
     health_service = load_module(
         "backend.app.services.health_service",
         "backend/app/services/health_service.py",
@@ -119,4 +156,73 @@ def test_ready_health_payload_keeps_prewarm_out_of_dependency_status(monkeypatch
     payload = health_service.ready_health_payload(settings)
 
     assert payload["status"] == "ok"
-    assert payload["checks"]["home_snapshot_prewarm"] == {"ok": False, "status": "warming"}
+    assert payload["checks"]["home_snapshot_prewarm"] == {
+        "ok": False,
+        "status": "warming",
+    }
+
+
+def test_ready_health_payload_degrades_and_preserves_object_store_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    health_service = load_module(
+        "backend.app.services.health_service",
+        "backend/app/services/health_service.py",
+    )
+    object_store_diagnostics = {
+        "ok": False,
+        "mode": "minio",
+        "endpoint": "minio:9000",
+        "bucket": "artifacts",
+        "tcp_reachable": True,
+        "read_write_supported": False,
+        "error": "MinIO object-store read/write operations are not implemented.",
+    }
+
+    class HealthyRepo:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def healthcheck(self) -> dict[str, object]:
+            return {"ok": True}
+
+    class ReachableUnsupportedObjectStoreRepo:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def healthcheck(self) -> dict[str, object]:
+            return object_store_diagnostics
+
+    monkeypatch.setattr(health_service, "PostgresRepository", HealthyRepo)
+    monkeypatch.setattr(health_service, "DuckDBRepository", HealthyRepo)
+    monkeypatch.setattr(health_service, "RedisRepository", HealthyRepo)
+    monkeypatch.setattr(
+        health_service,
+        "ObjectStoreRepository",
+        ReachableUnsupportedObjectStoreRepo,
+    )
+    monkeypatch.setattr(
+        health_service,
+        "home_snapshot_prewarm_status",
+        lambda: {"ok": True, "status": "ready"},
+    )
+    settings = type(
+        "Settings",
+        (),
+        {
+            "postgres_dsn": "postgresql://u:p@db/app",
+            "duckdb_path": "/tmp/app.duckdb",
+            "redis_dsn": "redis://cache:6379/0",
+            "minio_endpoint": "minio:9000",
+            "minio_access_key": "minio",
+            "minio_secret_key": "minio",
+            "minio_bucket": "artifacts",
+            "object_store_mode": "minio",
+            "local_archive_path": "/tmp/archive",
+        },
+    )()
+
+    payload = health_service.ready_health_payload(settings)
+
+    assert payload["status"] == "degraded"
+    assert payload["checks"]["object_store"] == object_store_diagnostics

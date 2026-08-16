@@ -9,6 +9,7 @@ test.describe("stock analysis mock browser smoke", () => {
     await page.goto("/stock-analysis", { waitUntil: "domcontentloaded" });
 
     await expect(page.getByTestId("stock-analysis-page")).toBeVisible();
+    await page.getByTestId("stock-analysis-deep-research-summary").click();
 
     const observationPreview = page.getByTestId("stock-analysis-observation-preview");
     await expect(observationPreview).toBeVisible({ timeout: 30_000 });

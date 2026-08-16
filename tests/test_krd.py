@@ -150,12 +150,21 @@ class TestBuildKrdPositionMetrics:
         long_buckets = {"5Y", "7Y", "10Y", "15Y", "20Y", "30Y"}
         assert bucket not in long_buckets, f"Short bond landed in long bucket: {bucket}"
 
-    def test_dv01_formula(self):
-        """DV01 = face_value * modified_duration / 10000"""
+    def test_dv01_golden_constant(self):
+        """DV01 = face_value × modified_duration / 10000，独立手算黄金值。
+
+        BOND_5Y（3%/3% 半年付平价债，2026-01-01→2031-01-01 = 1826 天）：
+          n = round(1826/365×2) = 10, y = 0.015
+          D_p = (1.015/0.015)×(1−1.015^-10) = 67.6667×0.13833277 = 9.36051732（期）
+          D = quantize(9.36051732/2, 1e-4) = 4.6803（年）
+          D_mod = 4.6803/1.015 = 4.61113300…
+          DV01 = 1,000,000 × 4.61113300…/10,000 = 461.1133…（元/bp）
+        完整逐步推导见 tests/test_krd_golden.py。
+        """
         metrics = build_krd_position_metrics([BOND_5Y], report_date=REPORT_DATE)
         m = metrics[0]
-        expected_dv01 = m["face_value"] * m["modified_duration"] / Decimal("10000")
-        assert abs(m["dv01"] - expected_dv01) < Decimal("0.01")
+        assert abs(m["modified_duration"] - Decimal("4.61113300")) < Decimal("0.0001")
+        assert abs(m["dv01"] - Decimal("461.1133")) < Decimal("0.01")
 
     def test_dv01_uses_face_value_when_it_differs_from_market_value(self):
         bond = _make_bond(
@@ -170,10 +179,11 @@ class TestBuildKrdPositionMetrics:
         metrics = build_krd_position_metrics([bond], report_date=REPORT_DATE)
         m = metrics[0]
 
-        face_basis_dv01 = m["face_value"] * m["modified_duration"] / Decimal("10000")
-        market_basis_dv01 = m["market_value"] * m["modified_duration"] / Decimal("10000")
-        assert abs(m["dv01"] - face_basis_dv01) < Decimal("0.01")
-        assert abs(m["dv01"] - market_basis_dv01) > Decimal("0.01")
+        # 债券参数同 BOND_5Y → D_mod = 4.61113300…（手算见 tests/test_krd_golden.py）。
+        # face 口径:   1,000,000 × 4.61113300…/10,000 = 461.1133…
+        # market 口径:   500,000 × 4.61113300…/10,000 = 230.5567…（错误口径，应远离）
+        assert abs(m["dv01"] - Decimal("461.1133")) < Decimal("0.01")
+        assert abs(m["dv01"] - Decimal("230.5567")) > Decimal("100")
 
     def test_zero_wind_modified_duration_is_preserved(self):
         metrics = build_krd_position_metrics(
@@ -306,8 +316,9 @@ class TestSteepeningScenario:
         - A short-duration (1Y) portfolio should gain money (positive PnL).
 
         Note: BOND_SHORT matures in ~5 months and lands in the '6M' tenor bucket,
-        which is not covered by the steepening shocks dict (1Y–30Y only).  We use
-        BOND_2Y instead, which lands in the '2Y' bucket (shock = -15bp → positive PnL).
+        which the steepening shocks dict (1Y–30Y) covers only via the short-end
+        merge fallback (6M → 1Y).  We use BOND_2Y instead, which lands in the '2Y'
+        bucket directly (shock = -15bp → positive PnL).
         """
         steepening = next(
             s for s in STANDARD_KRD_SCENARIOS if s["name"] == "steepening_50bp"

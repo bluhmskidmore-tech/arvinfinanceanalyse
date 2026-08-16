@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type {
+  BacktestWindowSummary,
   LivermoreCandidateHistoryPayload,
   LivermoreStrategyScorePayload,
   LivermoreStrategyScoreRow,
@@ -23,6 +24,7 @@ import {
   strategyPrioritySummaryReason,
   strategyRiskFlagLabel,
 } from "../features/stock-analysis/lib/stockAnalysisPriorityModel";
+import * as priorityModel from "../features/stock-analysis/lib/stockAnalysisPriorityModel";
 
 const horizonStats = {
   available_count: 8,
@@ -49,6 +51,7 @@ const trackedSnapshot = {
   horizons: {
     return_1d: { ...horizonStats, status: "complete" },
     return_5d: { ...horizonStats, status: "partial" },
+    return_10d: pendingStats,
     return_20d: pendingStats,
   },
 };
@@ -66,6 +69,7 @@ function buildPriorityRow(overrides: Partial<LivermoreStrategyScoreRow> = {}): L
     stats: {
       return_1d: horizonStats,
       return_5d: horizonStats,
+      return_10d: pendingStats,
       return_20d: pendingStats,
     },
     ...overrides,
@@ -80,6 +84,7 @@ const scorePayloadRows: LivermoreStrategyScorePayload["rows"] = [
       priority_scope_stats: {
         return_1d: horizonStats,
         return_5d: horizonStats,
+        return_10d: pendingStats,
         return_20d: pendingStats,
       },
       maturity: {
@@ -104,6 +109,7 @@ const scorePayloadRows: LivermoreStrategyScorePayload["rows"] = [
           stats: {
             return_1d: horizonStats,
             return_5d: horizonStats,
+            return_10d: pendingStats,
             return_20d: pendingStats,
           },
         },
@@ -220,6 +226,33 @@ describe("stockAnalysisPriorityModel", () => {
     expect(strategyPriorityReasonLabel(scorePayloadRows[0])).toContain("优先复核");
   });
 
+  it("accepts enriched strategy family metadata without changing priority copy", () => {
+    const enrichedRows = scorePayloadRows.map((row) => ({
+      ...row,
+      family_key: row.signal_kind === "stock_candidate" ? "trend_core" : row.signal_kind,
+      family_label: row.signal_kind === "stock_candidate" ? "Trend core" : row.strategy_label,
+      family_contract_version: "rv_livermore_strategy_family_contract_v1",
+      primary_sample_size: row.stats.return_5d.available_count,
+      family_readiness: {
+        readiness_contract_version: "rv_livermore_strategy_family_readiness_v1",
+        readiness_state: "degraded_observation",
+        macro_context_id: "macroctx_unit",
+        market_gate_context_id: null,
+        macro_compatibility: "compatible",
+        market_gate_compatibility: "unknown",
+        data_readiness: "ready",
+        sample_maturity: "insufficient",
+        readiness_reasons: ["OBSERVATION_ONLY_BOUNDARY"],
+        observational_only: true,
+        formal_use_allowed: false,
+      },
+    }));
+
+    expect(buildStrategyPriorityHeadline(enrichedRows)).toBe(buildStrategyPriorityHeadline(scorePayloadRows));
+    expect(strategyPrioritySummaryReason(enrichedRows)).toBe(strategyPrioritySummaryReason(scorePayloadRows));
+    expect(strategyPriorityReasonLabel(enrichedRows[0])).toBe(strategyPriorityReasonLabel(scorePayloadRows[0]));
+  });
+
   it("localizes rank, scope, risk, and status labels without leaking vendor codes", () => {
     expect(localizeRankRangeLabel("rank 11-20")).toBe("第 11-20 名");
     expect(localizeRankRangeLabel(null, 21, 30)).toBe("第 21-30 名");
@@ -247,6 +280,128 @@ describe("stockAnalysisPriorityModel", () => {
     expect(strategyMaturityHorizonText(trackedSnapshot, "return_20d")).toBe("T+20 待成熟");
     expect(strategyCandidateReturnText(0.012)).toBe("+1.20%");
     expect(strategyCandidateReturnText(null)).toBe("待成熟");
+  });
+
+  it("formats priority horizon cells from maturity and source-coverage evidence", () => {
+    const formatter = (
+      priorityModel as typeof priorityModel & {
+        strategyPriorityHorizonStatsText?: (
+          row: LivermoreStrategyScoreRow,
+          horizon: "return_1d" | "return_5d" | "return_10d" | "return_20d",
+          window?: BacktestWindowSummary | null,
+        ) => string;
+      }
+    ).strategyPriorityHorizonStatsText;
+    expect(formatter).toBeTypeOf("function");
+    if (!formatter) return;
+
+    expect(formatter(scorePayloadRows[0], "return_5d")).toBe("62.5% / +1.80% / 8条");
+    expect(formatter(scorePayloadRows[0], "return_10d")).toBe("自然待成熟 · 4条");
+    const sourceGapWindow: BacktestWindowSummary = {
+      status: "unsupported",
+      snapshot_from: "2026-04-01",
+      snapshot_to: "2026-04-29",
+      replay_dates_total: 2,
+      replay_dates_completed: 0,
+      replay_dates_pending: 0,
+      replay_dates_unsupported: 2,
+      replay_dates_proxy_only: 0,
+      completed_rows: 0,
+      pending_rows: 0,
+      unsupported_rows: 20,
+      proxy_only_rows: 0,
+      included_completed_stats_dates: [],
+      excluded_from_completed_stats_dates: ["2026-04-01", "2026-04-02"],
+      date_reasons: [
+        {
+          trade_date: "2026-04-01",
+          status: "unsupported",
+          reason_code: "missing_required_source_table",
+          message: "missing",
+          affects_completed_stats: false,
+          signal_kinds: ["stock_candidate"],
+        },
+        {
+          trade_date: "2026-04-02",
+          status: "unsupported",
+          reason_code: "missing_required_source_table",
+          message: "missing",
+          affects_completed_stats: false,
+          signal_kinds: ["stock_candidate"],
+        },
+      ],
+    };
+    expect(formatter(buildPriorityRow({ diagnostics: undefined }), "return_10d", sourceGapWindow)).toBe(
+      "历史源不足 · 2日",
+    );
+    expect(
+      formatter(
+        buildPriorityRow({ signal_kind: "factor_screen", diagnostics: undefined }),
+        "return_10d",
+        sourceGapWindow,
+      ),
+    ).toBe("成熟度未提供");
+
+    const pendingWindow: BacktestWindowSummary = {
+      ...sourceGapWindow,
+      status: "partial",
+      replay_dates_pending: 1,
+      replay_dates_unsupported: 0,
+      unsupported_rows: 0,
+      pending_rows: 4,
+      date_reasons: [
+        {
+          trade_date: "2026-04-29",
+          status: "pending",
+          reason_code: "forward_returns_pending",
+          message: "pending",
+          affects_completed_stats: false,
+          signal_kinds: ["factor_screen"],
+        },
+      ],
+    };
+    expect(formatter(buildPriorityRow({ diagnostics: undefined }), "return_10d", pendingWindow)).toBe(
+      "成熟度未提供",
+    );
+    expect(
+      formatter(
+        buildPriorityRow({ signal_kind: "factor_screen", diagnostics: undefined }),
+        "return_10d",
+        pendingWindow,
+      ),
+    ).toBe("自然待成熟 · 4条");
+
+    expect(
+      formatter(
+        buildPriorityRow({
+          sample_status: "insufficient",
+          priority_label: "样本不足",
+          diagnostics: undefined,
+        }),
+        "return_10d",
+      ),
+    ).toBe("样本不足");
+
+    const baseDiagnostics = scorePayloadRows[0].diagnostics!;
+    const baseMaturity = baseDiagnostics.maturity!;
+    const partialRow = buildPriorityRow({
+      diagnostics: {
+        ...baseDiagnostics,
+        maturity: {
+          ...baseMaturity,
+          tracked_snapshots: [
+            {
+              ...trackedSnapshot,
+              horizons: {
+                ...trackedSnapshot.horizons,
+                return_10d: { ...pendingStats, status: "partial" },
+              },
+            },
+          ],
+        },
+      },
+    });
+    expect(formatter(partialRow, "return_10d")).toBe("部分成熟 · 4条");
   });
 
   it("selects maturity rows and filters maturity candidates by snapshot, signal kind, and rank scope", () => {

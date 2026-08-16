@@ -172,6 +172,41 @@ def test_six_month_tenor_maps_to_nearest_one_year_krd_bucket():
     assert not any("Unsupported tenor buckets excluded" in warning for warning in tensor.warnings)
 
 
+def test_zero_dv01_fallback_buckets_do_not_appear_in_remap_warning():
+    mod = _risk_tensor_module()
+
+    tensor = mod.compute_portfolio_risk_tensor(
+        [
+            _row(dv01="-0E-8", tenor_bucket="6M"),
+            _row(dv01="0.00000000", tenor_bucket="20Y"),
+            _row(dv01="1.00", tenor_bucket="1Y"),
+        ],
+        report_date=date(2026, 3, 31),
+    )
+
+    assert tensor.krd_1y == Decimal("1.00")
+    assert tensor.krd_30y == Decimal("0")
+    assert not any("Non-standard tenor buckets remapped" in warning for warning in tensor.warnings)
+
+
+def test_nonzero_fallback_rows_still_warn_when_bucket_nets_to_zero():
+    mod = _risk_tensor_module()
+
+    tensor = mod.compute_portfolio_risk_tensor(
+        [
+            _row(dv01="0.00000001", tenor_bucket="20Y"),
+            _row(dv01="-0.00000001", tenor_bucket="20Y"),
+        ],
+        report_date=date(2026, 3, 31),
+    )
+
+    assert tensor.krd_30y == Decimal("0")
+    assert any(
+        warning == "Non-standard tenor buckets remapped to nearest KRD bucket: 20Y"
+        for warning in tensor.warnings
+    )
+
+
 def test_cs01_only_includes_credit_bonds():
     mod = _risk_tensor_module()
 
@@ -381,4 +416,119 @@ def test_duration_exclusion_warning_counts_all_rows_outside_duration_denominator
     assert "2 rows" in warning
     assert "market_value=400000000" in warning
     assert "1 without maturity_date" in warning
-    assert "1 with non-positive modified_duration" in warning
+    assert "0 matured on or before report_date with outstanding market_value" in warning
+    assert "1 future-dated with non-positive modified_duration" in warning
+    assert tensor.rate_risk_market_value == Decimal("100000000")
+    assert tensor.rate_risk_dv01 == Decimal("40000")
+    assert tensor.rate_risk_modified_duration == Decimal("4")
+    assert tensor.duration_excluded_market_value == Decimal("400000000")
+    assert tensor.duration_excluded_count == 2
+    assert tensor.missing_maturity_market_value == Decimal("300000000")
+    assert tensor.missing_maturity_count == 1
+
+
+def test_duration_exclusion_warning_separates_matured_outstanding_rows():
+    mod = _risk_tensor_module()
+    report_date = date(2026, 6, 30)
+
+    tensor = mod.compute_portfolio_risk_tensor(
+        [
+            _row(
+                dv01="40000",
+                market_value="100000000",
+                maturity_date=report_date + timedelta(days=365),
+            )
+            | {"modified_duration": Decimal("4")},
+            _row(
+                dv01="0",
+                market_value="300000000",
+                maturity_date=None,
+            )
+            | {"modified_duration": Decimal("0")},
+            _row(
+                dv01="0",
+                market_value="200000000",
+                maturity_date=report_date - timedelta(days=1),
+            )
+            | {"modified_duration": Decimal("2")},
+            _row(
+                dv01="0",
+                market_value="100000000",
+                maturity_date=report_date + timedelta(days=180),
+            )
+            | {"modified_duration": Decimal("0")},
+        ],
+        report_date=report_date,
+    )
+
+    warning = next(
+        warning
+        for warning in tensor.warnings
+        if "excluded from portfolio duration denominator" in warning
+    )
+    assert "1 without maturity_date (market_value=300000000)" in warning
+    assert (
+        "1 matured on or before report_date with outstanding market_value "
+        "(market_value=200000000)"
+    ) in warning
+    assert (
+        "1 future-dated with non-positive modified_duration (market_value=100000000)"
+    ) in warning
+    assert tensor.rate_risk_market_value == Decimal("100000000")
+    assert tensor.duration_excluded_market_value == Decimal("600000000")
+    assert tensor.duration_excluded_count == 3
+
+
+def test_invalid_nonempty_maturity_date_counts_as_missing_maturity_in_warning_breakdown():
+    mod = _risk_tensor_module()
+    report_date = date(2026, 6, 30)
+
+    tensor = mod.compute_portfolio_risk_tensor(
+        [
+            _row(
+                dv01="40000",
+                market_value="100000000",
+                maturity_date=report_date + timedelta(days=365),
+            )
+            | {"modified_duration": Decimal("4")},
+            _row(
+                dv01="0",
+                market_value="300000000",
+            )
+            | {"maturity_date": "not-a-date", "modified_duration": Decimal("0")},
+            _row(
+                dv01="0",
+                market_value="200000000",
+                maturity_date=report_date - timedelta(days=1),
+            )
+            | {"modified_duration": Decimal("2")},
+            _row(
+                dv01="0",
+                market_value="100000000",
+                maturity_date=report_date + timedelta(days=180),
+            )
+            | {"modified_duration": Decimal("0")},
+        ],
+        report_date=report_date,
+    )
+
+    warning = next(
+        warning
+        for warning in tensor.warnings
+        if "excluded from portfolio duration denominator" in warning
+    )
+    assert "3 rows" in warning
+    assert "market_value=600000000" in warning
+    assert "1 without maturity_date (market_value=300000000)" in warning
+    assert (
+        "1 matured on or before report_date with outstanding market_value "
+        "(market_value=200000000)"
+    ) in warning
+    assert (
+        "1 future-dated with non-positive modified_duration (market_value=100000000)"
+    ) in warning
+    assert tensor.rate_risk_market_value == Decimal("100000000")
+    assert tensor.duration_excluded_market_value == Decimal("600000000")
+    assert tensor.duration_excluded_count == 3
+    assert tensor.missing_maturity_market_value == Decimal("300000000")
+    assert tensor.missing_maturity_count == 1

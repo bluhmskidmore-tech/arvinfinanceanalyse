@@ -6,7 +6,13 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import pytest
+
+from tests.readiness_input_snapshot import build_readiness_input_snapshot_env
+
 ROOT = Path(__file__).resolve().parents[1]
+
+pytestmark = pytest.mark.governance_meta
 
 
 def test_native_development_scripts_exist():
@@ -61,10 +67,29 @@ def run_powershell_script_result(
     )
 
 
-def run_powershell_script(script_name: str, *args: str) -> str:
-    completed = run_powershell_script_result(script_name, *args)
+def run_powershell_script(
+    script_name: str,
+    *args: str,
+    env_overrides: dict[str, str] | None = None,
+) -> str:
+    completed = run_powershell_script_result(script_name, *args, env_overrides=env_overrides)
     completed.check_returncode()
     return completed.stdout
+
+
+# --- codex-page-readiness input snapshot -------------------------------------
+#
+# The readiness dry runs sample the shared real DuckDB (data/moss.duckdb) and
+# the real governance streams from a subprocess with no lock retry, so they are
+# pinned to a one-shot input snapshot. Rationale and implementation live in
+# tests/readiness_input_snapshot.py (shared with test_codex_page_readiness_gate.py).
+
+
+@pytest.fixture(scope="module")
+def readiness_env_overrides(tmp_path_factory) -> dict[str, str]:
+    return build_readiness_input_snapshot_env(
+        tmp_path_factory.mktemp("readiness-input-snapshot")
+    )
 
 
 @contextmanager
@@ -215,8 +240,16 @@ def test_codex_dev_flow_defaults_to_planning_the_system_development_loop():
     assert "Development flow plan complete. Pass -Run with -Mode verify/readiness/approval/all to execute." in output
 
 
-def test_codex_dev_flow_can_run_preflight_readiness_only():
-    output = run_powershell_script("codex-dev-flow.ps1", "-PageSlug", "pnl-attribution", "-Mode", "preflight", "-Run")
+def test_codex_dev_flow_can_run_preflight_readiness_only(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-dev-flow.ps1",
+        "-PageSlug",
+        "pnl-attribution",
+        "-Mode",
+        "preflight",
+        "-Run",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS development flow adapter: pnl-attribution" in output
     assert "Mode: preflight" in output
@@ -229,7 +262,7 @@ def test_codex_verify_page_supports_dashboard_home_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "dashboard-home")
 
     assert "Codex verify page: dashboard-home" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_home_snapshot_endpoint.py" in output
     assert "DashboardPage.test.tsx" in output
     assert "dashboardCockpitHomeModel.test.ts" in output
@@ -241,7 +274,7 @@ def test_codex_verify_page_supports_balance_analysis_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "balance-analysis")
 
     assert "Codex verify page: balance-analysis" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_balance_analysis_api.py" in output
     assert "BalanceAnalysisPage.test.tsx" in output
     assert "@balance-analysis" in output
@@ -277,7 +310,9 @@ def test_codex_verify_page_supports_pnl_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "pnl")
 
     assert "Codex verify page: pnl" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
+    assert "-m mcp_fast" in output
+    assert "tests/test_project_mcp_servers.py" not in output
     assert "tests/test_pnl_api_contract.py" in output
     assert "PnlRoutesSmoke.test.tsx" in output
     assert "@pnl" in output
@@ -289,7 +324,7 @@ def test_codex_verify_page_supports_pnl_bridge_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "pnl-bridge")
 
     assert "Codex verify page: pnl-bridge" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_pnl_bridge_core.py" in output
     assert "tests/test_pnl_bridge_curve_effects.py" in output
     assert "PnlBridgePage.test.tsx" in output
@@ -316,7 +351,7 @@ def test_codex_verify_page_supports_bond_dashboard_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "bond-dashboard")
 
     assert "Codex verify page: bond-dashboard" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_bond_dashboard_api_contract.py" in output
     assert "tests/test_bond_dashboard_headlines_contract.py" in output
     assert "BondDashboardPage.test.tsx" in output
@@ -345,7 +380,7 @@ def test_codex_verify_page_supports_balance_movement_analysis_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "balance-movement-analysis")
 
     assert "Codex verify page: balance-movement-analysis" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_accounting_asset_movement_api.py" in output
     assert "tests/test_accounting_asset_movement_service.py" in output
     assert "BalanceMovementAnalysisPage.test.tsx" in output
@@ -358,7 +393,7 @@ def test_codex_verify_page_supports_ledger_pnl_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "ledger-pnl")
 
     assert "Codex verify page: ledger-pnl" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_ledger_pnl_service.py" in output
     assert "tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py" in output
     assert "LedgerPnlPage.test.tsx" in output
@@ -372,7 +407,7 @@ def test_codex_verify_page_supports_positions_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "positions")
 
     assert "Codex verify page: positions" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_positions_api_contract.py" in output
     assert "PositionsView.test.tsx" in output
     assert "RouteRegistry.test.tsx" in output
@@ -386,7 +421,7 @@ def test_codex_verify_page_supports_operations_analysis_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "operations-analysis")
 
     assert "Codex verify page: operations-analysis" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_product_category_pnl_flow.py" in output
     assert "tests/test_balance_analysis_api.py" in output
     assert "OperationsAnalysisPage.test.tsx" in output
@@ -400,7 +435,7 @@ def test_codex_verify_page_supports_liability_analytics_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "liability-analytics")
 
     assert "Codex verify page: liability-analytics" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_liability_analytics_api.py" in output
     assert "tests/test_liability_analytics_envelope_contract.py" in output
     assert "tests/test_liability_analytics_unit_semantics.py" in output
@@ -416,7 +451,7 @@ def test_codex_verify_page_supports_market_data_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "market-data")
 
     assert "Codex verify page: market-data" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_result_meta_on_all_ui_endpoints.py" in output
     assert "tests/test_market_data_ncd_proxy_api.py" in output
     assert "tests/test_market_data_livermore_api.py" in output
@@ -433,7 +468,7 @@ def test_codex_verify_page_supports_macro_toolkit_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "macro-toolkit")
 
     assert "Codex verify page: macro-toolkit" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_macro_toolkit_scripts.py" in output
     assert "tests/test_macro_toolkit_choice_stock_refresh_overview.py" in output
     assert "tests/test_macro_toolkit_shadow_portfolio_report.py" in output
@@ -469,7 +504,7 @@ def test_codex_verify_page_supports_pnl_attribution_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "pnl-attribution")
 
     assert "Codex verify page: pnl-attribution" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_pnl_attribution_api_contract.py" in output
     assert "tests/test_pnl_attribution_workbench_contract.py" in output
     assert "tests/test_pnl_attribution_service_explicit_numeric.py" in output
@@ -978,8 +1013,13 @@ def test_codex_page_smoke_supports_news_events_checklist_only():
     assert "Live checks:" not in output
 
 
-def test_codex_page_readiness_defaults_to_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "product-category-pnl")
+def test_codex_page_readiness_defaults_to_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "product-category-pnl",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: product-category-pnl" in output
     assert "Static evidence gates:" in output
@@ -993,8 +1033,13 @@ def test_codex_page_readiness_defaults_to_dry_run():
     assert "Page readiness gate passed." not in output
 
 
-def test_codex_page_readiness_supports_dashboard_home_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "dashboard-home")
+def test_codex_page_readiness_supports_dashboard_home_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "dashboard-home",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: dashboard-home" in output
     assert "mixed_source_or_observational" in output
@@ -1004,8 +1049,13 @@ def test_codex_page_readiness_supports_dashboard_home_dry_run():
     assert "codex-verify-page.ps1 -PageSlug dashboard-home -Run" in output
 
 
-def test_codex_page_readiness_supports_balance_analysis_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "balance-analysis")
+def test_codex_page_readiness_supports_balance_analysis_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "balance-analysis",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: balance-analysis" in output
     assert "formal_or_governed" in output
@@ -1015,8 +1065,13 @@ def test_codex_page_readiness_supports_balance_analysis_dry_run():
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_pnl_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "pnl")
+def test_codex_page_readiness_supports_pnl_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "pnl",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: pnl" in output
     assert "formal_or_governed" in output
@@ -1028,8 +1083,13 @@ def test_codex_page_readiness_supports_pnl_dry_run():
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_pnl_bridge_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "pnl-bridge")
+def test_codex_page_readiness_supports_pnl_bridge_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "pnl-bridge",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: pnl-bridge" in output
     assert "formal_or_governed" in output
@@ -1041,8 +1101,13 @@ def test_codex_page_readiness_supports_pnl_bridge_dry_run():
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_risk_tensor_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "risk-tensor")
+def test_codex_page_readiness_supports_risk_tensor_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "risk-tensor",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: risk-tensor" in output
     assert "formal_or_governed" in output
@@ -1057,8 +1122,13 @@ def test_codex_page_readiness_supports_risk_tensor_dry_run():
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_bond_dashboard_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "bond-dashboard")
+def test_codex_page_readiness_supports_bond_dashboard_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "bond-dashboard",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: bond-dashboard" in output
     assert "candidate_or_pending" in output
@@ -1075,26 +1145,43 @@ def test_codex_page_readiness_supports_bond_dashboard_dry_run():
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_balance_movement_analysis_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "balance-movement-analysis")
+def test_codex_page_readiness_supports_balance_movement_analysis_dry_run(
+    readiness_env_overrides,
+):
+    completed = run_powershell_script_result(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "balance-movement-analysis",
+        env_overrides=readiness_env_overrides,
+    )
+    output = completed.stdout + completed.stderr
 
+    assert completed.returncode == 0
     assert "MOSS page readiness gate: balance-movement-analysis" in output
     assert "candidate_or_pending" in output
     assert "golden_sample_boundary: pass" in output
     assert "missing" in output
     assert "catalog_date_evidence_sampled: pass" in output
     assert "direct_governance_record_ready: pass" in output
+    assert "balance_movement_read_model_freshness: pass" in output
+    assert "Blocking gates:" not in output
     assert "codex-page-smoke.ps1 -PageSlug balance-movement-analysis" in output
     assert "codex-verify-page.ps1 -PageSlug balance-movement-analysis -Run" in output
     assert "full data-catalog/date review required" not in output
     assert "direct page-keyed governance records" not in output
     assert "dedicated golden sample is missing" in output
     assert "Business owner approval is still required" in output
+    assert "Static page readiness gates blocked." not in output
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_ledger_pnl_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "ledger-pnl")
+def test_codex_page_readiness_supports_ledger_pnl_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "ledger-pnl",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: ledger-pnl" in output
     assert "candidate_or_pending" in output
@@ -1108,8 +1195,13 @@ def test_codex_page_readiness_supports_ledger_pnl_dry_run():
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_positions_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "positions")
+def test_codex_page_readiness_supports_positions_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "positions",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: positions" in output
     assert "candidate_or_pending" in output
@@ -1117,15 +1209,20 @@ def test_codex_page_readiness_supports_positions_dry_run():
     assert "missing" in output
     assert "codex-page-smoke.ps1 -PageSlug positions" in output
     assert "codex-verify-page.ps1 -PageSlug positions -Run" in output
-    assert "full data-catalog/date review required" in output
+    assert "full data-catalog/date review required" not in output
     assert "direct page-keyed governance records" in output
     assert "Candidate metric dictionary-level approval remains pending." in output
     assert "dedicated golden sample is missing" in output
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_operations_analysis_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "operations-analysis")
+def test_codex_page_readiness_supports_operations_analysis_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "operations-analysis",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: operations-analysis" in output
     assert "mixed_source_or_observational" in output
@@ -1133,15 +1230,20 @@ def test_codex_page_readiness_supports_operations_analysis_dry_run():
     assert "supporting_or_fragment_only" in output
     assert "codex-page-smoke.ps1 -PageSlug operations-analysis" in output
     assert "codex-verify-page.ps1 -PageSlug operations-analysis -Run" in output
-    assert "full data-catalog/date review required" in output
+    assert "full data-catalog/date review required" not in output
     assert "direct page-keyed governance records" in output
     assert "Mixed-source page cannot be collapsed into full-page formal truth." in output
     assert "GAP-OPS-MACRO-FX" in output
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_liability_analytics_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "liability-analytics")
+def test_codex_page_readiness_supports_liability_analytics_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "liability-analytics",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: liability-analytics" in output
     assert "mixed_source_or_observational" in output
@@ -1149,15 +1251,20 @@ def test_codex_page_readiness_supports_liability_analytics_dry_run():
     assert "missing" in output
     assert "codex-page-smoke.ps1 -PageSlug liability-analytics" in output
     assert "codex-verify-page.ps1 -PageSlug liability-analytics -Run" in output
-    assert "full data-catalog/date review required" in output
+    assert "full data-catalog/date review required" not in output
     assert "direct page-keyed governance records" in output
     assert "Mixed-source page cannot be collapsed into full-page formal truth." in output
     assert "dedicated golden sample is missing" in output
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_market_data_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "market-data")
+def test_codex_page_readiness_supports_market_data_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "market-data",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: market-data" in output
     assert "mixed_source_or_observational" in output
@@ -1172,8 +1279,13 @@ def test_codex_page_readiness_supports_market_data_dry_run():
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_macro_toolkit_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "macro-toolkit")
+def test_codex_page_readiness_supports_macro_toolkit_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "macro-toolkit",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: macro-toolkit" in output
     assert "mixed_source_or_observational" in output
@@ -1188,8 +1300,13 @@ def test_codex_page_readiness_supports_macro_toolkit_dry_run():
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_stock_analysis_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "stock-analysis")
+def test_codex_page_readiness_supports_stock_analysis_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "stock-analysis",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: stock-analysis" in output
     assert "gap_or_observational" in output
@@ -1207,8 +1324,13 @@ def test_codex_page_readiness_supports_stock_analysis_dry_run():
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_pnl_attribution_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "pnl-attribution")
+def test_codex_page_readiness_supports_pnl_attribution_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "pnl-attribution",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: pnl-attribution" in output
     assert "candidate_or_pending" in output
@@ -1223,15 +1345,21 @@ def test_codex_page_readiness_supports_pnl_attribution_dry_run():
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_all_mode_defaults_to_batch_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-All")
+def test_codex_page_readiness_all_mode_defaults_to_batch_dry_run(readiness_env_overrides):
+    output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-All",
+        env_overrides=readiness_env_overrides,
+    )
 
     assert "MOSS page readiness gate: all seeded pages" in output
     assert "Summary: page_count=39" in output
+    assert "static_pass_count=39" in output
     assert "blocked_count=0" in output
     assert "run_supported_count=27" in output
     assert "Page readiness rows:" in output
     assert "Blocking pages:" not in output
+    assert "- balance-movement-analysis: static-pass" in output
     assert "executive-pnl-attribution: static-pass" in output
     assert "product-category-pnl" in output
     assert "balance-analysis" in output

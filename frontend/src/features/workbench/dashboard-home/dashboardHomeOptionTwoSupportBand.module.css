@@ -1,0 +1,580 @@
+.supportBand {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr) minmax(0, 1.12fr);
+  gap: 12px;
+  /* 三面板等高：底边对齐是本带"齐"的主锚点，各面板内部行自动均分。 */
+  align-items: stretch;
+  min-width: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .supportBand {
+    animation: supportBandRise 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+    animation-delay: 90ms;
+  }
+}
+
+@keyframes supportBandRise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+.panel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--option-two-line-strong);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--option-two-panel);
+  color: var(--option-two-ink);
+}
+
+.panelHeader {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--option-two-line);
+  background: var(--option-two-panel-2);
+}
+
+.panelHeader > div {
+  min-width: 0;
+}
+
+.panelHeader h2 {
+  overflow: hidden;
+  margin: 0;
+  color: var(--option-two-ink);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panelHeader > time,
+.panelHeader > strong {
+  flex: 0 0 auto;
+  color: var(--option-two-muted);
+  font-family: var(--option-two-font-data);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+/* 曲线快照日落后数据截至日时的琥珀 stale 徽标（§6 五态：stale 显式发声）。 */
+.curveStaleFlag {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  color: var(--option-two-amber);
+  font-family: var(--option-two-font-data);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.curveStaleFlag i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--option-two-amber);
+}
+
+.curveMeta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-bottom: 1px solid var(--option-two-line);
+}
+
+.curveMeta span {
+  min-width: 0;
+  min-height: 28px;
+  padding: 7px 10px 6px;
+  overflow: hidden;
+  color: var(--option-two-muted);
+  font-size: 11px;
+  line-height: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.curveMetaSource {
+  grid-column: 1 / -1;
+  border-bottom: 1px solid var(--option-two-line);
+}
+
+.curveMeta span:not(.curveMetaSource):not(:last-child) {
+  border-right: 1px solid var(--option-two-line);
+}
+
+.gapNotice {
+  margin: 0;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--option-two-line);
+  color: var(--option-two-amber);
+  font-size: 12px;
+}
+
+.curveSpark {
+  padding: 8px 10px 6px;
+  border-bottom: 1px solid var(--option-two-line);
+  color: var(--option-two-blue);
+}
+
+.curveSpark svg {
+  display: block;
+  width: 100%;
+  height: 30px;
+}
+
+/* 各期限 DV01 敞口条：与上方收益率曲线形成"曲线 × 敞口"对照。 */
+.krdStrip {
+  padding: 5px 10px 7px;
+  border-bottom: 1px solid var(--option-two-line);
+}
+
+.krdStripTitle {
+  display: flex;
+  min-height: 18px;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--option-two-muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.krdStripTitle small {
+  color: var(--option-two-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.krdRow {
+  display: grid;
+  min-height: 19px;
+  align-items: center;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.krdRow > span {
+  color: var(--option-two-soft);
+  font-family: var(--option-two-font-data);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.krdRow > i {
+  display: block;
+  height: 4px;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--option-two-ink) 7%, transparent);
+}
+
+.krdRow > i > b {
+  display: block;
+  height: 100%;
+  /* 极小敞口（如 30Y 占比 <1%）也要留下可见锚点，避免"有数值无条形"。 */
+  min-width: 2px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--option-two-blue) 55%, var(--option-two-bg)),
+    var(--option-two-blue)
+  );
+}
+
+.krdRow > strong {
+  min-width: 72px;
+  color: var(--option-two-ink);
+  font-family: var(--option-two-font-data);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  text-align: right;
+}
+
+.krdStripNotice {
+  margin: 0;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--option-two-line);
+  color: var(--option-two-muted);
+  font-size: 12px;
+}
+
+.krdStripNotice[data-state="error"] {
+  color: var(--option-two-red);
+}
+
+.krdStripNotice[data-state="stale"],
+.krdStripNotice[data-state="partial"] {
+  color: var(--option-two-amber);
+}
+
+.tableScroller {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow-x: auto;
+}
+
+.curveTable {
+  width: 100%;
+  height: 100%;
+  flex: 1 1 auto;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.curveTable th,
+.curveTable td {
+  height: 31px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--option-two-line);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.curveTable thead th {
+  height: 27px;
+  color: var(--option-two-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.curveTable th:first-child {
+  text-align: left;
+}
+
+.curveTable tbody th {
+  color: var(--option-two-soft);
+  font-weight: 600;
+}
+
+.curveTable tbody td {
+  color: var(--option-two-ink);
+  font-family: var(--option-two-font-data);
+}
+
+.curveTable tbody tr:last-child th,
+.curveTable tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.curveTable tr[data-state="backend-gap"] td {
+  color: var(--option-two-muted);
+}
+
+.curveTable td[data-tone="up"] {
+  color: var(--option-two-green);
+}
+
+.curveTable td[data-tone="down"] {
+  color: var(--option-two-red);
+}
+
+.curveTable td[data-tone="muted"] {
+  color: var(--option-two-muted);
+}
+
+.coverage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--option-two-line);
+  box-sizing: border-box;
+}
+
+/* 常态零徽标：覆盖计数只是口径披露，用字重与 ink 层次表达，不上胶囊。 */
+.coverage > strong {
+  color: var(--option-two-ink);
+  font-family: var(--option-two-font-data);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  line-height: 18px;
+}
+
+.coverage > span {
+  overflow: hidden;
+  color: var(--option-two-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fundingRows {
+  display: grid;
+  margin: 0;
+  flex: 1 1 auto;
+  grid-auto-rows: minmax(42px, 1fr);
+}
+
+.fundingRows > div {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  min-height: 42px;
+  border-bottom: 1px solid var(--option-two-line);
+}
+
+.fundingRows > div:last-child {
+  border-bottom: 0;
+}
+
+.fundingRows dt,
+.fundingRows dd {
+  margin: 0;
+  padding: 7px 10px;
+}
+
+.fundingRows dt {
+  display: flex;
+  align-items: center;
+  border-right: 1px solid var(--option-two-line);
+  color: var(--option-two-soft);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.fundingRows dd {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  color: var(--option-two-muted);
+  font-family: var(--option-two-font-data);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fundingRows dd > strong {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--option-two-ink);
+  font-weight: 650;
+}
+
+.fundingRows dd em {
+  color: var(--option-two-muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 500;
+}
+
+.fundingRows dd em[data-tone="up"] {
+  color: var(--option-two-green);
+}
+
+.fundingRows dd em[data-tone="down"] {
+  color: var(--option-two-red);
+}
+
+.fundingRows dd small {
+  display: flex;
+  min-width: 0;
+  gap: 8px;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--option-two-muted);
+  font-family: var(--option-two-font-ui);
+  font-size: 12px;
+  line-height: 14px;
+  white-space: nowrap;
+}
+
+.fundingRows dd small span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fundingRows > div[data-state="warning"] dt,
+.fundingRows > div[data-state="stale"] dt {
+  color: var(--option-two-amber);
+}
+
+/* 常驻口径披露：不是告警，不常亮琥珀。 */
+.gapFooter {
+  padding: 7px 10px;
+  border-top: 1px solid var(--option-two-line);
+  color: var(--option-two-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+/* 单列 8 行紧凑列表：行由面板剩余高度均分（约 55px 上下），与左侧面板底边对齐。 */
+.quickLinks {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: minmax(44px, 1fr);
+}
+
+.quickLink {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto 14px;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--option-two-line);
+  color: var(--option-two-ink);
+  text-decoration: none;
+}
+
+.quickLink:last-child {
+  border-bottom: 0;
+}
+
+.quickLink > span {
+  color: var(--option-two-muted);
+  font-family: var(--option-two-font-data);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.quickLink > strong {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 正常态（已同步）静音处理：8 行重复的同一状态不该抢视觉；仅异常态点亮。 */
+.quickLink > small {
+  color: var(--option-two-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.quickLink > small[data-status-kind="partial"],
+.quickLink > small[data-status-kind="fallback"],
+.quickLink > small[data-status-kind="stale"] {
+  color: var(--option-two-amber);
+}
+
+.quickLink > small[data-status-kind="error"] {
+  color: var(--option-two-red);
+}
+
+.quickLink > em {
+  /* 常态不渲染状态词时箭头仍锚定末列，避免随槽位漂移。 */
+  grid-column: -2 / -1;
+  justify-self: end;
+  color: var(--option-two-muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.quickLink:hover > em,
+.quickLink:focus-visible > em {
+  color: var(--option-two-blue);
+}
+
+.quickLink:hover,
+.quickLink:focus-visible {
+  background: var(--option-two-panel-2);
+}
+
+.quickLink:focus-visible {
+  outline: 1px solid var(--option-two-blue);
+  outline-offset: -2px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 中屏：快捷卡跨全宽，8 行折成 2 列 4 行，避免单列拉出过高的整带。 */
+@media (max-width: 1180px) {
+  .supportBand {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .quickPanel {
+    grid-column: 1 / -1;
+  }
+
+  .quickLinks {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: minmax(44px, auto);
+  }
+
+  .quickLink:nth-child(odd) {
+    border-right: 1px solid var(--option-two-line);
+  }
+
+  .quickLink:nth-last-child(-n + 2) {
+    border-bottom: 0;
+  }
+}
+
+/* 窄屏：三面板纵向堆叠，快捷入口回到单列 8 行。 */
+@media (max-width: 760px) {
+  .supportBand {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quickPanel {
+    grid-column: auto;
+  }
+
+  .quickLinks {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quickLink:nth-child(odd) {
+    border-right: 0;
+  }
+
+  .quickLink:nth-last-child(-n + 2) {
+    border-bottom: 1px solid var(--option-two-line);
+  }
+
+  .quickLink:last-child {
+    border-bottom: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .curveMeta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .curveMeta span,
+  .curveMeta span:not(.curveMetaSource):not(:last-child) {
+    border-right: 0;
+    border-bottom: 1px solid var(--option-two-line);
+  }
+
+  .curveMeta span:last-child {
+    border-bottom: 0;
+  }
+}

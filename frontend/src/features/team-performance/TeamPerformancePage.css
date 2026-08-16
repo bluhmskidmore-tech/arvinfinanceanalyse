@@ -1,6 +1,87 @@
 .team-performance-page {
+  /*
+   * Nocturne 接入桥（scope=team-performance）：本页与 KpiCard / StatusPill /
+   * DataQualityBanner / FormalResultMetaPanel 子树消费 --ib-* / --moss-color-*，
+   * 两者在 ThemedRouteBoundary 的 .theme-dh-api 块上即被算成钢蓝/浅色字面值
+   * 再继承，页根 scope 对 --dh-api-* 的翻转够不到（ledger-pnl 2026-08-12 结论、
+   * pnl-by-business-insights 页根重声明先例）。全部走 var 引用，不落字面色值。
+   */
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line);
+  --ib-rule-strong: var(--dh-api-line);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-surface: var(--dh-api-blue-soft);
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
+  --ib-warn: var(--dh-api-amber);
+  --ib-radius: var(--dh-api-radius);
+  --moss-color-border-default: var(--dh-api-line);
+  --moss-color-card-bg: var(--dh-api-panel);
+  --moss-color-text-primary: var(--dh-api-ink);
+  --moss-color-text-secondary: var(--dh-api-soft);
+  --moss-color-text-muted: var(--dh-api-muted);
+  --moss-color-primary-200: color-mix(in srgb, var(--dh-api-blue) 42%, transparent);
+  --moss-color-success-50: var(--dh-api-green-soft);
+  --moss-color-success-200: var(--dh-api-line);
+  --moss-color-success-600: var(--dh-api-green);
+  --moss-color-warning-50: var(--dh-api-amber-soft);
+  --moss-color-warning-200: var(--dh-api-line);
+  --moss-color-warning-300: var(--dh-api-line-soft);
+  --moss-color-warning-600: var(--dh-api-amber);
+  --moss-color-warning-700: var(--dh-api-amber);
+  --moss-color-warning-900: var(--dh-api-amber);
+  --moss-color-danger-50: var(--dh-api-red-soft);
+  --moss-color-danger-200: var(--dh-api-line);
+  --moss-color-danger-600: var(--dh-api-red);
+  --moss-color-danger-800: var(--dh-api-red);
+  --moss-color-neutral-50: var(--dh-api-panel-2);
+  --moss-color-neutral-200: var(--dh-api-line);
+  --moss-color-neutral-500: var(--dh-api-muted);
+  --moss-color-neutral-600: var(--dh-api-soft);
+  --moss-color-neutral-900: var(--dh-api-ink);
+
   display: grid;
   gap: 20px;
+}
+
+/*
+ * 共享 SectionLead 的内联浅色字面量（标题 primary-900 深墨）在深色页不可读，
+ * 页内 !important 压制（内联恒胜；pnl-by-business-insights 内联压制先例）。
+ * 本页内联样式 h2 仅 SectionLead 渲染，:has()/相邻选择器锁定其结构。
+ */
+.team-performance-page div[style] > h2[style] {
+  color: var(--dh-api-ink) !important;
+}
+
+.team-performance-page div[style] > h2[style] + p[style] {
+  color: var(--dh-api-soft) !important;
+}
+
+.team-performance-page div[style] > span[style]:has(+ h2[style]) {
+  color: var(--dh-api-muted) !important;
+}
+
+/*
+ * 共享溯源面板（FormalResultMetaPanel）徽章 tone 的 Nocturne 收敛：
+ * 徽章色经组件 --formal-meta-badge-* 变量出口（回退值为浅色字面量），
+ * 页 scope 内拉回 --dh-api-* 链（risk-tensor / ledger-pnl / positions 同款）。
+ */
+.team-performance-page .formal-result-meta-panel {
+  --formal-result-meta-border-soft: var(--dh-api-line-soft);
+  --formal-meta-badge-ok-bg: var(--dh-api-green-soft);
+  --formal-meta-badge-ok-ink: var(--dh-api-green);
+  --formal-meta-badge-ok-line: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
+  --formal-meta-badge-warn-bg: var(--dh-api-amber-soft);
+  --formal-meta-badge-warn-ink: var(--dh-api-amber);
+  --formal-meta-badge-warn-line: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  --formal-meta-badge-danger-bg: var(--dh-api-red-soft);
+  --formal-meta-badge-danger-ink: var(--dh-api-red);
+  --formal-meta-badge-danger-line: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
 }
 
 .team-performance-page__hero {
@@ -18,7 +99,7 @@
 
 .team-performance-page__title {
   margin: 0;
-  color: #1f2937;
+  color: var(--ib-ink);
   font-size: 30px;
   font-weight: 650;
   line-height: 1.2;
@@ -27,7 +108,7 @@
 .team-performance-page__subtitle {
   margin: 0;
   max-width: 880px;
-  color: #596579;
+  color: var(--ib-ink-secondary);
   font-size: 14px;
   line-height: 1.7;
 }
@@ -45,13 +126,13 @@
 }
 
 .team-performance-page__mode-badge--real {
-  background: #eaf7ef;
-  color: #137333;
+  background: var(--moss-color-success-50);
+  color: var(--ib-up);
 }
 
 .team-performance-page__mode-badge--mock {
-  background: #e8f1fb;
-  color: #2563eb;
+  background: var(--ib-accent-surface);
+  color: var(--ib-accent);
 }
 
 .team-performance-page__filter-bar {
@@ -61,7 +142,7 @@
 .team-performance-page__filter {
   display: grid;
   gap: 6px;
-  color: #596579;
+  color: var(--ib-ink-secondary);
   font-size: 14px;
 }
 
@@ -69,10 +150,10 @@
   min-width: 168px;
   min-height: 42px;
   padding: 10px 14px;
-  border-radius: 12px;
-  border: 1px solid #d8e0ea;
-  background: #ffffff;
-  color: #1f2937;
+  border-radius: var(--ib-radius, 2px);
+  border: 1px solid var(--ib-hairline);
+  background: var(--ib-surface);
+  color: var(--ib-ink);
   font-size: 14px;
 }
 
@@ -92,26 +173,26 @@
   display: grid;
   gap: 18px;
   padding: 20px;
-  border: 1px solid #d8e0ea;
-  border-radius: 14px;
-  background: #ffffff;
-  color: #334155;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+  color: var(--ib-ink);
   overflow: hidden;
 }
 
 .team-performance-page__state-card--warning {
-  border-color: #f0cf8b;
-  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+  border-color: var(--moss-color-warning-200);
+  background: var(--ib-surface);
 }
 
 .team-performance-page__state-card--error {
-  border-color: #efc4c4;
-  background: linear-gradient(180deg, #fffafa 0%, #ffffff 100%);
+  border-color: var(--moss-color-danger-200);
+  background: var(--ib-surface);
 }
 
 .team-performance-page__state-card--empty {
-  border-color: #dbe5f0;
-  background: linear-gradient(180deg, #fbfcfe 0%, #ffffff 100%);
+  border-color: var(--ib-hairline);
+  background: var(--ib-surface);
 }
 
 .team-performance-page__state-card-header {
@@ -128,7 +209,7 @@
 
 .team-performance-page__state-card h2 {
   margin: 0;
-  color: #1f2937;
+  color: var(--ib-ink);
   font-size: 20px;
   line-height: 1.3;
 }
@@ -150,18 +231,18 @@
 }
 
 .team-performance-page__state-badge--warning {
-  background: #fff4d6;
-  color: #9a6700;
+  background: var(--moss-color-warning-50);
+  color: var(--ib-warn);
 }
 
 .team-performance-page__state-badge--error {
-  background: #fde7e7;
-  color: #b42318;
+  background: var(--moss-color-danger-50);
+  color: var(--ib-down);
 }
 
 .team-performance-page__state-badge--empty {
-  background: #eef4fb;
-  color: #35506e;
+  background: var(--ib-accent-surface);
+  color: var(--ib-accent);
 }
 
 .team-performance-page__state-card-layout {
@@ -192,21 +273,21 @@
   display: grid;
   gap: 6px;
   padding: 12px 14px;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  background: rgba(248, 250, 252, 0.88);
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface-muted);
   min-width: 0;
 }
 
 .team-performance-page__state-fact dt {
-  color: #64748b;
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   line-height: 1.4;
 }
 
 .team-performance-page__state-fact dd {
   margin: 0;
-  color: #1f2937;
+  color: var(--ib-ink);
   font-size: 13px;
   font-weight: 600;
   line-height: 1.5;
@@ -218,14 +299,14 @@
   gap: 12px;
   align-content: start;
   padding: 14px 16px;
-  border-radius: 12px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface-muted);
+  border: 1px solid var(--ib-hairline);
 }
 
 .team-performance-page__state-aside h3 {
   margin: 0;
-  color: #1f2937;
+  color: var(--ib-ink);
   font-size: 14px;
   line-height: 1.5;
 }
@@ -233,7 +314,7 @@
 .team-performance-page__state-impact-list {
   margin: 0;
   padding-left: 18px;
-  color: #596579;
+  color: var(--ib-ink-secondary);
   font-size: 13px;
   line-height: 1.7;
 }
@@ -243,10 +324,10 @@
 }
 
 .team-performance-page__retry-button {
-  border: 1px solid #c9d4e0;
-  border-radius: 10px;
-  background: #f8fafc;
-  color: #1f2937;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface-muted);
+  color: var(--ib-ink);
   padding: 8px 14px;
   cursor: pointer;
 }
@@ -263,13 +344,14 @@
 
 .team-performance-page__table-shell {
   overflow-x: auto;
-  border-radius: 14px;
-  border: 1px solid #dde5ef;
-  background: #ffffff;
+  border-radius: var(--ib-radius, 2px);
+  border: 1px solid var(--ib-hairline);
+  background: var(--ib-surface);
 }
 
 .team-performance-page__table-shell--matrix {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  /* 浅色内高光在深色页无语义（§2.2 深色不靠阴影），收敛共享阴影 token（深色链为 none）。 */
+  box-shadow: var(--moss-shadow-card);
 }
 
 .team-performance-page__matrix-cards {
@@ -285,9 +367,9 @@
 
 .team-performance-page__table th {
   padding: 12px 14px;
-  border-bottom: 1px solid #dde5ef;
-  background: #f8fafc;
-  color: #64748b;
+  border-bottom: 1px solid var(--ib-hairline);
+  background: var(--ib-surface-muted);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   font-weight: 700;
   text-align: left;
@@ -296,8 +378,8 @@
 
 .team-performance-page__table td {
   padding: 14px;
-  border-bottom: 1px solid #edf2f7;
-  color: #1f2937;
+  border-bottom: 1px solid var(--ib-hairline);
+  color: var(--ib-ink);
   vertical-align: top;
 }
 
@@ -308,10 +390,12 @@
 .team-performance-page__table-cell--numeric {
   text-align: right !important;
   white-space: nowrap;
+  font-family: var(--moss-font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .team-performance-page__table-row-active {
-  background: #f4f8fd;
+  background: var(--ib-accent-surface);
 }
 
 .team-performance-page__matrix-button {
@@ -319,7 +403,7 @@
   gap: 4px;
   border: 0;
   background: none;
-  color: #0f4b8f;
+  color: var(--ib-accent);
   font: inherit;
   text-align: left;
   padding: 0;
@@ -331,7 +415,7 @@
 }
 
 .team-performance-page__matrix-button-meta {
-  color: #7b8797;
+  color: var(--ib-ink-muted);
   font-size: 12px;
   line-height: 1.4;
 }
@@ -348,18 +432,18 @@
 }
 
 .team-performance-page__status-pill--positive {
-  background: #eaf7ef;
-  color: #137333;
+  background: var(--moss-color-success-50);
+  color: var(--ib-up);
 }
 
 .team-performance-page__status-pill--warning {
-  background: #fff7e8;
-  color: #9a6700;
+  background: var(--moss-color-warning-50);
+  color: var(--ib-warn);
 }
 
 .team-performance-page__status-pill--default {
-  background: #eef2f7;
-  color: #516075;
+  background: var(--ib-surface-muted);
+  color: var(--ib-ink-secondary);
 }
 
 .team-performance-page__detail-summary-grid {
@@ -380,9 +464,9 @@
   gap: 14px;
   min-width: 0;
   padding: 18px;
-  border: 1px solid #d8e0ea;
-  border-radius: 12px;
-  background: #ffffff;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
 }
 
 .team-performance-page__detail-card-header {
@@ -394,12 +478,12 @@
 
 .team-performance-page__detail-card h3 {
   margin: 0;
-  color: #1f2937;
+  color: var(--ib-ink);
   font-size: 16px;
 }
 
 .team-performance-page__detail-card-note {
-  color: #617086;
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   line-height: 1.5;
   white-space: nowrap;
@@ -408,7 +492,7 @@
 .team-performance-page__detail-copy,
 .team-performance-page__metric-meta,
 .team-performance-page__metric-target {
-  color: #617086;
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -422,9 +506,9 @@
   display: grid;
   gap: 12px;
   padding: 14px;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  background: #fbfcfe;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface-muted);
 }
 
 .team-performance-page__indicator-main {
@@ -456,16 +540,16 @@
   align-items: center;
   padding: 3px 8px;
   border-radius: 999px;
-  background: #f3f6fa;
-  color: #617086;
+  background: var(--ib-surface-muted);
+  color: var(--ib-ink-secondary);
   font-size: 11px;
   font-weight: 600;
   line-height: 1.4;
 }
 
 .team-performance-page__indicator-chip--muted {
-  background: #eef4fb;
-  color: #35506e;
+  background: var(--ib-accent-surface);
+  color: var(--ib-accent);
 }
 
 .team-performance-page__indicator-tags {
@@ -477,7 +561,7 @@
 
 .team-performance-page__metric-name {
   margin: 0;
-  color: #1f2937;
+  color: var(--ib-ink);
   font-size: 14px;
   font-weight: 600;
   line-height: 1.5;
@@ -487,8 +571,8 @@
   flex-shrink: 0;
   padding: 3px 8px;
   border-radius: 999px;
-  background: #eef4fb;
-  color: #375472;
+  background: var(--ib-accent-surface);
+  color: var(--ib-accent);
   font-size: 11px;
   font-weight: 600;
   line-height: 1.4;
@@ -496,21 +580,21 @@
 }
 
 .team-performance-page__indicator-tag--muted {
-  background: #f3f6fa;
-  color: #617086;
+  background: var(--ib-surface-muted);
+  color: var(--ib-ink-secondary);
 }
 
 .team-performance-page__indicator-target-panel {
   display: grid;
   gap: 6px;
   padding: 10px 12px;
-  border: 1px solid #e6edf5;
-  border-radius: 10px;
-  background: #ffffff;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
 }
 
 .team-performance-page__indicator-target-label {
-  color: #7b8797;
+  color: var(--ib-ink-muted);
   font-size: 11px;
   font-weight: 700;
   line-height: 1.4;
@@ -530,14 +614,14 @@
 }
 
 .team-performance-page__indicator-stats dt {
-  color: #7b8797;
+  color: var(--ib-ink-muted);
   font-size: 12px;
   line-height: 1.4;
 }
 
 .team-performance-page__indicator-stats dd {
   margin: 0;
-  color: #1f2937;
+  color: var(--ib-ink);
   font-size: 13px;
   font-weight: 600;
   line-height: 1.5;
@@ -553,9 +637,9 @@
   display: grid;
   gap: 14px;
   padding: 14px;
-  border: 1px solid #dbe5f0;
-  border-radius: 12px;
-  background: #f8fbff;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-accent-surface);
 }
 
 .team-performance-page__evidence-summary-header,
@@ -567,7 +651,7 @@
 }
 
 .team-performance-page__evidence-summary-label {
-  color: #617086;
+  color: var(--ib-ink-secondary);
   font-size: 11px;
   font-weight: 700;
   line-height: 1.4;
@@ -576,7 +660,7 @@
 
 .team-performance-page__evidence-summary-title {
   margin: 6px 0 0;
-  color: #1f2937;
+  color: var(--ib-ink);
   font-size: 15px;
   line-height: 1.5;
 }
@@ -592,20 +676,20 @@
   display: grid;
   gap: 4px;
   padding: 10px 12px;
-  border: 1px solid #dbe4ee;
-  border-radius: 10px;
-  background: #ffffff;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
 }
 
 .team-performance-page__evidence-summary-stats dt {
-  color: #7b8797;
+  color: var(--ib-ink-muted);
   font-size: 12px;
   line-height: 1.4;
 }
 
 .team-performance-page__evidence-summary-stats dd {
   margin: 0;
-  color: #1f2937;
+  color: var(--ib-ink);
   font-size: 14px;
   font-weight: 600;
   line-height: 1.5;
@@ -618,14 +702,14 @@
 
 .team-performance-page__evidence-group h4 {
   margin: 0;
-  color: #1f2937;
+  color: var(--ib-ink);
   font-size: 14px;
   line-height: 1.5;
 }
 
 .team-performance-page__evidence-group--warning {
   padding-top: 4px;
-  border-top: 1px solid #e6edf5;
+  border-top: 1px solid var(--ib-hairline);
 }
 
 .team-performance-page__evidence-list {
@@ -635,21 +719,21 @@
 
 .team-performance-page__evidence-empty {
   padding: 14px;
-  border: 1px dashed #d8e0ea;
-  border-radius: 12px;
-  color: #617086;
+  border: 1px dashed var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  color: var(--ib-ink-secondary);
   font-size: 13px;
   line-height: 1.6;
-  background: #fbfcfe;
+  background: var(--ib-surface-muted);
 }
 
 .team-performance-page__evidence-item {
   display: grid;
   gap: 12px;
   padding: 14px;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  background: #fbfcfe;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface-muted);
 }
 
 .team-performance-page__evidence-header {
@@ -660,7 +744,7 @@
 }
 
 .team-performance-page__evidence-title {
-  color: #1f2937;
+  color: var(--ib-ink);
   font-size: 14px;
   font-weight: 600;
   line-height: 1.5;
@@ -678,16 +762,16 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  color: #334155;
+  color: var(--ib-ink);
   font-size: 13px;
   line-height: 1.5;
 }
 
 .team-performance-page__evidence-row-name code {
   padding: 2px 6px;
-  border-radius: 6px;
-  background: #eef4fb;
-  color: #28517b;
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-accent-surface);
+  color: var(--ib-accent);
   font-size: 12px;
 }
 
@@ -704,14 +788,14 @@
 }
 
 .team-performance-page__evidence-stats dt {
-  color: #7b8797;
+  color: var(--ib-ink-muted);
   font-size: 12px;
   line-height: 1.4;
 }
 
 .team-performance-page__evidence-stats dd {
   margin: 0;
-  color: #1f2937;
+  color: var(--ib-ink);
   font-size: 13px;
   font-weight: 600;
   line-height: 1.5;
@@ -719,18 +803,18 @@
 
 .team-performance-page__evidence-note {
   padding-top: 4px;
-  border-top: 1px dashed #dbe4ee;
-  color: #617086;
+  border-top: 1px dashed var(--ib-hairline);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   line-height: 1.6;
 }
 
 .team-performance-page__coverage-item {
   padding: 10px 12px;
-  border-radius: 10px;
-  background: #fff9ec;
-  border: 1px solid #f2d49a;
-  color: #7b5a10;
+  border-radius: var(--ib-radius, 2px);
+  background: var(--moss-color-warning-50);
+  border: 1px solid var(--moss-color-warning-200);
+  color: var(--ib-warn);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -739,9 +823,9 @@
   display: grid;
   gap: 16px;
   padding: 18px;
-  border: 1px solid #d8e0ea;
-  border-radius: 14px;
-  background: #ffffff;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
 }
 
 .team-performance-page__meta-header {
@@ -752,7 +836,7 @@
 }
 
 .team-performance-page__meta-eyebrow {
-  color: #64748b;
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   font-weight: 700;
   line-height: 1.4;
@@ -761,7 +845,7 @@
 
 .team-performance-page__meta-title {
   margin: 6px 0 0;
-  color: #1f2937;
+  color: var(--ib-ink);
   font-size: 18px;
   line-height: 1.35;
 }
@@ -769,7 +853,7 @@
 .team-performance-page__meta-copy {
   max-width: 540px;
   margin: 0;
-  color: #617086;
+  color: var(--ib-ink-secondary);
   font-size: 13px;
   line-height: 1.7;
 }
@@ -785,9 +869,9 @@
   gap: 14px;
   min-width: 0;
   padding: 16px;
-  border: 1px solid #dbe4ee;
-  border-radius: 12px;
-  background: #fbfcfe;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface-muted);
 }
 
 .team-performance-page__meta-card-header {
@@ -798,7 +882,7 @@
 }
 
 .team-performance-page__meta-card-label {
-  color: #617086;
+  color: var(--ib-ink-secondary);
   font-size: 11px;
   font-weight: 700;
   line-height: 1.4;
@@ -807,7 +891,7 @@
 
 .team-performance-page__meta-card-title {
   margin: 6px 0 0;
-  color: #1f2937;
+  color: var(--ib-ink);
   font-size: 15px;
   line-height: 1.45;
 }
@@ -825,18 +909,18 @@
 }
 
 .team-performance-page__meta-pill--positive {
-  background: #eaf7ef;
-  color: #137333;
+  background: var(--moss-color-success-50);
+  color: var(--ib-up);
 }
 
 .team-performance-page__meta-pill--warning {
-  background: #fff7e8;
-  color: #9a6700;
+  background: var(--moss-color-warning-50);
+  color: var(--ib-warn);
 }
 
 .team-performance-page__meta-pill--negative {
-  background: #fdecec;
-  color: #b42318;
+  background: var(--moss-color-danger-50);
+  color: var(--ib-down);
 }
 
 .team-performance-page__meta-stats {
@@ -852,22 +936,33 @@
 }
 
 .team-performance-page__meta-stats dt {
-  color: #7b8797;
+  color: var(--ib-ink-muted);
   font-size: 12px;
   line-height: 1.4;
 }
 
 .team-performance-page__meta-stats dd {
   margin: 0;
-  color: #1f2937;
+  color: var(--ib-ink);
   font-size: 13px;
   font-weight: 600;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
 
+/* 数字/评分展示统一 tabular 数字，保证列对齐（DESIGN.md §3）。 */
+.team-performance-page__state-fact dd,
+.team-performance-page__indicator-stats dd,
+.team-performance-page__evidence-stats dd,
+.team-performance-page__evidence-summary-stats dd,
+.team-performance-page__meta-stats dd,
+.team-performance-page__matrix-card-stats dd,
+.team-performance-page__q1-ledger summary strong {
+  font-variant-numeric: tabular-nums;
+}
+
 .team-performance-page__meta-trace {
-  color: #617086;
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   line-height: 1.6;
   overflow-wrap: anywhere;
@@ -875,19 +970,19 @@
 
 .team-performance-page__meta-trace code {
   padding: 2px 6px;
-  border-radius: 6px;
-  background: #eef4fb;
-  color: #28517b;
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-accent-surface);
+  color: var(--ib-accent);
   font-size: 12px;
 }
 
 .team-performance-page__meta-details {
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--ib-hairline);
   padding-top: 12px;
 }
 
 .team-performance-page__meta-details summary {
-  color: #35506e;
+  color: var(--ib-accent);
   font-size: 13px;
   font-weight: 600;
   line-height: 1.6;
@@ -908,9 +1003,9 @@
   gap: 16px;
   min-width: 0;
   padding: 18px;
-  border: 1px solid #d8e0ea;
-  border-radius: 14px;
-  background: #ffffff;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
 }
 
 .team-performance-page__q1-header {
@@ -922,7 +1017,7 @@
 
 .team-performance-page__q1-title {
   margin: 6px 0 0;
-  color: #1f2937;
+  color: var(--ib-ink);
   font-size: 20px;
   line-height: 1.35;
 }
@@ -930,7 +1025,7 @@
 .team-performance-page__q1-copy {
   max-width: 760px;
   margin: 8px 0 0;
-  color: #617086;
+  color: var(--ib-ink-secondary);
   font-size: 13px;
   line-height: 1.7;
 }
@@ -940,21 +1035,21 @@
   gap: 4px;
   min-width: 220px;
   padding: 12px 14px;
-  border: 1px solid #dbe4ee;
-  border-radius: 12px;
-  background: #f8fbff;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-accent-surface);
 }
 
 .team-performance-page__q1-date-card span,
 .team-performance-page__q1-total span {
-  color: #64748b;
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   line-height: 1.4;
 }
 
 .team-performance-page__q1-date-card strong,
 .team-performance-page__q1-total strong {
-  color: #1f2937;
+  color: var(--ib-ink);
   font-size: 14px;
   line-height: 1.5;
 }
@@ -973,8 +1068,8 @@
   min-height: 28px;
   padding: 4px 10px;
   border-radius: 999px;
-  background: #f3f6fa;
-  color: #516075;
+  background: var(--ib-surface-muted);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   font-weight: 600;
   line-height: 1.4;
@@ -992,9 +1087,9 @@
   display: grid;
   min-width: 0;
   overflow: hidden;
-  border: 1px solid #dbe4ee;
-  border-radius: 10px;
-  background: #ffffff;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
 }
 
 .team-performance-page__q1-center-band {
@@ -1003,11 +1098,11 @@
   gap: 14px;
   min-width: 0;
   padding: 14px;
-  border-bottom: 1px solid #e6edf5;
+  border-bottom: 1px solid var(--ib-hairline);
 }
 
 .team-performance-page__q1-center-band:nth-child(even) {
-  background: #fbfcfe;
+  background: var(--ib-surface-muted);
 }
 
 .team-performance-page__q1-center-band:last-child {
@@ -1022,20 +1117,22 @@
 }
 
 .team-performance-page__q1-center-head span {
-  color: #1f2937;
+  color: var(--ib-ink);
   font-size: 14px;
   font-weight: 700;
   line-height: 1.45;
 }
 
 .team-performance-page__q1-center-head strong {
-  color: #0f766e;
+  color: var(--ib-up);
   font-size: 20px;
   line-height: 1.25;
+  font-family: var(--moss-font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .team-performance-page__q1-center-head em {
-  color: #64748b;
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   font-style: normal;
   line-height: 1.45;
@@ -1056,7 +1153,7 @@
 }
 
 .team-performance-page__q1-lane-title {
-  color: #475569;
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   font-weight: 800;
   line-height: 1.4;
@@ -1076,10 +1173,10 @@
   max-width: 100%;
   min-height: 28px;
   padding: 4px 8px;
-  border: 1px solid #d8e0ea;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #1f2937;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+  color: var(--ib-ink);
   font-size: 12px;
   line-height: 1.35;
 }
@@ -1091,7 +1188,7 @@
 
 .team-performance-page__q1-rule-pill em {
   flex-shrink: 0;
-  color: #64748b;
+  color: var(--ib-ink-secondary);
   font-size: 11px;
   font-style: normal;
   font-weight: 800;
@@ -1099,45 +1196,45 @@
 }
 
 .team-performance-page__q1-rule-pill--include {
-  border-color: #bbf7d0;
-  background: #f0fdf4;
+  border-color: var(--moss-color-success-200);
+  background: var(--moss-color-success-50);
 }
 
 .team-performance-page__q1-rule-pill--include em {
-  color: #15803d;
+  color: var(--ib-up);
 }
 
 .team-performance-page__q1-rule-pill--aggregate {
-  border-color: #fed7aa;
-  background: #fff7ed;
+  border-color: var(--moss-color-warning-200);
+  background: var(--moss-color-warning-50);
 }
 
 .team-performance-page__q1-rule-pill--aggregate em {
-  color: #c2410c;
+  color: var(--ib-warn);
 }
 
 .team-performance-page__q1-rule-pill--pending,
 .team-performance-page__q1-rule-pill--reference {
-  border-color: #bfdbfe;
-  background: #eff6ff;
+  border-color: var(--moss-color-primary-200);
+  background: var(--ib-accent-surface);
 }
 
 .team-performance-page__q1-rule-pill--pending em,
 .team-performance-page__q1-rule-pill--reference em {
-  color: #1d4ed8;
+  color: var(--ib-accent);
 }
 
 .team-performance-page__q1-rule-pill--subtract {
-  border-color: #fecdd3;
-  background: #fff1f2;
+  border-color: var(--moss-color-danger-200);
+  background: var(--moss-color-danger-50);
 }
 
 .team-performance-page__q1-rule-pill--subtract em {
-  color: #be123c;
+  color: var(--ib-down);
 }
 
 .team-performance-page__q1-empty {
-  color: #64748b;
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -1147,14 +1244,14 @@
   gap: 10px;
   min-width: 0;
   padding: 14px;
-  border: 1px solid #dbe4ee;
-  border-left: 4px solid #2563eb;
-  border-radius: 10px;
-  background: #f8fbff;
+  border: 1px solid var(--ib-hairline);
+  border-left: 4px solid var(--ib-accent);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-accent-surface);
 }
 
 .team-performance-page__q1-guide-panel > span {
-  color: #1f2937;
+  color: var(--ib-ink);
   font-size: 14px;
   font-weight: 800;
   line-height: 1.45;
@@ -1171,7 +1268,7 @@
 .team-performance-page__q1-guide-panel li {
   position: relative;
   padding-left: 12px;
-  color: #475569;
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   line-height: 1.65;
 }
@@ -1183,7 +1280,7 @@
   width: 4px;
   height: 4px;
   border-radius: 999px;
-  background: #2563eb;
+  background: var(--ib-accent);
   content: "";
 }
 
@@ -1201,10 +1298,10 @@
   gap: 12px;
   min-width: 0;
   padding: 10px 12px;
-  border: 1px solid #dbe4ee;
-  border-radius: 8px;
-  background: #f8fafc;
-  color: #1f2937;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface-muted);
+  color: var(--ib-ink);
   cursor: pointer;
   list-style: none;
 }
@@ -1215,7 +1312,7 @@
 
 .team-performance-page__q1-ledger summary::after {
   flex-shrink: 0;
-  color: #2563eb;
+  color: var(--ib-accent);
   font-size: 12px;
   font-weight: 800;
   content: "展开";
@@ -1226,14 +1323,14 @@
 }
 
 .team-performance-page__q1-ledger summary span {
-  color: #1f2937;
+  color: var(--ib-ink);
   font-size: 13px;
   font-weight: 800;
   line-height: 1.4;
 }
 
 .team-performance-page__q1-ledger summary strong {
-  color: #64748b;
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   line-height: 1.4;
 }
@@ -1244,9 +1341,9 @@
 
 .team-performance-page__q1-table-shell {
   overflow-x: auto;
-  border: 1px solid #dbe4ee;
-  border-radius: 8px;
-  background: #ffffff;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
 }
 
 .team-performance-page__q1-table {
@@ -1291,9 +1388,9 @@
 
 .team-performance-page__q1-table th {
   padding: 9px 10px;
-  border-bottom: 1px solid #dbe4ee;
-  background: #f8fafc;
-  color: #64748b;
+  border-bottom: 1px solid var(--ib-hairline);
+  background: var(--ib-surface-muted);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   font-weight: 700;
   line-height: 1.4;
@@ -1303,8 +1400,8 @@
 
 .team-performance-page__q1-table td {
   padding: 10px;
-  border-bottom: 1px solid #edf2f7;
-  color: #1f2937;
+  border-bottom: 1px solid var(--ib-hairline);
+  color: var(--ib-ink);
   line-height: 1.5;
   vertical-align: top;
 }
@@ -1314,7 +1411,7 @@
 }
 
 .team-performance-page__q1-table tbody tr:hover td {
-  background: #f8fbff;
+  background: var(--ib-accent-surface);
 }
 
 .team-performance-page__q1-table .team-performance-page__status-pill {
@@ -1324,7 +1421,7 @@
 
 .team-performance-page__q1-business-name {
   display: block;
-  color: #1f2937;
+  color: var(--ib-ink);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -1333,7 +1430,7 @@
   display: block;
   max-width: 360px;
   margin-top: 3px;
-  color: #617086;
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -1343,7 +1440,7 @@
   flex-wrap: wrap;
   gap: 6px;
   min-width: 0;
-  color: #617086;
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -1355,9 +1452,9 @@
 .team-performance-page__q1-source-cell code {
   max-width: 100%;
   padding: 2px 6px;
-  border-radius: 6px;
-  background: #eef4fb;
-  color: #28517b;
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-accent-surface);
+  color: var(--ib-accent);
   font-size: 12px;
   overflow-wrap: anywhere;
   word-break: break-all;
@@ -1370,7 +1467,7 @@
 
   .team-performance-page__q1-guide-panel {
     border-left-width: 1px;
-    border-top: 4px solid #2563eb;
+    border-top: 4px solid var(--ib-accent);
   }
 
   .team-performance-page__detail-layout {
@@ -1487,7 +1584,7 @@
 
   .team-performance-page__q1-table tr {
     padding: 8px 0;
-    border-bottom: 1px solid #e5edf5;
+    border-bottom: 1px solid var(--ib-hairline);
   }
 
   .team-performance-page__q1-table tr:last-child {
@@ -1504,7 +1601,7 @@
 
   .team-performance-page__q1-table td::before {
     content: attr(data-label);
-    color: #64748b;
+    color: var(--ib-ink-secondary);
     font-weight: 700;
   }
 
@@ -1565,15 +1662,15 @@
   }
 
   .team-performance-page__matrix-card {
-    border: 1px solid #dbe4ee;
-    border-radius: 14px;
-    background: #ffffff;
+    border: 1px solid var(--ib-hairline);
+    border-radius: var(--ib-radius, 2px);
+    background: var(--ib-surface);
   }
 
   .team-performance-page__matrix-card--active {
-    border-color: #bfdbfe;
-    background: #f8fbff;
-    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.12);
+    border-color: var(--moss-color-primary-200);
+    background: var(--ib-accent-surface);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--dh-api-blue) 12%, transparent);
   }
 
   .team-performance-page__matrix-card-button {
@@ -1582,7 +1679,7 @@
     gap: 12px;
     padding: 14px;
     border: 0;
-    border-radius: 14px;
+    border-radius: var(--ib-radius, 2px);
     background: none;
     text-align: left;
     cursor: pointer;
@@ -1595,7 +1692,7 @@
 
   .team-performance-page__matrix-card-title {
     margin: 0;
-    color: #1f2937;
+    color: var(--ib-ink);
     font-size: 15px;
     font-weight: 600;
     line-height: 1.4;
@@ -1603,7 +1700,7 @@
 
   .team-performance-page__matrix-card-caption {
     margin: 2px 0 0;
-    color: #617086;
+    color: var(--ib-ink-secondary);
     font-size: 12px;
     line-height: 1.5;
   }
@@ -1621,14 +1718,14 @@
   }
 
   .team-performance-page__matrix-card-stats dt {
-    color: #7b8797;
+    color: var(--ib-ink-muted);
     font-size: 12px;
     line-height: 1.4;
   }
 
   .team-performance-page__matrix-card-stats dd {
     margin: 0;
-    color: #1f2937;
+    color: var(--ib-ink);
     font-size: 13px;
     font-weight: 600;
     line-height: 1.5;

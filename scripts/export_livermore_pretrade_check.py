@@ -3,16 +3,25 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import logging
 import sys
 from datetime import date
 from pathlib import Path
-from typing import Any
+
+import duckdb
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import duckdb
+from backend.app.repositories.choice_stock_units import (  # noqa: E402
+    amount_rmb_sql,
+    scale_unknown_sql,
+)
+from backend.app.core_finance.field_normalization import is_tradestatus_halted  # noqa: E402
+from backend.app.repositories.duckdb_repo import read_only_connection  # noqa: E402
+
+logger = logging.getLogger(__name__)
 
 
 TABLE_HIST = "livermore_candidate_history"
@@ -27,7 +36,6 @@ DEFAULT_TOP_N = 10
 DEFAULT_MIN_AMOUNT = 0.0
 DEFAULT_MAX_SECTOR_WEIGHT = 0.30
 DEFAULT_STALE_CALENDAR_DAYS = 5
-_NORMAL_TRADE_STATUSES = {"1", "normal", "trade", "trading", "\u4ea4\u6613"}
 _FALSE_FLAGS = {"", "0", "false", "n", "no", "\u5426"}
 _TRUE_FLAGS = {"1", "true", "y", "yes", "\u662f", "\u6da8\u505c", "\u8dcc\u505c"}
 
@@ -59,8 +67,7 @@ def export_livermore_pretrade_check(
             stock_candidate_policy=stock_candidate_policy,
         )
 
-    conn = duckdb.connect(str(resolved_path), read_only=True)
-    try:
+    with read_only_connection(str(resolved_path)) as conn:
         tables = _table_names(conn)
         if TABLE_HIST not in tables:
             raise ValueError(f"{TABLE_HIST} table not found.")
@@ -83,8 +90,6 @@ def export_livermore_pretrade_check(
             today=today,
             stale_calendar_days=int(stale_calendar_days),
         )
-    finally:
-        conn.close()
 
     sector_distribution = _sector_distribution(enriched_rows)
     portfolio_flags = _portfolio_flags(
@@ -151,6 +156,13 @@ def _resolve_duckdb_path(path_value: str | Path) -> Path:
 
 def _table_names(conn: duckdb.DuckDBPyConnection) -> set[str]:
     return {str(row[0]) for row in conn.execute("show tables").fetchall()}
+
+
+def _table_columns(conn: duckdb.DuckDBPyConnection, table_name: str) -> set[str]:
+    return {
+        str(row[1]).lower()
+        for row in conn.execute(f"pragma table_info('{table_name}')").fetchall()
+    }
 
 
 def _resolve_as_of_date(conn: duckdb.DuckDBPyConnection, *, as_of_date: str | None) -> str:
@@ -280,10 +292,32 @@ def _load_daily_rows(
 ) -> dict[str, dict[str, object]]:
     if TABLE_DAILY not in tables or not codes:
         return {}
+    columns = _table_columns(conn, TABLE_DAILY)
+    has_vendor_version = "vendor_version" in columns
+    if not has_vendor_version:
+        logger.warning(
+            "%s missing vendor_version; pretrade amount cannot be scaled, "
+            "output as NULL (fail-closed); affected rows are liquidity-unknown",
+            TABLE_DAILY,
+        )
     placeholders = ",".join("?" for _ in codes)
+    # docs/data_contracts.md §4.10: --min-amount 与日成交额统一按人民币元比较;
+    # 缺 vendor_version 列时无法定标,fail-closed 输出 NULL(该行流动性判定为 missing_amount,
+    # 不参与 --min-amount 阈值比较,避免千元/元误判)。
+    amount_select = (
+        amount_rmb_sql(alias="amount")
+        if has_vendor_version
+        else "cast(null as double) as amount"
+    )
+    amount_unknown_select = (
+        scale_unknown_sql("amount", alias="_amount_scale_unknown")
+        if has_vendor_version
+        else "false as _amount_scale_unknown"
+    )
     rows = conn.execute(
         f"""
-        select stock_code, close_value, amount, turn, tradestatus, highlimit, lowlimit, pctchange, volume
+        select stock_code, close_value, {amount_select}, turn, tradestatus,
+               highlimit, lowlimit, pctchange, volume, {amount_unknown_select}
         from {TABLE_DAILY}
         where trade_date = ?
           and stock_code in ({placeholders})
@@ -300,8 +334,21 @@ def _load_daily_rows(
         "lowlimit",
         "pctchange",
         "volume",
+        "_amount_scale_unknown",
     ]
-    return {str(row[0]): dict(zip(keys, row)) for row in rows}
+    output: dict[str, dict[str, object]] = {}
+    unknown_amount_count = 0
+    for row in rows:
+        item = dict(zip(keys, row))
+        unknown_amount_count += int(bool(item.pop("_amount_scale_unknown", False)))
+        output[str(row[0])] = item
+    if unknown_amount_count:
+        logger.warning(
+            "%s has %d rows with amount but null vendor_version; normalized amount is null",
+            TABLE_DAILY,
+            unknown_amount_count,
+        )
+    return output
 
 
 def _load_limit_rows(
@@ -605,10 +652,9 @@ def _truthy_flag(value: object) -> bool:
 
 
 def _is_suspended(trade_status: str) -> bool:
-    text = str(trade_status or "").strip().lower()
-    if not text or text in _NORMAL_TRADE_STATUSES:
-        return False
-    return "\u505c" in text or "suspend" in text or "halt" in text or text == "0"
+    # 共享互补口径：非空非可交易词值（"停牌一天"/"连续停牌"/"未上市"/未知值）
+    # 一律判停牌 block（fail-closed）；空串/正常交易/复牌不 block。
+    return is_tradestatus_halted(trade_status)
 
 
 def _optional_float(value: object) -> float | None:
@@ -654,7 +700,15 @@ def main() -> int:
     parser.add_argument("--as-of-date")
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--top-n", type=int, default=DEFAULT_TOP_N)
-    parser.add_argument("--min-amount", type=float, default=DEFAULT_MIN_AMOUNT)
+    parser.add_argument(
+        "--min-amount",
+        type=float,
+        default=DEFAULT_MIN_AMOUNT,
+        help=(
+            "Minimum daily trading amount in RMB yuan (unit: CNY), compared against "
+            "vendor-normalized amount per docs/data_contracts.md §4.10."
+        ),
+    )
     parser.add_argument("--max-sector-weight", type=float, default=DEFAULT_MAX_SECTOR_WEIGHT)
     parser.add_argument("--stale-calendar-days", type=int, default=DEFAULT_STALE_CALENDAR_DAYS)
     parser.add_argument("--rerun-selection", action="store_true")

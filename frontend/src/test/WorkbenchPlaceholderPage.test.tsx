@@ -50,6 +50,10 @@ function renderPage(
         path: "/risk-overview",
         element: <WorkbenchPlaceholderPage />,
       },
+      {
+        path: "/source-preview",
+        element: <WorkbenchPlaceholderPage />,
+      },
     ],
     { initialEntries: [path], future: routerFuture },
   );
@@ -124,6 +128,43 @@ describe("WorkbenchPlaceholderPage", () => {
       await screen.findByText("当前暂无可展示内容。"),
     ).toBeInTheDocument();
   });
-});
 
+  it("returns an explicit empty readiness placeholder from the real source-preview client", async () => {
+    const fetchImpl = vi.fn();
+    const client = createApiClient({
+      mode: "real",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    const payload = await client.getPlaceholderSnapshot("source-preview");
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(payload.result).toEqual({
+      title: "Source Preview",
+      summary: "",
+      highlights: [],
+    });
+    expect(payload.result_meta).toMatchObject({
+      basis: "analytical",
+      formal_use_allowed: false,
+      result_kind: "workbench.source-preview.readiness",
+      source_version: "readiness:placeholder",
+      quality_flag: "missing",
+    });
+  });
+
+  it("renders real source-preview readiness placeholders as the empty state", async () => {
+    const client = createApiClient({
+      mode: "real",
+      fetchImpl: vi.fn() as unknown as typeof fetch,
+    });
+
+    renderPage("/source-preview", client);
+
+    expect(
+      await screen.findByText("当前暂无可展示内容。"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Hidden route retained")).not.toBeInTheDocument();
+  });
+});
 

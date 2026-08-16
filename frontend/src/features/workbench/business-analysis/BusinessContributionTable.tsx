@@ -1,7 +1,8 @@
 import { Link } from "react-router-dom";
 
 import type { ProductCategoryPnlRow } from "../../../api/contracts";
-import { SectionCard } from "../../../components/SectionCard";
+import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
+import { EM_DASH } from "../../../utils/format";
 import {
   formatProductCategoryForeignDisplayValue,
   formatProductCategoryValue,
@@ -23,7 +24,7 @@ function formatSide(side: string): string {
 
 function formatRatePct(value: ProductCategoryPnlRow["baseline_ftp_rate_pct"] | null | undefined): string {
   if (value === null || value === undefined) {
-    return "-";
+    return EM_DASH;
   }
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
@@ -63,11 +64,15 @@ export function BusinessContributionTable({
   const totalIncomeTone = toneForProductCategoryValue(grandTotal?.business_net_income);
 
   return (
-    <SectionCard
+    <PageAsyncSection
       title="经营贡献（产品分类损益读面）"
-      loading={loading}
-      error={error}
-      onRetry={onRetry}
+      fillHeight={false}
+      isLoading={loading}
+      isError={error}
+      isEmpty={false}
+      onRetry={() => {
+        onRetry?.();
+      }}
       extra={
         <Link to="/product-category-pnl" aria-label="进入产品分类损益">
           <strong>进入产品分类损益</strong>
@@ -77,7 +82,7 @@ export function BusinessContributionTable({
       {reportDate ? (
         <p
           data-testid="operations-contribution-table-provenance"
-          style={{ margin: "0 0 12px", fontSize: 13, color: "#5c6b82", lineHeight: 1.6 }}
+          style={{ margin: "0 0 12px", fontSize: 13, color: "var(--dh-api-soft)", lineHeight: 1.6 }}
         >
           报告日 <strong>{reportDate}</strong>，数据来自{" "}
           <code>/ui/pnl/product-category</code>
@@ -90,7 +95,7 @@ export function BusinessContributionTable({
           ) : null}
         </p>
       ) : (
-        <p style={{ margin: "0 0 12px", fontSize: 13, color: "#5c6b82" }}>暂无可用报告日。</p>
+        <p style={{ margin: "0 0 12px", fontSize: 13, color: "var(--dh-api-soft)" }}>暂无可用报告日。</p>
       )}
 
       <div
@@ -101,14 +106,14 @@ export function BusinessContributionTable({
           gap: 12,
           margin: "0 0 12px",
           padding: "12px 14px",
-          border: "1px solid #dbe4f0",
+          border: "1px solid var(--dh-api-line-soft)",
           borderRadius: 8,
-          background: "#f8fbff",
+          background: "var(--dh-api-panel-2)",
           alignItems: "center",
         }}
       >
         <div>
-          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>总收益（合计）</div>
+          <div style={{ fontSize: 12, color: "var(--dh-api-muted)", fontWeight: 600 }}>总收益（合计）</div>
           <div
             style={{
               marginTop: 2,
@@ -119,16 +124,16 @@ export function BusinessContributionTable({
             }}
           >
             {formatProductCategoryValue(grandTotal?.business_net_income)}
-            <span style={{ marginLeft: 4, color: "#64748b", fontSize: 12, fontWeight: 600 }}>亿元</span>
+            <span style={{ marginLeft: 4, color: "var(--dh-api-muted)", fontSize: 12, fontWeight: 600 }}>亿元</span>
           </div>
         </div>
-        <div style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>
-          当前场景：<span style={{ color: "#111827" }}>{formatRatePct(currentRate)}</span>
+        <div style={{ fontSize: 12, color: "var(--dh-api-soft)", fontWeight: 700 }}>
+          当前场景：<span style={{ color: "var(--dh-api-ink)" }}>{formatRatePct(currentRate)}</span>
         </div>
-        <div style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>
-          基准场景：<span style={{ color: "#111827" }}>{formatRatePct(baselineRate)}</span>
+        <div style={{ fontSize: 12, color: "var(--dh-api-soft)", fontWeight: 700 }}>
+          基准场景：<span style={{ color: "var(--dh-api-ink)" }}>{formatRatePct(baselineRate)}</span>
         </div>
-        <div style={{ fontSize: 12, color: "#475569", fontWeight: 700, textAlign: "right" }}>
+        <div style={{ fontSize: 12, color: "var(--dh-api-soft)", fontWeight: 700, textAlign: "right" }}>
           资产 / 负债：
           <span style={{ color: toneForProductCategoryValue(assetTotal?.business_net_income) }}>
             {formatProductCategoryValue(assetTotal?.business_net_income)}
@@ -144,7 +149,7 @@ export function BusinessContributionTable({
         style={{
           overflowX: "auto",
           borderRadius: 8,
-          border: "1px solid #e4ebf5",
+          border: "1px solid var(--dh-api-line-soft)",
         }}
       >
         <table
@@ -152,11 +157,11 @@ export function BusinessContributionTable({
             width: "100%",
             borderCollapse: "collapse",
             fontSize: 13,
-            background: "#fff",
+            background: "var(--dh-api-panel)",
           }}
         >
           <thead>
-            <tr style={{ background: "#f8fafc", color: "#475569", textAlign: "left" }}>
+            <tr style={{ background: "var(--dh-api-panel-2)", color: "var(--dh-api-soft)", textAlign: "left" }}>
               <th style={{ padding: "10px 12px", fontWeight: 600 }}>产品分类</th>
               <th style={{ padding: "10px 12px", fontWeight: 600 }}>侧别</th>
               <th style={{ padding: "10px 12px", fontWeight: 600, textAlign: "right" }}>综本日均</th>
@@ -170,7 +175,7 @@ export function BusinessContributionTable({
           <tbody>
             {rows.length === 0 && !loading ? (
               <tr>
-                <td colSpan={8} style={{ padding: 16, color: "#94a3b8", textAlign: "center" }}>
+                <td colSpan={8} style={{ padding: 16, color: "var(--dh-api-muted)", textAlign: "center" }}>
                   暂无产品分类行
                 </td>
               </tr>
@@ -179,15 +184,15 @@ export function BusinessContributionTable({
                 <tr
                   key={row.category_id}
                   style={{
-                    borderTop: "1px solid #eef2f7",
-                    background: row.is_total ? "#f3f7ff" : "#ffffff",
+                    borderTop: "1px solid var(--dh-api-line-soft)",
+                    background: row.is_total ? "var(--dh-api-panel-3)" : "var(--dh-api-panel)",
                     fontWeight: row.is_total ? 700 : 400,
                   }}
                 >
-                  <td style={{ padding: "10px 12px", fontWeight: 600, color: "#162033" }}>
+                  <td style={{ padding: "10px 12px", fontWeight: 600, color: "var(--dh-api-ink)" }}>
                     <span style={{ paddingLeft: row.level * 14 }}>{row.category_name}</span>
                   </td>
-                  <td style={{ padding: "10px 12px", color: "#475569" }}>{formatSide(row.side)}</td>
+                  <td style={{ padding: "10px 12px", color: "var(--dh-api-soft)" }}>{formatSide(row.side)}</td>
                   <td style={{ padding: "10px 12px", fontVariantNumeric: "tabular-nums", textAlign: "right" }}>
                     {formatProductCategoryRowDisplayValue(row, row.cnx_scale)}
                   </td>
@@ -236,8 +241,8 @@ export function BusinessContributionTable({
           data-testid="operations-contribution-footer-total"
           style={{
             padding: "12px 16px",
-            background: "#111827",
-            color: "#fff",
+            background: "var(--dh-api-panel-3)",
+            color: "var(--dh-api-ink)",
             fontSize: 14,
             fontWeight: 800,
             textAlign: "center",
@@ -247,6 +252,6 @@ export function BusinessContributionTable({
           全部市场科目 + 投资收益合计：{formatProductCategoryValue(grandTotal?.business_net_income)}
         </div>
       </div>
-    </SectionCard>
+    </PageAsyncSection>
   );
 }

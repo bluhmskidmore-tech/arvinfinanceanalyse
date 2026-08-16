@@ -1,0 +1,1239 @@
+.screen {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 24px;
+  color: var(--dh-api-ink);
+  background: var(--dh-api-bg);
+  font-family: "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC",
+    "Segoe UI", sans-serif;
+}
+
+.screen button,
+.screen input {
+  font: inherit;
+}
+
+.chapterSection {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* 编号分区头对齐首页/总账损益语言：小号 mono 编号 + 14px 标题 + 发丝线。 */
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  min-height: 28px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sectionTitle > span {
+  flex: 0 0 auto;
+  min-width: 22px;
+  color: var(--dh-api-muted);
+  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.sectionTitle > div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sectionTitle h2 {
+  margin: 0;
+  overflow: hidden;
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sectionTitle em {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sectionHeader strong {
+  color: var(--dh-api-muted);
+  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.decisionHero,
+.infoPanel,
+.chartCard {
+  overflow: hidden;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.decisionHero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  gap: 24px;
+  padding: 14px 16px;
+}
+
+.decisionMain {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 12px;
+  border-left: 2px solid var(--dh-api-blue);
+}
+
+/* 眉标按首页 overviewEyebrow：素文本，不再做描边徽标。 */
+.heroKicker {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.decisionMain h3 {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 18px;
+  font-weight: 680;
+  line-height: 1.3;
+}
+
+.decisionMain p {
+  max-width: 72ch;
+  margin: 0;
+  color: var(--dh-api-ink-soft);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.observationAction {
+  margin: 0;
+  color: color-mix(in srgb, var(--dh-api-blue) 52%, var(--dh-api-ink) 48%);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.observationAction[data-tone="watch"] {
+  color: var(--dh-api-amber);
+}
+
+.decisionAside {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
+  padding-left: 24px;
+  border-left: 1px solid var(--dh-api-line-soft);
+}
+
+.observationMeta {
+  display: grid;
+  min-width: 0;
+}
+
+.observationFact {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+  padding: 8px 0;
+  border-top: 1px solid var(--dh-api-line-soft);
+}
+
+.observationFact > span {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.observationFact > strong {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dh-api-ink-soft);
+  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.decisionFacts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+
+.decisionFacts div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  background: transparent;
+}
+
+.decisionFacts span {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+.decisionFacts strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 行情带按首页 kpiRail 语言：单一外框 + 发丝竖分割，禁止卡片套卡片。 */
+.marketTape {
+  display: grid;
+  overflow: hidden;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.tapeCell {
+  display: flex;
+  min-width: 0;
+  min-height: 96px;
+  padding: 10px 14px;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+  border-right: 1px solid var(--dh-api-line-soft);
+}
+
+.tapeCell:last-child {
+  border-right: 0;
+}
+
+/* 标签统一 clamp + 固定 min-height 防同排数值错位；带内 8 个指标名均为
+   单行短词，预留一行即可，2 行预留会让整条带子空 16px。 */
+.tapeCell > span {
+  display: -webkit-box;
+  min-height: 16px;
+  overflow: hidden;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.tapeCell > time {
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tapeCell > strong {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  overflow: hidden;
+  color: var(--dh-api-ink);
+  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
+  font-size: clamp(16px, 1.2vw, 21px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.tapeCell > strong small {
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+}
+
+.tapeCell > em {
+  margin-top: auto;
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
+  font-size: 12px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tapeCell[data-tone="up"] > em {
+  color: var(--dh-api-green);
+}
+
+.tapeCell[data-tone="down"] > em {
+  color: var(--dh-api-red);
+}
+
+.tapeCell[data-tone="ok"] > em {
+  color: var(--dh-api-green);
+}
+
+.judgmentGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.18fr) minmax(0, 1.08fr) minmax(0, 1.24fr);
+  gap: 16px;
+}
+
+.infoPanel {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
+/* 面板头对齐首页 panelHeader：34px 头线 + 2px 强调左条 + 13px 标题。 */
+.panelHeader {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.panelHeader::before {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 2px;
+  background: var(--dh-api-blue);
+  content: "";
+}
+
+.panelHeader h3 {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.panelHeader a,
+.panelHeader span {
+  color: color-mix(in srgb, var(--dh-api-blue) 68%, var(--dh-api-ink) 32%);
+  font-size: 12px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.eventRows {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: repeat(3, minmax(86px, auto));
+  overflow: hidden;
+}
+
+.eventRows article {
+  display: grid;
+  align-content: center;
+  gap: 7px;
+  min-height: 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.eventRows article:last-child {
+  border-bottom: 0;
+}
+
+.eventRows time,
+.eventRows span {
+  color: var(--dh-api-muted);
+  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
+  font-size: 12px;
+}
+
+.eventRows strong {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--dh-api-ink-soft);
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.eventEmpty {
+  display: grid;
+  min-height: 100%;
+  place-items: center;
+  padding: 14px;
+  color: var(--dh-api-muted);
+  font-size: 13px;
+}
+
+/* 行式列表替代 2x2 迷你卡：154px 卡宽装不下结论句，逐卡截断可读性太差。 */
+.focusGrid {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: minmax(0, 1fr);
+  gap: 0;
+  padding: 0 14px 4px;
+}
+
+.focusCard {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-content: center;
+  column-gap: 12px;
+  row-gap: 3px;
+  min-width: 0;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.focusCard:last-child {
+  border-bottom: 0;
+}
+
+.focusCard[data-search-match="false"] {
+  opacity: 0.34;
+}
+
+.focusCard > span {
+  display: -webkit-box;
+  grid-row: 1 / span 2;
+  align-self: center;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--dh-api-blue) 55%, var(--dh-api-ink) 45%);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.focusCard > strong {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--dh-api-ink-soft);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.focusCard > em {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+/* 事项与证据摞两行：四列并排时两列各剩 ~140px，中文标题全部截断。
+   入口列固定宽，保证表头与行两套 grid 对齐。 */
+.queueHead,
+.queueRow {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 64px;
+  align-items: center;
+  gap: 10px;
+}
+
+.queueHead {
+  padding: 10px 14px 9px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+.queueHead > span:last-child {
+  text-align: right;
+}
+
+.queueRows {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-auto-rows: minmax(0, 1fr);
+}
+
+.queueRow {
+  grid-template-rows: auto auto;
+  align-content: center;
+  row-gap: 3px;
+  min-width: 0;
+  min-height: 62px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.queueRow > span {
+  grid-row: 1 / span 2;
+}
+
+.queueRow > b {
+  grid-row: 1 / span 2;
+  grid-column: 3;
+}
+
+.queueRow > strong,
+.queueRow > em {
+  grid-column: 2;
+}
+
+.queueRow:last-child {
+  border-bottom: 0;
+}
+
+.queueRow span,
+.queueRow b {
+  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
+}
+
+.queueRow span {
+  color: var(--dh-api-muted);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.queueRow strong,
+.queueRow em,
+.queueRow b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queueRow strong {
+  color: var(--dh-api-ink-soft);
+  font-size: 13.5px;
+}
+
+.queueRow em {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.queueRow b {
+  color: color-mix(in srgb, var(--dh-api-blue) 60%, var(--dh-api-ink) 40%);
+  font-size: 12px;
+  text-align: right;
+}
+
+.queueRow[data-tone="error"] span,
+.queueRow[data-tone="error"] b {
+  color: var(--dh-api-red);
+}
+
+.queueRow[data-tone="watch"] span,
+.queueRow[data-tone="watch"] b {
+  color: var(--dh-api-amber);
+}
+
+.evidenceLayout {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.evidencePrimary,
+.evidenceSecondary {
+  display: grid;
+  gap: 16px;
+}
+
+.evidencePrimary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.evidenceSecondary {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(320px, 0.9fr);
+}
+
+.chartCard {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  grid-template-rows: 44px minmax(0, 1fr) 24px;
+}
+
+.chartCard[data-has-reading-guide="true"] {
+  grid-template-rows: 44px 24px minmax(0, 1fr) 24px;
+}
+
+.primaryChart {
+  min-height: 258px;
+}
+
+.secondaryChart,
+.pulseCard {
+  min-height: 276px;
+}
+
+/* 高度随主题行数自适应：固定高度曾把第 4 行起的主题与图例静默裁掉。 */
+.newsCard {
+  height: auto;
+  min-height: 176px;
+}
+
+.chartCard[data-search-match="false"] {
+  opacity: 0.34;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.cardHeader > div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cardIndex {
+  color: color-mix(in srgb, var(--dh-api-blue) 58%, var(--dh-api-ink) 42%);
+  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.cardHeader h3 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardHeader > span {
+  max-width: 44%;
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
+  font-size: 12px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chartGuide {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  margin: 0;
+  padding: 0 12px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-ink-soft);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chartCanvas {
+  min-width: 0;
+  min-height: 0;
+  padding: 6px 10px;
+  overflow: hidden;
+}
+
+.chartInstance {
+  width: 100% !important;
+  min-height: 0 !important;
+}
+
+.chartEmpty {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  color: var(--dh-api-muted);
+  font-size: 13px;
+}
+
+.chartCard > footer {
+  padding: 5px 12px 0;
+  border-top: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.macroPulse {
+  padding: 6px 12px 10px;
+}
+
+/* 三列 min 宽之和须小于 E 卡内容宽（~327px），否则变化列被挤出可视区。 */
+.pulseColumns,
+.pulseRow {
+  display: grid;
+  grid-template-columns: minmax(72px, 0.85fr) minmax(150px, 1.8fr) minmax(
+      84px,
+      0.95fr
+    );
+  align-items: center;
+  gap: 8px;
+}
+
+.pulseColumns {
+  height: 26px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+.pulseColumns span:not(:first-child) {
+  text-align: right;
+}
+
+.pulseRows {
+  display: grid;
+  height: calc(100% - 26px);
+  min-height: 0;
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+}
+
+.pulseRow {
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-ink-soft);
+  font-size: 12px;
+}
+
+.pulseRow:last-child {
+  border-bottom: 0;
+}
+
+.pulseRow > span,
+.pulseRow > div,
+.pulseRow > em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pulseRow > span {
+  color: var(--dh-api-ink);
+}
+
+/* 变化列窄，标签与数值纵排两行，数值不再被标签挤出。 */
+.pulseRow > em {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
+  font-style: normal;
+  font-weight: 500;
+  text-align: right;
+}
+
+.pulseRow > em small {
+  color: var(--dh-api-muted);
+  font-family: var(--font-family-sans, sans-serif);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.pulseRow > em strong {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pulseValueFlow {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 6px;
+  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
+}
+
+.pulseValueFlow > span,
+.pulseValueFlow > strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pulseValueFlow > span {
+  color: var(--dh-api-muted);
+}
+
+.pulseValueFlow > i {
+  flex: 0 0 auto;
+  color: var(--dh-api-muted);
+  font-style: normal;
+}
+
+.pulseValueFlow > strong {
+  color: var(--dh-api-ink-soft);
+  font-weight: 600;
+}
+
+.newsDensity {
+  display: grid;
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+  gap: 16px;
+  padding: 8px 12px 10px;
+}
+
+.heatmapPanel,
+.newsMiniFeed {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.heatmapEmpty {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  color: var(--dh-api-muted);
+  font-size: 13px;
+}
+
+.heatmapGrid {
+  display: grid;
+  grid-template-columns: 84px repeat(12, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.heatmapGrid > time {
+  height: 13px;
+  color: transparent;
+  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
+  font-size: 12px;
+  text-align: center;
+}
+
+.heatmapGrid > time[data-label="true"] {
+  color: var(--dh-api-muted);
+}
+
+.heatmapRow {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: 84px repeat(12, minmax(0, 1fr));
+  gap: 2px;
+  height: 19px;
+}
+
+.heatmapRow > span {
+  align-self: center;
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 无数据格用 panel-2 井底色呈现网格结构；数据档在井底上按比例加亮，
+   避免低强度格与卡面同色导致整块热力图"看不见"。 */
+.heatmapRow > i,
+.heatmapLegend > i {
+  min-width: 0;
+  background: var(--dh-api-panel-2);
+}
+
+.heatmapRow > i[data-intensity="1"],
+.heatmapLegend > i[data-intensity="1"] {
+  background: color-mix(in srgb, var(--dh-api-blue) 34%, var(--dh-api-panel-2));
+}
+
+.heatmapRow > i[data-intensity="2"],
+.heatmapLegend > i[data-intensity="2"] {
+  background: color-mix(in srgb, var(--dh-api-blue) 54%, var(--dh-api-panel-2));
+}
+
+.heatmapRow > i[data-intensity="3"],
+.heatmapLegend > i[data-intensity="3"] {
+  background: color-mix(in srgb, var(--dh-api-blue) 76%, var(--dh-api-panel-2));
+}
+
+.heatmapRow > i[data-intensity="4"],
+.heatmapLegend > i[data-intensity="4"] {
+  background: color-mix(in srgb, var(--dh-api-blue) 64%, var(--dh-api-ink) 36%);
+}
+
+.heatmapLegend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 6px;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+.heatmapLegend > i {
+  width: 11px;
+  height: 7px;
+}
+
+.newsMiniFeed {
+  display: grid;
+  grid-template-rows: 24px repeat(3, minmax(0, 1fr));
+  border-left: 1px solid var(--dh-api-line-soft);
+  padding-left: 12px;
+}
+
+.newsMiniHead,
+.newsMiniFeed article {
+  display: grid;
+  /* 时间列需完整容纳 "07-15 04:12"（11 位等宽字符）不截断。 */
+  grid-template-columns: 84px minmax(0, 1fr) 64px;
+  align-items: center;
+  gap: 8px;
+}
+
+.newsMiniHead {
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+.newsMiniHead span:last-child {
+  text-align: right;
+}
+
+.newsMiniFeed article {
+  min-height: 0;
+  overflow: hidden;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-ink-soft);
+  font-size: 12px;
+}
+
+.newsMiniFeed article:last-child {
+  border-bottom: 0;
+}
+
+.newsMiniFeed article > time,
+.newsMiniFeed article > strong,
+.newsMiniFeed article > em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.newsMiniFeed article > time {
+  color: var(--dh-api-muted);
+  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
+}
+
+.newsMiniFeed article > strong {
+  color: var(--dh-api-ink-soft);
+  font-weight: 500;
+}
+
+.newsMiniFeed article > em {
+  color: var(--dh-api-amber);
+  font-style: normal;
+  text-align: right;
+}
+
+.compactEmpty {
+  display: grid;
+  grid-column: 1 / -1;
+  place-items: center;
+  color: var(--dh-api-muted);
+  font-size: 13px;
+}
+
+.signalStrip {
+  display: grid;
+  overflow: hidden;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.signalCard {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  min-height: 118px;
+  padding: 12px;
+  border-right: 1px solid var(--dh-api-line-soft);
+}
+
+.signalCard:last-child {
+  border-right: 0;
+}
+
+.signalCard span {
+  color: color-mix(in srgb, var(--dh-api-blue) 58%, var(--dh-api-ink) 42%);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.signalCard strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dh-api-ink);
+  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
+  /* 信号带是辅助层，主值压过 01 区 KPI（≤21px）会造成层级倒挂。 */
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 证据行折两行展示，单行 ellipsis 时六格全部只剩半句话。 */
+.signalCard em {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.signalCard[data-tone="alert"] strong {
+  color: var(--dh-api-red);
+}
+
+.signalCard[data-tone="watch"] strong {
+  color: var(--dh-api-amber);
+}
+
+.signalCard[data-tone="ok"] strong {
+  color: color-mix(in srgb, var(--dh-api-blue) 58%, var(--dh-api-ink) 42%);
+}
+
+/* 8 列行情带在 1500px 以下放不下“数值 + 长单位”，折成 4x2 保持完整可读。 */
+@media (max-width: 1500px) {
+  .marketTape {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .tapeCell:nth-child(4n) {
+    border-right: 0;
+  }
+
+  .tapeCell:nth-child(-n + 4) {
+    border-bottom: 1px solid var(--dh-api-line-soft);
+  }
+}
+
+@media (max-width: 1320px) {
+  .decisionHero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .decisionAside {
+    padding-top: 14px;
+    padding-left: 0;
+    border-top: 1px solid var(--dh-api-line-soft);
+    border-left: 0;
+  }
+
+  .judgmentGrid,
+  .evidenceSecondary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .infoPanel:last-child,
+  .pulseCard {
+    grid-column: 1 / -1;
+  }
+
+  .signalStrip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .signalCard:nth-child(3n) {
+    border-right: 0;
+  }
+
+  .signalCard:nth-child(-n + 3) {
+    border-bottom: 1px solid var(--dh-api-line-soft);
+  }
+}
+
+@media (max-width: 1120px) {
+  .judgmentGrid,
+  .evidencePrimary,
+  .evidenceSecondary,
+  .signalStrip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .signalCard {
+    border-right: 0;
+  }
+
+  .signalCard:not(:last-child) {
+    border-bottom: 1px solid var(--dh-api-line-soft);
+  }
+}
+
+@media (max-width: 760px) {
+  .sectionHeader {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .decisionHero {
+    padding: 12px;
+  }
+
+  .decisionMain h3 {
+    font-size: 16px;
+  }
+
+  .decisionFacts {
+    grid-template-columns: 1fr;
+  }
+
+  .observationMeta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .marketTape {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tapeCell:nth-child(4n) {
+    border-right: 1px solid var(--dh-api-line-soft);
+  }
+
+  .tapeCell:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .tapeCell:not(:nth-last-child(-n + 2)) {
+    border-bottom: 1px solid var(--dh-api-line-soft);
+  }
+
+  .focusGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .queueHead,
+  .queueRow {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .queueHead span:nth-child(n + 3),
+  .queueRow em,
+  .queueRow b {
+    display: none;
+  }
+
+  .newsCard {
+    height: auto;
+    min-height: 300px;
+    grid-template-rows: 44px minmax(0, 1fr) auto;
+  }
+
+  .newsCard > footer {
+    min-height: 36px;
+    padding-bottom: 4px;
+    line-height: 1.35;
+    white-space: normal;
+  }
+
+  .pulseColumns,
+  .pulseRow {
+    grid-template-columns: minmax(72px, 0.8fr) minmax(134px, 1.5fr) minmax(
+        76px,
+        0.9fr
+      );
+    gap: 5px;
+  }
+
+  .pulseValueFlow {
+    gap: 3px;
+  }
+
+  .newsDensity {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .newsMiniFeed {
+    border-left: 0;
+    border-top: 1px solid var(--dh-api-line-soft);
+    padding-left: 0;
+    padding-top: 8px;
+  }
+}

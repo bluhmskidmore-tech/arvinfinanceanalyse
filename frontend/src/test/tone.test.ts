@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { TONE_COLOR, toneForStatus, toneFromNumeric, type Tone } from "../utils/tone";
+import {
+  TONE_COLOR,
+  TONE_CSS_VAR,
+  TONE_DH_CSS_VAR,
+  toneForStatus,
+  toneFromNumeric,
+  type Tone,
+} from "../utils/tone";
 import type { Numeric } from "../api/contracts";
 import { designTokens } from "../theme/designSystem";
 
@@ -16,6 +23,40 @@ describe("TONE_COLOR", () => {
   it("positive / negative align with design semantic tokens (not swapped!)", () => {
     expect(TONE_COLOR.positive).toBe(designTokens.color.semantic.profit);
     expect(TONE_COLOR.negative).toBe(designTokens.color.semantic.loss);
+  });
+});
+
+describe("TONE_CSS_VAR", () => {
+  it("maps all 4 tones to theme-aware --ib-* CSS variables (not swapped!)", () => {
+    expect(TONE_CSS_VAR.positive).toBe("var(--ib-up)");
+    expect(TONE_CSS_VAR.negative).toBe("var(--ib-down)");
+    expect(TONE_CSS_VAR.warning).toBe("var(--ib-warn)");
+    expect(TONE_CSS_VAR.neutral).toBe("var(--ib-ink-muted)");
+  });
+
+  it("covers every Tone with a var(--ib-*) reference (no raw hex leaks)", () => {
+    const tones: Tone[] = ["positive", "neutral", "warning", "negative"];
+    expect(Object.keys(TONE_CSS_VAR).sort()).toEqual([...tones].sort());
+    for (const t of tones) {
+      expect(TONE_CSS_VAR[t]).toMatch(/^var\(--ib-[a-z-]+\)$/);
+    }
+  });
+});
+
+describe("TONE_DH_CSS_VAR", () => {
+  it("maps all 4 tones to --dh-api-* variables for Nocturne scopes (not swapped!)", () => {
+    expect(TONE_DH_CSS_VAR.positive).toBe("var(--dh-api-green)");
+    expect(TONE_DH_CSS_VAR.negative).toBe("var(--dh-api-red)");
+    expect(TONE_DH_CSS_VAR.warning).toBe("var(--dh-api-amber)");
+    expect(TONE_DH_CSS_VAR.neutral).toBe("var(--dh-api-muted)");
+  });
+
+  it("covers every Tone with a var(--dh-api-*) reference (no raw hex leaks)", () => {
+    const tones: Tone[] = ["positive", "neutral", "warning", "negative"];
+    expect(Object.keys(TONE_DH_CSS_VAR).sort()).toEqual([...tones].sort());
+    for (const t of tones) {
+      expect(TONE_DH_CSS_VAR[t]).toMatch(/^var\(--dh-api-[a-z-]+\)$/);
+    }
   });
 });
 
@@ -103,6 +144,14 @@ describe("toneForStatus", () => {
 
   it("maps 'vendor_unavailable' -> negative", () => {
     expect(toneForStatus("vendor_unavailable")).toBe("negative");
+  });
+
+  it("maps 'vendor_stale' -> warning", () => {
+    expect(toneForStatus("vendor_stale")).toBe("warning");
+  });
+
+  it("maps 'explicit_miss' -> negative", () => {
+    expect(toneForStatus("explicit_miss")).toBe("negative");
   });
 
   it("unknown string -> neutral", () => {

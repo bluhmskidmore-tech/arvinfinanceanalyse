@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import logging
+from copy import deepcopy
 from datetime import date
+from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from typing import Any
 
 from backend.app.core_finance.liability_analytics_compat import (
@@ -35,10 +39,29 @@ from backend.app.schemas.liability_analytics import (
 )
 from backend.app.services.explicit_numeric import promote_payload_numerics
 from backend.app.services.formal_result_runtime import build_result_envelope
+from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
+
+logger = logging.getLogger(__name__)
+
+
+def _degraded_log_level(exc: BaseException) -> int:
+    """与 dashboard_service 同款分级：程序缺陷类异常与预期数据缺口在日志流中可区分。"""
+    return (
+        logging.WARNING
+        if isinstance(exc, (TypeError, KeyError, AttributeError))
+        else logging.DEBUG
+    )
+
 
 LIABILITY_ANALYTICS_CACHE_VERSION = "cv_liability_analytics_v1"
 LIABILITY_ANALYTICS_RULE_VERSION = "rv_liability_analytics_compat_v1"
 LIABILITY_ANALYTICS_EMPTY_SOURCE_VERSION = "sv_liability_analytics_empty"
+# 同一 -50bp 平移口径的两种数值单位表达：
+# 日度 KPI 的 NIM 是小数比率（0.0255 == 2.55%），-50bp 即 -0.005；
+# ADB 月度的 NIM 是百分点（0.9 == 0.9%），-50bp 即 -0.5。
+NIM_STRESS_SHOCK_DECIMAL = Decimal("0.005")
+NIM_STRESS_SHOCK_PERCENT = Decimal("0.5")
+NIM_STRESS_DELTA_BP = Decimal("-50")
 
 _LIABILITY_MONTH_LIST_FIELDS = {
     "counterparty_top10": LiabilityMonthlyBreakdownRow,
@@ -51,6 +74,58 @@ _LIABILITY_MONTH_LIST_FIELDS = {
     "issued_term_buckets": LiabilityMonthlyBreakdownRow,
     "counterparty_details": LiabilityMonthlyBreakdownRow,
 }
+
+_YIELD_METRICS_CACHE_TTL_SECONDS = 300.0
+_YieldMetricsCacheKey = tuple[object, ...]
+_YIELD_METRICS_CACHE: InMemoryTTLCache[_YieldMetricsCacheKey, dict[str, object]] = get_runtime_cache(
+    "liability_analytics.yield_metrics",
+    ttl_seconds=_YIELD_METRICS_CACHE_TTL_SECONDS,
+)
+
+
+def _yield_metrics_runtime_cache_enabled() -> bool:
+    """Only cache when the module-level repo/compute symbols are the canonical
+    ones — tests monkeypatch them on this module, and cached results must not
+    leak across those substitutions."""
+    from backend.app.core_finance.liability_analytics_compat import (
+        compute_liability_yield_metrics as _canonical_compute,
+    )
+    from backend.app.repositories.liability_analytics_repo import (
+        LiabilityAnalyticsRepository as _canonical_repo,
+    )
+
+    return (
+        LiabilityAnalyticsRepository is _canonical_repo
+        and compute_liability_yield_metrics is _canonical_compute
+    )
+
+
+def _yield_metrics_cache_key(duckdb_path: str, report_date: str | None) -> _YieldMetricsCacheKey | None:
+    """Key bound to the DuckDB file identity (mtime/size, WAL folded in) so the
+    entry expires as soon as the underlying data is rewritten."""
+    if not _yield_metrics_runtime_cache_enabled():
+        return None
+    path = Path(duckdb_path)
+    try:
+        stat = path.stat()
+        mtime_ns = stat.st_mtime_ns
+        size = stat.st_size
+        resolved = str(path.resolve())
+    except OSError:
+        return None
+    try:
+        mtime_ns = max(mtime_ns, Path(f"{duckdb_path}.wal").stat().st_mtime_ns)
+    except OSError:
+        pass
+    return (
+        "liability_analytics.yield_metrics",
+        LIABILITY_ANALYTICS_CACHE_VERSION,
+        LIABILITY_ANALYTICS_RULE_VERSION,
+        resolved,
+        mtime_ns,
+        size,
+        str(report_date or "").strip() or None,
+    )
 
 
 def _resolve_report_date(repo: LiabilityAnalyticsRepository, report_date: str | None) -> str:
@@ -87,6 +162,7 @@ def _envelope(
     result_payload: dict[str, object],
     source_rows: list[dict[str, object]],
     quality_flag: str = "ok",
+    filters_applied: dict[str, object] | None = None,
 ) -> dict[str, object]:
     source_version, rule_version = _merge_lineage(source_rows)
     return build_result_envelope(
@@ -99,6 +175,7 @@ def _envelope(
         quality_flag=quality_flag,
         vendor_version="vv_none",
         source_surface="formal_liability",
+        filters_applied=filters_applied,
         result_payload=result_payload,
     )
 
@@ -176,15 +253,66 @@ def _parse_iso_date(value: object) -> date | None:
         return None
 
 
+def _raw_decimal(value: object) -> Decimal | None:
+    if isinstance(value, dict):
+        value = value.get("raw")
+    if value is None:
+        return None
+    try:
+        out = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    return out if out.is_finite() else None
+
+
+def _build_nim_stress_fields(nim: object, *, shock: Decimal) -> dict[str, float | None]:
+    """-50bp 平移压力的唯一实现；``shock`` 必须与传入 NIM 的数值单位一致。"""
+    nim_decimal = _raw_decimal(nim)
+    if nim_decimal is None:
+        return {"nim_stressed": None, "delta_bp": None}
+    return {
+        "nim_stressed": float(nim_decimal - shock),
+        "delta_bp": float(NIM_STRESS_DELTA_BP),
+    }
+
+
+def _build_nim_stress(nim: object) -> dict[str, float | None]:
+    """日度 KPI 口径：NIM 为小数比率，-50bp 即减 0.005。"""
+    return _build_nim_stress_fields(nim, shock=NIM_STRESS_SHOCK_DECIMAL)
+
+
+def build_nim_stress_percent_points(nim: object) -> dict[str, float | None]:
+    """百分点单位 NIM（ADB 月度）的同口径 -50bp 平移；供 adb_analysis_service 复用。"""
+    return _build_nim_stress_fields(nim, shock=NIM_STRESS_SHOCK_PERCENT)
+
+
+class _YieldHistorySeries(list[dict[str, object]]):
+    """形状兼容的历史序列，附带 fail-visible 的跳过日期元数据。
+
+    与 executive_service 的 `_HomeCacheBuildRunRows` / `_ProductCategoryHeadlineValues`
+    同款模式：既有消费端把它当普通 list 用，信封构建端读 ``skipped_dates`` 披露缺口，
+    让趋势图缺口与"当日无数据"可区分。
+    """
+
+    def __init__(
+        self,
+        points: list[dict[str, object]] | None = None,
+        *,
+        skipped_dates: list[str] | None = None,
+    ) -> None:
+        super().__init__(points or [])
+        self.skipped_dates: list[str] = list(skipped_dates or [])
+
+
 def _build_yield_history_series(
     repo: LiabilityAnalyticsRepository,
     anchor_date: str,
     *,
     max_points: int = 72,
-) -> list[dict[str, object]]:
+) -> _YieldHistorySeries:
     all_dates = repo.list_report_dates()
     if anchor_date not in all_dates:
-        return []
+        return _YieldHistorySeries()
     idx = all_dates.index(anchor_date)
     slice_desc = all_dates[idx : idx + max_points]
     slice_asc = list(reversed(slice_desc))
@@ -194,9 +322,19 @@ def _build_yield_history_series(
     if callable(fetch_yield_rows):
         try:
             zqtz_rows_by_date, tyw_rows_by_date = fetch_yield_rows(slice_desc)
-        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
             zqtz_rows_by_date, tyw_rows_by_date = {}, {}
+            logger.log(
+                _degraded_log_level(exc),
+                "degraded: liability yield history batch prefetch falls back to per-date reads"
+                " [anchor_date=%r dates=%d] %s: %s",
+                anchor_date,
+                len(slice_desc),
+                type(exc).__name__,
+                exc,
+            )
     history: list[dict[str, object]] = []
+    skipped_dates: list[str] = []
     for d in slice_asc:
         if d in zqtz_rows_by_date:
             zq = zqtz_rows_by_date[d]
@@ -208,10 +346,28 @@ def _build_yield_history_series(
             ty = repo.fetch_tyw_rows(d)
         try:
             m = compute_liability_yield_metrics(d, zq, ty)
-        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+            skipped_dates.append(d)
+            logger.log(
+                _degraded_log_level(exc),
+                "degraded: liability yield history skips one date"
+                " [report_date=%r anchor_date=%r] %s: %s",
+                d,
+                anchor_date,
+                type(exc).__name__,
+                exc,
+            )
             continue
         kpi = m.get("kpi") if isinstance(m, dict) else None
         if not isinstance(kpi, dict):
+            skipped_dates.append(d)
+            logger.warning(
+                "degraded: liability yield history skips one date without kpi dict"
+                " [report_date=%r anchor_date=%r payload_type=%s]",
+                d,
+                anchor_date,
+                type(m).__name__,
+            )
             continue
         history.append(
             {
@@ -222,7 +378,7 @@ def _build_yield_history_series(
                 "nim": kpi.get("nim"),
             }
         )
-    return history
+    return _YieldHistorySeries(history, skipped_dates=skipped_dates)
 
 
 def _build_yield_scatter_points(zqtz_rows: list[dict[str, Any]], report_date: str) -> list[dict[str, object]]:
@@ -276,6 +432,7 @@ def liability_risk_buckets_payload(*, duckdb_path: str, report_date: str | None)
                 interbank_liabilities_term_buckets=[],
                 issued_liabilities_structure=[],
                 issued_liabilities_term_buckets=[],
+                missing_maturity_count=0,
             ).model_dump(mode="json"),
         )
     payload = compute_liability_risk_buckets(
@@ -283,9 +440,16 @@ def liability_risk_buckets_payload(*, duckdb_path: str, report_date: str | None)
         zqtz_rows,
         tyw_rows,
     )
+    missing_maturity_count = int(payload.get("missing_maturity_count") or 0)
     return _envelope(
         result_kind="liability_analytics.risk_buckets",
         source_rows=[*zqtz_rows, *tyw_rows],
+        quality_flag="warning" if missing_maturity_count > 0 else "ok",
+        filters_applied=(
+            {"missing_maturity_count": missing_maturity_count}
+            if missing_maturity_count > 0
+            else None
+        ),
         result_payload=LiabilityRiskBucketsPayload.model_validate(
             _promote_liability_payload(payload, LiabilityRiskBucketsPayload)
         ).model_dump(mode="json"),
@@ -293,6 +457,20 @@ def liability_risk_buckets_payload(*, duckdb_path: str, report_date: str | None)
 
 
 def liability_yield_metrics_payload(*, duckdb_path: str, report_date: str | None) -> dict[str, object]:
+    cache_key = _yield_metrics_cache_key(duckdb_path, report_date)
+    if cache_key is None:
+        return _compute_liability_yield_metrics_payload(duckdb_path=duckdb_path, report_date=report_date)
+    envelope = _YIELD_METRICS_CACHE.get_or_set(
+        cache_key,
+        lambda: _compute_liability_yield_metrics_payload(
+            duckdb_path=duckdb_path,
+            report_date=report_date,
+        ),
+    )
+    return deepcopy(envelope)
+
+
+def _compute_liability_yield_metrics_payload(*, duckdb_path: str, report_date: str | None) -> dict[str, object]:
     repo = LiabilityAnalyticsRepository(duckdb_path)
     resolved_date = _resolve_report_date(repo, report_date)
     zqtz_rows = repo.fetch_zqtz_yield_rows(resolved_date) if resolved_date else []
@@ -314,7 +492,13 @@ def liability_yield_metrics_payload(*, duckdb_path: str, report_date: str | None
         zqtz_rows,
         tyw_rows,
     )
+    kpi = payload.get("kpi")
+    if isinstance(kpi, dict):
+        kpi = dict(kpi)
+        kpi["nim_stress"] = _build_nim_stress(kpi.get("nim"))
+        payload = {**payload, "kpi": kpi}
     history_dicts = _build_yield_history_series(repo, resolved_date, max_points=72)
+    history_skipped = list(getattr(history_dicts, "skipped_dates", []) or [])
     scatter_dicts = _build_yield_scatter_points(zqtz_rows, resolved_date)
     merged: dict[str, object] = {
         **payload,
@@ -324,6 +508,15 @@ def liability_yield_metrics_payload(*, duckdb_path: str, report_date: str | None
     return _envelope(
         result_kind="liability_analytics.yield_metrics",
         source_rows=[*zqtz_rows, *tyw_rows],
+        quality_flag="warning" if history_skipped else "ok",
+        filters_applied=(
+            {
+                "history_skipped_date_count": len(history_skipped),
+                "history_skipped_dates": history_skipped,
+            }
+            if history_skipped
+            else None
+        ),
         result_payload=LiabilityYieldMetricsPayload.model_validate(
             _promote_liability_payload(merged, LiabilityYieldMetricsPayload)
         ).model_dump(mode="json"),
@@ -386,6 +579,10 @@ def liability_counterparty_payload(
             result_payload=LiabilityCounterpartyPayload(
                 report_date="",
                 total_value=0.0,
+                top10_share=None,
+                hhi=None,
+                population_count=0,
+                is_truncated=False,
                 top_10=[],
                 by_type=[],
             ).model_dump(mode="json"),

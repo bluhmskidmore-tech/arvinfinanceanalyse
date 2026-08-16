@@ -1,0 +1,51 @@
+/* AgentRepoMemoryPanel — GitNexus 仓库记忆（固定 / 最近）chip 列表 */
+
+.agent-repo-memory {
+  display: grid;
+  gap: 10px;
+}
+
+.agent-repo-memory__group {
+  display: grid;
+  gap: 8px;
+}
+
+.agent-repo-memory__title {
+  color: var(--ib-ink-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.agent-repo-memory__list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.agent-repo-memory__item {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.agent-repo-memory__path {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--ib-hairline);
+  background: var(--ib-surface);
+  color: var(--ib-ink-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.agent-repo-memory__action {
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--ib-hairline);
+  background: var(--ib-surface);
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  cursor: pointer;
+}

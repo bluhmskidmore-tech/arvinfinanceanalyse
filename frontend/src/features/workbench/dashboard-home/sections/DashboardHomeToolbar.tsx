@@ -1,17 +1,41 @@
 import { Link } from "react-router-dom";
 
 import { LightIcon } from "../../../../components/LightIcon";
-import type { HomeHeaderStatus } from "../dashboardHomeFirstScreenTypes";
+import { isAgentFrontendEnabled } from "../../../../app/navigation";
+import { HomeSearchBox } from "../HomeSearchBox";
+import type {
+  HomeDecisionAction,
+  HomeHeaderStatus,
+  HomeReportDateContext,
+  HomeTerminalKpi,
+} from "../dashboardHomeFirstScreenTypes";
+import {
+  hasReportDateDivergence,
+  reportDateContextLabel,
+  reportDateModeLabel,
+} from "../homeReportDateLabel";
 import styles from "../dashboardHomeShell.module.css";
 
+/** 常态零徽标：ok 态降为无边框点+文字；异常态保留描边琥珀胶囊。 */
 function statusPillClass(statusKind: HomeHeaderStatus["dataStatusKind"]) {
   return statusKind === "ok"
-    ? styles.dhStatusPill
-    : `${styles.dhStatusPill} ${styles.dhStatusPillWarning}`;
+    ? `${styles.dhStatusPill} ${styles.dhStatusPillQuiet}`
+    : `${styles.dhStatusPill} ${styles.dhStatusPillWarning} ${styles.dhStatusPillWarnTone}`;
 }
 
 function statusDotClass(statusKind: HomeHeaderStatus["dataStatusKind"]) {
   return `${styles.dhDot} ${statusKind === "ok" ? styles.dhDotGreen : styles.dhDotOrange}`;
+}
+
+function marketPillClass(valuationTone: HomeHeaderStatus["valuationTone"]) {
+  return valuationTone === "ok"
+    ? `${styles.dhStatusPill} ${styles.dhStatusPillQuiet}`
+    : `${styles.dhStatusPill} ${styles.dhStatusPillWarning} ${styles.dhStatusPillWarnTone}`;
+}
+
+// 强调色纪律：蓝色只用于可点击/激活态，状态点常态用绿。
+function marketDotClass(valuationTone: HomeHeaderStatus["valuationTone"]) {
+  return `${styles.dhDot} ${valuationTone === "ok" ? styles.dhDotGreen : styles.dhDotOrange}`;
 }
 
 type DashboardHomeToolbarProps = {
@@ -20,82 +44,126 @@ type DashboardHomeToolbarProps = {
   headerStatus: HomeHeaderStatus;
   reportDateInput: string;
   onReportDateChange: (value: string) => void;
+  reportDateContext: HomeReportDateContext;
   toolbarSearch: string;
   onSearchChange: (value: string) => void;
+  terminalKpis: readonly HomeTerminalKpi[];
+  decisionActions: readonly HomeDecisionAction[];
   allowPartial: boolean;
+  partialModeSupported?: boolean;
   onAllowPartialChange: (checked: boolean) => void;
   onRefresh: () => void;
   refreshLabel: string;
+  refreshAriaLabel?: string;
+  refreshing?: boolean;
+  onOpenAgentPanel?: () => void;
 };
 
 export function DashboardHomeToolbar({
-  title = "组合经营日报",
+  title = "经营日报",
   toolbarTestId = "dashboard-home-toolbar",
   headerStatus,
   reportDateInput,
   onReportDateChange,
+  reportDateContext,
   toolbarSearch,
   onSearchChange,
+  terminalKpis,
+  decisionActions,
   allowPartial,
+  partialModeSupported = false,
   onAllowPartialChange,
   onRefresh,
   refreshLabel,
+  refreshAriaLabel = "刷新首页数据",
+  refreshing = false,
+  onOpenAgentPanel,
 }: DashboardHomeToolbarProps) {
+  const showDateDivergence = hasReportDateDivergence(reportDateContext);
+  const updateStamp =
+    reportDateContext.generatedAt?.replace("T", " ").slice(0, 16) ||
+    headerStatus.dataUpdatedAt;
   return (
     <header data-testid={toolbarTestId} className={styles.dhTopbar}>
-      <div className={styles.dhTopbarLeft}>
-        <div className={styles.dhTitleBrand}>
+      <div className={styles.dhTopbarLeft} data-role="dashboard-home-toolbar-left">
+        <div className={styles.dhTitleBrand} data-role="dashboard-home-title-brand">
           <h1 className={styles.dhTitle}>{title}</h1>
         </div>
-        <span className={styles.dhDateLabel}>报告日</span>
-        <label className={styles.dhDateSelect}>
-          <LightIcon className={styles.dhDateSelectIcon} name="calendar" />
-          <input
-            aria-label="报告日"
-            type="date"
-            placeholder="2026-04-30"
-            value={reportDateInput}
-            onClick={(event) => event.currentTarget.showPicker?.()}
-            onChange={(event) => onReportDateChange(event.target.value)}
-          />
-        </label>
-        <label className={styles.dhSearch}>
-          <LightIcon className={styles.dhSearchIcon} name="search" />
-          <input
-            aria-label="搜索指标 / 报表 / 功能"
-            placeholder="检索指标、报表或入口"
-            value={toolbarSearch}
-            onChange={(event) => onSearchChange(event.target.value)}
-          />
-        </label>
+
+        <div className={styles.dhToolbarControl} data-role="dashboard-home-date-control">
+          <span className={styles.dhDateLabel} data-role="dashboard-home-date-label">报告日</span>
+          <label className={styles.dhDateSelect} data-role="dashboard-home-date-select">
+            <LightIcon className={styles.dhDateSelectIcon} name="calendar" />
+            <span
+              className={styles.dhDateSelectValue}
+              data-role="dashboard-home-date-value"
+              aria-hidden="true"
+            >
+              {reportDateInput || "----------"}
+            </span>
+            <input
+              aria-label="报告日"
+              type="date"
+              placeholder="2026-04-30"
+              value={reportDateInput}
+              onClick={(event) => event.currentTarget.showPicker?.()}
+              onChange={(event) => onReportDateChange(event.target.value)}
+            />
+          </label>
+          <span
+            data-testid="dashboard-home-report-date-context"
+            data-report-date-mode={reportDateContext.mode}
+            className={`${styles.dhDateContext} ${
+              showDateDivergence ? styles.dhDateContextDivergent : ""
+            }`}
+            title={
+              showDateDivergence || reportDateContext.mode === "mock"
+                ? reportDateContextLabel(reportDateContext)
+                : undefined
+            }
+          >
+            <i className={styles.dhDateContextDot} aria-hidden="true" />
+            {showDateDivergence || reportDateContext.mode === "mock"
+              ? reportDateContextLabel(reportDateContext)
+              : reportDateContext.actualDataDate
+                ? `数据截至 ${reportDateContext.actualDataDate}`
+                : reportDateModeLabel(reportDateContext.mode)}
+          </span>
+          <span data-role="dashboard-home-update-stamp">
+            {`更新 ${updateStamp}`}
+          </span>
+        </div>
+
       </div>
 
-      <div className={styles.dhTopbarRight}>
-        <div className={styles.dhStatusRow}>
+      <div className={styles.dhTopbarRight} data-role="dashboard-home-toolbar-right">
+        <div
+          className={`${styles.dhStatusRow} ${styles.dhStatusRowPlain}`}
+          data-role="dashboard-home-status-row"
+        >
+          {/* 更新时间全页去重：时间只保留在左侧“更新 {updateStamp}”，此处仅状态点+文案。 */}
           <span
             data-testid="dashboard-home-data-status"
             data-status-kind={headerStatus.dataStatusKind}
             className={statusPillClass(headerStatus.dataStatusKind)}
           >
-            <i
-              className={statusDotClass(headerStatus.dataStatusKind)}
-              aria-hidden="true"
-            />
-            {headerStatus.dataSyncPrefix}{" "}
-            <span className={styles.dhNum}>{headerStatus.dataUpdatedAt}</span>
+            <i className={statusDotClass(headerStatus.dataStatusKind)} aria-hidden="true" />
+            {headerStatus.dataSyncPrefix}
           </span>
-          <span className={styles.dhStatusPill}>
-            <i className={`${styles.dhDot} ${styles.dhDotOrange}`} aria-hidden="true" />
-            {headerStatus.marketStatus}
-          </span>
-          <span className={styles.dhStatusPill}>
-            <i className={`${styles.dhDot} ${styles.dhDotBlue}`} aria-hidden="true" />
-            {headerStatus.valuationLabel}
+          {/* 市场/估值两段合为一段短文案，全量语境放 title。 */}
+          <span
+            data-role="dashboard-home-market-status"
+            data-valuation-tone={headerStatus.valuationTone}
+            className={marketPillClass(headerStatus.valuationTone)}
+            title={`${headerStatus.marketStatus} · ${headerStatus.valuationLabel}`}
+          >
+            <i className={marketDotClass(headerStatus.valuationTone)} aria-hidden="true" />
+            <span>{headerStatus.valuationLabel}</span>
           </span>
           {headerStatus.showRiskReview ? (
             <Link
               to="/decision-items"
-              className={`${styles.dhStatusPill} ${styles.dhStatusPillAlert}`}
+              className={`${styles.dhStatusPill} ${styles.dhStatusPillAlert} ${styles.dhStatusPillRiskEntry}`}
             >
               <LightIcon name="warning" />
               风险待复核
@@ -103,18 +171,59 @@ export function DashboardHomeToolbar({
             </Link>
           ) : null}
         </div>
-        <label className={styles.dhPartialToggle}>
+        <label
+          className={styles.dhPartialToggle}
+          data-role="dashboard-home-partial-toggle"
+          data-mode-availability={partialModeSupported ? "available" : "blocked"}
+          title={
+            partialModeSupported
+              ? undefined
+              : "部分数据模式暂不可用：日期与空值口径待后端修正"
+          }
+        >
           <input
             type="checkbox"
-            checked={allowPartial}
-            onChange={(event) => onAllowPartialChange(event.target.checked)}
+            aria-label={partialModeSupported && allowPartial ? "显示部分数据" : "仅完整数据"}
+            checked={partialModeSupported && allowPartial}
+            disabled={!partialModeSupported}
+            onChange={(event) => {
+              if (partialModeSupported) {
+                onAllowPartialChange(event.target.checked);
+              }
+            }}
           />
-          <span>{allowPartial ? "显示部分数据" : "仅完整数据"}</span>
+          <span>{partialModeSupported && allowPartial ? "显示部分数据" : "仅完整数据"}</span>
         </label>
-        <button type="button" className={styles.dhRefreshBtn} onClick={onRefresh}>
+        <HomeSearchBox
+          value={toolbarSearch}
+          onValueChange={onSearchChange}
+          terminalKpis={terminalKpis}
+          decisionActions={decisionActions}
+          reportDate={reportDateContext.actualDataDate}
+        />
+        <button
+          type="button"
+          className={styles.dhRefreshBtn}
+          onClick={onRefresh}
+          aria-label={refreshAriaLabel}
+          aria-busy={refreshing || undefined}
+          data-refreshing={refreshing ? "true" : undefined}
+        >
           <LightIcon name="reload" />
-          {refreshLabel}
+          <span className={styles.dhRefreshLabel}>{refreshLabel}</span>
         </button>
+        {onOpenAgentPanel && isAgentFrontendEnabled() ? (
+          <button
+            type="button"
+            className={styles.dhAgentEntryBtn}
+            data-testid="dashboard-home-agent-open"
+            onClick={onOpenAgentPanel}
+            aria-label="打开财顾助手"
+          >
+            <LightIcon name="file-search" />
+            <span className={styles.dhRefreshLabel}>财顾助手</span>
+          </button>
+        ) : null}
       </div>
     </header>
   );

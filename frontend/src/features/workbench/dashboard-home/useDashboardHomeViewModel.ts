@@ -3,8 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 
 import { apiQueryKeys } from "../../../api/queryKeys";
 import { todayIsoDate } from "../pages/dashboardPageHelpers";
+import { DASHBOARD_HOME_CONTENT_REFETCH_INTERVAL_MS } from "../dashboard/dashboardMacroNewsTopics";
 import { mapToHomeBodyView } from "./dashboardHomeBodyView";
 import { useDashboardHomeBodyData } from "./useDashboardHomeBodyData";
+import { useDashboardHomeMacroReleaseContextQuery } from "./useDashboardHomeMacroReleaseContextQuery";
 import type { DashboardHomeSnapshotBoundary } from "./useDashboardHomeFirstScreenViewModel";
 
 type IdleWindow = Window & {
@@ -12,24 +14,32 @@ type IdleWindow = Window & {
   cancelIdleCallback?: (handle: number) => void;
 };
 
-const BODY_DETAIL_IDLE_MIN_DELAY_MS = 1_000;
-const BODY_DETAIL_IDLE_TIMEOUT_MS = 1_200;
-const BODY_DETAIL_TIMEOUT_FALLBACK_MS = 900;
-const BODY_STRUCTURE_IDLE_MIN_DELAY_MS = 1_000;
-const BODY_STRUCTURE_IDLE_TIMEOUT_MS = 1_200;
-const BODY_STRUCTURE_TIMEOUT_FALLBACK_MS = 900;
-const EVENT_FEED_IDLE_MIN_DELAY_MS = 1_000;
-const EVENT_FEED_IDLE_TIMEOUT_MS = 1_200;
-const EVENT_FEED_TIMEOUT_FALLBACK_MS = 900;
-const SECONDARY_EVENT_FEED_IDLE_MIN_DELAY_MS = 1_000;
-const SECONDARY_EVENT_FEED_IDLE_TIMEOUT_MS = 1_200;
-const SECONDARY_EVENT_FEED_TIMEOUT_FALLBACK_MS = 900;
-const BOND_NEWS_FEED_IDLE_MIN_DELAY_MS = 1_000;
-const BOND_NEWS_FEED_IDLE_TIMEOUT_MS = 1_200;
-const BOND_NEWS_FEED_TIMEOUT_FALLBACK_MS = 900;
-const FORMAL_CONTEXT_IDLE_MIN_DELAY_MS = 1_000;
-const FORMAL_CONTEXT_IDLE_TIMEOUT_MS = 1_200;
-const FORMAL_CONTEXT_TIMEOUT_FALLBACK_MS = 900;
+// Each body tier still gates its requests behind the snapshot's supplemental
+// report date (so first-screen paint keeps priority), but the per-tier delay
+// is kept small: these tiers chain (body detail -> body structure, and event
+// feed -> secondary event feed -> bond news feed), and the previous 1000ms-per
+// -tier values compounded into multi-second waits before body content (and
+// especially bond news) appeared. 150ms still yields a tick to the browser
+// between tiers without stacking into a multi-second perceived load time.
+const BODY_DETAIL_IDLE_MIN_DELAY_MS = 150;
+const BODY_DETAIL_IDLE_TIMEOUT_MS = 250;
+const BODY_DETAIL_TIMEOUT_FALLBACK_MS = 200;
+const BODY_STRUCTURE_IDLE_MIN_DELAY_MS = 150;
+const BODY_STRUCTURE_IDLE_TIMEOUT_MS = 250;
+const BODY_STRUCTURE_TIMEOUT_FALLBACK_MS = 200;
+const EVENT_FEED_IDLE_MIN_DELAY_MS = 150;
+const EVENT_FEED_IDLE_TIMEOUT_MS = 250;
+const EVENT_FEED_TIMEOUT_FALLBACK_MS = 200;
+const SECONDARY_EVENT_FEED_IDLE_MIN_DELAY_MS = 150;
+const SECONDARY_EVENT_FEED_IDLE_TIMEOUT_MS = 250;
+const SECONDARY_EVENT_FEED_TIMEOUT_FALLBACK_MS = 200;
+const BOND_NEWS_FEED_IDLE_MIN_DELAY_MS = 150;
+const BOND_NEWS_FEED_IDLE_TIMEOUT_MS = 250;
+const BOND_NEWS_FEED_TIMEOUT_FALLBACK_MS = 200;
+const FORMAL_CONTEXT_IDLE_MIN_DELAY_MS = 150;
+const FORMAL_CONTEXT_IDLE_TIMEOUT_MS = 250;
+const FORMAL_CONTEXT_TIMEOUT_FALLBACK_MS = 200;
+const HOME_TOP_HOLDINGS_FETCH_LIMIT = 14;
 
 function useDeferredReportDateGate(
   reportDate: string | undefined,
@@ -147,26 +157,21 @@ export function useDashboardHomeViewModel(
   snapshotBoundary: DashboardHomeSnapshotBoundary,
   options: { eagerEventFeeds?: boolean } = {},
 ) {
-  const [supplementalDataReportDate, setSupplementalDataReportDate] = useState<string | null>(null);
-
   const {
     dataClient,
     snapshotQuery,
-    isLiveDataFallback,
     adapterOutput,
     snapshotResult,
     initialEffectiveReportDate,
     supplementalReportDate,
   } = snapshotBoundary;
 
-  const useMockFallback = dataClient.mode !== "real" || isLiveDataFallback;
+  // real 模式不允许任何 mock UI 可达路径：useMockFallback 只看数据源模式，
+  // 不再挂接 isLiveDataFallback 之类的运行时回退信号。
+  const useMockFallback = dataClient.mode !== "real";
   const snapshotReportDate = snapshotResult?.report_date?.trim() || "";
   const hasSupplementalReportDate = Boolean(supplementalReportDate);
-  const hasDeferredSupplementalData =
-    hasSupplementalReportDate &&
-    supplementalDataReportDate === supplementalReportDate;
-  const hasDeferredSupplementalReportDate =
-    hasDeferredSupplementalData && hasSupplementalReportDate;
+  const hasDeferredSupplementalReportDate = hasSupplementalReportDate;
   const hasBodyDetailData = useBodyDetailDataGate(
     hasDeferredSupplementalReportDate ? supplementalReportDate : undefined,
   );
@@ -187,10 +192,13 @@ export function useDashboardHomeViewModel(
       : undefined,
   );
   const secondaryEventFeedsReady = hasSecondaryEventFeedData;
-  const shouldLoadBondNewsGate =
-    hasDeferredSupplementalReportDate &&
-    eventFeedsReady &&
-    secondaryEventFeedsReady;
+  // Bond news no longer waits on the macro-fallback tier: the fallback decision
+  // (secondaryEventFeedsReady) is a sibling concern, not a prerequisite for the
+  // bond news probe, so gating bond news on it only stacked an extra idle-gate
+  // tier onto the chain without any data dependency backing it. Running the
+  // macro and bond news probe chains off the same event-feed tier lets them
+  // fire in parallel instead of serially.
+  const shouldLoadBondNewsGate = hasDeferredSupplementalReportDate && eventFeedsReady;
   const hasBondNewsFeedData = useBondNewsFeedDataGate(
     shouldLoadBondNewsGate ? supplementalReportDate : undefined,
   );
@@ -203,15 +211,7 @@ export function useDashboardHomeViewModel(
     hasFormalContextData &&
     Boolean(supplementalReportDate);
   const hasDeferredFormalContext = hasDeferredIncomeTrendData;
-
-  useEffect(() => {
-    setSupplementalDataReportDate(null);
-    if (!supplementalReportDate) {
-      return;
-    }
-
-    setSupplementalDataReportDate(supplementalReportDate);
-  }, [supplementalReportDate]);
+  const dashboardTodayIsoDate = useMemo(() => todayIsoDate(), []);
 
   const {
     marketRatesQuery,
@@ -228,7 +228,7 @@ export function useDashboardHomeViewModel(
   } = useDashboardHomeBodyData({
     dataClient,
     supplementalReportDate,
-    loadBasicData: hasDeferredSupplementalData,
+    loadBasicData: hasDeferredSupplementalReportDate,
     loadEventFeeds: hasDeferredSupplementalReportDate && eventFeedsReady,
     loadSecondaryEventFeeds:
       hasDeferredSupplementalReportDate &&
@@ -237,7 +237,6 @@ export function useDashboardHomeViewModel(
     loadBondNewsFeeds:
       hasDeferredSupplementalReportDate &&
       eventFeedsReady &&
-      secondaryEventFeedsReady &&
       bondNewsFeedsReady,
     loadFormalData: hasDeferredFormalContext,
   });
@@ -247,12 +246,12 @@ export function useDashboardHomeViewModel(
     queryFn: () => dataClient.getBondDashboardHomeSummary(supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
-    enabled: hasDeferredSupplementalReportDate && hasBodyDetailData && hasBodyStructureData,
+    enabled: hasDeferredSupplementalReportDate,
   });
 
   const topHoldingsQuery = useQuery({
-    queryKey: apiQueryKeys.bondAnalyticsTopHoldings(dataClient.mode, supplementalReportDate, 8),
-    queryFn: () => dataClient.getBondAnalyticsTopHoldings(supplementalReportDate ?? "", 8),
+    queryKey: apiQueryKeys.bondAnalyticsTopHoldings(dataClient.mode, supplementalReportDate, HOME_TOP_HOLDINGS_FETCH_LIMIT),
+    queryFn: () => dataClient.getBondAnalyticsTopHoldings(supplementalReportDate ?? "", HOME_TOP_HOLDINGS_FETCH_LIMIT),
     retry: false,
     staleTime: 60_000,
     enabled: hasDeferredSupplementalReportDate && hasBodyDetailData && hasBodyStructureData,
@@ -267,22 +266,73 @@ export function useDashboardHomeViewModel(
   });
 
   const researchReportsQuery = useQuery({
-    queryKey: apiQueryKeys.homeResearchReports(dataClient.mode, supplementalReportDate, 5),
-    queryFn: () => dataClient.getHomeResearchReports(supplementalReportDate ?? "", 5),
+    queryKey: apiQueryKeys.homeResearchReports(dataClient.mode, dashboardTodayIsoDate, 5),
+    queryFn: () => dataClient.getHomeResearchReports(dashboardTodayIsoDate, 5),
     retry: false,
     staleTime: 60_000,
+    refetchInterval: DASHBOARD_HOME_CONTENT_REFETCH_INTERVAL_MS,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
     enabled: hasDeferredSupplementalReportDate && hasBodyDetailData && hasBodyStructureData,
   });
 
   const incomeTrendQuery = useQuery({
     queryKey: apiQueryKeys.homeIncomeTrend(dataClient.mode, supplementalReportDate, 7),
     queryFn: () => dataClient.getHomeIncomeTrend(supplementalReportDate ?? "", 7),
-    retry: false,
+    // 首页最晚发起的延迟查询，最容易撞上后端重启/代理瞬断窗口；
+    // 两次指数退避重试吸收瞬态失败，持续失败仍诚实落错误态。
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1_000 * 2 ** attempt, 8_000),
+    refetchOnWindowFocus: true,
     staleTime: 60_000,
     enabled: hasDeferredIncomeTrendData,
   });
 
-  const dashboardTodayIsoDate = useMemo(() => todayIsoDate(), []);
+  const krdCurveRiskQuery = useQuery({
+    queryKey: apiQueryKeys.bondAnalyticsKrdCurveRisk(dataClient.mode, supplementalReportDate),
+    queryFn: () => dataClient.getBondAnalyticsKrdCurveRisk(supplementalReportDate ?? ""),
+    retry: false,
+    staleTime: 60_000,
+    enabled: hasDeferredSupplementalReportDate && hasBodyDetailData && hasBodyStructureData,
+  });
+
+  // 待复核事项走余额分析域：日期取该域最新报告日，与债券报告日分属两个口径。
+  const decisionItemsGateOpen =
+    hasDeferredSupplementalReportDate && hasBodyDetailData && hasBodyStructureData;
+  const balanceDatesQuery = useQuery({
+    queryKey: apiQueryKeys.balanceAnalysisDates(dataClient.mode),
+    queryFn: () => dataClient.getBalanceAnalysisDates(),
+    retry: false,
+    staleTime: 60_000,
+    enabled: decisionItemsGateOpen,
+  });
+  const latestBalanceReportDate = useMemo(() => {
+    const dates = balanceDatesQuery.data?.result?.report_dates ?? [];
+    return dates.length > 0 ? [...dates].sort((a, b) => a.localeCompare(b)).at(-1) ?? null : null;
+  }, [balanceDatesQuery.data?.result?.report_dates]);
+  const decisionItemsQuery = useQuery({
+    queryKey: apiQueryKeys.balanceAnalysisDecisionItems(
+      dataClient.mode,
+      latestBalanceReportDate,
+      "all",
+      "CNY",
+    ),
+    queryFn: () =>
+      dataClient.getBalanceAnalysisDecisionItems({
+        reportDate: latestBalanceReportDate ?? "",
+        positionScope: "all",
+        currencyBasis: "CNY",
+      }),
+    retry: false,
+    staleTime: 60_000,
+    enabled: decisionItemsGateOpen && Boolean(latestBalanceReportDate),
+  });
+
+  const { macroReleaseContextQuery } = useDashboardHomeMacroReleaseContextQuery({
+    dataClient,
+    enabled: hasDeferredSupplementalReportDate,
+  });
+
   const macroNewsEvents = useMemo(
     () => macroNewsQueries.flatMap((query) => query.data?.result.events ?? []),
     [macroNewsQueries],
@@ -298,6 +348,17 @@ export function useDashboardHomeViewModel(
     ],
     [bondNewsQueries, macroNewsFallbackEvents],
   );
+  const bondNewsPayloads = useMemo(
+    () => [
+      ...macroNewsFallbackQueries.flatMap((query) =>
+        query.data?.result ? [query.data.result] : [],
+      ),
+      ...bondNewsQueries.flatMap((query) =>
+        query.data?.result ? [query.data.result] : [],
+      ),
+    ],
+    [bondNewsQueries, macroNewsFallbackQueries],
+  );
   const macroNewsLoading =
     macroNewsQueries.some((query) => query.isLoading) ||
     macroNewsFallbackQueries.some((query) => query.isLoading);
@@ -307,13 +368,13 @@ export function useDashboardHomeViewModel(
     macroNewsQueries.every((query) => query.isError) &&
     macroNewsFallbackQueries.every((query) => query.isError);
 
-  const effectiveReportDate =
-    snapshotReportDate || initialEffectiveReportDate;
+  const effectiveReportDate = snapshotReportDate || initialEffectiveReportDate;
   const view = useMemo(
     () =>
       mapToHomeBodyView({
         reportDate: effectiveReportDate,
         useMockFallback,
+        overviewMetrics: adapterOutput.overview?.vm?.metrics ?? null,
         attribution: adapterOutput.attribution.vm,
         creditSpreadMigration: creditSpreadMigrationQuery.data?.result ?? null,
         returnDecomposition: returnDecompositionQuery.data?.result ?? null,
@@ -324,6 +385,16 @@ export function useDashboardHomeViewModel(
         ratingStructure: homeSummaryQuery.data?.result.asset_rating ?? null,
         maturityStructure: homeSummaryQuery.data?.result.maturity ?? null,
         industryDistribution: homeSummaryQuery.data?.result.industry ?? null,
+        homeSummaryMeta: homeSummaryQuery.data?.result_meta ?? null,
+        homeSummaryLoading:
+          hasDeferredSupplementalReportDate &&
+          !homeSummaryQuery.data &&
+          !homeSummaryQuery.isError,
+        homeSummaryError: homeSummaryQuery.isError,
+        yieldDistribution: homeSummaryQuery.data?.result.yield_distribution ?? null,
+        portfolioComparison: homeSummaryQuery.data?.result.portfolio_comparison ?? null,
+        spreadAnalysis: homeSummaryQuery.data?.result.spread ?? null,
+        businessType: homeSummaryQuery.data?.result.business_type ?? null,
         riskIndicators: homeSummaryQuery.data?.result.risk ?? null,
         topHoldings: topHoldingsQuery.data?.result ?? null,
         topHoldingsLoading: topHoldingsQuery.isLoading,
@@ -337,6 +408,14 @@ export function useDashboardHomeViewModel(
         incomeTrend: incomeTrendQuery.data?.result ?? null,
         incomeTrendLoading: incomeTrendQuery.isLoading,
         incomeTrendError: incomeTrendQuery.isError,
+        krdCurveRisk: krdCurveRiskQuery.data?.result ?? null,
+        krdLoading: krdCurveRiskQuery.isLoading,
+        krdError: krdCurveRiskQuery.isError,
+        decisionItems: decisionItemsQuery.data?.result ?? null,
+        decisionItemsLoading:
+          balanceDatesQuery.isLoading || decisionItemsQuery.isLoading,
+        decisionItemsError:
+          balanceDatesQuery.isError || decisionItemsQuery.isError,
         calendarEvents: researchCalendarQuery.data ?? null,
         calendarLoading: researchCalendarQuery.isLoading,
         calendarError: researchCalendarQuery.isError,
@@ -346,22 +425,27 @@ export function useDashboardHomeViewModel(
         macroNewsEvents,
         macroNewsFallbackEvents,
         bondNewsEvents,
+        bondNewsPayloads,
         macroNewsLoading,
         macroNewsError,
+        macroReleaseContext: macroReleaseContextQuery.data?.result ?? null,
+        macroReleaseContextLoading:
+          hasDeferredSupplementalReportDate && !macroReleaseContextQuery.data && !macroReleaseContextQuery.isError,
+        macroReleaseContextError: macroReleaseContextQuery.isError,
       }),
     [
       adapterOutput.attribution.vm,
+      adapterOutput.overview?.vm?.metrics,
       bondNewsEvents,
+      bondNewsPayloads,
       creditSpreadMigrationQuery.data?.result,
       effectiveReportDate,
       marketRatesQuery.data?.result.series,
       returnDecompositionQuery.data?.result,
       campisiFourEffectsQuery.data?.result,
-      homeSummaryQuery.data?.result.asset_type,
-      homeSummaryQuery.data?.result.asset_rating,
-      homeSummaryQuery.data?.result.maturity,
-      homeSummaryQuery.data?.result.industry,
-      homeSummaryQuery.data?.result.risk,
+      hasDeferredSupplementalReportDate,
+      homeSummaryQuery.data,
+      homeSummaryQuery.isError,
       topHoldingsQuery.data?.result,
       topHoldingsQuery.isLoading,
       topHoldingsQuery.isError,
@@ -374,6 +458,14 @@ export function useDashboardHomeViewModel(
       incomeTrendQuery.data?.result,
       incomeTrendQuery.isLoading,
       incomeTrendQuery.isError,
+      krdCurveRiskQuery.data?.result,
+      krdCurveRiskQuery.isLoading,
+      krdCurveRiskQuery.isError,
+      balanceDatesQuery.isLoading,
+      balanceDatesQuery.isError,
+      decisionItemsQuery.data?.result,
+      decisionItemsQuery.isLoading,
+      decisionItemsQuery.isError,
       yieldCurveTermStructureQuery.data?.result,
       calendarEndDate,
       calendarStartDate,
@@ -382,6 +474,8 @@ export function useDashboardHomeViewModel(
       macroNewsEvents,
       macroNewsFallbackEvents,
       macroNewsLoading,
+      macroReleaseContextQuery.data,
+      macroReleaseContextQuery.isError,
       researchCalendarQuery.data,
       researchCalendarQuery.isError,
       researchCalendarQuery.isLoading,

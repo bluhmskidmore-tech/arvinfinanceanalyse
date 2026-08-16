@@ -1,4 +1,5 @@
 import type { AgentPageContext } from "../../../api/contracts";
+import type { StockDetailSource } from "./stockAnalysisDetailSelection";
 import type { StockSectorViewKind } from "./stockAnalysisPageModel";
 
 export const STOCK_ANALYSIS_AGENT_CONTEXT_NOTE = "stock-analysis workbench observation context";
@@ -17,7 +18,7 @@ export type BuildStockAnalysisAgentPageContextInput = {
     reviewRank?: number;
     sectorCode?: string;
     sectorName?: string;
-    source?: "review_queue" | "risk_exit" | "mean_reversion" | "factor_screen" | "hybrid_fusion" | "consensus";
+    source?: StockDetailSource;
     livermoreRank?: number | null;
     meanReversionRank?: number | null;
     factorScreenRank?: number | null;
@@ -40,6 +41,10 @@ export function buildStockAnalysisAgentPageContext(
   };
   if (input.asOfDate != null && String(input.asOfDate).trim() !== "") {
     current_filters.as_of_date = input.asOfDate;
+    // 后端 _requested_report_date 只识别 report_date/date 键（读 page_context.current_filters）；
+    // 与其他页面对齐注入 report_date，否则页面日期会被后端静默忽略。
+    // as_of_date 保留用于观察面 echo 兼容。
+    current_filters.report_date = input.asOfDate;
   }
   if (
     input.requestedAsOfDate != null &&

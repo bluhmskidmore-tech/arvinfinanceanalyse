@@ -1,6 +1,7 @@
 import type { ResultMeta } from "../../api/contracts";
 import { designTokens as dt } from "../../theme/designSystem";
 import { shellTokens as t } from "../../theme/tokens";
+import { EM_DASH } from "../../utils/format";
 import "./FormalResultMetaPanel.css";
 
 type FormalResultMetaSection = {
@@ -18,17 +19,18 @@ type FormalResultMetaPanelProps = {
   sections: FormalResultMetaSection[];
 };
 
-const missingAsOfDateLabel = "未提供";
+/* 缺值占位统一 EM_DASH（§6）；「后端未提供」的语义差异收进 title。 */
+const missingAsOfDateTitle = "后端未提供数据截至日";
 
 function formatValue(value: unknown): string {
   if (value === null || value === undefined || value === "") {
-    return "—";
+    return EM_DASH;
   }
   if (typeof value === "boolean") {
     return value ? "是" : "否";
   }
   if (Array.isArray(value)) {
-    return value.length > 0 ? value.map(formatValue).join(", ") : "—";
+    return value.length > 0 ? value.map(formatValue).join(", ") : EM_DASH;
   }
   if (typeof value === "object") {
     return JSON.stringify(value);
@@ -36,11 +38,8 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
-function formatAsOfDate(value: ResultMeta["as_of_date"]): string {
-  if (value === null || value === undefined || value === "") {
-    return missingAsOfDateLabel;
-  }
-  return formatValue(value);
+function isMissingAsOfDate(value: ResultMeta["as_of_date"]): boolean {
+  return value === null || value === undefined || value === "";
 }
 
 function formatMetaField(key: string, value: unknown): string {
@@ -109,55 +108,92 @@ function hasEvidence(meta: ResultMeta) {
   );
 }
 
-function badgeTone(
-  kind: "vendor_status" | "fallback_mode",
-  value: string | undefined,
-) {
-  if (kind === "vendor_status") {
-    if (value === "vendor_stale") {
-      return {
-        background: t.colorBgWarningSoft,
-        color: t.colorTextWarning,
-        borderColor: t.colorBorderWarning,
-      };
-    }
-    if (value === "vendor_unavailable") {
-      return {
-        background: t.colorBgDangerSoft,
-        color: dt.color.danger[700],
-        borderColor: dt.color.danger[200],
-      };
-    }
-  }
-  if (kind === "fallback_mode" && value === "latest_snapshot") {
-    return {
-      background: t.colorBgWarningSoft,
-      color: t.colorTextWarning,
-      borderColor: t.colorBorderWarning,
-    };
-  }
+/**
+ * 徽章色经 CSS 变量出口（回退值 = 原浅色字面量，浅色页面零变化），
+ * 深色页面可在自身 scope 内重定义 --formal-meta-badge-* 完成换肤。
+ */
+const badgeToneFallbacks = {
+  ok: {
+    bg: t.colorBgSuccessSoft,
+    ink: dt.color.success[700],
+    line: dt.color.success[200],
+  },
+  warn: {
+    bg: t.colorBgWarningSoft,
+    ink: t.colorTextWarning,
+    line: t.colorBorderWarning,
+  },
+  danger: {
+    bg: t.colorBgDangerSoft,
+    ink: dt.color.danger[700],
+    line: dt.color.danger[200],
+  },
+} as const;
+
+function toneStyle(tone: keyof typeof badgeToneFallbacks) {
+  const fallback = badgeToneFallbacks[tone];
   return {
-    background: t.colorBgSuccessSoft,
-    color: dt.color.success[700],
-    borderColor: dt.color.success[200],
+    background: `var(--formal-meta-badge-${tone}-bg, ${fallback.bg})`,
+    color: `var(--formal-meta-badge-${tone}-ink, ${fallback.ink})`,
+    borderColor: `var(--formal-meta-badge-${tone}-line, ${fallback.line})`,
   };
 }
 
+type BadgeToneKey = keyof typeof badgeToneFallbacks;
+
+function qualityFlagToneKey(value: string | undefined): BadgeToneKey {
+  if (value === "warning" || value === "stale") {
+    return "warn";
+  }
+  if (value === "error" || value === "missing") {
+    return "danger";
+  }
+  return "ok";
+}
+
+function vendorStatusToneKey(value: string | undefined): BadgeToneKey {
+  if (value === "vendor_stale") {
+    return "warn";
+  }
+  if (value === "vendor_unavailable") {
+    return "danger";
+  }
+  return "ok";
+}
+
+function fallbackModeToneKey(value: string | undefined): BadgeToneKey {
+  return value === "latest_snapshot" ? "warn" : "ok";
+}
+
+/**
+ * 卡头徽标三枚位：质量标记 / 供应商状态 / 降级模式。质量位补齐后，
+ * quality_flag=warning 不再出现「卡头全绿、卡内质量行预警」的矛盾。
+ */
 function buildBadges(section: FormalResultMetaSection) {
   const meta = section.meta;
+  const qualityFlag = meta?.quality_flag;
   const vendorStatus = section.vendor_status ?? meta?.vendor_status;
   const fallbackMode = section.fallback_mode ?? meta?.fallback_mode;
 
   return [
     {
+      key: "quality_flag",
+      value: qualityFlag,
+      tone: qualityFlagToneKey(qualityFlag),
+      label: `质量${formatMetaField("quality_flag", qualityFlag)}`,
+      title: `质量标记：${formatMetaField("quality_flag", qualityFlag)}`,
+    },
+    {
       key: "vendor_status",
       value: vendorStatus,
+      tone: vendorStatusToneKey(vendorStatus),
       label: formatMetaField("vendor_status", vendorStatus),
       title: `供应商状态：${formatMetaField("vendor_status", vendorStatus)}`,
     },
     {
       key: "fallback_mode",
       value: fallbackMode,
+      tone: fallbackModeToneKey(fallbackMode),
       label: formatMetaField("fallback_mode", fallbackMode),
       title: `降级模式：${formatMetaField("fallback_mode", fallbackMode)}`,
     },
@@ -200,22 +236,16 @@ export function FormalResultMetaPanel({
                   <div className="formal-result-meta-panel__heading">{section.title}</div>
                   {badges.length > 0 ? (
                     <div className="formal-result-meta-panel__badge-row">
-                      {badges.map((badge) => {
-                        const tone = badgeTone(
-                          badge.key as "vendor_status" | "fallback_mode",
-                          badge.value,
-                        );
-                        return (
-                          <span
-                            key={badge.key}
-                            title={badge.title}
-                            className="formal-result-meta-panel__badge"
-                            style={tone}
-                          >
-                            {badge.label}
-                          </span>
-                        );
-                      })}
+                      {badges.map((badge) => (
+                        <span
+                          key={badge.key}
+                          title={badge.title}
+                          className="formal-result-meta-panel__badge"
+                          style={toneStyle(badge.tone)}
+                        >
+                          {badge.label}
+                        </span>
+                      ))}
                     </div>
                   ) : null}
                 </div>
@@ -255,7 +285,12 @@ export function FormalResultMetaPanel({
                   <dt>{metaLabelMap.resolved_report_date}</dt>
                   <dd className="formal-result-meta-panel__value">{formatValue(meta.resolved_report_date)}</dd>
                   <dt>{metaLabelMap.as_of_date}</dt>
-                  <dd className="formal-result-meta-panel__value">{formatAsOfDate(meta.as_of_date)}</dd>
+                  <dd
+                    className="formal-result-meta-panel__value"
+                    title={isMissingAsOfDate(meta.as_of_date) ? missingAsOfDateTitle : undefined}
+                  >
+                    {formatValue(meta.as_of_date)}
+                  </dd>
                   <dt>{metaLabelMap.date_basis}</dt>
                   <dd className="formal-result-meta-panel__value">{formatValue(meta.date_basis)}</dd>
                   <dt>{metaLabelMap.fallback_date}</dt>

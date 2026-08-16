@@ -1,5 +1,6 @@
 import type { ResearchCalendarEvent } from "../../../../api/contracts";
 
+import { EM_DASH } from "../../../../utils/format";
 export type HomeResearchCalendarItem = {
   id: string;
   date: string;
@@ -44,7 +45,7 @@ function mapEvent(event: ResearchCalendarEvent): HomeResearchCalendarItem {
     title: event.title,
     kindLabel: KIND_LABEL[event.kind] ?? event.kind,
     severity: event.severity,
-    amountLabel: event.amount_label?.trim() || "—",
+    amountLabel: event.amount_label?.trim() || EM_DASH,
   };
 }
 

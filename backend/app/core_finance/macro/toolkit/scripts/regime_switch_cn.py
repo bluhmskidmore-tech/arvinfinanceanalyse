@@ -1,9 +1,21 @@
 """
 市场状态转换模型
 ================
-识别市场所处状态：趋势市 / 震荡市 / 高波动市
-使用指标：滚动波动率、收益率自相关、ADX 近似、Hurst 指数
-根据状态输出策略建议（趋势跟踪 / 均值回归 / 防御）
+识别市场所处状态并输出策略建议（趋势跟踪 / 均值回归 / 防御），仅观察口径。
+
+尽调笔记的原始定义为二分状态：
+- 震荡市：波动率 < 历史均值，自相关 < 0 → 均值回归（笔记另提卖权策略，未纳入）
+- 趋势市：波动率 > 历史均值，自相关 > 0 → 动量跟踪、突破策略
+
+本实现为笔记口径的工程化扩展（差异均为刻意设计，详见 classify_regime）：
+- 状态机扩展为：高波动 / 趋势市 / 震荡市 / 弱趋势 / 弱震荡 / 未知（样本不足），
+  判定优先级：高波动 > 趋势市 > 震荡市 > 弱趋势/弱震荡。
+- 波动率维度改用"扩展窗口 75 分位"单侧判定：高波动天优先归入防御态（风险优先），
+  趋势/震荡分支不再使用波动率条件（与笔记"趋势市波动率>历史均值"不同）。
+- 自相关加 ±0.10 中性带以降低噪声翻转；中性带内退化为 弱趋势/弱震荡。
+- Hurst 指数（R/S 分析）为笔记未提及的实现扩展，作趋势/均值回归的第二确认指标。
+- 笔记识别方法列有 波动率突破 / ADX / HMM 三种：本实现使用波动率阈值+自相关+Hurst；
+  ADX 仅近似计算供参考（不参与状态判定、不输出），HMM 未实现。
 
 资产池: 沪深300、中证500、黄金、铜、原油
 数据源: akshare（不依赖 Wind）
@@ -13,24 +25,38 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
+import importlib.util
 import sys
 
-import akshare as ak
-import matplotlib
 import numpy as np
 import pandas as pd
 
-matplotlib.use("Agg")
+if __package__:
+    from backend.app.core_finance.macro.toolkit import akshare as ak
+else:
+    import akshare as ak
+
+if importlib.util.find_spec("matplotlib") is None:
+    matplotlib = None
+    mdates = None
+    plt = None
+else:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.dates as mdates
+    import matplotlib.pyplot as plt
+
 from datetime import datetime
 from pathlib import Path
 
-import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
-
-_PKG = Path(__file__).resolve().parent.parent
-if str(_PKG) not in sys.path:
-    sys.path.insert(0, str(_PKG))
-from paths import ASSET_DIR, OUTPUT_DIR
+if __package__:
+    from backend.app.core_finance.macro.toolkit.paths import ASSET_DIR, OUTPUT_DIR
+else:
+    _PKG = Path(__file__).resolve().parent.parent
+    if str(_PKG) not in sys.path:
+        sys.path.insert(0, str(_PKG))
+    from paths import ASSET_DIR, OUTPUT_DIR
 
 ROOT = OUTPUT_DIR
 
@@ -57,7 +83,6 @@ ASSET_LABELS = {
 
 # 状态判断阈值
 VOL_HIGH_PCTILE  = 75   # 波动率高于历史 75 分位 → 高波动
-VOL_LOW_PCTILE   = 40   # 波动率低于历史 40 分位 → 低波动
 AUTOCORR_TREND   = 0.10  # 自相关 > 0.10 → 趋势
 AUTOCORR_MEAN_REV = -0.10  # 自相关 < -0.10 → 均值回归
 HURST_TREND      = 0.55  # Hurst > 0.55 → 趋势持续
@@ -140,7 +165,7 @@ def rolling_autocorr(ret: pd.Series, window: int = 20, lag: int = 1) -> pd.Serie
 
 def hurst_exponent(ts: np.ndarray) -> float:
     """
-    R/S 分析估计 Hurst 指数
+    R/S 分析估计 Hurst 指数（尽调笔记未提及，为实现扩展的第二确认指标）
     H > 0.5: 趋势持续（动量）
     H < 0.5: 均值回归
     H ≈ 0.5: 随机游走
@@ -189,8 +214,10 @@ def rolling_hurst(ret: pd.Series, window: int = 60) -> pd.Series:
 
 def adx_approx(price: pd.Series, window: int = 14) -> pd.Series:
     """
-    ADX 近似（仅用收盘价）
-    用绝对收益率的平滑均值 / 波动率 近似趋势强度
+    ADX 近似（仅用收盘价，非标准 DMI 口径）
+    用绝对收益率的平滑均值 / 波动率 近似趋势强度。
+    对应笔记识别方法 2 的近似替代：仅随指标序列计算供参考，
+    不参与状态判定，也不进入 CSV 输出。
     """
     ret = price.pct_change().abs()
     smooth_ret = ret.rolling(window).mean()
@@ -205,17 +232,23 @@ def adx_approx(price: pd.Series, window: int = 14) -> pd.Series:
 
 def classify_regime(
     vol: float,
-    vol_low: float,
     vol_high: float,
     autocorr: float,
     hurst: float,
 ) -> str:
     """
-    三状态分类：
-    - 高波动市: 波动率 > 历史 75 分位
-    - 趋势市:   低波动 + 正自相关 + Hurst > 0.55
-    - 震荡市:   低波动 + 负自相关 or Hurst < 0.45
-    - 中性:     其他
+    状态判定（按优先级自上而下，先命中先返回）：
+    1. 高波动: vol > 截至当日扩展窗口 75 分位 → 防御，优先于趋势/震荡判定
+    2. 趋势市: autocorr > +0.10 且 Hurst > 0.55（双指标确认）
+    3. 震荡市: autocorr < -0.10 或 Hurst < 0.45（单指标即触发）
+    4. 弱趋势 / 弱震荡: 自相关落在 ±0.10 中性带内，按符号细分
+    任一输入为 NaN → "未知"。
+
+    与尽调笔记二分定义的差异（刻意扩展）：
+    - 笔记趋势市要求"波动率>历史均值"；这里高波动天先归防御态，
+      趋势/震荡分支不再使用波动率条件。
+    - 笔记自相关以 0 为界；这里加 ±0.10 中性带降低噪声翻转。
+    - Hurst 为笔记外新增的第二确认指标。
     """
     if np.isnan(vol) or np.isnan(autocorr) or np.isnan(hurst):
         return "未知"
@@ -235,8 +268,10 @@ def classify_regime(
     return "弱震荡"
 
 
+# 策略映射（对应笔记：震荡市→均值回归、卖权策略；趋势市→动量跟踪、突破策略。
+# 卖权策略因工具可得性未纳入；趋势跟踪不区分多空方向，顺趋势方向执行）
 REGIME_STRATEGY = {
-    "趋势市":  "趋势跟踪（CTA 多头）",
+    "趋势市":  "趋势跟踪（动量/突破）",
     "弱趋势":  "轻仓趋势跟踪",
     "震荡市":  "均值回归（高抛低吸）",
     "弱震荡":  "轻仓均值回归",
@@ -263,16 +298,20 @@ def compute_regime(price: pd.Series, vol_window=20, autocorr_window=20, hurst_wi
     hurst = rolling_hurst(ret, hurst_window)
     adx = adx_approx(price)
 
-    # 历史分位数（用于波动率阈值）
-    vol_low_thresh  = vol.quantile(VOL_LOW_PCTILE / 100)
-    vol_high_thresh = vol.quantile(VOL_HIGH_PCTILE / 100)
+    # 历史分位数（用于波动率阈值）：改为扩展窗口（仅用截至当日的历史数据），
+    # 避免用全样本（含未来数据）分位数对历史时点做前视分类。
+    # min_periods 之前样本不足，标记为「未知」而非套用不可靠的分位数硬分类。
+    vol_quantile_min_periods = max(60, vol_window * 3)
+    vol_high_thresh = vol.expanding(min_periods=vol_quantile_min_periods).quantile(VOL_HIGH_PCTILE / 100)
 
     regime = pd.Series(index=price.index, dtype=str)
     for i in range(len(price)):
+        if np.isnan(vol_high_thresh.iloc[i]):
+            regime.iloc[i] = "未知"
+            continue
         regime.iloc[i] = classify_regime(
             vol.iloc[i] if not np.isnan(vol.iloc[i]) else np.nan,
-            vol_low_thresh,
-            vol_high_thresh,
+            float(vol_high_thresh.iloc[i]),
             autocorr.iloc[i] if not np.isnan(autocorr.iloc[i]) else np.nan,
             hurst.iloc[i] if not np.isnan(hurst.iloc[i]) else np.nan,
         )
@@ -287,7 +326,11 @@ def compute_regime(price: pd.Series, vol_window=20, autocorr_window=20, hurst_wi
 
 
 def regime_stats(regime_series: pd.Series) -> dict:
-    """统计各状态占比"""
+    """统计各状态占比。
+
+    分母为全部已标注交易日（含样本预热期的"未知"），因此
+    趋势(含弱趋势)+震荡(含弱震荡)+高波动+未知 合计约 100%。
+    """
     counts = regime_series.value_counts()
     total = len(regime_series.dropna())
     stats = {}
@@ -301,6 +344,8 @@ def regime_stats(regime_series: pd.Series) -> dict:
 # ============================================================
 
 def _set_style():
+    if plt is None or mdates is None:
+        raise RuntimeError("matplotlib is required for regime-switch chart generation")
     plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Arial Unicode MS"]
     plt.rcParams["axes.unicode_minus"] = False
     plt.rcParams["figure.dpi"] = 160
@@ -311,6 +356,7 @@ def _set_style():
 
 def plot_regime_overview(prices: pd.DataFrame, all_regimes: dict) -> Path:
     """每个资产的价格 + 状态背景色"""
+    _set_style()
     path = ASSET_DIR / "regime_overview.png"
     assets = list(prices.columns)
     n = len(assets)
@@ -376,6 +422,7 @@ def plot_regime_overview(prices: pd.DataFrame, all_regimes: dict) -> Path:
 
 def plot_regime_distribution(all_regimes: dict) -> Path:
     """各资产状态分布堆叠柱状图"""
+    _set_style()
     path = ASSET_DIR / "regime_distribution.png"
 
     regime_order = ["趋势市", "弱趋势", "震荡市", "弱震荡", "高波动"]
@@ -431,6 +478,7 @@ def plot_regime_distribution(all_regimes: dict) -> Path:
 
 def plot_hurst_timeseries(prices: pd.DataFrame, all_regimes: dict) -> Path:
     """关键资产的 Hurst 指数时序"""
+    _set_style()
     path = ASSET_DIR / "hurst_timeseries.png"
 
     key_assets = ["hs300", "gold", "crude_oil"]
@@ -484,7 +532,6 @@ def main():
     print(f"  运行时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print("=" * 60)
 
-    _set_style()
     prices = load_prices()
 
     print("\n[步骤2] 计算市场状态指标...")
@@ -515,6 +562,8 @@ def main():
             "趋势市占比%": round(stats["趋势市"] + stats["弱趋势"], 1),
             "震荡市占比%": round(stats["震荡市"] + stats["弱震荡"], 1),
             "高波动占比%": round(stats["高波动"], 1),
+            # 未知 = 样本预热期（波动率阈值/Hurst 窗口不足），补齐后四列合计约 100%
+            "未知占比%":   round(stats["未知"], 1),
         })
 
     df = pd.DataFrame(rows)

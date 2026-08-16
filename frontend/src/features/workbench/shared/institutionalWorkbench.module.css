@@ -1,0 +1,180 @@
+/* Shared institutional KPI surfaces.
+   2026-08-13 债券分析「参照首页」排版：瓦片对齐首页 kpiItem 语言——
+   标签 11px 常规体、主值 18px/600 等宽、常态零徽标（缺口/待读面才发声），
+   多列换行场景保留 1px 马赛克缝作发丝分割（等价于首页单行横带的竖缝）。 */
+
+.holdingsKpiRail {
+  overflow: hidden;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--ib-surface);
+}
+
+.holdingsKpiRailFlush {
+  border: 0;
+  border-radius: 0;
+}
+
+.holdingsKpiGrid {
+  display: grid;
+  gap: 1px;
+  background: var(--ib-hairline);
+}
+
+.holdingsKpiGrid[data-columns="5"] {
+  grid-template-columns: repeat(5, minmax(108px, 1fr));
+}
+
+.holdingsKpiGrid[data-columns="7"] {
+  grid-template-columns: repeat(7, minmax(108px, 1fr));
+}
+
+.holdingsKpiGrid[data-layout="auto"] {
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+}
+
+.referenceKpiTile {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  min-width: 0;
+  min-height: 68px;
+  padding: 10px 12px;
+  background: var(--ib-surface);
+}
+
+.referenceKpiTile[data-priority="primary"] {
+  background: var(--ib-surface);
+  box-shadow: none;
+}
+
+.referenceKpiTile[data-priority="secondary"] {
+  background: var(--ib-surface);
+}
+
+.referenceKpiTile[data-state="gap"] {
+  background: var(--ib-surface);
+}
+
+.referenceKpiHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.referenceKpiLabel {
+  overflow: hidden;
+  color: var(--ib-ink-secondary);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.referenceKpiHeader span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.referenceKpiHeader span::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ib-ink-muted);
+  content: "";
+  flex-shrink: 0;
+}
+
+.referenceKpiTile[data-state="gap"] .referenceKpiHeader span::before {
+  background: var(--ib-ink-muted);
+}
+
+.referenceKpiTile[data-state="pending"] .referenceKpiHeader span::before {
+  background: var(--ib-warn);
+}
+
+.referenceKpiValue {
+  color: var(--ib-ink);
+  font-family: var(--moss-font-mono);
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 24px;
+  white-space: nowrap;
+}
+
+.referenceKpiTile[data-priority="primary"] .referenceKpiValue {
+  font-size: 18px;
+}
+
+.referenceKpiTile[data-state="gap"] .referenceKpiValue {
+  color: var(--ib-ink-muted);
+}
+
+.referenceKpiValue[data-tone="positive"] {
+  color: var(--moss-color-danger-600);
+}
+
+.referenceKpiValue[data-tone="negative"] {
+  color: var(--moss-color-success-600);
+}
+
+.referenceKpiValue small {
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  font-weight: 500;
+  margin-left: 4px;
+}
+
+.referenceKpiDetail {
+  overflow: hidden;
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.referenceKpiDetail[data-tone="positive"] {
+  color: var(--moss-color-danger-600);
+}
+
+.referenceKpiDetail[data-tone="negative"] {
+  color: var(--moss-color-success-600);
+}
+
+.referenceKpiSpark {
+  height: 14px;
+  margin-top: 2px;
+  opacity: 0.72;
+  width: 100%;
+}
+
+@media (max-width: 1280px) {
+  .holdingsKpiGrid[data-columns="5"],
+  .holdingsKpiGrid[data-columns="7"] {
+    grid-template-columns: repeat(3, minmax(108px, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .holdingsKpiGrid[data-columns="5"],
+  .holdingsKpiGrid[data-columns="7"],
+  .holdingsKpiGrid[data-layout="auto"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

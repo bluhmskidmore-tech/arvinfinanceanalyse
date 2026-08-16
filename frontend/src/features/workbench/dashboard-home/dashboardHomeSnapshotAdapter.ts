@@ -15,8 +15,10 @@ import type { Tone } from "../../../utils/tone";
 import {
   sanitizeMetricDetail,
   sanitizeMetricLabel,
-} from "../../executive-dashboard/lib/sanitizeMetricCopy";
+} from "./lib/sanitizeMetricCopy";
+import type { HomeProductCategoryHeadline } from "./dashboardHomeFirstScreenTypes";
 
+import { EM_DASH } from "../../../utils/format";
 type HomeSnapshotMetricTone = "positive" | "neutral" | "warning" | "negative";
 
 export type HomeSnapshotOverviewMetricVM = {
@@ -61,6 +63,8 @@ export type HomeSnapshotAdapterOutput = {
   };
   verdict: VerdictPayload | null;
   domainsEffectiveDate: Record<string, string>;
+  domainsMissing: readonly string[];
+  productCategoryHeadline: HomeProductCategoryHeadline;
   datesDiverged: boolean;
 };
 
@@ -301,6 +305,94 @@ function datesDiverged(domains: Record<string, string>): boolean {
   return uniqueDates.size > 1;
 }
 
+const PRODUCT_CATEGORY_GAP = EM_DASH;
+
+function isGovernedNumeric(value: Numeric | null | undefined): boolean {
+  return value?.raw != null && Number.isFinite(value.raw);
+}
+
+function governedDisplay(value: Numeric | null | undefined): string {
+  if (!isGovernedNumeric(value)) {
+    return PRODUCT_CATEGORY_GAP;
+  }
+  const display = value?.display?.trim();
+  return display && display !== "--" && display !== PRODUCT_CATEGORY_GAP
+    ? display
+    : PRODUCT_CATEGORY_GAP;
+}
+
+function governedDetail(value: string | null | undefined): string {
+  return value?.trim() || "对应快照字段未下发";
+}
+
+/**
+ * 年度汇总损益 / 年度营业收入是两个名义字段，但当前后端快照把两者都对齐
+ * product-category 年度累计 business_net_income（raw 与 detail 完全相同，
+ * 2026-08 实测），并排展示会呈现同值。构成口径以产品分类损益页为准，
+ * 两格 title 补口径指引；是否应有独立口径待业务确认（见变更报告）。
+ */
+function withProductCategoryCaveat(detail: string): string {
+  return `${detail}（口径详见产品分类损益页）`;
+}
+
+function productCategoryState(args: {
+  hasAnyPayload: boolean;
+  isComplete: boolean;
+  meta: ResultMeta | null;
+  isLoading: boolean;
+  isError: boolean;
+}): HomeProductCategoryHeadline["state"] {
+  if (args.isLoading) return "loading";
+  if (args.isError) return "error";
+  if (!args.hasAnyPayload) return "empty";
+  if (!args.isComplete) return "partial";
+  if (
+    args.meta?.quality_flag === "stale" ||
+    args.meta?.vendor_status === "vendor_stale"
+  ) {
+    return "stale";
+  }
+  return "ready";
+}
+
+function buildProductCategoryHeadline(
+  result: HomeSnapshotPayload | undefined,
+  input: HomeSnapshotAdapterInput,
+  meta: ResultMeta | null,
+): HomeProductCategoryHeadline {
+  const ytd = result?.product_category_ytd ?? null;
+  const monthly = result?.product_category_monthly ?? null;
+  const hasAnyPayload = Boolean(ytd || monthly);
+  const governedValues = [
+    ytd?.summary_pnl,
+    ytd?.operating_income,
+    ytd?.intermediate_business_income,
+    monthly?.monthly_income,
+  ];
+  const isComplete = Boolean(
+    ytd && monthly && governedValues.every((value) => isGovernedNumeric(value)),
+  );
+  const metrics: HomeProductCategoryHeadline["metrics"] = hasAnyPayload
+    ? [
+        { id: "ytd-summary-pnl", label: "年度汇总损益", value: governedDisplay(ytd?.summary_pnl), detail: withProductCategoryCaveat(governedDetail(ytd?.summary_pnl_detail)) },
+        { id: "ytd-operating-income", label: "年度营业收入", value: governedDisplay(ytd?.operating_income), detail: withProductCategoryCaveat(governedDetail(ytd?.operating_income_detail)) },
+        { id: "ytd-intermediate-business-income", label: "年度中间业务收入", value: governedDisplay(ytd?.intermediate_business_income), detail: governedDetail(ytd?.intermediate_business_income_detail) },
+        { id: "monthly-income", label: "本月收入", value: governedDisplay(monthly?.monthly_income), detail: governedDetail(monthly?.monthly_income_detail) },
+      ]
+    : [];
+
+  return {
+    state: productCategoryState({
+      hasAnyPayload,
+      isComplete,
+      meta,
+      isLoading: input.isLoading,
+      isError: input.isError,
+    }),
+    metrics,
+  };
+}
+
 export function adaptHomeSnapshotForFirstScreen(
   input: HomeSnapshotAdapterInput,
 ): HomeSnapshotAdapterOutput {
@@ -309,6 +401,8 @@ export function adaptHomeSnapshotForFirstScreen(
   const overview = result?.overview;
   const attribution = result?.attribution;
   const domainsEffectiveDate = result?.domains_effective_date ?? {};
+  const domainsMissing = Array.isArray(result?.domains_missing) ? result.domains_missing : [];
+  const productCategoryHeadline = buildProductCategoryHeadline(result, input, meta);
 
   return {
     overview: {
@@ -339,6 +433,8 @@ export function adaptHomeSnapshotForFirstScreen(
     },
     verdict: sanitizeVerdict(result?.verdict),
     domainsEffectiveDate,
+    domainsMissing,
+    productCategoryHeadline,
     datesDiverged: datesDiverged(domainsEffectiveDate),
   };
 }

@@ -147,20 +147,39 @@ monthly_avg_market_value_cny = average(market_value_cny_daily)
 
 ## 9. 桥接归因
 
-PnL Bridge 结构：
+PnL Bridge 结构（互斥分解，2026-08 审计 PNL-01 后口径）：
 
 ```text
-期初脏市值
-+ carry
+explained_pnl =
+  carry
 + roll_down
 + treasury_curve
 + credit_spread
 + fx_translation
 + realized_trading
-+ unrealized_fv
 + manual_adjustment
-= 期末变化解释值
 ```
+
+- `unrealized_fv`（516 公允价值变动）不计入 `explained_pnl`：市场效应（骑乘/曲线/利差/汇兑）本身就是对 516 的解释项，二者同时相加会使 residual 在代数上恒等于市场效应之和的相反数。
+- `residual = actual_pnl - explained_pnl`，代数上即 516 − 市场效应，表示模型未能解释的公允价值变动；非 FVTPL 行两侧均为 0，残差自然闭合。
+- `unrealized_fv` 仍作为桥接行字段单独披露（期初/期末脏市值同理），只是不参与 `explained_pnl` 求和。
+
+FX translation base (2026-07-19)：
+- `fx_translation = exposure_native * (fx_mid_current - fx_mid_prior)`。
+- `exposure_native` 优先用期末脏市值原币（`market_value + accrued_interest`），与桥接期初/期末脏市值及 `read_models.fx_effect` 的市值基数对齐；仅在无市值字段时回退 `face_value_native`。
+
+Sign convention:
+- `roll_down = ((current_curve_rate - rolled_curve_rate) / 100) * modified_duration * market_value`.
+- Upward-sloping curves (`current_curve_rate > rolled_curve_rate`) produce positive roll-down return.
+- The three implementations (`pnl_bridge`, `bond_analytics read_models`, and `attribution_daily`) must use the same sign convention.
+
+Time-anchor convention:
+- Owner decision 2026-07-03 selected Gate 1 Option A for formal `MTR-BRG-004`.
+- `current_curve_rate` uses the period-end/report-date curve at current/end remaining tenor.
+- `rolled_curve_rate` uses the same period-end/report-date curve at `current_remaining_tenor - elapsed_days / 365`.
+- `elapsed_days` is exclusive (`period_end - period_start`), matching `pnl_bridge` current/prior balance date difference.
+- `modified_duration` and `market_value` use current/end exposure.
+- Gate 2 decision: `bond_analytics read_models` and `attribution_daily` follow the same roll-down sign and time-anchor convention.
 
 要求：
 - `explained_pnl`
@@ -190,9 +209,14 @@ DV01 口径：
 
 Duration denominator rules:
 - `total_market_value` remains the full bond analytics market value.
-- `portfolio_modified_duration` is weighted only by rows with a real `maturity_date`, positive `modified_duration`, and non-zero `market_value`.
+- `portfolio_modified_duration` is weighted only by rows with `maturity_date > report_date`, positive `modified_duration`, and non-zero `market_value`.
+- Duration exclusions are classified in priority order: `no_maturity` when `maturity_date is null`; `matured_or_expired_outstanding` when `maturity_date <= report_date` and market value is non-zero; then `nonpositive_duration` only for future-dated rows whose modified duration is null or non-positive. A maturity date equal to the report date is treated as matured.
+- Reclassifying an excluded row does not change `total_market_value`, `rate_risk_market_value`, `portfolio_dv01`, KRD, or the aggregate `duration_excluded_*` bridge. No class may receive a synthetic date, duration, DV01, market value, or `6M` bucket.
 - Fund-like or other no-maturity rows must not receive a synthetic maturity date. They are excluded from the duration denominator and disclosed through `duration_excluded_market_value` / `duration_excluded_count` in the risk tensor API.
 - `rate_risk_market_value`, `rate_risk_dv01`, and `rate_risk_modified_duration` expose the denominator used for the rate-risk duration view; `rate_risk_modified_duration` must reconcile to `portfolio_modified_duration`.
+- `rate_risk_market_value`, `rate_risk_dv01`, `rate_risk_modified_duration`, `duration_excluded_market_value`, and `duration_excluded_count` must be computed by the Risk Tensor materializer and persisted in `fact_formal_risk_tensor_daily`; the formal read path must not recompute or silently backfill them from Bond Analytics.
+- Risk Tensor materialization must persist the upstream Bond Analytics `source_version`, `rule_version`, and `cache_version`; a mismatch in any member of that lineage tuple blocks formal reads until rematerialization.
+- Rollout order is schema migration v33, full-date Risk Tensor v3 rematerialization and lineage tie-out, then read-traffic cutover; legacy rows with NULL materialized metrics are blocked by design.
 
 流动性缺口规则：
 - `liquidity_gap_30d` / `liquidity_gap_90d` 必须按未来 30 / 90 天现金流口径计算，不得再按 `maturity_date` 对 `market_value` 做简单过滤。
@@ -298,9 +322,189 @@ for `PAGE-BOND-ANALYSIS-001`. They do not replace business-owner sign-off.
 - `accrued_interest_usage=dirty_price`.
 - `carry and action attribution do not directly consume accrued_interest`.
 - `day_count=ACT/365_approximation`.
-- `yield_compounding=nominal_annual_with_coupon_frequency`.
+- `yield_compounding=nominal_annual_with_coupon_frequency`（**已实证，2026-08-13**，非仅约定；证据见下方"YTM 复利口径实证"小节）.
 - `duration_convexity_scope=vanilla_fixed_rate_only`.
 - `DV01 = CNY face_value * modified_duration / 10000`.
 - `dv01_unit=CNY_per_1bp`.
 - `dv01_base=CNY_face_value`.
 - `market_value/dirty_value DV01 is not the current formal DV01 convention`.
+
+YTM 复利口径实证（2026-08-13，`.tmp-agent/ytm-compounding-empirical.md`）：
+
+- 上条 `yield_compounding=nominal_annual_with_coupon_frequency` 已由真实账本实证，从"owner-review convention"升级为"已实证"。`bond_analytics/common.py` 的 `(1 + ytm/f)` 折现除数与源报价惯例一致，**付息频率 `f` 同时决定现金流时点与折现除数是正确行为**，不得拆成两个参数。
+- 关键证据：源字段 `到期收益率` 不是市场收益率，而是账面实际利率 EIR——用它折现复现"摊余成本"中位残差 0.0123 元/百元，复现"公允价值"差 63 倍（0.7741），因此检验走会计恒等式、噪声底仅 0.006~0.032。在 63 只由应收/应付利息独立反推为半年付的券上（不含价格信息，无循环论证）：按 `f` 复利 RMSE 0.0100、63/63 全胜，年复利 RMSE 0.2621。反解隐含收益率，年复利口径实测偏移 +2.77bp，与"名义半年复利被误按年复利解读"的理论偏移 `(1+y/2)²−1−y ≈ y²/4 = +2.96bp` 在中位/均值/标准差三个矩上吻合。8 个报告日、6 个券种、4 个期限段、56 只零噪声平价券、以及一个价格侧独立倒推样本（250/252 选按 f 复利）全部一致。
+- 局限（结论不外推到这些范围）：判别集仅占当日全簿公允价值 4.3%（63 只 / 193.6 亿），券种 76% 集中在地方政府债券（山东/青岛为主），有效独立样本量约 81 只券，只覆盖 2026-03 单月 8 天，`f=4` / `f=12` 未被非 ABS 样本覆盖，且乙口径仍有未解释的 −0.010 元/百元稳定小负偏。
+
+Coupon-frequency authority（2026-07-20）：
+- 正式 Bond Analytics 物化以 `interest_mode.coupon_frequency_per_year` 为唯一频率解析权威；`bond_analytics.engine` 必须把解析结果显式传入 Macaulay 久期、修正久期与凸性计算。
+- `bond_four_effects`、`bond_duration` 与 `bond_analytics.common` 的默认参数仅为兼容入口，不构成正式业务口径；正式调用链必须显式传入频率。
+- Campisi 正式归因当前尚未接入该权威：`merge_positions` 未保留 `interest_mode`，`campisi._coupon_freq` 仍按资产类别启发式取 1/2。切换该路径会改变历史归因结果，须经 owner 裁决并安排全期回归/重算；在此之前不得宣称 Campisi 与 Bond Analytics 已统一频率口径。
+
+## Convexity single-caliber baseline（2026-08-12 建立；2026-08-13 P3 收敛口径 B、P4 升级为标准现金流凸性）
+
+仓库内**只保留一套**凸性实现，且自 W-fi-2026-08 P4 起即为**标准现金流凸性**（按现金流对收益率求二阶导），不再是基于久期的近似式：
+
+`C = Σ[CF_k × k(k+1) / (1+y/f)^(k+2)] / (P × f²)`，等价写作 `C = (D² + D/f + M²) / (1+y/f)²`，其中 `M²` 是现值加权付息时点方差（年²）。折现按 `f` 复利，与源 `到期收益率` 的报价惯例一致（见上文"YTM 复利口径实证"）。`C` 单位为年²，`y` 为名义年利率。
+
+- **唯一在用口径**：`bond_analytics/common.py::estimate_convexity`。传入 `coupon_rate` 与 `years_to_maturity` 时走标准现金流路径（与 Macaulay 久期共用同一次遍历，见 `compute_macaulay_duration_and_convexity`）；缺现金流入参、零息或 `y<=0` 时退化为单笔现金流闭式解 `t(t + 1/f) / (1+y/f)²`——该式对零息券精确（`M²=0`）。
+- **`y<=0` 不再特判 `D²`**：标准式在 `y=0` 处连续（旧实现 `y→0⁺` 给 `D(D+1)`、`y=0` 给 `D²`，跳变 `D`）。live 库 2026-07-31 有 18 笔 / 65.98 亿走该分支。
+- **调用方**：`bond_analytics/engine.py::compute_bond_analytics_rows`（正式物化）直接调用一次遍历原语；`bond_duration.py::estimate_convexity_bond` 是委托薄封装（保留 Wind 覆盖分支：外部观测凸性优先），其下游 `bond_four_effects.py::compute_bond_six_effects`（→ `campisi.py::campisi_enhanced`）与 `krd.py::build_krd_position_metrics` 均已改为传入现金流入参。
+- **`f` 敏感性**：改 `f` 会**同时**改变现金流时点与折现除数，这是正确行为。par 网格实测 `f=1→2`：Macaulay −0.74%~−1.41%、修正久期 +0.51%~+0.73%、凸性 −23.5%（1Y）~ +0.2%（30Y）。
+
+已下线口径（仅作历史记录，`tests/test_convexity_caliber_baseline.py` 显式钉死不得复活）：
+
+- **口径 A**（W-fi-2026-08 P4 下线）：`C = D(D+1)/(1+y/f)²`，`y<=0` 回退 `D²`。零息近似族：单笔现金流且 `f=1` 时与 `C_std` 精确一致，付息债系统性低估 `M²/(1+y/f)²`；且分子 `D(D+1)` 与 `f` 无关，而零息恒等式要求 `D² + D/f`，故 `f=2` 短端反而高估 `D/f`。par 3% 网格偏差 −20.4%（30Y f=1）~ +33.2%（1Y f=2）。
+- **口径 B**（P3 下线）：`bond_duration.py::estimate_convexity_bond` 原有独立实现 `[D² + D(1+1/f)]/(1+y/f)²`（`y<=0` 时另乘 `1.1`）。相对 `C_std` 等价于强行假设 `M² = D`，无任何教科书近似族与之对应；`1.1` 系数同样无出处。偏差 −23.4% ~ +66.6%。
+
+P4 的业务影响（live 库 2026-07-31 只读实测，1,750 行）：
+
+- 组合层 `portfolio_convexity`（MTR-RSK-009）：29.79（当前代码旧口径）→ 33.20，**+11.42%**；相对库内持久化值 30.13 为 **+10.19%**。`portfolio_modified_duration` / `portfolio_dv01` **逐位不变**。
+- 逐券：1,220 上调 / 2 下调 / 395 不变；中位 +1.18%，p95 +7.74%。按期限桶中位：2Y +0.59%、3Y +1.66%、5Y +2.71%、7Y +4.74%、10Y +5.38%、20Y +15.87%、30Y +19.25%。
+- KRD 页曲线情景 `convexity_contribution` 全档 **+11.42%**（+100bp：4.424 亿 → 4.929 亿，占同档利率项 −109.76 亿的 4.49%）。
+- Campisi 六效应（`campisi.py::campisi_enhanced` 分支）：`convexity_effect` +4.29%（2026-04）/ +8.21%（2026-06）/ +13.40%（2026-03），`cross_effect` −5.99%（2026-03），等额反向进入 `selection_effect`，`total_return` 与逐券闭合恒等式不变。注意 live 请求当前走 `_formal_bridge_to_enhanced_result` 直通分支，该分支不计算凸性，故线上 Campisi 输出实际不变。
+- 规则版本：`bond_analytics` v1→v2、`risk_tensor` v5→v6（含对应 `cache_version`）。**需要一次全史重物化**（`fact_formal_bond_analytics_daily` 578 个报告日 / 874,367 行 → `fact_formal_risk_tensor_daily`），须独占写窗口，另行安排。
+
+Credit-spread benchmark tenor（2026-07-20）：
+- 信用利差逐券基准优先按 `years_to_maturity` 在同日国债曲线上线性插值。
+- `years_to_maturity` 缺失、非有限或非正时，才回退 `tenor_bucket` 兼容口径。
+- 评级利差 policy bucket 与本条国债基准期限插值是两套不同用途，不得互相替代。
+
+## Period Yield Denominator（P1-05，2026-07-19）
+
+`yield_by_period` / `liability_analytics.yield_by_period` 的期间收益率分母：
+
+- 输入 `scale_amount` 为各 `report_date`（月末）市值快照。
+- **同日**多业务种类：先按日求和得到当日组合规模。
+- **跨日**季/年桶：分母 = 各日组合规模的算术平均（期间平均规模），不得对月末快照直接求和。
+- 分子 = 桶内 `total_pnl` 之和；年化 = `(pnl / avg_scale) * (365 / num_days) * 100`。
+- 单月桶仅一日快照时，平均退化为其本身，与历史月度行为一致。
+
+## Curve-risk bucket field naming（2026-07-19）
+
+`/api/bond-analytics/krd-curve-risk` 的 `krd_buckets[]`：
+
+- 权威字段：`avg_modified_duration` = 桶内市值加权平均修正久期。
+- `krd` 为同值弃用别名（过渡期保留）。
+- 该字段**不是** `core_finance/krd.py` 的 key-rate duration 贡献，也**不是** `risk_tensor` 的桶内 ΣDV01。
+
+## Fractional-period duration dual caliber（2026-08-12）
+
+同一只碎期券（结算/报告日落在两个付息日之间）在仓库内有两套 Macaulay 久期实现，数值不同。两者并存，但**用途不可互换**：
+
+- **正式口径 = 引擎街市惯例**：`bond_analytics/common.py::compute_macaulay_duration`。首期按碎期天数做分数幂折现（`(1+y) ** period_number`，`period_number` 带小数），期数按 `ROUND_CEILING` 取整。正式 Bond Analytics 物化（`bond_analytics/engine.py`）、`pnl_bridge.py` 走该实现，其结果即正式 DV01、修正久期与情景损益的来源。
+- **近似口径 = 整期闭式**：`bond_duration.py::compute_macaulay_duration`。期数 `N = to_integral_value(years × frequency)`（Decimal 默认 `ROUND_HALF_EVEN`），不做碎期折现、不扣应计，等价于"恰好剩 N 个完整付息期"；另有两处上限保护：`剩余年限 ≤ 0.25 → 久期 = 剩余年限`、`Macaulay > 剩余年限 → 回退为剩余年限`。
+
+误差量级（实测：coupon 4% / ytm 5% / 半年付，report_date `2026-03-20`，逐日扫 200–11000 天）：
+
+| 剩余期限 | 两套实现最大相对差 | 最差点（引擎 vs 闭式，年） |
+|---|---|---|
+| 整期券（`years × frequency` 为整数） | ≈ 0.0002% | 4.5695 vs 4.5695，差异仅来自 1e-4 量化 |
+| ≤ 3Y | 47.6% | 0.748 年：0.7381 vs 0.5000（闭式取整到 1 期并触发上限保护） |
+| 3–7Y | 6.7% | 3.249 年：3.0461 vs 2.8543 |
+| 7–15Y | 3.8% | 7.252 年：6.2675 vs 6.5154 |
+| > 15Y | 2.3% | 30.005 年：16.2238 vs 16.6020 |
+
+基准参考案例（`tests/test_bond_duration_goldens.py` 券5 同一组参数）：剩余 1000 天、票息 4% / ytm 5% / 半年付 → Macaulay `2.5940` 年（引擎）vs `2.4025` 年（闭式），相对差 `+7.97%`；修正久期 `2.5308` vs `2.3439`。
+
+适用边界：
+
+- 正式披露、正式 DV01、正式久期、情景损益一律以引擎街市惯例为准；闭式结果不得写入正式事实表，也不得与引擎结果混入同一汇总。
+- 闭式仅适用于休眠模块（`krd.py`、`credit_spread.py`）与明确标注为估算的非出账路径。接线任一休眠模块前，必须先按本条确认久期来源。
+- 误差由碎期驱动：整期券两套一致到量化精度，剩余期限越短、`years × frequency` 距离整数越远，闭式偏差越大；剩余期限 < 1 年时闭式不可用于任何对外数值。
+- 两套实现的黄金测试各自独立锁定，不得互相引用对方的期望值来"对齐"。
+
+## 15. Business Type Insights（批准口径，2026-07-15）
+
+本节定义 `MTR-PNLBIZ-001`~`MTR-PNLBIZ-007` 的正式口径。Owner 为`组合管理/固收业务分析`，Approver 为`财务管理/资产负债管理`。定义自 `2026-07-15` 起生效，并由 `GET /api/pnl/by-business-insights` 的后端正式计算、DTO 与 `result_meta` 实现；`PAGE-PNL-BY-BUSINESS-001` 消费该结果。绑定 golden sample 证明公式和 DTO 一致性，不证明底层源 PnL、余额或汇率事实已经独立审计无误。
+
+### 15.1 共同输入与父级行范围
+
+- 报告范围：所选 `year` 年初至 `as_of_date` 的 YTD 区间；份额漂移的比较期见 15.4。
+- 金额基础：人民币等值（CNY-equivalent）日均余额；外币资产必须先按治理汇率链路折算为人民币等值，再参与分子、分母及排序。
+- 粒度：ZQTZ 父级业务种类，以稳定 `row_key` 对齐。
+- 排除：`row_key` 含 `_detail_`、`business_type` 以“其中”开头、或 `source_note` 含“其中项”的明细/子项行。
+- 仅 `avg_balance_cny_equiv > 0` 的父级行进入日均余额份额分母。
+- 百分比统一以百分数值返回，例如 `12.34` 表示 `12.34%`；`pp` 表示百分点，不得再次乘以 100。
+- 正式实现必须返回真实 requested/resolved cutoff、上游 source/rule/trace、quality/fallback 和 section availability；`result_version=v2` 还必须逐项披露 current YTD、baseline YTD 与各跨年月度组件证据。不得把请求日直接冒充为实际数据截止日，也不得把组件 fallback/vendor 异常包装成外层 `ok/none`。
+
+### 15.2 集中度（MTR-PNLBIZ-001 / 002）
+
+对合格父级业务 `i`：
+
+```text
+balance_share_i = avg_balance_cny_equiv_i / sum(avg_balance_cny_equiv)
+MTR-PNLBIZ-001 HHI_pct = sum(balance_share_i ^ 2) * 100
+MTR-PNLBIZ-002 top3_share_pct = sum(top 3 balance_share_i) * 100
+```
+
+- 排序按未舍入的 `balance_share_i` 降序；最终输出保留 2 位小数。
+- 合格行不足 3 行时，Top 3 为全部合格行之和。
+- 本指标是业务结构分析，不是监管或内部集中度限额；本次批准不设置 HHI 红黄线。
+- 分母为 0 或无合格父级行时返回 `null`，不得返回 0。
+
+### 15.3 负 FTP 持续性（MTR-PNLBIZ-003 / 004）
+
+- 窗口：以 `as_of_date` 所在月为终点、向前包含 12 个自然月。
+- 负 FTP 月：该月父级业务 `ftp_net_pnl < 0`；0、正数与 `null` 均不是负月。
+- `months_observed` 只统计 `ftp_net_pnl` 非空的月份；缺失月不进分母，并中断连续月份。
+
+```text
+MTR-PNLBIZ-003 negative_ftp_month_share_pct
+  = negative_month_count / months_observed * 100
+
+MTR-PNLBIZ-004 negative_ftp_longest_streak_months
+  = rolling_12m_window 内连续 ftp_net_pnl < 0 的最长自然月数
+```
+
+- 正式判断至少需要 `months_observed >= 6`。少于 6 个有效月时返回 `eligible=false`、`status=insufficient_observations`，比例和最长连续月数均为 `null`，正式指标显示为 `--`，不得触发提示。
+- 当 `months_observed >= 6` 且 `negative_ftp_month_share_pct >= 50%` 时显示“负 FTP 持续性提示”。该提示只说明历史频率，不构成考核、退出、压降或限额结论。
+- 跨年按 `month_key` 对齐；任何缺年或缺月必须进入 availability/quality 说明，不能静默补 0 或 forward-fill。
+
+### 15.4 份额漂移（MTR-PNLBIZ-005）
+
+- 当前期：所选 `year` 年初至 `as_of_date` 的 YTD 人民币等值日均余额份额。
+- 比较期：上一自然年年初至同期间截止日的 YTD 人民币等值日均余额份额，不再使用上一年 `12-31` 全年口径。
+- 对齐集合：当前期与上年同期间父级 `row_key` 的并集。
+- 新进入业务：上年同期间侧份额按 0 处理；退出业务：当前期侧份额按 0 处理。两类业务都必须保留在输出中。
+
+```text
+MTR-PNLBIZ-005 drift_pp_i
+  = current_ytd_balance_share_pct_i
+  - prior_year_same_period_ytd_balance_share_pct_i
+```
+
+- 正值表示份额上升，负值表示份额下降；最终输出保留 2 位小数。
+- 漂移必须由两期未舍入的原始余额/有效总分母相减，只在最终输出时舍入；不得先舍入两期份额再相减。
+- 若任一期间没有可用总日均余额分母，该指标整体不可用并显式返回比较期缺失状态，不得把整个期间补 0。
+- 上年同期间的 requested/resolved 截止日必须单独披露；若日历日不存在或数据未发布，不得静默改用上一年末。
+
+### 15.5 规模—FTP后收益相对象限（MTR-PNLBIZ-007）
+
+- X 轴：本节 15.2 同口径的 YTD 人民币等值日均余额份额（`balance_share_pct`）。
+- Y 轴：同一 YTD 区间、同一父级业务的 `ftp_net_annualized_yield_pct`。
+- 只有 X/Y 两轴均非空的父级行进入分割线与分类；合格行至少 6 行，否则不生成正式象限。
+- X/Y 分割线分别为当期合格父级行的中位数；偶数行时取中间两值的算术平均。
+
+```text
+x >= median_x and y >= median_y -> large_high
+x >= median_x and y <  median_y -> large_low
+x <  median_x and y >= median_y -> small_high
+x <  median_x and y <  median_y -> small_low
+```
+
+- 该象限仅描述当期业务相对位置。正式文案不得输出或暗示增配、压降、退出、考核或限额建议。
+- 中位数会随当期业务集合变化，不得将不同期间的象限标签直接解释为绝对门槛变化。
+- 正式分类必须由后端正式计算链路返回；前端只负责格式化和展示，不得自行重算中位数或象限。
+
+### 15.6 未追溯趋势（MTR-PNLBIZ-006，diagnostic-only）
+
+`MTR-PNLBIZ-006` 保持独立的 formal 对账健康度诊断：
+
+```text
+untraced_share_pct = untraced_formal_fi_row_count / total_formal_fi_row_count * 100
+```
+
+- `total_formal_fi_row_count = 0` 时返回 `null`。
+- 诊断摘要必须返回 `available` 与 `availability_reason`：底层存储或查询失败为 `source_unavailable`；查询成功但滚动窗口没有 formal FI 观测为 `no_observations`。两者都返回空 `rows`，但不得解释为未追溯占比为 0；外层质量至少标记为 `warning`。
+- 该指标必须使用 `metric_kind=diagnostic_only`，与业务分析指标分区展示。
+- 它不得进入集中度、负 FTP、份额漂移或相对象限计算，也不得形成业务贡献、拖累、增配或压降结论。

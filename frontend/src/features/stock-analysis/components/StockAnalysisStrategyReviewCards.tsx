@@ -1,0 +1,665 @@
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { TableSkeleton } from "../../../components/Skeletons";
+
+import type {
+  BacktestWindowSummary,
+  LivermoreCandidateHistoryPayload,
+  LivermoreStrategyOptimizationPayload,
+  LivermoreStrategyScorePayload,
+} from "../../../api/contracts";
+import { useApiClient } from "../../../api/client";
+import {
+  buildStrategyBacktestMarketStateRows,
+  buildStrategyBacktestRows,
+  strategyBacktestHorizonLabels,
+  strategyBacktestHorizonShortLabels,
+  strategyBacktestHorizons,
+  strategyDisplayLabel,
+  resolveStrategyBacktestMetricBasisLabel,
+} from "../lib/stockAnalysisBacktestModel";
+import {
+  buildStrategyMaturityCandidates,
+  buildStrategyMaturityWindow,
+  buildStrategyPriorityHeadline,
+  formatPriorityScore,
+  resolveStrategyMaturityRow,
+  strategyCandidateReturnText,
+  strategyMaturityHorizonText,
+  strategyMaturityRemainingText,
+  strategyPriorityDiagnosticLabels,
+  strategyPriorityHorizonStatsText,
+  strategyPriorityReasonLabel,
+  strategyPriorityScopeLabel,
+  strategyPriorityStatusLabel,
+  strategyPrioritySummaryReason,
+  type StrategyPriorityRow,
+} from "../lib/stockAnalysisPriorityModel";
+import {
+  strategyOptimizationDateWeightedText,
+  strategyOptimizationHorizonLabel,
+  strategyOptimizationMaturityStatusText,
+  strategyOptimizationPrimaryStatsText,
+  strategyOptimizationReasonLabel,
+  strategyOptimizationSliceLabel,
+  strategyOptimizationSlicePair,
+  type StrategyOptimizationSummary,
+} from "../lib/stockAnalysisOptimizationModel";
+import { localizeMarketDataStatus, localizeStockBackendText } from "../lib/stockAnalysisPageModel";
+import { stockStrategyPanelErrorMessage } from "../lib/stockAnalysisPageCopy";
+import { stockAnalysisReadQueryOptions } from "../lib/stockAnalysisQueryOptions";
+import { StrategyModuleCard, type StrategyModuleCardProps } from "./StrategyModuleCard";
+
+type StrategyBacktestRow = ReturnType<typeof buildStrategyBacktestRows>[number];
+
+const STRATEGY_TABLE_CLASS =
+  "w-full table-auto text-[12px] leading-4 text-left whitespace-nowrap tabular-nums [&_th]:h-7 [&_th]:px-2 [&_th]:py-1 [&_th]:border-b [&_th]:border-default-100 [&_th]:text-[11px] [&_th]:leading-4 [&_th]:text-default-500 [&_th]:font-medium [&_td]:h-7 [&_td]:px-2 [&_td]:py-1 [&_td]:border-b [&_td]:border-default-100/50";
+
+type StockAnalysisStrategyReviewCardsProps = {
+  client: ReturnType<typeof useApiClient>;
+  analyticsAsOf: string | null;
+  currentMarketState: string | null;
+  strategyPrioritySeen: boolean;
+  strategyScorePayload: LivermoreStrategyScorePayload | null;
+  strategyScoreLoading: boolean;
+  strategyScoreError: boolean;
+  strategyScoreErrorValue: unknown;
+  strategyPriorityRows: StrategyPriorityRow[];
+  marketPriorityPanelSummary: StrategyModuleCardProps["summary"];
+  marketPriorityExpanded: boolean;
+  onToggleMarketPriority: () => void;
+  marketPrioritySectionRef?: StrategyModuleCardProps["sectionRef"];
+  strategyBacktestPayload: LivermoreCandidateHistoryPayload | null;
+  strategyBacktestRows: StrategyBacktestRow[];
+  strategyBacktestSampleCount: number;
+  strategyBacktestWindow: BacktestWindowSummary | null;
+  strategyBacktestDateRangeLabel: string;
+  strategyBacktestLoading: boolean;
+  strategyBacktestError: boolean;
+  strategyBacktestErrorValue: unknown;
+  strategyBacktestPanelSummary: StrategyModuleCardProps["summary"];
+  strategyBacktestExpanded: boolean;
+  onToggleStrategyBacktest: () => void;
+  strategyBacktestSectionRef?: StrategyModuleCardProps["sectionRef"];
+  strategyOptimizationPayload: LivermoreStrategyOptimizationPayload | null;
+  strategyOptimizationRows: StrategyOptimizationSummary[];
+  strategyOptimizationLoading: boolean;
+  strategyOptimizationError: boolean;
+  strategyOptimizationErrorValue: unknown;
+  strategyOptimizationPanelSummary: StrategyModuleCardProps["summary"];
+  strategyOptimizationExpanded: boolean;
+  onToggleStrategyOptimization: () => void;
+  strategyOptimizationSectionRef?: StrategyModuleCardProps["sectionRef"];
+};
+
+export function StockAnalysisStrategyReviewCards({
+  client,
+  analyticsAsOf,
+  currentMarketState,
+  strategyPrioritySeen,
+  strategyScorePayload,
+  strategyScoreLoading,
+  strategyScoreError,
+  strategyScoreErrorValue,
+  strategyPriorityRows,
+  marketPriorityPanelSummary,
+  marketPriorityExpanded,
+  onToggleMarketPriority,
+  marketPrioritySectionRef,
+  strategyBacktestPayload,
+  strategyBacktestRows,
+  strategyBacktestSampleCount,
+  strategyBacktestWindow,
+  strategyBacktestDateRangeLabel,
+  strategyBacktestLoading,
+  strategyBacktestError,
+  strategyBacktestErrorValue,
+  strategyBacktestPanelSummary,
+  strategyBacktestExpanded,
+  onToggleStrategyBacktest,
+  strategyBacktestSectionRef,
+  strategyOptimizationPayload,
+  strategyOptimizationRows,
+  strategyOptimizationLoading,
+  strategyOptimizationError,
+  strategyOptimizationErrorValue,
+  strategyOptimizationPanelSummary,
+  strategyOptimizationExpanded,
+  onToggleStrategyOptimization,
+  strategyOptimizationSectionRef,
+}: StockAnalysisStrategyReviewCardsProps) {
+  const strategyPriorityHeadline = useMemo(
+    () => buildStrategyPriorityHeadline(strategyPriorityRows),
+    [strategyPriorityRows],
+  );
+  const strategyPriorityReason = useMemo(
+    () => strategyPrioritySummaryReason(strategyPriorityRows),
+    [strategyPriorityRows],
+  );
+  const strategyMaturityRow = useMemo(
+    () => resolveStrategyMaturityRow(strategyPriorityRows),
+    [strategyPriorityRows],
+  );
+  const strategyMaturityWindow = useMemo(
+    () => buildStrategyMaturityWindow(strategyMaturityRow),
+    [strategyMaturityRow],
+  );
+  const strategyMaturity = strategyMaturityWindow.maturity;
+  const strategyMaturitySnapshots = strategyMaturityWindow.snapshots;
+  const strategyBacktestMarketStateRows = useMemo(
+    () => buildStrategyBacktestMarketStateRows(strategyBacktestPayload),
+    [strategyBacktestPayload],
+  );
+  const strategyBacktestMetricBasisLabel = useMemo(
+    () => resolveStrategyBacktestMetricBasisLabel(strategyBacktestPayload),
+    [strategyBacktestPayload],
+  );
+  const strategyOptimizationSlices = useMemo(
+    () => strategyOptimizationSlicePair(strategyOptimizationPayload),
+    [strategyOptimizationPayload],
+  );
+
+  const strategyMaturityDetailQuery = useQuery({
+    queryKey: [
+      "stock-analysis",
+      "livermore-candidate-history-maturity-detail",
+      strategyMaturityRow?.signal_kind ?? "__none",
+      strategyMaturityWindow.snapshotFrom ?? "__none",
+      strategyMaturityWindow.snapshotTo ?? "__none",
+    ] as const,
+    queryFn: () =>
+      client.getLivermoreCandidateHistory({
+        snapshotFrom: strategyMaturityWindow.snapshotFrom ?? undefined,
+        snapshotTo: strategyMaturityWindow.snapshotTo ?? undefined,
+        limit: 500,
+      }),
+    enabled: Boolean(
+      analyticsAsOf &&
+        strategyPrioritySeen &&
+        strategyMaturityRow &&
+        strategyMaturityWindow.snapshotFrom &&
+        strategyMaturityWindow.snapshotTo,
+    ),
+    ...stockAnalysisReadQueryOptions,
+  });
+
+  const strategyMaturityCandidateRows = useMemo(
+    () =>
+      buildStrategyMaturityCandidates(
+        (strategyMaturityDetailQuery.data?.result as LivermoreCandidateHistoryPayload | null) ?? null,
+        strategyMaturityRow,
+        strategyMaturitySnapshots,
+      ),
+    [strategyMaturityDetailQuery.data, strategyMaturityRow, strategyMaturitySnapshots],
+  );
+
+  const marketPriorityBadgeLabel =
+    marketPriorityPanelSummary?.badgeLabel ??
+    (strategyScorePayload?.primary_horizon
+      ? strategyBacktestHorizonShortLabels[strategyScorePayload.primary_horizon]
+      : "T+5");
+  const strategyScoreHorizonLabel = strategyScorePayload?.primary_horizon
+    ? strategyBacktestHorizonShortLabels[strategyScorePayload.primary_horizon]
+    : "T+5";
+  const strategyOptimizationPrimaryHorizonLabel = strategyOptimizationHorizonLabel(
+    strategyOptimizationPayload,
+  );
+  const strategyOptimizationBadgeLabel =
+    strategyOptimizationPanelSummary?.badgeLabel ?? strategyOptimizationPrimaryHorizonLabel;
+
+  return (
+    <>
+      <StrategyModuleCard
+        id="market-priority"
+        title="当前市场策略优先级"
+        subtitle={`${strategyScoreHorizonLabel} 排序`}
+        badgeLabel={marketPriorityBadgeLabel}
+        summary={marketPriorityPanelSummary}
+        summaryTestId="stock-analysis-market-priority-panel-summary"
+        expanded={marketPriorityExpanded}
+        onToggleExpand={onToggleMarketPriority}
+        mountDetail
+        sectionRef={marketPrioritySectionRef}
+        sectionTestId="stock-analysis-market-priority-summary"
+      >
+        {strategyScoreLoading ? (
+          <TableSkeleton />
+        ) : null}
+        {strategyScoreError ? (
+          <p className="text-xs text-warning bg-warning/10 p-2 rounded mb-2">
+            当前市场策略优先级暂不可用：{stockStrategyPanelErrorMessage(strategyScoreErrorValue)}
+          </p>
+        ) : null}
+        {!strategyScoreLoading && !strategyScoreError ? (
+          <>
+            <div className="flex gap-2 items-center text-xs mb-2" data-testid="stock-analysis-market-priority-current">
+              <span>
+                {localizeMarketDataStatus(
+                  strategyScorePayload?.current_market_state ?? currentMarketState ?? "UNKNOWN",
+                )}
+              </span>
+              <strong>{strategyPriorityHeadline}</strong>
+              <small>
+                {strategyPriorityReason} · 阈值 {strategyScorePayload?.min_sample ?? 30} · 只读排序
+              </small>
+            </div>
+            {strategyPriorityRows.length > 0 ? (
+              <div className="overflow-x-auto rounded-md border border-default-200 mb-4">
+                <table className={STRATEGY_TABLE_CLASS}>
+                  <thead>
+                    <tr>
+                      <th scope="col">策略</th>
+                      <th scope="col">状态</th>
+                      <th className="text-right tabular-nums" scope="col">
+                        评分
+                      </th>
+                      {strategyBacktestHorizons.map((horizon) => (
+                        <th scope="col" key={horizon}>
+                          {strategyBacktestHorizonLabels[horizon]}
+                        </th>
+                      ))}
+                      <th scope="col">原因</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {strategyPriorityRows.map((row) => {
+                      const diagnosticLabels = strategyPriorityDiagnosticLabels(row);
+                      return (
+                        <tr
+                          key={`${row.market_state}:${row.signal_kind}`}
+                          data-testid={`stock-analysis-market-priority-row-${row.market_state}-${row.signal_kind}`}
+                        >
+                          <td>{strategyDisplayLabel(row.strategy_label, row.signal_kind)}</td>
+                          <td>{strategyPriorityStatusLabel(row.priority_label)}</td>
+                          <td className="text-right tabular-nums" data-testid="stock-analysis-market-priority-score">
+                            {formatPriorityScore(row.priority_score)}
+                          </td>
+                          {strategyBacktestHorizons.map((horizon) => (
+                            <td className="text-right tabular-nums" key={horizon}>
+                              {strategyPriorityHorizonStatsText(
+                                row,
+                                horizon,
+                                strategyScorePayload?.backtest_window_summary,
+                              )}
+                            </td>
+                          ))}
+                          <td>
+                            <span>{strategyPriorityReasonLabel(row)}</span>
+                            {diagnosticLabels.length > 0 ? (
+                              <div className="ml-1 inline-flex gap-1 whitespace-nowrap">
+                                {diagnosticLabels.map((label) => (
+                                  <span key={label}>{label}</span>
+                                ))}
+                              </div>
+                            ) : null}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-default-500 italic p-4 text-center">样本不足</p>
+            )}
+            {strategyMaturityRow && strategyMaturity && strategyMaturitySnapshots.length > 0 ? (
+              <div data-testid="stock-analysis-candidate-maturity">
+                <div className="flex gap-2 items-center text-xs mb-2">
+                  <span>当前候选成熟进度</span>
+                  <strong>
+                    {strategyDisplayLabel(strategyMaturityRow.strategy_label, strategyMaturityRow.signal_kind)}
+                    {strategyMaturityRow.diagnostics?.priority_scope_label
+                      ? ` / ${strategyPriorityScopeLabel(strategyMaturityRow.diagnostics.priority_scope_label)}`
+                      : ""}
+                  </strong>
+                  <small>
+                    {strategyMaturityRemainingText(strategyMaturity)}，
+                    {localizeStockBackendText(strategyMaturity.reason, strategyMaturityRow.signal_kind)}
+                  </small>
+                </div>
+                <div className="overflow-x-auto rounded-md border border-default-200 mb-4">
+                  <table className={STRATEGY_TABLE_CLASS}>
+                    <thead>
+                      <tr>
+                        <th scope="col">快照</th>
+                        <th className="text-right tabular-nums" scope="col">
+                          候选
+                        </th>
+                        {strategyBacktestHorizons.map((horizon) => (
+                          <th scope="col" key={horizon}>
+                            {strategyBacktestHorizonShortLabels[horizon]}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {strategyMaturitySnapshots.map((snapshot) => (
+                        <tr key={snapshot.snapshot_as_of_date}>
+                          <td>{snapshot.snapshot_as_of_date}</td>
+                          <td className="text-right tabular-nums">{snapshot.candidate_count}</td>
+                          {strategyBacktestHorizons.map((horizon) => (
+                            <td key={horizon}>{strategyMaturityHorizonText(snapshot, horizon)}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex gap-2 items-center text-xs mb-2">
+                  <span>候选明细</span>
+                  <strong>
+                    {strategyDisplayLabel(strategyMaturityRow.strategy_label, strategyMaturityRow.signal_kind)}
+                  </strong>
+                  <small>快照明细 · 按排名</small>
+                </div>
+                {strategyMaturityDetailQuery.isLoading ? (
+                  <TableSkeleton />
+                ) : null}
+                {strategyMaturityDetailQuery.isError ? (
+                  <p className="text-xs text-warning bg-warning/10 p-2 rounded mb-2">
+                    候选明细暂不可用：{stockStrategyPanelErrorMessage(strategyMaturityDetailQuery.error)}
+                  </p>
+                ) : null}
+                {!strategyMaturityDetailQuery.isLoading && !strategyMaturityDetailQuery.isError ? (
+                  strategyMaturityCandidateRows.length > 0 ? (
+                    <div className="overflow-x-auto rounded-md border border-default-200 mb-4">
+                      <table className={STRATEGY_TABLE_CLASS}>
+                        <thead>
+                          <tr>
+                            <th scope="col">快照</th>
+                            <th scope="col">排名</th>
+                            <th scope="col">候选</th>
+                            <th scope="col">板块</th>
+                            <th className="text-right tabular-nums" scope="col">
+                              T+1
+                            </th>
+                            <th className="text-right tabular-nums" scope="col">
+                              T+5
+                            </th>
+                            <th className="text-right tabular-nums" scope="col">
+                              T+20
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {strategyMaturityCandidateRows.map((candidate) => (
+                            <tr
+                              key={`${candidate.snapshot_as_of_date}:${candidate.stock_code}:${candidate.candidate_rank}`}
+                            >
+                              <td>{candidate.snapshot_as_of_date}</td>
+                              <td>#{candidate.candidate_rank}</td>
+                              <td>
+                                <span>{candidate.stock_name ?? candidate.stock_code}</span>
+                                <small> {candidate.stock_code}</small>
+                              </td>
+                              <td>{candidate.sector_name ?? "-"}</td>
+                              <td className="text-right tabular-nums">
+                                {strategyCandidateReturnText(candidate.return_1d)}
+                              </td>
+                              <td className="text-right tabular-nums">
+                                {strategyCandidateReturnText(candidate.return_5d)}
+                              </td>
+                              <td className="text-right tabular-nums">
+                                {strategyCandidateReturnText(candidate.return_20d)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-default-500 italic p-4 text-center">当前可见快照暂无候选明细。</p>
+                  )
+                ) : null}
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </StrategyModuleCard>
+
+      <StrategyModuleCard
+        id="strategy-backtest"
+        title="策略回溯表现"
+        subtitle="回溯胜率"
+        badgeLabel={strategyBacktestPanelSummary?.badgeLabel ?? strategyBacktestDateRangeLabel}
+        summary={strategyBacktestPanelSummary}
+        summaryTestId="stock-analysis-strategy-backtest-panel-summary"
+        expanded={strategyBacktestExpanded}
+        onToggleExpand={onToggleStrategyBacktest}
+        mountDetail
+        sectionRef={strategyBacktestSectionRef}
+        sectionTestId="stock-analysis-strategy-backtest"
+      >
+        {strategyBacktestLoading ? (
+          <TableSkeleton />
+        ) : null}
+        {strategyBacktestError ? (
+          <p className="text-xs text-warning bg-warning/10 p-2 rounded mb-2">
+            策略回溯表现暂不可用：{stockStrategyPanelErrorMessage(strategyBacktestErrorValue)}
+          </p>
+        ) : null}
+        {!strategyBacktestLoading && !strategyBacktestError ? (
+          <>
+            <div className="flex gap-2 items-center text-xs mb-2">
+              <span>有效样本</span>
+              <strong>{strategyBacktestSampleCount} 条</strong>
+              <small>{strategyBacktestMetricBasisLabel}</small>
+              <small>
+                完成日期 {strategyBacktestWindow?.replay_dates_completed ?? 0} / 待成熟{" "}
+                {strategyBacktestWindow?.replay_dates_pending ?? 0} / 不支持{" "}
+                {strategyBacktestWindow?.replay_dates_unsupported ?? 0}
+              </small>
+            </div>
+            <div className="overflow-x-auto rounded-md border border-default-200 mb-4">
+              <table className={STRATEGY_TABLE_CLASS}>
+                <thead>
+                  <tr>
+                    <th scope="col">策略</th>
+                    <th scope="col">入选数</th>
+                    {strategyBacktestHorizons.map((horizon) => (
+                      <th scope="col" key={horizon}>
+                        {strategyBacktestHorizonLabels[horizon]}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {strategyBacktestRows.map((row) => (
+                    <tr key={row.kind} data-testid={`stock-analysis-strategy-backtest-${row.kind}`}>
+                      <td>{row.label}</td>
+                      <td className="text-right tabular-nums">{row.count}</td>
+                      {strategyBacktestHorizons.map((horizon) => (
+                        <td className="text-right tabular-nums" key={horizon}>
+                          {row.stats[horizon]}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {strategyBacktestMarketStateRows.length > 0 ? (
+              <div data-testid="stock-analysis-strategy-backtest-market-state">
+                <p className="text-xs text-default-500 mt-2">市场状态分段</p>
+                <div className="overflow-x-auto rounded-md border border-default-200 mb-4">
+                  <table className={STRATEGY_TABLE_CLASS}>
+                    <thead>
+                      <tr>
+                        <th scope="col">市场状态</th>
+                        <th scope="col">策略</th>
+                        {strategyBacktestHorizons.map((horizon) => (
+                          <th scope="col" key={horizon}>
+                            {strategyBacktestHorizonLabels[horizon]}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {strategyBacktestMarketStateRows.map((row) => (
+                        <tr
+                          key={`${row.marketState}:${row.kind}`}
+                          data-testid={`stock-analysis-strategy-backtest-market-state-${row.marketState}-${row.kind}`}
+                        >
+                          <td>{localizeMarketDataStatus(row.marketState)}</td>
+                          <td>{row.label}</td>
+                          {strategyBacktestHorizons.map((horizon) => (
+                            <td className="text-right tabular-nums" key={horizon}>
+                              {row.stats[horizon]}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <p
+                className="text-sm text-default-500 italic p-4 text-center"
+                data-testid="stock-analysis-strategy-backtest-market-state-empty"
+              >
+                {strategyBacktestPayload ? "市场状态归因未提供。" : "市场状态归因接口未提供。"}
+              </p>
+            )}
+          </>
+        ) : null}
+      </StrategyModuleCard>
+
+      <StrategyModuleCard
+        id="strategy-optimization"
+        title="优化诊断"
+        subtitle={`切片 ${strategyOptimizationPrimaryHorizonLabel}`}
+        badgeLabel={strategyOptimizationBadgeLabel}
+        summary={strategyOptimizationPanelSummary}
+        summaryTestId="stock-analysis-strategy-optimization-panel-summary"
+        expanded={strategyOptimizationExpanded}
+        onToggleExpand={onToggleStrategyOptimization}
+        mountDetail
+        sectionRef={strategyOptimizationSectionRef}
+        sectionTestId="stock-analysis-strategy-optimization"
+      >
+        {strategyOptimizationLoading ? (
+          <TableSkeleton />
+        ) : null}
+        {strategyOptimizationError ? (
+          <p className="text-xs text-warning bg-warning/10 p-2 rounded mb-2">
+            优化诊断暂不可用：{stockStrategyPanelErrorMessage(strategyOptimizationErrorValue)}
+          </p>
+        ) : null}
+        {!strategyOptimizationLoading && !strategyOptimizationError && !strategyOptimizationPayload ? (
+          <p className="text-sm text-default-500 italic p-4 text-center">
+            优化诊断接口未提供数据，当前不形成样本或成熟度判断。
+          </p>
+        ) : null}
+        {!strategyOptimizationLoading && !strategyOptimizationError && strategyOptimizationPayload ? (
+          <>
+            <div className="flex gap-2 items-center text-xs mb-2">
+              <span>当前最新日期收益</span>
+              <strong>{strategyOptimizationMaturityStatusText(strategyOptimizationPayload)}</strong>
+              <small>
+                {strategyOptimizationPayload
+                  ? localizeStockBackendText(strategyOptimizationPayload.pending_summary.message)
+                  : `${strategyOptimizationPrimaryHorizonLabel} 收益成熟度接口未提供。`}
+              </small>
+            </div>
+            <p className="text-xs text-default-500 mt-2">复核排序 · 不改规则</p>
+            <div className="flex gap-2 items-center text-xs mb-2">
+              <span>三策略 {strategyOptimizationPrimaryHorizonLabel} 排名</span>
+              <strong>{strategyOptimizationRows.length} 组</strong>
+              <small>阈值 {strategyOptimizationPayload?.min_sample ?? 30} · 收益/胜率/成熟度</small>
+            </div>
+            {strategyOptimizationRows.length > 0 ? (
+              <div className="overflow-x-auto rounded-md border border-default-200 mb-4">
+                <table className={STRATEGY_TABLE_CLASS}>
+                  <thead>
+                    <tr>
+                      <th scope="col">策略</th>
+                      <th scope="col">复核状态</th>
+                      <th scope="col">{strategyOptimizationPrimaryHorizonLabel} 收益</th>
+                      <th scope="col">按日等权</th>
+                      <th scope="col">原因</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {strategyOptimizationRows.map((row) => (
+                      <tr key={row.summary_key}>
+                        <td>{strategyDisplayLabel(row.strategy_label, row.signal_kind)}</td>
+                        <td>{strategyPriorityStatusLabel(row.recommendation.priority_label)}</td>
+                        <td className="text-right tabular-nums">
+                          {strategyOptimizationPrimaryStatsText(row, strategyOptimizationPayload)}
+                        </td>
+                        <td className="text-right tabular-nums">
+                          {strategyOptimizationDateWeightedText(row, strategyOptimizationPayload)}
+                        </td>
+                        <td>{strategyOptimizationReasonLabel(row)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-default-500 italic p-4 text-center">优化诊断样本不足。</p>
+            )}
+            <div className="flex gap-2 items-center text-xs mb-2">
+              <span>各策略最强 / 最弱切片</span>
+              <strong>
+                {strategyOptimizationSlices.strongest
+                  ? strategyOptimizationSliceLabel(strategyOptimizationSlices.strongest)
+                  : "最强无可比切片"}{" "}
+                /{" "}
+                {strategyOptimizationSlices.weakest
+                  ? strategyOptimizationSliceLabel(strategyOptimizationSlices.weakest)
+                  : "最弱无可比切片"}
+              </strong>
+              <small>
+                {strategyOptimizationSlices.weakest
+                  ? `${strategyDisplayLabel(
+                      strategyOptimizationSlices.weakest.strategy_label,
+                      strategyOptimizationSlices.weakest.signal_kind,
+                    )} ${strategyOptimizationSliceLabel(
+                      strategyOptimizationSlices.weakest,
+                    )}：${strategyPriorityStatusLabel(
+                      strategyOptimizationSlices.weakest.recommendation.priority_label,
+                    )}`
+                  : "切片样本不足，暂不做降权判断。"}
+              </small>
+            </div>
+            {strategyOptimizationSlices.strongest || strategyOptimizationSlices.weakest ? (
+              <div className="overflow-x-auto rounded-md border border-default-200 mb-4">
+                <table className={STRATEGY_TABLE_CLASS}>
+                  <thead>
+                    <tr>
+                      <th scope="col">切片</th>
+                      <th scope="col">策略</th>
+                      <th scope="col">复核状态</th>
+                      <th scope="col">{strategyOptimizationPrimaryHorizonLabel} 收益</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {([
+                      ["最强", strategyOptimizationSlices.strongest],
+                      ["最弱", strategyOptimizationSlices.weakest],
+                    ] as const).map(([label, slice]) =>
+                      slice ? (
+                        <tr key={`${label}:${slice.slice_key}`}>
+                          <td>
+                            {label}：{strategyOptimizationSliceLabel(slice)}
+                          </td>
+                          <td>{strategyDisplayLabel(slice.strategy_label, slice.signal_kind)}</td>
+                          <td>{strategyPriorityStatusLabel(slice.recommendation.priority_label)}</td>
+                          <td className="text-right tabular-nums">
+                            {strategyOptimizationPrimaryStatsText(slice, strategyOptimizationPayload)}
+                          </td>
+                        </tr>
+                      ) : null,
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </StrategyModuleCard>
+    </>
+  );
+}

@@ -1,13 +1,19 @@
 import type { ChoiceMacroLatestPoint } from "../api/contracts";
+import { EM_DASH } from "./format";
 
 type ChoiceMacroFormatOptions = {
   spaceBeforeUnit?: boolean;
   emptyDisplay?: string;
 };
 
+const DISPLAY_UNITLESS_UNITS = new Set(["index", "x"]);
+
 function normalizeUnit(point: ChoiceMacroLatestPoint): string {
   const unit = point.unit?.trim() ?? "";
   if (!unit || unit.toLowerCase() === "unknown") {
+    return "";
+  }
+  if (DISPLAY_UNITLESS_UNITS.has(unit.toLowerCase())) {
     return "";
   }
   return unit;
@@ -24,22 +30,33 @@ function formatBp(value: number, options: ChoiceMacroFormatOptions): string {
   return `${formatNumber(value, digits)}${suffix}`;
 }
 
+export function formatChoiceMacroValueParts(
+  point: ChoiceMacroLatestPoint,
+  options: ChoiceMacroFormatOptions = {},
+): { value: string; unit: string } {
+  const unit = normalizeUnit(point);
+  if (unit === "%") {
+    return { value: `${formatNumber(point.value_numeric)}%`, unit: "" };
+  }
+  if (unit.toLowerCase() === "bp") {
+    return { value: formatBp(point.value_numeric, options), unit: "" };
+  }
+  if (!unit) {
+    return { value: formatNumber(point.value_numeric), unit: "" };
+  }
+  return { value: formatNumber(point.value_numeric), unit };
+}
+
 export function formatChoiceMacroValue(
   point: ChoiceMacroLatestPoint,
   options: ChoiceMacroFormatOptions = {},
 ): string {
-  const unit = normalizeUnit(point);
-  if (unit === "%") {
-    return `${formatNumber(point.value_numeric)}%`;
-  }
-  if (unit.toLowerCase() === "bp") {
-    return formatBp(point.value_numeric, options);
-  }
+  const { value, unit } = formatChoiceMacroValueParts(point, options);
   if (!unit) {
-    return formatNumber(point.value_numeric);
+    return value;
   }
   const joiner = options.spaceBeforeUnit === false ? "" : " ";
-  return `${formatNumber(point.value_numeric)}${joiner}${unit}`;
+  return `${value}${joiner}${unit}`;
 }
 
 export function formatChoiceMacroDelta(
@@ -47,7 +64,7 @@ export function formatChoiceMacroDelta(
   options: ChoiceMacroFormatOptions = {},
 ): string {
   if (point.latest_change == null) {
-    return options.emptyDisplay ?? "--";
+    return options.emptyDisplay ?? EM_DASH;
   }
 
   const unit = normalizeUnit(point);

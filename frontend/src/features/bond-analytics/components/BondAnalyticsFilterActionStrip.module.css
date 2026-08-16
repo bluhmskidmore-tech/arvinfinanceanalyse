@@ -1,0 +1,224 @@
+/* 页底复核入口：单框横带（发丝竖缝分列），不再用 antd Card + 1px gap 描边法拼马赛克。 */
+.actionStrip {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.commandBar {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(260px, 0.72fr) auto;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.commandIntro,
+.refreshState,
+.refreshAction {
+  display: grid;
+  align-content: center;
+  min-width: 0;
+  padding: 9px 12px;
+  box-sizing: border-box;
+}
+
+.commandIntro {
+  gap: 3px;
+  padding-left: 16px;
+}
+
+.commandIntro strong {
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.commandIntro p {
+  margin: 0;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.fieldLabel {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+/* 常态零徽标：idle 态左沿是发丝线，只有运行/完成/异常才带语义色（2px，同页面语义条宽度）。 */
+.refreshState {
+  gap: 3px;
+  border-left: 2px solid var(--dh-api-line-soft);
+}
+
+.refreshState strong {
+  overflow: hidden;
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.refreshState[data-state="error"] {
+  border-left-color: var(--dh-api-red);
+}
+
+.refreshState[data-state="error"] strong {
+  color: var(--dh-api-red);
+}
+
+.refreshState[data-state="running"] {
+  border-left-color: var(--dh-api-amber);
+}
+
+.refreshState[data-state="complete"] {
+  border-left-color: var(--dh-api-green);
+}
+
+.refreshAction {
+  justify-items: end;
+  border-left: 1px solid var(--dh-api-line-soft);
+}
+
+/* 与页面工具条同一控件高度阶（28px）与圆角制度。 */
+.refreshAction :global(.ant-btn) {
+  height: 28px !important;
+  padding: 0 12px !important;
+  border-color: var(--dh-api-line) !important;
+  border-radius: var(--dh-api-radius) !important;
+  background: transparent !important;
+  color: var(--dh-api-blue) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  box-shadow: none !important;
+}
+
+.refreshAction :global(.ant-btn):hover {
+  border-color: var(--dh-api-blue) !important;
+  background: var(--dh-api-blue-soft) !important;
+}
+
+.advancedPanel {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+/* 折叠头是安静的一行：12px soft 文字 + muted 箭头，展开后才亮到 ink。 */
+.advancedSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 12px 0 16px;
+  border-top: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-soft);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  list-style: none;
+}
+
+.advancedSummary::-webkit-details-marker {
+  display: none;
+}
+
+.advancedSummary:hover,
+.advancedPanel[open] .advancedSummary {
+  color: var(--dh-api-ink);
+}
+
+.advancedSummary::after {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-right: 1px solid var(--dh-api-muted);
+  border-bottom: 1px solid var(--dh-api-muted);
+  content: "";
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.advancedPanel[open] .advancedSummary::after {
+  transform: translateY(1px) rotate(225deg);
+}
+
+.filterGrid {
+  display: grid;
+  grid-template-columns: minmax(132px, 0.8fr) minmax(128px, 0.72fr) minmax(132px, 0.72fr) minmax(168px, 0.9fr);
+  gap: 10px 12px;
+  align-items: end;
+  padding: 10px 12px 12px 16px;
+  border-top: 1px solid var(--dh-api-line-soft);
+}
+
+.filterField {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.filterSelect {
+  width: 100%;
+}
+
+.filterSelect :global(.ant-select-selector) {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 8px !important;
+  border-radius: var(--dh-api-radius) !important;
+}
+
+.filterSelect :global(.ant-select-selection-item),
+.filterSelect :global(.ant-select-selection-placeholder) {
+  font-size: 12px;
+  line-height: 26px !important;
+}
+
+@media (max-width: 1180px) {
+  .commandBar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .refreshState {
+    border-top: 2px solid var(--dh-api-line-soft);
+    border-left: 0;
+  }
+
+  .refreshState[data-state="error"] {
+    border-top-color: var(--dh-api-red);
+  }
+
+  .refreshState[data-state="running"] {
+    border-top-color: var(--dh-api-amber);
+  }
+
+  .refreshState[data-state="complete"] {
+    border-top-color: var(--dh-api-green);
+  }
+
+  .refreshAction {
+    justify-items: stretch;
+    border-top: 1px solid var(--dh-api-line-soft);
+    border-left: 0;
+  }
+
+  .filterGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .filterGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

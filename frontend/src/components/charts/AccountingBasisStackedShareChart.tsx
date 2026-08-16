@@ -1,4 +1,7 @@
-import ReactECharts, { type EChartsOption } from "../../lib/echarts";
+import type { EChartsOption } from "../../lib/echarts";
+import { designTokens, ibTokens } from "../../theme/designSystem";
+import { EM_DASH } from "../../utils/format";
+import { BaseChart } from "./BaseChart";
 
 export type AccountingBasisStackedSharePoint = {
   monthLabel: string;
@@ -12,9 +15,9 @@ export type AccountingBasisStackedSharePoint = {
 };
 
 const basisSeries = [
-  { key: "AC", name: "AC", color: "#10284a" },
-  { key: "OCI", name: "OCI", color: "#33689a" },
-  { key: "TPL", name: "TPL", color: "#d8d8d8" },
+  { key: "AC", name: "AC", color: ibTokens.color.accent },
+  { key: "OCI", name: "OCI", color: designTokens.color.primary[500] },
+  { key: "TPL", name: "TPL", color: designTokens.color.neutral[300] },
 ] as const;
 
 function formatPct(value: number) {
@@ -22,7 +25,7 @@ function formatPct(value: number) {
 }
 
 function formatYi(value: number | undefined) {
-  return value === undefined || Number.isNaN(value) ? "-" : `${value.toFixed(2)} 亿`;
+  return value === undefined || Number.isNaN(value) ? EM_DASH : `${value.toFixed(2)} 亿`;
 }
 
 function dataIndexFromTooltip(params: unknown) {
@@ -53,7 +56,7 @@ function buildOption(rows: AccountingBasisStackedSharePoint[], title: string): E
     label: {
       show: true,
       position: "inside" as const,
-      color: seriesItem.key === "TPL" ? "#334155" : "#ffffff",
+      color: seriesItem.key === "TPL" ? ibTokens.color.ink : ibTokens.color.surface,
       fontSize: 12,
       fontWeight: 600,
       formatter: (params: unknown) => {
@@ -68,7 +71,7 @@ function buildOption(rows: AccountingBasisStackedSharePoint[], title: string): E
       text: title,
       left: 0,
       top: 0,
-      textStyle: { fontSize: 16, fontWeight: 700, color: "#2f3744" },
+      textStyle: { fontSize: 16, fontWeight: 700, color: ibTokens.color.ink },
     },
     legend: {
       bottom: 0,
@@ -96,13 +99,13 @@ function buildOption(rows: AccountingBasisStackedSharePoint[], title: string): E
       type: "category",
       data: rows.map((row) => row.monthLabel),
       axisTick: { alignWithLabel: true },
-      axisLabel: { fontSize: 12, color: "#555", interval: 0 },
+      axisLabel: { fontSize: 12, color: ibTokens.color.inkSecondary, interval: 0 },
     },
     yAxis: {
       type: "value",
       max: 100,
       axisLabel: { formatter: (value: number) => `${value.toFixed(0)}%` },
-      splitLine: { lineStyle: { color: "#eceff3" } },
+      splitLine: { lineStyle: { color: ibTokens.color.hairline } },
     },
     series,
   };
@@ -119,12 +122,7 @@ export default function AccountingBasisStackedShareChart({
   title,
   height = 390,
 }: AccountingBasisStackedShareChartProps) {
-  return (
-    <ReactECharts
-      option={buildOption(rows, title)}
-      style={{ height, width: "100%" }}
-      notMerge
-      lazyUpdate
-    />
-  );
+  // 复用 BaseChart 壳层：同一 lib/echarts 包装（notMerge / lazyUpdate / 同主题）
+  // 之上补齐 ResizeObserver 自适应，容器尺寸变化时图表跟随重算。
+  return <BaseChart option={buildOption(rows, title)} height={height} />;
 }

@@ -63,15 +63,36 @@ class RouteAuthSurface:
 
 
 BACKEND_BOUNDARY_CASES: tuple[SurfaceCase, ...] = (
-    SurfaceCase("agent.query", "/api/agent/query", "POST", json={"question": "ping"}, detail_substring="disabled"),
+    SurfaceCase(
+        "agent.query",
+        "/api/agent/query",
+        "POST",
+        json={"question": "ping"},
+        expected_status=404,
+        detail_substring="not found",
+    ),
     SurfaceCase("preview.source-foundation", "/ui/preview/source-foundation", "GET"),
     SurfaceCase("preview.source-foundation.history", "/ui/preview/source-foundation/history", "GET", params={"limit": 5, "offset": 0}),
     SurfaceCase("preview.source-foundation.rows", "/ui/preview/source-foundation/zqtz/rows", "GET", params={"limit": 1, "offset": 0}),
     SurfaceCase("preview.source-foundation.traces", "/ui/preview/source-foundation/zqtz/traces", "GET", params={"limit": 1, "offset": 0}),
     SurfaceCase("preview.source-foundation.refresh", "/ui/preview/source-foundation/refresh", "POST", side_effect_target="refresh_source_preview", side_effect_module="backend.app.api.routes.source_preview", side_effect_file="backend/app/api/routes/source_preview.py"),
     SurfaceCase("preview.source-foundation.refresh-status", "/ui/preview/source-foundation/refresh-status", "GET"),
-    SurfaceCase("news.ui.ingest", "/ui/news/tushare-npr/ingest", "POST"),
-    SurfaceCase("news.api.ingest", "/api/news/tushare-npr/ingest", "POST"),
+    # 保留 ingest 端点授权先于保留判断：无 import scope 的身份 fail-closed 为 403；
+    # 授权后仍由 _raise_choice_news_reserved_surface 返回 503 reserved。
+    SurfaceCase(
+        "news.ui.ingest",
+        "/ui/news/tushare-npr/ingest",
+        "POST",
+        expected_status=403,
+        detail_substring="not allowed",
+    ),
+    SurfaceCase(
+        "news.api.ingest",
+        "/api/news/tushare-npr/ingest",
+        "POST",
+        expected_status=403,
+        detail_substring="not allowed",
+    ),
     SurfaceCase(
         "executive.risk-overview",
         "/ui/risk/overview",
@@ -125,6 +146,12 @@ READ_LIKE_POST_SURFACES = {
     ("POST", "backend/app/api/routes/agent.py", "/query", "query_agent"),
     ("POST", "backend/app/api/routes/agent.py", "/runs", "create_agent_run_endpoint"),
     ("POST", "backend/app/api/routes/cube_query.py", "/query", "cube_query"),
+    (
+        "POST",
+        "backend/app/api/routes/ledger_pnl.py",
+        "/ledger-pnl/candidate-financial-indicators/revalidate",
+        "revalidate_candidate_financial_indicators",
+    ),
 }
 
 PUBLIC_OR_ECHO_READ_SURFACES = set(PUBLIC_OR_ECHO_READ_POLICIES)
@@ -133,26 +160,57 @@ CAPABILITY_PROBE_READ_SURFACES = {
     ("GET", "backend/app/api/routes/balance_analysis.py", "/current-user", "current_user")
 }
 
-RESERVED_WRITE_POLICIES = {
-    ("POST", "backend/app/api/routes/choice_news.py", "/tushare-npr/ingest", "tushare_npr_ingest_ui"): RoutePolicySemantics(
-        policy_class="admin",
-        owner="Market news owner",
-        state="reserved",
-        reason="Choice news ingest is intentionally fail-closed until the import lane is approved.",
-    ),
-    ("POST", "backend/app/api/routes/choice_news.py", "/tushare-npr/ingest", "tushare_npr_ingest_api"): RoutePolicySemantics(
-        policy_class="admin",
-        owner="Market news owner",
-        state="reserved",
-        reason="API alias for the reserved Choice news ingest lane.",
-    ),
-}
+# Choice news ingest 保留端点现已在函数体内先调用 ensure_user_allowed
+# (choice_news.data/import) 再抛 503 reserved，不再属于"未接授权门"的例外面。
+RESERVED_WRITE_POLICIES: dict[tuple[str, str, str, str], RoutePolicySemantics] = {}
 
 RESERVED_WRITE_SURFACES = set(RESERVED_WRITE_POLICIES)
 
 RESERVED_HELPER_SCOPES = {
     ("choice_news.data", "import"),
 }
+
+_GATED_TOP_LEVEL_ROUTE_MODULES = {"agent"}
+_NESTED_ROUTE_MODULES = {"agent_workspace"}
+
+# Governance classifications are pinned by name, never by registry size: a count
+# cannot tell an added router from a deleted or renamed one, so it only ever gets
+# its number bumped. These entries fail loudly when a governance-critical router
+# is dropped or moved to a different claim boundary.
+PINNED_ROUTER_GROUPS = {
+    "cube_query": "support",
+    "health": "support",
+    "liability_analytics": "analytical_compatibility",
+    "macro_etf_strategy": "macro_market",
+    "macro_toolkit": "macro_market",
+    "pnl": "formal_mainline",
+    "source_preview": "preview",
+}
+
+REQUIRED_ROUTE_GROUPS = {
+    "formal_mainline",
+    "analytical_compatibility",
+    "preview",
+    "macro_market",
+    "support",
+}
+
+# Routes reach the scope store either directly or through the shared
+# `backend/app/api/deps.ensure_read_allowed` guard, which pins action="read".
+_AUTHZ_CALL_NAMES = frozenset({"ensure_user_allowed", "ensure_read_allowed"})
+
+
+def _load_api_registry(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    agent_enabled: bool,
+):
+    monkeypatch.setenv("MOSS_AGENT_ENABLED", str(agent_enabled).lower())
+    get_settings.cache_clear()
+    for module_name in tuple(sys.modules):
+        if module_name == "backend.app.api" or module_name.startswith("backend.app.api."):
+            sys.modules.pop(module_name, None)
+    return load_module("backend.app.api", "backend/app/api/__init__.py")
 
 
 def _build_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
@@ -242,6 +300,14 @@ def _literal_keyword(call: ast.Call, name: str) -> str | None:
     return None
 
 
+def _literal_argument(call: ast.Call, index: int, name: str) -> str | None:
+    if len(call.args) > index:
+        candidate = call.args[index]
+        if isinstance(candidate, ast.Constant) and isinstance(candidate.value, str):
+            return candidate.value
+    return _literal_keyword(call, name)
+
+
 def _name_keyword(call: ast.Call, name: str) -> str | None:
     for keyword in call.keywords:
         if keyword.arg == name and isinstance(keyword.value, ast.Name):
@@ -259,6 +325,11 @@ def _ensure_user_allowed_scopes(node: ast.AST) -> frozenset[tuple[str, str]]:
             func_name = child.func.id
         elif isinstance(child.func, ast.Attribute):
             func_name = child.func.attr
+        if func_name == "ensure_read_allowed":
+            resource = _literal_argument(child, 1, "resource")
+            if resource:
+                scopes.add((resource, "read"))
+            continue
         if func_name != "ensure_user_allowed":
             continue
         resource = _literal_keyword(child, "resource")
@@ -333,7 +404,7 @@ def _route_auth_surfaces() -> list[RouteAuthSurface]:
             for node in tree.body
             if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
         }
-        direct_authz = {name for name, node in functions.items() if "ensure_user_allowed" in _call_names(node)}
+        direct_authz = {name for name, node in functions.items() if _call_names(node) & _AUTHZ_CALL_NAMES}
         authz_closure = set(direct_authz)
         authz_scopes_by_function = {
             name: _ensure_user_allowed_scopes(node)
@@ -491,10 +562,15 @@ def test_public_or_echo_routes_do_not_return_governed_result_meta(
     client = _build_client(tmp_path, monkeypatch)
 
     response = client.get(f"/health{path}" if path in {"", "/live", "/ready"} else "/ui/balance-analysis/current-user")
+    payload = response.json()
 
     assert method == "GET"
-    assert response.status_code == 200
-    assert "result_meta" not in response.json()
+    # `/health/ready` self-reports dependency degradation as 503 (e7531a33), and this
+    # isolated client has no live dependencies. Derive the expected status from the
+    # payload so the probe's status code must agree with its own verdict, instead of
+    # widening the guard to accept any of several numbers.
+    assert response.status_code == (503 if payload.get("status") == "degraded" else 200)
+    assert "result_meta" not in payload
     get_settings.cache_clear()
 
 
@@ -577,34 +653,73 @@ def test_backend_policy_classes_match_resource_action_semantics() -> None:
     assert admin_action_without_admin_class == []
 
 
-def test_api_router_registry_classifies_every_included_router() -> None:
-    api_module = load_module("backend.app.api", "backend/app/api/__init__.py")
+@pytest.mark.parametrize("agent_enabled", (False, True), ids=("agent-disabled", "agent-enabled"))
+def test_api_router_registry_classifies_every_included_router(
+    monkeypatch: pytest.MonkeyPatch,
+    agent_enabled: bool,
+) -> None:
+    api_module = _load_api_registry(monkeypatch, agent_enabled=agent_enabled)
 
     registry = tuple(api_module.ROUTE_REGISTRY)
+    declared_groups = set(api_module.ROUTE_GROUP_METADATA)
     route_groups = {entry.group for entry in registry}
     entries_by_name = {entry.name: entry for entry in registry}
+    unnamed = [index for index, entry in enumerate(registry) if not entry.name.strip()]
     missing_tags = [entry.name for entry in registry if not entry.tags]
     missing_owner = [entry.name for entry in registry if not entry.owner.strip()]
+    ungrouped = [
+        (entry.name, entry.group)
+        for entry in registry
+        if entry.group not in declared_groups
+    ]
+    misclassified = {
+        name: entries_by_name[name].group if name in entries_by_name else "<absent from registry>"
+        for name, expected_group in PINNED_ROUTER_GROUPS.items()
+        if name not in entries_by_name or entries_by_name[name].group != expected_group
+    }
 
-    assert len(registry) == 33
-    assert len({entry.name for entry in registry}) == len(registry)
+    assert registry
+    assert unnamed == []
     assert missing_tags == []
     assert missing_owner == []
-    assert route_groups >= {
-        "formal_mainline",
-        "preview",
-        "macro_market",
-        "agent_experimental",
-        "support",
+    assert ungrouped == []
+    assert misclassified == {}
+    assert len(entries_by_name) == len(registry)
+    assert len({id(entry.router) for entry in registry}) == len(registry)
+    assert route_groups >= REQUIRED_ROUTE_GROUPS
+    if agent_enabled:
+        assert "agent_experimental" in route_groups
+        assert entries_by_name["agent"].group == "agent_experimental"
+    else:
+        assert "agent_experimental" not in route_groups
+        assert "agent" not in entries_by_name
+    assert "agent_workspace" not in entries_by_name
+
+
+def test_api_router_registry_agent_gate_adds_only_the_agent_router(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    disabled = {
+        entry.name: entry.group
+        for entry in _load_api_registry(monkeypatch, agent_enabled=False).ROUTE_REGISTRY
     }
-    assert entries_by_name["agent"].group == "agent_experimental"
-    assert entries_by_name["source_preview"].group == "preview"
-    assert entries_by_name["macro_toolkit"].group == "macro_market"
-    assert entries_by_name["pnl"].group == "formal_mainline"
+    enabled = {
+        entry.name: entry.group
+        for entry in _load_api_registry(monkeypatch, agent_enabled=True).ROUTE_REGISTRY
+    }
+
+    assert set(enabled) - set(disabled) == {"agent"}
+    assert set(disabled) - set(enabled) == set()
+    assert {name: group for name, group in enabled.items() if name != "agent"} == disabled
+    assert enabled["agent"] == "agent_experimental"
 
 
-def test_api_router_registry_covers_every_route_module_file() -> None:
-    api_module = load_module("backend.app.api", "backend/app/api/__init__.py")
+@pytest.mark.parametrize("agent_enabled", (False, True), ids=("agent-disabled", "agent-enabled"))
+def test_api_router_registry_covers_every_route_module_file(
+    monkeypatch: pytest.MonkeyPatch,
+    agent_enabled: bool,
+) -> None:
+    api_module = _load_api_registry(monkeypatch, agent_enabled=agent_enabled)
 
     route_modules = {
         path.stem
@@ -616,11 +731,20 @@ def test_api_router_registry_covers_every_route_module_file() -> None:
         for entry in api_module.ROUTE_REGISTRY
     }
 
-    assert sorted(route_modules - registered_modules) == []
+    top_level_route_modules = route_modules - _NESTED_ROUTE_MODULES
+    expected_unregistered = _GATED_TOP_LEVEL_ROUTE_MODULES if not agent_enabled else set()
+
+    assert sorted(top_level_route_modules - registered_modules) == sorted(expected_unregistered)
+    assert registered_modules <= top_level_route_modules
+    assert _NESTED_ROUTE_MODULES.isdisjoint(registered_modules)
 
 
-def test_api_route_groups_expose_claim_boundary_metadata() -> None:
-    api_module = load_module("backend.app.api", "backend/app/api/__init__.py")
+@pytest.mark.parametrize("agent_enabled", (False, True), ids=("agent-disabled", "agent-enabled"))
+def test_api_route_groups_expose_claim_boundary_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    agent_enabled: bool,
+) -> None:
+    api_module = _load_api_registry(monkeypatch, agent_enabled=agent_enabled)
 
     registry = tuple(api_module.ROUTE_REGISTRY)
     route_groups = {entry.group for entry in registry}
@@ -637,7 +761,7 @@ def test_api_route_groups_expose_claim_boundary_metadata() -> None:
     ]
 
     assert missing_group_metadata == []
-    assert extra_group_metadata == []
+    assert extra_group_metadata == ([] if agent_enabled else ["agent_experimental"])
     assert incomplete_metadata == []
     assert group_metadata["formal_mainline"].claim_boundary != group_metadata["preview"].claim_boundary
     assert "certified" not in group_metadata["agent_experimental"].claim_boundary.lower()
@@ -664,8 +788,12 @@ def test_route_scope_audit_documents_backend_api_route_groups() -> None:
         assert required in route_scope_doc
 
 
-def test_api_router_registry_matches_included_route_surface() -> None:
-    api_module = load_module("backend.app.api", "backend/app/api/__init__.py")
+@pytest.mark.parametrize("agent_enabled", (False, True), ids=("agent-disabled", "agent-enabled"))
+def test_api_router_registry_matches_included_route_surface(
+    monkeypatch: pytest.MonkeyPatch,
+    agent_enabled: bool,
+) -> None:
+    api_module = _load_api_registry(monkeypatch, agent_enabled=agent_enabled)
 
     registry = tuple(api_module.ROUTE_REGISTRY)
     registered_route_count = sum(len(entry.router.routes) for entry in registry)
@@ -675,7 +803,10 @@ def test_api_router_registry_matches_included_route_surface() -> None:
     }
 
     assert len(api_module.router.routes) == registered_route_count
-    assert group_route_counts["formal_mainline"] > group_route_counts["agent_experimental"]
+    if agent_enabled:
+        assert group_route_counts["formal_mainline"] > group_route_counts["agent_experimental"]
+    else:
+        assert "agent_experimental" not in group_route_counts
     assert group_route_counts["macro_market"] > 0
     assert group_route_counts["preview"] > 0
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Annotated
 from urllib.parse import quote
 
+from backend.app.api.deps import ensure_read_allowed
 from backend.app.governance.settings import get_settings
 from backend.app.schemas.qdb_gl_contract import QdbGlMonthlyAnalysisManualAdjustmentRequest
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
@@ -253,17 +254,7 @@ def restore_manual_adjustment(
 
 
 def _ensure_qdb_gl_monthly_analysis_read_allowed(auth: AuthContext, settings) -> None:
-    try:
-        ensure_user_allowed(
-            auth=auth,
-            settings=settings,
-            resource="qdb_gl_monthly_analysis",
-            action="read",
-        )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    ensure_read_allowed(auth, "qdb_gl_monthly_analysis", settings=settings, authorize=ensure_user_allowed)
 
 
 def _ensure_qdb_gl_monthly_analysis_refresh_allowed(auth: AuthContext, settings) -> None:

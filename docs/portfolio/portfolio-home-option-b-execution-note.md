@@ -65,20 +65,18 @@ The evidence gates matched the expected blocked state:
 - Score status: `blocked`
 - Full score ready: `false`
 - Dependency consistency: `consistent`
-- Risk warning consistency: `mismatch`
+- Risk warning consistency: `consistent`
 - Owner intake status: `pending_owner_decisions`
 - Business owner approval packet status: `pending`
 
-Strict gates, including the risk warning consistency strict check, failed as expected because the page is not full-closure ready and the current duration-exclusion warning evidence is mismatched.
+Strict gates failed as expected because the page is not full-closure ready and the rematerialized risk tensor still carries `quality_flag=warning`.
 
 ## Current Blockers
 
 - `risk_tensor_quality_warning`
 - `krd_contract_decision_required`
-- `bond_maturity_date_remediation_required`
+- `bond_matured_outstanding_reconciliation_required`
 - `tyw_liability_maturity_date_remediation_required`
-- `duration_exclusion_warning_mismatch`
-- `risk_tensor_warning_mismatch`
 - `business_owner_approval`
 - `owner_decision_intake_blocked`
 
@@ -86,15 +84,13 @@ Strict gates, including the risk warning consistency strict check, failed as exp
 
 Risk owner:
 
-- Review `risk_tensor_quality_warning`.
-- Reconcile `risk_tensor_warning_mismatch` through clean risk warning evidence or keep `/portfolio` candidate-only.
+- Review `risk_tensor_quality_warning`; parsed and recomputed warning evidence now match after risk tensor rematerialization.
 - Decide whether to approve nearest KRD bucket mapping for `20Y`, `2Y`, and `6M`, require exact bucket schema, or reject.
 
 Data owner:
 
-- Remediate or approve scoped exclusion for `114` missing bond maturity rows.
+- Reconcile the `6` matured non-zero bond positions at source; a scoped exclusion cannot close this blocker.
 - Remediate or approve scoped exclusion for `1455` missing TYW liability maturity rows in the risk scope.
-- Reconcile `duration_exclusion_warning_mismatch` where parsed duration-exclusion market value is `38318400505.50000008` and recomputed evidence is `39109594105.50000008`.
 
 Business owner:
 

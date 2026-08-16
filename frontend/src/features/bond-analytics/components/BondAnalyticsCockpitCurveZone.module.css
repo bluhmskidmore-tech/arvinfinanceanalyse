@@ -1,0 +1,208 @@
+/* 曲线 / KRD 面板专属布局（BondAnalyticsCockpitCurveZone.tsx 独占）。
+   设计约束（DESIGN §5/§6/§7）：
+   - 状态信息收敛为 1-2 行行内标签，语义圆点承载状态，不再用左文右格的双栏 banner
+     （旧 banner 在三列窄栏下把状态句挤成逐字竖排）；
+   - 所有行均为 flex wrap，整词换行，任何宽度下不出现单字竖排或省略号截断；
+   - 来源版本 / vendor 原始 ID 不进正文，收进 title 供复核。
+   色值全部走页根重映射的 --moss-color-* / --dh-api-* 语义链，不新增字面量。 */
+
+.statusHeader {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.statusTags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 12px;
+  row-gap: 3px;
+  min-width: 0;
+}
+
+.statusTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+/* 状态圆点承载语义（§6）：绿=已返回，中性=待返回/读取中，琥珀=接口未返回。 */
+.statusTag::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--moss-color-neutral-400);
+}
+
+.statusTag[data-tone="ok"]::before {
+  background: var(--moss-color-success-700);
+}
+
+.statusTag[data-tone="warn"]::before {
+  background: var(--moss-color-warning-600);
+}
+
+.statusMeta {
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.readout {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 曲线名与最大日变动合并为一行；放不下时整块换行，不做定宽挤压。 */
+.readoutLead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  column-gap: 12px;
+  row-gap: 2px;
+  min-width: 0;
+}
+
+.leadNames {
+  color: var(--moss-color-neutral-900);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.leadDelta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 6px;
+  row-gap: 2px;
+  min-width: 0;
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.leadDelta strong {
+  color: var(--moss-color-neutral-900);
+  font-family: var(--moss-font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 2026-08-11 全站决议（DESIGN §4）：绿涨红跌。曲线日变动是数值方向读数（非风险警示位，
+   警示语义由上方 statusTag 的琥珀承载）：上行=绿、下行=红，与同页宏观条 / 首页收益率行一致。 */
+.leadDelta[data-tone="up"] strong {
+  color: var(--moss-color-success-700);
+}
+
+.leadDelta[data-tone="down"] strong {
+  color: var(--moss-color-danger-600);
+}
+
+.leadDelta small {
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+}
+
+/* 图表脚注：计数与口径说明一行流排，可换行，不再 nowrap 截断。 */
+.footerRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 12px;
+  row-gap: 2px;
+  min-width: 0;
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.footerRow strong {
+  color: var(--moss-color-neutral-600);
+  font-family: var(--moss-font-mono);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.footerRow small {
+  min-width: 0;
+  font-size: 11px;
+}
+
+.pendingPanel {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  min-height: 96px;
+  padding: 10px 12px;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--moss-color-neutral-50);
+}
+
+.pendingHeader {
+  display: grid;
+  gap: 3px;
+}
+
+.pendingHeader strong {
+  color: var(--moss-color-neutral-900);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.pendingHeader span {
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.pendingList {
+  display: grid;
+  gap: 4px;
+}
+
+/* 待返回台账由 4 列格子改为行式键值：标签列 84px 对齐，说明可换行。 */
+.pendingRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 8px;
+  row-gap: 1px;
+  min-width: 0;
+}
+
+.pendingRow > span {
+  flex: 0 0 auto;
+  min-width: 84px;
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.pendingRow > strong {
+  flex: 0 0 auto;
+  color: var(--moss-color-neutral-900);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.pendingRow > small {
+  flex: 1 1 120px;
+  min-width: 0;
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+  line-height: 1.3;
+}

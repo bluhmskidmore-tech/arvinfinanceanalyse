@@ -10,6 +10,7 @@ import type {
 import { formatRawAsNumeric } from "../utils/format";
 
 export const SAMPLE_DASHBOARD_REPORT_DATE = "2026-03-31";
+export const SAMPLE_BOND_DASHBOARD_EVIDENCE_ROWS = 428;
 
 /** 稳定的「核心指标」result 本体，供信封包裹。 */
 export function sampleCoreMetricsResult(overrides?: Partial<CoreMetricsResult>): CoreMetricsResult {
@@ -80,19 +81,63 @@ export function sampleDailyChangesResult(overrides?: Partial<DailyChangesResult>
   return { ...base, ...overrides };
 }
 
+/** 覆盖率（0-1 比率）：2026-08-13 后端补出的质量披露字段，mock 与实盘信封对齐。 */
+const coverageRatio = (raw: number): Numeric =>
+  formatRawAsNumeric({ raw, unit: "ratio", sign_aware: false });
+
 export const sampleBondBusinessTypeMetricRows: BondBusinessTypeMetricItem[] = [
   {
-    name: "利率债",
-    market_value: "5000000000.00",
-    weighted_avg_ytm_pct: "2.55",
-    weighted_avg_duration: "3.21",
-    duration_source: "formal",
+    name: "政策性金融债",
+    market_value: "98500000000.00000000",
+    weighted_avg_ytm_pct: "2.72000000",
+    weighted_avg_duration: "3.82000000",
+    duration_source: "",
+    weighted_avg_ytm_coverage_ratio: coverageRatio(0.98),
+    weighted_avg_duration_coverage_ratio: coverageRatio(0.97),
   },
   {
-    name: "信用债",
-    market_value: "3000000000.00",
-    weighted_avg_ytm_pct: "3.10",
-    weighted_avg_duration: "2.80",
-    duration_source: "formal",
+    name: "地方政府债",
+    market_value: "82000000000.00000000",
+    weighted_avg_ytm_pct: "2.65000000",
+    weighted_avg_duration: "4.18000000",
+    duration_source: "",
+    weighted_avg_ytm_coverage_ratio: coverageRatio(0.95),
+    weighted_avg_duration_coverage_ratio: coverageRatio(0.94),
+  },
+  {
+    name: "同业存单",
+    market_value: "71000000000.00000000",
+    weighted_avg_ytm_pct: "2.68000000",
+    weighted_avg_duration: "0.74000000",
+    duration_source: "",
+    weighted_avg_ytm_coverage_ratio: coverageRatio(0.99),
+    weighted_avg_duration_coverage_ratio: coverageRatio(0.99),
+  },
+  {
+    name: "信用债-企业",
+    market_value: "49209000000.00000000",
+    weighted_avg_ytm_pct: "3.41000000",
+    weighted_avg_duration: "2.95000000",
+    duration_source: "",
+    weighted_avg_ytm_coverage_ratio: coverageRatio(0.86),
+    weighted_avg_duration_coverage_ratio: coverageRatio(0.84),
+  },
+  {
+    name: "其他",
+    market_value: "28000000000.00000000",
+    weighted_avg_ytm_pct: "2.89000000",
+    weighted_avg_duration: "2.36000000",
+    duration_source: "",
+    weighted_avg_ytm_coverage_ratio: coverageRatio(0.72),
+    weighted_avg_duration_coverage_ratio: coverageRatio(0.7),
+  },
+  {
+    name: "无覆盖样例",
+    market_value: "0.00000000",
+    weighted_avg_ytm_pct: "",
+    weighted_avg_duration: "",
+    duration_source: "",
+    weighted_avg_ytm_coverage_ratio: null,
+    weighted_avg_duration_coverage_ratio: null,
   },
 ];

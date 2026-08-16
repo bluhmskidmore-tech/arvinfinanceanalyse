@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 
 import { useApiClient } from "../../api/client";
 import { apiQueryKeys } from "../../api/queryKeys";
@@ -10,11 +11,17 @@ import type {
   PnlByBusinessManualAdjustmentRequest,
   PnlByBusinessMonthlyBucket,
   PnlByBusinessMonthlyItem,
+  PnlByBusinessPayload,
+  PnlByBusinessPrecomputeStatus,
   PnlByBusinessRow,
   PnlByBusinessYtdItem,
+  PnlByBusinessYtdSummary,
+  PnlByBusinessYtdUnallocatedBreakdownRow,
+  PnlByBusinessYtdUnallocatedItem,
 } from "../../api/contracts";
 import { FilterBar } from "../../components/FilterBar";
 import { KpiCard } from "../../components/KpiCard";
+import { PageAsyncSection } from "../../components/page/PageAsyncSection";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
 import {
   AnalysisGrid,
@@ -28,19 +35,27 @@ import {
   PageStateSurface,
   PageV2Shell,
 } from "../../components/page/PagePrimitives";
-import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { formatAnnualizedYieldPctDisplay, inclusiveCalendarDays } from "./pnlByBusinessAnnualizedYield";
-import { buildAdbAvgByBusinessTypeMap } from "./pnlByBusinessAdbMap";
+import { buildAdbAvgByBusinessTypeMap, buildYtdAvgByBusinessTypeMap } from "./pnlByBusinessAdbMap";
 import { downloadPnlByBusinessExcel } from "./pnlByBusinessExport";
+import { PnlByBusinessManagementChangePanel } from "./PnlByBusinessManagementChangePanel";
+import { PnlByBusinessMonthlyTrendPanel } from "./PnlByBusinessMonthlyTrendPanel";
+import { PnlByBusinessInsightsLeadershipPanel } from "./PnlByBusinessInsightsLeadershipPanel";
+import { buildPnlByBusinessInsightsLeadershipModel } from "./pnlByBusinessInsightsModel";
 import {
   VIEW_MODE_SUBTITLES,
+  buildPnlByBusinessMonthlyAdjustmentBridge,
   buildPnlByBusinessSelectedDrilldownModel,
   buildPnlByBusinessPageModel,
+  resolvePnlByBusinessActiveMonthlyBucket,
+  type PnlByBusinessMonthlyAdjustmentBridgeModel,
+  type PnlByBusinessAdbEvidenceStatus,
   type PnlByBusinessDrilldownRecommendation,
   type PnlByBusinessInsightModel,
   formatAnalysisYieldPct,
   formatAvgBalanceYi,
   formatAvgBalanceYiMetric,
+  formatPnlByBusinessFtpStatus,
   formatRatioPct,
   formatYuanAsWanUnit,
   isDetailZqtzBusinessRow,
@@ -48,6 +63,7 @@ import {
   toneFromSigned,
 } from "./pnlByBusinessPageModel";
 import { resolveAdbAvgYuan } from "./zqtzAdbAvgRollup";
+import { EM_DASH } from "../../utils/format";
 import "./PnlByBusinessPage.css";
 
 function pnlKpiToneClassName(
@@ -62,56 +78,194 @@ function pnlKpiToneClassName(
   return "";
 }
 
-function PnlByBusinessInsightStrip({ insight }: { insight: PnlByBusinessInsightModel }) {
+function formatPrecomputeTimestamp(value: string | null | undefined): string {
+  if (!value) {
+    return EM_DASH;
+  }
+  return value.replace("T", " ").replace(/(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/, "");
+}
+
+function compactPrecomputeSourceVersion(value: string | null | undefined): string {
+  if (!value) {
+    return EM_DASH;
+  }
+  return value.length > 34 ? `${value.slice(0, 34)}…` : value;
+}
+
+function PnlByBusinessPrecomputeStatusPanel({
+  status,
+  isLoading,
+  isError,
+  isRebuilding,
+  rebuildError,
+  onRebuild,
+}: {
+  status?: PnlByBusinessPrecomputeStatus;
+  isLoading: boolean;
+  isError: boolean;
+  isRebuilding: boolean;
+  rebuildError: string | null;
+  onRebuild: () => void;
+}) {
+  const inflight = status?.status === "queued" || status?.status === "running";
+  const retryPending = status?.failure_category === "automatic_retry_pending";
+  const failed = status?.status === "failed";
+  const servingLive = status?.serving_mode === "live_fallback";
+  const title = isError
+    ? "预计算状态不可用，主结果继续按当前读路径展示"
+    : isLoading && !status
+      ? "正在读取预计算状态"
+      : inflight
+        ? retryPending
+          ? "上次未完成，后台自动重试中"
+          : servingLive
+          ? "预计算重建中，当前使用实时计算"
+          : "预计算重建中，当前继续使用已验证缓存"
+        : failed
+          ? servingLive
+            ? "预计算失败，当前使用实时计算"
+            : "最近一次预计算失败，当前仍使用已验证缓存"
+          : status?.is_current
+            ? "预计算已就绪"
+            : "预计算未就绪，当前使用实时计算";
+  // 「未就绪，使用实时计算」是降级中状态：左沿走琥珀而非就绪绿（§4 语义色承载状态）。
+  const tone =
+    failed || isError
+      ? "error"
+      : inflight || servingLive || !status?.is_current
+        ? "warning"
+        : "ready";
+  const cutoff = status?.report_date ?? status?.latest_available_as_of_date ?? EM_DASH;
+
+  return (
+    <section
+      className={`pnl-by-business-precompute-status pnl-by-business-precompute-status--${tone}`}
+      data-testid="pnl-by-business-precompute-status"
+      aria-live="polite"
+    >
+      <div className="pnl-by-business-precompute-status__summary">
+        <span className="pnl-by-business-precompute-status__eyebrow">读模型状态</span>
+        <strong>{title}</strong>
+        <small>
+          后台失败按任务策略自动重试最多 {status?.retry_policy.max_retries ?? 3} 次；实时计算与预计算使用同一后端口径。
+        </small>
+        {status?.error_message ? (
+          <span className="pnl-by-business-precompute-status__error" role="alert">
+            {status.error_message}
+          </span>
+        ) : null}
+        {rebuildError ? (
+          <span className="pnl-by-business-precompute-status__error" role="alert">
+            {rebuildError}
+          </span>
+        ) : null}
+      </div>
+      <div className="pnl-by-business-precompute-status__facts">
+        <span><small>截至</small><strong>{cutoff}</strong></span>
+        <span><small>生成</small><strong>{formatPrecomputeTimestamp(status?.generated_at ?? status?.finished_at)}</strong></span>
+        <span title={status?.source_version ?? undefined}>
+          <small>源版本</small><strong>{compactPrecomputeSourceVersion(status?.source_version)}</strong>
+        </span>
+        <span><small>记录</small><strong>{status?.record_count ?? EM_DASH}</strong></span>
+      </div>
+      <button
+        type="button"
+        className="pnl-by-business-action-button pnl-by-business-precompute-status__action"
+        onClick={onRebuild}
+        disabled={isLoading || inflight || isRebuilding}
+        aria-label="重新生成预计算"
+      >
+        {isRebuilding || inflight ? "生成中..." : "重新生成预计算"}
+      </button>
+    </section>
+  );
+}
+
+function PnlByBusinessInsightStrip({
+  insight,
+  viewMode,
+  manualAdjustmentAuditLoading,
+  manualAdjustmentAuditUnavailable,
+}: {
+  insight: PnlByBusinessInsightModel;
+  viewMode: PnlByBusinessViewMode;
+  manualAdjustmentAuditLoading: boolean;
+  manualAdjustmentAuditUnavailable: boolean;
+}) {
   const confidenceClass =
     insight.confidenceLabel === "可分析"
       ? "pnl-by-business-insight-strip__confidence--ready"
       : insight.confidenceLabel === "预警/降级"
         ? "pnl-by-business-insight-strip__confidence--warning"
         : "pnl-by-business-insight-strip__confidence--limited";
-  const adbStatusLabel = insight.ftpAvailable
-    ? "FTP 可分析"
-    : insight.zeroAdbCount > 0
-      ? `${insight.zeroAdbCount} 项日均为0`
-      : `${insight.missingAdbCount} 项缺日均`;
+  const ftpStatusLabel =
+    viewMode === "formal"
+      ? "不适用（仅对账）"
+      : viewMode === "monthly"
+        ? insight.ftpAvailable
+          ? "月度 FTP 可分析"
+          : "月度 FTP 字段待核对"
+        : insight.ftpAvailable
+          ? insight.adbEvidenceStatus === "ytd_fallback"
+            ? "FTP 可分析（YTD 日均）"
+            : insight.adbEvidenceStatus === "loading"
+              ? "FTP 可分析（ADB 复核中）"
+              : "FTP 可分析"
+          : insight.zeroAdbCount > 0
+            ? insight.adbEvidenceStatus === "ytd_fallback"
+              ? `${insight.zeroAdbCount} 项日均为0（源数据真零）`
+              : `${insight.zeroAdbCount} 项日均为0`
+            : insight.missingAdbCount > 0
+              ? `${insight.missingAdbCount} 项缺日均`
+              : `${insight.missingFtpFieldCount} 项缺 FTP 字段`;
+  const ftpToneClass = insight.ftpAvailable
+    ? "pnl-by-business-insight-strip__value--positive"
+    : viewMode === "formal"
+      ? ""
+      : "pnl-by-business-insight-strip__value--warning";
+  const formalToneClass =
+    insight.formalUntracedCount > 0 ? "pnl-by-business-insight-strip__value--negative" : "";
+  const dragToneClass =
+    insight.topDragDisplay === EM_DASH
+      ? "pnl-by-business-insight-strip__value--positive"
+      : "pnl-by-business-insight-strip__value--negative";
 
   return (
     <section className="pnl-by-business-insight-strip" data-testid="pnl-by-business-insight-strip">
-      <div className="pnl-by-business-insight-strip__header">
+      <div className="pnl-by-business-insight-strip__lead">
         <span className={`pnl-by-business-insight-strip__confidence ${confidenceClass}`}>
           {insight.confidenceLabel}
         </span>
-        <strong>分析路径</strong>
-        <span>{insight.nextStep}</span>
+        <div>
+          <strong>领导判断</strong>
+          <span>{insight.nextStep}</span>
+          {viewMode === "formal" ? <small>{insight.topShareDisplay}</small> : null}
+        </div>
       </div>
       <div className="pnl-by-business-insight-strip__grid">
         <div>
-          <small>合计损益</small>
-          <strong>{insight.totalPnlDisplay}</strong>
-        </div>
-        <div>
-          <small>Top 贡献</small>
-          <strong>{insight.topContributionLabel}</strong>
-          <span>{insight.topContributionDisplay}</span>
-        </div>
-        <div>
-          <small>Bottom 拖累</small>
-          <strong>{insight.topDragLabel}</strong>
+          <small>最大拖累</small>
+          <strong className={dragToneClass}>{insight.topDragLabel}</strong>
           <span>{insight.topDragDisplay}</span>
         </div>
         <div>
-          <small>占比/对账</small>
-          <strong>{insight.topShareLabel}</strong>
-          <span>{insight.topShareDisplay}</span>
-        </div>
-        <div>
           <small>FTP / 日均</small>
-          <strong>{adbStatusLabel}</strong>
-          <span>{insight.manualAdjustmentCount} 条手工调整</span>
+          <strong className={ftpToneClass}>{ftpStatusLabel}</strong>
+          <span>
+            {viewMode === "formal"
+              ? "手工调整不适用"
+              : manualAdjustmentAuditLoading
+                ? "手工调整审批读取中"
+                : manualAdjustmentAuditUnavailable
+                  ? "手工调整审批数量待核对"
+                  : viewMode === "ytd"
+                    ? `${insight.manualAdjustmentCount} 条所选报表日已批准调整`
+                    : `${insight.manualAdjustmentCount} 条手工调整`}
+          </span>
         </div>
         <div>
-          <small>formal 对账</small>
-          <strong>{insight.formalUntracedValueDisplay}</strong>
+          <small>正式对账</small>
+          <strong className={formalToneClass}>{insight.formalUntracedValueDisplay}</strong>
           <span>{insight.formalUntracedDisplay}</span>
         </div>
       </div>
@@ -185,9 +339,31 @@ const EMPTY_MANUAL_ADJUSTMENT_DRAFT: ManualAdjustmentDraft = {
 function formatPnlWan(raw: string | number | null | undefined) {
   const value = numeric(raw);
   if (value === null) {
-    return "-";
+    return EM_DASH;
   }
-  return (value / 10_000).toLocaleString("zh-CN", { maximumFractionDigits: 2 });
+  // 不做近零折叠：真实小值按两位小数如实四舍五入展示；仅规整 "-0" 符号噪声。
+  const display = (value / 10_000).toLocaleString("zh-CN", { maximumFractionDigits: 2 });
+  return display === "-0" ? "0" : display;
+}
+
+/** 月度表金额列的符号语义：负值统一 --dh-api-red（§4 色一致性锁，与 /pnl 汇总卡对齐）。 */
+function pnlWanCellTone(raw: string | number | null | undefined): "negative" | undefined {
+  const value = numeric(raw);
+  return value !== null && value < 0 ? "negative" : undefined;
+}
+
+function PnlWanCell({
+  raw,
+  className,
+}: {
+  raw: string | number | null | undefined;
+  className?: string;
+}) {
+  return (
+    <td className={className} data-pnl-tone={pnlWanCellTone(raw)}>
+      {formatPnlWan(raw)}
+    </td>
+  );
 }
 
 function formatAdbAvgYiCell(yuan: number): string {
@@ -197,7 +373,7 @@ function formatAdbAvgYiCell(yuan: number): string {
 function formatYuanAsYiCell(raw: string | number | null | undefined): string {
   const value = numeric(raw);
   if (value === null) {
-    return "-";
+    return EM_DASH;
   }
   return (value / YUAN_PER_YI).toFixed(2);
 }
@@ -212,7 +388,7 @@ function formatAdjustmentStatus(status: string): string {
   if (status === "rejected") {
     return "已撤销";
   }
-  return status || "-";
+  return status || EM_DASH;
 }
 
 function formatAdjustmentEvent(eventType: string): string {
@@ -228,7 +404,7 @@ function formatAdjustmentEvent(eventType: string): string {
   if (eventType === "restored") {
     return "恢复";
   }
-  return eventType || "-";
+  return eventType || EM_DASH;
 }
 
 function normalizeAdjustmentStatus(status: string): PnlByBusinessManualAdjustmentRequest["approval_status"] {
@@ -242,7 +418,7 @@ function normalizeAdjustmentStatus(status: string): PnlByBusinessManualAdjustmen
 function formatFormalYieldPctPoints(raw: string | number | null | undefined) {
   const value = numeric(raw);
   if (value === null) {
-    return "-";
+    return EM_DASH;
   }
   return `${value.toFixed(2)}%`;
 }
@@ -250,7 +426,7 @@ function formatFormalYieldPctPoints(raw: string | number | null | undefined) {
 function formatFtpRatePct(raw: string | number | null | undefined): string {
   const value = numeric(raw);
   if (value === null) {
-    return "-";
+    return EM_DASH;
   }
   return `${value.toFixed(2)}%`;
 }
@@ -274,62 +450,27 @@ function buildYtdRangeFromResultDates(
 function BusinessRowsTable({
   rows,
   selectedRowKey,
+  inlineCurrencyRows,
+  summary,
+  unallocatedPnl,
+  unallocatedRowCount,
   onSelectRow,
 }: {
   rows: PnlByBusinessYtdItem[];
   selectedRowKey: string | null;
+  inlineCurrencyRows: PnlByBusinessAnalysisRow[];
+  summary?: PnlByBusinessYtdSummary;
+  unallocatedPnl?: string;
+  unallocatedRowCount?: number;
   onSelectRow: (row: PnlByBusinessYtdItem) => void;
 }) {
   const parentRows = useMemo(() => rows.filter(isParentZqtzBusinessRow), [rows]);
   const detailRows = useMemo(() => rows.filter(isDetailZqtzBusinessRow), [rows]);
 
-  const parentFooter = useMemo(() => {
-    let interest = 0;
-    let fairValue = 0;
-    let capital = 0;
-    let manual = 0;
-    let totalPnl = 0;
-    let assets = 0;
-    let avgBalance = 0;
-    let hasAnyAvgBalance = false;
-    let ftpNetPnl = 0;
-    let hasAnyFtpNetPnl = false;
-    for (const row of parentRows) {
-      interest += numeric(row.interest_income) ?? 0;
-      fairValue += numeric(row.fair_value_change) ?? 0;
-      capital += numeric(row.capital_gain) ?? 0;
-      manual += numeric(row.manual_adjustment) ?? 0;
-      totalPnl += numeric(row.total_pnl) ?? 0;
-      assets += row.assets_count;
-      const rowAvgBalance = numeric(row.avg_balance);
-      if (rowAvgBalance !== null) {
-        hasAnyAvgBalance = true;
-        avgBalance += rowAvgBalance;
-      }
-      const rowFtpNetPnl = numeric(row.ftp_net_pnl);
-      if (rowFtpNetPnl !== null) {
-        hasAnyFtpNetPnl = true;
-        ftpNetPnl += rowFtpNetPnl;
-      }
-    }
-    const adbCell = hasAnyAvgBalance ? formatAvgBalanceYi(avgBalance) : "-";
-    return {
-      interest,
-      fairValue,
-      capital,
-      manual,
-      totalPnl,
-      assets,
-      adbSum: avgBalance,
-      adbCell,
-      yieldPct: "—",
-      ftpNetPnl: hasAnyFtpNetPnl ? ftpNetPnl : null,
-      ftpNetYieldPct: null,
-    };
-  }, [parentRows]);
-
   const renderRow = (row: PnlByBusinessYtdItem, selectable: boolean) => {
     const avgDisplay = formatAvgBalanceYi(row.avg_balance);
+    const totalPnlTone = toneFromSigned(row.total_pnl);
+    const ftpNetPnlTone = toneFromSigned(row.ftp_net_pnl);
     return (
       <tr
         key={row.row_key}
@@ -348,15 +489,26 @@ function BusinessRowsTable({
         role={selectable ? "button" : undefined}
         tabIndex={selectable ? 0 : undefined}
       >
-        <td>{row.business_type}</td>
+        <td className="pnl-by-business-table__business-cell">
+          <span>{row.business_type}</span>
+          {totalPnlTone !== "default" ? (
+            <small className={`pnl-by-business-table__signal pnl-by-business-table__signal--${totalPnlTone}`}>
+              {totalPnlTone === "negative" ? "拖累" : "贡献"}
+            </small>
+          ) : null}
+        </td>
         <td>{avgDisplay}</td>
         <td>{formatPnlWan(row.interest_income)}</td>
         <td>{formatPnlWan(row.fair_value_change)}</td>
         <td>{formatPnlWan(row.capital_gain)}</td>
         <td>{formatPnlWan(row.manual_adjustment)}</td>
-        <td>{formatPnlWan(row.total_pnl)}</td>
+        <td className="pnl-by-business-table__decision-cell" data-pnl-tone={totalPnlTone}>
+          {formatPnlWan(row.total_pnl)}
+        </td>
         <td>{formatAnnualizedYieldPctDisplay(row.annualized_yield_pct)}</td>
-        <td>{formatPnlWan(row.ftp_net_pnl)}</td>
+        <td className="pnl-by-business-table__decision-cell" data-pnl-tone={ftpNetPnlTone}>
+          {formatPnlWan(row.ftp_net_pnl)}
+        </td>
         <td>{formatAnalysisYieldPct(row.ftp_net_annualized_yield_pct)}</td>
         <td>{formatRatioPct(row.proportion)}</td>
         <td>{row.assets_count}</td>
@@ -364,9 +516,49 @@ function BusinessRowsTable({
     );
   };
 
+  const renderCurrencyRow = (row: PnlByBusinessAnalysisRow) => {
+    const totalPnlTone = toneFromSigned(row.total_pnl);
+    const ftpNetPnlTone = toneFromSigned(row.ftp_net_pnl);
+    return (
+      <tr
+        key={`currency-${row.dimension_key}`}
+        className="pnl-by-business-table-row-currency-child"
+        data-testid={`pnl-by-business-inline-currency-row-${row.dimension_key}`}
+      >
+        <td className="pnl-by-business-table__business-cell pnl-by-business-table__currency-cell">
+          <span className="pnl-by-business-table__currency-label">
+            <span aria-hidden="true">↳</span>
+            {row.dimension_label}
+          </span>
+          <small>父级拆分 · 金额折人民币</small>
+        </td>
+        <td>{formatAvgBalanceYi(row.avg_balance)}</td>
+        <td>{formatPnlWan(row.interest_income)}</td>
+        <td>{formatPnlWan(row.fair_value_change)}</td>
+        <td>{formatPnlWan(row.capital_gain)}</td>
+        <td>{formatPnlWan(row.manual_adjustment)}</td>
+        <td className="pnl-by-business-table__decision-cell" data-pnl-tone={totalPnlTone}>
+          {formatPnlWan(row.total_pnl)}
+        </td>
+        <td>{formatAnnualizedYieldPctDisplay(row.annualized_yield_pct)}</td>
+        <td className="pnl-by-business-table__decision-cell" data-pnl-tone={ftpNetPnlTone}>
+          {formatPnlWan(row.ftp_net_pnl)}
+        </td>
+        <td>{formatAnalysisYieldPct(row.ftp_net_annualized_yield_pct)}</td>
+        <td title="币种拆分占比未由接口返回">—</td>
+        <td>{row.asset_count}</td>
+      </tr>
+    );
+  };
+
   return (
     <>
-      <div className="pnl-by-business-table-shell" data-testid="pnl-by-business-table">
+      <div
+        className="pnl-by-business-table-shell"
+        data-testid="pnl-by-business-table"
+        tabIndex={0}
+        aria-label="年累计业务种类损益表，可横向滚动"
+      >
         <table className="pnl-by-business-table">
           <thead>
             <tr>
@@ -384,36 +576,75 @@ function BusinessRowsTable({
               <th>资产数</th>
             </tr>
           </thead>
-          <tbody>{parentRows.map((row) => renderRow(row, true))}</tbody>
+          <tbody>
+            {parentRows.map((row) => (
+              <Fragment key={row.row_key}>
+                {renderRow(row, true)}
+                {row.row_key === selectedRowKey ? inlineCurrencyRows.map(renderCurrencyRow) : null}
+              </Fragment>
+            ))}
+          </tbody>
           {parentRows.length > 0 ? (
             <tfoot>
               <tr data-testid="pnl-by-business-table-parent-footer">
-                <td className="pnl-by-business-table-footer-cell">父级汇总</td>
-                <td className="pnl-by-business-table-footer-cell">{parentFooter.adbCell}</td>
-                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(parentFooter.interest)}</td>
-                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(parentFooter.fairValue)}</td>
-                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(parentFooter.capital)}</td>
-                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(parentFooter.manual)}</td>
-                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(parentFooter.totalPnl)}</td>
-                <td className="pnl-by-business-table-footer-cell">{parentFooter.yieldPct}</td>
-                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(parentFooter.ftpNetPnl)}</td>
+                <td className="pnl-by-business-table-footer-cell">父级损益（系统汇总）</td>
+                <td className="pnl-by-business-table-footer-cell">{formatAvgBalanceYi(summary?.avg_balance)}</td>
+                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(summary?.interest_income)}</td>
+                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(summary?.fair_value_change)}</td>
+                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(summary?.capital_gain)}</td>
+                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(summary?.manual_adjustment)}</td>
+                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(summary?.total_pnl)}</td>
                 <td className="pnl-by-business-table-footer-cell">
-                  {formatAnalysisYieldPct(parentFooter.ftpNetYieldPct)}
+                  {formatAnnualizedYieldPctDisplay(summary?.annualized_yield_pct)}
                 </td>
-                <td className="pnl-by-business-table-footer-cell">—</td>
-                <td className="pnl-by-business-table-footer-cell">{parentFooter.assets}</td>
+                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(summary?.ftp_net_pnl)}</td>
+                <td className="pnl-by-business-table-footer-cell">
+                  {formatAnalysisYieldPct(summary?.ftp_net_annualized_yield_pct)}
+                </td>
+                <td className="pnl-by-business-table-footer-cell">{formatRatioPct(summary?.proportion)}</td>
+                <td className="pnl-by-business-table-footer-cell">{summary?.assets_count ?? EM_DASH}</td>
               </tr>
             </tfoot>
           ) : null}
         </table>
       </div>
+      {(unallocatedRowCount ?? 0) > 0 || (numeric(unallocatedPnl) ?? 0) !== 0 ? (
+        <div
+          className="pnl-by-business-detail-warning"
+          data-testid="pnl-by-business-table-unallocated-footer"
+        >
+          未分类差额：{formatPnlWan(unallocatedPnl)} 万元（{unallocatedRowCount ?? 0} 条）；该金额未并入父级汇总，
+          A/T 口径待确认。
+        </div>
+      ) : null}
       {detailRows.length > 0 ? (
-        <div className="pnl-by-business-detail-block" data-testid="pnl-by-business-detail-table">
+        <details
+          className="pnl-by-business-detail-block pnl-by-business-detail-disclosure"
+          data-testid="pnl-by-business-detail-table"
+        >
+          <summary
+            className="pnl-by-business-detail-disclosure__summary"
+            data-testid="pnl-by-business-detail-table-toggle"
+          >
+            <span>
+              <strong>其中项明细</strong>
+              <small>已包含在父级行中，不可与父级或其他其中项相加；展开查看拆解。</small>
+            </span>
+            <span className="pnl-by-business-detail-disclosure__action" aria-hidden="true">
+              展开明细
+            </span>
+          </summary>
+          <div className="pnl-by-business-detail-warning" data-testid="pnl-by-business-detail-overlap-warning">
+            以下金额已包含在上方父级行中，与父级行金额存在重叠，不可与父级行相加，也不可跨行相加。
+          </div>
           <div className="pnl-by-business-detail-heading">
-            <h3>其中项明细</h3>
             <p>这些行为父级分类的拆解项，不参与父级汇总和资产数加总。</p>
           </div>
-          <div className="pnl-by-business-table-shell">
+          <div
+            className="pnl-by-business-table-shell"
+            tabIndex={0}
+            aria-label="年累计其中项明细表，可横向滚动"
+          >
             <table className="pnl-by-business-table">
               <thead>
                 <tr>
@@ -434,17 +665,182 @@ function BusinessRowsTable({
               <tbody>{detailRows.map((row) => renderRow(row, false))}</tbody>
             </table>
           </div>
-        </div>
+        </details>
       ) : null}
     </>
+  );
+}
+
+const UNALLOCATED_REASON_LABELS = {
+  no_business_rule_match: "未命中业务分类规则",
+  detail_only_business_rule_match: "仅命中其中项，未命中父级分类",
+} as const;
+
+function UnallocatedPnlPanel({
+  breakdown,
+  items,
+  totalPnl,
+  totalAbsPnl,
+  rowCount,
+  testIdPrefix = "pnl-by-business-unallocated",
+  evidenceComplete = true,
+}: {
+  breakdown: PnlByBusinessYtdUnallocatedBreakdownRow[] | undefined;
+  items: PnlByBusinessYtdUnallocatedItem[] | undefined;
+  totalPnl: string | undefined;
+  totalAbsPnl: string | undefined;
+  rowCount: number | undefined;
+  testIdPrefix?: string;
+  evidenceComplete?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const count = rowCount ?? items?.length ?? 0;
+  const visibleItems = (items ?? []).slice(0, 100);
+  const hasUnallocated = count > 0 || (numeric(totalPnl) ?? 0) !== 0 || (numeric(totalAbsPnl) ?? 0) !== 0;
+
+  if (!hasUnallocated) {
+    return null;
+  }
+
+  return (
+    <section className="pnl-by-business-unallocated-panel" data-testid={`${testIdPrefix}-panel`}>
+      <button
+        type="button"
+        className="pnl-by-business-unallocated-toggle"
+        data-testid={`${testIdPrefix}-toggle`}
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span>查看未分类明细</span>
+        <span>
+          {count} 条 · 净额 {formatPnlWan(totalPnl)} 万元 · 绝对金额 {formatPnlWan(totalAbsPnl)} 万元
+        </span>
+      </button>
+      {open ? (
+        <div className="pnl-by-business-unallocated-body">
+          <p className="pnl-by-business-unallocated-note">
+            以下仅展示原始来源字段与未命中原因，不推断 A/T 对应的目标业务分类。
+          </p>
+          {(breakdown?.length ?? 0) > 0 ? (
+            <div className="pnl-by-business-table-shell" data-testid={`${testIdPrefix}-breakdown-table`}>
+              <table className="pnl-by-business-table">
+                <thead>
+                  <tr>
+                    <th>未命中原因</th>
+                    <th>来源</th>
+                    <th>原始类型</th>
+                    <th>会计分类</th>
+                    <th>组合</th>
+                    <th>成本中心</th>
+                    <th>条数</th>
+                    <th>净额（万元）</th>
+                    <th>绝对金额（万元）</th>
+                    <th>示例证券</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(breakdown ?? []).map((row) => (
+                    <tr
+                      key={`${row.reason_code}:${row.source_kind}:${row.invest_type_std}:${row.accounting_basis}:${row.portfolio_name}:${row.cost_center}`}
+                    >
+                      <td>{UNALLOCATED_REASON_LABELS[row.reason_code]}</td>
+                      <td>{row.source_kind || EM_DASH}</td>
+                      <td>{row.invest_type_std || EM_DASH}</td>
+                      <td>{row.accounting_basis || EM_DASH}</td>
+                      <td>{row.portfolio_name || EM_DASH}</td>
+                      <td>{row.cost_center || EM_DASH}</td>
+                      <td>{row.pnl_row_count}</td>
+                      <td>{formatPnlWan(row.total_pnl)}</td>
+                      <td>{formatPnlWan(row.abs_pnl)}</td>
+                      <td>{row.sample_instrument_codes.join("、") || EM_DASH}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="pnl-by-business-unallocated-note">汇总已返回，分组诊断明细待返回。</p>
+          )}
+          {(items?.length ?? 0) > 0 ? (
+            <>
+              <div className="pnl-by-business-unallocated-heading">
+                <h3>逐笔证据</h3>
+                <p>
+                  {evidenceComplete && (items?.length ?? 0) === count
+                    ? `页面显示前 ${visibleItems.length} 条；Excel 导出包含全部 ${count} 条。`
+                    : `接口已返回 ${items?.length ?? 0}/${count} 条；Excel 导出包含已返回的全部 ${items?.length ?? 0} 条。`}
+                </p>
+              </div>
+              <div className="pnl-by-business-table-shell" data-testid={`${testIdPrefix}-items-table`}>
+                <table className="pnl-by-business-table">
+                  <thead>
+                    <tr>
+                      <th>报表日</th>
+                      <th>证券代码</th>
+                      <th>原始类型</th>
+                      <th>来源</th>
+                      <th>组合</th>
+                      <th>成本中心</th>
+                      <th>会计分类</th>
+                      <th>币种</th>
+                      <th>损益（万元）</th>
+                      <th>未命中原因</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleItems.map((item, index) => (
+                      <tr
+                        key={`${item.report_date}:${item.source_kind}:${item.instrument_code}:${item.portfolio_name}:${item.cost_center}:${index}`}
+                      >
+                        <td>{item.report_date || EM_DASH}</td>
+                        <td>{item.instrument_code || EM_DASH}</td>
+                        <td>{item.invest_type_std || EM_DASH}</td>
+                        <td>{item.source_kind || EM_DASH}</td>
+                        <td>{item.portfolio_name || EM_DASH}</td>
+                        <td>{item.cost_center || EM_DASH}</td>
+                        <td>{item.accounting_basis || EM_DASH}</td>
+                        <td>{item.currency_basis || EM_DASH}</td>
+                        <td>{formatPnlWan(item.total_pnl)}</td>
+                        <td>{UNALLOCATED_REASON_LABELS[item.reason_code]}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <p className="pnl-by-business-unallocated-note">未分类汇总已返回，逐笔明细待返回。</p>
+          )}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
 function MonthlyBusinessRowsTable({ month }: { month: PnlByBusinessMonthlyBucket }) {
   const parentRows = month.items.filter(isParentZqtzBusinessRow);
   const detailRows = month.items.filter(isDetailZqtzBusinessRow);
+  const evidenceComplete = month.unallocated_evidence_complete === true;
+  const reconciliationClosed = evidenceComplete && (numeric(month.reconciliation_delta) ?? Number.NaN) === 0;
+  const expectedCoverageDays = month.expected_days ?? month.calendar_days;
+  const coverageIncomplete =
+    typeof month.coverage_days === "number" &&
+    expectedCoverageDays > 0 &&
+    month.coverage_days < expectedCoverageDays;
+  const coverageSummaryText = `余额覆盖 ${month.coverage_days ?? "待返回"}/${
+    month.expected_days ?? month.calendar_days ?? "待返回"
+  } 天${month.sample_filled ? "（样本填充）" : ""}`;
   return (
     <>
+      {coverageIncomplete ? (
+        <div
+          className="pnl-by-business-detail-warning"
+          data-testid={`pnl-by-business-monthly-coverage-warning-${month.month_key}`}
+        >
+          日均余额仅覆盖 {month.coverage_days}/{expectedCoverageDays} 天。下表日均、年化收益率、FTP 成本及 FTP
+          后结果为观测样本估算，仅供对账，暂不作为完整月度结论。
+        </div>
+      ) : null}
       <div
         className="pnl-by-business-table-shell pnl-by-business-month-table-shell"
         data-testid={`pnl-by-business-monthly-table-${month.month_key}`}
@@ -453,16 +849,17 @@ function MonthlyBusinessRowsTable({ month }: { month: PnlByBusinessMonthlyBucket
           <thead>
             <tr>
               <th>业务种类</th>
-              <th>日均(亿元)</th>
+              <th>{coverageIncomplete ? "观测日均(亿元)" : "日均(亿元)"}</th>
               <th>期末余额(亿元)</th>
               <th>利息收入（万元）</th>
               <th>公允价值变动（万元）</th>
               <th>资本利得（万元）</th>
               <th>手工调整（万元）</th>
               <th>合计损益（万元）</th>
-              <th>年化收益率</th>
-              <th>FTP后收益（万元）</th>
-              <th>FTP后收益率</th>
+              <th>{coverageIncomplete ? "年化收益率（待核对）" : "年化收益率"}</th>
+              <th>{coverageIncomplete ? "FTP成本（待核对，万元）" : "FTP成本（万元）"}</th>
+              <th>{coverageIncomplete ? "FTP后收益（待核对，万元）" : "FTP后收益（万元）"}</th>
+              <th>{coverageIncomplete ? "FTP后收益率（待核对）" : "FTP后收益率"}</th>
               <th>占比</th>
               <th>资产数</th>
             </tr>
@@ -473,13 +870,14 @@ function MonthlyBusinessRowsTable({ month }: { month: PnlByBusinessMonthlyBucket
                 <td>{row.business_type}</td>
                 <td>{formatAvgBalanceYi(row.avg_balance)}</td>
                 <td>{formatYuanAsYiCell(row.current_balance)}</td>
-                <td>{formatPnlWan(row.interest_income)}</td>
-                <td>{formatPnlWan(row.fair_value_change)}</td>
-                <td>{formatPnlWan(row.capital_gain)}</td>
-                <td>{formatPnlWan(row.manual_adjustment)}</td>
-                <td>{formatPnlWan(row.total_pnl)}</td>
+                <PnlWanCell raw={row.interest_income} />
+                <PnlWanCell raw={row.fair_value_change} />
+                <PnlWanCell raw={row.capital_gain} />
+                <PnlWanCell raw={row.manual_adjustment} />
+                <PnlWanCell raw={row.total_pnl} />
                 <td>{formatAnalysisYieldPct(row.annualized_yield_pct)}</td>
-                <td>{formatPnlWan(row.ftp_net_pnl)}</td>
+                <PnlWanCell raw={row.ftp_cost} />
+                <PnlWanCell raw={row.ftp_net_pnl} />
                 <td>{formatAnalysisYieldPct(row.ftp_net_annualized_yield_pct)}</td>
                 <td>{formatRatioPct(row.proportion)}</td>
                 <td>{row.asset_count}</td>
@@ -491,15 +889,16 @@ function MonthlyBusinessRowsTable({ month }: { month: PnlByBusinessMonthlyBucket
               <td className="pnl-by-business-table-footer-cell">父级汇总</td>
               <td className="pnl-by-business-table-footer-cell">{formatAvgBalanceYi(month.summary.avg_balance)}</td>
               <td className="pnl-by-business-table-footer-cell">{formatYuanAsYiCell(month.summary.current_balance)}</td>
-              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(month.summary.interest_income)}</td>
-              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(month.summary.fair_value_change)}</td>
-              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(month.summary.capital_gain)}</td>
-              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(month.summary.manual_adjustment)}</td>
-              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(month.summary.total_pnl)}</td>
+              <PnlWanCell className="pnl-by-business-table-footer-cell" raw={month.summary.interest_income} />
+              <PnlWanCell className="pnl-by-business-table-footer-cell" raw={month.summary.fair_value_change} />
+              <PnlWanCell className="pnl-by-business-table-footer-cell" raw={month.summary.capital_gain} />
+              <PnlWanCell className="pnl-by-business-table-footer-cell" raw={month.summary.manual_adjustment} />
+              <PnlWanCell className="pnl-by-business-table-footer-cell" raw={month.summary.total_pnl} />
               <td className="pnl-by-business-table-footer-cell">
                 {formatAnalysisYieldPct(month.summary.annualized_yield_pct)}
               </td>
-              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(month.summary.ftp_net_pnl)}</td>
+              <PnlWanCell className="pnl-by-business-table-footer-cell" raw={month.summary.ftp_cost} />
+              <PnlWanCell className="pnl-by-business-table-footer-cell" raw={month.summary.ftp_net_pnl} />
               <td className="pnl-by-business-table-footer-cell">
                 {formatAnalysisYieldPct(month.summary.ftp_net_annualized_yield_pct)}
               </td>
@@ -509,11 +908,46 @@ function MonthlyBusinessRowsTable({ month }: { month: PnlByBusinessMonthlyBucket
           </tfoot>
         </table>
       </div>
+      <div
+        className={
+          reconciliationClosed
+            ? "pnl-by-business-monthly-reconciliation pnl-by-business-monthly-reconciliation--closed"
+            : "pnl-by-business-monthly-reconciliation pnl-by-business-monthly-reconciliation--warning"
+        }
+        data-testid={`pnl-by-business-monthly-reconciliation-${month.month_key}`}
+        title={coverageIncomplete ? coverageSummaryText : undefined}
+      >
+        <span>
+          源损益 {formatPnlWan(month.source_total_pnl)} 万元 = 父级 {formatPnlWan(month.classified_parent_total_pnl)} 万元 + 未分类{" "}
+          {formatPnlWan(month.unallocated_pnl)} 万元
+        </span>
+        <span>
+          差异 {formatPnlWan(month.reconciliation_delta)} 万元 · {reconciliationClosed ? "已闭合" : "待核对"}
+        </span>
+        {/* 覆盖不足时该事实已由上方表内警示条承载，闭合条内收进 title 去重（§6 ≤2 处）；
+            覆盖完整或天数待返回时此处是唯一披露位，保持可见。 */}
+        {coverageIncomplete ? null : <span>{coverageSummaryText}</span>}
+      </div>
+      <UnallocatedPnlPanel
+        breakdown={month.unallocated_breakdown}
+        items={month.unallocated_items}
+        totalPnl={month.unallocated_pnl}
+        totalAbsPnl={month.unallocated_abs_pnl}
+        rowCount={month.unallocated_row_count}
+        testIdPrefix={`pnl-by-business-monthly-unallocated-${month.month_key}`}
+        evidenceComplete={evidenceComplete}
+      />
       {detailRows.length > 0 ? (
         <div
           className="pnl-by-business-detail-block"
           data-testid={`pnl-by-business-monthly-detail-table-${month.month_key}`}
         >
+          <div
+            className="pnl-by-business-detail-warning"
+            data-testid={`pnl-by-business-monthly-detail-overlap-warning-${month.month_key}`}
+          >
+            以下金额已包含在上方父级行中，与父级行金额存在重叠，不可与父级行相加，也不可跨行相加。
+          </div>
           <div className="pnl-by-business-detail-heading">
             <h3>其中项明细</h3>
             <p>这些行为父级分类的拆解项，不参与父级汇总和资产数加总。</p>
@@ -523,16 +957,17 @@ function MonthlyBusinessRowsTable({ month }: { month: PnlByBusinessMonthlyBucket
               <thead>
                 <tr>
                   <th>业务种类</th>
-                  <th>日均(亿元)</th>
+                  <th>{coverageIncomplete ? "观测日均(亿元)" : "日均(亿元)"}</th>
                   <th>期末余额(亿元)</th>
                   <th>利息收入（万元）</th>
                   <th>公允价值变动（万元）</th>
                   <th>资本利得（万元）</th>
                   <th>手工调整（万元）</th>
                   <th>合计损益（万元）</th>
-                  <th>年化收益率</th>
-                  <th>FTP后收益（万元）</th>
-                  <th>FTP后收益率</th>
+                  <th>{coverageIncomplete ? "年化收益率（待核对）" : "年化收益率"}</th>
+                  <th>{coverageIncomplete ? "FTP成本（待核对，万元）" : "FTP成本（万元）"}</th>
+                  <th>{coverageIncomplete ? "FTP后收益（待核对，万元）" : "FTP后收益（万元）"}</th>
+                  <th>{coverageIncomplete ? "FTP后收益率（待核对）" : "FTP后收益率"}</th>
                   <th>占比</th>
                   <th>资产数</th>
                 </tr>
@@ -543,13 +978,14 @@ function MonthlyBusinessRowsTable({ month }: { month: PnlByBusinessMonthlyBucket
                     <td>{row.business_type}</td>
                     <td>{formatAvgBalanceYi(row.avg_balance)}</td>
                     <td>{formatYuanAsYiCell(row.current_balance)}</td>
-                    <td>{formatPnlWan(row.interest_income)}</td>
-                    <td>{formatPnlWan(row.fair_value_change)}</td>
-                    <td>{formatPnlWan(row.capital_gain)}</td>
-                    <td>{formatPnlWan(row.manual_adjustment)}</td>
-                    <td>{formatPnlWan(row.total_pnl)}</td>
+                    <PnlWanCell raw={row.interest_income} />
+                    <PnlWanCell raw={row.fair_value_change} />
+                    <PnlWanCell raw={row.capital_gain} />
+                    <PnlWanCell raw={row.manual_adjustment} />
+                    <PnlWanCell raw={row.total_pnl} />
                     <td>{formatAnalysisYieldPct(row.annualized_yield_pct)}</td>
-                    <td>{formatPnlWan(row.ftp_net_pnl)}</td>
+                    <PnlWanCell raw={row.ftp_cost} />
+                    <PnlWanCell raw={row.ftp_net_pnl} />
                     <td>{formatAnalysisYieldPct(row.ftp_net_annualized_yield_pct)}</td>
                     <td>{formatRatioPct(row.proportion)}</td>
                     <td>{row.asset_count}</td>
@@ -607,6 +1043,13 @@ function MonthlyBusinessBreakdownPanel({
         <div className="pnl-by-business-monthly-list">
           {months.map((month) => {
             const isOpen = openMonthKeys.has(month.month_key) || (forceOpenSingleMonth && months.length === 1);
+            const expectedCoverageDays = month.expected_days ?? month.calendar_days;
+            const coverageIncomplete =
+              typeof month.coverage_days === "number" &&
+              expectedCoverageDays > 0 &&
+              month.coverage_days < expectedCoverageDays;
+            const manualAdjustment = numeric(month.summary.manual_adjustment);
+            const hasManualAdjustment = manualAdjustment !== null && manualAdjustment !== 0;
             return (
               <div
                 className={
@@ -631,20 +1074,30 @@ function MonthlyBusinessBreakdownPanel({
                   </span>
                   <span className="pnl-by-business-month-metrics">
                     <span>
-                      <small>日均余额</small>
+                      <small>
+                        {coverageIncomplete
+                          ? `观测日均（${month.coverage_days}/${expectedCoverageDays}天）`
+                          : "日均余额"}
+                      </small>
                       <strong>{formatAvgBalanceYiMetric(month.summary.avg_balance)}</strong>
                     </span>
                     <span>
-                      <small>总损益</small>
+                      <small>{hasManualAdjustment ? "调整后损益" : "总损益"}</small>
                       <strong>{formatPnlWan(month.summary.total_pnl)} 万元</strong>
                     </span>
                     <span>
                       <small>年化收益率</small>
-                      <strong>{formatAnalysisYieldPct(month.summary.annualized_yield_pct)}</strong>
+                      <strong>
+                        {coverageIncomplete ? "待核对" : formatAnalysisYieldPct(month.summary.annualized_yield_pct)}
+                      </strong>
                     </span>
                     <span>
                       <small>FTP后收益率</small>
-                      <strong>{formatAnalysisYieldPct(month.summary.ftp_net_annualized_yield_pct)}</strong>
+                      <strong>
+                        {coverageIncomplete
+                          ? "待核对"
+                          : formatAnalysisYieldPct(month.summary.ftp_net_annualized_yield_pct)}
+                      </strong>
                     </span>
                     <span>
                       <small>资产数</small>
@@ -674,6 +1127,7 @@ function PnlByBusinessManualAdjustmentPanel({
   draft,
   editingAdjustmentId,
   adjustmentError,
+  readError,
   isLoading,
   isSaving,
   isActionBusy,
@@ -694,6 +1148,7 @@ function PnlByBusinessManualAdjustmentPanel({
   draft: ManualAdjustmentDraft;
   editingAdjustmentId: string | null;
   adjustmentError: string;
+  readError: string | null;
   isLoading: boolean;
   isSaving: boolean;
   isActionBusy: boolean;
@@ -716,10 +1171,10 @@ function PnlByBusinessManualAdjustmentPanel({
         <div>
           <h2>手工调整</h2>
           <p>
-            {selectedReportDate} · {selectedBusinessRow?.business_type ?? "-"}
+            {selectedReportDate} · {selectedBusinessRow?.business_type ?? EM_DASH}
           </p>
         </div>
-        <span className="pnl-by-business-section-pill">{adjustments.length} 当前</span>
+        <span className="pnl-by-business-section-pill">{readError ? "读取失败" : `${adjustments.length} 当前`}</span>
       </div>
 
       <div className="pnl-by-business-adjustment-form">
@@ -779,7 +1234,7 @@ function PnlByBusinessManualAdjustmentPanel({
           <button
             type="button"
             className="pnl-by-business-action-button pnl-by-business-action-button-primary"
-            disabled={isSaving || !selectedReportDate || !selectedRowKey}
+            disabled={isSaving || Boolean(readError) || !selectedReportDate || !selectedRowKey}
             onClick={onSubmit}
           >
             {editingAdjustmentId ? "保存编辑" : "保存调整"}
@@ -797,15 +1252,18 @@ function PnlByBusinessManualAdjustmentPanel({
         </div>
       </div>
       {adjustmentError ? <div className="pnl-by-business-adjustment-error">{adjustmentError}</div> : null}
+      {readError ? <div className="pnl-by-business-adjustment-error">{readError}</div> : null}
 
       <div className="pnl-by-business-adjustment-columns">
         <div className="pnl-by-business-adjustment-list">
           <div className="pnl-by-business-adjustment-list-heading">
             <strong>当前调整</strong>
-            <span>{isLoading ? "读取中" : `${adjustments.length} 条`}</span>
+            <span>{isLoading ? "读取中" : readError ? "读取失败" : `${adjustments.length} 条`}</span>
           </div>
           {isLoading ? (
             <div className="pnl-by-business-analysis-state">加载中</div>
+          ) : readError ? (
+            <div className="pnl-by-business-analysis-state">审批记录不可用，未按 0 条处理。</div>
           ) : adjustments.length === 0 ? (
             <div className="pnl-by-business-analysis-state">暂无手工调整</div>
           ) : (
@@ -827,7 +1285,7 @@ function PnlByBusinessManualAdjustmentPanel({
                       <td>{item.business_type || item.row_key}</td>
                       <td>{formatPnlWan(item.manual_adjustment)}</td>
                       <td>{formatAdjustmentStatus(item.approval_status)}</td>
-                      <td>{item.reason || "-"}</td>
+                      <td>{item.reason || EM_DASH}</td>
                       <td>{formatAdjustmentEvent(item.event_type)}</td>
                       <td>
                         <div className="pnl-by-business-row-actions">
@@ -861,10 +1319,12 @@ function PnlByBusinessManualAdjustmentPanel({
         <div className="pnl-by-business-adjustment-list">
           <div className="pnl-by-business-adjustment-list-heading">
             <strong>历史事件</strong>
-            <span>{isLoading ? "读取中" : `${events.length} 条`}</span>
+            <span>{isLoading ? "读取中" : readError ? "读取失败" : `${events.length} 条`}</span>
           </div>
           {isLoading ? (
             <div className="pnl-by-business-analysis-state">加载中</div>
+          ) : readError ? (
+            <div className="pnl-by-business-analysis-state">历史事件不可用，未按 0 条处理。</div>
           ) : events.length === 0 ? (
             <div className="pnl-by-business-analysis-state">暂无历史事件</div>
           ) : (
@@ -888,7 +1348,7 @@ function PnlByBusinessManualAdjustmentPanel({
                       <td>{item.business_type || item.row_key}</td>
                       <td>{formatPnlWan(item.manual_adjustment)}</td>
                       <td>{formatAdjustmentStatus(item.approval_status)}</td>
-                      <td>{item.reason || "-"}</td>
+                      <td>{item.reason || EM_DASH}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -907,33 +1367,30 @@ const ANALYSIS_DIMENSION_LABELS: Record<PnlByBusinessAnalysisDimension, string> 
   monthly: "月份",
   portfolio: "组合",
   accounting: "会计分类",
+  currency: "原币种",
   cost_center: "成本中心",
   instrument: "资产明细",
   bond_bucket: "债券四类",
   bond_bucket_monthly: "四类月度",
 };
 
-function FormalBusinessRowsTable({ rows }: { rows: PnlByBusinessRow[] }) {
-  const footer = useMemo(() => {
-    let interest = 0;
-    let fairValue = 0;
-    let capital = 0;
-    let manual = 0;
-    let totalPnl = 0;
-    let scale = 0;
-    let pnlRows = 0;
-    for (const row of rows) {
-      interest += numeric(row.interest_income_514) ?? 0;
-      fairValue += numeric(row.fair_value_change_516) ?? 0;
-      capital += numeric(row.capital_gain_517) ?? 0;
-      manual += numeric(row.manual_adjustment) ?? 0;
-      totalPnl += numeric(row.total_pnl) ?? 0;
-      scale += numeric(row.scale_amount) ?? 0;
-      pnlRows += row.pnl_row_count;
-    }
-    return { interest, fairValue, capital, manual, totalPnl, scale, pnlRows };
-  }, [rows]);
+const MAIN_BREAKDOWN_DIMENSION_LABELS = {
+  currency: "原币种",
+  accounting: "会计分类",
+  portfolio: "投资组合",
+  cost_center: "成本中心",
+  instrument: "资产明细",
+} as const;
 
+type MainBreakdownDimension = keyof typeof MAIN_BREAKDOWN_DIMENSION_LABELS;
+
+function FormalBusinessRowsTable({
+  rows,
+  summary,
+}: {
+  rows: PnlByBusinessRow[];
+  summary?: PnlByBusinessPayload["summary"];
+}) {
   return (
     <div className="pnl-by-business-table-shell" data-testid="pnl-by-business-formal-table">
       <table className="pnl-by-business-table">
@@ -967,19 +1424,22 @@ function FormalBusinessRowsTable({ rows }: { rows: PnlByBusinessRow[] }) {
             </tr>
           ))}
         </tbody>
-        {rows.length > 0 ? (
+        {rows.length > 0 && summary ? (
           <tfoot>
+            {/* 全表合计直读后端 summary（与明细行同一批正式数值），前端不再本地累加。 */}
             <tr data-testid="pnl-by-business-formal-table-footer">
               <td className="pnl-by-business-table-footer-cell">全表合计</td>
               <td className="pnl-by-business-table-footer-cell">—</td>
-              <td className="pnl-by-business-table-footer-cell">{formatAdbAvgYiCell(footer.scale)}</td>
-              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(footer.interest)}</td>
-              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(footer.fairValue)}</td>
-              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(footer.capital)}</td>
-              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(footer.manual)}</td>
-              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(footer.totalPnl)}</td>
+              <td className="pnl-by-business-table-footer-cell">
+                {formatAdbAvgYiCell(numeric(summary.total_scale_amount) ?? 0)}
+              </td>
+              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(summary.interest_income_514)}</td>
+              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(summary.fair_value_change_516)}</td>
+              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(summary.capital_gain_517)}</td>
+              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(summary.manual_adjustment)}</td>
+              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(summary.total_pnl)}</td>
               <td className="pnl-by-business-table-footer-cell">—</td>
-              <td className="pnl-by-business-table-footer-cell">{footer.pnlRows}</td>
+              <td className="pnl-by-business-table-footer-cell">{summary.pnl_row_count}</td>
             </tr>
           </tfoot>
         ) : null}
@@ -991,9 +1451,11 @@ function FormalBusinessRowsTable({ rows }: { rows: PnlByBusinessRow[] }) {
 function DriverOverviewPanel({
   rows,
   adbAvgByBusinessType,
+  adbEvidenceStatus,
 }: {
   rows: PnlByBusinessYtdItem[];
   adbAvgByBusinessType: Map<string, number>;
+  adbEvidenceStatus: PnlByBusinessAdbEvidenceStatus;
 }) {
   const topRows = [...rows]
     .filter((row) => (numeric(row.total_pnl) ?? 0) > 0)
@@ -1012,20 +1474,36 @@ function DriverOverviewPanel({
     .slice(0, 5);
   const gapRows = [...rows]
     .map((row) => {
-      const adbAvg = resolveAdbAvgYuan(row.business_type, adbAvgByBusinessType);
+      const adbAvg = resolveAdbAvgYuan(row.business_type, adbAvgByBusinessType, row.avg_balance);
       const current = numeric(row.current_balance) ?? 0;
-      return { row, gap: adbAvg !== undefined ? current - adbAvg : null };
+      return {
+        row,
+        gap: adbAvg !== undefined ? current - adbAvg.valueYuan : null,
+        adbSource: adbAvg?.source,
+      };
     })
     .filter((item) => item.gap !== null)
     .sort((left, right) => Math.abs(right.gap ?? 0) - Math.abs(left.gap ?? 0))
     .slice(0, 5);
+  const gapUsesYtdParentField =
+    adbEvidenceStatus === "comparison" && gapRows.some((item) => item.adbSource === "ytd_row");
 
   return (
     <section className="pnl-by-business-analysis-block" data-testid="pnl-by-business-driver-overview">
       <div className="pnl-by-business-analysis-heading">
         <div>
           <h2>驱动概览</h2>
-          <p>按 YTD 损益、分项、年化收益率和日均/期末差异看业务种类贡献。</p>
+          <p>
+            按 YTD 损益、分项、年化收益率和日均/期末差异看业务种类贡献；日均来源：
+            {adbEvidenceStatus === "comparison"
+              ? gapUsesYtdParentField
+                ? "ADB 补充复核（父级行日均消费 YTD 主端点后端字段，不做前端子类求和）"
+                : "ADB 补充复核"
+              : adbEvidenceStatus === "loading"
+                ? "YTD 主端点（ADB 补充复核读取中）"
+                : "YTD 主端点（ADB 补充复核不可用）"}
+            。
+          </p>
         </div>
       </div>
       <div className="pnl-by-business-driver-grid">
@@ -1213,13 +1691,7 @@ function SelectedBusinessDrilldownPanel({
 }) {
   const drilldown = useMemo(() => buildPnlByBusinessSelectedDrilldownModel(rows), [rows]);
   const avgBalance = selectedRow?.avg_balance ?? null;
-  const ftpNetPnl = numeric(selectedRow?.ftp_net_pnl);
-  const ftpStatus =
-    ftpNetPnl === null
-      ? "FTP 后不可算"
-      : ftpNetPnl < 0
-        ? "FTP 后转负"
-        : "FTP 后仍为正";
+  const ftpStatus = formatPnlByBusinessFtpStatus(selectedRow?.total_pnl, selectedRow?.ftp_net_pnl);
   const dataLimit =
     avgBalance === null
       ? "缺日均，收益率/FTP 仅能对账"
@@ -1232,13 +1704,13 @@ function SelectedBusinessDrilldownPanel({
       <div className="pnl-by-business-analysis-heading">
         <div>
           <h2>证券级下钻</h2>
-          <p>{selectedRow?.business_type ?? "-"} · 从业务种类落到具体券，先看贡献、拖累和 FTP 后为负。</p>
+          <p>{selectedRow?.business_type ?? EM_DASH} · 从业务种类落到具体券，先看贡献、拖累和 FTP 后为负。</p>
         </div>
       </div>
       <div className="pnl-by-business-selected-drilldown__summary">
         <div>
           <small>选中业务</small>
-          <strong>{selectedRow?.business_type ?? "-"}</strong>
+          <strong>{selectedRow?.business_type ?? EM_DASH}</strong>
           <span>{rows.length} 条证券级记录</span>
         </div>
         <div>
@@ -1249,7 +1721,7 @@ function SelectedBusinessDrilldownPanel({
             {formatPnlWan(selectedRow?.capital_gain)}
           </span>
         </div>
-        <div>
+        <div data-testid="pnl-by-business-selected-ftp-status">
           <small>FTP 后判断</small>
           <strong>{ftpStatus}</strong>
           <span>
@@ -1325,6 +1797,135 @@ function BondBucketAnalysisPanel({
   );
 }
 
+function MonthlyAdjustmentFtpBridgePanel({
+  bridge,
+  approvedAdjustmentCount,
+  approvedReasons,
+  pendingAdjustmentCount,
+  auditLoading,
+  auditError,
+  auditDateMismatch,
+  auditReturnedReportDate,
+  requestedReportDate,
+  auditReportDate,
+}: {
+  bridge: PnlByBusinessMonthlyAdjustmentBridgeModel | undefined;
+  approvedAdjustmentCount: number;
+  approvedReasons: string[];
+  pendingAdjustmentCount: number;
+  auditLoading: boolean;
+  auditError: boolean;
+  auditDateMismatch: boolean;
+  auditReturnedReportDate?: string;
+  requestedReportDate: string;
+  auditReportDate: string;
+}) {
+  if (!bridge) {
+    return null;
+  }
+
+  const { row } = bridge;
+  const ftpNetPnl = numeric(row.ftp_net_pnl);
+  const bridgeClosed = bridge.pnlReconciled && bridge.ftpReconciled;
+  const outcome =
+    ftpNetPnl === null
+      ? "FTP后收益未返回，暂不能判断是否覆盖FTP成本。"
+      : ftpNetPnl < 0
+        ? `调整后合计损益仍未覆盖FTP成本，缺口 ${formatYuanAsWanUnit(Math.abs(ftpNetPnl))}。`
+        : `调整后合计损益已覆盖FTP成本，FTP后收益 ${formatYuanAsWanUnit(ftpNetPnl)}。`;
+  const auditSummary = auditLoading
+    ? "审批记录读取中"
+    : auditError
+      ? "审批记录读取失败，当前仅展示月报已入账金额"
+      : auditDateMismatch
+        ? `审批记录报表日 ${auditReturnedReportDate ?? "未返回"} 与实际展示日 ${auditReportDate} 不一致，未采用该审批证据`
+        : approvedAdjustmentCount > 0
+          ? `${approvedAdjustmentCount} 条已批准；审批理由：${approvedReasons.join("；") || "未填写"}`
+          : "未匹配到已批准记录，税务口径待核对";
+
+  return (
+    <section
+      className="pnl-by-business-analysis-block"
+      data-testid="pnl-by-business-monthly-adjustment-bridge"
+    >
+      <div className="pnl-by-business-analysis-heading">
+        <div>
+          <h2>{row.business_type} · {bridge.monthKey} 损益桥</h2>
+          <p>金额为万元；补数前损益仅作分项对账，FTP成本与FTP后收益直接使用月报接口字段。</p>
+          {auditReportDate !== requestedReportDate ? (
+            <p>月报已回退至 {auditReportDate}，审批记录同步按该实际展示日核对，未使用所选日 {requestedReportDate}。</p>
+          ) : null}
+          {bridge.adjustedParentRowCount > 1 ? (
+            <p>当月共有 {bridge.adjustedParentRowCount} 个父级业务含手工调整，本桥展示调整绝对额最大的一项。</p>
+          ) : null}
+        </div>
+      </div>
+      <div className="pnl-by-business-analysis-kpis">
+        <KpiCard
+          label="补数前损益（对账值）"
+          value={formatYuanAsWanUnit(bridge.preAdjustmentPnl)}
+          detail="利息收入 + 公允价值变动 + 资本利得"
+        />
+        <KpiCard
+          label="已入账手工调整"
+          value={formatYuanAsWanUnit(row.manual_adjustment)}
+          detail="月报接口已生效金额"
+        />
+        <KpiCard
+          label="调整后合计损益"
+          value={formatYuanAsWanUnit(row.total_pnl)}
+          detail="补数前损益 + 手工调整"
+        />
+        <KpiCard
+          label="FTP成本"
+          value={formatYuanAsWanUnit(row.ftp_cost)}
+          detail={`月度日均 × ${formatFtpRatePct(row.ftp_rate_pct)} × 当月自然日/365`}
+        />
+        <KpiCard
+          label="FTP后收益"
+          value={formatYuanAsWanUnit(row.ftp_net_pnl)}
+          detail="调整后合计损益 - FTP成本"
+          tone={toneFromSigned(row.ftp_net_pnl)}
+        />
+      </div>
+      <div
+        className={
+          bridgeClosed
+            ? "pnl-by-business-monthly-reconciliation pnl-by-business-monthly-reconciliation--closed"
+            : "pnl-by-business-monthly-reconciliation pnl-by-business-monthly-reconciliation--warning"
+        }
+        data-testid="pnl-by-business-monthly-adjustment-bridge-reconciliation"
+      >
+        <span>
+          利息 {formatYuanAsWanUnit(row.interest_income)} + 公允价值 {formatYuanAsWanUnit(row.fair_value_change)} +
+          资本利得 {formatYuanAsWanUnit(row.capital_gain)} = 补数前 {formatYuanAsWanUnit(bridge.preAdjustmentPnl)}
+        </span>
+        <span>
+          补数前 {formatYuanAsWanUnit(bridge.preAdjustmentPnl)} + 手工调整 {formatYuanAsWanUnit(row.manual_adjustment)} =
+          合计 {formatYuanAsWanUnit(row.total_pnl)}
+        </span>
+        <span>
+          合计 {formatYuanAsWanUnit(row.total_pnl)} - FTP成本 {formatYuanAsWanUnit(row.ftp_cost)} = FTP后
+          {" "}{formatYuanAsWanUnit(row.ftp_net_pnl)}
+        </span>
+        <span>
+          损益对账差异 {formatYuanAsWanUnit(bridge.pnlReconciled ? 0 : bridge.pnlReconciliationDelta)} ·
+          {bridge.pnlReconciled ? "已闭合" : "待核对"}；FTP对账差异
+          {" "}{formatYuanAsWanUnit(bridge.ftpReconciled ? 0 : bridge.ftpReconciliationDelta)} ·
+          {bridge.ftpReconciled ? "已闭合" : "待核对"}
+        </span>
+        <span>{outcome}</span>
+        <span>
+          {auditSummary}；系统暂无结构化税前额、增值税额或税后净额字段，审批理由未明确时不得推断税务口径。
+        </span>
+        {pendingAdjustmentCount > 0 ? (
+          <span>{pendingAdjustmentCount} 条待确认记录未计入本桥。</span>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 function FtpBridgePanel({
   selectedRow,
 }: {
@@ -1337,7 +1938,7 @@ function FtpBridgePanel({
       <div className="pnl-by-business-analysis-heading">
         <div>
           <h2>FTP后收益桥</h2>
-          <p>{selectedRow?.business_type ?? "-"} · FTP 年化利率 {ftpRateDisplay}</p>
+          <p>{selectedRow?.business_type ?? EM_DASH} · FTP 年化利率 {ftpRateDisplay}</p>
         </div>
       </div>
       <div className="pnl-by-business-analysis-kpis">
@@ -1345,13 +1946,11 @@ function FtpBridgePanel({
           label="合计损益"
           value={formatYuanAsWanUnit(selectedRow?.total_pnl)}
           detail="扣 FTP 前"
-          tone={toneFromSigned(selectedRow?.total_pnl)}
         />
         <KpiCard
           label="FTP成本"
           value={formatYuanAsWanUnit(selectedRow?.ftp_cost)}
           detail={avgBalance === null ? "日均缺失" : numeric(avgBalance) === 0 ? "日均为0" : `日均 × ${ftpRateDisplay}`}
-          tone={(numeric(selectedRow?.ftp_cost) ?? 0) > 0 ? "negative" : "default"}
         />
         <KpiCard
           label="FTP后收益"
@@ -1446,6 +2045,7 @@ export default function PnlByBusinessPage() {
   const [viewMode, setViewMode] = useState<PnlByBusinessViewMode>("monthly");
   const [selectedBusinessKey, setSelectedBusinessKey] = useState<string | null>(null);
   const [analysisDimension, setAnalysisDimension] = useState<PnlByBusinessAnalysisDimension>("monthly");
+  const [mainBreakdownDimension, setMainBreakdownDimension] = useState<MainBreakdownDimension>("currency");
   const [analysisLoadStage, setAnalysisLoadStage] = useState(0);
   const [openMonthlyKeys, setOpenMonthlyKeys] = useState<Set<string>>(() => new Set());
   const [editingAdjustmentId, setEditingAdjustmentId] = useState<string | null>(null);
@@ -1455,10 +2055,11 @@ export default function PnlByBusinessPage() {
   const [adjustmentError, setAdjustmentError] = useState("");
   const [exportError, setExportError] = useState("");
   const [exportingExcel, setExportingExcel] = useState(false);
+  const precomputeTrackedRunIdRef = useRef<string | null>(null);
 
   const datesQuery = useQuery({
     queryKey: ["pnl-by-business", "dates", client.mode],
-    queryFn: () => client.getFormalPnlDates("formal"),
+    queryFn: () => client.getFormalPnlDates(),
     retry: false,
   });
 
@@ -1478,6 +2079,49 @@ export default function PnlByBusinessPage() {
   }, [reportDates, selectedReportDate]);
 
   const selectedYear = selectedReportDate ? Number(selectedReportDate.slice(0, 4)) : new Date().getFullYear();
+  const precomputeStatusQueryKey = [
+    "pnl-by-business",
+    "precompute-status",
+    client.mode,
+    selectedYear,
+    selectedReportDate,
+  ] as const;
+  const precomputeStatusQuery = useQuery({
+    queryKey: precomputeStatusQueryKey,
+    enabled: Boolean(selectedReportDate && selectedYear && viewMode !== "formal"),
+    queryFn: () => client.getPnlByBusinessPrecomputeStatus(selectedYear, selectedReportDate),
+    retry: false,
+    refetchInterval: (query) => {
+      const taskStatus = query.state.data?.status;
+      return taskStatus === "queued" || taskStatus === "running" ? 5_000 : false;
+    },
+  });
+  const rebuildPrecomputeMutation = useMutation({
+    mutationFn: () => client.rebuildPnlByBusinessPrecompute(selectedYear, selectedReportDate),
+    onSuccess: async (queuedStatus) => {
+      queryClient.setQueryData(precomputeStatusQueryKey, queuedStatus);
+      await precomputeStatusQuery.refetch();
+    },
+  });
+
+  useEffect(() => {
+    const taskStatus = precomputeStatusQuery.data?.status;
+    const runId = precomputeStatusQuery.data?.run_id ?? null;
+    if ((taskStatus === "queued" || taskStatus === "running") && runId) {
+      precomputeTrackedRunIdRef.current = runId;
+      return;
+    }
+    if (
+      taskStatus === "completed" &&
+      precomputeStatusQuery.data?.is_current &&
+      runId &&
+      precomputeTrackedRunIdRef.current === runId
+    ) {
+      precomputeTrackedRunIdRef.current = null;
+      void queryClient.invalidateQueries({ queryKey: ["pnl-by-business"] });
+    }
+  }, [precomputeStatusQuery.data, queryClient]);
+
   const businessQuery = useQuery({
     queryKey: ["pnl-by-business", "ytd", client.mode, selectedYear, selectedReportDate],
     enabled: Boolean(selectedReportDate && selectedYear && viewMode === "ytd"),
@@ -1485,6 +2129,29 @@ export default function PnlByBusinessPage() {
     retry: false,
   });
   const ytdResult = businessQuery.data?.result;
+
+  const businessInsightsQuery = useQuery({
+    queryKey: ["pnl-by-business", "insights", client.mode, selectedYear, selectedReportDate],
+    enabled: Boolean(selectedReportDate && selectedYear && viewMode === "ytd"),
+    queryFn: () => client.getPnlByBusinessInsights(selectedYear, selectedReportDate),
+    retry: false,
+  });
+  const businessInsightsLeadershipModel = useMemo(
+    () =>
+      buildPnlByBusinessInsightsLeadershipModel({
+        requestedDate: selectedReportDate,
+        envelope: businessInsightsQuery.data,
+        isLoading: businessInsightsQuery.isLoading,
+        isError: businessInsightsQuery.isError,
+      }),
+    [
+      businessInsightsQuery.data,
+      businessInsightsQuery.isError,
+      businessInsightsQuery.isLoading,
+      selectedReportDate,
+    ],
+  );
+  const businessInsightsHref = `/pnl-by-business-insights?year=${encodeURIComponent(String(selectedYear))}&as_of_date=${encodeURIComponent(selectedReportDate)}`;
 
   const formalBusinessQuery = useQuery({
     queryKey: ["pnl-by-business", "formal", client.mode, selectedReportDate],
@@ -1508,9 +2175,32 @@ export default function PnlByBusinessPage() {
     retry: false,
   });
 
-  const adbAvgByBusinessType = useMemo(() => {
-    return buildAdbAvgByBusinessTypeMap(adbComparisonQuery.data?.assets_breakdown);
-  }, [adbComparisonQuery.data?.assets_breakdown]);
+  const adbComparisonRangeMatches = Boolean(
+    adbComparisonQuery.data &&
+      ytdRange &&
+      adbComparisonQuery.data.start_date === ytdRange.startDate &&
+      adbComparisonQuery.data.end_date === ytdRange.endDate,
+  );
+  const adbComparisonFallbackReason = adbComparisonQuery.isError
+    ? "request_error"
+    : adbComparisonQuery.isSuccess && !adbComparisonRangeMatches
+      ? "range_mismatch"
+      : null;
+  const adbEvidenceStatus: PnlByBusinessAdbEvidenceStatus = adbComparisonFallbackReason
+    ? "ytd_fallback"
+    : adbComparisonQuery.isSuccess
+      ? "comparison"
+      : "loading";
+  const adbComparisonAvgByBusinessType = useMemo(
+    () => buildAdbAvgByBusinessTypeMap(adbComparisonQuery.data?.assets_breakdown),
+    [adbComparisonQuery.data?.assets_breakdown],
+  );
+  const ytdAvgByBusinessType = useMemo(
+    () => buildYtdAvgByBusinessTypeMap(ytdResult?.items),
+    [ytdResult?.items],
+  );
+  const adbAvgByBusinessType =
+    adbEvidenceStatus === "comparison" ? adbComparisonAvgByBusinessType : ytdAvgByBusinessType;
 
   const formalResult = formalBusinessQuery.data?.result;
   const pageModel = useMemo(
@@ -1530,6 +2220,7 @@ export default function PnlByBusinessPage() {
         formalResult,
         formalMeta: formalBusinessQuery.data?.result_meta,
         adbAvgByBusinessType,
+        adbEvidenceStatus,
       }),
     [
       viewMode,
@@ -1546,24 +2237,24 @@ export default function PnlByBusinessPage() {
       formalBusinessQuery.isError,
       formalBusinessQuery.data?.result_meta,
       adbAvgByBusinessType,
+      adbEvidenceStatus,
       ytdResult,
       formalResult,
     ],
   );
   const {
     ytdRows,
+    parentYtdRows,
     defaultBusinessRow,
     selectedBusinessRow,
     formalRows,
   } = pageModel;
-  const adbComparisonSettled = adbComparisonQuery.isSuccess || adbComparisonQuery.isError;
   const analysisBaseReady = Boolean(
     selectedReportDate &&
       selectedYear &&
       selectedBusinessRow?.row_key &&
       viewMode === "ytd" &&
-      businessQuery.isSuccess &&
-      adbComparisonSettled,
+      businessQuery.isSuccess,
   );
 
   useEffect(() => {
@@ -1601,6 +2292,27 @@ export default function PnlByBusinessPage() {
     retry: false,
     staleTime: ANALYSIS_QUERY_STALE_MS,
   });
+
+  const mainBreakdownQuery = useQuery({
+    queryKey: apiQueryKeys.pnlByBusinessAnalysis(
+      client.mode,
+      selectedYear,
+      selectedReportDate,
+      mainBreakdownDimension,
+      selectedBusinessRow?.row_key,
+    ),
+    enabled: analysisBaseReady,
+    queryFn: () =>
+      client.getPnlByBusinessAnalysis({
+        year: selectedYear,
+        asOfDate: selectedReportDate,
+        businessKey: selectedBusinessRow!.row_key,
+        dimension: mainBreakdownDimension,
+      }),
+    retry: false,
+    staleTime: ANALYSIS_QUERY_STALE_MS,
+  });
+  const mainBreakdownRows = mainBreakdownQuery.data?.result.rows ?? [];
 
   const analysisQuery = useQuery({
     queryKey: apiQueryKeys.pnlByBusinessAnalysis(
@@ -1685,14 +2397,32 @@ export default function PnlByBusinessPage() {
   });
   const instrumentAnalysisRows = instrumentAnalysisQuery.data?.result.rows ?? [];
 
+  const monthlyAdjustmentBucket = resolvePnlByBusinessActiveMonthlyBucket(
+    monthlyBusinessQuery.data?.result.months ?? [],
+    selectedReportDate,
+    monthlyBusinessQuery.data?.result.as_of_date,
+  );
+  const manualAdjustmentReportDate =
+    viewMode === "monthly" ? (monthlyAdjustmentBucket?.period_end_date ?? "") : selectedReportDate;
   const manualAdjustmentQuery = useQuery({
-    queryKey: ["pnl-by-business", "manual-adjustments", client.mode, selectedReportDate],
-    enabled: Boolean(selectedReportDate && viewMode === "ytd"),
-    queryFn: () => client.getPnlByBusinessManualAdjustments(selectedReportDate),
+    queryKey: ["pnl-by-business", "manual-adjustments", client.mode, manualAdjustmentReportDate],
+    enabled: Boolean(manualAdjustmentReportDate && viewMode !== "formal"),
+    queryFn: () => client.getPnlByBusinessManualAdjustments(manualAdjustmentReportDate),
     retry: false,
   });
-  const currentAdjustments = manualAdjustmentQuery.data?.adjustments ?? [];
-  const adjustmentEvents = manualAdjustmentQuery.data?.events ?? [];
+  const manualAdjustmentDateMismatch = Boolean(
+    manualAdjustmentQuery.data && manualAdjustmentQuery.data.report_date !== manualAdjustmentReportDate,
+  );
+  const manualAdjustmentReadError = manualAdjustmentQuery.isError
+    ? "审批记录读取失败，请勿据此判断调整数量或新增重复记录。"
+    : manualAdjustmentDateMismatch
+      ? `审批记录报表日 ${manualAdjustmentQuery.data?.report_date ?? "未返回"} 与所选报表日 ${manualAdjustmentReportDate} 不一致，未采用该记录。`
+      : null;
+  const currentAdjustments = manualAdjustmentDateMismatch ? [] : (manualAdjustmentQuery.data?.adjustments ?? []);
+  const adjustmentEvents = manualAdjustmentDateMismatch ? [] : (manualAdjustmentQuery.data?.events ?? []);
+  const approvedAdjustmentCount = currentAdjustments.filter(
+    (adjustment) => adjustment.approval_status === "approved",
+  ).length;
 
   const invalidatePnlByBusinessQueries = async () => {
     await queryClient.invalidateQueries({ queryKey: ["pnl-by-business"] });
@@ -1838,7 +2568,8 @@ export default function PnlByBusinessPage() {
         formalResult,
         formalMeta: formalBusinessQuery.data?.result_meta,
         adbAvgByBusinessType,
-        manualAdjustmentCount: currentAdjustments.length,
+        adbEvidenceStatus,
+        manualAdjustmentCount: approvedAdjustmentCount,
       }),
     [
       viewMode,
@@ -1859,7 +2590,8 @@ export default function PnlByBusinessPage() {
       formalBusinessQuery.isError,
       formalBusinessQuery.data?.result_meta,
       adbAvgByBusinessType,
-      currentAdjustments.length,
+      adbEvidenceStatus,
+      approvedAdjustmentCount,
       ytdResult,
       formalResult,
     ],
@@ -1876,6 +2608,23 @@ export default function PnlByBusinessPage() {
     hero,
     stateSurfaces,
   } = completePageModel;
+  const monthlyAdjustmentBridge = buildPnlByBusinessMonthlyAdjustmentBridge(activeMonthlyBucket);
+  const monthlyBridgeRowKey = monthlyAdjustmentBridge?.row.row_key;
+  const monthlyBridgeApprovedAdjustments = monthlyBridgeRowKey
+    ? currentAdjustments.filter(
+        (adjustment) =>
+          adjustment.row_key === monthlyBridgeRowKey && adjustment.approval_status === "approved",
+      )
+    : [];
+  const monthlyBridgeApprovedReasons = Array.from(
+    new Set(monthlyBridgeApprovedAdjustments.map((adjustment) => adjustment.reason.trim()).filter(Boolean)),
+  );
+  const monthlyBridgePendingAdjustmentCount = monthlyBridgeRowKey
+    ? currentAdjustments.filter(
+        (adjustment) =>
+          adjustment.row_key === monthlyBridgeRowKey && adjustment.approval_status === "pending",
+      ).length
+    : 0;
 
   useEffect(() => {
     if (viewMode !== "monthly" || !activeMonthlyBucket?.month_key) {
@@ -1914,6 +2663,11 @@ export default function PnlByBusinessPage() {
         periodEnd: ytdResult?.period_end_date,
         periodLabel: ytdResult?.period_label,
         ytdRows: viewMode === "ytd" && businessQuery.isSuccess ? ytdRows : [],
+        ytdSummary: viewMode === "ytd" && businessQuery.isSuccess ? ytdResult?.summary : undefined,
+        unallocatedBreakdown:
+          viewMode === "ytd" && businessQuery.isSuccess ? ytdResult?.unallocated_breakdown ?? [] : [],
+        unallocatedItems:
+          viewMode === "ytd" && businessQuery.isSuccess ? ytdResult?.unallocated_items ?? [] : [],
         adbAvgByBusinessType,
         formalRows: viewMode === "formal" && formalBusinessQuery.isSuccess ? formalRows : [],
         months: exportMonths,
@@ -1943,23 +2697,57 @@ export default function PnlByBusinessPage() {
     (viewMode === "monthly" && !monthlyBusinessQuery.isSuccess) ||
     (viewMode === "formal" && !formalBusinessQuery.isSuccess);
 
-  const evidenceMetaSections =
-    viewMode === "monthly" && monthlyBusinessQuery.data
-      ? [{ key: "by-business-monthly", title: "业务种类月报", meta: monthlyBusinessQuery.data.result_meta }]
-      : viewMode === "ytd" && businessQuery.data
-        ? [{ key: "by-business-ytd", title: "业务种类损益", meta: businessQuery.data.result_meta }]
-        : viewMode === "formal" && formalBusinessQuery.data
-          ? [
-              {
-                key: "by-business-formal",
-                title: "业务种类损益（formal）",
-                meta: formalBusinessQuery.data.result_meta,
-              },
-            ]
-          : [];
+  const evidenceMetaSections = (() => {
+    if (viewMode === "monthly" && monthlyBusinessQuery.data) {
+      return [
+        { key: "by-business-monthly", title: "业务种类月报", meta: monthlyBusinessQuery.data.result_meta },
+      ];
+    }
+    if (viewMode === "ytd" && businessQuery.data) {
+      const sections = [
+        { key: "by-business-ytd", title: "业务种类损益", meta: businessQuery.data.result_meta },
+      ];
+      if (monthlyBusinessQuery.data) {
+        sections.push({
+          key: "by-business-monthly-change",
+          title: "月度经营环比",
+          meta: monthlyBusinessQuery.data.result_meta,
+        });
+      }
+      if (mainBreakdownQuery.data) {
+        sections.push({
+          key: "by-business-main-breakdown",
+          title: "总表分项拆解",
+          meta: mainBreakdownQuery.data.result_meta,
+        });
+      }
+      if (businessInsightsQuery.data) {
+        sections.push({
+          key: "by-business-insights",
+          title: "正式结构分析",
+          meta: businessInsightsQuery.data.result_meta,
+        });
+      }
+      return sections;
+    }
+    if (viewMode === "formal" && formalBusinessQuery.data) {
+      return [
+        {
+          key: "by-business-formal",
+          title: "业务种类损益（formal）",
+          meta: formalBusinessQuery.data.result_meta,
+        },
+      ];
+    }
+    return [];
+  })();
 
   return (
-    <main data-testid="pnl-by-business-page" className="pnl-by-business-page">
+    <section
+      data-testid="pnl-by-business-page"
+      data-moss-theme-scope="pnl-by-business"
+      className="pnl-by-business-page"
+    >
       <PageV2Shell testId="pnl-by-business-page-shell">
         <PageDecisionHero
           testId="pnl-by-business-contract-hero"
@@ -1985,105 +2773,212 @@ export default function PnlByBusinessPage() {
             </span>
           }
           actions={
-            <span
-              className={`pnl-by-business-mode-pill ${client.mode === "real" ? "pnl-by-business-mode-pill--real" : "pnl-by-business-mode-pill--mock"}`}
-            >
-              {client.mode === "real" ? "正式读路径" : "Mock 回放"}
-            </span>
+            <div className="pnl-by-business-hero-actions">
+              <span
+                className={`pnl-by-business-mode-pill ${client.mode === "real" ? "pnl-by-business-mode-pill--real" : "pnl-by-business-mode-pill--mock"}`}
+              >
+                {client.mode === "real" ? "正式读路径" : "Mock 回放"}
+              </span>
+              <Link to={businessInsightsHref} className="pnl-by-business-candidate-insights-link">
+                业务结构与FTP后收益分析 →
+              </Link>
+              <Link to="/product-category-pnl" className="pnl-by-business-candidate-insights-link">
+                全行生息资产利差 →
+              </Link>
+            </div>
           }
-        >
-          <PageFilterTray testId="pnl-by-business-filter-tray">
-            <FilterBar className="pnl-by-business-filter">
-              <label className="pnl-by-business-filter-label">
-                {viewMode === "monthly" ? "报表月份" : "分析截止日"}
-                <select
-                  aria-label="pnl-by-business-report-date"
-                  value={selectedReportDate}
-                  onChange={(event) => setSelectedReportDate(event.target.value)}
-                  className="pnl-by-business-control"
+        />
+
+        {!loading && !error && !empty ? (
+          <section
+            className="pnl-by-business-leadership-summary"
+            data-testid="pnl-by-business-leadership-summary"
+          >
+            <KpiBand testId="pnl-by-business-summary-cards" className="pnl-by-business-kpi-band">
+              {summaryCards.map((card) => (
+                <div
+                  key={card.label}
+                  className={pnlKpiToneClassName(card.tone) ? `pnl-by-business-kpi-item ${pnlKpiToneClassName(card.tone)}` : "pnl-by-business-kpi-item"}
                 >
-                  {reportDates.map((date) => (
-                    <option key={date} value={date}>
-                      {date}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="pnl-by-business-filter-label">
-                视图口径
-                <select
-                  aria-label="pnl-by-business-view-mode"
-                  value={viewMode}
-                  onChange={(event) => setViewMode(event.target.value as PnlByBusinessViewMode)}
-                  className="pnl-by-business-control"
-                >
-                  <option value="monthly">月报（ZQTZ）</option>
-                  <option value="ytd">年累计（YTD）</option>
-                  <option value="formal">primary 对账（/api/pnl/by-business）</option>
-                </select>
-              </label>
-              <div className="pnl-by-business-filter-export-slot">
-                <button
-                  type="button"
-                  className="pnl-by-business-action-button pnl-by-business-action-button-primary"
-                  aria-label="pnl-by-business-export-excel"
-                  disabled={exportExcelDisabled}
-                  onClick={handleExportExcel}
-                >
-                  {exportingExcel ? "导出中..." : "导出 Excel"}
-                </button>
-                {exportError ? (
-                  <p className="pnl-by-business-export-error" role="alert">
-                    {exportError}
-                  </p>
-                ) : null}
-              </div>
-            </FilterBar>
-          </PageFilterTray>
-        </PageDecisionHero>
+                  <KpiBandMetric
+                    testId={`pnl-by-business-kpi-${card.label}`}
+                    label={card.label}
+                    value={
+                      <span
+                        className={
+                          card.valueVariant === "text"
+                            ? "pnl-by-business-kpi-metric__text-value"
+                            : "pnl-by-business-kpi-metric__tabular-value"
+                        }
+                      >
+                        {card.value}
+                      </span>
+                    }
+                    footer={
+                      card.detailTitle ? (
+                        <span title={card.detailTitle}>{card.detail}</span>
+                      ) : (
+                        card.detail
+                      )
+                    }
+                  />
+                </div>
+              ))}
+            </KpiBand>
+
+            <PnlByBusinessInsightStrip
+              insight={insight}
+              viewMode={viewMode}
+              manualAdjustmentAuditLoading={
+                viewMode !== "formal" && (manualAdjustmentQuery.isLoading || manualAdjustmentQuery.isFetching)
+              }
+              manualAdjustmentAuditUnavailable={
+                viewMode !== "formal" && (manualAdjustmentQuery.isError || manualAdjustmentDateMismatch)
+              }
+            />
+            {viewMode === "ytd" ? (
+              <PnlByBusinessInsightsLeadershipPanel
+                model={businessInsightsLeadershipModel}
+                year={selectedYear}
+                asOfDate={selectedReportDate}
+                onSelectRow={setSelectedBusinessKey}
+              />
+            ) : null}
+            {viewMode !== "formal" ? (
+              <PnlByBusinessManagementChangePanel
+                managementChange={monthlyBusinessQuery.data?.result.management_change}
+                expectedCurrentMonthKey={
+                  viewMode === "monthly"
+                    ? activeMonthlyBucket?.month_key ?? null
+                    : ytdResult?.period_end_date.slice(0, 7) ?? null
+                }
+                selectedRowKey={viewMode === "ytd" ? selectedBusinessRow?.row_key ?? null : null}
+                isLoading={monthlyBusinessQuery.isLoading}
+                isError={monthlyBusinessQuery.isError}
+              />
+            ) : null}
+          </section>
+        ) : null}
 
         <DataStatusStrip testId="pnl-by-business-data-status-strip" className="pnl-by-business-data-status-strip">
-          <div className="pnl-by-business-data-status-strip__grid">
-            <span className="pnl-by-business-data-status-strip__item">
-              <small>当前口径</small>
-              <strong>{statusStrip.viewModeLabel}</strong>
-            </span>
-            <span className="pnl-by-business-data-status-strip__item">
-              <small>数据状态</small>
-              <strong>{statusStrip.dataStatus}</strong>
-            </span>
-            <span className="pnl-by-business-data-status-strip__item">
-              <small>数据截至</small>
-              <strong>{statusStrip.asOfDate}</strong>
-            </span>
-            <span className="pnl-by-business-data-status-strip__item">
-              <small>降级模式</small>
-              <strong>{statusStrip.fallbackMode}</strong>
-            </span>
-          </div>
-          <div className="pnl-by-business-data-status-strip__meta">
-            <span>供应商：{statusStrip.vendorStatus}</span>
-            <span>证据行：{statusStrip.evidenceRows}</span>
-            <span>生成：{statusStrip.generatedAt}</span>
-            <span>Trace：{statusStrip.traceId}</span>
-          </div>
+          <span><strong>口径</strong>{statusStrip.viewModeLabel}</span>
+          <span><strong>状态</strong>{statusStrip.dataStatus}</span>
+          <span><strong>截至</strong>{statusStrip.asOfDate}</span>
+          <span><strong>降级</strong>{statusStrip.fallbackMode}</span>
+          <span><strong>供应商</strong>{statusStrip.vendorStatus}</span>
+          <span><strong>证据行</strong>{statusStrip.evidenceRows}</span>
+          <span><strong>生成</strong>{statusStrip.generatedAt}</span>
+          <span><strong>Trace</strong>{statusStrip.traceId}</span>
         </DataStatusStrip>
 
-        {stateSurfaces.length > 0 ? (
+        {viewMode !== "formal" ? (
+          <PnlByBusinessPrecomputeStatusPanel
+            status={precomputeStatusQuery.data}
+            isLoading={precomputeStatusQuery.isLoading || precomputeStatusQuery.isFetching}
+            isError={precomputeStatusQuery.isError}
+            isRebuilding={rebuildPrecomputeMutation.isPending}
+            rebuildError={
+              rebuildPrecomputeMutation.isError
+                ? rebuildPrecomputeMutation.error instanceof Error
+                  ? rebuildPrecomputeMutation.error.message
+                  : "预计算重建请求失败"
+                : null
+            }
+            onRebuild={() => rebuildPrecomputeMutation.mutate()}
+          />
+        ) : null}
+
+        <PageFilterTray testId="pnl-by-business-filter-tray">
+          <FilterBar className="pnl-by-business-filter">
+            <label className="pnl-by-business-filter-label">
+              {viewMode === "monthly" ? "报表月份" : "分析截止日"}
+              <select
+                aria-label="pnl-by-business-report-date"
+                value={selectedReportDate}
+                onChange={(event) => setSelectedReportDate(event.target.value)}
+                className="pnl-by-business-control"
+              >
+                {reportDates.map((date) => (
+                  <option key={date} value={date}>
+                    {date}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="pnl-by-business-filter-label">
+              视图口径
+              <select
+                aria-label="pnl-by-business-view-mode"
+                value={viewMode}
+                onChange={(event) => setViewMode(event.target.value as PnlByBusinessViewMode)}
+                className="pnl-by-business-control"
+              >
+                <option value="monthly">月报（ZQTZ）</option>
+                <option value="ytd">年累计（YTD）</option>
+                <option value="formal">primary 对账（/api/pnl/by-business）</option>
+              </select>
+            </label>
+            <div className="pnl-by-business-filter-export-slot">
+              <button
+                type="button"
+                className="pnl-by-business-action-button pnl-by-business-action-button-primary"
+                aria-label="pnl-by-business-export-excel"
+                disabled={exportExcelDisabled}
+                onClick={handleExportExcel}
+              >
+                {exportingExcel ? "导出中..." : "导出 Excel"}
+              </button>
+              {exportError ? (
+                <p className="pnl-by-business-export-error" role="alert">
+                  {exportError}
+                </p>
+              ) : null}
+            </div>
+          </FilterBar>
+        </PageFilterTray>
+
+        {stateSurfaces.length > 0 || (viewMode === "ytd" && adbComparisonFallbackReason) ? (
           <div className="pnl-by-business-state-stack" data-testid="pnl-by-business-state-surfaces">
             {stateSurfaces.map((surface) => (
               <PageStateSurface
                 key={surface.key}
                 testId={`pnl-by-business-state-${surface.key}`}
                 variant={surface.variant}
+                className={
+                  surface.key === "definition-pending"
+                    ? "pnl-by-business-state-surface--compact-governance"
+                    : undefined
+                }
                 title={surface.title}
-                description={surface.description}
+                description={
+                  surface.descriptionTitle ? (
+                    <span title={surface.descriptionTitle}>{surface.description}</span>
+                  ) : (
+                    surface.description
+                  )
+                }
               />
             ))}
+            {viewMode === "ytd" && adbComparisonFallbackReason ? (
+              <PageStateSurface
+                testId="pnl-by-business-state-adb-comparison-fallback"
+                variant="stale"
+                title={
+                  adbComparisonFallbackReason === "range_mismatch"
+                    ? "ADB 补充复核区间不一致，已使用 YTD 日均"
+                    : "ADB 补充复核不可用，已使用 YTD 日均"
+                }
+                description={
+                  adbComparisonFallbackReason === "range_mismatch"
+                    ? `ADB 返回区间 ${adbComparisonQuery.data?.start_date || EM_DASH} 至 ${adbComparisonQuery.data?.end_date || EM_DASH}，与 YTD 主端点 ${ytdRange?.startDate || EM_DASH} 至 ${ytdRange?.endDate || EM_DASH} 不一致。本页日均、年化与 FTP 继续使用 YTD 主端点返回字段，不据此宣称跨源 ADB 已核对。`
+                    : "当前身份无法读取或暂时无法访问 ADB comparison 补充证据。本页日均、年化与 FTP 继续使用 YTD 主端点返回字段；这不代表缺日均，但跨源 ADB 覆盖结论已降级。"
+                }
+              />
+            ) : null}
           </div>
         ) : null}
 
-        <AsyncSection
+        <PageAsyncSection
           title="业务种类损益"
           isLoading={loading}
           isError={error}
@@ -2103,44 +2998,35 @@ export default function PnlByBusinessPage() {
           }}
         >
         <section className="pnl-by-business-content">
-          <KpiBand testId="pnl-by-business-summary-cards" className="pnl-by-business-kpi-band">
-            {summaryCards.map((card) => (
-              <div
-                key={card.label}
-                className={pnlKpiToneClassName(card.tone) ? `pnl-by-business-kpi-item ${pnlKpiToneClassName(card.tone)}` : "pnl-by-business-kpi-item"}
-              >
-                <KpiBandMetric
-                  testId={`pnl-by-business-kpi-${card.label}`}
-                  label={card.label}
-                  value={
-                    <span
-                      className={
-                        card.valueVariant === "text"
-                          ? "pnl-by-business-kpi-metric__text-value"
-                          : "pnl-by-business-kpi-metric__tabular-value"
-                      }
-                    >
-                      {card.value}
-                    </span>
-                  }
-                  footer={card.detail}
-                />
-              </div>
-            ))}
-          </KpiBand>
-
-          <PnlByBusinessInsightStrip insight={insight} />
-          <PnlByBusinessDrilldownRecommendationStrip recommendation={insight.recommendedDrilldown} />
+          {viewMode !== "ytd" ? (
+            <PnlByBusinessDrilldownRecommendationStrip recommendation={insight.recommendedDrilldown} />
+          ) : null}
 
           <AnalysisGrid columns={1} testId="pnl-by-business-analysis-grid" className="pnl-by-business-analysis-grid">
             {viewMode === "monthly" ? (
             <>
-              <PageSectionLead
-                eyebrow="Monthly Report"
-                title={`${selectedYear} 月报（截至 ${
-                  activeMonthlyBucket?.month_key ?? selectedReportDate.slice(0, 7)
-                }）`}
-                description="月报与累计视图使用同一套 ZQTZ 管理披露分类：金额列为万元，日均与期末余额为亿元，收益率按各月自然日数年化。该视图列出截至当前报表日已加载的月报；切换到「年累计」可查看这些月报的累计结果。"
+              <div className="pnl-by-business-section-lead">
+                {/* 英文大写眉标删除（§3 大写徽标仅限状态/口径、§7 一页一语域）；
+                    标题已含「YYYY 月报（截至 …）」信息，空眉标由页内 CSS 折叠。 */}
+                <PageSectionLead
+                  eyebrow=""
+                  title={`${selectedYear} 月报（截至 ${
+                    activeMonthlyBucket?.month_key ?? selectedReportDate.slice(0, 7)
+                  }）`}
+                  description="月报与累计视图使用同一套 ZQTZ 管理披露分类：金额列为万元，日均与期末余额为亿元，收益率按各月自然日数年化。该视图列出截至当前报表日已加载的月报；切换到「年累计」可查看这些月报的累计结果。"
+                />
+              </div>
+              <MonthlyAdjustmentFtpBridgePanel
+                bridge={monthlyAdjustmentBridge}
+                approvedAdjustmentCount={monthlyBridgeApprovedAdjustments.length}
+                approvedReasons={monthlyBridgeApprovedReasons}
+                pendingAdjustmentCount={monthlyBridgePendingAdjustmentCount}
+                auditLoading={manualAdjustmentQuery.isLoading || manualAdjustmentQuery.isFetching}
+                auditError={manualAdjustmentQuery.isError}
+                auditDateMismatch={manualAdjustmentDateMismatch}
+                auditReturnedReportDate={manualAdjustmentQuery.data?.report_date}
+                requestedReportDate={selectedReportDate}
+                auditReportDate={manualAdjustmentReportDate}
               />
               <MonthlyBusinessBreakdownPanel
                 months={monthlyBusinessMonths}
@@ -2155,83 +3041,167 @@ export default function PnlByBusinessPage() {
             </>
           ) : viewMode === "ytd" ? (
             <>
-              <DriverOverviewPanel
-                rows={ytdRows}
-                adbAvgByBusinessType={adbAvgByBusinessType}
-              />
               <PageSectionLead
-                eyebrow="Business Type"
+                eyebrow=""
                 title={`${selectedYear} 年累计明细`}
-                description="表中利息至合计损益为万元（接口为元÷1万）；日均(亿元)与日均分析同源，区间采用后端 YTD 结果返回的起止日期；「非底层投资资产」父级日均由下列细类目相加。年化收益率与 FTP 后损益字段由后端 YTD 结果返回；无日均或区间不可算时显示「-」。口径提示：同一资产在 ZQTZ 规则下可同时命中父类「非底层投资资产」与「其中」细类（如证券业资管计划、本币专户/市值法、外币委外、结构化融资（券商）等），故多行损益金额可能重叠展示——核对「证券业资管」量级时宜看该行及同前缀下的细分行，勿与父级简单相加以免重复。表末「父级汇总」仅对父级行求和（排除「其中」细分），占比与收益率列不宜相加故置「—」。"
+                description="金额列为万元，日均为亿元；年化收益率、FTP 后结果及表末父级汇总均直接使用后端 YTD 字段。点击父级行查看月度趋势；父级与「其中项」存在重叠，不可简单相加。"
               />
               <BusinessRowsTable
                 rows={ytdRows}
                 selectedRowKey={selectedBusinessRow?.row_key ?? null}
+                inlineCurrencyRows={
+                  mainBreakdownDimension === "currency" &&
+                  mainBreakdownQuery.data?.result.business_key === selectedBusinessRow?.row_key
+                    ? mainBreakdownRows
+                    : []
+                }
+                summary={ytdResult?.summary}
+                unallocatedPnl={ytdResult?.unallocated_pnl}
+                unallocatedRowCount={ytdResult?.unallocated_row_count}
                 onSelectRow={(row) => setSelectedBusinessKey(row.row_key)}
               />
-              <SelectedBusinessDrilldownPanel
-                selectedRow={selectedBusinessRow}
-                rows={instrumentAnalysisRows}
-                isLoading={analysisBaseReady && (instrumentAnalysisQuery.isLoading || instrumentAnalysisQuery.isFetching)}
-                isError={instrumentAnalysisQuery.isError}
-              />
-              <PnlByBusinessManualAdjustmentPanel
-                rows={ytdRows}
-                selectedReportDate={selectedReportDate}
-                selectedBusinessRow={selectedBusinessRow}
-                selectedRowKey={selectedBusinessRow?.row_key ?? ""}
-                draft={adjustmentDraft}
-                editingAdjustmentId={editingAdjustmentId}
-                adjustmentError={adjustmentError}
-                isLoading={manualAdjustmentQuery.isLoading || manualAdjustmentQuery.isFetching}
-                isSaving={saveAdjustmentMutation.isPending}
-                isActionBusy={adjustmentActionMutation.isPending}
-                adjustments={currentAdjustments}
-                events={adjustmentEvents}
-                onSelectRowKey={(rowKey) => setSelectedBusinessKey(rowKey)}
-                onDraftChange={updateAdjustmentDraft}
-                onSubmit={handleSubmitAdjustment}
-                onEdit={handleEditAdjustment}
-                onCancelEdit={resetAdjustmentDraft}
-                onRevoke={(adjustmentId) => adjustmentActionMutation.mutate({ adjustmentId, action: "revoke" })}
-                onRestore={(adjustmentId) => adjustmentActionMutation.mutate({ adjustmentId, action: "restore" })}
-              />
-              <MonthlyBusinessBreakdownPanel
+              <section
+                className="pnl-by-business-analysis-block"
+                data-testid="pnl-by-business-main-breakdown"
+              >
+                <div className="pnl-by-business-analysis-heading">
+                  <div>
+                    <h2>总表分项拆解</h2>
+                    <p>
+                      {selectedBusinessRow?.business_type ?? EM_DASH} · 子项仅拆分当前父级，不与其他父级重复
+                    </p>
+                  </div>
+                  <label className="pnl-by-business-filter-label">
+                    拆分维度
+                    <select
+                      aria-label="pnl-by-business-main-breakdown-dimension"
+                      value={mainBreakdownDimension}
+                      onChange={(event) =>
+                        setMainBreakdownDimension(event.target.value as MainBreakdownDimension)
+                      }
+                      className="pnl-by-business-control"
+                    >
+                      {(Object.keys(MAIN_BREAKDOWN_DIMENSION_LABELS) as MainBreakdownDimension[]).map((key) => (
+                        <option key={key} value={key}>
+                          {MAIN_BREAKDOWN_DIMENSION_LABELS[key]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                {mainBreakdownDimension === "currency" ? (
+                  <div className="pnl-by-business-detail-warning">
+                    原币种仅用于拆分，损益、日均、余额及 FTP 金额均为折人民币口径。
+                  </div>
+                ) : null}
+                {mainBreakdownQuery.isLoading || mainBreakdownQuery.isFetching ? (
+                  <div className="pnl-by-business-analysis-state">正在拆分当前父级</div>
+                ) : mainBreakdownQuery.isError ? (
+                  <div className="pnl-by-business-analysis-state">总表分项读取失败</div>
+                ) : mainBreakdownRows.length === 0 ? (
+                  <div className="pnl-by-business-analysis-state">当前维度暂无分项数据</div>
+                ) : (
+                  <AnalysisRowsTable
+                    rows={mainBreakdownRows}
+                    dimension={mainBreakdownDimension}
+                    testId="pnl-by-business-main-breakdown-table"
+                  />
+                )}
+              </section>
+              <PnlByBusinessMonthlyTrendPanel
                 months={monthlyBusinessMonths}
-                isLoading={
-                  analysisBaseReady &&
-                  (analysisLoadStage < 1 || monthlyBusinessQuery.isLoading || monthlyBusinessQuery.isFetching)
-                }
+                selectedBusiness={selectedBusinessRow}
+                periodStartDate={ytdResult?.period_start_date}
+                periodEndDate={ytdResult?.period_end_date}
+                isLoading={monthlyBusinessQuery.isLoading || monthlyBusinessQuery.isFetching}
                 isError={monthlyBusinessQuery.isError}
-                openMonthKeys={openMonthlyKeys}
-                onToggleMonth={toggleMonthlyBucket}
-                title="月报业务种类明细"
-                description="逐月展开已发布月报，YTD 金额可用父级行与这些月报合计核对。"
               />
               <FtpBridgePanel selectedRow={selectedBusinessRow} />
-              <BondBucketAnalysisPanel
-                rows={bondBucketRows}
-                isLoading={analysisBaseReady && (analysisLoadStage < 2 || bondBucketQuery.isLoading || bondBucketQuery.isFetching)}
-                isError={bondBucketQuery.isError}
-              />
-              <BondBucketMonthlyPanel
-                rows={bondBucketMonthlyRows}
-                isLoading={
-                  analysisBaseReady &&
-                  (analysisLoadStage < 3 || bondBucketMonthlyQuery.isLoading || bondBucketMonthlyQuery.isFetching)
-                }
-                isError={bondBucketMonthlyQuery.isError}
-              />
-              <NegativeFtpListPanel
-                rows={instrumentAnalysisRows}
-                isLoading={analysisBaseReady && (instrumentAnalysisQuery.isLoading || instrumentAnalysisQuery.isFetching)}
-                isError={instrumentAnalysisQuery.isError}
-              />
-              <section className="pnl-by-business-analysis-block" data-testid="pnl-by-business-analysis-panel">
+              <PnlByBusinessDrilldownRecommendationStrip recommendation={insight.recommendedDrilldown} />
+              <details className="pnl-by-business-deep-dive" data-testid="pnl-by-business-deep-dive">
+                <summary className="pnl-by-business-deep-dive__summary" data-testid="pnl-by-business-deep-dive-toggle">
+                  <span>
+                    <strong>展开底层分析与核对工具</strong>
+                    <small>未分类证据、证券级驱动、手工调整、逐月核对、债券四类与多维下钻</small>
+                  </span>
+                  <span className="pnl-by-business-deep-dive__action" aria-hidden="true">展开</span>
+                </summary>
+                <div className="pnl-by-business-deep-dive__content">
+                  <UnallocatedPnlPanel
+                    breakdown={ytdResult?.unallocated_breakdown}
+                    items={ytdResult?.unallocated_items}
+                    totalPnl={ytdResult?.unallocated_pnl}
+                    totalAbsPnl={ytdResult?.unallocated_abs_pnl}
+                    rowCount={ytdResult?.unallocated_row_count}
+                  />
+                  <SelectedBusinessDrilldownPanel
+                    selectedRow={selectedBusinessRow}
+                    rows={instrumentAnalysisRows}
+                    isLoading={analysisBaseReady && (instrumentAnalysisQuery.isLoading || instrumentAnalysisQuery.isFetching)}
+                    isError={instrumentAnalysisQuery.isError}
+                  />
+                  <DriverOverviewPanel
+                    rows={parentYtdRows}
+                    adbAvgByBusinessType={adbAvgByBusinessType}
+                    adbEvidenceStatus={adbEvidenceStatus}
+                  />
+                  <PnlByBusinessManualAdjustmentPanel
+                    rows={ytdRows}
+                    selectedReportDate={selectedReportDate}
+                    selectedBusinessRow={selectedBusinessRow}
+                    selectedRowKey={selectedBusinessRow?.row_key ?? ""}
+                    draft={adjustmentDraft}
+                    editingAdjustmentId={editingAdjustmentId}
+                    adjustmentError={adjustmentError}
+                    readError={manualAdjustmentReadError}
+                    isLoading={manualAdjustmentQuery.isLoading || manualAdjustmentQuery.isFetching}
+                    isSaving={saveAdjustmentMutation.isPending}
+                    isActionBusy={adjustmentActionMutation.isPending}
+                    adjustments={currentAdjustments}
+                    events={adjustmentEvents}
+                    onSelectRowKey={(rowKey) => setSelectedBusinessKey(rowKey)}
+                    onDraftChange={updateAdjustmentDraft}
+                    onSubmit={handleSubmitAdjustment}
+                    onEdit={handleEditAdjustment}
+                    onCancelEdit={resetAdjustmentDraft}
+                    onRevoke={(adjustmentId) => adjustmentActionMutation.mutate({ adjustmentId, action: "revoke" })}
+                    onRestore={(adjustmentId) => adjustmentActionMutation.mutate({ adjustmentId, action: "restore" })}
+                  />
+                  <MonthlyBusinessBreakdownPanel
+                    months={monthlyBusinessMonths}
+                    isLoading={
+                      analysisBaseReady &&
+                      (analysisLoadStage < 1 || monthlyBusinessQuery.isLoading || monthlyBusinessQuery.isFetching)
+                    }
+                    isError={monthlyBusinessQuery.isError}
+                    openMonthKeys={openMonthlyKeys}
+                    onToggleMonth={toggleMonthlyBucket}
+                    title="月报业务种类明细"
+                    description="逐月展开已发布月报，YTD 金额可用父级行与这些月报合计核对。"
+                  />
+                  <BondBucketAnalysisPanel
+                    rows={bondBucketRows}
+                    isLoading={analysisBaseReady && (analysisLoadStage < 2 || bondBucketQuery.isLoading || bondBucketQuery.isFetching)}
+                    isError={bondBucketQuery.isError}
+                  />
+                  <BondBucketMonthlyPanel
+                    rows={bondBucketMonthlyRows}
+                    isLoading={
+                      analysisBaseReady &&
+                      (analysisLoadStage < 3 || bondBucketMonthlyQuery.isLoading || bondBucketMonthlyQuery.isFetching)
+                    }
+                    isError={bondBucketMonthlyQuery.isError}
+                  />
+                  <NegativeFtpListPanel
+                    rows={instrumentAnalysisRows}
+                    isLoading={analysisBaseReady && (instrumentAnalysisQuery.isLoading || instrumentAnalysisQuery.isFetching)}
+                    isError={instrumentAnalysisQuery.isError}
+                  />
+                  <section className="pnl-by-business-analysis-block" data-testid="pnl-by-business-analysis-panel">
                 <div className="pnl-by-business-analysis-heading">
                   <div>
                     <h2>多维下钻</h2>
-                    <p>{selectedBusinessRow?.business_type ?? "-"}</p>
+                    <p>{selectedBusinessRow?.business_type ?? EM_DASH}</p>
                   </div>
                   <label className="pnl-by-business-filter-label">
                     维度
@@ -2253,16 +3223,16 @@ export default function PnlByBusinessPage() {
                   <KpiCard
                     label="选中业务损益"
                     value={formatYuanAsWanUnit(selectedBusinessRow?.total_pnl)}
-                    detail={selectedBusinessRow?.business_type ?? "-"}
+                    detail={selectedBusinessRow?.business_type ?? EM_DASH}
                     tone={toneFromSigned(selectedBusinessRow?.total_pnl)}
                   />
                   <KpiCard
-                    label="日均"
+                    label="日均（亿元）"
                     value={formatAvgBalanceYi(selectedBusinessRow?.avg_balance)}
                     detail="ADB 同区间"
                   />
                   <KpiCard
-                    label="期末余额"
+                    label="期末余额（亿元）"
                     value={formatYuanAsYiCell(selectedBusinessRow?.current_balance)}
                     detail={ytdResult?.period_end_date ?? selectedReportDate}
                   />
@@ -2281,35 +3251,51 @@ export default function PnlByBusinessPage() {
                 ) : (
                   <AnalysisRowsTable rows={analysisRows} dimension={analysisDimension} />
                 )}
-              </section>
+                  </section>
+                </div>
+              </details>
             </>
           ) : (
             <>
               <PageSectionLead
-                eyebrow="Reconciliation"
+                eyebrow=""
                 title={`${selectedReportDate} primary 对账明细`}
                 description="这是对账证据，不是业务贡献主分析；与 GET /api/pnl/by-business 一致，来自 fact_formal_pnl_fi / fact_nonstd_pnl_bridge 与 fact_formal_zqtz_balance_daily 的 join 聚合。这里按 primary 分类展示，用于源数据追溯；月报和累计按 ZQTZ 管理披露分类展示，二者不要混加。"
               />
-              <FormalBusinessRowsTable rows={formalRows} />
+              <FormalBusinessRowsTable rows={formalRows} summary={formalResult?.summary} />
             </>
           )}
           </AnalysisGrid>
 
           {evidenceMetaSections.length > 0 ? (
-            <EvidencePanel
-              heading="数据来源、口径与血缘"
-              testId="pnl-by-business-evidence-panel"
-              className="pnl-by-business-evidence-panel"
-            >
-              <FormalResultMetaPanel
-                testId="pnl-by-business-result-meta-panel"
-                sections={evidenceMetaSections}
-              />
-            </EvidencePanel>
+            <details className="pnl-by-business-evidence-disclosure" data-testid="pnl-by-business-evidence-disclosure">
+              <summary
+                className="pnl-by-business-evidence-disclosure__summary"
+                data-testid="pnl-by-business-evidence-disclosure-toggle"
+              >
+                <span>
+                  <strong>数据来源、口径与血缘</strong>
+                  <small>首屏状态条已保留截至日、降级、生成时间与 Trace；此处展开查看完整证据。</small>
+                </span>
+                <span className="pnl-by-business-evidence-disclosure__action" aria-hidden="true">
+                  <span className="pnl-by-business-evidence-disclosure__action-closed">查看证据</span>
+                  <span className="pnl-by-business-evidence-disclosure__action-open">收起证据</span>
+                </span>
+              </summary>
+              <EvidencePanel
+                testId="pnl-by-business-evidence-panel"
+                className="pnl-by-business-evidence-panel"
+              >
+                <FormalResultMetaPanel
+                  testId="pnl-by-business-result-meta-panel"
+                  sections={evidenceMetaSections}
+                />
+              </EvidencePanel>
+            </details>
           ) : null}
         </section>
-      </AsyncSection>
+      </PageAsyncSection>
       </PageV2Shell>
-    </main>
+    </section>
   );
 }

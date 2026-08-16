@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import uuid
+from copy import deepcopy
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal
 
-import duckdb
 from backend.app.core_finance.campisi import (
     campisi_attribution as _core_campisi,
 )
@@ -17,6 +17,7 @@ from backend.app.core_finance.campisi import (
 from backend.app.core_finance.pnl_attribution import workbench as pa_wb
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+from backend.app.repositories.choice_macro_series_repo import ChoiceMacroSeriesRepository
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.repositories.yield_curve_repo import YieldCurveRepository
 from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
@@ -50,6 +51,7 @@ from backend.app.services.campisi_attribution_service import (
     merge_positions,
 )
 from backend.app.services.formal_result_runtime import build_formal_result_envelope, build_formal_result_meta
+from backend.app.services.runtime_cache import get_runtime_cache
 
 RULE_VERSION = "rv_pnl_attribution_workbench_v1"
 CACHE_VERSION = "cv_pnl_attribution_workbench_v1"
@@ -80,6 +82,66 @@ TABLES_BOND_ANALYTICS = [
 RAW_INVEST_TYPE_CODES = {"A", "H", "T"}
 
 CompareType = Literal["mom", "yoy"]
+
+_PNL_ATTRIBUTION_CACHE_TTL_SECONDS = 300.0
+_PNL_ATTRIBUTION_CACHE = get_runtime_cache(
+    "pnl_attribution.read_models",
+    ttl_seconds=_PNL_ATTRIBUTION_CACHE_TTL_SECONDS,
+)
+_PnlAttributionCacheKey = tuple[object, ...]
+
+
+def _duckdb_storage_identity(duckdb_path: str) -> tuple[str, int, int] | None:
+    path = Path(duckdb_path)
+    if not path.exists():
+        return None
+    try:
+        stat = path.stat()
+        return (str(path.resolve()), stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        return None
+
+
+def _pnl_attribution_runtime_cache_enabled() -> bool:
+    try:
+        return (
+            isinstance(_pnl_repo(), PnlRepository)
+            and isinstance(_bond_repo(), BondAnalyticsRepository)
+            and isinstance(_curve_repo(), YieldCurveRepository)
+        )
+    except Exception:
+        return False
+
+
+def _pnl_attribution_cache_key(endpoint: str, *parts: object) -> _PnlAttributionCacheKey | None:
+    if not _pnl_attribution_runtime_cache_enabled():
+        return None
+    duckdb_path = str(get_settings().duckdb_path)
+    storage = _duckdb_storage_identity(duckdb_path)
+    if storage is None:
+        return None
+    resolved_path, mtime_ns, size = storage
+    return (
+        endpoint,
+        resolved_path,
+        mtime_ns,
+        size,
+        RULE_VERSION,
+        CACHE_VERSION,
+        *parts,
+    )
+
+
+def _with_fresh_trace(envelope: dict[str, object]) -> dict[str, object]:
+    response = deepcopy(envelope)
+    meta = response.get("result_meta")
+    if isinstance(meta, dict):
+        meta["trace_id"] = _trace_id()
+    return response
+
+
+def invalidate_pnl_attribution_read_cache() -> None:
+    _PNL_ATTRIBUTION_CACHE.clear()
 
 
 def _trace_id() -> str:
@@ -117,6 +179,8 @@ def _meta_warn(
     tables_used: list[str] | None = None,
     evidence_rows: int | None = None,
     as_of_date: str | None = None,
+    fallback_mode: Literal["none", "latest_snapshot"] = "none",
+    fallback_date: str | None = None,
 ):
     return build_formal_result_meta(
         trace_id=_trace_id(),
@@ -125,6 +189,8 @@ def _meta_warn(
         rule_version=RULE_VERSION,
         cache_version=CACHE_VERSION,
         quality_flag="warning",
+        fallback_mode=fallback_mode,
+        fallback_date=fallback_date,
         filters_applied=filters_applied,
         tables_used=tables_used,
         evidence_rows=evidence_rows,
@@ -158,6 +224,11 @@ def _bond_repo() -> BondAnalyticsRepository:
 
 def _curve_repo() -> YieldCurveRepository:
     return YieldCurveRepository(str(get_settings().duckdb_path))
+
+
+def _choice_macro_repo(duckdb_path: str | None = None) -> ChoiceMacroSeriesRepository:
+    path = duckdb_path or str(get_settings().duckdb_path)
+    return ChoiceMacroSeriesRepository(path)
 
 
 def _prev_month_ym(ym: str) -> str:
@@ -250,15 +321,6 @@ def _pnl_by_business_snapshot(report_date: str) -> dict[str, Any]:
     }
 
 
-def _prior_bond_date(report_date: str, dates: list[str]) -> str | None:
-    if report_date not in dates:
-        return None
-    idx = dates.index(report_date)
-    if idx + 1 >= len(dates):
-        return None
-    return dates[idx + 1]
-
-
 def _treasury_10y(curve: dict[str, Decimal]) -> float | None:
     for k in ("10Y", "10y", "10"):
         if k in curve:
@@ -304,143 +366,6 @@ def _treasury_10y_on_or_before_many(
         )
         for trade_date, value in values.items()
     }
-
-
-def _relation_exists(conn: duckdb.DuckDBPyConnection, relation_name: str) -> bool:
-    try:
-        row = conn.execute(
-            """
-            select count(*)
-            from information_schema.tables
-            where table_name = ?
-            """,
-            [relation_name],
-        ).fetchone()
-    except duckdb.Error:
-        return False
-    return bool(row and row[0])
-
-
-def _choice_macro_value_on_or_before(
-    *,
-    conn: duckdb.DuckDBPyConnection,
-    relation_name: str,
-    series_id: str,
-    trade_date: str,
-) -> tuple[float | None, str | None]:
-    if not _relation_exists(conn, relation_name):
-        return None, None
-    try:
-        row = conn.execute(
-            f"""
-            select value_numeric, cast(trade_date as varchar)
-            from {relation_name}
-            where series_id = ?
-              and cast(trade_date as varchar) <= ?
-              and value_numeric is not null
-            order by cast(trade_date as varchar) desc
-            limit 1
-            """,
-            [series_id, trade_date],
-        ).fetchone()
-    except duckdb.Error:
-        return None, None
-    if row is None:
-        return None, None
-    return float(row[0]), str(row[1])
-
-
-def _dr007_on_or_before(duckdb_path: str, trade_date: str) -> tuple[float | None, str | None]:
-    try:
-        conn = duckdb.connect(duckdb_path, read_only=True)
-    except duckdb.Error:
-        return None, None
-    try:
-        for relation_name in ("fact_choice_macro_daily", "choice_market_snapshot"):
-            value, resolved_date = _choice_macro_value_on_or_before(
-                conn=conn,
-                relation_name=relation_name,
-                series_id="CA.DR007",
-                trade_date=trade_date,
-            )
-            if value is not None:
-                return value, resolved_date
-    finally:
-        conn.close()
-    return None, None
-
-
-def _choice_macro_values_on_or_before_many(
-    *,
-    conn: duckdb.DuckDBPyConnection,
-    relation_name: str,
-    series_id: str,
-    trade_dates: list[str],
-) -> dict[str, tuple[float | None, str | None]]:
-    requested = [str(trade_date) for trade_date in dict.fromkeys(trade_dates) if str(trade_date or "")]
-    if not requested or not _relation_exists(conn, relation_name):
-        return {}
-    requested_sql = " union all ".join("select ? as requested_trade_date" for _ in requested)
-    try:
-        rows = conn.execute(
-            f"""
-            with requested as (
-              {requested_sql}
-            ), ranked as (
-              select
-                r.requested_trade_date,
-                m.value_numeric,
-                cast(m.trade_date as varchar) as resolved_trade_date,
-                row_number() over (
-                  partition by r.requested_trade_date
-                  order by cast(m.trade_date as varchar) desc
-                ) as row_num
-              from requested r
-              left join {relation_name} m
-                on m.series_id = ?
-               and cast(m.trade_date as varchar) <= r.requested_trade_date
-               and m.value_numeric is not null
-            )
-            select requested_trade_date, value_numeric, resolved_trade_date
-            from ranked
-            where row_num = 1
-            """,
-            [*requested, series_id],
-        ).fetchall()
-    except duckdb.Error:
-        return {}
-    return {
-        str(requested_trade_date): (
-            float(value) if value is not None else None,
-            str(resolved_date) if resolved_date not in (None, "") else None,
-        )
-        for requested_trade_date, value, resolved_date in rows
-    }
-
-
-def _dr007_on_or_before_many(duckdb_path: str, trade_dates: list[str]) -> dict[str, tuple[float | None, str | None]]:
-    requested = [str(trade_date) for trade_date in dict.fromkeys(trade_dates) if str(trade_date or "")]
-    if not requested:
-        return {}
-    out = {trade_date: (None, None) for trade_date in requested}
-    try:
-        conn = duckdb.connect(duckdb_path, read_only=True)
-    except duckdb.Error:
-        return out
-    try:
-        for relation_name in ("fact_choice_macro_daily", "choice_market_snapshot"):
-            values = _choice_macro_values_on_or_before_many(
-                conn=conn,
-                relation_name=relation_name,
-                series_id="CA.DR007",
-                trade_dates=[trade_date for trade_date, value in out.items() if value[0] is None],
-            )
-            for trade_date, value in values.items():
-                if value[0] is not None:
-                    out[trade_date] = value
-    finally:
-        conn.close()
-    return out
 
 
 def _anchor_on_or_before(dates: list[str], day: str) -> str | None:
@@ -492,6 +417,13 @@ def _with_optional_warnings(
     return payload
 
 
+def _has_maturity_risk_exclusions(payload: dict[str, Any]) -> bool:
+    coverage = payload.get("risk_coverage")
+    if not isinstance(coverage, dict):
+        return False
+    return int(coverage.get("excluded_row_count") or 0) > 0
+
+
 _NUMERIC_JSON_KEYS = frozenset({"raw", "unit", "display", "precision", "sign_aware"})
 
 _LIST_FIELD_ITEM_CLASS: dict[tuple[type, str], type] = {
@@ -532,10 +464,33 @@ def _numeric_dict(raw: float | None, unit: NumericUnit, sign_aware: bool) -> dic
     ).model_dump(mode="json")
 
 
+def _ratio_pct_numeric(ratio: float, *, sign_aware: bool = True) -> dict[str, Any]:
+    """Numeric dict for a share already expressed as a decimal ratio (0.4 == 40%).
+
+    Unlike ``_numeric_dict`` (which expects percent points), the input here is
+    the ratio itself; raw stays a ratio and never passes through the
+    ``_normalize_numeric_raw`` abs>1 percent-point heuristic. Rounding happens
+    at percent-point granularity (4 decimals) to keep raw/display bit-identical
+    with the legacy percent-point pipeline.
+    """
+    percent_points = round(ratio * 100.0, 4)
+    return Numeric(
+        raw=percent_points / 100.0,
+        unit="pct",
+        display=_signed_number(percent_points, precision=2, sign_aware=sign_aware, suffix="%"),
+        precision=2,
+        sign_aware=sign_aware,
+    ).model_dump(mode="json")
+
+
 def _promote_flat(payload: dict[str, Any], NumericClass: type) -> dict[str, Any]:
-    field_map: dict[str, tuple[NumericUnit, bool]] = getattr(NumericClass, "_NUMERIC_FIELDS", {}) or {}
+    # _NUMERIC_FIELDS entry: (unit, sign_aware) or (unit, sign_aware, raw_scale).
+    # Legacy 2-tuples keep this service's percent-point semantics for pct fields
+    # (_numeric_dict divides by 100); a 3-tuple "ratio" declaration routes through
+    # _ratio_pct_numeric so decimal-ratio producers are never re-divided.
+    field_map: dict[str, tuple[Any, ...]] = getattr(NumericClass, "_NUMERIC_FIELDS", {}) or {}
     out = dict(payload)
-    for name, (unit, sign_aware) in field_map.items():
+    for name, spec in field_map.items():
         if name not in out:
             continue
         v = out[name]
@@ -544,7 +499,12 @@ def _promote_flat(payload: dict[str, Any], NumericClass: type) -> dict[str, Any]
         if isinstance(v, dict) and _NUMERIC_JSON_KEYS <= set(v.keys()):
             continue
         if isinstance(v, (int, float)):
-            out[name] = _numeric_dict(float(v), unit, sign_aware)
+            unit, sign_aware = spec[0], spec[1]
+            raw_scale = spec[2] if len(spec) == 3 else "auto"
+            if unit == "pct" and raw_scale == "ratio":
+                out[name] = _ratio_pct_numeric(float(v), sign_aware=sign_aware)
+            else:
+                out[name] = _numeric_dict(float(v), unit, sign_aware)
     return out
 
 
@@ -649,19 +609,17 @@ def _tpl_market_summary_components(
     treasury_dates = list(snapshots)
     points: list[dict[str, Any]] = []
     prev_tsy: float | None = None
+    prior_snap: str | None = None
     if series:
         prior_ym = _prev_month_ym(series[0])
         prior_snap = _max_date_in_month(dates, prior_ym)
         if prior_snap:
             treasury_dates.insert(0, prior_snap)
     treasury_values = _treasury_10y_on_or_before_many(curve, treasury_dates)
-    if series:
-        prior_ym = _prev_month_ym(series[0])
-        prior_snap = _max_date_in_month(dates, prior_ym)
-        if prior_snap:
-            prev_tsy = treasury_values.get(prior_snap, (None, None))[0]
+    if prior_snap:
+        prev_tsy = treasury_values.get(prior_snap, (None, None))[0]
     curve_path = str(getattr(curve, "path", "") or "")
-    dr007_values = _dr007_on_or_before_many(curve_path, snapshots) if curve_path else {}
+    dr007_values = _choice_macro_repo(curve_path).dr007_on_or_before_many(snapshots) if curve_path else {}
     for ym in series:
         snap = _max_date_in_month(dates, ym)
         if not snap:
@@ -703,6 +661,32 @@ def volume_rate_attribution_envelope(
     *,
     report_date: str | None,
     compare_type: CompareType = "mom",
+) -> dict[str, object]:
+    cache_key = _pnl_attribution_cache_key(
+        "volume_rate",
+        report_date,
+        compare_type,
+    )
+    if cache_key is not None:
+        return _with_fresh_trace(
+            _PNL_ATTRIBUTION_CACHE.get_or_set(
+                cache_key,
+                lambda: _volume_rate_attribution_envelope_uncached(
+                    report_date=report_date,
+                    compare_type=compare_type,
+                ),
+            )
+        )
+    return _volume_rate_attribution_envelope_uncached(
+        report_date=report_date,
+        compare_type=compare_type,
+    )
+
+
+def _volume_rate_attribution_envelope_uncached(
+    *,
+    report_date: str | None,
+    compare_type: CompareType,
 ) -> dict[str, object]:
     repo = _pnl_repo()
     dates = _formal_fi_report_dates_for_workbench(repo)
@@ -793,6 +777,32 @@ def volume_rate_attribution_envelope(
 
 
 def tpl_market_correlation_envelope(*, months: int = 12, report_date: str | None = None) -> dict[str, object]:
+    cache_key = _pnl_attribution_cache_key(
+        "tpl_market",
+        report_date,
+        months,
+    )
+    if cache_key is not None:
+        return _with_fresh_trace(
+            _PNL_ATTRIBUTION_CACHE.get_or_set(
+                cache_key,
+                lambda: _tpl_market_correlation_envelope_uncached(
+                    months=months,
+                    report_date=report_date,
+                ),
+            )
+        )
+    return _tpl_market_correlation_envelope_uncached(
+        months=months,
+        report_date=report_date,
+    )
+
+
+def _tpl_market_correlation_envelope_uncached(
+    *,
+    months: int,
+    report_date: str | None,
+) -> dict[str, object]:
     repo = _pnl_repo()
     curve = _curve_repo()
     bond = _bond_repo()
@@ -843,7 +853,7 @@ def tpl_market_correlation_envelope(*, months: int = 12, report_date: str | None
         dtsy = ((tsy - prev_tsy) * 100.0) if tsy is not None and prev_tsy is not None else None
         prev_tsy = tsy if tsy is not None else prev_tsy
         curve_path = str(getattr(curve, "path", "") or "")
-        dr007, _dr007_date = _dr007_on_or_before(curve_path, snap) if curve_path else (None, None)
+        dr007, _dr007_date = _choice_macro_repo(curve_path).dr007_on_or_before(snap) if curve_path else (None, None)
         points.append(
             {
                 "period": ym,
@@ -909,6 +919,36 @@ def pnl_composition_envelope(
     report_date: str | None,
     include_trend: bool = True,
     trend_months: int = 6,
+) -> dict[str, object]:
+    cache_key = _pnl_attribution_cache_key(
+        "composition",
+        report_date,
+        include_trend,
+        trend_months,
+    )
+    if cache_key is not None:
+        return _with_fresh_trace(
+            _PNL_ATTRIBUTION_CACHE.get_or_set(
+                cache_key,
+                lambda: _pnl_composition_envelope_uncached(
+                    report_date=report_date,
+                    include_trend=include_trend,
+                    trend_months=trend_months,
+                ),
+            )
+        )
+    return _pnl_composition_envelope_uncached(
+        report_date=report_date,
+        include_trend=include_trend,
+        trend_months=trend_months,
+    )
+
+
+def _pnl_composition_envelope_uncached(
+    *,
+    report_date: str | None,
+    include_trend: bool,
+    trend_months: int,
 ) -> dict[str, object]:
     repo = _pnl_repo()
     dates = _formal_fi_report_dates_for_workbench(repo)
@@ -1004,6 +1044,18 @@ def pnl_composition_envelope(
 
 
 def attribution_analysis_summary_envelope(*, report_date: str | None) -> dict[str, object]:
+    cache_key = _pnl_attribution_cache_key("summary", report_date)
+    if cache_key is not None:
+        return _with_fresh_trace(
+            _PNL_ATTRIBUTION_CACHE.get_or_set(
+                cache_key,
+                lambda: _attribution_analysis_summary_envelope_uncached(report_date=report_date),
+            )
+        )
+    return _attribution_analysis_summary_envelope_uncached(report_date=report_date)
+
+
+def _attribution_analysis_summary_envelope_uncached(*, report_date: str | None) -> dict[str, object]:
     """Summarizes only the formal FI / bond-analysis attribution lens."""
     repo_dates = _formal_fi_report_dates_for_workbench()
     rd = report_date or (repo_dates[0] if repo_dates else "")
@@ -1095,11 +1147,33 @@ def attribution_analysis_summary_envelope(*, report_date: str | None) -> dict[st
 
 
 def carry_roll_down_envelope(*, report_date: str | None) -> dict[str, object]:
+    ftp_rate_pct = float(get_settings().ftp_rate_pct)
+    cache_key = _pnl_attribution_cache_key("carry_rolldown", report_date, ftp_rate_pct)
+    if cache_key is not None:
+        return _with_fresh_trace(
+            _PNL_ATTRIBUTION_CACHE.get_or_set(
+                cache_key,
+                lambda: _carry_roll_down_envelope_uncached(
+                    report_date=report_date,
+                    ftp_rate_pct=ftp_rate_pct,
+                ),
+            )
+        )
+    return _carry_roll_down_envelope_uncached(
+        report_date=report_date,
+        ftp_rate_pct=ftp_rate_pct,
+    )
+
+
+def _carry_roll_down_envelope_uncached(
+    *,
+    report_date: str | None,
+    ftp_rate_pct: float,
+) -> dict[str, object]:
     bond = _bond_repo()
     dates = bond.list_report_dates()
-    ftp = float(get_settings().ftp_rate_pct)
     if not dates:
-        payload = pa_wb.build_carry_roll_down(report_date="", bond_rows=[], ftp_rate_pct=ftp, curve_slope_bp=None)
+        payload = pa_wb.build_carry_roll_down(report_date="", bond_rows=[], ftp_rate_pct=ftp_rate_pct, curve_slope_bp=None)
         promoted = _promote_payload_numerics(payload, CarryRollDownPayload)
         p = CarryRollDownPayload.model_validate(promoted).model_dump(mode="json")
         return build_formal_result_envelope(
@@ -1114,7 +1188,7 @@ def carry_roll_down_envelope(*, report_date: str | None) -> dict[str, object]:
     payload = pa_wb.build_carry_roll_down(
         report_date=rd,
         bond_rows=rows,
-        ftp_rate_pct=ftp,
+        ftp_rate_pct=ftp_rate_pct,
         curve_slope_bp=None,
         treasury_curve=c_end,
     )
@@ -1155,6 +1229,28 @@ def carry_roll_down_envelope(*, report_date: str | None) -> dict[str, object]:
 
 
 def spread_attribution_envelope(*, report_date: str | None, lookback_days: int = 30) -> dict[str, object]:
+    cache_key = _pnl_attribution_cache_key("spread", report_date, lookback_days)
+    if cache_key is not None:
+        return _with_fresh_trace(
+            _PNL_ATTRIBUTION_CACHE.get_or_set(
+                cache_key,
+                lambda: _spread_attribution_envelope_uncached(
+                    report_date=report_date,
+                    lookback_days=lookback_days,
+                ),
+            )
+        )
+    return _spread_attribution_envelope_uncached(
+        report_date=report_date,
+        lookback_days=lookback_days,
+    )
+
+
+def _spread_attribution_envelope_uncached(
+    *,
+    report_date: str | None,
+    lookback_days: int,
+) -> dict[str, object]:
     bond = _bond_repo()
     curve = _curve_repo()
     dates = bond.list_report_dates()
@@ -1182,8 +1278,17 @@ def spread_attribution_envelope(*, report_date: str | None, lookback_days: int =
     rows_e = bond.fetch_bond_analytics_rows(report_date=rd) if rd in dates else []
     anchor = _anchor_on_or_before(dates, start_iso)
     rows_s = bond.fetch_bond_analytics_rows(report_date=anchor) if anchor else []
-    t_end = _treasury_10y(curve.fetch_curve(rd, "treasury"))
-    t_start = _treasury_10y(curve.fetch_curve(anchor, "treasury")) if anchor else None
+    t_end, end_curve_date = _treasury_10y_on_or_before(curve, rd)
+    t_start, start_curve_date = (
+        _treasury_10y_on_or_before(curve, anchor) if anchor else (None, None)
+    )
+    fallback_date = (
+        start_curve_date
+        if start_curve_date is not None and start_curve_date != anchor
+        else end_curve_date if end_curve_date is not None and end_curve_date != rd else None
+    )
+    curve_fallback = fallback_date is not None
+    curve_missing = t_end is None or t_start is None
     payload = pa_wb.build_spread_attribution(
         report_date=rd,
         start_date=anchor or start_iso,
@@ -1193,12 +1298,20 @@ def spread_attribution_envelope(*, report_date: str | None, lookback_days: int =
         treasury_10y_start_pct=t_start,
         treasury_10y_end_pct=t_end,
     )
-    warn = not rows_e or not rows_s
+    warn = (
+        not rows_e
+        or not rows_s
+        or curve_fallback
+        or curve_missing
+        or _has_maturity_risk_exclusions(payload)
+    )
     evidence_rows = len(rows_e) + len(rows_s)
     filters = {
         "requested_report_date": report_date,
         "resolved_report_date": rd,
         "start_date": anchor or start_iso,
+        "treasury_curve_start_date": start_curve_date,
+        "treasury_curve_end_date": end_curve_date,
         "lookback_days": lookback_days,
     }
     promoted = _promote_payload_numerics(payload, SpreadAttributionPayload)
@@ -1212,6 +1325,8 @@ def spread_attribution_envelope(*, report_date: str | None, lookback_days: int =
                 tables_used=TABLES_BOND_ANALYTICS,
                 evidence_rows=evidence_rows,
                 as_of_date=rd,
+                fallback_mode="latest_snapshot" if curve_fallback else "none",
+                fallback_date=fallback_date,
             )
             if warn
             else _meta_ok(
@@ -1232,6 +1347,28 @@ def spread_attribution_envelope(*, report_date: str | None, lookback_days: int =
 
 
 def krd_attribution_envelope(*, report_date: str | None, lookback_days: int = 30) -> dict[str, object]:
+    cache_key = _pnl_attribution_cache_key("krd", report_date, lookback_days)
+    if cache_key is not None:
+        return _with_fresh_trace(
+            _PNL_ATTRIBUTION_CACHE.get_or_set(
+                cache_key,
+                lambda: _krd_attribution_envelope_uncached(
+                    report_date=report_date,
+                    lookback_days=lookback_days,
+                ),
+            )
+        )
+    return _krd_attribution_envelope_uncached(
+        report_date=report_date,
+        lookback_days=lookback_days,
+    )
+
+
+def _krd_attribution_envelope_uncached(
+    *,
+    report_date: str | None,
+    lookback_days: int,
+) -> dict[str, object]:
     bond = _bond_repo()
     curve = _curve_repo()
     dates = bond.list_report_dates()
@@ -1257,9 +1394,18 @@ def krd_attribution_envelope(*, report_date: str | None, lookback_days: int = 30
     anchor = _anchor_on_or_before(dates, start_d.isoformat())
     rows_e = bond.fetch_bond_analytics_rows(report_date=rd) if rd in dates else []
     rows_s = bond.fetch_bond_analytics_rows(report_date=anchor) if anchor else []
-    t_end = _treasury_10y(curve.fetch_curve(rd, "treasury"))
-    t_start = _treasury_10y(curve.fetch_curve(anchor, "treasury")) if anchor else None
+    t_end, end_curve_date = _treasury_10y_on_or_before(curve, rd)
+    t_start, start_curve_date = (
+        _treasury_10y_on_or_before(curve, anchor) if anchor else (None, None)
+    )
     shift_bp = ((t_end - t_start) * 100.0) if t_end is not None and t_start is not None else None
+    fallback_date = (
+        start_curve_date
+        if start_curve_date is not None and start_curve_date != anchor
+        else end_curve_date if end_curve_date is not None and end_curve_date != rd else None
+    )
+    curve_fallback = fallback_date is not None
+    curve_missing = t_end is None or t_start is None
     payload = pa_wb.build_krd_attribution(
         report_date=rd,
         start_date=anchor or start_d.isoformat(),
@@ -1268,12 +1414,20 @@ def krd_attribution_envelope(*, report_date: str | None, lookback_days: int = 30
         bond_rows_start=rows_s,
         treasury_shift_bp=shift_bp,
     )
-    warn = not rows_e or not rows_s
+    warn = (
+        not rows_e
+        or not rows_s
+        or curve_fallback
+        or curve_missing
+        or _has_maturity_risk_exclusions(payload)
+    )
     evidence_rows = len(rows_e) + len(rows_s)
     filters = {
         "requested_report_date": report_date,
         "resolved_report_date": rd,
         "start_date": anchor or start_d.isoformat(),
+        "treasury_curve_start_date": start_curve_date,
+        "treasury_curve_end_date": end_curve_date,
         "lookback_days": lookback_days,
     }
     promoted = _promote_payload_numerics(payload, KRDAttributionPayload)
@@ -1287,6 +1441,8 @@ def krd_attribution_envelope(*, report_date: str | None, lookback_days: int = 30
                 tables_used=TABLES_BOND_ANALYTICS,
                 evidence_rows=evidence_rows,
                 as_of_date=rd,
+                fallback_mode="latest_snapshot" if curve_fallback else "none",
+                fallback_date=fallback_date,
             )
             if warn
             else _meta_ok(
@@ -1307,6 +1463,18 @@ def krd_attribution_envelope(*, report_date: str | None, lookback_days: int = 30
 
 
 def advanced_attribution_summary_envelope(*, report_date: str | None) -> dict[str, object]:
+    cache_key = _pnl_attribution_cache_key("advanced_summary", report_date)
+    if cache_key is not None:
+        return _with_fresh_trace(
+            _PNL_ATTRIBUTION_CACHE.get_or_set(
+                cache_key,
+                lambda: _advanced_attribution_summary_envelope_uncached(report_date=report_date),
+            )
+        )
+    return _advanced_attribution_summary_envelope_uncached(report_date=report_date)
+
+
+def _advanced_attribution_summary_envelope_uncached(*, report_date: str | None) -> dict[str, object]:
     c = carry_roll_down_envelope(report_date=report_date)
     s = spread_attribution_envelope(report_date=report_date, lookback_days=30)
     k = krd_attribution_envelope(report_date=report_date, lookback_days=30)
@@ -1420,9 +1588,10 @@ def _core_campisi_result_to_path_a_payload(
     _share_eps = max(abs(total_mv), abs(tot_inc), abs(tot_t), abs(tot_s), abs(tot_sel)) * 1e-6
 
     def _share(part: float) -> float:
+        """Share of total_return as a decimal ratio (0.4 == 40%), never percent points."""
         if abs(total_return) <= _share_eps:
             return 0.0
-        return part / total_return * 100.0
+        return part / total_return
 
     items: list[dict[str, Any]] = []
     for b in result.by_asset_class or []:
@@ -1466,10 +1635,10 @@ def _core_campisi_result_to_path_a_payload(
         "total_treasury_effect": round(tot_t, 4),
         "total_spread_effect": round(tot_s, 4),
         "total_selection_effect": round(tot_sel, 4),
-        "income_contribution_pct": round(_share(tot_inc), 4),
-        "treasury_contribution_pct": round(_share(tot_t), 4),
-        "spread_contribution_pct": round(_share(tot_s), 4),
-        "selection_contribution_pct": round(_share(tot_sel), 4),
+        "income_contribution_pct": _ratio_pct_numeric(_share(tot_inc)),
+        "treasury_contribution_pct": _ratio_pct_numeric(_share(tot_t)),
+        "spread_contribution_pct": _ratio_pct_numeric(_share(tot_s)),
+        "selection_contribution_pct": _ratio_pct_numeric(_share(tot_sel)),
         "primary_driver": classify_primary_driver(tot_inc, tot_t, tot_s, tot_sel),
         "interpretation": "Campisi 四效应（单券级，AC 类仅票息）：收入、国债平移、信用利差、选券残差。",
         "items": items,
@@ -1484,6 +1653,36 @@ def campisi_attribution_envelope(
     start_date: str | None,
     end_date: str | None,
     lookback_days: int = 30,
+) -> dict[str, object]:
+    cache_key = _pnl_attribution_cache_key(
+        "campisi",
+        start_date,
+        end_date,
+        lookback_days,
+    )
+    if cache_key is not None:
+        return _with_fresh_trace(
+            _PNL_ATTRIBUTION_CACHE.get_or_set(
+                cache_key,
+                lambda: _campisi_attribution_envelope_uncached(
+                    start_date=start_date,
+                    end_date=end_date,
+                    lookback_days=lookback_days,
+                ),
+            )
+        )
+    return _campisi_attribution_envelope_uncached(
+        start_date=start_date,
+        end_date=end_date,
+        lookback_days=lookback_days,
+    )
+
+
+def _campisi_attribution_envelope_uncached(
+    *,
+    start_date: str | None,
+    end_date: str | None,
+    lookback_days: int,
 ) -> dict[str, object]:
     bond = _bond_repo()
     curve = _curve_repo()

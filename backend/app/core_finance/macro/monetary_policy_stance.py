@@ -12,15 +12,53 @@ from .helpers import (
     clamp,
     first_available_rate,
     get_curve_rate,
+    latest_available_rate_on_or_before,
 )
 
 _TWENTY_ONE = 21
 _TEN = 10
 _ONE_HUNDRED = Decimal("100")
+_CREDIT_TENORS = ("3Y", "5Y", "1Y")
+_POLICY_RATE_CANDIDATES = [("CN_RRP", "7D"), ("CN_REPO", "7D"), ("CN_GC", "7D")]
 
 
 def _round(value: Decimal) -> float:
     return float(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def _has_government_slope(
+    curves_by_date: dict[date, dict[str, dict[str, Decimal]]],
+    target_date: date,
+) -> bool:
+    return (
+        get_curve_rate(curves_by_date, target_date, "CN_GOVT", "1Y") is not None
+        and get_curve_rate(curves_by_date, target_date, "CN_GOVT", "10Y") is not None
+    )
+
+
+def _has_funding_anchor(
+    curves_by_date: dict[date, dict[str, dict[str, Decimal]]],
+    target_date: date,
+) -> bool:
+    if get_curve_rate(curves_by_date, target_date, "CN_DR", "7D") is not None:
+        return True
+    return any(
+        get_curve_rate(curves_by_date, target_date, curve_id, tenor) is not None
+        for curve_id, tenor in _POLICY_RATE_CANDIDATES
+    )
+
+
+def _resolve_valuation_date(
+    curves_by_date: dict[date, dict[str, dict[str, Decimal]]],
+    dates: list[date],
+) -> date:
+    for sample_date in dates:
+        if _has_government_slope(curves_by_date, sample_date):
+            return sample_date
+    for sample_date in dates:
+        if _has_funding_anchor(curves_by_date, sample_date):
+            return sample_date
+    return dates[0]
 
 
 def _avg(values: list[Decimal]) -> Decimal | None:
@@ -38,18 +76,16 @@ def _rate_change_bp(
     if len(dates) <= lookback_index:
         return None
 
-    current_values = [
-        rate
+    # 只比较两日均有观测的工具交集：若两日各自独立取可用工具再平均，
+    # 候选集合的差异（例如某一日缺 RRP）会被计成利率变动，产生伪变动。
+    paired_values = [
+        (current_rate, prior_rate)
         for curve_id, tenor in candidates
-        if (rate := get_curve_rate(curves_by_date, dates[0], curve_id, tenor)) is not None
+        if (current_rate := get_curve_rate(curves_by_date, dates[0], curve_id, tenor)) is not None
+        and (prior_rate := get_curve_rate(curves_by_date, dates[lookback_index], curve_id, tenor)) is not None
     ]
-    prior_values = [
-        rate
-        for curve_id, tenor in candidates
-        if (rate := get_curve_rate(curves_by_date, dates[lookback_index], curve_id, tenor)) is not None
-    ]
-    current_avg = _avg(current_values)
-    prior_avg = _avg(prior_values)
+    current_avg = _avg([current_rate for current_rate, _prior_rate in paired_values])
+    prior_avg = _avg([prior_rate for _current_rate, prior_rate in paired_values])
     if current_avg is None or prior_avg is None:
         return None
     return (current_avg - prior_avg) * _ONE_HUNDRED
@@ -73,7 +109,9 @@ def _score_term_structure(slope_bp: Decimal | None) -> Decimal | None:
     if slope_bp < Decimal("50"):
         return Decimal("-20") + (slope_bp - Decimal("20")) * Decimal("0.67")
     if slope_bp < Decimal("80"):
-        return (slope_bp - Decimal("50")) * Decimal("1.67")
+        # 斜率取 100/30 使该段在 80bp 处精确衔接满分 100，
+        # 避免旧系数 1.67 造成 79.9→80 约 50 分的跳变。
+        return (slope_bp - Decimal("50")) * Decimal("100") / Decimal("30")
     return Decimal("100")
 
 
@@ -98,10 +136,11 @@ def compute_monetary_policy_stance(
     report_date: date,
 ) -> dict[str, Any]:
     curves_by_date = build_curve_history(curve_rows, report_date=report_date)
-    dates = available_dates(curves_by_date)
-    if not dates:
+    all_dates = available_dates(curves_by_date)
+    if not all_dates:
         return {
             "report_date": report_date.isoformat(),
+            "as_of_date": None,
             "data_status": "unavailable",
             "stance_score": 0.0,
             "stance_label": "unavailable",
@@ -111,17 +150,22 @@ def compute_monetary_policy_stance(
             "warnings": ["NO_MARKET_CURVES"],
         }
 
-    current_date = dates[0]
+    current_date = _resolve_valuation_date(curves_by_date, all_dates)
+    dates = [sample_date for sample_date in all_dates if sample_date <= current_date]
     warnings: list[str] = []
     _ = curves_by_date[current_date]
 
-    policy_curve_id, policy_tenor, policy_rate = first_available_rate(
+    policy_curve_id, policy_tenor, policy_rate, policy_rate_date = latest_available_rate_on_or_before(
         curves_by_date,
         current_date,
-        [("CN_RRP", "7D"), ("CN_REPO", "7D"), ("CN_GC", "7D")],
+        _POLICY_RATE_CANDIDATES,
     )
     if policy_rate is None:
         warnings.append("POLICY_RATE_7D_MISSING")
+    elif policy_rate_date is not None and policy_rate_date < current_date:
+        stale_days = (current_date - policy_rate_date).days
+        if stale_days > 90:
+            warnings.append("POLICY_RATE_7D_STALE")
 
     _, _, dr007 = first_available_rate(curves_by_date, current_date, [("CN_DR", "7D")])
     if dr007 is None:
@@ -141,21 +185,22 @@ def compute_monetary_policy_stance(
 
     aaa_spread_bp = None
     aa_minus_aaa_bp = None
-    for tenor in ("3Y", "5Y", "1Y"):
+    aaa_tenor: str | None = None
+    for tenor in _CREDIT_TENORS:
         aaa_curve = get_curve_rate(curves_by_date, current_date, "CN_CREDIT_AAA", tenor)
         gov_curve = get_curve_rate(curves_by_date, current_date, "CN_GOVT", tenor)
         if aaa_curve is not None and gov_curve is not None:
             aaa_spread_bp = (aaa_curve - gov_curve) * _ONE_HUNDRED
+            aaa_tenor = tenor
             break
     if aaa_spread_bp is None:
         warnings.append("AAA_SPREAD_MISSING")
 
-    for tenor in ("3Y", "5Y", "1Y"):
-        aa_curve = get_curve_rate(curves_by_date, current_date, "CN_CREDIT_AA", tenor)
-        aaa_curve = get_curve_rate(curves_by_date, current_date, "CN_CREDIT_AAA", tenor)
+    if aaa_tenor is not None:
+        aa_curve = get_curve_rate(curves_by_date, current_date, "CN_CREDIT_AA", aaa_tenor)
+        aaa_curve = get_curve_rate(curves_by_date, current_date, "CN_CREDIT_AAA", aaa_tenor)
         if aa_curve is not None and aaa_curve is not None:
             aa_minus_aaa_bp = (aa_curve - aaa_curve) * _ONE_HUNDRED
-            break
 
     policy_change_bp = _rate_change_bp(
         curves_by_date,
@@ -203,6 +248,7 @@ def compute_monetary_policy_stance(
     if not available_components:
         return {
             "report_date": report_date.isoformat(),
+            "as_of_date": current_date.isoformat(),
             "data_status": "unavailable",
             "stance_score": 0.0,
             "stance_label": "unavailable",
@@ -291,6 +337,7 @@ def compute_monetary_policy_stance(
 
     return {
         "report_date": report_date.isoformat(),
+        "as_of_date": current_date.isoformat(),
         "data_status": data_status,
         "stance_score": _round(stance_score),
         "stance_label": stance_label,
@@ -299,6 +346,7 @@ def compute_monetary_policy_stance(
         "key_metrics": {
             "policy_rate_curve_id": policy_curve_id,
             "policy_rate_tenor": policy_tenor,
+            "policy_rate_as_of_date": policy_rate_date.isoformat() if policy_rate_date is not None else None,
             "policy_rate_7d": _round(policy_rate) if policy_rate is not None else None,
             "dr007": _round(dr007) if dr007 is not None else None,
             "mlf_1y": _round(mlf_rate) if mlf_rate is not None else None,

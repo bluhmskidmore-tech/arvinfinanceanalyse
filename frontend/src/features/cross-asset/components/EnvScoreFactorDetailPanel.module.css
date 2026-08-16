@@ -1,0 +1,156 @@
+/* 环境评分贡献因子明细面板 — 组件级样式（IB 浅色主题，不改页面 CSS）。
+ * 涨跌色遵循页面环境评分惯例（DriverWaterfallPanel / crossAssetAnalytics waterfall）：
+ * 正值偏紧用红系 var(--ib-down)，负值偏松用绿系 var(--ib-up)。 */
+.panel {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+  color: var(--ib-ink);
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.eyebrow {
+  font-size: 11px;
+  color: var(--ib-ink-muted);
+  letter-spacing: 0.04em;
+}
+
+.title {
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ib-ink);
+}
+
+.method {
+  flex-shrink: 0;
+  max-width: 50%;
+  padding: 1px 6px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface-muted);
+  color: var(--ib-ink-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ib-ink-muted);
+}
+
+.empty {
+  padding: 16px 8px;
+  border: 1px dashed var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface-muted);
+  color: var(--ib-ink-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.table th {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--ib-hairline);
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--ib-hairline);
+  color: var(--ib-ink);
+  vertical-align: middle;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.series {
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface-muted);
+  color: var(--ib-ink-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.chip::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ib-ink-muted);
+}
+
+.chipRate::before {
+  background: var(--ib-accent);
+}
+
+.chipLiquidity::before {
+  background: var(--ib-gold);
+}
+
+.chipGrowth::before {
+  background: var(--ib-up);
+}
+
+.chipInflation::before {
+  background: var(--ib-warn);
+}
+
+.valuePos {
+  color: var(--ib-down);
+}
+
+.valueNeg {
+  color: var(--ib-up);
+}
+
+.valueNeu {
+  color: var(--ib-ink-muted);
+}

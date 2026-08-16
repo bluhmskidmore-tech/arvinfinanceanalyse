@@ -39,13 +39,19 @@ def safe_decimal(
         else:
             result = Decimal(str(value))
 
+        # Decimal("NaN") / Decimal("Infinity") 输入（或字符串等转换产物）不得静默传播。
+        if not result.is_finite():
+            return default
+
         if precision:
             result = result.quantize(Decimal(precision), rounding=ROUND_HALF_UP)
 
         return result
 
     except (InvalidOperation, ValueError, TypeError, AttributeError) as e:
-        logger.debug(
+        # 转换失败会静默把业务金额压成 default（通常是 0），debug 级在生产日志里
+        # 不可见，等于放行一次静默降级；按 warning 级披露。
+        logger.warning(
             "[safe_decimal] Conversion failed for value=%r type=%s: %s",
             value,
             type(value).__name__,

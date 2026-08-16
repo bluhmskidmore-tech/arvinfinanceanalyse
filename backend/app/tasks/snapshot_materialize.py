@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import os
 import uuid
 from datetime import date
 from pathlib import Path
@@ -23,12 +22,12 @@ from backend.app.repositories.snapshot_repo import (
     replace_tyw_snapshot_rows,
     replace_zqtz_snapshot_rows,
 )
-from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.repositories.snapshot_row_parse import (
     parse_tyw_snapshot_rows_from_bytes,
     parse_zqtz_snapshot_rows_from_bytes,
 )
 from backend.app.repositories.source_manifest_repo import SourceManifestRepository
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.schemas.snapshot import (
     SnapshotBuildRunRecord,
     SnapshotManifestRecord,
@@ -165,6 +164,7 @@ def _materialize_standard_snapshots(
     ingest_batch_id: str | None = None,
     source_families: list[str] | None = None,
     report_date: str | None = None,
+    local_archive_path: str | None = None,
 ) -> dict[str, object]:
     settings = get_settings()
     duckdb_file = Path(duckdb_path or settings.duckdb_path)
@@ -172,13 +172,14 @@ def _materialize_standard_snapshots(
     governance_path = Path(governance_dir or settings.governance_path)
     gov_repo = GovernanceRepository(base_dir=governance_path)
     manifest_repo = SourceManifestRepository(governance_repo=gov_repo)
+    archive_path = Path(local_archive_path or settings.local_archive_path).resolve()
     store = ObjectStoreRepository(
         endpoint=settings.minio_endpoint,
         access_key=settings.minio_access_key,
         secret_key=settings.minio_secret_key,
         bucket=settings.minio_bucket,
-        mode=settings.object_store_mode,
-        local_archive_path=str(settings.local_archive_path),
+        mode="local" if local_archive_path is not None else settings.object_store_mode,
+        local_archive_path=str(archive_path),
     )
 
     run = BuildRunRecord(job_name="snapshot_materialize", status="running")

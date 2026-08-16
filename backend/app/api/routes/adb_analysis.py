@@ -6,14 +6,35 @@ import logging
 from datetime import date, datetime
 from typing import Annotated
 
+from backend.app.api.deps import ensure_read_allowed
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services import adb_analysis_service
-from backend.app.tasks.balance_analysis_materialize import materialize_balance_analysis_facts
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis-adb"])
+
+
+class _MaterializeBalanceAnalysisFactsProxy:
+    """延迟代理：路由包冷启动不得触发 tasks broker/actor 注册。"""
+
+    def send(self, **kwargs: object) -> object:
+        from backend.app.tasks.balance_analysis_materialize import (
+            materialize_balance_analysis_facts as _actor,
+        )
+
+        return _actor.send(**kwargs)
+
+    def __getattr__(self, name: str) -> object:
+        from backend.app.tasks.balance_analysis_materialize import (
+            materialize_balance_analysis_facts as _actor,
+        )
+
+        return getattr(_actor, name)
+
+
+materialize_balance_analysis_facts = _MaterializeBalanceAnalysisFactsProxy()
 
 
 def _parse_opt_date(s: str | None) -> date | None:
@@ -26,17 +47,7 @@ def _parse_opt_date(s: str | None) -> date | None:
 
 
 def _ensure_adb_analysis_read_allowed(auth: AuthContext, settings) -> None:
-    try:
-        ensure_user_allowed(
-            auth=auth,
-            settings=settings,
-            resource="adb_analysis",
-            action="read",
-        )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    ensure_read_allowed(auth, "adb_analysis", settings=settings, authorize=ensure_user_allowed)
 
 
 @router.get("/adb")
@@ -76,8 +87,52 @@ def adb_comparison(
             ed.isoformat(),
             top_n=top_n,
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get adb comparison: {e}") from e
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        # 兜底 500 只回固定文案；SQL/路径等内部细节仅记日志，不回显客户端。
+        logger.error(
+            "ADB comparison failed start_date=%s end_date=%s error_type=%s: %s",
+            sd.isoformat(),
+            ed.isoformat(),
+            type(exc).__name__,
+            exc,
+        )
+        raise HTTPException(status_code=500, detail="Failed to get adb comparison.") from exc
+
+
+@router.get("/adb/insights")
+def adb_insights(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    start_date: str = Query(..., description="开始日期 YYYY-MM-DD"),
+    end_date: str = Query(..., description="结束日期 YYYY-MM-DD"),
+):
+    """区间深度分析：规模归因、NIM 量价分解、波动异常、结构集中度与结构化结论。"""
+    sd, ed = _parse_opt_date(start_date), _parse_opt_date(end_date)
+    if sd is None or ed is None:
+        raise HTTPException(status_code=422, detail="start_date and end_date are required.")
+    if sd > ed:
+        raise HTTPException(status_code=400, detail="start_date must be <= end_date")
+    from backend.app.governance.settings import get_settings
+
+    _ensure_adb_analysis_read_allowed(auth, get_settings())
+    try:
+        return adb_analysis_service.adb_insights_envelope(sd.isoformat(), ed.isoformat())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error(
+            "ADB insights failed start_date=%s end_date=%s error_type=%s: %s",
+            sd.isoformat(),
+            ed.isoformat(),
+            type(exc).__name__,
+            exc,
+        )
+        raise HTTPException(status_code=500, detail="Failed to get adb insights.") from exc
 
 
 @router.get("/adb/monthly")
@@ -91,8 +146,18 @@ def adb_monthly(
     _ensure_adb_analysis_read_allowed(auth, get_settings())
     try:
         return adb_analysis_service.adb_monthly_envelope(y)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get monthly adb: {e}") from e
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error(
+            "ADB monthly failed year=%s error_type=%s: %s",
+            y,
+            type(exc).__name__,
+            exc,
+        )
+        raise HTTPException(status_code=500, detail="Failed to get monthly adb.") from exc
 
 
 @router.get("/adb/coverage")
@@ -113,7 +178,14 @@ def adb_coverage(
     try:
         return adb_analysis_service.adb_coverage_diagnostics(sd.isoformat(), ed.isoformat())
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        # 服务层异常文本携带 DuckDB 文件路径，仅记日志；数据源缺失按可重试 503 返回固定文案。
+        logger.error(
+            "ADB coverage source unavailable start_date=%s end_date=%s: %s",
+            sd.isoformat(),
+            ed.isoformat(),
+            exc,
+        )
+        raise HTTPException(status_code=503, detail="ADB coverage source data is unavailable.") from exc
 
 
 @router.post("/adb/backfill")

@@ -3,9 +3,15 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from backend.app.governance.settings import get_settings
 from backend.app.tasks.livermore_candidate_history_materialize import (
+    backfill_livermore_candidate_execution_history,
     backfill_livermore_candidate_history,
     materialize_livermore_candidate_history,
 )
@@ -24,6 +30,7 @@ def main() -> None:
     parser.add_argument("--start-date")
     parser.add_argument("--end-date")
     parser.add_argument("--stock-candidate-policy")
+    parser.add_argument("--execution-only", action="store_true")
     args = parser.parse_args()
 
     has_single_date = bool(args.as_of_date)
@@ -36,7 +43,19 @@ def main() -> None:
         parser.error("--start-date and --end-date must be provided together.")
 
     duckdb_path = args.duckdb_path or str(get_settings().duckdb_path)
-    if has_single_date:
+    if args.execution_only and has_single_date:
+        payload = backfill_livermore_candidate_execution_history(
+            duckdb_path,
+            start_date=args.as_of_date,
+            end_date=args.as_of_date,
+        )
+    elif args.execution_only:
+        payload = backfill_livermore_candidate_execution_history(
+            duckdb_path,
+            start_date=args.start_date,
+            end_date=args.end_date,
+        )
+    elif has_single_date:
         payload = materialize_livermore_candidate_history(
             duckdb_path,
             as_of_date=args.as_of_date,

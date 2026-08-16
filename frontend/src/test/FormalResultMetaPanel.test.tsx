@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { FormalResultMetaPanel } from "../components/page/FormalResultMetaPanel";
 import type { ResultMeta } from "../api/contracts";
 import { buildMockMeta } from "../mocks/mockApiEnvelope";
+import { EM_DASH } from "../utils/format";
 
 function buildMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
@@ -81,8 +82,8 @@ describe("FormalResultMetaPanel", () => {
       "当前还没有可展示的溯源信封。",
     );
   });
-  it("shows a missing-state label when as_of_date is not provided", () => {
-    render(
+  it("dashes a missing as_of_date and keeps the reason in the cell title", () => {
+    const { container } = render(
       <FormalResultMetaPanel
         testId="formal-meta-missing-date"
         sections={[
@@ -95,7 +96,54 @@ describe("FormalResultMetaPanel", () => {
       />,
     );
 
-    expect(screen.getByTestId("formal-meta-missing-date")).toHaveTextContent("未提供");
+    // 缺值占位统一 EM_DASH（不再用「未提供」第二套缺值词），语义差异收 title。
+    const missingCell = container.querySelector('dd[title="后端未提供数据截至日"]');
+    expect(missingCell).not.toBeNull();
+    expect(missingCell).toHaveTextContent(EM_DASH);
+    expect(screen.getByTestId("formal-meta-missing-date")).not.toHaveTextContent("未提供");
+  });
+
+  it("adds a quality badge that follows quality_flag instead of staying green", () => {
+    const { container } = render(
+      <FormalResultMetaPanel
+        testId="formal-meta-quality"
+        sections={[
+          {
+            key: "data",
+            title: "Formal detail",
+            meta: buildMeta({ quality_flag: "warning" }),
+          },
+        ]}
+      />,
+    );
+
+    const badge = container.querySelector('[title="质量标记：预警"]');
+    expect(badge).not.toBeNull();
+    expect(badge).toHaveTextContent("质量预警");
+    // warning 走琥珀 tone 变量出口，不再与卡内质量行矛盾地保持绿徽标。
+    expect((badge as HTMLElement).style.background).toContain("--formal-meta-badge-warn-bg");
+  });
+
+  it("keeps the ok quality badge green alongside vendor/fallback badges", () => {
+    const { container } = render(
+      <FormalResultMetaPanel
+        testId="formal-meta-quality-ok"
+        sections={[
+          {
+            key: "data",
+            title: "Formal detail",
+            meta: buildMeta(),
+          },
+        ]}
+      />,
+    );
+
+    const badges = container.querySelectorAll(".formal-result-meta-panel__badge");
+    expect(badges).toHaveLength(3);
+    const quality = container.querySelector('[title="质量标记：正常"]');
+    expect(quality).not.toBeNull();
+    expect(quality).toHaveTextContent("质量正常");
+    expect((quality as HTMLElement).style.background).toContain("--formal-meta-badge-ok-bg");
   });
 
   it("buildMockMeta leaves as_of_date unset unless overridden", () => {

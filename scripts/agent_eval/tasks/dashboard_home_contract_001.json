@@ -1,0 +1,77 @@
+{
+  "id": "dashboard_home_contract_001",
+  "page": "dashboard-home",
+  "goal": "Close a dashboard-home (route /) page-contract regression across KPI display, report-date context, and degraded-state visibility without recomputing official metrics in the frontend.",
+  "metric_ids": [
+    "MTR-EXEC-001",
+    "MTR-EXEC-002",
+    "MTR-EXEC-003",
+    "MTR-EXEC-004",
+    "MTR-EXEC-101",
+    "MTR-EXEC-102",
+    "MTR-EXEC-103",
+    "MTR-EXEC-104",
+    "MTR-EXEC-105",
+    "MTR-EXEC-106"
+  ],
+  "allowed_scope": [
+    "frontend/src/features/workbench/dashboard-home/",
+    "frontend/src/api/",
+    "frontend/src/test/"
+  ],
+  "forbidden": [
+    "backend/app/schema_registry/",
+    "backend/app/core_finance/",
+    "frontend/src/api/client.ts",
+    "scripts/agent_eval/",
+    ".github/workflows/"
+  ],
+  "required_evidence": [
+    "moss-metric-contracts",
+    "moss-lineage-evidence"
+  ],
+  "evidence_probes": {
+    "moss-metric-contracts": ".codex-tmp/agent-eval/evidence/metric-contracts.json",
+    "moss-lineage-evidence": ".codex-tmp/agent-eval/evidence/lineage-evidence.json"
+  },
+  "checks": [
+    "npm --prefix frontend run test -- DashboardHome dashboardHome",
+    "npm --prefix frontend run typecheck"
+  ],
+  "business_gates": [
+    "unit_consistency",
+    "precision_and_rounding",
+    "date_semantics",
+    "null_zero_undefined_handling",
+    "no_frontend_official_metric_recalculation"
+  ],
+  "page_gates": [
+    "page_loads",
+    "no_console_errors",
+    "fallback_or_stale_state_visible_when_applicable"
+  ],
+  "gate_probes": {
+    "unit_consistency": "npm --prefix frontend run test -- dashboardHomeBodyView",
+    "precision_and_rounding": "npm --prefix frontend run test -- kpiCountUpFormat",
+    "date_semantics": "npm --prefix frontend run test -- dashboardHomeReportDateContext",
+    "no_frontend_official_metric_recalculation": "python -m pytest tests/test_no_finance_logic_in_frontend.py -q",
+    "page_loads": "npm --prefix frontend run test -- DashboardHomePage",
+    "no_console_errors": "npm --prefix frontend run test -- DashboardHomeConsoleContract",
+    "fallback_or_stale_state_visible_when_applicable": "npm --prefix frontend run test -- DashboardHomeStatus"
+  },
+  "probe_protected_paths": [
+    "tests/test_no_finance_logic_in_frontend.py",
+    "frontend/src/test/DashboardHomePage.test.tsx",
+    "frontend/src/test/DashboardHomeStatus.test.tsx",
+    "frontend/src/test/DashboardHomeConsoleContract.test.tsx",
+    "frontend/src/test/renderWorkbenchApp.tsx",
+    "frontend/src/test/preloadWorkbenchRouteModules.ts",
+    "frontend/src/test/setup.ts",
+    "frontend/src/features/workbench/dashboard-home/dashboardHomeReportDateContext.test.ts",
+    "frontend/src/features/workbench/dashboard-home/dashboardHomeBodyView.test.ts",
+    "frontend/src/features/workbench/dashboard-home/kpiCountUpFormat.test.ts"
+  ],
+  "gate_probe_gaps": {
+    "null_zero_undefined_handling": "percentageDisplayRaw null/NaN cases (dashboardHomeBodyView) and empty-snapshot em-dash KPIs (DashboardHomeStatus) cover fragments only; a dedicated null-vs-0-vs-undefined matrix probe (DashboardHomeNullMatrixContract) should be added once the currently active dashboard-home view-layer rework settles, to avoid binding a new probe to interfaces that are being reshaped daily."
+  }
+}

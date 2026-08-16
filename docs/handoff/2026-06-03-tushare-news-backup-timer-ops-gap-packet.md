@@ -1,9 +1,9 @@
 # Tushare News Backup Timer Ops Gap Packet
 
-Status timestamp: 2026-06-07
+Status timestamp: 2026-08-12
 
-This packet does not enable the timer. It converts the current blocked
-preflight gates into external operations inputs to collect before enablement.
+This packet does not enable the timer. The `pre-enable` gates now pass; it
+keeps the remaining first scheduled-run evidence inputs explicit.
 
 Do not run a real Tushare refresh from this packet.
 Do not open reserved ingest routes.
@@ -17,13 +17,13 @@ python scripts/tushare_news_backup_timer_preflight.py --stage all --format ops-g
 
 Current verdict: `blocked`
 
-Blocking stages: `pre-enable`, `post-enable`
+Blocking stages: `post-enable`
 
-Pre-enable summary: `9 pass / 2 blocked`
+Pre-enable summary: `11 pass / 0 blocked`
 
-Post-enable summary: `9 pass / 4 blocked`
+Post-enable summary: `11 pass / 2 blocked`
 
-Ready to create timer: `false`
+Ready to create timer: `true`
 
 ## Activation Sequence
 
@@ -32,19 +32,17 @@ Immediate stage: `pre-enable`
 Post-enable inputs remain deferred until `pre-enable` returns `pass` and the
 first scheduled run finishes.
 
-Do not create the external timer while `pre-enable` is blocked.
+`pre-enable` is no longer blocked. Create the external timer outside this
+packet and collect first-run evidence.
 
 ## Current Blocking Items
 
 ### Pre-Enable
 
-- `page_artifacts_exist`
-- `page_evidence_json_confirms_read_only_fallback`
+- `none`
 
 ### Post-Enable
 
-- `page_artifacts_exist`
-- `page_evidence_json_confirms_read_only_fallback`
 - `timer_evidence_filled`
 - `post_enable_evidence_confirms_timer_enabled`
 
@@ -52,8 +50,7 @@ Do not create the external timer while `pre-enable` is blocked.
 
 | Gate | Path | Action |
 | --- | --- | --- |
-| `page_artifacts_exist` | `frontend/.codex-tmp/tushare-news-backup-home-page-evidence-2026-06-03.json` | Attach page screenshot and browser evidence JSON. |
-| `page_evidence_json_confirms_read_only_fallback` | `frontend/.codex-tmp/tushare-news-backup-home-page-evidence-2026-06-03.json` | Regenerate browser evidence JSON showing landed-data read behavior and no reserved write request. |
+| `none` | `none` | No action required. |
 
 ## Deferred Post-Enable `next_actions`
 

@@ -2,14 +2,15 @@
 from __future__ import annotations
 
 import uuid
+from copy import deepcopy
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from pathlib import Path
 
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.yield_curve_repo import (
     YIELD_CURVE_LATEST_FALLBACK_PREFIX,
     YieldCurveRepository,
-    resolve_curve_snapshot,
 )
 from backend.app.schemas.common_numeric import numeric_from_raw
 from backend.app.schemas.yield_curve_term_structure import (
@@ -18,6 +19,7 @@ from backend.app.schemas.yield_curve_term_structure import (
     YieldCurveTermStructureResponse,
 )
 from backend.app.services.formal_result_runtime import build_formal_result_envelope, build_formal_result_meta
+from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
 
 # Display axis only — must match tenor strings in `fact_formal_yield_curve_daily` / `yield_curve_daily`.
 YIELD_CURVE_TERM_STRUCTURE_TENORS: tuple[str, ...] = (
@@ -40,32 +42,138 @@ EMPTY_SOURCE_VERSION = "sv_yield_curve_term_structure_empty"
 RESULT_KIND = "bond_analytics.yield_curve_term_structure"
 FACT_TABLE = "fact_formal_yield_curve_daily"
 
+_TERM_STRUCTURE_CACHE_TTL_SECONDS = 300.0
+_TermStructureCacheKey = tuple[object, ...]
+_TERM_STRUCTURE_CACHE: InMemoryTTLCache[_TermStructureCacheKey, dict] = get_runtime_cache(
+    "yield_curve.term_structure",
+    ttl_seconds=_TERM_STRUCTURE_CACHE_TTL_SECONDS,
+)
+
+
+def _term_structure_cache_key(
+    duckdb_path: str,
+    report_date: date,
+    curve_types: tuple[str, ...],
+) -> _TermStructureCacheKey | None:
+    """Cache key bound to the DuckDB file identity; returns None when uncacheable.
+
+    Folds the WAL mtime in (like duckdb_repo.catalog_presence_cached) so
+    un-checkpointed writes invalidate the entry before the next checkpoint.
+    """
+    path = Path(duckdb_path)
+    try:
+        stat = path.stat()
+        mtime_ns = stat.st_mtime_ns
+        size = stat.st_size
+        resolved = str(path.resolve())
+    except OSError:
+        return None
+    try:
+        mtime_ns = max(mtime_ns, Path(f"{duckdb_path}.wal").stat().st_mtime_ns)
+    except OSError:
+        pass
+    return (
+        RESULT_KIND,
+        CACHE_VERSION,
+        resolved,
+        mtime_ns,
+        size,
+        report_date.isoformat(),
+        curve_types,
+    )
+
+
+def _with_fresh_trace(envelope: dict) -> dict:
+    response = deepcopy(envelope)
+    meta = response.get("result_meta")
+    if isinstance(meta, dict):
+        meta["trace_id"] = _trace_id()
+    return response
+
 
 def _trace_id() -> str:
-    return str(uuid.uuid4())
+    return f"tr_{uuid.uuid4().hex[:12]}"
 
 
 def _merge_lineage_str(*values: str) -> str:
     return "__".join(sorted({v.strip() for v in values if v and v.strip()}))
 
 
+def _unified_envelope_dates(
+    *,
+    requested: str,
+    resolved_trade_dates: set[str],
+) -> tuple[str | None, str | None, str | None]:
+    """Return (resolved_report_date, as_of_date, fallback_date) for envelope meta.
+
+    Contract: unify only when every non-empty per-curve trade_date_resolved agrees.
+    Divergent curve days must not invent a single resolved/fallback_date
+    (docs/plans/2026-07-19-frontend-audit-round3-optimization.md Task 1;
+    docs/plans/2026-07-18-development-issue-remediation.md Task 6;
+    docs/page_contracts.md §4.2 + MacroToolkit §D unequal-block analogue).
+    """
+    if len(resolved_trade_dates) != 1:
+        return None, None, None
+    resolved = next(iter(resolved_trade_dates))
+    fallback = resolved if resolved != requested else None
+    return resolved, resolved, fallback
+
+
 def get_yield_curve_term_structure(*, report_date: date, curve_types: tuple[str, ...]) -> dict:
     path = str(get_settings().duckdb_path)
+    cache_key = _term_structure_cache_key(path, report_date, curve_types)
+    if cache_key is None:
+        return _compute_yield_curve_term_structure(path=path, report_date=report_date, curve_types=curve_types)
+    envelope = _TERM_STRUCTURE_CACHE.get_or_set(
+        cache_key,
+        lambda: _compute_yield_curve_term_structure(
+            path=path,
+            report_date=report_date,
+            curve_types=curve_types,
+        ),
+    )
+    return _with_fresh_trace(envelope)
+
+
+def _compute_yield_curve_term_structure(
+    *,
+    path: str,
+    report_date: date,
+    curve_types: tuple[str, ...],
+) -> dict:
     repo = YieldCurveRepository(path)
     requested = report_date.isoformat()
+    snapshot_results = repo.resolve_curve_snapshots_many(
+        [(requested, curve_type) for curve_type in curve_types]
+    )
+    prior_date_requests: list[tuple[str, str]] = []
+    for curve_type in curve_types:
+        snapshot, _warning = snapshot_results.get((requested, curve_type), (None, None))
+        if snapshot is None:
+            continue
+        td_resolved = str(snapshot.get("trade_date") or "")
+        if td_resolved:
+            prior_date_requests.append((curve_type, td_resolved))
+    prior_dates = repo.fetch_prior_trade_dates_many(prior_date_requests)
+    prior_snapshot_keys = [
+        (prior_date, curve_type)
+        for (curve_type, _trade_date), prior_date in prior_dates.items()
+        if prior_date
+    ]
+    prior_snapshots = repo.fetch_curve_snapshots_many(prior_snapshot_keys)
     warnings: list[str] = []
     curves_out: list[YieldCurveTermStructureCurve] = []
     source_parts: list[str] = []
     rule_parts: list[str] = []
     vendor_parts: list[str] = []
+    resolved_trade_dates: set[str] = set()
     any_fallback = False
     all_missing = True
 
     for curve_type in curve_types:
-        snapshot, w_curve = resolve_curve_snapshot(
-            repo,
-            requested_trade_date=requested,
-            curve_type=curve_type,
+        snapshot, w_curve = snapshot_results.get(
+            (requested, curve_type),
+            (None, f"No {curve_type} curve available for requested trade_date={requested}."),
         )
         if w_curve:
             warnings.append(w_curve)
@@ -76,12 +184,14 @@ def get_yield_curve_term_structure(*, report_date: date, curve_types: tuple[str,
         if snapshot is not None:
             all_missing = False
             td_resolved = str(snapshot.get("trade_date") or "")
+            if td_resolved:
+                resolved_trade_dates.add(td_resolved)
             source_parts.append(str(snapshot.get("source_version") or ""))
             rule_parts.append(str(snapshot.get("rule_version") or ""))
             vendor_parts.append(str(snapshot.get("vendor_version") or ""))
-            prior_td = repo.fetch_prior_trade_date(curve_type, td_resolved) if td_resolved else None
+            prior_td = prior_dates.get((curve_type, td_resolved)) if td_resolved else None
             if prior_td is not None:
-                prev_snap = repo.fetch_curve_snapshot(prior_td, curve_type)
+                prev_snap = prior_snapshots.get((prior_td, curve_type))
         else:
             td_resolved = None
 
@@ -102,11 +212,14 @@ def get_yield_curve_term_structure(*, report_date: date, curve_types: tuple[str,
             y_prev = prev_map.get(tenor) if prev_map else None
             yld = None
             if y_now is not None:
+                # `rate_pct` is percent-points (2.15 == 2.15%); declare it so
+                # sub-1% yields are not misread as decimal ratios.
                 yld = numeric_from_raw(
                     raw=float(y_now),
                     unit="pct",
                     precision=2,
                     sign_aware=True,
+                    raw_scale="percent",
                 )
             delta = None
             if y_now is not None and y_prev is not None:
@@ -139,7 +252,12 @@ def get_yield_curve_term_structure(*, report_date: date, curve_types: tuple[str,
         )
     if all_missing and curve_types:
         warnings.append("No yield curve snapshots available for the requested report_date and curve types.")
+    has_missing = any(curve.trade_date_resolved is None for curve in curves_out)
 
+    resolved_report_date, as_of_date, fallback_date = _unified_envelope_dates(
+        requested=requested,
+        resolved_trade_dates=resolved_trade_dates,
+    )
     meta = build_formal_result_meta(
         trace_id=_trace_id(),
         result_kind=RESULT_KIND,
@@ -148,13 +266,21 @@ def get_yield_curve_term_structure(*, report_date: date, curve_types: tuple[str,
         rule_version=_merge_lineage_str(RULE_VERSION_STABLE, *rule_parts) or RULE_VERSION_STABLE,
         vendor_version=_merge_lineage_str(*vendor_parts) or "vv_none",
         quality_flag="warning" if warnings else "ok",
-        vendor_status="vendor_stale" if any_fallback else ("vendor_unavailable" if all_missing else "ok"),
+        vendor_status=(
+            "vendor_unavailable"
+            if has_missing
+            else ("vendor_stale" if any_fallback else "ok")
+        ),
         fallback_mode="latest_snapshot" if any_fallback else "none",
         tables_used=[FACT_TABLE],
         filters_applied={"report_date": requested, "curve_types": list(curve_types)},
         source_surface="bond_analytics",
+        requested_report_date=requested,
+        resolved_report_date=resolved_report_date,
+        as_of_date=as_of_date,
+        fallback_date=fallback_date,
     )
-    if any_fallback:
+    if any_fallback and not has_missing:
         meta = meta.model_copy(
             update={
                 "quality_flag": "stale",
