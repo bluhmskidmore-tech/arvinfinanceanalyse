@@ -64,6 +64,7 @@ def test_insufficient_history_withholds_fast_and_final_targets() -> None:
         daily_rows=rows,
         slow_cap=0.7,
         as_of_date=as_of,
+        fast_history_authoritative_complete=True,
     )
 
     assert payload["boundary"] == "observation_only"
@@ -92,6 +93,7 @@ def test_fast_layer_enters_attack_on_current_inclusive_high_and_amount_ratio() -
         daily_rows=rows,
         slow_cap=0.8,
         as_of_date=as_of,
+        fast_history_authoritative_complete=True,
     )
 
     fast = payload["fast"]
@@ -108,6 +110,87 @@ def test_fast_layer_enters_attack_on_current_inclusive_high_and_amount_ratio() -
     assert payload["final_target_total_weight"] is None
 
 
+def test_bounded_history_without_authoritative_fast_state_is_insufficient() -> None:
+    rows = _market_rows(
+        [
+            100.0 if index < 61 else 101.0 + (index - 61) * 0.001
+            for index in range(400)
+        ],
+        amounts=[10_000.0 if index == 61 else 100.0 for index in range(400)],
+        start=date(2025, 1, 1),
+    )
+    as_of = date.fromisoformat(str(rows[-1]["trade_date"]))
+
+    complete = build_dual_frequency_equity_snapshot(
+        daily_rows=rows,
+        slow_cap=0.8,
+        as_of_date=as_of,
+        fast_history_authoritative_complete=True,
+    )
+    bounded = build_dual_frequency_equity_snapshot(
+        daily_rows=rows[-260:],
+        slow_cap=0.8,
+        as_of_date=as_of,
+    )
+
+    assert complete["fast"]["status"] == "ready"
+    assert complete["fast"]["state"] == "attack"
+    assert complete["fast"]["multiplier"] == 1.0
+    assert bounded["fast"]["status"] == "insufficient"
+    assert bounded["fast"]["state"] is None
+    assert bounded["fast"]["multiplier"] is None
+    assert bounded["fast"]["reason"] == "bounded_history_without_authoritative_fast_state"
+    assert bounded["pre_survival_target_total_weight"] is None
+
+
+def test_date_aligned_authoritative_fast_state_resolves_bounded_history() -> None:
+    rows = _market_rows([100.0] * 80)
+    as_of = date.fromisoformat(str(rows[-1]["trade_date"]))
+
+    payload = build_dual_frequency_equity_snapshot(
+        daily_rows=rows,
+        slow_cap=0.8,
+        as_of_date=as_of,
+        fast_state={
+            "authoritative": True,
+            "signal_date": as_of.isoformat(),
+            "state": "attack",
+            "highest_close_since_attack": 100.0,
+        },
+    )
+
+    assert payload["fast"]["status"] == "ready"
+    assert payload["fast"]["source"] == "portfolio_fast_state"
+    assert payload["fast"]["state"] == "attack"
+    assert payload["fast"]["multiplier"] == 1.0
+    assert payload["fast"]["highest_close_since_attack"] == 100.0
+    assert payload["pre_survival_target_total_weight"] == 0.8
+
+
+def test_authoritative_attack_state_rejects_high_below_latest_close() -> None:
+    rows = _market_rows([100.0] * 79 + [101.0])
+    as_of = date.fromisoformat(str(rows[-1]["trade_date"]))
+
+    payload = build_dual_frequency_equity_snapshot(
+        daily_rows=rows,
+        slow_cap=0.8,
+        as_of_date=as_of,
+        fast_state={
+            "authoritative": True,
+            "signal_date": as_of.isoformat(),
+            "state": "attack",
+            "highest_close_since_attack": 100.0,
+        },
+    )
+
+    assert payload["fast"]["status"] == "insufficient"
+    assert (
+        payload["fast"]["reason"]
+        == "attack_state_highest_close_below_latest_close"
+    )
+    assert payload["pre_survival_target_total_weight"] is None
+
+
 def test_fast_layer_enters_attack_on_five_day_thrust_without_twenty_day_high() -> None:
     closes = [100.0] * 61
     amounts = [100.0] * 61
@@ -121,6 +204,7 @@ def test_fast_layer_enters_attack_on_five_day_thrust_without_twenty_day_high() -
         daily_rows=rows,
         slow_cap=0.8,
         as_of_date=as_of,
+        fast_history_authoritative_complete=True,
     )
 
     metrics = payload["fast"]["latest_metrics"]
@@ -144,6 +228,7 @@ def test_atr_proxy_uses_absolute_positive_and_negative_close_returns() -> None:
         daily_rows=rows,
         slow_cap=0.7,
         as_of_date=as_of,
+        fast_history_authoritative_complete=True,
     )
 
     expected = (
@@ -170,6 +255,7 @@ def test_fast_layer_exits_after_two_consecutive_closes_below_ma60() -> None:
         daily_rows=rows,
         slow_cap=0.8,
         as_of_date=as_of,
+        fast_history_authoritative_complete=True,
         config={"atr_multiple": 1000.0},
     )
 
@@ -188,6 +274,7 @@ def test_fast_layer_exits_on_chandelier_before_two_closes_below_ma60() -> None:
         daily_rows=rows,
         slow_cap=0.8,
         as_of_date=as_of,
+        fast_history_authoritative_complete=True,
     )
 
     assert payload["fast"]["state"] == "defense"
@@ -205,6 +292,7 @@ def test_unconfirmed_nav_history_cannot_authorize_a_final_target() -> None:
         daily_rows=market_rows,
         slow_cap=0.8,
         as_of_date=as_of,
+        fast_history_authoritative_complete=True,
         nav_rows=nav_rows,
     )
 
@@ -228,6 +316,7 @@ def test_explicitly_complete_authoritative_nav_history_can_authorize_final_targe
         daily_rows=market_rows,
         slow_cap=0.8,
         as_of_date=as_of,
+        fast_history_authoritative_complete=True,
         nav_rows=nav_rows,
         nav_history_authoritative_complete=True,
     )
@@ -248,6 +337,7 @@ def test_nav_five_day_drawdown_halves_the_final_target() -> None:
         daily_rows=market_rows,
         slow_cap=0.8,
         as_of_date=as_of,
+        fast_history_authoritative_complete=True,
         nav_rows=nav_rows,
         nav_history_authoritative_complete=True,
     )
@@ -271,6 +361,7 @@ def test_kill_stays_at_zero_after_cooldown_when_resume_temperature_is_missing() 
         daily_rows=market_rows,
         slow_cap=0.8,
         as_of_date=as_of,
+        fast_history_authoritative_complete=True,
         nav_rows=nav_rows,
         nav_history_authoritative_complete=True,
     )
@@ -297,6 +388,7 @@ def test_killed_state_resumes_into_twenty_day_half_weight_ramp() -> None:
         daily_rows=market_rows,
         slow_cap=0.8,
         as_of_date=as_of,
+        fast_history_authoritative_complete=True,
         nav_rows=nav_rows,
         nav_history_authoritative_complete=True,
     )
@@ -318,6 +410,7 @@ def test_out_of_range_slow_cap_is_not_clipped_or_inferred() -> None:
         daily_rows=rows,
         slow_cap=1.2,
         as_of_date=as_of,
+        fast_history_authoritative_complete=True,
     )
 
     assert payload["slow"]["status"] == "insufficient"
@@ -337,6 +430,7 @@ def test_request_date_and_actual_signal_date_are_not_conflated() -> None:
         daily_rows=rows,
         slow_cap=0.8,
         as_of_date=requested_date,
+        fast_history_authoritative_complete=True,
     )
 
     assert payload["as_of_date"] == requested_date.isoformat()
@@ -355,6 +449,7 @@ def test_date_aligned_authoritative_survival_state_allows_final_target() -> None
         daily_rows=rows,
         slow_cap=0.8,
         as_of_date=as_of,
+        fast_history_authoritative_complete=True,
         nav_rows=_nav_rows(rows, [0.8] * 6),
         survival_state={
             "authoritative": True,
@@ -383,6 +478,7 @@ def test_valid_authoritative_state_precedes_stale_complete_nav_history() -> None
         daily_rows=rows,
         slow_cap=0.8,
         as_of_date=as_of,
+        fast_history_authoritative_complete=True,
         nav_rows=stale_nav_rows,
         nav_history_authoritative_complete=True,
         survival_state={
@@ -410,6 +506,7 @@ def test_valid_complete_nav_history_follows_insufficient_authoritative_state() -
         daily_rows=rows,
         slow_cap=0.8,
         as_of_date=as_of,
+        fast_history_authoritative_complete=True,
         nav_rows=nav_rows,
         nav_history_authoritative_complete=True,
         survival_state={
@@ -439,6 +536,7 @@ def test_two_insufficient_survival_inputs_report_combined_reason_and_warnings() 
         daily_rows=rows,
         slow_cap=0.8,
         as_of_date=as_of,
+        fast_history_authoritative_complete=True,
         nav_rows=stale_nav_rows,
         nav_history_authoritative_complete=True,
         survival_state={

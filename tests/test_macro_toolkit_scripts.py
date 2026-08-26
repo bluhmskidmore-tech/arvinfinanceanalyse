@@ -2587,6 +2587,145 @@ def test_equity_strategy_missing_price_context_returns_empty_with_unavailable_pa
     assert payload["result_meta"]["quality_flag"] == "ok"
 
 
+def test_macro_toolkit_strategy_summaries_redacts_macro_etf_after_privileged_cache_fill(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    scope_repo = _configure_macro_toolkit_scope_store(tmp_path, monkeypatch)
+    scope_repo.grant_scope(
+        user_id="macro-etf-reader",
+        role=None,
+        resource="market_data.macro_etf_strategy",
+        action="read",
+    )
+    macro_toolkit_route.market_home_response_cache.invalidate()
+    build_calls = 0
+
+    def fake_build_strategy_summaries() -> dict[str, object]:
+        nonlocal build_calls
+        build_calls += 1
+        return {
+            "result": {
+                "strategy_summaries": [],
+                "macro_etf_strategy": {"strategy_name": "restricted-candidate"},
+            },
+            "result_meta": {"quality_flag": "warning"},
+        }
+
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_build_macro_toolkit_strategy_summaries",
+        fake_build_strategy_summaries,
+    )
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+
+    privileged = client.get(
+        "/ui/macro/toolkit/analysis/strategy-summaries",
+        headers={"X-User-Id": "macro-etf-reader", "X-User-Role": "viewer"},
+    )
+    toolkit_only = client.get(
+        "/ui/macro/toolkit/analysis/strategy-summaries",
+        headers={"X-User-Id": "toolkit-only-reader", "X-User-Role": "viewer"},
+    )
+
+    assert privileged.status_code == 200
+    assert privileged.json()["result"]["macro_etf_strategy"]["strategy_name"] == "restricted-candidate"
+    assert toolkit_only.status_code == 200
+    assert "macro_etf_strategy" not in toolkit_only.json()["result"]
+    assert build_calls == 1
+
+
+def test_macro_toolkit_strategy_summaries_keeps_macro_etf_after_unprivileged_cache_fill(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    scope_repo = _configure_macro_toolkit_scope_store(tmp_path, monkeypatch)
+    scope_repo.grant_scope(
+        user_id="macro-etf-reader-after-warmup",
+        role=None,
+        resource="market_data.macro_etf_strategy",
+        action="read",
+    )
+    macro_toolkit_route.market_home_response_cache.invalidate()
+    build_calls = 0
+
+    def fake_build_strategy_summaries() -> dict[str, object]:
+        nonlocal build_calls
+        build_calls += 1
+        return {
+            "result": {
+                "strategy_summaries": [],
+                "macro_etf_strategy": {"strategy_name": "restricted-candidate"},
+            },
+            "result_meta": {"quality_flag": "warning"},
+        }
+
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_build_macro_toolkit_strategy_summaries",
+        fake_build_strategy_summaries,
+    )
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+
+    toolkit_only = client.get(
+        "/ui/macro/toolkit/analysis/strategy-summaries",
+        headers={"X-User-Id": "toolkit-only-warmup", "X-User-Role": "viewer"},
+    )
+    privileged = client.get(
+        "/ui/macro/toolkit/analysis/strategy-summaries",
+        headers={"X-User-Id": "macro-etf-reader-after-warmup", "X-User-Role": "viewer"},
+    )
+
+    assert toolkit_only.status_code == 200
+    assert "macro_etf_strategy" not in toolkit_only.json()["result"]
+    assert privileged.status_code == 200
+    assert privileged.json()["result"]["macro_etf_strategy"]["strategy_name"] == "restricted-candidate"
+    assert build_calls == 1
+
+
+def test_macro_toolkit_strategy_summaries_returns_503_when_child_scope_store_fails(
+    monkeypatch,
+) -> None:
+    macro_toolkit_route.market_home_response_cache.invalidate()
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_build_macro_toolkit_strategy_summaries",
+        lambda: {
+            "result": {
+                "strategy_summaries": [],
+                "macro_etf_strategy": {"strategy_name": "restricted-candidate"},
+            },
+            "result_meta": {"quality_flag": "warning"},
+        },
+    )
+
+    def fake_ensure_user_allowed(**kwargs: object) -> None:
+        if kwargs.get("resource") == "macro_toolkit":
+            return
+        if kwargs.get("resource") == "market_data.macro_etf_strategy":
+            raise RuntimeError("User scope store is unavailable.")
+        raise AssertionError(f"Unexpected resource: {kwargs.get('resource')!r}")
+
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "ensure_user_allowed",
+        fake_ensure_user_allowed,
+    )
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    response = TestClient(app).get(
+        "/ui/macro/toolkit/analysis/strategy-summaries",
+        headers={"X-User-Id": "scope-store-failure-user", "X-User-Role": "viewer"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "User scope store is unavailable."
+
+
 def test_macro_toolkit_strategy_summaries_reuses_loaded_factor_snapshot_for_shadow(
     tmp_path,
     monkeypatch,
