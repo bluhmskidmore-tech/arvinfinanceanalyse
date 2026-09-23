@@ -1265,7 +1265,9 @@ describe("pnl routed pages smoke", () => {
     expect(screen.getByTestId("pnl-by-business-result-meta-panel")).toHaveTextContent("tr_route_business_monthly");
     expect(screen.getByTestId("pnl-by-business-data-status-strip")).toHaveTextContent("tr_route_business_ytd");
     expect(await screen.findByTestId("pnl-by-business-insights-leadership-panel")).toHaveTextContent("正式结构分析");
-    expect(screen.getByTestId("pnl-by-business-insights-leadership-panel")).toHaveTextContent("结构分析待复核");
+    await waitFor(() => {
+      expect(screen.getByTestId("pnl-by-business-insights-leadership-panel")).toHaveTextContent("结构分析待复核");
+    });
     expect(screen.getByTestId("pnl-by-business-insights-leadership-detail-link")).toHaveAttribute(
       "href",
       "/pnl-by-business-insights?year=2025&as_of_date=2025-12-31",
