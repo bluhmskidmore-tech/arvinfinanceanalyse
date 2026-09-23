@@ -2,9 +2,9 @@
 
 Covers three surfaces:
 
-1. ``CALIBER_GATE_MAP`` integrity: every mapped source path exists in the
-   repository, and the map covers every ``tests/test_caliber_rule_*.py`` file
-   on disk (so a future caliber test cannot silently stay outside the gate).
+1. ``CALIBER_GATE_MAP`` integrity: every mapped source and test path exists,
+   and the map covers every ``tests/test_caliber_rule_*.py`` file on disk (so
+   a future caliber test cannot silently stay outside the gate).
 2. Pure matching semantics of ``resolve_required_tests`` (exact path, prefix,
    dedup, deterministic ordering).
 3. CLI + git diff behavior against a temporary git repository with an
@@ -55,12 +55,28 @@ def test_map_covers_every_caliber_rule_test_file() -> None:
         for path in (REPO_ROOT / "tests").glob("test_caliber_rule_*.py")
     }
     # Guard the guard: the six known red-line tests must be on disk, so the
-    # equality below cannot pass vacuously against an empty glob.
+    # coverage assertion below cannot pass vacuously against an empty glob.
     assert EXPECTED_CALIBER_TESTS <= on_disk
-    assert mapped_tests == on_disk, (
-        "CALIBER_GATE_MAP must map to exactly the caliber rule test files on "
-        "disk; update scripts/check_caliber_gate.py when adding a caliber test"
+    assert on_disk <= mapped_tests, (
+        "CALIBER_GATE_MAP must cover every caliber rule test on disk; "
+        "update scripts/check_caliber_gate.py when adding a caliber test"
     )
+    for test_file in mapped_tests:
+        assert (REPO_ROOT / test_file).is_file(), (
+            f"mapped test does not exist: {test_file}"
+        )
+
+
+def test_curve_and_pnl_bridge_source_changes_select_existing_goldens() -> None:
+    assert gate.resolve_required_tests(
+        ["backend/app/core_finance/curve_engine/interpolation.py"]
+    ) == ["tests/test_curve_engine_golden.py", "tests/test_pnl_bridge_golden.py"]
+    assert gate.resolve_required_tests(
+        ["backend/app/core_finance/pnl_bridge.py"]
+    ) == [
+        "tests/test_pnl_bridge_golden.py",
+        "tests/test_pnl_bridge_modified_duration.py",
+    ]
 
 
 def test_resolve_required_tests_exact_prefix_dedup_and_order() -> None:

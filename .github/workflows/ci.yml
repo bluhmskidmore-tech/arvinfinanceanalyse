@@ -67,6 +67,7 @@ jobs:
           tests/test_agent_api_contract.py
           tests/test_agent_audit_log_contract.py
           tests/test_caliber_gate_mapping.py
+          tests/test_ci_workflow_contents.py
           tests/test_mcp_config_consistency.py
 
       # PR diff 触及 caliber 口径源文件时强制运行对应红线测试；

@@ -59,13 +59,42 @@ def test_ci_workflow_uses_repo_typecheck_entrypoint():
     assert "npx tsc --noEmit" not in workflow
 
 
-def test_ci_workflow_targets_the_main_branch():
+def test_ci_workflow_keeps_main_pr_and_codex_push_checks():
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     assert 'branches: [main, "codex/**"]' in workflow
-    assert "branches: [main]" in workflow
+    assert 'pull_request:\n    branches: [main]' in workflow
+    assert 'pull_request:\n    branches: [main, "codex/V1"]' not in workflow
+    assert "tests/test_ci_workflow_contents.py" in workflow
     assert "refs/heads/main" in workflow
     assert "master" not in workflow
+
+
+def test_caliber_pr_workflow_always_checks_map_before_merge_diff_gate():
+    workflow = (
+        ROOT / ".github" / "workflows" / "caliber-pr-gate.yml"
+    ).read_text(encoding="utf-8")
+
+    assert 'pull_request:\n    branches: ["codex/V1"]' in workflow
+    assert "pull_request_target:" not in workflow
+    assert "\n  push:" not in workflow
+    assert "fetch-depth: 0" in workflow
+    assert 'git fetch origin "${{ github.base_ref }}"' in workflow
+    assert "uv sync --frozen --project backend --extra dev --python 3.11" in workflow
+    assert "--dry-run" not in workflow
+    assert "\n        if:" not in workflow
+    guard_command = (
+        "backend/.venv/bin/python -m pytest -q "
+        "tests/test_caliber_gate_mapping.py tests/test_ci_workflow_contents.py"
+    )
+    assert guard_command in workflow
+    gate_command = (
+        'backend/.venv/bin/python scripts/check_caliber_gate.py '
+        '--base-ref "origin/${{ github.base_ref }}"'
+    )
+    assert gate_command in workflow
+    assert workflow.index("uv sync --frozen") < workflow.index(guard_command)
+    assert workflow.index(guard_command) < workflow.index(gate_command)
 
 
 def test_ci_workflow_runs_frontend_production_build():

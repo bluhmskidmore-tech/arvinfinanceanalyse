@@ -4,15 +4,15 @@ The six caliber red-line tests (tests/test_caliber_rule_*.py) are also
 unconditional members of the bounded release suite
 (scripts/backend_release_suite.py, since 2026-08-12). This gate is the
 targeted fast-reaction half of that double insurance: when the PR diff
-touches a source module that a caliber test imports, the matching test files
-are run directly, so a caliber regression is attributed to the exact diff
-that caused it instead of surfacing as a generic suite failure.
+touches a mapped source module, the matching test files run directly, so a
+regression is attributed to the diff that caused it instead of surfacing as
+a generic suite failure.
 
-``CALIBER_GATE_MAP`` is derived from the import statements of the six caliber
-test files (including ``importlib.import_module(DESCRIPTOR.canonical_module)``
-targets asserted inside those tests). ``tests/test_caliber_gate_mapping.py``
-guards the map against drift (paths must exist; every caliber test file must
-stay mapped).
+``CALIBER_GATE_MAP`` includes the imports of the six caliber test files
+(including ``importlib.import_module(DESCRIPTOR.canonical_module)`` targets)
+and focused numerical goldens for the curve engine and PnL bridge.
+``tests/test_caliber_gate_mapping.py`` guards the map against drift: mapped
+paths must exist, and every caliber test file must stay mapped.
 
 Usage::
 
@@ -40,6 +40,9 @@ _TEST_FX_MID_CONVERSION = "tests/test_caliber_rule_fx_mid_conversion.py"
 _TEST_HAT_MAPPING = "tests/test_caliber_rule_hat_mapping.py"
 _TEST_ISSUANCE_EXCLUSION = "tests/test_caliber_rule_issuance_exclusion.py"
 _TEST_SUBJECT_MERGE = "tests/test_caliber_rule_subject_514_516_517_merge.py"
+_TEST_CURVE = "tests/test_curve_engine_golden.py"
+_TEST_PNL_BRIDGE = "tests/test_pnl_bridge_golden.py"
+_TEST_PNL_BRIDGE_DURATION = "tests/test_pnl_bridge_modified_duration.py"
 
 _ALL_CALIBER_TESTS = (
     _TEST_ACCOUNTING_BASIS,
@@ -50,7 +53,7 @@ _ALL_CALIBER_TESTS = (
     _TEST_SUBJECT_MERGE,
 )
 
-# Source file -> caliber test files that must run when the file changes.
+# Source file -> regression test files that must run when the file changes.
 # Keys are repo-relative POSIX paths; a key ending with "/" is a prefix match.
 CALIBER_GATE_MAP: dict[str, tuple[str, ...]] = {
     # Shared caliber framework: every caliber test starts with
@@ -100,6 +103,13 @@ CALIBER_GATE_MAP: dict[str, tuple[str, ...]] = {
     "backend/app/core_finance/fx_rates.py": (
         _TEST_FX_MID_CONVERSION,
     ),
+    # Curve goldens exercise the four engine modules; the bridge golden also
+    # checks the downstream PnL effect of curve inputs.
+    "backend/app/core_finance/curve_engine/": (_TEST_CURVE, _TEST_PNL_BRIDGE),
+    "backend/app/core_finance/pnl_bridge.py": (
+        _TEST_PNL_BRIDGE,
+        _TEST_PNL_BRIDGE_DURATION,
+    ),
 }
 
 
@@ -117,7 +127,7 @@ def resolve_required_tests(
     changed_files: Iterable[str],
     gate_map: Mapping[str, Sequence[str]] | None = None,
 ) -> list[str]:
-    """Return the sorted caliber test files required by *changed_files*."""
+    """Return the sorted mapped test files required by *changed_files*."""
     if gate_map is None:
         gate_map = CALIBER_GATE_MAP
     required: set[str] = set()
@@ -159,8 +169,8 @@ def list_changed_files(base_ref: str, *, cwd: Path) -> list[str]:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Run caliber red-line tests when the diff against --base-ref "
-            "touches mapped backend/app/core_finance source files."
+            "Run mapped regression tests when the diff against --base-ref "
+            "touches selected backend/app/core_finance source files."
         )
     )
     parser.add_argument(
@@ -204,14 +214,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if not matched_tests:
         print(
-            "caliber-gate: no caliber-mapped core_finance source changed vs "
+            "caliber-gate: no mapped core_finance source changed vs "
             f"'{args.base_ref}'; nothing to run."
         )
         return 0
 
     print(
         f"caliber-gate: diff vs '{args.base_ref}' requires "
-        f"{len(matched_tests)} caliber test file(s):"
+        f"{len(matched_tests)} mapped test file(s):"
     )
     for test_file in matched_tests:
         print(f"  - {test_file}")
