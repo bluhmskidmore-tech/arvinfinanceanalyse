@@ -5,7 +5,7 @@ description = "Phase 1 backend skeleton for MOSS Agent Analytics OS"
 requires-python = ">=3.11"
 dependencies = [
   "beautifulsoup4>=4.12,<5",
-  "anyio>=4.0,<5",
+  "anyio>=4.14.2,<5",
   "fastapi>=0.115,<0.137",
   # starlette 是 fastapi 的传递依赖，但被直接暴露在 ASGI 中间件/响应链路上。
   # 不显式约束时它已经从 0.x 静默跨到 1.x major；此处钉住 major，让下一次
