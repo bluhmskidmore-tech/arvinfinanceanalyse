@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { BalanceMovementReadStatus } from "../components/BalanceMovementReadStatus";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
@@ -2816,7 +2817,7 @@ function DataStatesGovernancePanel({
   freshnessStatus,
   selectedDate,
   resolvedReportDate,
-  hasError,
+  hasError, datesReadFailed, datesReadConfirmed,
   refreshMessage,
   resultMeta,
   governanceMeta,
@@ -2828,41 +2829,49 @@ function DataStatesGovernancePanel({
   freshnessStatus: BalanceMovementDatesPayload["freshness_status"] | undefined;
   selectedDate: string;
   resolvedReportDate: string;
-  hasError: boolean;
+  hasError: boolean; datesReadFailed: boolean;
+  datesReadConfirmed: boolean;
   refreshMessage: string | null;
   resultMeta: ResultMeta | null;
   governanceMeta: { reportDate: string; ruleVersions: string[]; sourceVersions: string[] };
   supplementary?: ReactNode;
 }) {
-  const hasFallbackDate = Boolean(
-    resultMeta?.fallback_date ||
-      (selectedDate && resolvedReportDate && selectedDate !== resolvedReportDate),
-  );
+  const hasFallbackDate = Boolean(resultMeta?.fallback_date || (selectedDate && resolvedReportDate && selectedDate !== resolvedReportDate));
+  const detailReadConfirmed = datesReadConfirmed && !hasError && !isLoading && resultMeta !== null;
+  const freshnessConfirmed = datesReadConfirmed && freshnessStatus !== undefined;
+  const freshnessUnknownNote = datesReadFailed ? "本次读取失败，无法确认读模型新鲜度" : "尚未完成本次读取，无法确认读模型新鲜度";
   const states = [
     {
       label: "加载中",
-      value: isLoading ? "请求中" : "已完成",
+      value: isLoading ? "请求中" : hasError ? "读取失败" : "已完成",
       note: isLoading ? "筛选与操作保持可理解" : "不把旧数据伪装成新结果",
     },
     {
       label: "无报告日",
-      value: hasReportDates ? "否" : "是",
-      note: hasReportDates ? "已返回可选报告日" : "提示先物化读模型",
+      value: datesReadConfirmed ? hasReportDates ? "否" : "是" : "未知",
+      note: datesReadFailed
+        ? "本次读取失败，无法确认可选报告日"
+        : !datesReadConfirmed ? "正在读取，尚无法确认可选报告日"
+          : hasReportDates ? "已返回可选报告日" : "提示先物化读模型",
     },
     {
       label: "无明细行",
-      value: hasRows ? "否" : "是",
-      note: hasRows ? "AC / OCI / TPL 行已返回" : "正文显式展示空态",
+      value: detailReadConfirmed ? hasRows ? "否" : "是" : "未知",
+      note: !detailReadConfirmed
+        ? hasError ? "本次读取失败，无法确认明细行状态" : "尚未完成本次读取，无法确认明细行状态"
+        : hasRows ? "AC / OCI / TPL 行已返回" : "正文显式展示空态",
     },
     {
       label: "读模型滞后",
-      value: freshnessStatus === "read_model_lagging" ? "是" : "否",
-      note: freshnessStatusDetail(freshnessStatus),
+      value: freshnessConfirmed ? freshnessStatus === "read_model_lagging" ? "是" : "否" : "未知",
+      note: freshnessConfirmed ? freshnessStatusDetail(freshnessStatus) : freshnessUnknownNote,
     },
     {
       label: "回退日期",
-      value: hasFallbackDate ? resolvedReportDate || resultMeta?.fallback_date || "是" : "无",
-      note: hasFallbackDate ? "requested 与 resolved 分开呈现" : "当前未发生日期回退",
+      value: !detailReadConfirmed ? "未知" : hasFallbackDate ? resolvedReportDate || resultMeta?.fallback_date || "是" : "无",
+      note: !detailReadConfirmed
+        ? hasError ? "本次读取失败，无法确认日期回退" : "尚未完成本次读取，无法确认日期回退"
+        : hasFallbackDate ? "requested 与 resolved 分开呈现" : "当前未发生日期回退",
     },
     {
       label: "加载 / 刷新失败",
@@ -3335,7 +3344,7 @@ export default function BalanceMovementAnalysisPage() {
 
   const datesQuery = useQuery({
     queryKey: ["balance-movement-analysis", "dates", client.mode, currencyBasis],
-    queryFn: () => client.getBalanceMovementDates(currencyBasis),
+    queryFn: ({ signal }) => client.getBalanceMovementDates(currencyBasis, { signal }),
     retry: false,
   });
   const reportDates = useMemo(
@@ -3388,11 +3397,7 @@ export default function BalanceMovementAnalysisPage() {
 
   const detailQuery = useQuery({
     queryKey: ["balance-movement-analysis", "detail", client.mode, selectedDate, currencyBasis],
-    queryFn: () =>
-      client.getBalanceMovementAnalysis({
-        reportDate: selectedDate,
-        currencyBasis,
-      }),
+    queryFn: ({ signal }) => client.getBalanceMovementAnalysis({ reportDate: selectedDate, currencyBasis, signal }),
     enabled: Boolean(selectedDate),
     retry: false,
   });
@@ -4132,14 +4137,16 @@ export default function BalanceMovementAnalysisPage() {
           </div>
         ) : null}
         {dateStatus ? (
-          <div
-            data-testid="balance-movement-analysis-date-status"
-            className={`balance-movement-date-status balance-movement-date-status--${dateStatus.tone}`}
-            role={dateStatus.tone === "error" ? "alert" : "status"}
-          >
-            <strong>{dateStatus.title}</strong>
-            <span>{dateStatus.detail}</span>
-          </div>
+          <BalanceMovementReadStatus
+            {...dateStatus} testId="balance-movement-analysis-date-status"
+            isFetching={datesQuery.isFetching} hasCachedResult={Boolean(datesQuery.data)}
+            onRetry={() => void datesQuery.refetch()} />
+        ) : null}
+        {detailQuery.isError ? (
+          <BalanceMovementReadStatus
+            tone="error" title="余额变动加载失败"
+            detail="请重试读取；持续失败时请检查服务与读模型状态。" testId="balance-movement-analysis-detail-status"
+            isFetching={detailQuery.isFetching} hasCachedResult={Boolean(detailQuery.data)} onRetry={() => void detailQuery.refetch()} />
         ) : null}
         {hasResultStatus ? (
           <div className="balance-movement-quality-alert" data-testid="balance-movement-analysis-result-status">
@@ -4168,7 +4175,7 @@ export default function BalanceMovementAnalysisPage() {
             reconciliationLabel={reconciliationLabel}
             currencyBasis={currencyBasis}
           />
-        ) : datesQuery.data?.result ? (
+        ) : !detailQuery.isError && datesQuery.data?.result ? (
           <FigmaEmptyHero
             dates={datesQuery.data.result}
             selectedDate={selectedDate}
@@ -4488,7 +4495,7 @@ export default function BalanceMovementAnalysisPage() {
         />
       ) : null}
       <DataStatesGovernancePanel
-        isLoading={datesQuery.isLoading || detailQuery.isLoading}
+        isLoading={datesQuery.isFetching || detailQuery.isFetching}
         hasReportDates={reportDates.length > 0}
         hasRows={rows.length > 0}
         freshnessStatus={datesQuery.data?.result.freshness_status}
@@ -4497,6 +4504,8 @@ export default function BalanceMovementAnalysisPage() {
           resultMeta?.resolved_report_date ?? detailQuery.data?.result.report_date ?? ""
         }
         hasError={datesQuery.isError || detailQuery.isError}
+        datesReadFailed={datesQuery.isError}
+        datesReadConfirmed={datesQuery.isSuccess && !datesQuery.isFetching}
         refreshMessage={refreshMessage}
         resultMeta={resultMeta}
         governanceMeta={governanceMeta}
