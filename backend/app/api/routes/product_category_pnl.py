@@ -6,9 +6,15 @@ from typing import Annotated
 from backend.app.api.deps import ensure_read_allowed
 from backend.app.governance.settings import get_settings
 from backend.app.schemas.product_category_pnl import (
+    ProductCategoryAttributionEnvelope,
+    ProductCategoryAttributionHistoryEnvelope,
+    ProductCategoryDatesEnvelope,
+    ProductCategoryHistoryEnvelope,
     ProductCategoryManualAdjustmentCreateRequest,
     ProductCategoryManualAdjustmentQuery,
     ProductCategoryManualAdjustmentUpdateRequest,
+    ProductCategoryPnlEnvelope,
+    ProductCategoryRefreshPayload,
 )
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.product_category_pnl_service import (
@@ -40,7 +46,7 @@ router = APIRouter(prefix="/ui/pnl/product-category")
 MAX_HISTORY_REPORT_DATES = 36
 
 
-@router.get("/dates")
+@router.get("/dates", response_model=ProductCategoryDatesEnvelope, response_model_exclude_unset=True)
 def dates(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
 ) -> dict[str, object]:
@@ -52,7 +58,7 @@ def dates(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@router.get("")
+@router.get("", response_model=ProductCategoryPnlEnvelope, response_model_exclude_unset=True)
 def detail(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
@@ -79,7 +85,7 @@ def detail(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@router.get("/history")
+@router.get("/history", response_model=ProductCategoryHistoryEnvelope, response_model_exclude_unset=True)
 def history(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_dates: str = Query(..., description="Comma-separated report dates"),
@@ -105,7 +111,7 @@ def history(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@router.get("/attribution/history")
+@router.get("/attribution/history", response_model=ProductCategoryAttributionHistoryEnvelope, response_model_exclude_unset=True)
 def attribution_history(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_dates: str = Query(..., description="Comma-separated report dates"),
@@ -129,7 +135,7 @@ def attribution_history(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@router.get("/attribution")
+@router.get("/attribution", response_model=ProductCategoryAttributionEnvelope, response_model_exclude_unset=True)
 def attribution(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
@@ -154,7 +160,7 @@ def attribution(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@router.post("/refresh")
+@router.post("/refresh", response_model=ProductCategoryRefreshPayload, response_model_exclude_unset=True)
 def refresh(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
@@ -179,7 +185,7 @@ def refresh(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@router.get("/refresh-status")
+@router.get("/refresh-status", response_model=ProductCategoryRefreshPayload, response_model_exclude_unset=True)
 def refresh_status(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     run_id: str = Query(...),

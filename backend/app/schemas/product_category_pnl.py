@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Literal
 
+from backend.app.schemas.materialize import CacheBuildRunRecord
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
@@ -222,6 +223,28 @@ class ProductCategoryHistoryPayload(BaseModel):
     items: list[ProductCategoryHistoryItem]
 
 
+class ProductCategoryDatesEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Metadata is already validated by the governed service; preserve its wire fields.
+    result_meta: dict[str, object]
+    result: ProductCategoryDatesPayload
+
+
+class ProductCategoryPnlEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: dict[str, object]
+    result: ProductCategoryPnlPayload
+
+
+class ProductCategoryHistoryEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: dict[str, object]
+    result: ProductCategoryHistoryPayload
+
+
 class ProductCategoryAttributionHistoryItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -237,6 +260,42 @@ class ProductCategoryAttributionHistoryPayload(BaseModel):
 
     compare: Literal["mom", "yoy"]
     items: list[ProductCategoryAttributionHistoryItem]
+
+
+class ProductCategoryAttributionEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: dict[str, object]
+    result: ProductCategoryAttributionPayload
+
+
+class ProductCategoryAttributionHistoryEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: dict[str, object]
+    result: ProductCategoryAttributionHistoryPayload
+
+
+class ProductCategoryRefreshPayload(CacheBuildRunRecord):
+    """Dispatch and polling receipts share the existing governed run fields.
+
+    Dispatch and sync fallback can omit fields that only persisted run records
+    carry. Routes exclude unset defaults and preserve additional receipt fields,
+    so binding this contract never invents fields or drops governance evidence.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    status: Literal["queued", "running", "completed", "failed"]
+    trigger_mode: Literal["async", "sync-fallback", "terminal"]
+    cache_key: str = ""
+    lock: str = ""
+    source_version: str = ""
+    vendor_version: str = "vv_none"
+    month_count: int | None = None
+    report_dates: list[str] | None = None
+    idempotency_key: str | None = None
+    idempotency_replay: bool | None = None
 
 
 class ProductCategoryManualAdjustmentCreateRequest(BaseModel):

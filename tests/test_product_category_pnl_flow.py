@@ -13,6 +13,7 @@ from pathlib import Path
 import duckdb
 import pytest
 from fastapi import FastAPI
+from fastapi.exceptions import ResponseValidationError
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 
@@ -26,7 +27,11 @@ from backend.app.repositories.product_category_pnl_repo import (
 )
 from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.schemas.materialize import CacheBuildRunRecord
-from backend.app.schemas.product_category_pnl import ProductCategoryPnlRow
+from backend.app.schemas.product_category_pnl import (
+    ProductCategoryHistoryPayload,
+    ProductCategoryPnlPayload,
+    ProductCategoryPnlRow,
+)
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.services.product_category_pnl_service import (
     AVAILABLE_VIEWS,
@@ -122,29 +127,42 @@ def test_product_category_read_surfaces_require_explicit_read_scope(tmp_path, mo
     monkeypatch.setattr(
         route_module,
         "product_category_dates_envelope",
-        lambda _duckdb_path: {"result_meta": {"result_kind": "product_category_pnl.dates"}, "result": {}},
+        lambda _duckdb_path: {
+            "result_meta": {"result_kind": "product_category_pnl.dates"},
+            "result": {"report_dates": []},
+        },
     )
     monkeypatch.setattr(
         route_module,
         "product_category_pnl_envelope",
-        lambda *_args, **_kwargs: {"result_meta": {"result_kind": "product_category_pnl.detail"}, "result": {}},
+        lambda *_args, **_kwargs: _stub_single_period_envelope("2026-02-28", "monthly"),
     )
     monkeypatch.setattr(
         route_module,
         "product_category_attribution_envelope",
-        lambda *_args, **_kwargs: {"result_meta": {"result_kind": "product_category_pnl.attribution"}, "result": {}},
+        lambda *_args, **_kwargs: {
+            "result_meta": {"result_kind": "product_category_pnl.attribution"},
+            "result": {
+                "report_date": "2026-02-28", "compare": "mom",
+                "current_report_date": "2026-02-28", "prior_report_date": "2026-01-31",
+                "state": "incomplete", "reason": "no_prior_month", "rows": [], "totals": None,
+            },
+        },
     )
     monkeypatch.setattr(
         route_module,
         "product_category_history_envelope",
-        lambda *_args, **_kwargs: {"result_meta": {"result_kind": "product_category_pnl.history"}, "result": {}},
+        lambda *_args, **_kwargs: {
+            "result_meta": {"result_kind": "product_category_pnl.history"},
+            "result": {"view": "monthly", "items": []},
+        },
     )
     monkeypatch.setattr(
         route_module,
         "product_category_attribution_history_envelope",
         lambda *_args, **_kwargs: {
             "result_meta": {"result_kind": "product_category_pnl.attribution_history"},
-            "result": {},
+            "result": {"compare": "mom", "items": []},
         },
     )
     monkeypatch.setattr(
@@ -153,7 +171,10 @@ def test_product_category_read_surfaces_require_explicit_read_scope(tmp_path, mo
         lambda _name: type(
             "ProductCategoryStatusService",
             (),
-            {"product_category_refresh_status": staticmethod(lambda _settings, *, run_id: {"run_id": run_id})},
+            {"product_category_refresh_status": staticmethod(lambda _settings, *, run_id: {
+                "run_id": run_id, "status": "completed", "job_name": "product_category_pnl",
+                "trigger_mode": "terminal",
+            })},
         ),
     )
     monkeypatch.setattr(
@@ -309,6 +330,141 @@ def _stub_single_period_envelope(report_date: str, view: str) -> dict[str, objec
         },
         "result": payload,
     }
+
+
+@pytest.fixture
+def product_category_read_contract_client(tmp_path, monkeypatch):
+    """Exercise HTTP response serialization with isolated auth and stubbed reads."""
+    route_module = load_module(
+        "tests._product_category_contract.product_category_pnl",
+        "backend/app/api/routes/product_category_pnl.py",
+    )
+    _grant_product_category_read(tmp_path, monkeypatch)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    with TestClient(app, headers=PRODUCT_CATEGORY_READ_HEADERS) as client:
+        yield client, route_module
+    get_settings.cache_clear()
+
+
+def _product_category_read_contract_envelopes():
+    detail = _stub_single_period_envelope("2026-02-28", "monthly")
+    detail["result"]["rows"][0]["business_net_income"] = "10.12345678901234567890"
+    detail["result"]["interest_spread"] = {
+        "all_currency_spread_pct": {"raw": "1.23000000", "display": "1.23%", "unit": "percent"}
+    }
+    detail["result"] = ProductCategoryPnlPayload.model_validate(detail["result"]).model_dump(mode="json")
+    # Metadata is already governed upstream. The route must not filter or rewrite it.
+    detail["result_meta"]["extension"] = {"nullable": None, "zero": 0, "enabled": False}
+    history = ProductCategoryHistoryPayload(
+        view="monthly",
+        items=[
+            {"report_date": "2026-02-28", "status": "ok", **detail},
+            {"report_date": "2026-01-31", "status": "not_found", "detail": "No prior period"},
+        ],
+    ).model_dump(mode="json")
+    return {
+        "dates": {"result_meta": copy.deepcopy(detail["result_meta"]), "result": {"report_dates": ["2026-02-28"]}},
+        "detail": detail,
+        "history": {"result_meta": {"quality_flag": "warning"}, "result": history},
+    }
+
+
+_PRODUCT_CATEGORY_CONTRACT_READS = (
+    ("dates", "/dates", {}, "product_category_dates_envelope", ("report_dates",)),
+    ("detail", "", {"report_date": "2026-02-28"}, "product_category_pnl_envelope", ("rows", 0, "business_net_income")),
+    ("history", "/history", {"report_dates": "2026-02-28,2026-01-31"}, "product_category_history_envelope", ("items", 0, "result", "rows", 0, "business_net_income")),
+)
+
+
+@pytest.mark.parametrize("name,path,params,service_name,field_path", _PRODUCT_CATEGORY_CONTRACT_READS)
+def test_product_category_read_contract_preserves_wire_payload(
+    product_category_read_contract_client, monkeypatch, name, path, params, service_name, field_path
+):
+    client, route_module = product_category_read_contract_client
+    expected = _product_category_read_contract_envelopes()[name]
+    monkeypatch.setattr(route_module, service_name, lambda *_args, **_kwargs: copy.deepcopy(expected))
+
+    response = client.get(f"/ui/pnl/product-category{path}", params=params)
+
+    assert response.status_code == 200
+    assert response.json() == expected
+
+
+@pytest.mark.parametrize("name,path,params,service_name,field_path", _PRODUCT_CATEGORY_CONTRACT_READS[1:])
+def test_product_category_read_contract_keeps_omitted_optional_fields_absent(
+    product_category_read_contract_client, monkeypatch, name, path, params, service_name, field_path
+):
+    client, route_module = product_category_read_contract_client
+    expected = _product_category_read_contract_envelopes()[name]
+    del expected["result"]["scenario_rate_pct"]
+    if name == "detail":
+        del expected["result"]["interest_spread"]
+        del expected["result"]["rows"][0]["weighted_yield"]
+    else:
+        del expected["result"]["items"][0]["detail"]
+        del expected["result"]["items"][1]["result"]
+        del expected["result"]["items"][1]["result_meta"]
+    monkeypatch.setattr(route_module, service_name, lambda *_args, **_kwargs: copy.deepcopy(expected))
+
+    response = client.get(f"/ui/pnl/product-category{path}", params=params)
+
+    assert response.status_code == 200
+    assert response.json() == expected
+
+
+@pytest.mark.parametrize("drift", ["missing", "invalid", "unexpected"])
+@pytest.mark.parametrize("name,path,params,service_name,field_path", _PRODUCT_CATEGORY_CONTRACT_READS)
+def test_product_category_read_contract_rejects_payload_field_drift(
+    product_category_read_contract_client, monkeypatch, name, path, params, service_name, field_path, drift
+):
+    client, route_module = product_category_read_contract_client
+    malformed = _product_category_read_contract_envelopes()[name]
+    container = malformed["result"]
+    for key in field_path[:-1]:
+        container = container[key]
+    field = field_path[-1]
+    if drift == "missing":
+        del container[field]
+    elif drift == "invalid":
+        container[field] = {"wrong": "shape"}
+    else:
+        container["unmodeled_field"] = "must not be silently filtered"
+    monkeypatch.setattr(route_module, service_name, lambda *_args, **_kwargs: malformed)
+
+    with pytest.raises(ResponseValidationError) as error:
+        client.get(f"/ui/pnl/product-category{path}", params=params)
+
+    expected_field = "unmodeled_field" if drift == "unexpected" else field
+    assert any(item["loc"][-1] == expected_field for item in error.value.errors())
+
+
+def test_product_category_read_contract_openapi_exposes_nested_fields(product_category_read_contract_client):
+    client, _ = product_category_read_contract_client
+    spec = client.get("/openapi.json").json()
+
+    def resolve(schema):
+        return spec["components"]["schemas"][schema["$ref"].rsplit("/", 1)[-1]]
+
+    payloads = {}
+    for name, path, _, _, _ in _PRODUCT_CATEGORY_CONTRACT_READS:
+        response = spec["paths"][f"/ui/pnl/product-category{path}"]["get"]["responses"]["200"]
+        envelope = resolve(response["content"]["application/json"]["schema"])
+        assert set(envelope["required"]) == {"result", "result_meta"}
+        assert envelope["additionalProperties"] is False
+        payloads[name] = resolve(envelope["properties"]["result"])
+
+    assert payloads["dates"]["properties"]["report_dates"]["items"]["type"] == "string"
+    assert "report_dates" in payloads["dates"]["required"]
+    row = resolve(payloads["detail"]["properties"]["rows"]["items"])
+    assert "business_net_income" in row["required"]
+    assert row["properties"]["business_net_income"]["type"] == "string"
+    assert {part["type"] for part in row["properties"]["weighted_yield"]["anyOf"]} == {"string", "null"}
+    assert row["additionalProperties"] is False
+    history_item = resolve(payloads["history"]["properties"]["items"]["items"])
+    assert history_item["properties"]["status"]["enum"] == ["ok", "not_found"]
+    history_result = history_item["properties"]["result"]["anyOf"]
+    assert resolve(next(part for part in history_result if "$ref" in part)) == payloads["detail"]
 
 
 def test_product_category_history_preserves_per_period_result_meta(monkeypatch):
@@ -562,9 +718,36 @@ def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch, seed_w
     main_module = load_module("backend.app.main", "backend/app/main.py")
     client = TestClient(main_module.app)
 
+    route_module = importlib.import_module("backend.app.api.routes.product_category_pnl")
+    captured_service_responses = {}
+
+    def capture_service_response(service_name, service):
+        def wrapped(*args, **kwargs):
+            response = service(*args, **kwargs)
+            captured_service_responses[service_name] = copy.deepcopy(response)
+            return response
+
+        return wrapped
+
+    for _, _, _, service_name, _ in _PRODUCT_CATEGORY_CONTRACT_READS:
+        monkeypatch.setattr(
+            route_module,
+            service_name,
+            capture_service_response(service_name, getattr(route_module, service_name)),
+        )
+
     dates_response = client.get("/ui/pnl/product-category/dates")
     assert dates_response.status_code == 200
     assert dates_response.json()["result"]["report_dates"] == ["2026-02-28", "2026-01-31"]
+    assert dates_response.json() == captured_service_responses["product_category_dates_envelope"]
+
+    history_response = client.get(
+        "/ui/pnl/product-category/history",
+        params={"report_dates": "2026-02-28,2025-12-31", "view": "monthly"},
+    )
+    assert history_response.status_code == 200
+    assert history_response.json() == captured_service_responses["product_category_history_envelope"]
+    assert [item["status"] for item in history_response.json()["result"]["items"]] == ["ok", "not_found"]
 
     refresh_response = client.post("/ui/pnl/product-category/refresh")
     assert refresh_response.status_code == 200
@@ -613,6 +796,7 @@ def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch, seed_w
     )
     assert monthly_response.status_code == 200
     monthly_payload = monthly_response.json()
+    assert monthly_payload == captured_service_responses["product_category_pnl_envelope"]
     assert monthly_payload["result_meta"]["basis"] == "formal"
     assert monthly_payload["result_meta"]["scenario_flag"] is False
     assert monthly_payload["result"]["view"] == "monthly"
@@ -635,6 +819,7 @@ def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch, seed_w
     )
     assert qtd_response.status_code == 200
     qtd_payload = qtd_response.json()
+    assert qtd_payload == captured_service_responses["product_category_pnl_envelope"]
     assert qtd_payload["result"]["view"] == "qtd"
     lending = next(
         row for row in qtd_payload["result"]["rows"] if row["category_id"] == "interbank_lending_assets"
@@ -647,6 +832,7 @@ def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch, seed_w
     )
     assert feb_monthly_response.status_code == 200
     feb_monthly_payload = feb_monthly_response.json()
+    assert feb_monthly_payload == captured_service_responses["product_category_pnl_envelope"]
     feb_bond = next(
         row for row in feb_monthly_payload["result"]["rows"] if row["category_id"] == "bond_tpl"
     )
@@ -745,6 +931,7 @@ def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch, seed_w
     )
     assert scenario_response.status_code == 200
     scenario_payload = scenario_response.json()
+    assert scenario_payload == captured_service_responses["product_category_pnl_envelope"]
     assert scenario_payload["result_meta"]["basis"] == "scenario"
     assert scenario_payload["result_meta"]["scenario_flag"] is True
     scenario_asset_total = scenario_payload["result"]["asset_total"]
