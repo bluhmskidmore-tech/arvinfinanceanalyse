@@ -21,7 +21,7 @@ def test_backend_dependency_contract_keeps_runtime_and_dev_dependencies_separate
     dependencies = pyproject["project"]["dependencies"]
     dev_dependencies = pyproject["project"]["optional-dependencies"]["dev"]
 
-    assert "anyio>=4.0,<5" in dependencies
+    assert "anyio>=4.14.2,<5" in dependencies
     assert "pandas>=2.2,<3" in dependencies
     assert "numpy>=1.26,<3" in dependencies
     assert "scipy>=1.13,<2" in dependencies
