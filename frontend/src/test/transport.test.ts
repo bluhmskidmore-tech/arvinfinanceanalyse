@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   assertApiEnvelopeShape,
+  assertShape,
   requestJson,
   requestPlainJson,
+  type ShapeFieldSpec,
 } from "../api/transport";
 
 /** Mirrors the real backend envelope from contracts/core.ts (ResultMeta). */
@@ -105,6 +107,112 @@ describe("assertApiEnvelopeShape", () => {
   });
 });
 
+describe("assertShape", () => {
+  const fields: ShapeFieldSpec[] = [
+    { path: "report_date", type: "string" },
+    { path: "rows", type: "array" },
+    { path: "summary", type: "object" },
+    { path: "summary.total_pnl", type: "string" },
+    { path: "summary.pnl_row_count", type: "number" },
+    { path: "summary.note", type: "string", optional: true },
+  ];
+
+  const validValue = {
+    report_date: "2026-06-30",
+    rows: [],
+    summary: { total_pnl: "100.00", pnl_row_count: 1 },
+  };
+
+  it("passes for a well-formed value (optional field absent)", () => {
+    expect(() => assertShape(validValue, "/ui/x", fields)).not.toThrow();
+  });
+
+  it("passes when an optional field is present with the right type", () => {
+    const value = { ...validValue, summary: { ...validValue.summary, note: "ok" } };
+    expect(() => assertShape(value, "/ui/x", fields)).not.toThrow();
+  });
+
+  it("throws on a missing required field, naming the dotted path", () => {
+    const { rows: _rows, ...withoutRows } = validValue;
+    expect(() => assertShape(withoutRows, "/ui/x", fields)).toThrow(
+      "Invalid ApiEnvelope from /ui/x: missing `rows`",
+    );
+  });
+
+  it("throws on a missing required nested field", () => {
+    const value = { ...validValue, summary: { pnl_row_count: 1 } };
+    expect(() => assertShape(value, "/ui/x", fields)).toThrow(
+      "Invalid ApiEnvelope from /ui/x: missing `summary.total_pnl`",
+    );
+  });
+
+  it("throws on a null required field", () => {
+    const value = { ...validValue, report_date: null };
+    expect(() => assertShape(value, "/ui/x", fields)).toThrow(
+      "Invalid ApiEnvelope from /ui/x: `report_date` is null, expected string",
+    );
+  });
+
+  it("does not throw when an optional field is null", () => {
+    const value = { ...validValue, summary: { ...validValue.summary, note: null } };
+    expect(() => assertShape(value, "/ui/x", fields)).not.toThrow();
+  });
+
+  it("throws on a wrong-typed field (amount serialized as number instead of string)", () => {
+    const value = { ...validValue, summary: { ...validValue.summary, total_pnl: 100 } };
+    expect(() => assertShape(value, "/ui/x", fields)).toThrow(
+      "Invalid ApiEnvelope from /ui/x: `summary.total_pnl` is a number, expected string",
+    );
+  });
+
+  it("throws on a wrong-typed array field", () => {
+    const value = { ...validValue, rows: "not-an-array" };
+    expect(() => assertShape(value, "/ui/x", fields)).toThrow(
+      "Invalid ApiEnvelope from /ui/x: `rows` is a string, expected array",
+    );
+  });
+
+  it("supports a path prefix for error messages (used by assertApiEnvelopeShape)", () => {
+    const { rows: _rows, ...withoutRows } = validValue;
+    expect(() => assertShape(withoutRows, "/ui/x", fields, "result.")).toThrow(
+      "Invalid ApiEnvelope from /ui/x: missing `result.rows`",
+    );
+  });
+});
+
+describe("assertApiEnvelopeShape with resultFields", () => {
+  const resultFields: ShapeFieldSpec[] = [
+    { path: "total_pnl", type: "string" },
+    { path: "as_of", type: "string" },
+  ];
+
+  it("passes shell + field checks together", () => {
+    const payload = {
+      result_meta: { ...fullResultMeta, as_of_date: "2026-06-30" },
+      result: { total_pnl: "100.00", as_of: "2026-06-30" },
+    };
+    expect(() => assertApiEnvelopeShape(payload, "/ui/x", resultFields)).not.toThrow();
+  });
+
+  it("keeps shell-only behavior when resultFields is omitted (backward compatible)", () => {
+    const payload = {
+      result_meta: fullResultMeta,
+      result: { unrelated: true },
+    };
+    expect(() => assertApiEnvelopeShape(payload, "/ui/x")).not.toThrow();
+  });
+
+  it("fails with a `result.`-prefixed path when a key field is missing", () => {
+    const payload = {
+      result_meta: fullResultMeta,
+      result: { total_pnl: "100.00" },
+    };
+    expect(() => assertApiEnvelopeShape(payload, "/ui/x", resultFields)).toThrow(
+      "Invalid ApiEnvelope from /ui/x: missing `result.as_of`",
+    );
+  });
+});
+
 describe("requestJson (transport)", () => {
   it("returns a valid envelope and sends Accept + abort signal", async () => {
     const envelope = { result_meta: fullResultMeta, result: { value: 1 } };
@@ -170,6 +278,73 @@ describe("requestJson (transport)", () => {
     ).resolves.toEqual(envelope);
   });
 
+  it("keeps caller cancellation active while reading the JSON body", async () => {
+    const controller = new AbortController();
+    const reason = new Error("superseded balance request");
+    let bodyStarted = () => {};
+    const reading = new Promise<void>((resolve) => { bodyStarted = resolve; });
+    let resolveBody!: (value: unknown) => void;
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      json: () => new Promise((resolve) => {
+        resolveBody = resolve;
+        bodyStarted();
+      }),
+    })) as unknown as typeof fetch;
+
+    const request = requestJson(fetchImpl, "", "/ui/balance", { signal: controller.signal });
+    await reading;
+    controller.abort(reason);
+    resolveBody({ invalid: true });
+
+    await expect(request).rejects.toBe(reason);
+  });
+
+  it("cancels a fetch that ignores AbortSignal", async () => {
+    const controller = new AbortController();
+    const reason = new Error("balance date changed");
+    const fetchImpl = vi.fn(() => new Promise<Response>(() => {})) as unknown as typeof fetch;
+
+    const request = requestPlainJson(fetchImpl, "", "/ui/balance", {
+      signal: controller.signal,
+    });
+    controller.abort(reason);
+
+    await expect(request).rejects.toBe(reason);
+  });
+
+  it.each([requestJson, requestPlainJson])(
+    "times out when the response JSON body never finishes",
+    async (read) => {
+      vi.useFakeTimers();
+      try {
+        const fetchImpl = vi.fn(async () => ({
+          ok: true,
+          json: () => new Promise<never>(() => {}),
+        })) as unknown as typeof fetch;
+        const request = read(fetchImpl, "", "/ui/slow-body", { timeoutMs: 100 });
+        const outcome = expect(request).rejects.toThrow("Request timed out: /ui/slow-body");
+
+        await vi.advanceTimersByTimeAsync(100);
+        await outcome;
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("does not dispatch a request with an already aborted caller signal", async () => {
+    const controller = new AbortController();
+    const reason = new Error("balance date changed");
+    controller.abort(reason);
+    const fetchImpl = vi.fn() as unknown as typeof fetch;
+
+    await expect(requestJson(fetchImpl, "", "/ui/balance", {
+      signal: controller.signal,
+    })).rejects.toBe(reason);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("aborts with a timeout error when a custom timeoutMs elapses", async () => {
     vi.useFakeTimers();
     try {
@@ -191,6 +366,39 @@ describe("requestJson (transport)", () => {
       vi.useRealTimers();
     }
   });
+
+  it("accepts a well-formed payload when keyFields is supplied", async () => {
+    const envelope = {
+      result_meta: fullResultMeta,
+      result: { total_pnl: "100.00", as_of: "2026-06-30" },
+    };
+    const fetchImpl = vi.fn(async () => okJsonResponse(envelope)) as unknown as typeof fetch;
+
+    await expect(
+      requestJson(fetchImpl, "", "/ui/pnl", {
+        keyFields: [
+          { path: "total_pnl", type: "string" },
+          { path: "as_of", type: "string" },
+        ],
+      }),
+    ).resolves.toEqual(envelope);
+  });
+
+  it("rejects a payload missing a keyFields-declared business field", async () => {
+    const envelope = { result_meta: fullResultMeta, result: { total_pnl: "100.00" } };
+    const fetchImpl = vi.fn(async () => okJsonResponse(envelope)) as unknown as typeof fetch;
+
+    await expect(
+      requestJson(fetchImpl, "http://localhost:8000", "/ui/pnl", {
+        keyFields: [
+          { path: "total_pnl", type: "string" },
+          { path: "as_of", type: "string" },
+        ],
+      }),
+    ).rejects.toThrow(
+      "Invalid ApiEnvelope from http://localhost:8000/ui/pnl: missing `result.as_of`",
+    );
+  });
 });
 
 describe("requestPlainJson (transport)", () => {
@@ -202,6 +410,42 @@ describe("requestPlainJson (transport)", () => {
     await expect(requestPlainJson(fetchImpl, "", "/health/live")).resolves.toEqual({
       status: "ok",
     });
+  });
+
+  it("forwards the caller signal when no timeout is requested", async () => {
+    const controller = new AbortController();
+    const fetchImpl = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.signal).toBe(controller.signal);
+      return okJsonResponse({ status: "ok" });
+    }) as unknown as typeof fetch;
+
+    await expect(requestPlainJson(fetchImpl, "", "/health/live", {
+      timeoutMs: null,
+      signal: controller.signal,
+    })).resolves.toEqual({ status: "ok" });
+  });
+
+  it("cancels a stalled body without a deadline even when it ignores the signal", async () => {
+    const controller = new AbortController();
+    const reason = new Error("balance panel left");
+    let bodyStarted = () => {};
+    const reading = new Promise<void>((resolve) => { bodyStarted = resolve; });
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      json: () => {
+        bodyStarted();
+        return new Promise<never>(() => {});
+      },
+    })) as unknown as typeof fetch;
+
+    const request = requestPlainJson(fetchImpl, "", "/ui/balance", {
+      timeoutMs: null,
+      signal: controller.signal,
+    });
+    await reading;
+    controller.abort(reason);
+
+    await expect(request).rejects.toBe(reason);
   });
 
   it("keeps status-only error messages by default even without a JSON body", async () => {

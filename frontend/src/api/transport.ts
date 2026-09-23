@@ -30,8 +30,16 @@ export type TransportErrorDetailMode = "status-only" | "json-detail";
 export type TransportRequestOptions = {
   /** Milliseconds before aborting. `null` disables the timeout entirely. */
   timeoutMs?: number | null;
+  /** Optional caller cancellation signal, including during response reading. */
+  signal?: AbortSignal;
   /** How failed (non-2xx) responses are turned into error messages. */
   errorDetail?: TransportErrorDetailMode;
+  /**
+   * Optional business-critical field descriptors checked against `result`
+   * (see `ShapeFieldSpec` / `assertShape`). Omit to keep the historical
+   * shell-only envelope check.
+   */
+  keyFields?: ShapeFieldSpec[];
 };
 
 export class ActionRequestError extends Error {
@@ -160,10 +168,15 @@ function describePayloadBriefly(value: unknown): string {
  * a plain object, and `basis` / `as_of_date` are type-checked only when
  * present (`as_of_date` is optional and nullable in the contract).
  * Field-level numeric validation stays with `src/api/numeric.ts` guards.
+ *
+ * `resultFields` is an optional escape hatch to also check a handful of
+ * business-critical fields inside `result` (see `assertShape`). Passing
+ * nothing keeps the historical shell-only behavior.
  */
 export function assertApiEnvelopeShape(
   payload: unknown,
   url: string,
+  resultFields?: ShapeFieldSpec[],
 ): asserts payload is ApiEnvelope<unknown> {
   const fail = (reason: string): never => {
     throw new Error(`Invalid ApiEnvelope from ${url}: ${reason}`);
@@ -190,39 +203,170 @@ export function assertApiEnvelopeShape(
   if (asOfDate !== undefined && asOfDate !== null && typeof asOfDate !== "string") {
     fail("`result_meta.as_of_date` must be a string or null when present");
   }
+  if (resultFields?.length) {
+    assertShape(envelope.result, url, resultFields, "result.");
+  }
+}
+
+/** Primitive types `assertShape` can check via `typeof`/`Array.isArray`. */
+export type ShapeFieldType = "string" | "number" | "boolean" | "object" | "array";
+
+/**
+ * Descriptor for one business-critical field checked by `assertShape`.
+ * `path` is a dot-separated path relative to the object being checked
+ * (e.g. `"summary.total_pnl"`). Nested array elements are not walked —
+ * this is a shallow presence + `typeof` check, not a schema validator.
+ */
+export type ShapeFieldSpec = {
+  path: string;
+  type: ShapeFieldType;
+  /** Field may be absent, `undefined`, or `null` without failing validation. */
+  optional?: boolean;
+};
+
+function resolveShapePath(value: unknown, path: string): { found: boolean; value: unknown } {
+  let current: unknown = value;
+  for (const segment of path.split(".")) {
+    if (current === null || typeof current !== "object" || Array.isArray(current)) {
+      return { found: false, value: undefined };
+    }
+    const record = current as Record<string, unknown>;
+    if (!(segment in record)) {
+      return { found: false, value: undefined };
+    }
+    current = record[segment];
+  }
+  return { found: true, value: current };
+}
+
+function matchesShapeType(value: unknown, type: ShapeFieldType): boolean {
+  switch (type) {
+    case "string":
+      return typeof value === "string";
+    case "number":
+      return typeof value === "number";
+    case "boolean":
+      return typeof value === "boolean";
+    case "array":
+      return Array.isArray(value);
+    case "object":
+      return value !== null && typeof value === "object" && !Array.isArray(value);
+    default:
+      return false;
+  }
 }
 
 /**
- * Fetch with an optional AbortController timeout. Mirrors the historical
- * `client.ts` behavior: only the fetch itself is covered by the timeout and
- * an abort surfaces as `Request timed out: <path>`.
+ * Minimal runtime "does this look right" check: field existence + `typeof`.
+ * No external schema library — deliberately not a full validator (no unions,
+ * enums, or array-element checks). Intended for a short list of
+ * business-critical fields (amounts, dates, status enums) so a backend
+ * rename/removal fails loudly at the API boundary instead of surfacing as a
+ * page-level `undefined`/`NaN` later.
+ *
+ * Throws the same `Invalid ApiEnvelope from <url>: ...` shape as
+ * `assertApiEnvelopeShape` so callers keep a single contract-error channel.
  */
-async function fetchWithOptionalTimeout(
+export function assertShape(
+  value: unknown,
+  url: string,
+  fields: ShapeFieldSpec[],
+  pathPrefix = "",
+): void {
+  for (const field of fields) {
+    const { found, value: fieldValue } = resolveShapePath(value, field.path);
+    const labeledPath = `${pathPrefix}${field.path}`;
+    if (!found || fieldValue === undefined) {
+      if (field.optional) continue;
+      throw new Error(`Invalid ApiEnvelope from ${url}: missing \`${labeledPath}\``);
+    }
+    if (fieldValue === null) {
+      if (field.optional) continue;
+      throw new Error(
+        `Invalid ApiEnvelope from ${url}: \`${labeledPath}\` is null, expected ${field.type}`,
+      );
+    }
+    if (!matchesShapeType(fieldValue, field.type)) {
+      throw new Error(
+        `Invalid ApiEnvelope from ${url}: \`${labeledPath}\` is ${describePayloadBriefly(fieldValue)}, expected ${field.type}`,
+      );
+    }
+  }
+}
+
+/** Keep cancellation and the deadline active until the response is consumed. */
+export async function fetchWithOptionalTimeout<T>(
   fetchImpl: FetchLike,
   url: string,
   init: RequestInit,
   timeoutMs: number | null,
   path: string,
-): Promise<Response> {
+  consumeResponse: (response: Response) => Promise<T>,
+): Promise<T> {
+  const callerSignal = init.signal;
+  if (callerSignal?.aborted) {
+    throw callerSignal.reason;
+  }
   if (timeoutMs === null) {
-    return fetchImpl(url, init);
+    if (!callerSignal) {
+      return consumeResponse(await fetchImpl(url, init));
+    }
+    let rejectOnAbort!: () => void;
+    const aborted = new Promise<never>((_resolve, reject) => {
+      rejectOnAbort = () => reject(callerSignal.reason);
+      callerSignal.addEventListener("abort", rejectOnAbort, { once: true });
+    });
+    try {
+      return await Promise.race([
+        aborted,
+        (async () => {
+          const response = await fetchImpl(url, init);
+          callerSignal.throwIfAborted();
+          return consumeResponse(response);
+        })(),
+      ]);
+    } finally {
+      callerSignal.removeEventListener("abort", rejectOnAbort);
+    }
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetchImpl(url, { ...init, signal: controller.signal });
-  } catch (error) {
-    const errorName =
-      typeof error === "object" && error !== null && "name" in error
-        ? (error as { name?: unknown }).name
-        : undefined;
-    if (errorName === "AbortError") {
-      throw new Error(`Request timed out: ${path}`);
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let rejectOnAbort!: () => void;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    rejectOnAbort = () => reject(controller.signal.reason);
+    controller.signal.addEventListener("abort", rejectOnAbort, { once: true });
+  });
+  const abortForCaller = () => {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
     }
-    throw error;
+    controller.abort(callerSignal?.reason);
+  };
+  if (callerSignal) {
+    callerSignal.addEventListener("abort", abortForCaller, { once: true });
+    if (callerSignal.aborted) {
+      abortForCaller();
+    }
+  }
+  timeoutId = setTimeout(() => {
+    controller.abort(new Error(`Request timed out: ${path}`));
+  }, timeoutMs);
+  try {
+    return await Promise.race([
+      aborted,
+      (async () => {
+        const response = await fetchImpl(url, { ...init, signal: controller.signal });
+        controller.signal.throwIfAborted();
+        return consumeResponse(response);
+      })(),
+    ]);
   } finally {
-    clearTimeout(timeoutId);
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+    callerSignal?.removeEventListener("abort", abortForCaller);
+    controller.signal.removeEventListener("abort", rejectOnAbort);
   }
 }
 
@@ -250,21 +394,21 @@ export async function requestJson<T>(
   options?: TransportRequestOptions,
 ): Promise<ApiEnvelope<T>> {
   const timeoutMs = options?.timeoutMs === undefined ? DEFAULT_REQUEST_JSON_TIMEOUT_MS : options.timeoutMs;
-  const response = await fetchWithOptionalTimeout(
+  return fetchWithOptionalTimeout(
     fetchImpl,
     `${baseUrl}${path}`,
-    { headers: { Accept: "application/json" } },
+    { headers: { Accept: "application/json" }, signal: options?.signal },
     timeoutMs,
     path,
+    async (response) => {
+      if (!response.ok) {
+        await throwFailedResponse(response, path, options?.errorDetail ?? "status-only");
+      }
+      const payload: unknown = await response.json();
+      assertApiEnvelopeShape(payload, `${baseUrl}${path}`, options?.keyFields);
+      return payload as ApiEnvelope<T>;
+    },
   );
-
-  if (!response.ok) {
-    await throwFailedResponse(response, path, options?.errorDetail ?? "status-only");
-  }
-
-  const payload: unknown = await response.json();
-  assertApiEnvelopeShape(payload, `${baseUrl}${path}`);
-  return payload as ApiEnvelope<T>;
 }
 
 /** GET a plain (non-envelope) JSON response, e.g. health probes or ledgers. */
@@ -275,19 +419,19 @@ export async function requestPlainJson<T>(
   options?: TransportRequestOptions,
 ): Promise<T> {
   const timeoutMs = options?.timeoutMs === undefined ? DEFAULT_REQUEST_JSON_TIMEOUT_MS : options.timeoutMs;
-  const response = await fetchWithOptionalTimeout(
+  return fetchWithOptionalTimeout(
     fetchImpl,
     `${baseUrl}${path}`,
-    { headers: { Accept: "application/json" } },
+    { headers: { Accept: "application/json" }, signal: options?.signal },
     timeoutMs,
     path,
+    async (response) => {
+      if (!response.ok) {
+        await throwFailedResponse(response, path, options?.errorDetail ?? "status-only");
+      }
+      return (await response.json()) as T;
+    },
   );
-
-  if (!response.ok) {
-    await throwFailedResponse(response, path, options?.errorDetail ?? "status-only");
-  }
-
-  return (await response.json()) as T;
 }
 
 /**

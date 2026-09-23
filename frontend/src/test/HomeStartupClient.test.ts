@@ -1,18 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createDeferredApiClient } from "../api/clientContext";
+import { createMockBalanceMovementClient } from "../api/balanceMovementMockClient";
 import { formatRawAsNumeric } from "../utils/format";
 
 describe("home startup deferred client", () => {
   it("routes portfolio startup reads through the lightweight home clients", async () => {
     const requestedUrls: string[] = [];
+    const movementClient = createMockBalanceMovementClient();
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       requestedUrls.push(String(input));
+      const payload = String(input).includes("/balance-movement-analysis/dates?")
+        ? await movementClient.getBalanceMovementDates("CNX")
+        : String(input).includes("/balance-movement-analysis?")
+          ? await movementClient.getBalanceMovementAnalysis({ reportDate: "2026-04-30" })
+          : { result_meta: { basis: "formal" }, result: {} };
       return new Response(
-        JSON.stringify({
-          result_meta: { basis: "formal" },
-          result: {},
-        }),
+        JSON.stringify(payload),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }) as unknown as typeof fetch;

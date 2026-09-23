@@ -476,6 +476,7 @@ describe("BalanceMovementAnalysisPage", () => {
       expect(getMovementSpy).toHaveBeenCalledWith({
         reportDate: "2026-01-31",
         currencyBasis: "CNX",
+        signal: expect.any(AbortSignal),
       });
     });
   });
@@ -509,7 +510,7 @@ describe("BalanceMovementAnalysisPage", () => {
 
     await screen.findByTestId("balance-movement-analysis-table");
 
-    expect(datesSpy).toHaveBeenCalledWith("CNX");
+    expect(datesSpy).toHaveBeenCalledWith("CNX", { signal: expect.any(AbortSignal) });
     expect(movementSpy).toHaveBeenCalledWith(
       expect.objectContaining({ currencyBasis: "CNX" }),
     );
@@ -610,6 +611,7 @@ describe("BalanceMovementAnalysisPage", () => {
       expect(movementSpy).toHaveBeenCalledWith({
         reportDate: "2026-04-30",
         currencyBasis: "CNX",
+        signal: expect.any(AbortSignal),
       });
     });
     await user.click(screen.getByTestId("balance-movement-analysis-refresh"));
@@ -621,6 +623,7 @@ describe("BalanceMovementAnalysisPage", () => {
       expect(movementSpy).toHaveBeenCalledWith({
         reportDate: "2026-05-31",
         currencyBasis: "CNX",
+        signal: expect.any(AbortSignal),
       });
     });
     await waitFor(() => {

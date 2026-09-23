@@ -568,9 +568,9 @@ export function createRealHomeSupplementalClient({
         `/ui/balance-analysis/advanced-attribution?${params.toString()}`,
       );
     },
-    getBalanceMovementDates: (currencyBasis) =>
+    getBalanceMovementDates: (currencyBasis, options) =>
       loadBalanceMovementClient().then((client) =>
-        client.getBalanceMovementDates(currencyBasis),
+        client.getBalanceMovementDates(currencyBasis, options),
       ),
     getBalanceMovementAnalysis: (options) =>
       loadBalanceMovementClient().then((client) =>
