@@ -71,6 +71,7 @@ def _source(tmp_path: Path, source: str, row: int = 2, message: str = "Incompati
 
 def _identity_baseline(checker, tmp_path: Path, diagnostics):
     counts = dict(checker.Counter(item.path for item in diagnostics))
+    source_hashes = [[path, "1" * 64] for path in sorted(counts)]
     config, lock = tmp_path / "backend/pyproject.toml", tmp_path / "backend/uv.lock"
     if not config.exists():
         config.write_text("[tool.mypy]\npython_version='3.11'\n", encoding="utf-8")
@@ -101,7 +102,8 @@ def _identity_baseline(checker, tmp_path: Path, diagnostics):
                 },
                 "command": ["fixture-mypy"],
                 "captured_at": "2026-08-15T12:32:14Z",
-                "sources_sha256": {path: "1" * 64 for path in counts},
+                "sources_sha256": source_hashes,
+                "sources_manifest_sha256": checker._source_manifest_digest(source_hashes),
             },
         },
         "files": counts,
@@ -110,6 +112,46 @@ def _identity_baseline(checker, tmp_path: Path, diagnostics):
     path = tmp_path / "baseline.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
+
+
+def test_real_baseline_retains_separate_paths_and_all_source_hashes():
+    checker = _checker()
+    baseline = json.loads((ROOT / "scripts/mypy_baseline.json").read_text(encoding="utf-8"))
+    sources = baseline["_meta"]["origin"]["sources_sha256"]
+
+    assert isinstance(sources, list)
+    assert len(sources) == 971
+    assert len({path for path, _ in sources}) == 971
+    checker.load_baseline()
+
+
+@pytest.mark.parametrize("corruption", ["hash", "path", "duplicate", "traversal"])
+def test_source_hash_manifest_tampering_fails_before_mypy(tmp_path, monkeypatch, corruption):
+    checker = _checker()
+    diagnostics = checker.build_diagnostics(_source(tmp_path, "def run():\n    return value\n"), tmp_path)
+    baseline_path = _identity_baseline(checker, tmp_path, diagnostics)
+    data = json.loads(baseline_path.read_text(encoding="utf-8"))
+    origin = data["_meta"]["origin"]
+    sources = origin["sources_sha256"]
+    if corruption == "hash":
+        sources[0][1] = "2" * 64
+    elif corruption == "path":
+        sources[0][0] = "backend/app/renamed.py"
+        origin["sources_manifest_sha256"] = checker._source_manifest_digest(sources)
+    elif corruption == "duplicate":
+        sources.append(list(sources[0]))
+        origin["sources_manifest_sha256"] = checker._source_manifest_digest(sources)
+    else:
+        sources[0][0] = "backend/../outside.py"
+        origin["sources_manifest_sha256"] = checker._source_manifest_digest(sources)
+    baseline_path.write_text(json.dumps(data), encoding="utf-8")
+    original = baseline_path.read_bytes()
+    monkeypatch.setattr(checker, "BASELINE_PATH", baseline_path)
+    monkeypatch.setattr(checker, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(checker, "run_mypy", lambda: pytest.fail("invalid source manifest must fail before mypy"))
+
+    assert checker.main(["--update-baseline"]) == 2
+    assert baseline_path.read_bytes() == original
 
 
 def _run_identity_gate(checker, monkeypatch, root, baseline_path, lines, *, update=False):
@@ -336,6 +378,12 @@ def test_migration_only_freezes_registered_historical_counts(tmp_path, monkeypat
     assert payload["_meta"]["origin"]["git_commit"] == commit
     assert payload["_meta"]["origin"]["legacy_baseline_sha256"] == checker._digest(original)
     assert payload["_meta"]["origin"]["stdout_sha256"] == checker._digest(stdout.read_bytes())
+    assert payload["_meta"]["origin"]["sources_sha256"] == [
+        ["backend/app/example.py", checker._digest((historical / "backend/app/example.py").read_bytes())]
+    ]
+    assert payload["_meta"]["origin"]["sources_manifest_sha256"] == checker._source_manifest_digest(
+        payload["_meta"]["origin"]["sources_sha256"]
+    )
     assert checker.BASELINE_PATH.read_bytes() == original
 
 

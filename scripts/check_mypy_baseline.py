@@ -372,7 +372,11 @@ def compare_diagnostics(
     )
 
 
-def _validate_provenance(meta: dict[str, Any]) -> None:
+def _source_manifest_digest(sources: list[list[str]]) -> str:
+    return _digest(json.dumps(sources, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+
+
+def _validate_provenance(meta: dict[str, Any]) -> set[str]:
     if (
         meta.get("python_version") != "3.11"
         or meta.get("mypy_version") != EXPECTED_MYPY_VERSION
@@ -410,11 +414,34 @@ def _validate_provenance(meta: dict[str, Any]) -> None:
     if not isinstance(origin.get("captured_at"), str) or not origin["captured_at"]:
         raise EvidenceError("baseline origin must retain its capture time")
     sources = origin.get("sources_sha256")
-    if not isinstance(sources, dict) or not all(
-        isinstance(path, str) and isinstance(value, str) and SHA256_RE.fullmatch(value)
-        for path, value in sources.items()
-    ):
+    if not isinstance(sources, list) or not sources:
         raise EvidenceError("baseline origin must retain diagnostic source hashes")
+    source_paths: list[str] = []
+    for entry in sources:
+        if not isinstance(entry, list) or len(entry) != 2:
+            raise EvidenceError("baseline source hash entry must be a path/hash pair")
+        path, value = entry
+        if not isinstance(path, str) or not isinstance(value, str) or not SHA256_RE.fullmatch(value):
+            raise EvidenceError("baseline source path or SHA-256 is invalid")
+        normalized = PurePosixPath(path)
+        if (
+            normalized.is_absolute()
+            or normalized.as_posix() != path
+            or ".." in normalized.parts
+            or ":" in path
+            or not path.startswith(("backend/", "scripts/"))
+        ):
+            raise EvidenceError(f"baseline source path is not normalized: {path}")
+        try:
+            (REPO_ROOT / path).resolve().relative_to(REPO_ROOT.resolve())
+        except ValueError as exc:
+            raise EvidenceError(f"baseline source resolves outside repository: {path}") from exc
+        source_paths.append(path)
+    if source_paths != sorted(set(source_paths)):
+        raise EvidenceError("baseline source paths must be unique and sorted")
+    if origin.get("sources_manifest_sha256") != _source_manifest_digest(sources):
+        raise EvidenceError("baseline source manifest checksum does not match its path/hash pairs")
+    return set(source_paths)
 
 
 def require_check_inputs(meta: dict[str, Any]) -> None:
@@ -441,7 +468,7 @@ def load_baseline(path: Path | None = None) -> tuple[dict[str, Any], list[Diagno
                 "--update-baseline cannot migrate or accept current errors."
             )
         raise EvidenceError("baseline diagnostic schema is missing or unsupported")
-    _validate_provenance(meta)
+    source_paths = _validate_provenance(meta)
     entries = data.get("diagnostics")
     if not isinstance(entries, list):
         raise EvidenceError("baseline diagnostics must be a list")
@@ -458,7 +485,7 @@ def load_baseline(path: Path | None = None) -> tuple[dict[str, Any], list[Diagno
             if not isinstance(getattr(item, key), str) or not getattr(item, key):
                 raise EvidenceError(f"diagnostic {key} must be non-empty text")
         _normalized_path(item.path, REPO_ROOT)
-        if item.path not in meta["origin"]["sources_sha256"]:
+        if item.path not in source_paths:
             raise EvidenceError(f"baseline has no historical source hash for {item.path}")
         if not all(SHA256_RE.fullmatch(value) for value in (item.statement_ast_sha256, item.control_flow_sha256)):
             raise EvidenceError("invalid statement or control-flow AST digest")
@@ -689,6 +716,7 @@ def build_legacy_migration(
         .stdout.decode("ascii")
         .strip()
     )
+    source_hashes = [[path, _digest(blobs[path])] for path in sorted(counts)]
     origin = {
         "kind": "historical_replay",
         "git_commit": source_commit,
@@ -701,7 +729,8 @@ def build_legacy_migration(
         "environment": environment,
         "command": command,
         "captured_at": datetime.fromtimestamp(stdout_path.stat().st_mtime, UTC).isoformat(),
-        "sources_sha256": {path: _digest(blobs[path]) for path in sorted(counts)},
+        "sources_sha256": source_hashes,
+        "sources_manifest_sha256": _source_manifest_digest(source_hashes),
     }
     return {
         "_meta": {

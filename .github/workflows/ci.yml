@@ -314,7 +314,7 @@ jobs:
 
   mypy-ratchet:
     name: Backend Mypy Ratchet
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     timeout-minutes: 15
 
     steps:
@@ -333,15 +333,12 @@ jobs:
           cache-dependency-glob: backend/uv.lock
 
       - name: Install backend dependencies from backend/uv.lock
-        run: |
-          uv sync --frozen --project backend --extra dev --python 3.11
-          echo "VIRTUAL_ENV=${GITHUB_WORKSPACE}/backend/.venv" >> "$GITHUB_ENV"
-          echo "${GITHUB_WORKSPACE}/backend/.venv/bin" >> "$GITHUB_PATH"
+        run: uv sync --frozen --project backend --extra dev --python 3.11
 
       # mypy 刻意不入 uv.lock：它钉在基线采集版本上，与运行时依赖面解耦。
       # uv sync 出来的 venv 不含 pip，故用 uv pip install 装进同一 venv。
       - name: Install mypy (pinned to baseline measurement version)
-        run: uv pip install --python "${GITHUB_WORKSPACE}/backend/.venv" "mypy==1.20.1"
+        run: uv pip install --python backend/.venv/Scripts/python.exe "mypy==1.20.1"
 
       - name: Cache mypy incremental state
         uses: actions/cache@v4
@@ -353,12 +350,12 @@ jobs:
 
       - name: Test mypy diagnostic gate
         run: >-
-          python -m pytest -q
+          .\backend\.venv\Scripts\python.exe -m pytest -q
           tests/test_check_mypy_baseline.py
           tests/test_mypy_import_boundary.py
 
       - name: Run mypy baseline ratchet
-        run: python scripts/check_mypy_baseline.py
+        run: .\backend\.venv\Scripts\python.exe scripts/check_mypy_baseline.py
 
   frontend:
     name: Frontend Tests
