@@ -47,6 +47,12 @@ MYPY_CONFIG = "backend/pyproject.toml"
 EXPECTED_MYPY_VERSION = "mypy 1.20.1"
 EXPECTED_PYTHON_VERSION = (3, 11)
 BASELINE_SCHEMA_VERSION = 2
+# Security dependency update 07fd8600 (AnyIO and SoupSieve). This pair records
+# the reviewed current check inputs; the historical replay hashes stay intact.
+REVIEWED_CURRENT_CHECK_INPUTS = (
+    "f135a22b1a07676eb0e8e1e2c36cdeb4a8702342681acb9eea343104d346b0dc",
+    "256fcf22aff6d4e3909914574b8725e50edf0e254e95f6c09813f3b2de343215",
+)
 # Keep the cache under .tmp/ (already gitignored) instead of ./.mypy_cache,
 # which is not covered by the repo .gitignore.
 DEFAULT_CACHE_DIR = REPO_ROOT / ".tmp" / "mypy_cache"
@@ -445,9 +451,12 @@ def _validate_provenance(meta: dict[str, Any]) -> set[str]:
 
 
 def require_check_inputs(meta: dict[str, Any]) -> None:
-    for path, key in ((MYPY_CONFIG, "config_sha256"), ("backend/uv.lock", "lock_sha256")):
-        if _digest((REPO_ROOT / path).read_bytes()) != meta["origin"][key]:
-            raise EvidenceError(f"verification input changed: {path}; a reviewed toolchain transition is required")
+    inputs = ((MYPY_CONFIG, "config_sha256"), ("backend/uv.lock", "lock_sha256"))
+    current = tuple(_digest((REPO_ROOT / path).read_bytes()) for path, _ in inputs)
+    historical = tuple(meta["origin"][key] for _, key in inputs)
+    if current not in (historical, REVIEWED_CURRENT_CHECK_INPUTS):
+        changed = ", ".join(path for (path, _), actual, old in zip(inputs, current, historical) if actual != old)
+        raise EvidenceError(f"verification inputs changed: {changed}; a reviewed toolchain transition is required")
 
 
 def load_baseline(path: Path | None = None) -> tuple[dict[str, Any], list[Diagnostic], bytes]:

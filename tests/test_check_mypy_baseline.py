@@ -426,6 +426,106 @@ def test_changed_verification_inputs_cannot_clear_baseline(tmp_path, monkeypatch
     assert baseline_path.read_bytes() == original
 
 
+def test_historical_verification_inputs_remain_accepted(tmp_path, monkeypatch):
+    checker = _checker()
+    diagnostics = checker.build_diagnostics(_source(tmp_path, "def run():\n    return value\n"), tmp_path)
+    baseline_path = _identity_baseline(checker, tmp_path, diagnostics)
+    monkeypatch.setattr(checker, "REPO_ROOT", tmp_path)
+
+    data, _, _ = checker.load_baseline(baseline_path)
+    checker.require_check_inputs(data["_meta"])
+
+
+def test_reviewed_security_inputs_do_not_rewrite_historical_origin():
+    checker = _checker()
+    data, _, original = checker.load_baseline()
+    origin = data["_meta"]["origin"]
+    assert origin["config_sha256"] != checker._digest((ROOT / "backend/pyproject.toml").read_bytes())
+    assert origin["lock_sha256"] != checker._digest((ROOT / "backend/uv.lock").read_bytes())
+
+    checker.require_check_inputs(data["_meta"])
+    assert checker.BASELINE_PATH.read_bytes() == original
+
+
+def _review_fixture_inputs(checker, tmp_path, monkeypatch):
+    config = tmp_path / "backend/pyproject.toml"
+    lock = tmp_path / "backend/uv.lock"
+    config.write_text("[tool.mypy]\npython_version = '3.11'\n", encoding="utf-8")
+    lock.write_text("version = 2\n", encoding="utf-8")
+    monkeypatch.setattr(
+        checker,
+        "REVIEWED_CURRENT_CHECK_INPUTS",
+        (checker._digest(config.read_bytes()), checker._digest(lock.read_bytes())),
+    )
+
+
+@pytest.mark.parametrize("changed_input", ["backend/pyproject.toml", "backend/uv.lock"])
+@pytest.mark.parametrize("phase", ["before", "after"])
+def test_reviewed_pair_rejects_unreviewed_change(tmp_path, monkeypatch, changed_input, phase):
+    checker = _checker()
+    lines = _source(tmp_path, "def run():\n    return value\n")
+    diagnostics = checker.build_diagnostics(lines, tmp_path)
+    baseline_path = _identity_baseline(checker, tmp_path, diagnostics)
+    original = baseline_path.read_bytes()
+    _review_fixture_inputs(checker, tmp_path, monkeypatch)
+    target = tmp_path / changed_input
+    monkeypatch.setattr(checker, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(checker, "BASELINE_PATH", baseline_path)
+    monkeypatch.setattr(checker, "require_tool_versions", lambda: None)
+
+    if phase == "before":
+        target.write_text("unreviewed input\n", encoding="utf-8")
+        monkeypatch.setattr(checker, "collect_current_errors", lambda: pytest.fail("mypy must not run"))
+    else:
+        def change_during_mypy():
+            target.write_text("unreviewed input\n", encoding="utf-8")
+            return ({"backend/app/example.py": 1}, lines)
+
+        monkeypatch.setattr(checker, "collect_current_errors", change_during_mypy)
+
+    assert checker.main([]) == 2
+    assert baseline_path.read_bytes() == original
+
+
+@pytest.mark.parametrize("reviewed_input", ["backend/pyproject.toml", "backend/uv.lock"])
+def test_historical_and_reviewed_inputs_cannot_mix(tmp_path, monkeypatch, reviewed_input):
+    checker = _checker()
+    lines = _source(tmp_path, "def run():\n    return value\n")
+    diagnostics = checker.build_diagnostics(lines, tmp_path)
+    baseline_path = _identity_baseline(checker, tmp_path, diagnostics)
+    original = baseline_path.read_bytes()
+    inputs = ("backend/pyproject.toml", "backend/uv.lock")
+    historical_bytes = {path: (tmp_path / path).read_bytes() for path in inputs}
+    historical = tuple(checker._digest(historical_bytes[path]) for path in inputs)
+    _review_fixture_inputs(checker, tmp_path, monkeypatch)
+    reviewed = checker.REVIEWED_CURRENT_CHECK_INPUTS
+    for path in inputs:
+        if path != reviewed_input:
+            (tmp_path / path).write_bytes(historical_bytes[path])
+    observed = tuple(checker._digest((tmp_path / path).read_bytes()) for path in inputs)
+    assert observed != historical and observed != reviewed
+    assert all(value in (historical[index], reviewed[index]) for index, value in enumerate(observed))
+
+    monkeypatch.setattr(checker, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(checker, "BASELINE_PATH", baseline_path)
+    monkeypatch.setattr(checker, "collect_current_errors", lambda: pytest.fail("mypy must not run"))
+    assert checker.main([]) == 2
+    assert baseline_path.read_bytes() == original
+
+
+def test_reviewed_pair_still_rejects_new_diagnostic(tmp_path, monkeypatch):
+    checker = _checker()
+    old = _source(tmp_path, "def run():\n    return old_value\n")
+    diagnostics = checker.build_diagnostics(old, tmp_path)
+    baseline_path = _identity_baseline(checker, tmp_path, diagnostics)
+    original = baseline_path.read_bytes()
+    _review_fixture_inputs(checker, tmp_path, monkeypatch)
+    new = _source(tmp_path, "def run():\n    return new_value\n")
+
+    assert _run_identity_gate(checker, monkeypatch, tmp_path, baseline_path, new) == 1
+    assert baseline_path.read_bytes() == original
+
+
 def test_error_in_another_control_flow_branch_cannot_replace_old_error(tmp_path):
     checker = _checker()
     path = tmp_path / "backend/app/example.py"
