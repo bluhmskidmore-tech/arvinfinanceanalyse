@@ -12478,6 +12478,670 @@
         "title": "PnlCompositionTrendItem",
         "type": "object"
       },
+      "ProductCategoryAttributionEffects": {
+        "additionalProperties": false,
+        "properties": {
+          "closure_error": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Closure Error",
+            "type": "string"
+          },
+          "day_effect": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Day Effect",
+            "type": "string"
+          },
+          "delta_business_net_income": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Delta Business Net Income",
+            "type": "string"
+          },
+          "direct_effect": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Direct Effect",
+            "type": "string"
+          },
+          "explained_effect": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Explained Effect",
+            "type": "string"
+          },
+          "ftp_effect": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Ftp Effect",
+            "type": "string"
+          },
+          "rate_effect": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Rate Effect",
+            "type": "string"
+          },
+          "scale_effect": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Scale Effect",
+            "type": "string"
+          },
+          "unexplained_effect": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Unexplained Effect",
+            "type": "string"
+          }
+        },
+        "required": [
+          "day_effect",
+          "scale_effect",
+          "rate_effect",
+          "ftp_effect",
+          "direct_effect",
+          "unexplained_effect",
+          "explained_effect",
+          "delta_business_net_income",
+          "closure_error"
+        ],
+        "title": "ProductCategoryAttributionEffects",
+        "type": "object"
+      },
+      "ProductCategoryAttributionEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "result": {
+            "$ref": "#/components/schemas/ProductCategoryAttributionPayload"
+          },
+          "result_meta": {
+            "additionalProperties": true,
+            "title": "Result Meta",
+            "type": "object"
+          }
+        },
+        "required": [
+          "result_meta",
+          "result"
+        ],
+        "title": "ProductCategoryAttributionEnvelope",
+        "type": "object"
+      },
+      "ProductCategoryAttributionHistoryEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "result": {
+            "$ref": "#/components/schemas/ProductCategoryAttributionHistoryPayload"
+          },
+          "result_meta": {
+            "additionalProperties": true,
+            "title": "Result Meta",
+            "type": "object"
+          }
+        },
+        "required": [
+          "result_meta",
+          "result"
+        ],
+        "title": "ProductCategoryAttributionHistoryEnvelope",
+        "type": "object"
+      },
+      "ProductCategoryAttributionHistoryItem": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "report_date": {
+            "title": "Report Date",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductCategoryAttributionPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result_meta": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Meta"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "not_found"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "report_date",
+          "status"
+        ],
+        "title": "ProductCategoryAttributionHistoryItem",
+        "type": "object"
+      },
+      "ProductCategoryAttributionHistoryPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "compare": {
+            "enum": [
+              "mom",
+              "yoy"
+            ],
+            "title": "Compare",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProductCategoryAttributionHistoryItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "compare",
+          "items"
+        ],
+        "title": "ProductCategoryAttributionHistoryPayload",
+        "type": "object"
+      },
+      "ProductCategoryAttributionPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "compare": {
+            "enum": [
+              "mom",
+              "yoy"
+            ],
+            "title": "Compare",
+            "type": "string"
+          },
+          "current_report_date": {
+            "title": "Current Report Date",
+            "type": "string"
+          },
+          "prior_report_date": {
+            "title": "Prior Report Date",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "report_date": {
+            "title": "Report Date",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ProductCategoryAttributionRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "complete",
+              "incomplete"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "totals": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductCategoryAttributionTotals"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "report_date",
+          "compare",
+          "current_report_date",
+          "prior_report_date",
+          "state",
+          "rows"
+        ],
+        "title": "ProductCategoryAttributionPayload",
+        "type": "object"
+      },
+      "ProductCategoryAttributionPoint": {
+        "additionalProperties": false,
+        "properties": {
+          "business_net_income": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Business Net Income",
+            "type": "string"
+          },
+          "cash": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cash",
+            "type": "string"
+          },
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "ftp": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Ftp",
+            "type": "string"
+          },
+          "report_date": {
+            "title": "Report Date",
+            "type": "string"
+          },
+          "scale": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Scale",
+            "type": "string"
+          },
+          "yield_pct": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Yield Pct"
+          }
+        },
+        "required": [
+          "report_date",
+          "days",
+          "scale",
+          "cash",
+          "ftp",
+          "business_net_income"
+        ],
+        "title": "ProductCategoryAttributionPoint",
+        "type": "object"
+      },
+      "ProductCategoryAttributionRow": {
+        "additionalProperties": false,
+        "properties": {
+          "category_id": {
+            "title": "Category Id",
+            "type": "string"
+          },
+          "category_name": {
+            "title": "Category Name",
+            "type": "string"
+          },
+          "current": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductCategoryAttributionPoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "effects": {
+            "$ref": "#/components/schemas/ProductCategoryAttributionEffects"
+          },
+          "level": {
+            "title": "Level",
+            "type": "integer"
+          },
+          "prior": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductCategoryAttributionPoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "side": {
+            "title": "Side",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "complete",
+              "partial"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category_id",
+          "category_name",
+          "side",
+          "level",
+          "state",
+          "effects"
+        ],
+        "title": "ProductCategoryAttributionRow",
+        "type": "object"
+      },
+      "ProductCategoryAttributionTotals": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_total": {
+            "$ref": "#/components/schemas/ProductCategoryAttributionRow"
+          },
+          "grand_total": {
+            "$ref": "#/components/schemas/ProductCategoryAttributionRow"
+          },
+          "liability_total": {
+            "$ref": "#/components/schemas/ProductCategoryAttributionRow"
+          }
+        },
+        "required": [
+          "asset_total",
+          "liability_total",
+          "grand_total"
+        ],
+        "title": "ProductCategoryAttributionTotals",
+        "type": "object"
+      },
+      "ProductCategoryDatesEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "result": {
+            "$ref": "#/components/schemas/ProductCategoryDatesPayload"
+          },
+          "result_meta": {
+            "additionalProperties": true,
+            "title": "Result Meta",
+            "type": "object"
+          }
+        },
+        "required": [
+          "result_meta",
+          "result"
+        ],
+        "title": "ProductCategoryDatesEnvelope",
+        "type": "object"
+      },
+      "ProductCategoryDatesPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "report_dates": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Report Dates",
+            "type": "array"
+          }
+        },
+        "required": [
+          "report_dates"
+        ],
+        "title": "ProductCategoryDatesPayload",
+        "type": "object"
+      },
+      "ProductCategoryHistoryEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "result": {
+            "$ref": "#/components/schemas/ProductCategoryHistoryPayload"
+          },
+          "result_meta": {
+            "additionalProperties": true,
+            "title": "Result Meta",
+            "type": "object"
+          }
+        },
+        "required": [
+          "result_meta",
+          "result"
+        ],
+        "title": "ProductCategoryHistoryEnvelope",
+        "type": "object"
+      },
+      "ProductCategoryHistoryItem": {
+        "additionalProperties": false,
+        "description": "One report date inside a batch history response.\n\nA missing report date degrades to status='not_found' for that item only, so a\npartially materialized history still returns the periods that do exist.",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "report_date": {
+            "title": "Report Date",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductCategoryPnlPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result_meta": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Meta"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "not_found"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "report_date",
+          "status"
+        ],
+        "title": "ProductCategoryHistoryItem",
+        "type": "object"
+      },
+      "ProductCategoryHistoryPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProductCategoryHistoryItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "scenario_rate_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Rate Pct"
+          },
+          "view": {
+            "title": "View",
+            "type": "string"
+          }
+        },
+        "required": [
+          "view",
+          "items"
+        ],
+        "title": "ProductCategoryHistoryPayload",
+        "type": "object"
+      },
+      "ProductCategoryInterestSpreadPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "all_currency_asset_yield_pct": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductCategoryMetricValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "all_currency_liability_yield_pct": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductCategoryMetricValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "all_currency_spread_pct": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductCategoryMetricValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cny_asset_yield_pct": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductCategoryMetricValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cny_liability_yield_pct": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductCategoryMetricValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cny_spread_pct": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductCategoryMetricValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "ProductCategoryInterestSpreadPayload",
+        "type": "object"
+      },
+      "ProductCategoryLiabilityCostDecompositionPayload": {
+        "additionalProperties": false,
+        "description": "Liability cost rate split into an ex-CLN base and the drag CLN adds on top.\n\n`cln_scale` keeps the liability-side negative sign of the source `cnx_scale` so it\nstays reconcilable against the `credit_linked_notes` row; display layers are\nexpected to take the absolute value (e.g. render -1_934_725_622 as \"19.35 亿\").\nRate fields carry `unit=\"percent\"` and display at 2 decimals; `cln_drag_bp` carries\n`unit=\"bp\"` and displays at 1 decimal (lowercase, space-separated, e.g. \"1.4 bp\"),\nsince the percent rates it derives from only resolve to 1bp.\n\n`cln_drag_bp` is a difference of two rates scaled by 100, so it scales any upstream\nsub-1e-8 drift by 100 too: the persisted read model and the canonical recompute\nlegitimately disagree in `raw` around the 7th decimal while publishing an identical\n`display`. Compare this field across paths via `display` or a 1e-6 tolerance; do not\nassert strict `raw` equality.",
+        "properties": {
+          "cln_drag_bp": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductCategoryMetricValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cln_scale": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cln Scale"
+          },
+          "cln_yield_pct": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductCategoryMetricValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "liability_yield_ex_cln_pct": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductCategoryMetricValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "liability_yield_pct": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductCategoryMetricValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "ProductCategoryLiabilityCostDecompositionPayload",
+        "type": "object"
+      },
       "ProductCategoryManualAdjustmentCreateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -12734,6 +13398,487 @@
           "currency"
         ],
         "title": "ProductCategoryManualAdjustmentUpdateRequest",
+        "type": "object"
+      },
+      "ProductCategoryMetricValue": {
+        "additionalProperties": false,
+        "properties": {
+          "display": {
+            "title": "Display",
+            "type": "string"
+          },
+          "raw": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Raw",
+            "type": "string"
+          },
+          "unit": {
+            "default": "percent",
+            "enum": [
+              "percent",
+              "bp"
+            ],
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "raw",
+          "display"
+        ],
+        "title": "ProductCategoryMetricValue",
+        "type": "object"
+      },
+      "ProductCategoryPnlEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "result": {
+            "$ref": "#/components/schemas/ProductCategoryPnlPayload"
+          },
+          "result_meta": {
+            "additionalProperties": true,
+            "title": "Result Meta",
+            "type": "object"
+          }
+        },
+        "required": [
+          "result_meta",
+          "result"
+        ],
+        "title": "ProductCategoryPnlEnvelope",
+        "type": "object"
+      },
+      "ProductCategoryPnlPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_total": {
+            "$ref": "#/components/schemas/ProductCategoryPnlRow"
+          },
+          "available_views": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Available Views",
+            "type": "array"
+          },
+          "grand_total": {
+            "$ref": "#/components/schemas/ProductCategoryPnlRow"
+          },
+          "interest_earning_spread": {
+            "$ref": "#/components/schemas/ProductCategoryInterestSpreadPayload"
+          },
+          "interest_spread": {
+            "$ref": "#/components/schemas/ProductCategoryInterestSpreadPayload"
+          },
+          "liability_cost_decomposition": {
+            "$ref": "#/components/schemas/ProductCategoryLiabilityCostDecompositionPayload"
+          },
+          "liability_total": {
+            "$ref": "#/components/schemas/ProductCategoryPnlRow"
+          },
+          "report_date": {
+            "title": "Report Date",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ProductCategoryPnlRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "scenario_rate_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Rate Pct"
+          },
+          "view": {
+            "title": "View",
+            "type": "string"
+          }
+        },
+        "required": [
+          "report_date",
+          "view",
+          "available_views",
+          "rows",
+          "asset_total",
+          "liability_total",
+          "grand_total"
+        ],
+        "title": "ProductCategoryPnlPayload",
+        "type": "object"
+      },
+      "ProductCategoryPnlRow": {
+        "additionalProperties": false,
+        "properties": {
+          "baseline_ftp_rate_pct": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Baseline Ftp Rate Pct",
+            "type": "string"
+          },
+          "business_net_income": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Business Net Income",
+            "type": "string"
+          },
+          "category_id": {
+            "title": "Category Id",
+            "type": "string"
+          },
+          "category_name": {
+            "title": "Category Name",
+            "type": "string"
+          },
+          "children": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Children",
+            "type": "array"
+          },
+          "cnx_cash": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cnx Cash",
+            "type": "string"
+          },
+          "cnx_scale": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cnx Scale",
+            "type": "string"
+          },
+          "cny_cash": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cny Cash",
+            "type": "string"
+          },
+          "cny_ftp": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cny Ftp",
+            "type": "string"
+          },
+          "cny_net": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cny Net",
+            "type": "string"
+          },
+          "cny_scale": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cny Scale",
+            "type": "string"
+          },
+          "foreign_cash": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Foreign Cash",
+            "type": "string"
+          },
+          "foreign_ftp": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Foreign Ftp",
+            "type": "string"
+          },
+          "foreign_net": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Foreign Net",
+            "type": "string"
+          },
+          "foreign_scale": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Foreign Scale",
+            "type": "string"
+          },
+          "is_total": {
+            "default": false,
+            "title": "Is Total",
+            "type": "boolean"
+          },
+          "level": {
+            "title": "Level",
+            "type": "integer"
+          },
+          "report_date": {
+            "title": "Report Date",
+            "type": "string"
+          },
+          "scenario_rate_pct": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Rate Pct"
+          },
+          "side": {
+            "title": "Side",
+            "type": "string"
+          },
+          "view": {
+            "title": "View",
+            "type": "string"
+          },
+          "weighted_yield": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weighted Yield"
+          }
+        },
+        "required": [
+          "category_id",
+          "category_name",
+          "side",
+          "level",
+          "view",
+          "report_date",
+          "baseline_ftp_rate_pct",
+          "cnx_scale",
+          "cny_scale",
+          "foreign_scale",
+          "cnx_cash",
+          "cny_cash",
+          "foreign_cash",
+          "cny_ftp",
+          "foreign_ftp",
+          "cny_net",
+          "foreign_net",
+          "business_net_income"
+        ],
+        "title": "ProductCategoryPnlRow",
+        "type": "object"
+      },
+      "ProductCategoryRefreshPayload": {
+        "additionalProperties": true,
+        "description": "Dispatch and polling receipts share the existing governed run fields.\n\nDispatch and sync fallback can omit fields that only persisted run records\ncarry. Routes exclude unset defaults and preserve additional receipt fields,\nso binding this contract never invents fields or drops governance evidence.",
+        "properties": {
+          "cache_key": {
+            "default": "",
+            "title": "Cache Key",
+            "type": "string"
+          },
+          "cache_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cache Version"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "failure_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Category"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          },
+          "idempotency_replay": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Replay"
+          },
+          "job_name": {
+            "title": "Job Name",
+            "type": "string"
+          },
+          "lock": {
+            "default": "",
+            "title": "Lock",
+            "type": "string"
+          },
+          "month_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Month Count"
+          },
+          "queued_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queued At"
+          },
+          "report_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Date"
+          },
+          "report_dates": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Dates"
+          },
+          "rule_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Version"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "source_version": {
+            "default": "",
+            "title": "Source Version",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "trigger_mode": {
+            "enum": [
+              "async",
+              "sync-fallback",
+              "terminal"
+            ],
+            "title": "Trigger Mode",
+            "type": "string"
+          },
+          "vendor_version": {
+            "default": "vv_none",
+            "title": "Vendor Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "job_name",
+          "status",
+          "trigger_mode"
+        ],
+        "title": "ProductCategoryRefreshPayload",
         "type": "object"
       },
       "QdbGlMonthlyAnalysisDatesEnvelope": {
@@ -36158,9 +37303,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Detail Ui Pnl Product Category Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProductCategoryPnlEnvelope"
                 }
               }
             },
@@ -36244,9 +37387,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Attribution Ui Pnl Product Category Attribution Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProductCategoryAttributionEnvelope"
                 }
               }
             },
@@ -36332,9 +37473,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Attribution History Ui Pnl Product Category Attribution History Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProductCategoryAttributionHistoryEnvelope"
                 }
               }
             },
@@ -36399,9 +37538,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Dates Ui Pnl Product Category Dates Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProductCategoryDatesEnvelope"
                 }
               }
             },
@@ -36503,9 +37640,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response History Ui Pnl Product Category History Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProductCategoryHistoryEnvelope"
                 }
               }
             },
@@ -37479,9 +38614,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Refresh Ui Pnl Product Category Refresh Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProductCategoryRefreshPayload"
                 }
               }
             },
@@ -37555,9 +38688,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Refresh Status Ui Pnl Product Category Refresh Status Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProductCategoryRefreshPayload"
                 }
               }
             },
