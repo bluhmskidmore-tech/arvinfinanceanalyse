@@ -217,24 +217,30 @@ function getApiClientMethodNames(): string[] {
 
 function createLazyDemoClient(methodNames: string[]): ApiClient {
   // Fresh composition per call so mutable demo state does not leak.
-  demoClientModulePromise ??= import("./mockApiClient");
-  const demoPromise = demoClientModulePromise.then(({ createMockApiClient }) => {
-    const composed = createMockApiClient(delay, ensureMockClientBundle);
-    if (!demoSurfaceAsserted && (import.meta.env.DEV || import.meta.env.MODE === "test")) {
-      demoSurfaceAsserted = true;
-      const keys = new Set(Object.keys(composed));
-      const missing = methodNames.filter((n) => n !== "mode" && !keys.has(n));
-      if (missing.length) throw new Error(`Demo ApiClient missing methods: ${missing.join(", ")}`);
+  let demoPromise: Promise<ApiClient> | null = null;
+  const loadDemo = () => {
+    if (demoPromise === null) {
+      demoClientModulePromise ??= import("./mockApiClient");
+      demoPromise = demoClientModulePromise.then(({ createMockApiClient }) => {
+        const composed = createMockApiClient(delay, ensureMockClientBundle);
+        if (!demoSurfaceAsserted && (import.meta.env.DEV || import.meta.env.MODE === "test")) {
+          demoSurfaceAsserted = true;
+          const keys = new Set(Object.keys(composed));
+          const missing = methodNames.filter((n) => n !== "mode" && !keys.has(n));
+          if (missing.length) throw new Error(`Demo ApiClient missing methods: ${missing.join(", ")}`);
+        }
+        return composed;
+      });
     }
-    return composed;
-  });
+    return demoPromise;
+  };
   // Plain object (not Proxy): spread / Object.keys / spies match eager client.
   const client: Record<string, unknown> = { mode: "mock" };
   for (const name of methodNames) {
     if (name === "mode") continue;
     // Classic function keeps call-site `this` for bundle assembly + overrides.
     client[name] = async function (this: unknown, ...args: unknown[]) {
-      const composed = await demoPromise;
+      const composed = await loadDemo();
       const value = composed[name as keyof ApiClient];
       if (typeof value !== "function") return value;
       return (value as (this: unknown, ...methodArgs: unknown[]) => unknown).call(
@@ -243,7 +249,7 @@ function createLazyDemoClient(methodNames: string[]): ApiClient {
       );
     };
   }
-  // 动态拼装面收窄为单跳；dev/test 启动断言（上方 missing 检查）保证方法面完整。
+  // 动态拼装面收窄为单跳；dev/test 首次调用断言（上方 missing 检查）保证方法面完整。
   return client as ApiClient;
 }
 
@@ -253,8 +259,6 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   const fetchImpl = options.fetchImpl ?? defaultFetch;
 
   if (mode === "mock") {
-    void ensureMockClientBundle();
-    demoClientModulePromise ??= import("./mockApiClient");
     return createLazyDemoClient(getApiClientMethodNames());
   }
 
