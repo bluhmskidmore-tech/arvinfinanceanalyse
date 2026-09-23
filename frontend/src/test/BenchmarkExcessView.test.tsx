@@ -89,7 +89,7 @@ describe("BenchmarkExcessView", () => {
 
   it("loads benchmark excess with KPI cards, decomposition, and excess_sources", async () => {
     const client = {
-      ...createApiClient({ mode: "mock" }),
+      ...createApiClient({ mode: "real" }),
       getBondAnalyticsBenchmarkExcess: vi.fn(async () => ({
         result_meta: createResultMeta(),
         result: createBenchmarkExcessResult(),
@@ -141,7 +141,7 @@ describe("BenchmarkExcessView", () => {
   it("changes benchmark_id in fetch params when Select option changes", async () => {
     const user = userEvent.setup();
     const client = {
-      ...createApiClient({ mode: "mock" }),
+      ...createApiClient({ mode: "real" }),
       getBondAnalyticsBenchmarkExcess: vi.fn(async () => ({
         result_meta: createResultMeta(),
         result: createBenchmarkExcessResult(),
@@ -177,7 +177,7 @@ describe("BenchmarkExcessView", () => {
 
   it("renders warning alert when warnings exist", async () => {
     const client = {
-      ...createApiClient({ mode: "mock" }),
+      ...createApiClient({ mode: "real" }),
       getBondAnalyticsBenchmarkExcess: vi.fn(async () => ({
         result_meta: createResultMeta(),
         result: createBenchmarkExcessResult({
@@ -199,7 +199,7 @@ describe("BenchmarkExcessView", () => {
 
   it("does not render optional risk metric cards when backend returns null", async () => {
     const client = {
-      ...createApiClient({ mode: "mock" }),
+      ...createApiClient({ mode: "real" }),
       getBondAnalyticsBenchmarkExcess: vi.fn(async () => ({
         result_meta: createResultMeta(),
         result: createBenchmarkExcessResult({
