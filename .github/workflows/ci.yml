@@ -316,9 +316,6 @@ jobs:
     name: Backend Mypy Ratchet
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # 观察模式：基线在活跃工作树上采集（2026-08-12），合并树上执行
-    # `python scripts/check_mypy_baseline.py --update-baseline` 重刷并签核后移除 continue-on-error 转阻断
-    continue-on-error: true
 
     steps:
       - uses: actions/checkout@v4
@@ -353,6 +350,12 @@ jobs:
           key: mypy-ratchet-${{ runner.os }}-py311-mypy1.20.1-${{ github.sha }}
           restore-keys: |
             mypy-ratchet-${{ runner.os }}-py311-mypy1.20.1-
+
+      - name: Test mypy diagnostic gate
+        run: >-
+          python -m pytest -q
+          tests/test_check_mypy_baseline.py
+          tests/test_mypy_import_boundary.py
 
       - name: Run mypy baseline ratchet
         run: python scripts/check_mypy_baseline.py

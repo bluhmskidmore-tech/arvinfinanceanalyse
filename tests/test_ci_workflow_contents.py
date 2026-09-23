@@ -72,3 +72,13 @@ def test_ci_workflow_runs_frontend_production_build():
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     assert "npm run build" in workflow
+
+
+def test_ci_mypy_ratchet_blocks_new_diagnostics_and_runs_its_self_tests():
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    job = workflow.split("\n  frontend:", 1)[0].split("\n  mypy-ratchet:", 1)[1]
+
+    assert "continue-on-error:" not in job
+    assert "tests/test_check_mypy_baseline.py" in job
+    assert "tests/test_mypy_import_boundary.py" in job
+    assert "python scripts/check_mypy_baseline.py" in job
