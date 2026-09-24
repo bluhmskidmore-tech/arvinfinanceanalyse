@@ -4,7 +4,7 @@
 
 ## 当前任务
 
-开发基线、同日报告日验收和本地 CI 接线均已纳入隔离集成分支。当前状态为“已纳入集成分支”，且干净工作树的定向复验已经完成；下一步是从该提交发起面向 `codex/V1` 的 PR、取得托管 CI 回执，再决定日常入口的发布与真实数据验收。日常入口尚未切换。
+开发基线、同日报告日验收和本地 CI 接线均已纳入隔离集成分支。当前状态为“已纳入集成分支”。[PR #46](https://github.com/bluhmskidmore-tech/arvinfinanceanalyse/pull/46) 已发起，目标为 `codex/V1`；首轮托管检查暴露的回归已在隔离树局部修复，须以修复提交推送后的实际作业记录验收。日常入口尚未切换。
 
 ## 源码与工作区
 
@@ -41,15 +41,19 @@
 
 主 `.github/workflows/ci.yml` 仍只在目标为 `main` 的 PR 上运行。本轮扩展仅针对 `codex/V1` PR 的 `.github/workflows/caliber-pr-gate.yml`，现有后端、前端、Agent Eval、条件 Windows 四个作业。后端数据更新源码变化会选中同日集成测试，相关页面变化会选中定向 Vitest 和合成浏览器用例；调度脚本变化会触发 Windows PowerShell 契约，避免 Ubuntu 跳过后误报通过。正式计算路径另选已有 `backend_release_suite.py`，本轮无此类变化。`--dry-run origin/codex/V1` 实际显示同日、浏览器和 Windows 范围均为 true，release 为 false。Agent Eval 本地 7/7 为 void，因为同一 PR 修改评测框架；它只证明编排可运行，不算可信业务探针通过。
 
-独立门禁审查发现，本分支新增的 `test_data_health_schtasks_query.py` 原先没有被健康检查服务变更或测试文件自身变更选中。改前选择器反例退出 1；现已在 `CALIBER_GATE_MAP` 中补齐两个路径的映射，改后映射与工作流测试 37/37、新增测试 1/1、Ruff 和 `--dry-run origin/codex/V1` 均通过。此次干跑的 `matched_tests` 包含该新增测试。托管 GitHub Actions 仍无实际运行记录。
+独立门禁审查发现，本分支新增的 `test_data_health_schtasks_query.py` 原先没有被健康检查服务变更或测试文件自身变更选中。改前选择器反例退出 1；现已在 `CALIBER_GATE_MAP` 中补齐两个路径的映射，改后映射与工作流测试 37/37、新增测试 1/1、Ruff 和 `--dry-run origin/codex/V1` 均通过。此次干跑的 `matched_tests` 包含该新增测试。
+
+PR #46 首轮 [V1 专用门禁](https://github.com/bluhmskidmore-tech/arvinfinanceanalyse/actions/runs/35955100439) 在提交 `469250e4` 上四个作业全部成功：后端定向选择、前端合成浏览器 4/4、Windows PowerShell 契约 15/15 和 Agent Eval 编排。Agent Eval 的 7 个任务因评测基础设施同 PR 修改而全部 `void`，不能算可信业务探针通过。
+
+同一提交的 [全局 push CI](https://github.com/bluhmskidmore-tech/arvinfinanceanalyse/actions/runs/35955027107) 有四项失败，均按与基底对照后的本 PR 回归处理：Mypy 新增 11 条错误；OpenAPI 两份快照缺五个数据更新接口；全量 Vitest 的 HomeStartup 日期夹具缺 `report_dates`；后端有界套件的跳过登记守卫发现三处新环境依赖跳过。修复没有抬 Mypy 基线、放宽日期校验或关闭跳过守卫。两份 OpenAPI 快照仅新增五个路径和一个 schema；Windows 专属用例已在上述 Windows 作业实际通过。
 
 审查还发现两项未来路径选择缺口：单独修改 `frontend/src/features/balance-analysis/` 不会选中同日浏览器用例，单独修改 `formal_balance_pipeline.py` 只选正式 release 套件而不选同日集成用例。当前差异已因余额客户端改动选中浏览器，且未改正式流水线，因此不是本分支的漏跑项；以后动这两处源码时应先补对应选择器反例。
 
 本轮用 `F:\MOSS-V3\.venv\Scripts\python.exe` 从隔离树导入当前 backend，版本为 Python 3.14.2；CI 子代理另用 Python 3.11/pytest 9.0.3 复核 Windows 脚本测试。主代理执行的后端数据更新、调度、健康与同日验收七组测试 60/60 通过，安全修复后 `test_data_updates.py` 与同日测试复跑 30/30。前端四组定向测试 40/40，生产构建及 bundle 守卫通过。余额分析启动守卫首次用未设置数据模式的构建运行失败；改用脚本自带的 real 构建后，又暴露旧合成 DTO 导致自动加载检查失败。更新夹具且不改断言后，`guard:balance-startup:runtime` 和主代理复跑均通过。余额分析整页测试单独重跑 29/29，日期语义与启动守卫 7/7；并行时该页曾超时，单独重跑正常。浏览器合成用例 4/4，React `key` 警告修复后相关用例复验 1/1。CI 映射与工作流测试 37/37，本机 PowerShell 契约以 `--noconftest` 跑 15/15，无跳过。类型检查、相关 ESLint、Ruff、`debt:audit` 及差异检查均通过；全量前端 lint 为 0 错误、1 条未改文件提示。
 
-独立安全复核用真实源单元格解析错误和嵌套字段注入验证：原始诊断保留在隔离治理回执，公开 GET、POST、取消及预检不回显敏感标记，定向 3/3 通过。代价是页面只显示受控失败文案，详细排障须看治理回执。GitNexus 在隔离树建索引成功，提交前检测数据中心 26 文件/397 符号、CI 4 文件/42 符号均为 LOW；建索引时部分 Python scope extraction 报 `Invalid argument`，不能把未覆盖位置的 LOW 当作无影响，已用当前源码直接调用与测试补证据。上述均为隔离代码与合成输入证据，尚未运行真实更新、托管 CI、部署或业务对账。
+独立安全复核用真实源单元格解析错误和嵌套字段注入验证：原始诊断保留在隔离治理回执，公开 GET、POST、取消及预检不回显敏感标记，定向 3/3 通过。代价是页面只显示受控失败文案，详细排障须看治理回执。GitNexus 在隔离树建索引成功，提交前检测数据中心 26 文件/397 符号、CI 4 文件/42 符号均为 LOW；建索引时部分 Python scope extraction 报 `Invalid argument`，不能把未覆盖位置的 LOW 当作无影响，已用当前源码直接调用与测试补证据。上述本地业务验收仍只覆盖合成输入；未运行真实更新、部署或业务对账。
 
-首期代码提交后的干净工作树依次复跑后端同日 30/30、前端定向 40/40、CI 映射与工作流 37/37；本轮门禁补漏提交后又复跑映射、工作流及新增健康检查测试 38/38，退出码均为 0。最新 `git status --porcelain` 为空。相对 `origin/codex/V1` 的 56 个变更文件经过 `git diff --check` 及 Node 严格 UTF-8 解码、BOM、U+FFFD 检查，均无异常。这些是本地已提交源码的验收结果，仍不代表远端 PR、当前日常运行构建或真实业务对账。
+首期代码提交后的干净工作树依次复跑后端同日 30/30、前端定向 40/40、CI 映射与工作流 37/37；门禁补漏提交后又复跑映射、工作流及新增健康检查测试 38/38。相对 `origin/codex/V1` 的首轮 56 个变更文件经过 `git diff --check` 及 Node 严格 UTF-8 解码、BOM、U+FFFD 检查，均无异常。随后针对托管 CI 修复，在 Python 3.11 隔离树中复跑数据更新、全局刷新、同日、跳过登记及 API 库存连接处测试 51/51；前端日期相关测试 16/16；Mypy ratchet 为 1591/1591、无新增错误；OpenAPI `baseline-check` 通过。以上后续修复尚待最新托管运行验收，不能由本地通过推断远端或日常入口已生效。
 
 关键本地命令均以隔离树为工作目录，退出码为 0：
 
@@ -60,15 +64,19 @@ F:\MOSS-V3\.venv\Scripts\python.exe -m pytest tests/test_caliber_gate_mapping.py
 F:\MOSS-V3\.venv\Scripts\python.exe -m pytest tests/test_data_health_schtasks_query.py -q
 F:\MOSS-V3\.venv\Scripts\python.exe scripts/check_caliber_gate.py --base-ref origin/codex/V1 --dry-run
 npm.cmd --prefix frontend run guard:balance-startup:runtime
+backend\.venv\Scripts\python.exe -m pytest tests/test_data_updates.py tests/test_global_data_refresh.py tests/test_data_update_balance_integration.py tests/test_ci_skip_registry.py tests/test_backend_api_inventory.py -q
+backend\.venv\Scripts\python.exe scripts/check_mypy_baseline.py
+backend\.venv\Scripts\python.exe scripts/api_contract_check.py baseline-check
+npm.cmd --prefix frontend run test -- HomeStartupClient.test.ts balanceAnalysisClient.datesContract.test.ts
 ```
 
 ## 当前待办与阻塞
 
-1. 在取得代码向 GitHub 推送的具体授权后，将本分支发起目标为 `codex/V1` 的 PR，核对 Ubuntu、条件 Windows、浏览器和 Agent Eval 作业的实际运行记录；当前没有 PR 或托管 CI 编号。
+1. PR #46 已创建；将本轮 CI 回归修复提交并推送后，按最新 HEAD 核对全局 push CI 和 V1 专用 PR 门禁的实际作业，不能用首轮成功作业替代新提交验收。
 2. 日常入口发布前核对用户实际 URL、前端构建身份、后端源码与规则版本、数据中心计划任务配置。当前真实入口地址与后端版本仍为 `PENDING`。没有执行真实数据更新或业务对账的授权与证据，不能写“日常入口已生效”。
 3. 同一报告日的 `balance_daily` 与 `core_financial` 可以同时处于活动状态，可能重复处理余额。首期遵照 PRD 保留现有受理规则，后续应单独定义跨范围互斥及已完成请求的来源版本判断，并补反例。
 
-当前没有阻止隔离实现的问题。外部推送、日常服务切换和真实数据刷新须分别基于明确范围与授权；回退采用既有构建或提交选择机制，不以恢复数据库副本模拟代码回滚。
+用户已授权本分支推送 GitHub 并创建 PR；日常服务切换和真实数据刷新仍须分别基于明确范围与授权。回退采用既有构建或提交选择机制，不以恢复数据库副本模拟代码回滚。
 
 ## 独立复核与下一项任务
 
