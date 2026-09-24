@@ -1,0 +1,649 @@
+/*
+ * /bond-dashboard Nocturne 标准包（参照 PositionsView.css / LedgerPnlPage.css 配方）：
+ * 页头 + 工具条 + 编号分区（CSS counter）+ KPI 单框横带 + 深色表格密度 + 状态块。
+ * 颜色一律走 --dh-api-* 语义链；圆角制度 var(--dh-api-radius)；字号下限 11px。
+ */
+
+/*
+ * DESIGN.md §2.2：dh-api scope 只重映射语义别名，未覆盖 --moss-color-* 色阶。
+ * 共享溯源面板（FormalResultMetaPanel）引用 neutral 色阶，这里在页根收敛到
+ * --dh-api-* 基准，避免深色路由冒白底/浅字。
+ */
+.bond-dashboard-page {
+  --moss-color-neutral-50: var(--dh-api-panel-2);
+  --moss-color-neutral-100: var(--dh-api-line-soft);
+  --moss-color-neutral-200: var(--dh-api-line);
+  --moss-color-neutral-400: var(--dh-api-muted);
+  --moss-color-neutral-500: var(--dh-api-muted);
+  --moss-color-neutral-600: var(--dh-api-soft);
+  --moss-color-neutral-800: var(--dh-api-ink);
+  --moss-color-neutral-900: var(--dh-api-ink);
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 16px;
+  min-height: 100%;
+  padding: 16px;
+  background: var(--dh-api-bg);
+  color: var(--dh-api-ink);
+  counter-reset: bd-section;
+}
+
+/* ---------------------------------------------------------------- 页头 */
+
+.bond-dashboard-page__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bond-dashboard-page__header-copy {
+  min-width: 0;
+}
+
+.bond-dashboard-page__title {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.bond-dashboard-page__subtitle {
+  max-width: 720px;
+  margin: 4px 0 0;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* 模式徽标：无大写宽字距，radius 走圆角制度。 */
+.bond-dashboard-page__mode-badge {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.bond-dashboard-page__mode-badge--real {
+  background: var(--dh-api-green-soft);
+  color: var(--dh-api-green);
+}
+
+.bond-dashboard-page__mode-badge--mock {
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-blue);
+}
+
+/* -------------------------------------------------------------- 工具条 */
+
+.bond-dashboard-page__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+}
+
+.bond-dashboard-page__toolbar-field {
+  display: grid;
+  gap: 4px;
+}
+
+.bond-dashboard-page__toolbar-label {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.bond-dashboard-page__report-select {
+  min-width: 160px;
+}
+
+/* antd Select 深色收口：32px 控件高、panel-2 底、发丝边、12px 字号。 */
+.bond-dashboard-page .bond-dashboard-page__report-select .ant-select-selector {
+  min-height: 32px;
+  height: 32px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-ink);
+  font-size: 12px;
+}
+
+.bond-dashboard-page .bond-dashboard-page__report-select .ant-select-selection-item,
+.bond-dashboard-page .bond-dashboard-page__report-select .ant-select-selection-placeholder {
+  line-height: 30px;
+}
+
+.bond-dashboard-page .bond-dashboard-page__report-select .ant-select-arrow {
+  color: var(--dh-api-muted);
+}
+
+/* 下拉挂在工具条容器内（getPopupContainer），一并收深色。 */
+.bond-dashboard-page .ant-select-dropdown {
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  box-shadow: none;
+}
+
+.bond-dashboard-page .ant-select-dropdown .ant-select-item {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+.bond-dashboard-page .ant-select-dropdown .ant-select-item-option-selected,
+.bond-dashboard-page .ant-select-dropdown .ant-select-item-option-active {
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-ink);
+}
+
+/* 刷新钮：32px 深色描边，激活态走 accent。 */
+.bond-dashboard-page__refresh {
+  min-height: 32px;
+  padding: 5px 14px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: transparent;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bond-dashboard-page__refresh:hover {
+  border-color: var(--dh-api-blue);
+  color: var(--dh-api-blue);
+}
+
+/* ------------------------------------------------------- 编号分区骨架 */
+
+.bond-dashboard-section {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  counter-increment: bd-section;
+  /* 分区锚点跳转时给粘顶导航留出余量。 */
+  scroll-margin-top: 52px;
+}
+
+.bond-dashboard-section__lead {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.bond-dashboard-section__lead::before {
+  content: counter(bd-section, decimal-leading-zero);
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.bond-dashboard-section__lead h2 {
+  margin: 0;
+  overflow: hidden;
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bond-dashboard-section__note,
+.bond-dashboard-section__state {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.bond-dashboard-section__state[data-state="error"] {
+  color: var(--dh-api-red);
+}
+
+.bond-dashboard-section__state[data-state="empty"] {
+  color: var(--dh-api-amber);
+}
+
+.bond-dashboard-section__actions {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* ------------------------------------------------- 状态块（notice 三态） */
+
+.bond-dashboard-notice {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.bond-dashboard-notice__title {
+  font-weight: 600;
+}
+
+.bond-dashboard-notice--error {
+  border-color: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
+  background: var(--dh-api-red-soft);
+  color: var(--dh-api-red);
+}
+
+.bond-dashboard-notice--info {
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+}
+
+.bond-dashboard-notice--warning {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-amber);
+}
+
+/* ------------------------------------------------------- 结论块（01） */
+
+.bond-dashboard-page__conclusion {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--dh-api-line);
+  border-left: 2px solid var(--dh-api-blue);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.bond-dashboard-page__conclusion-kicker {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.bond-dashboard-page__conclusion-body {
+  color: var(--dh-api-ink);
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.bond-dashboard-page__conclusion-detail {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* -------------------------------------------------- KPI 单框横带（01） */
+
+.bond-dashboard-page__kpi-band {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.bond-dashboard-page__kpi-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  min-height: 128px;
+  padding: 12px 14px;
+  border-right: 1px solid var(--dh-api-line-soft);
+}
+
+/* 4×2：每行第 4 格去右缝，首行落底缝。 */
+.bond-dashboard-page__kpi-band > :nth-child(4n) {
+  border-right: 0;
+}
+
+.bond-dashboard-page__kpi-band > :nth-child(-n + 4) {
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+/* 标签 2 行 clamp + 固定 min-height，防同排数值错位（DESIGN.md §3）。 */
+.bond-dashboard-page__kpi-label {
+  display: -webkit-box;
+  overflow: hidden;
+  min-height: 32px;
+  color: var(--dh-api-soft);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* 主值下限 20px（§3；1280 断点只收 padding 不降字号）。 */
+.bond-dashboard-page__kpi-value {
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-mono);
+  font-size: clamp(20px, 1.55vw, 23px);
+  font-weight: 700;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  /* keep-all：长数值只在数字与单位间的空格处折行，禁止把「亿元」拆成两行。 */
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+
+.bond-dashboard-page__kpi-band[data-loading="true"] .bond-dashboard-page__kpi-value {
+  color: var(--dh-api-muted);
+}
+
+.bond-dashboard-page__kpi-unit {
+  margin-left: 4px;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* 环比 footer 贴格底；tone 三色走 --dh-api-* 语义链。 */
+.bond-dashboard-page__kpi-mom {
+  margin-top: auto;
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-mono);
+  font-size: 12px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+.bond-dashboard-page__kpi-mom[data-tone="up"] {
+  color: var(--dh-api-green);
+}
+
+.bond-dashboard-page__kpi-mom[data-tone="down"] {
+  color: var(--dh-api-red);
+}
+
+.bond-dashboard-page__kpi-mom[data-tone="flat"] {
+  color: var(--dh-api-muted);
+}
+
+/* 格内小注（环比基准日）：单行省略，全文进 title。 */
+.bond-dashboard-page__kpi-note {
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* -------------------------------------------------------- 口径行（01） */
+
+.bond-dashboard-page__caliber {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.bond-dashboard-page__caliber-item {
+  padding: 0 10px;
+  border-left: 1px solid var(--dh-api-line-soft);
+}
+
+.bond-dashboard-page__caliber-item:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+/* --------------------------------------------------- 分区内容网格 */
+
+.bond-dashboard-page__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  /* 不等高网格必须 start，禁止 stretch 空白（DESIGN.md §5）。 */
+  align-items: start;
+}
+
+@media (min-width: 992px) {
+  .bond-dashboard-page__grid--3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .bond-dashboard-page__grid--2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* --------------------------------------------------- 页面本地面板 */
+
+.bond-dashboard-page__panel {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.bond-dashboard-page__panel-title {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+/* 空/错/载入收缩到一句话（min-height ≤ 120px），不占满等高格。 */
+.bond-dashboard-page__surface {
+  display: grid;
+  place-items: center;
+  min-height: 96px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.bond-dashboard-page__surface--error {
+  color: var(--dh-api-red);
+}
+
+/* KPI 横带载入占位：接近真实横带高度，防内容到达时重排。 */
+.bond-dashboard-page__surface--loading {
+  min-height: 128px;
+}
+
+/* ----------------------------------------------- 治理边界与分区状态（06） */
+
+.bond-dashboard-page__governance-notes {
+  padding: 8px 12px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+.bond-dashboard-page__governance-notes summary {
+  color: var(--dh-api-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.bond-dashboard-page__governance-notes p {
+  margin: 8px 0 0;
+  line-height: 1.6;
+}
+
+/* bundle 分区状态占位列表（角色 8 精修前的证据披露）。 */
+.bond-dashboard-page__section-status {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bond-dashboard-page__section-status-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 10px;
+  align-items: baseline;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.bond-dashboard-page__section-status-state {
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.bond-dashboard-page__section-status-item[data-status="error"] .bond-dashboard-page__section-status-state {
+  color: var(--dh-api-red);
+}
+
+.bond-dashboard-page__section-status-message {
+  color: var(--dh-api-muted);
+}
+
+.bond-dashboard-page__section-status-duration {
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* -------------------------------------------------- antd Table 密度 */
+
+.bond-dashboard-page .ant-table {
+  font-size: 12px;
+}
+
+.bond-dashboard-page .ant-table-thead > tr > th {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.bond-dashboard-page .ant-table-tbody > tr > td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  font-size: 12px;
+  line-height: 1.35;
+  /* 数值列等宽对齐由 td 继承 tabular-nums，右对齐由列定义出 align。 */
+  font-variant-numeric: tabular-nums;
+}
+
+/* 行 hover 用 accent 比例混色，禁止硬编码 rgba。 */
+.bond-dashboard-page .ant-table-tbody > tr > td.ant-table-cell-row-hover,
+.bond-dashboard-page .ant-table-tbody > tr:hover > td {
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
+}
+
+/* --------------------------------------- FormalResultMetaPanel 收敛 */
+
+.bond-dashboard-page .formal-result-meta-panel {
+  --formal-result-meta-border-soft: var(--dh-api-line-soft);
+  --formal-meta-badge-ok-bg: var(--dh-api-green-soft);
+  --formal-meta-badge-ok-ink: var(--dh-api-green);
+  --formal-meta-badge-ok-line: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
+  --formal-meta-badge-warn-bg: var(--dh-api-amber-soft);
+  --formal-meta-badge-warn-ink: var(--dh-api-amber);
+  --formal-meta-badge-warn-line: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  --formal-meta-badge-danger-bg: var(--dh-api-red-soft);
+  --formal-meta-badge-danger-ink: var(--dh-api-red);
+  --formal-meta-badge-danger-line: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
+
+  margin-top: 0;
+  padding: 14px;
+  border-color: var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+}
+
+.bond-dashboard-page .formal-result-meta-panel__card,
+.bond-dashboard-page .formal-result-meta-panel__badge {
+  border-radius: var(--dh-api-radius);
+}
+
+.bond-dashboard-page .formal-result-meta-panel__list {
+  grid-template-columns: minmax(88px, 108px) minmax(0, 1fr);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ---------------------------------------------------------- 响应式 */
+
+@media (max-width: 1280px) {
+  .bond-dashboard-page__kpi-cell {
+    padding-inline: 10px;
+  }
+}
+
+@media (max-width: 900px) {
+  .bond-dashboard-page__header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .bond-dashboard-section__lead {
+    grid-template-columns: 22px minmax(0, 1fr);
+  }
+
+  .bond-dashboard-section__actions {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 720px) {
+  .bond-dashboard-page__kpi-band {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bond-dashboard-page__kpi-cell {
+    border-right: 1px solid var(--dh-api-line-soft);
+    border-bottom: 1px solid var(--dh-api-line-soft);
+  }
+
+  .bond-dashboard-page__kpi-band > :nth-child(2n) {
+    border-right: 0;
+  }
+
+  .bond-dashboard-page__kpi-band > :nth-child(n + 7) {
+    border-bottom: 0;
+  }
+}

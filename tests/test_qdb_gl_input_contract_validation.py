@@ -6,6 +6,13 @@ from openpyxl import Workbook, load_workbook
 
 from tests.helpers import ROOT, load_module
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_qdb_gl,
+]
+
 LEDGER_HEADERS = [
     "组合科目代码",
     "组合科目名称",
@@ -17,7 +24,6 @@ LEDGER_HEADERS = [
 ]
 
 AVERAGE_BLOCK_HEADER = ["币种", "科目", "科目日均余额", None]
-
 
 def test_discover_qdb_gl_baseline_bindings_groups_ledger_and_average_sources(tmp_path):
     module = load_module(
@@ -36,7 +42,6 @@ def test_discover_qdb_gl_baseline_bindings_groups_ledger_and_average_sources(tmp
         ("ledger_reconciliation", "202602", "总账对账202602.xlsx"),
     ]
     assert all(binding.source_version.startswith("sv_qdb_gl_") for binding in bindings)
-
 
 def test_validate_qdb_gl_ledger_source_emits_pass_evidence_with_lineage(tmp_path):
     module = load_module(
@@ -68,7 +73,6 @@ def test_validate_qdb_gl_ledger_source_emits_pass_evidence_with_lineage(tmp_path
     assert checks["currency_grouping"].status_label == "pass"
     assert checks["reconciliation_contract"].status_label == "pass"
 
-
 def test_validate_qdb_gl_ledger_source_allows_auxiliary_trailing_columns(tmp_path):
     module = load_module(
         "backend.app.services.qdb_gl_input_validation_service",
@@ -93,7 +97,6 @@ def test_validate_qdb_gl_ledger_source_allows_auxiliary_trailing_columns(tmp_pat
     assert checks["row_shape"].status_label == "pass"
     assert checks["required_raw_fields"].status_label == "pass"
     assert checks["reconciliation_contract"].status_label == "pass"
-
 
 def test_validate_qdb_gl_average_source_emits_pass_evidence_with_lineage(tmp_path):
     module = load_module(
@@ -121,7 +124,6 @@ def test_validate_qdb_gl_average_source_emits_pass_evidence_with_lineage(tmp_pat
     assert checks["currency_grouping"].status_label == "pass"
     assert checks["reconciliation_contract"].status_label == "not_applicable"
 
-
 def test_validate_qdb_gl_average_source_allows_auxiliary_only_rows(tmp_path):
     module = load_module(
         "backend.app.services.qdb_gl_input_validation_service",
@@ -146,7 +148,6 @@ def test_validate_qdb_gl_average_source_allows_auxiliary_only_rows(tmp_path):
     assert checks["row_shape"].status_label == "pass"
     assert checks["required_raw_fields"].status_label == "pass"
 
-
 def test_real_qdb_gl_average_fixture_is_admissible():
     module = load_module(
         "backend.app.services.qdb_gl_input_validation_service",
@@ -162,7 +163,6 @@ def test_real_qdb_gl_average_fixture_is_admissible():
     assert evidence.admissible is True
     assert evidence.status_label == "pass"
     assert evidence.bound_currency_groups == ["CNX", "CNY"]
-
 
 def test_validate_qdb_gl_source_rejects_unrecognized_file_name(tmp_path):
     module = load_module(
@@ -181,7 +181,6 @@ def test_validate_qdb_gl_source_rejects_unrecognized_file_name(tmp_path):
     assert evidence.status_label == "fail"
     assert evidence.source_kind == "unknown"
     assert checks["source_binding"].status_label == "fail"
-
 
 def test_validate_qdb_gl_source_binding_fails_when_canonical_sheet_is_missing(tmp_path):
     module = load_module(
@@ -205,7 +204,6 @@ def test_validate_qdb_gl_source_binding_fails_when_canonical_sheet_is_missing(tm
     assert checks["source_binding"].status_label == "fail"
     assert any(item.sheet_name == "人民币" for item in checks["source_binding"].findings)
 
-
 def test_validate_qdb_gl_ledger_source_flags_header_violations(tmp_path):
     module = load_module(
         "backend.app.services.qdb_gl_input_validation_service",
@@ -228,7 +226,6 @@ def test_validate_qdb_gl_ledger_source_flags_header_violations(tmp_path):
     assert evidence.status_label == "fail"
     assert checks["header_row"].status_label == "fail"
     assert any(item.sheet_name == "综本" and item.cell_ref == "A6" for item in checks["header_row"].findings)
-
 
 def test_validate_qdb_gl_average_source_flags_row_shape_violations(tmp_path):
     module = load_module(
@@ -254,7 +251,6 @@ def test_validate_qdb_gl_average_source_flags_row_shape_violations(tmp_path):
     assert checks["required_raw_fields"].status_label == "fail"
     assert any(item.sheet_name == "年" and item.cell_ref == "F4" for item in checks["row_shape"].findings)
     assert any(item.sheet_name == "年" and item.cell_ref == "F4" for item in checks["required_raw_fields"].findings)
-
 
 def test_validate_qdb_gl_ledger_source_flags_required_field_account_code_currency_and_reconciliation_failures(
     tmp_path,
@@ -292,7 +288,6 @@ def test_validate_qdb_gl_ledger_source_flags_required_field_account_code_currenc
     assert any(item.sheet_name == "综本" and item.row_locator == 7 for item in checks["currency_grouping"].findings)
     assert any(item.sheet_name == "综本" and item.row_locator == 7 for item in checks["reconciliation_contract"].findings)
 
-
 def test_gl_rules_spec_exists_and_stays_assembly_only():
     path = ROOT / "docs" / "gl_rules_spec.md"
 
@@ -305,7 +300,6 @@ def test_gl_rules_spec_exists_and_stays_assembly_only():
     assert "must not become" in text.lower()
     assert "second normative truth source" in text.lower()
     assert "product_category_*" in text
-
 
 def _write_qdb_gl_ledger_workbook(path: Path) -> None:
     workbook = Workbook()
@@ -324,7 +318,6 @@ def _write_qdb_gl_ledger_workbook(path: Path) -> None:
         worksheet.append(["00101010001", "业务库存现金", currency, 100, 20, 5, 115])
         worksheet.append([10101000002, "ATM库存现金", currency, 50, 10, 4, 56])
     workbook.save(path)
-
 
 def _write_qdb_gl_average_workbook(path: Path) -> None:
     workbook = Workbook()

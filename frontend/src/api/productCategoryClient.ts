@@ -4,8 +4,10 @@
  */
 import type {
   ApiEnvelope,
+  ProductCategoryAttributionHistoryPayload,
   ProductCategoryAttributionPayload,
   ProductCategoryDatesPayload,
+  ProductCategoryHistoryPayload,
   ProductCategoryManualAdjustmentExportPayload,
   ProductCategoryManualAdjustmentListPayload,
   ProductCategoryManualAdjustmentPayload,
@@ -49,6 +51,16 @@ export type ProductCategoryClientMethods = {
     reportDate: string;
     compare?: "mom" | "yoy";
   }) => Promise<ApiEnvelope<ProductCategoryAttributionPayload>>;
+  /** Batch sibling of getProductCategoryPnl: one request for the whole trend window. */
+  getProductCategoryHistory: (options: {
+    reportDates: string[];
+    view: string;
+    scenarioRatePct?: string;
+  }) => Promise<ApiEnvelope<ProductCategoryHistoryPayload>>;
+  getProductCategoryAttributionHistory: (options: {
+    reportDates: string[];
+    compare?: "mom" | "yoy";
+  }) => Promise<ApiEnvelope<ProductCategoryAttributionHistoryPayload>>;
 };
 
 type FetchLike = typeof fetch;
@@ -299,7 +311,7 @@ export function createDemoProductCategoryClient(delay: Delay): ProductCategoryCl
         cache_key: "product_category_pnl.formal",
         month_count: 2,
         report_dates: ["2026-01-31", "2026-02-28"],
-        rule_version: "rv_product_category_pnl_v1",
+        rule_version: "rv_product_category_pnl_v2",
         source_version: "sv_mock_dashboard_v2",
       };
     },
@@ -476,6 +488,63 @@ export function createDemoProductCategoryClient(delay: Delay): ProductCategoryCl
         options,
       );
     },
+    /**
+     * Delegates per period to `getProductCategoryPnl` so the batch stays exactly N single
+     * reads — the same relationship the backend batch route has — and so a caller that
+     * overrides the single-period method (tests, fixtures) also drives the batch.
+     */
+    async getProductCategoryHistory(
+      this: ProductCategoryClientMethods,
+      { reportDates, view, scenarioRatePct },
+    ) {
+      const bundle = await ensureProductCategoryMockBundle();
+      const items = await Promise.all(
+        reportDates.map(async (reportDate) => {
+          const envelope = await this.getProductCategoryPnl({
+            reportDate,
+            view,
+            ...(scenarioRatePct ? { scenarioRatePct } : {}),
+          });
+          return {
+            report_date: reportDate,
+            status: "ok" as const,
+            detail: null,
+            result: envelope.result,
+            result_meta: envelope.result_meta,
+          };
+        }),
+      );
+      return bundle.buildMockApiEnvelope("product_category_pnl.history", {
+        view,
+        scenario_rate_pct: scenarioRatePct ?? null,
+        items,
+      });
+    },
+    async getProductCategoryAttributionHistory(
+      this: ProductCategoryClientMethods,
+      { reportDates, compare = "mom" },
+    ) {
+      const bundle = await ensureProductCategoryMockBundle();
+      const items = await Promise.all(
+        reportDates.map(async (reportDate) => {
+          const envelope = await this.getProductCategoryAttribution({
+            reportDate,
+            compare,
+          });
+          return {
+            report_date: reportDate,
+            status: "ok" as const,
+            detail: null,
+            result: envelope.result,
+            result_meta: envelope.result_meta,
+          };
+        }),
+      );
+      return bundle.buildMockApiEnvelope(
+        "product_category_pnl.attribution_history",
+        { compare, items },
+      );
+    },
   };
 }
 
@@ -591,6 +660,31 @@ export function createRealProductCategoryClient(
         fetchImpl,
         baseUrl,
         `/ui/pnl/product-category/attribution?${params.toString()}`,
+      );
+    },
+    getProductCategoryHistory: ({ reportDates, view, scenarioRatePct }) => {
+      const params = new URLSearchParams({
+        report_dates: reportDates.join(","),
+        view,
+      });
+      if (scenarioRatePct?.trim()) {
+        params.set("scenario_rate_pct", scenarioRatePct);
+      }
+      return requestJson<ProductCategoryHistoryPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/pnl/product-category/history?${params.toString()}`,
+      );
+    },
+    getProductCategoryAttributionHistory: ({ reportDates, compare = "mom" }) => {
+      const params = new URLSearchParams({
+        report_dates: reportDates.join(","),
+        compare,
+      });
+      return requestJson<ProductCategoryAttributionHistoryPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/pnl/product-category/attribution/history?${params.toString()}`,
       );
     },
   };

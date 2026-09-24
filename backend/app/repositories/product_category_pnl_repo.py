@@ -5,6 +5,37 @@ from dataclasses import dataclass
 
 import duckdb
 
+# 正式读模型行查询：fetch_rows 执行与外部证据披露（如 agent sql_executed）共用同一份常量。
+PRODUCT_CATEGORY_PNL_ROWS_SQL = """
+select
+  category_id,
+  category_name,
+  side,
+  level,
+  view,
+  report_date,
+  baseline_ftp_rate_pct,
+  cnx_scale,
+  cny_scale,
+  foreign_scale,
+  cnx_cash,
+  cny_cash,
+  foreign_cash,
+  cny_ftp,
+  foreign_ftp,
+  cny_net,
+  foreign_net,
+  business_net_income,
+  weighted_yield,
+  is_total,
+  children_json,
+  source_version,
+  rule_version
+from product_category_pnl_formal_read_model
+where report_date = ? and view = ?
+order by sort_order
+"""
+
 
 class ProductCategoryPnlStorageError(RuntimeError):
     pass
@@ -102,35 +133,7 @@ class ProductCategoryPnlRepository:
         try:
             conn = duckdb.connect(self.path, read_only=True)
             rows = conn.execute(
-                """
-                select
-                  category_id,
-                  category_name,
-                  side,
-                  level,
-                  view,
-                  report_date,
-                  baseline_ftp_rate_pct,
-                  cnx_scale,
-                  cny_scale,
-                  foreign_scale,
-                  cnx_cash,
-                  cny_cash,
-                  foreign_cash,
-                  cny_ftp,
-                  foreign_ftp,
-                  cny_net,
-                  foreign_net,
-                  business_net_income,
-                  weighted_yield,
-                  is_total,
-                  children_json,
-                  source_version,
-                  rule_version
-                from product_category_pnl_formal_read_model
-                where report_date = ? and view = ?
-                order by sort_order
-                """,
+                PRODUCT_CATEGORY_PNL_ROWS_SQL,
                 [report_date, view],
             ).fetchall()
         except duckdb.Error as exc:

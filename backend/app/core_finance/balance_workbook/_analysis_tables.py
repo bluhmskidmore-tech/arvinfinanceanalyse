@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from backend.app.core_finance.balance_analysis import (
@@ -258,28 +258,38 @@ def _build_counterparty_type_table(tyw_rows: list[FormalTywBalanceFactRow]) -> d
 def _build_campisi_table(zqtz_rows: list[FormalZqtzBalanceFactRow]) -> dict[str, Any]:
     asset_rows = [row for row in zqtz_rows if row.position_scope == "asset"]
     benchmark_rows = [row for row in asset_rows if row.bond_type == _CAMPISI_POLICY_BOND]
-    benchmark_rate = _weighted_average(benchmark_rows, lambda row: row.face_value_amount, lambda row: row.coupon_rate) or _ZERO
+    # 在册无政策性金融债（或基准行票面利率全部缺失）时 benchmark_rate 为 None。
+    # 此时利差(bp)与利差收入贡献列显式输出 None，不再把基准静默降级为 0——
+    # 与单体权威实现（B10-2，rule_reference 的 bal_campisi_benchmark_missing_null 行）
+    # 保持同一口径。
+    benchmark_rate = _weighted_average(benchmark_rows, lambda row: row.face_value_amount, lambda row: row.coupon_rate)
     total_income = _sum_decimal(asset_rows, lambda row: row.face_value_amount * _rate_value(row.coupon_rate) / Decimal("100"))
     grouped = _group_rows(asset_rows, lambda row: row.bond_type or "未分类")
     rows = []
     for bond_type, entries in sorted(grouped.items()):
         balance_amount = _sum_decimal(entries, lambda row: row.face_value_amount)
         coupon_income = _sum_decimal(entries, lambda row: row.face_value_amount * _rate_value(row.coupon_rate) / Decimal("100"))
-        spread_bp = _weighted_average(entries, lambda row: row.face_value_amount, lambda row: row.coupon_rate)
-        spread_value = ((spread_bp or _ZERO) - benchmark_rate) * Decimal("100")
-        spread_income = _sum_decimal(
-            entries,
-            lambda row: row.face_value_amount * ((_rate_value(row.coupon_rate) - benchmark_rate) / Decimal("100")),
-        )
+        bucket_rate_pct = _weighted_average(entries, lambda row: row.face_value_amount, lambda row: row.coupon_rate)
+        if benchmark_rate is None:
+            spread_value = None
+            spread_income_amount = None
+        else:
+            spread_value = ((bucket_rate_pct or _ZERO) - benchmark_rate) * Decimal("100")
+            spread_income_amount = _to_wanyuan(
+                _sum_decimal(
+                    entries,
+                    lambda row: row.face_value_amount * ((_rate_value(row.coupon_rate) - benchmark_rate) / Decimal("100")),
+                )
+            )
         rows.append(
             {
                 "bond_type": bond_type,
                 "balance_amount": _to_wanyuan(balance_amount),
-                "weighted_rate_pct": _weighted_average(entries, lambda row: row.face_value_amount, lambda row: row.coupon_rate),
+                "weighted_rate_pct": bucket_rate_pct,
                 "coupon_income_amount": _to_wanyuan(coupon_income),
                 "duration_years": _weighted_average(entries, lambda row: row.face_value_amount, lambda row: _optional_remaining_years(row.report_date, row.maturity_date)),
                 "spread_bp": spread_value,
-                "spread_income_amount": _to_wanyuan(spread_income),
+                "spread_income_amount": spread_income_amount,
                 "share_of_income": _safe_ratio(coupon_income, total_income),
                 "price_return_amount": _to_wanyuan(_sum_decimal(entries, lambda row: row.market_value_amount - row.amortized_cost_amount)),
             }
@@ -385,7 +395,7 @@ def _build_decision_items_table(
                     "title": f"关注 {top_rating['rating']} 评级集中度",
                     "action_label": "复核集中度",
                     "severity": "medium" if top_share < Decimal("0.75") else "high",
-                    "reason": f"最高评级桶占比已达 {(top_share * Decimal('100')).quantize(Decimal('0.01'))}%。",
+                    "reason": f"最高评级桶占比已达 {(top_share * Decimal('100')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)}%。",
                     "source_section": "rating_analysis",
                     "rule_id": "bal_wb_decision_rating_001",
                     "rule_version": "v1",

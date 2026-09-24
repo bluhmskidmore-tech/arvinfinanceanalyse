@@ -11,8 +11,27 @@ import type {
 } from "../../../api/contracts";
 import type { CalendarItem } from "../../../components/CalendarList";
 import { mapResearchCalendarEventToCalendarItem } from "../../../lib/researchCalendarToCalendarItem";
+import { EM_DASH, textOrDash } from "../../../pageModel";
 import type { ResolvedCrossAssetKpi } from "./crossAssetKpiModel";
+import {
+  linkageUnavailableEvidence,
+  linkageUnavailableSummary,
+  type CrossAssetModuleFailure,
+  type CrossAssetQueryFailureKind,
+} from "./crossAssetQueryFailure";
+import {
+  formatLinkageCorrelationFamilyLabel,
+  formatLinkageCorrelationTarget,
+} from "./crossAssetLinkageLabels";
+import {
+  formatCrossAssetLinkageEvidence,
+  formatCrossAssetLinkageSummary,
+} from "./crossAssetLinkageSummaries";
+import { summarizeCrossAssetLinkageWarnings } from "./crossAssetLinkageWarnings";
+import type { MarketRegimeInfo } from "./crossAssetAnalytics";
+import type { DriverColumn, EnvironmentTags } from "./crossAssetDriversModel";
 
+// Component-facing vocabularies intentionally differ from shared MetricTone.
 type StatusTone = "normal" | "caution" | "warning" | "danger";
 type ActionTone = "bull" | "warning" | "bear";
 type WatchSignal = "green" | "yellow" | "red";
@@ -96,6 +115,7 @@ export type CrossAssetClassAnalysisRow = {
   lines: CrossAssetClassAnalysisLine[];
 };
 
+/** Evidence-specific fields and statuses intentionally differ from shared LabeledValue. */
 export type CrossAssetEquityEvidenceItem = {
   key: "broad_index" | "csi300_pe" | "mega_cap_weight" | "mega_cap_top5_weight";
   label: string;
@@ -130,6 +150,77 @@ export type CrossAssetNcdProxyEvidence = {
   proxyWarning: string;
   rowCaptions: string[];
   sourceMeta: "backend" | "unavailable";
+};
+
+export type CrossAssetAssetDirectionTone = "supportive" | "restrictive" | "conflicted" | "pending" | "neutral";
+
+export type CrossAssetAssetJudgmentItem = {
+  key: CrossAssetClassAnalysisRow["key"];
+  label: string;
+  tone: string;
+  direction: string;
+  directionTone: CrossAssetAssetDirectionTone;
+  detail: string;
+};
+
+export type CrossAssetBondTransmissionJudgment = {
+  key: "bond";
+  label: string;
+  headline: string;
+  summary: string;
+  pendingLineCount: number;
+  items: CrossAssetAssetJudgmentItem[];
+};
+
+export type CrossAssetStockTransmissionJudgment = {
+  key: "stock";
+  label: string;
+  headline: string;
+  summary: string;
+  status: CrossAssetClassAnalysisRow["status"];
+  tone: string;
+  direction: string;
+  directionTone: CrossAssetAssetDirectionTone;
+  evidenceCount: number;
+  pendingLineCount: number;
+};
+
+export type CrossAssetFirstScreenDriverChainItem = {
+  title: string;
+  stance: string;
+  tone: DriverColumn["tone"];
+  bullets: string[];
+};
+
+export type CrossAssetFirstScreenDisplayContract = {
+  loading: {
+    isLoading: boolean;
+    label: string;
+  };
+  hero: {
+    headline: string;
+    summary: string;
+    question: string;
+    reportDate: string;
+    regimeLabel: string;
+    regimeDescription: string;
+  };
+  driverChain: {
+    primary: string;
+    secondary: string;
+    style: string;
+    items: CrossAssetFirstScreenDriverChainItem[];
+  };
+  judgments: {
+    bond: CrossAssetBondTransmissionJudgment;
+    stock: CrossAssetStockTransmissionJudgment;
+  };
+  status: {
+    flags: CrossAssetStatusFlag[];
+    warningCount: number;
+    blockingFlag: CrossAssetStatusFlag | null;
+    sourceBlockedFlag: CrossAssetStatusFlag | null;
+  };
 };
 
 /** UI-free aggregate for the cross-asset drivers workbench (single build entry point). */
@@ -178,17 +269,69 @@ function ncdRowCaption(row: NcdFundingProxyPayload["rows"][number]) {
   return `${row.label}: ${parts.join(" · ")}`;
 }
 
+const NCD_PROXY_WARNING_PATTERNS: ReadonlyArray<{ pattern: RegExp; text: string }> = [
+  {
+    pattern: /proxy only;\s*not actual ncd issuance matrix\.?/i,
+    text: "仅为资金利率代理，不是真实 NCD 发行矩阵。",
+  },
+  {
+    pattern: /using landed (?:external warehouse )?(?:tushare )?shibor;\s*quote medians unavailable\.?/i,
+    text: "使用已落地的 Tushare Shibor；报价中位数不可用。",
+  },
+];
+
+function translateNcdProxyWarning(warning: string): string {
+  const choiceTushareFallback = warning.match(
+    /^Using landed Choice Shibor with Tushare fallback for ([^;]+);\s*fallback date ([^;]+);\s*quote medians unavailable\.?$/i,
+  );
+  if (choiceTushareFallback) {
+    const tenor = choiceTushareFallback[1]?.trim() || "fallback tenors";
+    const fallbackDate = choiceTushareFallback[2]?.trim() || "待定";
+    return `使用已落地 Choice Shibor，由 Tushare 补齐 ${tenor}；补齐日期 ${fallbackDate}；报价中位数不可用。`;
+  }
+
+  const match = NCD_PROXY_WARNING_PATTERNS.find((entry) => entry.pattern.test(warning));
+  return match?.text ?? warning;
+}
+
+export function localizeNcdProxyLabel(label: string | null | undefined): string {
+  const trimmed = String(label ?? "").trim();
+  if (!trimmed) {
+    return "NCD / 资金代理";
+  }
+  if (/^choice\/tushare shibor funding proxy$/i.test(trimmed)) {
+    return "Choice/Tushare Shibor 资金代理";
+  }
+  if (/^tushare shibor funding proxy$/i.test(trimmed)) {
+    return "Tushare Shibor 资金代理";
+  }
+  return trimmed;
+}
+
+export function formatNcdProxyWarningText(warnings: string[]): string {
+  const localized = warnings
+    .map((warning) => warning.trim())
+    .filter(Boolean)
+    .map((warning) => translateNcdProxyWarning(warning));
+  return [...new Set(localized)].join(" ");
+}
+
 export function buildCrossAssetNcdProxyEvidence(input: {
   result?: NcdFundingProxyPayload | null;
   /** false when the client request failed or returned nothing usable */
   available: boolean;
+  failureKind?: CrossAssetQueryFailureKind;
 }): CrossAssetNcdProxyEvidence {
   if (!input.available || !input.result) {
+    const proxyWarning =
+      input.failureKind === "permission"
+        ? "当前账号无 NCD/资金代理读取权限，请联系管理员开通。"
+        : "NCD 资金代理数据不可用（请求失败或空载荷）。";
     return {
       asOfDate: null,
       proxyLabel: "NCD / funding",
       isActualNcdMatrix: false,
-      proxyWarning: "NCD 资金代理数据不可用（请求失败或空载荷）。",
+      proxyWarning,
       rowCaptions: [],
       sourceMeta: "unavailable",
     };
@@ -201,14 +344,15 @@ export function buildCrossAssetNcdProxyEvidence(input: {
   const warnings = payload.warnings.map((warning) => warning.trim()).filter(Boolean);
   return {
     asOfDate: payload.as_of_date,
-    proxyLabel: payload.proxy_label,
+    proxyLabel: localizeNcdProxyLabel(payload.proxy_label),
     isActualNcdMatrix: payload.is_actual_ncd_matrix,
-    proxyWarning: warnings.length > 0 ? warnings.join(" ") : defaultProxyWarn,
+    proxyWarning: warnings.length > 0 ? formatNcdProxyWarningText(warnings) : defaultProxyWarn,
     rowCaptions: payload.rows.slice(0, 3).map((row) => ncdRowCaption(row)),
     sourceMeta: "backend",
   };
 }
 
+/** Fallback-score copy requires "暂无"; shared fixedOrDash uses EM_DASH for missing values. */
 function formatScore(value: number | null | undefined) {
   if (value == null || Number.isNaN(value)) {
     return "暂无";
@@ -216,7 +360,7 @@ function formatScore(value: number | null | undefined) {
   return value.toFixed(2);
 }
 
-/** Macro–bond correlation cells: align with market-data `formatCorrelation` ("不可用" when missing). */
+/** Correlation cells require "不可用"; shared fixedOrDash uses EM_DASH for missing values. */
 export function formatLinkageCorrelationDisplay(value: number | null | undefined) {
   if (value == null || Number.isNaN(value)) {
     return "不可用";
@@ -372,13 +516,320 @@ export function formatImpactedViewsForDisplay(views: string[]): string {
     .join("、");
 }
 
+export function crossAssetAssetDirectionLabel(direction: string) {
+  const normalized = direction.toLowerCase();
+  if (normalized.includes("rising")) {
+    return "上行";
+  }
+  if (normalized.includes("falling")) {
+    return "下行";
+  }
+  if (normalized.includes("supportive")) {
+    return "支撑";
+  }
+  if (normalized.includes("restrictive")) {
+    return "压制";
+  }
+  if (normalized.includes("neutral")) {
+    return "中性";
+  }
+  if (normalized.includes("conflicted")) {
+    return "分歧";
+  }
+  if (normalized.includes("pending") || normalized.includes("definition")) {
+    return "待接入";
+  }
+  return direction;
+}
+
+export function crossAssetAssetDirectionTone(direction: string): CrossAssetAssetDirectionTone {
+  const normalized = direction.toLowerCase();
+  if (normalized.includes("supportive")) {
+    return "supportive";
+  }
+  if (normalized.includes("restrictive")) {
+    return "restrictive";
+  }
+  if (normalized.includes("conflicted")) {
+    return "conflicted";
+  }
+  if (normalized.includes("pending") || normalized.includes("definition")) {
+    return "pending";
+  }
+  return "neutral";
+}
+
+function assetRowByKey(rows: CrossAssetClassAnalysisRow[], key: CrossAssetClassAnalysisRow["key"]) {
+  return rows.find((row) => row.key === key);
+}
+
+function countPendingAssetLines(rows: CrossAssetClassAnalysisRow[]) {
+  return rows.reduce(
+    (count, row) => count + row.lines.filter((line) => line.status !== "ready").length,
+    0,
+  );
+}
+
+function resolveCrossAssetBondJudgmentHeadline(
+  stockTone: string,
+  commodityTone: string,
+  pendingLineCount: number,
+) {
+  if (stockTone === "压制" && commodityTone === "中性") {
+    return "股票链条压制风险偏好，商品链条暂不强化通胀交易。";
+  }
+  if (stockTone === "压制" && commodityTone === "支撑") {
+    return "风险偏好承压但商品仍有通胀扰动，债券判断需看利率主线确认。";
+  }
+  if (stockTone === "支撑" && commodityTone === "中性") {
+    return "风险偏好改善，商品端中性，债券压力暂不来自跨资产共振。";
+  }
+  if (pendingLineCount > 0) {
+    return "已接入信号先约束风险偏好与通胀方向，待接入项只限定置信度。";
+  }
+  return "跨资产证据可进入债券传导判断，继续跟踪方向共振。";
+}
+
+export function buildCrossAssetBondTransmissionJudgment(
+  rows: CrossAssetClassAnalysisRow[],
+): CrossAssetBondTransmissionJudgment {
+  const stockRow = assetRowByKey(rows, "stock");
+  const commodityRow = assetRowByKey(rows, "commodities");
+  const optionsRow = assetRowByKey(rows, "options");
+  const pendingLineCount = countPendingAssetLines(rows);
+  const stockTone = stockRow ? crossAssetAssetDirectionLabel(stockRow.direction) : "待接入";
+  const commodityTone = commodityRow ? crossAssetAssetDirectionLabel(commodityRow.direction) : "待接入";
+  const optionsTone =
+    optionsRow?.status === "ready" ? crossAssetAssetDirectionLabel(optionsRow.direction) : "待接入";
+  const boundary =
+    pendingLineCount > 0
+      ? `当前仍有 ${pendingLineCount} 项待接入，缺口只降低结论置信度，不用相邻资产替代。`
+      : "当前待接入缺口较少，可更直接追踪跨资产共振对债券的传导。";
+
+  return {
+    key: "bond",
+    label: "债券传导判断",
+    headline: resolveCrossAssetBondJudgmentHeadline(stockTone, commodityTone, pendingLineCount),
+    summary: `${stockRow?.label ?? "股票"}${stockTone}；${commodityRow?.label ?? "商品"}${commodityTone}；${optionsRow?.label ?? "期权"}${optionsTone}。${boundary}`,
+    pendingLineCount,
+    items: [
+      {
+        key: "stock",
+        label: stockRow?.label ?? "股票",
+        tone: stockTone,
+        direction: stockRow?.direction ?? "pending",
+        directionTone: crossAssetAssetDirectionTone(stockRow?.direction ?? "pending"),
+        detail: stockRow?.explanation ?? "股票链条暂无治理后输入，不进入债券主判断。",
+      },
+      {
+        key: "commodities",
+        label: commodityRow?.label ?? "商品",
+        tone: commodityTone,
+        direction: commodityRow?.direction ?? "pending",
+        directionTone: crossAssetAssetDirectionTone(commodityRow?.direction ?? "pending"),
+        detail: commodityRow?.explanation ?? "商品链条暂无治理后输入，不放大通胀或需求判断。",
+      },
+      {
+        key: "options",
+        label: optionsRow?.label ?? "期权",
+        tone: optionsTone,
+        direction: optionsRow?.status === "ready" ? optionsRow.direction : "pending",
+        directionTone: crossAssetAssetDirectionTone(
+          optionsRow?.status === "ready" ? optionsRow.direction : "pending",
+        ),
+        detail:
+          optionsRow?.status === "ready"
+            ? optionsRow.explanation
+            : "期权和波动率口径尚在待接入清单，只作为风险信号缺口提示。",
+      },
+    ],
+  };
+}
+
+export function buildCrossAssetStockTransmissionJudgment(
+  rows: CrossAssetClassAnalysisRow[],
+): CrossAssetStockTransmissionJudgment {
+  const stockRow = assetRowByKey(rows, "stock");
+  const readyLineCount = stockRow?.lines.filter((line) => line.status === "ready").length ?? 0;
+  const pendingLineCount = stockRow?.lines.filter((line) => line.status !== "ready").length ?? 0;
+  const direction = stockRow?.direction ?? "pending";
+  const tone = stockRow ? crossAssetAssetDirectionLabel(direction) : "待接入";
+  const label = stockRow?.label ?? "股票判断";
+  const summary = stockRow?.explanation ?? "股票链条暂无治理后输入，暂不进入跨资产主判断。";
+
+  return {
+    key: "stock",
+    label,
+    headline: stockRow?.status === "ready" ? `${label}${tone}` : "股票链条待接入",
+    summary,
+    status: stockRow?.status ?? "pending_signal",
+    tone,
+    direction,
+    directionTone: crossAssetAssetDirectionTone(direction),
+    evidenceCount: readyLineCount,
+    pendingLineCount,
+  };
+}
+
+function firstBlockingFirstScreenFlag(flags: CrossAssetStatusFlag[]) {
+  return flags.find((flag) =>
+    ["access-denied", "loading-failure", "source-blocked", "no-data"].includes(flag.id),
+  );
+}
+
+function pendingDriverChain(reason: { headline: string; detail: string }): CrossAssetFirstScreenDisplayContract["driverChain"] {
+  return {
+    primary: reason.headline,
+    secondary: "等待证据",
+    style: "待确认",
+    items: [
+      {
+        title: "联动链路",
+        stance: "待确认",
+        tone: "neutral",
+        bullets: [reason.detail],
+      },
+    ],
+  };
+}
+
+function pendingBondJudgment(reason: { headline: string; detail: string }): CrossAssetBondTransmissionJudgment {
+  return {
+    key: "bond",
+    label: "债券传导判断",
+    headline: reason.headline,
+    summary: reason.detail,
+    pendingLineCount: 0,
+    items: [
+      {
+        key: "stock",
+        label: "股票",
+        tone: "待确认",
+        direction: "pending",
+        directionTone: "pending",
+        detail: reason.detail,
+      },
+      {
+        key: "commodities",
+        label: "商品",
+        tone: "待确认",
+        direction: "pending",
+        directionTone: "pending",
+        detail: "联动链路恢复前不使用相邻资产替代判断。",
+      },
+      {
+        key: "options",
+        label: "期权",
+        tone: "待接入",
+        direction: "pending",
+        directionTone: "pending",
+        detail: "期权和波动率口径仍按待接入处理。",
+      },
+    ],
+  };
+}
+
+function pendingStockJudgment(reason: { headline: string; detail: string }): CrossAssetStockTransmissionJudgment {
+  return {
+    key: "stock",
+    label: "股票分析",
+    headline: reason.headline,
+    summary: reason.detail,
+    status: "pending_signal",
+    tone: "待确认",
+    direction: "pending",
+    directionTone: "pending",
+    evidenceCount: 0,
+    pendingLineCount: 0,
+  };
+}
+
+export function buildCrossAssetFirstScreenDisplayContract(input: {
+  reportDate: string;
+  firstScreenConclusion: string | null;
+  marketRegime: MarketRegimeInfo;
+  drivers: DriverColumn[];
+  envTags: EnvironmentTags;
+  assetClassAnalysisRows: CrossAssetClassAnalysisRow[];
+  statusFlags: CrossAssetStatusFlag[];
+  isLoading: boolean;
+}): CrossAssetFirstScreenDisplayContract {
+  const loadingLabel = "正在加载联动分析…";
+  const marketFallback = `首屏参考市场体制 ${input.marketRegime.label}：${input.marketRegime.description}`;
+  const blockingFlag = input.isLoading ? undefined : firstBlockingFirstScreenFlag(input.statusFlags);
+  const sourceBlockedFlag = input.statusFlags.find((flag) => flag.id === "source-blocked");
+  const pendingReason = input.isLoading
+    ? {
+        headline: "等待联动链路返回",
+        detail: "宏观链路或联动链路仍在加载，暂不展示主导跨资产链路、债券传导或股票判断。",
+      }
+    : blockingFlag
+      ? {
+          headline: blockingFlag.label,
+          detail: blockingFlag.detail,
+        }
+      : null;
+  const conclusion = input.firstScreenConclusion ?? marketFallback;
+  const heroHeadline = input.isLoading ? loadingLabel : pendingReason?.headline ?? conclusion;
+  const heroSummary = input.isLoading ? loadingLabel : pendingReason?.detail ?? conclusion;
+  const driverChain = pendingReason
+    ? pendingDriverChain(pendingReason)
+    : {
+        primary: input.envTags.primary,
+        secondary: input.envTags.secondary,
+        style: input.envTags.style,
+        items: input.drivers.slice(0, 4).map((driver) => ({
+          title: driver.title,
+          stance: driver.stance,
+          tone: driver.tone,
+          bullets: driver.bullets.slice(0, 2),
+        })),
+      };
+  const judgments = pendingReason
+    ? {
+        bond: pendingBondJudgment(pendingReason),
+        stock: pendingStockJudgment(pendingReason),
+      }
+    : {
+        bond: buildCrossAssetBondTransmissionJudgment(input.assetClassAnalysisRows),
+        stock: buildCrossAssetStockTransmissionJudgment(input.assetClassAnalysisRows),
+      };
+
+  return {
+    loading: {
+      isLoading: input.isLoading,
+      label: loadingLabel,
+    },
+    hero: {
+      headline: heroHeadline,
+      summary: heroSummary,
+      question: input.isLoading
+        ? "等待宏观链路与联动链路返回；状态旗标为空不代表校验通过。"
+        : "仅作宏观/债券联动分析，不替代交易指令。",
+      reportDate: input.reportDate || "待定",
+      regimeLabel: pendingReason ? "待确认" : input.marketRegime.label,
+      regimeDescription: pendingReason?.detail ?? input.marketRegime.description,
+    },
+    driverChain,
+    judgments,
+    status: {
+      flags: input.statusFlags,
+      warningCount: input.statusFlags.length,
+      blockingFlag: blockingFlag ?? null,
+      sourceBlockedFlag: sourceBlockedFlag ?? null,
+    },
+  };
+}
+
 function stanceTone(stance: string): ActionTone {
   const lowered = stance.toLowerCase();
   if (
     lowered.includes("bull") ||
     lowered.includes("support") ||
     lowered.includes("constructive") ||
-    lowered.includes("prefer")
+    lowered.includes("prefer") ||
+    // normalizeLabel 已把 supportive/restrictive 中文化，这里保持同一 tone 推导。
+    stance.includes("偏有利")
   ) {
     return "bull";
   }
@@ -386,7 +837,8 @@ function stanceTone(stance: string): ActionTone {
     lowered.includes("bear") ||
     lowered.includes("restrict") ||
     lowered.includes("tight") ||
-    lowered.includes("caution")
+    lowered.includes("caution") ||
+    stance.includes("偏紧")
   ) {
     return "bear";
   }
@@ -461,7 +913,13 @@ function buildFallbackResearchViews(input: {
         : "兜底判断：在信心提升前，利率、同业存单和高等级信用保持均衡。",
     affected_targets: ["rates", "ncd", "high_grade_credit"],
     evidence: topCorr
-      ? [`${topCorr.series_name} -> ${topCorr.target_family} ${topCorr.target_tenor ?? ""}`.trim()]
+      ? [
+          formatLinkageCorrelationTarget(
+            topCorr.series_name,
+            topCorr.target_family,
+            topCorr.target_tenor,
+          ),
+        ]
       : input.linkageWarnings.slice(0, 1),
   };
 
@@ -493,31 +951,63 @@ function fallbackAxis(axisKey: (typeof TRANSMISSION_AXIS_ORDER)[number]): MacroB
 
 const HEURISTIC_AXIS_WARNING =
   "仅来自环境评分的启发式判断，不是治理后的传导主线信号。";
-const LINKAGE_UNAVAILABLE_MESSAGE = "macro_bond_linkage.analysis 加载失败；暂不生成兜底研究判断。";
+function resolveLinkageUnavailableKind(input: {
+  linkageUnavailableReason?: CrossAssetQueryFailureKind;
+  moduleFailures?: CrossAssetModuleFailure[];
+  loadingFailures?: string[];
+}): CrossAssetQueryFailureKind | undefined {
+  if (input.linkageUnavailableReason) {
+    return input.linkageUnavailableReason;
+  }
+  const linkageFailure = input.moduleFailures?.find(
+    (failure) => failure.module === "macro_bond_linkage.analysis",
+  );
+  if (linkageFailure) {
+    return linkageFailure.kind;
+  }
+  if (input.loadingFailures?.includes("macro_bond_linkage.analysis")) {
+    return "load";
+  }
+  return undefined;
+}
+
+function isLinkageUnavailable(input: {
+  linkageUnavailableReason?: CrossAssetQueryFailureKind;
+  moduleFailures?: CrossAssetModuleFailure[];
+  loadingFailures?: string[];
+}): boolean {
+  return resolveLinkageUnavailableKind(input) != null;
+}
 const OPTION_LOCAL_EVIDENCE_NOTE =
   "本地 phase1_macro_vendor_catalog / choice_market_snapshot / fact_choice_macro_daily 未发现已治理序列";
 
-function unavailableResearchView(key: (typeof RESEARCH_VIEW_ORDER)[number]): MacroBondResearchView {
+function unavailableResearchView(
+  key: (typeof RESEARCH_VIEW_ORDER)[number],
+  reason?: CrossAssetQueryFailureKind,
+): MacroBondResearchView {
   return {
     key,
     status: "pending_signal",
     stance: "pending_signal",
     confidence: "low",
-    summary: LINKAGE_UNAVAILABLE_MESSAGE,
+    summary: linkageUnavailableSummary(reason),
     affected_targets: [],
-    evidence: ["macro_bond_linkage.analysis 加载失败"],
+    evidence: [linkageUnavailableEvidence(reason)],
   };
 }
 
-function unavailableTransmissionAxis(axisKey: (typeof TRANSMISSION_AXIS_ORDER)[number]): MacroBondTransmissionAxis {
+function unavailableTransmissionAxis(
+  axisKey: (typeof TRANSMISSION_AXIS_ORDER)[number],
+  reason?: CrossAssetQueryFailureKind,
+): MacroBondTransmissionAxis {
   return {
     axis_key: axisKey,
     status: "pending_signal",
     stance: "pending_signal",
-    summary: LINKAGE_UNAVAILABLE_MESSAGE,
+    summary: linkageUnavailableSummary(reason),
     impacted_views: [],
     required_series_ids: [],
-    warnings: ["macro_bond_linkage.analysis 加载失败"],
+    warnings: [linkageUnavailableEvidence(reason)],
   };
 }
 
@@ -584,12 +1074,13 @@ function viewCardFromSource(
   return {
     key: view.key,
     label: typedKey ? RESEARCH_VIEW_LABEL[typedKey] : normalizeLabel(view.key),
-    stance: normalizeLabel(view.stance),
+    // 判断词展示走传导轴同一张中文表（conflicted/supportive 等），未登记回落 normalizeLabel。
+    stance: transmissionStanceLabel(view.stance),
     confidence: normalizeLabel(view.confidence),
-    summary: view.summary,
+    summary: formatCrossAssetLinkageSummary(view.summary),
     status: view.status,
     affectedTargets: view.affected_targets ?? [],
-    evidence: view.evidence ?? [],
+    evidence: (view.evidence ?? []).map((item) => formatCrossAssetLinkageEvidence(item)),
     source,
   };
 }
@@ -605,7 +1096,7 @@ function transmissionAxisFromSource(
     status: axis.status,
     stance: normalizeLabel(axis.stance),
     stanceLabel: transmissionStanceLabel(axis.stance),
-    summary: axis.summary,
+    summary: formatCrossAssetLinkageSummary(axis.summary),
     impactedViews: axis.impacted_views ?? [],
     requiredSeriesIds: axis.required_series_ids ?? [],
     warnings: axis.warnings ?? [],
@@ -622,10 +1113,10 @@ function directionFromKpi(kpi: ResolvedCrossAssetKpi | undefined) {
     return "pending";
   }
   if (kpi.changeTone === "positive") {
-    return "supportive";
+    return "rising";
   }
   if (kpi.changeTone === "negative") {
-    return "restrictive";
+    return "falling";
   }
   return "neutral";
 }
@@ -642,7 +1133,7 @@ function hasUsableKpi(kpi: ResolvedCrossAssetKpi | undefined): kpi is ResolvedCr
     return false;
   }
   // A landed latest value is usable even when change/sparkline history is temporarily thin.
-  return kpi.valueLabel !== "—";
+  return kpi.valueLabel !== EM_DASH;
 }
 
 function kpiDateSuffix(kpi: ResolvedCrossAssetKpi) {
@@ -718,10 +1209,10 @@ function stateLabelFromKpi(
 const EQUITY_EVIDENCE_DEFINITIONS = [
   {
     key: "broad_index",
-    kpiKey: "financial_conditions",
+    kpiKey: "csi300",
     label: "指数层面",
     unitFallback: "index",
-    sourceFallback: "需登记 Choice 接入码或 Tushare 指数输入",
+    sourceFallback: "需登记 Tushare 沪深300指数输入",
   },
   {
     key: "csi300_pe",
@@ -746,9 +1237,24 @@ const EQUITY_EVIDENCE_DEFINITIONS = [
   },
 ] as const;
 
+const CROSS_ASSET_EVIDENCE_UNIT_ZH: Record<string, string> = {
+  index: "指数",
+  point: "点",
+  "z-score": "标准分",
+  x: "倍",
+};
+
+/** Cross-asset unit aliases stay local; only the empty-text fallback is shared. */
+function formatCrossAssetEvidenceUnitLabel(unit: string | null | undefined, fallback: string) {
+  const raw = textOrDash(unit?.trim() || fallback.trim());
+  if (raw === EM_DASH) {
+    return EM_DASH;
+  }
+  return CROSS_ASSET_EVIDENCE_UNIT_ZH[raw.toLowerCase()] ?? raw;
+}
+
 function unitLabelFromKpi(kpi: ResolvedCrossAssetKpi | undefined, fallback: string) {
-  const unit = kpi?.unit?.trim();
-  return unit || fallback;
+  return formatCrossAssetEvidenceUnitLabel(kpi?.unit, fallback);
 }
 
 function equityEvidenceStatusFromKpi(
@@ -780,8 +1286,8 @@ export function buildCrossAssetEquityEvidenceItems(
       key: definition.key,
       label: definition.label,
       status: equityEvidenceStatusFromKpi(kpi, latestMeta),
-      valueLabel: kpi?.valueLabel ?? "—",
-      changeLabel: kpi?.changeLabel ?? "—",
+      valueLabel: kpi?.valueLabel ?? EM_DASH,
+      changeLabel: kpi?.changeLabel ?? EM_DASH,
       unitLabel: unitLabelFromKpi(kpi, definition.unitFallback),
       tradeDate: kpi?.tradeDate ?? null,
       sourceLabel: sourceLabelFromKpi(kpi, definition.sourceFallback),
@@ -793,6 +1299,63 @@ function axisByKey(rows: CrossAssetTransmissionAxisRow[], key: string) {
   return rows.find((row) => row.axisKey === key);
 }
 
+function compactAxisStanceExplanation(
+  axis: CrossAssetTransmissionAxisRow | undefined,
+  pending: string,
+): string {
+  if (axis?.status === "ready") {
+    return `${axis.label} ${axis.stanceLabel}。`;
+  }
+  return pending;
+}
+
+function synthesizeStockRowExplanation(
+  equityAxis: CrossAssetTransmissionAxisRow | undefined,
+  megaCapAxis: CrossAssetTransmissionAxisRow | undefined,
+): string {
+  const parts = [equityAxis, megaCapAxis]
+    .filter((axis): axis is CrossAssetTransmissionAxisRow => axis?.status === "ready")
+    .map((axis) => `${axis.label} ${axis.stanceLabel}`);
+  if (parts.length > 0) {
+    return `股票通道：${parts.join("，")}；细项见资产明细。`;
+  }
+  return "治理后的股票分析待接入；代理确认前，股票证据与债券结论保持分离。";
+}
+
+function synthesizeCommodityRowExplanation(
+  commodityAxis: CrossAssetTransmissionAxisRow | undefined,
+  commodityLines: CrossAssetClassAnalysisLine[],
+): string {
+  const readyCount = commodityLines.filter((line) => line.status === "ready").length;
+  if (readyCount > 0) {
+    const axisPart =
+      commodityAxis?.status === "ready" ? `商品与通胀 ${commodityAxis.stanceLabel}` : "挂牌指标已接入";
+    return `${axisPart}；${readyCount} 项商品细项见下方明细。`;
+  }
+  return compactAxisStanceExplanation(
+    commodityAxis,
+    "治理后的商品链条判断待接入；只使用已展示的布伦特和钢材证据，不追加无支持的通胀压力判断。",
+  );
+}
+
+function megaCapLineExplanation(
+  megaCapTop10: ResolvedCrossAssetKpi | undefined,
+  megaCapTop5: ResolvedCrossAssetKpi | undefined,
+  megaCapAxis: CrossAssetTransmissionAxisRow | undefined,
+): string {
+  const kpiParts = [megaCapTop10, megaCapTop5]
+    .filter(hasUsableKpi)
+    .map((kpi) => explanationFromKpi(kpi, ""))
+    .filter(Boolean);
+  if (kpiParts.length > 0) {
+    return kpiParts.join("；");
+  }
+  return compactAxisStanceExplanation(
+    megaCapAxis,
+    explanationFromKpi(megaCapTop10, "治理后的大市值引领代理待接入，大盘权重通道暂不下结论。"),
+  );
+}
+
 export function buildCrossAssetClassAnalysisRows(input: {
   kpis: ResolvedCrossAssetKpi[];
   transmissionAxes: CrossAssetTransmissionAxisRow[];
@@ -802,7 +1365,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
   const equityAxis = axisByKey(input.transmissionAxes, "equity_bond_spread");
   const megaCapAxis = axisByKey(input.transmissionAxes, "mega_cap_equities");
   const commodityAxis = axisByKey(input.transmissionAxes, "commodities_inflation");
-  const broadIndex = kpiByKey(input.kpis, "financial_conditions");
+  const broadIndex = kpiByKey(input.kpis, "csi300");
   const csi300Pe = kpiByKey(input.kpis, "csi300_pe");
   const megaCapTop10 = kpiByKey(input.kpis, "mega_cap_weight");
   const megaCapTop5 = kpiByKey(input.kpis, "mega_cap_top5_weight");
@@ -817,8 +1380,8 @@ export function buildCrossAssetClassAnalysisRows(input: {
       status: hasUsableKpi(broadIndex) ? "ready" : "pending_signal",
       stateLabel: stateLabelFromKpi(broadIndex, input.latestMeta),
       direction: directionFromKpi(broadIndex),
-      dataLabel: dataLabelFromKpi(broadIndex, "等待 EMM01843735 / CA.CSI300 / Tushare CSI300"),
-      sourceLabel: sourceLabelFromKpi(broadIndex, "需登记 Choice 接入码或 Tushare 指数输入"),
+      dataLabel: dataLabelFromKpi(broadIndex, "等待沪深300指数序列"),
+      sourceLabel: sourceLabelFromKpi(broadIndex, "需登记 Tushare 沪深300指数输入（CA.CSI300）"),
       explanation: explanationFromKpi(
         broadIndex,
         "治理后的宽基指数输入待接入，不转成选股或行业轮动结论。",
@@ -840,17 +1403,20 @@ export function buildCrossAssetClassAnalysisRows(input: {
       direction: equityAxis?.stance ?? directionFromKpi(csi300Pe),
       dataLabel: combinedDataLabel(
         [compactKpiData(csi300Pe), equityAxis?.status === "ready" ? "股债利差轴已就绪" : null],
-        "等待 CA.CSI300_PE / 股债利差轴",
+        "等待沪深300市盈率与股债利差轴",
       ),
       sourceLabel: [
-        combinedSourceLabel([csi300Pe], "需登记 Tushare index_dailybasic"),
+        combinedSourceLabel([csi300Pe], "需登记 Tushare index_dailybasic（CA.CSI300_PE）"),
         equityAxis?.status === "ready" ? `双源轴(${normalizeLabel(equityAxis.source)}): ${equityAxis.requiredSeriesIds.join(", ")}` : null,
       ]
         .filter(Boolean)
         .join("；"),
-      explanation:
-        equityAxis?.summary ??
-        explanationFromKpi(csi300Pe, "治理后的沪深300估值与股债利差输入待接入。"),
+      explanation: hasUsableKpi(csi300Pe)
+        ? explanationFromKpi(csi300Pe, "治理后的沪深300估值与股债利差输入待接入。")
+        : compactAxisStanceExplanation(
+            equityAxis,
+            "治理后的沪深300估值与股债利差输入待接入。",
+          ),
     },
     {
       key: "mega_cap_weight",
@@ -868,7 +1434,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
       direction: megaCapAxis?.stance ?? directionFromKpi(megaCapTop10),
       dataLabel: combinedDataLabel(
         [compactKpiData(megaCapTop10), compactKpiData(megaCapTop5)],
-        "双源待补：Choice 大市值权重码 / Tushare index_weight",
+        "双源待补：大市值权重（Choice 与 Tushare）",
       ),
       sourceLabel: [
         combinedSourceLabel([megaCapTop10, megaCapTop5], "需登记 Choice 大市值权重码 / Tushare index_weight"),
@@ -876,9 +1442,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
       ]
         .filter(Boolean)
         .join("；"),
-      explanation:
-        megaCapAxis?.summary ??
-        explanationFromKpi(megaCapTop10, "治理后的大市值引领代理待接入，大盘权重通道暂不下结论。"),
+      explanation: megaCapLineExplanation(megaCapTop10, megaCapTop5, megaCapAxis),
     },
   ];
   const commodityLines: CrossAssetClassAnalysisLine[] = [
@@ -888,8 +1452,8 @@ export function buildCrossAssetClassAnalysisRows(input: {
       status: hasUsableKpi(energy) ? "ready" : "pending_signal",
       stateLabel: stateLabelFromKpi(energy, input.latestMeta),
       direction: directionFromKpi(energy),
-      dataLabel: dataLabelFromKpi(energy, "等待 CA.BRENT"),
-      sourceLabel: sourceLabelFromKpi(energy, "需登记能源 Choice 接入码或公共补充源"),
+      dataLabel: dataLabelFromKpi(energy, "等待布伦特原油序列"),
+      sourceLabel: sourceLabelFromKpi(energy, "需登记能源 Choice 接入码或公共补充源（CA.BRENT）"),
       explanation: explanationFromKpi(energy, "治理后的能源链输入待接入。"),
     },
     {
@@ -898,8 +1462,8 @@ export function buildCrossAssetClassAnalysisRows(input: {
       status: hasUsableKpi(ferrous) ? "ready" : "pending_signal",
       stateLabel: stateLabelFromKpi(ferrous, input.latestMeta),
       direction: directionFromKpi(ferrous),
-      dataLabel: dataLabelFromKpi(ferrous, "等待 CA.STEEL"),
-      sourceLabel: sourceLabelFromKpi(ferrous, "需登记黑色系 Choice 接入码或公共补充源"),
+      dataLabel: dataLabelFromKpi(ferrous, "等待钢材现货序列"),
+      sourceLabel: sourceLabelFromKpi(ferrous, "需登记黑色系 Choice 接入码或公共补充源（CA.STEEL）"),
       explanation: explanationFromKpi(ferrous, "治理后的黑色链输入待接入。"),
     },
     {
@@ -924,9 +1488,10 @@ export function buildCrossAssetClassAnalysisRows(input: {
               ],
               "治理后的有色输入待接入，不用原油或钢材代理铜铝。",
             )
-          : commodityAxis?.status === "ready"
-            ? commodityAxis.summary
-            : "治理后的有色输入待接入，不用原油或钢材代理铜铝。",
+          : compactAxisStanceExplanation(
+              commodityAxis,
+              "治理后的有色输入待接入，不用原油或钢材代理铜铝。",
+            ),
     },
   ];
   const optionLines: CrossAssetClassAnalysisLine[] = [
@@ -937,7 +1502,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
       stateLabel: "pending_definition",
       direction: "待接入",
       dataLabel:
-        "待治理: equity_option.iv, equity_option.skew, equity_option.put_call_ratio；需登记 Choice 接入码或期权治理源（单位/频率/日期口径待确认）",
+        "待治理：隐含波动率、偏度、认沽认购比；需登记 Choice 接入码或期权治理源（单位/频率/日期口径待确认）",
       sourceLabel:
         `${OPTION_LOCAL_EVIDENCE_NOTE}：equity_option.iv, equity_option.skew, equity_option.put_call_ratio`,
       explanation:
@@ -950,7 +1515,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
       stateLabel: "pending_definition",
       direction: "待接入",
       dataLabel:
-        "待治理: commodity_option.iv, commodity_option.skew, commodity_option.tail_risk；需登记 Choice 接入码或期权治理源（单位/频率/日期口径待确认）",
+        "待治理：隐含波动率、偏度、尾部风险；需登记 Choice 接入码或期权治理源（单位/频率/日期口径待确认）",
       sourceLabel:
         `${OPTION_LOCAL_EVIDENCE_NOTE}：commodity_option.iv, commodity_option.skew, commodity_option.tail_risk`,
       explanation:
@@ -963,7 +1528,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
       stateLabel: "pending_definition",
       direction: "待接入",
       dataLabel:
-        "待治理: rates_option.implied_vol, rates_option.curve_vol；需登记 Choice 接入码或利率期权治理源（单位/期限/日期口径待确认）",
+        "待治理：隐含波动率、曲线波动率；需登记 Choice 接入码或利率期权治理源（单位/期限/日期口径待确认）",
       sourceLabel:
         `${OPTION_LOCAL_EVIDENCE_NOTE}：rates_option.implied_vol, rates_option.curve_vol`,
       explanation:
@@ -979,10 +1544,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
       label: "股票分析",
       status: stockReady ? "ready" : "pending_signal",
       direction: equityAxis?.stance ?? stockLines.find((line) => line.status === "ready")?.direction ?? "pending",
-      explanation:
-        equityAxis?.summary ??
-        megaCapAxis?.summary ??
-        "治理后的股票分析待接入；代理确认前，股票证据与债券结论保持分离。",
+      explanation: synthesizeStockRowExplanation(equityAxis, megaCapAxis),
       lines: stockLines,
     },
     {
@@ -990,9 +1552,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
       label: "大宗商品分析",
       status: commodityReady ? "ready" : "pending_signal",
       direction: commodityAxis?.stance ?? commodityLines.find((line) => line.status === "ready")?.direction ?? "pending",
-      explanation:
-        commodityAxis?.summary ??
-        "治理后的商品链条判断待接入；只使用已展示的布伦特和钢材证据，不追加无支持的通胀压力判断。",
+      explanation: synthesizeCommodityRowExplanation(commodityAxis, commodityLines),
       lines: commodityLines,
     },
     {
@@ -1026,19 +1586,24 @@ export function buildCrossAssetDriversViewModel(input: {
   ncdProxyAvailable: boolean;
   /** When macro/linkage fetches fail, pass stable module keys for status flags. */
   loadingFailures?: string[];
+  moduleFailures?: CrossAssetModuleFailure[];
+  linkageUnavailableReason?: CrossAssetQueryFailureKind;
 }): CrossAssetDriversViewModel {
-  const linkageUnavailable = input.loadingFailures?.includes("macro_bond_linkage.analysis") ?? false;
+  const linkageUnavailableKind = resolveLinkageUnavailableKind(input);
+  const linkageUnavailable = isLinkageUnavailable(input);
   const researchCards = buildResearchSummaryCards({
     researchViews: input.researchViews,
     env: input.env,
     topCorrelations: input.topCorrelations,
     linkageWarnings: input.linkageWarnings,
     linkageUnavailable,
+    linkageUnavailableReason: linkageUnavailableKind,
   });
   const transmissionAxes = buildTransmissionAxisRows({
     transmissionAxes: input.transmissionAxes,
     env: input.env,
     linkageUnavailable,
+    linkageUnavailableReason: linkageUnavailableKind,
   });
   const assetClassAnalysisRows = buildCrossAssetClassAnalysisRows({
     kpis: input.kpis,
@@ -1054,6 +1619,7 @@ export function buildCrossAssetDriversViewModel(input: {
     linkageWarnings: input.linkageWarnings,
     ncdProxy: input.ncdProxy,
     linkageUnavailable,
+    linkageUnavailableReason: linkageUnavailableKind,
   });
   const watchList = buildCrossAssetWatchList({
     kpis: input.kpis,
@@ -1062,6 +1628,7 @@ export function buildCrossAssetDriversViewModel(input: {
     topCorrelations: input.topCorrelations,
     linkageWarnings: input.linkageWarnings,
     linkageUnavailable,
+    linkageUnavailableReason: linkageUnavailableKind,
   });
   const eventCalendarRows = buildCrossAssetEventItems({
     events: input.calendarEvents,
@@ -1072,6 +1639,8 @@ export function buildCrossAssetDriversViewModel(input: {
   const ncdProxyEvidence = buildCrossAssetNcdProxyEvidence({
     result: input.ncdProxy,
     available: input.ncdProxyAvailable,
+    failureKind: input.moduleFailures?.find((failure) => failure.module === "market_data_ncd_proxy")
+      ?.kind,
   });
   const statusFlags = buildCrossAssetStatusFlags({
     latestMeta: input.latestMeta,
@@ -1079,7 +1648,9 @@ export function buildCrossAssetDriversViewModel(input: {
     latestSeries: input.latestSeries,
     crossAssetDataDate: input.crossAssetDataDate,
     linkageReportDate: input.linkageReportDate,
+    linkageWarnings: input.linkageWarnings,
     loadingFailures: input.loadingFailures,
+    moduleFailures: input.moduleFailures,
   });
 
   return {
@@ -1094,22 +1665,48 @@ export function buildCrossAssetDriversViewModel(input: {
   };
 }
 
+function hasLinkageQualityWarning(meta?: ResultMeta, linkageWarnings?: string[]): boolean {
+  return meta?.quality_flag === "warning" || (linkageWarnings?.length ?? 0) > 0;
+}
+
 export function buildCrossAssetStatusFlags(input: {
   latestMeta?: ResultMeta;
   linkageMeta?: ResultMeta;
   latestSeries: ChoiceMacroLatestPoint[];
   crossAssetDataDate: string;
   linkageReportDate: string;
+  linkageWarnings?: string[];
   loadingFailures?: string[];
+  moduleFailures?: CrossAssetModuleFailure[];
 }): CrossAssetStatusFlag[] {
   const flags: CrossAssetStatusFlag[] = [];
+  const sourceBlocked = hasBlockedMeta(input.latestMeta) || hasBlockedMeta(input.linkageMeta);
 
-  const loadingFailures = (input.loadingFailures ?? []).filter(Boolean);
-  if (loadingFailures.length > 0) {
-    const modules = loadingFailures.join(", ");
+  const moduleFailures =
+    input.moduleFailures ??
+    (input.loadingFailures ?? [])
+      .filter(Boolean)
+      .map((module) => ({ module, kind: "load" as const }));
+  const permissionFailures = moduleFailures.filter((failure) => failure.kind === "permission");
+  const loadFailures = moduleFailures.filter((failure) => failure.kind === "load");
+
+  if (permissionFailures.length > 0) {
+    const modules = permissionFailures.map((failure) => failure.module).join(", ");
+    flags.push({
+      id: "access-denied",
+      // 与 loading-failure 同制度：label 只留业务结论，模块 token 收进 detail（证据区/title）。
+      label: "权限受限",
+      tone: "danger",
+      detail: `${modules} 无读取权限；四维判断与 NCD 代理不可用，请联系管理员开通读取权限。`,
+    });
+  }
+
+  if (loadFailures.length > 0) {
+    const modules = loadFailures.map((failure) => failure.module).join(", ");
     flags.push({
       id: "loading-failure",
-      label: `加载失败 · ${modules}`,
+      // 端点 token 属证据层：label 只留业务结论（状态条多处复用），模块清单收进 detail（证据区/ title 展示）。
+      label: "加载失败",
       tone: "danger",
       detail: `${modules} 加载失败；不要把兜底卡片当作完整跨资产判断。`,
     });
@@ -1124,6 +1721,18 @@ export function buildCrossAssetStatusFlags(input: {
     });
   }
 
+  if (hasLinkageQualityWarning(input.linkageMeta, input.linkageWarnings)) {
+    const warningSummary = summarizeCrossAssetLinkageWarnings(input.linkageWarnings ?? []);
+    flags.push({
+      id: "linkage-quality-warning",
+      label: "联动预警",
+      tone: "warning",
+      detail:
+        warningSummary ??
+        "联动分析质量标记为预警；使用前请核对报告日、风险张量日期与指标历史长度。",
+    });
+  }
+
   if (hasStaleMeta(input.latestMeta) || hasStaleMeta(input.linkageMeta)) {
     flags.push({
       id: "stale",
@@ -1133,12 +1742,12 @@ export function buildCrossAssetStatusFlags(input: {
     });
   }
 
-  if (hasBlockedMeta(input.latestMeta) || hasBlockedMeta(input.linkageMeta)) {
+  if (sourceBlocked) {
     flags.push({
       id: "source-blocked",
       label: "来源受限",
       tone: "danger",
-      detail: "存在供应商来源不可用或权限受限；使用保留行和公共补充源时需显式谨慎。",
+      detail: "供应商来源不可用；保留行和公共补充源仅可用于审计，不得形成首屏结论。",
     });
   }
 
@@ -1151,7 +1760,7 @@ export function buildCrossAssetStatusFlags(input: {
     });
   }
 
-  if (hasChoiceSeries(input.latestSeries) && hasPublicSupplementSeries(input.latestSeries)) {
+  if (!sourceBlocked && hasChoiceSeries(input.latestSeries) && hasPublicSupplementSeries(input.latestSeries)) {
     flags.push({
       id: "dual-source",
       label: "双源就绪",
@@ -1187,10 +1796,13 @@ export function buildResearchSummaryCards(input: {
   topCorrelations: MacroBondLinkageTopCorrelation[];
   linkageWarnings: string[];
   linkageUnavailable?: boolean;
+  linkageUnavailableReason?: CrossAssetQueryFailureKind;
 }): CrossAssetResearchViewCard[] {
   const backendViews = new Map((input.researchViews ?? []).map((row) => [row.key, row]));
   const unavailableViews = new Map(
-    RESEARCH_VIEW_ORDER.map((key) => [key, unavailableResearchView(key)] as const),
+    RESEARCH_VIEW_ORDER.map(
+      (key) => [key, unavailableResearchView(key, input.linkageUnavailableReason)] as const,
+    ),
   );
   const fallbackViews = new Map(
     buildFallbackResearchViews(input).map((row) => [row.key, row] as const),
@@ -1212,10 +1824,13 @@ export function buildTransmissionAxisRows(input: {
   transmissionAxes?: MacroBondTransmissionAxis[];
   env: Partial<MacroBondLinkageEnvironmentScore>;
   linkageUnavailable?: boolean;
+  linkageUnavailableReason?: CrossAssetQueryFailureKind;
 }): CrossAssetTransmissionAxisRow[] {
   const backendAxes = new Map((input.transmissionAxes ?? []).map((row) => [row.axis_key, row]));
   const unavailableAxes = new Map(
-    TRANSMISSION_AXIS_ORDER.map((axisKey) => [axisKey, unavailableTransmissionAxis(axisKey)] as const),
+    TRANSMISSION_AXIS_ORDER.map(
+      (axisKey) => [axisKey, unavailableTransmissionAxis(axisKey, input.linkageUnavailableReason)] as const,
+    ),
   );
   const fallbackAxes = new Map(
     buildFallbackTransmissionAxes(input).map((row) => [row.axis_key, row] as const),
@@ -1242,12 +1857,14 @@ export function buildCrossAssetCandidateActions(input: {
   /** 仅作旁证，不得当作真实 NCD 发行矩阵 */
   ncdProxy?: NcdFundingProxyPayload | null;
   linkageUnavailable?: boolean;
+  linkageUnavailableReason?: CrossAssetQueryFailureKind;
 }): CrossAssetCandidateAction[] {
   const views = buildResearchSummaryCards(input);
   const axes = buildTransmissionAxisRows({
     transmissionAxes: input.transmissionAxes,
     env: input.env,
     linkageUnavailable: input.linkageUnavailable,
+    linkageUnavailableReason: input.linkageUnavailableReason,
   });
   const rows: CrossAssetCandidateAction[] = [];
   const ncd = input.ncdProxy;
@@ -1256,8 +1873,8 @@ export function buildCrossAssetCandidateActions(input: {
     rows.push({
       tone: "warning",
       action: "将 NCD/资金仅视为代理旁证。",
-      reason: warnings.length > 0 ? warnings.join(" ") : "不是实际同业存单发行矩阵。",
-      evidence: ncd.proxy_label,
+      reason: warnings.length > 0 ? formatNcdProxyWarningText(warnings) : "不是实际同业存单发行矩阵。",
+      evidence: localizeNcdProxyLabel(ncd.proxy_label),
     });
   }
 
@@ -1317,7 +1934,11 @@ export function buildCrossAssetCandidateActions(input: {
       action: "暂缓候选动作。",
       reason: "当前对齐的研究判断证据不足。",
       evidence: topCorr
-        ? `${topCorr.series_name} -> ${topCorr.target_family} ${topCorr.target_tenor ?? ""}`.trim()
+        ? formatLinkageCorrelationTarget(
+            topCorr.series_name,
+            topCorr.target_family,
+            topCorr.target_tenor,
+          )
         : "环境评分与头部相关性仍偏弱",
     });
   }
@@ -1334,6 +1955,45 @@ export function buildCrossAssetCandidateActions(input: {
   return rows.slice(0, 5);
 }
 
+/** 研究日历事件的整句英文 caption 中文化（§7 语域）；未登记原样透出。 */
+const CALENDAR_EVENT_TITLE_ZH: Record<string, string> = {
+  "government bond net financing": "国债净融资",
+  "policy bank bond auction": "政金债招标",
+};
+
+const CALENDAR_EVENT_NOTE_ZH: Record<string, string> = {
+  "supply rhythm": "供给节奏",
+};
+
+const CALENDAR_EVENT_ISSUER_ZH: Record<string, string> = {
+  cdb: "国开行",
+};
+
+/** "180bn CNY" 型规模标签换算为亿元（1bn = 10 亿）；未登记形态原样透出。 */
+function localizeCalendarAmountLabel(amount: string | undefined): string | undefined {
+  if (!amount) {
+    return amount;
+  }
+  const match = amount.trim().match(/^(\d+(?:\.\d+)?)\s*bn\s*CNY$/i);
+  if (!match) {
+    return amount;
+  }
+  const yi = Number.parseFloat(match[1]) * 10;
+  return `${Number.isInteger(yi) ? yi : yi.toFixed(1)} 亿元`;
+}
+
+function localizeCalendarItem(item: CalendarItem): CalendarItem {
+  return {
+    ...item,
+    event: CALENDAR_EVENT_TITLE_ZH[item.event.trim().toLowerCase()] ?? item.event,
+    note: item.note ? CALENDAR_EVENT_NOTE_ZH[item.note.trim().toLowerCase()] ?? item.note : item.note,
+    issuerLabel: item.issuerLabel
+      ? CALENDAR_EVENT_ISSUER_ZH[item.issuerLabel.trim().toLowerCase()] ?? item.issuerLabel
+      : item.issuerLabel,
+    amount: localizeCalendarAmountLabel(item.amount),
+  };
+}
+
 export function buildCrossAssetEventItems(input: {
   events?: ResearchCalendarEvent[];
   reportDate?: string;
@@ -1345,7 +2005,7 @@ export function buildCrossAssetEventItems(input: {
       .slice()
       .sort((left, right) => right.date.localeCompare(left.date))
       .slice(0, 4)
-      .map(mapResearchCalendarEventToCalendarItem);
+      .map((event) => localizeCalendarItem(mapResearchCalendarEventToCalendarItem(event)));
   }
 
   const warningRows = (input.linkageWarnings ?? []).map((warning, index) => ({
@@ -1378,6 +2038,7 @@ export function buildCrossAssetWatchList(input: {
   topCorrelations: MacroBondLinkageTopCorrelation[];
   linkageWarnings: string[];
   linkageUnavailable?: boolean;
+  linkageUnavailableReason?: CrossAssetQueryFailureKind;
 }): CrossAssetWatchRow[] {
   const researchCards = buildResearchSummaryCards({
     researchViews: input.researchViews,
@@ -1385,11 +2046,13 @@ export function buildCrossAssetWatchList(input: {
     topCorrelations: input.topCorrelations,
     linkageWarnings: input.linkageWarnings,
     linkageUnavailable: input.linkageUnavailable,
+    linkageUnavailableReason: input.linkageUnavailableReason,
   });
   const axisRows = buildTransmissionAxisRows({
     transmissionAxes: input.transmissionAxes,
     env: {},
     linkageUnavailable: input.linkageUnavailable,
+    linkageUnavailableReason: input.linkageUnavailableReason,
   });
   const readyResearch = researchCards.filter((row) => row.status === "ready");
   const readyAxes = axisRows.filter((row) => row.status === "ready");
@@ -1404,7 +2067,7 @@ export function buildCrossAssetWatchList(input: {
       const axisRow = readyAxes[index % Math.max(readyAxes.length, 1)];
       const correlationNote =
         topCorr && index === 0
-          ? `相关 ${topCorr.target_family}${topCorr.target_tenor ? ` ${topCorr.target_tenor}` : ""}`
+          ? `相关 ${formatLinkageCorrelationFamilyLabel(topCorr.target_family, topCorr.target_tenor)}`
           : "";
       return {
         name: kpi.label,
@@ -1413,11 +2076,12 @@ export function buildCrossAssetWatchList(input: {
           ? `${kpi.tag} · ${researchCard.label}: ${researchCard.summary}`
           : `${kpi.tag} · ${kpi.changeLabel}`,
         signal: signalFromTone(kpi.changeTone),
+        // §7 `·` 配额：多段说明改分号衔接，单行至多一个 `·`（note 已用掉配额）。
         signalText: warningText && index === 0
           ? `先检查来源链路。${axisRow ? `${axisRow.label}: ${axisRow.summary}` : ""}`.trim()
           : [signalTextFromTone(kpi.changeTone), axisRow ? `${axisRow.label}: ${axisRow.summary}` : "", correlationNote]
               .filter(Boolean)
-              .join(" · "),
+              .join("；"),
       };
     });
 }

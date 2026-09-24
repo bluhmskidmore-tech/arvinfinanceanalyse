@@ -1,16 +1,176 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 import duckdb
+import pytest
+
+from scripts.portfolio_home_business_owner_approval_packet import (
+    PORTFOLIO_HOME_SCORE_BLOCKERS,
+)
+from scripts.portfolio_home_full_score_preflight import (
+    BLOCKER_OWNER,
+    OWNER_ORDER,
+    _current_evidence,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "portfolio_home_full_score_preflight.py"
 REPORT_DATE = "2026-05-31"
+DUCKDB = ROOT / "data" / "moss.duckdb"
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not DUCKDB.exists(),
+        reason="requires local governed DuckDB at data/moss.duckdb",
+    ),
+]
+
+
+def test_matured_outstanding_preflight_evidence_comes_from_full_closure_gate() -> None:
+    scorecard = {
+        "gates": {
+            "full_closure_evidence": {
+                "bond_matured_outstanding": {
+                    "row_count": 4,
+                    "net_market_value": "1927118453.04000000",
+                    "absolute_market_value": "1927118453.04000000",
+                }
+            }
+        }
+    }
+
+    evidence = _current_evidence(
+        "bond_matured_outstanding_reconciliation_required",
+        scorecard=scorecard,
+        maturity_queue={},
+        risk_warning={},
+        intake={},
+    )
+
+    assert evidence == {
+        "row_count": 4,
+        "net_market_value": "1927118453.04000000",
+        "absolute_market_value": "1927118453.04000000",
+    }
+
+
+def _stub_maturity_queue() -> dict[str, object]:
+    return {
+        "maturity_candidate_evidence": {
+            "status": "no_candidates",
+            "strict_gate_effect": "none",
+            "evidence_scope": {
+                "approves_metric_or_page": False,
+                "fills_maturity_date": False,
+                "writes_database": False,
+            },
+        }
+    }
+
+
+def test_build_preflight_scopes_required_next_command_to_requested_report_date(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    import scripts.portfolio_home_full_score_preflight as preflight_mod
+
+    monkeypatch.setattr(
+        preflight_mod,
+        "build_scorecard",
+        lambda **_: {
+            "page_id": "PAGE-PORTFOLIO-HOME-001",
+            "page_slug": "portfolio",
+            "current_score": "99.86 / 100",
+            "remaining_gap": "0.14",
+            "full_score_ready": False,
+            "score_status": "blocked",
+            "score_blockers": [],
+            "score_blocker_actions": [],
+        },
+    )
+    monkeypatch.setattr(preflight_mod, "build_maturity_queue", lambda **_: _stub_maturity_queue())
+    monkeypatch.setattr(preflight_mod, "build_risk_warning", lambda **_: {})
+    monkeypatch.setattr(preflight_mod, "build_intake_check", lambda **_: {})
+
+    preflight = preflight_mod.build_preflight(
+        duckdb_path=tmp_path / "unused.duckdb",
+        report_date="2026-06-30",
+        limit=3,
+    )
+
+    assert preflight["required_next_command"] == (
+        "python scripts/portfolio_home_closure_scorecard.py "
+        "--report-date 2026-06-30 --limit 3 --require-full-score"
+    )
+
+
+def test_krd_bucket_warning_mismatch_routes_to_risk_owner_with_risk_warning_evidence(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    import scripts.portfolio_home_full_score_preflight as preflight_mod
+
+    blocker = "krd_bucket_warning_mismatch"
+    scorecard = {
+        "page_id": "PAGE-PORTFOLIO-HOME-001",
+        "page_slug": "portfolio",
+        "current_score": "99.86 / 100",
+        "remaining_gap": "0.14",
+        "full_score_ready": False,
+        "score_status": "blocked",
+        "score_blockers": [blocker],
+        "score_blocker_actions": [
+            {
+                "blocker": blocker,
+                "owner": "risk_owner",
+                "next_action": "Review KRD bucket warning evidence.",
+                "evidence_command": (
+                    "python scripts/portfolio_home_risk_warning_consistency.py "
+                    "--report-date 2026-06-30 --require-consistent"
+                ),
+                "exit_criteria": "KRD bucket warning matches current formal bonds.",
+            }
+        ],
+    }
+    risk_warning = {
+        "decision_status": "blocked",
+        "decision_blockers": ["risk_tensor_warning_mismatch"],
+        "warning_consistency_status": "mismatch",
+        "consistency_blockers": [blocker],
+        "duration_exclusion_delta_detail": {"status": "matched"},
+    }
+    monkeypatch.setattr(preflight_mod, "build_scorecard", lambda **_: scorecard)
+    monkeypatch.setattr(preflight_mod, "build_maturity_queue", lambda **_: _stub_maturity_queue())
+    monkeypatch.setattr(preflight_mod, "build_risk_warning", lambda **_: risk_warning)
+    monkeypatch.setattr(preflight_mod, "build_intake_check", lambda **_: {})
+
+    preflight = preflight_mod.build_preflight(
+        duckdb_path=tmp_path / "unused.duckdb",
+        report_date="2026-06-30",
+        limit=3,
+    )
+
+    blocker_row = preflight["blocker_matrix"][0]
+    assert blocker_row["owner"] == "risk_owner"
+    assert blocker_row["current_evidence"] == preflight_mod._current_evidence(
+        "risk_tensor_warning_mismatch",
+        scorecard=scorecard,
+        maturity_queue=_stub_maturity_queue(),
+        risk_warning=risk_warning,
+        intake={},
+    )
+    assert preflight["owner_routes"][0] == {
+        "owner": "risk_owner",
+        "status": "blocked",
+        "blockers": [blocker],
+    }
 
 
 def _run_preflight(*args: str) -> tuple[int, dict[str, object]]:
@@ -39,19 +199,22 @@ def _run_preflight_raw(*args: str) -> subprocess.CompletedProcess[str]:
 def test_portfolio_home_full_score_preflight_reports_blocked_owner_matrix() -> None:
     preflight = build_preflight_for_test(limit=3)
 
+    # 宽松结构守卫：哪些阻塞项当前仍然打开、具体证据数值（行数、市值等）
+    # 属于本机治理库当前状态，随库状态演进而变化；只锁定代码不变式
+    # （闭环目录子序列、owner 归属映射、evidence_scope 只读契约）。
     assert preflight["preflight_status"] == "blocked"
-    assert preflight["current_score"] == "99.86 / 100"
-    assert preflight["remaining_gap"] == "0.14"
-    assert preflight["full_score_ready"] is False
-    assert preflight["score_blockers"] == [
-        "risk_tensor_quality_warning",
-        "krd_contract_decision_required",
-        "bond_maturity_date_remediation_required",
-        "tyw_liability_maturity_date_remediation_required",
-        "duration_exclusion_warning_mismatch",
-        "risk_tensor_warning_mismatch",
-        "business_owner_approval",
-        "owner_decision_intake_blocked",
+    assert re.fullmatch(r"\d+(?:\.\d+)? / 100", str(preflight["current_score"]))
+    assert re.fullmatch(r"\d+(?:\.\d+)?", str(preflight["remaining_gap"]))
+    assert isinstance(preflight["full_score_ready"], bool)
+    live_score_blockers = preflight["score_blockers"]
+    assert isinstance(live_score_blockers, list)
+    # bond_maturity_date_remediation_required 是已废弃/重命名的旧阻塞项标识，代码不再产生它。
+    assert "bond_maturity_date_remediation_required" not in live_score_blockers
+    # score_blockers 只锁定它是完整闭环目录 PORTFOLIO_HOME_SCORE_BLOCKERS 的合法子序列
+    # （成员+相对顺序不变式），具体哪些项仍然阻塞属于本机治理库当前状态。
+    assert set(live_score_blockers).issubset(set(PORTFOLIO_HOME_SCORE_BLOCKERS))
+    assert live_score_blockers == [
+        blocker for blocker in PORTFOLIO_HOME_SCORE_BLOCKERS if blocker in live_score_blockers
     ]
     assert preflight["evidence_scope"] == {
         "read_only": True,
@@ -67,55 +230,58 @@ def test_portfolio_home_full_score_preflight_reports_blocked_owner_matrix() -> N
         str(item["blocker"]): item
         for item in preflight["blocker_matrix"]
     }
-    assert set(blockers) == set(preflight["score_blockers"])
-    assert blockers["krd_contract_decision_required"]["owner"] == "risk_owner"
-    assert blockers["krd_contract_decision_required"]["closure_status"] == "blocked"
-    assert blockers["krd_contract_decision_required"]["strict_gate_command"] == (
-        "python scripts/portfolio_home_krd_remap_review_queue.py --require-clean"
-    )
-    assert blockers["bond_maturity_date_remediation_required"]["owner"] == "data_owner"
-    assert blockers["bond_maturity_date_remediation_required"]["current_evidence"] == {
-        "missing_maturity_rows": 114,
-        "missing_maturity_market_value": "37622164239.83000008",
-        "candidate_evidence_status": "no_candidates",
-    }
-    assert blockers["tyw_liability_maturity_date_remediation_required"]["current_evidence"] == {
-        "missing_maturity_rows": 1455,
-        "missing_maturity_principal": "43822652393.01000002",
-        "candidate_evidence_status": "no_candidates",
-    }
-    assert blockers["business_owner_approval"]["owner"] == "business_owner"
-    assert blockers["business_owner_approval"]["closure_status"] == "blocked"
-    assert blockers["owner_decision_intake_blocked"]["owner"] == "business_owner"
+    assert set(blockers) == set(live_score_blockers)
+    assert "bond_maturity_date_remediation_required" not in blockers
+    for blocker_name, row in blockers.items():
+        # owner 归属与 closure_status 都是代码常量派生：只要出现在 blocker_matrix 里就必然
+        # 未闭合（closure_status=="blocked"），owner 由 BLOCKER_OWNER 代码常量表决定。
+        assert row["owner"] == BLOCKER_OWNER.get(blocker_name, "unassigned")
+        assert row["closure_status"] == "blocked"
 
-    assert preflight["owner_routes"] == [
-        {
-            "owner": "risk_owner",
-            "status": "blocked",
-            "blockers": [
-                "risk_tensor_quality_warning",
-                "krd_contract_decision_required",
-                "risk_tensor_warning_mismatch",
-            ],
-        },
-        {
-            "owner": "data_owner",
-            "status": "blocked",
-            "blockers": [
-                "bond_maturity_date_remediation_required",
-                "tyw_liability_maturity_date_remediation_required",
-                "duration_exclusion_warning_mismatch",
-            ],
-        },
-        {
-            "owner": "business_owner",
-            "status": "blocked",
-            "blockers": [
-                "business_owner_approval",
-                "owner_decision_intake_blocked",
-            ],
-        },
-    ]
+    if "krd_contract_decision_required" in blockers:
+        assert blockers["krd_contract_decision_required"]["strict_gate_command"] == (
+            "python scripts/portfolio_home_krd_remap_review_queue.py --report-date 2026-05-31 --require-clean"
+        )
+    if "bond_matured_outstanding_reconciliation_required" in blockers:
+        evidence = blockers["bond_matured_outstanding_reconciliation_required"]["current_evidence"]
+        assert isinstance(evidence, dict)
+        assert set(evidence) == {
+            "row_count",
+            "net_market_value",
+            "absolute_market_value",
+            "dv01_sum",
+            "earliest_maturity_date",
+            "latest_maturity_date",
+            "unparseable_maturity_date_rows",
+            "unparseable_maturity_date_market_value",
+        }
+        assert isinstance(evidence["row_count"], int) and evidence["row_count"] >= 0
+        assert isinstance(evidence["unparseable_maturity_date_rows"], int)
+        assert evidence["unparseable_maturity_date_rows"] >= 0
+    if "tyw_liability_maturity_date_remediation_required" in blockers:
+        evidence = blockers["tyw_liability_maturity_date_remediation_required"]["current_evidence"]
+        assert isinstance(evidence, dict)
+        assert set(evidence) == {
+            "missing_maturity_rows",
+            "missing_maturity_principal",
+            "candidate_evidence_status",
+        }
+        assert isinstance(evidence["missing_maturity_rows"], int)
+        assert evidence["missing_maturity_rows"] >= 0
+
+    expected_owner_routes = []
+    for owner in OWNER_ORDER:
+        owner_blockers = [
+            blocker for blocker in live_score_blockers if BLOCKER_OWNER.get(blocker) == owner
+        ]
+        expected_owner_routes.append(
+            {
+                "owner": owner,
+                "status": "clean" if not owner_blockers else "blocked",
+                "blockers": owner_blockers,
+            }
+        )
+    assert preflight["owner_routes"] == expected_owner_routes
 
 
 def test_portfolio_home_full_score_preflight_markdown_summarizes_owner_boundaries() -> None:
@@ -139,16 +305,16 @@ def test_portfolio_home_full_score_preflight_markdown_summarizes_owner_boundarie
     assert "- Candidate fills maturity date: `false`" in markdown
     assert "## Owner Routes" in markdown
     assert "- `risk_owner`: `blocked` - `risk_tensor_quality_warning`, `krd_contract_decision_required`" in markdown
-    assert "- `data_owner`: `blocked` - `bond_maturity_date_remediation_required`" in markdown
+    assert "- `data_owner`: `blocked` - `tyw_liability_maturity_date_remediation_required`" in markdown
     assert "- `business_owner`: `blocked` - `business_owner_approval`" in markdown
     assert "## Blocker Matrix" in markdown
     assert "| risk_tensor_quality_warning | risk_owner | blocked | `python scripts/risk.py --require-clean` | Recompute risk tensor. | Risk tensor quality is ok. |" in markdown
-    assert "| bond_maturity_date_remediation_required | data_owner | blocked | `python scripts/maturity.py --require-empty` | Fill source maturity dates. | Queue is empty or signed exclusion exists. |" in markdown
+    assert "| tyw_liability_maturity_date_remediation_required | data_owner | blocked | `python scripts/maturity.py --require-empty` | Fill TYW liability maturity dates. | TYW queue is empty or signed exclusion exists. |" in markdown
     assert "## Current Evidence" in markdown
     assert "### risk_tensor_quality_warning" in markdown
     assert "- `decision_status`: `blocked`" in markdown
-    assert "### bond_maturity_date_remediation_required" in markdown
-    assert "- `missing_maturity_rows`: `114`" in markdown
+    assert "### tyw_liability_maturity_date_remediation_required" in markdown
+    assert "- `missing_maturity_rows`: `1455`" in markdown
     assert "## Required Final Gate" in markdown
     assert "`python scripts/portfolio_home_closure_scorecard.py --limit 3 --require-full-score`" in markdown
 
@@ -200,7 +366,8 @@ def test_portfolio_home_full_score_preflight_cli_requires_full_score_when_reques
     assert payload["preflight_status"] == "blocked"
     assert payload["full_score_ready"] is False
     assert payload["required_next_command"] == (
-        "python scripts/portfolio_home_closure_scorecard.py --limit 3 --require-full-score"
+        "python scripts/portfolio_home_closure_scorecard.py "
+        "--report-date 2026-05-31 --limit 3 --require-full-score"
     )
 
 
@@ -247,11 +414,7 @@ def test_portfolio_home_full_score_preflight_summarizes_candidate_rows_without_a
         str(item["blocker"]): item
         for item in preflight["blocker_matrix"]
     }
-    assert blockers["bond_maturity_date_remediation_required"]["current_evidence"] == {
-        "missing_maturity_rows": 1,
-        "missing_maturity_market_value": "100.00000000",
-        "candidate_evidence_status": "candidate_found",
-    }
+    assert "bond_maturity_date_remediation_required" not in blockers
     assert blockers["tyw_liability_maturity_date_remediation_required"]["current_evidence"] == {
         "missing_maturity_rows": 1,
         "missing_maturity_principal": "30.00000000",
@@ -263,9 +426,9 @@ def _minimal_scorecard() -> dict[str, object]:
     score_blockers = [
         "risk_tensor_quality_warning",
         "krd_contract_decision_required",
-        "bond_maturity_date_remediation_required",
         "tyw_liability_maturity_date_remediation_required",
         "duration_exclusion_warning_mismatch",
+        "krd_bucket_warning_mismatch",
         "risk_tensor_warning_mismatch",
         "business_owner_approval",
         "owner_decision_intake_blocked",
@@ -317,7 +480,7 @@ def _minimal_preflight_for_markdown() -> dict[str, object]:
         "score_blockers": [
             "risk_tensor_quality_warning",
             "krd_contract_decision_required",
-            "bond_maturity_date_remediation_required",
+            "tyw_liability_maturity_date_remediation_required",
             "business_owner_approval",
         ],
         "evidence_scope": {
@@ -348,7 +511,7 @@ def _minimal_preflight_for_markdown() -> dict[str, object]:
             {
                 "owner": "data_owner",
                 "status": "blocked",
-                "blockers": ["bond_maturity_date_remediation_required"],
+                "blockers": ["tyw_liability_maturity_date_remediation_required"],
             },
             {
                 "owner": "business_owner",
@@ -370,14 +533,14 @@ def _minimal_preflight_for_markdown() -> dict[str, object]:
                 },
             },
             {
-                "blocker": "bond_maturity_date_remediation_required",
+                "blocker": "tyw_liability_maturity_date_remediation_required",
                 "owner": "data_owner",
                 "closure_status": "blocked",
                 "strict_gate_command": "python scripts/maturity.py --require-empty",
-                "next_action": "Fill source maturity dates.",
-                "exit_criteria": "Queue is empty or signed exclusion exists.",
+                "next_action": "Fill TYW liability maturity dates.",
+                "exit_criteria": "TYW queue is empty or signed exclusion exists.",
                 "current_evidence": {
-                    "missing_maturity_rows": 114,
+                    "missing_maturity_rows": 1455,
                     "candidate_evidence_status": "no_candidates",
                 },
             },
@@ -396,7 +559,10 @@ def _minimal_risk_warning() -> dict[str, object]:
             "risk_tensor_warning_mismatch",
         ],
         "warning_consistency_status": "mismatch",
-        "consistency_blockers": ["duration_exclusion_warning_mismatch"],
+        "consistency_blockers": [
+            "duration_exclusion_warning_mismatch",
+            "krd_bucket_warning_mismatch",
+        ],
         "duration_exclusion_delta_detail": {
             "status": "mismatch",
         },

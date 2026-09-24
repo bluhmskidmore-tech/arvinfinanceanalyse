@@ -3,8 +3,8 @@
   gap: var(--moss-space-3);
   padding: var(--moss-space-6);
   border: 1px solid var(--moss-color-neutral-200);
-  border-radius: var(--moss-radius-lg);
-  background: #ffffff;
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--moss-color-card-bg);
   box-shadow: var(--moss-shadow-card);
 }
 
@@ -24,8 +24,8 @@
   gap: 10px;
   padding: 10px;
   border: 1px solid var(--moss-color-neutral-200);
-  border-radius: 8px;
-  background: #f6f8fb;
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--moss-color-neutral-50);
 }
 
 .fallbackNotice {
@@ -36,7 +36,7 @@
   padding: 12px 14px;
   border: 1px solid var(--moss-color-warning-200);
   border-radius: 6px;
-  background: #ffffff;
+  background: var(--ib-surface);
 }
 
 .fallbackMarketStrip {
@@ -45,7 +45,7 @@
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: 6px;
   overflow: hidden;
-  background: #ffffff;
+  background: var(--ib-surface);
 }
 
 .fallbackTickerCell {
@@ -84,7 +84,7 @@
   border: 1px solid var(--moss-color-neutral-200);
   border-left: 4px solid var(--moss-color-primary-700);
   border-radius: 6px;
-  background: #ffffff;
+  background: var(--ib-surface);
 }
 
 .fallbackSectionTitle {
@@ -114,7 +114,7 @@
   padding: 12px;
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: 6px;
-  background: #ffffff;
+  background: var(--ib-surface);
 }
 
 .fallbackPanel span {
@@ -134,12 +134,11 @@
   min-width: 120px;
   height: 28px;
   border: 1px solid var(--moss-color-neutral-300);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
+  border-radius: var(--dh-api-radius, 6px);
   color: var(--moss-color-primary-900);
   font: inherit;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
   padding: 0 var(--moss-space-2);
 }
 
@@ -147,16 +146,129 @@
   min-width: 136px;
 }
 
+.toolbarDateSelect {
+  height: 28px;
+  font: inherit;
+  font-family: var(--moss-font-mono);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.toolbarDateSelect :global(.ant-select-selector) {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 var(--moss-space-2) !important;
+  border: 1px solid var(--moss-color-neutral-400) !important;
+  border-radius: 6px !important;
+  background: color-mix(in srgb, var(--dh-api-panel-2) 78%, transparent) !important;
+  color: var(--dashboard-blue-700) !important;
+  box-shadow: none !important;
+}
+
+.toolbarDateSelect :global(.ant-select-selection-item),
+.toolbarDateSelect :global(.ant-select-selection-placeholder),
+.toolbarDateSelect :global(.ant-select-selection-search-input) {
+  color: var(--dashboard-blue-700) !important;
+  font-family: var(--moss-font-mono);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.toolbarDateSelect :global(.ant-select-selection-item) {
+  line-height: 26px !important;
+}
+
+.toolbarDateSelect :global(.ant-select-arrow) {
+  color: var(--moss-color-neutral-400);
+}
+
+.toolbarDateSelect:global(.ant-select-focused) :global(.ant-select-selector) {
+  border-color: color-mix(
+    in srgb,
+    var(--dashboard-blue-700) 62%,
+    transparent
+  ) !important;
+  box-shadow: 0 0 0 2px
+    color-mix(
+      in srgb,
+      var(--dashboard-blue-700) 24%,
+      transparent
+    ) !important;
+}
+
+.toolbarDateDropdown {
+  border: 1px solid var(--moss-color-neutral-700);
+  border-radius: 6px;
+  background: var(--moss-color-primary-900) !important;
+  box-shadow: none !important;
+}
+
+.toolbarDateDropdown :global(.ant-select-item) {
+  color: var(--moss-color-neutral-100);
+  font-family: var(--moss-font-mono);
+  font-size: 12px;
+}
+
+.toolbarDateDropdown :global(.ant-select-item-option-active:not(.ant-select-item-option-disabled)) {
+  background: color-mix(
+    in srgb,
+    var(--moss-color-info-500) 12%,
+    transparent
+  );
+}
+
+.toolbarDateDropdown :global(.ant-select-item-option-selected:not(.ant-select-item-option-disabled)) {
+  background: color-mix(
+    in srgb,
+    var(--moss-color-info-500) 20%,
+    transparent
+  );
+  color: var(--moss-color-neutral-50);
+}
+
 .refreshButton {
   min-width: 48px;
-  color: #ffffff;
-  background: #0b4e9e;
-  border-color: #0b4e9e;
 }
 
 .detailFallback {
   color: var(--moss-color-neutral-600);
   font-size: 13px;
+}
+
+.agentDrawerBody {
+  min-height: 200px;
+}
+
+.detailDrilldown {
+  overflow: hidden;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: 6px;
+  background: var(--moss-color-neutral-50);
+}
+
+.detailDrilldownSummary {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.5fr) minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  min-height: 58px;
+  padding: 12px 14px;
+  border-radius: 0;
+  background: var(--moss-color-card-bg);
+}
+
+.detailDrilldownDescription {
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.detailDrilldown[open] {
+  background: var(--moss-color-card-bg);
+}
+
+.detailDrilldown[open] > :not(summary) {
+  margin-inline: 12px;
 }
 
 @media (max-width: 900px) {
@@ -186,4 +298,366 @@
     border-bottom: 0;
   }
 
+}
+
+.bondWorkbenchPage {
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line-soft);
+  --ib-rule-strong: var(--dh-api-line);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-hover: color-mix(in srgb, var(--dh-api-blue) 78%, white);
+  --ib-accent-surface: var(--dh-api-blue-soft);
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
+  --ib-warn: var(--dh-api-amber);
+  --ib-gold: var(--dh-api-amber);
+  --dashboard-blue-25: color-mix(in srgb, var(--dh-api-blue) 6%, transparent);
+  --dashboard-blue-50: color-mix(in srgb, var(--dh-api-blue) 10%, transparent);
+  --dashboard-blue-100: color-mix(in srgb, var(--dh-api-blue) 16%, transparent);
+  --dashboard-blue-200: color-mix(in srgb, var(--dh-api-blue) 28%, transparent);
+  --dashboard-blue-600: var(--ib-accent);
+  --dashboard-blue-700: var(--dh-api-ink);
+  --dashboard-red-25: color-mix(in srgb, var(--dh-api-red) 8%, transparent);
+  --dashboard-red-50: color-mix(in srgb, var(--dh-api-red) 12%, transparent);
+  --dashboard-red-100: color-mix(in srgb, var(--dh-api-red) 16%, transparent);
+  --dashboard-red-200: color-mix(in srgb, var(--dh-api-red) 30%, transparent);
+  --dashboard-red-600: var(--ib-down);
+  --dashboard-red-700: color-mix(in srgb, var(--dh-api-red) 45%, var(--dh-api-ink));
+  --dashboard-ink: var(--ib-ink);
+  --moss-color-card-bg: var(--ib-surface);
+  --moss-color-neutral-50: var(--ib-surface-muted);
+  --moss-color-neutral-100: color-mix(in srgb, var(--dh-api-line) 60%, var(--dh-api-panel));
+  --moss-color-neutral-200: var(--ib-hairline);
+  --moss-color-neutral-300: var(--ib-rule-strong);
+  --moss-color-neutral-400: color-mix(in srgb, var(--dh-api-muted) 60%, var(--dh-api-line));
+  --moss-color-neutral-500: var(--ib-ink-muted);
+  --moss-color-neutral-600: var(--ib-ink-secondary);
+  --moss-color-neutral-700: color-mix(in srgb, var(--dh-api-ink) 60%, var(--dh-api-soft));
+  --moss-color-neutral-800: color-mix(in srgb, var(--dh-api-ink) 85%, var(--dh-api-soft));
+  --moss-color-neutral-900: var(--ib-ink);
+  --moss-color-primary-50: var(--ib-accent-surface);
+  --moss-color-primary-100: color-mix(in srgb, var(--dh-api-blue) 16%, transparent);
+  --moss-color-primary-200: color-mix(in srgb, var(--dh-api-blue) 28%, transparent);
+  --moss-color-primary-600: var(--ib-accent);
+  --moss-color-primary-700: var(--ib-accent);
+  --moss-color-primary-800: var(--ib-accent-hover);
+  --moss-color-primary-900: var(--dashboard-blue-700);
+  --moss-color-info-100: color-mix(in srgb, var(--dh-api-blue) 14%, transparent);
+  --moss-color-info-300: var(--dh-api-blue);
+  --moss-color-info-400: var(--dh-api-blue);
+  --moss-color-info-500: var(--dh-api-blue);
+  --moss-color-info-700: var(--ib-accent-hover);
+  --moss-color-info-900: var(--dashboard-blue-700);
+  --moss-color-success-100: color-mix(in srgb, var(--dh-api-green) 18%, transparent);
+  --moss-color-success-300: var(--ib-up);
+  --moss-color-success-500: var(--ib-up);
+  --moss-color-success-600: var(--moss-color-success-500);
+  --moss-color-success-700: var(--ib-up);
+  --moss-color-warning-50: color-mix(in srgb, var(--dh-api-amber) 12%, transparent);
+  --moss-color-warning-200: color-mix(in srgb, var(--dh-api-amber) 30%, transparent);
+  --moss-color-warning-300: var(--ib-warn);
+  --moss-color-warning-400: var(--ib-warn);
+  --moss-color-warning-600: var(--ib-warn);
+  --moss-color-warning-800: color-mix(in srgb, var(--dh-api-amber) 45%, var(--dh-api-ink));
+  --moss-color-danger-50: color-mix(in srgb, var(--dh-api-red) 12%, transparent);
+  --moss-color-danger-100: color-mix(in srgb, var(--dh-api-red) 16%, transparent);
+  --moss-color-danger-200: color-mix(in srgb, var(--dh-api-red) 30%, transparent);
+  --moss-color-danger-500: var(--ib-down);
+  --moss-color-danger-600: var(--ib-down);
+  --moss-color-danger-800: var(--dashboard-red-700);
+  --moss-color-text-primary: var(--ib-ink);
+  --moss-color-text-secondary: var(--ib-ink-secondary);
+  --moss-color-text-muted: var(--ib-ink-muted);
+  --moss-color-border-default: var(--ib-hairline);
+  --moss-color-border-strong: var(--ib-rule-strong);
+  --moss-border-hover: color-mix(in srgb, var(--dh-api-blue) 45%, transparent);
+  --moss-shadow-card: none;
+  display: grid;
+  align-content: start;
+  grid-auto-rows: max-content;
+  /* 页级区块缝统一 tokens（--moss-space-3 = 12px，首页同档）。 */
+  gap: var(--moss-space-3);
+  /* 参照首页（dashboardHomeOptionTwo .layout）：满幅平底，不再使用 1178px 工作纸容器。 */
+  width: 100%;
+  min-height: calc(100vh - 48px);
+  padding: 14px 18px 16px;
+  background: var(--ib-paper);
+  color: var(--ib-ink);
+  font-family: var(--moss-font-sans);
+  font-feature-settings: "tnum" 1, "ss01" 1;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* 外壳网格底与 rail 的钢蓝烘焙已删除：Nocturne scope 接入后由
+   workbenchShell.css 末尾收口终层（grid/rail 列表含 bond-analysis 行，
+   0-3-0/0-4-0 !important）统一接管，页内 0-1-0/0-2-0 覆盖永远打不赢。 */
+:global(.workbench-shell-grid--bond-analysis .workbench-main-column),
+:global(.workbench-shell-grid--bond-analysis .workbench-main-column > main) {
+  justify-items: start !important;
+}
+
+/* 首页平卡语言：发丝描边 + 面板平底，去掉渐变洗底与左侧强调渐变条。 */
+.bondWorkbenchPage [data-testid="bond-analysis-reference-topbar"] {
+  border: 1px solid var(--ib-hairline);
+  background: var(--ib-surface);
+  box-shadow: none;
+}
+
+.bondWorkbenchPage [data-testid="bond-analysis-market-ticker"],
+.bondWorkbenchPage [data-testid="bond-analysis-kpi-ribbon"] {
+  box-shadow: none;
+}
+
+/* 下钻图表行左右卡等高（曲线卡与瀑布卡卡面齐底，§5）。 */
+.bondWorkbenchPage [data-testid="bond-analytics-overview-mid-charts"] :global(.ant-row) {
+  align-items: stretch;
+}
+
+.bondWorkbenchPage
+  [data-testid="bond-analytics-overview-mid-charts"]
+  :global(.ant-col)
+  > :global(.ant-card) {
+  height: 100%;
+  box-sizing: border-box;
+}
+
+/* 页头识别栏防挤压（C21）：identity 容器 min-width: 0 在 1440 以下被右侧 actions 组挤到
+   标题断字竖排——页题锁 nowrap、左栏给最小宽度保底，副题保持既有 ellipsis。 */
+.bondWorkbenchPage :global(.dashboard-home-toolbar__identity) {
+  min-width: 200px;
+  flex-shrink: 0;
+}
+
+.bondWorkbenchPage :global(.dashboard-home-toolbar__title) {
+  white-space: nowrap;
+  word-break: keep-all;
+}
+
+.toolbarSelect {
+  border-color: var(--ib-hairline);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--dh-api-panel-2) 78%, transparent);
+  color: var(--ib-ink);
+  font-family: var(--moss-font-mono);
+}
+
+.toolbarSelect:focus {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 62%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--dh-api-blue) 24%, transparent);
+  outline-offset: 2px;
+}
+
+.refreshButton {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 44%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 14%, transparent);
+  color: var(--ib-ink);
+}
+
+.bondWorkbenchPage :global(.ant-alert) {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 34%, transparent) !important;
+  border-radius: var(--dh-api-radius, 6px) !important;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--dh-api-amber) 10%, transparent),
+      color-mix(in srgb, var(--dh-api-amber) 3.5%, transparent)
+    ),
+    var(--ib-surface) !important;
+  color: var(--ib-ink) !important;
+}
+
+.bondWorkbenchPage :global(.ant-alert-message),
+.bondWorkbenchPage :global(.ant-alert-description),
+.bondWorkbenchPage :global(.ant-card-head-title),
+.bondWorkbenchPage :global(.ant-card-extra),
+.bondWorkbenchPage :global(.ant-card-body) {
+  color: var(--ib-ink) !important;
+}
+
+.bondWorkbenchPage :global(.ant-card) {
+  border-color: var(--ib-hairline) !important;
+  border-radius: var(--dh-api-radius, 6px) !important;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--dh-api-ink) 2.4%, transparent),
+      color-mix(in srgb, var(--dh-api-ink) 0.4%, transparent)
+    ),
+    var(--ib-surface) !important;
+  box-shadow: none !important;
+  color: var(--ib-ink);
+}
+
+.bondWorkbenchPage :global(.ant-card-head) {
+  position: relative;
+  border-bottom-color: var(--dh-api-line-soft) !important;
+  background: transparent !important;
+}
+
+/* 首页 panelHeader 签名：卡头左沿 2px 强调条（top/bottom 7px 内缩）。 */
+.bondWorkbenchPage :global(.ant-card-head)::before {
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: 0;
+  width: 2px;
+  background: var(--ib-accent);
+  content: "";
+}
+
+.bondWorkbenchPage :global(.ant-btn) {
+  border-radius: 6px;
+  color: var(--ib-accent);
+  box-shadow: none;
+}
+
+.bondWorkbenchPage :global(.ant-btn-text:hover) {
+  background: var(--ib-accent-surface) !important;
+  color: var(--ib-accent) !important;
+}
+
+/* 口径说明降噪为安静脚注行：发丝顶线 + muted 11px，不再用蓝色渐变洗底。 */
+.bondWorkbenchPage [data-testid="bond-analysis-currency-basis-banner"] {
+  border-top-color: var(--dh-api-line-soft);
+  background: transparent;
+  color: var(--ib-ink-muted);
+}
+
+.fallbackWorkbench {
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.fallbackNotice,
+.fallbackMarketStrip,
+.fallbackJudgment,
+.fallbackPanel,
+.detailDrilldown,
+.detailDrilldownSummary {
+  border-color: var(--ib-hairline);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--dh-api-ink) 2.4%, transparent),
+      color-mix(in srgb, var(--dh-api-ink) 0.4%, transparent)
+    ),
+    var(--ib-surface);
+  color: var(--ib-ink);
+  box-shadow: none;
+}
+
+.fallbackNotice {
+  min-height: 74px;
+  padding: 14px 16px;
+  border-color: color-mix(in srgb, var(--dh-api-amber) 38%, transparent);
+  border-radius: var(--dh-api-radius, 6px);
+}
+
+.fallbackMarketStrip,
+.detailDrilldown {
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--ib-hairline);
+}
+
+.fallbackTickerCell {
+  border-right-color: var(--moss-color-neutral-100);
+  background: var(--ib-surface);
+}
+
+.fallbackJudgment {
+  min-height: 72px;
+  border-left-color: var(--ib-accent);
+  border-radius: var(--dh-api-radius, 6px);
+}
+
+.fallbackPanel {
+  min-height: 116px;
+  border-radius: var(--dh-api-radius, 6px);
+}
+
+.stateTitle,
+.fallbackSectionTitle,
+.fallbackPanel span,
+.bondWorkbenchPage :global(.dashboard-detail-drilldown__title) {
+  color: var(--ib-ink);
+}
+
+.stateBody,
+.fallbackJudgment p,
+.fallbackPanel strong,
+.detailFallback,
+.detailDrilldownDescription {
+  color: var(--ib-ink-secondary);
+}
+
+.detailDrilldownSummary {
+  min-height: 62px;
+  border: 0;
+}
+
+/* 眉标不可点击，走 muted（accent 只留给可点击元素）；「展开」提示可点击保留 accent。 */
+.bondWorkbenchPage :global(.dashboard-home-section-eyebrow) {
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.bondWorkbenchPage :global(.dashboard-progressive-disclosure__cue) {
+  color: var(--ib-accent);
+}
+
+/* 共享骨架「展开」胶囊在 dashboardCockpit.css 里是浅色白底（白 56% 实底 +
+   slate 边线），页内升权覆盖为 Nocturne 次级面板链（stock-analysis 页内
+   升权覆盖共享骨架先例）。 */
+.bondWorkbenchPage :global(.dashboard-progressive-disclosure__cue) {
+  border-color: var(--dh-api-line-soft);
+  background: var(--dh-api-panel-2);
+}
+
+/* 共享正式结果元信息面板的徽标 tone 为组件 inline 浅色面（浅绿/浅琥珀），
+   按语义家族压为 --dh-api-* 软底链；inline style 须 !important 才压得住
+   （pnl-by-business 先例）。 */
+.bondWorkbenchPage :global(.formal-result-meta-panel__badge[title$="正常"]),
+.bondWorkbenchPage :global(.formal-result-meta-panel__badge[title$="未降级"]) {
+  border-color: color-mix(in srgb, var(--dh-api-green) 42%, var(--dh-api-line) 58%) !important;
+  background: var(--dh-api-green-soft) !important;
+  color: var(--dh-api-green) !important;
+}
+
+.bondWorkbenchPage :global(.formal-result-meta-panel__badge[title$="供应商陈旧"]),
+.bondWorkbenchPage :global(.formal-result-meta-panel__badge[title$="最新快照降级"]) {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 42%, var(--dh-api-line) 58%) !important;
+  background: var(--dh-api-amber-soft) !important;
+  color: var(--dh-api-amber) !important;
+}
+
+.bondWorkbenchPage :global(.formal-result-meta-panel__badge[title$="供应商不可用"]) {
+  border-color: color-mix(in srgb, var(--dh-api-red) 42%, var(--dh-api-line) 58%) !important;
+  background: var(--dh-api-red-soft) !important;
+  color: var(--dh-api-red) !important;
+}
+
+@media (max-width: 640px) {
+  .bondWorkbenchPage {
+    min-height: 0;
+    padding: 12px;
+  }
+
+  .detailDrilldownSummary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Suspense 整页占位：复用页面深色背板，锁高避免内容到达时重排（DESIGN.md §6）。 */
+.pageSkeleton {
+  min-height: max(60vh, calc(100vh - 48px));
 }

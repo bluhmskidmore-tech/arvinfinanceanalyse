@@ -7,6 +7,9 @@ thresholds:
   life_long_crowd_max_q: 0.80
   stance_strong_q: 0.85
   stance_neutral_q: 0.50
+  stance_cycle_strong_abs_min: 0.35
+  stance_life_strong_abs_min: 0.35
+  life_long_abs_min: 0.40
   fusion_cycle_weight: 0.65
   fusion_life_weight: 0.35
   cycle_macro_weight: 0.30

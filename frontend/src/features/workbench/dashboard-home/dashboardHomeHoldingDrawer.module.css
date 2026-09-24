@@ -1,0 +1,488 @@
+.drawerLayer {
+  position: fixed;
+  inset: 0;
+  z-index: 1600;
+  block-size: 100dvh;
+  inline-size: 100vw;
+  overflow: hidden;
+  color: var(--dh-api-ink);
+  color-scheme: dark;
+}
+
+.drawerScrim {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--dh-api-bg) 58%, transparent);
+}
+
+.holdingDrawer {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: min(440px, 100vw);
+  height: 100dvh;
+  max-width: 100vw;
+  max-height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  touch-action: pan-y;
+  background: var(--dh-api-panel);
+  border-inline-start: 1px solid var(--dh-api-line);
+  color: var(--dh-api-ink);
+  scrollbar-color: var(--dh-api-line) var(--dh-api-panel);
+  scrollbar-width: thin;
+}
+
+.holdingDrawer,
+.holdingDrawer * {
+  box-sizing: border-box;
+}
+
+.drawerDescription,
+.drawerHoldingCard,
+.drawerSection,
+.drawerApiContract,
+.drawerLinks {
+  flex: 0 0 auto;
+}
+
+.drawerHeader {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 2;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 52px;
+  padding: 10px 16px;
+  background: var(--dh-api-panel);
+  border-block-end: 1px solid var(--dh-api-line);
+}
+
+.drawerHeader h2 {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.drawerHeaderActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.drawerHeaderActions em {
+  padding: 3px 6px;
+  background: var(--dh-api-blue-soft);
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius, 6px);
+  color: var(--dh-api-blue);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1;
+}
+
+.drawerClose {
+  display: inline-grid;
+  width: 48px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  background: var(--dh-api-panel-2);
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius, 6px);
+  color: var(--dh-api-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.drawerClose:hover {
+  background: var(--dh-api-panel-3);
+  border-color: var(--dh-api-blue);
+  color: var(--dh-api-ink);
+}
+
+.drawerClose:focus-visible {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 2px;
+}
+
+.drawerDescription {
+  height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.drawerHoldingCard {
+  margin: 10px 16px 0;
+  padding: 10px;
+  background: var(--dh-api-panel-2);
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius, 6px);
+}
+
+.drawerHoldingIdentity {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.drawerHoldingIdentity > span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.drawerHoldingIdentity b {
+  color: var(--dh-api-blue);
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.drawerHoldingIdentity small {
+  overflow-wrap: anywhere;
+  color: var(--dh-api-ink);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.drawerHoldingIdentity > span > span {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.drawerHoldingIdentity > em {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  background: var(--dh-api-panel-3);
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius, 6px);
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.drawerHoldingIdentity > em[data-kind="ready"] {
+  background: var(--dh-api-green-soft);
+  color: var(--dh-api-green);
+}
+
+.drawerHoldingIdentity > em[data-kind="partial"],
+.drawerHoldingIdentity > em[data-kind="stale"] {
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-amber);
+}
+
+.drawerHoldingIdentity > em[data-kind="error"],
+.drawerHoldingIdentity > em[data-kind="backend-gap"] {
+  background: var(--dh-api-red-soft);
+  color: var(--dh-api-red);
+}
+
+.drawerSection {
+  margin: 10px 16px 0;
+  overflow: hidden;
+  background: var(--dh-api-panel-2);
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
+}
+
+.drawerSectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+  padding: 6px 10px;
+  background: var(--dh-api-panel-3);
+  border-block-end: 1px solid var(--dh-api-line-soft);
+}
+
+.drawerSectionHead h3 {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.drawerSectionHead span {
+  color: var(--dh-api-muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.drawerMetrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  background: var(--dh-api-line-soft);
+}
+
+.drawerMetrics > div {
+  min-width: 0;
+  padding: 6px 10px;
+  background: var(--dh-api-panel-2);
+}
+
+.drawerMetrics dt,
+.drawerMetrics dd {
+  margin: 0;
+}
+
+.drawerMetrics dt {
+  margin-block-end: 2px;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.drawerMetrics dd {
+  overflow-wrap: anywhere;
+  color: var(--dh-api-ink);
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+}
+
+.drawerMetrics dd b {
+  font-weight: 650;
+}
+
+.drawerAuditSection {
+  background: var(--dh-api-panel);
+}
+
+.drawerAuditList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  background: var(--dh-api-line-soft);
+  gap: 1px;
+}
+
+.drawerAuditList > div {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 8px;
+  min-height: 28px;
+  padding: 5px 8px;
+  border: 0;
+  background: var(--dh-api-panel);
+}
+
+.drawerAuditList > div:last-child {
+  grid-column: 1 / -1;
+}
+
+.drawerAuditList dt,
+.drawerAuditList dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.drawerAuditList dt {
+  color: var(--dh-api-muted);
+}
+
+.drawerAuditList dd {
+  color: var(--dh-api-soft);
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+
+.drawerAuditList dd[data-kind="ready"] {
+  color: var(--dh-api-green);
+}
+
+.drawerAuditList dd[data-kind="partial"],
+.drawerAuditList dd[data-kind="stale"] {
+  color: var(--dh-api-amber);
+}
+
+.drawerAuditList dd[data-kind="error"],
+.drawerAuditList dd[data-kind="backend-gap"] {
+  color: var(--dh-api-red);
+}
+
+.drawerApiContract {
+  margin: 10px 16px 0;
+  padding: 8px;
+  background: var(--dh-api-panel-3);
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
+  color: var(--dh-api-muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+}
+
+.drawerApiContract > div {
+  display: grid;
+  gap: 4px;
+  padding-block-end: 5px;
+  border-block-end: 1px solid var(--dh-api-line-soft);
+}
+
+.drawerApiContract small {
+  color: var(--dh-api-green);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+}
+
+.drawerApiContract code {
+  overflow-wrap: anywhere;
+  color: var(--dh-api-blue);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.drawerApiContract p {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.drawerLinks {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5px;
+  margin: 10px 16px 0;
+  padding: 0 0 max(12px, env(safe-area-inset-bottom));
+}
+
+.drawerLinksLabel {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.drawerPrimaryLink,
+.drawerSecondaryLink {
+  display: flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius, 6px);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.25;
+  text-decoration: none;
+}
+
+.drawerPrimaryLink {
+  justify-content: space-between;
+  background: var(--dh-api-blue-soft);
+  border-color: var(--dh-api-blue);
+  color: var(--dh-api-blue);
+}
+
+.drawerSecondaryLink {
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+}
+
+.drawerPrimaryLink:hover,
+.drawerSecondaryLink:hover {
+  background: var(--dh-api-panel-3);
+  border-color: var(--dh-api-blue);
+  color: var(--dh-api-ink);
+  text-decoration: none;
+}
+
+.drawerPrimaryLink:focus-visible,
+.drawerSecondaryLink:focus-visible {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 2px;
+}
+
+@media (max-width: 520px) {
+  .holdingDrawer {
+    width: 100vw;
+    border-inline-start: 0;
+  }
+
+  .drawerHeader {
+    min-height: 48px;
+    padding-inline: 12px;
+  }
+
+  .drawerDescription {
+    padding-inline: 12px;
+  }
+
+  .drawerHoldingCard,
+  .drawerSection,
+  .drawerApiContract,
+  .drawerLinks {
+    margin-inline: 12px;
+  }
+
+  .drawerMetrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 360px) {
+  .drawerHeaderActions em {
+    display: none;
+  }
+
+  .drawerHoldingIdentity {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .drawerHoldingIdentity > em {
+    align-self: flex-start;
+  }
+
+  .drawerAuditList > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
+  }
+
+  .drawerAuditList dd {
+    text-align: start;
+  }
+}

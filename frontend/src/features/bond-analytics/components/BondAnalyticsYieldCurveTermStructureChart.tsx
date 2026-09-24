@@ -1,49 +1,68 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Card, Spin } from "antd";
+import { Alert, Card } from "antd";
 
 import { useApiClient } from "../../../api/client";
-import ReactECharts from "../../../lib/echarts";
-import { bondAnalyticsQueryKeyRoot } from "../lib/bondAnalyticsQueryKeys";
+import type { ApiEnvelope, YieldCurveTermStructurePayload } from "../../../api/contracts";
+import { apiQueryKeys } from "../../../api/queryKeys";
+import { BaseChart } from "../../../components/charts/BaseChart";
+import {
+  formatYieldCurveDateSummary,
+  summarizeYieldCurveDates,
+} from "../../../lib/yieldCurveDateSummary";
+import {
+  BOND_ANALYTICS_COCKPIT_YIELD_CURVE_TYPES,
+  type BundleSectionQuery,
+} from "../lib/bondAnalyticsCockpitBundleQuery";
 import { buildYieldCurveTermStructureChartOption } from "../lib/yieldCurveTermStructureChartOption";
+import {
+  DetailChartSkeleton,
+  DetailEmptyNote,
+} from "./BondAnalyticsDetailPrimitives";
 import styles from "./BondAnalyticsYieldCurveTermStructureChart.module.css";
 
 export type BondAnalyticsYieldCurveTermStructureChartProps = {
   reportDate: string;
+  bundledYieldCurveQuery?: BundleSectionQuery<"yield-curve-term-structure">;
 };
 
 export function BondAnalyticsYieldCurveTermStructureChart({
   reportDate,
+  bundledYieldCurveQuery,
 }: BondAnalyticsYieldCurveTermStructureChartProps) {
   const client = useApiClient();
-  const q = useQuery({
-    queryKey: [
-      ...bondAnalyticsQueryKeyRoot,
-      "yield-curve-term-structure",
+  const hasBundledYieldCurveQuery = bundledYieldCurveQuery !== undefined;
+  const directYieldCurveQ = useQuery<ApiEnvelope<YieldCurveTermStructurePayload>, Error>({
+    queryKey: apiQueryKeys.bondAnalyticsYieldCurveTermStructure(
       client.mode,
       reportDate,
-    ],
+      BOND_ANALYTICS_COCKPIT_YIELD_CURVE_TYPES,
+    ),
     queryFn: () =>
       client.getBondAnalyticsYieldCurveTermStructure(reportDate, {
-        curveTypes: "treasury,cdb",
+        curveTypes: BOND_ANALYTICS_COCKPIT_YIELD_CURVE_TYPES,
       }),
-    enabled: Boolean(reportDate),
+    enabled: !hasBundledYieldCurveQuery && Boolean(reportDate),
     retry: false,
     staleTime: 60_000,
   });
+  const q = bundledYieldCurveQuery ?? directYieldCurveQ;
 
   const option = useMemo(
     () => buildYieldCurveTermStructureChartOption(q.data?.result.curves ?? []),
     [q.data?.result.curves],
   );
 
+  const dateSummary = useMemo(
+    () => summarizeYieldCurveDates(q.data?.result.curves ?? []),
+    [q.data?.result.curves],
+  );
+  const dateLabel = formatYieldCurveDateSummary(dateSummary);
   const meta = q.data?.result_meta;
   const warnings = q.data?.result.warnings ?? [];
   const stale =
     meta?.vendor_status === "vendor_stale" || meta?.fallback_mode === "latest_snapshot";
-  const firstCurve = q.data?.result.curves[0];
-  const resolved = firstCurve?.trade_date_resolved;
-  const requested = firstCurve?.trade_date_requested;
+
 
   return (
     <Card
@@ -52,13 +71,7 @@ export function BondAnalyticsYieldCurveTermStructureChart({
       data-testid="bond-analytics-yield-curve-term-structure"
     >
       <div className={styles.subtitle}>
-        {resolved && requested && resolved !== requested ? (
-          <span>曲线交易日已回退为 {resolved}（请求日 {requested}）。</span>
-        ) : resolved ? (
-          <span>曲线交易日：{resolved}。</span>
-        ) : (
-          <span>曲线交易日：未解析。</span>
-        )}
+        <span>{dateLabel}</span>
         {stale ? <span> 数据可能非当日。</span> : null}
       </div>
       {warnings.length > 0 ? (
@@ -76,15 +89,18 @@ export function BondAnalyticsYieldCurveTermStructureChart({
           description={q.error instanceof Error ? q.error.message : "加载失败"}
         />
       ) : q.isPending ? (
-        <div className={styles.spinWrap}>
-          <Spin />
-        </div>
+        <DetailChartSkeleton
+          height={280}
+          testId="bond-analytics-yield-curve-loading"
+        />
       ) : option && (q.data?.result.curves.length ?? 0) > 0 ? (
         <div className={styles.chart}>
-          <ReactECharts option={option} opts={{ renderer: "canvas" }} />
+          <BaseChart option={option} height={280} />
         </div>
       ) : (
-        <div className={styles.empty}>暂无正式曲线截面（或全部期限缺失）</div>
+        <DetailEmptyNote testId="bond-analytics-yield-curve-empty">
+          暂无正式曲线截面（或全部期限缺失）
+        </DetailEmptyNote>
       )}
     </Card>
   );

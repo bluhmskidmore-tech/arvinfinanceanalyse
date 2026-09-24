@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from decimal import Decimal
+import math
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 ZERO = Decimal("0")
@@ -25,13 +26,44 @@ _CREDIT_CURVE_BY_RATING = {
 }
 
 
-def decimal_value(value: Any) -> Decimal:
+class DirtyNumericInputError(ValueError):
+    """脏数值输入：非缺失、但无法解析为有限 Decimal 的值。
+
+    决策评级等正式口径禁止把脏输入静默当 0；真缺失（None/NaN/空白占位）
+    仍按既有缺失语义处理，两者语义必须可区分。
+    """
+
+
+# 序列化后的缺失占位符（"nan"/"none"/"null"/空白）按真缺失处理，与脏输入区分。
+_MISSING_NUMERIC_TEXT = {"", "nan", "none", "null"}
+
+
+def is_missing_numeric(value: Any) -> bool:
+    """真缺失：None、空白/缺失占位字符串、float/Decimal NaN。"""
     if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip().lower() in _MISSING_NUMERIC_TEXT
+    if isinstance(value, float):
+        return math.isnan(value)
+    if isinstance(value, Decimal):
+        return value.is_nan()
+    return False
+
+
+def decimal_value(value: Any) -> Decimal:
+    """真缺失 → ZERO（维持既有缺失聚合语义）；脏输入 → DirtyNumericInputError。"""
+    if is_missing_numeric(value):
         return ZERO
     try:
-        return Decimal(str(value))
-    except Exception:
-        return ZERO
+        result = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError) as exc:
+        raise DirtyNumericInputError(
+            f"无法解析为 Decimal 的脏数值输入：{value!r}（{type(value).__name__}）"
+        ) from exc
+    if not result.is_finite():
+        raise DirtyNumericInputError(f"非有限数值不得进入决策评级计算：{value!r}")
+    return result
 
 
 def normalize_accounting_basis(value: Any) -> str:
@@ -159,11 +191,20 @@ def compute_decision_grade_row(
     modified_duration = decimal_value(row.get("modified_duration"))
     convexity = decimal_value(row.get("convexity"))
     spread_dv01 = decimal_value(row.get("spread_dv01"))
-    years = decimal_value(row.get("years_to_maturity")) or Decimal("3")
+    # 0 是有效剩余期限（当日到期，取曲线短端）；仅在缺失时才回退 3Y 代理。
+    years_raw = row.get("years_to_maturity")
+    years_missing = years_raw is None
+    years = Decimal("3") if years_missing else decimal_value(years_raw)
     include_market_effects_in_formal_pnl = bool(row.get("include_market_effects_in_formal_pnl", True))
 
     diagnostics: list[str] = []
     residual_reasons: list[str] = []
+    if years_missing:
+        # 期限点是 3Y 代理，利率水平/曲线形态/信用利差/凸性都可能错位，未解释余额
+        # 因此不得计为选券能力；与 missing_analytics 等缺数据情形同调归入残差噪音。
+        diagnostics.append("years_to_maturity_missing_fallback_3y")
+        residual_reasons.append("missing_years_to_maturity")
+        diagnostics.append("缺少剩余期限，曲线取点按 3Y 代理，未将剩余项计为能力。")
     dy_level = parallel_shift_decimal(treasury_start, treasury_end)
     dy_tenor = tenor_shift_decimal(treasury_start, treasury_end, years)
 
@@ -245,7 +286,9 @@ def compute_decision_grade_row(
     return {
         "components": components,
         "actual_pnl": actual_pnl,
-        "explained_pnl": sum(components.values(), ZERO),
+        # explained_pnl 仅累加真正可归因的固定因子；selection_proxy/residual_noise 是承接
+        # 缺口的平衡项，若计入会使下游 explained_pnl≡actual_pnl，令闭合判定代数恒真（假门禁）。
+        "explained_pnl": fixed_components,
         "residual_reasons": sorted(set(residual_reasons)),
         "diagnostics": diagnostics,
     }

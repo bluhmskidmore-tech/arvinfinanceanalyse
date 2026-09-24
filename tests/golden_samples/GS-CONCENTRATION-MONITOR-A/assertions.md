@@ -2,7 +2,7 @@
 
 ## Source
 
-- `docs/live_route_maturity.md` -> `GAP-CONCENTRATION-MONITOR-PAGE`
+- `docs/live_route_maturity.md` -> `PAGE-CONC-001`
 - `docs/metric_dictionary.md` -> `MTR-CON-001` through `MTR-CON-004`
 - `backend/app/api/routes/bond_analytics.py`
 - `backend/app/services/bond_analytics_service.py`
@@ -18,8 +18,8 @@
 - `result_meta.result_kind == "bond_analytics.credit_spread_migration"`.
 - `result_meta.formal_use_allowed == false`.
 - `result_meta.source_version == "sv_concentration_monitor_gs_a"`.
-- `result_meta.rule_version == "rv_bond_analytics_formal_materialize_v1"`.
-- `result_meta.cache_version == "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1"`.
+- `result_meta.rule_version == "rv_bond_analytics_formal_materialize_v2"`.
+- `result_meta.cache_version == "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v2"`.
 - `result_meta.quality_flag == "warning"`.
 - `result_meta.vendor_status == "vendor_unavailable"`.
 - `result_meta.fallback_mode == "none"`.
@@ -48,7 +48,7 @@
 
 ## Boundary
 
-- This sample freezes the `GET /api/bond-analytics/credit-spread-migration` candidate page DTO for `GAP-CONCENTRATION-MONITOR-PAGE`.
+- This sample freezes the `GET /api/bond-analytics/credit-spread-migration` candidate page DTO for `PAGE-CONC-001`.
 - It preserves `formal_use_allowed=false`; `MTR-CON-001` through `MTR-CON-004` remain candidate display metrics with pending confirmation.
 - It does not replace PAGE-RISK-001 formal risk truth, `/bond-analysis` action-attribution evidence, formal fixed-income metric truth, or certified concentration-limit approval.
 - Direct governance review, catalog/date evidence, manual audit closure, and business-owner approval remain separate.

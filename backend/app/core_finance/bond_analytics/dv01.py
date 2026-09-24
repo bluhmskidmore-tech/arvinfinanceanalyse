@@ -201,15 +201,28 @@ def dv01_scope_summary(rows: list[dict[str, object]]) -> dict[str, Decimal]:
     }
 
 
+DV01_RISK_LEVEL_NO_DATA = "no_data"
+DV01_RISK_LEVEL_NO_LIMIT_CONFIGURED = "no_limit_configured"
+
+
 def dv01_action_risk_level(
     *,
     total_dv01: Decimal,
     warning_dv01: Decimal,
     limit_dv01: Decimal,
     has_rows: bool,
+    limit_configured: bool = True,
 ) -> str:
+    """Grade DV01 exposure against a limit, or report that no limit exists.
+
+    A missing limit is not the same as a limit of zero: without a governed
+    limit there is no threshold to breach, so the caller must get
+    ``no_limit_configured`` rather than a breach graded off a placeholder.
+    """
     if not has_rows:
-        return "no_data"
+        return DV01_RISK_LEVEL_NO_DATA
+    if not limit_configured or limit_dv01 <= ZERO:
+        return DV01_RISK_LEVEL_NO_LIMIT_CONFIGURED
     if total_dv01 >= limit_dv01:
         return "breach"
     if total_dv01 >= warning_dv01:
@@ -224,8 +237,11 @@ def build_dv01_action_scenario_payloads(
     limit_dv01: Decimal,
     has_rows: bool,
     shocks: list[Decimal] | tuple[Decimal, ...],
+    limit_configured: bool = True,
 ) -> list[dict[str, object]]:
     if not has_rows:
+        return []
+    if not limit_configured or limit_dv01 <= ZERO:
         return []
     return [
         {

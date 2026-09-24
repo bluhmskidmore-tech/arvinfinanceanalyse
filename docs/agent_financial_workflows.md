@@ -10,6 +10,7 @@ Included in this phase:
 - Mapping from workflow IDs and slash commands to existing MOSS agent intents.
 - A plan-only `AgentEnvelope` response that preserves MOSS `result_meta`, evidence, and audit boundaries.
 - An explicit execute mode that runs the mapped MOSS intents in order and returns a workflow summary.
+- A template-synthesized `Workflow Memo` card on successful execute responses (no LLM involved).
 
 Not included in this phase:
 
@@ -42,7 +43,11 @@ The workflow envelope uses:
 - `evidence.evidence_rows`: `0`
 - `evidence.quality_flag`: `warning`
 
-The first suggested action points to the first mapped MOSS intent and requires confirmation. The catalog does not write data, does not trigger side effects, and does not let any external agent bypass MOSS metric definitions, lineage, `result_meta`, or audit contracts.
+The first suggested action points to the first mapped MOSS intent and requires confirmation. Its `payload` contains only the target `intent` (plus the server-injected `confirmation_scope`); it intentionally does not repeat `workflow_id`, so merging the payload into the follow-up request `context` executes that intent directly. (The payload previously also carried `workflow_id`, which made an echoed payload resolve back to the workflow and return the plan card again instead of executing.) The research workflow plan action keeps `workflow_id` plus `workflow_mode="execute"` in its payload because its action executes the whole single-intent workflow. The catalog does not write data, does not trigger side effects, and does not let any external agent bypass MOSS metric definitions, lineage, `result_meta`, or audit contracts.
+
+Note: the `pnl_review` governance note previously said "plan card only", and the `risk_memo` note previously said the response "has no evidence rows"; both wordings were stale once execute mode landed. All four workflows support the explicit execute mode described below. The `pnl_review` note now reads "Plan card is the default; multi-intent execution requires explicit `context.workflow_mode=execute`." and the `risk_memo` note now reads "Plan responses are non-formal with no evidence rows; execute mode aggregates evidence from the mapped MOSS intents."
+
+The research workflow `research_radar_brief` (`/research-radar`, keywords 「研究速读」/「研究雷达」) follows the same plan-default / execute-on-request contract; see `docs/AGENT_MVP_RUNBOOK.md`.
 
 ## Usage
 
@@ -72,9 +77,16 @@ The execute mode:
 
 - Calls the workflow's mapped MOSS intent handlers in catalog order.
 - Keeps the workflow-level `formal_use_allowed` value as `false`.
-- Preserves child intent evidence in the workflow cards and aggregates `tables_used` / `evidence_rows`.
+- Preserves child intent evidence in the workflow cards and aggregates `tables_used` / `evidence_rows` / `sql_executed`.
 - Returns `quality_flag=warning` if any mapped intent is missing, fails, or returns a non-OK quality flag.
 - Does not write data or trigger external systems.
+- Prepends a `Workflow Memo` card (`type=markdown`, first card) synthesized purely from templates, with no LLM call:
+  - workflow title and ID, plus the resolved report date taken from child intent filters;
+  - a one-line conclusion per child intent, taken directly from the first line of each child envelope's answer (failed or missing intents are listed as failures);
+  - a data-quality section listing any child intent whose `quality_flag` is not `ok`;
+  - a fixed closing statement: 「非正式结果，仅供分析参考（formal_use_allowed=false）。」
+
+The memo card does not change workflow-level `result_meta`: `formal_use_allowed` stays `false` and the quality-flag aggregation rule above is unchanged. The single-intent research workflow execute path (`research_radar_brief`) does not go through the multi-intent executor and has no memo card.
 
 ## Workbench Usage
 
@@ -95,11 +107,11 @@ The workflow result uses the existing Workbench panels:
 - `Mapped Intent Results` shows each child intent's answer, `result_kind`, source tables, and evidence row count.
 - The right-side evidence and `result_meta` panels continue to show workflow-level governance state, including `formal_use_allowed=false`.
 
-Normal free-text questions in Agent Workbench continue through the managed `/api/agent/runs` path. Only the four financial workflow shortcut buttons use the local `/api/agent/query` execute-mode path.
+Normal free-text questions are routed conditionally (`AgentWorkbenchPage.tsx` `executeOrdinaryConversation`): questions recognized as local open chat (`isLocalOpenChatQuestion`), questions matching a local analysis intent pattern (`getLocalAgentQueryIntent`), plain analysis-conversation follow-ups (`shouldUseLocalAnalysisConversation`), and any question sent while the conversation mode is latched to `local_sync` all execute synchronously through the local `POST /api/agent/query` path. Other free-text questions go through the managed `/api/agent/runs` path; when a managed run fails because the Hermes provider is unavailable, the Workbench falls back to the local sync path and latches the conversation mode to `local_sync`. Beyond the four financial workflow shortcut buttons, the research shortcuts and suggested-action executions also call the local `POST /api/agent/query` path.
 
 ## Next Phases
 
 Future work can add:
 
-- Report or memo generation using completed MOSS intent envelopes.
+- Richer report generation beyond the template-synthesized `Workflow Memo` card (e.g. LLM-drafted narratives under explicit governance review).
 - Optional external MCP data access only through explicit MOSS governance, lineage, and licensing checks.

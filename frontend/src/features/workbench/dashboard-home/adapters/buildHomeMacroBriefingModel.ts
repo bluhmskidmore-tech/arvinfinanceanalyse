@@ -15,6 +15,7 @@ import {
 } from "./macroNewsPresentation";
 import type { HomeResearchCalendarModel } from "./buildHomeResearchCalendarModel";
 
+import { EM_DASH } from "../../../../utils/format";
 export type HomeMacroReleaseItem = {
   id: string;
   date: string;
@@ -28,6 +29,25 @@ export type HomeMacroReleaseItem = {
   timeLabel: string;
   sourceName: string;
   sourceUrl: string;
+  history?: HomeMacroReleaseHistory;
+};
+
+export type HomeMacroReleaseChangeTone = "up" | "down" | "flat" | "neutral";
+
+export type HomeMacroReleaseHistory = {
+  latestLabel: string;
+  latestValue: string;
+  previousLabel: string;
+  previousValue: string;
+  changeLabel: string;
+  changeValue: string;
+  changeTone: HomeMacroReleaseChangeTone;
+  note: string | null;
+  sourceLabel: string | null;
+};
+
+export type HomeMacroReleaseHistoryItem = HomeMacroReleaseItem & {
+  history: HomeMacroReleaseHistory;
 };
 
 export type HomeMacroNewsItem = {
@@ -92,6 +112,8 @@ export type HomePolicyFundingSummary = {
 
 export type HomeMacroBriefingModel = {
   releaseItems: readonly HomeMacroReleaseItem[];
+  releaseHistoryItems: readonly HomeMacroReleaseHistoryItem[];
+  releaseHistoryMessage?: string | null;
   releaseWindowLabel: string;
   releaseMessage: string | null;
   newsItems: readonly HomeMacroNewsItem[];
@@ -116,6 +138,19 @@ type MacroReleaseCalendarRow = {
   importance: string;
   source_name: string;
   source_url: string;
+  history?: MacroReleaseCalendarHistoryRow | null;
+};
+
+type MacroReleaseCalendarHistoryRow = {
+  latest_label?: string | null;
+  latest_value?: string | null;
+  previous_label?: string | null;
+  previous_value?: string | null;
+  change_label?: string | null;
+  change_value?: string | null;
+  change_tone?: string | null;
+  note?: string | null;
+  source_label?: string | null;
 };
 
 type MacroNewsItemsResult = Pick<
@@ -210,7 +245,7 @@ function dateLabel(date: string): string {
 
 function dateTimeLabel(value: string): string {
   const normalized = value.trim();
-  if (!normalized || normalized === "—") {
+  if (!normalized || normalized === EM_DASH) {
     return "时间待核";
   }
   if (normalized.length >= 16) {
@@ -243,6 +278,45 @@ function daysUntilLabel(date: string, todayIsoDate: string): string {
     return `${days}天后`;
   }
   return `${Math.abs(days)}天前`;
+}
+
+function trimmedText(value: string | null | undefined): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeReleaseChangeTone(value: string | null | undefined): HomeMacroReleaseChangeTone {
+  const normalized = trimmedText(value).toLowerCase();
+  if (normalized === "up" || normalized === "down" || normalized === "flat") {
+    return normalized;
+  }
+  return "neutral";
+}
+
+function buildReleaseHistory(
+  history: MacroReleaseCalendarHistoryRow | null | undefined,
+): HomeMacroReleaseHistory | undefined {
+  if (!history) {
+    return undefined;
+  }
+
+  const latestValue = trimmedText(history.latest_value);
+  const previousValue = trimmedText(history.previous_value);
+  const changeValue = trimmedText(history.change_value);
+  if (!latestValue && !previousValue && !changeValue) {
+    return undefined;
+  }
+
+  return {
+    latestLabel: trimmedText(history.latest_label) || "最近一期",
+    latestValue: latestValue || EM_DASH,
+    previousLabel: trimmedText(history.previous_label) || "前值",
+    previousValue: previousValue || EM_DASH,
+    changeLabel: trimmedText(history.change_label) || "变动",
+    changeValue: changeValue || EM_DASH,
+    changeTone: normalizeReleaseChangeTone(history.change_tone),
+    note: trimmedText(history.note) || null,
+    sourceLabel: trimmedText(history.source_label) || null,
+  };
 }
 
 function incrementReason(reasons: Map<MacroNewsDropReasonId, number>, id: MacroNewsDropReasonId) {
@@ -612,20 +686,54 @@ function buildReleaseItems(todayIsoDate: string): HomeMacroReleaseItem[] {
     .filter((item) => item.date >= todayIsoDate && item.date <= windowEndDate)
     .sort((left, right) => left.date.localeCompare(right.date) || left.title.localeCompare(right.title, "zh-CN"))
     .slice(0, RELEASE_LIMIT)
-    .map((item) => ({
-      id: item.id,
-      date: item.date,
-      dateLabel: dateLabel(item.date),
-      daysUntilLabel: daysUntilLabel(item.date, todayIsoDate),
-      region: item.region,
-      title: item.title,
-      category: item.category,
-      importance: item.importance,
-      importanceLabel: importanceLabel(item.importance),
-      timeLabel: item.time_label,
-      sourceName: item.source_name,
-      sourceUrl: item.source_url,
-    }));
+    .map((item) => {
+      const history = buildReleaseHistory(item.history);
+      return {
+        id: item.id,
+        date: item.date,
+        dateLabel: dateLabel(item.date),
+        daysUntilLabel: daysUntilLabel(item.date, todayIsoDate),
+        region: item.region,
+        title: item.title,
+        category: item.category,
+        importance: item.importance,
+        importanceLabel: importanceLabel(item.importance),
+        timeLabel: item.time_label,
+        sourceName: item.source_name,
+        sourceUrl: item.source_url,
+        ...(history ? { history } : {}),
+      };
+    });
+}
+
+function buildReleaseHistoryItems(todayIsoDate: string): HomeMacroReleaseHistoryItem[] {
+  return macroReleaseCalendar
+    .flatMap((item) => {
+      const history = buildReleaseHistory(item.history);
+      if (!history) {
+        return [];
+      }
+      return [{
+        id: item.id,
+        date: item.date,
+        dateLabel: dateLabel(item.date),
+        daysUntilLabel: daysUntilLabel(item.date, todayIsoDate),
+        region: item.region,
+        title: item.title,
+        category: item.category,
+        importance: item.importance,
+        importanceLabel: importanceLabel(item.importance),
+        timeLabel: item.time_label,
+        sourceName: item.source_name,
+        sourceUrl: item.source_url,
+        history,
+      }];
+    })
+    .sort(
+      (left, right) =>
+        left.date.localeCompare(right.date) || left.title.localeCompare(right.title, "zh-CN"),
+    )
+    .slice(-RELEASE_LIMIT);
 }
 
 function buildNewsItemsFromEvents(input: {
@@ -923,11 +1031,11 @@ function buildSupplyItems(calendar: HomeResearchCalendarModel): HomeMacroSupplyI
     return [{ id: "supply-error", label: "供给/招标：加载失败" }];
   }
   if (calendar.items.length === 0) {
-    return [{ id: "supply-empty", label: "供给/招标：当前窗口无事件" }];
+    return [{ id: "supply-empty", label: "供给/招标：已查询当前窗口，暂无事件" }];
   }
   return calendar.items.slice(0, 2).map((item) => ({
     id: item.id,
-    label: `供给/招标：${dateLabel(item.date)} ${item.title}${item.amountLabel !== "—" ? ` · ${item.amountLabel}` : ""}`,
+    label: `供给/招标：${dateLabel(item.date)} ${item.title}${item.amountLabel !== EM_DASH ? ` · ${item.amountLabel}` : ""}`,
   }));
 }
 
@@ -1031,6 +1139,7 @@ export function buildHomeMacroBriefingModel(input: {
   supplyCalendar: HomeResearchCalendarModel;
 }): HomeMacroBriefingModel {
   const releaseItems = buildReleaseItems(input.todayIsoDate);
+  const releaseHistoryItems = buildReleaseHistoryItems(input.todayIsoDate);
   const news = resolveHomeMacroNewsBriefing({
     choiceEvents: input.newsEvents,
     fallbackEvents: input.fallbackNewsEvents,
@@ -1041,6 +1150,7 @@ export function buildHomeMacroBriefingModel(input: {
 
   return {
     releaseItems,
+    releaseHistoryItems,
     releaseWindowLabel:
       releaseItems.length > 0 ? `未来 ${RELEASE_WINDOW_DAYS} 天 · ${releaseItems.length} 项` : `未来 ${RELEASE_WINDOW_DAYS} 天`,
     releaseMessage: releaseItems.length > 0 ? null : "暂无已维护发布日期，请补充配置清单。",

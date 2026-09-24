@@ -14,6 +14,10 @@
 - `result_meta.source_version == "sv-fx-1__sv-t-1__sv-z-1"`.
 - `result_meta.rule_version == "rv_balance_analysis_formal_materialize_v1"`.
 - `result_meta.cache_version == "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1"`.
+- `result_meta.requested_report_date == result_meta.resolved_report_date == result_meta.as_of_date == "2025-12-31"`.
+- `result_meta.date_basis == "balance_analysis_report_date"`.
+- `result_meta.filters_applied` freezes the requested report date, `position_scope="all"`, and `currency_basis="CNY"`.
+- `result_meta.tables_used` names both formal balance fact tables and `result_meta.evidence_rows == 2`.
 - `result.report_date == "2025-12-31"`.
 - `result.position_scope == "all"`.
 - `result.currency_basis == "CNY"`.

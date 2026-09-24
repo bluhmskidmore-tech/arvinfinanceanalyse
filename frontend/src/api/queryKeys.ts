@@ -1,5 +1,9 @@
 import type { ApiClient } from "./client";
-import type { BalanceCurrencyBasis, BalancePositionScope } from "./contracts";
+import type {
+  BalanceCurrencyBasis,
+  BalancePositionScope,
+  BondDashboardBundleSectionId,
+} from "./contracts";
 
 type PnlByBusinessAnalysisDimension =
   Parameters<ApiClient["getPnlByBusinessAnalysis"]>[0]["dimension"];
@@ -14,6 +18,20 @@ export const apiQueryKeys = {
     ["bond-dashboard", "headline", mode, normalizeReportDate(reportDate)] as const,
   bondDashboardHomeSummary: (mode: string, reportDate: string | null | undefined) =>
     ["bond-dashboard", "home-summary", mode, normalizeReportDate(reportDate)] as const,
+  bondDashboardBundle: (
+    mode: string,
+    reportDate: string | null | undefined,
+    sections: readonly BondDashboardBundleSectionId[],
+    industryTopN = 10,
+  ) =>
+    [
+      "bond-dashboard",
+      "bundle",
+      mode,
+      normalizeReportDate(reportDate),
+      sections.join(","),
+      industryTopN,
+    ] as const,
   bondAnalyticsPortfolioHeadlines: (mode: string, reportDate: string | null | undefined) =>
     ["bond-analytics", "portfolio-headlines", mode, normalizeReportDate(reportDate)] as const,
   bondAnalyticsDv01Risk: (
@@ -88,6 +106,16 @@ export const apiQueryKeys = {
       normalizeReportDate(reportDate),
       groupBy,
     ] as const,
+  bondAnalyticsKrdCurveRisk: (
+    mode: string,
+    reportDate: string | null | undefined,
+  ) =>
+    [
+      "bond-analytics",
+      "krd-curve-risk",
+      mode,
+      normalizeReportDate(reportDate),
+    ] as const,
   bondAnalyticsTopHoldings: (
     mode: string,
     reportDate: string | null | undefined,
@@ -123,6 +151,20 @@ export const apiQueryKeys = {
       mode,
       normalizeReportDate(reportDate),
       limit,
+    ] as const,
+  homeMacroReleaseContext: (
+    mode: string,
+    windowStartDate: string,
+    windowEndDate: string,
+    historyLimit: number,
+  ) =>
+    [
+      "home",
+      "macro-release-context",
+      mode,
+      windowStartDate,
+      windowEndDate,
+      historyLimit,
     ] as const,
   homeIncomeTrend: (
     mode: string,
@@ -160,6 +202,7 @@ export const apiQueryKeys = {
     periodType: string,
     assetClass = "all",
     accountingClass = "all",
+    detail = "full",
   ) =>
     [
       "bond-analytics",
@@ -169,6 +212,7 @@ export const apiQueryKeys = {
       periodType,
       assetClass,
       accountingClass,
+      detail,
     ] as const,
   bondAnalyticsYieldCurveTermStructure: (
     mode: string,
@@ -186,6 +230,7 @@ export const apiQueryKeys = {
     mode: string,
     reportDate: string | null | undefined,
     lookbackDays: number,
+    detail = "full",
   ) =>
     [
       "pnl-attribution",
@@ -193,7 +238,10 @@ export const apiQueryKeys = {
       mode,
       normalizeReportDate(reportDate),
       lookbackDays,
+      detail,
     ] as const,
+  balanceAnalysisDates: (mode: string) =>
+    ["balance-analysis", "dates", mode] as const,
   balanceAnalysisDecisionItems: (
     mode: string,
     reportDate: string | null | undefined,

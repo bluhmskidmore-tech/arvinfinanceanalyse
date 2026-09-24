@@ -6,13 +6,14 @@ import { describe, expect, it, vi } from "vitest";
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import type {
   ApiEnvelope,
+  ConcentrationDisplayLimits,
   CreditSpreadMigrationPayload,
   ResultMeta,
 } from "../api/contracts";
 import { apiQueryKeys } from "../api/queryKeys";
 import ConcentrationMonitorPage from "../features/concentration-monitor/ConcentrationMonitorPage";
 import { routerFuture } from "../router/routerFuture";
-import { formatRawAsNumeric } from "../utils/format";
+import { EM_DASH, formatRawAsNumeric } from "../utils/format";
 
 const resultMeta: ResultMeta = {
   trace_id: "test_credit_spread_cache_shape",
@@ -38,6 +39,15 @@ const resultMeta: ResultMeta = {
   },
   evidence_rows: 10,
   generated_at: "2026-04-12T10:00:00Z",
+};
+
+/** 展示限额（后端下发，非风控正式限额）；与后端 CONCENTRATION_DISPLAY_LIMITS 过渡口径一致。 */
+const BACKEND_DISPLAY_LIMITS: ConcentrationDisplayLimits = {
+  issuer_single_max: 0.1,
+  issuer_top5_max: 0.4,
+  hhi_warning: 0.15,
+  below_aa_max: 0.2,
+  credit_weight_max: 0.85,
 };
 
 function creditSpreadEnvelope(
@@ -91,12 +101,35 @@ function creditSpreadEnvelope(
         top5_concentration: ratio(0.28),
         top_items: [],
       },
+      display_limits: BACKEND_DISPLAY_LIMITS,
       oci_credit_exposure: yuan(0),
       oci_spread_dv01: dv01(0),
       oci_sensitivity_25bp: yuan(0),
       warnings: [],
       computed_at: "2026-04-12T00:00:00Z",
     },
+  };
+}
+
+function creditSpreadEnvelopeWith(
+  reportDate: string,
+  overrides: Partial<CreditSpreadMigrationPayload>,
+): ApiEnvelope<CreditSpreadMigrationPayload> {
+  const base = creditSpreadEnvelope(reportDate);
+  return { ...base, result: { ...base.result, ...overrides } };
+}
+
+function buildClient(envelopeForDate: (reportDate: string) => ApiEnvelope<CreditSpreadMigrationPayload>): ApiClient {
+  const base = createApiClient({ mode: "mock" });
+  return {
+    ...base,
+    getBondAnalyticsDates: vi.fn(async () => ({
+      result_meta: { ...resultMeta, result_kind: "bond_analytics.dates" },
+      result: { report_dates: ["2026-03-31"] },
+    })),
+    getBondAnalyticsCreditSpreadMigration: vi.fn(async (reportDate: string) =>
+      envelopeForDate(reportDate),
+    ),
   };
 }
 
@@ -184,13 +217,13 @@ describe("ConcentrationMonitorPage", () => {
 
     expect(contractPanel).toHaveTextContent("候选指标");
     expect(contractPanel).toHaveTextContent("PAGE-CONTRACT-PENDING:/concentration-monitor");
-    expect(contractPanel).toHaveTextContent("正式可用: 否");
-    expect(contractPanel).toHaveTextContent("口径 analytical");
-    expect(contractPanel).toHaveTextContent("质量 warning");
+    expect(contractPanel).toHaveTextContent("正式可用：否");
+    expect(contractPanel).toHaveTextContent("口径：分析口径");
+    expect(contractPanel).toHaveTextContent("质量：预警");
     expect(contractPanel).toHaveTextContent("bond_analytics.credit_spread_migration");
     expect(contractPanel).toHaveTextContent("bond_analytics_report_date");
     expect(contractPanel).toHaveTextContent("fact_formal_bond_analytics_daily");
-    expect(contractPanel).toHaveTextContent("证据行 10");
+    expect(contractPanel).toHaveTextContent("证据行：10");
   });
 
   it("renders candidate concentration KPI ratios as two-decimal percentages", async () => {
@@ -221,5 +254,183 @@ describe("ConcentrationMonitorPage", () => {
     expect(kpiGrid).toHaveTextContent("30.00%");
     expect(kpiGrid).toHaveTextContent("20.00%");
     expect(kpiGrid).toHaveTextContent("8.00%");
+  });
+
+  it("compares metrics against backend-delivered display limits and annotates their origin", async () => {
+    const ratio = (raw: number) => formatRawAsNumeric({ raw, unit: "ratio", sign_aware: false });
+    const yuan = (raw: number) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware: false });
+    // 限额来自 mock 响应携带的 display_limits（后端下发），非前端常量：
+    // 单一发行人 0.12 > 0.1 → 超限；前五 0.35 / 0.4 = 87.5% → 接近限额；
+    // HHI 0.10 / 0.15 ≈ 66.7% → 正常；AA 及以下 0.25 > 0.2 → 超限；
+    // 信用债占比 0.9 > display_limits.credit_weight_max(0.85) → KPI tone=error。
+    const client = buildClient((reportDate) =>
+      creditSpreadEnvelopeWith(reportDate, {
+        credit_weight: ratio(0.9),
+        rating_aa_and_below_weight: ratio(0.25),
+        display_limits: BACKEND_DISPLAY_LIMITS,
+        concentration_by_issuer: {
+          dimension: "issuer",
+          hhi: ratio(0.1),
+          top5_concentration: ratio(0.35),
+          top_items: [
+            { name: "Issuer A", weight: ratio(0.12), market_value: yuan(120_000_000) },
+          ],
+        },
+      }),
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    renderConcentrationMonitor(client, queryClient);
+
+    const limitNote = await waitFor(() => {
+      const node = document.querySelector('[data-testid="concentration-monitor-limit-note"]');
+      expect(node).not.toBeNull();
+      return node as HTMLElement;
+    });
+    expect(limitNote).toHaveTextContent("展示限额（后端下发，非风控正式限额）");
+    expect(limitNote).not.toHaveTextContent("前端配置");
+
+    const statusCells = Array.from(
+      document.querySelectorAll(".concentration-monitor-page__limit-status"),
+    ) as HTMLElement[];
+    expect(statusCells.map((cell) => cell.textContent)).toEqual([
+      "超限",
+      "接近限额",
+      "正常",
+      "超限",
+    ]);
+    expect(statusCells.map((cell) => cell.dataset.tone)).toEqual([
+      "breach",
+      "near",
+      "ok",
+      "breach",
+    ]);
+
+    // 限额列与当前值列同为百分比制；限额使用率列 = 当前值 / 限额。
+    const limitRows = Array.from(
+      document.querySelectorAll(".concentration-monitor-page__limit-cell"),
+    ).map((cell) => (cell as HTMLElement).closest("tr") as HTMLTableRowElement);
+    expect(limitRows.map((row) => row.cells[2]?.textContent)).toEqual([
+      "10.00%",
+      "40.00%",
+      "15.00%",
+      "20.00%",
+    ]);
+    const usageCells = Array.from(
+      document.querySelectorAll(".concentration-monitor-page__limit-usage"),
+    ) as HTMLElement[];
+    expect(usageCells.map((cell) => cell.textContent)).toEqual([
+      "120.0%",
+      "87.5%",
+      "66.7%",
+      "125.0%",
+    ]);
+    expect(usageCells.map((cell) => cell.dataset.tone)).toEqual([
+      "breach",
+      "near",
+      "ok",
+      "breach",
+    ]);
+
+    const kpiGrid = document.querySelector(
+      '[data-testid="concentration-monitor-kpi-grid"]',
+    ) as HTMLElement;
+    const creditWeightCard = Array.from(kpiGrid.querySelectorAll(".kpi-card")).find(
+      (card) => card.querySelector(".kpi-card__title-text")?.textContent === "信用债占比",
+    ) as HTMLElement;
+    expect(creditWeightCard).toBeDefined();
+    expect(creditWeightCard.dataset.tone).toBe("error");
+  });
+
+  it("renders EM_DASH for missing limit-row values and marks them as no-data", async () => {
+    const ratio = (raw: number) => formatRawAsNumeric({ raw, unit: "ratio", sign_aware: false });
+    const client = buildClient((reportDate) =>
+      creditSpreadEnvelopeWith(reportDate, {
+        rating_aa_and_below_weight: undefined,
+        concentration_by_issuer: {
+          dimension: "issuer",
+          hhi: ratio(0.12),
+          top5_concentration: ratio(0.3),
+          top_items: [],
+        },
+      }),
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    renderConcentrationMonitor(client, queryClient);
+
+    const valueCells = await waitFor(() => {
+      const cells = Array.from(
+        document.querySelectorAll(".concentration-monitor-page__limit-cell"),
+      ) as HTMLElement[];
+      expect(cells).toHaveLength(4);
+      return cells;
+    });
+
+    // 无 top_items → 单一发行人占比缺值；未返回 AA 及以下占比 → 末行缺值。
+    expect(valueCells[0].textContent).toBe(EM_DASH);
+    expect(valueCells[3].textContent).toBe(EM_DASH);
+
+    const statusCells = Array.from(
+      document.querySelectorAll(".concentration-monitor-page__limit-status"),
+    ) as HTMLElement[];
+    expect(statusCells[3].textContent).toBe("暂无数据");
+    expect(statusCells[3].dataset.missing).toBe("true");
+
+    // 缺当前值时限额使用率同样缺值展示，并带 missing 标记。
+    const usageCells = Array.from(
+      document.querySelectorAll(".concentration-monitor-page__limit-usage"),
+    ) as HTMLElement[];
+    expect(usageCells[0].textContent).toBe(EM_DASH);
+    expect(usageCells[3].textContent).toBe(EM_DASH);
+    expect(usageCells[3].dataset.missing).toBe("true");
+  });
+
+  it("shows a limits-not-delivered empty state instead of falling back to frontend constants", async () => {
+    const ratio = (raw: number) => formatRawAsNumeric({ raw, unit: "ratio", sign_aware: false });
+    // 响应缺 display_limits：即便信用债占比 0.9 超过旧前端阈值 0.85，也不得回退前端常量标红。
+    const client = buildClient((reportDate) =>
+      creditSpreadEnvelopeWith(reportDate, {
+        credit_weight: ratio(0.9),
+        display_limits: undefined,
+      }),
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    renderConcentrationMonitor(client, queryClient);
+
+    const missingSurface = await waitFor(() => {
+      const node = document.querySelector(
+        '[data-testid="concentration-monitor-limits-missing"]',
+      );
+      expect(node).not.toBeNull();
+      return node as HTMLElement;
+    });
+    expect(missingSurface).toHaveTextContent("限额未下发");
+    expect(missingSurface).toHaveTextContent("不回退前端配置阈值");
+
+    // 限额对照表与「后端下发」标注均不渲染。
+    expect(
+      document.querySelector('[data-testid="concentration-monitor-limit-note"]'),
+    ).toBeNull();
+    expect(
+      document.querySelectorAll(".concentration-monitor-page__limit-status"),
+    ).toHaveLength(0);
+
+    // KPI 不做限额着色：信用债占比 0.9 仍为中性 tone。
+    const kpiGrid = document.querySelector(
+      '[data-testid="concentration-monitor-kpi-grid"]',
+    ) as HTMLElement;
+    const creditWeightCard = Array.from(kpiGrid.querySelectorAll(".kpi-card")).find(
+      (card) => card.querySelector(".kpi-card__title-text")?.textContent === "信用债占比",
+    ) as HTMLElement;
+    expect(creditWeightCard).toBeDefined();
+    expect(creditWeightCard.dataset.tone).toBe("default");
   });
 });

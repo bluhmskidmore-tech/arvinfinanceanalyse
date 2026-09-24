@@ -1,0 +1,105 @@
+/* AgentGenericCardsGrid — Agent 回答通用卡片栅格 */
+
+.agent-generic-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.agent-generic-cards__card {
+  padding: 16px;
+  border-radius: var(--ib-radius, 2px);
+  border: 1px solid var(--ib-hairline);
+  background: var(--ib-surface);
+}
+
+.agent-generic-cards__title {
+  margin-bottom: 6px;
+  color: var(--ib-ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.agent-generic-cards__title--spaced {
+  margin-bottom: 10px;
+}
+
+.agent-generic-cards__value {
+  margin-bottom: 10px;
+  color: var(--ib-ink-secondary);
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.agent-generic-cards__value:last-child {
+  margin-bottom: 0;
+}
+
+.agent-generic-cards__rows {
+  display: grid;
+  gap: 6px;
+}
+
+.agent-generic-cards__rows--links {
+  gap: 10px;
+}
+
+.agent-generic-cards__row {
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.agent-generic-cards__field {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--ib-ink-secondary);
+}
+
+.agent-generic-cards__field-label {
+  color: var(--ib-ink-muted);
+}
+
+.agent-generic-cards__link {
+  color: var(--ib-accent);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.agent-generic-cards__description {
+  color: var(--ib-ink-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Workflow Memo 等 markdown 卡：保留换行与列表结构，等宽层级更易读 */
+.agent-generic-cards__card--memo {
+  grid-column: 1 / -1;
+}
+
+.agent-generic-cards__memo {
+  color: var(--ib-ink-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.agent-generic-cards__scalar {
+  margin-bottom: 8px;
+  color: var(--ib-ink-secondary);
+  font-size: 14px;
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+.agent-generic-cards__type {
+  color: var(--ib-ink-muted);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}

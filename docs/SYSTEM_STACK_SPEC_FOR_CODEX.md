@@ -8,10 +8,25 @@
 
 - frontend -> api -> services -> (repositories / core_finance / governance) -> storage
 - 所有正式金融计算只允许出现在 `backend/app/core_finance/`
-- `backend/app/api/` 只允许做参数校验、鉴权、调用 service、返回响应
+- `backend/app/api/` 只允许做参数校验、**授权**、调用 service、返回响应
 - `frontend/` 不允许补算正式金融指标
 - DuckDB 常态只读；写入只能走 `backend/app/tasks/`
 - Scenario 与 Formal 必须隔离，结果必须带 `result_meta`
+
+> **关于「授权」的准确边界（当前仓库有授权，没有认证）。** 原文此处写的是「鉴权」，该词混淆了
+> authentication 与 authorization，会让读者以为 API 层已经在校验调用方身份。准确结论与根
+> [README.md](../README.md)「关键约束」一节一致：
+>
+> - 授权（authorization）确实存在：`backend/app/security/auth_context.py::ensure_user_allowed` 做基于
+>   `resource`/`action`/`scope` 的 RBAC 判定，`backend/app/api/deps.py` 把它接进路由依赖。
+> - 认证（authentication）**不存在**：全仓没有 `HTTPBearer` / `OAuth2` / `APIKeyHeader` / JWT / session。
+>   身份取自 `X-User-Id` / `X-User-Role` 请求头 → `MOSS_USER_ID` / `MOSS_USER_ROLE` 环境变量 →
+>   兜底常量 `anonymous` / `viewer`。
+> - 信任开关 `MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST` **默认关闭**：此时请求头被忽略，所有请求共用
+>   同一个进程级身份，RBAC 实际上是在对一个固定身份判权；开关打开时任何调用方都能用请求头自称任意
+>   `user_id` 和 `role`。**两种姿态都不构成认证。**
+> - 因此本节的「授权」只描述 API 层允许做的**动作类型**，不得据此认为该层已完成身份校验，也不得在它
+>   之上做安全性判断或对外暴露。
 
 ## 2. 技术栈冻结
 
@@ -91,7 +106,7 @@ repo/
 
 ### api/
 - 参数校验
-- 鉴权
+- 授权（RBAC 判权；**不含认证**，边界见第 1 节的说明块）
 - service 调用
 - DTO 输出
 - 错误映射

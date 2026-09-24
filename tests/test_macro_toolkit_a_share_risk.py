@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from backend.app.core_finance.macro.a_share_stampede_risk import (
     DEFAULT_A_SHARE_STAMPEDE_RISK_CONFIG,
     compute_a_share_stampede_risk,
 )
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_macro_toolkit,
+]
 
 
 def test_crash_day_is_red_with_position_brake() -> None:

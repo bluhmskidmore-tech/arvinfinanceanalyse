@@ -43,6 +43,35 @@ class TestPnlBridgeNumericMigration:
         assert row.beginning_dirty_mv.unit == "yuan"
         assert row.residual_ratio.unit == "ratio"
 
+    def test_row_accepts_null_residual_ratio(self) -> None:
+        row = PnlBridgeRowSchema(
+            report_date=date(2025, 12, 31),
+            instrument_code="240001.IB",
+            portfolio_name="book-a",
+            cost_center="cc-1",
+            accounting_basis="FI",
+            beginning_dirty_mv=Decimal("91.00000000"),
+            ending_dirty_mv=Decimal("102.00000000"),
+            carry=Decimal("12.50000000"),
+            roll_down=Decimal("0"),
+            treasury_curve=Decimal("0"),
+            credit_spread=Decimal("0"),
+            fx_translation=Decimal("0"),
+            realized_trading=Decimal("1.75000000"),
+            unrealized_fv=Decimal("-3.25000000"),
+            manual_adjustment=Decimal("0.50000000"),
+            explained_pnl=Decimal("11.50000000"),
+            actual_pnl=Decimal("0"),
+            residual=Decimal("-11.50000000"),
+            residual_ratio=None,
+            quality_flag="warning",
+            current_balance_found=True,
+            prior_balance_found=True,
+            balance_diagnostics=["actual_pnl missing; residual_ratio unavailable."],
+        )
+
+        assert row.residual_ratio is None
+
     def test_summary_accepts_native_numeric(self) -> None:
         summary = PnlBridgeSummarySchema(
             row_count=1,

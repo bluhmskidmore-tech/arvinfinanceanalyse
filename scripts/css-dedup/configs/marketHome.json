@@ -1,0 +1,25 @@
+{
+  "cssPath": "frontend/src/features/workbench/module-home/marketHome.module.css",
+  "tsxFiles": [
+    "frontend/src/features/workbench/module-home/MarketPanelSummary.tsx",
+    "frontend/src/features/workbench/module-home/MarketHomeKpiSparkline.tsx",
+    "frontend/src/features/workbench/module-home/MarketCrossAssetGapBlock.tsx",
+    "frontend/src/features/workbench/module-home/MarketStructureTabPanel.tsx",
+    "frontend/src/features/workbench/module-home/MarketCrossAssetBars.tsx",
+    "frontend/src/features/workbench/module-home/MarketKeyRateCard.tsx",
+    "frontend/src/features/workbench/module-home/MarketDeskIntelStrip.tsx",
+    "frontend/src/features/workbench/module-home/MarketActionQueue.tsx",
+    "frontend/src/features/workbench/module-home/MarketCrisisExplainBand.tsx",
+    "frontend/src/features/workbench/module-home/MarketDecisionMatrix.tsx",
+    "frontend/src/features/workbench/module-home/MarketDepthPanel.tsx",
+    "frontend/src/features/workbench/module-home/MarketCurveSpreadBand.tsx",
+    "frontend/src/features/workbench/module-home/MarketMacroPanelShell.tsx"
+  ],
+  "wildcards": [
+    "marketAccent_navy", "marketAccent_green", "marketAccent_gold", "marketAccent_slate",
+    "crossAssetBarFill_navy", "crossAssetBarFill_gold", "crossAssetBarFill_green", "crossAssetBarFill_slate"
+  ],
+  "finalMarker": null,
+  "mockUrl": "http://127.0.0.1:5897/market-overview",
+  "realUrl": "http://localhost:5888/market-overview"
+}

@@ -1,0 +1,526 @@
+/*
+ * 05 数据健康与修复项 / 06 证据与口径 分区专属样式。
+ * 颜色一律 var(--dh-api-*) / var(--moss-*)，禁止 hex；圆角走 var(--dh-api-radius)。
+ * 骨架已给：__table 密度、FormalResultMetaPanel 徽章变量收口与 neutral 重映射，
+ * 本文件只做分区内部补充与更高特异性微调，不重复骨架段。
+ */
+
+/* ================================ 05 数据健康与修复项 ================= */
+
+.macro-observation-datahealth {
+  display: grid;
+  gap: var(--moss-space-3);
+  min-width: 0;
+}
+
+/* health 为 null 的一句话空态（分区头另有状态注记），高度钳制 ≤120px。 */
+.macro-observation-datahealth__empty {
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  max-height: 120px;
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* 三格读数带：对齐 KPI 横带语言（单框 + 发丝竖缝）但更轻（16px 值、无最小高）。 */
+.macro-observation-datahealth__coverage {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.macro-observation-datahealth__coverage-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-right: 1px solid var(--dh-api-line-soft);
+}
+
+.macro-observation-datahealth__coverage > :last-child {
+  border-right: 0;
+}
+
+.macro-observation-datahealth__coverage-label {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.macro-observation-datahealth__coverage-value {
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-mono);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+
+.macro-observation-datahealth__coverage-note {
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 修复项表：窄屏横向滚动，不隐藏业务列。 */
+.macro-observation-datahealth__table-region {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.macro-observation-datahealth__table {
+  table-layout: fixed;
+  min-width: 720px;
+}
+
+.macro-observation-datahealth__col-priority {
+  width: 68px;
+}
+
+.macro-observation-datahealth__col-label {
+  width: 30%;
+}
+
+.macro-observation-datahealth__col-type {
+  width: 128px;
+}
+
+.macro-observation-datahealth__col-date {
+  width: 96px;
+}
+
+.macro-observation-datahealth__col-stale {
+  width: 64px;
+}
+
+.macro-observation-datahealth__label-cell,
+.macro-observation-datahealth__action-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.macro-observation-datahealth__type-cell {
+  color: var(--dh-api-soft);
+  white-space: nowrap;
+}
+
+/* 最新日期 / 滞后列：等宽数字，muted 降权。 */
+.macro-observation-datahealth__date-cell {
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 优先级徽标：高→红、中→琥珀、低→muted，soft 底。 */
+.macro-observation-datahealth__priority-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.macro-observation-datahealth__priority-badge[data-priority="high"] {
+  border-color: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
+  background: var(--dh-api-red-soft);
+  color: var(--dh-api-red);
+}
+
+.macro-observation-datahealth__priority-badge[data-priority="medium"] {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-amber);
+}
+
+.macro-observation-datahealth__priority-badge[data-priority="low"] {
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+}
+
+/* deferred 行诚实态：整行低饱和（不是真缺失），徽标也退为 muted。 */
+.macro-observation-datahealth__table tbody tr[data-deferred] td {
+  color: var(--dh-api-muted);
+}
+
+.macro-observation-datahealth__table tbody tr[data-deferred] .macro-observation-datahealth__priority-badge {
+  border-color: var(--dh-api-line-soft);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+}
+
+/* 行内「延后确认」徽标：蓝 soft 底，与延后加载语义同色族。 */
+.macro-observation-datahealth__deferred-badge {
+  flex: 0 0 auto;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 30%, transparent);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-blue);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+/* 「另 N 项」尾行细注 + 工具页链接。 */
+.macro-observation-datahealth__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.macro-observation-datahealth__footer a {
+  color: var(--dh-api-muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.macro-observation-datahealth__footer a:hover {
+  color: var(--dh-api-blue);
+}
+
+.macro-observation-datahealth__note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.macro-observation-datahealth__note strong {
+  color: var(--dh-api-soft);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.macro-observation-datahealth__warning {
+  margin: 0;
+  padding-left: 1.1em;
+  color: var(--dh-api-amber);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* ================================ 06 证据与口径 ======================= */
+
+.macro-observation-evidence {
+  display: grid;
+  gap: var(--moss-space-3);
+  min-width: 0;
+}
+
+/* 运行时状态行：三句摘要 + 延后分区徽标列。 */
+.macro-observation-evidence__runtime {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.macro-observation-evidence__runtime strong {
+  color: var(--dh-api-ink);
+  font-weight: 600;
+}
+
+/* 延后分区徽标（05/06 共用配方）：11px soft 底胶囊。 */
+.macro-observation-evidence__deferred-pill,
+.macro-observation-datahealth__deferred-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 30%, transparent);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-blue);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+/* 口径速读补充条：只补面板没有的行（正式使用 / 质量标记防误读）。 */
+.macro-observation-evidence__caliber {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+}
+
+.macro-observation-evidence__caliber-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.macro-observation-evidence__caliber-title {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.macro-observation-evidence__caliber-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
+.macro-observation-evidence__caliber-label {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+}
+
+.macro-observation-evidence__caliber-value {
+  color: var(--dh-api-ink);
+  font-weight: 600;
+}
+
+.macro-observation-evidence__caliber-note {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+}
+
+/*
+ * FormalResultMetaPanel 分区内微调（骨架已收口徽章变量与 neutral 重映射）：
+ * 面板底色 --moss-color-card-bg 未被 dh-api scope 重映射，这里补齐深色背板；
+ * 长证据值（trace/version 巨串）3 行钳制，完整值仍在信封原文（positions 先例）。
+ */
+.macro-observation-evidence .formal-result-meta-panel {
+  min-height: 128px;
+  background: var(--dh-api-panel);
+}
+
+.macro-observation-evidence .formal-result-meta-panel__value {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+/* 报告产物：状态头 + 行式产物列表（文件名 mono / label muted / 大小右对齐）。 */
+.macro-observation-evidence__bundle {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.macro-observation-evidence__bundle-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.macro-observation-evidence__bundle-title {
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.macro-observation-evidence__bundle-status {
+  padding: 1px 7px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.macro-observation-evidence__bundle-status[data-status="ready"] {
+  border-color: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
+  background: var(--dh-api-green-soft);
+  color: var(--dh-api-green);
+}
+
+.macro-observation-evidence__bundle-status[data-status="invalid"] {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-amber);
+}
+
+.macro-observation-evidence__bundle-validation {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.macro-observation-evidence__artifacts {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.macro-observation-evidence__artifact {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.macro-observation-evidence__artifact-name {
+  overflow: hidden;
+  color: var(--dh-api-blue);
+  font-family: var(--moss-font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  text-decoration: underline;
+  text-overflow: ellipsis;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
+.macro-observation-evidence__artifact-label {
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.macro-observation-evidence__artifact-size {
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* mock 下 missing 是常态之一：reason 用 muted 文案，不做报错样式。 */
+.macro-observation-evidence__bundle-reason {
+  margin: 0;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.macro-observation-evidence__bundle-failed {
+  margin: 0;
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid var(--dh-api-amber);
+  color: var(--dh-api-amber);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.macro-observation-evidence__bundle-dates {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin: 0;
+}
+
+.macro-observation-evidence__bundle-dates > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.macro-observation-evidence__bundle-dates dt {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.macro-observation-evidence__bundle-dates dd {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.macro-observation-evidence__bundle-warnings {
+  margin: 0;
+  padding-left: 1.1em;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* ---------------------------------------------------------- 响应式 */
+
+@media (max-width: 720px) {
+  .macro-observation-datahealth__coverage {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .macro-observation-datahealth__coverage-cell {
+    border-right: 0;
+    border-bottom: 1px solid var(--dh-api-line-soft);
+  }
+
+  .macro-observation-datahealth__coverage > :last-child {
+    border-bottom: 0;
+  }
+
+  .macro-observation-evidence__artifact {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .macro-observation-evidence__artifact-label {
+    grid-column: 1 / -1;
+  }
+
+  .macro-observation-evidence__bundle-dates {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

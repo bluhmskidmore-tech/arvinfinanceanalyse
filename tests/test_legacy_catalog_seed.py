@@ -8,6 +8,7 @@ from backend.app.repositories.external_data_catalog_repo import (
     ensure_external_data_catalog_schema,
 )
 from backend.app.repositories.legacy_catalog_seed import register_legacy_seed
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 
 _EXPECTED = {
     "legacy.choice.macro",
@@ -25,7 +26,8 @@ def test_legacy_catalog_seed_registers_four(tmp_path, monkeypatch) -> None:
     try:
         ensure_external_data_catalog_schema(conn)
         repo = ExternalDataCatalogRepository(conn=conn)
-        n = register_legacy_seed(repo)
+        with repository_task_write_scope("backend.app.tasks.external_data_catalog_seed_test"):
+            n = register_legacy_seed(repo)
         assert n == 4
         ids = {e.series_id for e in repo.list_all()}
         assert _EXPECTED.issubset(ids)

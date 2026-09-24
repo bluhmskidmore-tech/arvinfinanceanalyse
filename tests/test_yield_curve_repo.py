@@ -89,6 +89,97 @@ def test_fetch_latest_trade_date(tmp_path):
     assert repo.fetch_prior_trade_date("treasury", "2026-04-09") is None
 
 
+def test_fetch_prior_trade_dates_and_snapshots_many_use_batched_reads(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    repo = YieldCurveRepository(str(duckdb_path))
+    with _task_write_scope():
+        repo.replace_curve_snapshots(
+            trade_date="2026-04-08",
+            snapshots=[
+                YieldCurveSnapshot(
+                    curve_type="cdb",
+                    trade_date="2026-04-08",
+                    points=[YieldCurvePoint("10Y", Decimal("1.90"))],
+                    vendor_name="choice",
+                    vendor_version="vv_cdb_old",
+                    source_version="sv_cdb_old",
+                )
+            ],
+            rule_version="rv_curve_repo_test",
+        )
+        repo.replace_curve_snapshots(
+            trade_date="2026-04-09",
+            snapshots=[
+                YieldCurveSnapshot(
+                    curve_type="treasury",
+                    trade_date="2026-04-09",
+                    points=[YieldCurvePoint("10Y", Decimal("2.00"))],
+                    vendor_name="choice",
+                    vendor_version="vv_treasury_old",
+                    source_version="sv_treasury_old",
+                )
+            ],
+            rule_version="rv_curve_repo_test",
+        )
+        repo.replace_curve_snapshots(
+            trade_date="2026-04-10",
+            snapshots=[
+                YieldCurveSnapshot(
+                    curve_type="treasury",
+                    trade_date="2026-04-10",
+                    points=[YieldCurvePoint("10Y", Decimal("2.05"))],
+                    vendor_name="choice",
+                    vendor_version="vv_treasury_new",
+                    source_version="sv_treasury_new",
+                ),
+                YieldCurveSnapshot(
+                    curve_type="cdb",
+                    trade_date="2026-04-10",
+                    points=[YieldCurvePoint("10Y", Decimal("1.95"))],
+                    vendor_name="choice",
+                    vendor_version="vv_cdb_new",
+                    source_version="sv_cdb_new",
+                ),
+            ],
+            rule_version="rv_curve_repo_test",
+        )
+
+    from backend.app.repositories import yield_curve_repo as repo_mod
+
+    connect_calls = 0
+    original_connect = repo_mod._connect
+
+    def counting_connect(*args, **kwargs):
+        nonlocal connect_calls
+        connect_calls += 1
+        return original_connect(*args, **kwargs)
+
+    monkeypatch.setattr(repo_mod, "_connect", counting_connect)
+
+    prior_dates = repo.fetch_prior_trade_dates_many(
+        [
+            ("treasury", "2026-04-10"),
+            ("cdb", "2026-04-10"),
+            ("treasury", "2026-04-09"),
+        ]
+    )
+    snapshots = repo.fetch_curve_snapshots_many(
+        [
+            (prior_dates[("treasury", "2026-04-10")], "treasury"),
+            (prior_dates[("cdb", "2026-04-10")], "cdb"),
+        ]
+    )
+
+    assert prior_dates == {
+        ("treasury", "2026-04-10"): "2026-04-09",
+        ("cdb", "2026-04-10"): "2026-04-08",
+        ("treasury", "2026-04-09"): None,
+    }
+    assert snapshots[("2026-04-09", "treasury")]["curve"] == {"10Y": Decimal("2.00")}
+    assert snapshots[("2026-04-08", "cdb")]["curve"] == {"10Y": Decimal("1.90")}
+    assert connect_calls == 2
+
+
 def test_empty_table_returns_none(tmp_path):
     duckdb_path = tmp_path / "moss.duckdb"
     conn = duckdb.connect(str(duckdb_path), read_only=False)

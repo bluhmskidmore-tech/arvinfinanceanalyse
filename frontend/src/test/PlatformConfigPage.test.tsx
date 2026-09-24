@@ -113,8 +113,9 @@ describe("PlatformConfigPage", () => {
       getSourceFoundation,
     });
 
-    expect(await screen.findByTestId("platform-config-page-title")).toHaveTextContent("中台配置");
-    expect(screen.getByText("系统健康状态、数据源概览与治理信息。")).toBeInTheDocument();
+    expect(await screen.findByTestId("platform-config-page-title")).toHaveTextContent("数据中心");
+    expect(screen.getByText("安排数据更新，查看实际数据日期与系统运行状态。")).toBeInTheDocument();
+    expect(screen.getByText("数据更新仅在真实数据模式下开放")).toBeInTheDocument();
     expect(screen.getByText("平台概览")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "系统健康状态" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "数据源列表" })).toBeInTheDocument();
@@ -133,8 +134,8 @@ describe("PlatformConfigPage", () => {
     expect(boundary).toHaveTextContent("MTR-PLT-001");
     expect(boundary).toHaveTextContent("MTR-PLT-002");
     expect(boundary).toHaveTextContent("MTR-PLT-003");
-    expect(boundary).toHaveTextContent("candidate diagnostics only");
-    expect(boundary).toHaveTextContent("not data-quality approval");
+    expect(boundary).toHaveTextContent("仅为候选诊断指标");
+    expect(boundary).toHaveTextContent("亦不构成数据质量审批");
 
     expect(screen.getByText("Redis 状态")).toBeInTheDocument();
     expect(screen.getByText("PostgreSQL 状态")).toBeInTheDocument();

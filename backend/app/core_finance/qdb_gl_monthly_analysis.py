@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from calendar import monthrange
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 from backend.app.core_finance.reconciliation_checks import position_vs_ledger_diff
-from openpyxl import Workbook, load_workbook
 
 ZERO = Decimal("0")
 ONE_HUNDRED_MILLION = Decimal("100000000")
@@ -39,6 +38,15 @@ TERM_DEPOSIT_CODES_3D = {"205", "215"}
 DEMAND_DEPOSIT_CODES_3D = {"201", "211"}
 INVESTMENT_BALANCE_CODES_3D = {"141", "142", "143", "144", "145"}
 LIQUID_ASSET_CODES_3D = {"101", "110", "114", "116"}
+
+# 分部/收益类 sheet 依赖 2026-01 起才提供的总账分部数据源（report_month 为 YYYYMM）。
+# 使用"下界比较"而不是 startswith("2026")：早于该月份的总账没有这些科目，
+# 2027 年及以后不得静默消失（2026-07-19 审计 余额 M-8）。
+SEGMENT_SHEETS_MIN_REPORT_MONTH = "202601"
+
+
+def _segment_sheets_supported(report_month: str) -> bool:
+    return str(report_month or "") >= SEGMENT_SHEETS_MIN_REPORT_MONTH
 
 
 def _effective_analysis_config(overrides: dict[str, Any] | None) -> dict[str, Decimal]:
@@ -114,6 +122,12 @@ DAILY_AVG_COLUMN_MAP = [
     (29, 30, "CNY", "11d"),
 ]
 
+# 表头行位置与预期列名：固定下标读取前先校验，避免来源表头列顺序变化时静默读错列。
+_LEDGER_HEADER_ROW = 6
+_LEDGER_EXPECTED_HEADERS = ("组合科目代码", "组合科目名称", "币种", "期初余额", "本期借方", "本期贷方", "期末余额")
+_DAILY_AVG_HEADER_ROW = 3
+_DAILY_AVG_EXPECTED_BLOCK_HEADERS = ("币种", "科目", "科目日均余额")
+
 SEGMENT_BASE_SCALE_SOURCE = "分部基础数据（2026）"
 SEGMENT_BASE_SCALE_MICRO_LOAN_MISSING_SOURCE = "source_missing: 标准日均源不含80297微贷金融支行专段"
 SEGMENT_SCALE_COMPARE_SOURCE = "月度分析-分部情况：总账对账+日均同源历史月重建"
@@ -124,6 +138,14 @@ RETAIL_SCALE_BRANCH_LOAN_MISSING_SOURCE = "source_missing: 零售分支行个贷
 RETAIL_SCALE_COMPARE_SOURCE = "月度分析-零售板块：总账对账+日均同源历史月重建"
 FINANCIAL_MARKET_SCALE_SOURCE = "金融市场规模：总账对账+日均同源科目重建"
 FINANCIAL_MARKET_SCALE_COMPARE_SOURCE = "月度分析-金融市场：总账对账+日均同源历史月重建"
+COMPANY_SCALE_STRUCTURED_RESIDUAL_SOURCE = (
+    "disclosure: 公司存款组件和(活期+定期+结构性)-公司存款合计；"
+    "结构性组件取21601全族而合计仅含21601020001，残差口径归属待会计owner裁决（BAL-P1-07）"
+)
+RETAIL_SCALE_STRUCTURED_RESIDUAL_SOURCE = (
+    "disclosure: 零售存款组件和(活期+定期+结构性)-零售存款合计；"
+    "结构性组件取21602全族而合计仅含21602020001，残差口径归属待会计owner裁决（BAL-P1-07）"
+)
 INCOME_RATE_ANALYSIS_SOURCE = "收益率分析：总账收益科目+日均规模重建"
 INCOME_RATE_ATTRIBUTION_SOURCE = "收益量价归因：总账收益科目+日均规模按年累计同比拆解"
 INCOME_RATE_MISSING_SOURCE = "source_missing: 财务指标表该项依赖外部营收分项/FTP/收益率来源，当前总账+日均闭环未确认"
@@ -149,12 +171,52 @@ FORMAL_FINANCIAL_INDICATOR_PENDING_NAMES = [
 ]
 
 
+def _validate_ledger_header(worksheet: Any, sheet_name: str) -> None:
+    header_row = next(
+        worksheet.iter_rows(min_row=_LEDGER_HEADER_ROW, max_row=_LEDGER_HEADER_ROW, values_only=True),
+        (),
+    )
+    actual = tuple(
+        str(cell).strip() if cell is not None else None
+        for cell in header_row[: len(_LEDGER_EXPECTED_HEADERS)]
+    )
+    if actual != _LEDGER_EXPECTED_HEADERS:
+        raise ValueError(
+            f"总账对账工作表[{sheet_name}]第{_LEDGER_HEADER_ROW}行表头不符合预期："
+            f"期望 {_LEDGER_EXPECTED_HEADERS}，实际读取到 {actual}。"
+            "请确认来源表头列顺序未变化后重试。"
+        )
+
+
+def _validate_daily_avg_header(worksheet: Any, sheet_name: str) -> None:
+    header_row = next(
+        worksheet.iter_rows(min_row=_DAILY_AVG_HEADER_ROW, max_row=_DAILY_AVG_HEADER_ROW, values_only=True),
+        (),
+    )
+    for code_col, value_col, currency, level in DAILY_AVG_COLUMN_MAP:
+        marker_col = code_col - 1
+        block = (marker_col, code_col, value_col)
+        actual = tuple(
+            str(header_row[index]).strip() if index < len(header_row) and header_row[index] is not None else None
+            for index in block
+        )
+        if actual != _DAILY_AVG_EXPECTED_BLOCK_HEADERS:
+            raise ValueError(
+                f"日均工作表[{sheet_name}]第{_DAILY_AVG_HEADER_ROW}行、{currency}/{level}列块（列 {marker_col}-{value_col}）"
+                f"表头不符合预期：期望 {_DAILY_AVG_EXPECTED_BLOCK_HEADERS}，实际读取到 {actual}。"
+                "请确认来源表头列顺序未变化后重试。"
+            )
+
+
 def parse_daily_avg(filepath: str | Path) -> dict[str, list[dict[str, Any]]]:
+    from openpyxl import load_workbook
+
     workbook = load_workbook(filename=str(filepath), read_only=True, data_only=True)
     try:
         result: dict[str, list[dict[str, Any]]] = {}
         for sheet_name, period_label in (("月", "月日均"), ("年", "年日均")):
             worksheet = workbook[sheet_name]
+            _validate_daily_avg_header(worksheet, sheet_name)
             for code_col, value_col, currency, level in DAILY_AVG_COLUMN_MAP:
                 key = f"{period_label}_{currency}_{level}"
                 rows: list[dict[str, Any]] = []
@@ -176,11 +238,14 @@ def parse_daily_avg(filepath: str | Path) -> dict[str, list[dict[str, Any]]]:
 
 
 def parse_general_ledger(filepath: str | Path) -> dict[str, list[dict[str, Any]]]:
+    from openpyxl import load_workbook
+
     workbook = load_workbook(filename=str(filepath), read_only=True, data_only=True)
     try:
         result: dict[str, list[dict[str, Any]]] = {}
         for sheet_name in workbook.sheetnames:
             worksheet = workbook[sheet_name]
+            _validate_ledger_header(worksheet, sheet_name)
             rows: list[dict[str, Any]] = []
             for row in worksheet.iter_rows(min_row=7, values_only=True):
                 code = _normalize_account_code(row[0] if len(row) > 0 else None)
@@ -258,12 +323,18 @@ def merge_all(gl_data: dict[str, list[dict[str, Any]]], rj_data: dict[str, list[
 
     cny_index = {row["科目代码"]: row for row in gl_data.get("人民币", [])}
     merged["外币分析"] = []
+    # 综本有、人民币账套没有的科目就是纯外币科目：人民币余额按 0 参与，
+    # 外币部分等于全额综本余额。旧实现直接 continue，会让纯外币科目整体
+    # 从外币分析里消失（漏报外币敞口），因此改为参与并单独披露条数。
+    missing_cny_row_count = 0
     for row in cnx_rows:
         cny_row = cny_index.get(row["科目代码"])
         if cny_row is None:
-            continue
+            missing_cny_row_count += 1
+            cny_value = ZERO
+        else:
+            cny_value = cny_row["期末余额"]
         cnx_value = row["期末余额"]
-        cny_value = cny_row["期末余额"]
         foreign_value = cnx_value - cny_value
         foreign_share = None if cnx_value == ZERO else foreign_value / abs(cnx_value) * Decimal("100")
         merged["外币分析"].append(
@@ -276,6 +347,7 @@ def merge_all(gl_data: dict[str, list[dict[str, Any]]], rj_data: dict[str, list[
                 "外币占比%": foreign_share,
             }
         )
+    merged["外币分析_缺人民币行数"] = missing_cny_row_count
     return merged
 
 
@@ -293,8 +365,8 @@ def build_qdb_gl_monthly_analysis_workbook(
     gap_rows = compute_industry_gap(merged_data)
     alert_rows = [
         *generate_alerts(merged_data, analysis_config=analysis_cfg),
-        *_position_ledger_reconciliation_alerts(
-            _qdb_gl_position_vs_ledger_check(
+        *_ledger_self_check_alerts(
+            _qdb_gl_ledger_self_check_placeholder(
                 position_totals=metrics,
                 ledger_rows_3d=m3,
             )
@@ -410,10 +482,17 @@ def build_qdb_gl_monthly_analysis_workbook(
     )
     if parent_company_revenue_sheet is not None:
         sheets.append(parent_company_revenue_sheet)
-    return {"report_month": report_month, "sheets": sheets}
+    return {
+        "report_month": report_month,
+        "sheets": sheets,
+        # 外币分析里按人民币余额 0 兜底参与的纯外币科目条数（口径披露）。
+        "missing_cny_row_count": int(merged_data.get("外币分析_缺人民币行数") or 0),
+    }
 
 
 def export_qdb_gl_monthly_analysis_workbook_xlsx_bytes(workbook_payload: dict[str, Any]) -> bytes:
+    from openpyxl import Workbook
+
     workbook = Workbook()
     active = workbook.active
     for index, sheet_payload in enumerate(workbook_payload.get("sheets", [])):
@@ -446,7 +525,7 @@ def compute_deviation(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return computed
 
 
-def compute_asset_liability_structure(rows_3d: list[dict[str, Any]]) -> dict[str, Decimal]:
+def compute_asset_liability_structure(rows_3d: list[dict[str, Any]]) -> dict[str, Decimal | None]:
     rows_by_code = {row["科目代码"]: row for row in rows_3d}
 
     def value(code: str, field: str = "期末余额") -> Decimal:
@@ -485,15 +564,17 @@ def compute_asset_liability_structure(rows_3d: list[dict[str, Any]]) -> dict[str
         "总资产": total_assets,
         "总负债": total_liabilities,
         "投资总额": investment_total,
-        "存贷比%": _pct(loan_total, deposit_total),
-        "贷款减值准备率%": _pct(provision, loan_total),
-        "定期化率%": _pct(term_deposit, deposit_total),
-        "活期率%": _pct(demand_deposit, deposit_total),
-        "高流动性占比%": _pct(liquid_total, total_assets),
+        # 零分母表示取数缺失，统一返回 None（"无法计算"）而不是伪装成 0%，
+        # 与本文件其余百分比口径（_safe_pct）一致（2026-08 审计 BAL-01）。
+        "存贷比%": _safe_pct(loan_total, deposit_total),
+        "贷款减值准备率%": _safe_pct(provision, loan_total),
+        "定期化率%": _safe_pct(term_deposit, deposit_total),
+        "活期率%": _safe_pct(demand_deposit, deposit_total),
+        "高流动性占比%": _safe_pct(liquid_total, total_assets),
     }
 
 
-def _financial_indicator_status_rows(metrics: dict[str, Decimal]) -> list[dict[str, Any]]:
+def _financial_indicator_status_rows(metrics: dict[str, Decimal | None]) -> list[dict[str, Any]]:
     qdb_rows = [
         ("总资产（QDB源）", _display_number(_to_yi(metrics["总资产"])), "亿元"),
         ("总负债（QDB源）", _display_number(_to_yi(metrics["总负债"])), "亿元"),
@@ -529,26 +610,45 @@ def _financial_indicator_status_rows(metrics: dict[str, Decimal]) -> list[dict[s
     return rows
 
 
-def _qdb_gl_position_vs_ledger_check(
+def _qdb_gl_ledger_self_check_placeholder(
     *,
     position_totals: dict[str, Any],
     ledger_rows_3d: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
+    """总账聚合公式自检占位，不具备独立对账能力。
+
+    历史上这里被命名/理解为"头寸台账 vs 总账"对账，但 ``position_totals``
+    （来自 ``compute_asset_liability_structure(m3)``）与本函数内部重新汇总
+    的 ``ledger_totals``（来自 ``_qdb_gl_ledger_totals(m3)``）都是对同一份
+    总账 Excel 解析结果 ``m3`` 的两条求和路径，diff 理论上恒为 0，从未真正
+    比对过独立的头寸数据源。
+
+    本模块（``parse_general_ledger`` / ``parse_daily_avg``）是纯 Excel 解析
+    流程，不接入 DuckDB 或 ZQTZ/TYW 正式余额来源（见
+    ``backend/app/AGENTS.md`` 对 ``qdb_gl_monthly_analysis`` 的排除说明，以及
+    ``tests/AGENTS.md`` 对该模块"analytical-only"的范围限定），因此无法以
+    低成本改动接入独立头寸源做真实跨源对账。
+
+    保留此函数仅作为 ``compute_asset_liability_structure`` 汇总公式的自检
+    占位：若该公式被改坏到与本函数内部的直接科目求和不一致，此处会报警；
+    但产出的告警（异动类型 ``ledger_self_check_placeholder``）不代表、也
+    不应被解读为业务口径下"头寸 vs 总账"的独立对账结论。
+    """
     ledger_totals = _qdb_gl_ledger_totals(ledger_rows_3d)
     total_assets = _as_decimal(position_totals.get("总资产")) or ZERO
     total_liabilities = _as_decimal(position_totals.get("总负债")) or ZERO
     return position_vs_ledger_diff(
         {
-            "total_assets": float(total_assets),
-            "total_liabilities": float(total_liabilities),
-            "net_assets": float(total_assets - total_liabilities),
+            "total_assets": total_assets,
+            "total_liabilities": total_liabilities,
+            "net_assets": total_assets - total_liabilities,
         },
         ledger_totals,
-        threshold_yuan=0.01,
+        threshold_yuan=Decimal("0.01"),
     )
 
 
-def _qdb_gl_ledger_totals(rows_3d: list[dict[str, Any]]) -> dict[str, float]:
+def _qdb_gl_ledger_totals(rows_3d: list[dict[str, Any]]) -> dict[str, Decimal]:
     total_assets = sum(
         (_as_decimal(row.get("期末余额")) or ZERO)
         for row in rows_3d
@@ -562,13 +662,13 @@ def _qdb_gl_ledger_totals(rows_3d: list[dict[str, Any]]) -> dict[str, float]:
         )
     )
     return {
-        "total_assets": float(total_assets),
-        "total_liabilities": float(total_liabilities),
-        "net_assets": float(total_assets - total_liabilities),
+        "total_assets": total_assets,
+        "total_liabilities": total_liabilities,
+        "net_assets": total_assets - total_liabilities,
     }
 
 
-def _position_ledger_reconciliation_alerts(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _ledger_self_check_alerts(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     alerts: list[dict[str, Any]] = []
     for check in checks:
         if not check["breached"]:
@@ -576,13 +676,13 @@ def _position_ledger_reconciliation_alerts(checks: list[dict[str, Any]]) -> list
         alerts.append(
             {
                 "科目代码": check["dimension"],
-                "科目名称": "Position vs Ledger",
+                "科目名称": "总账自检占位（不具备独立对账能力）",
                 "预警级别": "严重",
                 "期末余额(亿)": _display_number(_to_yi(Decimal(str(check["position_value"])))),
                 "月日均(亿)": _display_number(_to_yi(Decimal(str(check["ledger_value"])))),
                 "偏离额(亿)": _display_number(_to_yi(Decimal(str(check["diff"])))),
                 "偏离%": None,
-                "异动类型": "position_vs_ledger_reconciliation",
+                "异动类型": "ledger_self_check_placeholder",
             }
         )
     return alerts
@@ -595,8 +695,9 @@ def compute_industry_gap(merged_data: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for row in loans:
         industry_code = row["行业代码"]
-        demand_row = demand.get(industry_code)
-        term_row = term.get(industry_code)
+        # BAL-P1-02：有贷款无存款的行业按显式空映射参与，存款缺失按 0 计，不再触发 None.get 崩溃。
+        demand_row = demand.get(industry_code) or {}
+        term_row = term.get(industry_code) or {}
         deposit_end = abs(_as_decimal(demand_row.get("期末余额")) or ZERO) + abs(_as_decimal(term_row.get("期末余额")) or ZERO)
         deposit_avg = abs(_as_decimal(demand_row.get("月日均")) or ZERO) + abs(_as_decimal(term_row.get("月日均")) or ZERO)
         loan_end = _as_decimal(row.get("期末余额")) or ZERO
@@ -666,7 +767,7 @@ def _build_segment_base_scale_sheet(
     report_month: str,
     merged_data: dict[str, Any],
 ) -> dict[str, Any] | None:
-    if not report_month.startswith("2026"):
+    if not _segment_sheets_supported(report_month):
         return None
 
     rows = _segment_base_scale_raw_rows(merged_data)
@@ -871,17 +972,60 @@ def _build_segment_scale_compare_sheet(
     )
 
 
+def _with_deposit_component_residual_disclosure(
+    raw_rows: list[dict[str, Any]],
+    *,
+    label: str,
+    component_names: tuple[str, ...],
+    total_name: str,
+    source: str,
+) -> list[dict[str, Any]]:
+    """BAL-P1-07：在规模 sheet 内披露"存款组件和-合计"残差，不改动任何组件/合计口径。"""
+    by_name = {row["指标"]: row for row in raw_rows}
+    total_row = by_name.get(total_name)
+    component_rows = [by_name[name] for name in component_names if name in by_name]
+    if total_row is None or len(component_rows) != len(component_names):
+        return raw_rows
+
+    def residual(field: str) -> Decimal | None:
+        total_value = total_row.get(field)
+        component_values = [row.get(field) for row in component_rows]
+        if total_value is None or any(value is None for value in component_values):
+            return None
+        return sum(component_values, ZERO) - total_value
+
+    rows = list(raw_rows)
+    rows.insert(
+        rows.index(total_row) + 1,
+        {
+            "指标": label,
+            "时点余额": residual("时点余额"),
+            "年日均": residual("年日均"),
+            "月日均": residual("月日均"),
+            "口径来源": source,
+        },
+    )
+    return rows
+
+
 def _build_company_scale_sheet(
     *,
     report_month: str,
     merged_data: dict[str, Any],
 ) -> dict[str, Any] | None:
-    if not report_month.startswith("2026"):
+    if not _segment_sheets_supported(report_month):
         return None
 
     rows = _company_scale_raw_rows(merged_data)
     if not rows:
         return None
+    rows = _with_deposit_component_residual_disclosure(
+        rows,
+        label="披露：公司存款组件和-合计残差",
+        component_names=("公司存款-活期", "公司存款-定期", "公司存款-结构性"),
+        total_name="公司存款合计",
+        source=COMPANY_SCALE_STRUCTURED_RESIDUAL_SOURCE,
+    )
     return _sheet(
         "company_scale",
         "公司规模",
@@ -1063,12 +1207,19 @@ def _build_retail_scale_sheet(
     report_month: str,
     merged_data: dict[str, Any],
 ) -> dict[str, Any] | None:
-    if not report_month.startswith("2026"):
+    if not _segment_sheets_supported(report_month):
         return None
 
     rows = _retail_scale_raw_rows(merged_data)
     if not rows:
         return None
+    rows = _with_deposit_component_residual_disclosure(
+        rows,
+        label="披露：零售存款组件和-合计残差",
+        component_names=("零售存款-活期", "零售存款-定期", "零售存款-结构性"),
+        total_name="零售存款合计",
+        source=RETAIL_SCALE_STRUCTURED_RESIDUAL_SOURCE,
+    )
     return _sheet(
         "retail_scale",
         "零售规模",
@@ -1230,7 +1381,7 @@ def _build_financial_market_scale_sheet(
     report_month: str,
     merged_data: dict[str, Any],
 ) -> dict[str, Any] | None:
-    if not report_month.startswith("2026"):
+    if not _segment_sheets_supported(report_month):
         return None
 
     rows = _financial_market_scale_raw_rows(merged_data)
@@ -1282,7 +1433,8 @@ def _financial_market_scale_raw_rows(merged_data: dict[str, Any]) -> list[dict[s
         if field in {"年日均", "月日均"}:
             row = avg_rows_5.get(code)
             return ZERO if row is None else (_as_decimal(row.get(field)) or ZERO)
-        return ZERO
+        # BAL-P1-01：时点余额复用 11 位科目前缀求和，使同业资产时点与年/月日均同口径扣减 14004/14005。
+        return sum_11d(code, field)
 
     def interest_earning_bonds(field: str) -> Decimal:
         return (
@@ -1387,7 +1539,7 @@ def _build_income_rate_analysis_sheet(
     report_month: str,
     merged_data: dict[str, Any],
 ) -> dict[str, Any] | None:
-    if not report_month.startswith("2026"):
+    if not _segment_sheets_supported(report_month):
         return None
 
     rows = _income_rate_raw_rows(report_month=report_month, merged_data=merged_data)
@@ -1627,7 +1779,7 @@ def _build_deposit_interest_split_sheet(
     merged_data: dict[str, Any],
     comparison_data: dict[str, dict[str, Any]] | None,
 ) -> dict[str, Any] | None:
-    if not report_month.startswith("2026"):
+    if not _segment_sheets_supported(report_month):
         return None
 
     current_rows = _deposit_interest_split_raw_rows(merged_data)
@@ -1805,7 +1957,7 @@ def _build_parent_company_revenue_components_sheet(
     merged_data: dict[str, Any],
     comparison_data: dict[str, dict[str, Any]] | None,
 ) -> dict[str, Any] | None:
-    if not report_month.startswith("2026"):
+    if not _segment_sheets_supported(report_month):
         return None
 
     current_rows = _parent_company_revenue_raw_rows(merged_data)
@@ -2100,16 +2252,18 @@ def _to_decimal(value: object) -> Decimal | None:
     if value in (None, ""):
         return None
     try:
-        return Decimal(str(value))
+        result = Decimal(str(value))
     except (InvalidOperation, ValueError):
         return None
+    # Excel 单元格可能带出 float("nan")，Decimal("nan") 构造会成功并静默传播；按缺省语义视为缺失。
+    return result if result.is_finite() else None
 
 
 def _as_decimal(value: object) -> Decimal | None:
     if value is None or value == "":
         return None
     if isinstance(value, Decimal):
-        return value
+        return value if value.is_finite() else None
     return _to_decimal(value)
 
 
@@ -2117,10 +2271,6 @@ def _safe_pct(numerator: Decimal | None, denominator: Decimal | None) -> Decimal
     if numerator is None or denominator is None or denominator == ZERO:
         return None
     return numerator / abs(denominator) * Decimal("100")
-
-
-def _pct(numerator: Decimal, denominator: Decimal) -> Decimal:
-    return ZERO if denominator == ZERO else numerator / denominator * Decimal("100")
 
 
 def _to_yi(value: Decimal | None) -> Decimal:
@@ -2134,7 +2284,7 @@ def _display_yi(value: Decimal | None) -> int | float | None:
 def _display_number(value: Decimal | None) -> int | float | None:
     if value is None:
         return None
-    normalized = value.quantize(Decimal("0.01"))
+    normalized = value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     return int(normalized) if normalized == normalized.to_integral_value() else float(normalized)
 
 

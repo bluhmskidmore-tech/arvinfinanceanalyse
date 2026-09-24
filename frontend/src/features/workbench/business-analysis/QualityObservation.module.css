@@ -1,0 +1,33 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--ib-hairline);
+}
+
+.label {
+  color: var(--ib-ink-secondary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.valueGroup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.value {
+  color: var(--ib-ink);
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}

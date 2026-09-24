@@ -7,6 +7,12 @@ from openpyxl import load_workbook
 from tests.helpers import load_module
 from tests.test_qdb_gl_monthly_analysis_core import _write_month_pair
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_qdb_gl,
+]
 
 def test_service_discovers_available_report_months(tmp_path):
     module = load_module(
@@ -22,7 +28,6 @@ def test_service_discovers_available_report_months(tmp_path):
     assert envelope["result_meta"]["basis"] == "analytical"
     assert envelope["result_meta"]["formal_use_allowed"] is False
     assert envelope["result"]["report_months"] == ["202602"]
-
 
 def test_service_blocks_generation_when_input_contract_validation_fails(tmp_path):
     module = load_module(
@@ -43,7 +48,6 @@ def test_service_blocks_generation_when_input_contract_validation_fails(tmp_path
         assert "202602" in str(exc)
     else:
         raise AssertionError("Expected month-pair generation to fail when the canonical source file is missing.")
-
 
 def test_service_workbook_envelope_includes_qdb_source_evidence_metadata(tmp_path):
     module = load_module(
@@ -77,7 +81,6 @@ def test_service_workbook_envelope_includes_qdb_source_evidence_metadata(tmp_pat
     assert meta["resolved_report_date"] == "202602"
     assert meta["date_basis"] == "qdb_gl_monthly_analysis_report_month"
 
-
 def test_service_blocks_workbook_when_rebuilt_payload_resolves_different_month(tmp_path, monkeypatch):
     module = load_module(
         "backend.app.services.qdb_gl_monthly_analysis_service",
@@ -105,7 +108,6 @@ def test_service_blocks_workbook_when_rebuilt_payload_resolves_different_month(t
         assert "202601" in str(exc)
     else:
         raise AssertionError("Expected workbook generation to fail when the rebuilt report_month mismatches the request.")
-
 
 def test_service_blocks_workbook_when_source_evidence_lacks_table_anchor(tmp_path, monkeypatch):
     module = load_module(
@@ -135,7 +137,6 @@ def test_service_blocks_workbook_when_source_evidence_lacks_table_anchor(tmp_pat
         assert "202602" in str(exc)
     else:
         raise AssertionError("Expected workbook generation to fail when QDB source evidence lacks table anchors.")
-
 
 def test_service_workbook_envelope_includes_segment_scale_compare_when_history_exists(tmp_path):
     module = load_module(
@@ -196,7 +197,6 @@ def test_service_workbook_envelope_includes_segment_scale_compare_when_history_e
     assert income_sheet["title"] == "收益率分析（总账可复算）"
     assert any(row["指标"] == "公司贷款利息收入" for row in income_sheet["rows"])
 
-
 def test_service_workbook_marks_invalid_comparison_month_without_blocking_requested_month(tmp_path):
     module = load_module(
         "backend.app.services.qdb_gl_monthly_analysis_service",
@@ -224,7 +224,6 @@ def test_service_workbook_marks_invalid_comparison_month_without_blocking_reques
         "status": "invalid",
     }
     assert "prior_month:202601" not in envelope["result_meta"]["source_version"]
-
 
 def test_service_supports_sync_refresh_and_status_flow(tmp_path):
     module = load_module(
@@ -265,7 +264,6 @@ def test_service_supports_sync_refresh_and_status_flow(tmp_path):
     assert status_payload["source_version"] == refresh_payload["source_version"]
     assert status_payload["report_date"] == "202602"
 
-
 def test_service_refresh_uses_unique_run_id_for_new_attempts(tmp_path):
     module = load_module(
         "backend.app.services.qdb_gl_monthly_analysis_service",
@@ -296,7 +294,6 @@ def test_service_refresh_uses_unique_run_id_for_new_attempts(tmp_path):
         governance_dir=str(governance_dir),
         run_id=first_payload["run_id"],
     )["run_id"] == first_payload["run_id"]
-
 
 def test_service_refresh_serializes_same_idempotency_key_concurrently(tmp_path, monkeypatch):
     module = load_module(
@@ -363,7 +360,6 @@ def test_service_refresh_serializes_same_idempotency_key_concurrently(tmp_path, 
     assert replay_flags.count(False) == 1
     assert replay_flags.count(True) == 1
 
-
 def test_service_refresh_records_failed_build_when_requested_month_rebuild_fails(tmp_path):
     module = load_module(
         "backend.app.services.qdb_gl_monthly_analysis_service",
@@ -399,7 +395,6 @@ def test_service_refresh_records_failed_build_when_requested_month_rebuild_fails
     assert status_payload["failure_category"] == "qdb_gl_monthly_analysis_build"
     assert status_payload["error_message"] == refresh_payload["error_message"]
 
-
 def test_service_scenario_envelope_uses_analytical_basis_and_override_summary(tmp_path):
     module = load_module(
         "backend.app.services.qdb_gl_monthly_analysis_service",
@@ -427,7 +422,6 @@ def test_service_scenario_envelope_uses_analytical_basis_and_override_summary(tm
         "DEVIATION_WARN": 6,
         "DEVIATION_ALERT": 12,
     }
-
 
 def test_service_workbook_envelope_applies_approved_analysis_adjustments(tmp_path):
     module = load_module(
@@ -470,7 +464,6 @@ def test_service_workbook_envelope_applies_approved_analysis_adjustments(tmp_pat
 
     assert target_row[level_key] == "manual_override"
 
-
 def test_service_workbook_envelope_applies_approved_mapping_adjustments(tmp_path):
     module = load_module(
         "backend.app.services.qdb_gl_monthly_analysis_service",
@@ -510,7 +503,6 @@ def test_service_workbook_envelope_applies_approved_mapping_adjustments(tmp_path
     target_row = next(row for row in alerts_sheet["rows"] if str(row[code_key]) == "14001000001")
 
     assert target_row[name_key] == "买入返售-人工修正"
-
 
 def test_service_scenario_envelope_returns_rebuilt_workbook_payload_with_override_effects(tmp_path):
     module = load_module(
@@ -575,7 +567,6 @@ def test_service_scenario_envelope_returns_rebuilt_workbook_payload_with_overrid
         "DEVIATION_CRITICAL": 100,
     }
     assert len(baseline_alerts) > len(scenario_alerts)
-
 
 def test_service_supports_branch_specific_manual_adjustment_audit_flow(tmp_path):
     module = load_module(

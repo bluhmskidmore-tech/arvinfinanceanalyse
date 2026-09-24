@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from backend.app.governance.locks import LockDefinition
-
 _FORMAL_FACT_PREFIX = "fact_formal_"
 
 
@@ -63,7 +61,3 @@ class FormalComputeModuleDescriptor:
     def stable_output_version(self) -> str:
         # Stable marker contract: canonical version identifier for published formal outputs.
         return self.cache_version
-
-    @property
-    def lock_definition(self) -> LockDefinition:
-        return LockDefinition(key=self.lock_key, ttl_seconds=self.lock_ttl_seconds)

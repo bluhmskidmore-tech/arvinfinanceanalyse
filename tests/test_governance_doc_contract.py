@@ -4,7 +4,7 @@ import json
 import re
 
 from tests.helpers import ROOT
-from tests.test_golden_samples_capture_ready import CAPTURE_READY_CASES, SUPPORTING_ONLY_SAMPLE_IDS
+from tests.test_golden_samples_capture_ready import CAPTURE_READY_SAMPLE_IDS, SUPPORTING_ONLY_SAMPLE_IDS
 
 DOCS_DIR = ROOT / "docs"
 GOLDEN_ROOT = ROOT / "tests" / "golden_samples"
@@ -79,6 +79,64 @@ def _page_contract_section(current_heading: str, next_heading: str) -> str:
     page_contracts = _read_doc("page_contracts.md")
     return page_contracts.split(current_heading, maxsplit=1)[1].split(next_heading, maxsplit=1)[0]
 
+
+def test_bank_ledger_page_contract_requires_imported_currency_buckets_and_past_only_fallback():
+    page_contracts = _read_doc("page_contracts.md")
+    section = page_contracts.split("PAGE-BANK-LEDGER-001", maxsplit=1)[1].split("\n## ", maxsplit=1)[0]
+    for required in (
+        "formal_use_allowed=false", "position_snapshot", "currency_breakdown", "UNKNOWN",
+        "past-only", "rv_ledger_classification_v2", "UNCLASSIFIED", "classification_coverage_pct",
+        "legacy_unassessed", "invalid_materialization", "ledger_classification_backfill",
+        "live history batches 1-8 were applied", "completed receipt", "byte-identical pre-existing backup",
+        "requested_as_of_date", "resolved_as_of_date", "alert_count is removed",
+        "PAGE-BALANCE-001", "PAGE-PNL-001", "no approved MTR-* binding",
+        "GS-BANK-LEDGER-CLASSIFICATION-A", "captured-awaiting-approval",
+        "historical backfill", "owner approval",
+    ):
+        assert required in section
+    assert "zqtz_bond_daily_snapshot whenever" not in section
+    assert "may resolve after the requested date" not in section
+
+
+def test_bank_ledger_owner_packet_keeps_capture_and_approval_boundaries_separate():
+    evidence = _read_doc("ledger/bank-ledger-classification-owner-evidence-packet.md")
+    approval = _read_doc("ledger/bank-ledger-classification-business-owner-approval-template.md")
+
+    for required in (
+        "GS-BANK-LEDGER-CLASSIFICATION-A",
+        "captured-awaiting-approval",
+        "formal_use_allowed=false",
+        "14,731 rows",
+        "13,679 `ASSET`",
+        "1,052 `LIABILITY`",
+        "zero direction changes",
+        "Completed receipt",
+        "five `ASSET` allowlist pairs",
+        "authorized real-page UAT",
+    ):
+        assert required in evidence
+
+    for required in (
+        "This template is not an approval",
+        "Business owner: `TBD`",
+        "Decision: `PENDING`",
+        "Business-owner signature: `TBD`",
+        "formal_use_allowed=false",
+    ):
+        assert required in approval
+
+    maturity = _read_doc("live_route_maturity.md")
+    bank_rows = "\n".join(
+        line for line in maturity.splitlines() if "/bank-ledger-dashboard" in line
+    )
+    for required in (
+        "historical backfill completed",
+        "GS-BANK-LEDGER-CLASSIFICATION-A",
+        "captured-awaiting-approval",
+        "authorized real-page UAT",
+        "formal_use_allowed=false",
+    ):
+        assert required in bank_rows
 
 def _sample_dirs() -> list[str]:
     return sorted(
@@ -260,14 +318,32 @@ def test_formal_compute_chain_inventory_is_supporting_and_non_authorizing():
         assert chain_name in inventory
 
     for required in (
-        "| `/agent` | live | governed-mixed-source | PAGE-AGENT-001 |",
         "| `/cube-query` | live | candidate | PAGE-CUBE-QUERY-001 |",
         "| `/liability-analytics` | live | governed-mixed-source | PAGE-LIAB-ANALYTICS-001 |",
     ):
         assert required in maturity_registry
 
+    agent_maturity_rows = [
+        line for line in maturity_registry.splitlines() if line.startswith("| `/agent` |")
+    ]
+    assert agent_maturity_rows == []
+
+    agent_contract = page_contracts.split("## 14.1 PAGE-AGENT-001", maxsplit=1)[1].split(
+        "\n## ",
+        maxsplit=1,
+    )[0]
     for required in (
+        "Page ID: `PAGE-AGENT-001`",
         "Primary front-end route: `/agent`",
+        "Status: `gated / hidden / development-only`",
+        "POST /api/agent/runs",
+        "GET /api/agent/runs/{run_id}",
+        "POST /api/agent/query",
+    ):
+        assert required in agent_contract
+    assert "Status: `active`" not in agent_contract
+
+    for required in (
         "Primary front-end route: `/cube-query`",
         "Primary front-end route: `/liability-analytics`",
         "liability_analytics_compat",
@@ -275,7 +351,7 @@ def test_formal_compute_chain_inventory_is_supporting_and_non_authorizing():
         assert required in page_contracts
 
     for required in (
-        "| `/agent` | live / governed-mixed-source / `PAGE-AGENT-001` |",
+        "| `/agent` | gated / hidden / development-only / `PAGE-AGENT-001` |",
         "| `/cube-query` | live / candidate / `PAGE-CUBE-QUERY-001` |",
         "| `/liability-analytics` | live / governed-mixed-source / `PAGE-LIAB-ANALYTICS-001` |",
         "| `liability_analytics_compat` | non-route dependency note consumed by `/liability-analytics`; "
@@ -299,6 +375,8 @@ def test_formal_compute_chain_inventory_is_supporting_and_non_authorizing():
         assert forbidden not in inventory
 
     forbidden_route_claims = (
+        "| `/agent` | live | governed-mixed-source | PAGE-AGENT-001 |",
+        "| `/agent` | live / governed-mixed-source / `PAGE-AGENT-001` |",
         "/agent` | live / candidate",
         "/agent` | live / excluded",
         "PAGE-AGENT-001` | candidate",
@@ -312,7 +390,7 @@ def test_formal_compute_chain_inventory_is_supporting_and_non_authorizing():
         "liability_analytics_compat` | excluded",
     )
     for forbidden in forbidden_route_claims:
-        assert forbidden not in inventory
+        assert forbidden not in "\n".join((maturity_registry, inventory))
 
 
 def test_operations_analysis_contract_matches_current_product_category_headline_binding():
@@ -371,11 +449,15 @@ def test_ledger_pnl_candidate_metrics_bind_existing_page_contract_without_formal
     assert "PAGE-CONTRACT-PENDING:/ledger-pnl" not in metric_dictionary
 
 
-def test_pnl_by_business_page_contract_lands_without_metric_promotion():
-    contract = _page_contract_section(
+def test_pnl_by_business_contracts_keep_approved_insights_and_diagnostics_separate():
+    business_contract = _page_contract_section(
         "## 14.8.1 PAGE-PNL-BY-BUSINESS-001",
         "## 14.9 PAGE-REPORTS-HOME-001",
     )
+    insights_contract = business_contract.split(
+        "### I. Governed insights detail route",
+        maxsplit=1,
+    )[1]
     maturity = _read_doc("live_route_maturity.md")
 
     for required in (
@@ -385,15 +467,38 @@ def test_pnl_by_business_page_contract_lands_without_metric_promotion():
         "GET /api/pnl/by-business",
         "ZQTZ 管理披露分类",
         "Formal primary is a reconciliation evidence view only",
-        "This page has no newly approved `MTR-*` metric binding",
+        "Approved derived-analysis bindings are `MTR-PNLBIZ-001` through `MTR-PNLBIZ-005` and `MTR-PNLBIZ-007`",
+        "`MTR-PNLBIZ-006` is an approved diagnostic-only untraced-FI trend",
         "Product-category truth remains governed by `PAGE-PROD-CAT-PNL-001`",
         "Ledger-account PnL truth/candidate display remains governed by `PAGE-LEDGER-PNL-001`",
         "Current 2026-05-31 local evidence shows 148 formal FI rows untraced",
         "T`, `A`, and `H`",
     ):
-        assert required in contract
+        assert required in business_contract
+
+    for required in (
+        "Governing Page ID: `PAGE-PNL-BY-BUSINESS-001`",
+        "Governed detail route: `/pnl-by-business-insights`",
+        "Status: `active governed formal-analysis detail page`",
+        "does not create a second page identity or metric definition",
+        "GET /api/pnl/by-business-insights?year=...&as_of_date=...",
+        "`MTR-PNLBIZ-001` through `005` and `007`",
+        "`MTR-PNLBIZ-006`",
+        "diagnostic_only",
+        "not independent source-fact truth",
+        "direct_page_or_api_records_present",
+        "direct_records_ready_for_audit_review",
+        "closure_approved=false",
+    ):
+        assert required in insights_contract
 
     assert "| `/pnl-by-business` | temporary-exception | candidate | PAGE-PNL-BY-BUSINESS-001 |" in maturity
+    assert (
+        "| `/pnl-by-business-insights` | live | governed | "
+        "PAGE-PNL-BY-BUSINESS-001 |"
+    ) in maturity
+    assert "PAGE-PNL-BY-BUSINESS-INSIGHTS-001" not in business_contract
+    assert "PAGE-PNL-BY-BUSINESS-INSIGHTS-001" not in maturity
     assert "GAP-PNL-BY-BUSINESS-PAGE" not in maturity
 
 
@@ -442,7 +547,7 @@ def test_capture_ready_sample_count_stays_in_sync_across_docs_and_gate():
     golden_samples_readme = (GOLDEN_ROOT / "README.md").read_text(encoding="utf-8")
 
     assert actual_count == capture_ready_count + supporting_only_count
-    assert sorted(CAPTURE_READY_CASES) == capture_ready_sample_ids
+    assert sorted(CAPTURE_READY_SAMPLE_IDS) == capture_ready_sample_ids
     assert sorted(SUPPORTING_ONLY_SAMPLE_IDS) == supporting_only_sample_ids
     assert metric_dictionary_sample_ids == capture_ready_sample_ids
 
@@ -565,7 +670,8 @@ def test_product_category_first_stage_field_freeze_is_explicitly_bounded():
 
     for rule in (
         "This is a page-level field freeze for detail semantics. It is also the source field set for the active 2026-05-11 decision 3C detail metrics in `docs/metric_dictionary.md`.",
-        "do not invent detail `metric_id` numbers beyond active `MTR-PCP-004` through `MTR-PCP-012`",
+        "do not invent row-level detail `metric_id` numbers beyond active `MTR-PCP-004` through `MTR-PCP-012`",
+        "payload-section metrics `MTR-PCP-013` through `MTR-PCP-029` are governed separately below",
         "do not treat liability sign normalization as backend truth",
         "do not use `available_views` to add first-screen controls",
         "do not recompute `grand_total` in frontend",
@@ -582,7 +688,8 @@ def test_product_category_p0_closure_gate_stays_decision_safe():
 
     for required in (
         "P0 is a closure gate, not a new feature lane.",
-        "P0-approved active formal metric ids are currently `MTR-PCP-001` through `MTR-PCP-012`.",
+        "Active formal metric ids are currently `MTR-PCP-001` through `MTR-PCP-029`",
+        "`013` through `029` were added by the separately approved 2026-08-13",
         "detail `metric_id` expansion for decision 3C is implemented only for the approved row fields",
         "standalone outward `as_of_date` is a no-field product/API decision for this page",
         "do not add additional `MTR-*` rows for product-category fields from sample evidence alone; use a new approved matrix / dictionary / sample / test bundle",
@@ -800,9 +907,10 @@ def test_product_category_p0_metric_approval_is_consistent_across_docs():
     readiness = _read_pnl_doc("product-category-development-data-readiness.md")
 
     for doc in (metric_dictionary, page_contracts):
-        for metric_id in (f"MTR-PCP-{index:03d}" for index in range(1, 13)):
+        for metric_id in (f"MTR-PCP-{index:03d}" for index in range(1, 30)):
             assert metric_id in doc
-    assert "`MTR-PCP-001` through `MTR-PCP-012`" in readiness
+    assert "P0 keeps `MTR-PCP-001` through `MTR-PCP-029` active" in readiness
+    assert "`MTR-PCP-013` through `MTR-PCP-029` are separately approved payload-section metrics" in readiness
 
     for stale_statement in (
         "formal product-category `metric_id` approval is still missing",
@@ -818,9 +926,9 @@ def test_product_category_p0_metric_approval_is_consistent_across_docs():
         assert stale_statement not in "\n".join((metric_dictionary, page_contracts, readiness))
 
     for required in (
-        "P0 keeps `MTR-PCP-001` through `MTR-PCP-012` active; decision 3C detail expansion is limited to the approved row-level fields.",
+        "P0 keeps `MTR-PCP-001` through `MTR-PCP-029` active; decision 3C detail expansion remains limited to the approved `MTR-PCP-004` through `MTR-PCP-012` row-level fields, while `MTR-PCP-013` through `MTR-PCP-029` are separately approved payload-section metrics.",
         "Decision 3C detail metric expansion is dictionary-active for `MTR-PCP-004` through `MTR-PCP-012`; these rows bind only approved `result.rows[]` detail fields and do not promote dimensions or scenario payloads to formal metrics.",
-        "Keep `GS-PROD-CAT-PNL-A` bound to the approved product-category `MTR-PCP-*` set (`001`~`012`) and require a new matrix / dictionary / sample / test bundle before adding any further detail rows.",
+        "Keep `GS-PROD-CAT-PNL-A` bound to the approved product-category `MTR-PCP-*` set (`001`~`012` row/headline, plus `013`~`029` payload-section spread and CLN-drag metrics from §12.3.2) and require a new matrix / dictionary / sample / test bundle before adding any further detail rows.",
     ):
         assert required in "\n".join((metric_dictionary, page_contracts, readiness))
 

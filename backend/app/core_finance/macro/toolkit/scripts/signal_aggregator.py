@@ -12,7 +12,8 @@
   - 市场状态               ← regime_results.csv（判断趋势/震荡）
 
 输出:
-  final_signal.csv  — 每个品种的最终信号 + 仓位比例 + 置信度
+  final_signal.csv          — 每个品种的最终信号 + 仓位比例 + 置信度（单日快照）
+  final_signal_history.csv  — 逐日累积的信号历史留痕（同"日期+品种"重跑覆盖）
 """
 
 import sys
@@ -211,11 +212,12 @@ def run_three_layer_filter(
         '第三层_通过': False,
         '最终信号':   '空仓',
         '仓位比例':   0.0,
-        '置信度':     0,       # 0~3，通过几层
+        '置信度':     0,       # 0~3，实证通过的层数（数据缺失降级的层不计入）
         '信号说明':   '',
     }
 
     reasons = []
+    verified_layers = 0  # 实证通过的层数（降级通过不计入）
 
     # ── 第一层：宏观方向 ──────────────────────────────────────
     direction = merrill.get('bond_direction', '观望')
@@ -226,6 +228,7 @@ def run_three_layer_filter(
         return result
 
     result['第一层_通过'] = True
+    verified_layers += 1
     reasons.append(f"宏观{direction}({merrill.get('regime', '')})")
 
     # ── 第二层：安全边际 ──────────────────────────────────────
@@ -251,9 +254,11 @@ def run_three_layer_filter(
             margin_note = str(row.get('安全边际说明', ''))
 
             if not ok:
+                result['置信度'] = verified_layers
                 result['信号说明'] = f"第二层拦截：{margin_note}"
                 return result
 
+            verified_layers += 1
             reasons.append(f"安全边际OK({margin_note[:20]})")
 
     # ── 第三层：拥挤度反向过滤 ────────────────────────────────
@@ -275,24 +280,23 @@ def run_three_layer_filter(
             # 拥挤度与方向冲突 → 拦截
             if direction == '多' and crowd_signal in ['做空', '警惕多头']:
                 result['第三层_通过'] = False
+                result['置信度'] = verified_layers
                 result['信号说明'] = f"第三层拦截：多头拥挤({c_pct:.0%})，反向过滤"
                 return result
             elif direction == '空' and crowd_signal in ['做多', '警惕空头']:
                 result['第三层_通过'] = False
+                result['置信度'] = verified_layers
                 result['信号说明'] = f"第三层拦截：空头拥挤({c_pct:.0%})，反向过滤"
                 return result
 
             result['第三层_通过'] = True
+            verified_layers += 1
             crowding_note = str(row.get('说明', ''))
             reasons.append(f"拥挤度OK({crowding_note[:20]})")
 
     # ── 全部通过：计算仓位 ────────────────────────────────────
-    # 置信度 = 通过层数（最高3层）
-    confidence = sum([
-        result['第一层_通过'],
-        result['第二层_通过'],
-        result['第三层_通过'],
-    ])
+    # 置信度 = 实证通过的层数（最高3层；数据缺失降级的层不计入）
+    confidence = verified_layers
     result['置信度'] = confidence
 
     # Crisis Score 风险调整
@@ -321,6 +325,57 @@ def run_three_layer_filter(
     result['信号说明'] = ' | '.join(reasons)
 
     return result
+
+
+# ============================================================
+# 最终信号历史留痕
+# ============================================================
+
+HISTORY_FILENAME = 'final_signal_history.csv'
+HISTORY_COLUMNS = ['日期', '品种', '最终信号', '仓位比例', '置信度']
+
+
+def append_final_signal_history(result_df: pd.DataFrame, history_path: Path) -> pd.DataFrame:
+    """把当日各品种最终信号追加到历史留痕 CSV（utf-8-sig），返回重写后的完整历史。
+
+    幂等：同一"日期+品种"重跑覆盖旧行（读旧文件→去重→append 新行→按日期升序整体重写）。
+    历史文件不存在则新建；文件损坏或表头不符时丢弃旧内容重建，不抛异常。
+    """
+    new_rows = result_df[HISTORY_COLUMNS].copy()
+
+    old_rows = None
+    if history_path.exists():
+        try:
+            candidate = pd.read_csv(history_path, encoding='utf-8-sig', dtype=str)
+            if set(HISTORY_COLUMNS).issubset(candidate.columns):
+                old_rows = candidate[HISTORY_COLUMNS]
+            else:
+                print(f"[WARN] {history_path.name} 表头不符，重建历史留痕")
+        except (OSError, UnicodeError, ValueError, pd.errors.ParserError) as exc:
+            print(f"[WARN] {history_path.name} 读取失败，重建历史留痕: {exc}")
+
+    combined = new_rows
+    if old_rows is not None and not old_rows.empty:
+        new_keys = {
+            (date_text, symbol)
+            for date_text, symbol in zip(
+                new_rows['日期'].astype(str), new_rows['品种'].astype(str), strict=True
+            )
+        }
+        keep_mask = [
+            (date_text, symbol) not in new_keys
+            for date_text, symbol in zip(
+                old_rows['日期'].astype(str), old_rows['品种'].astype(str), strict=True
+            )
+        ]
+        remaining = old_rows[keep_mask]
+        if not remaining.empty:
+            combined = pd.concat([remaining, new_rows], ignore_index=True)
+
+    # ISO 日期文本的字符串序即时间序；稳定排序保持同日内品种行序。
+    combined = combined.sort_values('日期', kind='stable', ignore_index=True)
+    combined.to_csv(history_path, index=False, encoding='utf-8-sig')
+    return combined
 
 
 # ============================================================
@@ -358,7 +413,7 @@ def main():
         r = run_three_layer_filter(sym, merrill, basis_df, crowding_df, crisis, signal_date=signal_date)
         rows.append(r)
 
-        status = "✓ 开仓" if r['最终信号'] != '空仓' else "✗ 空仓"
+        status = "OPEN" if r['最终信号'] != '空仓' else "FLAT"
         print(f"  {sym}: {status}  {r['最终信号']}  仓位={r['仓位比例']:.1%}  "
               f"置信度={r['置信度']}/3  {r['信号说明'][:50]}")
 
@@ -367,6 +422,10 @@ def main():
     output_path = ROOT / 'final_signal.csv'
     result_df.to_csv(output_path, index=False, encoding='utf-8-sig')
     print(f"\n[输出] {output_path}")
+
+    history_path = ROOT / HISTORY_FILENAME
+    append_final_signal_history(result_df, history_path)
+    print(f"[输出] {history_path} (历史留痕)")
 
     # 摘要
     print("\n" + "=" * 60)

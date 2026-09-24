@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import pandas as pd
+from backend.app.core_finance.field_normalization import is_tradestatus_halted
 
 RiskLevel = Literal["green", "yellow", "orange", "red", "unknown"]
 
@@ -269,8 +270,11 @@ def _clean_observations(observations: pd.DataFrame) -> pd.DataFrame:
 
 def _apply_universe_flags(latest: pd.DataFrame) -> pd.DataFrame:
     out = latest.copy()
-    tradestatus = out["tradestatus"].astype(str).str.lower() if "tradestatus" in out.columns else pd.Series("", index=out.index)
-    is_suspended = tradestatus.str.contains("停牌|suspend|halt", regex=True, na=False)
+    # 共享互补口径（is_tradestatus_halted）：非空非可交易值（"停牌一天"/
+    # "连续停牌"/"未上市"/未知词值）全部剔出 core_eligible；NaN/空串视为
+    # 正常交易日保留，与旧 contains 词表在空值上的行为一致。
+    tradestatus = out["tradestatus"] if "tradestatus" in out.columns else pd.Series("", index=out.index)
+    is_suspended = tradestatus.fillna("").map(is_tradestatus_halted).astype(bool)
     out["core_eligible"] = (
         ~out["is_st"].astype(bool)
         & out["has_price_limit"].astype(bool)

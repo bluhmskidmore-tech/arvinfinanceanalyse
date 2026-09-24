@@ -72,7 +72,7 @@ Any edit that changes page meaning must trace through that full chain.
 - `qtd` and `year_to_report_month_end` are governed API/detail sample surfaces, not current first-screen UI requirements.
 - Do not add `qtd` or `year_to_report_month_end` to the main page selector without updating this contract, the closure checklist, and page-level tests.
 - Allowed scenario path: explicit `scenario_rate_pct`
-- Baseline FTP policy is report-year based: 2025 uses `1.75%`; 2026 uses `1.60%`.
+- Baseline FTP policy is report-year based: 2024 uses `2.00%`; 2025 uses `1.75%`; 2026 uses `1.60%`.
 - Analytical overlay is not the default interpretation of this page
 - Mock data must not masquerade as governed truth
 - `ytd` and `year_to_report_month_end` are natural-year views: PnL fields must sum monthly `monthly_pnl` from January through the requested report month. They must not add prior-month `ending_balance` values or switch to ending-balance cash. Scale-sensitive calculations use each included month’s monthly scale basis weighted by calendar days, and return `quality_flag=warning` when prior months in the year are unavailable for coverage evidence.
@@ -153,7 +153,8 @@ This is a page-level field freeze for detail semantics. It is also the source fi
 
 First-stage prohibitions:
 
-- do not invent detail `metric_id` numbers beyond active `MTR-PCP-004` through `MTR-PCP-012`
+- do not invent row-level detail `metric_id` numbers beyond active `MTR-PCP-004` through `MTR-PCP-012`;
+  payload-section metrics `MTR-PCP-013` through `MTR-PCP-029` are governed separately below
 - do not treat liability sign normalization as backend truth
 - do not use `available_views` to add first-screen controls
 - do not recompute `grand_total` in frontend
@@ -177,9 +178,25 @@ Decision 3C detail metric expansion is active for the rows below. These rows are
 
 Matrix constraints:
 
-- active product-category metric ids are `MTR-PCP-001` through `MTR-PCP-012`
+- active product-category metric ids are `MTR-PCP-001` through `MTR-PCP-029`:
+  `MTR-PCP-004` through `MTR-PCP-012` bind row-level detail fields, while
+  `MTR-PCP-013` through `MTR-PCP-029` bind only the three payload sections listed below
 - no additional product-category detail field is dictionary-active without a new approved matrix, dictionary row, sample assertion, and test
 - totals (`result.asset_total.*`, `result.liability_total.*`, `result.grand_total.*`) may be used as roll-up evidence, but row-level metric activation must still name the row scope and field path explicitly
+
+#### 9.1.2 Interest-spread and CLN payload-section metrics
+
+The formal payload-section promotion approved on 2026-08-13 covers exactly:
+
+- `MTR-PCP-013` through `MTR-PCP-018`: `result.interest_earning_spread.*`
+- `MTR-PCP-019` through `MTR-PCP-024`: `result.interest_spread.*`
+- `MTR-PCP-025` through `MTR-PCP-029`: `result.liability_cost_decomposition.*`
+
+These are section-level metrics, not additions to `result.rows[]`. Their exact field
+bindings, units, null behavior, and monthly/YTD semantics are frozen by
+`docs/metric_dictionary.md` §12.3.2, `docs/page_contracts.md` §14 F.2,
+`tests/golden_samples/GS-PROD-CAT-PNL-A/assertions.md`, and
+`tests/test_interest_spread_metric_governance_contract.py`.
 
 ### 9.2 Manual adjustment create — client validation (main page)
 
@@ -351,7 +368,9 @@ P0 is a closure gate, not a new feature lane.
 
 The current P0 boundary is:
 
-- P0-approved active formal metric ids are currently `MTR-PCP-001` through `MTR-PCP-012`.
+- Active formal metric ids are currently `MTR-PCP-001` through `MTR-PCP-029`;
+  `013` through `029` were added by the separately approved 2026-08-13
+  interest-spread/CLN payload-section promotion.
 - detail `metric_id` expansion for decision 3C is implemented only for the approved row fields; further product-category fields remain implementation-required for field matrix, numbering, dictionary rows, and tests
 - standalone outward `as_of_date` is a no-field product/API decision for this page
 - stale/fallback/refresh visibility may be locked only where current tests already prove behavior

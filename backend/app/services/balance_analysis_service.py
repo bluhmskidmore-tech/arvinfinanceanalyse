@@ -7,15 +7,20 @@ Formal fact writes (`replace_formal_balance_rows`, snapshot tables) are restrict
 from __future__ import annotations
 
 import importlib
+import uuid
+from collections.abc import Callable
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from typing import Any, Literal
 
 from backend.app.core_finance.balance_calibration import (
     balance_calibration_meta_to_dict,
     build_calibration_meta,
 )
-from backend.app.core_finance.module_registry import get_formal_module_by_fact_table
+from backend.app.core_finance.module_contracts import FormalComputeModuleDescriptor
+from backend.app.core_finance.module_registry import ensure_formal_module
 from backend.app.governance.formal_compute_lineage import (
     resolve_completed_formal_build_lineage,
     resolve_formal_manifest_lineage,
@@ -58,13 +63,52 @@ from backend.app.services import balance_analysis_summary_export_service, balanc
 from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope_from_lineage,
 )
-from backend.app.tasks.balance_analysis_materialize import (
-    materialize_balance_analysis_facts,
-)
+from backend.app.services.runtime_cache import get_runtime_cache
+
+
+class _MaterializeBalanceAnalysisFactsProxy:
+    """延迟代理 tasks actor：只读导入本模块时不得触发 broker/actor 注册。"""
+
+    def send(self, **kwargs: object) -> object:
+        from backend.app.tasks.balance_analysis_materialize import (
+            materialize_balance_analysis_facts as _actor,
+        )
+
+        return _actor.send(**kwargs)
+
+    def __getattr__(self, name: str) -> object:
+        from backend.app.tasks.balance_analysis_materialize import (
+            materialize_balance_analysis_facts as _actor,
+        )
+
+        return getattr(_actor, name)
+
+
+materialize_balance_analysis_facts = _MaterializeBalanceAnalysisFactsProxy()
 
 BALANCE_ANALYSIS_PRIMARY_FACT_TABLE = "fact_formal_zqtz_balance_daily"
-BALANCE_ANALYSIS_MODULE = get_formal_module_by_fact_table(BALANCE_ANALYSIS_PRIMARY_FACT_TABLE)
 BALANCE_ANALYSIS_SECONDARY_FACT_TABLE = "fact_formal_tyw_balance_daily"
+BALANCE_ANALYSIS_DATE_BASIS = "balance_analysis_report_date"
+# Align with tasks/balance_analysis_materialize without importing tasks at module level.
+BALANCE_ANALYSIS_MODULE = ensure_formal_module(
+    FormalComputeModuleDescriptor(
+        module_name="balance_analysis",
+        basis="formal",
+        input_sources=(
+            "zqtz_bond_daily_snapshot",
+            "tyw_interbank_daily_snapshot",
+            "fx_daily_mid",
+        ),
+        fact_tables=(
+            BALANCE_ANALYSIS_PRIMARY_FACT_TABLE,
+            BALANCE_ANALYSIS_SECONDARY_FACT_TABLE,
+        ),
+        rule_version="rv_balance_analysis_formal_materialize_v1",
+        result_kind_family="balance-analysis",
+        supports_standard_queries=True,
+        supports_custom_queries=True,
+    )
+)
 if BALANCE_ANALYSIS_SECONDARY_FACT_TABLE not in BALANCE_ANALYSIS_MODULE.fact_tables:
     raise RuntimeError(
         "Balance-analysis module registration mismatch: expected secondary fact table "
@@ -74,7 +118,10 @@ if BALANCE_ANALYSIS_SECONDARY_FACT_TABLE not in BALANCE_ANALYSIS_MODULE.fact_tab
 CACHE_KEY = BALANCE_ANALYSIS_MODULE.cache_key
 CACHE_VERSION = BALANCE_ANALYSIS_MODULE.cache_version
 RULE_VERSION = BALANCE_ANALYSIS_MODULE.rule_version
-BALANCE_ANALYSIS_LOCK = BALANCE_ANALYSIS_MODULE.lock_definition
+BALANCE_ANALYSIS_LOCK = LockDefinition(
+    key=BALANCE_ANALYSIS_MODULE.lock_key,
+    ttl_seconds=BALANCE_ANALYSIS_MODULE.lock_ttl_seconds,
+)
 
 BALANCE_ANALYSIS_JOB_NAME = "balance_analysis_materialize"
 BALANCE_ANALYSIS_DATA_SOURCE = "balance_analysis_facts"
@@ -84,6 +131,63 @@ ALLOWED_BALANCE_CURRENCY_BASES = frozenset({"native", "CNY"})
 IN_FLIGHT_STATUSES = {"queued", "running"}
 STALE_IN_FLIGHT_AFTER = timedelta(hours=1)
 DEFAULT_BALANCE_DECISION_UPDATED_BY = "balance-analysis-ui"
+
+_BALANCE_ANALYSIS_CACHE_TTL_SECONDS = 300.0
+_BALANCE_ANALYSIS_CACHE = get_runtime_cache(
+    "balance_analysis.read_models",
+    ttl_seconds=_BALANCE_ANALYSIS_CACHE_TTL_SECONDS,
+)
+_BalanceAnalysisCacheKey = tuple[object, ...]
+
+
+def _duckdb_storage_identity(duckdb_path: str) -> tuple[str, int, int] | None:
+    path = Path(duckdb_path)
+    if not path.exists():
+        return None
+    try:
+        stat = path.stat()
+        return (str(path.resolve()), stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        return None
+
+
+def _balance_analysis_cache_key(
+    endpoint: str,
+    duckdb_path: str,
+    governance_dir: str,
+    *parts: object,
+) -> _BalanceAnalysisCacheKey | None:
+    storage = _duckdb_storage_identity(duckdb_path)
+    if storage is None:
+        return None
+    resolved_path, mtime_ns, size = storage
+    return (
+        endpoint,
+        resolved_path,
+        mtime_ns,
+        size,
+        str(governance_dir),
+        RULE_VERSION,
+        CACHE_VERSION,
+        *parts,
+    )
+
+
+def _with_fresh_trace(envelope: dict[str, object]) -> dict[str, object]:
+    response = deepcopy(envelope)
+    meta = response.get("result_meta")
+    if isinstance(meta, dict):
+        meta["trace_id"] = f"tr_{uuid.uuid4().hex[:12]}"
+    return response
+
+
+def _cached_balance_analysis_envelope(
+    cache_key: _BalanceAnalysisCacheKey | None,
+    build_envelope: Callable[[], dict[str, object]],
+) -> dict[str, object]:
+    if cache_key is None:
+        return build_envelope()
+    return _with_fresh_trace(_BALANCE_ANALYSIS_CACHE.get_or_set(cache_key, build_envelope))
 
 
 class BalanceAnalysisRefreshServiceError(RuntimeError):
@@ -250,10 +354,8 @@ def refresh_balance_analysis(
 def balance_analysis_refresh_status(settings: Settings, *, run_id: str) -> dict[str, object]:
     records = [
         record
-        for record in GovernanceRepository(base_dir=settings.governance_path).read_all(CACHE_BUILD_RUN_STREAM)
-        if str(record.get("cache_key")) == CACHE_KEY
-        and str(record.get("job_name")) == BALANCE_ANALYSIS_JOB_NAME
-        and str(record.get("run_id")) == run_id
+        for record in _load_refresh_run_records(settings)
+        if str(record.get("run_id")) == run_id
     ]
     if not records:
         raise ValueError(f"Unknown balance-analysis refresh run_id={run_id}")
@@ -261,11 +363,30 @@ def balance_analysis_refresh_status(settings: Settings, *, run_id: str) -> dict[
     status = str(latest.get("status", "unknown"))
     return {
         **latest,
-        "trigger_mode": "async" if status in {"queued", "running"} else "terminal",
+        "trigger_mode": "async" if status in IN_FLIGHT_STATUSES else "terminal",
     }
 
 
 def balance_analysis_dates_envelope(*, duckdb_path: str, governance_dir: str) -> dict[str, object]:
+    cache_key = _balance_analysis_cache_key(
+        "dates",
+        duckdb_path,
+        governance_dir,
+    )
+    return _cached_balance_analysis_envelope(
+        cache_key,
+        lambda: _balance_analysis_dates_envelope_uncached(
+            duckdb_path=duckdb_path,
+            governance_dir=governance_dir,
+        ),
+    )
+
+
+def _balance_analysis_dates_envelope_uncached(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+) -> dict[str, object]:
     repo = BalanceAnalysisRepository(duckdb_path)
     payload = BalanceAnalysisDatesPayload(report_dates=repo.list_report_dates())
     lineage = resolve_formal_manifest_lineage(
@@ -289,6 +410,34 @@ def balance_analysis_overview_envelope(
     report_date: str,
     position_scope: Literal["asset", "liability", "all"] = "all",
     currency_basis: Literal["native", "CNY"] = "CNY",
+) -> dict[str, object]:
+    cache_key = _balance_analysis_cache_key(
+        "overview",
+        duckdb_path,
+        governance_dir,
+        report_date,
+        position_scope,
+        currency_basis,
+    )
+    return _cached_balance_analysis_envelope(
+        cache_key,
+        lambda: _balance_analysis_overview_envelope_uncached(
+            duckdb_path=duckdb_path,
+            governance_dir=governance_dir,
+            report_date=report_date,
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+        ),
+    )
+
+
+def _balance_analysis_overview_envelope_uncached(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+    report_date: str,
+    position_scope: Literal["asset", "liability", "all"],
+    currency_basis: Literal["native", "CNY"],
 ) -> dict[str, object]:
     _validate_balance_overview_filters(
         position_scope=position_scope,
@@ -337,14 +486,13 @@ def balance_analysis_overview_envelope(
         ),
         result_payload=payload.model_dump(mode="json"),
     )
-    return {
-        **env,
-        "data_source": BALANCE_ANALYSIS_DATA_SOURCE,
-        "calibration": _formal_balance_calibration_dict(
-            position_scope=position_scope,
-            currency_basis=currency_basis,
-        ),
-    }
+    return _with_balance_analysis_response_context(
+        env,
+        report_date=report_date,
+        position_scope=position_scope,
+        currency_basis=currency_basis,
+        evidence_rows=int(overview["detail_row_count"]),
+    )
 
 
 def balance_analysis_summary_envelope(
@@ -356,6 +504,52 @@ def balance_analysis_summary_envelope(
     currency_basis: Literal["native", "CNY"] = "CNY",
     limit: int = 50,
     offset: int = 0,
+) -> dict[str, object]:
+    cache_key = _balance_analysis_cache_key(
+        "summary",
+        duckdb_path,
+        governance_dir,
+        report_date,
+        position_scope,
+        currency_basis,
+        limit,
+        offset,
+    )
+    if cache_key is not None:
+        return _with_fresh_trace(
+            _BALANCE_ANALYSIS_CACHE.get_or_set(
+                cache_key,
+                lambda: _balance_analysis_summary_envelope_uncached(
+                    duckdb_path=duckdb_path,
+                    governance_dir=governance_dir,
+                    report_date=report_date,
+                    position_scope=position_scope,
+                    currency_basis=currency_basis,
+                    limit=limit,
+                    offset=offset,
+                ),
+            )
+        )
+    return _balance_analysis_summary_envelope_uncached(
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        report_date=report_date,
+        position_scope=position_scope,
+        currency_basis=currency_basis,
+        limit=limit,
+        offset=offset,
+    )
+
+
+def _balance_analysis_summary_envelope_uncached(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+    report_date: str,
+    position_scope: Literal["asset", "liability", "all"],
+    currency_basis: Literal["native", "CNY"],
+    limit: int,
+    offset: int,
 ) -> dict[str, object]:
     _validate_balance_overview_filters(
         position_scope=position_scope,
@@ -371,6 +565,11 @@ def balance_analysis_summary_envelope(
         currency_basis=currency_basis,
         limit=limit,
         offset=offset,
+    )
+    overview = repo.fetch_formal_overview(
+        report_date=report_date,
+        position_scope=position_scope,
+        currency_basis=currency_basis,
     )
     build_lineage = _resolve_balance_build_lineage(
         governance_dir=governance_dir,
@@ -399,14 +598,14 @@ def balance_analysis_summary_envelope(
             ],
         ).model_dump(mode="json"),
     )
-    return {
-        **env,
-        "data_source": BALANCE_ANALYSIS_DATA_SOURCE,
-        "calibration": _formal_balance_calibration_dict(
-            position_scope=position_scope,
-            currency_basis=currency_basis,
-        ),
-    }
+    return _with_balance_analysis_response_context(
+        env,
+        report_date=report_date,
+        position_scope=position_scope,
+        currency_basis=currency_basis,
+        evidence_rows=int(overview["detail_row_count"]),
+        additional_filters={"limit": limit, "offset": offset},
+    )
 
 
 def balance_analysis_basis_breakdown_envelope(
@@ -416,6 +615,34 @@ def balance_analysis_basis_breakdown_envelope(
     report_date: str,
     position_scope: Literal["asset", "liability", "all"] = "all",
     currency_basis: Literal["native", "CNY"] = "CNY",
+) -> dict[str, object]:
+    cache_key = _balance_analysis_cache_key(
+        "basis_breakdown",
+        duckdb_path,
+        governance_dir,
+        report_date,
+        position_scope,
+        currency_basis,
+    )
+    return _cached_balance_analysis_envelope(
+        cache_key,
+        lambda: _balance_analysis_basis_breakdown_envelope_uncached(
+            duckdb_path=duckdb_path,
+            governance_dir=governance_dir,
+            report_date=report_date,
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+        ),
+    )
+
+
+def _balance_analysis_basis_breakdown_envelope_uncached(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+    report_date: str,
+    position_scope: Literal["asset", "liability", "all"],
+    currency_basis: Literal["native", "CNY"],
 ) -> dict[str, object]:
     _validate_balance_overview_filters(
         position_scope=position_scope,
@@ -451,14 +678,13 @@ def balance_analysis_basis_breakdown_envelope(
             rows=[_to_basis_breakdown_row(row) for row in breakdown_rows],
         ).model_dump(mode="json"),
     )
-    return {
-        **env,
-        "data_source": BALANCE_ANALYSIS_DATA_SOURCE,
-        "calibration": _formal_balance_calibration_dict(
-            position_scope=position_scope,
-            currency_basis=currency_basis,
-        ),
-    }
+    return _with_balance_analysis_response_context(
+        env,
+        report_date=report_date,
+        position_scope=position_scope,
+        currency_basis=currency_basis,
+        evidence_rows=sum(int(row["detail_row_count"]) for row in breakdown_rows),
+    )
 
 
 def export_balance_analysis_summary_csv(
@@ -511,6 +737,44 @@ def balance_analysis_detail_envelope(
     position_scope: Literal["asset", "liability", "all"] = "all",
     currency_basis: Literal["native", "CNY"] = "CNY",
 ) -> dict[str, object]:
+    cache_key = _balance_analysis_cache_key(
+        "detail",
+        duckdb_path,
+        governance_dir,
+        report_date,
+        position_scope,
+        currency_basis,
+    )
+    if cache_key is not None:
+        return _with_fresh_trace(
+            _BALANCE_ANALYSIS_CACHE.get_or_set(
+                cache_key,
+                lambda: _balance_analysis_detail_envelope_uncached(
+                    duckdb_path=duckdb_path,
+                    governance_dir=governance_dir,
+                    report_date=report_date,
+                    position_scope=position_scope,
+                    currency_basis=currency_basis,
+                ),
+            )
+        )
+    return _balance_analysis_detail_envelope_uncached(
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        report_date=report_date,
+        position_scope=position_scope,
+        currency_basis=currency_basis,
+    )
+
+
+def _balance_analysis_detail_envelope_uncached(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+    report_date: str,
+    position_scope: Literal["asset", "liability", "all"],
+    currency_basis: Literal["native", "CNY"],
+) -> dict[str, object]:
     repo = BalanceAnalysisRepository(duckdb_path)
     if report_date not in repo.list_report_dates():
         raise ValueError(f"No balance-analysis data found for report_date={report_date}.")
@@ -556,14 +820,13 @@ def balance_analysis_detail_envelope(
             summary=summary,
         ).model_dump(mode="json"),
     )
-    return {
-        **env,
-        "data_source": BALANCE_ANALYSIS_DATA_SOURCE,
-        "calibration": _formal_balance_calibration_dict(
-            position_scope=position_scope,
-            currency_basis=currency_basis,
-        ),
-    }
+    return _with_balance_analysis_response_context(
+        env,
+        report_date=report_date,
+        position_scope=position_scope,
+        currency_basis=currency_basis,
+        evidence_rows=len(zqtz_rows) + len(tyw_rows),
+    )
 
 
 def balance_analysis_workbook_envelope(
@@ -573,6 +836,44 @@ def balance_analysis_workbook_envelope(
     report_date: str,
     position_scope: Literal["asset", "liability", "all"] = "all",
     currency_basis: Literal["native", "CNY"] = "CNY",
+) -> dict[str, object]:
+    cache_key = _balance_analysis_cache_key(
+        "workbook",
+        duckdb_path,
+        governance_dir,
+        report_date,
+        position_scope,
+        currency_basis,
+    )
+    if cache_key is not None:
+        return _with_fresh_trace(
+            _BALANCE_ANALYSIS_CACHE.get_or_set(
+                cache_key,
+                lambda: _balance_analysis_workbook_envelope_uncached(
+                    duckdb_path=duckdb_path,
+                    governance_dir=governance_dir,
+                    report_date=report_date,
+                    position_scope=position_scope,
+                    currency_basis=currency_basis,
+                ),
+            )
+        )
+    return _balance_analysis_workbook_envelope_uncached(
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        report_date=report_date,
+        position_scope=position_scope,
+        currency_basis=currency_basis,
+    )
+
+
+def _balance_analysis_workbook_envelope_uncached(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+    report_date: str,
+    position_scope: Literal["asset", "liability", "all"],
+    currency_basis: Literal["native", "CNY"],
 ) -> dict[str, object]:
     _validate_balance_overview_filters(
         position_scope=position_scope,
@@ -651,14 +952,13 @@ def balance_analysis_workbook_envelope(
             ],
         ).model_dump(mode="json"),
     )
-    return {
-        **env,
-        "data_source": BALANCE_ANALYSIS_DATA_SOURCE,
-        "calibration": _formal_balance_calibration_dict(
-            position_scope=position_scope,
-            currency_basis=currency_basis,
-        ),
-    }
+    return _with_balance_analysis_response_context(
+        env,
+        report_date=report_date,
+        position_scope=position_scope,
+        currency_basis=currency_basis,
+        evidence_rows=_balance_workbook_evidence_rows(workbook),
+    )
 
 
 def balance_analysis_decision_items_envelope(
@@ -710,14 +1010,13 @@ def balance_analysis_decision_items_envelope(
             ],
         ).model_dump(mode="json"),
     )
-    return {
-        **env,
-        "data_source": BALANCE_ANALYSIS_DATA_SOURCE,
-        "calibration": _formal_balance_calibration_dict(
-            position_scope=position_scope,
-            currency_basis=currency_basis,
-        ),
-    }
+    return _with_balance_analysis_response_context(
+        env,
+        report_date=report_date,
+        position_scope=position_scope,
+        currency_basis=currency_basis,
+        evidence_rows=_balance_workbook_evidence_rows(workbook),
+    )
 
 
 def update_balance_analysis_decision_status(
@@ -993,7 +1292,10 @@ def _require_balance_lineage_value(value: object, *, report_date: str, field_nam
     resolved = str(value or "").strip()
     if not resolved:
         raise RuntimeError(
-            f"Canonical balance-analysis {field_name} unavailable for report_date={report_date}."
+            _balance_lineage_missing_message(
+                field_name=field_name,
+                report_date=report_date,
+            )
         )
     return resolved
 
@@ -1186,6 +1488,55 @@ def _formal_balance_calibration_dict(
             data_basis="formal_facts",
         )
     )
+
+
+def _with_balance_analysis_response_context(
+    envelope: dict[str, object],
+    *,
+    report_date: str,
+    position_scope: Literal["asset", "liability", "all"],
+    currency_basis: Literal["native", "CNY"],
+    evidence_rows: int,
+    additional_filters: dict[str, object] | None = None,
+) -> dict[str, object]:
+    result_meta = envelope.get("result_meta")
+    if not isinstance(result_meta, dict):
+        raise RuntimeError("Balance-analysis formal envelope is missing result_meta.")
+    filters_applied: dict[str, object] = {
+        "report_date": report_date,
+        "position_scope": position_scope,
+        "currency_basis": currency_basis,
+    }
+    filters_applied.update(additional_filters or {})
+    return {
+        **envelope,
+        "result_meta": {
+            **result_meta,
+            "requested_report_date": report_date,
+            "resolved_report_date": report_date,
+            "as_of_date": report_date,
+            "date_basis": BALANCE_ANALYSIS_DATE_BASIS,
+            "filters_applied": filters_applied,
+            "tables_used": [
+                BALANCE_ANALYSIS_PRIMARY_FACT_TABLE,
+                BALANCE_ANALYSIS_SECONDARY_FACT_TABLE,
+            ],
+            "evidence_rows": evidence_rows,
+        },
+        "data_source": BALANCE_ANALYSIS_DATA_SOURCE,
+        "calibration": _formal_balance_calibration_dict(
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+        ),
+    }
+
+
+def _balance_workbook_evidence_rows(workbook: dict[str, Any]) -> int:
+    for section in workbook.get("tables", []):
+        if str(section.get("key")) != "ifrs9_source_family":
+            continue
+        return sum(int(row.get("row_count") or 0) for row in section.get("rows", []))
+    return 0
 
 
 def _as_decimal(value: object) -> Decimal:

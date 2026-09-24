@@ -51,7 +51,7 @@ def _elapsed(start: float) -> str:
     return f"{time.time() - start:.1f}s"
 
 
-def run_pipeline():
+def run_pipeline(*, with_crisis_score_inputs: bool = False):
     from backend.app.governance.settings import get_settings
 
     settings = get_settings()
@@ -82,7 +82,7 @@ def run_pipeline():
         print(f"  ({_elapsed(t0)})")
         if zqtz_rows == 0 and tyw_rows == 0:
             print("  ⚠ No rows materialized. Check source_manifest.jsonl and archive files.")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # CLI 步骤隔离：单步失败打印 traceback 后继续后续步骤
         print(f"  ✗ Failed: {exc}")
         import traceback
         traceback.print_exc()
@@ -99,7 +99,7 @@ def run_pipeline():
         status = result.get("status", "unknown")
         print(f"  ✓ Source preview: {status}")
         print(f"  ({_elapsed(t0)})")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # CLI 步骤隔离：单步失败打印 traceback 后继续后续步骤
         print(f"  ✗ Failed: {exc}")
         import traceback
         traceback.print_exc()
@@ -120,43 +120,31 @@ def run_pipeline():
         print(f"  ({_elapsed(t0)})")
     except ImportError:
         print("  ✗ Failed: formal_balance_pipeline task is unavailable.")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # CLI 步骤隔离：单步失败打印 traceback 后继续后续步骤
         print(f"  ✗ Failed: {exc}")
         import traceback
         traceback.print_exc()
 
-    # ── Step 4: Bond Analytics Materialize ────────────────────────
-    _step("4/7 Bond Analytics Materialize (duration/DV01/convexity)")
+    # ── Step 4: Backfill all missing formal balance + bond analytics dates ──
+    _step("4/7 Backfill all missing formal balance + bond analytics dates")
     t0 = time.time()
     try:
-        # 先获取可用的 report_dates
-        import duckdb
-        conn = duckdb.connect(duckdb_path, read_only=True)
-        try:
-            dates = conn.execute(
-                "SELECT DISTINCT CAST(report_date AS VARCHAR) FROM zqtz_bond_daily_snapshot ORDER BY 1 DESC"
-            ).fetchall()
-        finally:
-            conn.close()
+        from backend.app.tasks.formal_balance_pipeline import run_formal_balance_pipeline
 
-        report_dates = [str(row[0]) for row in dates]
-        if not report_dates:
-            print("  ⚠ No report dates in zqtz_bond_daily_snapshot, skipping.")
-        else:
-            from backend.app.tasks.bond_analytics_materialize import materialize_bond_analytics_facts
-            for rd in report_dates[:3]:  # 最近 3 个日期
-                try:
-                    result = materialize_bond_analytics_facts.fn(
-                        report_date=rd,
-                        duckdb_path=duckdb_path,
-                        governance_dir=governance_dir,
-                    )
-                    status = result.get("status", "unknown") if isinstance(result, dict) else "done"
-                    print(f"  ✓ {rd}: {status}")
-                except Exception as exc:
-                    print(f"  ✗ {rd}: {exc}")
-            print(f"  ({_elapsed(t0)})")
-    except Exception as exc:
+        result = run_formal_balance_pipeline.fn(
+            backfill=True,
+            duckdb_path=duckdb_path,
+            governance_dir=governance_dir,
+            archive_dir=archive_dir,
+            data_root=str(Path(settings.data_input_root).resolve()),
+        )
+        report_dates = result.get("report_dates") if isinstance(result, dict) else []
+        print(f"  ✓ Backfilled {len(report_dates or [])} report_date(s)")
+        if report_dates:
+            preview = ", ".join(str(item) for item in report_dates[:10])
+            print(f"    dates: {preview}{' ...' if len(report_dates) > 10 else ''}")
+        print(f"  ({_elapsed(t0)})")
+    except Exception as exc:  # noqa: BLE001  # CLI 步骤隔离：单步失败打印 traceback 后继续后续步骤
         print(f"  ✗ Failed: {exc}")
         import traceback
         traceback.print_exc()
@@ -179,7 +167,7 @@ def run_pipeline():
             print("  ⚠ No report dates in fact_formal_bond_analytics_daily, skipping.")
         else:
             from backend.app.tasks.risk_tensor_materialize import materialize_risk_tensor_facts
-            for rd in report_dates[:3]:
+            for rd in report_dates:
                 try:
                     result = materialize_risk_tensor_facts.fn(
                         report_date=rd,
@@ -188,10 +176,10 @@ def run_pipeline():
                     )
                     status = result.get("status", "unknown") if isinstance(result, dict) else "done"
                     print(f"  ✓ {rd}: {status}")
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001  # 单日期物化失败打印后继续其余日期
                     print(f"  ✗ {rd}: {exc}")
             print(f"  ({_elapsed(t0)})")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # CLI 步骤隔离：单步失败打印 traceback 后继续后续步骤
         print(f"  ✗ Failed: {exc}")
         import traceback
         traceback.print_exc()
@@ -232,10 +220,10 @@ def run_pipeline():
                     )
                     status = result.get("status", "unknown") if isinstance(result, dict) else "done"
                     print(f"  ✓ {rd}: {status}")
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001  # 单日期物化失败打印后继续其余日期
                     print(f"  ✗ {rd}: {exc}")
             print(f"  ({_elapsed(t0)})")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # CLI 步骤隔离：单步失败打印 traceback 后继续后续步骤
         print(f"  ✗ Failed: {exc}")
         import traceback
         traceback.print_exc()
@@ -257,10 +245,34 @@ def run_pipeline():
             status = result.get("status", "unknown") if isinstance(result, dict) else "done"
             print(f"  ✓ Product category PnL: {status}")
             print(f"  ({_elapsed(t0)})")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # CLI 步骤隔离：单步失败打印 traceback 后继续后续步骤
         print(f"  ✗ Failed: {exc}")
         import traceback
         traceback.print_exc()
+
+    # ── Optional: Crisis Score input backfill ─────────────────────
+    if with_crisis_score_inputs:
+        _step("Optional Crisis Score input backfill")
+        t0 = time.time()
+        try:
+            from backend.scripts.backfill_crisis_score_inputs import backfill_crisis_score_inputs
+
+            result = backfill_crisis_score_inputs(
+                duckdb_path=duckdb_path,
+                dry_run=False,
+            )
+            input_count = result.get("input_count", 0)
+            completed = sum(
+                1
+                for item in (result.get("results") or {}).values()
+                if isinstance(item, dict) and item.get("status") == "completed"
+            )
+            print(f"  ✓ Crisis Score inputs: {input_count} series, {completed} completed")
+            print(f"  ({_elapsed(t0)})")
+        except Exception as exc:  # noqa: BLE001  # CLI 步骤隔离：可选回填失败打印 traceback 后继续收尾
+            print(f"  ✗ Failed: {exc}")
+            import traceback
+            traceback.print_exc()
 
     # ── Summary ───────────────────────────────────────────────────
     print(f"\n{'='*60}")
@@ -280,8 +292,8 @@ def run_pipeline():
                 try:
                     count = conn.execute(f"SELECT COUNT(*) FROM \"{name}\"").fetchone()[0]
                     print(f"    {name}: {count} rows")
-                except Exception:
-                    print(f"    {name}: (error reading)")
+                except duckdb.Error as exc:
+                    print(f"    {name}: (error reading: {exc})")
         finally:
             conn.close()
     else:
@@ -289,4 +301,13 @@ def run_pipeline():
 
 
 if __name__ == "__main__":
-    run_pipeline()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Run the MOSS V3 data import pipeline.")
+    parser.add_argument(
+        "--with-crisis-score-inputs",
+        action="store_true",
+        help="After the main pipeline, backfill Crisis Score input series into DuckDB.",
+    )
+    args = parser.parse_args()
+    run_pipeline(with_crisis_score_inputs=args.with_crisis_score_inputs)

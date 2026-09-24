@@ -1,6 +1,7 @@
 """Lightweight API timing logs for page-level performance work."""
 from __future__ import annotations
 
+import json
 import logging
 import time
 from collections.abc import Callable, Mapping
@@ -40,15 +41,24 @@ def log_api_perf(
     payload: T,
     duckdb_statement_count: int | None = None,
 ) -> T:
+    if not logger.isEnabledFor(logging.INFO):
+        return payload
+
     meta = _result_meta(payload)
     duration_ms = round((time.perf_counter() - started_at) * 1000, 3)
+    trace_id = str(meta.get("trace_id") or "")
+    result_kind = str(meta.get("result_kind") or "")
     logger.info(
-        "moss_api_perf",
+        "moss_api_perf "
+        f"endpoint={json.dumps(endpoint, ensure_ascii=False)} duration_ms={json.dumps(duration_ms)} "
+        f"trace_id={json.dumps(trace_id, ensure_ascii=False)} "
+        f"result_kind={json.dumps(result_kind, ensure_ascii=False)} "
+        f"duckdb_statement_count={json.dumps(duckdb_statement_count)}",
         extra={
             "endpoint": endpoint,
             "duration_ms": duration_ms,
-            "trace_id": str(meta.get("trace_id") or ""),
-            "result_kind": str(meta.get("result_kind") or ""),
+            "trace_id": trace_id,
+            "result_kind": result_kind,
             "duckdb_statement_count": duckdb_statement_count,
         },
     )

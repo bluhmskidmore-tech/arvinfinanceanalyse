@@ -1,0 +1,16 @@
+{
+  "cssPath": "frontend/src/features/workbench/module-home/riskOverview.module.css",
+  "tsxFiles": [
+    "frontend/src/features/workbench/module-home/RiskOverviewPage.tsx",
+    "frontend/src/features/workbench/module-home/RiskOverviewAgentDrawer.tsx"
+  ],
+  "wildcards": [
+    "roToneOk", "roToneWatch", "roToneError", "roToneMuted",
+    "roV6PillWarn", "roV6PillBad", "roV6PillMut",
+    "roV6CurveAmber", "roV6CurveAcc", "roV6CurveInk",
+    "roBondCardready", "roBondCardreview", "roBondCarderror", "roBondCardblocked", "roBondCardempty", "roBondCardloading"
+  ],
+  "finalMarker": null,
+  "mockUrl": "http://127.0.0.1:5897/risk-overview",
+  "realUrl": "http://localhost:5888/risk-overview"
+}

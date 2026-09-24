@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date
+from threading import Event
+
 import duckdb
 
 from backend.app.repositories.choice_stock_adapter import choice_stock_readiness_missing
@@ -10,6 +14,14 @@ from backend.app.tasks import choice_stock_materialize
 from backend.app.tasks.livermore_candidate_history_materialize import (
     ensure_livermore_candidate_history_schema,
 )
+
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
 
 
 class _CountingRow(dict[str, object]):
@@ -196,6 +208,108 @@ def _seed_choice_stock_replay_coverage(conn: duckdb.DuckDBPyConnection, *, trade
     )
 
 
+def test_candidate_history_envelope_builds_backtest_window_once_when_history_exists(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "candidate-history-window-once.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        ensure_livermore_candidate_history_schema(conn)
+        conn.execute(
+            """
+            insert into livermore_candidate_history (
+              snapshot_as_of_date,
+              stock_code,
+              stock_name,
+              candidate_rank,
+              data_status,
+              formula_version,
+              source_version,
+              vendor_version,
+              rule_version,
+              run_id,
+              signal_kind
+            ) values ('2026-05-29', '000001.SZ', '平安银行', 1, 'complete', 'fv1', 'sv1', 'vv1', 'rv1', 'run1', 'stock_candidate')
+            """
+        )
+    finally:
+        conn.close()
+
+    calls: list[dict[str, object]] = []
+
+    def fake_backtest_window_summary(**kwargs):
+        calls.append(dict(kwargs))
+        return service._empty_backtest_window_summary(
+            snapshot_from=kwargs["snapshot_from"],
+            snapshot_to=kwargs["snapshot_to"],
+        )
+
+    monkeypatch.setattr(
+        service,
+        "livermore_candidate_history_backtest_window_summary",
+        fake_backtest_window_summary,
+    )
+
+    envelope = service.livermore_candidate_history_envelope(
+        duckdb_path=str(db_path),
+        stock_code=None,
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-31",
+        limit=20,
+    )
+
+    result = envelope["result"]
+    assert isinstance(result, dict)
+    assert result["items"]
+    assert len(calls) == 1
+
+
+def test_decision_usable_stats_use_adjusted_returns_and_report_coverage() -> None:
+    stats = service._build_decision_usable_stats(
+        [
+            {
+                "snapshot_as_of_date": "2026-05-06",
+                "stock_code": "000001.SZ",
+                "signal_kind": "stock_candidate",
+                "data_status": "complete",
+                "return_1d": -0.05,
+                "return_5d": -0.02,
+                "return_20d": -0.01,
+                "return_1d_adj": 0.01,
+                "return_5d_adj": 0.12,
+                "return_20d_adj": 0.22,
+            },
+            {
+                "snapshot_as_of_date": "2026-05-06",
+                "stock_code": "000002.SZ",
+                "signal_kind": "stock_candidate",
+                "data_status": "complete",
+                "return_1d": 0.50,
+                "return_5d": 0.50,
+                "return_20d": 0.50,
+                "return_1d_adj": None,
+                "return_5d_adj": None,
+                "return_20d_adj": None,
+            },
+        ],
+        backtest_window_summary={
+            "included_completed_stats_dates": ["2026-05-06"],
+        },
+    )
+
+    assert stats["metric_basis"] == "adjusted_close_return"
+    assert stats["adj_coverage_count"] == 1
+    assert stats["adj_coverage_total"] == 2
+    assert stats["adj_coverage_ratio"] == 0.5
+    assert stats["row_count"] == 1
+    assert stats["avg_return_1d"] == 0.01
+    assert stats["avg_return_5d"] == 0.12
+    assert stats["avg_return_20d"] == 0.22
+    assert stats["win_rate_5d"] == 1.0
+    assert stats["excluded_snapshot_dates"] == ["2026-05-06"]
+
+
 def test_strategy_score_reuses_loaded_window_rows_for_backtest_summary(monkeypatch, tmp_path) -> None:
     db_path = tmp_path / "strategy-score-single-load.duckdb"
     conn = duckdb.connect(str(db_path), read_only=False)
@@ -316,7 +430,7 @@ def test_livermore_strategy_payload_reuses_same_duckdb_snapshot(monkeypatch, tmp
 
     load_count = 0
 
-    def _counting_history(*, duckdb_path: str, as_of_date: object) -> tuple[list[object], list[str]]:
+    def _counting_history(*, duckdb_path: str, as_of_date: object, conn: object = None) -> tuple[list[object], list[str]]:
         nonlocal load_count
         load_count += 1
         return [], []
@@ -337,6 +451,137 @@ def test_livermore_strategy_payload_reuses_same_duckdb_snapshot(monkeypatch, tmp
     assert first_payload["strategy_name"] == second_payload["strategy_name"]
     assert load_count == 1
     clear_runtime_cache("livermore_strategy_payload")
+
+
+def test_livermore_strategy_payload_reuses_resolved_date_without_losing_request_disclosure(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    clear_runtime_cache("livermore_strategy_payload")
+    db_path = tmp_path / "livermore-strategy-resolved-date-cache.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    conn.close()
+
+    load_count = 0
+
+    def _counting_load(*, as_of_date: date | None, **_: object) -> tuple[dict[str, object], dict[str, object]]:
+        nonlocal load_count
+        load_count += 1
+        return (
+            {
+                "strategy_name": "fixture-strategy",
+                "as_of_date": "2026-05-01",
+                "requested_as_of_date": None if as_of_date is None else as_of_date.isoformat(),
+                "stable_business_value": 7,
+            },
+            {"source_version": "fixture-source"},
+        )
+
+    monkeypatch.setattr(livermore_service, "_load_livermore_strategy_payload_uncached", _counting_load)
+
+    first_payload, _ = livermore_service.load_livermore_strategy_payload(
+        duckdb_path=str(db_path),
+        as_of_date=None,
+        stock_readiness=choice_stock_readiness_missing(""),
+    )
+    second_payload, _ = livermore_service.load_livermore_strategy_payload(
+        duckdb_path=str(db_path),
+        as_of_date=date(2026, 5, 1),
+        stock_readiness=choice_stock_readiness_missing(""),
+    )
+
+    assert load_count == 1
+    assert first_payload["as_of_date"] == second_payload["as_of_date"] == "2026-05-01"
+    assert first_payload["stable_business_value"] == second_payload["stable_business_value"] == 7
+    assert first_payload["requested_as_of_date"] is None
+    assert second_payload["requested_as_of_date"] == "2026-05-01"
+    clear_runtime_cache("livermore_strategy_payload")
+    load_count = 0
+
+    fallback_payload, _ = livermore_service.load_livermore_strategy_payload(
+        duckdb_path=str(db_path),
+        as_of_date=date(2026, 5, 2),
+        stock_readiness=choice_stock_readiness_missing(""),
+    )
+    resolved_payload, _ = livermore_service.load_livermore_strategy_payload(
+        duckdb_path=str(db_path),
+        as_of_date=date(2026, 5, 1),
+        stock_readiness=choice_stock_readiness_missing(""),
+    )
+
+    assert load_count == 2
+    assert fallback_payload["requested_as_of_date"] == "2026-05-02"
+    assert resolved_payload["requested_as_of_date"] == "2026-05-01"
+    assert fallback_payload["as_of_date"] == resolved_payload["as_of_date"] == "2026-05-01"
+    clear_runtime_cache("livermore_strategy_payload")
+
+
+def test_livermore_strategy_payload_does_not_repopulate_resolved_key_after_clear_during_load(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    clear_runtime_cache("livermore_strategy_payload")
+    db_path = tmp_path / "livermore-strategy-invalidation-cache.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    conn.close()
+
+    started = Event()
+    release = Event()
+    load_count = 0
+
+    def _blocking_load(
+        *,
+        as_of_date: date | None,
+        **_: object,
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        nonlocal load_count
+        load_count += 1
+        if as_of_date is None:
+            started.set()
+            if not release.wait(timeout=5):
+                raise TimeoutError("test producer was not released")
+        return (
+            {
+                "strategy_name": "fixture-strategy",
+                "as_of_date": "2026-05-01",
+                "requested_as_of_date": None if as_of_date is None else as_of_date.isoformat(),
+                "stable_business_value": 7,
+            },
+            {"source_version": "fixture-source"},
+        )
+
+    monkeypatch.setattr(
+        livermore_service,
+        "_load_livermore_strategy_payload_uncached",
+        _blocking_load,
+    )
+    stock_readiness = choice_stock_readiness_missing("")
+    executor = ThreadPoolExecutor(max_workers=1)
+
+    try:
+        future = executor.submit(
+            livermore_service.load_livermore_strategy_payload,
+            duckdb_path=str(db_path),
+            as_of_date=None,
+            stock_readiness=stock_readiness,
+        )
+        assert started.wait(timeout=5)
+        clear_runtime_cache("livermore_strategy_payload")
+        release.set()
+        first_payload, _ = future.result(timeout=5)
+        second_payload, _ = livermore_service.load_livermore_strategy_payload(
+            duckdb_path=str(db_path),
+            as_of_date=date(2026, 5, 1),
+            stock_readiness=stock_readiness,
+        )
+
+        assert load_count == 2
+        assert first_payload["requested_as_of_date"] is None
+        assert second_payload["requested_as_of_date"] == "2026-05-01"
+    finally:
+        release.set()
+        executor.shutdown(wait=True)
+        clear_runtime_cache("livermore_strategy_payload")
 
 
 def test_stock_candidate_state_scopes_resolves_market_state_once_per_stock_row(monkeypatch) -> None:
@@ -435,6 +680,7 @@ def test_horizon_stats_reads_return_fields_once_per_row() -> None:
         "positive_count": 1,
         "non_positive_count": 1,
         "avg_return": -0.005,
+        "median_return": -0.005,
         "win_rate": 0.5,
     }
     assert stats["return_5d"]["available_count"] == 2

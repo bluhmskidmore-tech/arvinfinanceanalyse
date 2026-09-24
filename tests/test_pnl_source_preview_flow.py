@@ -10,6 +10,13 @@ from openpyxl import Workbook
 from backend.app.governance.settings import get_settings
 from tests.helpers import ROOT, load_module
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_source_preview,
+]
+
 NONSTD_HEADERS = [
     "账务流水号",
     "序号",
@@ -33,7 +40,6 @@ NONSTD_HEADERS = [
     "备注",
 ]
 
-
 def test_source_preview_service_summarizes_real_fi_pnl_file():
     preview_module = load_module(
         "backend.app.services.source_preview_service",
@@ -49,7 +55,6 @@ def test_source_preview_service_summarizes_real_fi_pnl_file():
     assert summary["preview_mode"] == "tabular"
     assert sum(summary["group_counts"].values()) == summary["total_rows"]
     assert "H" in summary["group_counts"]
-
 
 def test_materialize_preview_supports_pnl_and_nonstd_rows_and_traces(tmp_path, monkeypatch):
     ingest_module = sys.modules.get("backend.app.tasks.ingest")
@@ -134,7 +139,6 @@ def test_materialize_preview_supports_pnl_and_nonstd_rows_and_traces(tmp_path, m
         assert "reserved" in str(body.get("detail", "")).lower()
     get_settings.cache_clear()
 
-
 def test_mixed_family_materialize_does_not_pollute_tyw_trace_contract(tmp_path, monkeypatch):
     ingest_module = sys.modules.get("backend.app.tasks.ingest")
     if ingest_module is None:
@@ -185,7 +189,6 @@ def test_mixed_family_materialize_does_not_pollute_tyw_trace_contract(tmp_path, 
     assert "result_meta" not in body
     assert "reserved" in str(body.get("detail", "")).lower()
     get_settings.cache_clear()
-
 
 def _write_nonstd_preview_workbook(path: Path) -> None:
     workbook = Workbook()

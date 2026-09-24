@@ -118,13 +118,13 @@ function buildLedgerClient(): ApiClient {
         },
       },
     })),
-    getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+    getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
       result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates", "tr_qdb_dates"),
       result: {
         report_months: ["202512", "202511"],
       },
     })),
-    getQdbGlMonthlyAnalysisWorkbook: vi.fn(async ({ reportMonth }) => ({
+    getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(async ({ reportMonth }) => ({
       result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.workbook", "tr_qdb_workbook"),
       result: {
         report_month: reportMonth,
@@ -181,10 +181,21 @@ function renderLedgerWithRouter(initialEntry: string, client: ApiClient) {
   return router;
 }
 
+// LedgerPnlPage 的抽屉组件与 ThemedRouteBoundary 都引 antd，vitest 下会求值
+// 整个 antd barrel。多文件组合冷启动时 4 个 worker 并发抢 transform/求值，
+// 单个 hook 超时窗口可能不够，所以在模块 collection 阶段就发起预热（不
+// await），两个 beforeAll 按序等待完成，各自保持 30s 超时上限。
+const antdBarrelWarmup = import("antd");
+const ledgerPnlWarmup = antdBarrelWarmup.then(() => preloadWorkbenchRouteModules("ledger-pnl"));
+
 describe("ledger-pnl routed page smoke", () => {
   beforeAll(async () => {
-    await preloadWorkbenchRouteModules("ledger-pnl");
-  }, 20_000);
+    await antdBarrelWarmup;
+  }, 30_000);
+
+  beforeAll(async () => {
+    await ledgerPnlWarmup;
+  }, 30_000);
 
   it("renders the live /ledger-pnl workbench route", async () => {
     renderLedgerWithRouter("/ledger-pnl", buildLedgerClient());
@@ -195,7 +206,7 @@ describe("ledger-pnl routed page smoke", () => {
     });
     expect(screen.getByTestId("ledger-pnl-result-meta-panel")).toHaveTextContent("tr_ledger_dates");
     await waitFor(() => {
-      expect(screen.getByTestId("ledger-pnl-summary-cards")).toHaveTextContent("40.00");
+      expect(screen.getByTestId("ledger-pnl-summary-cards")).toHaveTextContent("35.00");
       expect(screen.getByTestId("ledger-pnl-detail-table")).toHaveTextContent("514100");
       expect(screen.getByTestId("ledger-pnl-monthly-analysis-panel")).toHaveTextContent("总账对账 + 日均分析");
       expect(screen.getByTestId("ledger-pnl-monthly-analysis-month")).toHaveTextContent("202512");

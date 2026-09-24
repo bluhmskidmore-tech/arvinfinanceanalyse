@@ -6,26 +6,20 @@ import type {
   ProductCategoryPnlRow,
   TPLMarketCorrelationPayload,
 } from "../../../api/contracts";
-import { DataSection } from "../../../components/DataSection";
+import { PageDataSection } from "../../../components/page/PageDataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { designTokens, nocturneTokens } from "../../../theme/designSystem";
 import { formatProductCategoryRowDisplayValue } from "../../product-category-pnl/pages/productCategoryPnlPageModel";
+import { numericRaw as sharedNumericRaw } from "../../../pageModel";
+import { TONE_DH_CSS_VAR } from "../../../utils/tone";
+import { EM_DASH } from "../../../utils/format";
+import { formatYi } from "./pnlAttributionViewModel";
+import "./TPLMarketChart.css";
 
-const cardStyle = {
-  padding: designTokens.space[5],
-  borderRadius: designTokens.radius.sm,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: "#ffffff",
-  boxShadow: "0 1px 2px rgba(31, 41, 55, 0.04)",
-} as const;
-
-function formatYi(value: number | null | undefined): string {
-  if (value === null || value === undefined) {
-    return "—";
-  }
-  const yi = value / 100_000_000;
-  return `${yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
-}
+// 暗色路由（theme-dh-api，Nocturne 色板）着色一律走主题感知入口：文字色用
+// TONE_DH_CSS_VAR / --dh-api-* CSS 变量，背景用 --dh-api-panel-2，禁止浅色
+// semantic/50 系直灌。
+const CORR_CARD_BG = "var(--dh-api-panel-2)";
 
 function correlationLabel(corr: number | null): {
   level: string;
@@ -35,8 +29,8 @@ function correlationLabel(corr: number | null): {
   if (corr === null) {
     return {
       level: "无数据",
-      color: designTokens.color.neutral[700],
-      bg: designTokens.color.neutral[100],
+      color: TONE_DH_CSS_VAR.neutral,
+      bg: CORR_CARD_BG,
     };
   }
   const a = Math.abs(corr);
@@ -44,33 +38,33 @@ function correlationLabel(corr: number | null): {
     return corr < 0
       ? {
           level: "强相关",
-          color: designTokens.color.semantic.profit,
-          bg: designTokens.color.success[50],
+          color: TONE_DH_CSS_VAR.positive,
+          bg: CORR_CARD_BG,
         }
       : {
           level: "强相关",
-          color: designTokens.color.semantic.loss,
-          bg: designTokens.color.danger[50],
+          color: TONE_DH_CSS_VAR.negative,
+          bg: CORR_CARD_BG,
         };
   }
   if (a >= 0.4) {
     return {
       level: "中等相关",
-      color: designTokens.color.info[600],
-      bg: designTokens.color.info[50],
+      color: "var(--dh-api-blue)",
+      bg: CORR_CARD_BG,
     };
   }
   if (a >= 0.2) {
     return {
       level: "弱相关",
-      color: designTokens.color.warning[600],
-      bg: designTokens.color.warning[50],
+      color: TONE_DH_CSS_VAR.warning,
+      bg: CORR_CARD_BG,
     };
   }
   return {
     level: "无显著相关",
-    color: designTokens.color.neutral[700],
-    bg: designTokens.color.neutral[100],
+    color: TONE_DH_CSS_VAR.neutral,
+    bg: CORR_CARD_BG,
   };
 }
 
@@ -92,7 +86,7 @@ function numericRaw(value: Numeric | number | null | undefined): number | null {
     return value;
   }
   if (value && typeof value === "object") {
-    return value.raw;
+    return sharedNumericRaw(value);
   }
   return null;
 }
@@ -110,20 +104,39 @@ function productCategoryYi(
   value: DecimalLike | null | undefined,
 ): string {
   if (!row) {
-    return "—";
+    return EM_DASH;
   }
   const display = formatProductCategoryRowDisplayValue(row, value);
-  return display === "-" ? "—" : display;
+  return display === "-" ? EM_DASH : display;
 }
 
-function valueTone(value: DecimalLike | null | undefined): string {
+function valueDirection(
+  value: DecimalLike | null | undefined,
+): "positive" | "negative" | "neutral" {
   const raw = decimalLikeRaw(value);
   if (raw === null) {
-    return designTokens.color.neutral[700];
+    return "neutral";
   }
-  return raw >= 0
-    ? designTokens.color.semantic.profit
-    : designTokens.color.semantic.loss;
+  return raw >= 0 ? "positive" : "negative";
+}
+
+function signedDirection(
+  raw: number | null | undefined,
+): "positive" | "negative" | "neutral" {
+  if (raw === null || raw === undefined) {
+    return "neutral";
+  }
+  return raw >= 0 ? "positive" : "negative";
+}
+
+/** Rate-down is favorable (profit tone) for bond context. */
+function rateMoveDirection(
+  raw: number | null | undefined,
+): "positive" | "negative" | "neutral" {
+  if (raw === null || raw === undefined) {
+    return "neutral";
+  }
+  return raw <= 0 ? "positive" : "negative";
 }
 
 /** Legacy payloads may expose BP total under `treasury_10y_total_change`. */
@@ -156,20 +169,29 @@ export function TPLMarketChart({
     const periods = data.data_points.map((p) =>
       p.period_label.replace("年", "-").replace("月", ""),
     );
-    const tpl = data.data_points.map(
-      (p) => (p.tpl_fair_value_change.raw ?? 0) / 100_000_000,
-    );
+    // 缺失公允价值变动传 null，ECharts 留空不画 0 值柱。
+    const tpl = data.data_points.map((p) => {
+      const raw = numericRaw(p.tpl_fair_value_change);
+      return raw === null ? null : raw / 100_000_000;
+    });
     const bp = data.data_points.map((p) => p.treasury_10y_change?.raw ?? null);
+    // ECharts canvas 读不到 CSS 变量，按 tone.ts 指南使用 Nocturne TS 镜像 token。
     return {
       tooltip: { trigger: "axis" },
-      legend: { bottom: 0, textStyle: { fontSize: designTokens.fontSize[12] } },
+      legend: {
+        bottom: 0,
+        textStyle: {
+          fontSize: designTokens.fontSize[12],
+          color: nocturneTokens.color.inkSoft,
+        },
+      },
       grid: { left: 56, right: 56, top: 28, bottom: 52 },
       xAxis: {
         type: "category",
         data: periods,
         axisLabel: {
           fontSize: designTokens.fontSize[11],
-          color: designTokens.color.neutral[700],
+          color: nocturneTokens.color.inkSoft,
         },
       },
       yAxis: [
@@ -178,12 +200,12 @@ export function TPLMarketChart({
           name: "FVTPL(亿)",
           axisLabel: {
             formatter: (v: number) => `${v.toFixed(1)}`,
-            color: designTokens.color.neutral[700],
+            color: nocturneTokens.color.inkSoft,
           },
           splitLine: {
             lineStyle: {
               type: "dashed",
-              color: designTokens.color.neutral[100],
+              color: nocturneTokens.color.lineSoft,
             },
           },
         },
@@ -192,7 +214,7 @@ export function TPLMarketChart({
           name: "BP",
           axisLabel: {
             formatter: (v: number) => `${v}`,
-            color: designTokens.color.neutral[700],
+            color: nocturneTokens.color.inkSoft,
           },
           splitLine: { show: false },
         },
@@ -204,7 +226,7 @@ export function TPLMarketChart({
           yAxisIndex: 0,
           data: tpl,
           itemStyle: {
-            color: designTokens.color.info[500],
+            color: nocturneTokens.color.blue,
             borderRadius: [
               designTokens.radius.sm,
               designTokens.radius.sm,
@@ -220,7 +242,7 @@ export function TPLMarketChart({
           data: bp,
           smooth: false,
           symbolSize: 8,
-          lineStyle: { color: designTokens.color.danger[400], width: 2 },
+          lineStyle: { color: nocturneTokens.color.red, width: 2 },
         },
       ],
     };
@@ -242,349 +264,125 @@ export function TPLMarketChart({
   const hasMissingMarketData =
     data?.data_points?.some(
       (point) =>
-        point.treasury_10y === null ||
-        point.treasury_10y_change === null ||
-        point.dr007 === null,
+        point.treasury_10y?.raw == null ||
+        point.treasury_10y_change?.raw == null ||
+        point.dr007?.raw == null,
     ) ?? false;
 
   return (
-    <DataSection title="FVTPL 公允价值变动 vs 10Y" state={state} onRetry={onRetry}>
+    <PageDataSection title="FVTPL 公允价值变动 vs 10Y" state={state} onRetry={onRetry}>
       {data ? (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: designTokens.space[5],
-          }}
-        >
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-              gap: designTokens.space[4],
-            }}
-          >
+        <div className="tpl-market-chart">
+          <div className="tpl-market-chart__metric-grid">
             <div
-              style={{
-                ...cardStyle,
-                padding: designTokens.space[4],
-                background: corr.bg,
-              }}
+              className="tpl-market-chart__card tpl-market-chart__card--compact"
+              style={{ background: corr.bg }}
             >
-              <div
-                style={{
-                  fontSize: designTokens.fontSize[12],
-                  color: designTokens.color.neutral[700],
-                  marginBottom: designTokens.space[1],
-                }}
-              >
-                相关系数
+              <div className="tpl-market-chart__label">相关系数</div>
+              <div className="tpl-market-chart__value" style={{ color: corr.color }}>
+                {data.correlation_coefficient?.raw != null
+                  ? data.correlation_coefficient.raw.toFixed(3)
+                  : EM_DASH}
               </div>
-              <div
-                style={{
-                  fontSize: designTokens.fontSize[24],
-                  fontWeight: 700,
-                  color: corr.color,
-                  ...tabularNumsStyle,
-                }}
-              >
-                {data.correlation_coefficient !== null
-                  ? (data.correlation_coefficient.raw ?? 0).toFixed(3)
-                  : "—"}
-              </div>
-              <div
-                style={{
-                  fontSize: designTokens.fontSize[12],
-                  color: corr.color,
-                }}
-              >
+              <div className="tpl-market-chart__meta" style={{ color: corr.color }}>
                 {corr.level}
               </div>
             </div>
-            <div style={{ ...cardStyle, padding: designTokens.space[4] }}>
+            <div className="tpl-market-chart__card tpl-market-chart__card--compact">
+              <div className="tpl-market-chart__label">累计 FVTPL 公允价值变动</div>
               <div
-                style={{
-                  fontSize: designTokens.fontSize[12],
-                  color: designTokens.color.neutral[700],
-                  marginBottom: designTokens.space[1],
-                }}
-              >
-                累计 FVTPL 公允价值变动
-              </div>
-              <div
-                style={{
-                  fontSize: designTokens.fontSize[18],
-                  fontWeight: 700,
-                  color:
-                    (data.total_tpl_fv_change.raw ?? 0) >= 0
-                      ? designTokens.color.semantic.profit
-                      : designTokens.color.semantic.loss,
-                  ...tabularNumsStyle,
-                }}
+                className="tpl-market-chart__value tpl-market-chart__value--medium"
+                data-direction={signedDirection(data.total_tpl_fv_change.raw)}
               >
                 {formatYi(data.total_tpl_fv_change.raw ?? undefined)}
               </div>
             </div>
-            <div style={{ ...cardStyle, padding: designTokens.space[4] }}>
+            <div className="tpl-market-chart__card tpl-market-chart__card--compact">
+              <div className="tpl-market-chart__label">累计国债收益率变动</div>
               <div
-                style={{
-                  fontSize: designTokens.fontSize[12],
-                  color: designTokens.color.neutral[700],
-                  marginBottom: designTokens.space[1],
-                }}
-              >
-                累计国债收益率变动
-              </div>
-              <div
-                style={{
-                  fontSize: designTokens.fontSize[18],
-                  fontWeight: 700,
-                  color:
-                    (treasuryBpTotal ?? 0) <= 0
-                      ? designTokens.color.semantic.profit
-                      : designTokens.color.semantic.loss,
-                  ...tabularNumsStyle,
-                }}
+                className="tpl-market-chart__value tpl-market-chart__value--medium"
+                data-direction={rateMoveDirection(treasuryBpTotal)}
               >
                 {treasuryBpTotal !== null
                   ? `${treasuryBpTotal >= 0 ? "+" : ""}${treasuryBpTotal.toFixed(1)} BP`
-                  : "—"}
+                  : EM_DASH}
               </div>
             </div>
-            <div style={{ ...cardStyle, padding: designTokens.space[4] }}>
+            <div className="tpl-market-chart__card tpl-market-chart__card--compact">
+              <div className="tpl-market-chart__label">分析期间</div>
               <div
-                style={{
-                  fontSize: designTokens.fontSize[12],
-                  color: designTokens.color.neutral[700],
-                  marginBottom: designTokens.space[1],
-                }}
-              >
-                分析期间
-              </div>
-              <div
-                style={{
-                  fontSize: designTokens.fontSize[18],
-                  fontWeight: 700,
-                  color: designTokens.color.neutral[900],
-                  ...tabularNumsStyle,
-                }}
+                className="tpl-market-chart__value tpl-market-chart__value--medium"
+                data-direction="neutral"
               >
                 {data.num_periods} 个月
               </div>
-              <div
-                style={{
-                  fontSize: designTokens.fontSize[12],
-                  color: designTokens.color.neutral[500],
-                }}
-              >
+              <div className="tpl-market-chart__meta">
                 {data.start_period} ~ {data.end_period}
               </div>
             </div>
           </div>
 
-          <div style={cardStyle}>
-            <h4
-              style={{
-                margin: `0 0 ${designTokens.space[2]}px`,
-                fontSize: designTokens.fontSize[16],
-                fontWeight: 600,
-                color: designTokens.color.neutral[900],
-              }}
-            >
+          <div className="tpl-market-chart__card">
+            <h4 className="tpl-market-chart__section-title tpl-market-chart__section-title--tight">
               相关性解读
             </h4>
-            <p
-              style={{
-                margin: 0,
-                fontSize: designTokens.fontSize[14],
-                color: designTokens.color.neutral[700],
-                lineHeight: designTokens.lineHeight.normal,
-              }}
-            >
-              {data.correlation_interpretation}
-            </p>
+            <p className="tpl-market-chart__body">{data.correlation_interpretation}</p>
             {data.analysis_summary ? (
-              <p
-                style={{
-                  margin: `${designTokens.space[3]}px 0 0`,
-                  fontSize: designTokens.fontSize[13],
-                  color: designTokens.color.neutral[500],
-                }}
-              >
-                {data.analysis_summary}
-              </p>
+              <p className="tpl-market-chart__summary">{data.analysis_summary}</p>
             ) : null}
           </div>
 
           {chartOption && (
-            <div style={cardStyle}>
-              <h3
-                style={{
-                  margin: `0 0 ${designTokens.space[4]}px`,
-                  fontSize: designTokens.fontSize[16],
-                  fontWeight: 600,
-                  color: designTokens.color.neutral[900],
-                }}
-              >
+            <div className="tpl-market-chart__card">
+              <h3 className="tpl-market-chart__section-title tpl-market-chart__section-title--spaced">
                 FVTPL 公允价值变动 vs 国债收益率变动
               </h3>
               <ReactECharts
                 option={chartOption}
-                style={{ height: 360 }}
+                className="tpl-market-chart__chart"
                 notMerge
                 lazyUpdate
               />
-              <p
-                style={{
-                  margin: `${designTokens.space[3]}px 0 0`,
-                  fontSize: designTokens.fontSize[12],
-                  color: designTokens.color.neutral[500],
-                  textAlign: "center",
-                }}
-              >
+              <p className="tpl-market-chart__caption">
                 蓝柱仅解释 FVTPL 公允价值变动；下方 TPL 规模 / 损益来自产品分类正式读模型。
               </p>
             </div>
           )}
 
-          <div style={cardStyle}>
-            <h3
-              style={{
-                margin: `0 0 ${designTokens.space[3]}px`,
-                fontSize: designTokens.fontSize[16],
-                fontWeight: 600,
-                color: designTokens.color.neutral[900],
-              }}
-            >
-              月度明细
-            </h3>
-            <p
-              style={{
-                margin: `0 0 ${designTokens.space[3]}px`,
-                fontSize: designTokens.fontSize[12],
-                color: designTokens.color.neutral[600],
-              }}
-            >
+          <div className="tpl-market-chart__card">
+            <h3 className="tpl-market-chart__section-title">月度明细</h3>
+            <p className="tpl-market-chart__note">
               TPL 规模、TPL 损益、营业净收入取自 /ui/pnl/product-category 的 bond_tpl
               行；10Y、利率变动、DR007 取自 /api/pnl-attribution/tpl-market。
             </p>
             {hasMissingProductCategoryTpl ? (
               <div
                 data-testid="tpl-market-product-category-missing"
-                style={{
-                  marginBottom: designTokens.space[3],
-                  padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                  borderRadius: designTokens.radius.sm,
-                  background: designTokens.color.warning[50],
-                  color: designTokens.color.warning[700],
-                  fontSize: designTokens.fontSize[12],
-                }}
+                className="tpl-market-chart__warn"
               >
                 部分月份缺少产品分类 bond_tpl 行，TPL 规模 / 损益 / 营业净收入显示为
                 —，未回退到 FVTPL 市场值。
               </div>
             ) : null}
             {hasMissingMarketData ? (
-              <div
-                data-testid="tpl-market-data-missing"
-                style={{
-                  marginBottom: designTokens.space[3],
-                  padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                  borderRadius: designTokens.radius.sm,
-                  background: designTokens.color.warning[50],
-                  color: designTokens.color.warning[700],
-                  fontSize: designTokens.fontSize[12],
-                }}
-              >
+              <div data-testid="tpl-market-data-missing" className="tpl-market-chart__warn">
                 部分月份缺少 10Y / 利率变动 / DR007，表格显示为 —，图表断点显示且不补 0。
               </div>
             ) : null}
-            <div style={{ overflow: "auto", maxHeight: 320 }}>
+            <div className="tpl-market-chart__table-wrap">
               <table
                 data-testid="tpl-market-monthly-detail"
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: designTokens.fontSize[13],
-                }}
+                className="tpl-market-chart__table"
               >
-                <thead
-                  style={{
-                    position: "sticky",
-                    top: 0,
-                    background: designTokens.color.neutral[100],
-                  }}
-                >
+                <thead>
                   <tr>
-                    <th
-                      style={{
-                        textAlign: "left",
-                        padding: designTokens.space[3],
-                        borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
-                      }}
-                    >
-                      月份
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "right",
-                        padding: designTokens.space[3],
-                        borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
-                        ...tabularNumsStyle,
-                      }}
-                    >
-                      TPL 规模(亿)
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "right",
-                        padding: designTokens.space[3],
-                        borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
-                        ...tabularNumsStyle,
-                      }}
-                    >
-                      TPL 损益(亿)
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "right",
-                        padding: designTokens.space[3],
-                        borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
-                        ...tabularNumsStyle,
-                      }}
-                    >
-                      营业净收入(亿)
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "right",
-                        padding: designTokens.space[3],
-                        borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
-                        ...tabularNumsStyle,
-                      }}
-                    >
-                      10Y(%)
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "right",
-                        padding: designTokens.space[3],
-                        borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
-                        ...tabularNumsStyle,
-                      }}
-                    >
-                      利率变动(BP)
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "right",
-                        padding: designTokens.space[3],
-                        borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
-                        ...tabularNumsStyle,
-                      }}
-                    >
-                      DR007(%)
-                    </th>
+                    <th>月份</th>
+                    <th data-align="right">TPL 规模(亿)</th>
+                    <th data-align="right">TPL 损益(亿)</th>
+                    <th data-align="right">营业净收入(亿)</th>
+                    <th data-align="right">10Y(%)</th>
+                    <th data-align="right">利率变动(BP)</th>
+                    <th data-align="right">DR007(%)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -595,79 +393,43 @@ export function TPLMarketChart({
                       <tr
                         key={point.period || idx}
                         data-testid={`tpl-market-monthly-row-${point.period}`}
-                        style={{
-                          borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
-                        }}
                       >
-                        <td style={{ padding: designTokens.space[3] }}>
-                          {point.period_label}
-                        </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: designTokens.space[3],
-                            ...tabularNumsStyle,
-                          }}
-                        >
+                        <td>{point.period_label}</td>
+                        <td data-align="right">
                           {productCategoryYi(productCategoryTpl, productCategoryTpl?.cnx_scale)}
                         </td>
                         <td
-                          style={{
-                            textAlign: "right",
-                            padding: designTokens.space[3],
-                            color: valueTone(productCategoryTpl?.cnx_cash),
-                            ...tabularNumsStyle,
-                          }}
+                          data-align="right"
+                          data-direction={valueDirection(productCategoryTpl?.cnx_cash)}
                         >
                           {productCategoryYi(productCategoryTpl, productCategoryTpl?.cnx_cash)}
                         </td>
                         <td
-                          style={{
-                            textAlign: "right",
-                            padding: designTokens.space[3],
-                            color: valueTone(productCategoryTpl?.business_net_income),
-                            ...tabularNumsStyle,
-                          }}
+                          data-align="right"
+                          data-direction={valueDirection(
+                            productCategoryTpl?.business_net_income,
+                          )}
                         >
                           {productCategoryYi(
                             productCategoryTpl,
                             productCategoryTpl?.business_net_income,
                           )}
                         </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: designTokens.space[3],
-                            ...tabularNumsStyle,
-                          }}
-                        >
+                        <td data-align="right">
                           {point.treasury_10y !== null
                             ? point.treasury_10y.display
-                            : "—"}
+                            : EM_DASH}
                         </td>
                         <td
-                          style={{
-                            textAlign: "right",
-                            padding: designTokens.space[3],
-                            color:
-                              (point.treasury_10y_change?.raw ?? 0) <= 0
-                                ? designTokens.color.semantic.profit
-                                : designTokens.color.semantic.loss,
-                            ...tabularNumsStyle,
-                          }}
+                          data-align="right"
+                          data-direction={rateMoveDirection(point.treasury_10y_change?.raw)}
                         >
-                          {point.treasury_10y_change !== null
-                            ? `${(point.treasury_10y_change.raw ?? 0) >= 0 ? "+" : ""}${(point.treasury_10y_change.raw ?? 0).toFixed(1)}`
-                            : "—"}
+                          {point.treasury_10y_change?.raw != null
+                            ? `${point.treasury_10y_change.raw >= 0 ? "+" : ""}${point.treasury_10y_change.raw.toFixed(1)}`
+                            : EM_DASH}
                         </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: designTokens.space[3],
-                            ...tabularNumsStyle,
-                          }}
-                        >
-                          {point.dr007 !== null ? point.dr007.display : "—"}
+                        <td data-align="right">
+                          {point.dr007 !== null ? point.dr007.display : EM_DASH}
                         </td>
                       </tr>
                     );
@@ -678,6 +440,6 @@ export function TPLMarketChart({
           </div>
         </div>
       ) : null}
-    </DataSection>
+    </PageDataSection>
   );
 }

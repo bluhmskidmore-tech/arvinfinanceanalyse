@@ -1,0 +1,675 @@
+:root {
+  color-scheme: light;
+
+  /*
+   * CSS bridge aligned with designSystem.ts.
+   * Literal token values should mirror the TS source; semantic aliases below point back to primitives.
+   */
+  --moss-color-primary-50: #e8f1fb;
+  --moss-color-primary-100: #d0e3f6;
+  --moss-color-primary-200: #a8c9ec;
+  --moss-color-primary-300: #79a7de;
+  --moss-color-primary-400: #4d84cc;
+  --moss-color-primary-500: #2f68b8;
+  --moss-color-primary-600: #1850a1;
+  --moss-color-primary-700: #144287;
+  --moss-color-primary-800: #10356a;
+  --moss-color-primary-900: #0c2a54;
+
+  --moss-color-info-50: #eff6ff;
+  --moss-color-info-100: #dbeafe;
+  --moss-color-info-200: #bfdbfe;
+  --moss-color-info-300: #93c5fd;
+  --moss-color-info-400: #60a5fa;
+  --moss-color-info-500: #3b82f6;
+  --moss-color-info-600: #2563eb;
+  --moss-color-info-700: #1d4ed8;
+  --moss-color-info-800: #1e40af;
+  --moss-color-info-900: #1e3a8a;
+
+  --moss-color-success-50: #ecf8f2;
+  --moss-color-success-100: #d5efe0;
+  --moss-color-success-200: #aedfc8;
+  --moss-color-success-300: #7fc8a4;
+  --moss-color-success-400: #52ad84;
+  --moss-color-success-500: #2d8a5e;
+  --moss-color-success-600: #25714d;
+  --moss-color-success-700: #1d5c40;
+  --moss-color-success-800: #174833;
+  --moss-color-success-900: #123828;
+
+  --moss-color-warning-50: #fff9eb;
+  --moss-color-warning-100: #fef0d4;
+  --moss-color-warning-200: #fde0a8;
+  --moss-color-warning-300: #fbc874;
+  --moss-color-warning-400: #f8a93a;
+  --moss-color-warning-500: #d97706;
+  --moss-color-warning-600: #b35c05;
+  --moss-color-warning-700: #8f4708;
+  --moss-color-warning-800: #713a0c;
+  --moss-color-warning-900: #5c300e;
+
+  --moss-color-danger-50: #fef2f2;
+  --moss-color-danger-100: #fee2e2;
+  --moss-color-danger-200: #fecaca;
+  --moss-color-danger-300: #fca5a5;
+  --moss-color-danger-400: #f87171;
+  --moss-color-danger-500: #ef4444;
+  --moss-color-danger-600: #dc2626;
+  --moss-color-danger-700: #b91c1c;
+  --moss-color-danger-800: #991b1b;
+  --moss-color-danger-900: #7f1d1d;
+
+  --moss-color-neutral-50: #f5f7f9;
+  --moss-color-neutral-100: #eceff3;
+  --moss-color-neutral-200: #e2e6ec;
+  --moss-color-neutral-300: #d1d5db;
+  --moss-color-neutral-400: #9ca3af;
+  --moss-color-neutral-500: #8b95a1;
+  --moss-color-neutral-600: #6b7280;
+  --moss-color-neutral-700: #4b5563;
+  --moss-color-neutral-800: #374151;
+  --moss-color-neutral-900: #1f2937;
+
+  --moss-color-warm-porcelain: #f6f1e8;
+  --moss-color-warm-paper: #fffdf8;
+  --moss-color-warm-stone: #e4d8c8;
+  --moss-color-warm-taupe: #b8a38f;
+  --moss-color-warm-charcoal: #342b27;
+  --moss-color-warm-ink: #2f2824;
+  --moss-color-warm-terracotta: #b85c38;
+  --moss-color-warm-sage: #708c74;
+  --moss-color-warm-burgundy: #7c3e46;
+  --moss-color-warm-slate-blue: #667a96;
+  --moss-color-warm-rail: #f0e6d8;
+
+  /* IB light restyle — canonical palette (see ibTokens in designSystem.ts) */
+  --ib-paper: #f4f3f0;
+  --ib-surface: #ffffff;
+  --ib-surface-muted: #f7f6f3;
+  --ib-hairline: #e2e0da;
+  --ib-rule-strong: #16191d;
+  --ib-ink: #16191d;
+  --ib-ink-secondary: #5c6370;
+  --ib-ink-muted: #8a8f98;
+  --ib-accent: #14366b;
+  --ib-accent-hover: #1d4685;
+  --ib-accent-surface: #eef2f8;
+  --ib-up: #1f7a4d;
+  --ib-down: #b42318;
+  --ib-warn: #b54708;
+  --ib-rail-bg: #10161f;
+  --ib-rail-border: #0a0f16;
+  --ib-rail-text: #9aa3b0;
+  --ib-rail-text-active: #f5f6f8;
+  --ib-rail-active-bar: #c9a85c;
+  --ib-rail-active-bg: #1a2230;
+  --ib-rail-section-label: #6b7480;
+  --ib-gold: #c9a85c;
+  --ib-serif: Georgia, "Times New Roman", "Noto Serif SC", "Source Han Serif SC", "SimSun", serif;
+  --ib-kicker-font-size: 11px;
+  --ib-kicker-letter-spacing: 0.08em;
+  --ib-radius: 2px;
+  --ib-shadow: 0 1px 2px rgba(16, 24, 29, 0.05);
+
+  --moss-institutional-bg: var(--ib-paper);
+  --moss-institutional-bg-deep: var(--ib-paper);
+  --moss-institutional-surface: var(--ib-surface);
+  --moss-institutional-surface-raised: var(--ib-surface);
+  --moss-institutional-surface-muted: var(--ib-surface-muted);
+  --moss-institutional-border: var(--ib-hairline);
+  --moss-institutional-border-strong: var(--ib-rule-strong);
+  --moss-institutional-divider: var(--ib-hairline);
+  --moss-institutional-row-stripe: var(--ib-surface-muted);
+  --moss-institutional-row-hover: var(--ib-surface-muted);
+  --moss-institutional-text: var(--ib-ink);
+  --moss-institutional-text-muted: var(--ib-ink-secondary);
+  --moss-institutional-rail-top: var(--ib-rail-bg);
+  --moss-institutional-rail-bottom: var(--ib-rail-bg);
+  --moss-institutional-rail-edge: var(--ib-rail-border);
+  --moss-institutional-accent-gold: var(--ib-gold);
+  --moss-institutional-accent-cyan: var(--ib-accent);
+  --moss-institutional-focus-ring: rgba(20, 54, 107, 0.28);
+
+  --moss-space-1: 4px;
+  --moss-space-2: 8px;
+  --moss-space-3: 12px;
+  --moss-space-4: 16px;
+  --moss-space-5: 20px;
+  --moss-space-6: 24px;
+  --moss-space-7: 32px;
+  --moss-space-8: 40px;
+  --moss-space-9: 48px;
+  --moss-space-10: 64px;
+
+  --moss-radius-sm: 2px;
+  --moss-radius-md: 12px;
+  --moss-radius-lg: 18px;
+  --moss-radius-xl: 24px;
+
+  --moss-shadow-card: 0 1px 2px rgba(16, 24, 29, 0.05);
+  --moss-shadow-panel: 0 1px 2px rgba(16, 24, 29, 0.05);
+  --moss-shadow-popover: 0 1px 2px rgba(16, 24, 29, 0.05);
+  --moss-shadow-modal: 0 1px 2px rgba(16, 24, 29, 0.05);
+  --moss-shadow-rail: none;
+
+  --moss-motion-duration-fast: 150ms;
+  --moss-motion-duration-base: 200ms;
+  --moss-motion-duration-slow: 280ms;
+  --moss-motion-ease-out: cubic-bezier(0.33, 1, 0.68, 1);
+  --moss-motion-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --moss-motion-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+
+  --moss-font-sans: "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --moss-font-mono: ui-monospace, "Cascadia Mono", "Microsoft YaHei UI", Menlo, Monaco, Consolas, monospace;
+  --moss-font-serif: Georgia, "Times New Roman", "Noto Serif SC", "Source Han Serif SC", "SimSun", serif;
+
+  /* Semantic aliases */
+  --moss-color-surface-base: var(--moss-institutional-bg);
+  --moss-color-card-bg: var(--moss-institutional-surface-raised);
+  --moss-color-border-default: var(--moss-institutional-border);
+
+  color: var(--moss-color-neutral-900);
+  background: var(--moss-color-neutral-50);
+
+  --moss-color-text-primary: var(--moss-color-neutral-900);
+  --moss-color-text-secondary: var(--moss-color-neutral-600);
+  --moss-color-text-muted: var(--moss-color-neutral-500);
+  --moss-color-link: var(--moss-color-info-500);
+
+  --moss-color-primary-rgb: 20, 54, 107;
+  --moss-color-success-rgb: 31, 122, 77;
+  --moss-border-hover: color-mix(in srgb, var(--moss-color-neutral-300) 60%, var(--moss-color-info-300));
+  --moss-shell-rail-bg: var(--ib-rail-bg);
+  --moss-shell-rail-bg-stack: var(--ib-rail-bg);
+  --moss-institutional-rail-bg: var(--ib-rail-bg);
+  --moss-shell-rail-border: var(--ib-rail-border);
+  --moss-shell-rail-surface: transparent;
+  --moss-shell-rail-text: var(--ib-rail-text);
+  --moss-shell-rail-text-muted: var(--ib-rail-section-label);
+  --moss-shell-rail-active-bg: var(--ib-rail-active-bg);
+  --moss-shell-rail-active-border: var(--ib-rail-active-bar);
+  --moss-shell-rail-mark-glow: transparent;
+  --moss-shell-terminal-bg: var(--ib-surface);
+  --moss-shell-terminal-border: var(--ib-hairline);
+  --moss-shell-pulse-bg: var(--ib-surface);
+  --moss-shell-pulse-border: var(--ib-hairline);
+  --moss-shell-paper-bg: var(--ib-surface);
+  --moss-shell-paper-shade: transparent;
+  --moss-shadow-institutional-active: inset 2px 0 0 var(--moss-institutional-accent-gold);
+
+  font-family: var(--moss-font-sans);
+  line-height: 1.5;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "kern" 1, "liga" 1;
+  --moss-shell-gap: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/*
+ * Legacy dh-api steel-blue compatibility baseline.
+ * `theme-dh-api` establishes dark semantic aliases and the fallback for
+ * unregistered scopes / explicit exceptions. The 37 registered canonical
+ * scopes override it with Nocturne below; feature CSS consumes the aliases
+ * rather than copying these literals.
+ */
+.theme-dh-api,
+.workbench-shell-grid--cockpit:has(.theme-dh-api),
+.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api),
+.market-data-overview-board[data-variant="data-overview"] {
+  --dh-api-bg: #070a12;
+  --dh-api-rail: #0a1019;
+  --dh-api-panel: #0c1421;
+  --dh-api-panel-2: #101a2a;
+  --dh-api-panel-3: #132033;
+  --dh-api-line: rgba(103, 119, 142, 0.34);
+  --dh-api-line-soft: rgba(103, 119, 142, 0.22);
+  --dh-api-ink: #e8eef7;
+  --dh-api-soft: #a9b6c7;
+  --dh-api-muted: #8593a8;
+  --dh-api-ink-soft: var(--dh-api-soft);
+  --dh-api-ink-muted: var(--dh-api-muted);
+  --dh-api-blue: #72a7dc;
+  --dh-api-green: #66b98b;
+  --dh-api-amber: #c9a565;
+  --dh-api-gold: var(--dh-api-amber);
+  --dh-api-red: #d47a72;
+  --dh-api-blue-soft: rgba(114, 167, 220, 0.12);
+  --dh-api-green-soft: rgba(102, 185, 139, 0.12);
+  --dh-api-amber-soft: rgba(201, 165, 101, 0.13);
+  --dh-api-red-soft: rgba(212, 122, 114, 0.13);
+  --dh-api-radius: 6px;
+}
+
+.theme-dh-api,
+.workbench-shell-grid--cockpit:has(.theme-dh-api),
+.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) {
+  color-scheme: dark;
+}
+
+.themed-route-boundary.theme-dh-api,
+.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) {
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line);
+  --ib-rule-strong: var(--dh-api-line);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-hover: #8bb7e4;
+  --ib-accent-surface: var(--dh-api-blue-soft);
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
+  --ib-warn: var(--dh-api-amber);
+  --ib-rail-bg: var(--dh-api-rail);
+  --ib-rail-border: var(--dh-api-line-soft);
+  --ib-rail-text: var(--dh-api-soft);
+  --ib-rail-text-active: var(--dh-api-ink);
+  --ib-rail-active-bar: var(--dh-api-amber);
+  --ib-rail-active-bg: rgba(16, 26, 42, 0.88);
+  --ib-rail-section-label: var(--dh-api-muted);
+  --ib-gold: var(--dh-api-amber);
+
+  --moss-institutional-bg: var(--dh-api-bg);
+  --moss-institutional-bg-deep: var(--dh-api-bg);
+  --moss-institutional-surface: var(--dh-api-panel);
+  --moss-institutional-surface-raised: var(--dh-api-panel);
+  --moss-institutional-surface-muted: var(--dh-api-panel-2);
+  --moss-institutional-border: var(--dh-api-line);
+  --moss-institutional-border-strong: var(--dh-api-line);
+  --moss-institutional-divider: var(--dh-api-line-soft);
+  --moss-institutional-row-stripe: rgba(255, 255, 255, 0.01);
+  --moss-institutional-row-hover: rgba(114, 167, 220, 0.08);
+  --moss-institutional-text: var(--dh-api-ink);
+  --moss-institutional-text-muted: var(--dh-api-soft);
+  --moss-institutional-rail-top: var(--dh-api-rail);
+  --moss-institutional-rail-bottom: var(--dh-api-rail);
+  --moss-institutional-rail-edge: var(--dh-api-line-soft);
+  --moss-institutional-accent-gold: var(--dh-api-amber);
+  --moss-institutional-accent-cyan: var(--dh-api-blue);
+  --moss-institutional-focus-ring: rgba(114, 167, 220, 0.34);
+
+  --moss-color-surface-base: var(--dh-api-bg);
+  --moss-color-card-bg: var(--dh-api-panel);
+  --moss-color-border-default: var(--dh-api-line);
+  --moss-color-text-primary: var(--dh-api-ink);
+  --moss-color-text-secondary: var(--dh-api-soft);
+  --moss-color-text-muted: var(--dh-api-muted);
+  --moss-color-link: var(--dh-api-blue);
+  --moss-color-primary-rgb: 114, 167, 220;
+  --moss-color-success-rgb: 102, 185, 139;
+  --moss-border-hover: color-mix(in srgb, var(--dh-api-blue) 42%, var(--dh-api-line) 58%);
+  --moss-shell-rail-bg: var(--dh-api-rail);
+  --moss-shell-rail-bg-stack: var(--dh-api-rail);
+  --moss-shell-rail-border: var(--dh-api-line-soft);
+  --moss-shell-rail-surface: transparent;
+  --moss-shell-rail-text: var(--dh-api-soft);
+  --moss-shell-rail-text-muted: var(--dh-api-muted);
+  --moss-shell-rail-active-bg:
+    linear-gradient(90deg, rgba(201, 165, 101, 0.16), rgba(114, 167, 220, 0.08)),
+    rgba(16, 26, 42, 0.88);
+  --moss-shell-rail-active-border: var(--dh-api-amber);
+  --moss-shell-rail-mark-glow: transparent;
+  --moss-shell-terminal-bg:
+    linear-gradient(180deg, rgba(16, 26, 42, 0.94), rgba(10, 16, 25, 0.94));
+  --moss-shell-terminal-border: var(--dh-api-line);
+  --moss-shell-pulse-bg: var(--dh-api-panel);
+  --moss-shell-pulse-border: var(--dh-api-line);
+  --moss-shell-paper-bg:
+    linear-gradient(180deg, rgba(16, 26, 42, 0.96) 0%, rgba(12, 20, 33, 0.98) 100%);
+  --moss-shell-paper-shade:
+    radial-gradient(circle at top right, rgba(114, 167, 220, 0.09), transparent 48%);
+  --moss-shadow-card: none;
+  --moss-shadow-panel: none;
+  --moss-shadow-popover: 0 18px 32px rgba(0, 0, 0, 0.24);
+  --moss-shadow-modal: 0 22px 44px rgba(0, 0, 0, 0.28);
+  --moss-shadow-rail: none;
+  --moss-shadow-institutional-active: inset 3px 0 0 rgba(201, 165, 101, 0.84);
+
+  min-height: 100%;
+  color: var(--dh-api-ink);
+  background: var(--dh-api-bg);
+}
+
+/*
+ * Canonical Nocturne palette for all 37 registered scopes.
+ * The exact list is mirrored by themeScopes.ts and locked by theme.test.ts.
+ * CSS consumers use this block through --dh-api-* aliases; designSystem.ts
+ * mirrors the values as nocturneTokens for AntD cssinjs / canvas consumers,
+ * and workbenchTheme now uses that mirror. Nocturne is therefore not only a
+ * CSS remap. The legacy steel-blue block above remains fallback / explicit
+ * exception infrastructure, not the current default. Keep this block after
+ * .theme-dh-api so same-element aliases resolve to Nocturne by source order.
+ */
+[data-moss-theme-scope="dashboard-home"],
+[data-moss-theme-scope="macro-toolkit"],
+[data-moss-theme-scope="ledger-pnl"],
+[data-moss-theme-scope="average-balance"],
+[data-moss-theme-scope="positions"],
+[data-moss-theme-scope="bond-dashboard"],
+[data-moss-theme-scope="liability-analytics"],
+[data-moss-theme-scope="bank-ledger-dashboard"],
+[data-moss-theme-scope="portfolio-home"],
+[data-moss-theme-scope="market-overview"],
+[data-moss-theme-scope="market-data"],
+[data-moss-theme-scope="stock-analysis"],
+[data-moss-theme-scope="risk-overview"],
+[data-moss-theme-scope="pnl-by-business"],
+[data-moss-theme-scope="pnl-attribution"],
+[data-moss-theme-scope="pnl-by-business-insights"],
+[data-moss-theme-scope="bond-analysis"],
+[data-moss-theme-scope="module-workbench-home"],
+[data-moss-theme-scope="risk-tensor"],
+[data-moss-theme-scope="concentration-monitor"],
+[data-moss-theme-scope="cashflow-projection"],
+[data-moss-theme-scope="operations-analysis"],
+[data-moss-theme-scope="market-finance"],
+[data-moss-theme-scope="balance-analysis"],
+[data-moss-theme-scope="balance-movement-analysis"],
+[data-moss-theme-scope="decision-items"],
+[data-moss-theme-scope="pnl"],
+[data-moss-theme-scope="pnl-bridge"],
+[data-moss-theme-scope="product-category-pnl"],
+[data-moss-theme-scope="bond-trading-desk"],
+[data-moss-theme-scope="cross-asset"],
+[data-moss-theme-scope="cube-query"],
+[data-moss-theme-scope="news-events"],
+[data-moss-theme-scope="kpi"],
+[data-moss-theme-scope="team-performance"],
+[data-moss-theme-scope="platform-config"],
+[data-moss-theme-scope="agent"],
+/* 深色 owner 是 ThemedRouteBoundary 的路由（除首页外全部 scope）：钢蓝基准块以
+   .workbench-shell-grid:has(.themed-route-boundary.theme-dh-api)（0-3-0）
+   在外壳上定义 --dh-api-*，外壳别名须统一双写类名同权后置才能翻转
+   （portfolio-home 2026-08-12 先例推广到全部 scope，见 DESIGN.md Decisions Log）。 */
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="dashboard-home"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="positions"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="stock-analysis"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-attribution"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business-insights"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-analysis"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="module-workbench-home"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-tensor"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="operations-analysis"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-finance"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-analysis"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-movement-analysis"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="decision-items"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-bridge"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="product-category-pnl"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-trading-desk"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cross-asset"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cube-query"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="news-events"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="kpi"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="team-performance"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="platform-config"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="agent"]) {
+  --nct-bg: #161826;
+  --nct-rail: #131522;
+  --nct-surface: #232532;
+  --nct-well: #1c1e2b;
+  --nct-raised: #2b2d3d;
+  --nct-ring: #3f424d;
+  --nct-line: color-mix(in srgb, #e9e9ed 12%, transparent);
+  --nct-ink: #f3f5fe;
+  --nct-soft: #b2b6ca;
+  --nct-muted: #9397ab;
+  --nct-accent: #9184d9;
+  --nct-accent-300: #d2cefd;
+  --nct-accent-400: #b5abfc;
+  --nct-up: #5abd99;
+  --nct-down: #d97b6c;
+  --nct-warn: #d5b26e;
+
+  --dh-api-bg: var(--nct-bg);
+  --dh-api-rail: var(--nct-rail);
+  --dh-api-panel: var(--nct-surface);
+  --dh-api-panel-2: var(--nct-well);
+  --dh-api-panel-3: var(--nct-raised);
+  --dh-api-line: var(--nct-ring);
+  --dh-api-line-soft: var(--nct-line);
+  --dh-api-ink: var(--nct-ink);
+  --dh-api-soft: var(--nct-soft);
+  --dh-api-muted: var(--nct-muted);
+  --dh-api-blue: var(--nct-accent);
+  --dh-api-green: var(--nct-up);
+  --dh-api-amber: var(--nct-warn);
+  --dh-api-gold: var(--nct-warn);
+  --dh-api-red: var(--nct-down);
+  --dh-api-blue-soft: color-mix(in srgb, var(--nct-accent) 12%, transparent);
+  --dh-api-green-soft: color-mix(in srgb, var(--nct-up) 12%, transparent);
+  --dh-api-amber-soft: color-mix(in srgb, var(--nct-warn) 13%, transparent);
+  --dh-api-red-soft: color-mix(in srgb, var(--nct-down) 13%, transparent);
+  --dh-api-radius: 8px;
+  --moss-shell-rail-bg: var(--nct-rail);
+  --moss-shell-rail-bg-stack: var(--nct-rail);
+  --moss-shell-rail-active-bg: color-mix(in srgb, var(--nct-accent) 14%, transparent);
+  --moss-shell-rail-active-border: var(--nct-accent);
+  --moss-shadow-institutional-active: inset 2px 0 0 var(--nct-accent);
+  --moss-institutional-focus-ring: color-mix(in srgb, var(--nct-accent) 34%, transparent);
+  /* boundary 深色重映射块的两个钢蓝字面量（accent-hover 亮阶与行 hover 8%）
+     在 Nocturne scope 下补齐：链接 hover 亮阶与 institutional 表格行 hover。 */
+  --ib-accent-hover: var(--nct-accent-400);
+  --moss-institutional-row-hover: color-mix(in srgb, var(--nct-accent) 8%, transparent);
+  --ib-rail-text-active: var(--nct-accent-300);
+  /* 旧的 dh-home-nocturne-* 雏形变量并入同一色源，避免第二套 Nocturne 值漂移。 */
+  --dh-home-nocturne-ink: var(--nct-ink);
+  --dh-home-nocturne-muted: var(--nct-muted);
+  --dh-home-nocturne-rule: var(--nct-ring);
+}
+
+/*
+ * ThemedRouteBoundary 兜底底色跟随 scope 色板：boundary 自带 theme-dh-api
+ * 类，上方 .theme-dh-api 钢蓝基准块在 boundary 自己身上定义 --dh-api-bg，
+ * 后代页根的 scope 翻转够不到（变量继承不回流），boundary 的
+ * `background: var(--dh-api-bg)` 一直解析为钢蓝 #070a12（frame/卡片
+ * 缝隙处透出）。此块以 :has() 命中含 Nocturne scope 页根的 boundary，
+ * 底色/文字直引 --nct-*（值从外壳 grid 的 :has 块继承；boundary 不在
+ * Nocturne 外壳内时回退钢蓝基准）。0-3-0 胜过基准块 0-2-0，无需
+ * !important。列表与主色板块同构全量（无 boundary 的路由 :has() 不
+ * 命中即零效果），theme.test.ts 有 parity 断言。
+ */
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="dashboard-home"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="macro-toolkit"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="ledger-pnl"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="average-balance"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="positions"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="bond-dashboard"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="liability-analytics"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="bank-ledger-dashboard"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="portfolio-home"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="market-overview"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="market-data"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="stock-analysis"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="risk-overview"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="pnl-by-business"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="pnl-attribution"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="pnl-by-business-insights"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="bond-analysis"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="module-workbench-home"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="risk-tensor"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="concentration-monitor"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="cashflow-projection"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="operations-analysis"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="market-finance"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="balance-analysis"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="balance-movement-analysis"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="decision-items"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="pnl"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="pnl-bridge"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="product-category-pnl"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="bond-trading-desk"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="cross-asset"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="cube-query"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="news-events"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="kpi"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="team-performance"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="platform-config"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="agent"]) {
+  color: var(--nct-ink, var(--dh-api-ink));
+  background: var(--nct-bg, var(--dh-api-bg));
+}
+
+/*
+ * 外壳铬件（主列纸面渐变）补充映射：纸面渐变在 .theme-dh-api 块里是烘焙死的
+ * 钢蓝 rgba 渐变，Nocturne scope 翻不动；首页（dashboard-home）因 cockpit 壳
+ * 不渲染主列纸面而不在此列。此块对除首页外全部 Nocturne scope 生效，
+ * 值全部引用 --nct-*，不新增色值。
+ */
+[data-moss-theme-scope="macro-toolkit"],
+[data-moss-theme-scope="ledger-pnl"],
+[data-moss-theme-scope="average-balance"],
+[data-moss-theme-scope="positions"],
+[data-moss-theme-scope="bond-dashboard"],
+[data-moss-theme-scope="liability-analytics"],
+[data-moss-theme-scope="bank-ledger-dashboard"],
+[data-moss-theme-scope="portfolio-home"],
+[data-moss-theme-scope="market-overview"],
+[data-moss-theme-scope="market-data"],
+[data-moss-theme-scope="stock-analysis"],
+[data-moss-theme-scope="risk-overview"],
+[data-moss-theme-scope="pnl-by-business"],
+[data-moss-theme-scope="pnl-attribution"],
+[data-moss-theme-scope="pnl-by-business-insights"],
+[data-moss-theme-scope="bond-analysis"],
+[data-moss-theme-scope="module-workbench-home"],
+[data-moss-theme-scope="risk-tensor"],
+[data-moss-theme-scope="concentration-monitor"],
+[data-moss-theme-scope="cashflow-projection"],
+[data-moss-theme-scope="operations-analysis"],
+[data-moss-theme-scope="market-finance"],
+[data-moss-theme-scope="balance-analysis"],
+[data-moss-theme-scope="balance-movement-analysis"],
+[data-moss-theme-scope="decision-items"],
+[data-moss-theme-scope="pnl"],
+[data-moss-theme-scope="pnl-bridge"],
+[data-moss-theme-scope="product-category-pnl"],
+[data-moss-theme-scope="bond-trading-desk"],
+[data-moss-theme-scope="cross-asset"],
+[data-moss-theme-scope="cube-query"],
+[data-moss-theme-scope="news-events"],
+[data-moss-theme-scope="kpi"],
+[data-moss-theme-scope="team-performance"],
+[data-moss-theme-scope="platform-config"],
+[data-moss-theme-scope="agent"],
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="positions"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="stock-analysis"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-attribution"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business-insights"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-analysis"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="module-workbench-home"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-tensor"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="operations-analysis"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-finance"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-analysis"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-movement-analysis"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="decision-items"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-bridge"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="product-category-pnl"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-trading-desk"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cross-asset"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cube-query"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="news-events"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="kpi"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="team-performance"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="platform-config"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="agent"]) {
+  --moss-shell-paper-bg: var(--nct-bg);
+  --moss-shell-paper-shade: none;
+}
+
+/* 终端条只对 showShellTerminalBar 为真的 scope 重映射（宏观工具已整块抑制）。 */
+[data-moss-theme-scope="ledger-pnl"],
+[data-moss-theme-scope="average-balance"],
+[data-moss-theme-scope="positions"],
+[data-moss-theme-scope="bond-dashboard"],
+[data-moss-theme-scope="liability-analytics"],
+[data-moss-theme-scope="bank-ledger-dashboard"],
+[data-moss-theme-scope="market-data"],
+[data-moss-theme-scope="pnl-by-business"],
+[data-moss-theme-scope="pnl-attribution"],
+[data-moss-theme-scope="pnl-by-business-insights"],
+[data-moss-theme-scope="risk-tensor"],
+[data-moss-theme-scope="concentration-monitor"],
+[data-moss-theme-scope="cashflow-projection"],
+[data-moss-theme-scope="operations-analysis"],
+[data-moss-theme-scope="market-finance"],
+[data-moss-theme-scope="decision-items"],
+[data-moss-theme-scope="pnl"],
+[data-moss-theme-scope="pnl-bridge"],
+[data-moss-theme-scope="product-category-pnl"],
+[data-moss-theme-scope="bond-trading-desk"],
+[data-moss-theme-scope="cross-asset"],
+[data-moss-theme-scope="cube-query"],
+[data-moss-theme-scope="news-events"],
+[data-moss-theme-scope="kpi"],
+[data-moss-theme-scope="team-performance"],
+[data-moss-theme-scope="platform-config"],
+[data-moss-theme-scope="agent"],
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="positions"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-attribution"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business-insights"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-tensor"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="operations-analysis"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-finance"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="decision-items"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-bridge"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="product-category-pnl"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-trading-desk"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cross-asset"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cube-query"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="news-events"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="kpi"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="team-performance"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="platform-config"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="agent"]) {
+  --moss-shell-terminal-bg: var(--nct-rail);
+}

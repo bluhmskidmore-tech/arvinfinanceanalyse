@@ -6,7 +6,7 @@ from pathlib import Path
 
 from backend.app.core_finance.module_contracts import FormalComputeModuleDescriptor
 from backend.app.core_finance.module_registry import require_registered_formal_module
-from backend.app.governance.locks import acquire_lock, resolve_duckdb_writer_lock
+from backend.app.governance.locks import LockDefinition, acquire_lock, resolve_duckdb_writer_lock
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     CACHE_MANIFEST_STREAM,
@@ -77,9 +77,9 @@ def run_formal_materialize(
 
     try:
         writer_lock = (
-            resolve_duckdb_writer_lock(duckdb_path, ttl_seconds=descriptor.lock_definition.ttl_seconds)
+            resolve_duckdb_writer_lock(duckdb_path, ttl_seconds=descriptor.lock_ttl_seconds)
             if duckdb_path is not None
-            else descriptor.lock_definition
+            else LockDefinition(key=descriptor.lock_key, ttl_seconds=descriptor.lock_ttl_seconds)
         )
         with acquire_lock(writer_lock, base_dir=Path(lock_base_dir)):
             result = FormalComputeMaterializeResult.model_validate(

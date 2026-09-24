@@ -12,12 +12,18 @@ BALANCE_ANALYSIS_SERVICE_MODULE = "backend.app.services.balance_analysis_service
 BALANCE_ANALYSIS_REPO_MODULE = "backend.app.repositories.balance_analysis_repo"
 
 # pnl.bridge reads formal zqtz balance facts for reconciliation; keep imports explicit here.
+# accounting_asset_movement / campisi_attribution read fact_formal_zqtz_balance_daily via
+# the table-owner repo (read-only fetch/list methods) per the W2 storage-boundary
+# migration guarded by tests/test_service_storage_boundaries.py, which bans embedded
+# fact_formal_* SQL inside those services.
 _SERVICES_ALLOWED_TO_IMPORT_BALANCE_ANALYSIS_REPO = frozenset(
     {
         "balance_analysis_service.py",
         "balance_analysis_summary_export_service.py",
         "balance_analysis_workbook_service.py",
         "pnl_bridge_service.py",
+        "accounting_asset_movement_service.py",
+        "campisi_attribution_service.py",
     }
 )
 

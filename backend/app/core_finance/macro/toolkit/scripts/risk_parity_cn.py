@@ -1,26 +1,33 @@
 import warnings
 
 warnings.filterwarnings("ignore")
+import importlib.util
 import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import matplotlib
 import numpy as np
 import pandas as pd
 
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+if importlib.util.find_spec("matplotlib") is None:
+    matplotlib = None
+    plt = None
+else:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
 from scipy.optimize import minimize
 
-_PKG = Path(__file__).resolve().parent.parent
-if str(_PKG) not in sys.path:
-    sys.path.insert(0, str(_PKG))
-from paths import ASSET_DIR, OUTPUT_DIR
-
-plt.rcParams["font.family"] = ["Microsoft YaHei", "SimHei", "sans-serif"]
-plt.rcParams["axes.unicode_minus"] = False
+if __package__:
+    from backend.app.core_finance.macro.toolkit.paths import ASSET_DIR, OUTPUT_DIR
+else:
+    _PKG = Path(__file__).resolve().parent.parent
+    if str(_PKG) not in sys.path:
+        sys.path.insert(0, str(_PKG))
+    from paths import ASSET_DIR, OUTPUT_DIR
 
 COLORS = {"navy": "#0B1F33", "gold": "#C99A2E", "steel": "#4E6B8A", "teal": "#2E6F72", "orange": "#C76433"}
 
@@ -36,6 +43,10 @@ RP_CHART_DIR = str(ASSET_DIR)
 CSV_OUT      = str(OUTPUT_DIR / "risk_parity_results.csv")
 CLOCK_CSV    = str(OUTPUT_DIR / "merrill_clock_latest.csv")
 
+# 模型四（风险预算）的 b_i 设定：各资产“风险贡献占比”目标，按美林时钟象限切换，每行合计 1.0。
+# 运行时读取 merrill_clock_latest.csv 的“传统象限”列选行；读取失败或象限无法识别时回退“衰退”行。
+# 数值为本工具箱的观察口径参数（实现方设定）；尽调笔记仅给出三类资产示例（股票40%/债券40%/商品20%），
+# 未规定本 5 资产宇宙的具体预算，无外部业务文档依据。
 BUDGET_MAP = {
     "复苏": {"hs300": 0.30, "csi500": 0.25, "gold": 0.15, "copper": 0.15, "crude_oil": 0.15},
     "过热": {"hs300": 0.20, "csi500": 0.15, "gold": 0.20, "copper": 0.15, "crude_oil": 0.30},
@@ -43,10 +54,28 @@ BUDGET_MAP = {
     "衰退": {"hs300": 0.22, "csi500": 0.18, "gold": 0.30, "copper": 0.15, "crude_oil": 0.15},
 }
 
+# 求解后目标函数残差阈值：两个目标的理论最优值均为 0，正常收敛时残差在 1e-13 量级；
+# 超过该阈值说明未收敛，宁可失败退出也不静默落盘错误权重。
+_SOLVER_TOL = 1e-8
+
+
+def _require_matplotlib() -> None:
+    if plt is None:
+        raise RuntimeError("matplotlib is required for risk parity chart generation")
+
+
+def _set_style() -> None:
+    _require_matplotlib()
+    plt.rcParams["font.family"] = ["Microsoft YaHei", "SimHei", "sans-serif"]
+    plt.rcParams["axes.unicode_minus"] = False
+
 
 def fetch_data():
     try:
-        import akshare as ak
+        if __package__:
+            from backend.app.core_finance.macro.toolkit import akshare as ak
+        else:
+            import akshare as ak
     except ImportError:
         print("[" + chr(38169) + chr(35823) + "] " + chr(35831) + chr(20808) + chr(23433) + chr(35013) + " akshare: pip install akshare")
         sys.exit(1)
@@ -102,6 +131,15 @@ def risk_contributions(w, cov):
     return rc, sig
 
 
+def _check_solution(res, label):
+    weight_gap = abs(float(np.sum(res.x)) - 1.0)
+    if not np.isfinite(res.fun) or res.fun > _SOLVER_TOL or weight_gap > 1e-6:
+        raise RuntimeError(
+            f"{label} solver failed to converge: {res.message} "
+            f"(objective={res.fun!r}, weight_sum_gap={weight_gap:.3e})"
+        )
+
+
 def solve_risk_parity(cov):
     n  = cov.shape[0]
     w0 = np.ones(n) / n
@@ -112,6 +150,7 @@ def solve_risk_parity(cov):
     bounds = [(1e-6, 1.0)] * n
     res = minimize(objective, w0, method="SLSQP", bounds=bounds,
                    constraints=constraints, options={"ftol": 1e-12, "maxiter": 2000})
+    _check_solution(res, "risk parity")
     return res.x
 
 
@@ -126,6 +165,7 @@ def solve_risk_budget(cov, budget):
     bounds = [(1e-6, 1.0)] * n
     res = minimize(objective, b.copy(), method="SLSQP", bounds=bounds,
                    constraints=constraints, options={"ftol": 1e-12, "maxiter": 2000})
+    _check_solution(res, "risk budget")
     return res.x
 
 
@@ -185,6 +225,7 @@ def save_csv(asset_names, w_rp, w_rb, rc_rp, sig_rp, rc_rb, sig_rb, vol):
 
 
 def plot_results(asset_names, w_rp, w_rb, rc_rp, sig_rp, rc_rb, sig_rb, phase):
+    _set_style()
     os.makedirs(RP_CHART_DIR, exist_ok=True)
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
     fig.patch.set_facecolor("#F5F5F0")
@@ -266,7 +307,11 @@ def main():
     print("  " + chr(39118)+chr(38505)+chr(24179)+chr(20215)+chr(27714)+chr(35299)+chr(23436)+chr(25104)+chr(65292)+chr(32452)+chr(21512)+chr(27874)+chr(21160)+chr(29575)+f": {sig_rp*100:.2f}%")
 
     phase      = get_clock_phase()
-    budget_raw = BUDGET_MAP.get(phase, BUDGET_MAP[chr(34928)+chr(36864)])
+    if phase not in BUDGET_MAP:
+        # 象限无法识别时回退“衰退”预算，并同步 phase 标签，避免打印/图表标注与实际预算错配
+        print("  [警告] 未识别象限 '" + str(phase) + "'，回退使用衰退预算")
+        phase = "衰退"
+    budget_raw = BUDGET_MAP[phase]
     budget     = [budget_raw[k] for k in asset_keys]
     w_rb = solve_risk_budget(cov, budget)
     rc_rb, sig_rb = risk_contributions(w_rb, cov)

@@ -45,7 +45,7 @@ def test_average_balance_live_smoke_evidence_cli_writes_durable_artifact(
     assert payload == {
         "artifact_kind": "average_balance_live_smoke_evidence",
         "artifact_path": str(output_path),
-        "page_id": "GAP-AVERAGE-BALANCE-PAGE",
+        "page_id": "PAGE-ADB-001",
         "page_slug": "average-balance",
         "smoke_execution_status": "passed",
         "verify_execution_status": "passed",
@@ -65,7 +65,7 @@ def test_average_balance_live_smoke_evidence_cli_writes_durable_artifact(
 
     text = output_path.read_text(encoding="utf-8")
     assert "# Average Balance Live Smoke Evidence" in text
-    assert "Page ID: `GAP-AVERAGE-BALANCE-PAGE`" in text
+    assert "Page ID: `PAGE-ADB-001`" in text
     assert "Page slug: `average-balance`" in text
     assert "frontend_route: /average-balance" in text
     assert "primary_api: /api/analysis/adb" in text

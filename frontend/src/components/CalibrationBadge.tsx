@@ -1,6 +1,7 @@
 import { Tag, Tooltip } from "antd";
 
 import type { BalancePageCalibration } from "../api/contracts";
+import { EM_DASH } from "../utils/format";
 import "./CalibrationBadge.css";
 
 export type CalibrationBadgeProps = {
@@ -13,7 +14,7 @@ export function CalibrationBadge({ calibration }: CalibrationBadgeProps) {
   const families =
     calibration.source_families?.length ?
       calibration.source_families.join("+")
-    : "—";
+    : EM_DASH;
   const line1 =
     `范围: ${calibration.position_scope} | 币种: ${calibration.currency_basis} | ` +
     `数据源: ${families} | 基础: ${calibration.data_basis}`;

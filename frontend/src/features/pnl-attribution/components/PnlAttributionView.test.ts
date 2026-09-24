@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import type {
@@ -10,13 +13,27 @@ import type {
   VolumeRateAttributionPayload,
 } from "../../../api/contracts";
 import {
+  buildAttributionBridge,
   buildVolumeRateBridgeSummary,
+  formatGeneratedAtDisplay,
   formatMetaDateLabel,
   formatYi,
   formatYiNumeric,
   numericRaw,
   resolveDualReportDates,
+  summarizePnlAttributionError,
+  VOLUME_RATE_CLOSURE_DISCLOSURE,
+  VOLUME_RATE_CLOSURE_TOLERANCE_YUAN,
 } from "./pnlAttributionViewModel";
+
+const pnlAttributionViewSourcePath = resolve(
+  process.cwd(),
+  "src/features/pnl-attribution/components/PnlAttributionView.tsx",
+);
+const attributionWaterfallSourcePath = resolve(
+  process.cwd(),
+  "src/features/pnl-attribution/components/AttributionWaterfallChart.tsx",
+);
 
 function numeric(overrides: Partial<Numeric>): Numeric {
   return {
@@ -29,6 +46,22 @@ function numeric(overrides: Partial<Numeric>): Numeric {
 }
 
 describe("PnlAttributionView helpers", () => {
+  it("keeps the main view visual shell class-based and tokenized", () => {
+    const source = readFileSync(pnlAttributionViewSourcePath, "utf8");
+    const inlineStyleMarker = ["style", "="].join("");
+    const privateShadowPattern = new RegExp(
+      [
+        ["box", "Shadow"].join(""),
+        ["box", "-", "shadow"].join(""),
+        ["rgba", "\\("].join(""),
+      ].join("|"),
+    );
+
+    expect(source).not.toContain(inlineStyleMarker);
+    expect(source).not.toMatch(/#[0-9a-fA-F]{3,8}/);
+    expect(source).not.toMatch(privateShadowPattern);
+  });
+
   it("reads raw numeric values without inventing zeros", () => {
     expect(numericRaw(undefined)).toBeUndefined();
     expect(numericRaw(null)).toBeUndefined();
@@ -71,6 +104,7 @@ describe("PnlAttributionView helpers", () => {
       total_volume_effect: numeric({ raw: 11_514_483.36 }),
       total_rate_effect: numeric({ raw: 28_641_449.42 }),
       total_interaction_effect: numeric({ raw: 22_637_086.67 }),
+      total_recon_error: numeric({ raw: 2_946_305.49 }),
       has_previous_data: true,
       items: [],
     });
@@ -84,6 +118,14 @@ describe("PnlAttributionView helpers", () => {
     expect(summary?.coveragePct).toBeCloseTo(95.52, 2);
   });
 
+  it("describes cross effect separately from the unexplained residual", () => {
+    const source = readFileSync(attributionWaterfallSourcePath, "utf8");
+
+    expect(source).toContain("交叉效应为规模与收益率同时变化的二阶联动项");
+    expect(source).toContain("未解释差额为损益变动扣除三项效应后的归因残差");
+    expect(source).not.toContain("交叉效应为残差项");
+  });
+
   it("treats fully explained volume-rate attribution as closed", () => {
     const summary = buildVolumeRateBridgeSummary({
       current_period: "2026-04",
@@ -95,6 +137,7 @@ describe("PnlAttributionView helpers", () => {
       total_volume_effect: numeric({ raw: 2_000 }),
       total_rate_effect: numeric({ raw: 3_000 }),
       total_interaction_effect: numeric({ raw: 5_000 }),
+      total_recon_error: numeric({ raw: 0 }),
       has_previous_data: true,
       items: [],
     });
@@ -105,6 +148,79 @@ describe("PnlAttributionView helpers", () => {
       coveragePct: 100,
       status: "closed",
     });
+  });
+
+  it("locks the frontend closure tolerance as a display heuristic contract", () => {
+    // 容差是前端展示口径，不是后端 workbench 契约；数值变动必须先过治理评审。
+    expect(VOLUME_RATE_CLOSURE_TOLERANCE_YUAN).toBe(10_000);
+    expect(VOLUME_RATE_CLOSURE_DISCLOSURE).toBe("闭合判定为前端口径（容差 1 万元，非后端契约）");
+
+    const summary = buildVolumeRateBridgeSummary({
+      current_period: "2026-04",
+      previous_period: "2026-03",
+      compare_type: "mom",
+      total_current_pnl: numeric({ raw: 1_200_000 }),
+      total_previous_pnl: numeric({ raw: 1_000_000 }),
+      total_pnl_change: numeric({ raw: 200_000 }),
+      total_volume_effect: numeric({ raw: 100_000 }),
+      total_rate_effect: numeric({ raw: 60_000 }),
+      total_interaction_effect: numeric({ raw: 30_000 }),
+      total_recon_error: numeric({ raw: 10_000 }),
+      has_previous_data: true,
+      items: [],
+    });
+
+    expect(summary?.closureDisclosure).toBe(VOLUME_RATE_CLOSURE_DISCLOSURE);
+  });
+
+  it("treats residuals at the tolerance boundary as closed and just above it as residual", () => {
+    const buildWithResidual = (interactionRaw: number, reconRaw: number) =>
+      buildVolumeRateBridgeSummary({
+        current_period: "2026-04",
+        previous_period: "2026-03",
+        compare_type: "mom",
+        total_current_pnl: numeric({ raw: 1_200_000 }),
+        total_previous_pnl: numeric({ raw: 1_000_000 }),
+        total_pnl_change: numeric({ raw: 200_000 }),
+        total_volume_effect: numeric({ raw: 100_000 }),
+        total_rate_effect: numeric({ raw: 60_000 }),
+        total_interaction_effect: numeric({ raw: interactionRaw }),
+        total_recon_error: numeric({ raw: reconRaw }),
+        has_previous_data: true,
+        items: [],
+      });
+
+    // |残差| = 容差（恰好 1 万元）→ 仍判闭合（严格大于才算未解释差额）。
+    expect(buildWithResidual(30_000, 10_000)).toMatchObject({ status: "closed" });
+    // |残差| = 容差 + 1 元 → 判存在未解释差额。
+    expect(buildWithResidual(29_999, 10_001)).toMatchObject({
+      status: "residual",
+      statusLabel: "存在未解释差额",
+    });
+    // 负向残差同样按绝对值过容差判定。
+    expect(buildWithResidual(50_001, -10_001)).toMatchObject({ status: "residual" });
+  });
+
+  it("suppresses coverage instead of fabricating it when the pnl change is inside the tolerance", () => {
+    const summary = buildVolumeRateBridgeSummary({
+      current_period: "2026-04",
+      previous_period: "2026-03",
+      compare_type: "mom",
+      total_current_pnl: numeric({ raw: 1_010_000 }),
+      total_previous_pnl: numeric({ raw: 1_000_000 }),
+      total_pnl_change: numeric({ raw: 10_000 }),
+      total_volume_effect: numeric({ raw: 8_000 }),
+      total_rate_effect: numeric({ raw: 3_000 }),
+      total_interaction_effect: numeric({ raw: 1_000 }),
+      total_recon_error: numeric({ raw: -2_000 }),
+      has_previous_data: true,
+      items: [],
+    });
+
+    // 分母（损益变动）落在容差内且解释项超容差时，覆盖率不可计算 → undefined，不得渲染成读数。
+    expect(summary?.explainedEffect).toBe(12_000);
+    expect(summary?.coveragePct).toBeUndefined();
+    expect(summary?.status).toBe("closed");
   });
 
   it("selects the current-view date label per tab", () => {
@@ -247,6 +363,117 @@ describe("PnlAttributionView helpers", () => {
       datesAligned: false,
       missingSource: "none",
     });
+  });
+
+  it("summarizes client request failures into a Chinese conclusion with the raw detail kept aside", () => {
+    const summary = summarizePnlAttributionError(
+      "Request failed: /api/pnl-attribution/campisi?end_date=2026-03-31 (500)",
+    );
+
+    expect(summary?.message).toBe(
+      "后端接口请求失败（HTTP 500），当前视图数据未能读取；请重试或先检查后端服务。",
+    );
+    // 接口路径属证据层：只进 detail（供 title），不进正文。
+    expect(summary?.message).not.toContain("/api/pnl-attribution");
+    expect(summary?.detail).toBe(
+      "Request failed: /api/pnl-attribution/campisi?end_date=2026-03-31 (500)",
+    );
+  });
+
+  it("passes through non-request-failure error text verbatim", () => {
+    expect(summarizePnlAttributionError("Campisi 决策级解释加载失败")).toEqual({
+      message: "Campisi 决策级解释加载失败",
+      detail: "Campisi 决策级解释加载失败",
+    });
+    expect(summarizePnlAttributionError(null)).toBeNull();
+    expect(summarizePnlAttributionError("   ")).toBeNull();
+  });
+
+  it("formats microsecond ISO generated_at down to minutes and keeps the raw value for title", () => {
+    expect(formatGeneratedAtDisplay("2026-08-13T16:52:36.869107Z")).toEqual({
+      text: "2026-08-13 16:52",
+      title: "2026-08-13T16:52:36.869107Z",
+    });
+    // 非 ISO 形态原样透出；缺失显示 EM_DASH，不伪造时间。
+    expect(formatGeneratedAtDisplay("mock-run")).toEqual({
+      text: "mock-run",
+      title: "mock-run",
+    });
+    expect(formatGeneratedAtDisplay(null)).toEqual({ text: "—", title: "" });
+    expect(formatGeneratedAtDisplay("")).toEqual({ text: "—", title: "" });
+  });
+
+  it("builds a cumulative attribution bridge with pads, connectors, and signed values", () => {
+    const bridge = buildAttributionBridge({
+      previous: 7.86,
+      volume: 0.12,
+      rate: -0.29,
+      interaction: 0.23,
+      current: 8.51,
+    });
+
+    expect(bridge).not.toBeNull();
+    const bars = bridge!.bars;
+    expect(bars.map((bar) => bar.category)).toEqual([
+      "上期损益",
+      "规模效应",
+      "利率效应",
+      "交叉效应",
+      "当期损益",
+    ]);
+    // 上期总值从 0 起画。
+    expect(bars[0]).toMatchObject({ base: 0, size: 7.86, value: 7.86, tone: "total-prev" });
+    // 正效应从上期累计位起画。
+    expect(bars[1].base).toBeCloseTo(7.86, 10);
+    expect(bars[1].size).toBeCloseTo(0.12, 10);
+    expect(bars[1].tone).toBe("positive");
+    // 负效应垫柱压到累计终点（低位），柱体跨度为绝对值。
+    expect(bars[2].base).toBeCloseTo(7.86 + 0.12 - 0.29, 10);
+    expect(bars[2].size).toBeCloseTo(0.29, 10);
+    expect(bars[2].value).toBeCloseTo(-0.29, 10);
+    expect(bars[2].tone).toBe("negative");
+    // 交叉效应方向语义弱，恒中性。
+    expect(bars[3].tone).toBe("neutral");
+    expect(bars[4]).toMatchObject({ base: 0, tone: "total-current" });
+    expect(bars[4].size).toBeCloseTo(8.51, 10);
+
+    // 连线落在各段累计位：上期 → 各效应累计 → 效应合计（与当期柱顶的落差即残差）。
+    expect(bridge!.connectors.map((connector) => [connector.from, connector.to])).toEqual([
+      [0, 1],
+      [1, 2],
+      [2, 3],
+      [3, 4],
+    ]);
+    expect(bridge!.connectors[0].level).toBeCloseTo(7.86, 10);
+    expect(bridge!.connectors[3].level).toBeCloseTo(7.86 + 0.12 - 0.29 + 0.23, 10);
+  });
+
+  it("refuses to build a bridge when any input is missing instead of padding zeros", () => {
+    expect(
+      buildAttributionBridge({
+        previous: 7.86,
+        volume: null,
+        rate: -0.29,
+        interaction: 0.23,
+        current: 8.51,
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps negative totals anchored to zero in the bridge", () => {
+    const bridge = buildAttributionBridge({
+      previous: -1.2,
+      volume: 0.5,
+      rate: 0.1,
+      interaction: 0,
+      current: -0.6,
+    });
+
+    expect(bridge!.bars[0]).toMatchObject({ base: -1.2, size: 1.2, value: -1.2 });
+    // 从负累计位向上画正效应：垫柱停在累计起点（更低的一端）。
+    expect(bridge!.bars[1].base).toBeCloseTo(-1.2, 10);
+    expect(bridge!.bars[1].size).toBeCloseTo(0.5, 10);
+    expect(bridge!.bars[4]).toMatchObject({ base: -0.6, size: 0.6, value: -0.6 });
   });
 
   it("reports missing source sides instead of fabricating a date", () => {

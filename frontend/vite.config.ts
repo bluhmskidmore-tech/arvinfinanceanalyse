@@ -1,3 +1,5 @@
+import http from "node:http";
+
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -5,8 +7,21 @@ import tailwindcss from "@tailwindcss/vite";
 /** Dev proxy target; override if the API runs elsewhere, e.g. `MOSS_VITE_API_PROXY=http://127.0.0.1:8765`. */
 const apiTarget = process.env.MOSS_VITE_API_PROXY ?? "http://127.0.0.1:7888";
 
+/**
+ * Without an explicit agent, http-proxy forces `Connection: close` and opens a
+ * fresh TCP connection to the backend for every proxied request (measured: one
+ * TIME_WAIT socket per request, ~50ms extra per 18-request page load plus
+ * 100-250ms tail spikes). A keep-alive agent lets the proxy reuse connections.
+ */
+const apiProxyAgent = new http.Agent({ keepAlive: true, maxSockets: 32 });
+
 /** DuckDB / storage bootstrap on first request can be slow; avoid proxy timing out mid-migration. */
-const apiProxy = { target: apiTarget, changeOrigin: true, timeout: 120_000 } as const;
+const apiProxy = {
+  target: apiTarget,
+  changeOrigin: true,
+  timeout: 120_000,
+  agent: apiProxyAgent,
+} as const;
 
 function isReactVendorModule(normalizedId: string) {
   return (

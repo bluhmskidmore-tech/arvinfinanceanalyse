@@ -1,6 +1,7 @@
 import type { AlertItem } from "../../../components/AlertList";
 import type { CalendarItem } from "../../../components/CalendarList";
 
+import { EM_DASH } from "../../../utils/format";
 export const OPERATIONS_WATCH_ITEMS: AlertItem[] = [
   {
     level: "danger",
@@ -42,7 +43,7 @@ export const OPERATIONS_CALENDAR_MOCK: CalendarItem[] = [
   {
     date: "04-28",
     event: "月内缺口复盘会",
-    amount: "—",
+    amount: EM_DASH,
     level: "low",
     note: "财务与资金条线",
   },

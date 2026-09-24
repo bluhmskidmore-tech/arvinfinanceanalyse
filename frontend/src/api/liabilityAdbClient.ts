@@ -5,25 +5,61 @@
 import type {
   AdbAccountingBasisDailyAvgTrendItem,
   AdbComparisonResponse,
+  AdbConcentrationBlock,
+  AdbConcentrationSide,
   AdbCoveragePayload,
+  AdbInsightDimension,
+  AdbInsightItem,
+  AdbInsightSeverity,
+  AdbInsightsResponse,
+  AdbInsightsWindow,
+  AdbInsightsWindowReason,
+  AdbMonthEndEffect,
   AdbMonthlyResponse,
+  AdbNimAttribution,
+  AdbNimSideAttribution,
+  AdbNimUnavailableReason,
   AdbPayload,
+  AdbScaleAttribution,
+  AdbScaleContributionRow,
+  AdbScaleSideTotals,
+  AdbVolatilityBlock,
+  AdbVolatilitySeries,
   ApiEnvelope,
+  BalancePageCalibration,
   CockpitWarningsPayload,
   ContributionSplitPayload,
+  ResultMeta,
+  YieldByPeriodPayload,
+} from "./contracts";
+import type {
   LiabilitiesMonthlyPayload,
   LiabilityCounterpartyPayload,
   LiabilityKnowledgeBriefPayload,
   LiabilityRiskBucketsPayload,
   LiabilityYieldMetricsPayload,
-  ResultMeta,
-  YieldByPeriodPayload,
-} from "./contracts";
+} from "./liabilityAdbContracts";
 import { formatRawAsNumeric } from "../utils/format";
 
+export type LiabilityRiskBucketsResponse = LiabilityRiskBucketsPayload & {
+  result_meta?: ResultMeta;
+};
+
+export type LiabilityYieldMetricsResponse = LiabilityYieldMetricsPayload & {
+  result_meta?: ResultMeta;
+};
+
+export type LiabilityCounterpartyResponse = LiabilityCounterpartyPayload & {
+  result_meta?: ResultMeta;
+};
+
+export type LiabilitiesMonthlyResponse = LiabilitiesMonthlyPayload & {
+  result_meta?: ResultMeta;
+};
+
 export type LiabilityAdbClientMethods = {
-  getLiabilityRiskBuckets: (reportDate?: string | null) => Promise<LiabilityRiskBucketsPayload>;
-  getLiabilityYieldMetrics: (reportDate?: string | null) => Promise<LiabilityYieldMetricsPayload>;
+  getLiabilityRiskBuckets: (reportDate?: string | null) => Promise<LiabilityRiskBucketsResponse>;
+  getLiabilityYieldMetrics: (reportDate?: string | null) => Promise<LiabilityYieldMetricsResponse>;
   getYieldByPeriod: (options: {
     year: number;
     periodType?: "monthly" | "quarterly" | "yearly";
@@ -31,11 +67,11 @@ export type LiabilityAdbClientMethods = {
   getLiabilityCounterparty: (options: {
     reportDate?: string | null;
     topN?: number;
-  }) => Promise<LiabilityCounterpartyPayload>;
+  }) => Promise<LiabilityCounterpartyResponse>;
   getLiabilityKnowledgeBrief: () => Promise<ApiEnvelope<LiabilityKnowledgeBriefPayload>>;
   getCockpitWarnings: (reportDate?: string | null) => Promise<ApiEnvelope<CockpitWarningsPayload>>;
   getContributionSplit: (reportDate?: string | null) => Promise<ApiEnvelope<ContributionSplitPayload>>;
-  getLiabilitiesMonthly: (year: number) => Promise<LiabilitiesMonthlyPayload>;
+  getLiabilitiesMonthly: (year: number) => Promise<LiabilitiesMonthlyResponse>;
   getLiabilityAdbMonthly: (year: number) => Promise<AdbMonthlyResponse>;
   getAdb: (params: { startDate: string; endDate: string }) => Promise<AdbPayload>;
   getAdbComparison: (
@@ -47,6 +83,7 @@ export type LiabilityAdbClientMethods = {
   ) => Promise<AdbComparisonResponse>;
   getAdbMonthly: (year: number) => Promise<AdbMonthlyResponse>;
   getAdbCoverage: (startDate: string, endDate: string) => Promise<AdbCoveragePayload>;
+  getAdbInsights: (startDate: string, endDate: string) => Promise<AdbInsightsResponse>;
 };
 
 type FetchLike = typeof fetch;
@@ -110,7 +147,7 @@ const requestEnvelopeOrPlainJsonWithMeta = async <T>(
   fetchImpl: FetchLike,
   baseUrl: string,
   path: string,
-): Promise<{ result: T; result_meta?: ResultMeta }> => {
+): Promise<{ result: T; result_meta?: ResultMeta; calibration?: BalancePageCalibration | null }> => {
   const payload = await requestPlainJson<Record<string, unknown>>(fetchImpl, baseUrl, path);
   if (
     payload &&
@@ -121,6 +158,8 @@ const requestEnvelopeOrPlainJsonWithMeta = async <T>(
     return {
       result: payload.result as T,
       result_meta: payload.result_meta as ResultMeta,
+      // ADB 系列端点把校准说明放在信封顶层（与 result 同层），需要一并透传。
+      calibration: payload.calibration as BalancePageCalibration | null | undefined,
     };
   }
   return { result: payload as T };
@@ -128,6 +167,19 @@ const requestEnvelopeOrPlainJsonWithMeta = async <T>(
 
 const normalizeNullableNumber = (value: unknown): number | null =>
   value === null || value === undefined ? null : Number(value);
+
+const normalizeMonthlyNimStress = (
+  value: unknown,
+): { nim_stressed: number | null; delta_bp: number | null } | null => {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const raw = value as Record<string, unknown>;
+  return {
+    nim_stressed: normalizeNullableNumber(raw.nim_stressed),
+    delta_bp: normalizeNullableNumber(raw.delta_bp),
+  };
+};
 
 function normalizeAccountingBasisTrendItem(item: unknown): AdbAccountingBasisDailyAvgTrendItem {
   const basis = item as Record<string, unknown>;
@@ -160,19 +212,21 @@ function normalizeAccountingBasisTrendItem(item: unknown): AdbAccountingBasisDai
 function normalizeAdbComparisonResponse(
   raw: Record<string, unknown>,
   resultMeta?: ResultMeta,
+  calibration?: BalancePageCalibration | null,
 ): AdbComparisonResponse {
   const mapBreakdown = (items: unknown[]) =>
     items.map((item) => {
       const row = item as Record<string, unknown>;
       return {
         category: String(row.category ?? ""),
-        spot_balance: Number(row.spot_balance ?? 0),
+        spot_balance: normalizeNullableNumber(row.spot_balance),
         avg_balance: normalizeNullableNumber(row.avg_balance),
-        proportion: Number(row.proportion ?? 0),
+        proportion: normalizeNullableNumber(row.proportion),
         weighted_rate:
           row.weighted_rate === null || row.weighted_rate === undefined
             ? null
             : Number(row.weighted_rate),
+        rate_coverage_ratio: normalizeNullableNumber(row.rate_coverage_ratio),
       };
     });
 
@@ -207,10 +261,15 @@ function normalizeAdbComparisonResponse(
     sample_filled: raw.sample_filled === true || raw.sample_filled === "true" ? true : undefined,
     sample_fill_method: raw.sample_fill_method ? String(raw.sample_fill_method) : undefined,
     simulated: Boolean(raw.simulated),
-    total_spot_assets: Number(raw.total_spot_assets ?? 0),
-    total_avg_assets: Number(raw.total_avg_assets ?? 0),
-    total_spot_liabilities: Number(raw.total_spot_liabilities ?? 0),
-    total_avg_liabilities: Number(raw.total_avg_liabilities ?? 0),
+    total_spot_assets: normalizeNullableNumber(raw.total_spot_assets),
+    total_avg_assets: normalizeNullableNumber(raw.total_avg_assets),
+    total_spot_liabilities: normalizeNullableNumber(raw.total_spot_liabilities),
+    total_avg_liabilities: normalizeNullableNumber(raw.total_avg_liabilities),
+    avg_unavailable_reason:
+      raw.avg_unavailable_reason === "insufficient_window" || raw.avg_unavailable_reason === "no_data"
+        ? raw.avg_unavailable_reason
+        : null,
+    spot_unavailable_reason: raw.spot_unavailable_reason === "no_data" ? raw.spot_unavailable_reason : null,
     total_avg_interbank_assets: Number(raw.total_avg_interbank_assets ?? 0),
     total_avg_interbank_liabilities: Number(raw.total_avg_interbank_liabilities ?? 0),
     asset_yield:
@@ -223,6 +282,8 @@ function normalizeAdbComparisonResponse(
       raw.net_interest_margin === null || raw.net_interest_margin === undefined
         ? null
         : Number(raw.net_interest_margin),
+    asset_rate_coverage_ratio: normalizeNullableNumber(raw.asset_rate_coverage_ratio),
+    liability_rate_coverage_ratio: normalizeNullableNumber(raw.liability_rate_coverage_ratio),
     assets_breakdown: assetsBreakdown,
     liabilities_breakdown: liabilitiesBreakdown,
     accounting_basis_daily_avg: accountingBasisRaw
@@ -253,6 +314,7 @@ function normalizeAdbComparisonResponse(
       ? raw.accounting_basis_daily_avg_trend.map(normalizeAccountingBasisTrendItem)
       : undefined,
     detail: raw.detail ? String(raw.detail) : undefined,
+    calibration,
   };
 }
 
@@ -290,6 +352,7 @@ function normalizeAdbMonthlyResponse(
               breakdown.weighted_rate === null || breakdown.weighted_rate === undefined
                 ? null
                 : Number(breakdown.weighted_rate),
+            rate_coverage_ratio: normalizeNullableNumber(breakdown.rate_coverage_ratio),
           };
         });
 
@@ -311,6 +374,9 @@ function normalizeAdbMonthlyResponse(
           row.net_interest_margin === null || row.net_interest_margin === undefined
             ? null
             : Number(row.net_interest_margin),
+        nim_stress: normalizeMonthlyNimStress(row.nim_stress),
+        asset_rate_coverage_ratio: normalizeNullableNumber(row.asset_rate_coverage_ratio),
+        liability_rate_coverage_ratio: normalizeNullableNumber(row.liability_rate_coverage_ratio),
         mom_change_assets:
           row.mom_change_assets === null || row.mom_change_assets === undefined
             ? null
@@ -344,7 +410,287 @@ function normalizeAdbMonthlyResponse(
         : Number(raw.ytd_liability_cost),
     ytd_nim:
       raw.ytd_nim === null || raw.ytd_nim === undefined ? null : Number(raw.ytd_nim),
+    ytd_asset_rate_coverage_ratio: normalizeNullableNumber(raw.ytd_asset_rate_coverage_ratio),
+    ytd_liability_rate_coverage_ratio: normalizeNullableNumber(
+      raw.ytd_liability_rate_coverage_ratio,
+    ),
     unit: raw.unit ? String(raw.unit) : undefined,
+  };
+}
+
+// --- `GET /api/analysis/adb/insights` 归一化 ---
+// 契约冻结于 docs/plans/2026-08-13-average-balance-deep-analysis-prd.md §5。
+// 规则：契约里带 `| null` 的字段一律保留 null（不得 0 顶替），枚举取值未知时安全归一，
+// 数组缺失归一为空数组，`insights` 永不为 null。
+
+const ADB_INSIGHTS_WINDOW_REASONS = new Set(["ok", "no_data"]);
+const ADB_NIM_UNAVAILABLE_REASONS = new Set([
+  "rate_unavailable",
+  "comparison_unavailable",
+  "current_unavailable",
+  "insufficient_window",
+]);
+const ADB_INSIGHT_SEVERITIES = new Set(["info", "notice", "warning"]);
+const ADB_INSIGHT_DIMENSIONS = new Set([
+  "scale",
+  "nim",
+  "volatility",
+  "concentration",
+  "quality",
+]);
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+const asOptionalRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+
+const asArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
+
+function normalizeAdbInsightsWindow(value: unknown): AdbInsightsWindow {
+  const raw = asRecord(value);
+  const reason = String(raw.reason ?? "");
+  return {
+    start_date: String(raw.start_date ?? ""),
+    end_date: String(raw.end_date ?? ""),
+    calendar_days_inclusive: Number(raw.calendar_days_inclusive ?? 0),
+    coverage_days: Number(raw.coverage_days ?? 0),
+    available: raw.available === true,
+    reason: ADB_INSIGHTS_WINDOW_REASONS.has(reason) ? (reason as AdbInsightsWindowReason) : null,
+  };
+}
+
+function normalizeAdbScaleSideTotals(value: unknown): AdbScaleSideTotals {
+  const raw = asRecord(value);
+  return {
+    current_avg: Number(raw.current_avg ?? 0),
+    prior_avg: Number(raw.prior_avg ?? 0),
+    delta: Number(raw.delta ?? 0),
+    delta_pct: normalizeNullableNumber(raw.delta_pct),
+  };
+}
+
+function normalizeAdbScaleContributions(value: unknown): AdbScaleContributionRow[] {
+  return asArray(value).map((entry) => {
+    const row = asRecord(entry);
+    return {
+      category: String(row.category ?? ""),
+      side: row.side === "liability" ? "liability" : "asset",
+      current_avg: normalizeNullableNumber(row.current_avg),
+      prior_avg: normalizeNullableNumber(row.prior_avg),
+      delta: Number(row.delta ?? 0),
+      contribution_pct: normalizeNullableNumber(row.contribution_pct),
+    };
+  });
+}
+
+function normalizeAdbScaleAttribution(value: unknown): AdbScaleAttribution | null {
+  const raw = asOptionalRecord(value);
+  if (!raw) return null;
+  const totals = asRecord(raw.side_totals);
+  return {
+    side_totals: {
+      assets: normalizeAdbScaleSideTotals(totals.assets),
+      liabilities: normalizeAdbScaleSideTotals(totals.liabilities),
+    },
+    asset_contributions: normalizeAdbScaleContributions(raw.asset_contributions),
+    liability_contributions: normalizeAdbScaleContributions(raw.liability_contributions),
+  };
+}
+
+function normalizeAdbNimSide(value: unknown): AdbNimSideAttribution {
+  const raw = asRecord(value);
+  return {
+    total_effect_bp: Number(raw.total_effect_bp ?? 0),
+    rate_effect_bp: Number(raw.rate_effect_bp ?? 0),
+    mix_effect_bp: Number(raw.mix_effect_bp ?? 0),
+    residual_bp: Number(raw.residual_bp ?? 0),
+    by_category: asArray(raw.by_category).map((entry) => {
+      const row = asRecord(entry);
+      return {
+        category: String(row.category ?? ""),
+        share_current: normalizeNullableNumber(row.share_current),
+        share_prior: normalizeNullableNumber(row.share_prior),
+        rate_current: normalizeNullableNumber(row.rate_current),
+        rate_prior: normalizeNullableNumber(row.rate_prior),
+        rate_effect_bp: Number(row.rate_effect_bp ?? 0),
+        mix_effect_bp: Number(row.mix_effect_bp ?? 0),
+      };
+    }),
+  };
+}
+
+function normalizeAdbNimAttribution(value: unknown): AdbNimAttribution | null {
+  const raw = asOptionalRecord(value);
+  if (!raw) return null;
+  return {
+    basis: "qoq",
+    nim_current: normalizeNullableNumber(raw.nim_current),
+    nim_prior: normalizeNullableNumber(raw.nim_prior),
+    nim_delta_bp: normalizeNullableNumber(raw.nim_delta_bp),
+    asset_side: normalizeAdbNimSide(raw.asset_side),
+    liability_side: normalizeAdbNimSide(raw.liability_side),
+  };
+}
+
+function normalizeAdbVolatilitySeries(value: unknown): AdbVolatilitySeries | null {
+  const raw = asOptionalRecord(value);
+  if (!raw) return null;
+  const minimum = asRecord(raw.min);
+  const maximum = asRecord(raw.max);
+  const change = asOptionalRecord(raw.max_daily_change);
+  return {
+    mean: Number(raw.mean ?? 0),
+    std: Number(raw.std ?? 0),
+    cv: normalizeNullableNumber(raw.cv),
+    min: { date: String(minimum.date ?? ""), value: Number(minimum.value ?? 0) },
+    max: { date: String(maximum.date ?? ""), value: Number(maximum.value ?? 0) },
+    max_daily_change: change
+      ? {
+          date: String(change.date ?? ""),
+          delta: Number(change.delta ?? 0),
+          pct: normalizeNullableNumber(change.pct),
+        }
+      : null,
+  };
+}
+
+function normalizeAdbMonthEndEffect(value: unknown): AdbMonthEndEffect {
+  const raw = asRecord(value);
+  return {
+    uplift_pct: normalizeNullableNumber(raw.uplift_pct),
+    months_observed: Number(raw.months_observed ?? 0),
+    flagged: raw.flagged === true,
+  };
+}
+
+function normalizeAdbVolatilityBlock(value: unknown): AdbVolatilityBlock | null {
+  const raw = asOptionalRecord(value);
+  if (!raw) return null;
+  const monthEnd = asOptionalRecord(raw.month_end_effect);
+  return {
+    assets: normalizeAdbVolatilitySeries(raw.assets),
+    liabilities: normalizeAdbVolatilitySeries(raw.liabilities),
+    anomaly_detection_available: raw.anomaly_detection_available === true,
+    anomalies: asArray(raw.anomalies).map((entry) => {
+      const row = asRecord(entry);
+      return {
+        date: String(row.date ?? ""),
+        side: row.side === "liability" ? "liability" : "asset",
+        value: Number(row.value ?? 0),
+        delta: Number(row.delta ?? 0),
+        zscore: Number(row.zscore ?? 0),
+        direction: row.direction === "down" ? "down" : "up",
+      };
+    }),
+    month_end_effect: monthEnd
+      ? {
+          assets: normalizeAdbMonthEndEffect(monthEnd.assets),
+          liabilities: normalizeAdbMonthEndEffect(monthEnd.liabilities),
+        }
+      : null,
+  };
+}
+
+function normalizeAdbConcentrationSide(value: unknown): AdbConcentrationSide | null {
+  const raw = asOptionalRecord(value);
+  if (!raw) return null;
+  return {
+    start_observation_date: String(raw.start_observation_date ?? ""),
+    end_observation_date: String(raw.end_observation_date ?? ""),
+    hhi_start: Number(raw.hhi_start ?? 0),
+    hhi_end: Number(raw.hhi_end ?? 0),
+    top3_share_start: Number(raw.top3_share_start ?? 0),
+    top3_share_end: Number(raw.top3_share_end ?? 0),
+    top5_share_start: Number(raw.top5_share_start ?? 0),
+    top5_share_end: Number(raw.top5_share_end ?? 0),
+    movers: asArray(raw.movers).map((entry) => {
+      const row = asRecord(entry);
+      return {
+        category: String(row.category ?? ""),
+        share_start_pct: Number(row.share_start_pct ?? 0),
+        share_end_pct: Number(row.share_end_pct ?? 0),
+        delta_pp: Number(row.delta_pp ?? 0),
+      };
+    }),
+  };
+}
+
+function normalizeAdbConcentrationBlock(value: unknown): AdbConcentrationBlock | null {
+  const raw = asOptionalRecord(value);
+  if (!raw) return null;
+  return {
+    assets: normalizeAdbConcentrationSide(raw.assets),
+    liabilities: normalizeAdbConcentrationSide(raw.liabilities),
+    reason: raw.reason === null || raw.reason === undefined ? null : String(raw.reason),
+  };
+}
+
+function normalizeAdbInsightItems(value: unknown): AdbInsightItem[] {
+  return asArray(value).map((entry) => {
+    const row = asRecord(entry);
+    const severity = String(row.severity ?? "");
+    const dimension = String(row.dimension ?? "");
+    return {
+      id: String(row.id ?? ""),
+      severity: ADB_INSIGHT_SEVERITIES.has(severity) ? (severity as AdbInsightSeverity) : "info",
+      dimension: ADB_INSIGHT_DIMENSIONS.has(dimension)
+        ? (dimension as AdbInsightDimension)
+        : "quality",
+      title: String(row.title ?? ""),
+      detail: String(row.detail ?? ""),
+      evidence: asRecord(row.evidence),
+    };
+  });
+}
+
+function normalizeAdbInsightsResponse(
+  raw: Record<string, unknown>,
+  resultMeta?: ResultMeta,
+): AdbInsightsResponse {
+  const windows = asRecord(raw.windows);
+  const scaleAttribution = asRecord(raw.scale_attribution);
+  const nimReason = String(raw.nim_attribution_unavailable_reason ?? "");
+  return {
+    result_meta: resultMeta,
+    start_date: String(raw.start_date ?? ""),
+    end_date: String(raw.end_date ?? ""),
+    calendar_days_inclusive: Number(raw.calendar_days_inclusive ?? 0),
+    insufficient_window: raw.insufficient_window === true,
+    windows: {
+      current: normalizeAdbInsightsWindow(windows.current),
+      qoq: normalizeAdbInsightsWindow(windows.qoq),
+      yoy: normalizeAdbInsightsWindow(windows.yoy),
+    },
+    scale_attribution: {
+      qoq: normalizeAdbScaleAttribution(scaleAttribution.qoq),
+      yoy: normalizeAdbScaleAttribution(scaleAttribution.yoy),
+    },
+    nim_attribution: normalizeAdbNimAttribution(raw.nim_attribution),
+    nim_attribution_unavailable_reason: ADB_NIM_UNAVAILABLE_REASONS.has(nimReason)
+      ? (nimReason as AdbNimUnavailableReason)
+      : null,
+    volatility: normalizeAdbVolatilityBlock(raw.volatility),
+    concentration: normalizeAdbConcentrationBlock(raw.concentration),
+    insights: normalizeAdbInsightItems(raw.insights),
+  };
+}
+
+function buildLiabilityAnalyticalMockMeta(resultKind: string): ResultMeta {
+  return {
+    trace_id: `tr_${resultKind}_mock`,
+    basis: "analytical",
+    result_kind: resultKind,
+    formal_use_allowed: false,
+    source_version: "sv_liability_mock",
+    vendor_version: "vv_none",
+    rule_version: "rv_liability_mock",
+    cache_version: "cv_liability_mock",
+    quality_flag: "warning",
+    vendor_status: "ok",
+    fallback_mode: "none",
+    scenario_flag: false,
+    generated_at: new Date().toISOString(),
   };
 }
 
@@ -356,6 +702,7 @@ export function createDemoLiabilityAdbClient(
     async getLiabilityRiskBuckets(reportDate?: string | null) {
       await delay();
       return {
+        result_meta: buildLiabilityAnalyticalMockMeta("liability_analytics.risk_buckets"),
         report_date: reportDate?.trim() || "",
         liabilities_structure: [],
         liabilities_term_buckets: [],
@@ -368,6 +715,7 @@ export function createDemoLiabilityAdbClient(
     async getLiabilityYieldMetrics(reportDate?: string | null) {
       await delay();
       return {
+        result_meta: buildLiabilityAnalyticalMockMeta("liability_analytics.yield_metrics"),
         report_date: reportDate?.trim() || "",
         kpi: {
           asset_yield: null,
@@ -414,8 +762,13 @@ export function createDemoLiabilityAdbClient(
     async getLiabilityCounterparty(options: { reportDate?: string | null; topN?: number }) {
       await delay();
       return {
+        result_meta: buildLiabilityAnalyticalMockMeta("liability_analytics.counterparty"),
         report_date: options.reportDate?.trim() || "",
         total_value: formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false }),
+        top10_share: null,
+        hhi: null,
+        population_count: 0,
+        is_truncated: false,
         top_10: [],
         by_type: [],
       };
@@ -473,6 +826,7 @@ export function createDemoLiabilityAdbClient(
     async getLiabilitiesMonthly(year: number) {
       await delay();
       return {
+        result_meta: buildLiabilityAnalyticalMockMeta("liability_analytics.monthly"),
         year,
         months: [],
         ytd_avg_total_liabilities: null,
@@ -482,6 +836,7 @@ export function createDemoLiabilityAdbClient(
     async getLiabilityAdbMonthly(year: number) {
       await delay();
       return {
+        result_meta: buildLiabilityAnalyticalMockMeta("adb.monthly"),
         year,
         months: [],
         ytd_avg_assets: 0,
@@ -557,6 +912,37 @@ export function createDemoLiabilityAdbClient(
         coverage_pct: 0,
       };
     },
+    async getAdbInsights(startDate: string, endDate: string) {
+      await delay();
+      // 演示数据集与 getAdbComparison 一样没有余额行，这里返回后端在「本期无有效余额」
+      // 分支下的同形响应：三个窗口全部 no_data、分析块全 null，页面显式披露不可用而不是渲染 0。
+      const unavailableWindow = (start: string, end: string): AdbInsightsWindow => ({
+        start_date: start,
+        end_date: end,
+        calendar_days_inclusive: 0,
+        coverage_days: 0,
+        available: false,
+        reason: "no_data",
+      });
+      return {
+        result_meta: buildLiabilityAnalyticalMockMeta("adb.insights"),
+        start_date: startDate,
+        end_date: endDate,
+        calendar_days_inclusive: 0,
+        insufficient_window: false,
+        windows: {
+          current: unavailableWindow(startDate, endDate),
+          qoq: unavailableWindow("", ""),
+          yoy: unavailableWindow("", ""),
+        },
+        scale_attribution: { qoq: null, yoy: null },
+        nim_attribution: null,
+        nim_attribution_unavailable_reason: "current_unavailable",
+        volatility: null,
+        concentration: null,
+        insights: [],
+      };
+    },
   };
 }
 
@@ -572,11 +958,14 @@ export function createRealLiabilityAdbClient(
         params.set("report_date", reportDate.trim());
       }
       const q = params.toString();
-      return requestEnvelopeOrPlainJson<LiabilityRiskBucketsPayload>(
+      return requestEnvelopeOrPlainJsonWithMeta<LiabilityRiskBucketsPayload>(
         fetchImpl,
         baseUrl,
         `/api/risk/buckets${q ? `?${q}` : ""}`,
-      );
+      ).then(({ result, result_meta }) => ({
+        ...result,
+        result_meta,
+      }));
     },
     getLiabilityYieldMetrics: (reportDate) => {
       const params = new URLSearchParams();
@@ -584,11 +973,14 @@ export function createRealLiabilityAdbClient(
         params.set("report_date", reportDate.trim());
       }
       const q = params.toString();
-      return requestEnvelopeOrPlainJson<LiabilityYieldMetricsPayload>(
+      return requestEnvelopeOrPlainJsonWithMeta<LiabilityYieldMetricsPayload>(
         fetchImpl,
         baseUrl,
         `/api/analysis/yield_metrics${q ? `?${q}` : ""}`,
-      );
+      ).then(({ result, result_meta }) => ({
+        ...result,
+        result_meta,
+      }));
     },
     getYieldByPeriod: ({ year, periodType }) => {
       const params = new URLSearchParams();
@@ -602,7 +994,7 @@ export function createRealLiabilityAdbClient(
         `/api/analysis/yield-by-period?${params.toString()}`,
       );
     },
-    getLiabilityCounterparty: ({ reportDate, topN }) => {
+    getLiabilityCounterparty: async ({ reportDate, topN }) => {
       const params = new URLSearchParams();
       if (reportDate?.trim()) {
         params.set("report_date", reportDate.trim());
@@ -611,11 +1003,15 @@ export function createRealLiabilityAdbClient(
         params.set("top_n", String(topN));
       }
       const q = params.toString();
-      return requestEnvelopeOrPlainJson<LiabilityCounterpartyPayload>(
+      const { result, result_meta } = await requestEnvelopeOrPlainJsonWithMeta<LiabilityCounterpartyPayload>(
         fetchImpl,
         baseUrl,
         `/api/analysis/liabilities/counterparty${q ? `?${q}` : ""}`,
       );
+      return {
+        ...result,
+        result_meta,
+      };
     },
     getLiabilityKnowledgeBrief: () =>
       requestJson<LiabilityKnowledgeBriefPayload>(
@@ -647,18 +1043,27 @@ export function createRealLiabilityAdbClient(
         `/api/analysis/liabilities/contribution-split${q ? `?${q}` : ""}`,
       );
     },
-    getLiabilitiesMonthly: (year) =>
-      requestEnvelopeOrPlainJson<LiabilitiesMonthlyPayload>(
+    getLiabilitiesMonthly: async (year) => {
+      const { result, result_meta } = await requestEnvelopeOrPlainJsonWithMeta<LiabilitiesMonthlyPayload>(
         fetchImpl,
         baseUrl,
         `/api/liabilities/monthly?year=${encodeURIComponent(String(year))}`,
-      ),
-    getLiabilityAdbMonthly: (year) =>
-      requestEnvelopeOrPlainJson<AdbMonthlyResponse>(
+      );
+      return {
+        ...result,
+        result_meta,
+      };
+    },
+    getLiabilityAdbMonthly: async (year) => {
+      const { result, result_meta } = await requestEnvelopeOrPlainJsonWithMeta<
+        Record<string, unknown>
+      >(
         fetchImpl,
         baseUrl,
         `/api/analysis/adb/monthly?year=${encodeURIComponent(String(year))}`,
-      ),
+      );
+      return normalizeAdbMonthlyResponse(result, result_meta);
+    },
     getAdb: ({ startDate, endDate }) => {
       const params = new URLSearchParams();
       params.set("start_date", startDate.trim());
@@ -677,14 +1082,14 @@ export function createRealLiabilityAdbClient(
       if (topN !== undefined) {
         params.set("top_n", String(topN));
       }
-      const { result, result_meta } = await requestEnvelopeOrPlainJsonWithMeta<
+      const { result, result_meta, calibration } = await requestEnvelopeOrPlainJsonWithMeta<
         Record<string, unknown>
       >(
         fetchImpl,
         baseUrl,
         `/api/analysis/adb/comparison?${params.toString()}`,
       );
-      return normalizeAdbComparisonResponse(result, result_meta);
+      return normalizeAdbComparisonResponse(result, result_meta, calibration);
     },
     getAdbMonthly: async (year) => {
       const { result, result_meta } = await requestEnvelopeOrPlainJsonWithMeta<
@@ -705,6 +1110,19 @@ export function createRealLiabilityAdbClient(
         baseUrl,
         `/api/analysis/adb/coverage?${params.toString()}`,
       );
+    },
+    getAdbInsights: async (startDate, endDate) => {
+      const params = new URLSearchParams();
+      params.set("start_date", startDate.trim());
+      params.set("end_date", endDate.trim());
+      const { result, result_meta } = await requestEnvelopeOrPlainJsonWithMeta<
+        Record<string, unknown>
+      >(
+        fetchImpl,
+        baseUrl,
+        `/api/analysis/adb/insights?${params.toString()}`,
+      );
+      return normalizeAdbInsightsResponse(result, result_meta);
     },
   };
 }

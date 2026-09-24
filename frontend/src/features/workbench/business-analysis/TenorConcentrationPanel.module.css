@@ -1,0 +1,56 @@
+.note {
+  margin: 0 0 12px;
+  color: var(--ib-ink-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius);
+}
+
+.rowNegative {
+  background: color-mix(in srgb, var(--ib-down) 8%, var(--ib-surface));
+}
+
+.rowPositive {
+  background: var(--ib-surface-muted);
+}
+
+.rowTitle {
+  color: var(--ib-ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.rowNote {
+  margin-top: 4px;
+  color: var(--ib-ink-secondary);
+  font-size: 12px;
+}
+
+.value {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.valueNegative {
+  color: var(--ib-down);
+}
+
+.valuePositive {
+  color: var(--ib-ink-secondary);
+}

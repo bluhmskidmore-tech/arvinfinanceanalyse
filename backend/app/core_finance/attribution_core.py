@@ -7,6 +7,7 @@ log_attribution_result（可选）。
 from __future__ import annotations
 
 import logging
+import warnings
 from calendar import monthrange
 from dataclasses import dataclass, field
 from datetime import date
@@ -69,6 +70,19 @@ def calculate_reconciliation(
     threshold_bad: Decimal = DEFAULT_RESIDUAL_THRESHOLD_BAD,
     context: str = "",
 ) -> ReconciliationResult:
+    """[DEPRECATED / 已弃用]（2026-08 PnL 归因审计 M3）
+
+    无生产调用方（仅测试引用）。生产对账/残差口径由各归因主线内联实现
+    （如 core_finance.pnl 的 pnl_vs_ledger_diff、campisi/四效应的残差定义），
+    阈值与诊断语义并不与本函数对齐。保守处置：不直接删除，调用即抛
+    ``DeprecationWarning``；如需复用请先与主线对账口径对齐并补测试。
+    """
+    warnings.warn(
+        "attribution_core.calculate_reconciliation 已弃用（无生产调用方）；"
+        "生产对账/残差口径由各归因主线内联实现（如 pnl.pnl_vs_ledger_diff），勿混用。",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     result = ReconciliationResult()
     result.explained_breakdown = explained_components.copy()
     result.actual_pnl = actual_pnl
@@ -199,6 +213,22 @@ def estimate_modified_duration(
     ytm: Decimal | None = None,
     coupon_frequency: int = 1,
 ) -> Decimal:
+    """[DEPRECATED / 已弃用]（2026-08 PnL 归因审计 M3）
+
+    无生产调用方（仅测试引用）。生产久期主线是
+    ``bond_duration.estimate_duration``（Macaulay 闭式）+
+    ``modified_duration_from_macaulay``；``bond_analytics.common`` 中的**同名**
+    函数签名为 ``(duration, ytm, ...)``（Macaulay→修正转换），与本函数
+    ``(maturity_date, report_date, coupon_rate, ...)`` 完全不同，混用会得到
+    错误久期。保守处置：不直接删除，调用即抛 ``DeprecationWarning``。
+    """
+    warnings.warn(
+        "attribution_core.estimate_modified_duration 已弃用（无生产调用方）；"
+        "生产久期主线使用 bond_duration.estimate_duration + "
+        "modified_duration_from_macaulay（bond_analytics.common 同名函数签名不同，勿混用）。",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if maturity_date is None:
         return DEFAULT_DURATION
 
@@ -236,13 +266,6 @@ def estimate_modified_duration(
     modified_duration = macd_years / one_plus_y
 
     return max(MIN_DURATION, min(MAX_DURATION, modified_duration))
-
-
-def estimate_convexity(duration: Decimal, ytm: Decimal | None = None) -> Decimal:
-    if ytm is not None and ytm > Decimal("0"):
-        one_plus_y = Decimal("1") + ytm
-        return (duration * duration + duration) / (one_plus_y * one_plus_y)
-    return duration * (duration + Decimal("1"))
 
 
 def interpolate_yield_curve(

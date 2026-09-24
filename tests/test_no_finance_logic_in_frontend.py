@@ -46,15 +46,41 @@ DASHBOARD_COCKPIT_DISPLAY_ONLY_SNIPPETS = (
 )
 
 DISPLAY_ONLY_FILE_SNIPPETS = {
+    "features/cross-asset/components/utils.ts": (
+        # This token pair appears only in the display-formatting doc comment;
+        # the helper formats a backend-provided CNY impact value.
+        "DV01/CS01",
+    ),
     "features/workbench/dashboard/dashboardCockpitModel.ts": DASHBOARD_COCKPIT_DISPLAY_ONLY_SNIPPETS,
     "features/workbench/dashboard-home/dashboardHomeBodyView.ts": (
         # Dashboard home body reads backend-provided metrics and fixed mock values
-        # for display; these snippets are display-only field formatting.
-        '{ id: "dv01", label: "利率风险 DV01", value: numericValueOrGap(payload.total_dv01, "dv01") },',
+        # for display; these snippets are display-only field formatting. The
+        # KRDCurveRiskPayload identifier is the api-layer response type name.
+        "KRDCurveRiskPayload",
+        '{ id: "dv01", label: "利率风险 DV01", value: dv01WanValueOrGap(payload.total_dv01) },',
         '{ id: "convexity", label: "加权凸性", value: numericValueOrGap(payload.weighted_convexity, "ratio") },',
-        '{ id: "spread-dv01", label: "利差 DV01", value: numericValueOrGap(payload.total_spread_dv01, "dv01") },',
+        '{ id: "spread-dv01", label: "利差 DV01", value: dv01WanValueOrGap(payload.total_spread_dv01) },',
         '{ id: "dv01", label: "利率风险 DV01", value: "10,615.59 万" },',
         '{ id: "spread-dv01", label: "利差 DV01", value: GAP },',
+    ),
+    "features/workbench/dashboard-home/DashboardHomeOptionTwoLayout.tsx": (
+        # Option two dedupes the risk panel cell whose backend-provided label
+        # repeats the first-screen KPI; matching the label is display plumbing.
+        'metric.label.toUpperCase().includes("DV01"),',
+    ),
+    "features/workbench/dashboard-home/DashboardHomeOptionTwoOverview.tsx": (
+        # Option two declares the backend-provided KPI's display label only.
+        '{ id: "dv01-wan", label: "DV01", sourceIds: ["dv01-wan", "dv01"] },',
+    ),
+    "features/workbench/dashboard-home/DashboardHomeOptionTwoSupportBand.tsx": (
+        # KRD strip renders backend-provided per-tenor exposures; title/aria
+        # strings are display copy only.
+        '各期限 DV01',
+        'title={`${bucket.tenor} DV01 ${bucket.dv01Display}（利率上行 1bp 的估值敏感度）`}',
+    ),
+    "features/workbench/dashboard-home/dashboardHomeFirstScreenView.ts": (
+        # First-screen view model labels an already supplied DV01 display value.
+        'label: "DV01",',
     ),
     "features/workbench/dashboard-home/dashboardHomeView.ts": (
         # Dashboard home renders backend-provided risk readouts; these snippets
@@ -85,7 +111,7 @@ DISPLAY_ONLY_FILE_SNIPPETS = {
             '      {\n'
             '        label: "DV01",\n'
             '        value: dv01Value,\n'
-            '        tone: dv01Value === "-" ? "muted" : "ok",\n'
+            '        tone: dv01Value === EM_DASH ? "muted" : "ok",\n'
             "      },"
         ),
         '"当前为 MOCK 模式，样例市值、信用占比、DV01、持仓只数和归因结论仅用于页面结构验证，不可用于业务决策。";',
@@ -93,9 +119,24 @@ DISPLAY_ONLY_FILE_SNIPPETS = {
         'evidence: "MOCK 模式不触发信用、久期、DV01 或归因驱动的行动建议。",',
         '"请切换正式数据源后再查看组合规模、信用占比、DV01、持仓只数和归因摘要。",',
     ),
+    "features/pnl/PnlBridgePage.tsx": (
+        # PnL bridge translates the backend effect-availability reason code
+        # non_fvtpl_basis into display copy; the accounting-basis exclusion is
+        # decided in backend/app/core_finance/pnl_bridge, not here.
+        'non_fvtpl_basis: "非 FVTPL 口径不计市场效应",',
+    ),
 }
 
 DISPLAY_ONLY_FILE_LINE_PREFIXES = {
+    "features/pnl/pnlBridgePageSupport.ts": (
+        # Backend effect-availability reason translated into display copy.
+        "non_fvtpl_basis: ",
+    ),
+    "features/workbench/dashboard-home/lib/sanitizeMetricCopy.ts": (
+        # Label/detail cleanup for backend-provided metric copy only.
+        "*",
+        "[/",
+    ),
     "features/workbench/dashboard/dashboardCockpitModel.ts": (
         "label: ",
         "primaryValue: portfolioAllowed ? ",
@@ -120,8 +161,27 @@ DISPLAY_ONLY_FILE_LINE_PREFIXES = {
         "{ id: ",
         "label: ",
     ),
+    "features/workbench/dashboard-home/dashboardHomeFirstScreenMockView.ts": (
+        # Mock view labels only; values are fixed display fixtures.
+        "label: ",
+    ),
+    "features/workbench/dashboard-home/TerminalHomeFirstScreen.tsx": (
+        "code: ",
+        "label: ",
+        "<span",
+        "<td",
+        "{ label: ",
+    ),
+    "features/workbench/dashboard-home/TerminalHomeWorkGrid.tsx": (
+        "<small>",
+        "note: ",
+    ),
     "features/workbench/dashboard-home/sections/BottomGridSection.tsx": (
         "<th>",
+    ),
+    "features/workbench/module-home/ModuleWorkbenchHomePage.tsx": (
+        "if (title === ",
+        "return ",
     ),
     "features/workbench/module-home/moduleHomeConfig.ts": (
         "briefingTitles: ",
@@ -133,17 +193,80 @@ DISPLAY_ONLY_FILE_LINE_PREFIXES = {
         "source: ",
         "key: ",
         "title: ",
+        "subtitle: ",
         "detail: ",
         "evidence: ",
         "value: ",
+        "? ",
         "? `",
         "//",
         "const RISK_KRD_FIELDS:",
+        "const RISK_ACCOUNTING_DV01_FIELDS:",
         "{ key: ",
         "for (const field of RISK_KRD_FIELDS)",
+        "for (const field of RISK_ACCOUNTING_DV01_FIELDS)",
+        "const raw = nativeToNumber(",
         "pushRiskTensorDetailRow(",
         '"',
         "tensor.",
+    ),
+    "features/workbench/module-home/PortfolioHoldingsHeroBand.tsx": (
+        "<th>",
+        "row.dv01Display ? ",
+    ),
+    "features/workbench/module-home/PortfolioHomeLayout.tsx": (
+        # Label alias map for backend-provided fact KPIs; display copy only.
+        "DV01: ",
+        "/**",
+    ),
+    "features/workbench/module-home/PortfolioStructureTabPanel.tsx": (
+        # Compact list header cell and source-string cleanup; display copy only.
+        "<span>",
+        "const fallbackMetric = ",
+        "{ key: ",
+        "row.dv01Display",
+    ),
+    "features/workbench/module-home/portfolioHomeQuickAccess.ts": (
+        "description: ",
+    ),
+    "features/workbench/module-home/riskHomeAdapter.ts": (
+        # Display adapter: formats backend risk-tensor fields (labels, 万元
+        # readouts, field keys) without recomputing risk measures.
+        "const RISK_KRD_FIELDS",
+        "{ key: ",
+        "for (const field of RISK_KRD_FIELDS)",
+        "title: ",
+        "label: ",
+        "key: ",
+        "note: ",
+        "amount: ",
+        "series: ",
+        "convexity: ",
+        "const convexity = ",
+        "dv01 !== null",
+        "? `",
+        '? "',
+        "| ",
+        "/*",
+        "* ",
+        "DV01RiskPayload,",
+        "envelope?: ",
+        "function riskBondUnitsValid",
+        ": ",
+        "peakKrdBucket = ",
+        "rows.push(",
+        "push(portfolioRows, ",
+        "push(creditRows, ",
+    ),
+    "features/workbench/module-home/RiskOverviewPage.tsx": (
+        # JSX display copy for backend-provided hero/KRD values; no computation.
+        "{hero.",
+        "<div",
+        "<span",
+        "<b>",
+        "<p ",
+        "aria-label",
+        "<em>",
     ),
 }
 

@@ -21,6 +21,11 @@ Use this file for work under `backend/`.
 
 ## Verification
 
-- From the repository root, run the narrowest relevant pytest target first: `python -m pytest tests/<target>.py -q` or `python -m pytest backend/tests/<target>.py -q`.
+- Use the repo venv explicitly; a bare `python` is often shadowed by an unrelated venv on developer
+  machines (Windows: `.\.venv\Scripts\python.exe`, POSIX: `.venv/bin/python`). A shadowing venv that
+  happens to have pytest installed will report green against a different dependency set.
+- From the repository root, run the narrowest relevant pytest target first:
+  `.\.venv\Scripts\python.exe -m pytest tests/<target>.py -q` or
+  `.\.venv\Scripts\python.exe -m pytest backend/tests/<target>.py -q`.
 - Add or update focused tests when changing adapters, schemas, services, repositories, or `core_finance` calculations.
 - Use wider backend release checks only after cross-cutting changes.

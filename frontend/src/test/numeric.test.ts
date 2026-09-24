@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { isNumeric, parseNumeric, parseNumericOrNull } from "../api/numeric";
+import { isNumeric, normalizeNumeric, parseNumeric, parseNumericOrNull } from "../api/numeric";
+import { EM_DASH } from "../utils/format";
 import type { Numeric } from "../api/contracts";
 
 describe("isNumeric", () => {
@@ -146,6 +147,49 @@ describe("parseNumericOrNull", () => {
   it("returns null on invalid input instead of throwing", () => {
     expect(parseNumericOrNull("garbage")).toBeNull();
     expect(parseNumericOrNull(undefined)).toBeNull();
+  });
+});
+
+describe("normalizeNumeric", () => {
+  it("passes a valid Numeric through unchanged (same reference)", () => {
+    const input: Numeric = {
+      raw: 0.0255,
+      unit: "pct",
+      display: "+2.55%",
+      precision: 2,
+      sign_aware: true,
+    };
+    expect(normalizeNumeric(input, "yuan", false)).toBe(input);
+  });
+
+  it("coerces a decimal string with caller unit and precision", () => {
+    const result = normalizeNumeric("0.37853183", "bp", false, 2);
+    expect(result.raw).toBeCloseTo(0.37853183);
+    expect(result.unit).toBe("bp");
+    expect(result.display).toBe("0.38 bp");
+    expect(result.precision).toBe(2);
+    expect(result.sign_aware).toBe(false);
+  });
+
+  it("coerces a plain number and honors sign_aware", () => {
+    const result = normalizeNumeric(-677_931_223.044133, "yuan", true);
+    expect(result.raw).toBeCloseTo(-677_931_223.044133);
+    expect(result.display).toBe("-6.78 亿");
+    expect(result.sign_aware).toBe(true);
+  });
+
+  it("normalizes null, undefined, and empty string to a missing Numeric", () => {
+    for (const missing of [null, undefined, ""]) {
+      const result = normalizeNumeric(missing, "ratio", false);
+      expect(result.raw).toBeNull();
+      expect(result.display).toBe(EM_DASH);
+    }
+  });
+
+  it("normalizes a non-numeric string to a missing Numeric", () => {
+    const result = normalizeNumeric("garbage", "ratio", false);
+    expect(result.raw).toBeNull();
+    expect(result.display).toBe(EM_DASH);
   });
 });
 

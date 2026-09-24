@@ -2,11 +2,12 @@ import { AlertOutlined, CalculatorOutlined, DatabaseOutlined } from "@ant-design
 import { Card, Typography } from "antd";
 
 import type { KpiFetchTrace, KpiScoreTrace } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 
 const { Text } = Typography;
 
 function formatParams(params: Record<string, unknown>): string {
-  if (!params || Object.keys(params).length === 0) return "-";
+  if (!params || Object.keys(params).length === 0) return EM_DASH;
   return Object.entries(params)
     .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
     .join(", ");

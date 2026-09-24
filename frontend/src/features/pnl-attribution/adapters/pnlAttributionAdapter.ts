@@ -111,6 +111,7 @@ function describeMetaDetails(meta: ResultMeta): string {
   if (meta.quality_flag && meta.quality_flag !== "ok") parts.push(`质量=${quality}`);
   if (meta.vendor_status && meta.vendor_status !== "ok") parts.push(`供应商=${vendor}`);
   if (meta.fallback_mode && meta.fallback_mode !== "none") parts.push(`降级=${fallback}`);
-  if (meta.generated_at) parts.push(`生成时间=${meta.generated_at}`);
-  return parts.join(" · ");
+  // 生成时间已在结果元信息条与溯源卡露出，状态横幅不再重复（§6）；
+  // 分隔用分号，把「·」配额留给 PageDataSection 横幅的「有效日 ·」前缀（§7）。
+  return parts.join("；");
 }

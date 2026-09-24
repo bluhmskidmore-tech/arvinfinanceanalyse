@@ -61,7 +61,13 @@ function createKRDCurveRiskResult(
     portfolio_dv01: dv01(150_000),
     portfolio_convexity: ratio(22.5, 1),
     krd_buckets: [
-      { tenor: "3Y", krd: ratio(0.8, 1), dv01: dv01(0.02, 2), market_value_weight: ratio(0.2, 1) },
+      {
+        tenor: "3Y",
+        avg_modified_duration: ratio(0.8, 1),
+        krd: ratio(0.8, 1),
+        dv01: dv01(0.02, 2),
+        market_value_weight: ratio(0.2, 1),
+      },
     ],
     scenarios: [
       {
@@ -135,7 +141,7 @@ describe("KRDCurveRiskView", () => {
       "不在前端补算正式风险指标",
     );
     expect(screen.getByTestId("krd-curve-risk-buckets-lead")).toHaveTextContent(
-      "KRD 桶位与情景冲击",
+      "期限桶久期与情景冲击",
     );
     expect(screen.getByTestId("krd-curve-risk-asset-lead")).toHaveTextContent(
       "资产类别风险拆分",
@@ -149,12 +155,14 @@ describe("KRDCurveRiskView", () => {
     expect(within(portfolioDv01Kpi as HTMLElement).queryByText("150,000")).not.toBeInTheDocument();
     expect(screen.getByText("凸性")).toBeInTheDocument();
 
-    expect(screen.getByText("KRD 分布")).toBeInTheDocument();
+    expect(screen.getByTestId("krd-avg-md-distribution")).toHaveTextContent(
+      "期限桶平均修正久期",
+    );
     expect(screen.getByText("情景冲击")).toBeInTheDocument();
     expect(screen.getByText("parallel_10bp")).toBeInTheDocument();
     expect(screen.getByText("收益率曲线平行 +10bp")).toBeInTheDocument();
     expect(screen.getByTestId("krd-computed-at")).toHaveTextContent(
-      "计算时间：2026-04-10T00:00:00Z",
+      "计算时间：2026-04-10 00:00",
     );
     expect(screen.getByText("parallel_shift_bp 10")).toBeInTheDocument();
     expect(screen.getAllByText("利率贡献").length).toBeGreaterThan(0);

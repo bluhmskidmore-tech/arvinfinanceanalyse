@@ -1,4 +1,4 @@
-import { SectionCard } from "../../../components/SectionCard";
+import { EvidencePanel } from "../../../components/page/PagePrimitives";
 import { designTokens } from "../../../theme/designSystem";
 import type { EnvironmentTags } from "../lib/crossAssetDriversModel";
 
@@ -42,22 +42,22 @@ export function PageOutput({
   ];
 
   return (
-    <SectionCard title="页面输出">
+    <EvidencePanel heading="页面输出">
       <dl
         style={{
           margin: 0,
           fontSize: t.fontSize[13],
-          color: t.color.neutral[700],
+          color: "var(--dh-api-soft)",
           lineHeight: t.lineHeight.normal,
         }}
       >
         {items.map((item) => (
           <div key={item.label} style={{ marginBottom: item.label === "关注窗口" ? 0 : t.space[4] }}>
-            <dt style={{ fontWeight: 700, color: t.color.neutral[800], margin: 0 }}>{item.label}</dt>
+            <dt style={{ fontWeight: 700, color: "var(--dh-api-ink)", margin: 0 }}>{item.label}</dt>
             <dd style={{ margin: `${t.space[2]}px 0 0` }}>{item.body}</dd>
           </div>
         ))}
       </dl>
-    </SectionCard>
+    </EvidencePanel>
   );
 }

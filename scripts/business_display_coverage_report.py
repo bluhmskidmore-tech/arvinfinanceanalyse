@@ -96,7 +96,7 @@ BUSINESS_DISPLAY_ROUTES: tuple[dict[str, Any], ...] = (
     },
     {
         "route": "/average-balance",
-        "page_id": "GAP-AVERAGE-BALANCE-PAGE",
+        "page_id": "PAGE-ADB-001",
         "risk_tier": "critical",
         "business_boundary": "candidate_daily_adb_not_formal_balance_truth",
         "evidence": {
@@ -122,7 +122,7 @@ BUSINESS_DISPLAY_ROUTES: tuple[dict[str, Any], ...] = (
     },
     {
         "route": "/concentration-monitor",
-        "page_id": "GAP-CONCENTRATION-MONITOR-PAGE",
+        "page_id": "PAGE-CONC-001",
         "risk_tier": "high",
         "business_boundary": "candidate_concentration_monitor",
         "evidence": {

@@ -29,7 +29,7 @@ def test_average_balance_owner_evidence_packet_preserves_candidate_boundary() ->
     packet = build_packet()
 
     assert packet["packet_kind"] == "average_balance_owner_evidence_packet"
-    assert packet["page_id"] == "GAP-AVERAGE-BALANCE-PAGE"
+    assert packet["page_id"] == "PAGE-ADB-001"
     assert packet["page_slug"] == "average-balance"
     assert packet["route"] == "/average-balance"
     assert packet["primary_api"] == "/api/analysis/adb"

@@ -1,19 +1,26 @@
-import { Card, Col, Row, Typography } from "antd";
-
 import type { Numeric } from "../../../api/contracts";
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
-import { numericOrDash } from "../utils/money";
+import { nocturneChartTheme } from "../../../components/charts/chartTheme";
+import { BaseChart } from "../../../components/charts/BaseChart";
+import { type EChartsOption } from "../../../lib/echarts";
+import { termBucketLabel } from "../utils/labels";
+import { numericOrDash, numericRaw } from "../utils/money";
 
-const { Text } = Typography;
-
-const COLORS = ["#cf1322", "#1d39c4", "#08979c", "#389e0d", "#531dab"];
+/** 结构饼图分类色：取 Nocturne 分类盘前五档（无语义红，避免结构图带告警暗示）。 */
+const COLORS = [
+  nocturneChartTheme.categoricalPalette[0],
+  nocturneChartTheme.categoricalPalette[1],
+  nocturneChartTheme.categoricalPalette[2],
+  nocturneChartTheme.categoricalPalette[3],
+  nocturneChartTheme.categoricalPalette[4],
+] as const;
 
 type NamedYi = { name: string; amountYi: Numeric | null };
 type BucketYi = { bucket: string; amountYi: Numeric | null };
 
 function pieOption(items: NamedYi[]): EChartsOption {
-  return {
-    color: COLORS,
+  return nocturneChartTheme.createBaseChartOption({
+    color: [...COLORS],
+    legend: { show: false },
     tooltip: {
       trigger: "item",
       formatter: (params: unknown) => {
@@ -26,20 +33,24 @@ function pieOption(items: NamedYi[]): EChartsOption {
       {
         type: "pie",
         radius: ["42%", "68%"],
-        data: items.map((item) => ({
-          name: item.name,
-          value: item.amountYi?.raw ?? 0,
-          amountYi: item.amountYi,
-        })),
+        // 缺数（null）不入饼图系列，避免画出假 0 扇区；图例仍以 EM_DASH 展示缺数项。
+        data: items
+          .filter((item) => numericRaw(item.amountYi) !== null)
+          .map((item) => ({
+            name: item.name,
+            value: numericRaw(item.amountYi) as number,
+            amountYi: item.amountYi,
+          })),
         label: { show: false },
       },
     ],
-  };
+  });
 }
 
 function barOption(items: BucketYi[]): EChartsOption {
-  return {
+  return nocturneChartTheme.createBarChartOption({
     color: [COLORS[0]],
+    legend: { show: false },
     tooltip: {
       trigger: "axis",
       formatter: (params: unknown) => {
@@ -50,38 +61,38 @@ function barOption(items: BucketYi[]): EChartsOption {
       },
     },
     grid: { left: 48, right: 16, top: 16, bottom: 32 },
-    xAxis: { type: "category", data: items.map((item) => item.bucket), axisLabel: { fontSize: 11 } },
+    xAxis: {
+      type: "category",
+      // 桶名中文化（显示层）；interval: 0 禁止轴标签抽稀，8 桶全量可见。
+      data: items.map((item) => termBucketLabel(item.bucket)),
+      axisLabel: { fontSize: 11, interval: 0 },
+    },
     yAxis: { type: "value" },
     series: [
       {
         type: "bar",
+        // 缺数（null）保留类目但不画柱；tooltip 经 numericOrDash 显示 EM_DASH。
         data: items.map((item) => ({
-          value: item.amountYi?.raw ?? 0,
+          value: numericRaw(item.amountYi),
           amountYi: item.amountYi,
         })),
         barMaxWidth: 48,
       },
     ],
-  };
+  });
 }
 
 function PieLegend({ items }: { items: NamedYi[] }) {
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 8 }}>
+    <div className="liability-legend">
       {items.map((item, index) => (
-        <Text key={item.name} style={{ fontSize: 12 }} type="secondary">
+        <span key={item.name} className="liability-legend__item">
           <span
-            style={{
-              display: "inline-block",
-              width: 10,
-              height: 10,
-              borderRadius: 999,
-              background: COLORS[index % COLORS.length],
-              marginRight: 6,
-            }}
+            className="liability-legend__swatch"
+            style={{ background: COLORS[index % COLORS.length] }}
           />
           {item.name}: {numericOrDash(item.amountYi)}
-        </Text>
+        </span>
       ))}
     </div>
   );
@@ -106,67 +117,57 @@ export function LiabilityStructureGrids({
 }) {
   return (
     <>
-      <Row gutter={[16, 16]}>
-        <Col xs={24} lg={8}>
-          <Card size="small" title="负债结构总览（单位：亿元）">
-            {structurePieCaption ? (
-              <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 8 }}>
-                {structurePieCaption}
-              </Text>
-            ) : null}
-            <div style={{ height: 300 }}>
-              <ReactECharts option={pieOption(structure)} style={{ height: 300 }} notMerge lazyUpdate />
-            </div>
-            <PieLegend items={structure} />
-          </Card>
-        </Col>
-        <Col xs={24} lg={16}>
-          <Card size="small" title="期限结构（单位：亿元）">
-            <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 8 }}>
-              口径：发行债券（asset_class 含“发行类”）+ 同业负债（direction=Liability）。
-            </Text>
-            <div style={{ height: 300 }}>
-              <ReactECharts option={barOption(term)} style={{ height: 300 }} notMerge lazyUpdate />
-            </div>
-          </Card>
-        </Col>
-      </Row>
+      <div className="liability-analytics-page__grid liability-analytics-page__grid--structure">
+        <div className="liability-panel">
+          <h3 className="liability-panel__title">负债结构总览（单位：亿元）</h3>
+          {structurePieCaption ? <p className="liability-caption">{structurePieCaption}</p> : null}
+          <div className="liability-chart-frame liability-chart-frame--structure">
+            <BaseChart option={pieOption(structure)} height={300} />
+          </div>
+          <PieLegend items={structure} />
+        </div>
+        <div className="liability-panel">
+          <h3 className="liability-panel__title">期限结构（单位：亿元）</h3>
+          <p className="liability-caption">
+            口径：发行债券（asset_class 含“发行类”）+ 同业负债（direction=Liability）。
+          </p>
+          <div className="liability-chart-frame liability-chart-frame--structure">
+            <BaseChart option={barOption(term)} height={300} />
+          </div>
+        </div>
+      </div>
 
-      <Row gutter={[16, 16]} style={{ marginTop: 0 }}>
-        <Col xs={24} lg={12}>
-          <Card size="small" title="同业负债业务结构（按产品类型，亿元）">
-            <div style={{ height: 300 }}>
-              <ReactECharts option={pieOption(interbankStructure)} style={{ height: 300 }} notMerge lazyUpdate />
-            </div>
-            <PieLegend items={interbankStructure} />
-          </Card>
-        </Col>
-        <Col xs={24} lg={12}>
-          <Card size="small" title="同业负债期限结构（亿元）">
-            <div style={{ height: 300 }}>
-              <ReactECharts option={barOption(interbankTerm)} style={{ height: 300 }} notMerge lazyUpdate />
-            </div>
-          </Card>
-        </Col>
-      </Row>
+      <div className="liability-analytics-page__grid liability-analytics-page__grid--2">
+        <div className="liability-panel">
+          <h3 className="liability-panel__title">同业负债业务结构（按产品类型，亿元）</h3>
+          <div className="liability-chart-frame liability-chart-frame--structure">
+            <BaseChart option={pieOption(interbankStructure)} height={300} />
+          </div>
+          <PieLegend items={interbankStructure} />
+        </div>
+        <div className="liability-panel">
+          <h3 className="liability-panel__title">同业负债期限结构（亿元）</h3>
+          <div className="liability-chart-frame liability-chart-frame--structure">
+            <BaseChart option={barOption(interbankTerm)} height={300} />
+          </div>
+        </div>
+      </div>
 
-      <Row gutter={[16, 16]}>
-        <Col xs={24} lg={12}>
-          <Card size="small" title="发行负债业务结构（按业务种类，亿元）">
-            <div style={{ height: 300 }}>
-              <ReactECharts option={pieOption(issuedStructure)} style={{ height: 300 }} notMerge lazyUpdate />
-            </div>
-            <PieLegend items={issuedStructure} />
-          </Card>
-        </Col>
-        <Col xs={24} lg={12}>
-          <Card size="small" title="发行负债期限结构（亿元）">
-            <div style={{ height: 300 }}>
-              <ReactECharts option={barOption(issuedTerm)} style={{ height: 300 }} notMerge lazyUpdate />
-            </div>
-          </Card>
-        </Col>
-      </Row>
+      <div className="liability-analytics-page__grid liability-analytics-page__grid--2">
+        <div className="liability-panel">
+          <h3 className="liability-panel__title">发行负债业务结构（按业务种类，亿元）</h3>
+          <div className="liability-chart-frame liability-chart-frame--structure">
+            <BaseChart option={pieOption(issuedStructure)} height={300} />
+          </div>
+          <PieLegend items={issuedStructure} />
+        </div>
+        <div className="liability-panel">
+          <h3 className="liability-panel__title">发行负债期限结构（亿元）</h3>
+          <div className="liability-chart-frame liability-chart-frame--structure">
+            <BaseChart option={barOption(issuedTerm)} height={300} />
+          </div>
+        </div>
+      </div>
     </>
   );
 }

@@ -47,6 +47,8 @@ def _run_powershell_harness(harness_path: Path, output_path: Path) -> int:
 
 def test_dev_api_script_bootstraps_native_environment():
     script = (ROOT / "scripts" / "dev-api.ps1").read_text(encoding="utf-8")
+    assert "[switch]$SkipStartupStorageMigrations" in script
+    assert '$env:MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS = "1"' in script
     assert ". .\\scripts\\dev-env.ps1" in script or ". \"$root\\scripts\\dev-env.ps1\"" in script
     assert "dev-postgres-up.ps1" in script
     assert "dev-postgres-up.ps1 failed; aborting dev-api startup." in script
@@ -74,6 +76,46 @@ def test_dev_api_enables_market_home_prewarm_by_default():
     assert '$env:MOSS_MARKET_HOME_PREWARM_ENABLED = "1"' in script
 
 
+def test_dev_agent_api_uses_short_hermes_timeout_for_local_responsiveness():
+    ps1 = (ROOT / "scripts" / "dev-agent-api.ps1").read_text(encoding="utf-8")
+    cmd = (ROOT / "scripts" / "dev-agent-api.cmd").read_text(encoding="utf-8")
+
+    assert '$env:MOSS_AGENT_HERMES_TIMEOUT_SECONDS = "12"' in ps1
+    assert "MOSS_AGENT_HERMES_TIMEOUT_SECONDS=$($env:MOSS_AGENT_HERMES_TIMEOUT_SECONDS)" in ps1
+    assert "set MOSS_AGENT_HERMES_TIMEOUT_SECONDS=12" in cmd
+    assert "MOSS_AGENT_HERMES_TIMEOUT_SECONDS=%MOSS_AGENT_HERMES_TIMEOUT_SECONDS%" in cmd
+    assert '$env:MOSS_AGENT_DEV_SCOPE_BYPASS = "true"' in ps1
+    assert "set MOSS_AGENT_DEV_SCOPE_BYPASS=true" in cmd
+
+
+def test_dev_agent_up_starts_the_full_stack_with_explicit_agent_environment():
+    ps1 = (ROOT / "scripts" / "dev-agent-up.ps1").read_text(encoding="utf-8")
+    cmd = (ROOT / "scripts" / "dev-agent-up.cmd").read_text(encoding="utf-8")
+
+    assert '$env:MOSS_AGENT_ENABLED = "true"' in ps1
+    assert '$env:MOSS_AGENT_DEV_SCOPE_BYPASS = "true"' in ps1
+    assert '$env:MOSS_DEV_API_SCRIPT = "dev-agent-api.ps1"' in ps1
+    assert '$env:VITE_MOSS_AGENT_FRONTEND_ENABLED = "true"' in ps1
+    assert '& "$root\\scripts\\dev-up.ps1"' in ps1
+    assert "$originalAgentEnvironment = @{}" in ps1
+    assert "try {" in ps1
+    assert "} finally {" in ps1
+    assert 'Remove-Item -Path "Env:$name" -ErrorAction SilentlyContinue' in ps1
+    assert 'Set-Item -Path "Env:$name" -Value $originalValue.Value' in ps1
+    assert '"%ROOT%\\scripts\\dev-agent-up.ps1"' in cmd
+
+
+def test_dev_up_uses_agent_specific_readiness_probes_for_agent_api():
+    script = (ROOT / "scripts" / "dev-up.ps1").read_text(encoding="utf-8")
+
+    assert '$agentDevMode = $apiScriptName -eq "dev-agent-api.ps1"' in script
+    assert "if ($agentDevMode) {" in script
+    assert 'http://127.0.0.1:7888/api/agent/projects' in script
+    assert 'http://127.0.0.1:7888/api/agent/runs?limit=1' in script
+    assert "Agent projects:" in script
+    assert "Agent runs:" in script
+
+
 def test_dev_worker_script_bootstraps_native_environment():
     script = (ROOT / "scripts" / "dev-worker.ps1").read_text(encoding="utf-8")
     assert ". .\\scripts\\dev-env.ps1" in script or ". \"$root\\scripts\\dev-env.ps1\"" in script
@@ -94,6 +136,8 @@ def test_dev_worker_runner_uses_in_process_dramatiq_worker():
     script = (ROOT / "backend" / "app" / "tasks" / "dev_worker_runner.py").read_text(encoding="utf-8")
     assert "backend.app.tasks.worker_bootstrap" in script
     assert "from dramatiq import Worker" in script
+    assert 'broker.emit_after("process_boot")' in script
+    assert script.index('broker.emit_after("process_boot")') < script.index("Worker(broker")
     assert "Worker(broker" in script
     assert "worker_threads=worker_threads" in script
     assert "multiprocessing.Pipe" not in script
@@ -116,6 +160,9 @@ def test_dev_python_prefers_repo_virtualenv_before_system_python():
 def test_dev_env_script_sets_repo_relative_data_paths():
     script = (ROOT / "scripts" / "dev-env.ps1").read_text(encoding="utf-8")
     assert "Join-Path $root" in script
+    assert '. "$root\\scripts\\dev-python.ps1"' in script
+    assert '$devEnvPython = Resolve-DevPython -RequiredModules @("duckdb")' in script
+    assert "Get-Command python -ErrorAction Stop" not in script
     assert 'Join-Path $root "data\\moss.duckdb"' in script
     assert 'Join-Path $root "data\\archive"' in script
     assert "dev_postgres_cluster.py" in script
@@ -168,11 +215,19 @@ def test_dev_up_script_bootstraps_local_postgres_and_starts_native_processes():
     assert "dev-postgres-up.ps1" in script
     assert '$LASTEXITCODE -ne 0' in script
     assert "dev-api.ps1" in script
+    assert '$allowedApiScriptNames = @("dev-api.ps1", "dev-agent-api.ps1")' in script
+    assert '$apiScriptName -notin $allowedApiScriptNames' in script
+    assert "MOSS_DEV_API_SCRIPT must be one of:" in script
+    assert "-ScriptName $apiScriptName" in script
     assert "dev-worker.ps1" in script
     assert "dev-frontend.ps1" in script
     assert "Start-Process" not in script
     assert "Start-DevScriptDetached" in script
-    assert "WScript.Shell" in script
+    assert "WScript.Shell" not in script
+    assert "Invoke-CimMethod" in script
+    assert "-ClassName Win32_Process" in script
+    assert "-MethodName Create" in script
+    assert "CurrentDirectory = $root" in script
     assert "runtime-clean\\logs" in script
     assert ".out.log" in script
     assert ".err.log" in script
@@ -233,6 +288,16 @@ def test_dev_up_script_bootstraps_local_postgres_and_starts_native_processes():
     )
 
 
+def test_native_dev_detached_launchers_hide_console_windows():
+    for script_name in ("dev-up.ps1", "dev-keepalive.ps1"):
+        script = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
+        launcher = _extract_powershell_function(script, "Start-DevScriptDetached")
+
+        assert "Win32_ProcessStartup" in launcher
+        assert "ShowWindow = [uint16]0" in launcher
+        assert "ProcessStartupInformation = $startupInfo" in launcher
+
+
 def test_dev_frontend_defaults_to_real_data_source():
     script = (ROOT / "scripts" / "dev-frontend.ps1").read_text(encoding="utf-8")
     assert '$env:VITE_DATA_SOURCE = "real"' in script
@@ -254,6 +319,17 @@ def test_dev_keepalive_checks_vite_source_module_not_only_frontend_root():
     assert "/src/api/clientContext.ts" in script
     assert "/src/api/client.ts" not in script
     assert "http://127.0.0.1:5888" in script
+    assert "WScript.Shell" not in script
+    assert "Invoke-CimMethod" in script
+    assert "-ClassName Win32_Process" in script
+    assert "-MethodName Create" in script
+    assert "CurrentDirectory = $root" in script
+    assert '$ScriptName -eq "dev-api.ps1"' in script
+    assert "-SkipStartupStorageMigrations" in script
+    assert "dev-keepalive.instance.lock" in script
+    assert "[System.IO.FileShare]::None" in script
+    assert "another dev keepalive instance already owns" in script
+    assert "$script:InstanceLock.Dispose()" in script
 
 
 def test_dev_up_http_failure_wrapper_includes_recent_logs(tmp_path):
@@ -360,6 +436,9 @@ def test_dev_postgres_down_script_parses_json_status_payload():
 
 def test_dev_postgres_common_script_runs_dev_cluster_helper_directly():
     script = (ROOT / "scripts" / "dev-postgres-common.ps1").read_text(encoding="utf-8")
+    assert "dev-python.ps1" in script
+    assert "Resolve-DevPython" in script
+    assert "Get-Command python -ErrorAction Stop" not in script
     assert "& $python" in script
     assert "ConvertFrom-Json" in script
     assert "Start-Process" not in script
@@ -443,6 +522,10 @@ def test_codex_verify_page_script_plans_product_category_checks():
     assert "Test-CodexBrowserSmokeCheck" in script
     assert "Codex verify page" in script
     assert "dashboard-home" in script
+    assert (
+        '$mcpContractArgs = @("-m", "pytest", "tests/test_project_mcp_fast_contracts.py", "-m", "mcp_fast", "-q")'
+        in script
+    )
     assert "tests/test_project_mcp_servers.py" in script
     assert "tests/test_home_snapshot_endpoint.py" in script
     assert "tests/test_dashboard_api_contract.py" in script
@@ -583,6 +666,12 @@ def test_codex_verify_page_script_plans_product_category_checks():
     assert "Macro Toolkit browser a11y smoke" in script
     assert "@macro-toolkit" in script
     assert "Stock Analysis backend Livermore observation and diagnostics tests" in script
+    assert "test_stock_analysis_trace_bundle_preserves_observational_livermore_boundaries" in script
+    assert "test_lineage_evidence_mcp_maps_stock_analysis_gap_to_observational_livermore_records" in script
+    assert "test_stock_analysis_readiness_exposes_run_commands_without_formal_promotion" in script
+    assert "tests/test_stock_analysis_governance_record.py" in script
+    assert "tests/test_stock_analysis_owner_evidence_packet.py" in script
+    assert "tests/test_stock_analysis_business_owner_approval_status.py" in script
     assert "tests/test_market_data_livermore_candidate_history.py" in script
     assert "tests/test_market_data_livermore_stock_detail.py" in script
     assert "tests/test_market_data_livermore_sector_rank_series.py" in script

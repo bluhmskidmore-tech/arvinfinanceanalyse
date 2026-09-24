@@ -6,7 +6,8 @@ import datetime as dt
 import json
 
 # Windows / Py3.14: SQLAlchemy's import path calls ``platform.machine()`` which may block
-# on WMI; executive_service pulls models that import SQLAlchemy. Stub before backend imports.
+# on WMI; executive_service pulls models that import SQLAlchemy. Stubbed per-test inside
+# the ``exec_mod`` fixture (monkeypatch restores it) right before the dynamic backend import.
 import platform as _platform
 import threading
 import uuid
@@ -18,8 +19,10 @@ import pytest
 
 from tests.helpers import load_module
 
-# Windows / Py3.14: SQLAlchemy may call platform.machine() during backend imports.
-_platform.machine = lambda: "AMD64"  # type: ignore[method-assign, assignment]
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_executive,
+]
 
 
 def _assert_numeric_json_shape(x: object) -> dict[str, object]:
@@ -47,9 +50,79 @@ def _fake_settings(tmp_path):
 
 @pytest.fixture
 def exec_mod(monkeypatch, tmp_path):
+    # Windows / Py3.14: SQLAlchemy may call platform.machine() during the dynamic
+    # backend import; monkeypatch restores the real implementation on teardown
+    # instead of leaking the stub into other test modules in this process.
+    monkeypatch.setattr(_platform, "machine", lambda: "AMD64")
     mod = _exec_service_module()
     monkeypatch.setattr(mod, "get_settings", lambda: _fake_settings(tmp_path))
     return mod
+
+
+class _ForbiddenBondAnalyticsRepository:
+    def __init__(self, *_args, **_kwargs):
+        raise AssertionError("executive alerts must not read bond analytics directly")
+
+
+def _formal_numeric(
+    raw: float,
+    *,
+    unit: str = "ratio",
+    sign_aware: bool = False,
+) -> dict[str, object]:
+    return {
+        "raw": raw,
+        "unit": unit,
+        "display": str(raw),
+        "precision": 2,
+        "sign_aware": sign_aware,
+    }
+
+
+def _formal_risk_tensor_envelope(
+    *,
+    report_date: str,
+    source_version: str = "sv_alerts_lineage",
+    rule_version: str = "rv_alerts_lineage",
+) -> dict[str, object]:
+    numeric_fields = {
+        "portfolio_dv01": _formal_numeric(800_000.0, unit="dv01"),
+        "regulatory_dv01": _formal_numeric(800_000.0, unit="dv01"),
+        "krd_1y": _formal_numeric(0.1, sign_aware=True),
+        "krd_3y": _formal_numeric(0.2, sign_aware=True),
+        "krd_5y": _formal_numeric(0.3, sign_aware=True),
+        "krd_7y": _formal_numeric(0.2, sign_aware=True),
+        "krd_10y": _formal_numeric(0.15, sign_aware=True),
+        "krd_30y": _formal_numeric(0.05, sign_aware=True),
+        "cs01": _formal_numeric(80_000.0, unit="dv01"),
+        "portfolio_convexity": _formal_numeric(70.0),
+        "portfolio_modified_duration": _formal_numeric(8.0),
+        "issuer_concentration_hhi": _formal_numeric(0.4),
+        "issuer_top5_weight": _formal_numeric(0.6),
+        "asset_cashflow_30d": _formal_numeric(30_000_000.0, unit="yuan"),
+        "asset_cashflow_90d": _formal_numeric(60_000_000.0, unit="yuan"),
+        "liability_cashflow_30d": _formal_numeric(10_000_000.0, unit="yuan"),
+        "liability_cashflow_90d": _formal_numeric(20_000_000.0, unit="yuan"),
+        "liquidity_gap_30d": _formal_numeric(20_000_000.0, unit="yuan", sign_aware=True),
+        "liquidity_gap_90d": _formal_numeric(40_000_000.0, unit="yuan", sign_aware=True),
+        "liquidity_gap_30d_ratio": _formal_numeric(0.2, sign_aware=True),
+        "total_market_value": _formal_numeric(100_000_000.0, unit="yuan"),
+    }
+    return {
+        "result_meta": {
+            "result_kind": "risk.tensor",
+            "source_version": source_version,
+            "rule_version": rule_version,
+            "quality_flag": "ok",
+        },
+        "result": {
+            "report_date": report_date,
+            **numeric_fields,
+            "bond_count": 1,
+            "quality_flag": "ok",
+            "warnings": [],
+        },
+    }
 
 
 def _patch_executive_overview_metric_contexts(monkeypatch, exec_mod, tmp_path, governance_dir):
@@ -105,13 +178,63 @@ def _patch_executive_overview_metric_contexts(monkeypatch, exec_mod, tmp_path, g
         "_fetch_dv01_context",
         lambda *_a, **_k: (
             {
-                "2026-04-30": {"report_date": "2026-04-30", "portfolio_dv01": 30.0},
-                "2026-04-29": {"report_date": "2026-04-29", "portfolio_dv01": 20.0},
+                "2026-04-30": {
+                    "report_date": "2026-04-30",
+                    "portfolio_dv01": 30.0,
+                    "portfolio_modified_duration": 4.37,
+                },
+                "2026-04-29": {
+                    "report_date": "2026-04-29",
+                    "portfolio_dv01": 20.0,
+                    "portfolio_modified_duration": 4.42,
+                },
             },
             [20.0, 30.0],
         ),
     )
     return dates
+
+
+def _seed_executive_overview_governed_lineage(governance_dir, exec_mod) -> None:
+    records = [
+        {
+            "cache_key": exec_mod.PNL_CACHE_KEY,
+            "job_name": exec_mod.PNL_JOB_NAME,
+            "status": "completed",
+            "report_date": "2026-04-29",
+            "source_version": "sv_pnl_prior",
+            "rule_version": "rv_pnl_prior",
+        },
+        {
+            "cache_key": exec_mod.PNL_CACHE_KEY,
+            "job_name": exec_mod.PNL_JOB_NAME,
+            "status": "completed",
+            "report_date": "2026-04-30",
+            "source_version": "sv_pnl_current",
+            "rule_version": "rv_pnl_current",
+        },
+        {
+            "cache_key": exec_mod.BOND_ANALYTICS_CACHE_KEY,
+            "job_name": "bond_analytics_materialize",
+            "status": "completed",
+            "report_date": "2026-04-29",
+            "source_version": "sv_bond_prior",
+            "rule_version": "rv_bond_prior",
+        },
+        {
+            "cache_key": exec_mod.BOND_ANALYTICS_CACHE_KEY,
+            "job_name": "bond_analytics_materialize",
+            "status": "completed",
+            "report_date": "2026-04-30",
+            "source_version": "sv_bond_current",
+            "rule_version": "rv_bond_current",
+        },
+    ]
+    stream_path = governance_dir / f"{exec_mod.CACHE_BUILD_RUN_STREAM}.jsonl"
+    stream_path.write_text(
+        "".join(json.dumps(record) + "\n" for record in records),
+        encoding="utf-8",
+    )
 
 
 def _assert_analytical_meta(meta: dict) -> None:
@@ -305,6 +428,7 @@ def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
             return {
                 "report_date": "2030-03-15",
                 "portfolio_dv01": 1234567.8,
+                "portfolio_modified_duration": 4.37,
             }
 
         def list_report_dates(self):
@@ -312,12 +436,14 @@ def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
 
         def fetch_risk_overview_snapshot(self, *, report_date: str):
             values = {
-                "2030-03-15": 1234567.8,
-                "2030-02-28": 1000000.0,
+                "2030-03-15": (1234567.8, 4.37),
+                "2030-02-28": (1000000.0, 4.42),
             }
+            dv01, duration = values[report_date]
             return {
                 "report_date": report_date,
-                "portfolio_dv01": values[report_date],
+                "portfolio_dv01": dv01,
+                "portfolio_modified_duration": duration,
             }
 
     class FixedDate:
@@ -407,7 +533,7 @@ def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
         "rv-liab__rv_balance_union__rv_bond_analytics__rv_exec_dashboard_v1__rv_pnl_formal"
     )
     metrics = {m["id"]: m for m in out["result"]["metrics"]}
-    assert set(metrics) == {"aum", "yield", "nim", "dv01", "goal", "risk-budget"}
+    assert set(metrics) == {"aum", "yield", "nim", "dv01", "duration", "goal", "risk-budget"}
     assert metrics["aum"]["label"] == "总资产规模"
     assert metrics["aum"]["caliber_label"] == "本币资产口径"
     _assert_numeric_json_shape(metrics["aum"]["value"])
@@ -419,6 +545,9 @@ def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
     assert metrics["nim"]["value"]["display"] == "+0.38%"
     _assert_numeric_json_shape(metrics["dv01"]["value"])
     assert metrics["dv01"]["value"]["display"] == "1,234,568"
+    _assert_numeric_json_shape(metrics["duration"]["value"])
+    assert metrics["duration"]["value"]["raw"] == pytest.approx(4.37)
+    assert metrics["duration"]["value"]["display"] == "4.37"
     _assert_numeric_json_shape(metrics["aum"]["delta"])
     assert metrics["aum"]["delta"]["display"] == "+2.35%"
     _assert_numeric_json_shape(metrics["yield"]["delta"])
@@ -427,6 +556,8 @@ def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
     assert metrics["nim"]["delta"]["display"] == "+0.05pp"
     _assert_numeric_json_shape(metrics["dv01"]["delta"])
     assert metrics["dv01"]["delta"]["display"] == "+23.46%"
+    _assert_numeric_json_shape(metrics["duration"]["delta"])
+    assert metrics["duration"]["delta"]["display"] == "-0.05"
     _assert_numeric_json_shape(metrics["goal"]["value"])
     assert metrics["goal"]["value"]["display"] == "92.20%"
     _assert_numeric_json_shape(metrics["risk-budget"]["value"])
@@ -451,10 +582,16 @@ def test_executive_overview_uses_requested_report_date(monkeypatch, exec_mod):
             calls.append(("aum", report_date))
             assert currency_basis == "CNY"
             values = {
-                "2025-11-20": 321.0e8,
-                "2025-10-31": 300.0e8,
+                "2025-11-20": (321.0e8, "sv-balance-current", "rv-balance-current"),
+                "2025-10-31": (300.0e8, "sv-balance-prior", "rv-balance-prior"),
             }
-            return {"report_date": report_date, "total_market_value_amount": values[report_date]}
+            total_market_value_amount, source_version, rule_version = values[report_date]
+            return {
+                "report_date": report_date,
+                "total_market_value_amount": total_market_value_amount,
+                "source_version": source_version,
+                "rule_version": rule_version,
+            }
 
     class PnlRepo:
         def __init__(self, *_a, **_k):
@@ -948,8 +1085,16 @@ def test_executive_overview_uses_parallel_domain_contexts_when_dates_are_prelist
         assert current_report_date == "2026-04-30"
         return (
             {
-                "2026-04-30": {"report_date": "2026-04-30", "portfolio_dv01": 300.0},
-                "2026-04-29": {"report_date": "2026-04-29", "portfolio_dv01": 200.0},
+                "2026-04-30": {
+                    "report_date": "2026-04-30",
+                    "portfolio_dv01": 300.0,
+                    "portfolio_modified_duration": 4.37,
+                },
+                "2026-04-29": {
+                    "report_date": "2026-04-29",
+                    "portfolio_dv01": 200.0,
+                    "portfolio_modified_duration": 4.42,
+                },
             },
             [200.0, 300.0],
         )
@@ -981,7 +1126,7 @@ def test_executive_overview_uses_parallel_domain_contexts_when_dates_are_prelist
     )
 
     metrics = {m["id"]: m for m in out["result"]["metrics"]}
-    assert set(metrics) == {"aum", "yield", "nim", "dv01"}
+    assert set(metrics) == {"aum", "yield", "nim", "dv01", "duration"}
     assert entered == {"aum", "pnl", "nim", "dv01"}
 
 
@@ -1642,6 +1787,136 @@ def test_executive_overview_warns_when_full_scan_has_no_matching_lineage(
     assert meta["source_version"] == exec_mod._MISS_SOURCE
 
 
+def test_executive_overview_warns_when_aum_lineage_is_missing(
+    monkeypatch,
+    exec_mod,
+    tmp_path,
+):
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+    dates = _patch_executive_overview_metric_contexts(monkeypatch, exec_mod, tmp_path, governance_dir)
+    monkeypatch.setattr(
+        exec_mod,
+        "_fetch_aum_context",
+        lambda *_a, **_k: (
+            {
+                "2026-04-30": {
+                    "report_date": "2026-04-30",
+                    "total_market_value_amount": 100.0,
+                    "source_version": None,
+                    "rule_version": None,
+                },
+                "2026-04-29": {
+                    "report_date": "2026-04-29",
+                    "total_market_value_amount": 90.0,
+                    "source_version": "sv_balance_prior",
+                    "rule_version": "rv_balance_prior",
+                },
+            },
+            [90.0, 100.0],
+        ),
+    )
+
+    out = exec_mod.executive_overview(
+        report_date="2026-04-30",
+        date_context={
+            "balance": dates,
+            "pnl": dates,
+            "liability": dates,
+            "bond": dates,
+        },
+    )
+
+    meta = out["result_meta"]
+    assert meta["quality_flag"] == "warning"
+    assert meta["vendor_status"] == "vendor_unavailable"
+    assert meta["source_version"] == exec_mod._MISS_SOURCE
+    aum_metric = next(metric for metric in out["result"]["metrics"] if metric["id"] == "aum")
+    assert aum_metric["delta"]["display"] == "+11.11%"
+
+
+def test_executive_overview_keeps_current_aum_trusted_when_prior_lineage_is_missing(
+    monkeypatch,
+    exec_mod,
+    tmp_path,
+):
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+    _seed_executive_overview_governed_lineage(governance_dir, exec_mod)
+    dates = _patch_executive_overview_metric_contexts(monkeypatch, exec_mod, tmp_path, governance_dir)
+    monkeypatch.setattr(
+        exec_mod,
+        "_fetch_aum_context",
+        lambda *_a, **_k: (
+            {
+                "2026-04-30": {
+                    "report_date": "2026-04-30",
+                    "total_market_value_amount": 100.0,
+                    "source_version": "sv_balance_current",
+                    "rule_version": "rv_balance_current",
+                },
+                "2026-04-29": {
+                    "report_date": "2026-04-29",
+                    "total_market_value_amount": 90.0,
+                    "source_version": None,
+                    "rule_version": None,
+                },
+            },
+            [90.0, 100.0],
+        ),
+    )
+
+    out = exec_mod.executive_overview(
+        report_date="2026-04-30",
+        date_context={
+            "balance": dates,
+            "pnl": dates,
+            "liability": dates,
+            "bond": dates,
+        },
+    )
+
+    meta = out["result_meta"]
+    assert meta["quality_flag"] == "ok"
+    assert meta["vendor_status"] == "ok"
+    assert meta["source_version"] != exec_mod._MISS_SOURCE
+    assert "sv_balance_current" in meta["source_version"]
+    assert "sv_balance_prior" not in meta["source_version"]
+    aum_metric = next(metric for metric in out["result"]["metrics"] if metric["id"] == "aum")
+    assert aum_metric["delta"]["raw"] is None
+    assert aum_metric["delta"]["display"] == "无环比"
+
+
+def test_executive_overview_accepts_complete_aum_current_and_prior_lineage(
+    monkeypatch,
+    exec_mod,
+    tmp_path,
+):
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+    _seed_executive_overview_governed_lineage(governance_dir, exec_mod)
+    dates = _patch_executive_overview_metric_contexts(monkeypatch, exec_mod, tmp_path, governance_dir)
+
+    out = exec_mod.executive_overview(
+        report_date="2026-04-30",
+        date_context={
+            "balance": dates,
+            "pnl": dates,
+            "liability": dates,
+            "bond": dates,
+        },
+    )
+
+    meta = out["result_meta"]
+    assert meta["quality_flag"] == "ok"
+    assert meta["vendor_status"] == "ok"
+    assert meta["source_version"] != exec_mod._MISS_SOURCE
+    assert "sv_balance_current" in meta["source_version"]
+    assert "sv_balance_prior" in meta["source_version"]
+    aum_metric = next(metric for metric in out["result"]["metrics"] if metric["id"] == "aum")
+    assert aum_metric["delta"]["display"] == "+11.11%"
+
+
 def test_executive_overview_warns_when_bond_lineage_source_version_is_empty(
     monkeypatch,
     exec_mod,
@@ -2137,6 +2412,36 @@ def test_executive_risk_overview_repo_backed(monkeypatch, exec_mod):
         assert "最新日期" in sig["detail"]
 
 
+def test_executive_risk_overview_credit_signal_raw_is_decimal_ratio(monkeypatch, exec_mod):
+    """pct Numeric contract: raw must be the decimal ratio consistent with display.
+
+    bond_analytics_repo produces credit_market_value_ratio_pct in percent-points
+    (share * 100), so the credit signal must store raw = value / 100.
+    """
+    snap = {
+        "report_date": "2026-04-01",
+        "portfolio_modified_duration": 4.567,
+        "portfolio_dv01": 1234567.8,
+        "credit_market_value_ratio_pct": 12.34,
+        "weighted_years_to_maturity": 3.21,
+    }
+
+    class OkBond:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def fetch_latest_risk_overview_snapshot(self):
+            return snap
+
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", OkBond)
+    out = exec_mod.executive_risk_overview()
+    by_id = {s["id"]: s for s in out["result"]["signals"]}
+    cred = _assert_numeric_json_shape(by_id["credit"]["value"])
+    assert cred["unit"] == "pct"
+    assert cred["display"] == "12.3%"
+    assert cred["raw"] == pytest.approx(0.1234)
+
+
 def test_executive_risk_overview_uses_requested_report_date(monkeypatch, exec_mod):
     calls: list[str] = []
 
@@ -2166,14 +2471,16 @@ def test_executive_risk_overview_uses_requested_report_date(monkeypatch, exec_mo
 
 
 def test_executive_alerts_fallback_empty_dates(monkeypatch, exec_mod):
-    class EmptyDates:
-        def __init__(self, *_a, **_k):
-            pass
-
-        def list_report_dates(self):
-            return []
-
-    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", EmptyDates)
+    monkeypatch.setattr(
+        exec_mod,
+        "risk_tensor_dates_envelope",
+        lambda **_kwargs: {
+            "result_meta": {"result_kind": "risk.tensor.dates"},
+            "result": {"report_dates": [], "blocked_report_dates": []},
+        },
+        raising=False,
+    )
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", _ForbiddenBondAnalyticsRepository)
     out = exec_mod.executive_alerts()
     assert out["result_meta"]["result_kind"] == "executive.alerts"
     assert out["result_meta"]["source_version"] == "sv_exec_dashboard_explicit_miss_v1"
@@ -2183,21 +2490,23 @@ def test_executive_alerts_fallback_empty_dates(monkeypatch, exec_mod):
 
 
 def test_executive_alerts_fallback_on_exception(monkeypatch, exec_mod):
-    class Boom:
-        def __init__(self, *_a, **_k):
-            raise OSError("boom")
+    def _raise_owner_error(**_kwargs):
+        raise OSError("boom")
 
-    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", Boom)
+    monkeypatch.setattr(
+        exec_mod,
+        "risk_tensor_dates_envelope",
+        _raise_owner_error,
+        raising=False,
+    )
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", _ForbiddenBondAnalyticsRepository)
     out = exec_mod.executive_alerts()
     assert out["result_meta"]["source_version"] == "sv_exec_dashboard_explicit_miss_v1"
     assert out["result"]["title"] == "预警与事件"
     assert out["result"]["items"] == []
 
 
-def test_executive_alerts_repo_orchestration_contract(monkeypatch, exec_mod):
-    class FakeTensor:
-        pass
-
+def test_executive_alerts_formal_owner_orchestration_contract(monkeypatch, exec_mod):
     fixed_alerts = [
         {
             "rule_id": "rule-a",
@@ -2213,33 +2522,23 @@ def test_executive_alerts_repo_orchestration_contract(monkeypatch, exec_mod):
         },
     ]
 
-    class BondRepo:
-        def __init__(self, *_a, **_k):
-            pass
-
-        def list_report_dates(self):
-            return ["2026-05-01"]
-
-        def fetch_bond_analytics_rows(self, report_date: str):
-            return [{"market_value": 1, "dv01": 0}]
-
-    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", BondRepo)
+    owner_calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", _ForbiddenBondAnalyticsRepository)
     monkeypatch.setattr(
         exec_mod,
-        "load_latest_bond_analytics_lineage",
-        lambda **kwargs: {
-            "source_version": "sv_alerts_lineage",
-            "rule_version": "rv_alerts_lineage",
-            "cache_version": "cv_alerts_lineage",
-            "vendor_version": "vv_none",
+        "risk_tensor_dates_envelope",
+        lambda **_kwargs: {
+            "result_meta": {"result_kind": "risk.tensor.dates"},
+            "result": {"report_dates": ["2026-05-01"], "blocked_report_dates": []},
         },
         raising=False,
     )
-    monkeypatch.setattr(
-        exec_mod,
-        "compute_portfolio_risk_tensor",
-        lambda rows, report_date: FakeTensor(),
-    )
+
+    def _load_formal_tensor(*, duckdb_path: str, governance_dir: str, report_date: str):
+        owner_calls.append((duckdb_path, report_date))
+        return _formal_risk_tensor_envelope(report_date=report_date)
+
+    monkeypatch.setattr(exec_mod, "risk_tensor_envelope", _load_formal_tensor, raising=False)
     monkeypatch.setattr(
         exec_mod,
         "evaluate_alerts",
@@ -2250,8 +2549,13 @@ def test_executive_alerts_repo_orchestration_contract(monkeypatch, exec_mod):
 
     out = exec_mod.executive_alerts()
     items = out["result"]["items"]
+    assert owner_calls and owner_calls[0][1] == "2026-05-01"
     assert out["result_meta"]["source_version"] == "sv_alerts_lineage__sv_exec_dashboard_v1"
     assert out["result_meta"]["rule_version"] == "rv_alerts_lineage__rv_exec_dashboard_v1"
+    assert out["result_meta"]["requested_report_date"] is None
+    assert out["result_meta"]["resolved_report_date"] == "2026-05-01"
+    assert out["result_meta"]["as_of_date"] == "2026-05-01"
+    assert out["result_meta"]["date_basis"] == "formal_snapshot"
     assert len(items) == 2
     assert items[0]["id"] == "rule-a"
     assert items[0]["severity"] == "high"
@@ -2280,45 +2584,167 @@ def test_executive_risk_overview_no_demo_fallback_when_requested_date_not_govern
     assert out["result"]["signals"] == []
 
 
-def test_executive_alerts_no_demo_fallback_when_requested_date_not_governed(monkeypatch, exec_mod):
-    class Repo:
-        def __init__(self, *_a, **_k):
-            pass
+@pytest.mark.parametrize("owner_error", [ValueError("missing"), RuntimeError("stale")])
+def test_executive_alerts_does_not_recompute_when_formal_tensor_is_unavailable(
+    monkeypatch,
+    exec_mod,
+    owner_error,
+):
+    calls: list[str] = []
 
-        def list_report_dates(self):
-            return ["2026-02-28"]
+    def _load_formal_tensor(*, duckdb_path: str, governance_dir: str, report_date: str):
+        calls.append(report_date)
+        raise owner_error
 
-        def fetch_bond_analytics_rows(self, report_date: str):
-            raise AssertionError("rows should not load for missing governed dates")
-
-    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", Repo)
+    monkeypatch.setattr(exec_mod, "risk_tensor_envelope", _load_formal_tensor, raising=False)
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", _ForbiddenBondAnalyticsRepository)
     out = exec_mod.executive_alerts(report_date="2025-11-20")
 
+    assert calls == ["2025-11-20"]
     assert out["result_meta"]["result_kind"] == "executive.alerts"
     assert out["result_meta"]["source_version"] == "sv_exec_dashboard_explicit_miss_v1"
+    assert out["result_meta"]["vendor_status"] == "vendor_unavailable"
     assert out["result"]["items"] == []
+
+
+def test_executive_alerts_latest_owner_failure_uses_compatibility_fallback(
+    monkeypatch,
+    exec_mod,
+):
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", _ForbiddenBondAnalyticsRepository)
+    monkeypatch.setattr(
+        exec_mod,
+        "risk_tensor_dates_envelope",
+        lambda **_kwargs: {
+            "result_meta": {"result_kind": "risk.tensor.dates"},
+            "result": {"report_dates": ["2026-05-01"], "blocked_report_dates": []},
+        },
+    )
+
+    def _raise_stale_owner(**_kwargs):
+        raise RuntimeError("stale")
+
+    monkeypatch.setattr(exec_mod, "risk_tensor_envelope", _raise_stale_owner)
+
+    out = exec_mod.executive_alerts()
+
+    assert out["result_meta"]["source_version"] == "sv_exec_dashboard_explicit_miss_v1"
+    assert out["result_meta"]["quality_flag"] == "warning"
+    assert out["result_meta"]["vendor_status"] == "vendor_unavailable"
+    assert out["result"]["items"] == []
+
+
+@pytest.mark.parametrize(
+    "invalid_contract",
+    ["report_date_mismatch", "required_numeric_null", "missing_source_lineage"],
+)
+def test_executive_alerts_fails_closed_on_invalid_formal_owner_contract(
+    monkeypatch,
+    exec_mod,
+    invalid_contract,
+):
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", _ForbiddenBondAnalyticsRepository)
+
+    def _load_invalid_formal_tensor(
+        *,
+        duckdb_path: str,
+        governance_dir: str,
+        report_date: str,
+    ):
+        envelope = _formal_risk_tensor_envelope(report_date=report_date)
+        result = envelope["result"]
+        result_meta = envelope["result_meta"]
+        assert isinstance(result, dict)
+        assert isinstance(result_meta, dict)
+        if invalid_contract == "report_date_mismatch":
+            result["report_date"] = "2026-05-01"
+        elif invalid_contract == "required_numeric_null":
+            required_numeric = result["liquidity_gap_30d_ratio"]
+            assert isinstance(required_numeric, dict)
+            required_numeric["raw"] = None
+        else:
+            result_meta.pop("source_version")
+        return envelope
+
+    monkeypatch.setattr(exec_mod, "risk_tensor_envelope", _load_invalid_formal_tensor)
+    monkeypatch.setattr(
+        exec_mod,
+        "evaluate_alerts",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("invalid formal owner payload must not reach alert evaluation")
+        ),
+    )
+
+    out = exec_mod.executive_alerts(report_date="2025-11-20")
+
+    assert out["result_meta"]["source_version"] == "sv_exec_dashboard_explicit_miss_v1"
+    assert out["result_meta"]["quality_flag"] == "warning"
+    assert out["result_meta"]["vendor_status"] == "vendor_unavailable"
+    assert out["result"]["items"] == []
+
+
+def test_executive_alerts_accepts_optional_numeric_null_and_propagates_owner_quality(
+    monkeypatch,
+    exec_mod,
+):
+    captured_regulatory_dv01: list[object] = []
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", _ForbiddenBondAnalyticsRepository)
+
+    def _load_warning_formal_tensor(
+        *,
+        duckdb_path: str,
+        governance_dir: str,
+        report_date: str,
+    ):
+        envelope = _formal_risk_tensor_envelope(report_date=report_date)
+        result = envelope["result"]
+        result_meta = envelope["result_meta"]
+        assert isinstance(result, dict)
+        assert isinstance(result_meta, dict)
+        regulatory_dv01 = result["regulatory_dv01"]
+        assert isinstance(regulatory_dv01, dict)
+        regulatory_dv01["raw"] = None
+        result["quality_flag"] = "warning"
+        result_meta["quality_flag"] = "warning"
+        return envelope
+
+    def _evaluate(tensor, rules=None):
+        captured_regulatory_dv01.append(tensor.regulatory_dv01)
+        return []
+
+    monkeypatch.setattr(exec_mod, "risk_tensor_envelope", _load_warning_formal_tensor)
+    monkeypatch.setattr(exec_mod, "evaluate_alerts", _evaluate)
+
+    out = exec_mod.executive_alerts(report_date="2025-11-20")
+
+    assert [str(value) for value in captured_regulatory_dv01] == ["0"]
+    assert out["result_meta"]["quality_flag"] == "warning"
+    assert out["result_meta"]["vendor_status"] == "ok"
+    assert out["result_meta"]["requested_report_date"] == "2025-11-20"
+    assert out["result_meta"]["resolved_report_date"] == "2025-11-20"
+    assert out["result_meta"]["as_of_date"] == "2025-11-20"
+    assert out["result_meta"]["date_basis"] == "formal_snapshot"
 
 
 def test_executive_alerts_uses_requested_report_date(monkeypatch, exec_mod):
     calls: list[str] = []
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", _ForbiddenBondAnalyticsRepository)
 
-    class BondRepo:
-        def __init__(self, *_a, **_k):
-            pass
+    def _dates_should_not_load(**_kwargs):
+        raise AssertionError("explicit report_date must not be replaced by the latest date")
 
-        def list_report_dates(self):
-            return ["2026-02-28", "2025-11-20"]
-
-        def fetch_bond_analytics_rows(self, report_date: str):
-            calls.append(report_date)
-            return [{"market_value": 1, "dv01": 0}]
-
-    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", BondRepo)
     monkeypatch.setattr(
         exec_mod,
-        "compute_portfolio_risk_tensor",
-        lambda rows, report_date: SimpleNamespace(report_date=report_date),
+        "risk_tensor_dates_envelope",
+        _dates_should_not_load,
+        raising=False,
     )
+
+    def _load_formal_tensor(*, duckdb_path: str, governance_dir: str, report_date: str):
+        calls.append(report_date)
+        return _formal_risk_tensor_envelope(report_date=report_date)
+
+    monkeypatch.setattr(exec_mod, "risk_tensor_envelope", _load_formal_tensor, raising=False)
     monkeypatch.setattr(
         exec_mod,
         "evaluate_alerts",

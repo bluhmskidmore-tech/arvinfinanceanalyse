@@ -1,6 +1,8 @@
 -- MOSS:STMT
 -- Analytical CFFEX futures member-rank data used by the macro toolkit crowding module.
--- Live fills go through backend/app/services/cffex_member_rank_service.py.
+-- Live fills are persisted by backend/app/tasks/cffex_member_rank.py
+-- (persist_cffex_member_rank_rows under the repository task write guard);
+-- backend/app/services/cffex_member_rank_service.py only orchestrates fetch + persist.
 create table if not exists fact_cffex_member_rank_daily (
   trade_date varchar not null,
   contract varchar not null,

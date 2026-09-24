@@ -2,18 +2,28 @@ from __future__ import annotations
 
 import hashlib
 import os
+import warnings
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 
 import duckdb
 from backend.app.core_finance.accounting_asset_movement import (
+    DEFAULT_RELATIVE_TOLERANCE,
+    DEFAULT_TOLERANCE,
     AccountingAssetMovementRow,
+    ChainContinuityBreach,
     GlAccountingAssetBalance,
     ZqtzAccountingAssetBalance,
+    apply_chain_continuity_status,
     build_accounting_asset_movement_rows,
+    evaluate_chain_continuity,
 )
-from backend.app.core_finance.accounting_basis_constants import ACCOUNTING_BASIS_AC
+from backend.app.core_finance.reconciliation_checks import (
+    ReconciliationGateError,
+    enforce_reconciliation_gate,
+)
 from backend.app.governance.locks import LockDefinition, acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
@@ -27,7 +37,7 @@ from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.formal_balance_pipeline import run_formal_balance_pipeline_sync
 from backend.app.tasks.product_category_pnl import materialize_product_category_pnl_sync
 
-RULE_VERSION = "rv_accounting_asset_movement_v2"
+RULE_VERSION = "rv_accounting_asset_movement_v3"
 CACHE_KEY = "accounting_asset_movement.monthly"
 CACHE_VERSION = "cv_accounting_asset_movement_v1"
 JOB_NAME = "accounting_asset_movement_refresh"
@@ -46,9 +56,58 @@ MODULE_NAME = "accounting_asset_movement"
 BASIS = "read-model"
 RESULT_KIND_FAMILY = "balance-analysis.movement"
 
+POSITION_SOURCE_TABLE = "fact_formal_zqtz_balance_daily"
+# 总账用 CNX（本外币折人民币）标记折算口径；ZQTZ 正式头寸表用 CNY 表示同一个
+# 折算口径（外币持仓在 currency_basis='CNY' 行里已折人民币，'native' 行是原币）。
+# 这个别名与 AccountingAssetMovementRepository 里既有的 CNX->CNY 映射一致。
+POSITION_CURRENCY_BASIS_CANDIDATES: dict[str, tuple[str, ...]] = {
+    "CNX": ("CNX", "CNY"),
+}
+
+CONTROL_GATE_ENV = "MOSS_MOVEMENT_CONTROL_GATE"
+CONTROL_GATE_MODES = ("off", "warn", "enforce")
+DEFAULT_CONTROL_GATE_MODE = "warn"
+
 
 class AccountingAssetMovementSourceMissingError(RuntimeError):
     pass
+
+
+class AccountingAssetMovementPositionSourceMissingError(
+    AccountingAssetMovementSourceMissingError
+):
+    """独立头寸源在该报告日不可用（表缺失或该口径无行）。"""
+
+
+class AccountingAssetMovementChainBrokenError(RuntimeError):
+    """previous_balance(M) != current_balance(M-1)，拒绝落库。"""
+
+
+class AccountingAssetMovementControlWarning(UserWarning):
+    """落库前门禁在 warn 模式下检出的内控异常。"""
+
+
+@dataclass(slots=True, frozen=True)
+class PositionSourceResolution:
+    """独立头寸源在某个报告日 / 折算口径下的可用性。"""
+
+    table: str
+    requested_currency_basis: str
+    resolved_currency_basis: str | None
+    row_count: int
+
+    @property
+    def available(self) -> bool:
+        return self.resolved_currency_basis is not None and self.row_count > 0
+
+    def as_lineage(self) -> dict[str, object]:
+        return {
+            "table": self.table,
+            "requested_currency_basis": self.requested_currency_basis,
+            "resolved_currency_basis": self.resolved_currency_basis,
+            "row_count": self.row_count,
+            "available": self.available,
+        }
 
 
 def _materialize_accounting_asset_movement(
@@ -162,6 +221,7 @@ def _refresh_accounting_asset_movement_window(
     )
 
     payloads_by_date: dict[str, dict[str, object]] = {}
+    control_reports: dict[str, dict[str, object]] = {}
     refreshed_product_category_dates: list[str] = []
     refreshed_formal_balance_dates: list[str] = []
     try:
@@ -223,6 +283,14 @@ def _refresh_accounting_asset_movement_window(
                         "source_version": _rows_source_version(rows),
                         "rule_version": RULE_VERSION,
                     }
+                    # 落库后立刻按已写入的行取证。逐行结论现在落在
+                    # chain_status / position_source_basis 列上，这里的汇总是
+                    # 给 governance manifest lineage 留的批次级留痕。
+                    control_reports[current_report_date] = _control_evidence(
+                        conn,
+                        report_date=current_report_date,
+                        currency_basis=currency_basis,
+                    )
                 conn.execute("commit")
                 _checkpoint_if_possible(conn)
             except Exception:
@@ -281,6 +349,7 @@ def _refresh_accounting_asset_movement_window(
                         "movement_refreshed_dates": normalized_report_dates,
                         "product_category_refreshed_dates": refreshed_product_category_dates,
                         "formal_balance_refreshed_dates": refreshed_formal_balance_dates,
+                        "reconciliation_control": control_reports.get(current_report_date, {}),
                     },
                 ).model_dump(),
             )
@@ -319,6 +388,7 @@ def _refresh_accounting_asset_movement_window(
         "movement_refreshed_dates": normalized_report_dates,
         "product_category_refreshed_dates": refreshed_product_category_dates,
         "formal_balance_refreshed_dates": refreshed_formal_balance_dates,
+        "reconciliation_control_by_date": control_reports,
     }
 
 
@@ -346,16 +416,28 @@ def refresh_accounting_asset_movement_window_sync(
     return _refresh_accounting_asset_movement_window(
         report_dates=report_dates,
         anchor_report_date=anchor_report_date,
-        duckdb_path=duckdb_path,
-        governance_dir=governance_dir,
         currency_basis=currency_basis,
-        product_category_refreshed_dates=product_category_refreshed_dates,
-        formal_balance_refreshed_dates=formal_balance_refreshed_dates,
-        product_category_source_dir=product_category_source_dir,
-        data_root=data_root,
-        archive_dir=archive_dir,
-        fx_source_path=fx_source_path,
-        run_id=run_id,
+        **({} if duckdb_path is None else {"duckdb_path": duckdb_path}),
+        **({} if governance_dir is None else {"governance_dir": governance_dir}),
+        **(
+            {}
+            if product_category_refreshed_dates is None
+            else {"product_category_refreshed_dates": product_category_refreshed_dates}
+        ),
+        **(
+            {}
+            if formal_balance_refreshed_dates is None
+            else {"formal_balance_refreshed_dates": formal_balance_refreshed_dates}
+        ),
+        **(
+            {}
+            if product_category_source_dir is None
+            else {"product_category_source_dir": product_category_source_dir}
+        ),
+        **({} if data_root is None else {"data_root": data_root}),
+        **({} if archive_dir is None else {"archive_dir": archive_dir}),
+        **({} if fx_source_path is None else {"fx_source_path": fx_source_path}),
+        **({} if run_id is None else {"run_id": run_id}),
     )
 
 
@@ -687,10 +769,19 @@ def materialize_accounting_asset_movement_on_connection(
         report_date=report_date,
         currency_basis=currency_basis,
     )
-    zqtz_rows = _load_zqtz_rows(
+    position_source = _resolve_position_source(
         conn,
         report_date=report_date,
         currency_basis=currency_basis,
+    )
+    _apply_position_source_gate(
+        position_source,
+        report_date=report_date,
+    )
+    zqtz_rows = _load_zqtz_rows(
+        conn,
+        report_date=report_date,
+        position_source=position_source,
     )
     gl_rows = _load_gl_rows(
         conn,
@@ -701,6 +792,33 @@ def materialize_accounting_asset_movement_on_connection(
         report_date=parsed_report_date,
         zqtz_rows=zqtz_rows,
         gl_rows=gl_rows,
+        position_source_available=position_source.available,
+        position_source_basis=position_source.resolved_currency_basis,
+    )
+    # 勾稽判定与门禁模式无关：mode='off' 只表示"不拦截"，不表示"不判断"。结论
+    # 要跟着行落库，页面才能把跨月断裂和横截面不平区分开。
+    prior_report_date, prior_balances = _prior_bucket_balances(
+        conn,
+        report_date=report_date,
+        currency_basis=currency_basis,
+    )
+    chain_breaches = evaluate_chain_continuity(
+        rows=rows,
+        prior_report_date=prior_report_date,
+        prior_current_balances=prior_balances,
+        tolerance=DEFAULT_TOLERANCE,
+        relative_tolerance=DEFAULT_RELATIVE_TOLERANCE,
+    )
+    rows = apply_chain_continuity_status(
+        rows,
+        breaches=chain_breaches,
+        prior_report_date=prior_report_date,
+        prior_current_balances=prior_balances,
+    )
+    _apply_chain_continuity_gate(
+        chain_breaches,
+        report_date=report_date,
+        currency_basis=currency_basis,
     )
     conn.execute(
         """
@@ -712,6 +830,207 @@ def materialize_accounting_asset_movement_on_connection(
     )
     _insert_rows(conn, rows, currency_basis=currency_basis)
     return rows
+
+
+def _control_gate_mode() -> str:
+    """off / warn / enforce。
+
+    默认 warn：跨月勾稽在真实库里 90/90 全断、头寸源在 2024 全年缺失，
+    默认 enforce 会让整条回补链路无法运行；warn 模式下断点仍然会写进
+    governance manifest 的 lineage 并抛 Python warning，是可审计的检测型
+    控制。生产上要把它升级成预防型控制，把该环境变量设成 enforce。
+    """
+    mode = str(os.environ.get(CONTROL_GATE_ENV, DEFAULT_CONTROL_GATE_MODE)).strip().lower()
+    return mode if mode in CONTROL_GATE_MODES else DEFAULT_CONTROL_GATE_MODE
+
+
+def _apply_position_source_gate(
+    position_source: PositionSourceResolution,
+    *,
+    report_date: str,
+) -> None:
+    message = (
+        "Independent position source is unavailable for "
+        f"report_date={report_date}, currency_basis={position_source.requested_currency_basis}: "
+        f"{position_source.table} has no asset rows for any of "
+        f"{_position_currency_candidates(position_source.requested_currency_basis)}. "
+        "Reconciliation cannot pass for this date; rows are written as gl_only."
+    )
+    check = {
+        "dimension": "position_source_availability",
+        "breached": not position_source.available,
+        "missing_keys": [] if position_source.available else ["position"],
+        **position_source.as_lineage(),
+    }
+    try:
+        breaches = enforce_reconciliation_gate(
+            check,
+            context=f"accounting asset movement {report_date}",
+            mode=_control_gate_mode(),
+        )
+    except ReconciliationGateError as exc:
+        raise AccountingAssetMovementPositionSourceMissingError(message) from exc
+    if breaches:
+        warnings.warn(message, AccountingAssetMovementControlWarning, stacklevel=3)
+
+
+def _apply_chain_continuity_gate(
+    breaches: list[ChainContinuityBreach],
+    *,
+    report_date: str,
+    currency_basis: str,
+) -> None:
+    mode = _control_gate_mode()
+    if mode == "off" or not breaches:
+        return
+    message = _chain_breach_message(
+        breaches,
+        report_date=report_date,
+        currency_basis=currency_basis,
+    )
+    try:
+        enforce_reconciliation_gate(
+            [
+                {
+                    "dimension": f"chain_continuity:{breach.basis_bucket}",
+                    "breached": True,
+                    "missing_keys": [],
+                    "diff": float(breach.gap),
+                }
+                for breach in breaches
+            ],
+            context=f"accounting asset movement {report_date}",
+            mode=mode,
+        )
+    except ReconciliationGateError as exc:
+        raise AccountingAssetMovementChainBrokenError(message) from exc
+    warnings.warn(message, AccountingAssetMovementControlWarning, stacklevel=3)
+
+
+def _chain_breach_message(
+    breaches: list[ChainContinuityBreach],
+    *,
+    report_date: str,
+    currency_basis: str,
+) -> str:
+    details = "; ".join(
+        (
+            f"{breach.basis_bucket}: previous_balance={breach.reported_previous_balance} "
+            f"vs {breach.prior_report_date} current_balance={breach.prior_current_balance} "
+            f"(gap={breach.gap}, tolerance={breach.tolerance})"
+        )
+        for breach in breaches
+    )
+    return (
+        "Month-over-month balance chain is broken for "
+        f"report_date={report_date}, currency_basis={currency_basis}: {details}"
+    )
+
+
+def _control_evidence(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    report_date: str,
+    currency_basis: str,
+) -> dict[str, object]:
+    """从已落库的行反读对账 / 勾稽结论，供 governance lineage 留痕。"""
+    try:
+        status_rows = conn.execute(
+            """
+            select
+              reconciliation_status,
+              count(*),
+              coalesce(max(abs(reconciliation_diff)), 0)
+            from fact_accounting_asset_movement_monthly
+            where cast(report_date as varchar) = ?
+              and currency_basis = ?
+            group by 1
+            order by 1
+            """,
+            [report_date, currency_basis],
+        ).fetchall()
+    except duckdb.Error:
+        return {"gate_mode": _control_gate_mode(), "status": "unavailable"}
+
+    prior_report_date, prior_balances = _prior_bucket_balances(
+        conn,
+        report_date=report_date,
+        currency_basis=currency_basis,
+    )
+    persisted_rows = conn.execute(
+        """
+        select
+          basis_bucket,
+          coalesce(previous_balance, 0),
+          chain_status,
+          position_source_basis
+        from fact_accounting_asset_movement_monthly
+        where cast(report_date as varchar) = ?
+          and currency_basis = ?
+        """,
+        [report_date, currency_basis],
+    ).fetchall()
+    chain_gaps = {
+        str(bucket): str(Decimal(str(previous_balance or "0")) - prior_balances[str(bucket)])
+        for bucket, previous_balance, _chain_status, _basis in persisted_rows
+        if str(bucket) in prior_balances
+    }
+    chain_status_counts: dict[str, int] = {}
+    for _bucket, _previous_balance, chain_status, _basis in persisted_rows:
+        key = str(chain_status) if chain_status is not None else "unrecorded"
+        chain_status_counts[key] = chain_status_counts.get(key, 0) + 1
+    return {
+        "gate_mode": _control_gate_mode(),
+        "status_counts": {str(row[0]): int(row[1]) for row in status_rows},
+        "unmatched_row_count": sum(
+            int(row[1]) for row in status_rows if str(row[0]) != "matched"
+        ),
+        "max_abs_reconciliation_diff": str(
+            max((Decimal(str(row[2] or "0")) for row in status_rows), default=Decimal("0"))
+        ),
+        "chain_prior_report_date": prior_report_date,
+        "chain_gaps": chain_gaps,
+        "chain_status_counts": dict(sorted(chain_status_counts.items())),
+        "position_source_bases": sorted(
+            {str(basis) for _b, _p, _c, basis in persisted_rows if basis is not None}
+        ),
+    }
+
+
+def _prior_bucket_balances(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    report_date: str,
+    currency_basis: str,
+) -> tuple[str | None, dict[str, Decimal]]:
+    """上一个已落库月份的 basis_bucket -> current_balance。"""
+    try:
+        rows = conn.execute(
+            """
+            with prior as (
+              select max(cast(report_date as varchar)) as report_date
+              from fact_accounting_asset_movement_monthly
+              where currency_basis = ?
+                and cast(report_date as varchar) < ?
+            )
+            select
+              cast(fact.report_date as varchar),
+              fact.basis_bucket,
+              coalesce(fact.current_balance, 0)
+            from fact_accounting_asset_movement_monthly as fact
+            join prior on cast(fact.report_date as varchar) = prior.report_date
+            where fact.currency_basis = ?
+            """,
+            [currency_basis, report_date, currency_basis],
+        ).fetchall()
+    except duckdb.Error:
+        return None, {}
+    if not rows:
+        return None, {}
+    return str(rows[0][0]), {
+        str(bucket): Decimal(str(balance or "0"))
+        for _, bucket, balance in rows
+    }
 
 
 def _validate_gl_control_source_rows(
@@ -749,22 +1068,70 @@ def _validate_gl_control_source_rows(
         )
 
 
-def _load_zqtz_rows(
+def _position_currency_candidates(currency_basis: str) -> tuple[str, ...]:
+    normalized = str(currency_basis or "").strip().upper()
+    return POSITION_CURRENCY_BASIS_CANDIDATES.get(normalized, (currency_basis,))
+
+
+def _resolve_position_source(
     conn: duckdb.DuckDBPyConnection,
     *,
     report_date: str,
     currency_basis: str,
+) -> PositionSourceResolution:
+    """挑出该报告日实际有资产头寸行的 currency_basis。
+
+    优先用与总账完全同名的口径（例如 ZQTZ 侧将来真的产出 'CNX' 行时自动切
+    过去），否则退到既有的 CNX->CNY 折算口径别名。两者都没有行时返回
+    available=False，而不是静默按 0 参与对账。
+    """
+    for candidate in _position_currency_candidates(currency_basis):
+        try:
+            row = conn.execute(
+                f"""
+                select count(*)
+                from {POSITION_SOURCE_TABLE}
+                where cast(report_date as varchar) = ?
+                  and currency_basis = ?
+                  and position_scope = 'asset'
+                """,
+                [report_date, candidate],
+            ).fetchone()
+        except duckdb.Error:
+            return PositionSourceResolution(
+                table=POSITION_SOURCE_TABLE,
+                requested_currency_basis=currency_basis,
+                resolved_currency_basis=None,
+                row_count=0,
+            )
+        row_count = int(row[0] if row else 0)
+        if row_count > 0:
+            return PositionSourceResolution(
+                table=POSITION_SOURCE_TABLE,
+                requested_currency_basis=currency_basis,
+                resolved_currency_basis=candidate,
+                row_count=row_count,
+            )
+    return PositionSourceResolution(
+        table=POSITION_SOURCE_TABLE,
+        requested_currency_basis=currency_basis,
+        resolved_currency_basis=None,
+        row_count=0,
+    )
+
+
+def _load_zqtz_rows(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    report_date: str,
+    position_source: PositionSourceResolution,
 ) -> list[ZqtzAccountingAssetBalance]:
-    if str(currency_basis or "").strip().upper() == "CNX":
-        return _load_zqtz_cnx_control_rows(
-            conn,
-            report_date=report_date,
-            currency_basis=currency_basis,
-        )
+    if not position_source.available:
+        return []
     return _load_zqtz_formal_rows(
         conn,
         report_date=report_date,
-        currency_basis=currency_basis,
+        currency_basis=str(position_source.resolved_currency_basis),
     )
 
 
@@ -805,66 +1172,6 @@ def _load_zqtz_formal_rows(
         )
         for row in rows
     ]
-
-
-def _load_zqtz_cnx_control_rows(
-    conn: duckdb.DuckDBPyConnection,
-    *,
-    report_date: str,
-    currency_basis: str,
-) -> list[ZqtzAccountingAssetBalance]:
-    rows = conn.execute(
-        """
-        with bucketed as (
-          select
-            case
-              when account_code like '141%' then 'FVTPL'
-              when account_code like '142%' or account_code like '143%' then 'AC'
-              when account_code like '1440101%' then 'FVOCI'
-            end as accounting_basis,
-            coalesce(ending_balance, 0) as ending_balance,
-            coalesce(source_version, '') as source_version,
-            coalesce(rule_version, '') as rule_version
-          from product_category_pnl_canonical_fact
-          where cast(report_date as varchar) = ?
-            and currency = ?
-            and (
-              account_code like '141%'
-              or account_code like '142%'
-              or account_code like '143%'
-              or account_code like '1440101%'
-            )
-        )
-        select
-          accounting_basis,
-          coalesce(sum(ending_balance), 0) as ending_balance,
-          coalesce(string_agg(distinct nullif(source_version, ''), '__' order by nullif(source_version, '')), '') as source_version,
-          coalesce(string_agg(distinct nullif(rule_version, ''), '__' order by nullif(rule_version, '')), '') as rule_version
-        from bucketed
-        where accounting_basis is not null
-        group by accounting_basis
-        order by accounting_basis
-        """,
-        [report_date, currency_basis],
-    ).fetchall()
-    parsed_report_date = date.fromisoformat(report_date)
-    balances: list[ZqtzAccountingAssetBalance] = []
-    for accounting_basis, ending_balance, source_version, rule_version in rows:
-        amount = Decimal(str(ending_balance or "0"))
-        normalized_basis = str(accounting_basis)
-        balances.append(
-            ZqtzAccountingAssetBalance(
-                report_date=parsed_report_date,
-                accounting_basis=normalized_basis,
-                position_scope="asset",
-                currency_basis=currency_basis,
-                market_value_amount=Decimal("0") if normalized_basis == ACCOUNTING_BASIS_AC else amount,
-                amortized_cost_amount=amount if normalized_basis == ACCOUNTING_BASIS_AC else Decimal("0"),
-                source_version=str(source_version or ""),
-                rule_version=str(rule_version or ""),
-            )
-        )
-    return balances
 
 
 def _load_gl_rows(
@@ -915,10 +1222,18 @@ def _insert_rows(
     currency_basis: str,
 ) -> None:
     for sort_order, row in enumerate(rows, start=1):
+        # 显式列名而非位置插入：控制结论列是追加到表尾的（既有库走
+        # alter table add column），位置插入会随列序变化静默错位。
         conn.execute(
             """
-            insert into fact_accounting_asset_movement_monthly values (
-              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            insert into fact_accounting_asset_movement_monthly (
+              report_date, report_month, currency_basis, sort_order, basis_bucket,
+              previous_balance, current_balance, balance_change, change_pct,
+              contribution_pct, zqtz_amount, gl_amount, reconciliation_diff,
+              reconciliation_status, source_version, rule_version,
+              chain_status, position_source_basis
+            ) values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
             """,
             [
@@ -938,5 +1253,7 @@ def _insert_rows(
                 row.reconciliation_status,
                 row.source_version,
                 row.rule_version or RULE_VERSION,
+                row.chain_status,
+                row.position_source_basis,
             ],
         )

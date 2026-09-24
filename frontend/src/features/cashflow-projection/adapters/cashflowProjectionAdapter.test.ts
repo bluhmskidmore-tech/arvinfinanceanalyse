@@ -117,11 +117,21 @@ describe("adaptCashflowProjection", () => {
 
   it("raises fallback state on fallback_mode=latest_snapshot", () => {
     const out = adaptCashflowProjection({
-      envelope: env({}, { fallback_mode: "latest_snapshot", filters_applied: { report_date: "2025-03-31" } }),
+      envelope: env(
+        {},
+        {
+          fallback_mode: "latest_snapshot",
+          requested_report_date: "2025-03-31",
+          resolved_report_date: "2025-03-29",
+          as_of_date: "2025-03-29",
+          fallback_date: "2025-03-29",
+          filters_applied: { report_date: "2025-03-31" },
+        },
+      ),
       isLoading: false,
       isError: false,
     });
-    expect(out.state.kind).toBe("fallback");
+    expect(out.state).toEqual({ kind: "fallback", effective_date: "2025-03-29" });
   });
 
   it("raises explicit_miss state on source_version tag", () => {

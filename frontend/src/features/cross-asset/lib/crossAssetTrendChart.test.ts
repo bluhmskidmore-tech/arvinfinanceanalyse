@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import type { ChoiceMacroLatestPoint } from "../../../api/contracts";
+import { ibTokens, nocturneTokens } from "../../../theme/designSystem";
 
 import {
   CROSS_ASSET_TREND_WINDOW_DAYS,
   buildCrossAssetTrendOption,
+  buildCrossAssetTrendSummary,
   locfForward,
 } from "./crossAssetTrendChart";
+import type { ResolvedCrossAssetKpi } from "./crossAssetKpiModel";
 
 function point(
   seriesId: string,
@@ -84,5 +87,81 @@ describe("buildCrossAssetTrendOption", () => {
       position: (point: [number, number], params: unknown, dom: unknown, rect: unknown, size: { viewSize: [number, number] }) => [number, number];
     }).position;
     expect(position([20, 30], null, null, null, { viewSize: [240, 180] })).toEqual([8, 8]);
+  });
+
+  it("defaults to the light IB surface for the tooltip", () => {
+    const opt = buildCrossAssetTrendOption([
+      point("E1000180", [
+        ["2026-01-01", 1],
+        ["2026-01-02", 2],
+      ]),
+    ]);
+    expect((opt!.tooltip as { backgroundColor: string }).backgroundColor).toBe(ibTokens.color.surface);
+  });
+
+  it("resolves text/axis/tooltip colors from the terminal palette on the dark page", () => {
+    const opt = buildCrossAssetTrendOption(
+      [
+        point("E1000180", [
+          ["2026-01-01", 1],
+          ["2026-01-02", 2],
+        ]),
+      ],
+      "terminal",
+    );
+    const tooltip = opt!.tooltip as { backgroundColor: string; borderColor: string; textStyle: { color: string } };
+    expect(tooltip.backgroundColor).toBe(nocturneTokens.color.panel2);
+    expect(tooltip.borderColor).toBe(nocturneTokens.color.line);
+    expect(tooltip.textStyle.color).toBe(nocturneTokens.color.ink);
+    const xAxis = opt!.xAxis as { axisLabel: { color: string }; axisLine: { lineStyle: { color: string } } };
+    expect(xAxis.axisLabel.color).toBe(nocturneTokens.color.inkMuted);
+    expect(xAxis.axisLine.lineStyle.color).toBe(nocturneTokens.color.line);
+    const yAxis = opt!.yAxis as { splitLine: { lineStyle: { color: string } } };
+    expect(yAxis.splitLine.lineStyle.color).toBe(nocturneTokens.color.lineSoft);
+    const s = (opt!.series as { lineStyle: { color: string } }[])[0]!;
+    expect(s.lineStyle.color).toBe(nocturneTokens.color.blue);
+  });
+});
+
+function summaryKpi(key: string, sparkline: number[], format: ResolvedCrossAssetKpi["format"] = "percent"): ResolvedCrossAssetKpi {
+  return {
+    key,
+    label: key,
+    format,
+    tag: "",
+    resolvedSeriesId: key,
+    sourceKind: "public",
+    vendorName: null,
+    tradeDate: sparkline.length > 0 ? "2026-04-10" : null,
+    unit: null,
+    valueLabel: sparkline.length > 0 ? String(sparkline[sparkline.length - 1]) : "",
+    changeLabel: "",
+    changeTone: "default",
+    sparkline,
+    sparklinePoints: [],
+  };
+}
+
+describe("buildCrossAssetTrendSummary", () => {
+  it("does not claim a friendly environment when core series have no history", () => {
+    const summary = buildCrossAssetTrendSummary([
+      summaryKpi("cn_gov_10y", []),
+      summaryKpi("money_market_7d", []),
+      summaryKpi("us_gov_10y", []),
+    ]);
+    expect(summary).not.toBeNull();
+    expect(summary!.tone).toBe("neutral");
+    expect(summary!.headline).toContain("历史序列不足");
+    expect(summary!.headline).not.toContain("整体环境偏友好");
+  });
+
+  it("keeps the friendly verdict when core evidence supports it", () => {
+    const summary = buildCrossAssetTrendSummary([
+      summaryKpi("cn_gov_10y", [1.95, 1.94, 1.92, 1.9, 1.85]),
+      summaryKpi("money_market_7d", [1.8, 1.8, 1.79, 1.78, 1.75]),
+    ]);
+    expect(summary).not.toBeNull();
+    expect(summary!.tone).toBe("friendly");
+    expect(summary!.headline).toContain("整体环境偏友好");
   });
 });

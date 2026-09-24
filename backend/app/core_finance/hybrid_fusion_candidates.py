@@ -8,10 +8,35 @@ from backend.app.core_finance.hybrid_fusion_config import (
     HybridFusionThresholds,
     load_hybrid_fusion_thresholds,
 )
+from backend.app.core_finance.strategy_policy import POLICY
 
-FORMULA_VERSION = "rv_hybrid_fusion_candidates_v3"
-ACTIVE_MARKET_STATES = {"WARM", "HOT"}
+# v5: 输入面断代（theme_breakout v5→v6 从单一半导体篮子扩为七题材篮子，
+# theme 输入覆盖面约 33 只 → 1500+ 只，theme-only 候选与 consensus/burst/
+# vcov 评分的输入分布换代）；融合公式本身未变，bump 用于按 formula_version
+# 聚合的回测/复盘不把两代输入混在同一版本标签下。
+FORMULA_VERSION = "rv_hybrid_fusion_candidates_v5"
+ACTIVE_MARKET_STATES = POLICY.hybrid_fusion_active_states
 MAX_CANDIDATES = 10
+MACRO_PENDING_BLOCK_REASON = "macro_score_missing"
+MACRO_PENDING_CYCLE_STATUS = "macro_pending"
+MACRO_LANDED_CYCLE_STATUS = "macro_landed"
+# life_long/stance thresholds combine same-day pool percentiles with absolute
+# floors, so strong labels require both relative rank and a minimum score level.
+THRESHOLD_BASIS = "same_day_candidate_pool_percentile_plus_abs_floor"
+_THRESHOLD_BASIS_NOTE = (
+    "life_long/stance thresholds use same-day cross-sectional percentiles within the "
+    "candidate pool, then apply absolute score floors; strong/neutral/weak stances and "
+    "fusion_action labels require both relative rank and the absolute minimum."
+)
+# Positive weights of the lifecourt proxy formula sum to 0.84. v4 divides the raw
+# weighted sum by this constant (then clamps) so lifecourt shares a ~[0, 1] scale
+# with cycle_score and fusion_weights match effective contribution.
+LIFECOURT_POSITIVE_WEIGHT_SUM = round(0.18 + 0.14 + 0.14 + 0.20 + 0.10 + 0.08, 6)
+_LIFECOURT_SCALE_NOTE = (
+    "lifecourt_proxy_score is the raw weighted sum divided by positive_weight_sum "
+    f"({LIFECOURT_POSITIVE_WEIGHT_SUM}) and clamped to [0, 1], so it shares cycle_score's "
+    "scale; fusion_weights therefore match effective contribution caps."
+)
 
 
 @dataclass(frozen=True)
@@ -75,16 +100,20 @@ def compute_hybrid_fusion_candidates(
             sector_ranks.get(sector_code),
         )
         sector_score = _sector_score(sector_rank)
-        factor_rank_score = _factor_rank_score(factor_rows.get(stock_code), factor_rank_count)
+        factor_row = factor_rows.get(stock_code)
+        factor_rank_available = factor_row is not None
+        factor_rank_score = _factor_rank_score(factor_row, factor_rank_count)
         source_kinds = _source_kinds(stock_code, stock_rows=stock_rows, factor_rows=factor_rows, theme_rows=theme_rows)
         theme_row = theme_rows.get(stock_code)
         stock_row = stock_rows.get(stock_code)
         price_confirm_score = _price_confirm_score(stock_row=stock_row, theme_row=theme_row)
+        macro_pending = macro_score is None
         cycle_score = _cycle_score(
             macro_score=macro_score,
             sector_score=sector_score,
             market_flow_score=price_confirm_score,
             factor_rank_score=factor_rank_score,
+            factor_rank_available=factor_rank_available,
             thresholds=resolved_thresholds,
         )
         crowding_score = _crowding_score(stock_row=stock_row, theme_row=theme_row)
@@ -128,6 +157,12 @@ def compute_hybrid_fusion_candidates(
                 "hygiene_score": round(hygiene_score, 6),
                 "regime_score": round(regime_score, 6),
                 "confidence": _confidence(source_kinds),
+                "trade_eligible": False,
+                "trade_eligibility_reason": (
+                    MACRO_PENDING_BLOCK_REASON if macro_pending else "hybrid_fusion_observation_only"
+                ),
+                "cycle_score_status": MACRO_PENDING_CYCLE_STATUS if macro_pending else MACRO_LANDED_CYCLE_STATUS,
+                "block_reason": MACRO_PENDING_BLOCK_REASON if macro_pending else None,
                 "reason": _reason(
                     cycle_score=cycle_score,
                     lifecourt_proxy_score=lifecourt_proxy_score,
@@ -140,6 +175,7 @@ def compute_hybrid_fusion_candidates(
                     "sector_rank": sector_rank,
                     "sector_score": round(sector_score, 6),
                     "factor_rank_score": round(factor_rank_score, 6),
+                    "factor_rank_available": factor_rank_available,
                     "formula_version": FORMULA_VERSION,
                     "lifecourt_formula": (
                         "0.18*VCOV + 0.14*CONS + 0.14*BURST + 0.20*PCONF "
@@ -149,7 +185,24 @@ def compute_hybrid_fusion_candidates(
                         "cycle": resolved_thresholds.fusion_cycle_weight,
                         "lifecourt": resolved_thresholds.fusion_life_weight,
                     },
+                    "threshold_basis": {
+                        "kind": THRESHOLD_BASIS,
+                        "candidate_pool_size": len(stock_codes),
+                        "note": _THRESHOLD_BASIS_NOTE,
+                    },
+                    "lifecourt_score_scale": {
+                        "positive_weight_sum": LIFECOURT_POSITIVE_WEIGHT_SUM,
+                        "normalized": True,
+                        "theoretical_max": 1.0,
+                        "effective_max_fusion_contribution": {
+                            "cycle": round(resolved_thresholds.fusion_cycle_weight * 1.0, 6),
+                            "lifecourt": round(resolved_thresholds.fusion_life_weight * 1.0, 6),
+                        },
+                        "note": _LIFECOURT_SCALE_NOTE,
+                    },
                     "macro_score": macro_score,
+                    "cycle_score_status": MACRO_PENDING_CYCLE_STATUS if macro_pending else MACRO_LANDED_CYCLE_STATUS,
+                    "block_reason": MACRO_PENDING_BLOCK_REASON if macro_pending else None,
                     "cycle_formula": (
                         "0.30 Macro + 0.35 Industry + 0.20 MarketFlow + 0.15 Valuation"
                         if macro_score is not None
@@ -163,10 +216,14 @@ def compute_hybrid_fusion_candidates(
     stance_thresholds = _stance_thresholds(scored, thresholds=resolved_thresholds)
     for row in scored:
         row["life_long_pass"] = _life_long_pass(row, thresholds=life_long_thresholds)
-        row["fusion_action"] = _fusion_action(
-            cycle_score=cast(float, row["cycle_score"]),
-            lifecourt_proxy_score=cast(float, row["lifecourt_proxy_score"]),
-            stance_thresholds=stance_thresholds,
+        row["fusion_action"] = (
+            "monitor_only"
+            if macro_score is None
+            else _fusion_action(
+                cycle_score=cast(float, row["cycle_score"]),
+                lifecourt_proxy_score=cast(float, row["lifecourt_proxy_score"]),
+                stance_thresholds=stance_thresholds,
+            )
         )
         row["reason"] = _reason(
             cycle_score=cast(float, row["cycle_score"]),
@@ -214,12 +271,30 @@ def _cycle_score(
     sector_score: float,
     market_flow_score: float,
     factor_rank_score: float,
+    factor_rank_available: bool,
     thresholds: HybridFusionThresholds,
 ) -> float:
     if macro_score is None:
+        if not factor_rank_available:
+            # Stock has no factor_screen coverage at all (row missing, not merely a low
+            # rank): renormalize onto the remaining sector weight instead of letting the
+            # 0.0 valuation term silently cap the achievable score.
+            return _clamp(sector_score)
         return _clamp(
             thresholds.legacy_cycle_sector_weight * sector_score
             + thresholds.legacy_cycle_factor_weight * factor_rank_score
+        )
+    if not factor_rank_available:
+        remaining_weight = (
+            thresholds.cycle_macro_weight + thresholds.cycle_industry_weight + thresholds.cycle_market_flow_weight
+        )
+        return _clamp(
+            (
+                thresholds.cycle_macro_weight * macro_score
+                + thresholds.cycle_industry_weight * sector_score
+                + thresholds.cycle_market_flow_weight * market_flow_score
+            )
+            / remaining_weight
         )
     return _clamp(
         thresholds.cycle_macro_weight * macro_score
@@ -242,6 +317,7 @@ def _build_payload(
         "formula_version": FORMULA_VERSION,
         "market_state": market_state,
         "observation_only": True,
+        "threshold_basis": THRESHOLD_BASIS,
         "macro_score": macro_score,
         "candidate_count": len(items),
         "coverage_note": coverage_note,
@@ -450,7 +526,8 @@ def _lifecourt_proxy_score(
         + 0.10 * hygiene_score
         + 0.08 * regime_score
     )
-    return _clamp(raw)
+    # Normalize by positive-weight sum so lifecourt shares cycle_score's ~[0, 1] scale.
+    return _clamp(raw / LIFECOURT_POSITIVE_WEIGHT_SUM)
 
 
 def _percentile_threshold(values: list[float], quantile: float) -> float:
@@ -477,7 +554,10 @@ def _life_long_thresholds(
     pconf_values = [cast(float, row["price_confirm_score"]) for row in rows]
     crowd_values = [cast(float, row["crowding_score"]) for row in rows]
     return _LifeLongThresholds(
-        lifecourt_min=_percentile_threshold(lifecourt_values, thresholds.life_long_top_q),
+        lifecourt_min=max(
+            _percentile_threshold(lifecourt_values, thresholds.life_long_top_q),
+            thresholds.life_long_abs_min,
+        ),
         price_confirm_min=_percentile_threshold(pconf_values, thresholds.life_long_pconf_top_q),
         crowding_max=_percentile_threshold(crowd_values, thresholds.life_long_crowd_max_q),
     )
@@ -498,6 +578,8 @@ class _StanceThresholds:
     cycle_neutral_min: float
     life_strong_min: float
     life_neutral_min: float
+    cycle_strong_abs_min: float
+    life_strong_abs_min: float
 
 
 def _stance_thresholds(
@@ -512,11 +594,16 @@ def _stance_thresholds(
         cycle_neutral_min=_percentile_threshold(cycle_values, thresholds.stance_neutral_q),
         life_strong_min=_percentile_threshold(life_values, thresholds.stance_strong_q),
         life_neutral_min=_percentile_threshold(life_values, thresholds.stance_neutral_q),
+        cycle_strong_abs_min=thresholds.stance_cycle_strong_abs_min,
+        life_strong_abs_min=thresholds.stance_life_strong_abs_min,
     )
 
 
 def _cycle_stance(cycle_score: float, *, thresholds: _StanceThresholds) -> str:
-    if cycle_score >= thresholds.cycle_strong_min:
+    if (
+        cycle_score >= thresholds.cycle_strong_min
+        and cycle_score >= thresholds.cycle_strong_abs_min
+    ):
         return "strong"
     if cycle_score >= thresholds.cycle_neutral_min:
         return "neutral"
@@ -524,7 +611,10 @@ def _cycle_stance(cycle_score: float, *, thresholds: _StanceThresholds) -> str:
 
 
 def _life_stance(lifecourt_proxy_score: float, *, thresholds: _StanceThresholds) -> str:
-    if lifecourt_proxy_score >= thresholds.life_strong_min:
+    if (
+        lifecourt_proxy_score >= thresholds.life_strong_min
+        and lifecourt_proxy_score >= thresholds.life_strong_abs_min
+    ):
         return "strong"
     if lifecourt_proxy_score >= thresholds.life_neutral_min:
         return "neutral"
@@ -635,8 +725,12 @@ def _first_text(*values: object) -> str:
 
 
 def _safe_int(value: object) -> int | None:
+    # Consumers are rank / event-count fields with integer semantics: a fractional
+    # value signals an upstream data anomaly, so reject it instead of truncating.
     number = _safe_float(value)
-    return None if number is None else int(number)
+    if number is None or not number.is_integer():
+        return None
+    return int(number)
 
 
 def _safe_float(value: object) -> float | None:

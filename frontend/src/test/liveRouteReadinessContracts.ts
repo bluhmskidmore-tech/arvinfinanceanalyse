@@ -8,7 +8,7 @@ export const liveRouteReadinessContracts = {
   "/": {
     sourceFiles: [
       "src/features/workbench/dashboard-home/DashboardHomePage.tsx",
-      "src/features/workbench/dashboard-home/TerminalHomeFirstScreen.tsx",
+      "src/features/workbench/dashboard-home/DashboardHomeOptionTwoOverview.tsx",
     ],
     sourceAnchors: ["dashboard-home-page", "dashboard-home-hero"],
     verificationFiles: [
@@ -40,8 +40,28 @@ export const liveRouteReadinessContracts = {
       "src/test/BondAnalyticsViewContent.test.tsx",
     ],
   },
+  "/bond-trading-desk": {
+    sourceFiles: [
+      "src/features/bond-trading-desk/pages/BondTradingDeskPage.tsx",
+      "src/features/bond-trading-desk/components/BondTradingDeskComposeStrip.tsx",
+    ],
+    sourceAnchors: [
+      "bond-trading-desk-page",
+      "bond-trading-desk-conclusion",
+      "bond-trading-desk-compose-strip",
+    ],
+    verificationFiles: [
+      "src/test/BondTradingDeskPage.test.tsx",
+      "src/features/bond-trading-desk/lib/bondTradingDeskPageModel.test.ts",
+      "tests/playwright/bond-trading-desk-desktop-layout.spec.mjs",
+      "tests/playwright/bond-trading-desk-drill.spec.mjs",
+    ],
+  },
   "/cross-asset": {
-    sourceFiles: ["src/features/cross-asset/pages/CrossAssetDriversPage.tsx"],
+    sourceFiles: [
+      "src/features/cross-asset/pages/CrossAssetDriversPage.tsx",
+      "src/features/cross-asset/components/ReferencePanels.tsx",
+    ],
     sourceAnchors: ["cross-asset-drivers-page", "cross-asset-research-views"],
     verificationFiles: [
       "src/test/CrossAssetDriversRoute.test.tsx",
@@ -82,19 +102,48 @@ export const liveRouteReadinessContracts = {
     sourceFiles: [
       "src/features/workbench/module-home/MarketHomePage.tsx",
       "src/features/workbench/module-home/MarketHomeLayout.tsx",
+      "src/features/workbench/module-home/useMarketHomeQueries.ts",
+      "src/features/workbench/module-home/MarketOverviewDenseFirstScreen.tsx",
+      "src/features/workbench/module-home/MarketFinancialChartsWorkbench.tsx",
+      "src/features/workbench/module-home/MarketBackendDataWorkbench.tsx",
     ],
-    sourceAnchors: ["module-workbench-home", "module-home-kpi-strip"],
-    verificationFiles: ["src/test/ModuleWorkbenchHomePage.test.tsx"],
+    sourceAnchors: [
+      "module-workbench-home",
+      "module-home-market-subpage-nav",
+      "module-home-market-dense",
+      "module-home-market-financial-charts",
+      "module-home-market-backend-data",
+    ],
+    verificationFiles: [
+      "src/test/ModuleWorkbenchHomePage.test.tsx",
+      "src/features/workbench/module-home/marketOverviewDenseModel.test.ts",
+      "src/features/workbench/module-home/marketOverviewDenseLiquidityModel.test.ts",
+      "src/features/workbench/module-home/MarketFinancialChartsWorkbench.test.tsx",
+      "src/features/workbench/module-home/marketFinancialChartsModel.test.ts",
+      "src/features/workbench/module-home/MarketBackendDataWorkbench.test.tsx",
+      "tests/playwright/market-overview-smoke.spec.mjs",
+    ],
   },
   "/market-data": {
     sourceFiles: ["src/features/market-data/pages/MarketDataPage.tsx"],
-    sourceAnchors: ["market-data-page", "market-data-readiness-verdict"],
+    sourceAnchors: ["market-data-page", "market-data-status-strip"],
     verificationFiles: ["src/test/MarketDataPage.test.tsx"],
   },
+  "/market-finance": {
+    sourceFiles: [
+      "src/features/market-finance/pages/MarketFinanceWorkbenchPage.tsx",
+    ],
+    sourceAnchors: [
+      "market-finance-workbench",
+      "market-finance-transmission-spine",
+      "market-finance-evidence-matrix",
+    ],
+    verificationFiles: ["src/test/MarketFinanceWorkbenchPage.test.tsx"],
+  },
   "/macro-observation": {
-    sourceFiles: ["src/features/macro-toolkit/pages/MacroToolkitPage.tsx"],
-    sourceAnchors: ["macro-observation-readonly-boundary", "macro-toolkit-page"],
-    verificationFiles: ["src/test/MacroToolkitPage.test.tsx"],
+    sourceFiles: ["src/features/macro-observation/pages/MacroObservationPage.tsx"],
+    sourceAnchors: ["macro-observation-readonly-boundary", "macro-observation-page"],
+    verificationFiles: ["src/test/MacroObservationPage.test.tsx"],
   },
   "/macro-toolkit": {
     sourceFiles: ["src/features/macro-toolkit/pages/MacroToolkitPage.tsx"],
@@ -102,7 +151,10 @@ export const liveRouteReadinessContracts = {
     verificationFiles: ["src/test/MacroToolkitPage.test.tsx"],
   },
   "/stock-analysis": {
-    sourceFiles: ["src/features/stock-analysis/pages/StockAnalysisPage.tsx"],
+    sourceFiles: [
+      "src/features/stock-analysis/pages/StockAnalysisPage.tsx",
+      "src/features/stock-analysis/pages/StockAnalysisPageImpl.tsx",
+    ],
     sourceAnchors: ["stock-analysis-toolbar", "stock-analysis-first-screen-main"],
     verificationFiles: ["src/test/StockAnalysisPage.test.tsx"],
   },
@@ -148,8 +200,8 @@ export const liveRouteReadinessContracts = {
     verificationFiles: ["src/test/LedgerDashboardPage.test.tsx"],
   },
   "/risk-overview": {
-    sourceFiles: ["src/features/workbench/module-home/ModuleWorkbenchHomePage.tsx"],
-    sourceAnchors: ["module-workbench-home", "module-home-risk-evidence"],
+    sourceFiles: ["src/features/workbench/module-home/RiskOverviewPage.tsx"],
+    sourceAnchors: ["risk-overview-page", "risk-overview-evidence"],
     verificationFiles: ["src/test/ModuleWorkbenchHomePage.test.tsx"],
   },
   "/risk-tensor": {
@@ -188,8 +240,11 @@ export const liveRouteReadinessContracts = {
     verificationFiles: ["src/test/ProductCategoryPnlPage.test.tsx"],
   },
   "/pnl": {
-    sourceFiles: ["src/features/pnl/YieldAnalysisPage.tsx"],
-    sourceAnchors: ["yield-analysis-page", "yield-analysis-pnl-readout"],
+    sourceFiles: [
+      "src/features/pnl/PnlPage.tsx",
+      "src/features/pnl/FormalPnlV1Page.tsx",
+    ],
+    sourceAnchors: ["formal-pnl-v1-page", "pnl-overview-cards", "pnl-result-meta-panel"],
     verificationFiles: ["src/test/PnlPage.test.tsx", "src/test/PnlRoutesSmoke.test.tsx"],
   },
   "/pnl-bridge": {
@@ -218,12 +273,16 @@ export const liveRouteReadinessContracts = {
     sourceAnchors: ["pnl-by-business-page", "pnl-by-business-state-surfaces"],
     verificationFiles: ["src/test/PnlRoutesSmoke.test.tsx"],
   },
-  "/agent": {
-    sourceFiles: ["src/features/agent/AgentWorkbenchPage.tsx"],
-    sourceAnchors: ["agent-workbench-shell", "agent-conversation-bottom"],
+  "/pnl-by-business-insights": {
+    sourceFiles: ["src/features/pnl-business-insights/PnlByBusinessInsightsPage.tsx"],
+    sourceAnchors: [
+      "pnl-by-business-insights-page",
+      "pnl-by-business-insights-contract-status",
+      "pnl-by-business-insights-reconciliation-section",
+    ],
     verificationFiles: [
-      "src/test/AgentPlaceholderPage.test.tsx",
-      "src/test/AgentWorkbenchPage.test.tsx",
+      "src/features/pnl-business-insights/PnlByBusinessInsightsPage.test.tsx",
+      "src/test/routes.test.tsx",
     ],
   },
 } satisfies Record<string, LiveRouteReadinessContract>;

@@ -6,6 +6,14 @@ import duckdb
 
 from backend.app.services.livermore_readiness_probe import probe_livermore_readiness
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def _seed_csi300(
     duckdb_path: str,

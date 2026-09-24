@@ -35,6 +35,20 @@ RESOLUTION_SCOPE = {
 }
 
 
+def _validated_report_date(value: str) -> str:
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"invalid report date {value!r}; expected YYYY-MM-DD"
+        ) from exc
+    if parsed.isoformat() != value:
+        raise argparse.ArgumentTypeError(
+            f"invalid report date {value!r}; expected YYYY-MM-DD"
+        )
+    return value
+
+
 def _resolution_row(
     *,
     warning_key: str,
@@ -72,46 +86,151 @@ def _has_resolution_gap(value: object) -> bool:
         return bool(value)
 
 
+def _duration_class_evidence(
+    duration: object,
+    *,
+    rows_key: str,
+    market_value_key: str,
+) -> dict[str, object]:
+    assert isinstance(duration, dict)
+    return {
+        "row_count": duration.get(rows_key, 0),
+        "market_value": duration.get(market_value_key, "0.00000000"),
+    }
+
+
 def _warning_resolution_matrix(
     *,
     parsed: dict[str, object],
     recomputed: dict[str, object],
+    report_date: str,
 ) -> list[dict[str, object]]:
-    maturity_command = "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty"
+    maturity_command = (
+        f"python scripts/portfolio_home_maturity_remediation_queue.py "
+        f"--report-date {report_date} --require-empty"
+    )
+    parsed_no_maturity = _duration_class_evidence(
+        parsed["duration_exclusion"],
+        rows_key="no_maturity_rows",
+        market_value_key="no_maturity_market_value",
+    )
+    recomputed_no_maturity = _duration_class_evidence(
+        recomputed["duration_exclusion"],
+        rows_key="no_maturity_rows",
+        market_value_key="no_maturity_market_value",
+    )
+    parsed_matured = _duration_class_evidence(
+        parsed["duration_exclusion"],
+        rows_key="matured_or_expired_outstanding_rows",
+        market_value_key="matured_or_expired_outstanding_market_value",
+    )
+    recomputed_matured = _duration_class_evidence(
+        recomputed["duration_exclusion"],
+        rows_key="matured_or_expired_outstanding_rows",
+        market_value_key="matured_or_expired_outstanding_market_value",
+    )
+    parsed_nonpositive = _duration_class_evidence(
+        parsed["duration_exclusion"],
+        rows_key="nonpositive_duration_rows",
+        market_value_key="nonpositive_duration_market_value",
+    )
+    recomputed_nonpositive = _duration_class_evidence(
+        recomputed["duration_exclusion"],
+        rows_key="nonpositive_duration_rows",
+        market_value_key="nonpositive_duration_market_value",
+    )
     return [
         _resolution_row(
             warning_key="krd_bucket_remap",
             owner="risk_owner",
             parsed=parsed["krd_buckets"],
             recomputed=recomputed["krd_buckets"],
-            evidence_command="python scripts/portfolio_home_krd_remap_review_queue.py --require-clean",
+            evidence_command=(
+                f"python scripts/portfolio_home_krd_remap_review_queue.py "
+                f"--report-date {report_date} --require-clean"
+            ),
             exit_criteria=(
                 "Risk owner approves nearest-bucket KRD mapping or supplies exact-bucket "
                 "schema evidence; KRD review queue exits 0."
             ),
         ),
+        {
+            "warning_key": "duration_no_maturity",
+            "owner": "none" if parsed_no_maturity == recomputed_no_maturity else "risk_owner",
+            "current_status": (
+                "informational"
+                if parsed_no_maturity == recomputed_no_maturity
+                else "blocked"
+            ),
+            "current_evidence": {
+                "parsed": parsed_no_maturity,
+                "recomputed": recomputed_no_maturity,
+            },
+            "evidence_command": (
+                f"python scripts/portfolio_home_risk_warning_consistency.py "
+                f"--report-date {report_date} --require-consistent"
+            ),
+            "exit_criteria": (
+                "Contractual no-maturity rows remain disclosed and excluded from maturity "
+                "risk math; no date remediation is required."
+            ),
+            "evidence_scope": dict(RESOLUTION_SCOPE),
+        },
         _resolution_row(
-            warning_key="duration_denominator_exclusion",
+            warning_key="matured_or_expired_outstanding",
             owner="data_owner",
-            parsed=parsed["duration_exclusion"],
-            recomputed=recomputed["duration_exclusion"],
-            evidence_command=maturity_command,
+            parsed=parsed_matured,
+            recomputed=recomputed_matured,
+            evidence_command=(
+                f"python scripts/portfolio_home_matured_outstanding_queue.py "
+                f"--report-date {report_date} --require-empty"
+            ),
             exit_criteria=(
-                "Data owner remediates missing maturity dates or captures signed scoped "
-                "exclusion; maturity remediation queue exits 0."
+                "Matured or unparseable non-zero bond positions are reconciled at source, and "
+                "the matured-outstanding strict queue exits 0; exception evidence cannot close "
+                "this blocker."
             ),
         ),
         _resolution_row(
-            warning_key="bond_liquidity_gap_missing_maturity",
+            warning_key="nonpositive_duration",
             owner="data_owner",
-            parsed=parsed["bond_liquidity_gap"],
-            recomputed=recomputed["bond_liquidity_gap"],
-            evidence_command=maturity_command,
+            parsed=parsed_nonpositive,
+            recomputed=recomputed_nonpositive,
+            evidence_command=(
+                f"python scripts/portfolio_home_risk_warning_consistency.py "
+                f"--report-date {report_date} --require-clean"
+            ),
             exit_criteria=(
-                "Bond missing maturity rows are remediated or signed scoped exclusion "
-                "evidence is captured; maturity remediation queue exits 0."
+                "Future-dated positions with non-positive modified_duration are remediated "
+                "at source and the risk warning clean gate exits 0."
             ),
         ),
+        {
+            "warning_key": "bond_liquidity_gap_no_maturity",
+            "owner": (
+                "none"
+                if parsed["bond_liquidity_gap"] == recomputed["bond_liquidity_gap"]
+                else "risk_owner"
+            ),
+            "current_status": (
+                "informational"
+                if parsed["bond_liquidity_gap"] == recomputed["bond_liquidity_gap"]
+                else "blocked"
+            ),
+            "current_evidence": {
+                "parsed": parsed["bond_liquidity_gap"],
+                "recomputed": recomputed["bond_liquidity_gap"],
+            },
+            "evidence_command": (
+                f"python scripts/portfolio_home_risk_warning_consistency.py "
+                f"--report-date {report_date} --require-consistent"
+            ),
+            "exit_criteria": (
+                "Bond ledger null maturity is disclosed as contractual no-maturity; "
+                "no date remediation or scoped exclusion is required."
+            ),
+            "evidence_scope": dict(RESOLUTION_SCOPE),
+        },
         _resolution_row(
             warning_key="tyw_liability_gap_missing_maturity",
             owner="data_owner",
@@ -197,22 +316,31 @@ def _duration_exclusion_breakdown(
     return _fetch_all(
         connection,
         """
+        with scoped as (
+          select *, try_cast(maturity_date as date) as parsed_maturity_date,
+            cast(? as date) as as_of_date
+          from fact_formal_bond_analytics_daily
+          where report_date = ?
+            and coalesce(market_value, 0) <> 0
+        )
         select
           case
-            when maturity_date is null then 'missing_maturity'
+            when maturity_date is null then 'no_maturity'
+            when parsed_maturity_date is null or parsed_maturity_date <= as_of_date
+              then 'matured_or_expired_outstanding'
             else 'nonpositive_duration'
           end as exclusion_reason,
           count(*) as row_count,
           coalesce(sum(market_value), 0)::decimal(24, 8) as market_value_sum,
           coalesce(sum(dv01), 0)::decimal(24, 8) as dv01_sum
-        from fact_formal_bond_analytics_daily
-        where report_date = ?
-          and coalesce(market_value, 0) <> 0
-          and (maturity_date is null or coalesce(modified_duration, 0) <= 0)
+        from scoped
+        where parsed_maturity_date is null
+          or parsed_maturity_date <= as_of_date
+          or coalesce(modified_duration, 0) <= 0
         group by 1
         order by 1
         """,
-        [report_date],
+        [report_date, report_date],
     )
 
 
@@ -234,10 +362,16 @@ def _format_duration_exclusion_warning(duration: dict[str, object]) -> str:
         f"{duration.get('row_count')} rows carry "
         f"market_value={duration.get('market_value_sum')} and are excluded from "
         "portfolio duration denominator: "
-        f"{duration.get('missing_maturity_rows')} without maturity_date; "
-        f"{duration.get('nonpositive_duration_rows')} with non-positive "
-        "modified_duration. DV01 totals remain sourced from row dv01; duration "
-        "metrics ignore these rows until inputs are remediated."
+        f"{duration.get('no_maturity_rows')} without maturity_date "
+        f"(market_value={duration.get('no_maturity_market_value')}); "
+        f"{duration.get('matured_or_expired_outstanding_rows')} matured on or before "
+        "report_date with outstanding market_value "
+        f"(market_value={duration.get('matured_or_expired_outstanding_market_value')}); "
+        f"{duration.get('nonpositive_duration_rows')} future-dated with non-positive "
+        "modified_duration "
+        f"(market_value={duration.get('nonpositive_duration_market_value')}). "
+        "DV01 totals remain sourced from row dv01; duration metrics ignore these rows "
+        "until inputs are remediated."
     )
 
 
@@ -293,9 +427,18 @@ def _duration_exclusion_sample_rows(
     return _fetch_all(
         connection,
         f"""
+        with scoped as (
+          select *, try_cast(maturity_date as date) as parsed_maturity_date,
+            cast(? as date) as as_of_date
+          from fact_formal_bond_analytics_daily
+          where report_date = ?
+            and coalesce(market_value, 0) <> 0
+        )
         select
           case
-            when maturity_date is null then 'missing_maturity'
+            when maturity_date is null then 'no_maturity'
+            when parsed_maturity_date is null or parsed_maturity_date <= as_of_date
+              then 'matured_or_expired_outstanding'
             else 'nonpositive_duration'
           end as exclusion_reason,
           {", ".join(select_fields)},
@@ -303,14 +446,14 @@ def _duration_exclusion_sample_rows(
           maturity_date,
           modified_duration::decimal(18, 8) as modified_duration,
           dv01::decimal(24, 8) as dv01
-        from fact_formal_bond_analytics_daily
-        where report_date = ?
-          and coalesce(market_value, 0) <> 0
-          and (maturity_date is null or coalesce(modified_duration, 0) <= 0)
+        from scoped
+        where parsed_maturity_date is null
+          or parsed_maturity_date <= as_of_date
+          or coalesce(modified_duration, 0) <= 0
         order by market_value desc{order_suffix}
         limit ?
         """,
-        [report_date, limit],
+        [report_date, report_date, limit],
     )
 
 
@@ -335,13 +478,29 @@ def _duration_exclusion_delta_detail(
             recomputed_duration.get("market_value_sum"),
             parsed_duration.get("market_value_sum"),
         ),
-        "missing_maturity_rows": _integer_delta(
-            recomputed_duration.get("missing_maturity_rows"),
-            parsed_duration.get("missing_maturity_rows"),
+        "no_maturity_rows": _integer_delta(
+            recomputed_duration.get("no_maturity_rows"),
+            parsed_duration.get("no_maturity_rows"),
+        ),
+        "no_maturity_market_value": _decimal_delta(
+            recomputed_duration.get("no_maturity_market_value"),
+            parsed_duration.get("no_maturity_market_value"),
+        ),
+        "matured_or_expired_outstanding_rows": _integer_delta(
+            recomputed_duration.get("matured_or_expired_outstanding_rows"),
+            parsed_duration.get("matured_or_expired_outstanding_rows"),
+        ),
+        "matured_or_expired_outstanding_market_value": _decimal_delta(
+            recomputed_duration.get("matured_or_expired_outstanding_market_value"),
+            parsed_duration.get("matured_or_expired_outstanding_market_value"),
         ),
         "nonpositive_duration_rows": _integer_delta(
             recomputed_duration.get("nonpositive_duration_rows"),
             parsed_duration.get("nonpositive_duration_rows"),
+        ),
+        "nonpositive_duration_market_value": _decimal_delta(
+            recomputed_duration.get("nonpositive_duration_market_value"),
+            parsed_duration.get("nonpositive_duration_market_value"),
         ),
     }
     mismatch_fields = [
@@ -429,8 +588,12 @@ def _empty_duration_exclusion() -> dict[str, object]:
     return {
         "row_count": 0,
         "market_value_sum": "0.00000000",
-        "missing_maturity_rows": 0,
+        "no_maturity_rows": 0,
+        "no_maturity_market_value": "0.00000000",
+        "matured_or_expired_outstanding_rows": 0,
+        "matured_or_expired_outstanding_market_value": "0.00000000",
         "nonpositive_duration_rows": 0,
+        "nonpositive_duration_market_value": "0.00000000",
     }
 
 
@@ -456,16 +619,25 @@ def _parse_warnings(warnings: list[str]) -> dict[str, object]:
             continue
 
         duration_match = re.search(
-            r"(\d+) rows carry market_value=([0-9.]+) and are excluded from portfolio duration denominator: "
-            r"(\d+) without maturity_date; (\d+) with non-positive modified_duration",
+            r"(\d+) rows carry market_value=(-?[0-9.]+) and are excluded from portfolio duration denominator: "
+            r"(\d+) without maturity_date \(market_value=(-?[0-9.]+)\); "
+            r"(\d+) matured on or before report_date with outstanding market_value "
+            r"\(market_value=(-?[0-9.]+)\); (\d+) future-dated with non-positive "
+            r"modified_duration \(market_value=(-?[0-9.]+)\)",
             warning,
         )
         if duration_match:
             parsed["duration_exclusion"] = {
                 "row_count": int(duration_match.group(1)),
                 "market_value_sum": _decimal_text(duration_match.group(2)),
-                "missing_maturity_rows": int(duration_match.group(3)),
-                "nonpositive_duration_rows": int(duration_match.group(4)),
+                "no_maturity_rows": int(duration_match.group(3)),
+                "no_maturity_market_value": _decimal_text(duration_match.group(4)),
+                "matured_or_expired_outstanding_rows": int(duration_match.group(5)),
+                "matured_or_expired_outstanding_market_value": _decimal_text(
+                    duration_match.group(6)
+                ),
+                "nonpositive_duration_rows": int(duration_match.group(7)),
+                "nonpositive_duration_market_value": _decimal_text(duration_match.group(8)),
             }
             continue
 
@@ -518,21 +690,51 @@ def _recomputed_duration_exclusion(
     row = _fetch_one(
         connection,
         """
+        with scoped as (
+          select *, try_cast(maturity_date as date) as parsed_maturity_date,
+            cast(? as date) as as_of_date
+          from fact_formal_bond_analytics_daily
+          where report_date = ?
+            and coalesce(market_value, 0) <> 0
+        )
         select
           count(*) as row_count,
           coalesce(sum(market_value), 0)::decimal(24, 8) as market_value_sum,
-          coalesce(sum(case when maturity_date is null then 1 else 0 end), 0) as missing_maturity_rows,
+          coalesce(sum(case when maturity_date is null then 1 else 0 end), 0) as no_maturity_rows,
+          coalesce(sum(case when maturity_date is null then market_value else 0 end), 0)::decimal(24, 8)
+            as no_maturity_market_value,
           coalesce(sum(
-            case when maturity_date is not null and coalesce(modified_duration, 0) <= 0 then 1 else 0 end
-          ), 0) as nonpositive_duration_rows
-        from fact_formal_bond_analytics_daily
-        where report_date = ?
-          and coalesce(market_value, 0) <> 0
-          and (maturity_date is null or coalesce(modified_duration, 0) <= 0)
+            case when parsed_maturity_date <= as_of_date
+              or (maturity_date is not null and parsed_maturity_date is null)
+              then 1 else 0 end
+          ), 0) as matured_or_expired_outstanding_rows,
+          coalesce(sum(
+            case when parsed_maturity_date <= as_of_date
+              or (maturity_date is not null and parsed_maturity_date is null)
+              then market_value else 0 end
+          ), 0)::decimal(24, 8) as matured_or_expired_outstanding_market_value,
+          coalesce(sum(
+            case when parsed_maturity_date > as_of_date
+              and coalesce(modified_duration, 0) <= 0 then 1 else 0 end
+          ), 0) as nonpositive_duration_rows,
+          coalesce(sum(
+            case when parsed_maturity_date > as_of_date
+              and coalesce(modified_duration, 0) <= 0 then market_value else 0 end
+          ), 0)::decimal(24, 8) as nonpositive_duration_market_value
+        from scoped
+        where parsed_maturity_date is null
+          or parsed_maturity_date <= as_of_date
+          or coalesce(modified_duration, 0) <= 0
         """,
-        [report_date],
+        [report_date, report_date],
     ) or _empty_duration_exclusion()
-    row["market_value_sum"] = _decimal_text(row.get("market_value_sum"))
+    for field in (
+        "market_value_sum",
+        "no_maturity_market_value",
+        "matured_or_expired_outstanding_market_value",
+        "nonpositive_duration_market_value",
+    ):
+        row[field] = _decimal_text(row.get(field))
     return row
 
 
@@ -677,6 +879,7 @@ def build_evidence(
     duckdb_path: Path,
     report_date: str,
 ) -> dict[str, object]:
+    report_date = _validated_report_date(report_date)
     connection = duckdb.connect(str(duckdb_path), read_only=True)
     try:
         risk_tensor = _risk_tensor_row(connection, report_date)
@@ -717,6 +920,7 @@ def build_evidence(
         "warning_resolution_matrix": _warning_resolution_matrix(
             parsed=parsed,
             recomputed=recomputed,
+            report_date=report_date,
         ),
         "warning_consistency_status": "consistent" if not consistency_blockers else "mismatch",
         "consistency_blockers": consistency_blockers,
@@ -731,7 +935,11 @@ def main(argv: list[str] | None = None) -> int:
         description="Cross-check portfolio-home risk tensor warnings against DuckDB facts.",
     )
     parser.add_argument("--duckdb-path", type=Path, default=DEFAULT_DUCKDB)
-    parser.add_argument("--report-date", default=DEFAULT_REPORT_DATE)
+    parser.add_argument(
+        "--report-date",
+        type=_validated_report_date,
+        default=DEFAULT_REPORT_DATE,
+    )
     parser.add_argument(
         "--require-consistent",
         action="store_true",

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import duckdb
 import json
 import os
 import shutil
@@ -12,6 +11,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+import duckdb
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 55432
@@ -40,18 +40,25 @@ RUNTIME_GOVERNANCE_SEED_FILES = (
 DEV_USER_SCOPE_GRANTS = (
     {"user_id": "*", "role": None, "resource": "choice_news.data", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "accounting_asset_movement", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "adb_analysis", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "balance_analysis", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "bond_analytics", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "bond_dashboard", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "cashflow_projection", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "dashboard", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "executive", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "agent", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "kpi", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "ledger_pnl", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "macro_bond_linkage", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "macro_toolkit", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "macro_vendor", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "market_data_ncd_proxy", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "pnl_attribution", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "product_category_pnl", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "qdb_gl_monthly_analysis", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "research_calendar", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "risk_tensor", "action": "read"},
 )
 
 
@@ -103,6 +110,7 @@ def build_env_mapping(config: DevPostgresClusterConfig) -> dict[str, str]:
     storage_root = _resolve_storage_root_for_env(config)
     return {
         "MOSS_ENVIRONMENT": "development",
+        "MOSS_AGENT_DEV_SCOPE_BYPASS": "true",
         "MOSS_POSTGRES_DSN": config.postgres_dsn,
         "MOSS_GOVERNANCE_SQL_DSN": config.postgres_dsn,
         "MOSS_REDIS_DSN": DEFAULT_REDIS_DSN,
@@ -136,7 +144,7 @@ def resolve_pg_bin_dir() -> Path:
 
 
 def _resolve_python_executable() -> str:
-    return shutil.which("python") or sys.executable
+    return sys.executable or shutil.which("python") or "python"
 
 
 def _sql_identifier(value: str) -> str:
@@ -167,7 +175,13 @@ def command_up(config: DevPostgresClusterConfig) -> dict[str, object]:
             ]
         )
 
-    if not _is_port_open(config.host, config.port):
+    port_is_open = _is_port_open(config.host, config.port)
+    if port_is_open and not _is_expected_cluster_running(config):
+        raise RuntimeError(
+            f"Local PostgreSQL dev port {config.host}:{config.port} is already occupied by a "
+            "different process; refusing to run migrations or bootstrap against it."
+        )
+    if not port_is_open:
         _remove_stale_postmaster_pid(config)
         _spawn_postgres_start(config)
     _wait_for_postgres_ready(config)
@@ -583,6 +597,23 @@ def _is_port_open(host: str, port: int) -> bool:
         return sock.connect_ex((host, port)) == 0
 
 
+def _is_expected_cluster_running(config: DevPostgresClusterConfig) -> bool:
+    if not config.data_dir.exists():
+        return False
+    status = subprocess.run(
+        [
+            str(config.bin_dir / "pg_ctl.exe"),
+            "-D",
+            str(config.data_dir),
+            "status",
+        ],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    return status.returncode == 0
+
+
 def _probe_postgres_ready(config: DevPostgresClusterConfig, *, database: str | None = None) -> bool:
     try:
         _run_checked_retry(
@@ -622,8 +653,9 @@ def _spawn_postgres_start(config: DevPostgresClusterConfig) -> None:
         ],
         check=True,
         text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
 
 
@@ -709,6 +741,7 @@ def main() -> int:
         Path(args.pg_bin_dir).resolve() if args.pg_bin_dir else None,
     )
 
+    payload: dict[str, object]
     try:
         if args.command == "up":
             payload = command_up(config)
@@ -719,7 +752,7 @@ def main() -> int:
         elif args.command == "reset-schema":
             payload = command_reset_schema(config)
         else:
-            payload = command_print_env(config)
+            payload = dict(command_print_env(config))
     except RuntimeError as exc:
         print(json.dumps({"error": str(exc)}, ensure_ascii=True), file=sys.stderr)
         return 1

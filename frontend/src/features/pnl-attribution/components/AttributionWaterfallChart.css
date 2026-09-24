@@ -1,0 +1,32 @@
+.attribution-waterfall-chart__card {
+  padding: var(--moss-space-5);
+  border-radius: var(--dh-api-radius);
+  border: 1px solid var(--dh-api-line);
+  background: var(--dh-api-panel);
+}
+
+.attribution-waterfall-chart__empty {
+  text-align: center;
+  color: var(--dh-api-soft);
+}
+
+.attribution-waterfall-chart__copy {
+  margin: 0 0 var(--moss-space-3);
+  font-size: 13px;
+  color: var(--dh-api-soft);
+  line-height: 1.5;
+}
+
+.attribution-waterfall-chart__chart {
+  height: 300px;
+}
+
+.attribution-waterfall-chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--moss-space-4);
+  justify-content: center;
+  margin-top: var(--moss-space-3);
+  font-size: 12px;
+  color: var(--dh-api-soft);
+}

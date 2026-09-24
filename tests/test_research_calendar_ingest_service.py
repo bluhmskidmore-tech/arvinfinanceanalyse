@@ -14,6 +14,7 @@ from backend.app.repositories.research_calendar_repo import (
     ensure_supply_auction_calendar_schema,
 )
 from backend.app.repositories.source_manifest_repo import SourceManifestRepository
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.services.external_std_research_calendar_etl_service import (
     ExternalStdResearchCalendarEtlService,
 )
@@ -63,7 +64,8 @@ def test_research_calendar_ingest_materializes_rows_and_manifest(tmp_path: Path)
         etl_service=ExternalStdResearchCalendarEtlService(raw, conn),
     )
 
-    result = service.materialize_all(batch)
+    with repository_task_write_scope("backend.app.tasks.research_calendar_ingest_test"):
+        result = service.materialize_all(batch)
 
     assert len(result) == 1
     row_count = conn.execute("select count(*) from std_external_supply_auction_calendar").fetchone()[0]
@@ -113,7 +115,8 @@ def test_research_calendar_ingest_replaces_existing_event_rows_across_batches(tm
             ),
             encoding="utf-8",
         )
-        service.materialize_all(batch)
+        with repository_task_write_scope("backend.app.tasks.research_calendar_ingest_test"):
+            service.materialize_all(batch)
 
     std_rows = conn.execute(
         "select count(*), max(title) from std_external_supply_auction_calendar where event_id = 'evt-1'"

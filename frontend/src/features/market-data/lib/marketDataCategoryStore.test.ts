@@ -88,6 +88,29 @@ describe("marketDataCategoryStore", () => {
             },
           ],
         } satisfies FxAnalyticalGroup,
+        {
+          group_key: "fx_event_calendar",
+          title: "Event calendar",
+          description: "test events",
+          series: [],
+          events: [
+            {
+              group_key: "fx_event_calendar",
+              event_id: "eco-cny-trade",
+              event_date: "20260612",
+              event_time: "10:30",
+              currency: "CNY",
+              country: "China",
+              event: "China trade balance",
+              value: "105.43",
+              pre_value: "84.8",
+              fore_value: "92.1",
+              source_version: "sv_tushare_eco",
+              vendor_version: "vv_tushare_supplement_v1",
+              quality_flag: "ok",
+            },
+          ],
+        } satisfies FxAnalyticalGroup,
       ],
     });
 
@@ -107,7 +130,7 @@ describe("marketDataCategoryStore", () => {
     expect(store.stableLatestTradeDate).toBe("2026-04-10");
     expect(store.linkageReportDate).toBe("2026-04-10");
     expect(store.vendorVersions).toEqual(["vv_test"]);
-    expect(store.fxAnalyticalSeriesCount).toBe(1);
+    expect(store.fxAnalyticalSeriesCount).toBe(2);
     expect(store.stablePipelineTone).toBe("warning");
   });
 });

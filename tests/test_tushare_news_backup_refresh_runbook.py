@@ -251,11 +251,11 @@ def test_tushare_news_backup_timer_preflight_status_records_current_blockers_and
     assert "--stage post-enable --format markdown" in status
     assert "--stage post-enable --format ops-gap" in status
     assert "Combined verdict: `blocked`" in status
-    assert "Blocking stages: `pre-enable`, `post-enable`" in status
-    assert "Pre-enable summary: `9 pass / 2 blocked`" in status
-    assert "Post-enable summary: `9 pass / 4 blocked`" in status
+    assert "Blocking stages: `post-enable`" in status
+    assert "Pre-enable summary: `11 pass / 0 blocked`" in status
+    assert "Post-enable summary: `11 pass / 2 blocked`" in status
     assert "Operator Fill Order" in status
-    assert "Do not create the external timer while `pre-enable` is blocked." in status
+    assert "`pre-enable` is no longer blocked" in status
     assert "After the first scheduled run, attach timer evidence" in status
     assert "Activation Sequence" in status
     assert "Immediate stage: `pre-enable`" in status
@@ -282,7 +282,7 @@ def test_tushare_news_backup_timer_preflight_status_records_current_blockers_and
     assert "ops_gap.required_pre_enable_inputs" in status
     assert "ops_gap.required_post_enable_inputs" in status
     assert "ops_gap.required_boundary_confirmations" in status
-    assert "Ready to create timer: `false`" in status
+    assert "Ready to create timer: `true`" in status
     assert "docs/templates/tushare_news_backup_refresh_go_live_checklist.md" in status
     assert "docs/templates/tushare_news_backup_timer_enablement_packet.md" in status
     assert "docs/handoff/2026-06-03-tushare-news-backup-refresh-go-live-evidence.md" in status
@@ -298,12 +298,12 @@ def test_tushare_news_backup_timer_preflight_status_matches_current_preflight_re
     post_enable = module.build_timer_preflight_report(repo_root=ROOT, stage="post-enable")
     all_stage = module.build_timer_preflight_bundle(repo_root=ROOT)
 
-    assert pre_enable["verdict"] == "blocked"
+    assert pre_enable["verdict"] == "pass"
     assert post_enable["verdict"] == "blocked"
     assert all_stage["verdict"] == "blocked"
-    assert all_stage["blocking_stages"] == ["pre-enable", "post-enable"]
+    assert all_stage["blocking_stages"] == ["post-enable"]
     assert f"Combined verdict: `{all_stage['verdict']}`" in status
-    assert "Blocking stages: `pre-enable`, `post-enable`" in status
+    assert "Blocking stages: `post-enable`" in status
     assert (
         f"Pre-enable summary: `{pre_enable['summary']['pass']} pass / "
         f"{pre_enable['summary']['blocked']} blocked`"
@@ -324,12 +324,7 @@ def test_tushare_news_backup_timer_preflight_status_matches_current_preflight_re
         assert f"`{action['path']}`" in status
         assert action["action"] in status
 
-    assert [
-        action["gate"] for action in all_stage["ops_gap"]["immediate_next_actions"]
-    ] == [
-        "page_artifacts_exist",
-        "page_evidence_json_confirms_read_only_fallback",
-    ]
+    assert [action["gate"] for action in all_stage["ops_gap"]["immediate_next_actions"]] == []
     assert [
         action["gate"]
         for action in all_stage["ops_gap"]["deferred_post_enable_next_actions"]
@@ -441,8 +436,8 @@ def test_tushare_news_backup_timer_ops_gap_packet_matches_current_blockers_and_a
         "## Required Boundary Confirmations",
         "## Activation Sequence",
         "Immediate stage: `pre-enable`",
-        "Ready to create timer: `false`",
-        "Do not create the external timer while `pre-enable` is blocked.",
+        "Ready to create timer: `true`",
+        "`pre-enable` is no longer blocked.",
     ):
         assert marker in generated
         assert marker in packet
@@ -451,13 +446,13 @@ def test_tushare_news_backup_timer_ops_gap_packet_matches_current_blockers_and_a
     packet_words = " ".join(packet.split())
     for marker in (
         "Post-enable inputs remain deferred until `pre-enable` returns `pass` and the first scheduled run finishes.",
-        "Do not create the external timer while `pre-enable` is blocked.",
+        "`pre-enable` is no longer blocked. Create the external timer outside this packet and collect first-run evidence.",
     ):
         assert marker in generated_words
         assert marker in packet_words
 
-    assert "Blocking stages: `pre-enable`, `post-enable`" in generated
-    assert "Blocking stages: `pre-enable`, `post-enable`" in packet
+    assert "Blocking stages: `post-enable`" in generated
+    assert "Blocking stages: `post-enable`" in packet
 
     pre_enable = report["reports"]["pre-enable"]
     post_enable = report["reports"]["post-enable"]

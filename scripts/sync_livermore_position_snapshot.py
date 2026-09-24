@@ -24,6 +24,7 @@ if str(ROOT) not in sys.path:
 
 import duckdb
 
+from backend.app.repositories.duckdb_repo import read_only_connection
 from backend.app.services.market_data_livermore_service import _risk_exit_input_block_reason
 
 
@@ -86,8 +87,7 @@ def sync_livermore_position_snapshot(
     if not resolved_path.exists():
         raise FileNotFoundError(f"DuckDB file not found: {resolved_path}")
 
-    conn = duckdb.connect(str(resolved_path), read_only=True)
-    try:
+    with read_only_connection(str(resolved_path)) as conn:
         tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
         if "livermore_position_snapshot" not in tables:
             return {
@@ -147,8 +147,6 @@ def sync_livermore_position_snapshot(
             """,
             [source_date],
         ).fetchall()
-    finally:
-        conn.close()
 
     if not source_rows:
         return {

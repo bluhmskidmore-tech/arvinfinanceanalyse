@@ -1,18 +1,16 @@
-import { Card, Col, Row, Typography } from "antd";
-
-import type { LiabilitiesMonthlyItem, Numeric } from "../../../api/contracts";
+import type { Numeric } from "../../../api/contracts";
+import type { LiabilitiesMonthlyItem } from "../../../api/liabilityAdbContracts";
 import { isNumeric } from "../../../api/numeric";
-import { formatNumeric } from "../../../utils/format";
-
-const { Text } = Typography;
+import { EM_DASH, formatNumeric } from "../../../utils/format";
 
 function dispNumeric(n: Numeric | null | undefined): string {
   if (!n || !isNumeric(n)) {
-    return "—";
+    return EM_DASH;
   }
   return formatNumeric(n);
 }
 
+/** 月度概览读数：单框 4×2 横带（月日均 6 格 + 年初至今 2 格），分区帧由页面 01 区持有。 */
 export function LiabilityMonthlySnapshotCards({
   month,
   ytdAvgTotalLiabilities,
@@ -26,63 +24,30 @@ export function LiabilityMonthlySnapshotCards({
     return null;
   }
 
+  const cells: Array<{ key: string; label: string; value: string }> = [
+    { key: "total", label: "总负债（月日均）", value: dispNumeric(month.avg_total_liabilities) },
+    { key: "interbank", label: "同业负债（月日均）", value: dispNumeric(month.avg_interbank_liabilities) },
+    { key: "issued", label: "发行负债（月日均）", value: dispNumeric(month.avg_issued_liabilities) },
+    { key: "cost", label: "负债付息率", value: dispNumeric(month.avg_liability_cost) },
+    { key: "mom", label: "环比变动（额）", value: dispNumeric(month.mom_change) },
+    { key: "mom-pct", label: "环比变动（%）", value: dispNumeric(month.mom_change_pct) },
+    { key: "ytd-total", label: "年初至今日均总负债", value: dispNumeric(ytdAvgTotalLiabilities) },
+    { key: "ytd-cost", label: "年初至今平均负债成本", value: dispNumeric(ytdAvgLiabilityCost) },
+  ];
+
   return (
-    <Card size="small" title="月度概览（月日均）">
-      <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 12 }}>
-        数值均来自治理后的数值对象（展示以后端下发显示值为准）。
-      </Text>
-      <Row gutter={[12, 12]}>
-        <Col xs={24} sm={12} lg={8}>
-          <Card size="small" styles={{ body: { background: "#fafafa" } }}>
-            <Text type="secondary">总负债（月日均）</Text>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>{dispNumeric(month.avg_total_liabilities)}</div>
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={8}>
-          <Card size="small" styles={{ body: { background: "#fafafa" } }}>
-            <Text type="secondary">同业负债（月日均）</Text>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>{dispNumeric(month.avg_interbank_liabilities)}</div>
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={8}>
-          <Card size="small" styles={{ body: { background: "#fafafa" } }}>
-            <Text type="secondary">发行负债（月日均）</Text>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>{dispNumeric(month.avg_issued_liabilities)}</div>
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={8}>
-          <Card size="small" styles={{ body: { background: "#fafafa" } }}>
-            <Text type="secondary">负债付息率</Text>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>{dispNumeric(month.avg_liability_cost)}</div>
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={8}>
-          <Card size="small" styles={{ body: { background: "#fafafa" } }}>
-            <Text type="secondary">环比变动（额）</Text>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>{dispNumeric(month.mom_change)}</div>
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={8}>
-          <Card size="small" styles={{ body: { background: "#fafafa" } }}>
-            <Text type="secondary">环比变动（%）</Text>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>{dispNumeric(month.mom_change_pct)}</div>
-          </Card>
-        </Col>
-      </Row>
-      <Row gutter={[12, 12]} style={{ marginTop: 12 }}>
-        <Col xs={24} sm={12}>
-          <Card size="small">
-            <Text type="secondary">年初至今日均总负债</Text>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>{dispNumeric(ytdAvgTotalLiabilities)}</div>
-          </Card>
-        </Col>
-        <Col xs={24} sm={12}>
-          <Card size="small">
-            <Text type="secondary">年初至今平均负债成本</Text>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>{dispNumeric(ytdAvgLiabilityCost)}</div>
-          </Card>
-        </Col>
-      </Row>
-    </Card>
+    <>
+      <p className="liability-caption">数值均来自治理后的数值对象（展示以后端下发显示值为准）。</p>
+      <div className="liability-kpi-band" data-cols="4">
+        {cells.map((cell) => (
+          <div key={cell.key} className="liability-kpi-cell">
+            <span className="liability-kpi-cell__label" title={cell.label}>
+              {cell.label}
+            </span>
+            <span className="liability-kpi-cell__value">{cell.value}</span>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }

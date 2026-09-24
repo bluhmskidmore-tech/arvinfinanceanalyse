@@ -13,6 +13,17 @@ _U = TypeVar("_U")
 _RUNTIME_CACHES: dict[str, InMemoryTTLCache[object, object]] = {}
 _RUNTIME_CACHES_LOCK = Lock()
 
+DEFAULT_WAIT_TIMEOUT_SECONDS = 120.0
+
+
+class CacheBuildTimeoutError(TimeoutError):
+    """Raised when a caller waits too long for an in-flight cache build."""
+
+    def __init__(self, key: object, wait_timeout_seconds: float) -> None:
+        super().__init__(
+            f"timed out after {wait_timeout_seconds:g}s waiting for cache build: {key!r}"
+        )
+
 
 class InMemoryTTLCache(Generic[K, V]):
     """Small process-local TTL cache for read-only service results."""
@@ -22,12 +33,14 @@ class InMemoryTTLCache(Generic[K, V]):
         *,
         ttl_seconds: float,
         clock: Callable[[], float] | None = None,
+        wait_timeout_seconds: float = DEFAULT_WAIT_TIMEOUT_SECONDS,
     ) -> None:
         self._store: dict[K, tuple[float, V]] = {}
         self._inflight: dict[K, Event] = {}
         self._lock = Lock()
         self._ttl_seconds = ttl_seconds
         self._clock = clock or time.monotonic
+        self._wait_timeout_seconds = wait_timeout_seconds
         self._generation = 0
 
     def get(self, key: K) -> tuple[bool, V | None]:
@@ -65,7 +78,8 @@ class InMemoryTTLCache(Generic[K, V]):
                     producer_generation = self._generation
                     break
 
-            inflight.wait()
+            if not inflight.wait(timeout=self._wait_timeout_seconds):
+                raise CacheBuildTimeoutError(key, self._wait_timeout_seconds)
 
         try:
             value = producer()

@@ -1,5 +1,7 @@
-import ReactECharts from "../../../lib/echarts";
+import { BaseChart } from "../../../components/charts/BaseChart";
+import { nocturneChartTheme } from "../../../components/charts/chartTheme";
 import type { AdbTrendItem } from "../../../api/contracts";
+import { nocturneTokens } from "../../../theme/designSystem";
 
 const YI = 100_000_000;
 
@@ -12,12 +14,15 @@ function buildTrendOption(trend: AdbTrendItem[]) {
   const dates = trend.map((item) => item.date);
   const dailyValues = trend.map((item) => item.daily_balance / YI);
   const ma30Values = trend.map((item) => item.moving_average_30d / YI);
+  const dailyColor = nocturneTokens.color.inkMuted;
+  const maColor = nocturneChartTheme.palette[0];
 
-  return {
+  return nocturneChartTheme.createLineChartOption({
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "cross" },
-      formatter: (items: { seriesName: string; value: number; dataIndex: number }[]) => {
+      formatter: (params: unknown) => {
+        const items = Array.isArray(params) ? params as Array<{ seriesName: string; value: number; dataIndex: number }> : [];
         if (!items.length) return "";
         const idx = items[0].dataIndex;
         const row = trend[idx];
@@ -31,15 +36,14 @@ function buildTrendOption(trend: AdbTrendItem[]) {
     legend: {
       data: ["日余额", "30日移动均线"],
       top: 0,
+      bottom: "auto",
     },
     grid: { left: 60, right: 24, top: 44, bottom: 36 },
     xAxis: {
       type: "category",
       data: dates,
       axisLabel: {
-        fontSize: 11,
         formatter: (value: string) => {
-          /* Show only MM-DD for compactness */
           const parts = value.split("-");
           return parts.length === 3 ? `${parts[1]}-${parts[2]}` : value;
         },
@@ -49,7 +53,6 @@ function buildTrendOption(trend: AdbTrendItem[]) {
     yAxis: {
       type: "value",
       axisLabel: { formatter: (value: number) => `${value.toFixed(0)}亿` },
-      splitLine: { lineStyle: { type: "dashed", color: "#e5e7eb" } },
     },
     series: [
       {
@@ -57,27 +60,19 @@ function buildTrendOption(trend: AdbTrendItem[]) {
         type: "line",
         data: dailyValues,
         symbol: "none",
-        lineStyle: { width: 1.5, color: "#93c5fd" },
-        areaStyle: {
-          color: {
-            type: "linear",
-            x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [
-              { offset: 0, color: "rgba(59,130,246,0.15)" },
-              { offset: 1, color: "rgba(59,130,246,0.02)" },
-            ],
-          },
-        },
+        lineStyle: { width: 1, color: dailyColor },
+        itemStyle: { color: dailyColor },
       },
       {
         name: "30日移动均线",
         type: "line",
         data: ma30Values,
         symbol: "none",
-        lineStyle: { width: 2, color: "#2563eb", type: "solid" },
+        lineStyle: { width: 2, color: maColor, type: "solid" },
+        itemStyle: { color: maColor },
       },
     ],
-  };
+  });
 }
 
 /**
@@ -88,5 +83,5 @@ function buildTrendOption(trend: AdbTrendItem[]) {
  */
 export default function AdbDailyTrendChart({ trend, height = 340 }: AdbDailyTrendChartProps) {
   if (!trend.length) return null;
-  return <ReactECharts option={buildTrendOption(trend)} style={{ height }} notMerge lazyUpdate />;
+  return <BaseChart option={buildTrendOption(trend)} height={height} />;
 }

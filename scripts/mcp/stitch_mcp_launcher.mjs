@@ -66,8 +66,8 @@ if (!apiKey) {
 const isWin = process.platform === "win32";
 const command = isWin ? "cmd.exe" : "npx";
 const args = isWin
-  ? ["/d", "/s", "/c", "npx.cmd", "-y", "stitch-mcp-server@latest"]
-  : ["-y", "stitch-mcp-server@latest"];
+  ? ["/d", "/s", "/c", "npx.cmd", "-y", "stitch-mcp-server@1.0.7"]
+  : ["-y", "stitch-mcp-server@1.0.7"];
 const child = spawn(command, args, {
   cwd: repoRoot,
   stdio: "inherit",

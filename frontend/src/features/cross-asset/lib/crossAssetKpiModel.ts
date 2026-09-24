@@ -1,4 +1,5 @@
 import type { ChoiceMacroLatestPoint, ChoiceMacroRecentPoint } from "../../../api/contracts";
+import { EM_DASH, fixedOrDash, pctOrDash, signedFixedOrDash } from "../../../pageModel";
 
 export type CrossAssetKpiFormat = "percent" | "bp" | "index" | "fx" | "plain";
 
@@ -9,6 +10,7 @@ export type CrossAssetSingleSlot = {
   label: string;
   format: CrossAssetKpiFormat;
   tag: string;
+  displayUnit?: string;
   candidateSeriesIds: readonly string[];
 };
 
@@ -28,6 +30,11 @@ export type CrossAssetSpreadSlot = {
 };
 
 export type CrossAssetKpiSlot = CrossAssetSingleSlot | CrossAssetSpreadSlot;
+
+/** Zero-centered scores are evidence, not asset levels: no return, vol, correlation, or base-100 transforms. */
+export function isAssetLevelKpiKey(key: string): boolean {
+  return key !== "financial_conditions";
+}
 
 export const CROSS_ASSET_KPI_SLOTS: CrossAssetKpiSlot[] = [
   {
@@ -71,7 +78,17 @@ export const CROSS_ASSET_KPI_SLOTS: CrossAssetKpiSlot[] = [
     label: "金融条件指数",
     format: "plain",
     tag: "风险情绪",
-    candidateSeriesIds: ["EMM01843735", "CA.CSI300"],
+    displayUnit: "z-score",
+    candidateSeriesIds: ["EMM01843735"],
+  },
+  {
+    kind: "single",
+    key: "csi300",
+    label: "沪深300指数",
+    format: "index",
+    tag: "权益风险偏好",
+    displayUnit: "point",
+    candidateSeriesIds: ["CA.CSI300"],
   },
   {
     kind: "single",
@@ -156,6 +173,17 @@ export type ResolvedCrossAssetKpi = {
   changeLabel: string;
   changeTone: "positive" | "negative" | "warning" | "default";
   sparkline: number[];
+  /**
+   * Date-bearing observations used by pairwise analytics.
+   * Optional for compatibility with presentation-only fixtures; correlation
+   * calculations must treat a missing value as unavailable, never positional.
+   */
+  sparklinePoints?: CrossAssetDatedValue[];
+};
+
+export type CrossAssetDatedValue = {
+  tradeDate: string;
+  value: number;
 };
 
 function pickPoint(
@@ -199,25 +227,12 @@ function latestTradeDate(points: Array<ChoiceMacroLatestPoint | undefined>) {
   return dates.length > 0 ? dates.sort((left, right) => right.localeCompare(left))[0] : null;
 }
 
-function formatPercent(n: number) {
-  return `${n.toFixed(2)}%`;
-}
-
-function formatBpFromNumber(n: number) {
-  const sign = n > 0 ? "+" : "";
-  return `${sign}${n.toFixed(1)}bp`;
-}
-
-function formatFx(n: number) {
-  return n.toFixed(4);
-}
-
-function sparklineFromPoint(point: ChoiceMacroLatestPoint | undefined): number[] {
+function sparklinePointsFromPoint(point: ChoiceMacroLatestPoint | undefined): CrossAssetDatedValue[] {
   if (!point?.recent_points?.length) {
     return [];
   }
   const sorted = [...point.recent_points].sort((a, b) => a.trade_date.localeCompare(b.trade_date));
-  return sorted.map((p) => p.value_numeric);
+  return sorted.map((p) => ({ tradeDate: p.trade_date, value: p.value_numeric }));
 }
 
 function mergeRecentByDate(
@@ -245,15 +260,18 @@ function toSpreadBp(minuendPct: number, subtrahendPct: number) {
   return (minuendPct - subtrahendPct) * 100;
 }
 
-function spreadSparklineFromPoints(
+function spreadSparklinePointsFromPoints(
   hi: ChoiceMacroLatestPoint | undefined,
   lo: ChoiceMacroLatestPoint | undefined,
-): number[] {
+): CrossAssetDatedValue[] {
   if (!hi?.recent_points?.length || !lo?.recent_points?.length) {
     return [];
   }
-  const { leftV, rightV } = mergeRecentByDate(hi.recent_points, lo.recent_points);
-  return leftV.map((lv, i) => toSpreadBp(lv, rightV[i]));
+  const { dates, leftV, rightV } = mergeRecentByDate(hi.recent_points, lo.recent_points);
+  return dates.map((tradeDate, index) => ({
+    tradeDate,
+    value: toSpreadBp(leftV[index], rightV[index]),
+  }));
 }
 
 function spreadLatestChange(sparkline: number[]): number | null {
@@ -297,23 +315,25 @@ function changeLabelForSlot(
   delta: number | null | undefined,
 ): string {
   if (delta == null || Number.isNaN(delta)) {
-    return "—";
+    return EM_DASH;
   }
   if (format === "percent") {
-    const sign = delta > 0 ? "+" : "";
-    const bp = delta * 100;
-    return `${sign}${bp.toFixed(1)}bp`;
+    // 收益率日变动以 bp 展示；delta 与 delta*100 同号，"+" 边界（严格正）不变。
+    return `${signedFixedOrDash(delta * 100, 1)}bp`;
   }
   if (format === "bp") {
-    return formatBpFromNumber(delta);
+    return `${signedFixedOrDash(delta, 1)}bp`;
   }
-  if (format === "index" || format === "plain") {
+  if (format === "index") {
+    const sign = delta > 0 ? "+" : "";
+    return `${sign}${delta.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}点`;
+  }
+  if (format === "plain") {
     const sign = delta > 0 ? "+" : "";
     return `${sign}${delta.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}`;
   }
   if (format === "fx") {
-    const sign = delta > 0 ? "+" : "";
-    return `${sign}${delta.toFixed(4)}`;
+    return signedFixedOrDash(delta, 4);
   }
   return String(delta);
 }
@@ -323,19 +343,19 @@ function valueLabelForSlot(
   value: number | undefined,
 ): string {
   if (value == null || Number.isNaN(value)) {
-    return "—";
+    return EM_DASH;
   }
   if (format === "percent") {
-    return formatPercent(value);
+    return pctOrDash(value, 2);
   }
   if (format === "bp") {
     return `${value.toFixed(0)}bp`;
   }
   if (format === "fx") {
-    return formatFx(value);
+    return fixedOrDash(value, 4);
   }
   if (format === "index") {
-    return value.toFixed(1);
+    return `${value.toFixed(1)}点`;
   }
   return value.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
 }
@@ -346,7 +366,8 @@ function resolveSpreadSlot(
 ): ResolvedCrossAssetKpi {
   const preBp = pickPoint(byId, slot.precomputedCnUsBpIds);
   if (preBp) {
-    const sparkline = sparklineFromPoint(preBp);
+    const sparklinePoints = sparklinePointsFromPoint(preBp);
+    const sparkline = sparklinePoints.map((point) => point.value);
     const delta = spreadLatestChange(sparkline);
     return {
       key: slot.key,
@@ -362,6 +383,7 @@ function resolveSpreadSlot(
       changeLabel: changeLabelForSlot("bp", delta),
       changeTone: toneForChange("bp", delta),
       sparkline,
+      sparklinePoints,
     };
   }
 
@@ -397,15 +419,17 @@ function resolveSpreadSlot(
       vendorName: null,
       tradeDate: null,
       unit: null,
-      valueLabel: "—",
-      changeLabel: "—",
+      valueLabel: EM_DASH,
+      changeLabel: EM_DASH,
       changeTone: "default",
       sparkline: [],
+      sparklinePoints: [],
     };
   }
 
   const vBp = toSpreadBp(hi.value_numeric, lo.value_numeric);
-  const sparkline = spreadSparklineFromPoints(hi, lo);
+  const sparklinePoints = spreadSparklinePointsFromPoints(hi, lo);
+  const sparkline = sparklinePoints.map((point) => point.value);
   const delta = spreadLatestChange(sparkline);
 
   return {
@@ -422,6 +446,7 @@ function resolveSpreadSlot(
     changeLabel: changeLabelForSlot("bp", delta),
     changeTone: toneForChange("bp", delta),
     sparkline,
+    sparklinePoints,
   };
 }
 
@@ -429,28 +454,25 @@ function resolveSingleSlot(slot: CrossAssetSingleSlot, byId: Map<string, ChoiceM
   const point = pickPoint(byId, slot.candidateSeriesIds);
   const id = point?.series_id ?? slot.candidateSeriesIds[0] ?? slot.key;
   const delta = point?.latest_change ?? null;
-  let label = slot.key === "money_market_7d" && point?.series_id === "CA.DR007" ? "DR007" : slot.label;
-  let tag = slot.tag;
-  if (slot.key === "financial_conditions" && point?.series_id === "CA.CSI300") {
-    label = "沪深300指数";
-    tag = "权益风险偏好";
-  }
+  const label = slot.key === "money_market_7d" && point?.series_id === "CA.DR007" ? "DR007" : slot.label;
+  const sparklinePoints = sparklinePointsFromPoint(point);
   return {
     key: slot.key,
     label,
     format: slot.format,
-    tag,
+    tag: slot.tag,
     resolvedSeriesId: id,
     sourceKind: sourceKindFromSeriesId(id),
     vendorName: point?.vendor_name,
     tradeDate: point?.trade_date ?? null,
-    unit: point?.unit ?? null,
+    unit: slot.displayUnit ?? point?.unit ?? null,
     qualityFlag: point?.quality_flag,
     refreshTier: point?.refresh_tier,
     valueLabel: valueLabelForSlot(slot.format, point?.value_numeric),
     changeLabel: changeLabelForSlot(slot.format, delta),
     changeTone: toneForChange(slot.format, delta),
-    sparkline: sparklineFromPoint(point),
+    sparkline: sparklinePoints.map((sparklinePoint) => sparklinePoint.value),
+    sparklinePoints,
   };
 }
 
@@ -518,6 +540,9 @@ export function crossAssetTrendLines(series: ChoiceMacroLatestPoint[]): CrossAss
 
   for (const slot of CROSS_ASSET_KPI_SLOTS) {
     if (slot.kind === "single") {
+      if (!isAssetLevelKpiKey(slot.key)) {
+        continue;
+      }
       const p = pickPoint(byId, slot.candidateSeriesIds);
       if (!p?.recent_points?.length) {
         continue;

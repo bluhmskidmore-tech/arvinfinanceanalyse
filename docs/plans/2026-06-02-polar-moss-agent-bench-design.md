@@ -48,9 +48,18 @@ Hard failures include missing required metric evidence, failed required checks, 
 The initial scaffold lives under `scripts/agent_eval/`:
 
 - `reward.py`: pure scorecard logic
+- `spec.py`: task and result schema contracts
+- `collect.py`: measured-result collection from observed repository state
 - `validate_task.py`: JSON CLI for local or Polar runners
 - `tasks/ledger_pnl_unit_mismatch_001.json`: first sample task
 - `README.md`: expected result JSON and CLI usage
 
-Focused pytest coverage lives in `tests/test_agent_eval_reward.py`.
+Focused pytest coverage lives in `tests/test_agent_eval_reward.py`, `tests/test_agent_eval_spec.py`, and `tests/test_agent_eval_collect.py`.
+
+## Measurement Boundary
+
+Gate, check, evidence, and diff signals must come from `collect.py` observing the repository, never
+from the agent's own report. A gate with no declared probe scores as failed, so coverage gaps stay
+visible instead of being absorbed as free points. The scorecard is void rather than low when the run
+modified the task definition or a probe target, since either makes the score self-referential.
 

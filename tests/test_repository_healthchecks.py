@@ -1,6 +1,61 @@
 from pathlib import Path
 
+import duckdb
+
 from tests.helpers import load_module
+
+
+def test_duckdb_healthcheck_reports_missing_database_as_not_ok(tmp_path):
+    duckdb_module = load_module(
+        "backend.app.repositories.duckdb_repo_health_missing",
+        "backend/app/repositories/duckdb_repo.py",
+    )
+    duckdb_path = tmp_path / "missing.duckdb"
+
+    result = duckdb_module.DuckDBRepository(str(duckdb_path)).healthcheck()
+
+    assert result == {
+        "ok": False,
+        "mode": "read_only",
+        "path": str(duckdb_path),
+        "can_connect": False,
+        "sql_roundtrip": False,
+    }
+    assert not duckdb_path.exists()
+
+
+def test_duckdb_healthcheck_reports_corrupt_database_as_not_ok(tmp_path):
+    duckdb_module = load_module(
+        "backend.app.repositories.duckdb_repo_health_corrupt",
+        "backend/app/repositories/duckdb_repo.py",
+    )
+    duckdb_path = tmp_path / "corrupt.duckdb"
+    duckdb_path.write_text("not a duckdb database", encoding="utf-8")
+
+    result = duckdb_module.DuckDBRepository(str(duckdb_path)).healthcheck()
+
+    assert result["ok"] is False
+    assert result["can_connect"] is False
+    assert result["sql_roundtrip"] is False
+
+
+def test_duckdb_healthcheck_requires_read_only_sql_roundtrip(tmp_path):
+    duckdb_module = load_module(
+        "backend.app.repositories.duckdb_repo_health_ready",
+        "backend/app/repositories/duckdb_repo.py",
+    )
+    duckdb_path = tmp_path / "ready.duckdb"
+    duckdb.connect(str(duckdb_path)).close()
+
+    result = duckdb_module.DuckDBRepository(str(duckdb_path)).healthcheck()
+
+    assert result == {
+        "ok": True,
+        "mode": "read_only",
+        "path": str(duckdb_path),
+        "can_connect": True,
+        "sql_roundtrip": True,
+    }
 
 
 def test_network_backed_repositories_report_unreachable_endpoints_as_not_ok():
@@ -208,6 +263,38 @@ def test_postgres_healthcheck_masks_password_and_reports_driver_unavailable(monk
     assert result["can_connect"] is False
     assert result["sql_roundtrip"] is False
     assert result["bootstrap_visible"] is None
+
+
+def test_redis_healthcheck_masks_password_only_credentials_in_reported_dsn():
+    redis_module = load_module("backend.app.repositories.redis_repo", "backend/app/repositories/redis_repo.py")
+
+    redis_repo = redis_module.RedisRepository("redis://:super-secret@127.0.0.1:1/0")
+
+    result = redis_repo.healthcheck()
+
+    assert result["ok"] is False
+    assert result["dsn"] == "redis://***@127.0.0.1:1/0"
+    assert "super-secret" not in result["dsn"]
+
+
+def test_redis_healthcheck_masks_username_and_password_in_reported_dsn():
+    redis_module = load_module("backend.app.repositories.redis_repo", "backend/app/repositories/redis_repo.py")
+
+    redis_repo = redis_module.RedisRepository("redis://cache-user:super-secret@127.0.0.1:1/0")
+
+    result = redis_repo.healthcheck()
+
+    assert result["ok"] is False
+    assert result["dsn"] == "redis://cache-user:***@127.0.0.1:1/0"
+    assert "super-secret" not in result["dsn"]
+
+
+def test_redis_healthcheck_keeps_credential_free_dsn_unchanged():
+    redis_module = load_module("backend.app.repositories.redis_repo", "backend/app/repositories/redis_repo.py")
+
+    result = redis_module.RedisRepository("redis://127.0.0.1:1/0").healthcheck()
+
+    assert result["dsn"] == "redis://127.0.0.1:1/0"
 
 
 def test_postgres_healthcheck_requires_sql_roundtrip_and_reports_missing_bootstrap(monkeypatch):

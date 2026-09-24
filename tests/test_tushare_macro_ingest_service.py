@@ -5,15 +5,19 @@ from __future__ import annotations
 from pathlib import Path
 
 import duckdb
+import pytest
 
 from backend.app.repositories.external_data_catalog_repo import (
     ExternalDataCatalogRepository,
     ensure_external_data_catalog_schema,
 )
+from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.repositories.raw_zone_repo import RawZoneRepository
 from backend.app.repositories.source_manifest_repo import SourceManifestRepository
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.repositories.tushare_adapter import VendorAdapter
 from backend.app.repositories.tushare_catalog_seed import TUSHARE_M2A_SERIES
+from backend.app.services.external_std_macro_etl_service import ExternalStdMacroEtlService
 from backend.app.services.tushare_macro_ingest_service import TushareMacroIngestService
 
 
@@ -52,7 +56,8 @@ def test_ingest_series_writes_raw_catalog_manifest(tmp_path: Path) -> None:
         catalog_repo=catalog,
         manifest_repo=manifest,
     )
-    out = svc.ingest_series(sid, "batch-a")
+    with repository_task_write_scope("backend.app.tasks.tushare_macro_ingest_test"):
+        out = svc.ingest_series(sid, "batch-a")
     raw_path = Path(str(out["raw_zone_path"]))
     assert raw_path.is_file()
     assert b"vendor_kind" in raw_path.read_bytes()
@@ -87,8 +92,94 @@ def test_ingest_all_seed_series_covers_seed_list(tmp_path: Path) -> None:
         catalog_repo=catalog,
         manifest_repo=manifest,
     )
-    results = svc.ingest_all_seed_series("batch-multi")
+    with repository_task_write_scope("backend.app.tasks.tushare_macro_ingest_test"):
+        results = svc.ingest_all_seed_series("batch-multi")
     assert len(results) == len(TUSHARE_M2A_SERIES)
     ids = {r["series_id"] for r in results}
     assert ids == {c["series_id"] for c in TUSHARE_M2A_SERIES}
     assert len(manifest.load_all()) == len(TUSHARE_M2A_SERIES)
+
+def test_ingest_series_materializes_zero_and_reports_row_count(tmp_path: Path) -> None:
+    conn = duckdb.connect(":memory:")
+    try:
+        apply_pending_migrations_on_connection(conn)
+        raw = RawZoneRepository(local_raw_path=str(tmp_path / "raw-materialized"))
+        catalog = ExternalDataCatalogRepository(conn=conn)
+        manifest = SourceManifestRepository()
+        sid = "tushare.macro.cn_cpi.monthly"
+        payload = {
+            "vendor_kind": "tushare_macro",
+            "series_id": sid,
+            "fetched_at": "2026-01-01T00:00:00+00:00",
+            "rows": [{"trade_date": "2024-06-01", "value": 0.0}],
+        }
+        svc = TushareMacroIngestService(
+            adapter=_StubAdapter({sid: payload}),
+            raw_zone_repo=raw,
+            catalog_repo=catalog,
+            manifest_repo=manifest,
+            etl_service=ExternalStdMacroEtlService(raw, conn),
+        )
+
+        with repository_task_write_scope("backend.app.tasks.tushare_macro_ingest_test"):
+            out = svc.ingest_series(sid, "batch-materialized")
+
+        assert out["materialized_rows"] == 1
+        stored = conn.execute(
+            """
+            select trade_date, value_numeric
+            from std_external_macro_daily
+            where series_id = ? and ingest_batch_id = ?
+            """,
+            [sid, "batch-materialized"],
+        ).fetchone()
+        assert stored == ("2024-06-01", 0.0)
+        assert len(manifest.load_all()) == 1
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        [],
+        [{"trade_date": "", "value": 1.0}],
+        [{"trade_date": "not-a-date", "value": 1.0}],
+        [{"trade_date": "2024-01-01", "value": None}],
+        [{"trade_date": "2024-01-01", "value": "1.0"}],
+        [{"trade_date": "2024-01-01", "value": float("nan")}],
+        [{"trade_date": "2024-01-01", "value": float("inf")}],
+        [{"trade_date": "2024-01-01", "value": float("-inf")}],
+    ],
+)
+def test_ingest_series_rejects_invalid_observations_before_success_registration(
+    tmp_path: Path,
+    rows: list[object],
+) -> None:
+    raw_root = tmp_path / "raw-invalid"
+    sid = "tushare.macro.cn_cpi.monthly"
+    raw = RawZoneRepository(local_raw_path=str(raw_root))
+    catalog = _memory_catalog()
+    manifest = SourceManifestRepository()
+    svc = TushareMacroIngestService(
+        adapter=_StubAdapter(
+            {
+                sid: {
+                    "vendor_kind": "tushare_macro",
+                    "series_id": sid,
+                    "fetched_at": "2026-01-01T00:00:00+00:00",
+                    "rows": rows,
+                }
+            }
+        ),
+        raw_zone_repo=raw,
+        catalog_repo=catalog,
+        manifest_repo=manifest,
+    )
+
+    with pytest.raises(ValueError):
+        svc.ingest_series(sid, "batch-invalid")
+
+    assert catalog.get_by_series_id(sid) is None
+    assert manifest.load_all() == []
+    assert not list(raw_root.rglob("*"))

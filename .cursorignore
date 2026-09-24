@@ -1,0 +1,24 @@
+﻿# Reduce IDE indexing/search load; these are runtime data or generated artifacts.
+data/
+data_input/
+backend/data/
+sample_data/
+.gitnexus/
+.gitnexus-tool/
+.codex-tmp/
+.codex-bt/
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+build/
+coverage/
+.venv/
+__pycache__/
+.pytest_cache/
+artifacts/
+outputs/
+audit_pack/
+*.duckdb
+*.wal
+*.log

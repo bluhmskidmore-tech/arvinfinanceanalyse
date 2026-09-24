@@ -1,21 +1,34 @@
 import type {
   AssetStructurePayload,
+  BalanceAnalysisDecisionItemsPayload,
+  BondBusinessTypeMetricsResult,
   BondPositionChangesPayload,
   BondTopHoldingsPayload,
   CampisiFourEffectsPayload,
   ChoiceMacroLatestPoint,
   ChoiceNewsEvent,
+  ChoiceNewsEventsPayload,
   CreditSpreadMigrationPayload,
   HomeIncomeTrendPayload,
+  HomeMacroReleaseContextPayload,
   HomeResearchReportsPayload,
   IndustryDistPayload,
+  KRDCurveRiskPayload,
   MaturityStructurePayload,
   Numeric,
+  PortfolioComparisonPayload,
   ResearchCalendarEvent,
   ReturnDecompositionPayload,
+  ResultMeta,
   RiskIndicatorsPayload,
+  SpreadAnalysisPayload,
+  YieldDistributionPayload,
   YieldCurveTermStructurePayload,
 } from "../../../api/contracts";
+import {
+  normalizeHomeResearchLink,
+  normalizeHomeResearchPublishedDate,
+} from "./dashboardHomeResearchContract";
 import {
   DASHBOARD_COCKPIT_REPORT_DATE,
   DASHBOARD_MARKET_PULSE_MOCK,
@@ -31,17 +44,26 @@ import {
   type HomeMacroBriefingModel,
   type HomeMacroNewsItem,
 } from "./adapters/buildHomeMacroBriefingModel";
+import { buildHomeMacroReleaseHistoryItems } from "./adapters/buildHomeMacroReleaseHistoryItems";
 import {
   buildHomeMarketContextModel,
   type HomeMarketContextModel,
 } from "./adapters/buildHomeMarketContextModel";
 import { buildHomeResearchCalendarModel } from "./adapters/buildHomeResearchCalendarModel";
-import type { HomeSnapshotPnlAttributionVM } from "./dashboardHomeSnapshotAdapter";
+import {
+  mapHomeSummaryDistributions,
+  type HomeDistributionView,
+} from "./adapters/mapHomeSummaryDistributions";
+import type {
+  HomeSnapshotOverviewMetricVM,
+  HomeSnapshotPnlAttributionVM,
+} from "./dashboardHomeSnapshotAdapter";
 import { mapMarketTape, type HomeMarketTicker } from "./dashboardHomeMarket";
 import type { HomeDataStateKind, HomeDeltaTone } from "./dashboardHomeFirstScreenTypes";
+import { formatDv01Wan } from "../../bond-dashboard/utils/format";
 
+import { EM_DASH } from "../../../utils/format";
 export type { HomeDataStateKind, HomeDeltaTone } from "./dashboardHomeFirstScreenTypes";
-export { resolveDeltaClass } from "./dashboardHomeFirstScreenTypes";
 
 type NumericLike = Numeric | string | number | null | undefined;
 
@@ -57,13 +79,35 @@ export type HomeTerminalListState = {
   label: string;
 };
 
+export type HomeTrustedSectionDateBasis =
+  | "snapshot_report_date"
+  | "supplemental_report_date"
+  | "natural_date"
+  | "mixed"
+  | "unknown";
+
+export type HomeTrustedSection<T> = {
+  key: string;
+  status: HomeTerminalListState;
+  reportDate: string;
+  dateBasis: HomeTrustedSectionDateBasis;
+  source: string;
+  sourceMeta: ResultMeta | null;
+  warnings: readonly string[];
+  missingComponents: readonly string[];
+  unitNotes: readonly string[];
+  data: T;
+};
+
 export type HomeHoldingRow = {
   id: string;
   code: string;
   name: string;
   assetClass: string;
   marketValue: string;
+  marketValueRaw?: number | null;
   weight: string;
+  weightRaw?: number | null;
   ytm: string;
   duration: string;
   rating: string;
@@ -117,11 +161,34 @@ export type HomeIncomeTrendRow = {
   portfolioRaw: number | null;
   benchmarkRaw: number | null;
   excessRaw: number | null;
+  /** 基准/超额缺值时的完整原因（进 title），单元格本身用 em dash。 */
+  missingReason: string | null;
+};
+
+/** 各期限利率风险敞口（来自 /api/bond-analytics/krd-curve-risk 的 krd_buckets）。 */
+export type HomeKrdBucketRow = {
+  id: string;
+  tenor: string;
+  dv01Display: string;
+  dv01Raw: number | null;
+  /** 相对最大桶的条宽百分比；无数值时为 null（不画条）。 */
+  barWidthPct: number | null;
+};
+
+/** 待复核事项预览（来自 /ui/balance-analysis/decision-items，pending 优先）。 */
+export type HomeDecisionItemPreviewRow = {
+  id: string;
+  title: string;
+  severity: "high" | "medium" | "low";
+  actionLabel: string;
+  reason: string;
 };
 
 export type DashboardHomeBodyView = {
   reportDate: string;
+  portfolioAum: string;
   marketContext: HomeMarketContextModel;
+  marketTape?: readonly HomeMarketTicker[];
   quickDrilldowns: readonly HomeQuickDrill[];
   macroBriefing: HomeMacroBriefingModel;
   bondNews: HomeBondNewsModel;
@@ -135,6 +202,10 @@ export type DashboardHomeBodyView = {
   maturityDistributionState: HomeTerminalListState;
   industryDistribution: readonly HomeDistributionSlice[];
   industryDistributionState: HomeTerminalListState;
+  yieldDistribution: readonly HomeDistributionSlice[];
+  yieldDistributionState: HomeTerminalListState;
+  portfolioComparison: readonly HomeDistributionSlice[];
+  portfolioComparisonState: HomeTerminalListState;
   riskExposureMetrics: readonly HomeRiskExposureMetric[];
   riskExposureState: HomeTerminalListState;
   positionChanges: readonly HomePositionChangeRow[];
@@ -143,11 +214,19 @@ export type DashboardHomeBodyView = {
   researchReportsState: HomeTerminalListState;
   incomeTrend: readonly HomeIncomeTrendRow[];
   incomeTrendState: HomeTerminalListState;
+  incomeTrendSection: HomeTrustedSection<readonly HomeIncomeTrendRow[]>;
+  krdBuckets: readonly HomeKrdBucketRow[];
+  krdState: HomeTerminalListState;
+  decisionItemsPreview: readonly HomeDecisionItemPreviewRow[];
+  decisionItemsState: HomeTerminalListState;
+  /** 余额分析域的事项报告日（与债券报告日不同域，供来源标注）。 */
+  decisionItemsReportDate: string;
 };
 
 export type MapToHomeBodyViewInput = {
   reportDate: string;
   useMockFallback: boolean;
+  overviewMetrics?: readonly HomeSnapshotOverviewMetricVM[] | null;
   attribution: HomeSnapshotPnlAttributionVM | null;
   creditSpreadMigration: CreditSpreadMigrationPayload | null;
   returnDecomposition: ReturnDecompositionPayload | null;
@@ -158,6 +237,13 @@ export type MapToHomeBodyViewInput = {
   ratingStructure: AssetStructurePayload | null;
   maturityStructure: MaturityStructurePayload | null;
   industryDistribution: IndustryDistPayload | null;
+  homeSummaryMeta?: ResultMeta | null;
+  homeSummaryLoading?: boolean;
+  homeSummaryError?: boolean;
+  yieldDistribution?: YieldDistributionPayload | null;
+  portfolioComparison?: PortfolioComparisonPayload | null;
+  spreadAnalysis?: SpreadAnalysisPayload | null;
+  businessType?: BondBusinessTypeMetricsResult | null;
   riskIndicators: RiskIndicatorsPayload | null;
   topHoldings: BondTopHoldingsPayload | null;
   topHoldingsLoading: boolean;
@@ -171,6 +257,12 @@ export type MapToHomeBodyViewInput = {
   incomeTrend: HomeIncomeTrendPayload | null;
   incomeTrendLoading: boolean;
   incomeTrendError: boolean;
+  krdCurveRisk?: KRDCurveRiskPayload | null;
+  krdLoading?: boolean;
+  krdError?: boolean;
+  decisionItems?: BalanceAnalysisDecisionItemsPayload | null;
+  decisionItemsLoading?: boolean;
+  decisionItemsError?: boolean;
   calendarEvents: readonly ResearchCalendarEvent[] | null;
   calendarLoading: boolean;
   calendarError: boolean;
@@ -180,11 +272,15 @@ export type MapToHomeBodyViewInput = {
   macroNewsEvents?: readonly ChoiceNewsEvent[] | null;
   macroNewsFallbackEvents?: readonly ChoiceNewsEvent[] | null;
   bondNewsEvents?: readonly ChoiceNewsEvent[] | null;
+  bondNewsPayloads?: readonly ChoiceNewsEventsPayload[] | null;
   macroNewsLoading?: boolean;
   macroNewsError?: boolean;
+  macroReleaseContext?: HomeMacroReleaseContextPayload | null;
+  macroReleaseContextLoading?: boolean;
+  macroReleaseContextError?: boolean;
 };
 
-const GAP = "—";
+const GAP = EM_DASH;
 const HOME_RESEARCH_REPORT_FOCUS_TERMS = [
   "fixed_income",
   "bond",
@@ -306,6 +402,11 @@ function numericValueOrGap(value: NumericLike, unitHint?: string): string {
   return numericDisplay(value, GAP, unitHint);
 }
 
+function dv01WanValueOrGap(value: NumericLike): string {
+  const formatted = formatDv01Wan(typeof value === "string" ? undefined : value);
+  return formatted === GAP ? GAP : `${formatted} 万`;
+}
+
 function ratioAsPercentNumeric(value: NumericLike): NumericLike {
   const raw = numericRaw(value);
   if (raw == null) {
@@ -368,6 +469,7 @@ function mapStructureSlices<T extends {
   expectedReportDate: string,
   getLabel: (item: T) => string,
   emptyLabel: string,
+  meta?: ResultMeta | null,
 ): { slices: HomeDistributionSlice[]; state: HomeTerminalListState } {
   const state = reportDateState(expectedReportDate, payload?.report_date, emptyLabel);
   if (state.kind !== "ready" || !payload?.items?.length) {
@@ -377,7 +479,7 @@ function mapStructureSlices<T extends {
     };
   }
   return {
-    state,
+    state: stateWithSourceMeta(state, meta),
     slices: payload.items.slice(0, 8).map((item, index) => ({
       id: `${getLabel(item) || "slice"}-${index}`,
       label: getLabel(item) || GAP,
@@ -385,6 +487,87 @@ function mapStructureSlices<T extends {
       pct: numericValueOrGap(item.percentage, "pct"),
       pctRaw: percentageRaw(item.percentage),
     })),
+  };
+}
+
+function sourceMetaLabel(meta: ResultMeta | null | undefined): string {
+  const parts = [
+    meta?.quality_flag && meta.quality_flag !== "ok" ? `quality ${meta.quality_flag}` : "",
+    meta?.vendor_status && meta.vendor_status !== "ok" ? `vendor ${meta.vendor_status}` : "",
+    meta?.fallback_mode && meta.fallback_mode !== "none" ? `fallback ${meta.fallback_mode}` : "",
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : "已接入";
+}
+
+function stateWithSourceMeta(
+  state: HomeTerminalListState,
+  meta: ResultMeta | null | undefined,
+): HomeTerminalListState {
+  if (state.kind !== "ready" || !meta) {
+    return state;
+  }
+  if (
+    meta.quality_flag !== "ok" ||
+    meta.vendor_status === "vendor_stale" ||
+    meta.fallback_mode !== "none"
+  ) {
+    return displayState("partial", sourceMetaLabel(meta));
+  }
+  return state;
+}
+
+/**
+ * `HomeDistributionRowView.percentageRaw` 来自后端 `percentage`（unit="pct" 的 Numeric）。
+ * 后端 `common_numeric._normalize_numeric_raw` 保证 pct raw 恒为小数比率，因此固定 ×100，
+ * 不再使用 |x|<=1 的启发式判断。
+ */
+export function percentageDisplayRaw(value: number | null | undefined): number | null {
+  if (value == null || !Number.isFinite(value)) {
+    return null;
+  }
+  return value * 100;
+}
+
+function metricFromDistributionRow(
+  row: HomeDistributionView["rows"][number],
+  unit: Numeric["unit"] = "yuan",
+): Numeric {
+  return {
+    raw: row.valueRaw,
+    unit,
+    display: row.valueDisplay,
+    precision: 2,
+    sign_aware: unit === "pct",
+  };
+}
+
+function mapDistributionViewToSlices(
+  distribution: HomeDistributionView | undefined,
+  payloadReportDate: string | null | undefined,
+  expectedReportDate: string,
+  emptyLabel: string,
+  meta: ResultMeta | null | undefined,
+): { slices: HomeDistributionSlice[]; state: HomeTerminalListState } {
+  const state = reportDateState(expectedReportDate, payloadReportDate, emptyLabel);
+  if (state.kind !== "ready" || !distribution?.rows.length) {
+    return {
+      slices: [],
+      state: distribution?.rows.length ? state : displayState("empty", emptyLabel),
+    };
+  }
+  const maxRaw = Math.max(...distribution.rows.map((row) => row.valueRaw ?? 0), 0);
+  return {
+    state: stateWithSourceMeta(state, meta),
+    slices: distribution.rows.slice(0, 8).map((row) => {
+      const pctRaw = percentageDisplayRaw(row.percentageRaw);
+      return {
+        id: row.id,
+        label: row.label,
+        value: numericDisplay(metricFromDistributionRow(row)),
+        pct: row.percentageDisplay ?? (row.count != null ? `${row.count}只` : GAP),
+        pctRaw: pctRaw ?? (maxRaw > 0 && row.valueRaw != null ? (row.valueRaw / maxRaw) * 100 : 0),
+      };
+    }),
   };
 }
 
@@ -432,7 +615,9 @@ function buildHoldingRows(
       name: item.instrument_name?.trim() || item.issuer_name?.trim() || GAP,
       assetClass: localizeAssetClass(item.asset_class),
       marketValue: numericValueOrGap(item.market_value, "yuan"),
+      marketValueRaw: numericRaw(item.market_value),
       weight: numericValueOrGap(item.weight, "pct"),
+      weightRaw: numericRaw(item.weight),
       ytm: numericValueOrGap(item.ytm, "pct"),
       duration: numericValueOrGap(item.modified_duration, "ratio"),
       rating: holdingRatingLabel(item.rating, item.asset_class),
@@ -501,11 +686,11 @@ function buildResearchReportRows(
       id: item.id,
       title: item.title.trim() || GAP,
       category: item.category.trim() || "research",
-      publishedAt: item.published_at.slice(0, 10) || GAP,
+      publishedAt: normalizeHomeResearchPublishedDate(item.published_at) ?? GAP,
       source: item.source.trim() || GAP,
       institution: item.institution?.trim() || GAP,
       summary: item.summary?.trim() || GAP,
-      link: item.link,
+      link: normalizeHomeResearchLink(item.link),
       isNewsFallback: false,
     })),
   };
@@ -525,7 +710,7 @@ function buildResearchNewsFallbackRows(
       id: `macro-news-${item.id}`,
       title: item.title,
       category: `新闻补位 · ${item.topicLabel}`,
-      publishedAt: item.timeLabel,
+      publishedAt: GAP,
       source,
       institution: source,
       summary: `${source} · ${item.freshnessLabel}`,
@@ -559,18 +744,9 @@ function buildIncomeTrendGapLabel(payload: HomeIncomeTrendPayload): string {
   return "收益趋势部分接入";
 }
 
-function incomeTrendMissingValueLabel(gapLabel: string): string {
-  if (gapLabel.includes("CDB_INDEX")) {
-    return "缺CDB_INDEX";
-  }
-  if (gapLabel.includes("benchmark_return")) {
-    return "缺收益率";
-  }
-  if (gapLabel.includes("基准PnL") || gapLabel.includes("超额PnL")) {
-    return "缺PnL";
-  }
-  return "缺数据";
-}
+const INCOME_TREND_UNIT_NOTES = [
+  "portfolio_pnl, benchmark_pnl, and excess_pnl are yuan Numeric values; preserve Numeric.display when provided.",
+] as const;
 
 function buildIncomeTrendRows(
   payload: HomeIncomeTrendPayload | null | undefined,
@@ -590,15 +766,14 @@ function buildIncomeTrendRows(
     };
   }
   const gapLabel = buildIncomeTrendGapLabel(payload);
-  const missingValueLabel = incomeTrendMissingValueLabel(gapLabel);
   const mappedState =
     payload.source_status === "partial"
       ? displayState("partial", gapLabel)
-      : payload.source_status === "stale"
-        ? displayState("stale", "收益趋势数据过期")
-        : displayState("ready", "已接入");
+      : displayState("ready", "已接入");
   return {
     state: mappedState,
+    // 缺值单元格统一 em dash（§6），完整原因经 missingReason 进行级 title，
+    // 不再往窄列里塞「缺CDB_INDEX」这类会被截断的证据码。
     rows: payload.points.map((point) => {
       const benchmarkRaw = numericRaw(point.benchmark_pnl);
       const excessRaw = numericRaw(point.excess_pnl);
@@ -606,32 +781,181 @@ function buildIncomeTrendRows(
         id: point.date,
         date: point.date,
         portfolioPnl: numericValueOrGap(point.portfolio_pnl, "yuan"),
-        benchmarkPnl: benchmarkRaw == null ? missingValueLabel : numericValueOrGap(point.benchmark_pnl, "yuan"),
-        excessPnl: excessRaw == null ? missingValueLabel : numericValueOrGap(point.excess_pnl, "yuan"),
+        benchmarkPnl: benchmarkRaw == null ? GAP : numericValueOrGap(point.benchmark_pnl, "yuan"),
+        excessPnl: excessRaw == null ? GAP : numericValueOrGap(point.excess_pnl, "yuan"),
         portfolioRaw: numericRaw(point.portfolio_pnl),
         benchmarkRaw,
         excessRaw,
+        missingReason: benchmarkRaw == null || excessRaw == null ? gapLabel : null,
       };
     }),
+  };
+}
+
+function buildKrdBucketRows(args: {
+  payload: KRDCurveRiskPayload | null | undefined;
+  loading?: boolean;
+  error?: boolean;
+  expectedReportDate: string;
+}): { rows: HomeKrdBucketRow[]; state: HomeTerminalListState } {
+  if (args.error) {
+    return { rows: [], state: displayState("error", "期限敞口读取失败") };
+  }
+  if (args.loading) {
+    return { rows: [], state: displayState("loading", "期限敞口读取中") };
+  }
+  if (!args.payload?.krd_buckets?.length) {
+    return { rows: [], state: displayState("empty", "暂无期限敞口数据") };
+  }
+  const state = reportDateState(
+    args.expectedReportDate,
+    args.payload.report_date,
+    "暂无期限敞口数据",
+  );
+  if (state.kind !== "ready") {
+    return { rows: [], state };
+  }
+  // raw 单位为 元/bp，/1e4 转「万元/bp」，与债券分析页 formatDv01Wan 口径一致。
+  const sorted = args.payload.krd_buckets
+    .map((bucket, index) => {
+      const raw = numericRaw(bucket.dv01);
+      return {
+        id: `${bucket.tenor}-${index}`,
+        tenor: bucket.tenor,
+        dv01Display:
+          raw == null
+            ? GAP
+            : (raw / 1e4).toLocaleString("zh-CN", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              }),
+        dv01Raw: raw,
+      };
+    })
+    .sort((a, b) => krdTenorSortKey(a.tenor) - krdTenorSortKey(b.tenor));
+  const maxAbs = Math.max(
+    1e-9,
+    ...sorted.map((row) => Math.abs(row.dv01Raw ?? 0)),
+  );
+  return {
+    rows: sorted.map((row) => ({
+      ...row,
+      barWidthPct:
+        row.dv01Raw == null
+          ? null
+          : Math.max(2, (Math.abs(row.dv01Raw) / maxAbs) * 100),
+    })),
+    state,
+  };
+}
+
+/** 期限文本转年限（"6M"→0.5、"10Y"→10），无法解析的排最后。 */
+function krdTenorSortKey(tenor: string): number {
+  const match = /([\d.]+)\s*([YyMm])?/.exec(tenor);
+  const value = match ? Number(match[1]) : Number.NaN;
+  if (!Number.isFinite(value)) return Number.MAX_SAFE_INTEGER;
+  return match?.[2]?.toLowerCase() === "m" ? value / 12 : value;
+}
+
+const DECISION_SEVERITY_ORDER: Record<HomeDecisionItemPreviewRow["severity"], number> = {
+  high: 0,
+  medium: 1,
+  low: 2,
+};
+
+function normalizeDecisionSeverity(value: unknown): HomeDecisionItemPreviewRow["severity"] {
+  return value === "high" || value === "medium" || value === "low" ? value : "medium";
+}
+
+/** 余额分析域日期与首页债券报告日不同域：不做日期一致性判定，只透传标注。 */
+function buildDecisionItemsPreview(args: {
+  payload: BalanceAnalysisDecisionItemsPayload | null | undefined;
+  loading?: boolean;
+  error?: boolean;
+}): {
+  rows: HomeDecisionItemPreviewRow[];
+  state: HomeTerminalListState;
+  reportDate: string;
+} {
+  if (args.error) {
+    return { rows: [], state: displayState("error", "决策事项读取失败"), reportDate: "" };
+  }
+  if (args.loading) {
+    return { rows: [], state: displayState("loading", "决策事项读取中"), reportDate: "" };
+  }
+  if (!args.payload) {
+    return { rows: [], state: displayState("empty", "决策事项未接入"), reportDate: "" };
+  }
+  const rows = args.payload.rows
+    .filter((row) => row.latest_status?.status === "pending")
+    .sort(
+      (a, b) =>
+        DECISION_SEVERITY_ORDER[normalizeDecisionSeverity(a.severity)] -
+          DECISION_SEVERITY_ORDER[normalizeDecisionSeverity(b.severity)] ||
+        a.decision_key.localeCompare(b.decision_key),
+    )
+    .slice(0, 2)
+    .map((row) => ({
+      id: row.decision_key,
+      title: row.title?.trim() || row.decision_key,
+      severity: normalizeDecisionSeverity(row.severity),
+      actionLabel: row.action_label?.trim() || "去处理",
+      reason: row.reason?.trim() || "",
+    }));
+  return {
+    rows,
+    state: displayState(
+      "ready",
+      rows.length > 0 ? `${rows.length} 项待处理` : "暂无待处理事项",
+    ),
+    reportDate: cleanDate(args.payload.report_date),
+  };
+}
+
+function buildIncomeTrendSection(
+  payload: HomeIncomeTrendPayload | null | undefined,
+  mapped: { rows: readonly HomeIncomeTrendRow[]; state: HomeTerminalListState },
+  expectedReportDate: string,
+): HomeTrustedSection<readonly HomeIncomeTrendRow[]> {
+  const payloadReportDate = cleanDate(payload?.report_date);
+  const fallbackReportDate = cleanDate(expectedReportDate);
+  const hasSnapshotReportDate = fallbackReportDate.length > 0 && fallbackReportDate !== GAP;
+  return {
+    key: "income_trend",
+    status: mapped.state,
+    reportDate: payloadReportDate || fallbackReportDate,
+    dateBasis: payloadReportDate
+      ? "supplemental_report_date"
+      : hasSnapshotReportDate
+        ? "snapshot_report_date"
+        : "unknown",
+    source: "/ui/home/income-trend",
+    sourceMeta: null,
+    warnings: [...(payload?.warnings ?? [])],
+    missingComponents: [...(payload?.missing_components ?? [])],
+    unitNotes: INCOME_TREND_UNIT_NOTES,
+    data: mapped.rows,
   };
 }
 
 function buildRiskExposureMetrics(
   payload: RiskIndicatorsPayload | null | undefined,
   expectedReportDate: string,
+  meta?: ResultMeta | null,
 ): { metrics: HomeRiskExposureMetric[]; state: HomeTerminalListState } {
   const state = reportDateState(expectedReportDate, payload?.report_date, "风险指标暂无数据");
   if (state.kind !== "ready" || !payload) {
     return { metrics: [], state };
   }
   return {
-    state,
+    state: stateWithSourceMeta(state, meta),
     metrics: [
-      { id: "dv01", label: "利率风险 DV01", value: numericValueOrGap(payload.total_dv01, "dv01") },
+      { id: "market-value", label: "总市值", value: numericValueOrGap(payload.total_market_value, "yuan") },
+      { id: "dv01", label: "利率风险 DV01", value: dv01WanValueOrGap(payload.total_dv01) },
       { id: "duration", label: "加权久期", value: numericValueOrGap(payload.weighted_duration, "ratio") },
-      { id: "credit", label: "信用占比", value: numericValueOrGap(ratioAsPercentNumeric(payload.credit_ratio), "pct") },
+      { id: "credit", label: "信用债占比", value: numericValueOrGap(ratioAsPercentNumeric(payload.credit_ratio), "pct") },
       { id: "convexity", label: "加权凸性", value: numericValueOrGap(payload.weighted_convexity, "ratio") },
-      { id: "spread-dv01", label: "利差 DV01", value: numericValueOrGap(payload.total_spread_dv01, "dv01") },
+      { id: "spread-dv01", label: "利差 DV01", value: dv01WanValueOrGap(payload.total_spread_dv01) },
       { id: "reinvestment", label: "1年再投资", value: numericValueOrGap(payload.reinvestment_ratio_1y, "ratio") },
     ],
   };
@@ -729,10 +1053,16 @@ function buildMockBodyView(): DashboardHomeBodyView {
     positionChanges: null,
     industryDistribution: null,
   });
+  const incomeTrendMapped = {
+    rows: [] as HomeIncomeTrendRow[],
+    state: displayState("empty", "样例模式暂无收益趋势"),
+  };
 
   return {
     reportDate: DASHBOARD_COCKPIT_REPORT_DATE,
+    portfolioAum: GAP,
     marketContext,
+    marketTape,
     quickDrilldowns: buildQuickDrilldowns(),
     macroBriefing,
     bondNews,
@@ -749,6 +1079,10 @@ function buildMockBodyView(): DashboardHomeBodyView {
       id: `industry-${slice.id}`,
     })),
     industryDistributionState: displayState("ready", "样例模式"),
+    yieldDistribution: [],
+    yieldDistributionState: displayState("empty", "样例模式暂无收益率分布"),
+    portfolioComparison: [],
+    portfolioComparisonState: displayState("empty", "样例模式暂无组合对比"),
     riskExposureMetrics: [
       { id: "dv01", label: "利率风险 DV01", value: "10,615.59 万" },
       { id: "duration", label: "加权久期", value: "4.14" },
@@ -760,8 +1094,18 @@ function buildMockBodyView(): DashboardHomeBodyView {
     positionChangesState: displayState("empty", "样例模式暂无增减仓"),
     researchReports: [],
     researchReportsState: displayState("empty", "样例模式暂无研究报告"),
-    incomeTrend: [],
-    incomeTrendState: displayState("empty", "样例模式暂无收益趋势"),
+    incomeTrend: incomeTrendMapped.rows,
+    incomeTrendState: incomeTrendMapped.state,
+    incomeTrendSection: buildIncomeTrendSection(
+      null,
+      incomeTrendMapped,
+      DASHBOARD_COCKPIT_REPORT_DATE,
+    ),
+    krdBuckets: [],
+    krdState: displayState("empty", "样例模式暂无期限敞口"),
+    decisionItemsPreview: [],
+    decisionItemsState: displayState("empty", "样例模式暂无决策事项"),
+    decisionItemsReportDate: "",
   };
 }
 
@@ -771,6 +1115,9 @@ export function mapToHomeBodyView(input: MapToHomeBodyViewInput): DashboardHomeB
   }
 
   const reportDate = cleanDate(input.reportDate) || GAP;
+  const portfolioAum = numericDisplay(
+    input.overviewMetrics?.find((metric) => metric.id === "aum")?.value,
+  );
   const todayIsoDate = input.todayIsoDate?.trim() || resolveTodayIsoDate();
   const researchCalendar = buildHomeResearchCalendarModel({
     events: input.calendarEvents,
@@ -779,7 +1126,7 @@ export function mapToHomeBodyView(input: MapToHomeBodyViewInput): DashboardHomeB
     startDate: input.calendarStartDate,
     endDate: input.calendarEndDate,
   });
-  const macroBriefing = buildHomeMacroBriefingModel({
+  const macroBriefingBase = buildHomeMacroBriefingModel({
     todayIsoDate,
     newsEvents: input.macroNewsEvents,
     fallbackNewsEvents: input.macroNewsFallbackEvents,
@@ -788,6 +1135,21 @@ export function mapToHomeBodyView(input: MapToHomeBodyViewInput): DashboardHomeB
     supplyCalendar: researchCalendar,
   });
   const marketTape = mapMarketTape(input.marketPoints);
+  const releaseHistoryItems = input.macroReleaseContext
+    ? buildHomeMacroReleaseHistoryItems(input.macroReleaseContext.history_items)
+    : [];
+  const releaseHistoryMessage = input.macroReleaseContextLoading
+    ? "历史数据读取中…"
+    : input.macroReleaseContextError
+      ? "历史数据读取失败，请稍后重试。"
+      : releaseHistoryItems.length === 0
+        ? "当前窗口暂无可用历史数据。"
+        : null;
+  const macroBriefing: HomeMacroBriefingModel = {
+    ...macroBriefingBase,
+    releaseHistoryItems,
+    releaseHistoryMessage,
+  };
   const marketContext = buildHomeMarketContextModel({
     marketTape,
     marketPoints: input.marketPoints,
@@ -799,7 +1161,32 @@ export function mapToHomeBodyView(input: MapToHomeBodyViewInput): DashboardHomeB
     creditSpreadMigration: input.creditSpreadMigration,
     attribution: attributionHintFromSnapshot(input.attribution),
   });
-  const riskExposure = buildRiskExposureMetrics(input.riskIndicators, reportDate);
+  const homeSummaryDistributionViews = mapHomeSummaryDistributions({
+    report_date: reportDate,
+    asset_type: input.assetStructure ?? undefined,
+    asset_rating: input.ratingStructure ?? undefined,
+    maturity: input.maturityStructure ?? undefined,
+    industry: input.industryDistribution ?? undefined,
+    yield_distribution: input.yieldDistribution ?? undefined,
+    portfolio_comparison: input.portfolioComparison ?? undefined,
+    spread: input.spreadAnalysis ?? undefined,
+    business_type: input.businessType ?? undefined,
+  });
+  const homeDistributionByKey = new Map(
+    homeSummaryDistributionViews.map((section) => [section.key, section]),
+  );
+  const homeSummaryState = input.homeSummaryLoading
+    ? displayState("loading", "home-summary 读取中")
+    : input.homeSummaryError
+      ? displayState("error", "home-summary 读取失败")
+      : null;
+  const riskExposure = homeSummaryState
+    ? { metrics: [], state: homeSummaryState }
+    : buildRiskExposureMetrics(
+        input.riskIndicators,
+        reportDate,
+        input.homeSummaryMeta,
+      );
   const holdingsMapped = input.topHoldingsLoading
     ? { rows: [], state: displayState("loading", "重仓券加载中") }
     : input.topHoldingsError
@@ -813,6 +1200,7 @@ export function mapToHomeBodyView(input: MapToHomeBodyViewInput): DashboardHomeB
   const bondNews = buildHomeBondNewsModel({
     todayIsoDate,
     events: input.bondNewsEvents,
+    choiceNewsPayloads: input.bondNewsPayloads,
     topHoldings: input.topHoldings,
     positionChanges: input.positionChanges,
     industryDistribution: input.industryDistribution,
@@ -831,34 +1219,82 @@ export function mapToHomeBodyView(input: MapToHomeBodyViewInput): DashboardHomeB
     : input.incomeTrendError
       ? { rows: [], state: displayState("error", "收益趋势加载失败") }
       : buildIncomeTrendRows(input.incomeTrend, reportDate);
-  const assetDistributionMapped = mapStructureSlices(
-    input.assetStructure,
+  const incomeTrendSection = buildIncomeTrendSection(
+    input.incomeTrend,
+    incomeTrendMapped,
     reportDate,
-    (item) => item.category,
-    "资产分布暂无数据",
   );
-  const ratingMapped = mapStructureSlices(
-    input.ratingStructure,
-    reportDate,
-    (item) => item.category,
-    "评级分布暂无数据",
-  );
-  const maturityMapped = mapStructureSlices(
-    input.maturityStructure,
-    reportDate,
-    (item) => item.maturity_bucket,
-    "久期分布暂无数据",
-  );
-  const industryMapped = mapStructureSlices(
-    input.industryDistribution,
-    reportDate,
-    (item) => item.industry_name,
-    "行业分布暂无数据",
-  );
+  const krdMapped = buildKrdBucketRows({
+    payload: input.krdCurveRisk,
+    loading: input.krdLoading,
+    error: input.krdError,
+    expectedReportDate: reportDate,
+  });
+  const decisionItemsMapped = buildDecisionItemsPreview({
+    payload: input.decisionItems,
+    loading: input.decisionItemsLoading,
+    error: input.decisionItemsError,
+  });
+  const assetDistributionMapped = homeSummaryState
+    ? { slices: [], state: homeSummaryState }
+    : mapStructureSlices(
+        input.assetStructure,
+        reportDate,
+        (item) => item.category,
+        "资产分布暂无数据",
+        input.homeSummaryMeta,
+      );
+  const ratingMapped = homeSummaryState
+    ? { slices: [], state: homeSummaryState }
+    : mapStructureSlices(
+        input.ratingStructure,
+        reportDate,
+        (item) => item.category,
+        "评级分布暂无数据",
+        input.homeSummaryMeta,
+      );
+  const maturityMapped = homeSummaryState
+    ? { slices: [], state: homeSummaryState }
+    : mapStructureSlices(
+        input.maturityStructure,
+        reportDate,
+        (item) => item.maturity_bucket,
+        "久期分布暂无数据",
+        input.homeSummaryMeta,
+      );
+  const industryMapped = homeSummaryState
+    ? { slices: [], state: homeSummaryState }
+    : mapStructureSlices(
+        input.industryDistribution,
+        reportDate,
+        (item) => item.industry_name,
+        "行业分布暂无数据",
+        input.homeSummaryMeta,
+      );
+  const yieldDistributionMapped = homeSummaryState
+    ? { slices: [], state: homeSummaryState }
+    : mapDistributionViewToSlices(
+        homeDistributionByKey.get("yield_distribution"),
+        input.yieldDistribution?.report_date,
+        reportDate,
+        "收益率分布暂无数据",
+        input.homeSummaryMeta,
+      );
+  const portfolioComparisonMapped = homeSummaryState
+    ? { slices: [], state: homeSummaryState }
+    : mapDistributionViewToSlices(
+        homeDistributionByKey.get("portfolio_comparison"),
+        input.portfolioComparison?.report_date,
+        reportDate,
+        "组合对比暂无数据",
+        input.homeSummaryMeta,
+      );
 
   return {
     reportDate,
+    portfolioAum,
     marketContext,
+    marketTape,
     quickDrilldowns: buildQuickDrilldowns(),
     macroBriefing,
     bondNews,
@@ -872,6 +1308,10 @@ export function mapToHomeBodyView(input: MapToHomeBodyViewInput): DashboardHomeB
     maturityDistributionState: maturityMapped.state,
     industryDistribution: industryMapped.slices,
     industryDistributionState: industryMapped.state,
+    yieldDistribution: yieldDistributionMapped.slices,
+    yieldDistributionState: yieldDistributionMapped.state,
+    portfolioComparison: portfolioComparisonMapped.slices,
+    portfolioComparisonState: portfolioComparisonMapped.state,
     riskExposureMetrics: riskExposure.metrics,
     riskExposureState: riskExposure.state,
     positionChanges: positionChangesMapped.rows,
@@ -880,5 +1320,11 @@ export function mapToHomeBodyView(input: MapToHomeBodyViewInput): DashboardHomeB
     researchReportsState: researchReportsMapped.state,
     incomeTrend: incomeTrendMapped.rows,
     incomeTrendState: incomeTrendMapped.state,
+    incomeTrendSection,
+    krdBuckets: krdMapped.rows,
+    krdState: krdMapped.state,
+    decisionItemsPreview: decisionItemsMapped.rows,
+    decisionItemsState: decisionItemsMapped.state,
+    decisionItemsReportDate: decisionItemsMapped.reportDate,
   };
 }

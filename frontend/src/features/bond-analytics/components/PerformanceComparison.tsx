@@ -1,11 +1,8 @@
 import { Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
-import { SectionCard } from "../../../components/SectionCard";
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
-import { BORDER, panelStyle } from "./bondAnalyticsCockpitTokens";
-
-const dt = designTokens;
+import { EvidencePanel } from "../../../components/page/PagePrimitives";
+import { tabularNumsStyle } from "../../../theme/designSystem";
 
 type Row = {
   key: string;
@@ -115,12 +112,17 @@ const columns: ColumnsType<Row> = [
 
 export function PerformanceComparison() {
   return (
-    <SectionCard
-      title="组合表现对比（年初至今）"
-      style={{ ...panelStyle(dt.color.neutral[50]), border: `1px solid ${BORDER}` }}
+    <EvidencePanel
+      heading="组合表现对比（年初至今）"
+      style={{
+        border: "1px solid var(--ib-hairline)",
+        borderRadius: "var(--dh-api-radius, 6px)",
+        background: "var(--ib-surface)",
+        boxShadow: "none",
+      }}
     >
       <Table size="small" pagination={false} dataSource={DATA} columns={columns} />
-    </SectionCard>
+    </EvidencePanel>
   );
 }
 

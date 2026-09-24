@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from backend.app.core_finance.interest_mode import classify_interest_rate_style
@@ -21,6 +21,10 @@ _MATURITY_BUCKETS = (
     ("5-10年", Decimal("5"), Decimal("10")),
     ("10年以上", Decimal("10"), None),
 )
+# 缺失 maturity_date 的行（典型为活期类同业）不落"已到期/逾期"：与单体权威实现
+# balance_analysis_workbook.py（B10-1）及负债分析兼容链的缺失兜底口径统一，
+# 归入最短真实期限桶；条数由 bal_wb_risk_maturity_missing_001 风险预警显式披露。
+_MISSING_MATURITY_FALLBACK_BUCKET = "3个月以内"
 _RATE_BUCKETS = (
     ("零息/无息", None, Decimal("0")),
     ("1.5%以下", Decimal("0"), Decimal("1.5")),
@@ -50,8 +54,20 @@ def _group_rows(rows: list[Any], key_fn) -> dict[str, list[Any]]:
     return grouped
 
 
+def _to_finite_decimal(value: Any) -> Decimal:
+    if value in (None, ""):
+        return _ZERO
+    try:
+        result = value if isinstance(value, Decimal) else Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return _ZERO
+    if not result.is_finite():
+        return _ZERO
+    return result
+
+
 def _sum_decimal(rows: list[Any], value_fn) -> Decimal:
-    return sum((Decimal(str(value_fn(row))) for row in rows), _ZERO)
+    return sum((_to_finite_decimal(value_fn(row)) for row in rows), _ZERO)
 
 
 def _weighted_average(rows: list[Any], weight_fn, value_fn) -> Decimal | None:
@@ -61,8 +77,11 @@ def _weighted_average(rows: list[Any], weight_fn, value_fn) -> Decimal | None:
         value = value_fn(row)
         if value in (None, ""):
             continue
-        weight = Decimal(str(weight_fn(row)))
-        numerator += weight * Decimal(str(value))
+        weight = _to_finite_decimal(weight_fn(row))
+        value_dec = _to_finite_decimal(value)
+        if weight == _ZERO:
+            continue
+        numerator += weight * value_dec
         denominator += weight
     if denominator == _ZERO:
         return None
@@ -77,8 +96,11 @@ def _merged_weighted_average(specs: list[tuple[list[Any], Any, Any]]) -> Decimal
             value = value_fn(row)
             if value in (None, ""):
                 continue
-            weight = Decimal(str(weight_fn(row)))
-            numerator += weight * Decimal(str(value))
+            weight = _to_finite_decimal(weight_fn(row))
+            value_dec = _to_finite_decimal(value)
+            if weight == _ZERO:
+                continue
+            numerator += weight * value_dec
             denominator += weight
     if denominator == _ZERO:
         return None
@@ -111,6 +133,20 @@ def _match_bucket(value: Decimal, lower: Decimal | None, upper: Decimal | None) 
     return value > lower and value <= upper
 
 
+def _matches_maturity_bucket(
+    report_date: date,
+    maturity_date: date | None,
+    label: str,
+    lower: Decimal | None,
+    upper: Decimal | None,
+) -> bool:
+    # "已到期/逾期"只收真实 maturity_date <= report_date 的行；缺失到期日的行
+    # 归入 _MISSING_MATURITY_FALLBACK_BUCKET（见常量处注释，与单体权威实现统一）。
+    if maturity_date is None:
+        return label == _MISSING_MATURITY_FALLBACK_BUCKET
+    return _match_bucket(_remaining_years(report_date, maturity_date), lower, upper)
+
+
 def _safe_ratio(numerator: Decimal, denominator: Decimal) -> Decimal:
     if denominator == _ZERO:
         return _ZERO
@@ -124,7 +160,7 @@ def _spread_bp(asset_rate_pct: Decimal | None, liability_rate_pct: Decimal | Non
 
 
 def _rate_value(value: Decimal | None) -> Decimal:
-    return Decimal(str(value)) if value is not None else _ZERO
+    return _to_finite_decimal(value)
 
 
 def _normalize_interest_mode(value: str) -> str:
@@ -141,16 +177,17 @@ def _to_wanyuan(value: Decimal) -> Decimal:
 
 
 def _decimal_value(value: Any) -> Decimal:
-    if value in (None, ""):
-        return _ZERO
-    return Decimal(str(value))
+    return _to_finite_decimal(value)
 
 
 def _severity_from_gap(gap_value: Decimal) -> str:
+    # BAL-P1-08（owner 2026-08-12 裁决）：绝对亿元口径，以万元表达。
+    # high ≥ 100 亿元（=1,000,000 万元），medium ≥ 10 亿元（=100,000 万元）。
+    # 与单体权威实现 balance_analysis_workbook.py 保持一致（cross-scope 等价性锁定）。
     absolute_gap = abs(gap_value)
-    if absolute_gap >= Decimal("20"):
+    if absolute_gap >= Decimal("1000000"):
         return "high"
-    if absolute_gap >= Decimal("5"):
+    if absolute_gap >= Decimal("100000"):
         return "medium"
     return "low"
 

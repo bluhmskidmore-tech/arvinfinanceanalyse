@@ -1,9 +1,10 @@
 import { Card, Col, Row, Spin } from "antd";
 
 import type { BondDashboardHeadlinePayload, BondPortfolioHeadlinesPayload, Numeric } from "../../../api/contracts";
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { designTokens, dhApiTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import { computeBpDelta, toBp } from "../lib/bondAnalyticsHomeCalculations";
+import { EM_DASH } from "../../../utils/format";
 import { formatBp, formatPct, formatYi, toneColor } from "../utils/formatters";
 
 function numOr(raw: Numeric | null | undefined): number {
@@ -45,7 +46,7 @@ function Tile({
     <Card
       size="small"
       style={{
-        borderRadius: designTokens.radius.lg,
+        borderRadius: dhApiTokens.radius,
         borderColor: designTokens.color.neutral[200],
         height: "100%",
       }}
@@ -125,7 +126,7 @@ export function BondKpiRow({ headline, portfolioHeadlines, loading }: BondKpiRow
   const pnlColor = Number.isFinite(pnlNum) ? toneColor(pnlNum) : undefined;
 
   const spreadBp = toBp(k.credit_spread_median);
-  const spreadLabel = spreadBp === null ? "—" : formatBp(spreadBp);
+  const spreadLabel = spreadBp === null ? EM_DASH : formatBp(spreadBp);
 
   return (
     <Row gutter={[designTokens.space[3], designTokens.space[3]]}>
@@ -139,7 +140,7 @@ export function BondKpiRow({ headline, portfolioHeadlines, loading }: BondKpiRow
         <Tile label="加权到期收益率" value={formatPct(k.weighted_ytm)} foot={ytmFoot} />
       </Col>
       <Col xs={24} sm={12} md={12} lg={6}>
-        <Tile label="加权久期" value={Number.isFinite(dur) ? `${dur.toFixed(2)} 年` : "—"} foot={durFoot} />
+        <Tile label="加权久期" value={Number.isFinite(dur) ? `${dur.toFixed(2)} 年` : EM_DASH} foot={durFoot} />
       </Col>
       <Col xs={24} sm={12} md={12} lg={6}>
         <Tile label="平均票息" value={formatPct(k.weighted_coupon)} foot={cpnFoot} />
@@ -148,10 +149,10 @@ export function BondKpiRow({ headline, portfolioHeadlines, loading }: BondKpiRow
         <Tile label="信用利差中位数" value={spreadLabel} foot={sprFoot} />
       </Col>
       <Col xs={24} sm={12} md={12} lg={6}>
-        <Tile label="逾期余额" value="—" foot="待接入报送口径字段" />
+        <Tile label="逾期余额" value={EM_DASH} foot="待接入报送口径字段" />
       </Col>
       <Col xs={24} sm={12} md={12} lg={6}>
-        <Tile label="异常预警" value={`${warnCount} 个`} foot="较上期 —（无历史序列）" />
+        <Tile label="异常预警" value={`${warnCount} 个`} foot={`较上期 ${EM_DASH}（无历史序列）`} />
       </Col>
     </Row>
   );

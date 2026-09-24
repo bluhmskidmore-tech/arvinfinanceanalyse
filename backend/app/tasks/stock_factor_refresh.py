@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 import uuid
+from contextlib import nullcontext
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 import duckdb  # noqa: E402
+from backend.app.governance.locks import acquire_lock, resolve_duckdb_writer_lock  # noqa: E402
 from backend.app.governance.settings import get_settings  # noqa: E402
 from backend.app.repositories.choice_client import ChoiceClient  # noqa: E402
 from backend.app.tasks.broker import register_actor_once  # noqa: E402
@@ -91,71 +93,77 @@ def refresh_stock_factors(
     if not duckdb_file.exists():
         raise RuntimeError(f"DuckDB file does not exist: {duckdb_file}")
 
-    conn = duckdb.connect(str(duckdb_file), read_only=dry_run)
-    try:
-        if dry_run:
-            _assert_universe_table(conn)
-        else:
-            ensure_choice_stock_schema(conn)
-            _ensure_factor_columns(conn)
-        resolved_codes = stock_codes or _load_universe_stock_codes(conn, resolved_date)
-        if not resolved_codes:
-            raise RuntimeError(
-                f"No stock codes found in choice_stock_universe for as_of_date={resolved_date}."
+    lock_scope = (
+        nullcontext()
+        if dry_run
+        else acquire_lock(resolve_duckdb_writer_lock(duckdb_file), base_dir=duckdb_file.parent)
+    )
+    with lock_scope:
+        conn = duckdb.connect(str(duckdb_file), read_only=dry_run)
+        try:
+            if dry_run:
+                _assert_universe_table(conn)
+            else:
+                ensure_choice_stock_schema(conn)
+                _ensure_factor_columns(conn)
+            resolved_codes = stock_codes or _load_universe_stock_codes(conn, resolved_date)
+            if not resolved_codes:
+                raise RuntimeError(
+                    f"No stock codes found in choice_stock_universe for as_of_date={resolved_date}."
+                )
+
+            if dry_run:
+                return {
+                    "status": "dry_run",
+                    "dry_run": True,
+                    "as_of_date": resolved_date,
+                    "stock_code_count": len(resolved_codes),
+                    "fields": fields,
+                    "choice_indicators": indicator_tokens,
+                    "source_version": SOURCE_VERSION,
+                    "table": "choice_stock_factor_snapshot",
+                }
+
+            client = choice_client or ChoiceClient()
+            rows, failed_chunk_count, total_chunk_count = _fetch_choice_factor_rows(
+                client,
+                as_of_date=resolved_date,
+                stock_codes=resolved_codes,
+                indicator_tokens=indicator_tokens,
             )
+            if failed_chunk_count > CHOICE_CSS_FACTOR_MAX_FAILED_CHUNKS:
+                raise RuntimeError(
+                    "Choice css factor refresh aborted: "
+                    f"{failed_chunk_count}/{total_chunk_count} chunks failed "
+                    f"(max allowed {CHOICE_CSS_FACTOR_MAX_FAILED_CHUNKS})."
+                )
+            if not rows:
+                raise RuntimeError(
+                    f"Choice css returned no factor rows for {resolved_date}; "
+                    f"check indicator entitlement ({','.join(indicator_tokens)})."
+                )
 
-        if dry_run:
-            return {
-                "status": "dry_run",
-                "dry_run": True,
-                "as_of_date": resolved_date,
-                "stock_code_count": len(resolved_codes),
-                "fields": fields,
-                "choice_indicators": indicator_tokens,
-                "source_version": SOURCE_VERSION,
-                "table": "choice_stock_factor_snapshot",
-            }
+            partial = failed_chunk_count > 0
+            run_id = f"stock_factor_refresh:{resolved_date}:{uuid.uuid4().hex[:12]}"
+            vendor_version = f"vv_choice_factor_refresh_{resolved_date.replace('-', '')}"
+            started_at = datetime.now(UTC).isoformat()
 
-        client = choice_client or ChoiceClient()
-        rows, failed_chunk_count, total_chunk_count = _fetch_choice_factor_rows(
-            client,
-            as_of_date=resolved_date,
-            stock_codes=resolved_codes,
-            indicator_tokens=indicator_tokens,
-        )
-        if failed_chunk_count > CHOICE_CSS_FACTOR_MAX_FAILED_CHUNKS:
-            raise RuntimeError(
-                "Choice css factor refresh aborted: "
-                f"{failed_chunk_count}/{total_chunk_count} chunks failed "
-                f"(max allowed {CHOICE_CSS_FACTOR_MAX_FAILED_CHUNKS})."
+            conn.execute("begin transaction")
+            _upsert_factor_snapshot_rows(
+                conn,
+                rows=rows,
+                run_id=run_id,
+                source_version=SOURCE_VERSION,
+                vendor_version=vendor_version,
             )
-        if not rows:
-            raise RuntimeError(
-                f"Choice css returned no factor rows for {resolved_date}; "
-                f"check indicator entitlement ({','.join(indicator_tokens)})."
-            )
-
-        partial = failed_chunk_count > 0
-        run_id = f"stock_factor_refresh:{resolved_date}:{uuid.uuid4().hex[:12]}"
-        vendor_version = f"vv_choice_factor_refresh_{resolved_date.replace('-', '')}"
-        started_at = datetime.now(UTC).isoformat()
-
-        conn.execute("begin transaction")
-        _upsert_factor_snapshot_rows(
-            conn,
-            rows=rows,
-            run_id=run_id,
-            source_version=SOURCE_VERSION,
-            vendor_version=vendor_version,
-        )
-        conn.execute("commit")
-        completed_at = datetime.now(UTC).isoformat()
-    except Exception:
-        if not dry_run:
-            _rollback_quietly(conn)
-        raise
-    finally:
-        conn.close()
+            conn.execute("commit")
+            completed_at = datetime.now(UTC).isoformat()
+        except Exception:
+            if not dry_run:
+                _rollback_quietly(conn)
+            raise
+        finally:
+            conn.close()
 
     return {
         "status": "completed",

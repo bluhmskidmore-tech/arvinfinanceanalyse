@@ -7,7 +7,10 @@ vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="return-decomp-echarts-stub" />,
 }));
 
-import { ReturnDecompositionView } from "../features/bond-analytics/components/ReturnDecompositionView";
+import { ReturnDecompositionView, formatReturnDecompositionComputedAt } from "../features/bond-analytics/components/ReturnDecompositionView";
+import {
+  periodTypeLabel,
+} from "../features/bond-analytics/components/BondAnalyticsDetailPrimitives";
 import { ApiClientProvider, createApiClient } from "../api/client";
 import type { Numeric, ResultMeta } from "../api/contracts";
 import type { ReturnDecompositionResponse } from "../features/bond-analytics/types";
@@ -125,6 +128,44 @@ function createReturnDecompositionResult(
   };
 }
 
+describe("bond analytics detail display helpers", () => {
+  it("truncates backend ISO timestamps (fractional seconds + offset) to UTC minutes", () => {
+    expect(formatReturnDecompositionComputedAt("2026-08-13T15:38:32.639045+00:00")).toBe(
+      "2026-08-13 15:38",
+    );
+    expect(formatReturnDecompositionComputedAt("2026-04-10T00:00:00Z")).toBe("2026-04-10 00:00");
+  });
+
+  it("converts positive and negative offsets to UTC minutes without local timezone", () => {
+    expect(formatReturnDecompositionComputedAt("2026-04-10T08:00:00+08:00")).toBe(
+      "2026-04-10 00:00",
+    );
+    expect(formatReturnDecompositionComputedAt("2026-04-09T20:00:00-04:00")).toBe(
+      "2026-04-10 00:00",
+    );
+  });
+
+  it("handles UTC date-boundary crossings from offset-normalized instants", () => {
+    expect(formatReturnDecompositionComputedAt("2026-04-10T01:00:00+08:00")).toBe(
+      "2026-04-09 17:00",
+    );
+    expect(formatReturnDecompositionComputedAt("2026-04-09T19:30:00-04:30")).toBe(
+      "2026-04-10 00:00",
+    );
+  });
+
+  it("passes through unparseable computed_at values instead of hiding evidence", () => {
+    expect(formatReturnDecompositionComputedAt("not-a-timestamp")).toBe("not-a-timestamp");
+  });
+
+  it("maps registered period tokens to toolbar labels and passes through unknown tokens", () => {
+    expect(periodTypeLabel("MoM")).toBe("月度环比");
+    expect(periodTypeLabel("YTD")).toBe("年初至今");
+    expect(periodTypeLabel("TTM")).toBe("近12个月");
+    expect(periodTypeLabel("QTD")).toBe("QTD");
+  });
+});
+
 describe("ReturnDecompositionView", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -153,8 +194,10 @@ describe("ReturnDecompositionView", () => {
     expect(screen.getByTestId("return-decomposition-effects-lead")).toHaveTextContent("效应");
     expect(screen.getByTestId("return-decomposition-recon-lead")).toHaveTextContent("对账");
     expect(screen.getByTestId("return-decomposition-period")).toHaveTextContent("2026-03-31");
-    expect(screen.getByTestId("return-decomposition-period")).toHaveTextContent("MoM");
-    expect(screen.getByTestId("return-decomposition-computed-at")).toHaveTextContent("2026-04-10T00:00:00Z");
+    expect(screen.getByTestId("return-decomposition-period")).toHaveTextContent("月度环比");
+    expect(screen.getByTestId("return-decomposition-computed-at")).toHaveTextContent(
+      "计算时间 2026-04-10 00:00",
+    );
     expect(screen.getByTestId("return-decomposition-bond-count")).toHaveTextContent("3");
     expect(screen.getByTestId("return-decomposition-total-mv")).toHaveTextContent("1.00 亿");
     expect(screen.getByText("320 万")).toBeInTheDocument();

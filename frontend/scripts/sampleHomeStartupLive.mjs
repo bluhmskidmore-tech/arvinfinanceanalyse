@@ -5,6 +5,12 @@ const apiReadyUrl = process.env.MOSS_HOME_STARTUP_READY_URL ?? "http://127.0.0.1
 const firstScreenObservationMs = 400;
 const postFirstScreenMaxWaitMs = 18_000;
 const requestPollIntervalMs = 250;
+// Request budgets: the home page issues 18 /ui+/api requests after the news
+// batching work (baseline 2026-08-12). News collapses to a macro batch, a bond
+// batch, and a data-dependent macro fallback batch.
+const MAX_UI_REQUESTS = 18;
+const MIN_CHOICE_NEWS_BATCH_REQUESTS = 2;
+const MAX_CHOICE_NEWS_BATCH_REQUESTS = 3;
 
 const failures = [];
 
@@ -123,18 +129,26 @@ async function sampleHome() {
       "/assets/dashboardHomeFirstScreenMockView-",
     ];
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await waitForTrackedRequests(
+    const trackedRequestsArrived = await waitForTrackedRequests(
       page,
       requestLog,
       [
         ["/ui/market-data/rates"],
         ["/ui/calendar/supply-auctions"],
         ["/ui/news/choice-events/latest"],
+        // The bond-news batch sits one idle tier later than the macro batch;
+        // without waiting for it the batch-count assertion below races.
+        ["/ui/news/choice-events/latest-batch?groups"],
         ["/ui/home/income-trend"],
         ["/ui/bond-dashboard/home-summary", "/api/bond-dashboard/home-summary"],
       ],
       postFirstScreenMaxWaitMs,
     );
+    if (!trackedRequestsArrived) {
+      addFailure(
+        `tracked home data requests did not all arrive within ${postFirstScreenMaxWaitMs}ms.`,
+      );
+    }
 
     const allUrls = requestLog.map((entry) => entry.url);
     const ready = {
@@ -160,12 +174,24 @@ async function sampleHome() {
         "/node_modules/.vite/deps/zrender",
       ]),
     };
+    // Path-anchored: dev-mode module URLs like /src/api/homeExecutiveClient.ts
+    // contain "/api/" but are not backend requests.
+    const uiRequestUrls = allUrls.filter((requestUrl) => {
+      const path = normalizeUrl(requestUrl);
+      return path.startsWith("/ui/") || path.startsWith("/api/");
+    });
     const allCounts = {
       snapshot: count(allUrls, "/ui/home/snapshot"),
       marketRates: count(allUrls, "/ui/market-data/rates"),
       calendar: count(allUrls, "/ui/calendar/supply-auctions"),
       choiceNews: count(allUrls, "/ui/news/choice-events/latest"),
+      choiceNewsBatch: count(allUrls, "/ui/news/choice-events/latest-batch"),
       incomeTrend: count(allUrls, "/ui/home/income-trend"),
+      homeSummary: countAny(allUrls, [
+        "/ui/bond-dashboard/home-summary",
+        "/api/bond-dashboard/home-summary",
+      ]),
+      uiRequestTotal: uiRequestUrls.length,
       marketTickerMock: countAny(allUrls, marketTickerMockNeedles),
       firstScreenMock: countAny(allUrls, firstScreenMockNeedles),
       failedResponses: responseLog.filter((entry) => entry.status >= 400).length,
@@ -210,6 +236,32 @@ async function sampleHome() {
     }
     if (allCounts.failedResponses !== 0) {
       addFailure(`live sample saw ${allCounts.failedResponses} failed tracked responses.`);
+    }
+    // News must stay collapsed to batch calls (macro + bond, plus a conditional
+    // macro fallback); a regression back to the old 13 per-topic single queries
+    // would pass every needle above unnoticed.
+    if (
+      allCounts.choiceNewsBatch < MIN_CHOICE_NEWS_BATCH_REQUESTS ||
+      allCounts.choiceNewsBatch > MAX_CHOICE_NEWS_BATCH_REQUESTS
+    ) {
+      addFailure(
+        `expected ${MIN_CHOICE_NEWS_BATCH_REQUESTS}-${MAX_CHOICE_NEWS_BATCH_REQUESTS} news latest-batch requests, got ${allCounts.choiceNewsBatch}`,
+      );
+    }
+    if (allCounts.choiceNews - allCounts.choiceNewsBatch !== 0) {
+      addFailure(
+        `home must not fan out single news latest requests, got ${allCounts.choiceNews - allCounts.choiceNewsBatch}`,
+      );
+    }
+    if (allCounts.calendar < 1 || allCounts.incomeTrend < 1 || allCounts.homeSummary < 1) {
+      addFailure(
+        `expected calendar/income-trend/home-summary to load, got calendar=${allCounts.calendar}, incomeTrend=${allCounts.incomeTrend}, homeSummary=${allCounts.homeSummary}`,
+      );
+    }
+    if (allCounts.uiRequestTotal > MAX_UI_REQUESTS) {
+      addFailure(
+        `home issued ${allCounts.uiRequestTotal} /ui+/api requests, over the ${MAX_UI_REQUESTS} budget (baseline 2026-08-12: 18).`,
+      );
     }
 
     return {

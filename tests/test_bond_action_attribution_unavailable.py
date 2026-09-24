@@ -52,3 +52,62 @@ def test_bond_action_attribution_service_returns_explicit_unavailable_contract(t
     assert not any("ready" in warning.lower() for warning in payload["result"]["warnings"])
     assert not any("placeholder" in warning.lower() for warning in payload["result"]["warnings"])
     assert not any("fabricated" in warning.lower() for warning in payload["result"]["warnings"])
+
+
+def test_bond_action_attribution_computation_failure_discloses_computation_failed(
+    tmp_path, monkeypatch
+):
+    """计算异常分支不得伪装成"交易数据未接入"：warning 必须是 computation_failed 语义。"""
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "empty.duckdb"))
+
+    service_module = load_module(
+        "backend.app.services.bond_analytics_service_action_attr_failure",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    monkeypatch.setattr(
+        service_module,
+        "_fetch_action_attribution_snapshots",
+        lambda *, repo, period_end: ([{"stub": "end-row"}], [], None),
+    )
+    monkeypatch.setattr(
+        service_module,
+        "_build_action_attribution_pnl_by_key",
+        lambda *_args, **_kwargs: ({}, []),
+    )
+    monkeypatch.setattr(
+        service_module,
+        "bond_analytics_action_line_payload",
+        lambda row: row,
+    )
+
+    def exploding_compute(**_kwargs):
+        raise RuntimeError("attribution math blew up")
+
+    monkeypatch.setattr(
+        service_module, "compute_action_attribution_bonds", exploding_compute
+    )
+
+    payload = service_module.get_action_attribution(date(2026, 3, 31), "MoM")
+
+    assert payload["result_meta"]["result_kind"] == "bond_analytics.action_attribution"
+    assert payload["result_meta"]["basis"] == "analytical"
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert payload["result"]["status"] == "unavailable"
+    assert payload["result"]["total_actions"] == 0
+    assert payload["result"]["warnings_detail"] == [
+        {
+            "code": "bond_action_attribution_computation_failed",
+            "level": "error",
+            "message": (
+                "Action attribution computation failed (RuntimeError); "
+                "no attribution result is available for this request. "
+                "This is a computation error, not missing trade-record integration; "
+                "see server logs for the stack trace."
+            ),
+        }
+    ]
+    warnings = payload["result"]["warnings"]
+    assert any("computation failed" in warning.lower() for warning in warnings)
+    # 计算失败绝不能沿用"until trade records are integrated"的无数据占位文案。
+    assert not any("until trade records are integrated" in warning for warning in warnings)

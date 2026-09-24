@@ -4,24 +4,11 @@ from dataclasses import dataclass
 
 import duckdb
 from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
-
-
-def _table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
-    row = conn.execute(
-        """
-        select 1
-        from information_schema.tables
-        where table_schema = current_schema()
-          and table_name = ?
-        limit 1
-        """,
-        [table_name],
-    ).fetchone()
-    return row is not None
+from backend.app.repositories.duckdb_repo import DuckDBRepository, read_only_connection
 
 
 @dataclass
-class FormalZqtzBalanceMetricsRepository:
+class FormalZqtzBalanceMetricsRepository(DuckDBRepository):
     """
     Read-only aggregates over governed formal balance facts (no snapshot / preview tables).
 
@@ -35,8 +22,7 @@ class FormalZqtzBalanceMetricsRepository:
 
     def list_report_dates(self, *, currency_basis: str = "CNY") -> list[str]:
         try:
-            conn = duckdb.connect(self.path, read_only=True)
-            try:
+            with read_only_connection(self.path) as conn:
                 rows = conn.execute(
                     """
                     select distinct cast(report_date as varchar)
@@ -47,8 +33,6 @@ class FormalZqtzBalanceMetricsRepository:
                     """,
                     [currency_basis],
                 ).fetchall()
-            finally:
-                conn.close()
         except duckdb.Error as exc:
             raise RuntimeError("Formal balance-analysis storage is unavailable.") from exc
         return [str(row[0]) for row in rows]
@@ -60,9 +44,8 @@ class FormalZqtzBalanceMetricsRepository:
         currency_basis: str = "CNY",
     ) -> list[str]:
         try:
-            conn = duckdb.connect(self.path, read_only=True)
-            try:
-                if not _table_exists(conn, "fact_formal_tyw_balance_daily"):
+            with read_only_connection(self.path) as conn:
+                if not self._table_exists_on_conn(conn, "fact_formal_tyw_balance_daily"):
                     return self.list_report_dates(currency_basis=currency_basis)
                 rows = conn.execute(
                     """
@@ -83,8 +66,6 @@ class FormalZqtzBalanceMetricsRepository:
                     """,
                     [position_scope, currency_basis, position_scope, currency_basis],
                 ).fetchall()
-            finally:
-                conn.close()
         except duckdb.Error as exc:
             raise RuntimeError("Formal balance-analysis storage is unavailable.") from exc
         return [str(row[0]) for row in rows]
@@ -96,8 +77,7 @@ class FormalZqtzBalanceMetricsRepository:
         currency_basis: str = "CNY",
     ) -> dict[str, object] | None:
         try:
-            conn = duckdb.connect(self.path, read_only=True)
-            try:
+            with read_only_connection(self.path) as conn:
                 row = conn.execute(
                     """
                     select cast(report_date as varchar), coalesce(sum(market_value_amount), 0) as total_market_value_amount
@@ -109,8 +89,6 @@ class FormalZqtzBalanceMetricsRepository:
                     """,
                     [currency_basis, report_date],
                 ).fetchone()
-            finally:
-                conn.close()
         except duckdb.Error as exc:
             raise RuntimeError("Formal balance-analysis storage is unavailable.") from exc
         if row is None:
@@ -127,13 +105,11 @@ class FormalZqtzBalanceMetricsRepository:
         position_scope: str = "asset",
         currency_basis: str = "CNY",
     ) -> dict[str, object] | None:
+        # Use catalog-presence cache so a warm process avoids an extra open solely for
+        # the TYW existence probe before BalanceAnalysisRepository opens its own conn.
         try:
-            conn = duckdb.connect(self.path, read_only=True)
-            try:
-                if not _table_exists(conn, "fact_formal_tyw_balance_daily"):
-                    return None
-            finally:
-                conn.close()
+            if not self._table_exists("fact_formal_tyw_balance_daily"):
+                return None
         except duckdb.Error as exc:
             raise RuntimeError("Formal balance-analysis storage is unavailable.") from exc
         overview = BalanceAnalysisRepository(self.path).fetch_formal_overview(
@@ -161,14 +137,25 @@ class FormalZqtzBalanceMetricsRepository:
             return {}
         placeholders = ", ".join(["?"] * len(dates))
         try:
-            conn = duckdb.connect(self.path, read_only=True)
-            try:
-                if not _table_exists(conn, "fact_formal_tyw_balance_daily"):
+            with read_only_connection(self.path) as conn:
+                has_tyw = self._table_exists_on_conn(
+                    conn,
+                    "fact_formal_tyw_balance_daily",
+                )
+                if not has_tyw:
                     rows = conn.execute(
                         f"""
                         select
                           cast(report_date as varchar) as report_date,
-                          coalesce(sum(market_value_amount), 0) as total_market_value_amount
+                          coalesce(sum(market_value_amount), 0) as total_market_value_amount,
+                          string_agg(
+                            distinct source_version,
+                            '__' order by source_version
+                          ) filter (where source_version <> '') as source_version,
+                          string_agg(
+                            distinct rule_version,
+                            '__' order by rule_version
+                          ) filter (where rule_version <> '') as rule_version
                         from fact_formal_zqtz_balance_daily
                         where position_scope = ?
                           and currency_basis = ?
@@ -199,26 +186,106 @@ class FormalZqtzBalanceMetricsRepository:
                             and currency_basis = ?
                             and cast(report_date as varchar) in ({placeholders})
                           group by report_date
+                        ),
+                        source_versions as (
+                          select
+                            report_date,
+                            string_agg(source_version, '__' order by source_version)
+                              as source_version
+                          from (
+                            select distinct
+                              cast(report_date as varchar) as report_date,
+                              source_version
+                            from fact_formal_zqtz_balance_daily
+                            where position_scope = ?
+                              and currency_basis = ?
+                              and cast(report_date as varchar) in ({placeholders})
+                              and source_version <> ''
+                            union
+                            select distinct
+                              cast(report_date as varchar) as report_date,
+                              source_version
+                            from fact_formal_tyw_balance_daily
+                            where position_scope = ?
+                              and currency_basis = ?
+                              and cast(report_date as varchar) in ({placeholders})
+                              and source_version <> ''
+                          )
+                          group by report_date
+                        ),
+                        rule_versions as (
+                          select
+                            report_date,
+                            string_agg(rule_version, '__' order by rule_version)
+                              as rule_version
+                          from (
+                            select distinct
+                              cast(report_date as varchar) as report_date,
+                              rule_version
+                            from fact_formal_zqtz_balance_daily
+                            where position_scope = ?
+                              and currency_basis = ?
+                              and cast(report_date as varchar) in ({placeholders})
+                              and rule_version <> ''
+                            union
+                            select distinct
+                              cast(report_date as varchar) as report_date,
+                              rule_version
+                            from fact_formal_tyw_balance_daily
+                            where position_scope = ?
+                              and currency_basis = ?
+                              and cast(report_date as varchar) in ({placeholders})
+                              and rule_version <> ''
+                          )
+                          group by report_date
                         )
                         select
                           coalesce(zqtz.report_date, tyw.report_date) as report_date,
                           coalesce(zqtz.total_market_value_amount, 0)
-                            + coalesce(tyw.total_market_value_amount, 0) as total_market_value_amount
+                            + coalesce(tyw.total_market_value_amount, 0) as total_market_value_amount,
+                          source_versions.source_version,
+                          rule_versions.rule_version
                         from zqtz
                         full outer join tyw using (report_date)
+                        left join source_versions
+                          on source_versions.report_date = coalesce(zqtz.report_date, tyw.report_date)
+                        left join rule_versions
+                          on rule_versions.report_date = coalesce(zqtz.report_date, tyw.report_date)
                         """,
-                        [position_scope, currency_basis, *dates, position_scope, currency_basis, *dates],
+                        [
+                            position_scope,
+                            currency_basis,
+                            *dates,
+                            position_scope,
+                            currency_basis,
+                            *dates,
+                            position_scope,
+                            currency_basis,
+                            *dates,
+                            position_scope,
+                            currency_basis,
+                            *dates,
+                            position_scope,
+                            currency_basis,
+                            *dates,
+                            position_scope,
+                            currency_basis,
+                            *dates,
+                        ],
                     ).fetchall()
-            finally:
-                conn.close()
         except duckdb.Error as exc:
             raise RuntimeError("Formal balance-analysis storage is unavailable.") from exc
         return {
             str(report_date): {
                 "report_date": str(report_date),
                 "total_market_value_amount": total_market_value_amount,
+                "_metric_scope": (
+                    "combined_formal_balance" if has_tyw else "zqtz_only"
+                ),
+                "source_version": source_version,
+                "rule_version": rule_version,
             }
-            for report_date, total_market_value_amount in rows
+            for report_date, total_market_value_amount, source_version, rule_version in rows
         }
 
     def fetch_latest_zqtz_asset_market_value(
@@ -227,8 +294,7 @@ class FormalZqtzBalanceMetricsRepository:
         currency_basis: str = "CNY",
     ) -> dict[str, object] | None:
         try:
-            conn = duckdb.connect(self.path, read_only=True)
-            try:
+            with read_only_connection(self.path) as conn:
                 rows = conn.execute(
                     """
                     select report_date, coalesce(sum(market_value_amount), 0) as total_market_value_amount
@@ -241,8 +307,6 @@ class FormalZqtzBalanceMetricsRepository:
                     """,
                     [currency_basis],
                 ).fetchall()
-            finally:
-                conn.close()
         except duckdb.Error as exc:
             raise RuntimeError("Formal balance-analysis storage is unavailable.") from exc
         if not rows:

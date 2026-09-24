@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { BalanceCurrencyBasis, BalancePositionScope } from "../../../api/contracts";
 
@@ -6,12 +6,14 @@ function normalizePositionScopeParam(value: string | null): BalancePositionScope
   return value === "asset" || value === "liability" || value === "all" ? value : "all";
 }
 
-function normalizeCurrencyBasisParam(value: string | null): BalanceCurrencyBasis {
-  return value === "native" || value === "CNY" ? value : "CNY";
+function normalizeCurrencyBasisParam(_value: string | null): BalanceCurrencyBasis {
+  return "CNY";
 }
 
 export interface BalanceAnalysisFilters {
   selectedReportDate: string;
+  unavailableRequestedReportDate: string | null;
+  isSelectedReportDateAvailable: boolean;
   positionScope: BalancePositionScope;
   currencyBasis: BalanceCurrencyBasis;
   setSelectedReportDate: (date: string) => void;
@@ -22,7 +24,7 @@ export interface BalanceAnalysisFilters {
 export function useBalanceAnalysisFilters(
   availableDates: string[],
 ): BalanceAnalysisFilters {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryReportDate = searchParams.get("report_date")?.trim() || "";
   const queryPositionScope = searchParams.get("position_scope");
   const queryCurrencyBasis = searchParams.get("currency_basis");
@@ -35,13 +37,13 @@ export function useBalanceAnalysisFilters(
     normalizeCurrencyBasisParam(queryCurrencyBasis),
   );
 
-  // Sync report date from URL param and available dates
+  // Preserve an explicit URL date even when unavailable; only default when no date was requested.
   useEffect(() => {
     const firstDate = availableDates[0];
     if (!availableDates.length) {
       return;
     }
-    if (queryReportDate && availableDates.includes(queryReportDate)) {
+    if (queryReportDate) {
       if (selectedReportDate !== queryReportDate) {
         setSelectedReportDate(queryReportDate);
       }
@@ -52,24 +54,86 @@ export function useBalanceAnalysisFilters(
     }
   }, [availableDates, queryReportDate, selectedReportDate]);
 
-  // Sync scope/basis from URL params
+  // Sync scope/basis from URL params, but only when the URL value itself changes.
+  // The in-page setters commit state first and write the URL through a router
+  // transition; a plain value-mismatch check would revert the user's switch
+  // during that window (deep links carry these params permanently).
+  const lastQueryPositionScopeRef = useRef(queryPositionScope);
+  const lastQueryCurrencyBasisRef = useRef(queryCurrencyBasis);
   useEffect(() => {
-    if (queryPositionScope !== null) {
-      const next = normalizePositionScopeParam(queryPositionScope);
-      if (positionScope !== next) setPositionScope(next);
+    if (queryPositionScope !== lastQueryPositionScopeRef.current) {
+      lastQueryPositionScopeRef.current = queryPositionScope;
+      if (queryPositionScope !== null) {
+        setPositionScope(normalizePositionScopeParam(queryPositionScope));
+      }
     }
-    if (queryCurrencyBasis !== null) {
-      const next = normalizeCurrencyBasisParam(queryCurrencyBasis);
-      if (currencyBasis !== next) setCurrencyBasis(next);
+    if (queryCurrencyBasis !== lastQueryCurrencyBasisRef.current) {
+      lastQueryCurrencyBasisRef.current = queryCurrencyBasis;
+      if (queryCurrencyBasis !== null) {
+        setCurrencyBasis(normalizeCurrencyBasisParam(queryCurrencyBasis));
+      }
     }
-  }, [queryPositionScope, queryCurrencyBasis, positionScope, currencyBasis]);
+  }, [queryPositionScope, queryCurrencyBasis]);
+
+  // Aggregate page reads are CNY-only. Canonicalize legacy deep links so a
+  // bookmarked native state cannot keep issuing cross-currency total requests.
+  useEffect(() => {
+    if (queryCurrencyBasis === null || queryCurrencyBasis === "CNY") {
+      return;
+    }
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.set("currency_basis", "CNY");
+    setSearchParams(nextSearchParams, { replace: true });
+  }, [queryCurrencyBasis, searchParams, setSearchParams]);
+
+  function handleReportDateChange(date: string) {
+    setSelectedReportDate(date);
+    const nextSearchParams = new URLSearchParams(searchParams);
+    if (date) {
+      nextSearchParams.set("report_date", date);
+    } else {
+      nextSearchParams.delete("report_date");
+    }
+    setSearchParams(nextSearchParams, { replace: true });
+  }
+
+  // Mirror the report-date pattern: keep deep links shareable and keep the URL
+  // params in step with in-page switches.
+  function handlePositionScopeChange(scope: BalancePositionScope) {
+    setPositionScope(scope);
+    lastQueryPositionScopeRef.current = scope;
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.set("position_scope", scope);
+    setSearchParams(nextSearchParams, { replace: true });
+  }
+
+  function handleCurrencyBasisChange(basis: BalanceCurrencyBasis) {
+    const normalizedBasis = normalizeCurrencyBasisParam(basis);
+    setCurrencyBasis(normalizedBasis);
+    lastQueryCurrencyBasisRef.current = normalizedBasis;
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.set("currency_basis", normalizedBasis);
+    setSearchParams(nextSearchParams, { replace: true });
+  }
+
+  const isSelectedReportDateAvailable = Boolean(
+    selectedReportDate && availableDates.includes(selectedReportDate),
+  );
+  const unavailableRequestedReportDate =
+    queryReportDate &&
+    selectedReportDate === queryReportDate &&
+    !isSelectedReportDateAvailable
+      ? queryReportDate
+      : null;
 
   return {
     selectedReportDate,
+    unavailableRequestedReportDate,
+    isSelectedReportDateAvailable,
     positionScope,
     currencyBasis,
-    setSelectedReportDate,
-    setPositionScope,
-    setCurrencyBasis,
+    setSelectedReportDate: handleReportDateChange,
+    setPositionScope: handlePositionScopeChange,
+    setCurrencyBasis: handleCurrencyBasisChange,
   };
 }

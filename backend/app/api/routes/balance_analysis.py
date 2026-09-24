@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 from urllib.parse import quote
 
+from backend.app.api.deps import ensure_read_allowed
 from backend.app.api.perf_logging import timed_api_call
 from backend.app.governance.settings import get_settings
 from backend.app.schemas.balance_analysis import BalanceAnalysisDecisionStatusUpdateRequest
@@ -36,7 +37,7 @@ def _build_attachment_disposition(filename: str, *, fallback_filename: str | Non
 
 
 def _require_balance_analysis_report_date_qs(report_date: str) -> str:
-    """YYYY-MM-DD calendar validation; aligned with balance_analysis_service._parse_date format."""
+    """Validate and normalize a YYYY-MM-DD calendar date."""
     candidate = str(report_date).strip()
     try:
         datetime.strptime(candidate, "%Y-%m-%d")
@@ -49,28 +50,12 @@ def _require_balance_analysis_report_date_qs(report_date: str) -> str:
 
 
 def _ensure_balance_analysis_read_allowed(auth: AuthContext) -> None:
-    settings = get_settings()
-    try:
-        ensure_user_allowed(
-            auth=auth,
-            settings=settings,
-            resource="balance_analysis",
-            action="read",
-        )
-    except PermissionError as exc:
-        if _allows_development_fallback_read(auth=auth, environment=settings.environment):
-            return
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-def _allows_development_fallback_read(*, auth: AuthContext, environment: object) -> bool:
-    return (
-        str(environment).strip().lower() == "development"
-        and auth.identity_source == "fallback"
-        and auth.user_id == "anonymous"
-        and auth.role == "viewer"
+    ensure_read_allowed(
+        auth,
+        "balance_analysis",
+        settings=get_settings(),
+        allow_dev_fallback=True,
+        authorize=ensure_user_allowed,
     )
 
 

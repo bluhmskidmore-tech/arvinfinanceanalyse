@@ -5,11 +5,23 @@ from dataclasses import asdict, is_dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
+from backend.app.schemas.common_numeric import Numeric, NumericRawScale, NumericUnit, numeric_from_raw
 from pydantic import BaseModel
 
 NUMERIC_JSON_KEYS = frozenset({"raw", "unit", "display", "precision", "sign_aware"})
 _Q8 = Decimal("0.00000001")
+
+# _NUMERIC_FIELDS entry: (unit, sign_aware) or (unit, sign_aware, raw_scale).
+# The 2-tuple form keeps the legacy "auto" pct heuristic; the 3-tuple form
+# declares the producing raw scale explicitly (see NumericRawScale).
+NumericFieldSpec = tuple[NumericUnit, bool] | tuple[NumericUnit, bool, NumericRawScale]
+
+
+def unpack_numeric_field_spec(spec: NumericFieldSpec) -> tuple[NumericUnit, bool, NumericRawScale]:
+    if len(spec) == 3:
+        return spec[0], spec[1], spec[2]
+    unit, sign_aware = spec
+    return unit, sign_aware, "auto"
 
 
 def is_numeric_json(value: Any) -> bool:
@@ -34,7 +46,12 @@ def collapse_numeric_json_to_q8_strings(obj: Any) -> Any:
     return obj
 
 
-def numeric_json(raw: Any, unit: NumericUnit, sign_aware: bool) -> dict[str, Any]:
+def numeric_json(
+    raw: Any,
+    unit: NumericUnit,
+    sign_aware: bool,
+    raw_scale: NumericRawScale = "auto",
+) -> dict[str, Any]:
     if raw is None:
         return numeric_from_raw(raw=None, unit=unit, sign_aware=sign_aware).model_dump(mode="json")
     if isinstance(raw, Decimal):
@@ -43,7 +60,12 @@ def numeric_json(raw: Any, unit: NumericUnit, sign_aware: bool) -> dict[str, Any
         raw_value = float(raw)
     else:
         raw_value = float(str(raw))
-    return numeric_from_raw(raw=raw_value, unit=unit, sign_aware=sign_aware).model_dump(mode="json")
+    return numeric_from_raw(
+        raw=raw_value,
+        unit=unit,
+        sign_aware=sign_aware,
+        raw_scale=raw_scale,
+    ).model_dump(mode="json")
 
 
 def promote_flat_payload(payload: Any, model_cls: type) -> Any:
@@ -56,14 +78,15 @@ def promote_flat_payload(payload: Any, model_cls: type) -> Any:
     else:
         return payload
 
-    field_map: Mapping[str, tuple[NumericUnit, bool]] = getattr(model_cls, "_NUMERIC_FIELDS", {}) or {}
-    for field_name, (unit, sign_aware) in field_map.items():
+    field_map: Mapping[str, NumericFieldSpec] = getattr(model_cls, "_NUMERIC_FIELDS", {}) or {}
+    for field_name, spec in field_map.items():
         if field_name not in out:
             continue
         value = out[field_name]
         if value is None or isinstance(value, Numeric) or is_numeric_json(value):
             continue
-        out[field_name] = numeric_json(value, unit, sign_aware)
+        unit, sign_aware, raw_scale = unpack_numeric_field_spec(spec)
+        out[field_name] = numeric_json(value, unit, sign_aware, raw_scale)
     return out
 
 

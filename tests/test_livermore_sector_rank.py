@@ -5,13 +5,21 @@ from typing import Any, cast
 import pytest
 
 from backend.app.core_finance.livermore_sector_rank import (
-    PROVISIONAL_FORMULA_VERSION,
+    FORMULA_COMPONENT_WEIGHTS,
+    FORMULA_STATUS,
+    FORMULA_VERSION,
     SectorRankConstituent,
     compute_sector_rank,
 )
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
 
-def test_sector_rank_uses_provisional_percentile_formula_and_tie_breaks() -> None:
+
+
+def test_sector_rank_uses_signed_off_percentile_formula_and_tie_breaks() -> None:
     result = compute_sector_rank(
         as_of_date="2026-04-06",
         rows=[
@@ -27,8 +35,12 @@ def test_sector_rank_uses_provisional_percentile_formula_and_tie_breaks() -> Non
     assert result.payload is not None
     payload = cast(dict[str, Any], result.payload)
     assert payload["as_of_date"] == "2026-04-06"
-    assert payload["formula_version"] == PROVISIONAL_FORMULA_VERSION
-    assert payload["is_provisional"] is True
+    assert payload["formula_version"] == FORMULA_VERSION
+    assert payload["is_provisional"] is False
+    assert payload["formula_status"] == FORMULA_STATUS
+    assert payload["formula_component_weights"] == FORMULA_COMPONENT_WEIGHTS
+    assert "signed-off analytical formula" in str(payload["formula_note"])
+    assert "not trading instructions" in str(payload["formula_note"])
     assert payload["sector_count"] == 4
     assert payload["excluded_constituent_count"] == 0
     assert payload["excluded_sector_count"] == 0

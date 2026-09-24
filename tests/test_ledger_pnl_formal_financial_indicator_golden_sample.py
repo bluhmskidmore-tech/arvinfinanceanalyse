@@ -142,6 +142,33 @@ def test_formal_financial_indicator_registry_exposes_202603_contract_without_pro
     assert contract_metrics["parent.loan_balance"]["golden_sample_ref"].endswith("#parent.loan_balance")
 
 
+def test_formal_financial_indicator_contract_source_workbook_is_configurable(monkeypatch):
+    registry = load_module(
+        "backend.app.core_finance.formal_financial_indicators",
+        "backend/app/core_finance/formal_financial_indicators.py",
+    )
+
+    monkeypatch.delenv("MOSS_FORMAL_FINANCIAL_INDICATORS_WORKBOOK", raising=False)
+    get_settings.cache_clear()
+    try:
+        contract = registry.build_formal_financial_indicator_contract(report_month="202603")
+        assert contract["source_workbook"] == (
+            "sample_data/formal_financial_indicators/2026年财务指标表-3月最终(1).xlsx"
+        )
+
+        monkeypatch.setenv(
+            "MOSS_FORMAL_FINANCIAL_INDICATORS_WORKBOOK",
+            "data_input/formal_financial_indicators/override.xlsx",
+        )
+        get_settings.cache_clear()
+        contract = registry.build_formal_financial_indicator_contract(report_month="202603")
+        assert contract["source_workbook"] == (
+            "data_input/formal_financial_indicators/override.xlsx"
+        )
+    finally:
+        get_settings.cache_clear()
+
+
 def test_formal_financial_indicator_registry_returns_empty_contract_for_unregistered_month():
     registry = load_module(
         "backend.app.core_finance.formal_financial_indicators",
@@ -298,11 +325,25 @@ def test_ledger_pnl_read_surfaces_require_explicit_read_scope(tmp_path, monkeypa
                 "result": {"metrics": []},
             }
 
+        @staticmethod
+        def ledger_pnl_formal_indicator_rule_checks_envelope(**_kwargs):
+            return {
+                "result_meta": {"result_kind": "ledger_pnl.formal_financial_indicator_rule_checks"},
+                "result": {"summary": {"total_checks": 0}},
+            }
+
     monkeypatch.setattr(route_module, "_svc", lambda: FakeLedgerPnlService)
+    permission_calls: list[tuple[str, str]] = []
+
+    def deny_ledger_pnl_read(**kwargs):
+        permission_calls.append((kwargs["resource"], kwargs["action"]))
+        raise PermissionError("Ledger PnL read scope is required.")
+
+    monkeypatch.setattr(route_module, "ensure_user_allowed", deny_ledger_pnl_read)
     sqlite_path = tmp_path / "ledger-pnl-read-scope.db"
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
     monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
-    get_settings.cache_clear()
+    route_module.get_settings.cache_clear()
     app = FastAPI()
     app.include_router(route_module.router)
     client = TestClient(app)
@@ -312,11 +353,16 @@ def test_ledger_pnl_read_surfaces_require_explicit_read_scope(tmp_path, monkeypa
         ("/api/ledger-pnl/data", {"date": "2026-03-31"}),
         ("/api/ledger-pnl/summary", {"date": "2026-03-31"}),
         ("/api/ledger-pnl/formal-financial-indicators", {"report_month": "202603"}),
+        ("/api/ledger-pnl/formal-indicator-rule-checks", {"report_month": "202603"}),
     ]
 
-    for path, params in cases:
-        response = client.get(path, params=params, headers=LEDGER_PNL_READ_HEADERS)
-        assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
+    try:
+        for path, params in cases:
+            response = client.get(path, params=params, headers=LEDGER_PNL_READ_HEADERS)
+            assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
+        assert permission_calls == [("ledger_pnl", "read")] * len(cases)
+    finally:
+        route_module.get_settings.cache_clear()
 
 
 def test_ledger_pnl_api_exposes_formal_financial_indicator_source_contract(tmp_path, monkeypatch):

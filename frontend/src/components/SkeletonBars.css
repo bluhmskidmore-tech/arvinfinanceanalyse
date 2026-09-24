@@ -1,0 +1,65 @@
+.moss-skeleton-bar-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.moss-skeleton-bar-stack--spaced {
+  margin-top: 18px;
+}
+
+.moss-skeleton-bar {
+  height: 12px;
+  border-radius: 999px;
+  background: var(--ib-surface-muted);
+}
+
+.moss-skeleton-bar--title {
+  width: 28%;
+  margin-bottom: 10px;
+  background: var(--ib-hairline);
+}
+
+.moss-skeleton-bar--block {
+  width: 100%;
+}
+
+.moss-skeleton-bar-stack .moss-skeleton-bar:first-child {
+  width: 76%;
+  background: var(--ib-hairline);
+}
+
+.moss-skeleton-bar-stack .moss-skeleton-bar:nth-child(2),
+.moss-skeleton-bar-stack .moss-skeleton-bar:nth-child(3) {
+  width: 100%;
+}
+
+.moss-skeleton-bar-stack .moss-skeleton-bar:nth-child(4) {
+  width: 61%;
+}
+
+.moss-skeleton-bar-stack .moss-skeleton-bar:nth-child(n + 5) {
+  width: 100%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .moss-skeleton-bar--pulse {
+    animation: moss-skeleton-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .moss-skeleton-bar--pulse {
+    animation: none;
+  }
+}
+
+@keyframes moss-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+
+  50% {
+    opacity: 0.9;
+  }
+}

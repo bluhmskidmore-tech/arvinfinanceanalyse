@@ -116,7 +116,29 @@ function productCategoryPayload(reportDate: string): ProductCategoryPnlPayload {
       category_name: "合计",
       is_total: true,
     }),
-    interest_spread: null,
+    interest_spread: {
+      all_currency_asset_yield_pct: null,
+      all_currency_liability_yield_pct: null,
+      all_currency_spread_pct: null,
+      cny_asset_yield_pct: null,
+      cny_liability_yield_pct: null,
+      cny_spread_pct: null,
+    },
+    interest_earning_spread: {
+      all_currency_asset_yield_pct: null,
+      all_currency_liability_yield_pct: null,
+      all_currency_spread_pct: null,
+      cny_asset_yield_pct: null,
+      cny_liability_yield_pct: null,
+      cny_spread_pct: null,
+    },
+    liability_cost_decomposition: {
+      liability_yield_pct: null,
+      liability_yield_ex_cln_pct: null,
+      cln_yield_pct: null,
+      cln_drag_bp: null,
+      cln_scale: null,
+    },
   };
 }
 
@@ -164,9 +186,17 @@ describe("PnlAttributionPage", () => {
 
     expect(source).not.toMatch(/designTokens\.color\.warm|moss-color-warm-/);
     expect(source).not.toMatch(/#ded6ca|#ece6dd|#665f58/);
-    expect(source).toContain("designTokens.color.neutral[900]");
-    expect(source).toContain("designTokens.color.primary[600]");
-    expect(source).toContain("designTokens.color.info[600]");
+    // 页面挂 Nocturne scope（pnl-attribution）：面色/文字/盈亏/强调着色走
+    // --dh-api-* 家族（scope 内解析为 --nct-*），盈亏 tone 走 TONE_DH_CSS_VAR
+    // （--ib-* 在路由边界被算成钢蓝字面值故不得引用）；ECharts canvas 读不到
+    // CSS 变量，图表色走 nocturneTokens 静态镜像，钢蓝 dhApiTokens 镜像与浅色
+    // designTokens.color.*（neutral[900]、primary[600]、info[600] 等）均不得回归。
+    expect(source).not.toMatch(/designTokens\.color\./);
+    expect(source).not.toContain("dhApiTokens.color.");
+    expect(source).toContain("nocturneTokens.color.");
+    expect(source).toContain("TONE_DH_CSS_VAR");
+    expect(source).not.toMatch(/\bTONE_CSS_VAR\b/);
+    expect(source).toContain("var(--dh-api-");
   });
 
   it("mounts with explicit product-category and formal FI lenses", async () => {
@@ -272,8 +302,12 @@ describe("PnlAttributionPage", () => {
     expect(formalDecisionStrip).toHaveTextContent("/api/pnl-attribution/*");
     const currentViewMeta = await screen.findByTestId("pnl-attribution-current-view-meta");
     expect(currentViewMeta).toHaveTextContent("2026-03");
-    expect(currentViewMeta).toHaveTextContent("2026-04-09");
-    expect(currentViewMeta).toHaveTextContent("2026-04-09T10:30:00Z");
+    // 生成时间收敛为分钟级展示；微秒级 ISO 原值收进 title，不再直出正文。
+    expect(currentViewMeta).toHaveTextContent("2026-04-09 10:30");
+    expect(currentViewMeta).not.toHaveTextContent("2026-04-09T10:30:00Z");
+    expect(
+      within(currentViewMeta).getByTitle("2026-04-09T10:30:00Z"),
+    ).toBeInTheDocument();
     const bridgePanel = screen.getByTestId("volume-rate-bridge-panel");
     expect(bridgePanel).toHaveTextContent("损益变动桥");
     expect(bridgePanel).toHaveTextContent("交叉效应");
@@ -282,7 +316,7 @@ describe("PnlAttributionPage", () => {
     await user.click(screen.getByRole("button", { name: /TPL/i }));
     expect(screen.getByRole("button", { name: /TPL/i })).toBeInTheDocument();
     const tplDecisionStrip = await screen.findByTestId("pnl-attribution-decision-strip");
-    expect(tplDecisionStrip).toHaveTextContent("TPL hybrid exception");
+    expect(tplDecisionStrip).toHaveTextContent("TPL 混合口径例外");
     expect(tplDecisionStrip).toHaveTextContent("/api/pnl-attribution/tpl-market");
     expect(tplDecisionStrip).toHaveTextContent("/ui/pnl/product-category");
 
@@ -301,6 +335,66 @@ describe("PnlAttributionPage", () => {
     const advancedMeta = screen.getByTestId("pnl-attribution-advanced-view-meta");
     expect(advancedMeta).toHaveTextContent("Carry / Roll-down");
     expect(advancedMeta).toHaveTextContent("Campisi");
+  });
+
+  it("converges a shared advanced-tab load failure into one region banner", async () => {
+    const user = userEvent.setup();
+    const client = createApiClient({ mode: "mock" });
+    client.getFormalPnlDates = vi.fn(async () => ({
+      result_meta: buildResultMeta("pnl.dates"),
+      result: {
+        report_dates: ["2026-03-31"],
+        formal_fi_report_dates: ["2026-03-31"],
+        nonstd_bridge_report_dates: [],
+      },
+    }));
+    client.getProductCategoryDates = vi.fn(async () => ({
+      result_meta: buildResultMeta("product_category_pnl.dates"),
+      result: {
+        report_dates: ["2026-03-31"],
+      },
+    }));
+    // Promise.all 中任一失败即整个页签失败：全部面板同空，此前 5 处逐字重复同一错误。
+    client.getPnlCarryRollDown = vi.fn(async () => {
+      throw new Error(
+        "Request failed: /api/pnl-attribution/carry-rolldown?report_date=2026-03-31 (500)",
+      );
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <PnlAttributionPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    await user.click(await screen.findByRole("button", { name: /Campisi/i }));
+
+    // 区级只有一条错误横幅：中文结论正文，接口路径只进 title。
+    const banner = await screen.findByTestId("pnl-attribution-error-banner");
+    expect(banner).toHaveTextContent("当前视图数据载入失败。");
+    expect(banner).toHaveTextContent("后端接口请求失败（HTTP 500）");
+    expect(banner).not.toHaveTextContent("Request failed");
+    expect(banner).not.toHaveTextContent("/api/pnl-attribution");
+    expect(
+      within(banner).getByTitle(
+        "Request failed: /api/pnl-attribution/carry-rolldown?report_date=2026-03-31 (500)",
+      ),
+    ).toBeInTheDocument();
+    expect(within(banner).getByRole("button", { name: "重试" })).toBeInTheDocument();
+
+    // 各面板收缩为标题 + 一行指引；不再出现逐面板的 data-section-error。
+    const collapsed = screen.getAllByTestId("pnl-attribution-collapsed-panel");
+    expect(collapsed).toHaveLength(6);
+    expect(collapsed[0]).toHaveTextContent("Campisi 决策级解释");
+    expect(collapsed[0]).toHaveTextContent("见上方错误说明。");
+    expect(collapsed[4]).toHaveTextContent("Carry / 利差 / KRD 高级归因");
+    expect(screen.queryAllByTestId("data-section-error")).toHaveLength(0);
+    expect(screen.queryByText(/Request failed/)).not.toBeInTheDocument();
   });
 
   it("keeps legacy Campisi panels visible when decision-grade endpoint is unavailable", async () => {
@@ -339,6 +433,45 @@ describe("PnlAttributionPage", () => {
 
     expect(await screen.findByTestId("campisi-formal-closure-warning")).toHaveTextContent("PnL");
     expect(screen.getByText("decision-grade 404")).toBeInTheDocument();
+  });
+
+  it("does not let the legacy Campisi endpoint block the governed advanced tab", async () => {
+    const user = userEvent.setup();
+    const client = createApiClient({ mode: "mock" });
+    client.getPnlCampisiAttribution = vi.fn(async () => {
+      throw new Error("legacy campisi 500");
+    });
+    client.getFormalPnlDates = vi.fn(async () => ({
+      result_meta: buildResultMeta("pnl.dates"),
+      result: {
+        report_dates: ["2026-03-31", "2026-02-28"],
+        formal_fi_report_dates: ["2026-03-31", "2026-02-28"],
+        nonstd_bridge_report_dates: [],
+      },
+    }));
+    client.getProductCategoryDates = vi.fn(async () => ({
+      result_meta: buildResultMeta("product_category_pnl.dates"),
+      result: {
+        report_dates: ["2026-03-31", "2026-02-28"],
+      },
+    }));
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <PnlAttributionPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    await user.click(await screen.findByRole("button", { name: /Campisi/i }));
+
+    expect(await screen.findByTestId("campisi-formal-closure-warning")).toHaveTextContent("PnL");
+    expect(screen.queryByTestId("pnl-attribution-error-banner")).not.toBeInTheDocument();
+    expect(client.getPnlCampisiAttribution).not.toHaveBeenCalled();
   });
 
   it("keeps product-category and formal FI report dates independent", async () => {
@@ -464,6 +597,99 @@ describe("PnlAttributionPage", () => {
         reportDate: "2026-03-31",
         compareType: "mom",
       }),
+    );
+  });
+
+  it("discards stale attribution responses when the compare type switches quickly", async () => {
+    const user = userEvent.setup();
+    const client = createApiClient({ mode: "mock" });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+    client.getFormalPnlDates = vi.fn(async () => ({
+      result_meta: buildResultMeta("pnl.dates"),
+      result: {
+        report_dates: ["2026-03-31"],
+        formal_fi_report_dates: ["2026-03-31"],
+        nonstd_bridge_report_dates: [],
+      },
+    }));
+    client.getProductCategoryDates = vi.fn(async () => ({
+      result_meta: buildResultMeta("product_category_pnl.dates"),
+      result: {
+        report_dates: ["2026-03-31"],
+      },
+    }));
+
+    const attributionTemplate = await createApiClient({ mode: "mock" }).getProductCategoryAttribution({
+      reportDate: "2026-03-31",
+      compare: "mom",
+    });
+    function deferred<T>() {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((innerResolve) => {
+        resolve = innerResolve;
+      });
+      return { promise, resolve };
+    }
+    const staleMomRequest = deferred<typeof attributionTemplate>();
+    const freshYoyRequest = deferred<typeof attributionTemplate>();
+    const getProductCategoryAttribution = vi.fn(
+      (options: Parameters<typeof client.getProductCategoryAttribution>[0]) =>
+        options.compare === "yoy" ? freshYoyRequest.promise : staleMomRequest.promise,
+    );
+    client.getProductCategoryAttribution = getProductCategoryAttribution;
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <PnlAttributionPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() =>
+      expect(getProductCategoryAttribution).toHaveBeenCalledWith({
+        reportDate: "2026-03-31",
+        compare: "mom",
+      }),
+    );
+
+    await user.click(await screen.findByRole("button", { name: "同比" }));
+
+    await waitFor(() =>
+      expect(getProductCategoryAttribution).toHaveBeenCalledWith({
+        reportDate: "2026-03-31",
+        compare: "yoy",
+      }),
+    );
+
+    // 后发（同比）请求先返回：当前视图元信息落到同比 trace。
+    freshYoyRequest.resolve({
+      ...attributionTemplate,
+      result_meta: {
+        ...buildResultMeta("product_category_pnl.attribution", "tr_fresh_yoy"),
+        as_of_date: "2026-03-31",
+      },
+    });
+    const metaStrip = await screen.findByTestId("pnl-attribution-current-view-meta");
+    await waitFor(() => expect(metaStrip).toHaveTextContent("tr_fresh_yoy"));
+
+    // 先发（环比）请求后返回：过期口径必须被丢弃，不得覆盖同比视图。
+    staleMomRequest.resolve({
+      ...attributionTemplate,
+      result_meta: {
+        ...buildResultMeta("product_category_pnl.attribution", "tr_stale_mom"),
+        as_of_date: "2026-03-31",
+      },
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("pnl-attribution-current-view-meta")).toHaveTextContent(
+        "tr_fresh_yoy",
+      ),
+    );
+    expect(screen.getByTestId("pnl-attribution-current-view-meta")).not.toHaveTextContent(
+      "tr_stale_mom",
     );
   });
 

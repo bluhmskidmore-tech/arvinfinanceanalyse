@@ -1,0 +1,81 @@
+/*
+ * WatchList — 观察名单表（组件级样式）。
+ * 深色终端主题：仅消费 --dh-api-* token（页面根挂 theme-dh-api）。
+ */
+
+.cross-asset-watch-list__empty {
+  margin: 0;
+  color: var(--dh-api-muted);
+  font-size: 13px;
+}
+
+.cross-asset-watch-list__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.cross-asset-watch-list__table th {
+  padding: 4px 8px;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.cross-asset-watch-list__table th:first-child {
+  padding-left: 0;
+}
+
+.cross-asset-watch-list__table th:last-child {
+  padding-right: 0;
+}
+
+.cross-asset-watch-list__table td {
+  padding: 8px;
+  color: var(--dh-api-soft);
+  line-height: 1.5;
+  vertical-align: top;
+}
+
+.cross-asset-watch-list__table td:first-child {
+  padding-left: 0;
+}
+
+.cross-asset-watch-list__table td:last-child {
+  padding-right: 0;
+}
+
+.cross-asset-watch-list__table tbody tr {
+  border-top: 1px solid var(--dh-api-line-soft);
+}
+
+.cross-asset-watch-list__name {
+  color: var(--dh-api-ink);
+  font-weight: 600;
+}
+
+.cross-asset-watch-list__current {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cross-asset-watch-list__note {
+  color: var(--dh-api-muted);
+}
+
+.cross-asset-watch-list__signal {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.cross-asset-watch-list__signal-dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--dh-api-line-soft);
+}

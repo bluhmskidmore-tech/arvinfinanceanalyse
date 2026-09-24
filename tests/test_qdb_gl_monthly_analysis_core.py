@@ -3,12 +3,33 @@ from __future__ import annotations
 from io import BytesIO
 from pathlib import Path
 
+import pytest
 from openpyxl import Workbook, load_workbook
 
 from tests.helpers import ROOT, load_module
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_qdb_gl,
+]
+
 B = 100_000_000
 
+def _qdb_gl_real_source_available() -> bool:
+    data_input = ROOT / "data_input"
+    if not data_input.is_dir():
+        return False
+    ledger_token = "\u603b\u8d26\u5bf9\u8d26"
+    average_token = "\u65e5\u5747"
+    return any(
+        path.is_dir() and ledger_token in path.name and average_token in path.name
+        for path in data_input.iterdir()
+    )
+
+_REQUIRES_REAL_QDB_GL_SOURCE = pytest.mark.skipif(
+    not _qdb_gl_real_source_available(),
+    reason="requires local data_input/*\u603b\u8d26\u5bf9\u8d26*\u65e5\u5747* real source directory",
+)
 
 def test_parse_daily_avg_coerces_codes_and_builds_expected_groups(tmp_path):
     module = load_module(
@@ -41,7 +62,6 @@ def test_parse_daily_avg_coerces_codes_and_builds_expected_groups(tmp_path):
     assert "12301000001" in {row["科目代码"] for row in month_11}
     assert next(row["日均余额"] for row in month_11 if row["科目代码"] == "14001000001") == 230 * B
 
-
 def test_parse_daily_avg_requires_currency_marker_for_fixed_blocks(tmp_path):
     module = load_module(
         "backend.app.core_finance.qdb_gl_monthly_analysis",
@@ -61,7 +81,6 @@ def test_parse_daily_avg_requires_currency_marker_for_fixed_blocks(tmp_path):
         assert "-20" not in {next(iter(row.values())) for row in rows}
     month_11 = next(rows for key, rows in parsed.items() if key.endswith("CNX_11d"))
     assert 100 in [list(row.values())[1] for row in month_11 if next(iter(row.values())) == "23401000001"]
-
 
 def test_build_workbook_payload_computes_metrics_gap_alerts_and_foreign_split(tmp_path):
     module = load_module(
@@ -133,8 +152,148 @@ def test_build_workbook_payload_computes_metrics_gap_alerts_and_foreign_split(tm
     assert foreign_rows["14201000001"]["外币部分"] == 50
     assert foreign_rows["14401000001"]["外币部分"] == 30
 
+def test_merge_all_keeps_cny_missing_accounts_in_foreign_currency_analysis():
+    """综本有、人民币账套没有的纯外币科目必须留在外币分析里（人民币按 0 参与）。"""
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+    decimal_type = module.Decimal
+    gl_data = {
+        "综本": [
+            _ledger_dict_row("14201000001", "AC债券投资", "CNX", 310 * B),
+            _ledger_dict_row("11601000001", "存放境外同业", "CNX", 20 * B),
+        ],
+        "人民币": [
+            _ledger_dict_row("14201000001", "AC债券投资", "CNY", 260 * B),
+        ],
+    }
 
-def test_qdb_gl_position_vs_ledger_check_uses_reconciliation_helper():
+    merged = module.merge_all(gl_data, {})
+
+    foreign = {row["科目代码"]: row for row in merged["外币分析"]}
+    assert sorted(foreign) == ["11601000001", "14201000001"]
+    # 有人民币对照行的科目口径不变。
+    assert foreign["14201000001"]["外币部分"] == decimal_type(50 * B)
+    # 纯外币科目：人民币按 0 参与，外币部分 = 全额综本余额，占比 100%。
+    assert foreign["11601000001"]["期末余额_人民币"] == decimal_type(0)
+    assert foreign["11601000001"]["外币部分"] == decimal_type(20 * B)
+    assert foreign["11601000001"]["外币占比%"] == decimal_type(100)
+    assert merged["外币分析_缺人民币行数"] == 1
+
+    workbook = module.build_qdb_gl_monthly_analysis_workbook(
+        report_month="202602",
+        merged_data=merged,
+    )
+    assert workbook["missing_cny_row_count"] == 1
+    foreign_sheet = next(sheet for sheet in workbook["sheets"] if sheet["key"] == "foreign_currency")
+    assert {row["科目代码"] for row in foreign_sheet["rows"]} == {"11601000001", "14201000001"}
+
+def test_merge_all_reports_zero_missing_cny_rows_when_both_ledgers_align():
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+    gl_data = {
+        "综本": [_ledger_dict_row("14201000001", "AC债券投资", "CNX", 310 * B)],
+        "人民币": [_ledger_dict_row("14201000001", "AC债券投资", "CNY", 260 * B)],
+    }
+
+    merged = module.merge_all(gl_data, {})
+
+    assert merged["外币分析_缺人民币行数"] == 0
+
+def _ledger_dict_row(code: str, name: str, currency: str, ending_balance: int) -> dict:
+    """复刻 parse_general_ledger 的行结构（金额为 Decimal）。"""
+    from decimal import Decimal
+
+    ending = Decimal(ending_balance)
+    return {
+        "科目代码": code,
+        "科目名称": name,
+        "币种": currency,
+        "期初余额": ending,
+        "本期借方": Decimal(0),
+        "本期贷方": Decimal(0),
+        "期末余额": ending,
+        "变动额": Decimal(0),
+        "本期净额": Decimal(0),
+        "大类1": code[:1],
+        "大类3": code[:3],
+        "大类5": code[:5],
+    }
+
+def test_parse_general_ledger_raises_on_shuffled_header(tmp_path):
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+    _avg_path, ledger_path = _write_month_pair(tmp_path, "202602")
+
+    workbook = load_workbook(ledger_path)
+    worksheet = workbook["综本"]
+    # 打乱表头列顺序：把"币种"与"期初余额"互换位置。
+    worksheet.cell(row=6, column=3, value="期初余额")
+    worksheet.cell(row=6, column=4, value="币种")
+    workbook.save(ledger_path)
+    workbook.close()
+
+    with pytest.raises(ValueError, match="表头不符合预期"):
+        module.parse_general_ledger(ledger_path)
+
+def test_parse_general_ledger_raises_on_missing_header(tmp_path):
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+    _avg_path, ledger_path = _write_month_pair(tmp_path, "202602")
+
+    workbook = load_workbook(ledger_path)
+    worksheet = workbook["综本"]
+    for column in range(1, 8):
+        worksheet.cell(row=6, column=column).value = None
+    workbook.save(ledger_path)
+    workbook.close()
+
+    with pytest.raises(ValueError, match="表头不符合预期"):
+        module.parse_general_ledger(ledger_path)
+
+def test_parse_daily_avg_raises_on_shuffled_header(tmp_path):
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+    avg_path, _ledger_path = _write_month_pair(tmp_path, "202602")
+
+    workbook = load_workbook(avg_path)
+    worksheet = workbook["月"]
+    # 打乱第一个 CNX 3位列块的表头：把"科目"与"科目日均余额"互换位置。
+    worksheet.cell(row=3, column=2, value="科目日均余额")
+    worksheet.cell(row=3, column=3, value="科目")
+    workbook.save(avg_path)
+    workbook.close()
+
+    with pytest.raises(ValueError, match="表头不符合预期"):
+        module.parse_daily_avg(avg_path)
+
+def test_parse_daily_avg_raises_on_missing_header(tmp_path):
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+    avg_path, _ledger_path = _write_month_pair(tmp_path, "202602")
+
+    workbook = load_workbook(avg_path)
+    worksheet = workbook["月"]
+    for column in range(1, 32):
+        worksheet.cell(row=3, column=column).value = None
+    workbook.save(avg_path)
+    workbook.close()
+
+    with pytest.raises(ValueError, match="表头不符合预期"):
+        module.parse_daily_avg(avg_path)
+
+def test_qdb_gl_ledger_self_check_placeholder_uses_reconciliation_helper():
     module = load_module(
         "backend.app.core_finance.qdb_gl_monthly_analysis",
         "backend/app/core_finance/qdb_gl_monthly_analysis.py",
@@ -144,7 +303,7 @@ def test_qdb_gl_position_vs_ledger_check_uses_reconciliation_helper():
         {"科目代码": "201", "期末余额": -40},
     ]
 
-    checks = module._qdb_gl_position_vs_ledger_check(
+    checks = module._qdb_gl_ledger_self_check_placeholder(
         position_totals={"总资产": 100, "总负债": 40},
         ledger_rows_3d=rows_3d,
     )
@@ -156,6 +315,7 @@ def test_qdb_gl_position_vs_ledger_check_uses_reconciliation_helper():
             "ledger_value": 100.0,
             "diff": 0.0,
             "breached": False,
+            "missing_keys": [],
         },
         {
             "dimension": "total_liabilities",
@@ -163,6 +323,7 @@ def test_qdb_gl_position_vs_ledger_check_uses_reconciliation_helper():
             "ledger_value": 40.0,
             "diff": 0.0,
             "breached": False,
+            "missing_keys": [],
         },
         {
             "dimension": "net_assets",
@@ -170,9 +331,9 @@ def test_qdb_gl_position_vs_ledger_check_uses_reconciliation_helper():
             "ledger_value": 60.0,
             "diff": 0.0,
             "breached": False,
+            "missing_keys": [],
         },
     ]
-
 
 def test_asset_liability_overview_uses_financial_indicator_subject_scope():
     module = load_module(
@@ -203,8 +364,27 @@ def test_asset_liability_overview_uses_financial_indicator_subject_scope():
     assert metrics["存款总额"] == 71 * B
     assert metrics["贷款减值准备率%"] == module.Decimal("18.51851851851851851851851852")
 
+def test_asset_liability_structure_zero_denominator_yields_none_not_zero():
+    """零分母代表取数缺失，比率必须是 None（无法计算）而不是伪装成 0%（审计 BAL-01）。"""
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
 
-def test_qdb_gl_workbook_alerts_position_vs_ledger_mismatch():
+    metrics = module.compute_asset_liability_structure(
+        [
+            {"科目代码": "123", "期末余额": 40 * B},
+        ],
+    )
+
+    assert metrics["存款总额"] == module.Decimal("0")
+    assert metrics["存贷比%"] is None
+    assert metrics["定期化率%"] is None
+    assert metrics["活期率%"] is None
+    # 分母存在、分子为 0 的场景仍是真实的 0%，不受影响。
+    assert metrics["贷款减值准备率%"] == module.Decimal("0")
+
+def test_qdb_gl_workbook_alerts_ledger_self_check_placeholder_mismatch():
     module = load_module(
         "backend.app.core_finance.qdb_gl_monthly_analysis",
         "backend/app/core_finance/qdb_gl_monthly_analysis.py",
@@ -237,12 +417,15 @@ def test_qdb_gl_workbook_alerts_position_vs_ledger_mismatch():
         module.compute_asset_liability_structure = original
 
     alerts_sheet = next(sheet for sheet in workbook["sheets"] if sheet["key"] == "alerts")
-    assert any(
-        row["异动类型"] == "position_vs_ledger_reconciliation"
-        and row["科目代码"] == "total_assets"
+    # 该检查现在明确标注为"总账自检占位"，不再冒充跨源的"position_vs_ledger"对账结论。
+    assert not any(row["异动类型"] == "position_vs_ledger_reconciliation" for row in alerts_sheet["rows"])
+    matching = [
+        row
         for row in alerts_sheet["rows"]
-    )
-
+        if row["异动类型"] == "ledger_self_check_placeholder" and row["科目代码"] == "total_assets"
+    ]
+    assert len(matching) == 1
+    assert "不具备独立对账能力" in matching[0]["科目名称"]
 
 def test_exported_workbook_contains_all_required_sheets(tmp_path):
     module = load_module(
@@ -264,7 +447,7 @@ def test_exported_workbook_contains_all_required_sheets(tmp_path):
     assert "异动预警" in exported.sheetnames
     assert "外币分析" in exported.sheetnames
 
-
+@_REQUIRES_REAL_QDB_GL_SOURCE
 def test_real_202603_qdb_gl_overview_matches_first_wave_financial_indicator_rules():
     module = load_module(
         "backend.app.core_finance.qdb_gl_monthly_analysis",
@@ -298,7 +481,7 @@ def test_real_202603_qdb_gl_overview_matches_first_wave_financial_indicator_rule
         4.97,
     ]
 
-
+@_REQUIRES_REAL_QDB_GL_SOURCE
 def test_real_202603_qdb_gl_daily_average_deviation_outputs_keep_summary_and_top_fields():
     module = load_module(
         "backend.app.core_finance.qdb_gl_monthly_analysis",
@@ -369,7 +552,7 @@ def test_real_202603_qdb_gl_daily_average_deviation_outputs_keep_summary_and_top
         "趋势%": 27.8,
     }
 
-
+@_REQUIRES_REAL_QDB_GL_SOURCE
 def test_real_202603_qdb_gl_workbook_includes_segment_base_scale_sheet_from_financial_indicator_sample():
     module = load_module(
         "backend.app.core_finance.qdb_gl_monthly_analysis",
@@ -430,7 +613,7 @@ def test_real_202603_qdb_gl_workbook_includes_segment_base_scale_sheet_from_fina
     assert str(micro_loan[source_key]).startswith("source_missing:")
     assert "80297" in str(micro_loan[source_key])
 
-
+@_REQUIRES_REAL_QDB_GL_SOURCE
 def test_real_202603_qdb_gl_workbook_includes_segment_scale_yoy_mom_compare_sheet():
     module = load_module(
         "backend.app.core_finance.qdb_gl_monthly_analysis",
@@ -508,7 +691,7 @@ def test_real_202603_qdb_gl_workbook_includes_segment_scale_yoy_mom_compare_shee
     assert str(micro_loan["\u53e3\u5f84\u6765\u6e90"]).startswith("source_missing:")
     assert "80297" in str(micro_loan["\u53e3\u5f84\u6765\u6e90"])
 
-
+@_REQUIRES_REAL_QDB_GL_SOURCE
 def test_real_202603_qdb_gl_workbook_includes_company_scale_sheet():
     module = load_module(
         "backend.app.core_finance.qdb_gl_monthly_analysis",
@@ -550,7 +733,18 @@ def test_real_202603_qdb_gl_workbook_includes_company_scale_sheet():
             "口径来源": source_value,
         }
 
+    # BAL-P1-07：合计行后紧跟"组件和-合计"残差披露行；202603 实测 21601 族只有 21601020001，残差为 0。
+    labels = [row["指标"] for row in sheet["rows"]]
+    disclosure = sheet["rows"][labels.index("公司存款合计") + 1]
+    assert disclosure == {
+        "指标": "披露：公司存款组件和-合计残差",
+        "时点余额": 0,
+        "年日均": 0,
+        "月日均": 0,
+        "口径来源": module.COMPANY_SCALE_STRUCTURED_RESIDUAL_SOURCE,
+    }
 
+@_REQUIRES_REAL_QDB_GL_SOURCE
 def test_real_202603_qdb_gl_workbook_includes_company_scale_compare_sheet():
     module = load_module(
         "backend.app.core_finance.qdb_gl_monthly_analysis",
@@ -610,7 +804,7 @@ def test_real_202603_qdb_gl_workbook_includes_company_scale_compare_sheet():
         "口径来源": source_value,
     }
 
-
+@_REQUIRES_REAL_QDB_GL_SOURCE
 def test_real_202603_qdb_gl_workbook_includes_retail_scale_sheet():
     module = load_module(
         "backend.app.core_finance.qdb_gl_monthly_analysis",
@@ -664,7 +858,18 @@ def test_real_202603_qdb_gl_workbook_includes_retail_scale_sheet():
     assert str(micro_loan["口径来源"]).startswith("source_missing:")
     assert "80297" in str(micro_loan["口径来源"])
 
+    # BAL-P1-07：合计行后紧跟"组件和-合计"残差披露行；202603 实测 21602 族只有 21602020001，残差为 0。
+    labels = [row["指标"] for row in sheet["rows"]]
+    disclosure = sheet["rows"][labels.index("零售存款合计") + 1]
+    assert disclosure == {
+        "指标": "披露：零售存款组件和-合计残差",
+        "时点余额": 0,
+        "年日均": 0,
+        "月日均": 0,
+        "口径来源": module.RETAIL_SCALE_STRUCTURED_RESIDUAL_SOURCE,
+    }
 
+@_REQUIRES_REAL_QDB_GL_SOURCE
 def test_real_202603_qdb_gl_workbook_includes_retail_scale_compare_sheet():
     module = load_module(
         "backend.app.core_finance.qdb_gl_monthly_analysis",
@@ -732,7 +937,7 @@ def test_real_202603_qdb_gl_workbook_includes_retail_scale_compare_sheet():
     assert str(branch_loan["口径来源"]).startswith("source_missing:")
     assert "80297" in str(branch_loan["口径来源"])
 
-
+@_REQUIRES_REAL_QDB_GL_SOURCE
 def test_real_202603_qdb_gl_workbook_includes_financial_market_scale_sheet():
     module = load_module(
         "backend.app.core_finance.qdb_gl_monthly_analysis",
@@ -791,7 +996,7 @@ def test_real_202603_qdb_gl_workbook_includes_financial_market_scale_sheet():
         "\u53e3\u5f84\u6765\u6e90": source_value,
     }
 
-
+@_REQUIRES_REAL_QDB_GL_SOURCE
 def test_real_202603_qdb_gl_workbook_includes_financial_market_scale_compare_sheet():
     module = load_module(
         "backend.app.core_finance.qdb_gl_monthly_analysis",
@@ -868,7 +1073,7 @@ def test_real_202603_qdb_gl_workbook_includes_financial_market_scale_compare_she
         "\u53e3\u5f84\u6765\u6e90": source_value,
     }
 
-
+@_REQUIRES_REAL_QDB_GL_SOURCE
 def test_real_202603_qdb_gl_workbook_includes_income_rate_analysis_sheet():
     module = load_module(
         "backend.app.core_finance.qdb_gl_monthly_analysis",
@@ -927,7 +1132,7 @@ def test_real_202603_qdb_gl_workbook_includes_income_rate_analysis_sheet():
     assert rows["\u91d1\u878d\u6295\u8d44\u5229\u606f\u6536\u5165"]["\u603b\u8d26\u6536\u76ca/\u652f\u51fa"] is None
     assert str(rows["\u91d1\u878d\u6295\u8d44\u5229\u606f\u6536\u5165"]["\u53e3\u5f84\u6765\u6e90"]).startswith("source_missing:")
 
-
+@_REQUIRES_REAL_QDB_GL_SOURCE
 def test_real_202603_qdb_gl_workbook_includes_income_rate_attribution_sheet():
     module = load_module(
         "backend.app.core_finance.qdb_gl_monthly_analysis",
@@ -1002,7 +1207,7 @@ def test_real_202603_qdb_gl_workbook_includes_income_rate_attribution_sheet():
     assert rows["\u91d1\u878d\u6295\u8d44\u5229\u606f\u6536\u5165"]["\u589e\u51cf\u989d"] is None
     assert str(rows["\u91d1\u878d\u6295\u8d44\u5229\u606f\u6536\u5165"]["\u53e3\u5f84\u6765\u6e90"]).startswith("source_missing:")
 
-
+@_REQUIRES_REAL_QDB_GL_SOURCE
 def test_real_202603_qdb_gl_workbook_includes_deposit_interest_split_sheet():
     module = load_module(
         "backend.app.core_finance.qdb_gl_monthly_analysis",
@@ -1062,7 +1267,7 @@ def test_real_202603_qdb_gl_workbook_includes_deposit_interest_split_sheet():
     assert rows["\u50a8\u84c4\u5b58\u6b3e-\u5b9a\u671f"]["\u5e74\u7d2f\u8ba1\u5229\u606f\u652f\u51fa"] == 10.8
     assert rows["\u5b58\u6b3e\u5229\u606f\u652f\u51fa\u5408\u8ba1"]["\u672c\u6708\u5229\u606f\u652f\u51fa"] == 6.46
 
-
+@_REQUIRES_REAL_QDB_GL_SOURCE
 def test_real_202603_qdb_gl_workbook_includes_parent_company_revenue_components_sheet():
     module = load_module(
         "backend.app.core_finance.qdb_gl_monthly_analysis",
@@ -1113,7 +1318,6 @@ def test_real_202603_qdb_gl_workbook_includes_parent_company_revenue_components_
     assert rows["\u91d1\u878d\u6295\u8d44\u5229\u606f\u6536\u5165"]["\u540c\u6bd4\u672c\u671f"] is None
     assert str(rows["\u91d1\u878d\u6295\u8d44\u5229\u606f\u6536\u5165"]["\u53e3\u5f84\u6765\u6e90"]).startswith("source_missing:")
 
-
 def _real_qdb_gl_source_dir() -> Path:
     ledger_token = "\u603b\u8d26\u5bf9\u8d26"
     average_token = "\u65e5\u5747"
@@ -1123,10 +1327,8 @@ def _real_qdb_gl_source_dir() -> Path:
         if path.is_dir() and ledger_token in path.name and average_token in path.name
     )
 
-
 def _real_month_source(source_dir: Path, token: str, month_key: str) -> Path:
     return next(path for path in source_dir.glob(f"*{month_key}.xlsx") if token in path.name)
-
 
 def _write_month_pair(target_dir: Path, month_key: str) -> tuple[Path, Path]:
     avg_path = target_dir / f"日均{month_key}.xlsx"
@@ -1134,7 +1336,6 @@ def _write_month_pair(target_dir: Path, month_key: str) -> tuple[Path, Path]:
     _write_average_workbook(avg_path)
     _write_ledger_workbook(ledger_path)
     return avg_path, ledger_path
-
 
 def _write_average_workbook(path: Path) -> None:
     workbook = Workbook()
@@ -1145,7 +1346,7 @@ def _write_average_workbook(path: Path) -> None:
     for worksheet in (year_sheet, month_sheet):
         worksheet.append(["机构：199200青岛银行"])
         worksheet.append(["日期：2026-02-01 至 2026-02-28"])
-        worksheet.append([None] * 31)
+        worksheet.append(_daily_avg_header_row())
 
     month_rows = [
         _avg_row(cnx_3="101", cnx_3_val=18 * B, cny_3="101", cny_3_val=18 * B),
@@ -1191,6 +1392,13 @@ def _write_average_workbook(path: Path) -> None:
 
     workbook.save(path)
 
+def _daily_avg_header_row() -> list:
+    row: list = [None] * 31
+    for code_col, value_col in ((1, 2), (5, 6), (9, 10), (13, 14), (17, 18), (21, 22), (25, 26), (29, 30)):
+        row[code_col - 1] = "币种"
+        row[code_col] = "科目"
+        row[value_col] = "科目日均余额"
+    return row
 
 def _avg_row(
     *,
@@ -1234,7 +1442,6 @@ def _avg_row(
         row[30] = cny_11_val
     return row
 
-
 def _write_ledger_workbook(path: Path) -> None:
     workbook = Workbook()
     default = workbook.active
@@ -1253,7 +1460,6 @@ def _write_ledger_workbook(path: Path) -> None:
 
     workbook.save(path)
 
-
 def _ledger_rows(currency: str):
     return [
         _balanced_ledger_row("10101000001", "现金", currency, 18 * B, 20 * B),
@@ -1271,7 +1477,6 @@ def _ledger_rows(currency: str):
         _balanced_ledger_row("25501000001", "卖出回购", currency, -197 * B, -60 * B),
     ]
 
-
 def _balanced_ledger_row(
     account_code: str,
     account_name: str,
@@ -1283,3 +1488,154 @@ def _balanced_ledger_row(
     debit = delta if delta >= 0 else 0
     credit = abs(delta) if delta < 0 else 0
     return (account_code, account_name, currency, opening_balance, debit, credit, ending_balance)
+
+def test_segment_sheets_supported_uses_open_ended_lower_bound():
+    """分部/收益类 sheet 的年份门槛是"2026-01 起"的下界，不是 startswith("2026")。
+
+    2026-07-19 审计 余额 M-8：原实现在 2027-01 起会让 7 张 sheet 静默消失。
+    """
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+
+    assert not module._segment_sheets_supported("202512")
+    assert module._segment_sheets_supported("202601")
+    assert module._segment_sheets_supported("202612")
+    # 关键回归：2027 及以后必须继续输出分部 sheet
+    assert module._segment_sheets_supported("202701")
+    assert module._segment_sheets_supported("203001")
+    assert not module._segment_sheets_supported("")
+
+def test_financial_market_scale_spot_interbank_assets_deducts_14004_14005():
+    """BAL-P1-01：金融市场"同业资产"时点余额必须与年/月日均同口径扣减 14004/14005。
+
+    修复前 value_5d 的期末余额分支硬编码返回 0，时点口径不扣减（口径依据
+    product_category_mapping 买入返售 scale_accounts=["140","-14004","-14005"]）。
+    """
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+    merged = {
+        "3位": [
+            {"科目代码": "120", "期末余额": 100 * B},
+            {"科目代码": "121", "期末余额": 50 * B},
+            {"科目代码": "140", "期末余额": 80 * B},
+        ],
+        "日均_3位": [
+            {"科目代码": "120", "年日均": 90 * B, "月日均": 95 * B},
+            {"科目代码": "121", "年日均": 40 * B, "月日均": 45 * B},
+            {"科目代码": "140", "年日均": 70 * B, "月日均": 75 * B},
+        ],
+        "日均_5位": [
+            {"科目代码": "14004", "年日均": 7 * B, "月日均": 6 * B},
+            {"科目代码": "14005", "年日均": 3 * B, "月日均": 2 * B},
+        ],
+        "11位": [
+            {"科目代码": "14004000001", "期末余额": 8 * B},
+            {"科目代码": "14005000001", "期末余额": 2 * B},
+        ],
+    }
+
+    rows = {row["指标"]: row for row in module._financial_market_scale_raw_rows(merged)}
+    interbank = rows["同业资产"]
+    # 时点 = (120+121+140) - 14004族 - 14005族 = 230 - 8 - 2 = 220 亿
+    assert interbank["时点余额"] == 220 * B
+    # 年/月日均维持既有扣减口径
+    assert interbank["年日均"] == 190 * B
+    assert interbank["月日均"] == 207 * B
+
+def test_industry_gap_handles_loan_only_industry_without_deposits():
+    """BAL-P1-02：有贷款无存款的行业必须按存款 0 参与，不得 None.get 崩溃。"""
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+    merged = {
+        "5位_公司贷款": [
+            {"行业代码": "03", "行业名称": "制造业", "期末余额": 10 * B, "月日均": 8 * B},
+            {"行业代码": "01", "行业名称": "农林牧渔", "期末余额": 6 * B, "月日均": 5 * B},
+        ],
+        # 制造业完全没有存款行；农林牧渔只有活期、没有定期。
+        "5位_活期存款": [
+            {"行业代码": "01", "期末余额": -2 * B, "月日均": -1 * B},
+        ],
+        "5位_定期存款": [],
+    }
+
+    rows = {row["行业"]: row for row in module.compute_industry_gap(merged)}
+
+    manufacturing = rows["制造业"]
+    assert manufacturing["存款期末"] == 0
+    assert manufacturing["存贷差_时点"] == 10
+    assert manufacturing["存款月日均"] == 0
+    assert manufacturing["存贷差_日均"] == 8
+
+    agriculture = rows["农林牧渔"]
+    assert agriculture["存款期末"] == 2
+    assert agriculture["存贷差_时点"] == 4
+    assert agriculture["存款月日均"] == 1
+    assert agriculture["存贷差_日均"] == 4
+
+def test_company_scale_sheet_discloses_structured_deposit_component_total_residual():
+    """BAL-P1-07：结构性组件取 21601 全族而合计只含 21601020001 时，公司规模 sheet 必须披露残差。"""
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+    merged = {
+        "3位": [{"科目代码": "201", "期末余额": -100 * B}],
+        "日均_3位": [],
+        "日均_5位": [],
+        "11位": [
+            {"科目代码": "21601010001", "期末余额": -30 * B},
+            {"科目代码": "21601020001", "期末余额": -20 * B},
+        ],
+    }
+
+    sheet = module._build_company_scale_sheet(report_month="202603", merged_data=merged)
+
+    labels = [row["指标"] for row in sheet["rows"]]
+    disclosure = sheet["rows"][labels.index("公司存款合计") + 1]
+    # 组件和含 21601 全族(50亿)，合计只含 21601020001(20亿)：残差 = 30亿
+    assert disclosure == {
+        "指标": "披露：公司存款组件和-合计残差",
+        "时点余额": 30,
+        "年日均": 0,
+        "月日均": 0,
+        "口径来源": module.COMPANY_SCALE_STRUCTURED_RESIDUAL_SOURCE,
+    }
+    assert str(disclosure["口径来源"]).startswith("disclosure:")
+    assert "BAL-P1-07" in str(disclosure["口径来源"])
+
+def test_retail_scale_sheet_discloses_structured_deposit_component_total_residual():
+    """BAL-P1-07：结构性组件取 21602 全族而合计只含 21602020001 时，零售规模 sheet 必须披露残差。"""
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+    merged = {
+        "3位": [{"科目代码": "211", "期末余额": -80 * B}],
+        "日均_3位": [],
+        "日均_5位": [],
+        "11位": [
+            {"科目代码": "21602010001", "期末余额": -40 * B},
+            {"科目代码": "21602020001", "期末余额": -10 * B},
+        ],
+    }
+
+    sheet = module._build_retail_scale_sheet(report_month="202603", merged_data=merged)
+
+    labels = [row["指标"] for row in sheet["rows"]]
+    disclosure = sheet["rows"][labels.index("零售存款合计") + 1]
+    # 组件和含 21602 全族(50亿)，合计只含 21602020001(10亿)：残差 = 40亿
+    assert disclosure == {
+        "指标": "披露：零售存款组件和-合计残差",
+        "时点余额": 40,
+        "年日均": 0,
+        "月日均": 0,
+        "口径来源": module.RETAIL_SCALE_STRUCTURED_RESIDUAL_SOURCE,
+    }
+    assert str(disclosure["口径来源"]).startswith("disclosure:")
+    assert "BAL-P1-07" in str(disclosure["口径来源"])

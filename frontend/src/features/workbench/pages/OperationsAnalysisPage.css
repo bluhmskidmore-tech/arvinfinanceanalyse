@@ -1,18 +1,110 @@
 .operations-analysis-page {
-  --ops-ink: #162033;
-  --ops-muted: #586575;
-  --ops-line: #d6dedc;
-  --ops-soft-line: #e4ebe8;
-  --ops-blue: #1850a1;
-  --ops-blue-soft: #eff4f8;
-  --ops-green: #306648;
-  --ops-green-soft: #ecf8f0;
-  --ops-amber: #935a1c;
-  --ops-amber-soft: #faf3e7;
-  --ops-display-font: "Alibaba PuHuiTi 3.0", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif;
-  --ops-shell-border-soft: #e4e9f0;
+  /*
+   * Nocturne scope 页根（2026-08-13 换肤）：页根同元素声明
+   * data-moss-theme-scope="operations-analysis"，tokens.css 别名块把
+   * --dh-api-* 重映射至 --nct-* 色板；页面别名一律直指 --dh-api-*
+   * （ledger-pnl 先例），不再经 --ib-* 中转（--ib-* 在 ThemedRouteBoundary
+   * 上已被算成钢蓝字面值，页根 scope 翻不动继承值）。No bare hex.
+   */
+  --ops-ink: var(--dh-api-ink);
+  --ops-muted: var(--dh-api-soft);
+  --ops-line: var(--dh-api-line-soft);
+  --ops-soft-line: var(--dh-api-line-soft);
+  --ops-blue: var(--dh-api-blue);
+  --ops-blue-soft: var(--dh-api-blue-soft);
+  --ops-green: var(--dh-api-green);
+  --ops-green-soft: color-mix(in srgb, var(--dh-api-green) 10%, var(--dh-api-panel));
+  --ops-amber: var(--dh-api-amber);
+  --ops-amber-soft: color-mix(in srgb, var(--dh-api-amber) 10%, var(--dh-api-panel));
+  --ops-display-font: var(--moss-font-sans);
+  --ops-shell-border-soft: var(--dh-api-line-soft);
+
+  /*
+   * 共享组件重映射（risk-tensor / product-category 先例）：AlertList /
+   * CalendarList / StatusPill / PageAsyncSection / business-analysis 模块
+   * 仍消费 --ib-* 与 --moss-color-*（boundary 计算值为钢蓝或浅色字面量），
+   * 在 scope 元素上重解析回 --dh-api-* 链。
+   */
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line-soft);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-surface: var(--dh-api-blue-soft);
+  --ib-radius: var(--dh-api-radius);
+  --ib-shadow: none;
+  --ib-warn: var(--dh-api-amber);
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
+  --moss-color-border-default: var(--dh-api-line);
+  --moss-color-card-bg: var(--dh-api-panel);
+  --moss-color-danger-200: color-mix(in srgb, var(--dh-api-red) 42%, transparent);
+  --moss-color-danger-50: var(--dh-api-red-soft);
+  --moss-color-danger-500: var(--dh-api-red);
+  --moss-color-danger-600: var(--dh-api-red);
+  --moss-color-info-500: var(--dh-api-blue);
+  --moss-color-neutral-100: var(--dh-api-panel-3);
+  --moss-color-neutral-200: var(--dh-api-line-soft);
+  --moss-color-neutral-50: var(--dh-api-panel-2);
+  --moss-color-neutral-500: var(--dh-api-muted);
+  --moss-color-neutral-600: var(--dh-api-soft);
+  --moss-color-neutral-900: var(--dh-api-ink);
+  --moss-color-primary-600: var(--dh-api-blue);
+  --moss-color-success-200: color-mix(in srgb, var(--dh-api-green) 42%, transparent);
+  --moss-color-success-50: var(--dh-api-green-soft);
+  --moss-color-success-600: var(--dh-api-green);
+  --moss-color-text-muted: var(--dh-api-soft);
+  --moss-color-text-primary: var(--dh-api-ink);
+  --moss-color-text-secondary: var(--dh-api-soft);
+  --moss-color-warning-200: color-mix(in srgb, var(--dh-api-amber) 42%, transparent);
+  --moss-color-warning-300: color-mix(in srgb, var(--dh-api-amber) 56%, transparent);
+  --moss-color-warning-400: var(--dh-api-amber);
+  --moss-color-warning-50: var(--dh-api-amber-soft);
+  --moss-color-warning-500: var(--dh-api-amber);
+  --moss-color-warning-600: var(--dh-api-amber);
+  --moss-color-warning-700: var(--dh-api-amber);
+  --moss-shadow-card: none;
+
   display: grid;
   gap: 24px;
+  color: var(--ops-ink);
+  font-family: var(--moss-font-sans);
+}
+
+/*
+ * 共享 PageHeader（PagePrimitives.module.css）墨色与徽章为浅色字面量
+ * （IB 墨阶与浅底徽章，0-2-0 双类），页内以 0-3-0 升权覆盖为
+ * Nocturne 墨阶（stock-analysis「页内升权覆盖」先例；[class*=] 命中 CSS
+ * module 哈希类为 market-data / module-home 既有手法）。仅覆盖颜色。
+ */
+.operations-analysis-page .operations-analysis-page__hero-header span[class*="headerEyebrow"] {
+  color: var(--dh-api-muted);
+}
+
+.operations-analysis-page .operations-analysis-page__hero-header h1[class*="headerTitle"] {
+  color: var(--dh-api-ink);
+}
+
+.operations-analysis-page .operations-analysis-page__hero-header p[class*="headerDescription"] {
+  color: var(--dh-api-soft);
+}
+
+.operations-analysis-page .operations-analysis-page__hero-header span[class*="headerBadgePositive"] {
+  background: var(--dh-api-green-soft);
+  color: var(--dh-api-green);
+}
+
+.operations-analysis-page .operations-analysis-page__hero-header span[class*="headerBadgeAccent"] {
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-blue);
+}
+
+.operations-analysis-page .operations-analysis-page__hero-header span[class*="headerBadgeNeutral"] {
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
 }
 
 .operations-analysis-page__hero-shell {
@@ -22,9 +114,9 @@
   align-items: start;
   padding: 24px 24px 22px;
   border: 1px solid var(--ops-line);
-  border-radius: 24px;
-  background: linear-gradient(180deg, rgba(252, 251, 248, 0.99) 0%, rgba(246, 248, 246, 0.98) 100%);
-  box-shadow: 0 18px 40px rgba(22, 35, 46, 0.06);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  box-shadow: none;
 }
 
 .operations-analysis-page__hero-header {
@@ -44,9 +136,9 @@
 }
 
 .operations-analysis-page__filter-tray > div {
-  border-color: rgba(214, 222, 220, 0.9) !important;
-  background: rgba(255, 255, 255, 0.6) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7) !important;
+  border-color: var(--ops-line) !important;
+  background: var(--dh-api-panel-2) !important;
+  box-shadow: none !important;
 }
 
 .operations-analysis-page__filter-label {
@@ -55,30 +147,32 @@
   color: var(--ops-muted);
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .operations-analysis-page__filter-control {
   min-width: 172px;
   padding: 12px 14px;
   border: 1px solid var(--ops-line);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  box-shadow: none;
   color: var(--ops-ink);
+  font-family: var(--moss-font-sans);
 }
 
 .operations-analysis-page__primary-metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+  align-items: start;
 }
 
 .operations-analysis-page__support-metrics {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 10px;
+  align-items: start;
 }
 
 .operations-analysis-page__metric-card {
@@ -88,18 +182,18 @@
   min-height: 172px;
   padding: 18px 18px 16px;
   border: 1px solid var(--ops-shell-border-soft);
-  border-radius: 22px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 249, 245, 0.96) 100%);
-  box-shadow: 0 16px 36px rgba(22, 35, 46, 0.05);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  box-shadow: none;
   overflow: hidden;
 }
 
 .operations-analysis-page__metric-card--primary {
   min-height: 158px !important;
-  border-radius: 18px !important;
+  border-radius: var(--dh-api-radius) !important;
   border-color: var(--ops-line) !important;
-  background: linear-gradient(180deg, #ffffff 0%, #f7f9f7 100%) !important;
-  box-shadow: 0 14px 28px rgba(22, 35, 46, 0.06) !important;
+  background: var(--dh-api-panel) !important;
+  box-shadow: none !important;
 }
 
 .operations-analysis-page__metric-card--primary::before {
@@ -107,8 +201,8 @@
   top: 0;
   right: 0;
   left: 0;
-  height: 4px;
-  background: linear-gradient(90deg, var(--ops-blue), var(--ops-green));
+  height: 3px;
+  background: var(--ops-blue);
   content: "";
 }
 
@@ -116,8 +210,8 @@
   min-height: 112px !important;
   gap: 8px !important;
   padding: 14px !important;
-  border-radius: 14px !important;
-  background: rgba(255, 255, 255, 0.82) !important;
+  border-radius: var(--dh-api-radius) !important;
+  background: var(--dh-api-panel-2) !important;
   box-shadow: none !important;
 }
 
@@ -125,8 +219,8 @@
   gap: 10px;
   min-height: 138px;
   padding: 16px 16px 14px;
-  border-radius: 18px;
-  box-shadow: 0 12px 28px rgba(22, 35, 46, 0.04);
+  border-radius: var(--dh-api-radius);
+  box-shadow: none;
 }
 
 .operations-analysis-page__metric-label-row {
@@ -141,9 +235,8 @@
   color: var(--moss-color-text-muted);
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   line-height: 1.45;
-  text-transform: uppercase;
 }
 
 .operations-analysis-page__metric-value-block {
@@ -168,14 +261,25 @@
   font-weight: 800;
   letter-spacing: 0;
   line-height: 1.08;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 长读数（如日期 2026-07-31）按格宽降档，禁止折行断裂。 */
+.operations-analysis-page__metric-card[data-long-value="true"] .operations-analysis-page__metric-value {
+  font-size: 22px;
+}
+
+.operations-analysis-page__metric-card[data-compact="true"][data-long-value="true"] .operations-analysis-page__metric-value {
+  font-size: 16px;
 }
 
 .operations-analysis-page__metric-card[data-status="warning"] .operations-analysis-page__metric-value {
-  color: var(--moss-color-warning-500);
+  color: var(--dh-api-amber);
 }
 
 .operations-analysis-page__metric-card[data-status="danger"] .operations-analysis-page__metric-value {
-  color: var(--moss-color-danger-500);
+  color: var(--dh-api-red);
 }
 
 .operations-analysis-page__metric-card[data-compact="true"] .operations-analysis-page__metric-value {
@@ -187,8 +291,7 @@
   color: var(--moss-color-text-muted);
   font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .operations-analysis-page__metric-card[data-compact="true"] .operations-analysis-page__metric-unit {
@@ -224,26 +327,17 @@
   gap: 10px;
 }
 
-.operations-analysis-page__section-eyebrow {
-  color: var(--ops-muted);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
 .operations-analysis-page__section-title {
   max-width: 820px;
   margin: 0;
   color: var(--ops-ink);
-  font-family: "Alibaba PuHuiTi 3.0", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  font-family: var(--moss-font-sans);
   font-size: 24px;
   font-weight: 800;
   letter-spacing: 0;
   line-height: 1.2;
 }
 
-.operations-analysis-page__section-description,
 .operations-analysis-page__recommendation-text,
 .operations-analysis-page__entry-intro {
   max-width: 760px;
@@ -253,8 +347,96 @@
   line-height: 1.8;
 }
 
-.operations-analysis-page__section-description {
-  line-height: 1.85;
+/* 首屏失败横幅：失败原因与重试入口收敛为单条区块级披露。 */
+.operations-analysis-page__kpi-failure-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--dh-api-red) 42%, transparent);
+  border-left: 2px solid var(--dh-api-red);
+  border-radius: var(--dh-api-radius);
+  background: color-mix(in srgb, var(--dh-api-red) 8%, var(--dh-api-panel));
+  color: var(--ops-ink);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.operations-analysis-page__retry-button {
+  width: fit-content;
+  padding: 4px 14px;
+  border: 1px solid var(--ops-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  color: var(--moss-color-text-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.operations-analysis-page__retry-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.operations-analysis-page__kpi-footnote,
+.operations-analysis-page__entry-footnote {
+  margin: 0;
+  color: var(--ops-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.operations-analysis-page__entry-footnote {
+  margin-top: 10px;
+}
+
+/* 静态示例区块：默认折叠为一行，红胶囊声明保留在 summary 上。 */
+.operations-analysis-page__sample-details {
+  min-height: 0;
+  padding: 0;
+  border: 1px solid var(--ops-shell-border-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.operations-analysis-page__sample-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  padding: 12px 16px;
+  color: var(--ops-ink);
+  cursor: pointer;
+}
+
+.operations-analysis-page__sample-title {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.operations-analysis-page__sample-cue {
+  color: var(--ops-muted);
+  font-size: 12px;
+}
+
+.operations-analysis-page__sample-body {
+  display: grid;
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+/* 展开后隐藏示例组件内部与 summary 重复的面板标题（组件契约锁定，不改组件）。 */
+.operations-analysis-page__sample-body .moss-page-v2-evidence-panel {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.operations-analysis-page__sample-body .moss-page-v2-evidence-panel__heading {
+  display: none;
 }
 
 .operations-analysis-page__panel {
@@ -265,9 +447,9 @@
   min-height: 0;
   padding: 22px;
   border: 1px solid var(--ops-shell-border-soft);
-  border-radius: 24px;
-  background: linear-gradient(180deg, rgba(252, 251, 248, 0.98) 0%, rgba(247, 247, 242, 0.95) 100%);
-  box-shadow: 0 18px 44px rgba(22, 35, 46, 0.06);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  box-shadow: none;
 }
 
 .operations-analysis-page__panel-title {
@@ -292,7 +474,7 @@
 }
 
 .operations-analysis-page__text-link {
-  color: var(--moss-color-primary-600);
+  color: var(--dh-api-blue);
   font-weight: 700;
   letter-spacing: 0.01em;
   text-decoration: none;
@@ -310,7 +492,7 @@
 .operations-analysis-page__entry-title {
   margin: 0;
   color: var(--ops-ink);
-  font-family: "Alibaba PuHuiTi 3.0", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  font-family: var(--moss-font-sans);
   font-size: 18px;
   font-weight: 750;
   letter-spacing: 0;
@@ -322,6 +504,7 @@
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 16px;
   margin-top: 16px;
+  align-items: start;
 }
 
 .operations-analysis-page__decision-layout {
@@ -335,7 +518,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 14px;
-  align-items: stretch;
+  align-items: start;
 }
 
 .operations-analysis-page__decision-rail,
@@ -352,9 +535,10 @@
   align-items: start;
 }
 
+/* 期限示例折叠后改单栏，消除左右栏高差造成的空白断层（§5 align-items: start）。 */
 .operations-analysis-page__structure-layout {
   display: grid;
-  grid-template-columns: minmax(300px, 0.78fr) minmax(0, 1.22fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
   align-items: start;
 }
@@ -362,9 +546,9 @@
 .operations-analysis-page__topic-entry {
   margin: 8px 0 2px !important;
   padding: 18px 22px 22px;
-  border-left: 4px solid var(--ops-blue) !important;
-  border-radius: 24px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.76) 0%, rgba(247, 247, 242, 0.88) 100%) !important;
+  border-left: 3px solid var(--ops-blue) !important;
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2) !important;
 }
 
 @media (max-width: 1180px) {
@@ -392,13 +576,11 @@
 /* Compact cockpit alignment for the shared decision hero and status strip. */
 .operations-analysis-page__hero-main .moss-page-v2-decision-hero {
   padding: 14px 16px;
-  border: 1px solid rgba(115, 132, 153, 0.28);
+  border: 1px solid var(--ops-line);
   border-left: 3px solid var(--ops-blue);
-  border-radius: var(--moss-radius-sm);
-  background:
-    repeating-linear-gradient(0deg, transparent 0 22px, rgba(115, 132, 153, 0.055) 22px 23px),
-    linear-gradient(180deg, white 0%, var(--moss-color-neutral-50) 100%);
-  box-shadow: 0 1px 5px rgba(15, 45, 80, 0.035);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  box-shadow: none;
 }
 
 .operations-analysis-page__hero-main .moss-page-v2-decision-hero__question {
@@ -408,9 +590,9 @@
 
 .operations-analysis-page__hero-main .moss-page-v2-data-status {
   padding: 8px 10px;
-  border: 1px solid rgba(115, 132, 153, 0.24);
+  border: 1px solid var(--ops-line);
   border-left: 3px solid var(--ops-green);
-  border-radius: var(--moss-radius-sm);
-  background: rgba(255, 255, 255, 0.94);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
   box-shadow: none;
 }

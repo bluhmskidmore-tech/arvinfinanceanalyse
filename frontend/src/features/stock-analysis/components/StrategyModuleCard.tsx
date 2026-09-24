@@ -1,8 +1,9 @@
 import type { ReactNode, Ref } from "react";
-import { Button } from "antd";
+import { Button as AntButton } from "antd";
 import { DownOutlined, UpOutlined } from "@ant-design/icons";
 import type { StockStrategyPanelResultSummary } from "../lib/stockAnalysisPageModel";
 import { StrategyPanelKpiGrid } from "./StrategyPanelResultStrip";
+import { CardSkeleton } from "../../../components/Skeletons";
 
 export type StrategyModuleCardProps = {
   id: string;
@@ -46,6 +47,7 @@ export function StrategyModuleCard({
     <article
       ref={sectionRef}
       className={`stock-analysis-strategy-module-card stock-analysis-page__dh-card${toneClass}${className ? ` ${className}` : ""}`}
+      data-expanded={expanded ? "true" : "false"}
       data-testid={sectionTestId ?? `stock-analysis-strategy-card-${id}`}
     >
       <header className="stock-analysis-strategy-module-card__header">
@@ -58,16 +60,16 @@ export function StrategyModuleCard({
             <span className="stock-analysis-strategy-module-card__status-pill">{statusPill}</span>
           ) : null}
           {children ? (
-            <Button
-              type="default"
+            <AntButton
+              type="text"
               size="small"
+              icon={expanded ? <UpOutlined /> : <DownOutlined />}
               className="stock-analysis-strategy-module-card__toggle"
               data-testid={`stock-analysis-strategy-card-${id}-toggle`}
               aria-expanded={expanded}
               aria-label={toggleLabel}
               title={toggleLabel}
               onClick={onToggleExpand}
-              icon={expanded ? <UpOutlined /> : <DownOutlined />}
             />
           ) : null}
         </div>
@@ -78,12 +80,8 @@ export function StrategyModuleCard({
           className="stock-analysis-strategy-module-card__loading"
           data-testid={summaryTestId ? `${summaryTestId}-loading` : undefined}
           role="status"
-          aria-label="加载中"
         >
-          <div className="stock-analysis-strategy-module-card__loading-skeleton" aria-hidden="true">
-            <span />
-            <span />
-          </div>
+          <CardSkeleton disableWrapperStyles className="w-full pt-4 pb-2" />
         </div>
       ) : summary ? (
         <>

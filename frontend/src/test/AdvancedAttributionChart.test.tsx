@@ -1,8 +1,12 @@
 import { render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../lib/echarts", () => ({
-  default: () => <div data-testid="advanced-attribution-echarts-stub" />,
+  default: ({ option }: { option: unknown }) => (
+    <pre data-testid="advanced-attribution-echarts-stub">{JSON.stringify(option)}</pre>
+  ),
 }));
 
 import type {
@@ -14,6 +18,15 @@ import type {
 } from "../api/contracts";
 import type { DataSectionState } from "../components/DataSection.types";
 import { AdvancedAttributionChart } from "../features/pnl-attribution/components/AdvancedAttributionChart";
+
+const advancedChartSourcePath = resolve(
+  process.cwd(),
+  "src/features/pnl-attribution/components/AdvancedAttributionChart.tsx",
+);
+const advancedChartCssPath = resolve(
+  process.cwd(),
+  "src/features/pnl-attribution/components/AdvancedAttributionChart.css",
+);
 
 function n(raw: number | null, unit: Numeric["unit"] = "yuan"): Numeric {
   return {
@@ -35,28 +48,59 @@ function pct(raw: number | null, display: string): Numeric {
   };
 }
 
+function riskCoverage() {
+  return {
+    total_row_count: 100,
+    covered_row_count: 100,
+    excluded_row_count: 0,
+    total_market_value: n(12_000_000_000),
+    covered_market_value: n(12_000_000_000),
+    excluded_market_value: n(0),
+    coverage_pct: pct(1, "100.00%"),
+    excluded_pct: pct(0, "0.00%"),
+    exclusions: [],
+  };
+}
+
 describe("AdvancedAttributionChart", () => {
+  it("keeps component-level style debt from regressing", () => {
+    const source = readFileSync(advancedChartSourcePath, "utf8");
+    const stylesheet = readFileSync(advancedChartCssPath, "utf8");
+    const inlineStylePattern = new RegExp("\\bstyle\\s*=");
+    const hardcodedHexPattern = /#[0-9a-fA-F]{3,8}\b/;
+    const privateShadowPattern = /boxShadow\s*:|box-shadow\s*:\s*(?!none\b|var\()/;
+
+    expect(source).not.toMatch(inlineStylePattern);
+    expect(source).not.toMatch(hardcodedHexPattern);
+    expect(source).not.toMatch(/rgba\(/);
+    expect(source).not.toMatch(privateShadowPattern);
+    expect(stylesheet).not.toMatch(hardcodedHexPattern);
+    expect(stylesheet).not.toMatch(/rgba\(/);
+    expect(stylesheet).not.toMatch(privateShadowPattern);
+  });
+
   it("renders annualized static return without multiplying it twice", () => {
     const carryData: CarryRollDownPayload = {
       report_date: "2026-03-31",
       total_market_value: n(12_000_000_000),
-      portfolio_carry: n(1.85, "pct"),
-      portfolio_rolldown: n(0.42, "pct"),
-      portfolio_static_return: n(2.27, "pct"),
+      portfolio_carry: n(0.0185, "pct"),
+      portfolio_rolldown: n(0.0042, "pct"),
+      portfolio_static_return: n(0.0227, "pct"),
       total_carry_pnl: n(18_000_000),
       total_rolldown_pnl: n(4_000_000),
       total_static_pnl: n(22_000_000),
-      ftp_rate: n(2.15, "pct"),
+      ftp_rate: n(0.0215, "pct"),
       items: [],
     };
     const spreadData: SpreadAttributionPayload = {
       report_date: "2026-03-31",
       start_date: "2026-03-01",
       end_date: "2026-03-31",
-      treasury_10y_start: n(2.35, "pct"),
-      treasury_10y_end: n(2.2, "pct"),
+      treasury_10y_start: n(0.0235, "pct"),
+      treasury_10y_end: n(0.022, "pct"),
       treasury_10y_change: n(-15, "bp"),
       total_market_value: n(12_000_000_000),
+      risk_coverage: riskCoverage(),
       portfolio_duration: n(3.8),
       total_treasury_effect: n(22_000_000),
       total_spread_effect: n(-4_000_000),
@@ -70,6 +114,7 @@ describe("AdvancedAttributionChart", () => {
       start_date: "2026-03-01",
       end_date: "2026-03-31",
       total_market_value: n(12_000_000_000),
+      risk_coverage: riskCoverage(),
       portfolio_duration: n(3.8),
       portfolio_dv01: n(4_200_000),
       total_duration_effect: n(18_000_000),
@@ -81,9 +126,9 @@ describe("AdvancedAttributionChart", () => {
     };
     const summary: AdvancedAttributionSummary = {
       report_date: "2026-03-31",
-      portfolio_carry: n(1.85, "pct"),
-      portfolio_rolldown: n(0.42, "pct"),
-      static_return_annualized: n(9.99, "pct"),
+      portfolio_carry: n(0.0185, "pct"),
+      portfolio_rolldown: n(0.0042, "pct"),
+      static_return_annualized: n(0.0999, "pct"),
       treasury_effect_total: n(22_000_000),
       spread_effect_total: n(-4_000_000),
       spread_driver: "treasury",
@@ -148,6 +193,7 @@ describe("AdvancedAttributionChart", () => {
       treasury_10y_end: pct(0.0179, "+1.79%"),
       treasury_10y_change: n(-6.98, "bp"),
       total_market_value: n(12_000_000_000),
+      risk_coverage: riskCoverage(),
       portfolio_duration: n(3.8),
       total_treasury_effect: n(22_000_000),
       total_spread_effect: n(-4_000_000),
@@ -161,6 +207,7 @@ describe("AdvancedAttributionChart", () => {
       start_date: "2026-03-31",
       end_date: "2026-04-30",
       total_market_value: n(12_000_000_000),
+      risk_coverage: riskCoverage(),
       portfolio_duration: n(3.8),
       portfolio_dv01: n(4_200_000),
       total_duration_effect: n(18_000_000),
@@ -199,5 +246,83 @@ describe("AdvancedAttributionChart", () => {
     expect(screen.getByText("-7 BP")).toBeInTheDocument();
     expect(screen.queryByText("-0 BP")).not.toBeInTheDocument();
     expect(screen.queryByText("0.03")).not.toBeInTheDocument();
+  });
+
+  it("keeps missing KRD values as null gaps and em-dash instead of zero", () => {
+    const krdData: KRDAttributionPayload = {
+      report_date: "2026-04-30",
+      start_date: "2026-03-31",
+      end_date: "2026-04-30",
+      total_market_value: n(12_000_000_000),
+      risk_coverage: riskCoverage(),
+      portfolio_duration: n(3.8),
+      portfolio_dv01: n(null),
+      total_duration_effect: n(18_000_000),
+      curve_shift_type: "bull_steepener",
+      curve_interpretation: "test",
+      max_contribution_tenor: "5Y",
+      max_contribution_value: n(8_500_000),
+      buckets: [
+        {
+          tenor: "1Y",
+          tenor_years: n(1),
+          market_value: n(null),
+          weight: n(null),
+          bond_count: 3,
+          bucket_duration: n(0.9),
+          krd: n(0.1),
+          yield_change: n(null, "bp"),
+          duration_contribution: n(null),
+          contribution_pct: n(null, "pct"),
+        },
+        {
+          tenor: "5Y",
+          tenor_years: n(5),
+          market_value: n(1_000_000_000),
+          weight: n(40.0),
+          bond_count: 5,
+          bucket_duration: n(4.5),
+          krd: n(1.2),
+          yield_change: n(-8, "bp"),
+          duration_contribution: n(18_000_000),
+          contribution_pct: n(0.6, "pct"),
+        },
+      ],
+    };
+
+    render(
+      <AdvancedAttributionChart
+        carryData={null}
+        spreadData={null}
+        krdData={krdData}
+        summaryData={null}
+        state={{ kind: "ok" }}
+        onRetry={() => {}}
+      />,
+    );
+
+    const options = screen
+      .getAllByTestId("advanced-attribution-echarts-stub")
+      .map((node) => JSON.parse(node.textContent ?? "{}"));
+    const krdOption = options.find((option) =>
+      option.series?.some((series: { name?: string }) => series.name === "久期贡献"),
+    );
+    const contribSeries = krdOption.series.find(
+      (series: { name?: string }) => series.name === "久期贡献",
+    );
+    const contribValues = contribSeries.data.map((item: { value: number | null }) => item.value);
+    expect(contribValues).toEqual([null, 0.18]);
+
+    const compareOption = options.find((option) =>
+      option.series?.some((series: { name?: string }) => series.name === "市值占比"),
+    );
+    const weightSeries = compareOption.series.find(
+      (series: { name?: string }) => series.name === "市值占比",
+    );
+    expect(weightSeries.data).toEqual([null, 40]);
+
+    // DV01 raw 缺失显示 —，不显示 "0 万"。
+    expect(screen.queryByText("0 万")).not.toBeInTheDocument();
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 });

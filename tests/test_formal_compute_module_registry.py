@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 
 from tests.helpers import load_module
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _load_registry_modules():
@@ -177,6 +183,28 @@ def test_descriptor_uses_canonical_identity_rules():
 
     assert descriptor.cache_key == "mock_standard_module:materialize:formal"
     assert descriptor.lock_key == "lock:duckdb:formal:mock-standard-module:materialize"
+    assert descriptor.lock_ttl_seconds == 900
     assert descriptor.cache_version == "cv_mock_standard_module_formal__rv_mock_standard_v1"
     assert descriptor.stable_output_version == descriptor.cache_version
     assert descriptor.running_source_version == "sv_mock_standard_module_running"
+
+
+def test_module_contracts_import_stays_pure_of_reverse_layers():
+    """冷导入 module_contracts 不得加载 repositories/governance/schema_registry（core 纯计算层约束）。"""
+    code = (
+        "import sys; "
+        "import backend.app.core_finance.module_contracts; "
+        "loaded = sorted("
+        "m for m in sys.modules "
+        "if m.startswith(('backend.app.repositories', 'backend.app.governance', 'backend.app.schema_registry'))"
+        "); "
+        "assert not loaded, loaded"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
+    assert result.returncode == 0, result.stderr

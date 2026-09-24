@@ -153,7 +153,11 @@ def test_fx_source_runbook_freezes_vendor_first_contract_and_backfill_entrypoint
     runbook = _read_doc("docs/BALANCE_ANALYSIS_FX_SOURCE_RUNBOOK.md")
     env_example = _read_doc("config/.env.example")
 
-    assert "Choice catalog-driven middle-rate discovery -> Choice live fetch -> AkShare fallback -> fail closed" in runbook
+    assert (
+        "Choice catalog-driven middle-rate discovery -> Choice live fetch -> "
+        "ChinaMoney/CFETS official history -> AkShare fallback -> fail closed"
+        in runbook
+    )
     assert "AUD -> CNY" in runbook
     assert "HKD -> CNY" in runbook
     assert "MOSS_FX_OFFICIAL_SOURCE_PATH" in runbook
@@ -168,7 +172,11 @@ def test_data_contracts_reference_vendor_first_fx_runbook_contract_owner():
     contracts = _read_doc("docs/data_contracts.md")
 
     assert "BALANCE_ANALYSIS_FX_SOURCE_RUNBOOK.md" in contracts
-    assert "Choice catalog-driven middle-rate discovery -> Choice live fetch -> AkShare fallback -> fail closed" in contracts
+    assert (
+        "Choice catalog-driven middle-rate discovery -> Choice live fetch -> "
+        "ChinaMoney/CFETS official history -> AkShare fallback -> fail closed"
+        in contracts
+    )
     assert "MOSS_FX_OFFICIAL_SOURCE_PATH" in contracts
     assert "MOSS_FX_MID_CSV_PATH" in contracts
     assert "There is no silent `data_input/fx/fx_daily_mid.csv` fallback on the governed normal path." in contracts

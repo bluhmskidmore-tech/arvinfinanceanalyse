@@ -129,7 +129,7 @@ describe("ActionAttributionView", () => {
     );
 
     expect(await screen.findByTestId("action-attribution-meta")).toHaveTextContent("2026-03-31");
-    expect(screen.getByTestId("action-attribution-meta")).toHaveTextContent("MoM");
+    expect(screen.getByTestId("action-attribution-meta")).toHaveTextContent("期间 月度环比");
     expect(await screen.findByTestId("action-attribution-shell-lead")).toHaveTextContent(
       "动作归因",
     );
@@ -144,7 +144,7 @@ describe("ActionAttributionView", () => {
     expect(await screen.findByText("动作数量")).toBeInTheDocument();
     expect(screen.getByText("动作贡献损益")).toBeInTheDocument();
     expect(screen.getByText("久期变化")).toBeInTheDocument();
-    expect(screen.getByText("DV01变化")).toBeInTheDocument();
+    expect(screen.getByText("DV01变化（万元/bp）")).toBeInTheDocument();
     expect(screen.getByTestId("action-attribution-summary-lead")).toHaveTextContent("动作汇总");
     expect(screen.getAllByText("加久期").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText(/均次/).length).toBeGreaterThan(0);
@@ -176,11 +176,54 @@ describe("ActionAttributionView", () => {
 
     renderActionAttributionView(client);
 
-    expect(await screen.findByTestId("action-attribution-readiness")).toHaveTextContent("partial");
-    expect(screen.getByTestId("action-attribution-readiness")).toHaveTextContent("formal_positions");
+    /* 状态 token 中文化（C10）：partial→部分可用；组件技术名收进 title（正文只报数量）。 */
+    const readiness = await screen.findByTestId("action-attribution-readiness");
+    expect(readiness).toHaveTextContent("部分可用");
+    expect(readiness).toHaveTextContent("缺失输入 1 项");
+    expect(readiness.querySelector('[title*="formal_positions"]')).not.toBeNull();
   });
 
-  it("renders warning alert when warnings exist", async () => {
+  it("does not present unavailable DV01 as zero and discloses derived accounting PnL", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsActionAttribution: vi.fn(async () => ({
+        result_meta: createResultMeta({ formal_use_allowed: false, basis: "analytical" }),
+        result: createActionAttributionResult({
+          period_start_dv01: null,
+          period_end_dv01: null,
+          action_details: [
+            {
+              ...createActionAttributionResult().action_details[0],
+              delta_dv01: null,
+              delta_spread_dv01: null,
+            },
+          ],
+          status: "partial",
+          missing_inputs: ["action_level_dv01", "independent_accounting_pnl"],
+          blocked_components: [
+            "dv01_attribution",
+            "independent_accounting_pnl_reconciliation",
+          ],
+          warnings: [
+            "ACTION_ATTRIBUTION_DV01_UNAVAILABLE",
+            "ACTION_ATTRIBUTION_ACCOUNTING_PNL_DERIVED_COPY",
+          ],
+        }),
+      })),
+    };
+
+    renderActionAttributionView(client);
+
+    expect(await screen.findByText("DV01变化（万元/bp）")).toBeInTheDocument();
+    expect(screen.getByTestId("action-attribution-dv01-unavailable")).toHaveTextContent("不可用");
+    expect(screen.getByTestId("action-attribution-accounting-derived-note")).toHaveTextContent(
+      "会计损益当前由经济损益复制派生，不能独立核对",
+    );
+    expect(screen.getAllByText("ΔDV01（万元/bp）").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Δ利差DV01（万元/bp）").length).toBeGreaterThan(0);
+  });
+
+  it("renders warnings inside a collapsed disclosure with verbatim text", async () => {
     const client = {
       ...createApiClient({ mode: "mock" }),
       getBondAnalyticsActionAttribution: vi.fn(async () => ({
@@ -195,7 +238,10 @@ describe("ActionAttributionView", () => {
 
     renderActionAttributionView(client);
 
-    expect(await screen.findByText("提示")).toBeInTheDocument();
+    /* 技术 disclosure 默认折叠（C19，risk-overview 先例）：摘要报条数，原文逐字保留在折叠体内。 */
+    const disclosure = await screen.findByTestId("action-attribution-warnings-disclosure");
+    expect(disclosure).toHaveTextContent("口径与启发式提示（1 条）");
+    expect(disclosure.hasAttribute("open")).toBe(false);
     expect(screen.getByText("示例：动作链路未完全接入")).toBeInTheDocument();
   });
 

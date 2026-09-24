@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
+from typing import Any
 
 import duckdb
 from backend.app.core_finance.balance_analysis import (
@@ -11,12 +12,21 @@ from backend.app.core_finance.balance_analysis import (
     TywSnapshotRow,
     ZqtzSnapshotRow,
 )
+from backend.app.core_finance.fx_calendar import is_cfets_fx_non_business_day
+from backend.app.core_finance.fx_rates import is_valid_fx_mid_rate
 from backend.app.repositories.currency_codes import normalize_currency_code
 from backend.app.repositories.duckdb_migrations import (
     apply_pending_migrations_on_connection,
     ensure_balance_zqtz_legacy_columns,
 )
-from backend.app.repositories.duckdb_repo import DuckDBRepository
+from backend.app.repositories.duckdb_repo import DuckDBRepository, read_only_connection
+from backend.app.repositories.fact_load_gates import (
+    TYW_BALANCE_NATURAL_KEY,
+    ZQTZ_BALANCE_NATURAL_KEY,
+    commit_report_date_purge,
+    enforce_gate_outcome,
+    evaluate_natural_key_load,
+)
 from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 
 
@@ -84,6 +94,12 @@ class FormalFxRateLookup:
     is_business_day: bool
     is_carry_forward: bool
     observed_trade_date: str | None
+
+
+def _consistency_decimal(value: object) -> Decimal:
+    if isinstance(value, Decimal):
+        return value
+    return Decimal(str(value if value is not None else 0))
 
 
 @dataclass
@@ -252,6 +268,18 @@ class BalanceAnalysisRepository(DuckDBRepository):
             raise ValueError(
                 f"Missing formal fx rate for base_currency={base_currency_normalized} report_date={report_date}"
             )
+        try:
+            rate = Decimal(str(mid_rate))
+        except InvalidOperation as exc:
+            raise ValueError(
+                f"Invalid formal fx rate for base_currency={base_currency_normalized} report_date={report_date}: "
+                "mid_rate must be finite and greater than zero."
+            ) from exc
+        if not is_valid_fx_mid_rate(rate):
+            raise ValueError(
+                f"Invalid formal fx rate for base_currency={base_currency_normalized} report_date={report_date}: "
+                "mid_rate must be finite and greater than zero."
+            )
 
         business_day = bool(is_business_day)
         carry_forward = bool(is_carry_forward)
@@ -263,7 +291,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
                     "business-day row cannot be carry-forward."
                 )
             return FormalFxRateLookup(
-                rate=Decimal(str(mid_rate)),
+                rate=rate,
                 source_version=str(source_version or ""),
                 is_business_day=True,
                 is_carry_forward=False,
@@ -280,8 +308,17 @@ class BalanceAnalysisRepository(DuckDBRepository):
                 f"Invalid formal fx carry-forward metadata for base_currency={base_currency_normalized} report_date={report_date}: "
                 f"observed_trade_date={observed_trade_date_str} must be before report_date."
             )
+        if not is_cfets_fx_non_business_day(
+            report_date,
+            base_currency=base_currency_normalized,
+            quote_currency="CNY",
+        ):
+            raise ValueError(
+                f"Invalid formal fx carry-forward metadata for base_currency={base_currency_normalized} report_date={report_date}: "
+                "carry-forward is only allowed for confirmed non-business-day rows."
+            )
         return FormalFxRateLookup(
-            rate=Decimal(str(mid_rate)),
+            rate=rate,
             source_version=str(source_version or ""),
             is_business_day=False,
             is_carry_forward=True,
@@ -310,67 +347,52 @@ class BalanceAnalysisRepository(DuckDBRepository):
             ).rate
         return resolved or None
 
-    def fetch_zqtz_snapshot_native_face_values(
+    def fetch_zqtz_snapshot_native_face_value_rows(
         self,
         *,
         report_date: str,
-    ) -> dict[tuple[str, str, str, str], Decimal]:
-        """Face values from raw zqtz snapshot (for pnl.bridge native column enrichment)."""
+    ) -> list[dict[str, object]]:
+        """Face values from raw zqtz snapshot (for pnl.bridge native column enrichment).
+
+        Returns rows rather than a pre-keyed map: the snapshot's position identity
+        needs ``asset_class`` (the snapshot-side stand-in for the fact's
+        ``accounting_basis``) and ``maturity_date`` on top of instrument / portfolio /
+        cost center / currency, and the caller that joins these rows is the one that
+        must own that key — a map keyed here would silently drop whichever row lost
+        the race, which is the defect this shape removes.
+        """
         if not self._table_exists("zqtz_bond_daily_snapshot"):
-            return {}
+            return []
         rows = self._fetch_rows(
             """
-            select instrument_code, portfolio_name, cost_center, currency_code, face_value_native
+            select instrument_code, portfolio_name, cost_center, asset_class, maturity_date,
+                   currency_code, face_value_native
             from zqtz_bond_daily_snapshot
             where report_date = ?
             """,
             [report_date],
         )
-        return {
-            (
-                str(instrument_code or ""),
-                str(portfolio_name or ""),
-                str(cost_center or ""),
-                str(currency_code or "").upper(),
-            ): Decimal(str(face_value_native))
-            for instrument_code, portfolio_name, cost_center, currency_code, face_value_native in rows
+        return [
+            {
+                "instrument_code": str(instrument_code or ""),
+                "portfolio_name": str(portfolio_name or ""),
+                "cost_center": str(cost_center or ""),
+                "asset_class": str(asset_class or ""),
+                "maturity_date": maturity_date,
+                "currency_code": str(currency_code or ""),
+                "face_value_native": Decimal(str(face_value_native)),
+            }
+            for (
+                instrument_code,
+                portfolio_name,
+                cost_center,
+                asset_class,
+                maturity_date,
+                currency_code,
+                face_value_native,
+            ) in rows
             if face_value_native is not None
-        }
-
-    def resolve_fx_mid_rates_map(self, *, report_date: str) -> dict[str, Decimal] | None:
-        """Map upper currency code to CNY mid rate for ``report_date`` (with trade_date LOCF fallback)."""
-        if not self._table_exists("fx_daily_mid"):
-            return None
-        rows = self._fetch_rows(
-            """
-            select base_currency, mid_rate
-            from fx_daily_mid
-            where trade_date = ?
-              and quote_currency = 'CNY'
-            """,
-            [report_date],
-        )
-        if not rows:
-            rows = self._fetch_rows(
-                """
-                select base_currency, mid_rate
-                from fx_daily_mid
-                where trade_date <= ?
-                  and quote_currency = 'CNY'
-                order by trade_date desc
-                limit 10
-                """,
-                [report_date],
-            )
-        if not rows:
-            return None
-        resolved: dict[str, Decimal] = {}
-        for base_currency, mid_rate in rows:
-            base = str(base_currency or "").upper().strip()
-            if not base or base in resolved:
-                continue
-            resolved[base] = Decimal(str(mid_rate))
-        return resolved or None
+        ]
 
     def replace_formal_balance_rows(
         self,
@@ -380,18 +402,36 @@ class BalanceAnalysisRepository(DuckDBRepository):
         tyw_rows: list[FormalTywBalanceFactRow],
     ) -> None:
         require_repository_task_write_scope("replace_formal_balance_rows")
+        for gated_rows, gated_table, gated_key in (
+            (zqtz_rows, "fact_formal_zqtz_balance_daily", ZQTZ_BALANCE_NATURAL_KEY),
+            (tyw_rows, "fact_formal_tyw_balance_daily", TYW_BALANCE_NATURAL_KEY),
+        ):
+            enforce_gate_outcome(
+                evaluate_natural_key_load(
+                    gated_rows, table_name=gated_table, key_fields=gated_key
+                ),
+                table_name=gated_table,
+            )
         conn = duckdb.connect(self.path, read_only=False)
+        transaction_started = False
         try:
             conn.execute("begin transaction")
+            transaction_started = True
             ensure_balance_analysis_tables(conn)
-            conn.execute(
-                "delete from fact_formal_zqtz_balance_daily where report_date = ?",
-                [report_date],
+            conn.execute("commit")
+            transaction_started = False
+
+            commit_report_date_purge(
+                conn,
+                tables=(
+                    "fact_formal_zqtz_balance_daily",
+                    "fact_formal_tyw_balance_daily",
+                ),
+                report_date=report_date,
             )
-            conn.execute(
-                "delete from fact_formal_tyw_balance_daily where report_date = ?",
-                [report_date],
-            )
+
+            conn.execute("begin transaction")
+            transaction_started = True
             if zqtz_rows:
                 conn.executemany(
                     """
@@ -532,8 +572,15 @@ class BalanceAnalysisRepository(DuckDBRepository):
                 )
             sync_zqtz_snapshot_market_value_cny_from_formal(conn, report_date)
             conn.execute("commit")
+            transaction_started = False
         except Exception:
-            conn.execute("rollback")
+            # 只有确有活动事务才回滚：无事务时 rollback 自身抛错会掩盖原始异常
+            # （与 bond_analytics_repo.replace_bond_analytics_rows 同一模式）。
+            if transaction_started:
+                try:
+                    conn.execute("rollback")
+                except Exception:  # noqa: S110  # 回滚失败不得掩盖随后 raise 的原始写入异常
+                    pass
             raise
         finally:
             conn.close()
@@ -575,6 +622,61 @@ class BalanceAnalysisRepository(DuckDBRepository):
         except duckdb.Error as exc:
             raise RuntimeError("Formal balance query failed for pnl.bridge.") from exc
         return str(rows[0][0]) if rows else None
+
+    def fetch_stale_formal_zqtz_report_dates(
+        self,
+        *,
+        report_dates: list[str],
+    ) -> list[str]:
+        """report_dates whose formal ZQTZ asset rows are missing or unrefreshed
+        (row_count is 0, or every row has a blank business_type_primary).
+
+        Fails open (treats the date as stale) on any DuckDB error or absent
+        table, so refresh callers retry materialization rather than silently
+        skipping it.
+        """
+        if not report_dates:
+            return []
+        try:
+            rows = self._fetch_rows(
+                """
+                select
+                  cast(report_date as varchar) as report_date,
+                  count(*) as row_count,
+                  sum(
+                    case
+                      when coalesce(trim(business_type_primary), '') = '' then 1
+                      else 0
+                    end
+                  ) as empty_business_type_count
+                from fact_formal_zqtz_balance_daily
+                where cast(report_date as varchar) in (select unnest(?))
+                  and currency_basis = 'CNY'
+                  and position_scope = 'asset'
+                group by 1
+                """,
+                [report_dates],
+            )
+        except duckdb.Error:
+            return report_dates
+
+        freshness_by_date = {
+            str(row[0]): {
+                "row_count": int(row[1] or 0),
+                "empty_business_type_count": int(row[2] or 0),
+            }
+            for row in rows
+        }
+        stale_dates: list[str] = []
+        for current_report_date in report_dates:
+            freshness = freshness_by_date.get(current_report_date)
+            if freshness is None:
+                stale_dates.append(current_report_date)
+                continue
+            row_count = freshness["row_count"]
+            if row_count == 0 or freshness["empty_business_type_count"] == row_count:
+                stale_dates.append(current_report_date)
+        return stale_dates
 
     def fetch_formal_zqtz_rows(
         self,
@@ -692,6 +794,95 @@ class BalanceAnalysisRepository(DuckDBRepository):
         ]
         return [dict(zip(columns, row, strict=True)) for row in rows]
 
+    def fetch_tyw_snapshot_fact_native_consistency_rows(
+        self,
+        *,
+        report_dates: list[str] | None = None,
+        snapshot_ingest_batch_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Read-only 核对：``tyw_interbank_daily_snapshot`` 与
+        ``fact_formal_tyw_balance_daily``（``currency_basis = 'native'``）逐报告日
+        比对行数与本金合计。
+
+        仅暴露差异，不裁决哪一侧为准（snapshot 是标准化输入而非正式口径结果）。
+        ``report_dates`` 为 None 时扫描两侧出现过的全部报告日；显式传入时每个
+        请求日期都会返回一行（两侧均无数据则合计为 0）。
+        ``snapshot_ingest_batch_id`` 只作用于 snapshot 侧，用于与物化时实际选取的
+        批次做同口径比对。
+        """
+        snapshot_totals = self._fetch_tyw_native_principal_totals(
+            table_name="tyw_interbank_daily_snapshot",
+            amount_column="principal_native",
+            report_dates=report_dates,
+            ingest_batch_id=snapshot_ingest_batch_id,
+        )
+        fact_totals = self._fetch_tyw_native_principal_totals(
+            table_name="fact_formal_tyw_balance_daily",
+            amount_column="principal_amount",
+            report_dates=report_dates,
+            currency_basis="native",
+        )
+
+        all_dates = set(snapshot_totals) | set(fact_totals)
+        if report_dates is not None:
+            all_dates |= {str(rd) for rd in report_dates}
+        zero = (0, Decimal("0"))
+        out: list[dict[str, Any]] = []
+        for rd in sorted(all_dates):
+            snapshot_row_count, snapshot_total = snapshot_totals.get(rd, zero)
+            fact_row_count, fact_total = fact_totals.get(rd, zero)
+            out.append(
+                {
+                    "report_date": rd,
+                    "snapshot_row_count": snapshot_row_count,
+                    "snapshot_principal_native_total": snapshot_total,
+                    "fact_native_row_count": fact_row_count,
+                    "fact_principal_native_total": fact_total,
+                    "principal_native_diff": fact_total - snapshot_total,
+                }
+            )
+        return out
+
+    def _fetch_tyw_native_principal_totals(
+        self,
+        *,
+        table_name: str,
+        amount_column: str,
+        report_dates: list[str] | None,
+        ingest_batch_id: str | None = None,
+        currency_basis: str | None = None,
+    ) -> dict[str, tuple[int, Decimal]]:
+        if not self._table_exists(table_name):
+            return {}
+        where_parts = ["1 = 1"]
+        params: list[object] = []
+        if report_dates is not None:
+            if not report_dates:
+                return {}
+            where_parts.append("cast(report_date as varchar) in (select unnest(?))")
+            params.append([str(rd) for rd in report_dates])
+        if ingest_batch_id is not None:
+            where_parts.append("ingest_batch_id = ?")
+            params.append(ingest_batch_id)
+        if currency_basis is not None:
+            where_parts.append("currency_basis = ?")
+            params.append(currency_basis)
+        rows = self._fetch_rows(
+            f"""
+            select cast(report_date as varchar) as report_date,
+                   count(*) as row_count,
+                   coalesce(sum({amount_column}), 0) as principal_native_total
+            from {table_name}
+            where {' and '.join(where_parts)}
+            group by 1
+            """,
+            params,
+        )
+        return {
+            str(row[0]): (int(row[1] or 0), _consistency_decimal(row[2]))
+            for row in rows
+        }
+
     def fetch_formal_overview(
         self,
         *,
@@ -800,6 +991,33 @@ class BalanceAnalysisRepository(DuckDBRepository):
                     as asset_total_accrued_interest_amount,
                   zqtz.liability_accrued_interest_amount + tyw.liability_accrued_interest_amount
                     as liability_total_accrued_interest_amount,
+                  zqtz.detail_row_count + tyw.detail_row_count as lineage_row_count,
+                  (
+                    select count(*)
+                    from (
+                      select source_version
+                      from fact_formal_zqtz_balance_daily
+                      where {' and '.join(zqtz_where_parts)}
+                      union all
+                      select source_version
+                      from fact_formal_tyw_balance_daily
+                      where {' and '.join(tyw_where_parts)}
+                    )
+                    where coalesce(trim(source_version), '') = ''
+                  ) as source_version_missing_count,
+                  (
+                    select count(*)
+                    from (
+                      select rule_version
+                      from fact_formal_zqtz_balance_daily
+                      where {' and '.join(zqtz_where_parts)}
+                      union all
+                      select rule_version
+                      from fact_formal_tyw_balance_daily
+                      where {' and '.join(tyw_where_parts)}
+                    )
+                    where coalesce(trim(rule_version), '') = ''
+                  ) as rule_version_missing_count,
                   (
                     select string_agg(source_version, '__' order by source_version)
                     from (
@@ -833,6 +1051,10 @@ class BalanceAnalysisRepository(DuckDBRepository):
                     report_date,
                     position_scope,
                     currency_basis,
+                    *zqtz_params,
+                    *tyw_params,
+                    *zqtz_params,
+                    *tyw_params,
                     *zqtz_params,
                     *tyw_params,
                     *zqtz_params,
@@ -882,6 +1104,33 @@ class BalanceAnalysisRepository(DuckDBRepository):
                   zqtz.total_market_value_amount + tyw.total_market_value_amount as total_market_value_amount,
                   zqtz.total_amortized_cost_amount + tyw.total_amortized_cost_amount as total_amortized_cost_amount,
                   zqtz.total_accrued_interest_amount + tyw.total_accrued_interest_amount as total_accrued_interest_amount,
+                  zqtz.detail_row_count + tyw.detail_row_count as lineage_row_count,
+                  (
+                    select count(*)
+                    from (
+                      select source_version
+                      from fact_formal_zqtz_balance_daily
+                      where {' and '.join(zqtz_where_parts)}
+                      union all
+                      select source_version
+                      from fact_formal_tyw_balance_daily
+                      where {' and '.join(tyw_where_parts)}
+                    )
+                    where coalesce(trim(source_version), '') = ''
+                  ) as source_version_missing_count,
+                  (
+                    select count(*)
+                    from (
+                      select rule_version
+                      from fact_formal_zqtz_balance_daily
+                      where {' and '.join(zqtz_where_parts)}
+                      union all
+                      select rule_version
+                      from fact_formal_tyw_balance_daily
+                      where {' and '.join(tyw_where_parts)}
+                    )
+                    where coalesce(trim(rule_version), '') = ''
+                  ) as rule_version_missing_count,
                   (
                     select string_agg(source_version, '__' order by source_version)
                     from (
@@ -919,6 +1168,10 @@ class BalanceAnalysisRepository(DuckDBRepository):
                     *tyw_params,
                     *zqtz_params,
                     *tyw_params,
+                    *zqtz_params,
+                    *tyw_params,
+                    *zqtz_params,
+                    *tyw_params,
                 ],
             )
 
@@ -944,7 +1197,15 @@ class BalanceAnalysisRepository(DuckDBRepository):
                     "liability_total_accrued_interest_amount",
                 ]
             )
-        columns.extend(["source_version", "rule_version"])
+        columns.extend(
+            [
+                "lineage_row_count",
+                "source_version_missing_count",
+                "rule_version_missing_count",
+                "source_version",
+                "rule_version",
+            ]
+        )
         out = dict(zip(columns, row, strict=True))
         if position_scope == "asset":
             tma, taa, tai = (out["total_market_value_amount"], out["total_amortized_cost_amount"], out["total_accrued_interest_amount"])
@@ -1168,6 +1429,139 @@ class BalanceAnalysisRepository(DuckDBRepository):
         return [str(row[0]) for row in rows]
 
 
+    def list_campisi_decision_zqtz_report_dates(
+        self,
+        *,
+        conn: duckdb.DuckDBPyConnection | None = None,
+    ) -> list[str]:
+        if conn is not None:
+            return self._list_campisi_decision_zqtz_report_dates_impl(conn)
+        try:
+            with read_only_connection(self.path) as scoped:
+                return self._list_campisi_decision_zqtz_report_dates_impl(scoped)
+        except (OSError, duckdb.Error):
+            return []
+
+    def fetch_campisi_decision_balance_rows(
+        self,
+        report_date: str,
+        *,
+        conn: duckdb.DuckDBPyConnection | None = None,
+    ) -> list[dict[str, Any]]:
+        if conn is not None:
+            return self._fetch_campisi_decision_balance_rows_impl(conn, report_date)
+        try:
+            with read_only_connection(self.path) as scoped:
+                return self._fetch_campisi_decision_balance_rows_impl(scoped, report_date)
+        except (OSError, duckdb.Error):
+            return []
+
+    def _list_campisi_decision_zqtz_report_dates_impl(self, conn: duckdb.DuckDBPyConnection) -> list[str]:
+        table_name = "fact_formal_zqtz_balance_daily"
+        if not _campisi_decision_table_exists(conn, table_name):
+            return []
+        rows = conn.execute(
+            """
+            select distinct cast(report_date as varchar) as report_date
+            from fact_formal_zqtz_balance_daily
+            where report_date is not null
+            order by report_date desc
+            """
+        ).fetchall()
+        return [str(row[0])[:10] for row in rows]
+
+    def _fetch_campisi_decision_balance_rows_impl(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        report_date: str,
+    ) -> list[dict[str, Any]]:
+        """Aggregate formal ZQTZ rows for Campisi decision-grade reads.
+
+        Rate weighting excludes missing coupon_rate / ytm_value from both the
+        numerator and denominator (缺失≠0). Explicit 0 remains a valid
+        zero-coupon / zero-ytm observation and stays in the weighted average.
+        Coverage ratios are MV-weighted share of rows with a non-null rate.
+        """
+        if not _campisi_decision_table_exists(conn, "fact_formal_zqtz_balance_daily"):
+            return []
+        return _campisi_decision_duckdb_rows(
+            conn,
+            """
+            select
+                instrument_code,
+                max(instrument_name) as instrument_name,
+                portfolio_name,
+                cost_center,
+                max(asset_class) as asset_class,
+                max(bond_type) as bond_type,
+                max(rating) as rating,
+                max(invest_type_std) as invest_type_std,
+                accounting_basis,
+                currency_code,
+                sum(coalesce(face_value_amount, 0)) as face_value_amount,
+                sum(coalesce(market_value_amount, 0)) as market_value_amount,
+                sum(coalesce(amortized_cost_amount, 0)) as amortized_cost_amount,
+                sum(coalesce(accrued_interest_amount, 0)) as accrued_interest_amount,
+                -- 缺失≠0：缺 coupon 行不得 coalesce 成 0 拉低加权利率；显式 0 才是零息。
+                case
+                    when sum(case when coupon_rate is not null then abs(coalesce(market_value_amount, 0)) else 0 end) = 0
+                        then avg(coupon_rate)
+                    else sum(coupon_rate * abs(coalesce(market_value_amount, 0)))
+                         / sum(case when coupon_rate is not null then abs(coalesce(market_value_amount, 0)) else 0 end)
+                end as coupon_rate,
+                case
+                    when sum(case when ytm_value is not null then abs(coalesce(market_value_amount, 0)) else 0 end) = 0
+                        then avg(ytm_value)
+                    else sum(ytm_value * abs(coalesce(market_value_amount, 0)))
+                         / sum(case when ytm_value is not null then abs(coalesce(market_value_amount, 0)) else 0 end)
+                end as ytm_value,
+                case
+                    when sum(abs(coalesce(market_value_amount, 0))) = 0 then null
+                    else sum(case when coupon_rate is not null then abs(coalesce(market_value_amount, 0)) else 0 end)
+                         / sum(abs(coalesce(market_value_amount, 0)))
+                end as coupon_rate_coverage_ratio,
+                case
+                    when sum(abs(coalesce(market_value_amount, 0))) = 0 then null
+                    else sum(case when ytm_value is not null then abs(coalesce(market_value_amount, 0)) else 0 end)
+                         / sum(abs(coalesce(market_value_amount, 0)))
+                end as ytm_value_coverage_ratio,
+                min(maturity_date) as maturity_date,
+                count(*) as source_row_count
+            from fact_formal_zqtz_balance_daily
+            where cast(report_date as date) = cast(? as date)
+              and lower(coalesce(position_scope, 'asset')) = 'asset'
+              and coalesce(is_issuance_like, false) = false
+              and currency_basis = 'CNY'
+            group by instrument_code, portfolio_name, cost_center, accounting_basis, currency_code
+            """,
+            [report_date],
+        )
+
+
+
+
+def _campisi_decision_table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
+    try:
+        return bool(
+            conn.execute(
+                "select count(*) from information_schema.tables where table_name = ?",
+                [table_name],
+            ).fetchone()[0]
+        )
+    except duckdb.Error:
+        return False
+
+
+def _campisi_decision_duckdb_rows(
+    conn: duckdb.DuckDBPyConnection,
+    sql: str,
+    params: list[Any] | tuple[Any, ...] = (),
+) -> list[dict[str, Any]]:
+    cursor = conn.execute(sql, params)
+    columns = [column[0] for column in cursor.description]
+    return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
+
+
 def ensure_balance_analysis_tables(conn: duckdb.DuckDBPyConnection) -> None:
     """Baseline DDL is versioned in `duckdb_migrations` (also run at API/worker startup)."""
     apply_pending_migrations_on_connection(conn)
@@ -1186,6 +1580,14 @@ def sync_zqtz_snapshot_market_value_cny_from_formal(conn: duckdb.DuckDBPyConnect
 
     便于只读 snapshot 的报表/对账与 formal CNY 对照；ADB 等分析应以 ``fact_formal_*`` 的
     ``currency_basis = 'CNY'`` 为准，不依赖本列。
+
+    ``maturity_date`` 是连接条件的一部分，不是可省的描述列：同一只券在展期/重分类
+    期间会以两个到期日各出一行（面值一正一负），其余连接列完全相同。少了它，
+    ``update ... from`` 会形成 2×2 笛卡尔积，DuckDB 任取其一，把一条腿的 CNY 市值
+    写到另一条腿上——库里已经留下的 5 行 ``currency_code='CNY'`` 却
+    ``market_value_cny = -market_value_native`` 就是这么来的（031800572.IB，
+    2025-10-31 / 2025-12-31 / 2026-01-31 / 2026-02-28）。加上它之后两侧在全表
+    578 个 report_date 上均无重复键。
     """
     if not _zqtz_snapshot_table_exists(conn):
         return
@@ -1207,6 +1609,7 @@ def sync_zqtz_snapshot_market_value_cny_from_formal(conn: duckdb.DuckDBPyConnect
           and trim(coalesce(s.instrument_code, '')) = trim(coalesce(f.instrument_code, ''))
           and trim(coalesce(s.portfolio_name, '')) = trim(coalesce(f.portfolio_name, ''))
           and trim(coalesce(s.cost_center, '')) = trim(coalesce(f.cost_center, ''))
+          and cast(s.maturity_date as varchar) is not distinct from cast(f.maturity_date as varchar)
           and trim(coalesce(s.account_category, '')) = trim(coalesce(f.account_category, ''))
           and trim(coalesce(s.asset_class, '')) = trim(coalesce(f.asset_class, ''))
           and trim(coalesce(s.bond_type, '')) = trim(coalesce(f.bond_type, ''))

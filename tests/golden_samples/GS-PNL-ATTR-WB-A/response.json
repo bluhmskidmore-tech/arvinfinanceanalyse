@@ -79,6 +79,13 @@
       "precision": 2,
       "sign_aware": true
     },
+    "total_recon_error": {
+      "raw": 7.105427357601002e-15,
+      "unit": "yuan",
+      "display": "+0.00",
+      "precision": 2,
+      "sign_aware": true
+    },
     "items": [
       {
         "category": "business_cd",

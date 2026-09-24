@@ -1,0 +1,72 @@
+{
+  "css": {
+    "frontend/src/features/balance-movement-analysis/pages/BalanceMovementAnalysisFigma.css": {
+      "belowFloor": 84
+    },
+    "frontend/src/features/balance-movement-analysis/pages/BalanceMovementAnalysisPage.css": {
+      "belowFloor": 30
+    },
+    "frontend/src/features/bond-analytics/components/BondAnalyticsInstitutionalCockpit.module.css": {
+      "belowFloor": 17
+    },
+    "frontend/src/features/market-data/components/LivermoreStrategyPanel.css": {
+      "belowFloor": 1
+    },
+    "frontend/src/features/pnl/PnlByBusinessPage.css": {
+      "belowFloor": 2
+    },
+    "frontend/src/features/workbench/market-shell/MarketWorkbenchFrame.module.css": {
+      "belowFloor": 3
+    },
+    "frontend/src/styles/dashboardCockpit.css": {
+      "belowFloor": 19
+    },
+    "frontend/src/styles/workbenchDeferredChrome.css": {
+      "belowFloor": 4
+    },
+    "frontend/src/styles/workbenchShell.css": {
+      "belowFloor": 2
+    }
+  },
+  "inline": {
+    "frontend/src/components/page/PagePrimitives.tsx": {
+      "belowFloor": 1
+    },
+    "frontend/src/features/balance-analysis/components/BalanceBottomRow.tsx": {
+      "belowFloor": 3
+    },
+    "frontend/src/features/balance-analysis/components/BalanceSummaryRow.tsx": {
+      "belowFloor": 1
+    },
+    "frontend/src/features/bond-analytics/components/BondAnalyticsInstitutionalCockpit.tsx": {
+      "belowFloor": 1
+    },
+    "frontend/src/features/market-data/lib/charts/marketDataSeriesTimeChartOption.ts": {
+      "belowFloor": 3
+    },
+    "frontend/src/features/market-data/lib/charts/marketDataTermStructureChartOption.ts": {
+      "belowFloor": 3
+    },
+    "frontend/src/features/market-data/lib/charts/ncdProxyHeatmapChartOption.ts": {
+      "belowFloor": 1
+    },
+    "frontend/src/features/prototype/EquityCockpitPrototypePage.tsx": {
+      "belowFloor": 4
+    },
+    "frontend/src/features/stock-analysis/lib/stockAnalysisChartModel.ts": {
+      "belowFloor": 6
+    },
+    "frontend/src/features/workbench/module-home/marketFinancialChartsModel.ts": {
+      "belowFloor": 5
+    },
+    "frontend/src/features/workbench/module-home/marketOverviewDenseLiquidityModel.ts": {
+      "belowFloor": 5
+    },
+    "frontend/src/features/workbench/module-home/PortfolioAttributionWaterfall.tsx": {
+      "belowFloor": 1
+    },
+    "frontend/src/features/workbench/module-home/PortfolioStructureChart.tsx": {
+      "belowFloor": 4
+    }
+  }
+}

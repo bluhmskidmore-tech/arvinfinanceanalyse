@@ -1,14 +1,87 @@
-.pageStack,
-.portfolioPageMain {
-  --portfolio-chart-blue: #1850a1;
-  --portfolio-chart-info: #2563eb;
-  --portfolio-chart-green: #2d8a5e;
-  --portfolio-chart-amber: #d97706;
-  --portfolio-chart-red: #ef4444;
-  --portfolio-chart-ink: #17212f;
-  --portfolio-chart-grid: #dbe5f0;
-  display: grid;
-  gap: var(--dh-space-3, 16px);
+/* 主列贴住侧边栏并铺满剩余宽度，与首页壳层行为一致（此前 1440px 居中会在侧栏与内容间留出空档）。 */
+:global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"]) .workbench-main-column) {
+  width: 100% !important;
+  max-width: none !important;
+  justify-self: stretch !important;
+}
+
+.holdingsHeroFigureHead,
+.holdingsHeroFigureMeta {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.holdingsHeroFigureHead span,
+.holdingsHeroFigureMeta span,
+.holdingsHeroFigureMeta em {
+  overflow: hidden;
+  color: var(--dh-muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 760;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.holdingsHeroFigureHead strong {
+  color: var(--dh-blue);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-size: 13px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.holdingsHeroStackSegment {
+  flex: 0 0 var(--holdings-hero-segment-width);
+  border-right: 1px solid var(--dh-api-panel);
+  background: var(--portfolio-chart-blue);
+}
+
+.holdingsHeroStackSegment:last-child {
+  border-right: 0;
+}
+
+.holdingsHeroStackSegment[data-color-index="1"] {
+  background: var(--portfolio-chart-info);
+}
+
+.holdingsHeroStackSegment[data-color-index="2"] {
+  background: var(--portfolio-chart-green);
+}
+
+.holdingsHeroStackSegment[data-color-index="3"] {
+  background: var(--portfolio-chart-amber);
+}
+
+.holdingsHeroStackSegment[data-color-index="4"] {
+  background: var(--portfolio-chart-red);
+}
+
+/* min-height/border/color 留在原位：需被 @media (min-width: 1101px) .portfolioPage 与 tone 类按源顺序覆盖；
+   其余页面级变量与布局声明已并入文件末尾的 V3 深蓝终端皮肤 .portfolioPage 块。 */
+.portfolioPage {
+  min-height: calc(100vh - 32px);
+  border: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-ink);
+}
+
+/* Dark shell reflow (background/rail/nav) is owned by the central
+   `.workbench-shell-grid--cockpit:has(.theme-dh-api)` variant in
+   src/styles/workbenchShell.css; only layout-scoped overrides remain here. */
+/* 路由容器需撑满工作台列宽；此前的 start 会让页面按内容宽度收缩，
+   页面自身的宽度上限由 .portfolioPage 的 max-width 控制。 */
+:global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"]) .workbench-main-surface--minimal) {
+  justify-items: stretch !important;
+  padding: 0 !important;
+}
+
+:global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"]) .workbench-main-column) {
+  justify-items: stretch !important;
+  padding: 0 !important;
 }
 
 .srOnly {
@@ -26,44 +99,48 @@
 
 .portfolioTopbar {
   min-width: 0;
-  padding: 10px 14px;
-  border: 1px solid rgba(20, 37, 61, 0.92);
-  border-left: 0;
-  border-radius: 8px;
-  background:
-    linear-gradient(135deg, #07111f 0%, #0b1b2e 55%, #102b49 100%);
-  color: #e7eefb;
-  box-shadow: 0 14px 34px rgba(4, 10, 20, 0.22);
+  padding: 11px 14px;
+  border: 1px solid var(--dh-line);
+  border-left: 2px solid color-mix(in srgb, var(--dh-api-blue) 76%, transparent);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-card);
+  color: var(--dh-ink);
+  box-shadow: none;
 }
 
 .portfolioTopbar h1 {
-  color: #ffffff;
+  color: var(--dh-ink);
+  font-family: var(--dh-font-sans, var(--ib-serif));
+  font-size: 20px;
+  font-weight: 780;
+  letter-spacing: -0.02em;
 }
 
 .portfolioTopbar :global(.moss-light-icon),
 .portfolioTopbar :where(span) {
-  border-color: rgba(114, 147, 190, 0.26);
+  border-color: color-mix(in srgb, var(--dh-api-muted) 26%, transparent);
 }
 
 .portfolioTopbarLeft {
   flex: 1 1 680px;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .topbarCopy {
   display: grid;
-  gap: 2px;
+  gap: 1px;
   min-width: min(560px, 100%);
   max-width: 780px;
+  padding-top: 1px;
 }
 
 .topbarSubtitle {
   display: -webkit-box;
   overflow: hidden;
   margin: 0;
-  color: #f8fbff;
-  font-size: 13px;
-  font-weight: 800;
+  color: var(--dh-ink);
+  font-size: 12.5px;
+  font-weight: 700;
   line-height: 1.5;
   max-width: 72ch;
   -webkit-box-orient: vertical;
@@ -74,8 +151,8 @@
   display: -webkit-box;
   overflow: hidden;
   margin: 0;
-  color: rgba(190, 208, 234, 0.76);
-  font-size: 11px;
+  color: var(--dh-muted-2);
+  font-size: 12px;
   line-height: 1.45;
   max-width: 82ch;
   -webkit-box-orient: vertical;
@@ -90,55 +167,231 @@
 .toolbarMeta {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 0;
   align-items: center;
   justify-content: flex-end;
+}
+
+.toolbarState {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px 0 0;
+  color: var(--dh-muted);
+  font-size: 12px;
+  font-weight: 720;
+  white-space: nowrap;
+}
+
+.toolbarState i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dh-muted-2);
+}
+
+.toolbarState[data-tone="ok"] i {
+  background: var(--dh-api-green, var(--dh-green));
+}
+
+.toolbarState[data-tone="watch"] i {
+  background: var(--dh-api-amber, var(--dh-amber));
+}
+
+.toolbarState[data-tone="error"] i {
+  background: var(--dh-api-red, var(--dh-red));
 }
 
 .datePill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
-  border: 1px solid rgba(114, 147, 190, 0.26);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(201, 216, 238, 0.78);
+  min-height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-left: 1px solid var(--dh-line-soft);
+  border-radius: 0;
+  background: transparent;
+  color: var(--dh-muted-2);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 650;
+  white-space: nowrap;
 }
 
 .datePill strong {
-  color: #ffffff;
-  font-weight: 800;
+  color: var(--dh-ink-2);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-weight: 760;
   font-variant-numeric: tabular-nums;
 }
 
-.portfolioCockpit {
+/* 区块是分组容器而非卡片：卡片层级留给内部内容，避免 §5 禁止的「格子套格子」。
+   cockpit / reviewBand / primaryGrid / primaryColumn / dataWorkbench / workbenchMain
+   六个壳子已在文末的页面级栅格收口层折叠为 display: contents，不再持有布局。 */
+.workbenchSection {
   display: grid;
-  gap: 14px;
-  min-width: 0;
-  padding: 12px;
-  border: 1px solid rgba(20, 37, 61, 0.16);
-  border-radius: 8px;
-  background:
-    linear-gradient(180deg, #07111f 0, #07111f 246px, #f3f6fa 246px, #f3f6fa 100%);
-  box-shadow: 0 18px 42px rgba(12, 28, 51, 0.12);
-}
-
-.portfolioPrimaryGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(276px, 314px);
   gap: 12px;
-  align-items: stretch;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.workbenchSectionHead {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.workbenchSectionHead > div:first-child {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 9px;
   min-width: 0;
 }
 
-.portfolioPrimaryColumn {
+.workbenchSectionHead span {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  grid-row: span 2;
+}
+
+.workbenchSectionHead h2 {
+  min-width: 0;
+  margin: 0;
+  color: var(--dh-ink);
+  font-size: 16px;
+  font-weight: 860;
+  line-height: 1.25;
+}
+
+.workbenchSectionHead p {
+  grid-column: 2;
+  max-width: 76ch;
+  margin: 0;
+  color: var(--dh-muted-2);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.workbenchSectionMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.workbenchSectionMeta em {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  max-width: 360px;
+  padding: 4px 8px;
+  overflow: hidden;
+  border: 1px solid var(--dh-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-card-soft);
+  color: var(--dh-muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 780;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.holdingsPanoramaGrid,
+.exposureLedger,
+.closureWorkbenchGrid,
+.actionMatrixGrid {
   display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.holdingsPanoramaGrid .chartSnapshot {
   align-content: start;
-  gap: 12px;
+  height: 100%;
+}
+
+.portfolioStructureWorkbench,
+.portfolioClosureBand {
   min-width: 0;
+}
+
+/* border-color/background 留在原位：需被紧随其后的 .closureGateBlocked 覆盖 */
+.closureGate {
+  border-color: var(--dh-line-soft, var(--ib-hairline));
+  background: var(--dh-card);
+}
+
+.closureGateBlocked {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-amber) 10%, transparent);
+}
+
+.closureGateHead {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.closureGateHead span {
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0;
+}
+
+.closureGateHead strong {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.closureGateReasons {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.closureGateReasons li {
+  position: relative;
+  min-width: 0;
+  padding-left: 11px;
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 12px;
+  font-weight: 720;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.closureGateReasons li::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  left: 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--dh-api-amber, var(--dh-amber));
+}
+
+.closureGateReasons li[data-more]::before {
+  background: var(--dh-muted-2);
+}
+
+.closureGateReasons li[data-more] {
+  color: var(--dh-muted-2);
+  font-weight: 700;
 }
 
 .sectionBlock {
@@ -146,28 +399,95 @@
   gap: var(--dh-space-2, 12px);
 }
 
-.portfolioCockpit > [data-testid="module-home-status-strip"] {
-  order: 3;
+.terminalCard {
+  gap: 0;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  border-color: var(--dh-line-soft, var(--ib-hairline));
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-card);
+  box-shadow: none;
 }
 
-.portfolioCockpit > [data-testid="module-home-portfolio-first-screen"] {
-  order: 1;
+.terminalCard > .sectionHead {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  background: var(--dh-card-soft);
 }
 
-.portfolioCockpit > [data-testid="module-home-holdings-structure"] {
-  order: 2;
+.structureStatusBar {
+  margin: 8px 10px 0;
+  padding: 7px 9px;
+  border: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-card-soft);
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 12px;
+  font-weight: 800;
 }
 
-.portfolioCockpit > [data-testid="module-home-portfolio-terminal"] {
-  order: 4;
+.structureGapAction:hover {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  text-decoration: none;
 }
 
-.riskAttributionBlock {
-  order: 5;
+.structureTabLabel {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.structureTabBadge {
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-card-soft, var(--ib-paper));
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 12px;
+  font-weight: 850;
+  text-align: center;
+}
+
+.quickAccessBlock {
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.quickAccessCard:hover,
+.drillCard:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 42%, transparent);
+  background: var(--moss-color-primary-50);
+  text-decoration: none;
+}
+
+.quickAccessCard em,
+.drillCard em {
+  grid-column: 2;
+  justify-self: start;
+  color: var(--dh-muted-2, var(--ib-ink-muted));
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 760;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.drillCardCurrent {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: var(--moss-color-primary-50);
+}
+
+.drillCardCurrent em {
+  color: var(--dh-blue-deep, var(--ib-accent));
 }
 
 .drilldownBlock {
-  order: 6;
+  min-width: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0 var(--dh-api-radius, 6px) var(--dh-api-radius, 6px) 0;
+  box-shadow: none;
 }
 
 .sectionHead {
@@ -180,30 +500,26 @@
 }
 
 .sectionHead span {
-  color: var(--dh-muted, #6b7d95);
-  font-size: 10px;
+  color: var(--dh-muted-2, var(--ib-ink-muted));
+  font-size: 12px;
   font-weight: 750;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .sectionHead strong {
-  color: var(--dh-blue-deep, #10356a);
-  font-size: 13px;
+  color: var(--dh-blue, var(--ib-accent));
+  font-size: 14px;
   font-weight: 850;
 }
 
-.decisionPanel {
-  display: grid;
-  grid-template-columns: minmax(254px, 0.86fr) minmax(0, 1.14fr);
-  gap: 1px;
-  align-items: stretch;
-  padding: 1px;
-  overflow: hidden;
-  border: 1px solid rgba(32, 48, 74, 0.1);
-  border-radius: 8px;
-  background: #dfe5ec;
-  box-shadow: none;
+/* 组头右侧汇总徽注（如「N 个入口临时开放」），承接行内不再重复的状态（B6）。 */
+.sectionHeadNote {
+  margin-left: auto;
+  color: var(--dh-muted-2, var(--ib-ink-muted));
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 720;
 }
 
 .chartSnapshot {
@@ -212,12 +528,10 @@
   min-width: 0;
   padding: 10px 12px 12px;
   overflow: hidden;
-  border: 1px solid rgba(96, 165, 250, 0.18);
-  border-radius: 8px;
-  background:
-    linear-gradient(90deg, rgba(24, 80, 161, 0.26), rgba(45, 138, 94, 0.14) 54%, rgba(217, 119, 6, 0.12)),
-    linear-gradient(180deg, #0c1c33 0%, #102947 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 14px 26px rgba(4, 10, 20, 0.16);
+  border: 1px solid var(--dh-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-card);
+  box-shadow: none;
 }
 
 .chartSnapshotHead {
@@ -228,15 +542,15 @@
 }
 
 .chartSnapshotHead span {
-  color: #86bdf8;
-  font-size: 10px;
+  color: var(--dh-muted-2);
+  font-size: 12px;
   font-weight: 850;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .chartSnapshotHead strong {
-  color: #f8fbff;
+  color: var(--dh-blue);
   font-size: 13px;
   font-weight: 850;
 }
@@ -253,32 +567,33 @@
   gap: 8px;
   min-width: 0;
   padding: 9px 10px;
-  border: 1px solid rgba(162, 190, 229, 0.22);
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--dh-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-card-soft);
 }
 
 .chartSnapshotCardHead {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3px;
   align-items: baseline;
   min-width: 0;
 }
 
 .chartSnapshotCardHead span {
   overflow: hidden;
-  color: rgba(226, 239, 255, 0.86);
-  font-size: 11px;
+  color: var(--dh-muted);
+  font-size: 12px;
   font-weight: 800;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .chartSnapshotCardHead strong {
-  color: #ffffff;
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
-  font-size: 11px;
+  justify-self: start;
+  color: var(--dh-ink);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-size: 12px;
   font-weight: 850;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -301,17 +616,17 @@
 
 .chartMiniLabel {
   overflow: hidden;
-  color: rgba(218, 233, 252, 0.72);
-  font-size: 10px;
+  color: var(--dh-muted-2);
+  font-size: 12px;
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .chartMiniMetric {
-  color: #cfe6ff;
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
-  font-size: 10px;
+  color: var(--moss-color-info-100);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-size: 12px;
   font-weight: 850;
   white-space: nowrap;
 }
@@ -320,8 +635,8 @@
   grid-column: 1 / -1;
   height: 7px;
   overflow: hidden;
-  border-radius: 999px;
-  background: rgba(226, 239, 255, 0.14);
+  border-radius: var(--dh-api-radius, 6px);
+  background: color-mix(in srgb, var(--dh-api-blue) 12%, transparent);
 }
 
 .chartMiniFill {
@@ -329,22 +644,15 @@
   width: var(--chart-mini-width);
   height: 100%;
   border-radius: inherit;
-  background: #60a5fa;
-  box-shadow: 6px 0 14px rgba(96, 165, 250, 0.22);
+  background: var(--dh-api-blue);
 }
 
 .chartMiniFill[data-color-index="1"] {
-  background: #34d399;
+  background: var(--dh-api-green);
 }
 
 .chartMiniFill[data-color-index="2"] {
-  background: #f59e0b;
-}
-
-.chartMiniSkeleton span {
-  height: 7px;
-  border-radius: 999px;
-  background: rgba(226, 239, 255, 0.2);
+  background: var(--dh-api-amber);
 }
 
 .chartMiniSkeleton span:nth-child(1) {
@@ -364,15 +672,7 @@
 .evidenceConsole {
   display: grid;
   min-width: 0;
-  background: #f8fafc;
-}
-
-.decisionLedger {
-  gap: 8px;
-  align-content: stretch;
-  min-height: 156px;
-  padding: 12px 14px;
-  background: #f3f6fa;
+  background: var(--dh-card);
 }
 
 .decisionLedgerHead,
@@ -385,88 +685,51 @@
 }
 
 .terminalPanelHead {
-  min-height: 30px;
-  padding: 8px 10px;
-  border-bottom: 1px solid rgba(32, 48, 74, 0.1);
-}
-
-.terminalPanelHead span {
-  color: var(--dh-ink, #0c1c33);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
+  min-height: 28px;
+  padding: 6px 9px;
+  border-bottom: 1px solid var(--dh-line-soft);
+  background: var(--dh-card-soft);
 }
 
 .terminalPanelHead strong {
-  color: var(--dh-muted, #6b7d95);
-  font-size: 11px;
+  color: var(--dh-muted);
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.01em;
-}
-
-.decisionKicker {
-  color: var(--dh-ink-2, #2c3e5a);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.01em;
-}
-
-.terminalStatus {
-  display: inline-flex;
-  align-items: center;
-  min-height: 22px;
-  padding: 1px 8px;
-  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
-  border-radius: 5px;
-  background: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0;
-}
-
-.decisionTitle {
-  margin: 0;
-  color: var(--dh-ink, #0c1c33);
-  font-size: 18px;
-  font-weight: 850;
-  line-height: 1.25;
-}
-
-.decisionDetail {
-  display: -webkit-box;
-  overflow: hidden;
-  max-width: 76ch;
-  margin: 0;
-  color: var(--dh-ink-2, #2c3e5a);
-  font-size: 11.5px;
-  line-height: 1.48;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
 }
 
 .decisionReadinessBar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
   min-width: 0;
-  margin-top: auto;
-  padding: 6px 9px;
-  border: 1px solid rgba(32, 48, 74, 0.1);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.68);
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-card-soft, var(--ib-paper));
 }
 
 .decisionReadinessBar span {
-  color: var(--dh-muted, #6b7d95);
-  font-size: 11px;
+  overflow: hidden;
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 12px;
   font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .decisionReadinessBar strong {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0;
+  color: var(--dh-blue-deep, var(--ib-accent));
+  font-size: 12px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.terminalStatus {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  padding: 1px 8px;
 }
 
 .decisionMatrix {
@@ -478,151 +741,94 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1px;
   overflow: hidden;
-  background: rgba(32, 48, 74, 0.1);
-}
-
-.decisionFact {
-  display: grid;
-  gap: 4px;
-  align-content: center;
-  min-width: 0;
-  min-height: 44px;
-  padding: 7px 8px;
-  background: rgba(255, 255, 255, 0.9);
-}
-
-.decisionFact span {
-  overflow: hidden;
-  color: var(--dh-muted, #6b7d95);
-  font-size: 11px;
-  font-weight: 750;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.decisionFact strong {
-  overflow-wrap: normal;
-  word-break: normal;
-  color: var(--dh-ink, #0c1c33);
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
-  font-size: 12px;
-  font-weight: 850;
-  line-height: 1.35;
-  font-variant-numeric: tabular-nums;
+  background: var(--dh-line-soft);
 }
 
 .evidenceConsole {
   align-content: start;
   grid-column: 1 / -1;
-  max-height: 112px;
-  overflow: auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .evidenceFactList {
   display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1px;
   min-width: 0;
-  background: rgba(32, 48, 74, 0.1);
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.evidenceFactList .decisionFact {
-  grid-template-columns: minmax(0, 1fr);
-  min-height: 34px;
-  padding-block: 5px;
-}
-
-.evidenceFactList .decisionFact span {
-  white-space: normal;
-}
-
-.evidenceFactList .decisionFact strong {
-  overflow-wrap: anywhere;
-  font-size: 11px;
-  text-align: left;
+  overflow: hidden;
+  background: var(--dh-line-soft);
 }
 
 .decisionActionQueue {
   display: grid;
-  gap: 7px;
+  gap: 6px;
   min-width: 0;
-  padding: 6px 8px 8px;
-  border-top: 1px solid rgba(32, 48, 74, 0.1);
-  background: rgba(248, 251, 255, 0.86);
+  padding: 8px 9px 9px;
+  border-top: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  background: var(--dh-card-soft, var(--ib-paper));
 }
 
 .decisionActionLabel {
-  color: var(--dh-muted, #6b7d95);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .decisionActionList {
   display: grid;
   gap: 6px;
   min-width: 0;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+/* gap/min-height/padding/border/border-radius/color 留在原位：需被更晚的 @media (min-width: 1101px) 与 tone 类覆盖 */
 .decisionAction {
-  display: grid;
-  grid-template-columns: 7px minmax(0, 1fr);
   gap: 8px;
-  align-items: center;
-  min-width: 0;
-  min-height: 32px;
-  padding: 5px 6px;
+  min-height: 36px;
+  padding: 6px 8px;
+  border: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  border-radius: var(--dh-api-radius);
   color: inherit;
-  border: 1px solid rgba(32, 48, 74, 0.08);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.78);
-  text-decoration: none;
-  transition: background-color 140ms ease, border-color 140ms ease;
 }
 
-.decisionAction:hover {
-  border-color: rgba(32, 48, 74, 0.14);
-  background: rgba(255, 255, 255, 0.92);
-}
-
+/* width/height 留在原位：需被更晚的 @media (min-width: 1101px) .decisionActionDot 覆盖 */
 .decisionActionDot {
   width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: currentColor;
+  height: 24px;
 }
 
 .decisionActionText {
   display: grid;
-  gap: 3px;
+  gap: 1px;
   min-width: 0;
 }
 
+.decisionActionText strong,
+.decisionActionText small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .decisionActionText strong {
-  overflow-wrap: anywhere;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 850;
-  line-height: 1.25;
 }
 
 .decisionActionText small {
-  display: -webkit-box;
-  overflow: hidden;
-  overflow-wrap: anywhere;
-  color: var(--dh-ink-2, #2c3e5a);
-  font-size: 11px;
-  line-height: 1.32;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 1;
+  color: var(--dh-muted-2, var(--ib-ink-muted));
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .decisionActionTarget {
-  display: none;
+  display: inline-flex;
   gap: 4px;
   align-items: center;
-  color: var(--dh-blue-deep, #10356a);
-  font-size: 11px;
+  color: var(--dh-blue-deep, var(--ib-accent));
+  font-size: 12px;
   font-weight: 800;
   white-space: nowrap;
 }
@@ -631,15 +837,23 @@
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) repeat(2, minmax(0, 1fr));
   gap: 8px;
+  padding: 1px;
+  overflow: hidden;
+  border: 1px solid var(--dh-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-line-soft);
 }
 
 .briefCard {
   position: relative;
   display: grid;
-  gap: 7px;
-  min-height: 74px;
-  padding: 10px 12px;
+  gap: 5px;
+  min-height: 56px;
+  padding: 7px 9px;
   overflow: hidden;
+  border: 0;
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-card);
 }
 
 .briefCard::before {
@@ -647,38 +861,37 @@
   position: absolute;
   inset: 0 auto 0 0;
   width: 3px;
-  border-radius: 999px 0 0 999px;
-  background: var(--dh-blue, #1850a1);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-blue, var(--ib-accent));
 }
 
 .briefCardOk::before {
-  background: var(--dh-green, #1f7a55);
+  background: var(--dh-green, var(--ib-up));
 }
 
 .briefCardWatch::before {
-  background: var(--dh-amber, #b76e00);
+  background: var(--dh-amber, var(--ib-warn));
 }
 
 .briefCardError::before {
-  background: var(--dh-red, #b94743);
+  background: var(--dh-red, var(--ib-down));
 }
 
 .briefCardPrimary {
-  background:
-    linear-gradient(145deg, var(--dh-card, #fff) 0%, var(--dh-blue-soft, #e8f1fb) 100%);
-  box-shadow: var(--dh-shadow-hero, 0 2px 8px rgba(24, 80, 161, 0.08), 0 12px 28px rgba(15, 23, 42, 0.08));
+  background: color-mix(in srgb, var(--dh-api-blue) 10%, transparent);
+  box-shadow: none;
 }
 
 .briefTitle {
-  color: var(--dh-muted, #6b7d95);
-  font-size: 10.5px;
+  color: var(--dh-muted-2, var(--ib-ink-muted));
+  font-size: 12px;
   font-weight: 750;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
 .briefConclusion {
-  color: var(--dh-ink, #0c1c33);
+  color: var(--dh-ink, var(--ib-ink));
   font-size: 13px;
   font-weight: 750;
   line-height: 1.42;
@@ -691,40 +904,132 @@
 .briefEvidence {
   display: -webkit-box;
   overflow: hidden;
-  color: var(--dh-muted-2, #8a99af);
-  font-size: 10.5px;
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 13px;
   line-height: 1.35;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
 
-.kpiGrid {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+.portfolioKpiValueRow {
+  display: block;
+  min-width: 0;
+}
+
+.portfolioKpiSparkline {
+  display: none;
+}
+
+.kpiGridTape {
+  min-width: 0;
+  overflow: visible;
+  padding-bottom: 0;
+}
+
+.kpiGridTape::-webkit-scrollbar {
+  height: 6px;
+}
+
+.kpiGridTape::-webkit-scrollbar-thumb {
+  border-radius: var(--dh-api-radius, 6px);
+  background: color-mix(in srgb, var(--dh-api-blue) 22%, transparent);
+}
+
+.portfolioRiskTickerBar {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--dh-api-muted) 28%, transparent);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-card-soft, var(--ib-paper));
+  box-shadow: none;
+}
+
+.portfolioRiskTickerUnavailable {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 28%, transparent);
+  background: var(--moss-color-warning-50);
+}
+
+.portfolioRiskTickerHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
   gap: 10px;
+  margin-bottom: 6px;
 }
 
-.kpiCard {
-  position: relative;
-  align-content: start;
-  min-height: 112px;
-  padding: 14px 15px 12px;
+.portfolioRiskTickerHead span {
+  color: var(--moss-color-info-300);
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.portfolioRiskTickerHead strong {
+  color: var(--dh-blue-deep, var(--ib-accent));
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.portfolioRiskTickerTrack {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(136px, 1fr));
+  gap: 1px;
+  min-width: 0;
   overflow: hidden;
-  border: 1px solid rgba(24, 80, 161, 0.12);
-  border-radius: 8px;
-  background:
-    linear-gradient(135deg, rgba(24, 80, 161, 0.055), rgba(45, 138, 94, 0.035) 52%, rgba(255, 255, 255, 0)),
-    #ffffff;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.86), 0 10px 24px rgba(15, 23, 42, 0.055);
+  border: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-line-soft, var(--ib-hairline));
 }
 
-.kpiCard:nth-child(-n + 2) {
-  grid-column: span 3;
-  min-height: 126px;
-  padding: 16px 18px 14px;
-  background:
-    linear-gradient(135deg, rgba(24, 80, 161, 0.12), rgba(45, 138, 94, 0.055) 54%, rgba(255, 255, 255, 0)),
-    #ffffff;
+.portfolioRiskTickerCell {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 10px;
+  background: var(--ib-surface);
+}
+
+.portfolioRiskTickerLabel {
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.portfolioRiskTickerValueRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.portfolioRiskTickerValue {
+  color: var(--dh-ink, var(--ib-ink));
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.1;
+}
+
+.portfolioRiskTickerChange {
+  color: var(--dh-muted-2, var(--ib-ink-muted));
+  font-size: 12px;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 1.25;
+}
+
+.portfolioRiskTickerChangeNeutral {
+  color: var(--dh-muted-2, var(--ib-ink-muted));
+}
+
+.portfolioRiskTickerEmpty {
+  margin: 0;
+  color: var(--dh-muted-2, var(--ib-ink-muted));
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.45;
 }
 
 .kpiCard::before {
@@ -732,72 +1037,44 @@
   position: absolute;
   inset: 0 auto 0 0;
   width: 3px;
-  background: var(--portfolio-chart-blue, #1850a1);
+  background: var(--portfolio-chart-blue, var(--ib-accent));
 }
 
 .kpiCard::after {
-  content: "";
-  position: absolute;
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   inset: 10px 12px auto auto;
   width: 28px;
-  height: 2px;
-  border-radius: 999px;
-  background: rgba(24, 80, 161, 0.18);
 }
 
 .kpiCard[data-tone="ok"]::before {
-  background: linear-gradient(180deg, var(--portfolio-chart-blue, #1850a1), var(--portfolio-chart-green, #2d8a5e));
+  background: var(--dh-green);
 }
 
 .kpiCard[data-tone="watch"]::before {
-  background: var(--portfolio-chart-amber, #d97706);
+  background: var(--portfolio-chart-amber, var(--ib-warn));
 }
 
 .kpiCard[data-tone="error"]::before {
-  background: var(--portfolio-chart-red, #ef4444);
-}
-
-.kpiCard:nth-child(5n + 1) {
-  border-color: rgba(24, 80, 161, 0.24);
-}
-
-.kpiCard:hover {
-  border-color: rgba(24, 80, 161, 0.26);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9), 0 14px 28px rgba(24, 80, 161, 0.085);
-}
-
-.kpiLabel {
-  color: #49617d;
-  font-size: 12px;
-  font-weight: 850;
-  letter-spacing: 0;
-  line-height: 1.2;
+  background: var(--portfolio-chart-red, var(--ib-down));
 }
 
 .kpiValue {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  align-items: baseline;
-  min-width: 0;
-  margin-top: 10px;
-  color: #123b68;
-  font-family: "Bahnschrift", "Aptos Display", "DIN Alternate", var(--dh-font-mono, ui-monospace, monospace);
-  font-size: 22px;
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  color: var(--dh-blue);
   font-weight: 800;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
 }
 
 .kpiValue span {
+  flex-shrink: 0;
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .kpiValue small {
-  color: #5c708a;
+  color: var(--dh-muted);
   font-family: var(--dh-font-sans, "Microsoft YaHei UI", sans-serif);
   font-size: 13px;
   font-weight: 800;
@@ -806,9 +1083,9 @@
 }
 
 .kpiCard:nth-child(-n + 2) .kpiValue {
-  color: #123b68;
+  color: var(--dh-ink);
   margin-top: 12px;
-  font-size: 30px;
+  font-size: 24px;
 }
 
 .kpiCard:nth-child(-n + 2) .kpiValue small {
@@ -816,283 +1093,37 @@
 }
 
 .kpiCard:nth-child(n + 3) {
-  grid-column: span 2;
+  grid-column: auto;
 }
 
 .kpiValue.toneOk {
-  color: #123b68;
+  color: var(--dh-blue);
 }
 
 .kpiValue.toneWatch {
-  color: #945a00;
-}
-
-.kpiValue.toneError {
-  color: #ad2f2f;
+  color: var(--dh-amber);
 }
 
 .kpiValue.toneMuted {
-  color: #40506a;
+  color: var(--dh-muted);
 }
 
 .kpiDetail {
-  display: -webkit-box;
-  margin-top: 9px;
-  overflow: hidden;
-  color: #7b8ba2;
-  font-size: 11px;
-  font-weight: 650;
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  color: var(--dh-muted-2);
   line-height: 1.35;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.aiDecisionRail {
-  position: sticky;
-  top: 12px;
-  align-self: start;
-  display: grid;
-  gap: 10px;
-  min-width: 0;
-  padding: 12px;
-  border: 1px solid rgba(75, 104, 143, 0.36);
-  border-radius: 8px;
-  background:
-    linear-gradient(180deg, #0b1728 0%, #101f35 100%);
-  color: #dce8f8;
-  box-shadow: 0 14px 30px rgba(3, 8, 18, 0.24);
-}
-
-.aiRailHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-width: 0;
-  padding-bottom: 10px;
-  border-bottom: 1px solid rgba(128, 154, 190, 0.18);
-}
-
-.aiRailHeader span {
-  color: #ffffff;
-  font-size: 14px;
-  font-weight: 900;
-}
-
-.aiRailHeader strong {
-  max-width: 132px;
-  padding: 2px 8px;
-  border: 1px solid rgba(123, 183, 255, 0.34);
-  border-radius: 999px;
-  background: rgba(47, 129, 247, 0.16);
-  color: #9cc9ff;
-  font-size: 10px;
-  font-weight: 850;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.aiRailHeader strong[data-tone="ok"] {
-  border-color: rgba(142, 240, 191, 0.28);
-  background: rgba(27, 151, 103, 0.18);
-  color: #8ef0bf;
-}
-
-.aiRailHeader strong[data-tone="watch"],
-.aiRailHeader strong[data-tone="muted"] {
-  border-color: rgba(245, 158, 11, 0.34);
-  background: rgba(245, 158, 11, 0.16);
-  color: #ffd38a;
-}
-
-.aiRailHeader strong[data-tone="error"] {
-  border-color: rgba(239, 68, 68, 0.34);
-  background: rgba(239, 68, 68, 0.16);
-  color: #ffc2c2;
-}
-
-.aiRailState {
-  margin: 0;
-  color: rgba(201, 216, 238, 0.76);
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.aiRailMetricGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.aiRailMetric {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  min-height: 58px;
-  padding: 8px;
-  border: 1px solid rgba(128, 154, 190, 0.18);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.055);
-}
-
-.aiRailMetric[data-tone="watch"] {
-  border-color: rgba(245, 158, 11, 0.28);
-}
-
-.aiRailMetric[data-tone="error"] {
-  border-color: rgba(239, 68, 68, 0.3);
-}
-
-.aiRailMetric span {
-  overflow: hidden;
-  color: rgba(201, 216, 238, 0.68);
-  font-size: 9.5px;
-  font-weight: 780;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.aiRailMetric strong {
-  color: #ffffff;
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
-  font-size: 13px;
-  font-weight: 900;
-  overflow-wrap: anywhere;
-  font-variant-numeric: tabular-nums;
-}
-
-.aiRailCard {
-  display: grid;
-  gap: 7px;
-  min-width: 0;
-  padding: 11px 12px;
-  border: 1px solid rgba(128, 154, 190, 0.18);
-  border-left: 3px solid #2f81f7;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.aiRailCard[data-tone="watch"] {
-  border-left-color: #f59e0b;
-}
-
-.aiRailCard[data-tone="error"] {
-  border-left-color: #ef4444;
-}
-
-.aiRailCard[data-tone="ok"] {
-  border-left-color: #18a058;
-}
-
-.aiRailLabel {
-  color: #7bb7ff;
-  font-size: 10px;
-  font-weight: 850;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-.aiRailCard strong {
-  color: #ffffff;
-  font-size: 12.5px;
-  line-height: 1.38;
-}
-
-.aiRailCard p {
-  margin: 0;
-  color: rgba(201, 216, 238, 0.72);
-  font-size: 10.5px;
-  line-height: 1.45;
-}
-
-.aiRailStatusList,
-.aiRailActionList {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
-
-.aiRailStatusList {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.aiRailStatusList span {
-  min-width: 0;
-  padding: 6px 8px;
-  border-radius: 6px;
-  background: rgba(47, 129, 247, 0.12);
-  color: #dbeafe;
-  font-size: 10.5px;
-  font-weight: 780;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.aiRailStatusList span[data-tone="watch"] {
-  background: rgba(245, 158, 11, 0.14);
-  color: #ffd38a;
-}
-
-.aiRailStatusList span[data-tone="error"] {
-  background: rgba(239, 68, 68, 0.14);
-  color: #ffc2c2;
-}
-
-.aiRailLink {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-height: 34px;
-  min-width: 0;
-  padding: 0 10px;
-  border: 1px solid rgba(128, 154, 190, 0.18);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.07);
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 850;
-  text-decoration: none;
-  transition: background 150ms ease, border-color 150ms ease;
-}
-
-.aiRailLink span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.aiRailLink strong {
-  color: #7bb7ff;
-  font-size: 10px;
-  white-space: nowrap;
-}
-
-.aiRailLink[data-tone="watch"] strong {
-  color: #ffd38a;
-}
-
-.aiRailLink[data-tone="error"] strong {
-  color: #ffc2c2;
-}
-
-.aiRailLink:hover {
-  border-color: rgba(123, 183, 255, 0.46);
-  background: rgba(47, 129, 247, 0.18);
 }
 
 .statusStrip {
   padding: 12px 14px;
-  background: var(--dh-card-soft, #f7f9fc);
-  border: 1px solid var(--dh-line-soft, #eef2f7);
+  background: var(--dh-card);
+  border: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  border-radius: var(--dh-api-radius, 6px);
   box-shadow: none;
 }
 
 .statusStrip:hover {
-  border-color: var(--dh-line-soft, #eef2f7);
+  border-color: var(--dh-line-soft, var(--ib-hairline));
   box-shadow: none;
 }
 
@@ -1101,25 +1132,25 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1px;
   overflow: hidden;
-  border-radius: 8px;
-  background: var(--dh-line-soft, #eef2f7);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-line-soft, var(--ib-hairline));
 }
 
 .statusCell {
   display: grid;
   gap: 4px;
   padding: 10px 12px;
-  background: var(--dh-card, #fff);
+  background: var(--dh-card-soft, var(--ib-surface));
 }
 
 .statusCell span {
-  color: var(--dh-muted, #6b7d95);
-  font-size: 11px;
+  color: var(--dh-muted-2, var(--ib-ink-muted));
+  font-size: 12px;
   font-weight: 700;
 }
 
 .statusCell b {
-  color: var(--dh-ink, #0c1c33);
+  color: var(--dh-ink, var(--ib-ink));
   font-size: 13px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
@@ -1127,264 +1158,28 @@
 
 .statusCell em {
   display: block;
-  color: var(--dh-muted-2, #8a99af);
-  font-size: 10px;
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 12px;
   font-style: normal;
   line-height: 1.4;
 }
 
-.holdingsGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(360px, 1fr));
-  gap: 18px;
-  align-items: stretch;
-}
-
-.holdingsAnalysisBand {
-  position: relative;
-  padding: 16px;
-  overflow: hidden;
-  border: 1px solid rgba(24, 80, 161, 0.16);
-  border-radius: 8px;
-  background:
-    linear-gradient(90deg, rgba(24, 80, 161, 0.07), rgba(45, 138, 94, 0.045) 44%, rgba(217, 119, 6, 0.035)),
-    linear-gradient(180deg, #edf3f8 0%, #f9fbfd 44%, #ffffff 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 18px 38px rgba(24, 80, 161, 0.08);
-}
-
-.holdingsAnalysisBand::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 4px;
-  background: linear-gradient(
-    90deg,
-    var(--portfolio-chart-blue, #1850a1) 0%,
-    var(--portfolio-chart-info, #2563eb) 28%,
-    var(--portfolio-chart-green, #2d8a5e) 56%,
-    var(--portfolio-chart-amber, #d97706) 82%,
-    var(--portfolio-chart-red, #ef4444) 100%
-  );
-}
-
-.holdingsAnalysisBand .sectionHead {
-  position: relative;
-  align-items: center;
-  padding: 2px 2px 8px;
-}
-
-.holdingsAnalysisBand .sectionHead span {
-  color: var(--portfolio-chart-blue, #1850a1);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-}
-
-.holdingsAnalysisBand .sectionHead strong {
-  color: var(--portfolio-chart-ink, #17212f);
-  font-size: 19px;
-  letter-spacing: 0;
-}
-
-.holdingsSectionLink {
-  margin-left: auto;
-  min-height: 28px;
-  padding: 5px 10px;
-  border: 1px solid rgba(24, 80, 161, 0.22);
-  border-radius: 6px;
-  background: #ffffff;
-  color: var(--dh-blue, #1850a1);
-  font-size: 12px;
-  font-weight: 800;
-  text-decoration: none;
-  box-shadow: 0 8px 18px rgba(24, 80, 161, 0.08);
-}
-
-.holdingsSectionLink:hover {
-  border-color: rgba(24, 80, 161, 0.38);
-  background: #f5f9ff;
-  text-decoration: none;
-}
-
-.holdingsGrid :global(.dhTerminalPanel) {
-  min-height: 352px;
-}
-
-.holdingsGrid > .distPanel:nth-child(2) {
-  --dist-accent: var(--portfolio-chart-blue, #1850a1);
-  --dist-accent-rgb: 24, 80, 161;
-}
-
-.holdingsGrid > .distPanel:nth-child(3) {
-  --dist-accent: var(--portfolio-chart-info, #2563eb);
-  --dist-accent-rgb: 37, 99, 235;
-}
-
-.holdingsGrid > .distPanel:nth-child(4) {
-  --dist-accent: var(--portfolio-chart-green, #2d8a5e);
-  --dist-accent-rgb: 45, 138, 94;
-}
-
-.holdingsGrid > .distPanel:nth-child(5) {
-  --dist-accent: var(--portfolio-chart-amber, #d97706);
-  --dist-accent-rgb: 217, 119, 6;
-}
-
-.holdingsGrid > :first-child {
-  --dist-accent: #93c5fd;
-  --dist-accent-rgb: 147, 197, 253;
-  grid-column: 1 / -1;
-  --dist-chart-height: 276px;
-  min-height: 424px;
-}
-
-.holdingsGrid > :first-child .distBody {
-  grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
-  gap: 24px;
-}
-
-.holdingsGrid > :first-child .distList {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1px;
-  border-color: rgba(226, 239, 255, 0.16);
-  background: rgba(226, 239, 255, 0.1);
-}
-
-.holdingsGrid > :first-child .distItem {
-  min-height: 82px;
-  border: 0;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.holdingsGrid > :first-child .distItem:first-child {
-  background:
-    linear-gradient(135deg, rgba(96, 165, 250, 0.18), rgba(45, 138, 94, 0.12)),
-    rgba(255, 255, 255, 0.06);
-}
-
-.holdingsGrid > :first-child .distLabel,
-.holdingsGrid > :first-child .distTopHighlight strong,
-.holdingsGrid > :first-child .distChartCenter strong {
-  color: #ffffff;
-}
-
-.holdingsGrid > :first-child .distMetric,
-.holdingsGrid > :first-child .distTopHighlight em {
-  color: #93c5fd;
-}
-
-.holdingsGrid > :first-child .distMarketValue,
-.holdingsGrid > :first-child .distMeta,
-.holdingsGrid > :first-child .distTopLabel,
-.holdingsGrid > :first-child .distChartCenter span {
-  color: rgba(226, 239, 255, 0.68);
-}
-
-.holdingsGrid > :first-child .distPanelHead {
-  border-color: rgba(226, 239, 255, 0.14);
-  background: transparent;
-}
-
-.holdingsGrid > :first-child .distPanelHead h3 {
-  color: #ffffff;
-  font-size: 18px;
-}
-
-.holdingsGrid > :first-child .distTopHighlight {
-  border-color: rgba(226, 239, 255, 0.14);
-  background:
-    linear-gradient(90deg, rgba(96, 165, 250, 0.16), rgba(45, 138, 94, 0.12) 54%, rgba(217, 119, 6, 0.1)),
-    rgba(255, 255, 255, 0.04);
-}
-
-.holdingsGrid > :first-child .distChartCol {
-  border-color: rgba(226, 239, 255, 0.16);
-  background:
-    linear-gradient(135deg, rgba(226, 239, 255, 0.1), rgba(255, 255, 255, 0.02)),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.035));
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
-}
-
-.holdingsGrid > :first-child .distChartCenter strong {
-  font-size: 20px;
-}
-
-.holdingsGrid > :first-child .distViewAll {
-  border-color: rgba(226, 239, 255, 0.2);
-  background: rgba(255, 255, 255, 0.06);
-  color: #dbeafe;
-}
-
-.holdingsGrid > :first-child .distBarTrack {
-  background: rgba(226, 239, 255, 0.13);
-}
-
-.holdingsGrid > :first-child .distPanel::before {
-  background: linear-gradient(90deg, #60a5fa, #2d8a5e 56%, #f59e0b);
-}
-
-.holdingsGrid > :first-child .distPanelHead h3::before {
-  background: #93c5fd;
-  box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.14);
-}
-
 .distPanel {
-  position: relative;
-  --dist-accent: var(--portfolio-chart-blue, #1850a1);
-  --dist-accent-rgb: 24, 80, 161;
+  --dist-accent: var(--moss-color-primary-700);
   --dist-chart-height: 220px;
-  isolation: isolate;
   padding: 0;
   overflow: hidden;
-  border-color: rgba(24, 80, 161, 0.16);
-  border-radius: 8px;
-  background:
-    linear-gradient(90deg, rgba(var(--dist-accent-rgb), 0.045) 0%, transparent 42%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.99) 0%, #f7fafd 100%);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03), 0 14px 26px rgba(24, 80, 161, 0.06);
-}
-
-.holdingsGrid > :first-child.distPanel {
-  border-color: rgba(226, 239, 255, 0.14);
-  background:
-    radial-gradient(circle at 84% 14%, rgba(45, 138, 94, 0.28), transparent 26%),
-    linear-gradient(135deg, #081827 0%, #0c2847 58%, #123a4c 100%);
-  box-shadow: 0 22px 42px rgba(8, 25, 47, 0.2);
-}
-
-.distPanel::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  z-index: 2;
-  height: 3px;
-  background: linear-gradient(90deg, var(--dist-accent), rgba(var(--dist-accent-rgb), 0.14));
+  border: 0;
+  border-radius: 0;
+  background: var(--dh-card);
+  box-shadow: none;
 }
 
 .distPanelHead {
-  position: relative;
-  min-height: 50px;
   margin: 0;
-  padding: 14px 16px 10px;
-  border-bottom: 1px solid rgba(24, 80, 161, 0.08);
-  background: rgba(255, 255, 255, 0.34);
-}
-
-.distPanelHead h3 {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--portfolio-chart-ink, #17212f);
-  font-size: 14px;
-  font-weight: 850;
-}
-
-.distPanelHead h3::before {
-  content: "";
-  width: 7px;
-  height: 22px;
-  border-radius: 999px;
-  background: var(--dist-accent);
-  box-shadow: 0 0 0 3px rgba(var(--dist-accent-rgb), 0.1);
+  padding: 0;
+  border-bottom: 0;
+  background: transparent;
 }
 
 .distHeadActions {
@@ -1394,38 +1189,33 @@
 }
 
 .distViewAll {
-  min-height: 24px;
-  padding: 3px 8px;
-  border: 1px solid rgba(var(--dist-accent-rgb), 0.18);
-  border-radius: 6px;
-  background: #ffffff;
-  color: var(--dist-accent);
+  color: var(--dh-blue, var(--ib-accent));
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 850;
+  line-height: 1.2;
   text-decoration: none;
   white-space: nowrap;
+  transition: color 120ms ease;
 }
 
 .distViewAll:hover {
-  border-color: rgba(var(--dist-accent-rgb), 0.36);
-  background: rgba(var(--dist-accent-rgb), 0.06);
-  text-decoration: none;
+  color: var(--dh-blue-2, var(--ib-accent));
 }
 
 .distSummaryStrip {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px 12px;
+  gap: 6px 10px;
   align-items: center;
-  margin: 0 0 14px;
-  padding: 12px 16px 0;
+  margin: 0;
+  padding: 8px 12px 0;
 }
 
 .distMeta {
   margin: 0;
   grid-column: 1 / -1;
-  color: var(--dh-muted, #6b7d95);
-  font-size: 11px;
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -1435,26 +1225,25 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   justify-self: stretch;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
   margin: 0;
-  padding: 10px 12px;
-  border: 1px solid rgba(var(--dist-accent-rgb), 0.16);
-  border-radius: 6px;
-  background:
-    linear-gradient(90deg, rgba(var(--dist-accent-rgb), 0.09), rgba(var(--dist-accent-rgb), 0.02) 56%, rgba(255, 255, 255, 0.5));
+  padding: 6px 10px;
+  border: 1px solid var(--dh-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-card-soft);
 }
 
 .distTopLabel {
-  color: var(--dh-muted, #6b7d95);
-  font-size: 11px;
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 12px;
   font-weight: 800;
   white-space: nowrap;
 }
 
 .distTopHighlight strong {
   overflow: hidden;
-  color: var(--dh-ink, #0c1c33);
+  color: var(--dh-ink, var(--ib-ink));
   font-size: 14px;
   font-weight: 850;
   letter-spacing: 0;
@@ -1465,7 +1254,7 @@
 .distTopHighlight em {
   justify-self: end;
   color: var(--dist-accent);
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
   font-size: 13px;
   font-style: normal;
   font-weight: 800;
@@ -1476,47 +1265,34 @@
 .distSubtitle {
   grid-column: 1 / -1;
   margin: 0;
-  color: var(--dh-blue-deep, #10356a);
+  color: var(--dh-blue-deep, var(--ib-accent));
   font-size: 12px;
   font-weight: 800;
 }
 
 .distStateBadge {
   padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--dh-card-soft, #f7f9fc);
-  font-size: 10px;
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-card-soft, var(--ib-paper));
+  font-size: 12px;
   font-weight: 700;
 }
 
 .distBody {
   display: grid;
-  grid-template-columns: minmax(190px, 232px) minmax(240px, 1fr);
-  gap: 18px;
+  grid-template-columns: minmax(168px, 200px) minmax(0, 1fr);
+  gap: 10px;
   align-items: start;
-  padding: 0 16px 18px;
-}
-
-.holdingsGrid > .distPanel:not(:first-child) .distBody {
-  margin: 0 16px 18px;
-  padding: 12px;
-  border: 1px solid rgba(var(--dist-accent-rgb), 0.1);
-  border-radius: 8px;
-  background:
-    linear-gradient(90deg, rgba(var(--dist-accent-rgb), 0.04), rgba(255, 255, 255, 0.78) 45%),
-    linear-gradient(180deg, #ffffff 0%, #f8fbfd 100%);
+  padding: 8px 12px 12px;
 }
 
 .distChartCol {
   position: relative;
   min-height: var(--dist-chart-height, 206px);
   overflow: hidden;
-  border: 1px solid rgba(var(--dist-accent-rgb), 0.14);
-  border-radius: 8px;
-  background:
-    linear-gradient(135deg, rgba(var(--dist-accent-rgb), 0.065), rgba(45, 138, 94, 0.026)),
-    linear-gradient(180deg, #ffffff 0%, #f5f8fb 100%);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--dh-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-card-soft);
 }
 
 .distChartCenter {
@@ -1530,16 +1306,16 @@
 }
 
 .distChartCenter span {
-  color: var(--dh-muted, #6b7d95);
-  font-size: 10px;
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
 .distChartCenter strong {
-  color: var(--portfolio-chart-ink, #17212f);
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  color: var(--portfolio-chart-ink, var(--ib-ink));
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
   font-size: 16px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
@@ -1552,16 +1328,11 @@
   margin: 0;
   padding: 0;
   overflow: hidden;
-  border: 1px solid rgba(var(--dist-accent-rgb), 0.09);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--dh-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-card);
   list-style: none;
   min-width: 0;
-}
-
-.holdingsGrid > .distPanel:not(:first-child) .distList {
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
 }
 
 .distItem {
@@ -1570,7 +1341,7 @@
   min-width: 0;
   padding: 12px 13px;
   border: 0;
-  border-bottom: 1px solid rgba(24, 80, 161, 0.08);
+  border-bottom: 1px solid var(--dh-line-soft);
   border-radius: 0;
   background: transparent;
   box-shadow: none;
@@ -1591,34 +1362,34 @@
 .distDot {
   width: 8px;
   height: 20px;
-  border-radius: 999px;
-  background: var(--portfolio-chart-blue, #1850a1);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.8), 0 2px 5px rgba(15, 23, 42, 0.14);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--portfolio-chart-blue, var(--ib-accent));
+  box-shadow: none;
 }
 
 .distDot[data-color-index="1"] {
-  background: var(--portfolio-chart-info, #2563eb);
+  background: var(--portfolio-chart-info, var(--ib-accent));
 }
 
 .distDot[data-color-index="2"] {
-  background: var(--portfolio-chart-green, #2d8a5e);
+  background: var(--portfolio-chart-green, var(--ib-up));
 }
 
 .distDot[data-color-index="3"] {
-  background: var(--portfolio-chart-amber, #d97706);
+  background: var(--portfolio-chart-amber, var(--ib-warn));
 }
 
 .distDot[data-color-index="4"] {
-  background: var(--portfolio-chart-red, #ef4444);
+  background: var(--portfolio-chart-red, var(--ib-down));
 }
 
 .distDot[data-color-index="5"] {
-  background: var(--portfolio-chart-blue, #1850a1);
+  background: var(--portfolio-chart-blue, var(--ib-accent));
 }
 
 .distLabel {
   overflow: hidden;
-  color: var(--dh-ink, #0c1c33);
+  color: var(--dh-ink, var(--ib-ink));
   font-size: 13.5px;
   font-weight: 800;
   line-height: 1.25;
@@ -1628,7 +1399,7 @@
 
 .distMetric {
   color: var(--dist-accent);
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
   font-size: 12px;
   font-weight: 850;
   font-variant-numeric: tabular-nums;
@@ -1638,9 +1409,9 @@
 .distMarketValue {
   grid-column: 2 / -1;
   margin-top: -2px;
-  color: var(--dh-muted-2, #8a99af);
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
-  font-size: 10.5px;
+  color: var(--dh-muted-2, var(--ib-ink-muted));
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-size: 12px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -1651,9 +1422,8 @@
   margin-left: 0;
   overflow: hidden;
   border: 0;
-  border-radius: 999px;
-  background:
-    linear-gradient(90deg, rgba(219, 229, 240, 0.72), rgba(244, 247, 250, 0.9));
+  border-radius: var(--dh-api-radius, 6px);
+  background: color-mix(in srgb, var(--dh-api-blue) 14%, transparent);
 }
 
 .distBarFill {
@@ -1661,28 +1431,28 @@
   width: var(--dist-bar-width);
   height: 100%;
   border-radius: inherit;
-  background: var(--portfolio-chart-blue, #1850a1);
+  background: var(--portfolio-chart-blue, var(--ib-accent));
   box-shadow: none;
 }
 
 .distBarFill[data-color-index="1"] {
-  background: var(--portfolio-chart-info, #2563eb);
+  background: var(--portfolio-chart-info, var(--ib-accent));
 }
 
 .distBarFill[data-color-index="2"] {
-  background: var(--portfolio-chart-green, #2d8a5e);
+  background: var(--portfolio-chart-green, var(--ib-up));
 }
 
 .distBarFill[data-color-index="3"] {
-  background: var(--portfolio-chart-amber, #d97706);
+  background: var(--portfolio-chart-amber, var(--ib-warn));
 }
 
 .distBarFill[data-color-index="4"] {
-  background: var(--portfolio-chart-red, #ef4444);
+  background: var(--portfolio-chart-red, var(--ib-down));
 }
 
 .distBarFill[data-color-index="5"] {
-  background: var(--portfolio-chart-blue, #1850a1);
+  background: var(--portfolio-chart-blue, var(--ib-accent));
 }
 
 .distEmptyState {
@@ -1692,11 +1462,9 @@
   align-items: center;
   min-height: 176px;
   padding: 12px;
-  border: 1px dashed rgba(24, 80, 161, 0.26);
-  border-radius: 8px;
-  background:
-    linear-gradient(135deg, rgba(24, 80, 161, 0.08), rgba(45, 138, 94, 0.05)),
-    rgba(255, 255, 255, 0.72);
+  border: 1px dashed var(--dh-line);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-card-soft);
 }
 
 .distEmptyChart {
@@ -1710,14 +1478,14 @@
   background:
     conic-gradient(
       from 112deg,
-      var(--portfolio-chart-blue, #1850a1) 0 24%,
-      var(--portfolio-chart-info, #2563eb) 24% 43%,
-      var(--portfolio-chart-green, #2d8a5e) 43% 64%,
-      var(--portfolio-chart-amber, #d97706) 64% 82%,
-      var(--portfolio-chart-red, #ef4444) 82% 100%
+      var(--portfolio-chart-blue, var(--ib-accent)) 0 24%,
+      var(--portfolio-chart-info, var(--ib-accent)) 24% 43%,
+      var(--portfolio-chart-green, var(--ib-up)) 43% 64%,
+      var(--portfolio-chart-amber, var(--ib-warn)) 64% 82%,
+      var(--portfolio-chart-red, var(--ib-down)) 82% 100%
     );
   opacity: 0.58;
-  box-shadow: 0 10px 24px rgba(24, 80, 161, 0.12);
+  box-shadow: none;
 }
 
 .distEmptyChart::after {
@@ -1726,7 +1494,7 @@
   aspect-ratio: 1;
   border-radius: 50%;
   background:
-    radial-gradient(circle, #ffffff 0 56%, rgba(24, 80, 161, 0.1) 57% 63%, #ffffff 64%);
+    radial-gradient(circle, var(--ib-surface) 0 56%, color-mix(in srgb, var(--dh-api-blue) 10%, transparent) 57% 63%, var(--ib-surface) 64%);
 }
 
 .distEmptyChart span {
@@ -1742,8 +1510,8 @@
 .distEmptyBars span {
   display: block;
   height: 10px;
-  border-radius: 999px;
-  background: var(--portfolio-chart-blue, #1850a1);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--portfolio-chart-blue, var(--ib-accent));
   opacity: 0.28;
 }
 
@@ -1768,59 +1536,26 @@
 }
 
 .distEmptyBars span[data-color-index="1"] {
-  background: var(--portfolio-chart-info, #2563eb);
+  background: var(--portfolio-chart-info, var(--ib-accent));
 }
 
 .distEmptyBars span[data-color-index="2"] {
-  background: var(--portfolio-chart-green, #2d8a5e);
+  background: var(--portfolio-chart-green, var(--ib-up));
 }
 
 .distEmptyBars span[data-color-index="3"] {
-  background: var(--portfolio-chart-amber, #d97706);
+  background: var(--portfolio-chart-amber, var(--ib-warn));
 }
 
 .distEmptyBars span[data-color-index="4"] {
-  background: var(--portfolio-chart-red, #ef4444);
+  background: var(--portfolio-chart-red, var(--ib-down));
 }
 
 .distEmptyState .distMeta {
   grid-column: 1 / -1;
   padding-top: 2px;
-  color: var(--dh-muted, #6b7d95);
+  color: var(--dh-muted, var(--ib-ink-muted));
   font-weight: 700;
-}
-
-.terminalCard {
-  padding: 14px 16px 10px;
-  border-color: rgba(24, 80, 161, 0.16);
-  border-radius: 8px;
-  background:
-    linear-gradient(180deg, #ffffff 0%, #f6f9fd 100%);
-  box-shadow: 0 12px 28px rgba(24, 80, 161, 0.07);
-}
-
-.terminalCard :global(.ant-tabs-nav) {
-  margin-bottom: 12px;
-}
-
-.terminalCard :global(.ant-tabs-tab) {
-  padding: 6px 0;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.terminalCard :global(.ant-tabs-tab-active .ant-tabs-tab-btn) {
-  color: var(--dh-blue, #1850a1);
-  font-weight: 850;
-}
-
-.terminalCard :global(.ant-tabs-ink-bar) {
-  background: linear-gradient(
-    90deg,
-    var(--portfolio-chart-blue, #1850a1),
-    var(--portfolio-chart-green, #2d8a5e)
-  );
-  height: 3px;
 }
 
 .structureSplit {
@@ -1834,15 +1569,17 @@
   min-width: 0;
 }
 
+.structureListCol:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--dh-api-blue) 72%, transparent);
+  outline-offset: 2px;
+}
+
 .structureChartCol {
   min-height: 280px;
-  padding: 13px 14px 8px;
-  border: 1px solid rgba(24, 80, 161, 0.18);
-  border-radius: 8px;
-  background:
-    linear-gradient(135deg, rgba(24, 80, 161, 0.08), rgba(45, 138, 94, 0.05)),
-    linear-gradient(180deg, #ffffff 0%, #f2f7fd 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  padding: 10px 12px 8px;
+  border: 1px solid var(--dh-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-card-soft);
 }
 
 .structureChartWrap {
@@ -1856,7 +1593,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: var(--portfolio-chart-ink, #17212f);
+  color: var(--portfolio-chart-ink, var(--ib-ink));
   font-size: 12px;
   font-weight: 850;
 }
@@ -1865,12 +1602,8 @@
   content: "";
   width: 3px;
   height: 14px;
-  border-radius: 999px;
-  background: linear-gradient(
-    180deg,
-    var(--portfolio-chart-blue, #1850a1),
-    var(--portfolio-chart-green, #2d8a5e)
-  );
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--ib-surface);
 }
 
 .structureChartEmpty {
@@ -1878,18 +1611,13 @@
   place-items: end stretch;
   min-height: 240px;
   padding: 16px;
-  border: 1px dashed rgba(24, 80, 161, 0.26);
-  border-radius: 8px;
-  background:
-    linear-gradient(90deg, rgba(24, 80, 161, 0.18) 0 78%, transparent 78%),
-    linear-gradient(90deg, rgba(37, 99, 235, 0.16) 0 61%, transparent 61%),
-    linear-gradient(90deg, rgba(45, 138, 94, 0.16) 0 44%, transparent 44%),
-    linear-gradient(90deg, rgba(217, 119, 6, 0.14) 0 32%, transparent 32%),
-    linear-gradient(180deg, #ffffff 0%, #f3f7fc 100%);
+  border: 1px dashed color-mix(in srgb, var(--dh-api-blue) 26%, transparent);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-card);
   background-position: left 46px, left 86px, left 126px, left 166px, 0 0;
   background-repeat: no-repeat;
   background-size: 100% 12px, 100% 12px, 100% 12px, 100% 12px, 100% 100%;
-  color: var(--dh-muted, #6b7d95);
+  color: var(--dh-muted, var(--ib-ink-muted));
   font-size: 12px;
   font-weight: 750;
 }
@@ -1908,7 +1636,7 @@
   gap: 12px;
   align-items: start;
   padding: 10px 0;
-  border-bottom: 1px solid var(--dh-line-soft, #eef2f7);
+  border-bottom: 1px solid var(--dh-line-soft, var(--ib-hairline));
 }
 
 .compactRow:last-child {
@@ -1923,21 +1651,21 @@
 }
 
 .compactLabel {
-  color: var(--dh-ink, #0c1c33);
+  color: var(--dh-ink, var(--ib-ink));
   font-size: 13px;
   font-weight: 750;
 }
 
 .compactSource {
-  color: var(--dh-muted-2, #8a99af);
-  font-size: 10px;
+  color: var(--dh-muted-2, var(--ib-ink-muted));
+  font-size: 12px;
   line-height: 1.4;
 }
 
 .compactValue {
-  color: var(--dh-blue, #1850a1);
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
-  font-size: 11px;
+  color: var(--dh-blue, var(--ib-accent));
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-size: 12px;
   font-weight: 700;
   line-height: 1.45;
   text-align: right;
@@ -1957,21 +1685,9 @@
   gap: 8px;
 }
 
-.statusScope {
-  color: var(--dh-muted-2, #8a99af);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.detailGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
 .detailList {
   display: grid;
-  gap: 8px;
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1980,8 +1696,8 @@
 .detailRow {
   display: grid;
   gap: 2px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--dh-line-soft, #eef2f7);
+  padding: 6px 0;
+  border-bottom: 1px solid var(--dh-line-soft, var(--ib-hairline));
 }
 
 .detailRow:last-child {
@@ -1996,129 +1712,967 @@
   align-items: baseline;
 }
 
+.detailTop[data-value-kind="prose"] {
+  display: grid;
+  gap: 3px;
+}
+
+.detailTop[data-value-kind="prose"] .detailValue {
+  font-family: var(--dh-font-sans, inherit);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
 .detailLabel {
-  color: var(--dh-ink-2, #2c3e5a);
+  color: var(--dh-ink-2, var(--ib-ink-secondary));
   font-size: 13px;
   font-weight: 600;
 }
 
 .detailValue {
-  color: var(--dh-blue, #1850a1);
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  color: var(--dh-blue, var(--ib-accent));
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
   font-size: 13px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
 .detailSource {
-  color: var(--dh-muted-2, #8a99af);
-  font-size: 11px;
+  color: var(--dh-muted-2, var(--ib-ink-muted));
+  font-size: 12px;
   line-height: 1.45;
 }
 
+.holdingsHeroBand[data-tone="watch"] {
+  border-color: var(--moss-color-warning-200);
+}
+
+.holdingsHeroBand[data-tone="error"] {
+  border-color: var(--moss-color-danger-200);
+}
+
+.holdingsHeroHead > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: min(100%, 280px);
+}
+
+.holdingsHeroHead strong {
+  color: var(--dh-ink, var(--ib-ink));
+  font-size: 14px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.holdingsHeroMeta {
+  margin: 0;
+  color: var(--dh-muted-2, var(--ib-ink-muted));
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.holdingsHeroBarRow:last-child {
+  border-bottom: 0;
+}
+
+.holdingsHeroBarLabel {
+  overflow: hidden;
+  color: var(--dh-ink, var(--ib-ink));
+  font-size: 12px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.holdingsHeroBarTop strong {
+  color: var(--dh-api-ink-soft);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-size: 12px;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.holdingsHeroBarFill[data-color-index="1"] {
+  background: var(--portfolio-chart-info, var(--ib-accent));
+}
+
+.holdingsHeroBarFill[data-color-index="2"] {
+  background: var(--portfolio-chart-green, var(--ib-up));
+}
+
+.holdingsHeroBarFill[data-color-index="3"] {
+  background: var(--portfolio-chart-amber, var(--ib-warn));
+}
+
+.holdingsHeroBarFill[data-color-index="4"] {
+  background: var(--portfolio-chart-red, var(--ib-down));
+}
+
+.holdingsHeroBarValue {
+  overflow: hidden;
+  color: var(--dh-muted-2, var(--ib-ink-muted));
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbenchNav {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  position: static;
+  grid-template-columns: minmax(220px, 1fr) repeat(4, minmax(96px, 128px)) minmax(180px, 1.2fr);
+}
+
+.workbenchNavTitle,
+.workbenchNav > .workbenchNavTitle {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  color: var(--dh-ink);
+}
+
+.workbenchNav a:nth-of-type(2) {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 28%, transparent);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 58%, transparent);
+}
+
+.workbenchNav a:nth-of-type(3) {
+  border-color: color-mix(in srgb, var(--dh-api-muted) 28%, transparent);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 58%, transparent);
+}
+
+.workbenchNav a:nth-of-type(4) {
+  border-color: color-mix(in srgb, var(--dh-api-green) 28%, transparent);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 58%, transparent);
+}
+
+.workbenchNav span {
+  grid-row: auto;
+  width: auto;
+  align-self: start;
+  color: var(--portfolio-signal-info-strong);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-size: 12px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.workbenchNav strong {
+  overflow: hidden;
+  color: var(--dh-ink);
+  font-size: 12px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbenchNav em {
+  display: none;
+  overflow: hidden;
+  color: var(--dh-muted-2);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 740;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbenchNav p {
+  min-width: 0;
+  margin: 0;
+  color: var(--dh-muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+@media (min-width: 1101px) {
+  .workbenchNav {
+    position: sticky;
+    z-index: 4;
+    box-sizing: border-box;
+    grid-template-columns: minmax(160px, 0.8fr) repeat(4, minmax(84px, 112px)) minmax(0, 1fr);
+    gap: 6px;
+    height: auto;
+    min-height: 52px;
+    padding: 9px 0;
+    background: var(--dh-card);
+  }
+
+  .workbenchNav a {
+    min-height: 24px;
+    padding: 4px 7px;
+  }
+
+  .workbenchNav p {
+    font-size: 12px;
+    line-height: 1.32;
+  }
+}
+
+@media (max-width: 1100px) {
+  .workbenchNav {
+    position: static;
+    grid-template-columns: repeat(5, minmax(132px, 1fr));
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--dh-line-soft);
+    scrollbar-width: thin;
+  }
+}
+
+@media (max-width: 680px) {
+  .workbenchNav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+    padding: 8px 0;
+  }
+
+  .workbenchNav a {
+    padding: 7px;
+  }
+
+  .workbenchNav > .workbenchNavTitle,
+  .workbenchNav p {
+    grid-column: 1 / -1;
+  }
+}
+
+/* 复盘摘要区块与其他 workbenchSection 同构：单列（头 + summaryLedgerGrid）。 */
+.sourceWorkbenchSection {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  padding: 0;
+  border: 0;
+}
+
+.holdingsWorkbenchSection,
+.actionWorkbenchSection {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.summaryLedgerCard > .chartSnapshot {
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.summaryLedgerCard .chartSnapshotHead {
+  display: none;
+}
+
+.summaryLedgerCard .chartSnapshotGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+/* padding/border/border-radius/background 留在原位：需被随后的 chartSnapshotCard 与 briefCard* 状态规则覆盖 */
+.summaryLedgerCard .chartSnapshotCard,
+.summaryLedgerCard .briefCard,
+.summaryLedgerCard .statusCell {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  padding: 7px 9px;
+  border: 0;
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-card-soft);
+}
+
+.summaryLedgerCard .chartSnapshotCard {
+  gap: 6px;
+  padding: 8px 9px;
+  border: 1px solid var(--dh-line-soft);
+}
+
+.summaryLedgerCard .chartMiniBars {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.summaryLedgerCard .chartMiniRow {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 8px;
+}
+
+.summaryLedgerCard .chartMiniTrack {
+  height: 5px;
+  border-radius: var(--dh-api-radius, 6px);
+  background: color-mix(in srgb, var(--dh-api-blue) 12%, transparent);
+}
+
+.summaryLedgerCard .chartMiniFill {
+  background: var(--dh-api-blue, var(--moss-color-info-400));
+}
+
+.summaryLedgerCard .chartMiniFill[data-color-index="1"] {
+  background: var(--dh-api-green, var(--moss-color-success-300));
+}
+
+.summaryLedgerCard .chartMiniFill[data-color-index="2"] {
+  background: var(--dh-api-amber, var(--moss-color-warning-400));
+}
+
+.summaryLedgerCard .briefGrid,
+.summaryLedgerCard .statusGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--dh-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-line-soft);
+}
+
+.summaryLedgerCard .briefGrid::before,
+.summaryLedgerCard .statusGrid::before {
+  display: grid;
+  gap: 8px;
+  align-items: center;
+  min-height: 24px;
+  padding: 5px 8px 4px;
+  color: var(--dh-muted);
+  background: var(--dh-card-soft);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.summaryLedgerCard .briefGrid::before {
+  content: "事项    结论    证据";
+}
+
+.summaryLedgerCard .statusGrid::before {
+  content: "来源    状态    说明";
+}
+
+.summaryLedgerCard .briefCard,
+.summaryLedgerCard .statusCell {
+  border-radius: 0;
+  background: var(--dh-card);
+}
+
+.summaryLedgerCard .briefCard::before {
+  display: none;
+}
+
+.summaryLedgerCard .briefCardPrimary {
+  background: var(--dh-card);
+}
+
+.holdingsPanoramaGrid {
+  grid-template-columns: minmax(0, 0.48fr) minmax(0, 0.52fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.holdingsHeroBand {
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  background: var(--dh-card);
+  box-shadow: none;
+  align-content: start;
+  gap: 10px;
+  min-height: 0;
+  padding: 11px;
+  border-radius: var(--dh-api-radius, 6px);
+}
+
+.holdingsHeroBand table.srOnly {
+  display: block;
+  max-width: 1px;
+  table-layout: fixed;
+}
+
+.holdingsHeroHead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-width: 0;
+  min-height: 38px;
+}
+
+.holdingsHeroTotal {
+  color: var(--dh-muted-2);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 760;
+}
+
+.holdingsHeroSplit {
+  width: 100%;
+  max-width: 100%;
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.holdingsHeroBars {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  overflow: visible;
+}
+
+.holdingsHeroBarRow {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(118px, 0.82fr) minmax(110px, 1fr) minmax(70px, auto);
+  gap: 8px;
+  align-items: center;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.holdingsHeroBarTop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  min-width: 0;
+  gap: 6px;
+}
+
+.holdingsHeroBarTrack {
+  height: 7px;
+  overflow: hidden;
+  border-radius: var(--dh-api-radius, 6px);
+  background: color-mix(in srgb, var(--dh-api-blue) 12%, transparent);
+}
+
+.holdingsHeroBarFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--portfolio-chart-blue, var(--ib-accent));
+  width: var(--holdings-hero-bar-width);
+}
+
+.exposureWorkbenchHead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 10px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.exposureWorkbenchHead span {
+  color: var(--dh-muted-2);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.exposureWorkbenchHead h2 {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  font-size: 17px;
+}
+
+.exposureWorkbenchHead p {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  max-width: 230px;
+  margin: 0;
+  color: var(--dh-muted);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.exposureLedger {
+  grid-template-columns: minmax(0, 0.62fr) minmax(320px, 0.38fr);
+  align-items: stretch;
+  display: block;
+  min-width: 0;
+}
+
+.exposureLedgerHeader,
+.exposureLedgerRow {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  grid-template-columns: minmax(100px, 1.1fr) minmax(84px, 0.8fr) minmax(72px, 0.65fr) minmax(96px, 1fr);
+}
+
+.exposureLedgerHeader span,
+.exposureLedgerRow span,
+.exposureLedgerRow strong,
+.exposureLedgerRow em {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  padding: 7px 8px;
+}
+
+.exposureLedgerHeader span {
+  color: var(--dh-muted);
+  font-weight: 850;
+}
+
+.exposureLedgerRow em {
+  color: var(--dh-muted);
+  font-style: normal;
+  font-weight: 720;
+}
+
+.closureWorkbenchGrid {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/* border 留在原位：需被 .closureReviewCardRisk 与后文 border-color 规则覆盖 */
+.closureReviewCard {
+  border: 1px solid var(--dh-line-soft);
+}
+
+.structureTableHead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.structureTableHead span {
+  color: var(--dh-muted);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.structureTableWorkbench .structureStatusBar {
+  margin: 0;
+}
+
+.structureTableWorkbench :global(.ant-tabs-nav) {
+  margin: 0 0 10px;
+}
+
+.structureTableWorkbench :global(.ant-tabs-tab) {
+  min-width: 132px;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 28%, transparent);
+  border-radius: var(--dh-api-radius, 6px);
+  background: color-mix(in srgb, var(--dh-api-blue) 10%, transparent);
+}
+
+.structureTableWorkbench :global(.ant-tabs-tab:nth-child(2)) {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-amber) 16%, transparent);
+}
+
+.structureTableWorkbench :global(.ant-tabs-ink-bar) {
+  display: none;
+}
+
+.structureTableWorkbench .embeddedPanel {
+  padding: 0;
+}
+
+/* （2026-08-11）曾在此把 structureChartCol 压成 1px 且 opacity:0 隐藏图表；
+   驾驶舱改版恢复图表展示，布局规则统一收在文件末尾的皮肤层。 */
+
+/* grid-template-columns 留在原位：需被更晚的表头/行列表规则与 @media 覆盖 */
+.structureTableWorkbench .compactRow {
+  grid-template-columns: minmax(240px, 1.5fr) minmax(160px, 0.8fr);
+}
+
+.quickAccessGrid,
 .drillGrid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  min-width: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
-.drillCard {
-  text-decoration: none;
-  color: inherit;
-  min-height: 64px;
-  padding: 9px 11px !important;
-  transition: transform 160ms ease, border-color 160ms ease;
-  grid-template-columns: auto minmax(0, 1fr) auto !important;
-  gap: 10px !important;
-  border-radius: 8px !important;
-}
-
-.drillCardCurrent {
-  border-color: rgba(24, 80, 161, 0.34) !important;
-  background: linear-gradient(180deg, #fff 0%, var(--dh-blue-soft, #e8f1fb) 100%);
-}
-
-.drillCard:hover {
-  transform: translateY(-1px);
-}
-
+.quickAccessCard span,
 .drillCard span {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  background: var(--dh-blue-soft, #e8f1fb);
-  color: var(--dh-blue, #1850a1);
-  font-size: 14px;
-  flex-shrink: 0;
-}
-
-.drillCard b {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid color-mix(in srgb, var(--dh-api-soft) 18%, transparent);
+  border-radius: var(--dh-api-radius, 6px);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 72%, transparent);
+  color: var(--dh-api-ink-soft);
   font-size: 12px;
-  line-height: 1.35;
 }
 
-.drillCard em {
-  font-size: 10px;
+.quickAccessCard b,
+.drillCard b {
+  overflow: hidden;
+  color: var(--dh-ink, var(--ib-ink));
+  font-weight: 850;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+/* 快捷入口为主级：保留说明文字、抬高对比，与明细索引区分层级。 */
+.quickAccessCard {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  min-height: 46px;
+  padding: 9px 11px;
+}
+
+.quickAccessCard span {
+  width: 24px;
+  height: 24px;
+  border-color: color-mix(in srgb, var(--dh-api-blue) 30%, transparent);
+  color: var(--dh-api-blue);
+  font-size: 12px;
+}
+
+.quickAccessCard b {
+  font-size: 12px;
+}
+
+.quickAccessCard em {
+  color: var(--dh-muted-2);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+/* 明细入口为索引级：默认就绪不占版面，仅偏离默认时显示状态。 */
+.drillCard[data-readiness="default"] em {
+  display: none;
+}
+
+.drillCard[data-readiness="note"] em {
+  color: var(--dh-api-amber);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.drillCardCurrent[data-readiness="note"] em {
+  color: var(--dh-api-blue);
+}
+
+/* grid-template-columns 留在原位：需被更晚的 @media .decisionPanel 覆盖 */
+.decisionPanel {
+  grid-template-columns: minmax(254px, 0.68fr) minmax(0, 1.32fr);
+}
+
+.decisionLedger {
+  align-content: start;
+  background: var(--dh-card);
+  gap: 6px;
+  padding: 12px 13px;
+}
+
+.decisionTitle {
+  margin: 0;
+  color: var(--dh-ink, var(--ib-ink));
+  font-weight: 880;
+  font-size: 24px;
+  line-height: 1.16;
+}
+
+.decisionDetail {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.42;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.decisionFact {
+  display: grid;
+  gap: 4px;
+  align-content: center;
+  min-width: 0;
+  background: var(--dh-card);
+  min-height: 40px;
+  padding: 6px 8px;
+}
+
+.decisionFact strong {
+  overflow-wrap: normal;
+  word-break: normal;
+  color: var(--dh-ink, var(--ib-ink));
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-weight: 850;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+}
+
+/* grid-template-columns 留在原位：需被更晚出现的 @media (max-width: 900px) .kpiGrid 覆盖 */
+.kpiGrid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.kpiCard[data-empty="true"] {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 32%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--dh-api-amber) 10%, transparent), color-mix(in srgb, var(--dh-api-amber) 1.8%, transparent)),
+    var(--dh-card);
+}
+
+.kpiValue {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  font-size: 23px;
+}
+
+.kpiValue[data-empty="true"] {
+  color: var(--dh-amber);
+  font-family: var(--dh-font-sans, "Microsoft YaHei UI", sans-serif);
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.kpiValue[data-empty="true"] span {
   white-space: nowrap;
 }
+
+.summaryLedgerCard {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  border: 1px solid var(--dh-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-card);
+  min-height: 158px;
+  border-color: color-mix(in srgb, var(--dh-api-blue) 20%, transparent);
+}
+
+.summaryLedgerCard .chartSnapshotCard,
+.summaryLedgerCard .briefCard,
+.summaryLedgerCard .statusCell {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  min-height: 34px;
+  border-left: 2px solid color-mix(in srgb, var(--dh-api-blue) 28%, transparent);
+}
+
+.summaryLedgerCard .briefCardWatch,
+.summaryLedgerCard .statusCell:has(.toneWatch) {
+  border-left-color: color-mix(in srgb, var(--dh-api-amber) 58%, transparent);
+}
+
+.summaryLedgerCard .chartMiniSkeleton {
+  gap: 7px;
+}
+
+.holdingsHeroEmpty {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  border: 1px dashed var(--dh-line-soft, var(--ib-hairline));
+  border-radius: var(--dh-api-radius, 6px);
+  display: grid;
+  align-content: end;
+  min-height: 202px;
+  padding: 14px;
+  border-style: solid;
+  background:
+    linear-gradient(color-mix(in srgb, var(--dh-api-blue) 8%, transparent) 0 0) 14px 34px / 76% 8px no-repeat,
+    linear-gradient(color-mix(in srgb, var(--dh-api-blue) 12%, transparent) 0 0) 14px 58px / 62% 8px no-repeat,
+    linear-gradient(color-mix(in srgb, var(--dh-api-amber) 18%, transparent) 0 0) 14px 82px / 46% 8px no-repeat,
+    var(--dh-card-soft);
+  color: var(--dh-amber);
+  font-weight: 820;
+}
+
+.exposureWorkbenchSection {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  padding: 11px;
+  border: 1px solid var(--dh-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-card);
+  border-color: color-mix(in srgb, var(--dh-api-blue) 22%, transparent);
+}
+
+.exposureLedgerRow strong {
+  color: var(--dh-blue);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.closureReviewCard,
+.closureGate {
+  min-height: 178px;
+}
+
+.closureReviewCard {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  border-color: color-mix(in srgb, var(--dh-api-blue) 18%, transparent);
+}
+
+.closureReviewCard .detailValue {
+  font-size: 12px;
+}
+
+.structureTableWorkbench {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  border-color: color-mix(in srgb, var(--dh-api-blue) 20%, transparent);
+}
+
+.structureTableWorkbench :global(.ant-tabs-tab) {
+  min-width: 118px;
+  padding: 5px 7px;
+}
+
+.structureTableWorkbench :global(.ant-tabs-nav) {
+  margin-bottom: 7px;
+}
+
+.quickAccessBlock,
+.drilldownBlock {
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 14%, transparent);
+  border-radius: var(--dh-api-radius, 6px);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 48%, transparent);
+}
+
+.quickAccessCard,
+.drillCard {
+  border-color: color-mix(in srgb, var(--dh-api-soft) 20%, transparent);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 46%, transparent);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  color: var(--dh-ink, var(--ib-ink));
+  text-decoration: none;
+  box-shadow: none;
+  border-radius: var(--dh-api-radius, 6px);
+  min-height: 31px;
+  padding: 6px 8px;
+}
+
+@media (max-width: 1280px) {
+  .holdingsHeroSplit {
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 
 .dataNote {
   grid-column: 1 / -1;
   margin: 0;
   padding: 9px 12px;
-  border-radius: 8px;
-  background: var(--dh-card-soft, #f7f9fc);
-  color: var(--dh-muted, #6b7d95);
-  font-size: 11px;
+  border: 1px solid var(--dh-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-card-soft);
+  color: var(--dh-muted);
+  font-size: 13px;
   line-height: 1.55;
 }
 
 .toneOk {
-  color: var(--dh-green, #1f7a55);
+  color: var(--dh-green, var(--ib-up));
 }
 
 .toneWatch {
-  color: var(--dh-amber, #b76e00);
+  color: var(--dh-amber, var(--ib-warn));
 }
 
 .toneError {
-  color: var(--dh-red, #b94743);
+  color: var(--dh-red, var(--ib-down));
 }
 
 .toneMuted {
-  color: var(--dh-muted, #6b7d95);
+  color: var(--dh-muted, var(--ib-ink-muted));
+}
+
+.structureGapActions {
+  margin: 8px 10px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  margin-top: -2px;
+  font-size: 12px;
+}
+
+.structureGapAction span,
+.structureGapAction strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.structureGapAction span {
+  color: var(--dh-amber, var(--ib-warn));
+  font-weight: 800;
+}
+
+.structureGapAction strong {
+  min-width: 0;
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.structureGapAction[data-tone="error"] span {
+  color: var(--dh-red, var(--ib-down));
+}
+
+.structureGapAction[data-tone="muted"] span {
+  color: var(--dh-muted, var(--ib-ink-muted));
 }
 
 .statePill {
   display: inline-flex;
   align-items: center;
   padding: 2px 10px;
-  border-radius: 999px;
-  font-size: 11px;
+  border-radius: var(--dh-api-radius, 6px);
+  font-size: 12px;
   font-weight: 700;
-  border: 1px solid var(--dh-line, #e4e9f0);
-  background: #fff;
+  border: 1px solid var(--dh-line, var(--ib-hairline));
+  background: var(--ib-surface);
 }
 
 .stateOk {
-  color: var(--dh-green, #1f7a55);
-  border-color: #cfe8dc;
-  background: var(--dh-green-soft, #eef7f2);
+  color: var(--dh-green, var(--ib-up));
+  border-color: var(--moss-color-success-100);
+  background: var(--dh-green-soft, var(--ib-paper));
 }
 
 .stateWatch {
-  color: var(--dh-amber, #b76e00);
-  border-color: #f0d9a5;
-  background: var(--dh-amber-soft, #fbf6ea);
+  color: var(--dh-amber, var(--ib-warn));
+  border-color: var(--moss-color-warning-200);
+  background: var(--dh-amber-soft, var(--moss-color-warning-50));
 }
 
 .stateError {
-  color: var(--dh-red, #b94743);
-  border-color: #f0c9c7;
-  background: var(--dh-red-soft, #fbf1f0);
+  color: var(--dh-red, var(--ib-down));
+  border-color: var(--moss-color-danger-200);
+  background: var(--dh-red-soft, var(--moss-color-danger-50));
+}
+
+@media (min-width: 1320px) {
+  .kpiGridTape {
+    overflow-x: visible;
+  }
+
+  .kpiGrid {
+    grid-auto-flow: row;
+    grid-auto-columns: unset;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    width: 100%;
+  }
 }
 
 @media (max-width: 760px) {
@@ -2129,29 +2683,19 @@
   .decisionFactGrid {
     grid-template-columns: repeat(3, minmax(128px, 1fr));
   }
-
-  .evidenceFactList {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .evidenceFactList .decisionFact {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 @media (max-width: 1100px) {
-  .portfolioPrimaryGrid {
+
+  .holdingsPanoramaGrid,
+.exposureLedger,
+.closureWorkbenchGrid,
+.actionMatrixGrid {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .aiDecisionRail {
-    position: static;
-  }
-
-  .aiRailMetricGrid,
-  .aiRailStatusList,
-  .aiRailActionList {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  .workbenchSectionMeta {
+    justify-content: flex-start;
   }
 
   .briefGrid {
@@ -2162,34 +2706,8 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .kpiGrid {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
-
-  .kpiCard {
-    min-height: 104px;
-  }
-
-  .kpiCard:nth-child(-n + 2),
-  .kpiCard:nth-child(n + 3) {
-    grid-column: span 3;
-  }
-
   .statusGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .detailGrid,
-  .drillGrid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .holdingsGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .holdingsAnalysisBand {
-    padding: 12px;
   }
 
   .distBody {
@@ -2217,14 +2735,21 @@
     justify-content: stretch;
   }
 
-  .portfolioCockpit {
-    padding: 10px;
-    background:
-      linear-gradient(180deg, #07111f 0, #07111f 180px, #f3f6fa 180px, #f3f6fa 100%);
+  .workbenchSection {
+    padding: 0;
   }
 
-  .chartSnapshot {
-    order: -1;
+  .workbenchSectionHead {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workbenchSectionHead p {
+    grid-column: 2;
+  }
+
+  .workbenchSectionMeta {
+    grid-column: 1 / -1;
+    padding-left: 37px;
   }
 
   .portfolioTopbarLeft,
@@ -2235,46 +2760,20 @@
   }
 
   .decisionPanel {
-    padding: 1px;
-  }
-
-  .decisionTitle {
-    font-size: 18px;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .decisionFactGrid {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .evidenceFactList {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .evidenceFactList .decisionFact strong {
-    text-align: left;
-  }
-
-  .decisionAction {
-    grid-template-columns: 8px minmax(0, 1fr);
-  }
-
-  .decisionActionTarget {
-    grid-column: 2;
-    justify-self: start;
+  .kpiCard {
+    min-height: 98px;
+    padding: 11px 12px 10px;
   }
 
   .kpiGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .kpiCard:nth-child(-n + 2),
-  .kpiCard:nth-child(n + 3) {
-    grid-column: auto;
-  }
-
-  .kpiCard {
-    min-height: 98px;
-    padding: 12px 13px 11px;
   }
 
   .kpiValue {
@@ -2285,22 +2784,9 @@
     font-size: 12px;
   }
 
-  .aiRailMetricGrid,
-  .aiRailStatusList,
-  .aiRailActionList {
+  .distBody {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .holdingsGrid,
-  .detailGrid,
-  .drillGrid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .distBody,
-  .holdingsGrid > :first-child .distBody {
-    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
-    gap: 16px;
+    gap: 10px;
   }
 
   .distChartCol {
@@ -2319,8 +2805,25 @@
 }
 
 @media (max-width: 680px) {
-  .distBody,
-  .holdingsGrid > :first-child .distBody {
+  .workbenchSectionHead > div:first-child {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workbenchSectionHead span {
+    grid-row: auto;
+  }
+
+  .workbenchSectionHead p,
+  .workbenchSectionMeta {
+    grid-column: 1;
+    padding-left: 0;
+  }
+
+  .holdingsHeroBand {
+    padding: 10px;
+  }
+
+  .distBody {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -2328,5 +2831,2869 @@
     width: min(260px, 100%);
     max-width: 260px;
     margin: 0 auto;
+  }
+}
+
+@media (max-width: 680px) {
+
+  .sourceWorkbenchSection {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .summaryLedgerCard {
+    min-height: 0;
+  }
+
+  .summaryLedgerCard .chartSnapshotGrid,
+  .summaryLedgerCard .briefGrid,
+  .summaryLedgerCard .statusGrid {
+    gap: 5px;
+  }
+
+  .quickAccessGrid,
+  .drillGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .exposureLedgerHeader,
+  .exposureLedgerRow {
+    grid-template-columns: minmax(0, 1fr) minmax(72px, auto);
+  }
+
+  .exposureLedgerHeader span:nth-child(n + 3),
+  .exposureLedgerRow span:nth-child(n + 3),
+  .exposureLedgerRow em {
+    display: none;
+  }
+
+  .structureTableHead,
+  .exposureWorkbenchHead {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .structureTableHead span,
+  .exposureWorkbenchHead p {
+    grid-column: 1;
+    grid-row: auto;
+    max-width: none;
+    text-align: left;
+  }
+
+  .structureTableWorkbench :global(.ant-tabs-nav-wrap),
+  .structureTableWorkbench :global(.ant-tabs-nav-list) {
+    width: 100%;
+    min-width: 0;
+    transform: none !important;
+  }
+
+  .structureTableWorkbench :global(.ant-tabs-nav-list) {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .structureTableWorkbench :global(.ant-tabs-tab) {
+    flex: 1 1 calc(50% - 6px);
+    min-width: 0;
+    margin: 0 !important;
+  }
+
+  .structureTableWorkbench .compactRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .structureTableWorkbench .compactValue {
+    min-width: 0;
+    text-align: left;
+  }
+}
+
+@media (min-width: 1101px) {
+
+
+  .decisionReadinessBar {
+    min-height: 28px;
+    padding: 5px 7px;
+  }
+
+  .terminalPanelHead {
+    min-height: 24px;
+    padding: 4px 8px;
+  }
+
+  .decisionFactGrid,
+  .evidenceFactList {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .decisionFact {
+    min-height: 34px;
+    padding: 5px 7px;
+  }
+
+  .decisionFact span {
+    font-size: 12px;
+  }
+
+  .decisionFact strong {
+    font-size: 12px;
+    line-height: 1.25;
+  }
+
+  .decisionActionDot {
+    width: 5px;
+    height: 18px;
+  }
+
+  .decisionActionText small {
+    display: none;
+  }
+
+  .sectionBlock {
+    gap: 7px;
+  }
+
+  .kpiValue span {
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  .summaryLedgerCard .chartSnapshotCard,
+  .summaryLedgerCard .briefCard,
+  .summaryLedgerCard .statusCell {
+    min-height: 28px;
+    padding: 6px 8px;
+  }
+
+  .summaryLedgerCard .briefGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .briefTitle {
+    font-size: 12px;
+  }
+
+  .briefConclusion {
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: 13px;
+    line-height: 1.3;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .briefEvidence {
+    font-size: 13px;
+    -webkit-line-clamp: 1;
+  }
+
+  .summaryLedgerCard .statusGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workbenchSection {
+    gap: 12px;
+    padding: 0;
+  }
+
+  .workbenchSectionHead {
+    gap: 8px;
+    padding-bottom: 7px;
+  }
+
+  .workbenchSectionHead p {
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: 12px;
+    line-height: 1.34;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+
+  .workbenchSectionMeta em {
+    min-height: 23px;
+    padding: 3px 7px;
+  }
+
+  .exposureWorkbenchHead h2 {
+    font-size: 15px;
+  }
+
+  .exposureWorkbenchHead p {
+    font-size: 13px;
+    line-height: 1.34;
+  }
+
+  .exposureLedgerHeader span,
+  .exposureLedgerRow span,
+  .exposureLedgerRow strong,
+  .exposureLedgerRow em {
+    padding: 6px 7px;
+  }
+
+  .structureTableWorkbench {
+    gap: 8px;
+    padding: 9px;
+  }
+
+  .structureTableWorkbench :global(.ant-tabs-nav) {
+    margin-bottom: 5px;
+  }
+
+  .structureTableWorkbench :global(.ant-tabs-tab) {
+    min-width: 108px;
+    padding: 4px 6px;
+  }
+
+  .quickAccessGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .drillGrid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .quickAccessCard,
+  .drillCard {
+    min-height: 28px;
+    padding: 6px 8px;
+  }
+
+  .quickAccessCard b,
+  .drillCard b {
+    font-size: 12px;
+  }
+
+}
+
+@media (min-width: 1101px) {
+  /* 壳层几何（216px 贴边通栏侧栏）统一由 workbenchShell.css 末尾的
+     「全系统侧边栏统一」层定义，页面不再覆盖列宽/边距/侧栏高度。 */
+  :global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"]) .workbench-main-column) {
+    width: 100% !important;
+    max-width: none !important;
+    justify-self: stretch !important;
+  }
+
+  .portfolioPage {
+    gap: 16px;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .evidenceConsole .evidenceFactList {
+    grid-template-columns: minmax(150px, 0.8fr) minmax(112px, 0.58fr) minmax(0, 1fr);
+  }
+
+  .evidenceConsole .decisionActionQueue {
+    padding: 5px 8px;
+  }
+
+  .evidenceConsole .decisionAction {
+    min-height: 26px;
+  }
+
+  .portfolioRiskTickerBar {
+    padding: 6px 8px;
+    display: none;
+  }
+
+  .summaryLedgerCard {
+    gap: 8px;
+    box-sizing: border-box;
+    height: auto;
+    min-height: 152px;
+    padding: 10px 12px;
+    overflow: visible;
+  }
+
+  .summaryLedgerCard .briefGrid,
+  .summaryLedgerCard .statusGrid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1px;
+  }
+
+  .summaryLedgerCard .briefGrid::before,
+  .summaryLedgerCard .statusGrid::before {
+    display: block;
+    min-height: 21px;
+    padding: 4px 8px 3px;
+  }
+
+  .summaryLedgerCard .statusGrid::before {
+    min-height: 18px;
+    padding: 3px 8px 2px;
+  }
+
+  .summaryLedgerCard .briefCard {
+    align-content: start;
+    display: grid;
+    grid-template-columns: minmax(70px, 0.58fr) minmax(88px, 0.72fr) minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+    min-height: 22px;
+    padding: 4px 8px;
+  }
+
+  .summaryLedgerCard .statusCell {
+    display: grid;
+    grid-template-columns: minmax(74px, 0.68fr) minmax(62px, 0.48fr) minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+    min-height: 18px;
+    padding: 3px 8px;
+  }
+
+  .summaryLedgerCard .briefTitle,
+  .summaryLedgerCard .briefConclusion,
+  .summaryLedgerCard .briefEvidence,
+  .summaryLedgerCard .statusCell span,
+  .summaryLedgerCard .statusCell b,
+  .summaryLedgerCard .statusCell em {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 12px;
+    line-height: 1.22;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .summaryLedgerCard .briefTitle {
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .summaryLedgerCard .briefConclusion,
+  .summaryLedgerCard .briefEvidence {
+    display: block;
+    -webkit-line-clamp: unset;
+  }
+
+  .summaryLedgerCard .statusCell em {
+    display: block;
+  }
+
+  .summaryLedgerCard .statusCell span,
+  .summaryLedgerCard .statusCell em {
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  .summaryLedgerCard .statusCell b {
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  .holdingsWorkbenchSection,
+  .portfolioStructureWorkbench,
+  .portfolioClosureBand,
+  .actionWorkbenchSection {
+    box-sizing: border-box;
+    overflow: visible;
+  }
+
+  .holdingsPanoramaGrid {
+    gap: 10px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .holdingsHeroSplit {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .holdingsHeroBand,
+  .exposureWorkbenchSection {
+    padding: 10px 12px;
+    box-sizing: border-box;
+    min-height: 204px;
+  }
+
+  .holdingsHeroBand {
+    gap: 7px;
+  }
+
+  .holdingsHeroHead {
+    min-height: 30px;
+    gap: 4px 10px;
+  }
+
+  .holdingsHeroHead > div:first-child {
+    gap: 2px;
+  }
+
+  .holdingsHeroHead strong {
+    font-size: 14px;
+  }
+
+  .holdingsHeroMeta {
+    display: none;
+  }
+
+  .holdingsHeroFigure {
+    gap: 5px;
+    padding: 7px;
+    border: 0;
+    background: transparent;
+  }
+
+  .holdingsHeroStackBar {
+    height: 9px;
+  }
+
+  .holdingsHeroFigureMeta,
+  .holdingsHeroFigureHead {
+    display: none;
+  }
+
+  .holdingsHeroBars {
+    gap: 3px;
+    overflow: hidden;
+  }
+
+  .holdingsHeroBarRow {
+    grid-template-columns: minmax(140px, 0.75fr) minmax(160px, 1fr) minmax(76px, auto);
+    gap: 8px;
+    align-items: center;
+    min-height: 22px;
+    padding: 1px 0;
+    border-bottom: 0;
+  }
+
+  .holdingsHeroBarTop {
+    gap: 6px;
+  }
+
+  .holdingsHeroBarLabel,
+  .holdingsHeroBarTop strong,
+  .holdingsHeroBarValue {
+    font-size: 12px;
+  }
+
+  .holdingsHeroBarTrack {
+    height: 6px;
+  }
+
+  .holdingsHeroBarTrack,
+  .holdingsHeroBarFill {
+    border-radius: 999px;
+  }
+
+  .quickAccessBlock,
+  .drilldownBlock {
+    min-height: 0;
+  }
+
+  .structureTableWorkbench .compactList {
+    scrollbar-width: thin;
+    gap: 1px;
+    max-height: 148px;
+    overflow: hidden;
+    border: 1px solid var(--dh-line-soft);
+    border-radius: var(--dh-api-radius, 6px);
+    background: var(--dh-line-soft);
+  }
+
+  .structureTableWorkbench .compactList::before {
+    content: "子组合\00a0\00a0\00a0\00a0\00a0\00a0 DV01 / 持仓\00a0\00a0\00a0\00a0\00a0\00a0 市值";
+    display: block;
+    min-height: 24px;
+    padding: 5px 8px 4px;
+    color: var(--dh-muted);
+    background: var(--dh-card-soft);
+    font-size: 12px;
+    font-weight: 850;
+    letter-spacing: 0.01em;
+  }
+
+  .structureTableWorkbench .compactRow {
+    grid-template-columns: minmax(150px, 0.82fr) minmax(260px, 1fr) minmax(136px, 0.62fr);
+    gap: 10px;
+    min-height: 24px;
+    padding: 4px 8px;
+    border-bottom: 0;
+    background: var(--dh-card);
+  }
+
+  .structureTableWorkbench .embeddedPanelHead,
+  .structureTableWorkbench .detailSource {
+    display: none;
+  }
+
+  .structureTableWorkbench .compactRowMain {
+    display: contents;
+  }
+
+  .structureTableWorkbench .compactLabel,
+  .structureTableWorkbench .compactValue {
+    font-size: 12px;
+    line-height: 1.25;
+  }
+
+  .structureTableWorkbench .compactSource {
+    display: block;
+    overflow: hidden;
+    color: var(--dh-muted);
+    font-size: 12px;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .structureTableWorkbench .compactValue {
+    text-align: left;
+  }
+
+  .actionMatrixGrid {
+    grid-template-columns: minmax(0, 0.44fr) minmax(0, 0.56fr);
+    gap: 10px;
+    align-items: start;
+  }
+
+  .dataNote {
+    overflow: auto;
+    scrollbar-width: thin;
+    max-height: 34px;
+  }
+}
+
+@media (min-width: 1101px) {
+
+  .decisionReadinessBar,
+  .decisionMatrix,
+  .evidenceConsole .terminalPanelHead {
+    display: none;
+  }
+
+  .evidenceConsole {
+    display: contents;
+  }
+
+  .evidenceConsole .decisionFact + .decisionFact {
+    padding-top: 9px;
+    border-top: 1px solid color-mix(in srgb, var(--dh-api-green) 16%, transparent);
+  }
+
+  .evidenceConsole .decisionFact span {
+    font-size: 12px;
+  }
+
+  .decisionActionList {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .portfolioPrimaryColumn [data-testid="module-home-kpi-strip"] {
+    /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+    min-height: 0;
+  }
+
+  .sourceWorkbenchSection,
+  .summaryLedgerCard,
+  .actionWorkbenchSection {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+}
+
+.decisionAction:hover {
+  text-decoration: none;
+  border-color: var(--portfolio-info-border-strong);
+  background: var(--portfolio-info-soft);
+}
+
+.terminalPanelHead span,
+.decisionActionTarget,
+.structureTableWorkbench .compactValue,
+.chartMiniMetric {
+  color: var(--portfolio-signal-info-strong);
+}
+
+.decisionKicker {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: var(--portfolio-signal-review);
+}
+
+.decisionPanel {
+  border: 1px solid var(--dh-line);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 1px;
+  align-items: stretch;
+  align-self: stretch;
+  overflow: hidden;
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-line-soft);
+  box-shadow: none;
+  border-color: var(--portfolio-review-border);
+}
+
+.decisionActionText small,
+.workbenchSectionHead p,
+.workbenchSectionMeta em {
+  color: color-mix(in srgb, var(--dh-muted-2) 88%, var(--portfolio-signal-info-muted));
+}
+
+.workbenchSection,
+.summaryLedgerCard,
+.exposureWorkbenchSection,
+.structureTableWorkbench,
+.closureReviewCard,
+.quickAccessBlock,
+.drilldownBlock {
+  border-color: color-mix(in srgb, var(--dh-api-soft) 16%, transparent);
+}
+
+.kpiCard:nth-child(-n + 2) {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--dh-api-soft) 5.5%, transparent), color-mix(in srgb, var(--dh-api-soft) 1.2%, transparent)),
+    var(--dh-card);
+}
+
+.kpiCard:nth-child(5n + 1),
+.kpiCard:hover {
+  border-color: var(--portfolio-info-border);
+}
+
+.kpiValue,
+.kpiValue.toneOk {
+  color: var(--portfolio-signal-info-strong);
+}
+
+.kpiCard[data-empty="true"],
+.closureReviewCardRisk {
+  border-color: var(--portfolio-review-border);
+}
+
+.structureTableWorkbench :global(.ant-tabs-tab) {
+  border-color: var(--portfolio-info-border);
+  background: var(--portfolio-info-soft);
+}
+
+.structureTableWorkbench :global(.ant-tabs-tab:nth-child(2)) {
+  border-color: var(--portfolio-review-border);
+  background: var(--portfolio-review-soft);
+}
+
+.summaryLedgerCard .chartSnapshotCard,
+.summaryLedgerCard .briefCard,
+.summaryLedgerCard .statusCell {
+  border-left-color: var(--portfolio-info-border-strong);
+}
+
+.summaryLedgerCard .chartMiniSkeleton span {
+  height: 8px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--dh-api-soft) 24%, transparent), color-mix(in srgb, var(--dh-api-soft) 8%, transparent));
+}
+
+.closureReviewCard .detailRow > .detailSource {
+  display: none;
+}
+
+@media (min-width: 1101px) {
+  .closureGate,
+  .closureReviewCard {
+    min-height: 206px;
+  }
+
+  .closureReviewCard {
+    /* 刻意保留的死声明：被文件更靠后的 ROOT .closureReviewCard（gap 8px / padding 10px 12px）
+       按源顺序压制，从不生效；若前移会复活并改变宽屏渲染，故留在原位。 */
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .closureReviewCard .embeddedPanel {
+    gap: 10px;
+  }
+
+  .closureReviewCard .detailRow {
+    padding: 7px 0;
+  }
+}
+
+.structureTableHead,
+.structureGapActions,
+.structureTableWorkbench .embeddedPanelHead,
+.structureTableWorkbench .detailSource,
+.structureTableWorkbench .compactList::before {
+  display: none;
+}
+
+.structureTableWorkbench :global(.ant-tabs-nav) {
+  margin: 0 0 14px;
+}
+
+.structureTableWorkbench :global(.ant-tabs-nav::before) {
+  display: none;
+}
+
+.structureTableWorkbench :global(.ant-tabs-nav-list) {
+  gap: 10px;
+}
+
+.structureTableWorkbench :global(.ant-tabs-tab) {
+  min-width: 108px;
+  height: 36px;
+  margin: 0;
+  padding: 0 14px;
+  border: 1px solid color-mix(in srgb, var(--dh-api-soft) 18%, transparent);
+  border-radius: var(--dh-api-radius, 6px);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 54%, transparent);
+}
+
+.structureTableWorkbench :global(.ant-tabs-tab-active) {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 58%, transparent);
+  background: color-mix(in srgb, var(--dh-api-panel-3) 62%, transparent);
+}
+
+.structureTableWorkbench :global(.ant-tabs-tab:nth-child(2):not(.ant-tabs-tab-active)) {
+  border-color: color-mix(in srgb, var(--dh-api-soft) 18%, transparent);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 54%, transparent);
+}
+
+.structureTableWorkbench :global(.ant-tabs-tab-btn) {
+  color: var(--dh-api-ink-soft);
+  font-size: 14px;
+  font-weight: 760;
+  text-shadow: none;
+}
+
+.structureTableWorkbench :global(.ant-tabs-tab-active) .structureTabLabel,
+.structureTableWorkbench :global(.ant-tabs-tab-active) .structureTabLabel > span {
+  color: var(--dh-ink);
+}
+
+.structureTableWorkbench :global(.ant-tabs-tab-active .ant-tabs-tab-btn) {
+  color: var(--dh-ink);
+}
+
+.structureTableWorkbench .structureTabLabel {
+  gap: 8px;
+}
+
+.structureTableWorkbench .structureTabBadge {
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--dh-api-blue);
+  font-size: 12px;
+}
+
+.structureTableWorkbench .compactListHeader,
+.structureTableWorkbench .compactRow {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.25fr) minmax(150px, 0.88fr) minmax(110px, 0.72fr) minmax(150px, 0.88fr);
+  column-gap: 18px;
+  align-items: center;
+}
+
+/* 收益率桶等三列维度：表头列定义随 tab 切换（B3）。 */
+.structureTableWorkbench .compactListHeader[data-cols="3"],
+.structureTableWorkbench .compactRow[data-cols="3"] {
+  grid-template-columns: minmax(160px, 1.4fr) minmax(110px, 0.72fr) minmax(150px, 0.88fr);
+}
+
+.structureTableWorkbench .compactListHeader span:nth-child(n + 2) {
+  text-align: right;
+}
+
+/* 组合级汇总读数（如加权到期收益率）不混入桶明细行。 */
+.structureTableWorkbench .structureSummaryLine {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin: 0;
+  padding: 8px 0 6px;
+  border-bottom: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.structureTableWorkbench .structureSummaryLine strong {
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-size: 13px;
+  font-weight: 860;
+  font-variant-numeric: tabular-nums;
+}
+
+.structureTableWorkbench .compactList {
+  gap: 0;
+  max-height: none;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+}
+
+.structureTableWorkbench .compactRow:last-child {
+  border-bottom: 0;
+}
+
+.structureTableWorkbench .compactRowMain {
+  display: block;
+}
+
+/* font-weight 留在原位：需被紧随其后的 .compactLabel / .compactValue 覆盖 */
+.structureTableWorkbench .compactLabel,
+.structureTableWorkbench .compactSource,
+.structureTableWorkbench .compactCount,
+.structureTableWorkbench .compactValue {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  font-weight: 760;
+}
+
+.structureTableWorkbench .compactLabel {
+  color: var(--dh-ink);
+  font-weight: 860;
+}
+
+.structureTableWorkbench .compactValue {
+  font-size: 12px;
+  color: var(--dh-ink);
+  font-weight: 860;
+  text-align: right;
+}
+
+@media (min-width: 1101px) {
+  .actionWorkbenchSection .dataNote {
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+@media (max-width: 1320px) {
+  .structureTableWorkbench .compactListHeader,
+  .structureTableWorkbench .compactRow {
+    grid-template-columns: minmax(132px, 1fr) minmax(130px, 0.86fr) minmax(90px, 0.64fr) minmax(120px, 0.82fr);
+    column-gap: 12px;
+  }
+
+  .structureTableWorkbench .compactListHeader[data-cols="3"],
+  .structureTableWorkbench .compactRow[data-cols="3"] {
+    grid-template-columns: minmax(132px, 1.2fr) minmax(90px, 0.64fr) minmax(120px, 0.82fr);
+  }
+
+  .structureTableWorkbench .compactLabel,
+  .structureTableWorkbench .compactSource,
+  .structureTableWorkbench .compactCount,
+  .structureTableWorkbench .compactValue {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 600px) {
+  .structureTableWorkbench .structureListCol {
+    max-width: 100%;
+    padding-bottom: 4px;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
+  }
+
+  .structureTableWorkbench .compactListHeader,
+  .structureTableWorkbench .compactRow {
+    min-width: 528px;
+  }
+}
+
+.portfolioStructureWorkbench .workbenchSectionHead p {
+  color: var(--dh-api-muted);
+  line-height: 1.25;
+}
+
+.structureTableWorkbench {
+  border-radius: var(--dh-api-radius, 6px);
+  gap: 0;
+  padding: 8px 0 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  padding-top: 6px;
+}
+
+.portfolioClosureBand {
+  height: auto;
+  min-height: 0;
+}
+
+.closureWorkbenchGrid {
+  gap: 12px;
+  align-items: stretch;
+}
+
+.closureGate,
+.closureReviewCard {
+  border-radius: var(--dh-api-radius, 6px);
+  min-height: 0;
+  max-height: none;
+}
+
+.closureGate {
+  display: grid;
+  min-width: 0;
+  padding: 11px 12px;
+  border-radius: var(--dh-api-radius, 6px);
+  box-shadow: none;
+  grid-auto-rows: max-content;
+  gap: 7px;
+  align-content: start;
+  overflow: hidden;
+}
+
+.closureGateDetail {
+  margin: 0;
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 13px;
+  font-weight: 720;
+  line-height: 1.45;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.closureGateBadges {
+  display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.closureReviewCard {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  background: var(--dh-card);
+  gap: 8px;
+  padding: 10px 12px;
+  overflow: visible;
+}
+
+.closureReviewCard .embeddedPanel {
+  padding: 0;
+  gap: 6px;
+  min-height: 0;
+  overflow: visible;
+}
+
+.closureReviewCard .detailSource {
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.closureReviewCard .detailList {
+  scrollbar-width: thin;
+  max-height: none;
+  padding-right: 4px;
+  overflow: visible;
+}
+
+.closureReviewCard .detailList::-webkit-scrollbar {
+  width: 6px;
+}
+
+.closureReviewCard .detailList::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--dh-api-panel-2) 42%, transparent);
+  border-radius: 999px;
+}
+
+.closureReviewCard .detailList::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--dh-api-blue) 38%, transparent);
+  border-radius: 999px;
+}
+
+.closureReviewCard .detailRow {
+  padding: 4px 0;
+}
+
+.closureReviewCard .detailTop {
+  gap: 8px;
+}
+
+.dataNoteDisclosure {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+
+.dataNoteDisclosure summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 34px;
+  padding: 8px 11px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.dataNoteDisclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.dataNoteDisclosure summary::after {
+  content: "+";
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--dh-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
+  color: var(--dh-blue);
+  font-family: var(--dh-font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.dataNoteDisclosure[open] summary::after {
+  content: "-";
+}
+
+.dataNoteDisclosure summary span {
+  color: var(--dh-ink);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.dataNoteDisclosure summary strong {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.dataNoteDisclosure summary strong span {
+  overflow: hidden;
+  color: var(--dh-muted);
+  font-size: 13px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+}
+
+.dataNoteBody {
+  display: block;
+  max-height: 86px;
+  padding: 0 11px 10px;
+  overflow: auto;
+  color: var(--dh-muted);
+  scrollbar-width: thin;
+}
+
+.actionMatrixGrid {
+  align-items: start;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.quickAccessGrid {
+  grid-template-columns: repeat(auto-fit, minmax(136px, 1fr));
+}
+
+/* 明细标签多为 6-12 个汉字；轨道过窄会挤到截断，按 §5「禁止压缩保列数」放宽。 */
+.drillGrid {
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+}
+
+.actionWorkbenchSection .dataNoteDisclosure {
+  border: 0;
+  background: transparent;
+}
+
+.actionWorkbenchSection .dataNoteDisclosure summary {
+  min-height: 22px;
+  padding: 0 4px;
+}
+
+.actionWorkbenchSection .dataNoteDisclosure summary span {
+  color: var(--dh-muted);
+  font-size: 13px;
+}
+
+.actionWorkbenchSection .dataNoteDisclosure summary strong {
+  color: var(--dh-muted);
+  font-size: 13px;
+}
+
+.actionWorkbenchSection .dataNoteDisclosure summary::after {
+  width: 16px;
+  height: 16px;
+  opacity: 0.72;
+}
+
+@media (min-width: 1320px) {
+  .closureWorkbenchGrid {
+    grid-template-columns: minmax(260px, 0.82fr) repeat(3, minmax(210px, 1fr));
+  }
+
+  .closureGate,
+  .closureReviewCard {
+    min-height: 224px;
+    max-height: none;
+  }
+}
+
+@media (min-width: 1101px) {
+  .closureWorkbenchGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    align-items: start;
+  }
+
+  .closureGate {
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(220px, 0.56fr) minmax(0, 1fr) auto;
+    align-items: center;
+    min-height: 72px;
+    padding: 10px 12px;
+  }
+
+  .closureGateHead {
+    display: grid;
+    gap: 3px;
+  }
+
+  .closureGateDetail {
+    -webkit-line-clamp: 2;
+  }
+
+  .closureGateBadges {
+    justify-content: flex-end;
+    margin-top: 0;
+  }
+
+  .closureReviewCard {
+    min-height: 238px;
+    max-height: none;
+  }
+
+  .closureReviewCard .detailList {
+    max-height: none;
+  }
+}
+
+/* First-screen rhythm pass: align the hero, decision strip, and KPI tape with the reference cadence. */
+@media (min-width: 1101px) {
+  .portfolioTopbar {
+    box-sizing: border-box;
+    margin-bottom: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 20px;
+    align-items: start;
+    min-height: 62px;
+    padding: 2px 0 8px;
+  }
+
+  .portfolioTopbarLeft {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    gap: 6px;
+  }
+
+  .topbarCopy {
+    min-width: 0;
+    max-width: none;
+  }
+
+  .portfolioTopbarMeta {
+    align-self: start;
+    padding-top: 0;
+  }
+
+  .toolbarMeta {
+    gap: 0;
+    justify-content: flex-end;
+  }
+
+  .topbarSubtitle {
+    max-width: 70ch;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+
+  .topbarSummary {
+    display: none;
+  }
+
+  .datePill {
+    min-height: 24px;
+    padding: 0 10px;
+    border: 0;
+    border-left: 1px solid var(--dh-line-soft);
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .datePill strong {
+    font-size: 12px;
+  }
+
+  .decisionPanel {
+    grid-template-columns: minmax(0, 1fr) minmax(154px, 210px);
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 0 18px;
+    min-height: 126px;
+    padding: 16px 20px;
+    border-color: color-mix(in srgb, var(--dh-api-amber) 38%, transparent);
+    border-radius: var(--dh-api-radius, 6px);
+    background: var(--dh-api-panel-2);
+  }
+
+  .decisionLedger {
+    grid-column: 1;
+    grid-row: 1;
+    padding: 0;
+    background: transparent;
+    gap: 7px;
+  }
+
+  .decisionLedgerHead {
+    gap: 8px;
+    justify-content: flex-start;
+  }
+
+  .terminalStatus {
+    min-height: 22px;
+    padding: 2px 7px;
+  }
+
+  .decisionTitle {
+    max-width: 80ch;
+    font-size: 20px;
+    line-height: 1.16;
+  }
+
+  .decisionDetail {
+    max-width: 86ch;
+    font-size: 12px;
+    line-height: 1.42;
+    -webkit-line-clamp: 1;
+  }
+
+  .evidenceFactList {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    border-left: 1px solid color-mix(in srgb, var(--dh-api-green) 24%, transparent);
+    background: transparent;
+    padding-left: 16px;
+    border-left-color: color-mix(in srgb, var(--dh-api-soft) 22%, transparent);
+  }
+
+  .evidenceConsole .decisionFact {
+    background: transparent;
+    min-height: 44px;
+    padding: 0 0 8px;
+  }
+
+  .evidenceConsole .decisionFact strong {
+    line-height: 1.2;
+    font-size: 16px;
+  }
+
+  .decisionActionQueue {
+    grid-column: 1;
+    grid-row: 2;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    padding: 6px 0 0;
+    border-top: 0;
+    background: transparent;
+    gap: 8px;
+    padding-top: 8px;
+  }
+
+  .decisionActionLabel {
+    white-space: nowrap;
+    color: var(--portfolio-signal-review);
+    font-size: 12px;
+    letter-spacing: 0;
+  }
+
+  .decisionAction {
+    border-color: color-mix(in srgb, var(--dh-api-blue) 28%, transparent);
+    background: color-mix(in srgb, var(--dh-api-panel-3) 72%, transparent);
+    grid-template-columns: 5px minmax(0, 1fr) auto;
+    gap: 6px;
+    min-height: 31px;
+    padding: 5px 8px;
+    border-radius: var(--dh-api-radius, 6px);
+  }
+
+  .decisionActionText strong {
+    overflow: hidden;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .decisionActionTarget {
+    color: var(--portfolio-signal-info-strong);
+    font-size: 12px;
+  }
+
+  .portfolioPrimaryColumn [data-testid="module-home-kpi-strip"] {
+    grid-column: auto;
+    grid-row: auto;
+    gap: 10px;
+  }
+
+  .portfolioPrimaryColumn [data-testid="module-home-kpi-strip"] .sectionHead {
+    min-height: 26px;
+    padding: 0 1px 0 12px;
+    border-left: 3px solid var(--portfolio-signal-info-strong);
+    align-items: center;
+  }
+
+  .portfolioPrimaryColumn [data-testid="module-home-kpi-strip"] .sectionHead span {
+    display: none;
+  }
+
+  .portfolioPrimaryColumn [data-testid="module-home-kpi-strip"] .sectionHead strong {
+    color: var(--dh-ink);
+    font-size: 14px;
+  }
+
+  .portfolioPrimaryColumn [data-testid="module-home-kpi-strip"] .kpiGridTape {
+    margin-top: 0;
+  }
+
+  .kpiGrid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .kpiCard {
+    min-height: 108px;
+    padding: 14px 15px 12px;
+    border-radius: var(--dh-api-radius, 6px);
+  }
+
+  .kpiCard::before {
+    width: 2px;
+  }
+
+  .kpiCard::after {
+    top: 12px;
+    right: 14px;
+    width: 20px;
+  }
+
+  .kpiLabel {
+    color: var(--dh-api-ink-soft);
+    font-size: 12px;
+    font-weight: 760;
+  }
+
+  .kpiValue,
+  .kpiCard:nth-child(-n + 2) .kpiValue {
+    margin-top: 12px;
+    font-size: 24px;
+    font-weight: 850;
+  }
+
+  .kpiValue small,
+  .kpiCard:nth-child(-n + 2) .kpiValue small {
+    font-size: 12px;
+  }
+
+  .kpiDetail {
+    line-height: 1.36;
+    margin-top: 9px;
+    font-size: 12px;
+    -webkit-line-clamp: 1;
+  }
+}
+
+@media (min-width: 1101px) and (max-width: 1280px) {
+  .decisionTitle {
+    font-size: 18px;
+  }
+
+  .kpiGrid {
+    gap: 8px;
+  }
+
+  .kpiCard {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .kpiValue,
+  .kpiCard:nth-child(-n + 2) .kpiValue {
+    font-size: 21px;
+  }
+}
+
+.stateWatch,
+.terminalStatus.toneWatch {
+  color: var(--portfolio-status-idle-strong);
+  border-color: var(--portfolio-status-idle-border);
+  background: var(--portfolio-status-idle-soft);
+}
+
+.stateOk,
+.terminalStatus.toneOk {
+  color: color-mix(in srgb, var(--portfolio-signal-ok) 78%, var(--portfolio-status-idle-strong));
+  border-color: color-mix(in srgb, var(--dh-api-green) 20%, transparent);
+  background: color-mix(in srgb, var(--dh-api-green) 8%, transparent);
+}
+
+.stateError,
+.terminalStatus.toneError {
+  color: color-mix(in srgb, var(--portfolio-signal-danger) 86%, var(--dh-api-ink));
+  border-color: color-mix(in srgb, var(--dh-api-red) 32%, transparent);
+  background: color-mix(in srgb, var(--dh-api-red) 11%, transparent);
+}
+
+.embeddedPanelHead .statePill {
+  gap: 6px;
+  min-height: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.embeddedPanelHead .statePill::before {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+  opacity: 0.72;
+}
+
+.embeddedPanelHead .statePill.stateOk {
+  color: var(--dh-muted);
+}
+
+.kpiCard[data-empty="true"],
+.kpiCard[data-empty="true"]:hover {
+  border-color: var(--portfolio-status-idle-border);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--dh-api-muted) 5.5%, transparent), color-mix(in srgb, var(--dh-api-muted) 1.2%, transparent)),
+    var(--dh-card);
+}
+
+.kpiCard[data-empty="true"]::before {
+  background: var(--portfolio-status-idle);
+}
+
+.kpiCard[data-empty="true"]::after {
+  background: color-mix(in srgb, var(--dh-api-muted) 14%, transparent);
+}
+
+.kpiCard[data-empty="true"] .kpiDetail {
+  color: color-mix(in srgb, var(--portfolio-status-idle) 78%, var(--dh-muted-2));
+}
+
+.decisionPanel:has(.decisionTitle.toneWatch) {
+  border-color: var(--portfolio-status-review-border);
+}
+
+.decisionPanel:has(.decisionTitle.toneWatch) .decisionTitle {
+  color: color-mix(in srgb, var(--portfolio-signal-review) 74%, var(--dh-ink));
+}
+
+.decisionPanel:has(.decisionTitle.toneWatch) .decisionDetail,
+.decisionPanel:has(.decisionTitle.toneWatch) .decisionActionLabel {
+  color: var(--portfolio-status-idle-strong);
+}
+
+.evidenceConsole .decisionFact strong.toneWatch {
+  color: var(--portfolio-status-idle-strong);
+}
+
+.decisionActionText strong.toneWatch,
+.decisionActionDot.toneWatch {
+  color: var(--portfolio-status-idle-strong);
+}
+
+.decisionActionDot.toneWatch {
+  background: var(--portfolio-status-idle);
+}
+
+.closureGate[data-state="source-review"] {
+  border-color: var(--portfolio-status-idle-border);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--dh-api-muted) 5.5%, transparent), color-mix(in srgb, var(--dh-api-muted) 1.2%, transparent)),
+    var(--dh-card);
+}
+
+.closureGate[data-state="source-review"] .toneWatch {
+  color: var(--portfolio-status-idle-strong);
+}
+
+.closureGate[data-state="blocked"] {
+  border-color: var(--portfolio-status-review-border);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--dh-api-amber) 7.5%, transparent), color-mix(in srgb, var(--dh-api-amber) 1.8%, transparent)),
+    var(--dh-card);
+}
+
+.closureGateBadges span {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  border-radius: var(--dh-api-radius);
+  font-size: 12px;
+  font-weight: 820;
+  min-height: 20px;
+  padding: 2px 6px;
+  border-color: var(--portfolio-status-idle-border);
+  background: color-mix(in srgb, var(--dh-api-muted) 8%, transparent);
+  color: var(--portfolio-status-idle-strong);
+}
+
+.closureGate[data-state="blocked"] .closureGateBadges span:first-child {
+  border-color: var(--portfolio-status-review-border);
+  background: var(--portfolio-status-review-soft);
+  color: color-mix(in srgb, var(--portfolio-signal-review) 80%, var(--dh-ink));
+}
+
+.closureReviewCardRisk {
+  border-color: var(--portfolio-status-idle-border);
+}
+
+.closureReviewCardRisk:has(.toneWatch),
+.closureReviewCardRisk:has(.toneError) {
+  border-color: var(--portfolio-status-review-border);
+}
+
+.structureGapAction span,
+.briefConclusion.toneWatch,
+.summaryLedgerCard .statusCell .toneWatch,
+.summaryLedgerCard .statusCell:has(.toneWatch) b,
+.statusCell .toneWatch,
+.detailSource.toneWatch {
+  color: var(--portfolio-status-idle-strong);
+}
+
+.structureGapAction {
+  font-size: 12px;
+  font-weight: 800;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  max-width: 100%;
+  min-height: 26px;
+  padding: 4px 8px;
+  border: 1px solid var(--dh-line, var(--ib-hairline));
+  border-radius: var(--dh-api-radius, 6px);
+  color: var(--dh-ink, var(--ib-ink));
+  line-height: 1.2;
+  text-decoration: none;
+  border-color: var(--portfolio-status-idle-border);
+  background: color-mix(in srgb, var(--dh-api-muted) 7%, transparent);
+}
+
+.summaryLedgerCard .statusCell:has(.toneWatch) {
+  border-left-color: var(--portfolio-status-idle-border);
+}
+
+.summaryLedgerCard .statusCell .toneOk,
+.summaryLedgerCard .statusCell:has(.toneOk) b {
+  color: color-mix(in srgb, var(--portfolio-signal-ok) 74%, var(--portfolio-status-idle-strong));
+}
+
+.summaryLedgerCard .statusCell:has(.toneError) {
+  border-left-color: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
+}
+
+.summaryLedgerCard .statusCell:has(.toneError) b,
+.briefConclusion.toneError,
+.detailSource.toneError {
+  color: color-mix(in srgb, var(--portfolio-signal-danger) 84%, var(--dh-ink));
+}
+
+@media (min-width: 1101px) {
+  .terminalStatus.toneWatch,
+  .stateWatch {
+    font-weight: 760;
+  }
+}
+
+/* KPI tiering: one shared scope note, a primary row and a compact secondary row. */
+.kpiScopeNote {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  margin: -6px 2px -3px;
+  line-height: 1.35;
+}
+
+.kpiScopeNote span {
+  padding: 0 8px;
+  border: 0;
+  border-left: 1px solid var(--dh-line-soft);
+  border-radius: 0;
+  background: transparent;
+  color: var(--dh-muted-2, var(--ib-ink-muted));
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.kpiScopeNote span:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.kpiGrid + .kpiGridSecondary {
+  margin-top: 8px;
+}
+
+.kpiCard.kpiCardSecondary:nth-child(-n + 2) {
+  background: var(--dh-card);
+}
+
+.kpiCard.kpiCardSecondary .kpiValue {
+  margin-top: 7px;
+  font-size: 18px;
+}
+
+.kpiCard.kpiCardSecondary .kpiValue small {
+  font-size: 12px;
+}
+
+.kpiCard.kpiCardPrimary .kpiValue[data-empty="true"],
+.kpiCard.kpiCardSecondary .kpiValue[data-empty="true"] {
+  font-size: 16px;
+}
+
+@media (min-width: 1101px) {
+
+  .kpiCard.kpiCardPrimary .kpiValue {
+    font-size: 24px;
+  }
+
+  .kpiCard.kpiCardSecondary {
+    min-height: 84px;
+    padding: 10px 12px 9px;
+  }
+}
+
+@media (min-width: 1101px) and (max-width: 1280px) {
+  .kpiCard.kpiCardPrimary .kpiValue {
+    font-size: 24px;
+  }
+}
+
+@media (max-width: 900px) {
+  .kpiCard.kpiCardPrimary .kpiValue {
+    font-size: 22px;
+  }
+
+  .kpiCard.kpiCardSecondary .kpiValue {
+    font-size: 18px;
+  }
+}
+
+/* ── B-tier visual pass (2026-07-17): editorial section indices, empty-state glyphs,
+   row numbering, striped skeletons and hover micro-interactions. Additive only. ── */
+
+/* Row numbering on the review action loop. */
+.decisionAction {
+  display: grid;
+  align-items: center;
+  min-width: 0;
+  text-decoration: none;
+  border-color: color-mix(in srgb, var(--dh-api-muted) 26%, transparent);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 72%, transparent);
+  grid-template-columns: auto 8px minmax(0, 1fr) auto;
+}
+
+.decisionAction i[data-row-index] {
+  color: var(--dh-api-soft, var(--dh-ink-2));
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  opacity: 1;
+}
+
+/* Empty states: dashed hairline box + small void glyph. */
+.portfolioPageMain p[data-empty] {
+  position: relative;
+  padding: 10px 12px 10px 34px;
+  border: 1px dashed var(--dh-line-soft, color-mix(in srgb, var(--dh-api-blue) 30%, transparent));
+  border-radius: var(--dh-api-radius);
+}
+
+.portfolioPageMain p[data-empty]::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 35%, transparent);
+  border-radius: 999px;
+  background: radial-gradient(circle at center, color-mix(in srgb, var(--dh-api-blue) 55%, transparent) 0 2px, transparent 2px);
+  transform: translateY(-50%);
+}
+
+/* Striped skeletons: pending structure reads as hatch, not flat bars. */
+.chartMiniSkeleton span {
+  height: 7px;
+  border-radius: var(--dh-api-radius, 6px);
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--dh-api-ink) 16%, transparent) 0 4px,
+    color-mix(in srgb, var(--dh-api-ink) 4%, transparent) 4px 8px
+  );
+}
+
+/* Hover micro-interactions on interactive cards and rows. */
+.quickAccessCard,
+.drillCard,
+.decisionAction,
+.workbenchNav a,
+.structureGapAction {
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    background-color 0.16s ease;
+}
+
+.quickAccessCard:hover,
+.drillCard:hover,
+.decisionAction:hover {
+  transform: translateY(-1px);
+}
+
+.exposureLedgerRow span,
+.exposureLedgerRow strong,
+.exposureLedgerRow em {
+  transition: background-color 0.16s ease;
+}
+
+.exposureLedgerRow:hover span,
+.exposureLedgerRow:hover strong,
+.exposureLedgerRow:hover em {
+  background: color-mix(in srgb, var(--dh-api-blue) 7%, transparent);
+}
+
+/* Decision fact labels read as quiet caps above tabular values. */
+.decisionFact span {
+  overflow: hidden;
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quickAccessCard,
+  .drillCard,
+  .decisionAction,
+  .workbenchNav a,
+  .structureGapAction,
+  .exposureLedgerRow span,
+  .exposureLedgerRow strong,
+  .exposureLedgerRow em {
+    transition: none;
+  }
+}
+
+/* ── 统一纪律样张层（2026-07-19）：
+   1) 数字统一 tabular 等宽声部（--moss-font-mono 系统栈）；
+   2) 读数不是链接：KPI 主值与表格读数一律中性 ink，蓝色只留交互；
+   3) 状态只由色条与徽标承载，主值不再整体染色（error 保留红）；
+   4) 层级靠面板递进与发丝线：去渐变洗底、装饰划线与随机边框强调。── */
+
+.structureTableWorkbench .compactLabel,
+.structureTableWorkbench .compactSource,
+.structureTableWorkbench .compactCount,
+.structureTableWorkbench .compactValue {
+  letter-spacing: 0;
+  line-height: 1.2;
+  white-space: nowrap;
+  font-size: 13px;
+  font-family: var(--moss-font-mono);
+}
+
+.kpiValue,
+.kpiValue.toneOk,
+.kpiValue.toneWatch,
+.kpiValue.toneMuted {
+  color: var(--dh-api-ink);
+}
+
+.kpiValue.toneError {
+  color: color-mix(in srgb, var(--dh-api-red) 86%, var(--dh-api-ink));
+}
+
+.kpiCard[data-empty="true"] .kpiValue,
+.kpiCard[data-empty="true"] .kpiValue.toneWatch,
+.kpiCard[data-empty="true"] .kpiValue.toneMuted {
+  color: var(--portfolio-status-idle-strong);
+}
+
+.terminalPanelHead span {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--dh-api-muted);
+}
+
+.chartMiniMetric,
+.structureTableWorkbench .compactValue,
+.holdingsHeroFigureHead strong {
+  color: var(--dh-api-ink);
+}
+
+.structureTableWorkbench .compactSource,
+.structureTableWorkbench .compactCount {
+  text-align: right;
+  color: var(--dh-api-soft);
+}
+
+.kpiCard:nth-child(-n + 2),
+.kpiCard[data-empty="true"],
+.kpiCard[data-empty="true"]:hover {
+  background: var(--dh-card);
+}
+
+.kpiCard::after {
+  position: absolute;
+  height: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dh-api-soft) 16%, transparent);
+  content: none;
+}
+
+.kpiCard:nth-child(5n + 1) {
+  border-color: var(--dh-line-soft);
+}
+
+.kpiCard:hover {
+  box-shadow: none;
+  border-color: var(--portfolio-info-border-strong);
+}
+
+.exposureWorkbenchHead h2 {
+  grid-column: 1;
+  margin: 0;
+  font-weight: 860;
+  line-height: 1.25;
+  color: var(--dh-api-ink);
+}
+
+.exposureLedgerRow strong,
+.detailValue {
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-mono);
+}
+
+/* ── 审美打磨层（收敛回 DESIGN.md §2.2 / §5 Shape Lock / §8 Motion）：
+   1) 页级间距与卡片内边距保持呼吸感，降低压迫；
+   2) 圆角回到深色终端 6px（不再覆盖为 10px）；
+   3) 卡内嵌套面板去边框，只留背景递进；
+   4) 状态圆点保持语义色，不做无限循环脉动（§8 仅经营日报 hero 豁免）。── */
+
+.portfolioPageMain {
+  --portfolio-chart-blue: var(--dh-api-blue);
+  --portfolio-chart-info: var(--dh-api-ink-soft);
+  --portfolio-chart-green: var(--dh-api-green);
+  --portfolio-chart-amber: var(--dh-api-amber);
+  --portfolio-chart-red: var(--dh-api-red);
+  --portfolio-chart-ink: var(--ib-ink);
+  --portfolio-chart-grid: var(--ib-hairline);
+  display: grid;
+  min-width: 0;
+  width: 100%;
+  gap: 20px;
+}
+
+.kpiGrid {
+  display: grid;
+  min-width: 0;
+  width: 100%;
+  gap: 12px;
+}
+
+.kpiCard {
+  position: relative;
+  align-content: start;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--dh-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-card);
+  box-shadow: none;
+  min-height: 118px;
+  padding: 16px 17px 14px;
+}
+
+.kpiValue {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: baseline;
+  min-width: 0;
+  width: 100%;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--moss-font-mono);
+  letter-spacing: -0.01em;
+  margin-top: 13px;
+}
+
+.holdingsHeroBand,
+.exposureWorkbenchSection {
+  border: 0;
+  background: var(--dh-api-panel-2);
+}
+
+.exposureLedgerTable {
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  gap: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.exposureLedgerRow:last-child {
+  border-bottom: 0;
+}
+
+.exposureLedgerHeader span,
+.exposureLedgerRow span,
+.exposureLedgerRow strong,
+.exposureLedgerRow em {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-block: 9px;
+  background: transparent;
+}
+
+.kpiCard.kpiCardSecondary,
+.kpiCard.kpiCardSecondary:nth-child(-n + 2),
+.kpiCard.kpiCardSecondary[data-empty="true"] {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  border-right: 1px solid var(--dh-line-soft);
+}
+
+.kpiCard.kpiCardSecondary:last-child {
+  border-right: 0;
+}
+
+.kpiCard.kpiCardSecondary::before,
+.kpiCard.kpiCardSecondary::after {
+  content: none;
+}
+
+.kpiCard.kpiCardSecondary:hover {
+  background: color-mix(in srgb, var(--dh-api-blue) 4.5%, transparent);
+}
+
+.decisionActionDot {
+  border-radius: var(--dh-api-radius, 6px);
+  background: currentColor;
+  opacity: 1;
+}
+
+/* ── 读数先行视觉重塑（2026-08）：
+   1) DecisionPanel 压成两行状态横幅；
+   2) KPI 主带承接首屏焦点；
+   3) 驾驶舱导航轻量化；
+   4) 章节节奏 24px + 复盘带去重 label；
+   5) 01 区堆叠条加高、02 区表头/行 hover 打磨。── */
+
+/* grid-template-columns/rows 与 border 留在原位：需被更晚的 @media 覆盖与 .portfolioPage 前缀规则压制 */
+.decisionPanel[data-layout="banner"] {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.62fr);
+  grid-template-rows: auto auto;
+  border: 1px solid var(--portfolio-review-border, color-mix(in srgb, var(--dh-api-amber) 34%, transparent));
+}
+
+.decisionPanel[data-layout="banner"] .decisionMatrix {
+  grid-column: 1;
+  grid-row: 2;
+  border-top: 1px solid var(--dh-line-soft);
+}
+
+.decisionPanel[data-layout="banner"] .evidenceConsole {
+  grid-column: 2;
+  grid-row: 1 / -1;
+  /* 单列纵向：原两列布局会把动作队列压到半宽，标题被截成「来源...」。 */
+  grid-template-columns: minmax(0, 1fr);
+  /* 原规则的 min-height:0 + overflow:hidden 会让右列撑不开而裁掉动作行。 */
+  min-height: auto;
+  overflow: visible;
+  align-content: start;
+  border-left: 1px solid var(--dh-line-soft);
+}
+
+.decisionPanel[data-layout="banner"] .decisionLedger {
+  grid-column: 1;
+  grid-row: 1;
+  display: grid;
+  gap: 5px;
+  align-content: center;
+  padding: 10px 14px;
+  background: transparent;
+}
+
+.decisionPanel[data-layout="banner"] .decisionLedgerHead {
+  gap: 8px;
+  justify-content: flex-start;
+}
+
+.decisionStatusDot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dh-amber);
+}
+
+.decisionStatusDot.toneOk {
+  background: var(--dh-api-green, var(--dh-green));
+}
+
+.decisionStatusDot.toneError {
+  background: var(--dh-api-red, var(--dh-red));
+}
+
+.decisionStatusDot.toneMuted {
+  background: var(--dh-muted-2);
+}
+
+.decisionPanel[data-layout="banner"] .decisionTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 820;
+  line-height: 1.3;
+}
+
+.decisionPanel[data-layout="banner"] .decisionDetail {
+  -webkit-line-clamp: 1;
+  font-size: 13px;
+}
+
+.decisionPanel[data-layout="banner"] .decisionReadinessBar {
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+  justify-self: start;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.decisionPanel[data-layout="banner"] .decisionReadinessBar span,
+.decisionPanel[data-layout="banner"] .decisionReadinessBar strong {
+  color: var(--dh-muted-2);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.decisionPanel[data-layout="banner"] .evidenceConsole,
+.decisionPanel[data-layout="banner"] .decisionMatrix {
+  display: grid;
+  align-content: center;
+  min-width: 0;
+  background: transparent;
+}
+
+.decisionPanel[data-layout="banner"] .terminalPanelHead {
+  display: none;
+}
+
+/* 这两块在原布局里被显式定位到不同列，横幅下需回到单列纵向堆叠。 */
+.decisionPanel[data-layout="banner"] .evidenceFactList,
+.decisionPanel[data-layout="banner"] .decisionActionQueue {
+  grid-column: 1 / -1;
+  grid-row: auto;
+  align-self: auto;
+  border-left: 0;
+}
+
+.decisionPanel[data-layout="banner"] .evidenceFactList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+  padding: 10px 14px;
+  background: transparent;
+}
+
+.decisionPanel[data-layout="banner"] .decisionFactGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: center;
+  padding: 8px 14px;
+  background: transparent;
+}
+
+.decisionPanel[data-layout="banner"] .decisionFact {
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.decisionPanel[data-layout="banner"] .decisionFact span {
+  color: var(--dh-muted-2);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.decisionPanel[data-layout="banner"] .decisionFact strong {
+  color: var(--dh-ink);
+  font-family: var(--moss-font-mono);
+  font-size: 12px;
+  font-weight: 780;
+}
+
+.decisionPanel[data-layout="banner"] .decisionActionQueue {
+  gap: 5px;
+  padding: 6px 12px 8px;
+  border-top: 1px solid var(--dh-line-soft);
+  background: transparent;
+}
+
+/* 动作纵向排列：横排时标题会被压成「来源...」这类截断。 */
+.decisionPanel[data-layout="banner"] .decisionActionList {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3px;
+}
+
+.decisionPanel[data-layout="banner"] .decisionAction {
+  min-width: 0;
+  min-height: 26px;
+  padding: 3px 8px;
+}
+
+.decisionPanel[data-layout="banner"] .decisionActionText small {
+  display: none;
+}
+
+@media (min-width: 1101px) {
+  .decisionPanel[data-layout="banner"] {
+    height: auto;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 0.58fr);
+    grid-template-rows: auto auto;
+    gap: 0;
+    padding: 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .decisionPanel[data-layout="banner"] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+  }
+
+  .decisionPanel[data-layout="banner"] .decisionLedger,
+  .decisionPanel[data-layout="banner"] .decisionMatrix,
+  .decisionPanel[data-layout="banner"] .evidenceConsole {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .decisionPanel[data-layout="banner"] .evidenceConsole {
+    border-left: 0;
+    border-top: 1px solid var(--dh-line-soft);
+  }
+}
+
+/* KPI 主带首屏化 */
+.kpiCard.kpiCardPrimary {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
+}
+
+.kpiCard.kpiCardSecondary {
+  padding: 12px 14px 11px;
+  min-height: 72px;
+}
+
+@media (min-width: 1101px) {
+  .kpiCard.kpiCardPrimary {
+    min-height: 128px;
+  }
+}
+
+/* 驾驶舱导航轻量化；粘性态需要不透明背板 + top:0 无缝，避免滚动时叠压内容（B8）。 */
+.workbenchNav {
+  top: 0;
+  align-self: start;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  align-items: center;
+  padding: 6px 0 8px;
+  border: 0;
+  border-bottom: 1px solid var(--dh-line-soft);
+  border-radius: 0;
+  background: var(--dh-api-bg);
+}
+
+.workbenchNavTitle,
+.workbenchNav > .workbenchNavTitle {
+  min-width: 0;
+  line-height: 1.3;
+  white-space: normal;
+  margin-right: 4px;
+  font-size: 13px;
+  font-weight: 820;
+}
+
+.workbenchNav a {
+  grid-template-columns: auto minmax(0, 1fr);
+  min-width: 0;
+  color: var(--dh-muted);
+  text-decoration: none;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--dh-api-radius, 6px);
+  background: transparent;
+}
+
+.workbenchNav a span {
+  color: var(--dh-api-blue, var(--dh-blue));
+  font-family: var(--moss-font-mono);
+  font-size: 12px;
+  font-weight: 780;
+}
+
+.workbenchNav a strong {
+  color: var(--dh-muted);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.workbenchNav a:hover {
+  transform: translateX(2px);
+  border-color: var(--portfolio-info-border-strong, color-mix(in srgb, var(--dh-api-blue) 40%, transparent));
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
+}
+
+.workbenchNav a em,
+.workbenchNav > p {
+  display: none;
+}
+
+.workbenchSectionHead h2 i[data-section-index] {
+  color: var(--dh-api-blue, var(--dh-blue));
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-style: normal;
+  vertical-align: 1px;
+  margin-right: 10px;
+  font-size: 12px;
+  font-weight: 820;
+  letter-spacing: 0.1em;
+  opacity: 1;
+}
+
+.sourceWorkbenchSection {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  background: transparent;
+  gap: 12px;
+}
+
+.holdingsHeroFigure {
+  display: grid;
+  min-width: 0;
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  border: 0;
+  padding: 12px;
+  gap: 12px;
+}
+
+.holdingsHeroBars {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: none;
+  background: transparent;
+  gap: 8px;
+}
+
+/* 02 区结构表打磨 */
+.structureTableWorkbench :global(.ant-tabs-tab) {
+  border-radius: var(--dh-api-radius, 6px);
+}
+
+/* ═══════════ V3 深蓝终端皮肤（对齐 2026-08-11 用户基准图）═══════════
+   基准特征：藏青蓝底、卡片微蓝渐变 + 蓝光细边、KPI 带迷你走势线、
+   高密度网格、绿色完成态徽标。仅换视觉层，不动数据与 testid。 */
+
+.portfolioPage {
+  /* —— 页面级深色重映射：legacy --ib-/--dh-/--moss- 消费变量指向官方 --dh-api-* token（DESIGN.md §2.2）—— */
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line-soft);
+  --ib-rule-strong: var(--dh-api-line);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-radius: var(--dh-api-radius, 6px);
+  --dh-card: var(--dh-api-panel);
+  --dh-card-soft: var(--dh-api-panel-3);
+  --dh-surface-muted: var(--dh-api-panel-2);
+  --dh-ink-2: var(--dh-api-ink);
+  --moss-color-card-bg: var(--dh-api-panel);
+  --moss-color-neutral-50: var(--dh-api-panel-3);
+  --moss-color-neutral-100: var(--dh-api-line-soft);
+  --moss-color-neutral-200: var(--dh-api-line);
+  --moss-color-neutral-300: var(--dh-api-line);
+  --moss-color-neutral-600: var(--dh-api-soft);
+  --moss-color-neutral-700: var(--dh-api-ink);
+  --moss-color-neutral-900: var(--dh-api-ink);
+  --moss-color-primary-900: var(--dh-api-ink);
+  width: 100%;
+  border-radius: var(--dh-api-radius, 6px);
+  /* —— Portfolio cockpit color polish: amber carries review, blue carries structure. —— */
+  --portfolio-signal-info: var(--dh-api-blue);
+  --portfolio-signal-info-strong: color-mix(in srgb, var(--dh-api-blue) 72%, var(--dh-api-ink));
+  --portfolio-signal-info-muted: var(--dh-api-muted);
+  --portfolio-signal-review: var(--dh-api-amber);
+  --portfolio-signal-ok: var(--dh-api-green);
+  --portfolio-signal-danger: var(--dh-api-red);
+  --portfolio-info-soft: color-mix(in srgb, var(--dh-api-soft) 10%, transparent);
+  --portfolio-info-border: color-mix(in srgb, var(--dh-api-soft) 22%, transparent);
+  --portfolio-info-border-strong: color-mix(in srgb, var(--dh-api-soft) 32%, transparent);
+  --portfolio-review-soft: color-mix(in srgb, var(--dh-api-amber) 13%, transparent);
+  --portfolio-review-border: color-mix(in srgb, var(--dh-api-amber) 36%, transparent);
+  --portfolio-ok-soft: color-mix(in srgb, var(--dh-api-green) 12%, transparent);
+  --portfolio-ok-border: color-mix(in srgb, var(--dh-api-green) 28%, transparent);
+  --portfolio-danger-soft: color-mix(in srgb, var(--dh-api-red) 13%, transparent);
+  --portfolio-danger-border: color-mix(in srgb, var(--dh-api-red) 28%, transparent);
+  --ib-accent: var(--portfolio-signal-info);
+  --ib-accent-hover: color-mix(in srgb, var(--dh-api-blue) 78%, var(--dh-api-ink));
+  --ib-accent-surface: var(--portfolio-info-soft);
+  --ib-up: var(--portfolio-signal-ok);
+  --ib-down: var(--portfolio-signal-danger);
+  --ib-warn: var(--portfolio-signal-review);
+  --ib-gold: var(--portfolio-signal-review);
+  --dh-blue-deep: var(--portfolio-signal-info-strong);
+  --dh-blue-soft: var(--portfolio-info-soft);
+  --dh-green: var(--portfolio-signal-ok);
+  --dh-green-soft: var(--portfolio-ok-soft);
+  --dh-red: var(--portfolio-signal-danger);
+  --dh-red-soft: var(--portfolio-danger-soft);
+  --dh-amber: var(--portfolio-signal-review);
+  --dh-amber-soft: var(--portfolio-review-soft);
+  --moss-color-primary-50: var(--portfolio-info-soft);
+  --moss-color-primary-100: color-mix(in srgb, var(--dh-api-soft) 14%, transparent);
+  --moss-color-primary-200: var(--portfolio-info-border);
+  --moss-color-primary-700: var(--portfolio-signal-info);
+  --moss-color-info-100: color-mix(in srgb, var(--dh-api-blue) 30%, var(--dh-api-ink));
+  --moss-color-info-300: var(--portfolio-signal-info-strong);
+  --moss-color-info-400: var(--portfolio-signal-info);
+  --moss-color-info-500: var(--dh-api-muted);
+  --moss-color-success-100: var(--portfolio-ok-border);
+  --moss-color-success-300: var(--portfolio-signal-ok);
+  --moss-color-success-500: var(--dh-api-green);
+  --moss-color-warning-50: var(--portfolio-review-soft);
+  --moss-color-warning-200: var(--portfolio-review-border);
+  --moss-color-warning-300: var(--portfolio-signal-review);
+  --moss-color-warning-400: var(--dh-api-amber);
+  --moss-color-danger-50: var(--portfolio-danger-soft);
+  --moss-color-danger-200: var(--portfolio-danger-border);
+  --moss-color-danger-500: var(--portfolio-signal-danger);
+  --portfolio-chart-blue: var(--dh-api-blue);
+  --portfolio-chart-info: var(--dh-api-ink-soft);
+  --portfolio-chart-green: var(--dh-api-green);
+  --portfolio-chart-amber: var(--dh-api-amber);
+  --portfolio-chart-red: var(--dh-api-red);
+  /* —— Status taxonomy pass: quiet pending/data states, reserve warm color for real review blockers. —— */
+  --portfolio-status-idle: var(--dh-api-muted);
+  --portfolio-status-idle-strong: var(--dh-api-ink-soft);
+  --portfolio-status-idle-soft: color-mix(in srgb, var(--dh-api-muted) 11%, transparent);
+  --portfolio-status-idle-border: color-mix(in srgb, var(--dh-api-muted) 22%, transparent);
+  --portfolio-status-review-soft: color-mix(in srgb, var(--dh-api-amber) 10%, transparent);
+  --portfolio-status-review-border: color-mix(in srgb, var(--dh-api-amber) 26%, transparent);
+  /* —— 统一纪律样张层：数字 tabular 等宽声部 —— */
+  --dh-font-sans: var(--moss-font-sans);
+  --dh-font-mono: var(--moss-font-mono);
+  /* —— 审美打磨层：圆角随 Nocturne scope 的 --dh-api-radius（8px），页级呼吸感 —— */
+  gap: 20px;
+  padding: 20px;
+  /* —— Nocturne 换肤：页内不再定义 --dh-api-* 钢蓝字面量，数值唯一来源是
+     tokens.css 的 [data-moss-theme-scope="portfolio-home"] 块；legacy --dh-*
+     消费变量改走 --dh-api-* 引用链，token 翻转后自动跟随。页底为 Nocturne 平铺底。 */
+  --dh-line: var(--dh-api-line);
+  --dh-line-soft: var(--dh-api-line-soft);
+  --dh-blue: var(--dh-api-blue);
+  --dh-ink: var(--dh-api-ink);
+  --dh-muted: var(--dh-api-soft);
+  --dh-muted-2: var(--dh-api-muted);
+  background: var(--dh-api-bg);
+}
+
+/* 卡片制度：对齐首页 Nocturne 平卡面（灰边 + panel 平底，无渐变无内阴影） */
+.portfolioPage .kpiCard,
+.portfolioPage .decisionPanel,
+.portfolioPage .closureGate,
+.portfolioPage .closureReviewCard,
+.portfolioPage .summaryLedgerCard,
+.portfolioPage .holdingsHeroBand,
+.portfolioPage .exposureWorkbenchSection,
+.portfolioPage .structureTableWorkbench,
+.portfolioPage .chartSnapshot {
+  border: 1px solid var(--dh-api-line);
+  background: var(--dh-api-panel);
+  box-shadow: none;
+}
+
+.portfolioPage .kpiCard:hover,
+.portfolioPage .closureReviewCard:hover,
+.portfolioPage .summaryLedgerCard:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+}
+
+/* ── KPI 带：紧凑驾驶舱密度（对齐基准图顶带）── */
+.kpiCard.kpiCardPrimary {
+  min-height: 96px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--dh-api-line);
+}
+
+.kpiCard.kpiCardPrimary .kpiValue {
+  font-size: 24px;
+  margin-top: 8px;
+}
+
+.kpiLabel {
+  letter-spacing: 0;
+  line-height: 1.2;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.kpiDetail {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  min-height: 15px;
+  -webkit-line-clamp: 1;
+  margin-top: 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+/* 方向色按 data-change 提权（A1）：避免同特异性的灰色注行规则按注入顺序覆盖
+   dhUpGreen/dhDownRed，保证 up=绿、down=红 可感知；flat 维持安静灰。 */
+.kpiDetail[data-change="up"],
+.portfolioRiskTickerChange[data-change="up"] {
+  color: var(--dh-green);
+}
+
+.kpiDetail[data-change="down"],
+.portfolioRiskTickerChange[data-change="down"] {
+  color: var(--dh-red);
+}
+
+/* 次级 KPI 行恢复分卡（基准图第二行也是卡片）；gap 随 .kpiGrid 统一 12px，两排列缝共线 */
+.kpiGridSecondary {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.kpiCard.kpiCardSecondary,
+.kpiCard.kpiCardSecondary:nth-child(-n + 2),
+.kpiCard.kpiCardSecondary[data-empty="true"] {
+  min-height: 70px;
+  padding: 10px 12px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-api-panel);
+}
+
+/* ── 决策横幅融入蓝系（语义琥珀仅保留在文字与状态点）── */
+.decisionPanel[data-layout="banner"] {
+  display: grid;
+  gap: 0;
+  align-self: stretch;
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--dh-api-radius, 6px);
+  border-color: color-mix(in srgb, var(--dh-api-amber) 30%, transparent);
+  background: var(--dh-api-panel);
+}
+
+/* ── 分布条形（券种/评级/期限/行业）：标签左、蓝渐变细条、mono 数值右 ── */
+.holdingsHeroStackBar {
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--dh-api-blue) 9%, transparent);
+  height: 14px;
+  border-radius: var(--dh-api-radius);
+}
+
+.holdingsHeroBarTrack,
+.chartMiniTrack {
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dh-api-blue) 10%, transparent);
+}
+
+.holdingsHeroBarFill,
+.chartMiniFill {
+  border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--dh-api-blue) 55%, transparent), var(--dh-api-blue));
+}
+
+/* ── 表格：极淡行分隔 + 行 hover 蓝底 + mono 数值 ── */
+.structureTableWorkbench .compactListHeader {
+  font-size: 12px;
+  font-weight: 680;
+  min-height: 22px;
+  padding: 0 10px 5px;
+  border-bottom: 1px solid color-mix(in srgb, var(--dh-api-blue) 22%, transparent);
+  color: var(--dh-api-muted);
+}
+
+.structureTableWorkbench .compactRow {
+  border-radius: 0;
+  background: transparent;
+  min-height: 30px;
+  padding: 0 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--dh-api-blue) 7%, transparent);
+}
+
+.structureTableWorkbench .compactRow:hover {
+  background: color-mix(in srgb, var(--dh-api-blue) 7%, transparent);
+}
+
+.exposureLedgerHeader {
+  background: color-mix(in srgb, var(--dh-api-blue) 7%, transparent);
+}
+
+.exposureLedgerHeader,
+.exposureLedgerRow {
+  display: grid;
+  align-items: center;
+  min-width: 0;
+  gap: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--dh-api-blue) 9%, transparent);
+}
+
+/* ── 状态徽标语言：完成=绿、分析口径=琥珀、蓝色信息（对齐基准图审计区）── */
+.statusCell b.toneOk,
+.chartSnapshotHead em.toneOk {
+  color: var(--dh-api-green);
+}
+
+.terminalStatus {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border-radius: var(--dh-api-radius, 6px);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 22%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
+}
+
+/* ── 章节头：蓝色编号 + 白标题，分隔线蓝光 ── */
+.workbenchSectionHead {
+  display: grid;
+  align-items: start;
+  min-width: 0;
+  border-bottom: 1px solid var(--dh-line-soft);
+  padding-bottom: 8px;
+  border-bottom-color: color-mix(in srgb, var(--dh-api-blue) 14%, transparent);
+}
+
+.workbenchSectionHead span {
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 38%, transparent);
+  border-radius: var(--dh-api-radius);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-weight: 900;
+  width: 32px;
+  height: 32px;
+  border-width: 1px;
+  font-size: 12px;
+  border-color: color-mix(in srgb, var(--dh-api-blue) 26%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 10%, transparent);
+  color: color-mix(in srgb, var(--dh-api-blue) 70%, var(--dh-api-ink));
+}
+
+/* ── 工作入口：基准图快捷入口语言（圆角图标底 + 蓝光 hover）── */
+.quickAccessCard {
+  border-color: var(--dh-api-line);
+  border: 1px solid var(--dh-api-line);
+  background: var(--dh-api-panel);
+}
+
+.quickAccessCard:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 10%, transparent);
+}
+
+.quickAccessCard > span {
+  border-radius: var(--dh-api-radius);
+  background: color-mix(in srgb, var(--dh-api-blue) 14%, transparent);
+  color: color-mix(in srgb, var(--dh-api-blue) 70%, var(--dh-api-ink));
+}
+
+.drillCard {
+  align-content: center;
+  border-color: color-mix(in srgb, var(--dh-api-blue) 10%, transparent);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 55%, transparent);
+}
+
+.drillCard:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
+}
+
+/* ── 02 区图表解除隐藏：表格全宽在上、图表全宽在下
+   （左右分栏时表格四列 min 宽约 620px，会溢出盖住图表）── */
+.portfolioPage .structureTableWorkbench .structureSplit {
+  position: static;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.portfolioPage .structureTableWorkbench .structureChartCol {
+  position: static;
+  inset: auto;
+  width: auto;
+  height: auto;
+  min-height: 236px;
+  padding: 8px 12px 6px;
+  overflow: hidden;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-api-panel);
+}
+
+.portfolioPage .structureTableWorkbench .structureChartWrap {
+  width: auto;
+  height: auto;
+  overflow: hidden;
+}
+
+@media (max-width: 1280px) {
+  .portfolioPage .structureTableWorkbench .structureSplit {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── 03 区归因瀑布：损益变动规模/利率/交叉分解，全宽第二行 ── */
+.attributionWaterfall {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  margin-top: 12px;
+  padding: 10px 12px 6px;
+  overflow: hidden;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-api-panel);
+}
+
+.attributionWaterfallHead {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.attributionWaterfallHead span {
+  color: var(--dh-blue, var(--ib-accent));
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.attributionWaterfallHead em {
+  overflow: hidden;
+  color: var(--dh-muted-2);
+  font-family: var(--moss-font-mono);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 02 结构 tabs：下划线式（基准图），替代药丸按钮 ── */
+.portfolioPage .structureTableWorkbench :global(.ant-tabs-tab),
+.portfolioPage .structureTableWorkbench :global(.ant-tabs-tab:nth-child(2)),
+.portfolioPage .structureTableWorkbench :global(.ant-tabs-tab:nth-child(2):not(.ant-tabs-tab-active)) {
+  min-width: 0;
+  height: 34px;
+  padding: 0 3px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.portfolioPage .structureTableWorkbench :global(.ant-tabs-tab + .ant-tabs-tab) {
+  margin-left: 26px;
+}
+
+.portfolioPage .structureTableWorkbench :global(.ant-tabs-tab-active) {
+  border: 0;
+  background: transparent;
+  box-shadow: inset 0 -2px 0 var(--dh-api-blue);
+}
+
+.portfolioPage .structureTableWorkbench :global(.ant-tabs-nav)::before {
+  border-bottom: 1px solid color-mix(in srgb, var(--dh-api-blue) 12%, transparent);
+}
+
+/* ── antd 残留：激活 tab 文字跟随 Nocturne 强调色（antd cssinjs 注入在打包
+   CSS 之后且选择器为 0-4-0，这里以重复类提权到 0-5-0 才能稳定覆盖）── */
+.portfolioPage.portfolioPage :global(.ant-tabs-tab-active .ant-tabs-tab-btn) {
+  color: var(--dh-api-blue);
+}
+
+/* Nocturne 壳层同步：变量由 tokens.css scope 别名提供，此处仅压制
+   workbenchShell.css 的烘焙钢蓝渐变（均带 !important，须同权覆盖）。 */
+:global(.workbench-shell-grid.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"])) {
+  background: var(--dh-api-bg) !important;
+}
+
+:global(.workbench-shell-grid.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]) .workbench-shell-aside),
+:global(.workbench-shell-grid.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]) .workbench-shell-rail) {
+  background: var(--dh-api-rail) !important;
+  border-right-color: var(--dh-api-line-soft) !important;
+}
+
+:global(.workbench-shell-grid.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]) .workbench-shell-rail-mark) {
+  background: var(--dh-api-panel) !important;
+  border-color: var(--dh-api-line) !important;
+  box-shadow: none !important;
+}
+
+/* ──────────────────────────────────────────────────────────────
+   页面级栅格收口（最终层）
+
+   此前首屏由 cockpit → reviewBand → primaryGrid → primaryColumn
+   四层壳子嵌套，工作台再套 dataWorkbench → workbenchMain，六层各
+   自持有不同 gap，且 primaryGrid 的两列模板已被 display:block 覆盖
+   成死代码。这里把所有纯传递壳子折叠为 display:contents，让每个业务
+   区块直接成为页面栅格的一行，全站只保留一个纵向节奏变量。
+   ────────────────────────────────────────────────────────────── */
+.portfolioPageMain {
+  --portfolio-band-gap: 16px;
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--portfolio-band-gap);
+  align-content: start;
+}
+
+.portfolioCockpit,
+.portfolioReviewBand,
+.portfolioPrimaryGrid,
+.portfolioPrimaryColumn,
+.portfolioDataWorkbench,
+.workbenchMain {
+  display: contents;
+}
+
+/* 壳子折叠后，首屏各区块改为页面栅格自动排布，清除残留的显式定位。 */
+.decisionPanel,
+.portfolioPrimaryColumn [data-testid="module-home-kpi-strip"],
+.workbenchNav,
+.workbenchSection {
+  grid-column: auto;
+  grid-row: auto;
+  min-width: 0;
+}
+
+/* 区块高度一律由内容决定，避免固定高度造成的空白拉伸与内容裁切。 */
+.holdingsWorkbenchSection,
+.portfolioStructureWorkbench,
+.portfolioClosureBand,
+.sourceWorkbenchSection,
+.actionWorkbenchSection {
+  height: auto;
+  min-height: 0;
+}
+
+/* 多列区拉平同排卡片边框：行高由最高卡决定，卡内内容仍以 align-content: start 顶对齐。
+   行内高差 ≤60px 且卡片有边框，非 DESIGN.md 反模式所指的大面积空白拉伸。 */
+.holdingsPanoramaGrid,
+.closureWorkbenchGrid,
+.summaryLedgerGrid {
+  align-items: stretch;
+}
+
+/* 行动矩阵为单列纵向堆叠，保持顶对齐语义。 */
+.actionMatrixGrid {
+  align-items: start;
+}
+
+/* 复盘摘要三卡与其他区块共用同一套区块头 + 内容栅格结构。 */
+.summaryLedgerGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+/* 窄屏沿用原 auto-fit 语义（3/2/1 列自适应），仅宽屏固定 3 列消除 auto-fit 残留的 0px 幽灵轨道。 */
+@media (max-width: 1100px) {
+  .summaryLedgerGrid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  }
+}
+
+@media (min-width: 1101px) {
+  .portfolioPageMain {
+    --portfolio-band-gap: 18px;
   }
 }

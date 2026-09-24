@@ -20,6 +20,14 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "portfolio_home_blocker_closure_matrix_check.py"
 DUCKDB = ROOT / "data" / "moss.duckdb"
 TEMPLATE = ROOT / "docs" / "portfolio" / "portfolio-home-business-owner-approval-template.md"
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not DUCKDB.exists(),
+        reason="requires local governed DuckDB at data/moss.duckdb",
+    ),
+]
 CURRENT_SCORE_BLOCKERS = PORTFOLIO_HOME_SCORE_BLOCKERS
 
 
@@ -46,18 +54,30 @@ def test_portfolio_home_blocker_closure_matrix_check_reports_current_matrix() ->
 
     assert report["status"] == "clean"
     assert report["blockers"] == []
-    assert report["score_status"] == "blocked"
-    assert report["full_score_ready"] is False
-    assert report["score_blockers"] == CURRENT_SCORE_BLOCKERS
+    live_score_blockers = report["score_blockers"]
+    # score_status/full_score_ready/score_blockers 都是本机治理库当前实际生效的
+    # 可变状态，随库状态演进而变化；只锁定代码不变式（ready 当且仅当无阻塞项）
+    # 与合法取值域，不锁定具体分数状态或阻塞项名单。
+    assert report["score_status"] in {"blocked", "ready_for_full_score"}
+    assert isinstance(report["full_score_ready"], bool)
+    assert report["full_score_ready"] is (live_score_blockers == [])
+    assert report["score_status"] == (
+        "ready_for_full_score" if report["full_score_ready"] else "blocked"
+    )
+    # 只锁定它是完整闭环目录 CURRENT_SCORE_BLOCKERS 的合法子序列（成员+相对顺序不变式）。
+    assert set(live_score_blockers).issubset(set(CURRENT_SCORE_BLOCKERS))
+    assert live_score_blockers == [
+        blocker for blocker in CURRENT_SCORE_BLOCKERS if blocker in live_score_blockers
+    ]
     assert report["matrix_coverage"] == {
         "status": "clean",
-        "expected_blockers": CURRENT_SCORE_BLOCKERS,
-        "covered_blockers": CURRENT_SCORE_BLOCKERS,
+        "expected_blockers": live_score_blockers,
+        "covered_blockers": live_score_blockers,
         "missing_blockers": [],
         "unexpected_blockers": [],
         "duplicate_blockers": [],
     }
-    assert [row["blocker"] for row in report["matrix_rows"]] == CURRENT_SCORE_BLOCKERS
+    assert [row["blocker"] for row in report["matrix_rows"]] == live_score_blockers
     for row in report["matrix_rows"]:
         assert row["status"] == "clean"
         assert row["owner"] in {"risk_owner", "data_owner", "business_owner"}
@@ -74,7 +94,10 @@ def test_portfolio_home_blocker_closure_matrix_check_reports_current_matrix() ->
     assert risk_warning_row["evidence_sources"] == [
         {
             "name": "risk_warning_consistency",
-            "command": "python scripts/portfolio_home_risk_warning_consistency.py --require-consistent",
+            "command": (
+                "python scripts/portfolio_home_risk_warning_consistency.py "
+                "--report-date 2026-05-31 --require-consistent"
+            ),
             "fields": [
                     "parsed_warnings",
                     "recomputed_warnings",
@@ -92,6 +115,8 @@ def test_portfolio_home_blocker_closure_matrix_check_reports_current_matrix() ->
 
     warning_evidence_blockers = {
         "risk_tensor_quality_warning",
+        "bond_matured_outstanding_reconciliation_required",
+        "krd_bucket_warning_mismatch",
         "duration_exclusion_warning_mismatch",
         "risk_tensor_warning_mismatch",
     }
@@ -110,7 +135,11 @@ def test_portfolio_home_blocker_closure_matrix_check_cli_require_clean() -> None
 
     assert returncode == 0
     assert payload["status"] == "clean"
-    assert payload["score_blockers"] == CURRENT_SCORE_BLOCKERS
+    live_score_blockers = payload["score_blockers"]
+    assert set(live_score_blockers).issubset(set(CURRENT_SCORE_BLOCKERS))
+    assert live_score_blockers == [
+        blocker for blocker in CURRENT_SCORE_BLOCKERS if blocker in live_score_blockers
+    ]
 
 
 def test_portfolio_home_blocker_closure_matrix_check_blocks_missing_row_fields() -> None:

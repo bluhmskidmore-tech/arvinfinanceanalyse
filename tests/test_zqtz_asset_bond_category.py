@@ -5,7 +5,9 @@ from __future__ import annotations
 import pytest
 
 from backend.app.core_finance.zqtz_asset_bond_category import (
+    ZQTZ_ASSET_BOND_ROWS,
     classify_zqtz_asset_bond_label,
+    is_parent_zqtz_business_row,
     match_zqtz_asset_bond_rows,
 )
 
@@ -115,6 +117,15 @@ from backend.app.core_finance.zqtz_asset_bond_category import (
             },
             "其他债权融资类产品",
         ),
+        (
+            {
+                "bond_type": "其他",
+                "instrument_code": "J40001",
+                "instrument_name": "",
+                "currency_code": "CNY",
+            },
+            "结构化融资（券商）",
+        ),
         # 敞口/损益行常见「资管计划」标签，须与「其他」等价归入 J0/J1/J4 桶（否则业务种类漏数）
         (
             {
@@ -148,6 +159,25 @@ def test_match_zqtz_asset_bond_rows_includes_securities_am_for_asset_management_
     keys = [r["row_key"] for r in match_zqtz_asset_bond_rows(row)]
     assert "asset_zqtz_detail_securities_asset_management_plan" in keys
     assert "asset_zqtz_non_bottom_investment" in keys
+
+
+# 迁移自已删除的 tests/test_zqtz_adb_rollup_contract.py（原 test_backend_has_at_least_one_detail_row）。
+# 那份前后端同步契约已随口径修正作废：前端 ADB rollup 手工父子映射与 fixture 已下线，
+# 父级日均改由后端 /api/pnl/by-business-ytd 在父级行直接返回 avg_balance。
+# 但 source_note 中的「其中项」标记不是纯注释——is_parent_zqtz_business_row
+# （pnl-by-business live 与 precompute 路径共用的父级行判定）把它作为细分行信号之一，
+# 因此该标记不变量保留在本文件继续守护。
+def test_detail_row_marker_rows_exist_and_are_never_parent_rows() -> None:
+    marked_rows = [row for row in ZQTZ_ASSET_BOND_ROWS if "其中项" in str(row.get("source_note", ""))]
+    assert marked_rows, (
+        "未能在 ZQTZ_ASSET_BOND_ROWS 中找到任何 source_note 含「其中项」的细分行；"
+        "该标记是 is_parent_zqtz_business_row 的细分行判定信号之一，"
+        "整体消失说明判定信号已退化，需人工复核父级行口径"
+    )
+    for row in marked_rows:
+        assert not is_parent_zqtz_business_row(
+            str(row["row_key"]), str(row["row_label"]), row.get("source_note")
+        ), f"source_note 含「其中项」的行 {row['row_key']} 被判定为父级行，父/子口径将重复计数"
 
 
 def test_unclassified_returns_other() -> None:

@@ -22,19 +22,32 @@ vi.mock("../lib/echarts", () => ({
 }));
 
 describe("CashflowProjectionPage", () => {
-  it("keeps page-local decorative colors on the homepage blue-gray token family", () => {
-    const source = [
-      readFileSync(CASHFLOW_PAGE_CSS_PATH, "utf8"),
-      readFileSync(CASHFLOW_PAGE_TSX_PATH, "utf8"),
-    ].join("\n");
+  it("binds page tokens to IB aliases and keeps duration-gap off --ib-up", () => {
+    const css = readFileSync(CASHFLOW_PAGE_CSS_PATH, "utf8");
+    const tsx = readFileSync(CASHFLOW_PAGE_TSX_PATH, "utf8");
+    const source = `${css}\n${tsx}`;
 
     expect(source).not.toMatch(/moss-color-warm-|designTokens\.color\.warm/);
     expect(source).not.toMatch(/rgba\((255, 253, 248|240, 230, 216|52, 43, 39)/);
     expect(source).not.toMatch(/#(fffdf8|f0e6d8|e4d8c8|b8a38f|342b27|6f6258|8f7e70|b85c38|708c74|7c3e46|667a96)/i);
-    expect(source).toContain("var(--moss-color-primary-600");
-    expect(source).toContain("var(--moss-color-success-600");
-    expect(source).toContain("var(--moss-color-danger-600");
-    expect(source).toContain("var(--moss-color-info-600");
+
+    expect(css).toContain("--cf-paper: var(--ib-surface)");
+    expect(css).toContain("--cf-positive: var(--ib-up)");
+    expect(css).toContain("--cf-negative: var(--ib-down)");
+    expect(css).toContain("--cf-accent: var(--ib-warn)");
+    expect(css).toContain("--cf-subtle: var(--ib-ink-secondary)");
+    expect(css).toContain("border-radius: var(--ib-radius)");
+
+    // Positive duration gap chrome must use warn/secondary, never --ib-up / --cf-positive.
+    const positiveDeck = css.slice(css.indexOf(".decisionDeck_positive"));
+    expect(positiveDeck).toContain("var(--cf-accent)");
+    expect(positiveDeck.split(".decisionDeck_negative")[0]).not.toContain("var(--cf-positive)");
+    expect(css).toContain(".metricCell_gapPositive strong");
+    expect(css).toMatch(/\.metricCell_gapPositive strong\s*\{\s*color:\s*var\(--cf-subtle\)/);
+
+    expect(tsx).toContain("selectCashflowDurationGapTone");
+    expect(tsx).not.toMatch(/(["'`])--\1/);
+    expect(tsx).toContain("EM_DASH");
   });
 
   it("mounts KPI cards when projection loads", async () => {
@@ -193,17 +206,22 @@ describe("CashflowProjectionPage", () => {
     expect(page).not.toHaveTextContent("+125,000,000.00");
   });
 
-  it("uses DataSection fallback banner when result_meta marks latest_snapshot fallback", async () => {
+  it("renders negative 1bp sensitivity as equity-loss semantics", async () => {
     const client = createApiClient({ mode: "mock" });
     const orig = client.getCashflowProjection.bind(client);
     client.getCashflowProjection = async (reportDate: string) => {
       const envelope = await orig(reportDate);
       return {
         ...envelope,
-        result_meta: {
-          ...envelope.result_meta,
-          fallback_mode: "latest_snapshot",
-          filters_applied: { report_date: "2026-03-29" },
+        result: {
+          ...envelope.result,
+          rate_sensitivity_1bp: {
+            raw: -80_000_000,
+            unit: "yuan",
+            display: "-80,000,000.00",
+            precision: 2,
+            sign_aware: true,
+          },
         },
       };
     };
@@ -220,7 +238,89 @@ describe("CashflowProjectionPage", () => {
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByTestId("data-section-fallback-banner")).toHaveTextContent("已回退至最近可用日");
+    const dv01 = await screen.findByTestId("cashflow-kpi-dv01");
+    expect(dv01).toHaveTextContent("-0.80");
+    expect(dv01).toHaveTextContent("利率上行 1bp → 权益减少");
+  });
+
+  it("renders Chinese caveat summaries and collapses English originals into details", async () => {
+    const registered =
+      "Liability duration uses a remaining-term proxy (years to maturity), not a cashflow-weighted duration.";
+    const unregistered = "Some brand-new backend caveat that the frontend has not registered.";
+    const client = createApiClient({ mode: "mock" });
+    const orig = client.getCashflowProjection.bind(client);
+    client.getCashflowProjection = async (reportDate: string) => {
+      const envelope = await orig(reportDate);
+      return {
+        ...envelope,
+        result: {
+          ...envelope.result,
+          warnings: [registered, unregistered],
+        },
+      };
+    };
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <CashflowProjectionPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    // 登记句显示中文摘要；未登记句原样透出。
+    expect(
+      await screen.findByText("负债久期为剩余期限（到期年限）代理，非现金流加权久期。"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(unregistered)).toBeInTheDocument();
+
+    // 英文原文收进默认折叠的 details，且只收登记句（未登记句不重复）。
+    const details = screen.getByTestId("cashflow-warning-originals");
+    expect(details.tagName).toBe("DETAILS");
+    expect(details).not.toHaveAttribute("open");
+    expect(details).toHaveTextContent("英文原文（1 条）");
+    expect(details).toHaveTextContent(registered);
+  });
+
+  it("uses DataSection fallback banner when result_meta marks latest_snapshot fallback", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const orig = client.getCashflowProjection.bind(client);
+    client.getCashflowProjection = async (reportDate: string) => {
+      const envelope = await orig(reportDate);
+      return {
+        ...envelope,
+        result_meta: {
+          ...envelope.result_meta,
+          fallback_mode: "latest_snapshot",
+          requested_report_date: "2026-03-31",
+          resolved_report_date: "2026-03-29",
+          as_of_date: "2026-03-29",
+          fallback_date: "2026-03-29",
+          filters_applied: { report_date: "2026-03-31" },
+        },
+      };
+    };
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <CashflowProjectionPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    const fallbackBanner = await screen.findByTestId("data-section-fallback-banner");
+    expect(fallbackBanner).toHaveTextContent("已回退至最近可用日");
+    expect(fallbackBanner).toHaveTextContent("回退日 2026-03-29");
+    expect(fallbackBanner).not.toHaveTextContent("回退日 2026-03-31");
   });
 
   it("surfaces candidate metric contract status and source evidence", async () => {
@@ -240,14 +340,23 @@ describe("CashflowProjectionPage", () => {
     const contractPanel = await screen.findByTestId("cashflow-contract-status");
 
     expect(contractPanel).toHaveTextContent("候选指标");
-    expect(contractPanel).toHaveTextContent("PAGE-CONTRACT-PENDING:/cashflow-projection");
+    expect(contractPanel).toHaveTextContent("PAGE-CFP-001");
+    expect(contractPanel).toHaveTextContent("临时例外");
     expect(contractPanel).toHaveTextContent("正式可用: 否");
     expect(contractPanel).toHaveTextContent("口径 analytical");
     expect(contractPanel).toHaveTextContent("质量 warning");
     expect(contractPanel).toHaveTextContent("cashflow_projection.overview");
     expect(contractPanel).toHaveTextContent("cashflow_projection_report_date");
+    expect(contractPanel).toHaveTextContent("回退 none");
+    expect(contractPanel).toHaveTextContent("请求日");
+    expect(contractPanel).toHaveTextContent("解析日");
+    expect(contractPanel).toHaveTextContent("数据截至日");
     expect(contractPanel).toHaveTextContent("fact_formal_zqtz_balance_daily");
     expect(contractPanel).toHaveTextContent("fact_formal_tyw_balance_daily");
     expect(contractPanel).toHaveTextContent("证据行 0");
+
+    const dateSourceNote = screen.getByTestId("cashflow-date-source-note");
+    expect(dateSourceNote).toHaveTextContent("报告日取自资产负债分析可用日期");
+    expect(dateSourceNote).toHaveTextContent("date_basis");
   });
 });

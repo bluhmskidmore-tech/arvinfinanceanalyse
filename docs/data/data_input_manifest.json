@@ -1,0 +1,211 @@
+{
+  "schema_version": "1.0.0",
+  "manifest_id": "data-input-authoritative-manifest",
+  "generated_at": "2026-08-12T09:10:00+08:00",
+  "generated_by": "C2-MANIFEST inventory (directory names/sizes/dates only; file contents were not read)",
+  "root": {
+    "path": "data_input",
+    "tracked_in_git": false,
+    "resolution_rule": "backend/app/governance/settings.py::resolve_data_input_root_path: MOSS_DATA_INPUT_ROOT > RAW_FILES_DIR > <repo>/data_warehouse/raw_files(若存在) > <repo>/data_input(默认)",
+    "content_hash_registry": "backend/app/services/source_file_hash.py 已对入库源文件登记内容哈希；本 manifest 只登记目录+命名模式（约 1300 个文件不逐个登记），文件级真实性由内容哈希与 governance 回执治理"
+  },
+  "granularity": "directory-and-pattern",
+  "authority_rules": {
+    "date_format_pick": "同一前缀同一日期若同时存在 YYYYMMDD 与 YYYY.MM.DD 两种命名，权威文件取 YYYYMMDD（紧凑格式）；当前快照同日双格式重叠为 0 例，两种格式按日期区间互补",
+    "duplicate_copies": "带 _YYYYMMDD_HHMMSS 时间戳后缀或 (n) 序号后缀的文件为重复上传/下载副本，判重依据内容哈希（source_file_hash.py）与 governance 刷新回执，不以文件名为准",
+    "processed_subdir": "pnl / pnl_514 / pnl_516 / pnl_517 下的 processed/ 为已入库归档副本目录（pnl_source_service.py 同时扫描目录本体与 processed/），不构成新的权威输入",
+    "normalization_decision": "pending-owner：双日期格式是否统一规范化为 YYYYMMDD 待 owner 决定；本清单如实登记现状，未改名任何文件"
+  },
+  "date_format_census": {
+    "formats_observed": {
+      "compact": "YYYYMMDD",
+      "dotted": "YYYY.MM.DD"
+    },
+    "top_level_compact_files": 970,
+    "top_level_dotted_files": 183,
+    "same_day_dual_format_pairs": 0,
+    "detail": [
+      {"prefix": "TYWLSHOW", "format": "compact", "count": 423, "min_date": "2025-01-01", "max_date": "2026-07-31"},
+      {"prefix": "TYWLSHOW", "format": "dotted", "count": 153, "min_date": "2025-06-01", "max_date": "2025-10-31"},
+      {"prefix": "ZQTZSHOW", "format": "compact", "count": 547, "min_date": "2024-01-01", "max_date": "2026-07-31"},
+      {"prefix": "ZQTZSHOW", "format": "dotted", "count": 30, "min_date": "2025-11-01", "max_date": "2025-11-30"}
+    ],
+    "code_compatibility": "backend/app/core_finance/source_rules.py::_extract_loose_date_v1 先匹配 YYYYMMDD 再匹配 YYYY.MM.DD；backend/app/tasks/accounting_asset_movement.py 与 services/accounting_asset_movement_service.py 对两种格式各做 glob。两种命名当前均可被消费"
+  },
+  "counts_snapshot": {
+    "total_files": 1307,
+    "top_level_files": 1153,
+    "top_level_directories": 5,
+    "latest_top_level_file_mtime": "2026-08-05T16:06:04+08:00",
+    "note": "计数为 2026-08-12 快照，随日常投递自然增长；verify 脚本对计数漂移仅提示不报错"
+  },
+  "top_level_file_families": [
+    {
+      "prefix": "TYWLSHOW",
+      "location": ".",
+      "source_family": "tyw",
+      "purpose": "同业业务（存放/拆放同业、买入返售/卖出回购等）日频持仓余额明细日报；ingest 入库为 tyw 源族并物化 tyw_interbank_daily_snapshot（标准化输入），进入 formal balance 链路",
+      "purpose_status": "verified",
+      "consumers": [
+        "backend/app/core_finance/source_rules.py (detect_source_family: TYWLSHOW→tyw)",
+        "backend/app/services/ingest_service.py + backend/app/tasks/ingest.py (源族 allowlist)",
+        "backend/app/tasks/snapshot_materialize.py (tyw_interbank_daily_snapshot；LOCF 记 source_file=locf:TYWLSHOW:<date>)",
+        "backend/app/repositories/source_preview_repo.py (source preview 扫描)"
+      ],
+      "filename_patterns": [
+        "^TYWLSHOW-\\d{8}\\.xls$",
+        "^TYWLSHOW-\\d{4}\\.\\d{2}\\.\\d{2}\\.xls$"
+      ],
+      "file_count_snapshot": {"total": 576, "compact": 423, "dotted": 153},
+      "latest_filename_date": "2026-07-31",
+      "notes": "点分格式仅覆盖 2025-06-01～2025-10-31，与紧凑格式（2025-01-01～2025-05-31、2025-11-01～2026-07-31）按区间互补，无同日重叠"
+    },
+    {
+      "prefix": "ZQTZSHOW",
+      "location": ".",
+      "source_family": "zqtz",
+      "purpose": "债券投资持仓日频明细日报（ZQTZ）；ingest 入库为 zqtz 源族，物化 zqtz_bond_daily_snapshot 并进入 formal 资产链路（fact_formal_zqtz_balance_daily，债券类别按 zqtz_asset_bond_category 归类）",
+      "purpose_status": "verified",
+      "consumers": [
+        "backend/app/core_finance/source_rules.py (detect_source_family: ZQTZSHOW→zqtz)",
+        "backend/app/services/ingest_service.py + backend/app/tasks/ingest.py (源族 allowlist)",
+        "backend/app/tasks/accounting_asset_movement.py + backend/app/services/accounting_asset_movement_service.py (刷新 fact_formal_zqtz_balance_daily 前按两种日期格式 glob 校验源文件存在)",
+        "backend/app/core_finance/zqtz_asset_bond_category.py (债券类别归类规则)",
+        "backend/app/repositories/source_preview_repo.py (source preview 扫描)"
+      ],
+      "filename_patterns": [
+        "^ZQTZSHOW-\\d{8}\\.xls$",
+        "^ZQTZSHOW-\\d{4}\\.\\d{2}\\.\\d{2}\\.xls$"
+      ],
+      "file_count_snapshot": {"total": 577, "compact": 547, "dotted": 30},
+      "latest_filename_date": "2026-07-31",
+      "notes": "存在孤立的 ZQTZSHOW-20240101.xls（2024 年仅此一份，下一份为 20250102）；点分格式仅覆盖 2025-11-01～2025-11-30"
+    }
+  ],
+  "top_level_registered_exceptions": [],
+  "directories": [
+    {
+      "path": "pnl",
+      "purpose": "FI 损益工作簿（月度 FI损益YYYYMM.xls 与区间 FI损益YYYYMMDD-MMDD.xls）；formal PnL 刷新输入（source_family=pnl）",
+      "purpose_status": "verified",
+      "consumers": [
+        "backend/app/services/pnl_source_service.py (directory_specs: pnl→*.xls；扫描目录本体与 processed/)",
+        "backend/app/services/pnl_service.py (formal PnL source_tables 引 data_input/pnl)",
+        "backend/app/core_finance/source_rules.py (FI损益→pnl；月度/区间日期解析)"
+      ],
+      "filename_patterns": [
+        "^FI损益\\d{6}(\\(\\d+\\))?(_\\d{8}_\\d{6})?\\.xls$",
+        "^FI损益\\d{8}-\\d{4}(\\(\\d+\\))?(_\\d{8}_\\d{6})?\\.xls$"
+      ],
+      "allowed_subdirectories": ["processed"],
+      "registered_exceptions": [
+        {"file": "FI_tmp_202603_delta.csv", "purpose": "unverified", "note": "临时增量 CSV；pnl 目录官方 glob 仅 *.xls，未找到固定代码消费方，处置待 owner"},
+        {"file": "README.txt", "purpose": "unverified", "note": "目录说明文本；未找到代码消费方"}
+      ],
+      "authoritative_selection": "按 source_rules 解析的 report_date 归组；同一 report_date 的重复副本（时间戳/(n) 后缀）由内容哈希与 governance 回执判重；processed/ 为归档副本",
+      "file_count_snapshot": {"total": 60, "top_level": 36, "processed": 24},
+      "extensions_snapshot": {".xls": 58, ".csv": 1, ".txt": 1},
+      "coverage": "月度 202501～202607；区间 20250101-1130、20260101-0331",
+      "latest_file_mtime": "2026-08-05T10:20:56+08:00"
+    },
+    {
+      "path": "pnl_514",
+      "purpose": "非标 514 分录工作簿（区间粒度 非标514-YYYYMMDD-MMDD.xlsx）；formal PnL 514/516/517 合并链路输入（514 含增值税价税分离口径处理）",
+      "purpose_status": "verified",
+      "consumers": [
+        "backend/app/services/pnl_source_service.py (directory_specs: pnl_514→*.xlsx)",
+        "backend/app/core_finance/source_rules.py (非标514→pnl_514；_NONSTD_PNL_PATTERN 区间解析)",
+        "backend/app/core_finance/pnl.py (_is_pnl_514_vat_effective 等 514 口径)",
+        "backend/app/repositories/source_preview_repo.py (source preview 扫描)"
+      ],
+      "filename_patterns": [
+        "^非标514-\\d{8}-\\d{4}(\\(\\d+\\))?(_\\d{8}_\\d{6})*\\.xlsx$"
+      ],
+      "allowed_subdirectories": ["processed"],
+      "registered_exceptions": [],
+      "authoritative_selection": "同 pnl：按 report 区间归组，重复副本以内容哈希判重；processed/ 为归档副本",
+      "file_count_snapshot": {"total": 11, "top_level": 8, "processed": 3},
+      "extensions_snapshot": {".xlsx": 11},
+      "coverage": "区间 20250101-1130/1231、20260101-0228～0731",
+      "latest_file_mtime": "2026-08-05T13:43:10+08:00"
+    },
+    {
+      "path": "pnl_516",
+      "purpose": "非标 516 分录工作簿（区间粒度 非标516-YYYYMMDD-MMDD.xlsx）；formal PnL 514/516/517 合并链路输入",
+      "purpose_status": "verified",
+      "consumers": [
+        "backend/app/services/pnl_source_service.py (directory_specs: pnl_516→*.xlsx)",
+        "backend/app/core_finance/source_rules.py (非标516→pnl_516；_NONSTD_PNL_PATTERN 区间解析)",
+        "backend/app/repositories/source_preview_repo.py (source preview 扫描)"
+      ],
+      "filename_patterns": [
+        "^非标516-\\d{8}-\\d{4}(\\(\\d+\\))?(_\\d{8}_\\d{6})*\\.xlsx$"
+      ],
+      "allowed_subdirectories": ["processed"],
+      "registered_exceptions": [],
+      "authoritative_selection": "同 pnl_514",
+      "file_count_snapshot": {"total": 10, "top_level": 8, "processed": 2},
+      "extensions_snapshot": {".xlsx": 10},
+      "coverage": "区间 20250101-1130/1231、20260101-0228～0731",
+      "latest_file_mtime": "2026-08-05T13:45:54+08:00"
+    },
+    {
+      "path": "pnl_517",
+      "purpose": "非标 517 分录工作簿（区间粒度 非标517-YYYYMMDD-MMDD.xlsx）；formal PnL 514/516/517 合并链路输入（517 含累计已实现事件口径）",
+      "purpose_status": "verified",
+      "consumers": [
+        "backend/app/services/pnl_source_service.py (directory_specs: pnl_517→*.xlsx)",
+        "backend/app/core_finance/source_rules.py (非标517→pnl_517；_NONSTD_PNL_PATTERN 区间解析)",
+        "backend/app/core_finance/pnl.py (FI_CUMULATIVE_REALIZED_517_EVENT_TYPE 等 517 口径)",
+        "backend/app/repositories/source_preview_repo.py (source preview 扫描)"
+      ],
+      "filename_patterns": [
+        "^非标517-\\d{8}-\\d{4}(\\(\\d+\\))?(_\\d{8}_\\d{6})*\\.xlsx$"
+      ],
+      "allowed_subdirectories": ["processed"],
+      "registered_exceptions": [],
+      "authoritative_selection": "同 pnl_514",
+      "file_count_snapshot": {"total": 10, "top_level": 8, "processed": 2},
+      "extensions_snapshot": {".xlsx": 10},
+      "coverage": "区间 20250101-1130/1231、20260101-0228～0731",
+      "latest_file_mtime": "2026-08-05T13:47:40+08:00"
+    },
+    {
+      "path": "pnl_总账对账-日均",
+      "purpose": "QDB 总账对账（总账对账YYYYMM.xlsx）与日均（日均YYYYMM.xlsx）月度工作簿；产品类别损益、候选财务指标、QDB 总账月度分析的默认输入目录",
+      "purpose_status": "verified",
+      "consumers": [
+        "backend/app/governance/settings.py (_DEFAULT_PRODUCT_CATEGORY_REL 默认指向本目录)",
+        "backend/app/services/candidate_financial_indicator_service.py 与 candidate_financial_indicator_period_comparison_service.py (LEDGER_FILE_PREFIX=总账对账, DAILY_FILE_PREFIX=日均)",
+        "backend/app/services/qdb_gl_input_validation_service.py (LEDGER_FILE_PATTERN=^总账对账\\d{6}\\.xlsx$)",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py (总账对账+日均 同源重建)",
+        "backend/app/services/ledger_pnl_service.py (总账对账 Excel → CanonicalFactRow)"
+      ],
+      "filename_patterns": [
+        "^总账对账\\d{6}\\.xlsx$",
+        "^日均\\d{6}\\.xlsx$"
+      ],
+      "allowed_subdirectories": [],
+      "registered_exceptions": [
+        {"file": "2026年财务指标表-3月最终.xlsx", "purpose": "unverified", "note": "finance_metric_engine/qdb_finance_2026 源锁定的是带 (2) 后缀的同名工作簿哈希（另有 sample_data 下 (1) 副本）；此无后缀副本不在锁定清单内，是否权威待 owner 确认"}
+      ],
+      "authoritative_selection": "总账对账/日均按 YYYYMM 报告月归组，每月各一份为权威；qdb_gl_input_validation_service 对总账对账文件名做严格校验",
+      "file_count_snapshot": {"total": 63, "ledger": 31, "daily_avg": 31, "exceptions": 1},
+      "extensions_snapshot": {".xlsx": 63},
+      "coverage": "总账对账 202401～202607；日均 202401～202607",
+      "latest_file_mtime": "2026-08-05T16:59:18+08:00"
+    }
+  ],
+  "verification": {
+    "script": "scripts/verify_data_input_manifest.py",
+    "run": "py scripts/verify_data_input_manifest.py",
+    "checks": [
+      "manifest 登记的顶层目录在磁盘上存在",
+      "data_input 下不存在 manifest 未登记的新顶层目录（发现即 exit 1）",
+      "顶层散文件命名符合已登记的文件族模式（或属登记例外）",
+      "各登记目录内文件命名符合该目录模式（或属登记例外），嵌套子目录必须在 allowed_subdirectories 中",
+      "文件计数相对快照的漂移仅作提示（informational），不报错",
+      "data_input 不存在时（CI 场景）打印 skip 信息并 exit 0"
+    ]
+  }
+}

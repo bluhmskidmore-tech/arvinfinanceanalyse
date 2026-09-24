@@ -1,0 +1,76 @@
+/*
+ * 证据与口径分区专属样式。共享 FormalResultMetaPanel 面向浅色主题
+ * （16/14px 大圆角、999px 徽章胶囊、浅色 tone 内联字面量），按 ledger-pnl
+ * 先例（DESIGN.md Decisions Log 2026-08-13）在 positions 作用域内覆盖
+ * 收敛到 Nocturne；不改共享组件本体。徽章色经组件的
+ * --formal-meta-badge-* CSS 变量出口重定义，浅色页面零影响。
+ */
+
+/* 分区头下口径说明：12px muted 单行（§7：无 · 超配额、无中英混排微标签）。 */
+[data-moss-theme-scope="positions"] .positions-evidence__note {
+  margin: 0 0 8px;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+[data-moss-theme-scope="positions"] .formal-result-meta-panel {
+  --formal-result-meta-border-soft: var(--dh-api-line-soft);
+  --formal-meta-badge-ok-bg: var(--dh-api-green-soft);
+  --formal-meta-badge-ok-ink: var(--dh-api-green);
+  --formal-meta-badge-ok-line: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
+  --formal-meta-badge-warn-bg: var(--dh-api-amber-soft);
+  --formal-meta-badge-warn-ink: var(--dh-api-amber);
+  --formal-meta-badge-warn-line: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  --formal-meta-badge-danger-bg: var(--dh-api-red-soft);
+  --formal-meta-badge-danger-ink: var(--dh-api-red);
+  --formal-meta-badge-danger-line: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
+
+  margin-top: 0;
+  padding: 14px;
+  /* meta 未到达时 emptyText 占位自带背板与稳定高度，防内容到达时重排（§6）。 */
+  min-height: 128px;
+  border-color: var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+[data-moss-theme-scope="positions"] .formal-result-meta-panel__title,
+[data-moss-theme-scope="positions"] .formal-result-meta-panel__heading {
+  color: var(--dh-api-ink);
+}
+
+[data-moss-theme-scope="positions"] .formal-result-meta-panel__subtitle,
+[data-moss-theme-scope="positions"] .formal-result-meta-panel__empty,
+[data-moss-theme-scope="positions"] .formal-result-meta-panel__label {
+  color: var(--dh-api-muted);
+}
+
+[data-moss-theme-scope="positions"] .formal-result-meta-panel__card {
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+}
+
+[data-moss-theme-scope="positions"] .formal-result-meta-panel__badge {
+  border-radius: var(--dh-api-radius);
+}
+
+/* 溯源明细 12px 密度；标签列收窄给 trace/version 长标识让宽（ledger 先例）。 */
+[data-moss-theme-scope="positions"] .formal-result-meta-panel__list {
+  grid-template-columns: minmax(88px, 108px) minmax(0, 1fr);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/*
+ * 长证据值（区间聚合的 source_version 是数百个哈希用 __ 合并的巨串）
+ * 钳制到 3 行：证据字段以“可追溯存在”为目的，整串展示会把整个分区
+ * 撑成十几屏的噪音（§6 溯源标识分层）。完整值仍在信封原文中。
+ */
+[data-moss-theme-scope="positions"] .formal-result-meta-panel__value {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}

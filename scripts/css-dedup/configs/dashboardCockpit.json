@@ -1,0 +1,22 @@
+{
+  "cssPath": "frontend/src/styles/dashboardCockpit.css",
+  "tsxFiles": [
+    "frontend/src/layouts/WorkbenchShell.tsx",
+    "frontend/src/components/DataModeRibbon.tsx",
+    "frontend/src/components/StatusPill.tsx",
+    "frontend/src/components/CalendarList.tsx",
+    "frontend/src/features/bond-analytics/components/BondAnalyticsViewContent.tsx",
+    "frontend/src/features/agent/AgentWorkbenchPage.tsx",
+    "frontend/src/features/market-data/pages/MarketDataHeroSection.tsx"
+  ],
+  "wildcards": [
+    "status-pill",
+    "dashboard-home-panel",
+    "workbench-shell-grid--cockpit",
+    "workbench-shell-grid--bond-analysis"
+  ],
+  "evidenceMode": "literal",
+  "finalMarker": null,
+  "mockUrl": "http://127.0.0.1:5897/bond-analysis",
+  "realUrl": "http://localhost:5888/bond-analysis"
+}

@@ -7,6 +7,12 @@ from pathlib import Path
 from backend.app.governance.settings import get_settings
 from tests.helpers import load_module
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_choice_news,
+]
 
 def _write_choice_news_topics(path: Path) -> None:
     path.write_text(
@@ -37,7 +43,6 @@ def _write_choice_news_topics(path: Path) -> None:
         ),
         encoding="utf-8",
     )
-
 
 def test_choice_client_cnq_and_cancel_wrap_sdk_calls(tmp_path, monkeypatch):
     runtime_module = load_module(
@@ -97,7 +102,6 @@ def test_choice_client_cnq_and_cancel_wrap_sdk_calls(tmp_path, monkeypatch):
     assert cmod.calls[2] == ("cnqcancel", 4321)
     assert cancel.ErrorCode == 0
 
-
 def test_choice_news_topics_loader_reads_structured_asset(tmp_path):
     task_module = load_module(
         "backend.app.tasks.choice_news",
@@ -114,7 +118,6 @@ def test_choice_news_topics_loader_reads_structured_asset(tmp_path):
     assert asset.groups[0].group_id == "news_cmd1"
     assert asset.groups[0].topics[0].topic_code == "C000022"
     assert asset.groups[0].topics[0].topic_name == "热门资讯"
-
 
 def test_subscribe_choice_sectornews_uses_structured_topics_asset(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
@@ -162,7 +165,6 @@ def test_subscribe_choice_sectornews_uses_structured_topics_asset(tmp_path, monk
     assert payload["subscription_count"] == 1
     assert payload["subscriptions"][0]["serial_id"] == 7788
     get_settings.cache_clear()
-
 
 def test_subscribe_choice_sectornews_chunks_large_group_by_vendor_limit(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
@@ -244,7 +246,6 @@ def test_subscribe_choice_sectornews_chunks_large_group_by_vendor_limit(tmp_path
     assert payload["subscription_count"] == 2
     get_settings.cache_clear()
 
-
 def test_choice_news_callback_appends_event_records_to_governance(tmp_path):
     task_module = sys.modules.get("backend.app.tasks.choice_news")
     if task_module is None:
@@ -288,7 +289,6 @@ def test_choice_news_callback_appends_event_records_to_governance(tmp_path):
     assert rows[0]["item_index"] == 0
     assert rows[0]["payload_text"] == "headline-a"
     assert rows[2]["payload_json"] == "{\"title\":\"macro-data\"}"
-
 
 def test_subscribe_choice_sectornews_passes_callback_and_persists_callback_events(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
@@ -344,7 +344,6 @@ def test_subscribe_choice_sectornews_passes_callback_and_persists_callback_event
     assert rows[0]["topic_code"] == "C000022"
     assert rows[0]["payload_text"] == "headline-a"
     get_settings.cache_clear()
-
 
 def test_choice_news_callback_persists_error_envelope_even_without_data(tmp_path):
     task_module = sys.modules.get("backend.app.tasks.choice_news")

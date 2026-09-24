@@ -12,6 +12,8 @@ from typing import Any
 import pytest
 import tomllib
 
+pytestmark = pytest.mark.mcp_full
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MCP_SCRIPT = REPO_ROOT / "scripts" / "mcp" / "moss_project_mcp.py"
 CODEX_CONFIG = REPO_ROOT / ".codex" / "config.toml"
@@ -20,8 +22,8 @@ ALL_SEEDED_RECORD_GAP_PAGE_IDS = [
     "PAGE-DASH-001",
     "PAGE-EXEC-OVERVIEW-001",
     "PAGE-EXEC-SUMMARY-001",
-    "GAP-BANK-LEDGER-DASHBOARD-PAGE",
-    "GAP-CONCENTRATION-MONITOR-PAGE",
+    "PAGE-BANK-LEDGER-001",
+    "PAGE-CONC-001",
     "GAP-TEAM-PERFORMANCE-PAGE",
     "GAP-PLATFORM-CONFIG-PAGE",
     "GAP-DECISION-ITEMS-PAGE",
@@ -90,7 +92,7 @@ ALL_SEEDED_CATALOG_DATE_LINEAGE_PAGE_IDS = [
     "PAGE-RISK-001",
     "PAGE-DASH-001",
     "PAGE-EXEC-OVERVIEW-001",
-    "GAP-CONCENTRATION-MONITOR-PAGE",
+    "PAGE-CONC-001",
     "PAGE-BAL-MOVE-001",
     "PAGE-PNL-BY-BUSINESS-001",
     "PAGE-PNL-ATTR-WB-001",
@@ -212,7 +214,7 @@ CATALOG_DATE_RECORD_GAP_PAGE_SLUGS = [
 READY_FOR_AUDIT_PAGE_IDS = [
     "PAGE-PROD-CAT-001",
     "PAGE-BALANCE-001",
-    "GAP-CONCENTRATION-MONITOR-PAGE",
+    "PAGE-CONC-001",
     "PAGE-BAL-MOVE-001",
     "PAGE-PNL-ATTR-WB-001",
     "PAGE-RISK-001",
@@ -244,9 +246,9 @@ READY_FOR_AUDIT_PAGE_SLUGS = [
 GOVERNANCE_READY_FOR_AUDIT_PAGE_IDS = [
     "PAGE-PROD-CAT-001",
     "PAGE-BALANCE-001",
-    "GAP-AVERAGE-BALANCE-PAGE",
-    "GAP-CASHFLOW-PROJECTION-PAGE",
-    "GAP-CONCENTRATION-MONITOR-PAGE",
+    "PAGE-ADB-001",
+    "PAGE-CFP-001",
+    "PAGE-CONC-001",
     "GAP-DECISION-ITEMS-PAGE",
     "PAGE-BAL-MOVE-001",
     "PAGE-PNL-ATTR-WB-001",
@@ -278,6 +280,59 @@ GOVERNANCE_READY_FOR_AUDIT_PAGE_SLUGS = [
     "team-performance",
     "kpi-performance",
 ]
+
+
+@pytest.fixture(autouse=True)
+def isolated_default_mcp_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, Path]:
+    governance_dir = tmp_path / "default-governance"
+    governance_dir.mkdir()
+    duckdb_path = tmp_path / "missing.duckdb"
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    return {"governance_dir": governance_dir, "duckdb_path": duckdb_path}
+
+
+def test_full_mcp_contracts_default_to_isolated_runtime_paths(
+    isolated_default_mcp_runtime: dict[str, Path],
+) -> None:
+    assert Path(os.environ["MOSS_GOVERNANCE_PATH"]) == isolated_default_mcp_runtime[
+        "governance_dir"
+    ]
+    assert Path(os.environ["MOSS_DUCKDB_PATH"]) == isolated_default_mcp_runtime[
+        "duckdb_path"
+    ]
+    assert isolated_default_mcp_runtime["governance_dir"].is_dir()
+    assert not isolated_default_mcp_runtime["duckdb_path"].exists()
+
+
+@pytest.fixture
+def frozen_governance_snapshot_dir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_default_mcp_runtime: dict[str, Path],
+) -> Path:
+    '''Load the versioned 16-ready/23-gap snapshot without production builders.'''
+    fixture_path = (
+        REPO_ROOT
+        / 'tests'
+        / 'fixtures'
+        / 'mcp'
+        / 'governance_snapshot_v1.jsonl'
+    )
+    fixture_text = fixture_path.read_text(encoding='utf-8')
+    records = [json.loads(line) for line in fixture_text.splitlines() if line.strip()]
+    assert {record['page_slug'] for record in records} == set(
+        GOVERNANCE_READY_FOR_AUDIT_PAGE_SLUGS
+    )
+
+    governance = tmp_path / 'governance-snapshot'
+    governance.mkdir()
+    (governance / 'cache_manifest.jsonl').write_text(fixture_text, encoding='utf-8')
+    monkeypatch.setenv('MOSS_GOVERNANCE_PATH', str(governance))
+    return governance
 
 
 class McpProcess:
@@ -865,7 +920,7 @@ def test_project_mcp_config_declares_read_only_surfaces() -> None:
         "/c",
         "scripts\\mcp\\moss_data_quality.cmd",
     ]
-    assert servers["playwright"]["args"][-1] == "@playwright/mcp@latest"
+    assert servers["playwright"]["args"][-1] == "@playwright/mcp@0.0.79"
 
 
 def test_project_mcp_config_pins_mcp_cwd_for_compatible_clients() -> None:
@@ -931,7 +986,7 @@ def test_project_codex_config_declares_read_only_surfaces() -> None:
         "scripts\\mcp\\moss_data_quality.cmd",
     ]
     assert servers["playwright"]["command"] == "npx"
-    assert servers["playwright"]["args"][-1] == "@playwright/mcp@latest"
+    assert servers["playwright"]["args"][-1] == "@playwright/mcp@0.0.79"
 
 
 def test_project_codex_config_pins_mcp_cwd_for_app_launches() -> None:
@@ -1076,7 +1131,7 @@ def test_metric_contracts_mcp_exposes_contract_docs() -> None:
             "backend/app/services/positions_service.py",
             "frontend/src/features/positions/components/PositionsView.tsx",
             "tests/test_positions_api_contract.py",
-            "NO_DEDICATED_GOLDEN_SAMPLE",
+            "tests/golden_samples/GS-POSITIONS-BONDS-LIST-A",
             "GAP-POS-LIST",
             "PAGE-POS-001",
         ),
@@ -1480,6 +1535,8 @@ def test_ledger_pnl_trace_bundle_preserves_candidate_source_contract_boundaries(
             "PAGE-LEDGER-PNL-001",
             "/api/ledger-pnl/summary",
             "/api/ledger-pnl/formal-financial-indicators",
+            "/api/ledger-pnl/candidate-financial-indicators/period-comparison",
+            "/api/ledger-pnl/candidate-financial-indicators/period-comparison/component-detail",
         ):
             result = server.request(
                 "tools/call",
@@ -1493,7 +1550,12 @@ def test_ledger_pnl_trace_bundle_preserves_candidate_source_contract_boundaries(
         assert "/api/ledger-pnl/dates" in payload["supporting_apis"]
         assert "/api/ledger-pnl/data" in payload["supporting_apis"]
         assert "/api/ledger-pnl/formal-financial-indicators" in payload["supporting_apis"]
-        assert payload["golden_samples"] == ["tests/golden_samples/GS-LEDGER-PNL-SUMMARY-A"]
+        assert "/api/ledger-pnl/candidate-financial-indicators/period-comparison" in payload["supporting_apis"]
+        assert "/api/ledger-pnl/candidate-financial-indicators/period-comparison/component-detail" in payload["supporting_apis"]
+        assert payload["golden_samples"] == [
+            "tests/golden_samples/GS-LEDGER-PNL-SUMMARY-A",
+            "tests/golden_samples/GS-LEDGER-PNL-NET-INTEREST-202606-A",
+        ]
         assert any("MTR-LPN-001" in item for item in payload["truth_chain"])
         assert any("MTR-LPN-003" in item for item in payload["truth_chain"])
         assert any("ledger_pnl.formal_financial_indicator_source_contract" in item for item in payload["truth_chain"])
@@ -1507,6 +1569,9 @@ def test_ledger_pnl_trace_bundle_preserves_candidate_source_contract_boundaries(
         assert any("candidate sign-off evidence only" in item for item in payload["truth_chain"])
         assert any("remains unsigned" in item for item in payload["truth_chain"])
         assert any("without promoting Ledger PnL to formal PnL truth" in item for item in payload["truth_chain"])
+        assert any("qdb-ledger-comparison-source-locks-2026-v1.0.0" in item for item in payload["truth_chain"])
+        assert "backend/app/core_finance/finance_metric_ledger_comparison_source_locks.py" in payload["backend_touchpoints"]
+        assert "tests/test_ledger_pnl_net_interest_golden_sample.py" in payload["test_touchpoints"]
         assert any("pending_confirmation=true" in item for item in payload["guardrails"])
         assert any("formal PnL" in item for item in payload["guardrails"])
         assert any("formal financial indicator truth" in item for item in payload["guardrails"])
@@ -1779,7 +1844,7 @@ def test_balance_movement_trace_bundle_preserves_movement_explanation_boundaries
         assert any("MTR-BMV-001" in item for item in payload["truth_chain"])
         assert any("MTR-BMV-004" in item for item in payload["truth_chain"])
         assert any("AccountingAssetMovementPayload" in item for item in payload["truth_chain"])
-        assert any("rv_accounting_asset_movement_v2" in item for item in payload["truth_chain"])
+        assert any("rv_accounting_asset_movement_v3" in item for item in payload["truth_chain"])
         assert any("formal balance truth" in item for item in payload["guardrails"])
         assert any("selected report dates" in item for item in payload["guardrails"])
         assert any("demo rows" in item for item in payload["guardrails"])
@@ -1982,14 +2047,20 @@ def test_positions_trace_bundle_preserves_list_candidate_and_dual_date_boundarie
         assert "/api/positions/stats/rating" in payload["supporting_apis"]
         assert "/api/positions/customer/details" in payload["supporting_apis"]
         assert "GET /ui/balance-analysis/dates" in payload["truth_chain"]
-        assert payload["golden_samples"] == []
+        assert payload["golden_samples"] == [
+            "tests/golden_samples/GS-POSITIONS-BONDS-LIST-A",
+            "tests/golden_samples/GS-POSITIONS-INTERBANK-LIST-A",
+        ]
         assert any("MTR-POS-001" in item for item in payload["truth_chain"])
         assert any("MTR-POS-002" in item for item in payload["truth_chain"])
         assert any("GAP-POS-LIST" in item for item in payload["truth_chain"])
+        assert any("GS-POSITIONS-BONDS-LIST-A" in item for item in payload["truth_chain"])
+        assert any("GS-POSITIONS-INTERBANK-LIST-A" in item for item in payload["truth_chain"])
         assert any("BondPositionsPageResponse" in item for item in payload["truth_chain"])
         assert any("InterbankPositionsPageResponse" in item for item in payload["truth_chain"])
         assert any("pending_confirmation=true" in item for item in payload["guardrails"])
-        assert any("bound_sample_id=none" in item for item in payload["guardrails"])
+        assert any("captured-awaiting-approval" in item for item in payload["guardrails"])
+        assert not any("bound_sample_id=none" in item for item in payload["guardrails"])
         assert any("balance-analysis dates" in item for item in payload["guardrails"])
         assert any("formal PnL" in item for item in payload["guardrails"])
         assert any("frontend" in item for item in payload["guardrails"])
@@ -2172,7 +2243,7 @@ def test_stock_analysis_trace_bundle_preserves_observational_livermore_boundarie
 
         assert payload["page_id"] == "GAP-STOCK-ANALYSIS-PAGE"
         assert payload["frontend_route"] == "/stock-analysis"
-        assert payload["primary_api"] == "/ui/market-data/livermore"
+        assert payload["primary_api"] == "/ui/market-data/stock-analysis/workbench"
         assert "/ui/market-data/livermore/signal-confluence" in payload["supporting_apis"]
         assert "/ui/market-data/livermore/stock-detail" in payload["supporting_apis"]
         assert "/ui/market-data/livermore/candidate-history" in payload["supporting_apis"]
@@ -2182,9 +2253,26 @@ def test_stock_analysis_trace_bundle_preserves_observational_livermore_boundarie
         assert "/ui/market-data/livermore/candidate-history-portfolio-backtest" in payload["supporting_apis"]
         assert "/ui/market-data/livermore/sector-rank-series" in payload["supporting_apis"]
         assert payload["golden_samples"] == ["tests/golden_samples/GS-STOCK-ANALYSIS-OBS-A"]
+        assert "docs/pnl/stock-analysis-owner-evidence-packet.md" in payload["contract_docs"]
+        assert "docs/pnl/stock-analysis-sign-off-packet.md" in payload["contract_docs"]
+        assert "docs/pnl/stock-analysis-governance-audit-packet.md" in payload["contract_docs"]
+        assert "docs/pnl/stock-analysis-business-owner-approval-template.md" in payload["contract_docs"]
+        assert "docs/pnl/stock-analysis-owner-signoff-runbook.md" in payload["contract_docs"]
+        assert "docs/pnl/stock-analysis-owner-qa-checklist.md" in payload["contract_docs"]
         assert any("temporary-exception" in item for item in payload["truth_chain"])
         assert any("observation-only" in item for item in payload["truth_chain"])
         assert any("risk_exit" in item and "backend-owned" in item for item in payload["truth_chain"])
+        assert any("owner-review evidence while preserving formal_use_allowed=false" in item for item in payload["truth_chain"])
+        assert any("observational sign-off evidence only" in item for item in payload["truth_chain"])
+        assert any("review-only audit evidence" in item for item in payload["truth_chain"])
+        assert any("business-owner-approval-template.md captures pending owner fields and remains unsigned" in item for item in payload["truth_chain"])
+        assert any(
+            "stock-analysis-owner-signoff-runbook.md lists the human review, fill, "
+            "and post-signing verification commands"
+            in item
+            for item in payload["truth_chain"]
+        )
+        assert any("stock-analysis-owner-qa-checklist.md lists the owner page checks" in item for item in payload["truth_chain"])
         assert any("GS-STOCK-ANALYSIS-OBS-A" in item for item in payload["verification_focus"])
         assert any("no PAGE-STOCK" in item for item in payload["verification_focus"])
         assert any("trading instructions" in item for item in payload["guardrails"])
@@ -2256,10 +2344,13 @@ def test_metric_contracts_evidence_readiness_matrix_flags_candidate_pages_withou
 
         positions = rows["PAGE-POS-001"]
         assert positions["formal_use_allowed"] is False
-        assert positions["checks"]["golden_sample"]["status"] == "missing"
+        assert positions["approval_status"] == "candidate_or_pending"
+        assert positions["checks"]["golden_sample"]["status"] == "page_dto_only"
+        assert "tests/golden_samples/GS-POSITIONS-BONDS-LIST-A" in positions["checks"]["golden_sample"]["anchors"]
+        assert "tests/golden_samples/GS-POSITIONS-INTERBANK-LIST-A" in positions["checks"]["golden_sample"]["anchors"]
         assert any("MTR-POS-001" in anchor for anchor in positions["checks"]["lineage_mapping"]["anchors"])
         assert any("zqtz_bond_daily_snapshot" in anchor for anchor in positions["checks"]["catalog_date"]["anchors"])
-        assert any("dedicated golden sample" in gap for gap in positions["residual_gaps"])
+        assert any("dictionary-level approval" in gap for gap in positions["residual_gaps"])
 
         market = rows["PAGE-MKT-001"]
         assert market["formal_use_allowed"] is False
@@ -2390,9 +2481,9 @@ def test_metric_contracts_evidence_readiness_has_explicit_status_for_every_seede
         rows = {row["page_id"]: row for row in payload["pages"]}
 
         assert set(rows) == {
-            "GAP-BANK-LEDGER-DASHBOARD-PAGE",
-            "GAP-CASHFLOW-PROJECTION-PAGE",
-            "GAP-CONCENTRATION-MONITOR-PAGE",
+            "PAGE-BANK-LEDGER-001",
+            "PAGE-CFP-001",
+            "PAGE-CONC-001",
             "GAP-NEWS-EVENTS-PAGE",
             "GAP-STOCK-ANALYSIS-PAGE",
             "PAGE-AGENT-001",
@@ -2428,9 +2519,11 @@ def test_metric_contracts_evidence_readiness_has_explicit_status_for_every_seede
         assert rows["PAGE-BRIDGE-001"]["approval_status"] == "formal_or_governed"
         assert rows["PAGE-BALANCE-001"]["approval_status"] == "formal_or_governed"
         assert rows["PAGE-RISK-001"]["approval_status"] == "formal_or_governed"
-        assert rows["GAP-BANK-LEDGER-DASHBOARD-PAGE"]["approval_status"] == "candidate_or_pending"
-        assert rows["GAP-CASHFLOW-PROJECTION-PAGE"]["approval_status"] == "candidate_or_pending"
-        assert rows["GAP-CONCENTRATION-MONITOR-PAGE"]["approval_status"] == "candidate_or_pending"
+        assert rows["PAGE-PNL-BY-BUSINESS-001"]["approval_status"] == "formal_or_governed"
+        assert rows["PAGE-PNL-BY-BUSINESS-001"]["formal_use_allowed"] is True
+        assert rows["PAGE-BANK-LEDGER-001"]["approval_status"] == "candidate_or_pending"
+        assert rows["PAGE-CFP-001"]["approval_status"] == "candidate_or_pending"
+        assert rows["PAGE-CONC-001"]["approval_status"] == "candidate_or_pending"
         assert rows["PAGE-BAL-MOVE-001"]["approval_status"] == "candidate_or_pending"
         assert rows["PAGE-PNL-ATTR-WB-001"]["approval_status"] == "candidate_or_pending"
         portfolio = rows["PAGE-PORTFOLIO-HOME-001"]
@@ -2440,7 +2533,7 @@ def test_metric_contracts_evidence_readiness_has_explicit_status_for_every_seede
         assert "tests/golden_samples/GS-PORTFOLIO-HOME-A" in portfolio["checks"]["golden_sample"]["anchors"]
         assert not any("dedicated golden sample" in gap for gap in portfolio["residual_gaps"])
         assert {row["approval_status_source"] for row in rows.values()} == {"explicit_status_map"}
-        assert payload["summary"]["formal_use_allowed_count"] == 5
+        assert payload["summary"]["formal_use_allowed_count"] == 6
     finally:
         server.close()
 
@@ -3266,6 +3359,7 @@ def test_business_pnl_trace_bundle_preserves_page_level_analysis_boundaries() ->
             "PAGE-PNL-BY-BUSINESS-001",
             "/api/pnl/by-business-ytd",
             "/api/pnl/by-business-analysis",
+            "/api/pnl/by-business-insights",
         ):
             result = server.request(
                 "tools/call",
@@ -3276,22 +3370,39 @@ def test_business_pnl_trace_bundle_preserves_page_level_analysis_boundaries() ->
 
         assert payload["page_id"] == "PAGE-PNL-BY-BUSINESS-001"
         assert payload["frontend_route"] == "/pnl-by-business"
-        assert payload["primary_api"] == "/api/pnl/by-business-ytd"
-        assert payload["golden_samples"] == []
+        assert payload["primary_api"] == "/api/pnl/by-business-insights"
+        assert payload["metric_ids"] == [f"MTR-PNLBIZ-{index:03d}" for index in range(1, 8)]
+        assert payload["golden_samples"] == ["tests/golden_samples/GS-PNL-BUSINESS-INSIGHTS-A"]
+        assert "/api/pnl/by-business-ytd" in payload["supporting_apis"]
         assert "/api/pnl/by-business-monthly" in payload["supporting_apis"]
         assert "/api/pnl/by-business" in payload["supporting_apis"]
         assert "/api/pnl/by-business-analysis" in payload["supporting_apis"]
         assert "/api/adb/comparison" in payload["supporting_apis"]
         assert any("YTD/monthly" in item for item in payload["truth_chain"])
         assert any("formal reconciliation evidence only" in item for item in payload["truth_chain"])
-        assert any("no newly approved MTR" in item for item in payload["truth_chain"])
+        assert any("MTR-PNLBIZ-001 through MTR-PNLBIZ-007" in item for item in payload["truth_chain"])
+        assert any("diagnostic-only" in item for item in payload["guardrails"])
         assert any(
             "Manual adjustment" in item and "official metric" in item for item in payload["guardrails"]
         )
         assert any("Product-category truth" in item for item in payload["guardrails"])
         assert any("Ledger-account PnL truth" in item for item in payload["guardrails"])
-        assert not any("MTR-" in item for item in payload["supporting_apis"])
-        assert not any("GS-" in item for item in payload["supporting_apis"])
+
+        readiness_result = server.request(
+            "tools/call",
+            {
+                "name": "get_page_evidence_readiness",
+                "arguments": {"page_slugs": ["PAGE-PNL-BY-BUSINESS-001"]},
+            },
+        )
+        readiness = json.loads(readiness_result["content"][0]["text"])["pages"][0]
+        assert readiness["approval_status"] == "formal_or_governed"
+        assert readiness["formal_use_allowed"] is True
+        golden_sample = readiness["checks"]["golden_sample"]
+        assert golden_sample["status"] == "formal_sample"
+        assert golden_sample["approval_status"] == "approved"
+        assert golden_sample["anchors"] == ["tests/golden_samples/GS-PNL-BUSINESS-INSIGHTS-A"]
+        assert golden_sample["approval_evidence"][0]["status"] == "approved"
     finally:
         server.close()
 
@@ -3305,7 +3416,7 @@ def test_average_balance_trace_bundle_preserves_adb_candidate_boundary() -> None
         for alias in (
             "average-balance",
             "/average-balance",
-            "GAP-AVERAGE-BALANCE-PAGE",
+            "PAGE-ADB-001",
             "/api/analysis/adb",
             "/api/analysis/adb/monthly",
         ):
@@ -3316,7 +3427,7 @@ def test_average_balance_trace_bundle_preserves_adb_candidate_boundary() -> None
             payload = json.loads(result["content"][0]["text"])
             assert payload["page_slug"] == "average-balance"
 
-        assert payload["page_id"] == "GAP-AVERAGE-BALANCE-PAGE"
+        assert payload["page_id"] == "PAGE-ADB-001"
         assert payload["frontend_route"] == "/average-balance"
         assert payload["primary_api"] == "/api/analysis/adb"
         assert "/api/analysis/adb/comparison" in payload["supporting_apis"]
@@ -3327,7 +3438,7 @@ def test_average_balance_trace_bundle_preserves_adb_candidate_boundary() -> None
             "tests/golden_samples/GS-AVERAGE-BALANCE-MONTHLY-A",
         ]
         assert any("MTR-ADB-001" in item for item in payload["truth_chain"])
-        assert any("PAGE-CONTRACT-PENDING:/average-balance" in item for item in payload["truth_chain"])
+        assert any("PAGE-ADB-001" in item for item in payload["truth_chain"])
         assert any("GS-AVERAGE-BALANCE-A" in item for item in payload["truth_chain"])
         assert any("GS-AVERAGE-BALANCE-MONTHLY-A" in item for item in payload["truth_chain"])
         assert any("live-smoke reference evidence only" in item for item in payload["truth_chain"])
@@ -3351,6 +3462,7 @@ def test_bank_ledger_dashboard_trace_bundle_preserves_candidate_read_model_bound
         for alias in (
             "bank-ledger-dashboard",
             "/bank-ledger-dashboard",
+            "PAGE-BANK-LEDGER-001",
             "GAP-BANK-LEDGER-DASHBOARD-PAGE",
             "/api/ledger/dashboard",
             "/api/ledger/positions",
@@ -3362,21 +3474,33 @@ def test_bank_ledger_dashboard_trace_bundle_preserves_candidate_read_model_bound
             payload = json.loads(result["content"][0]["text"])
             assert payload["page_slug"] == "bank-ledger-dashboard"
 
-        assert payload["page_id"] == "GAP-BANK-LEDGER-DASHBOARD-PAGE"
+        assert payload["page_id"] == "PAGE-BANK-LEDGER-001"
         assert payload["frontend_route"] == "/bank-ledger-dashboard"
         assert payload["primary_api"] == "/api/ledger/dashboard"
         assert "/api/ledger/dates" in payload["supporting_apis"]
         assert "/api/ledger/positions" in payload["supporting_apis"]
         assert "/api/ledger/export/positions" in payload["supporting_apis"]
-        assert payload["golden_samples"] == []
+        assert payload["golden_samples"] == ["GS-BANK-LEDGER-CLASSIFICATION-A"]
         assert any("asset_face_amount" in item for item in payload["truth_chain"])
         assert any("liability_face_amount" in item for item in payload["truth_chain"])
         assert any("net_face_exposure" in item for item in payload["truth_chain"])
         assert any("position_snapshot" in item for item in payload["truth_chain"])
-        assert any("GAP-BANK-LEDGER-DASHBOARD-PAGE" in item for item in payload["truth_chain"])
+        assert any("PAGE-BANK-LEDGER-001" in item for item in payload["truth_chain"])
+        assert any("currency_breakdown" in item and "UNKNOWN" in item for item in payload["truth_chain"])
+        assert any("alert_count" in item and "removed" in item for item in payload["truth_chain"])
+        assert any("rv_ledger_classification_v2" in item and "UNCLASSIFIED" in item for item in payload["truth_chain"])
+        assert any("legacy_unassessed" in item and "fail closed" in item for item in payload["truth_chain"])
+        assert any("invalid_materialization" in item and "fail closed" in item for item in payload["truth_chain"])
+        assert any("ledger_classification_backfill" in item and "batches 1-8" in item and "completed receipt" in item for item in payload["guardrails"])
+        assert any("byte-identical existing backup" in item and "one all-or-none transaction" in item for item in payload["guardrails"])
+        assert any("formal_use_allowed=false" in item for item in payload["guardrails"])
         assert any("not formal PnL" in item for item in payload["guardrails"])
         assert any("not formal balance truth" in item for item in payload["guardrails"])
-        assert any("No dedicated golden sample" in item for item in payload["verification_focus"])
+        assert any(
+            "GS-BANK-LEDGER-CLASSIFICATION-A" in item
+            and "captured-awaiting-approval" in item
+            for item in payload["verification_focus"]
+        )
         assert not any("formal_use_allowed=true" in item for item in payload["truth_chain"])
     finally:
         server.close()
@@ -3391,7 +3515,7 @@ def test_cashflow_projection_trace_bundle_preserves_candidate_liquidity_boundary
         for alias in (
             "cashflow-projection",
             "/cashflow-projection",
-            "GAP-CASHFLOW-PROJECTION-PAGE",
+            "PAGE-CFP-001",
             "/api/cashflow-projection",
             "cashflow_projection.overview",
         ):
@@ -3402,13 +3526,13 @@ def test_cashflow_projection_trace_bundle_preserves_candidate_liquidity_boundary
             payload = json.loads(result["content"][0]["text"])
             assert payload["page_slug"] == "cashflow-projection"
 
-        assert payload["page_id"] == "GAP-CASHFLOW-PROJECTION-PAGE"
+        assert payload["page_id"] == "PAGE-CFP-001"
         assert payload["frontend_route"] == "/cashflow-projection"
         assert payload["primary_api"] == "/api/cashflow-projection"
         assert payload["supporting_apis"] == ["/ui/balance-analysis/dates"]
         assert payload["golden_samples"] == ["tests/golden_samples/GS-CASHFLOW-PROJECTION-A"]
         assert any("MTR-CFP-001" in item for item in payload["truth_chain"])
-        assert any("PAGE-CONTRACT-PENDING:/cashflow-projection" in item for item in payload["truth_chain"])
+        assert any("PAGE-CFP-001" in item for item in payload["truth_chain"])
         assert any("GS-CASHFLOW-PROJECTION-A" in item for item in payload["truth_chain"])
         assert any("fact_formal_zqtz_balance_daily" in item for item in payload["truth_chain"])
         assert any("fact_formal_tyw_balance_daily" in item for item in payload["truth_chain"])
@@ -3428,7 +3552,7 @@ def test_concentration_monitor_trace_bundle_preserves_candidate_concentration_bo
         for alias in (
             "concentration-monitor",
             "/concentration-monitor",
-            "GAP-CONCENTRATION-MONITOR-PAGE",
+            "PAGE-CONC-001",
             "/api/bond-analytics/credit-spread-migration",
             "bond_analytics.credit_spread_migration",
         ):
@@ -3439,13 +3563,13 @@ def test_concentration_monitor_trace_bundle_preserves_candidate_concentration_bo
             payload = json.loads(result["content"][0]["text"])
             assert payload["page_slug"] == "concentration-monitor"
 
-        assert payload["page_id"] == "GAP-CONCENTRATION-MONITOR-PAGE"
+        assert payload["page_id"] == "PAGE-CONC-001"
         assert payload["frontend_route"] == "/concentration-monitor"
         assert payload["primary_api"] == "/api/bond-analytics/credit-spread-migration"
         assert payload["supporting_apis"] == ["/api/bond-analytics/dates"]
         assert payload["golden_samples"] == ["tests/golden_samples/GS-CONCENTRATION-MONITOR-A"]
         assert any("MTR-CON-001" in item for item in payload["truth_chain"])
-        assert any("PAGE-CONTRACT-PENDING:/concentration-monitor" in item for item in payload["truth_chain"])
+        assert any("PAGE-CONC-001" in item for item in payload["truth_chain"])
         assert any("GS-CONCENTRATION-MONITOR-A" in item for item in payload["truth_chain"])
         assert any("concentration_by_issuer" in item for item in payload["truth_chain"])
         assert any("top5_concentration" in item for item in payload["truth_chain"])
@@ -3998,7 +4122,7 @@ def test_lineage_evidence_page_governance_requirements_describes_direct_records_
         assert stock["approval_status"] == "gap_or_observational"
         assert "formal_use_allowed" not in stock
         assert stock["record_formal_use_policy"] == "must_be_false_for_gap_or_observational"
-        assert stock["primary_api"] == "/ui/market-data/livermore"
+        assert stock["primary_api"] == "/ui/market-data/stock-analysis/workbench"
         assert any("GAP/observational" in note for note in stock["status_specific_requirements"])
         assert any("PAGE-STOCK" in note for note in stock["status_specific_requirements"])
 
@@ -5215,6 +5339,8 @@ def test_lineage_evidence_governance_audit_evidence_packet_queue_collects_ready_
                     "/api/ledger-pnl/dates",
                     "/api/ledger-pnl/data",
                     "/api/ledger-pnl/formal-financial-indicators",
+                    "/api/ledger-pnl/candidate-financial-indicators/period-comparison",
+                    "/api/ledger-pnl/candidate-financial-indicators/period-comparison/component-detail",
                 ],
             },
             {
@@ -6206,6 +6332,8 @@ def test_lineage_evidence_governance_audit_evidence_packet_queue_collects_ready_
                                 "/api/ledger-pnl/dates",
                                 "/api/ledger-pnl/data",
                                 "/api/ledger-pnl/formal-financial-indicators",
+                                "/api/ledger-pnl/candidate-financial-indicators/period-comparison",
+                                "/api/ledger-pnl/candidate-financial-indicators/period-comparison/component-detail",
                             ],
                         },
                         "configured_table_names": [
@@ -6391,6 +6519,8 @@ def test_lineage_evidence_governance_audit_evidence_packet_queue_collects_ready_
                                 "/api/ledger-pnl/dates",
                                 "/api/ledger-pnl/data",
                                 "/api/ledger-pnl/formal-financial-indicators",
+                                "/api/ledger-pnl/candidate-financial-indicators/period-comparison",
+                                "/api/ledger-pnl/candidate-financial-indicators/period-comparison/component-detail",
                             ],
                         },
                         "configured_table_names": [
@@ -6440,7 +6570,9 @@ def test_lineage_evidence_governance_audit_evidence_packet_queue_collects_ready_
         server.close()
 
 
-def test_lineage_evidence_audit_report_matches_current_all_seeded_packet_queue() -> None:
+def test_lineage_evidence_audit_report_matches_current_all_seeded_packet_queue(
+    frozen_governance_snapshot_dir: Path,
+) -> None:
     server = McpProcess("lineage-evidence", timeout_seconds=180.0)
     try:
         server.request("initialize")
@@ -8134,9 +8266,9 @@ def test_lineage_evidence_governance_record_blueprint_queue_can_cover_all_seeded
             "PAGE-PORTFOLIO-HOME-001",
             "PAGE-EXEC-SUMMARY-001",
             "PAGE-AGENT-001",
-            "GAP-BANK-LEDGER-DASHBOARD-PAGE",
-            "GAP-CASHFLOW-PROJECTION-PAGE",
-            "GAP-CONCENTRATION-MONITOR-PAGE",
+            "PAGE-BANK-LEDGER-001",
+            "PAGE-CFP-001",
+            "PAGE-CONC-001",
             "GAP-PLATFORM-CONFIG-PAGE",
             "GAP-NEWS-EVENTS-PAGE",
             "GAP-DECISION-ITEMS-PAGE",
@@ -8455,9 +8587,9 @@ def test_lineage_evidence_governance_gap_queue_can_cover_all_seeded_pages(tmp_pa
             "PAGE-PORTFOLIO-HOME-001",
             "PAGE-EXEC-SUMMARY-001",
             "PAGE-AGENT-001",
-            "GAP-BANK-LEDGER-DASHBOARD-PAGE",
-            "GAP-CASHFLOW-PROJECTION-PAGE",
-            "GAP-CONCENTRATION-MONITOR-PAGE",
+            "PAGE-BANK-LEDGER-001",
+            "PAGE-CFP-001",
+            "PAGE-CONC-001",
             "GAP-PLATFORM-CONFIG-PAGE",
             "GAP-NEWS-EVENTS-PAGE",
             "GAP-DECISION-ITEMS-PAGE",
@@ -8687,15 +8819,18 @@ def test_lineage_evidence_mcp_maps_business_pnl_page_to_page_level_read_records(
     governance = tmp_path / "governance"
     governance.mkdir()
     record = {
-        "result_kind": "pnl.by_business_ytd",
-        "primary_api": "/api/pnl/by-business-ytd",
+        "result_kind": "pnl.by_business_insights",
+        "primary_api": "/api/pnl/by-business-insights",
+        "metric_ids": [f"MTR-PNLBIZ-{index:03d}" for index in range(1, 8)],
+        "golden_sample_id": "GS-PNL-BUSINESS-INSIGHTS-A",
+        "formal_use_allowed": True,
         "page_slug": "pnl-by-business",
         "tables_used": [
             "fact_formal_pnl_fi",
             "fact_nonstd_pnl_bridge",
             "fact_formal_zqtz_balance_daily",
         ],
-        "boundary": "page-level analytical display no newly approved MTR binding",
+        "boundary": "approved derived-insights overlay; source PnL facts keep their existing contracts",
     }
     (governance / "cache_manifest.jsonl").write_text(
         json.dumps(record) + "\n",
@@ -8718,6 +8853,7 @@ def test_lineage_evidence_mcp_maps_business_pnl_page_to_page_level_read_records(
 
         required_anchors = [
             "pnl-by-business",
+            "/api/pnl/by-business-insights",
             "/api/pnl/by-business-ytd",
             "/api/pnl/by-business-monthly",
             "/api/pnl/by-business",
@@ -8727,11 +8863,14 @@ def test_lineage_evidence_mcp_maps_business_pnl_page_to_page_level_read_records(
             "pnl.by_business_monthly",
             "pnl.by_business",
             "pnl.by_business_analysis",
+            "pnl.by_business_insights",
             "fact_formal_pnl_fi",
             "fact_nonstd_pnl_bridge",
             "fact_formal_zqtz_balance_daily",
             "fact_pnl_by_business_precompute",
             "pnl_by_business_adjustments",
+            "GS-PNL-BUSINESS-INSIGHTS-A",
+            *[f"MTR-PNLBIZ-{index:03d}" for index in range(1, 8)],
         ]
         excluded_anchors = [
             "product_category_pnl_formal_read_model",
@@ -8748,11 +8887,9 @@ def test_lineage_evidence_mcp_maps_business_pnl_page_to_page_level_read_records(
             assert anchor in found_payload["expanded_queries"]
         for anchor in excluded_anchors:
             assert anchor not in found_payload["expanded_queries"]
-        assert not any(anchor.startswith("MTR-") for anchor in found_payload["expanded_queries"])
-        assert not any(anchor.startswith("GS-") for anchor in found_payload["expanded_queries"])
-        assert found_payload["records"][0]["matched_query"] == "/api/pnl/by-business-ytd"
+        assert found_payload["records"][0]["matched_query"] == "/api/pnl/by-business-insights"
         assert found_payload["records"][0]["stream"] == "cache_manifest"
-        assert found_payload["records"][0]["record"]["result_kind"] == "pnl.by_business_ytd"
+        assert found_payload["records"][0]["record"]["result_kind"] == "pnl.by_business_insights"
     finally:
         server.close()
 
@@ -9537,7 +9674,7 @@ def test_lineage_evidence_mcp_maps_balance_movement_page_to_movement_records(tmp
                 "cache_version": "cv_accounting_asset_movement_v1",
                 "result_kind_family": "balance-analysis.movement",
                 "module_name": "accounting_asset_movement",
-                "rule_version": "rv_accounting_asset_movement_v2",
+                "rule_version": "rv_accounting_asset_movement_v3",
                 "fact_tables": ["fact_accounting_asset_movement_monthly"],
                 "input_sources": ["fact_formal_zqtz_balance_daily"],
                 "created_at": "2026-04-12T14:31:38.517141Z",
@@ -9566,7 +9703,7 @@ def test_lineage_evidence_mcp_maps_balance_movement_page_to_movement_records(tmp
         assert "accounting_asset_movement" in found_payload["expanded_queries"]
         assert "fact_accounting_asset_movement_monthly" in found_payload["expanded_queries"]
         assert "fact_formal_zqtz_balance_daily" in found_payload["expanded_queries"]
-        assert "rv_accounting_asset_movement_v2" in found_payload["expanded_queries"]
+        assert "rv_accounting_asset_movement_v3" in found_payload["expanded_queries"]
         assert "AccountingAssetMovementPayload" in found_payload["expanded_queries"]
         assert "MTR-BMV-001" in found_payload["expanded_queries"]
         assert "MTR-BMV-004" in found_payload["expanded_queries"]
@@ -9666,8 +9803,8 @@ def test_lineage_evidence_mcp_maps_bond_dashboard_page_to_candidate_bond_analyti
                 "basis": "analytical",
                 "tables_used": ["fact_formal_bond_analytics_daily"],
                 "golden_sample": "GS-BOND-HEADLINE-A",
-                "rule_version": "rv_bond_analytics_formal_materialize_v1",
-                "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1",
+                "rule_version": "rv_bond_analytics_formal_materialize_v2",
+                "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v2",
                 "created_at": "2026-04-12T14:31:38.517141Z",
             }
         )
@@ -10357,9 +10494,9 @@ def test_data_catalog_page_catalog_date_coverage_prioritizes_missing_seeded_page
         assert "does not sample DuckDB tables" in payload["disclaimer"]
         assert "does not approve metric/page formal use" in payload["disclaimer"]
         pages = {page["page_id"]: page for page in payload["pages"]}
-        assert "GAP-AVERAGE-BALANCE-PAGE" not in pages
-        assert "GAP-BANK-LEDGER-DASHBOARD-PAGE" not in pages
-        assert "GAP-CASHFLOW-PROJECTION-PAGE" not in pages
+        assert "PAGE-ADB-001" not in pages
+        assert "PAGE-BANK-LEDGER-001" not in pages
+        assert "PAGE-CFP-001" not in pages
         assert "GAP-DECISION-ITEMS-PAGE" not in pages
         missing_pages = [
             page for page in payload["pages"] if page["coverage_status"] == "missing_explicit_table_config"
@@ -10410,7 +10547,7 @@ def test_data_catalog_page_catalog_date_coverage_prioritizes_missing_seeded_page
         ]
         assert cross_asset["evidence_scope"]["approves_metric_or_page"] is False
 
-        concentration_monitor = pages["GAP-CONCENTRATION-MONITOR-PAGE"]
+        concentration_monitor = pages["PAGE-CONC-001"]
         assert concentration_monitor["coverage_status"] == "configured_direct_tables"
         assert concentration_monitor["approval_status"] == "candidate_or_pending"
         assert concentration_monitor["configured_table_names"] == [
@@ -10419,8 +10556,8 @@ def test_data_catalog_page_catalog_date_coverage_prioritizes_missing_seeded_page
         assert concentration_monitor["evidence_scope"]["samples_duckdb_tables"] is False
         assert concentration_monitor["evidence_scope"]["approves_metric_or_page"] is False
 
-        if "GAP-AVERAGE-BALANCE-PAGE" in pages:
-            average_balance = pages["GAP-AVERAGE-BALANCE-PAGE"]
+        if "PAGE-ADB-001" in pages:
+            average_balance = pages["PAGE-ADB-001"]
             assert average_balance["coverage_status"] == "configured_direct_tables"
             assert average_balance["approval_status"] == "candidate_or_pending"
             assert average_balance["evidence_scope"]["samples_duckdb_tables"] is False
@@ -10463,7 +10600,7 @@ def test_data_catalog_page_catalog_date_coverage_keeps_bank_ledger_candidate_bou
 
         assert payload["scope"] == "page-catalog-date-coverage"
         page = payload["pages"][0]
-        assert page["page_id"] == "GAP-BANK-LEDGER-DASHBOARD-PAGE"
+        assert page["page_id"] == "PAGE-BANK-LEDGER-001"
         assert page["page_slug"] == "bank-ledger-dashboard"
         assert page["approval_status"] == "candidate_or_pending"
         assert page["coverage_status"] == "configured_direct_tables"
@@ -10475,7 +10612,7 @@ def test_data_catalog_page_catalog_date_coverage_keeps_bank_ledger_candidate_bou
         ]
         assert page["evidence_scope"]["samples_duckdb_tables"] is False
         assert page["evidence_scope"]["approves_metric_or_page"] is False
-        assert "GAP-BANK-LEDGER-DASHBOARD-PAGE" not in [
+        assert "PAGE-BANK-LEDGER-001" not in [
             item["page_id"] for item in payload["missing_config_queue"]
         ]
         assert payload["summary"] == {
@@ -10506,7 +10643,7 @@ def test_data_catalog_page_catalog_date_coverage_keeps_average_balance_excluded_
 
         assert payload["scope"] == "page-catalog-date-coverage"
         page = payload["pages"][0]
-        assert page["page_id"] == "GAP-AVERAGE-BALANCE-PAGE"
+        assert page["page_id"] == "PAGE-ADB-001"
         assert page["page_slug"] == "average-balance"
         assert page["approval_status"] == "candidate_or_pending"
         assert page["coverage_status"] == "configured_direct_tables"
@@ -10522,7 +10659,7 @@ def test_data_catalog_page_catalog_date_coverage_keeps_average_balance_excluded_
         assert "owner review" in page["deferred_no_direct_table_config_reason"]
         assert page["candidate_table_names"] == []
         assert page["next_actions"] == [
-            "Run page catalog/date evidence for GAP-AVERAGE-BALANCE-PAGE and review sampled table/date results before closure.",
+            "Run page catalog/date evidence for PAGE-ADB-001 and review sampled table/date results before closure.",
         ]
         assert page["evidence_scope"]["samples_duckdb_tables"] is False
         assert page["evidence_scope"]["approves_metric_or_page"] is False
@@ -10556,7 +10693,7 @@ def test_data_catalog_page_catalog_date_coverage_keeps_cashflow_projection_candi
 
         assert payload["scope"] == "page-catalog-date-coverage"
         page = payload["pages"][0]
-        assert page["page_id"] == "GAP-CASHFLOW-PROJECTION-PAGE"
+        assert page["page_id"] == "PAGE-CFP-001"
         assert page["page_slug"] == "cashflow-projection"
         assert page["approval_status"] == "candidate_or_pending"
         assert page["coverage_status"] == "configured_direct_tables"
@@ -10621,7 +10758,7 @@ def test_data_catalog_page_catalog_date_coverage_configures_formal_seeded_pages(
                 "PAGE-RISK-001",
             )
         )
-        assert "GAP-CASHFLOW-PROJECTION-PAGE" not in pages
+        assert "PAGE-CFP-001" not in pages
         assert "GAP-DECISION-ITEMS-PAGE" not in pages
         assert payload["summary"]["configured_page_count"] == 29
         assert payload["summary"]["deferred_no_direct_table_config_count"] == 6
@@ -10752,7 +10889,7 @@ def test_data_catalog_page_catalog_date_coverage_configures_seeded_pages_with_cl
         assert "fact_table" not in pages["PAGE-CUBE-QUERY-001"]["candidate_table_names"]
         assert "fact_table" not in pages["PAGE-CUBE-QUERY-001"]["configured_table_names"]
 
-        assert "GAP-CASHFLOW-PROJECTION-PAGE" not in pages
+        assert "PAGE-CFP-001" not in pages
         assert "GAP-DECISION-ITEMS-PAGE" not in pages
         assert payload["summary"]["configured_page_count"] == 29
         assert payload["summary"]["deferred_no_direct_table_config_count"] == 6
@@ -10772,7 +10909,9 @@ def test_data_catalog_page_catalog_date_coverage_configures_seeded_pages_with_cl
         server.close()
 
 
-def test_data_catalog_page_catalog_date_lineage_review_queue_prioritizes_formal_source_mix() -> None:
+def test_data_catalog_page_catalog_date_lineage_review_queue_prioritizes_formal_source_mix(
+    frozen_governance_snapshot_dir: Path,
+) -> None:
     server = McpProcess("data-catalog", timeout_seconds=180.0)
     try:
         server.request("initialize")
@@ -11204,7 +11343,9 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_prioritizes_formal_
         server.close()
 
 
-def test_data_catalog_page_catalog_date_lineage_review_queue_summarizes_all_seeded_lanes() -> None:
+def test_data_catalog_page_catalog_date_lineage_review_queue_summarizes_all_seeded_lanes(
+    frozen_governance_snapshot_dir: Path,
+) -> None:
     server = McpProcess("data-catalog", timeout_seconds=180.0)
     try:
         server.request("initialize")
@@ -11334,8 +11475,8 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_summarizes_all_seed
             lane: breakdown["item_count"]
             for lane, breakdown in lane_breakdown.items()
         } == {
-            "formal_governed_catalog_date_lineage_review": 5,
-            "candidate_formal_source_mixed_review": 16,
+            "formal_governed_catalog_date_lineage_review": 6,
+            "candidate_formal_source_mixed_review": 15,
             "candidate_or_mixed_catalog_date_lineage_review": 7,
             "gap_observational_separate_review": 1,
             "deferred_no_direct_table_config_review": 6,
@@ -11347,13 +11488,14 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_summarizes_all_seed
         assert all(row["evidence_scope"]["approves_metric_or_page"] is False for row in review_rows)
 
         rows = {row["page_id"]: row for row in review_rows}
-        assert rows["PAGE-DASH-001"]["record_readiness"] == {
+        dashboard_readiness = dict(rows["PAGE-DASH-001"]["record_readiness"])
+        assert dashboard_readiness.pop("expanded_anchor_record_count") > 0
+        assert dashboard_readiness == {
             "record_validation_status": "missing_direct_records",
             "audit_review_status": "blocked_by_record_gaps",
             "ready_record_count": 0,
             "direct_record_count": 0,
             "incomplete_record_count": 0,
-            "expanded_anchor_record_count": 20,
             "residual_gaps": [
                 "A direct page/API governance record is missing; expanded anchors cannot prove page/API execution.",
             ],
@@ -11372,13 +11514,14 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_summarizes_all_seed
         assert stock["formal_page_closure_allowed"] is False
         assert stock["record_remediation"]["remediation_type"] == "none"
         assert stock["record_remediation"]["approval_boundary"] == "review_routing_only"
-        assert rows["PAGE-BOND-001"]["record_readiness"] == {
+        bond_readiness = dict(rows["PAGE-BOND-001"]["record_readiness"])
+        assert bond_readiness.pop("expanded_anchor_record_count") > 0
+        assert bond_readiness == {
             "record_validation_status": "direct_records_ready_for_audit_review",
             "audit_review_status": "ready_for_audit_review",
             "ready_record_count": 1,
             "direct_record_count": 1,
             "incomplete_record_count": 0,
-            "expanded_anchor_record_count": 20,
             "residual_gaps": [
                 "Direct record fields are present, but this still does not prove page execution completeness or metric/page approval.",
             ],
@@ -11486,6 +11629,7 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_groups_suggested_ca
             "PAGE-PROD-CAT-001",
             "PAGE-BALANCE-001",
             "PAGE-PNL-001",
+            "PAGE-PNL-BY-BUSINESS-001",
             "PAGE-BRIDGE-001",
             "PAGE-RISK-001",
         ]
@@ -11494,11 +11638,12 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_groups_suggested_ca
                 "product-category-pnl",
                 "balance-analysis",
                 "pnl",
+                "pnl-by-business",
                 "pnl-bridge",
                 "risk-tensor",
             ]
         }
-        assert formal_catalog["work_item_count"] == 5
+        assert formal_catalog["work_item_count"] == 6
         assert formal_catalog["review_priority"] == "P1"
 
         candidate_validation = by_lane_tool[
@@ -11507,13 +11652,12 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_groups_suggested_ca
                 "moss-lineage-evidence.validate_page_governance_records",
             )
         ]
-        assert candidate_validation["work_item_count"] == 16
+        assert candidate_validation["work_item_count"] == 15
         assert candidate_validation["arguments"]["page_slugs"] == [
             "dashboard-home",
             "executive-overview",
             "concentration-monitor",
             "balance-movement-analysis",
-            "pnl-by-business",
             "pnl-attribution",
             "operations-analysis",
             "liability-analytics",
@@ -11812,7 +11956,9 @@ def test_data_catalog_page_catalog_date_lineage_evidence_collection_execution_pl
     ]
 
 
-def test_data_catalog_page_catalog_date_lineage_review_queue_builds_manual_audit_review_execution_plan() -> None:
+def test_data_catalog_page_catalog_date_lineage_review_queue_builds_manual_audit_review_execution_plan(
+    frozen_governance_snapshot_dir: Path,
+) -> None:
     server = McpProcess("data-catalog")
     try:
         server.request("initialize")
@@ -11992,7 +12138,9 @@ def test_data_catalog_page_catalog_date_lineage_manual_audit_review_execution_pl
     ]
 
 
-def test_data_catalog_page_catalog_date_lineage_review_queue_builds_business_owner_approval_execution_plan() -> None:
+def test_data_catalog_page_catalog_date_lineage_review_queue_builds_business_owner_approval_execution_plan(
+    frozen_governance_snapshot_dir: Path,
+) -> None:
     server = McpProcess("data-catalog")
     try:
         server.request("initialize")
@@ -12243,7 +12391,9 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_audits_queue_bounda
         server.close()
 
 
-def test_data_catalog_page_catalog_date_lineage_review_queue_audits_closure_blockers() -> None:
+def test_data_catalog_page_catalog_date_lineage_review_queue_audits_closure_blockers(
+    frozen_governance_snapshot_dir: Path,
+) -> None:
     server = McpProcess("data-catalog", timeout_seconds=180.0)
     try:
         server.request("initialize")
@@ -12274,7 +12424,9 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_audits_closure_bloc
         server.close()
 
 
-def test_data_catalog_page_catalog_date_lineage_review_queue_summarizes_closure_readiness() -> None:
+def test_data_catalog_page_catalog_date_lineage_review_queue_summarizes_closure_readiness(
+    frozen_governance_snapshot_dir: Path,
+) -> None:
     server = McpProcess("data-catalog", timeout_seconds=180.0)
     try:
         server.request("initialize")
@@ -12373,7 +12525,9 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_summarizes_closure_
         server.close()
 
 
-def test_data_catalog_page_catalog_date_lineage_review_queue_routes_closure_blockers() -> None:
+def test_data_catalog_page_catalog_date_lineage_review_queue_routes_closure_blockers(
+    frozen_governance_snapshot_dir: Path,
+) -> None:
     server = McpProcess("data-catalog", timeout_seconds=180.0)
     try:
         server.request("initialize")
@@ -13481,7 +13635,9 @@ def test_data_catalog_page_catalog_date_lineage_queue_boundary_audit_flags_drift
     ]
 
 
-def test_data_catalog_page_catalog_date_lineage_review_queue_groups_record_remediation_work_items() -> None:
+def test_data_catalog_page_catalog_date_lineage_review_queue_groups_record_remediation_work_items(
+    frozen_governance_snapshot_dir: Path,
+) -> None:
     server = McpProcess("data-catalog", timeout_seconds=180.0)
     try:
         server.request("initialize")
@@ -13565,7 +13721,9 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_groups_record_remed
         server.close()
 
 
-def test_data_catalog_page_catalog_date_lineage_review_queue_builds_record_gap_execution_plan() -> None:
+def test_data_catalog_page_catalog_date_lineage_review_queue_builds_record_gap_execution_plan(
+    frozen_governance_snapshot_dir: Path,
+) -> None:
     server = McpProcess("data-catalog", timeout_seconds=180.0)
     try:
         server.request("initialize")
@@ -13751,7 +13909,9 @@ def test_data_catalog_page_catalog_date_lineage_record_gap_execution_plan_scope_
     ]
 
 
-def test_data_catalog_page_catalog_date_lineage_review_queue_groups_record_remediation_evidence_work_items() -> None:
+def test_data_catalog_page_catalog_date_lineage_review_queue_groups_record_remediation_evidence_work_items(
+    frozen_governance_snapshot_dir: Path,
+) -> None:
     server = McpProcess("data-catalog", timeout_seconds=180.0)
     try:
         server.request("initialize")
@@ -13800,7 +13960,9 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_groups_record_remed
         server.close()
 
 
-def test_data_catalog_page_catalog_date_lineage_review_queue_groups_record_remediation_by_lane() -> None:
+def test_data_catalog_page_catalog_date_lineage_review_queue_groups_record_remediation_by_lane(
+    frozen_governance_snapshot_dir: Path,
+) -> None:
     server = McpProcess("data-catalog", timeout_seconds=180.0)
     try:
         server.request("initialize")
@@ -13847,6 +14009,7 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_groups_record_remed
         ]
         assert formal_create["page_ids"] == [
             "PAGE-PNL-001",
+            "PAGE-PNL-BY-BUSINESS-001",
             "PAGE-BRIDGE-001",
         ]
         assert formal_create["next_steps"] == [

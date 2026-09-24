@@ -15,6 +15,9 @@ export function AppProviders({ children, client }: AppProvidersProps) {
         defaultOptions: {
           queries: {
             staleTime: 60_000,
+            // 默认 gcTime 仅 5 分钟：离开首页超过 5 分钟再回来，全部查询被回收、
+            // 退回冷加载。延长后切回页面先渲染缓存再后台校验（staleTime 语义不变）。
+            gcTime: 30 * 60_000,
             retry: 0,
             refetchOnWindowFocus: false,
           },

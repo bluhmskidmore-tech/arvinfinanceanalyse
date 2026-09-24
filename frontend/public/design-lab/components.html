@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>组件陈列室 · 风险总览 LAB</title>
+<style>
+/* ────────────────────────────────────────────────
+   组件陈列室:同一组件槽位,并排多个风格变体
+   A = 当前原型版   B = 参考图④编辑风   C = 参考图②深色玻璃/辉光
+   D = 参考图①条纹手法(仅图表)
+   ──────────────────────────────────────────────── */
+:root {
+  --mono: "IBM Plex Mono", "JetBrains Mono", ui-monospace, Consolas, monospace;
+  --sans: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --serif: "Noto Serif SC", "Source Han Serif SC", "Playfair Display", Georgia, serif;
+  --frame-bg: #11141b;
+  --frame-line: rgba(255, 255, 255, 0.09);
+  --frame-ink: #e8eaf0;
+  --frame-mut: #9aa3b5;
+}
+/* 变体自身的两套色板:墨砖 / 纸砖 */
+.tile-ink {
+  --bg: #0a101c; --panel: #0d1524; --panel-2: #101a2d;
+  --ink: #e9eff8; --ink-2: #aebdd2; --mut: #7c8ea8;
+  --line: rgba(146, 178, 219, 0.14); --line-2: rgba(146, 178, 219, 0.32);
+  --acc: #7db8ff; --acc-dim: rgba(125, 184, 255, 0.5);
+  --amber: #e6b566; --ok: #5fca96; --err: #f0806c;
+  --stripe: rgba(146, 178, 219, 0.09);
+}
+.tile-paper {
+  --bg: #f5f3ec; --panel: #fdfcf7; --panel-2: #f8f5ed;
+  --ink: #191f2b; --ink-2: #3d4c61; --mut: #75828f;
+  --line: rgba(25, 31, 43, 0.16); --line-2: rgba(25, 31, 43, 0.4);
+  --acc: #1c5fd6; --acc-dim: rgba(28, 95, 214, 0.5);
+  --amber: #9a6b1e; --ok: #1e7f52; --err: #c0492f;
+  --stripe: rgba(25, 31, 43, 0.07);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--frame-bg);
+  color: var(--frame-ink);
+  font-family: var(--sans); font-size: 14px; line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.lab-banner {
+  position: sticky; top: 0; z-index: 50;
+  display: flex; align-items: center; gap: 14px;
+  padding: 6px 18px; background: #e6b566; color: #14100a;
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em;
+}
+.lab-banner b { font-weight: 800; }
+.lab-banner .spacer { flex: 1; }
+.lab-banner a { color: #14100a; font-weight: 700; text-decoration: underline; }
+
+.wrap { max-width: 1420px; margin: 0 auto; padding: 22px 24px 80px; }
+.intro { color: var(--frame-mut); font-size: 12.5px; margin-bottom: 22px; line-height: 1.8; }
+.intro b { color: var(--frame-ink); }
+.intro code { font-family: var(--mono); color: #e6b566; font-size: 11.5px; }
+
+.slot { margin-top: 34px; }
+.slot-head { display: flex; align-items: baseline; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--frame-line); }
+.slot-head i { font-style: normal; font-family: var(--mono); font-size: 12px; font-weight: 800; color: #e6b566; }
+.slot-head h2 { font-size: 16px; font-weight: 750; letter-spacing: 0.04em; }
+.slot-head span { margin-left: auto; color: var(--frame-mut); font-size: 11.5px; }
+
+.variants { display: grid; gap: 14px; margin-top: 14px; }
+.variants.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.variants.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1100px) { .variants.cols-3, .variants.cols-2 { grid-template-columns: 1fr; } }
+
+.variant { border: 1px solid var(--frame-line); border-radius: 10px; overflow: hidden; background: #0c0f16; }
+.variant .vhead {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px; border-bottom: 1px solid var(--frame-line);
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em; color: var(--frame-mut);
+}
+.variant .vhead .chip {
+  font-weight: 800; color: #0c0f16; background: #e6b566; border-radius: 4px;
+  padding: 1px 8px; letter-spacing: 0.06em;
+}
+.variant .vhead .src { margin-left: auto; }
+.vbody { padding: 18px; }
+.tile-ink .vbody, .tile-paper .vbody { background: var(--bg); color: var(--ink); }
+
+/* ═══ 槽位 1 · KPI 指标组 ═══ */
+/* A:当前盒式卡片 */
+.kpiA { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.kpiA .k { border: 1px solid var(--line); border-radius: 7px; background: var(--panel); padding: 12px 13px; display: grid; gap: 3px; }
+.kpiA .code { font-family: var(--mono); font-size: 10px; font-weight: 800; letter-spacing: 0.12em; color: var(--acc); display: flex; justify-content: space-between; }
+.kpiA .code u { text-decoration: none; color: var(--ok); display: inline-flex; gap: 5px; align-items: center; }
+.kpiA .code u i { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+.kpiA .label { color: var(--ink-2); font-size: 12px; font-weight: 650; }
+.kpiA .num { margin-top: 6px; font-family: var(--mono); font-size: 21px; font-weight: 720; white-space: nowrap; }
+.kpiA .num small { font-size: 11px; color: var(--mut); font-weight: 650; }
+.kpiA .dt { color: var(--mut); font-size: 10.5px; margin-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* B:编辑风·无盒栏线(参考图④) */
+.kpiB { display: grid; grid-template-columns: repeat(2, 1fr); }
+.kpiB .k { padding: 10px 18px; border-left: 1px solid var(--line-2); }
+.kpiB .k:nth-child(odd) { border-left: 0; padding-left: 0; }
+.kpiB .cap { font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em; color: var(--mut); }
+.kpiB .num { margin-top: 7px; font-family: var(--serif); font-size: 30px; font-weight: 650; line-height: 1.05; }
+.kpiB .num small { font-family: var(--mono); font-size: 11px; color: var(--mut); }
+.kpiB .sub { margin-top: 6px; font-size: 11px; color: var(--ink-2); }
+.kpiB .sub b { color: var(--ok); font-family: var(--mono); font-size: 10.5px; }
+.kpiB svg { margin-top: 8px; display: block; }
+.kpiB svg polyline { fill: none; stroke: var(--ink); stroke-width: 1.2; }
+.kpiB svg circle { fill: var(--ink); }
+
+/* C:深色玻璃·辉光(参考图②) */
+.kpiC { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.kpiC .k {
+  border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.015) 34%, rgba(0, 0, 0, 0) 60%), var(--panel);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 14px 30px rgba(0, 0, 0, 0.36);
+  padding: 14px 15px; display: grid; gap: 3px;
+  transition: box-shadow 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+.kpiC .k:hover {
+  border-color: rgba(125, 184, 255, 0.45); transform: translateY(-2px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 0 26px rgba(125, 184, 255, 0.22), 0 18px 36px rgba(0, 0, 0, 0.4);
+}
+.kpiC .code { font-family: var(--mono); font-size: 10px; font-weight: 800; letter-spacing: 0.12em; color: var(--acc); display: flex; justify-content: space-between; align-items: center; }
+.kpiC .code i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 9px var(--ok); }
+.kpiC .label { color: var(--ink-2); font-size: 12px; }
+.kpiC .num {
+  margin-top: 7px; font-family: var(--mono); font-size: 22px; font-weight: 750; white-space: nowrap;
+  background: linear-gradient(92deg, #f2f7ff 20%, #7db8ff 90%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.kpiC .num small { font-size: 11px; font-weight: 650; -webkit-text-fill-color: var(--mut); }
+.kpiC .dt { color: var(--mut); font-size: 10.5px; margin-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ═══ 槽位 2 · KRD 图表面板 ═══ */
+/* A:当前粗渐变条 */
+.chartA .row { display: grid; grid-template-columns: 46px 1fr 84px; gap: 10px; align-items: center; padding: 6px 0; }
+.chartA .row + .row { border-top: 1px solid var(--line); }
+.chartA .bk { font-family: var(--mono); font-size: 10.5px; font-weight: 700; color: var(--ink-2); }
+.chartA .track { height: 11px; border-radius: 3px; background: repeating-linear-gradient(90deg, var(--stripe) 0 1px, transparent 1px 10%); display: flex; align-items: center; }
+.chartA .bar { height: 8px; border-radius: 2px; background: linear-gradient(90deg, var(--acc-dim), var(--acc)); }
+.chartA .bar.hot { background: linear-gradient(90deg, rgba(230, 181, 102, 0.55), var(--amber)); }
+.chartA .val { font-family: var(--mono); font-size: 11px; font-weight: 700; text-align: right; }
+
+/* B:编辑风·细条端点(参考图④) */
+.chartB .row { display: grid; grid-template-columns: 46px 1fr 84px; gap: 10px; align-items: center; padding: 9px 0; }
+.chartB .row + .row { border-top: 1px solid var(--line); }
+.chartB .bk { font-family: var(--mono); font-size: 10.5px; font-weight: 700; color: var(--ink-2); }
+.chartB .track { position: relative; height: 14px; display: flex; align-items: center; border-bottom: 1px solid var(--line); }
+.chartB .bar { position: relative; height: 3px; background: var(--ink); }
+.chartB .bar::after { content: ""; position: absolute; right: -3px; top: -3.5px; width: 8px; height: 8px; border-radius: 50%; background: var(--ink); }
+.chartB .bar.hot { background: var(--amber); }
+.chartB .bar.hot::after { background: var(--amber); }
+.chartB .val { font-family: var(--mono); font-size: 11px; font-weight: 700; text-align: right; }
+
+/* C:条纹填充(参考图①) */
+.chartC .row { display: grid; grid-template-columns: 46px 1fr 84px; gap: 10px; align-items: center; padding: 7px 0; }
+.chartC .row + .row { border-top: 1px solid var(--line); }
+.chartC .bk { font-family: var(--mono); font-size: 10.5px; font-weight: 700; color: var(--ink-2); }
+.chartC .track { height: 14px; display: flex; align-items: center; }
+.chartC .bar {
+  height: 12px; border-radius: 3px;
+  background: repeating-linear-gradient(45deg, var(--acc) 0 4px, rgba(0, 0, 0, 0) 4px 8px);
+  border: 1px solid var(--acc-dim);
+}
+.chartC .bar.hot { background: repeating-linear-gradient(45deg, var(--amber) 0 4px, rgba(0, 0, 0, 0) 4px 8px); border-color: rgba(230, 181, 102, 0.6); }
+.chartC .val { font-family: var(--mono); font-size: 11px; font-weight: 700; text-align: right; }
+
+/* ═══ 槽位 3 · 截面摘要卡 ═══ */
+/* A:当前左边条卡 */
+.briefA { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.briefA .b { border: 1px solid var(--line); border-left: 3px solid var(--ok); border-radius: 6px; background: var(--panel-2); padding: 12px 14px; }
+.briefA .t { font-size: 11px; color: var(--mut); letter-spacing: 0.06em; }
+.briefA .c { margin-top: 5px; font-family: var(--serif); font-size: 15.5px; font-weight: 650; line-height: 1.45; }
+.briefA .c b { font-family: var(--mono); font-size: 14px; }
+.briefA .e { margin-top: 7px; color: var(--mut); font-size: 10.5px; }
+
+/* B:编辑风·开放栏(参考图④) */
+.briefB { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+.briefB .b { border-top: 2px solid var(--ink); padding-top: 10px; }
+.briefB .t { font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em; color: var(--mut); }
+.briefB .c { margin-top: 8px; font-family: var(--serif); font-size: 17px; font-weight: 650; line-height: 1.5; }
+.briefB .c b { font-family: var(--mono); font-size: 14.5px; }
+.briefB .e { margin-top: 9px; color: var(--mut); font-size: 11px; border-top: 1px solid var(--line); padding-top: 8px; }
+
+/* ═══ 槽位 4 · 明细表 ═══ */
+/* A:当前盒内表 */
+.tblA { border: 1px solid var(--line); border-radius: 7px; background: var(--panel-2); padding: 10px 14px 6px; }
+.tblA h4, .tblB h4 { font-size: 12px; font-weight: 750; letter-spacing: 0.08em; color: var(--ink-2); }
+.tblA h4 { padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.tblA table, .tblB table { width: 100%; border-collapse: collapse; }
+.tblA th { text-align: left; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.14em; color: var(--mut); padding: 7px 0 5px; border-bottom: 1px solid var(--line); }
+.tblA td { padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
+.tblA tr:last-child td { border-bottom: 0; }
+.tblA td.num, .tblB td.num { font-family: var(--mono); font-size: 11.5px; font-weight: 700; }
+.tblA td.dt, .tblB td.dt { font-family: var(--mono); font-size: 10.5px; color: var(--mut); text-align: right; }
+.tblA th:last-child, .tblB th:last-child { text-align: right; }
+.tblA td.num.neg, .tblB td.num.neg { color: var(--err); }
+
+/* B:编辑风·纯粹表(参考图④:无盒、宽行距) */
+.tblB h4 { padding-bottom: 9px; border-bottom: 2px solid var(--ink); }
+.tblB th { text-align: left; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.16em; color: var(--mut); padding: 9px 0 7px; border-bottom: 1px solid var(--line-2); }
+.tblB td { padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.tblB tr:last-child td { border-bottom: 0; }
+
+/* ═══ 槽位 5 · 控件(按钮 / 状态胶囊) ═══ */
+/* A:当前版 */
+.ctrlA { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ctrlA .btn { padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line-2); background: linear-gradient(180deg, var(--panel-2), var(--panel)); color: var(--ink); font-size: 12px; font-weight: 650; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06); }
+.ctrlA .pill { font-family: var(--mono); font-size: 10px; font-weight: 700; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--ink-2); }
+.ctrlA .pill.ok { color: var(--ok); border-color: var(--ok); }
+.ctrlA .pill.warn { color: var(--amber); border-color: var(--amber); }
+
+/* B:深色玻璃·辉光(参考图②) */
+.ctrlB { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ctrlB .btn {
+  padding: 7px 16px; border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02)), var(--panel);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 8px 20px rgba(0, 0, 0, 0.32);
+  color: var(--ink); font-size: 12px; font-weight: 650;
+  transition: box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.ctrlB .btn:hover { border-color: rgba(125, 184, 255, 0.5); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 0 20px rgba(125, 184, 255, 0.28); }
+.ctrlB .btn.pri { background: linear-gradient(180deg, #4f8fe8, #2b6bd0); border-color: rgba(125, 184, 255, 0.6); box-shadow: 0 0 18px rgba(80, 140, 230, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25); }
+.ctrlB .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--ink-2); }
+.ctrlB .pill i { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+.ctrlB .pill.warn i { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+
+/* C:编辑风·方块(参考图④) */
+.ctrlC { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ctrlC .btn { padding: 7px 16px; border-radius: 2px; background: var(--ink); color: var(--bg); border: 1px solid var(--ink); font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em; }
+.ctrlC .btn.sec { background: transparent; color: var(--ink); }
+.ctrlC .chk { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); }
+.ctrlC .chk i { width: 13px; height: 13px; border: 1px solid var(--line-2); border-radius: 1px; }
+.ctrlC .chk.on i { background: var(--ink); border-color: var(--ink); }
+.ctrlC .pill { font-family: var(--mono); font-size: 10px; font-weight: 700; padding: 2px 8px; border: 1px solid var(--line-2); border-radius: 2px; color: var(--ink-2); letter-spacing: 0.08em; }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="lab-banner">
+  <b>组件陈列室 LAB</b><span>同一槽位 · 多风格变体并排 · 数据为 2026-06-30 真实读数</span>
+  <span class="spacer"></span>
+  <a href="/design-lab/risk-overview.html">← 返回整页原型</a>
+</div>
+
+<div class="wrap">
+  <p class="intro">
+    <b>怎么看:</b>每个槽位并排摆着 2~3 个变体,<b>A</b> 是当前原型版,<b>B</b> 来自参考图④(编辑风),<b>C</b> 来自参考图②(深色玻璃辉光),图表槽多一个 <b>D 手法</b> 来自参考图①(条纹填充)。纸色砖=浅色语境,墨色砖=深色语境。<br>
+    <b>怎么选:</b>直接回我每个槽位的字母就行,例如 <code>KPI 选 C、图表选 B、摘要选 B、表格选 B、控件选 C</code>;也可以混选后让我再拼一版整页看效果。
+  </p>
+
+  <!-- S1 · KPI 指标组 -->
+  <section class="slot">
+    <div class="slot-head"><i>S1</i><h2>KPI 指标组</h2><span>监管/估值 DV01 · 修正久期 · 久期缺口</span></div>
+    <div class="variants cols-3">
+      <div class="variant tile-ink">
+        <div class="vhead"><span class="chip">A</span>当前 · 盒式卡片<span class="src">现行原型</span></div>
+        <div class="vbody">
+          <div class="kpiA">
+            <div class="k"><span class="code">R-DV01<u><i></i>正常</u></span><span class="label">监管 DV01</span><span class="num">10,694.94<small> 万元</small></span><span class="dt">来自 regulatory_dv01</span></div>
+            <div class="k"><span class="code">P-DV01<u><i></i>正常</u></span><span class="label">估值 DV01</span><span class="num">10,694.94<small> 万元</small></span><span class="dt">portfolio_dv01 敏感度读数</span></div>
+            <div class="k"><span class="code">MDUR<u><i></i>正常</u></span><span class="label">修正久期</span><span class="num">3.78</span><span class="dt">portfolio_modified_duration</span></div>
+            <div class="k"><span class="code">LIQ-GAP<u><i></i>正常</u></span><span class="label">久期缺口</span><span class="num">+3.12</span><span class="dt">现金流预测 duration_gap</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="variant tile-paper">
+        <div class="vhead"><span class="chip">B</span>编辑风 · 无盒栏线<span class="src">参考图④</span></div>
+        <div class="vbody">
+          <div class="kpiB">
+            <div class="k"><div class="cap">监管 DV01 · R-DV01</div><div class="num">10,694.94<small> 万元</small></div><div class="sub">范围:全部正式行 · 正常</div><svg width="72" height="20" viewBox="0 0 72 20"><polyline points="2,14 14,12 26,13 38,9 50,10 62,6 70,7"/><circle cx="2" cy="14" r="1.6"/><circle cx="14" cy="12" r="1.6"/><circle cx="26" cy="13" r="1.6"/><circle cx="38" cy="9" r="1.6"/><circle cx="50" cy="10" r="1.6"/><circle cx="62" cy="6" r="1.6"/><circle cx="70" cy="7" r="1.6"/></svg></div>
+            <div class="k"><div class="cap">估值 DV01 · P-DV01</div><div class="num">10,694.94<small> 万元</small></div><div class="sub">敏感度读数 · 正常</div><svg width="72" height="20" viewBox="0 0 72 20"><polyline points="2,13 14,13 26,12 38,12 50,10 62,9 70,9"/><circle cx="2" cy="13" r="1.6"/><circle cx="14" cy="13" r="1.6"/><circle cx="26" cy="12" r="1.6"/><circle cx="38" cy="12" r="1.6"/><circle cx="50" cy="10" r="1.6"/><circle cx="62" cy="9" r="1.6"/><circle cx="70" cy="9" r="1.6"/></svg></div>
+            <div class="k"><div class="cap">修正久期 · MDUR</div><div class="num">3.78</div><div class="sub">市值加权 · 正常</div><svg width="72" height="20" viewBox="0 0 72 20"><polyline points="2,10 14,11 26,9 38,10 50,8 62,9 70,7"/><circle cx="2" cy="10" r="1.6"/><circle cx="14" cy="11" r="1.6"/><circle cx="26" cy="9" r="1.6"/><circle cx="38" cy="10" r="1.6"/><circle cx="50" cy="8" r="1.6"/><circle cx="62" cy="9" r="1.6"/><circle cx="70" cy="7" r="1.6"/></svg></div>
+            <div class="k"><div class="cap">久期缺口 · LIQ-GAP</div><div class="num">+3.12</div><div class="sub">现金流预测口径 · 正常</div><svg width="72" height="20" viewBox="0 0 72 20"><polyline points="2,12 14,10 26,11 38,8 50,9 62,7 70,6"/><circle cx="2" cy="12" r="1.6"/><circle cx="14" cy="10" r="1.6"/><circle cx="26" cy="11" r="1.6"/><circle cx="38" cy="8" r="1.6"/><circle cx="50" cy="9" r="1.6"/><circle cx="62" cy="7" r="1.6"/><circle cx="70" cy="6" r="1.6"/></svg></div>
+          </div>
+        </div>
+      </div>
+      <div class="variant tile-ink">
+        <div class="vhead"><span class="chip">C</span>深色玻璃 · 辉光<span class="src">参考图②</span></div>
+        <div class="vbody">
+          <div class="kpiC">
+            <div class="k"><span class="code">R-DV01<i></i></span><span class="label">监管 DV01</span><span class="num">10,694.94<small> 万元</small></span><span class="dt">来自 regulatory_dv01</span></div>
+            <div class="k"><span class="code">P-DV01<i></i></span><span class="label">估值 DV01</span><span class="num">10,694.94<small> 万元</small></span><span class="dt">portfolio_dv01 敏感度读数</span></div>
+            <div class="k"><span class="code">MDUR<i></i></span><span class="label">修正久期</span><span class="num">3.78</span><span class="dt">portfolio_modified_duration</span></div>
+            <div class="k"><span class="code">LIQ-GAP<i></i></span><span class="label">久期缺口</span><span class="num">+3.12</span><span class="dt">现金流预测 duration_gap</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- S2 · KRD 图表面板 -->
+  <section class="slot">
+    <div class="slot-head"><i>S2</i><h2>KRD 分布图表</h2><span>单位 万元 · 10Y 为峰值桶</span></div>
+    <div class="variants cols-3">
+      <div class="variant tile-ink">
+        <div class="vhead"><span class="chip">A</span>当前 · 粗渐变条<span class="src">现行原型</span></div>
+        <div class="vbody">
+          <div class="chartA">
+            <div class="row"><span class="bk">1Y</span><div class="track"><div class="bar" style="width:22.5%"></div></div><span class="val">620.43</span></div>
+            <div class="row"><span class="bk">3Y</span><div class="track"><div class="bar" style="width:82.7%"></div></div><span class="val">2,278.93</span></div>
+            <div class="row"><span class="bk">5Y</span><div class="track"><div class="bar" style="width:65.9%"></div></div><span class="val">1,815.80</span></div>
+            <div class="row"><span class="bk">7Y</span><div class="track"><div class="bar" style="width:31.1%"></div></div><span class="val">857.59</span></div>
+            <div class="row"><span class="bk">10Y</span><div class="track"><div class="bar hot" style="width:100%"></div></div><span class="val">2,753.92</span></div>
+            <div class="row"><span class="bk">30Y</span><div class="track"><div class="bar" style="width:86%"></div></div><span class="val">2,368.27</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="variant tile-paper">
+        <div class="vhead"><span class="chip">B</span>编辑风 · 细条端点<span class="src">参考图④</span></div>
+        <div class="vbody">
+          <div class="chartB">
+            <div class="row"><span class="bk">1Y</span><div class="track"><div class="bar" style="width:22.5%"></div></div><span class="val">620.43</span></div>
+            <div class="row"><span class="bk">3Y</span><div class="track"><div class="bar" style="width:82.7%"></div></div><span class="val">2,278.93</span></div>
+            <div class="row"><span class="bk">5Y</span><div class="track"><div class="bar" style="width:65.9%"></div></div><span class="val">1,815.80</span></div>
+            <div class="row"><span class="bk">7Y</span><div class="track"><div class="bar" style="width:31.1%"></div></div><span class="val">857.59</span></div>
+            <div class="row"><span class="bk">10Y</span><div class="track"><div class="bar hot" style="width:100%"></div></div><span class="val">2,753.92</span></div>
+            <div class="row"><span class="bk">30Y</span><div class="track"><div class="bar" style="width:86%"></div></div><span class="val">2,368.27</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="variant tile-ink">
+        <div class="vhead"><span class="chip">D</span>条纹填充<span class="src">参考图①</span></div>
+        <div class="vbody">
+          <div class="chartC">
+            <div class="row"><span class="bk">1Y</span><div class="track"><div class="bar" style="width:22.5%"></div></div><span class="val">620.43</span></div>
+            <div class="row"><span class="bk">3Y</span><div class="track"><div class="bar" style="width:82.7%"></div></div><span class="val">2,278.93</span></div>
+            <div class="row"><span class="bk">5Y</span><div class="track"><div class="bar" style="width:65.9%"></div></div><span class="val">1,815.80</span></div>
+            <div class="row"><span class="bk">7Y</span><div class="track"><div class="bar" style="width:31.1%"></div></div><span class="val">857.59</span></div>
+            <div class="row"><span class="bk">10Y</span><div class="track"><div class="bar hot" style="width:100%"></div></div><span class="val">2,753.92</span></div>
+            <div class="row"><span class="bk">30Y</span><div class="track"><div class="bar" style="width:86%"></div></div><span class="val">2,368.27</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- S3 · 截面摘要卡 -->
+  <section class="slot">
+    <div class="slot-head"><i>S3</i><h2>截面摘要卡</h2><span>久期与 DV01 · 信用与集中度 · 现金流压力</span></div>
+    <div class="variants cols-2">
+      <div class="variant tile-ink">
+        <div class="vhead"><span class="chip">A</span>当前 · 左边条卡<span class="src">现行原型</span></div>
+        <div class="vbody">
+          <div class="briefA">
+            <div class="b"><div class="t">久期与 DV01</div><div class="c">DV01 <b>10,694.94</b> 万元,修正久期 <b>3.78</b>。</div><div class="e">直接展示 risk tensor 字段。</div></div>
+            <div class="b"><div class="t">信用与集中度</div><div class="c">CS01 <b>2,730.89</b> 万元,前五大权重 <b>40.3%</b>。</div><div class="e">首页只提供摘要状态。</div></div>
+            <div class="b"><div class="t">现金流压力</div><div class="c">久期缺口 <b>+3.12</b>,12M 再投资风险 <b>22.82%</b>。</div><div class="e">以 /cashflow-projection 正式展示为准。</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="variant tile-paper">
+        <div class="vhead"><span class="chip">B</span>编辑风 · 开放栏<span class="src">参考图④</span></div>
+        <div class="vbody">
+          <div class="briefB">
+            <div class="b"><div class="t">久期与 DV01</div><div class="c">DV01 <b>10,694.94</b> 万元,修正久期 <b>3.78</b>。</div><div class="e">直接展示 risk tensor 字段,不以前端计算监管 DV01。</div></div>
+            <div class="b"><div class="t">信用与集中度</div><div class="c">CS01 <b>2,730.89</b> 万元,前五大权重 <b>40.3%</b>。</div><div class="e">首页只提供摘要状态。</div></div>
+            <div class="b"><div class="t">现金流压力</div><div class="c">久期缺口 <b>+3.12</b>,12M 再投资风险 <b>22.82%</b>。</div><div class="e">现金流压力以 /cashflow-projection 正式展示为准。</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- S4 · 明细表 -->
+  <section class="slot">
+    <div class="slot-head"><i>S4</i><h2>明细表</h2><span>组合与久期 · 字段级证据</span></div>
+    <div class="variants cols-2">
+      <div class="variant tile-ink">
+        <div class="vhead"><span class="chip">A</span>当前 · 盒内表<span class="src">现行原型</span></div>
+        <div class="vbody">
+          <div class="tblA">
+            <h4>组合与久期</h4>
+            <table>
+              <thead><tr><th>字段</th><th>读数</th><th>报告日</th></tr></thead>
+              <tbody>
+                <tr><td>组合总市值</td><td class="num">3,478.36 亿元</td><td class="dt">2026-06-30</td></tr>
+                <tr><td>持仓只数</td><td class="num">1,767</td><td class="dt">2026-06-30</td></tr>
+                <tr><td>修正久期</td><td class="num">3.78</td><td class="dt">2026-06-30</td></tr>
+                <tr><td>组合 DV01</td><td class="num">10,694.94 万元</td><td class="dt">2026-06-30</td></tr>
+                <tr><td>30D 流动性缺口</td><td class="num neg">-63.14 亿元</td><td class="dt">2026-06-30</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="variant tile-paper">
+        <div class="vhead"><span class="chip">B</span>编辑风 · 纯粹表<span class="src">参考图④</span></div>
+        <div class="vbody">
+          <div class="tblB">
+            <h4>组合与久期</h4>
+            <table>
+              <thead><tr><th>字段</th><th>读数</th><th>报告日</th></tr></thead>
+              <tbody>
+                <tr><td>组合总市值</td><td class="num">3,478.36 亿元</td><td class="dt">2026-06-30</td></tr>
+                <tr><td>持仓只数</td><td class="num">1,767</td><td class="dt">2026-06-30</td></tr>
+                <tr><td>修正久期</td><td class="num">3.78</td><td class="dt">2026-06-30</td></tr>
+                <tr><td>组合 DV01</td><td class="num">10,694.94 万元</td><td class="dt">2026-06-30</td></tr>
+                <tr><td>30D 流动性缺口</td><td class="num neg">-63.14 亿元</td><td class="dt">2026-06-30</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- S5 · 控件 -->
+  <section class="slot">
+    <div class="slot-head"><i>S5</i><h2>控件 · 按钮与状态</h2><span>刷新按钮 · 链路状态胶囊 · 核对项</span></div>
+    <div class="variants cols-3">
+      <div class="variant tile-ink">
+        <div class="vhead"><span class="chip">A</span>当前 · 玻璃胶囊<span class="src">现行原型</span></div>
+        <div class="vbody">
+          <div class="ctrlA">
+            <button class="btn" type="button">刷新</button>
+            <span class="pill ok">已返回</span>
+            <span class="pill warn">部分拦截</span>
+            <span class="pill">下钻页</span>
+          </div>
+        </div>
+      </div>
+      <div class="variant tile-paper">
+        <div class="vhead"><span class="chip">B</span>编辑风 · 方块<span class="src">参考图④</span></div>
+        <div class="vbody">
+          <div class="ctrlC">
+            <button class="btn" type="button">刷新</button>
+            <button class="btn sec" type="button">导出</button>
+            <span class="chk on"><i></i>张量质量已核对</span>
+            <span class="chk"><i></i>待复核</span>
+            <span class="pill">部分拦截</span>
+          </div>
+        </div>
+      </div>
+      <div class="variant tile-ink">
+        <div class="vhead"><span class="chip">C</span>深色玻璃 · 辉光<span class="src">参考图②</span></div>
+        <div class="vbody">
+          <div class="ctrlB">
+            <button class="btn pri" type="button">刷新</button>
+            <button class="btn" type="button">导出</button>
+            <span class="pill"><i></i>已返回</span>
+            <span class="pill warn"><i></i>部分拦截</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+</body>
+</html>

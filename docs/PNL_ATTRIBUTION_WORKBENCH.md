@@ -54,35 +54,42 @@
 
 ---
 
-## 3. Campisi 四效应（`build_campisi_attribution`）
+## 3. Campisi 四效应（`campisi_attribution`）
 
 ### 3.1 目的
 
-按 **Campisi 框架** 的语义（收入、国债、利差、选择）向工作台提供**可解释的拆分**；当前实现为 **显式简化版**，便于在仅有「债券日频快照 + 国债 10Y 起止」时也能跑通链路，并与前端 `CampisiAttributionPayload` 字段对齐。
+按 **Campisi 框架** 的语义（收入、国债、利差、选择）向工作台提供逐券、资产类别和组合三级闭合拆分。当前实现使用起止两期债券快照、多期限国债曲线和评级 3Y 利差，不再是单一 10Y 曲线或利差占位口径。
 
 ### 3.2 分桶
 
-- 使用 `build_asset_class_risk_summary(bond_rows)`，按 **`asset_class_std`** 聚合市值、久期（Macaulay，来自 read_models 约定）、权重。
+- 服务层先按业务持仓键合并起止两期债券快照，再由 `campisi_attribution` 逐券计算。
+- `num_days = max((period_end - period_start).days, 1)`；逐券结果按 `asset_class_start` 和期限桶汇总，组合 totals 由逐券 Decimal 金额求和后在输出边界转为 float。
 
-### 3.3 各效应定义（当前版本）
+### 3.3 曲线、久期与评级输入
 
-| 效应 | 计算要点 |
+- 国债基准使用起止两期共同存在且为正的 `1Y / 3Y / 5Y / 7Y / 10Y / 30Y` 期限点。共同期限不少于 3 个时拟合三次样条，恰为 2 个时使用分段线性曲线；在单券剩余期限处分别求值后，以 `(end_pct - start_pct) / 100` 转为小数收益率变动。
+- 单券先计算 Macaulay 久期，再通过 `modified_duration_from_macaulay` 转为**修正久期**。修正久期的收益率输入依次取正的期初 YTM、正的票息，二者均不可用时取 0；不再使用任意的 1% 代理。
+- 信用评级由期初资产类别推断为 `GOV / AAA / AA+ / AA`。`GOV` 利差变动为 0；其余评级读取对应的期初、期末 3Y 利差 BP，并以 `(end_bp - start_bp) / 10000` 转为小数。
+
+### 3.4 四效应与闭合
+
+| 效应 | 当前计算 |
 |------|----------|
-| **收入（Income）** | 每类：`MV × coupon_dec × (num_days / 365)`，其中 `coupon_dec` 为市值加权平均票息（小数）。近似**应计票息/持有期收入**，非完整现金流折现。 |
-| **国债（Treasury /利率）** | 每类：`-MV × D × Δy_treas`，其中 `Δy_treas` 由服务层传入 **`treasury_dy_decimal`**（10Y 百分数点之差 / 100，即小数收益率变化）。仍为一阶近似，且 **D 用 Macaulay** 与 Spread 模块的修正久期不完全一致，属已知口径差异。 |
-| **利差（Spread）** | **当前常量0**（占位）。完整版应对每类或每只券估计 OAS/利差变动或相对基准的超额。 |
-| **选择（Selection）** | **当前常量 0**（占位）。完整版应用组合相对基准的残差或 Brinson 式选择项。 |
+| **收入（Income）** | `coupon_decimal × face_value_start × num_days / 365`。 |
+| **国债（Treasury / 利率）** | `-modified_duration × benchmark_yield_change_decimal × market_value_start`。 |
+| **利差（Spread）** | `-modified_duration × rating_spread_change_decimal × market_value_start`。 |
+| **选择（Selection）** | 闭合残差：`total_return - income_return - treasury_effect - spread_effect`；不是独立估计的选券 alpha。 |
+| **总回报（Total）** | 两端应计利息齐全时，`dirty_change + inferred_coupon_cash`，其中 `inferred_coupon_cash = income_return - (ai_end - ai_start)`；否则退化为 `market_value_end - market_value_start + income_return`。 |
 
-### 3.4 合计与主驱动
+单券、资产类别和组合 totals 均满足 `total_return = income_return + treasury_effect + spread_effect + selection_effect`。AC 人口按会计边界仅保留收入效应，国债、利差和选择效应均归零，`total_return = income_return`。
 
-- 每类 `total_return = income + treasury + spread + selection`（后两项现为 0）。  
-- 组合层 `primary_driver` 取 **绝对金额最大** 的一类效应名（`income` / `treasury` / `spread` / `selection`）。
+### 3.5 降级与披露语义
 
-### 3.5 演进方向（与 read_models 对齐）
-
-- 利差：可接入 `summarize_return_decomposition` 或 Phase 3 曲线 + 个券利差输入，在 **core_finance** 内扩展，仍避免在 API 层写公式。  
-- 选择：需 **基准全价序列** 或 **组合/基准持仓对齐** 后的残差定义。  
-- 久期口径：可在全模块统一为 **修正久期** 或明确文档化「Campisi 块用 Macaulay」的原因与偏差量级。
+- 起止曲线共同正期限少于 2 个时，国债收益率变动退化为 0；2 个期限点明确使用线性回退；缺少部分期限但仍可拟合时使用共同期限子集，并由服务层输出覆盖不足 warning。
+- 评级 3Y 利差任一端缺失、不可解析或非正时，该券利差变动退化为 0，并输出覆盖不足 warning；不得把该 0 解读为观测到“利差未变”。
+- 到期日缺失或不可解析时修正久期为 0，利率与利差金额随之为 0，并记录 `mod_dur_fallback_zero` 等 diagnostics。
+- 应计利息仅单端存在或两端都缺失时，退化到净价变动加收入的口径，并记录 `accrued_interest_partial` / `accrued_interest_missing`；不使用单端应计利息拼接全价。
+- 无可用持仓时，服务层返回 totals 全 0、空明细和 `quality_flag=warning`。零值与 warning / diagnostics 必须一起消费，API 或前端不得静默补算。
 
 ---
 
@@ -92,7 +99,7 @@
 |------|------|------------------|
 | 利差归因 | `build_spread_attribution` | `summarize_portfolio_risk` |
 | KRD 桶 | `build_krd_attribution` | `summarize_portfolio_risk`、`build_krd_distribution` |
-| Campisi | `build_campisi_attribution` | `build_asset_class_risk_summary` |
+| Campisi | `campisi_attribution` / `compute_bond_four_effects` | 起止两期债券快照、多期限国债曲线、评级 3Y 利差 |
 | Carry / Roll | `build_carry_roll_down` | 无（按类市值加权票息、久期与 FTP） |
 
 ---

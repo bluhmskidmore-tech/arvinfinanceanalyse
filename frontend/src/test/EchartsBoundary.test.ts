@@ -60,4 +60,23 @@ describe("shared echarts boundary", () => {
     expect(source).toContain("RadarChart");
     expect(source).toContain("CanvasRenderer");
   });
+
+  it("keeps non-type-only full-package echarts imports out of app code", () => {
+    // `import type { ... } from "echarts"` is fine (erased at build time), but a
+    // runtime `import ... from "echarts"` pulls in the entire library instead of
+    // the tree-shaken `echarts/core` + chart/component pieces registered in the
+    // shared wrapper above.
+    const statementPattern = /(import|export)\s+[^;]*?from\s*["']echarts["']/g;
+    const offenders = walkFiles(SRC_DIR)
+      .filter((path) => !srcRelativePath(path).startsWith("test/"))
+      .filter((path) => srcRelativePath(path) !== SHARED_ECHARTS_MODULE)
+      .filter((path) => {
+        const source = readFileSync(path, "utf8");
+        const statements = source.match(statementPattern) ?? [];
+        return statements.some((statement) => !/^\s*(import|export)\s+type\b/.test(statement));
+      })
+      .map(srcRelativePath);
+
+    expect(offenders).toEqual([]);
+  });
 });

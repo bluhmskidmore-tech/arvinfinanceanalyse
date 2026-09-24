@@ -14,7 +14,7 @@ import type {
   PnlV1DetailRow,
   ResultMeta,
 } from "../api/contracts";
-import FormalPnlV1Page from "../features/pnl/FormalPnlV1Page";
+import PnlPage from "../features/pnl/PnlPage";
 
 function renderPnlPage(client: ApiClient) {
   function Wrapper({ children }: { children: ReactNode }) {
@@ -36,7 +36,7 @@ function renderPnlPage(client: ApiClient) {
 
   return render(
     <Wrapper>
-      <FormalPnlV1Page />
+      <PnlPage />
     </Wrapper>,
   );
 }
@@ -182,7 +182,7 @@ describe("PnlPage", () => {
 
     await waitFor(() => {
       expect(getPnlV1Data).toHaveBeenCalledWith("2025-12-31");
-      expect(getFormalPnlOverview).toHaveBeenCalledWith("2025-12-31", "formal");
+      expect(getFormalPnlOverview).toHaveBeenCalledWith("2025-12-31");
     });
 
     const overview = await screen.findByTestId("pnl-overview-cards");
@@ -250,14 +250,14 @@ describe("PnlPage", () => {
 
     await waitFor(() => {
       expect(getPnlV1Data).toHaveBeenCalledWith("2025-12-31");
-      expect(getFormalPnlOverview).toHaveBeenCalledWith("2025-12-31", "formal");
+      expect(getFormalPnlOverview).toHaveBeenCalledWith("2025-12-31");
     });
 
     await user.selectOptions(dateSelect, "2025-11-30");
 
     await waitFor(() => {
       expect(getPnlV1Data).toHaveBeenCalledWith("2025-11-30");
-      expect(getFormalPnlOverview).toHaveBeenCalledWith("2025-11-30", "formal");
+      expect(getFormalPnlOverview).toHaveBeenCalledWith("2025-11-30");
     });
 
     const overview = await screen.findByTestId("pnl-overview-cards");
@@ -274,12 +274,11 @@ describe("PnlPage", () => {
     expect(metaPanel).toHaveTextContent("rv_pnl_test");
   });
 
-  it("switches from formal to analytical basis and refetches the pnl queries with analytical meta", async () => {
-    const user = userEvent.setup();
+  it("disables the analytical basis option and keeps the pnl queries basis-free", async () => {
     const base = createApiClient({ mode: "real" });
 
-    const getFormalPnlDates = vi.fn(async (basis?: ApiBasis) => ({
-      result_meta: buildMeta("pnl.dates", `tr_pnl_dates_${basis ?? "formal"}`, basis ?? "formal"),
+    const getFormalPnlDates = vi.fn(async () => ({
+      result_meta: buildMeta("pnl.dates", "tr_pnl_dates_formal_only"),
       result: {
         report_dates: ["2025-12-31"],
         formal_fi_report_dates: ["2025-12-31"],
@@ -301,8 +300,8 @@ describe("PnlPage", () => {
         ],
       } satisfies PnlV1DataPayload,
     }));
-    const getFormalPnlOverview = vi.fn(async (reportDate: string, basis?: ApiBasis) =>
-      buildOverviewEnvelope(reportDate, basis ?? "formal"),
+    const getFormalPnlOverview = vi.fn(async (reportDate: string) =>
+      buildOverviewEnvelope(reportDate),
     );
 
     renderPnlPage({
@@ -314,23 +313,24 @@ describe("PnlPage", () => {
 
     await screen.findByTestId("pnl-overview-cards");
 
-    expect(getFormalPnlDates).toHaveBeenCalledWith("formal");
+    // 后端 /api/pnl/dates、/api/pnl/overview、/api/pnl/v1-data 均不消费 basis：请求不再携带该参数。
+    expect(getFormalPnlDates).toHaveBeenCalledWith();
     expect(getPnlV1Data).toHaveBeenCalledWith("2025-12-31");
-    expect(getFormalPnlOverview).toHaveBeenCalledWith("2025-12-31", "formal");
+    expect(getFormalPnlOverview).toHaveBeenCalledWith("2025-12-31");
 
-    await user.click(screen.getByRole("button", { name: "分析口径" }));
+    // 分析口径读模型未建：选项禁用并明示，仅保留正式口径。
+    expect(screen.getByRole("button", { name: "分析口径" })).toBeDisabled();
+    expect(screen.getByTestId("pnl-basis-formal-only-note")).toHaveTextContent(
+      "当前仅正式口径；分析口径读模型未建。",
+    );
 
+    // 正式口径下明细正常加载，不触发分析口径的明细禁用降级。
     await waitFor(() => {
-      expect(getFormalPnlDates).toHaveBeenCalledWith("analytical");
-      expect(getFormalPnlOverview).toHaveBeenCalledWith("2025-12-31", "analytical");
+      expect(screen.getByTestId("pnl-formal-fi-table")).toHaveTextContent("240001.IB");
     });
-
-    expect(screen.getByTestId("pnl-overview-cards")).toHaveTextContent("9.88");
-    expect(screen.getByTestId("pnl-formal-fi-table")).toHaveTextContent("240001.IB");
-    expect(screen.getByTestId("pnl-result-meta-panel")).toHaveTextContent("analytical");
-    expect(screen.getByTestId("pnl-result-meta-panel")).toHaveTextContent("tr_pnl_data_formal");
-    expect(screen.getByTestId("pnl-basis-note")).toHaveTextContent("正式口径");
-    expect(screen.getByTestId("pnl-refresh-button")).toBeDisabled();
+    expect(screen.queryByTestId("pnl-detail-basis-locked")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("pnl-basis-note")).not.toBeInTheDocument();
+    expect(screen.getByTestId("pnl-refresh-button")).toBeEnabled();
   });
 
   it("surfaces loading and then empty state when no report dates are available", async () => {

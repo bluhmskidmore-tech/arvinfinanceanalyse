@@ -2,7 +2,9 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../lib/echarts", () => ({
-  default: () => <div data-testid="volume-rate-echarts-stub" />,
+  default: ({ option }: { option: unknown }) => (
+    <pre data-testid="volume-rate-echarts-stub">{JSON.stringify(option)}</pre>
+  ),
 }));
 
 import type { Numeric, VolumeRateAttributionPayload } from "../../../api/contracts";
@@ -105,5 +107,56 @@ describe("VolumeRateAnalysisChart data contract", () => {
     expect(screen.getByText("+0.11%")).toBeInTheDocument();
     expect(screen.getByText("+0.10%")).toBeInTheDocument();
     expect(screen.getByTestId("volume-rate-echarts-stub")).toBeInTheDocument();
+  });
+
+  it("keeps missing pnl values as null gaps and em-dash instead of zero", () => {
+    const data = {
+      current_period: "2026-04",
+      previous_period: "2026-03",
+      compare_type: "mom",
+      total_current_pnl: numeric(null, "yuan", "—", true),
+      total_previous_pnl: null,
+      total_pnl_change: null,
+      total_volume_effect: null,
+      total_rate_effect: null,
+      total_interaction_effect: null,
+      has_previous_data: false,
+      items: [
+        {
+          category: "A",
+          category_type: "asset",
+          level: 0,
+          current_scale: numeric(100_000_000, "yuan", "1.00"),
+          current_pnl: numeric(null, "yuan", "—", true),
+          current_yield_pct: null,
+          previous_scale: numeric(null, "yuan", "—"),
+          previous_pnl: numeric(null, "yuan", "—", true),
+          previous_yield_pct: null,
+          pnl_change: numeric(null, "yuan", "—", true),
+          pnl_change_pct: null,
+          volume_effect: numeric(null, "yuan", "—", true),
+          rate_effect: null,
+          interaction_effect: null,
+          attrib_sum: null,
+          recon_error: numeric(null, "yuan", "—", true),
+          volume_contribution_pct: null,
+          rate_contribution_pct: null,
+        },
+      ],
+    } as unknown as VolumeRateAttributionPayload;
+
+    renderWith({ kind: "ok" }, data);
+
+    // 图表：缺失损益传 null，不画 0 值柱。
+    const option = JSON.parse(screen.getByTestId("volume-rate-echarts-stub").textContent ?? "{}");
+    const currentSeries = option.series.find((series: { name: string }) => series.name === "当期损益");
+    const previousSeries = option.series.find((series: { name: string }) => series.name === "上期损益");
+    expect(currentSeries.data).toEqual([null]);
+    expect(previousSeries.data).toEqual([null]);
+
+    // 表格：缺失显示 —，不显示 0.00 / 0.0000。
+    expect(screen.queryByText("0.00")).not.toBeInTheDocument();
+    expect(screen.queryByText("0.0000")).not.toBeInTheDocument();
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(5);
   });
 });

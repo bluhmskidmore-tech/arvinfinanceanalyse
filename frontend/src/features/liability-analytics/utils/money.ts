@@ -1,11 +1,9 @@
 import type { Numeric } from "../../../api/contracts";
+import { EM_DASH, numericRaw as sharedNumericRaw } from "../../../pageModel";
 import { formatRawAsNumeric } from "../../../utils/format";
 
 export function numericRaw(value: Numeric | null | undefined): number | null {
-  if (!value || value.raw === null || !Number.isFinite(value.raw)) {
-    return null;
-  }
-  return value.raw;
+  return sharedNumericRaw(value);
 }
 
 export function numericYuanRaw(value: Numeric | null | undefined): number | null {
@@ -97,5 +95,5 @@ export function bucketAmountToYiNumeric(item: {
 }
 
 export function numericOrDash(value: Numeric | null | undefined): string {
-  return value?.display ?? "—";
+  return value?.display ?? EM_DASH;
 }

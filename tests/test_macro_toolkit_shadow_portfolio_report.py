@@ -4,6 +4,7 @@ from pathlib import Path
 
 import duckdb
 import pandas as pd
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -20,6 +21,11 @@ from tests.test_macro_toolkit_scripts import (
     MACRO_TOOLKIT_READ_HEADERS,
     _seed_macro_toolkit_read_scope,
 )
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_macro_toolkit,
+]
 
 
 def test_shadow_portfolio_report_marks_duckdb_busy_when_file_is_locked(

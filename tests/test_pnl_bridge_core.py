@@ -55,10 +55,12 @@ def test_bridge_carry_equals_514():
     assert row.unrealized_fv == Decimal("-1.00")
     assert row.beginning_dirty_mv == Decimal("91.00")
     assert row.ending_dirty_mv == Decimal("102.00")
-    assert row.explained_pnl == Decimal("13.84")
+    # 互斥分解：explained = 514 + 517 + 手工调整（无曲线输入时市场效应为 0，
+    # 516 不再自我解释）；残差 = 未被解释的公允价值变动 −1.00。
+    assert row.explained_pnl == Decimal("14.84")
     assert row.actual_pnl == Decimal("13.84")
-    assert row.residual == Decimal("0.00")
-    assert row.quality_flag == "ok"
+    assert row.residual == Decimal("-1.00")
+    assert row.quality_flag == "warning"
     assert row.current_balance_found is True
     assert row.prior_balance_found is True
     assert row.balance_diagnostics == ()
@@ -134,10 +136,11 @@ def test_bridge_residual_calculation():
     )
 
     row = rows[0]
-    assert row.explained_pnl == Decimal("8.00")
+    # AC 行：516 既不进 explained（互斥分解）也不产生市场效应（FVTPL 门控）。
+    assert row.explained_pnl == Decimal("7.00")
     assert row.actual_pnl == Decimal("10.00")
-    assert row.residual == Decimal("2.00")
-    assert row.residual_ratio == Decimal("0.20")
+    assert row.residual == Decimal("3.00")
+    assert row.residual_ratio == Decimal("0.30")
     assert row.quality_flag == "error"
     assert row.current_balance_found is False
     assert row.prior_balance_found is False
@@ -347,6 +350,44 @@ def test_bridge_does_not_cross_match_different_accounting_basis():
     assert rows[0].ending_dirty_mv == Decimal("0")
 
 
+def test_bridge_balance_fallback_does_not_cross_currency_basis():
+    rows = build_pnl_bridge_rows(
+        pnl_fi_rows=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "NO-CROSS-CCY",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "accounting_basis": "FVTPL",
+                "interest_income_514": "1.00",
+                "fair_value_change_516": "0",
+                "capital_gain_517": "0",
+                "manual_adjustment": "0",
+                "total_pnl": "1.00",
+                "currency_basis": "USD",
+            }
+        ],
+        balance_rows_current=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "NO-CROSS-CCY",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "currency_basis": "CNY",
+                "accounting_basis": "FVTPL",
+                "market_value_amount": "100.00",
+                "accrued_interest_amount": "5.00",
+            }
+        ],
+        balance_rows_prior=[],
+    )
+
+    row = rows[0]
+    assert row.current_balance_found is True
+    assert row.ending_dirty_mv == Decimal("105.00")
+    assert any("currency_basis mismatch" in message for message in row.balance_diagnostics)
+
+
 def test_bridge_unrealized_equals_516():
     rows = build_pnl_bridge_rows(
         pnl_fi_rows=[
@@ -391,13 +432,15 @@ def test_bridge_explained_is_sum_of_components():
     )
 
     row = rows[0]
+    # 互斥分解恒等式：unrealized_fv（516）不计入 explained，它是市场效应
+    # 要解释的对象；两者同时相加会使残差退化（审计 PNL-01）。
     expected = (
         row.carry + row.roll_down + row.treasury_curve + row.credit_spread
-        + row.fx_translation + row.realized_trading + row.unrealized_fv
+        + row.fx_translation + row.realized_trading
         + row.manual_adjustment
     )
     assert row.explained_pnl == expected
-    assert row.explained_pnl == Decimal("16.50")
+    assert row.explained_pnl == Decimal("14.50")
 
 
 def test_bridge_quality_flag_ok():
@@ -475,8 +518,8 @@ def test_bridge_quality_flag_error():
     assert abs(rows[0].residual_ratio) >= Decimal("0.10")
 
 
-def test_bridge_zero_actual_pnl():
-    """When actual_pnl is 0, residual_ratio should be 0 (no division by zero)."""
+def test_bridge_zero_actual_pnl_and_zero_explained_pnl_is_ok():
+    """When both actual and explained PnL are 0, residual_ratio should be 0."""
     rows = build_pnl_bridge_rows(
         pnl_fi_rows=[
             {
@@ -499,6 +542,223 @@ def test_bridge_zero_actual_pnl():
     row = rows[0]
     assert row.actual_pnl == Decimal("0")
     assert row.residual_ratio == Decimal("0")
+    assert row.quality_flag == "ok"
+
+
+def test_bridge_zero_actual_pnl_with_nonzero_explained_pnl_is_warning():
+    rows = build_pnl_bridge_rows(
+        pnl_fi_rows=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "ZERO-PNL-NONZERO-EXPLAINED",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "accounting_basis": "AC",
+                "interest_income_514": "10.00",
+                "fair_value_change_516": "0",
+                "capital_gain_517": "0",
+                "manual_adjustment": "0",
+                "total_pnl": "0",
+            }
+        ],
+        balance_rows_current=[],
+        balance_rows_prior=[],
+    )
+
+    row = rows[0]
+    assert row.actual_pnl == Decimal("0")
+    assert row.explained_pnl == Decimal("10.00")
+    assert row.residual == Decimal("-10.00")
+    assert row.residual_ratio is None
+    assert row.quality_flag == "warning"
+
+
+def test_bridge_missing_actual_pnl_is_warning_with_null_residual_ratio():
+    rows = build_pnl_bridge_rows(
+        pnl_fi_rows=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "MISSING-ACTUAL",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "accounting_basis": "AC",
+                "interest_income_514": "0",
+                "fair_value_change_516": "0",
+                "capital_gain_517": "0",
+                "manual_adjustment": "0",
+                "total_pnl": None,
+            }
+        ],
+        balance_rows_current=[],
+        balance_rows_prior=[],
+    )
+
+    row = rows[0]
+    assert row.actual_pnl == Decimal("0")
+    assert row.residual_ratio is None
+    assert row.quality_flag == "warning"
+    assert any("actual_pnl missing" in message for message in row.balance_diagnostics)
+
+
+def test_bridge_market_effects_do_not_double_count_516():
+    """FVTPL 行互斥分解：explained 不含 516；残差 = 516 − 市场效应（审计 PNL-01）。
+
+    市场效应（骑乘/曲线/利差/汇兑）是对公允价值变动 516 的解释项。会计分项
+    与市场效应同时计入 explained 会使残差恒等于市场效应之和的相反数，
+    质量标记随之失真。
+    """
+    rows = build_pnl_bridge_rows(
+        pnl_fi_rows=[
+            {
+                "report_date": "2026-12-31",
+                "instrument_code": "TB-P0",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "accounting_basis": "FVTPL",
+                "interest_income_514": "10.00",
+                "fair_value_change_516": "-2.50",
+                "capital_gain_517": "3.00",
+                "manual_adjustment": "0.50",
+                "total_pnl": "11.00",
+                "currency_basis": "CNY",
+            }
+        ],
+        balance_rows_current=[
+            {
+                "report_date": "2026-12-31",
+                "instrument_code": "TB-P0",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "currency_basis": "CNY",
+                "accounting_basis": "FVTPL",
+                "market_value_amount": "100",
+                "accrued_interest_amount": "0",
+                "maturity_date": "2028-12-30",
+                "coupon_rate": "0",
+                "ytm_value": "0",
+                "bond_type": "国债",
+                "asset_class": "利率债",
+            }
+        ],
+        balance_rows_prior=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "TB-P0",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "currency_basis": "CNY",
+                "accounting_basis": "FVTPL",
+                "market_value_amount": "100",
+                "accrued_interest_amount": "0",
+                "maturity_date": "2028-12-30",
+                "coupon_rate": "0",
+                "ytm_value": "0",
+                "bond_type": "国债",
+                "asset_class": "利率债",
+            }
+        ],
+        treasury_curve_current={
+            "1Y": Decimal("2.00"),
+            "2Y": Decimal("3.00"),
+            "3Y": Decimal("4.00"),
+        },
+        treasury_curve_prior={
+            "1Y": Decimal("1.00"),
+            "2Y": Decimal("2.00"),
+            "3Y": Decimal("3.00"),
+        },
+    )
+
+    row = rows[0]
+    # 市场效应真实非零（骑乘 +2.00、曲线 −2.00），确保本测试覆盖到效应路径。
+    assert row.roll_down == Decimal("2.00")
+    assert row.treasury_curve == Decimal("-2.00")
+    market_effects = row.roll_down + row.treasury_curve + row.credit_spread + row.fx_translation
+    # 互斥分解恒等式：explained 不含 unrealized_fv。
+    assert row.explained_pnl == (
+        row.carry + market_effects + row.realized_trading + row.manual_adjustment
+    )
+    assert row.explained_pnl == Decimal("13.50")
+    # 残差 = 未实现公允变动中模型未解释的部分。
+    assert row.residual == row.unrealized_fv - market_effects
+    assert row.residual == Decimal("-2.50")
+
+
+def test_bridge_market_effects_zero_for_non_fvtpl_rows():
+    """AC 行市场效应归零：正式事实已剔除非 FVTPL 的 516（审计 PNL-02）。
+
+    与 bond_four_effects 的 AC 归零、campisi_attribution_service 的 FVTPL
+    门控同一口径；否则 AC 账户的桥接残差会被幻影市场效应主导。
+    """
+    rows = build_pnl_bridge_rows(
+        pnl_fi_rows=[
+            {
+                "report_date": "2026-12-31",
+                "instrument_code": "TB-AC",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "accounting_basis": "AC",
+                "interest_income_514": "10.00",
+                "fair_value_change_516": "0",
+                "capital_gain_517": "1.00",
+                "manual_adjustment": "0",
+                "total_pnl": "11.00",
+                "currency_basis": "CNY",
+            }
+        ],
+        balance_rows_current=[
+            {
+                "report_date": "2026-12-31",
+                "instrument_code": "TB-AC",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "currency_basis": "CNY",
+                "accounting_basis": "AC",
+                "market_value_amount": "100",
+                "accrued_interest_amount": "0",
+                "maturity_date": "2028-12-30",
+                "coupon_rate": "0",
+                "ytm_value": "0",
+                "bond_type": "国债",
+                "asset_class": "利率债",
+            }
+        ],
+        balance_rows_prior=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "TB-AC",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "currency_basis": "CNY",
+                "accounting_basis": "AC",
+                "market_value_amount": "100",
+                "accrued_interest_amount": "0",
+                "maturity_date": "2028-12-30",
+                "coupon_rate": "0",
+                "ytm_value": "0",
+                "bond_type": "国债",
+                "asset_class": "利率债",
+            }
+        ],
+        treasury_curve_current={
+            "1Y": Decimal("2.00"),
+            "2Y": Decimal("3.00"),
+            "3Y": Decimal("4.00"),
+        },
+        treasury_curve_prior={
+            "1Y": Decimal("1.00"),
+            "2Y": Decimal("2.00"),
+            "3Y": Decimal("3.00"),
+        },
+    )
+
+    row = rows[0]
+    assert row.roll_down == Decimal("0")
+    assert row.treasury_curve == Decimal("0")
+    assert row.credit_spread == Decimal("0")
+    assert row.fx_translation == Decimal("0")
+    assert row.explained_pnl == Decimal("11.00")
+    assert row.residual == Decimal("0")
     assert row.quality_flag == "ok"
 
 
@@ -528,3 +788,29 @@ def test_bridge_phase3_stubs_are_zero():
     assert row.treasury_curve == Decimal("0")
     assert row.credit_spread == Decimal("0")
     assert row.fx_translation == Decimal("0")
+
+
+def test_modified_duration_fallback_applies_par_assumption_when_ytm_missing():
+    """W-fi-2026-08 P1 残余修复：有票息缺 ytm 的余额行重算修正久期时，
+    Macaulay 与修正折算必须共用同一 par 生效 ytm（=coupon），而非用原始
+    ytm=0 跳过折算返回未折算的 Macaulay（约 +3% 高估）。
+
+    独立手算（年付、c=y=3%、整 10 年）：
+    par Macaulay = (1.03/0.03) x (1 - 1.03**-10) = 8.786108921879104
+    修正久期 = 8.786108921879104 / 1.03 = 8.530202836775829
+    """
+    from datetime import timedelta
+
+    from backend.app.core_finance.pnl_bridge import _modified_duration
+
+    report_date = date(2026, 7, 31)
+    row = {
+        "maturity_date": (report_date + timedelta(days=3650)).isoformat(),
+        "coupon_rate": "3",  # fact 表 percent 口径（3 = 3%）
+        "ytm_value": None,
+        "instrument_code": "PARFALL.IB",
+    }
+    result = _modified_duration(report_date=report_date, row=row)
+    assert abs(result - Decimal("8.530202836775829")) < Decimal("1e-9")
+    # 回归锚：修复前返回未折算的 par Macaulay（8.7861...），不允许回潮。
+    assert abs(result - Decimal("8.786108921879104")) > Decimal("0.2")

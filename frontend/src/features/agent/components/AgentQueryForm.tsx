@@ -1,5 +1,7 @@
 import { useEffect, useRef, type FormEvent, type KeyboardEvent, type MutableRefObject, type Ref } from "react";
 
+import { getAgentScrollBehavior } from "../lib/agentMotion";
+
 type AgentQueryFormProps = {
   compact?: boolean;
   showAdvancedTools?: boolean;
@@ -40,9 +42,9 @@ function formatQuickExampleLabel(example: string) {
 
 function buildPromptPlaceholder(pageContext?: { page_id: string }) {
   if (pageContext?.page_id) {
-    return "直接问当前页：主要结论？异常点？下一步复核什么？";
+    return "问当前页：主要结论？异常点？下一步复核什么？";
   }
-  return "问一句业务问题，例如：今天损益为什么变动？当前久期风险在哪里？";
+  return "随便问一句，例如：今天哪里最值得看？久期风险在哪？";
 }
 
 function shouldSubmitByEnter(event: KeyboardEvent<HTMLTextAreaElement>, query: string) {
@@ -152,7 +154,7 @@ export function AgentQueryForm({
     textarea.focus();
     const scrollIntoView = textarea.scrollIntoView;
     if (typeof scrollIntoView === "function" && shouldScrollTextareaIntoView(textarea)) {
-      scrollIntoView.call(textarea, { behavior: "smooth", block: "nearest" });
+      scrollIntoView.call(textarea, { behavior: getAgentScrollBehavior(), block: "nearest" });
     }
   }
 
@@ -175,7 +177,7 @@ export function AgentQueryForm({
         <>
           <div className="agent-chat-composer__header">
             <div>
-              <div className="agent-chat-composer__title">问 Agent</div>
+              <div className="agent-chat-composer__title">问我</div>
             </div>
             <div
               className="agent-chat-composer__hint"
@@ -271,10 +273,14 @@ export function AgentQueryForm({
                 type="button"
                 data-testid="agent-panel-submit"
                 className="agent-chat-composer__send agent-chat-composer__send--stop"
-                aria-label={activeQuestion.trim() ? `停止当前回答：${activeQuestion.trim()}` : "停止"}
+                aria-label={
+                  activeQuestion.trim()
+                    ? `停止等待当前回答：${activeQuestion.trim()}`
+                    : "停止等待"
+                }
                 onClick={onStop}
               >
-                停止
+                停止等待
               </button>
             </>
           ) : (
@@ -292,7 +298,7 @@ export function AgentQueryForm({
 
       {showAdvancedTools ? (
         <details className="agent-chat-composer__advanced">
-          <summary>GitNexus 工具</summary>
+          <summary>工具</summary>
           <div className="agent-chat-composer__advanced-body">
             <label className="agent-chat-composer__field">
               <span>GitNexus 仓库路径</span>

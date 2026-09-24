@@ -7,6 +7,12 @@ import pytest
 
 from tests.helpers import load_module
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def _load_runner_module():
     return load_module(
@@ -28,8 +34,8 @@ def test_livermore_position_snapshot_run_main_forwards_args_and_emits_json(monke
         }
 
     monkeypatch.setattr(
-        module,
-        "materialize_livermore_position_snapshot",
+        module.materialize_livermore_position_snapshot,
+        "fn",
         fake_materialize_livermore_position_snapshot,
     )
     monkeypatch.setattr(
@@ -81,8 +87,8 @@ def test_livermore_position_snapshot_run_main_can_check_existing_risk_inputs(
         return "livermore_position_snapshot table is not materialized for Livermore A-share holdings."
 
     monkeypatch.setattr(
-        module,
-        "materialize_livermore_position_snapshot",
+        module.materialize_livermore_position_snapshot,
+        "fn",
         fake_materialize_livermore_position_snapshot,
     )
     monkeypatch.setattr(
@@ -140,8 +146,8 @@ def test_livermore_position_snapshot_run_main_can_verify_risk_inputs_after_mater
         return ""
 
     monkeypatch.setattr(
-        module,
-        "materialize_livermore_position_snapshot",
+        module.materialize_livermore_position_snapshot,
+        "fn",
         fake_materialize_livermore_position_snapshot,
     )
     monkeypatch.setattr(
@@ -186,8 +192,8 @@ def test_livermore_position_snapshot_run_main_propagates_failures_without_json(m
         raise RuntimeError("position snapshot materialization failed")
 
     monkeypatch.setattr(
-        module,
-        "materialize_livermore_position_snapshot",
+        module.materialize_livermore_position_snapshot,
+        "fn",
         fake_materialize_livermore_position_snapshot,
     )
     monkeypatch.setattr(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -9,17 +10,67 @@ from typing import Any, cast
 import duckdb
 import pandas as pd
 import pytest
+import requests
 
+from backend.app.tasks import choice_stock_materialize as choice_stock_materialize_module
 from backend.app.repositories.duckdb_migrations import register_all
 from backend.app.repositories.duckdb_schema_registry import DuckDBSchemaRegistry
 from backend.app.tasks.choice_stock_materialize import (
     _DefaultChoiceStockClient,
+    _DefaultTushareStockClient,
     _load_tushare_financial_factors,
     ensure_choice_stock_schema,
     load_choice_stock_materialization_coverage,
     materialize_choice_stock_factor_snapshot,
     materialize_choice_stock_inputs,
 )
+
+
+def test_default_tushare_stock_client_uses_official_root_api_with_bounded_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+    payload = {
+        "code": 0,
+        "msg": "",
+        "data": {
+            "fields": ["ts_code", "trade_date"],
+            "items": [["000001.SZ", "20260708"]],
+        },
+    }
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return payload
+
+    def fake_post(url: str, *, json: dict[str, object], timeout: object) -> FakeResponse:
+        captured.update({"url": url, "payload": json, "timeout": timeout})
+        return FakeResponse()
+
+    monkeypatch.setattr(
+        choice_stock_materialize_module,
+        "resolve_tushare_token_with_settings_fallback",
+        lambda _settings: "test-token",
+    )
+    monkeypatch.setattr(requests, "post", fake_post)
+
+    frame = _DefaultTushareStockClient().daily(
+        trade_date="20260708",
+        fields="ts_code,trade_date",
+    )
+
+    assert captured["url"] == "https://api.tushare.pro"
+    assert captured["timeout"] == (10.0, 30.0)
+    assert captured["payload"] == {
+        "api_name": "daily",
+        "token": "test-token",
+        "params": {"trade_date": "20260708"},
+        "fields": "ts_code,trade_date",
+    }
+    assert frame.to_dict(orient="records") == [{"ts_code": "000001.SZ", "trade_date": "20260708"}]
 
 
 def _write_confirmed_catalog(path: Path) -> None:
@@ -273,9 +324,36 @@ class PermissionDeniedCsdChoiceStockClient(FakeChoiceStockClient):
         return SimpleNamespace(ErrorCode=10001012, ErrorMsg="insufficient user access")
 
 
+class ExpiredChoiceStockClient(FakeChoiceStockClient):
+    def sector(self, *args: object, options: str = "") -> Any:
+        self.calls.append(("sector", args, options))
+        raise RuntimeError("user access for this API expired")
+
+
 class FakeTushareStockClient:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, object]]] = []
+
+    def stock_basic(self, **kwargs: object) -> pd.DataFrame:
+        self.calls.append(("stock_basic", kwargs))
+        return pd.DataFrame(
+            [
+                {
+                    "ts_code": "000001.SZ",
+                    "name": "PAB",
+                    "industry": "Bank",
+                    "list_date": "19910403",
+                    "list_status": "L",
+                },
+                {
+                    "ts_code": "600000.SH",
+                    "name": "SPDB",
+                    "industry": "Bank",
+                    "list_date": "19991110",
+                    "list_status": "L",
+                },
+            ]
+        )
 
     def trade_cal(self, **kwargs: object) -> pd.DataFrame:
         self.calls.append(("trade_cal", kwargs))
@@ -618,6 +696,21 @@ def test_v20_database_upgrades_to_v21_choice_stock_schema(tmp_path: Path) -> Non
         "v27: Choice stock factor snapshot for equity strategies",
         "v28: Livermore candidate history analytical replay",
         "v29: Commodity futures main-contract daily ingest",
+        "v30: Formal fact and snapshot read-path indexes",
+        "v31: Market breadth daily counts for Livermore gate",
+        "v32: Recover read indexes and constrain governed PnL/FX grains",
+        "v33: Materialize governed Risk Tensor read metrics and upstream lineage",
+        "v34: Preserve formal FI source classification metadata",
+        "v35: Preserve bond analytics value date",
+        "v36: Disclose risk tensor projection quality proxies",
+        "v37: Preserve bond payment-frequency fallback provenance",
+        "v38: Stock official disclosure fact + sync status",
+        "v39: Repair stock official disclosure timestamp timezone",
+        "v40: Numeric daily limit prices from tushare stk_limit",
+        "v41: Livermore market-gate realtime label anchor",
+        "v42: Persist movement chain-continuity and position-source conclusions",
+        "v43: Constrain core ALM fact natural-key grains",
+        "v44: Point-in-time concept membership SCD intervals",
     ]
     conn = duckdb.connect(str(db_path), read_only=True)
     try:
@@ -785,6 +878,9 @@ def test_choice_stock_materialize_can_fill_tushare_ths_concept_fallback(tmp_path
         client=PermissionDeniedCsdChoiceStockClient(),
         tushare_client=tushare_client,
         enable_tushare_concept_fallback=True,
+        # OHLCV 走 Tushare fallback 而 as_of 落在 choice_native 代际区,代际守卫默认拒绝;
+        # 此测试验证 fallback 数据流本身,显式受控放行。
+        allow_cross_era_backfill=True,
     )
 
     assert result["status"] == "completed"
@@ -876,10 +972,14 @@ def test_choice_stock_materialize_falls_back_to_tushare_when_choice_csd_is_denie
         catalog_path=str(catalog_path),
         client=PermissionDeniedCsdChoiceStockClient(),
         tushare_client=tushare_client,
+        # OHLCV 走 Tushare fallback 而 as_of 落在 choice_native 代际区,代际守卫默认拒绝;
+        # 此测试验证 fallback 数据流本身,显式受控放行。
+        allow_cross_era_backfill=True,
     )
 
     assert result["status"] == "completed"
     assert str(result["vendor_version"]).startswith("vv_choice_tushare_stock_20260428_")
+    assert str(result["daily_vendor_version"]).startswith("vv_choice_tushare_stock_20260428_")
     assert [name for name, _ in tushare_client.calls] == [
         "trade_cal",
         "daily",
@@ -926,6 +1026,101 @@ def test_choice_stock_materialize_falls_back_to_tushare_when_choice_csd_is_denie
     assert coverage.full_coverage is True
 
 
+def test_choice_stock_materialize_falls_back_to_tushare_when_choice_universe_is_expired(tmp_path: Path) -> None:
+    catalog_path = tmp_path / "choice_stock_catalog.json"
+    duckdb_path = tmp_path / "moss.duckdb"
+    _write_confirmed_catalog(catalog_path)
+    tushare_client = FakeTushareStockClient()
+
+    result = materialize_choice_stock_inputs(
+        as_of_date="2026-04-28",
+        duckdb_path=str(duckdb_path),
+        catalog_path=str(catalog_path),
+        client=ExpiredChoiceStockClient(),
+        tushare_client=tushare_client,
+        # OHLCV 走 Tushare fallback 而 as_of 落在 choice_native 代际区,代际守卫默认拒绝;
+        # 此测试验证 fallback 数据流本身,显式受控放行。
+        allow_cross_era_backfill=True,
+    )
+
+    assert result["status"] == "completed"
+    assert result["stock_code_count"] == 2
+    assert str(result["vendor_version"]).startswith("vv_choice_tushare_stock_20260428_")
+    assert [name for name, _ in tushare_client.calls] == [
+        "stock_basic",
+        "trade_cal",
+        "daily",
+        "daily_basic",
+        "stk_limit",
+    ]
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        universe = conn.execute(
+            """
+            select stock_code, stock_name, field_key
+            from choice_stock_universe
+            order by stock_code
+            """
+        ).fetchall()
+        sectors = conn.execute(
+            """
+            select stock_code, sw2021, sw2021code, field_key
+            from choice_stock_sector_membership
+            order by stock_code
+            """
+        ).fetchall()
+        limits = conn.execute(
+            """
+            select stock_code, issurgedlimit, isdeclinelimit, hlimitedays, llimitedays
+            from choice_stock_limit_quality
+            order by stock_code
+            """
+        ).fetchall()
+        audit_rows = conn.execute(
+            """
+            select input_family, field_key, call, status, row_count, error_msg
+            from choice_stock_request_audit
+            order by input_family, field_key
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert universe == [
+        ("000001.SZ", "PAB", "a_share_universe_sector_001004"),
+        ("600000.SH", "SPDB", "a_share_universe_sector_001004"),
+    ]
+    tushare_bank_code = f"tushare:{hashlib.sha1('Bank'.encode('utf-8')).hexdigest()[:10]}"
+    assert sectors == [
+        ("000001.SZ", "Bank", tushare_bank_code, "sw2021_industry_membership"),
+        ("600000.SH", "Bank", tushare_bank_code, "sw2021_industry_membership"),
+    ]
+    assert limits == [
+        ("000001.SZ", "0", "0", 0, 0),
+        ("600000.SH", "0", "0", 0, 0),
+    ]
+    assert {
+        (row[0], row[1], row[2], row[3], row[4])
+        for row in audit_rows
+        if row[3] == "completed_tushare_fallback"
+    } == {
+        ("stock_universe", "a_share_universe_sector_001004", "tushare", "completed_tushare_fallback", 2),
+        ("sector_membership", "sw2021_industry_membership", "tushare", "completed_tushare_fallback", 2),
+        ("sector_strength", "daily_return_turnover_amplitude", "csd", "completed_tushare_fallback", 2),
+        ("stock_ohlcv", "daily_ohlcv_amount", "csd", "completed_tushare_fallback", 2),
+        ("stock_status", "daily_trade_status", "csd", "completed_tushare_fallback", 2),
+        ("limit_up_quality", "daily_limit_flags", "csd", "completed_tushare_fallback", 2),
+        ("limit_up_quality", "point_in_time_limit_streaks", "tushare", "completed_tushare_fallback", 2),
+    }
+    assert all("Choice stock unavailable; filled from Tushare stock fallback" in row[5] for row in audit_rows)
+    coverage = load_choice_stock_materialization_coverage(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-04-28",
+    )
+    assert coverage.full_coverage is True
+
+
 def test_choice_stock_tushare_fallback_loads_limit_flags_for_each_trade_date(tmp_path: Path) -> None:
     catalog_path = tmp_path / "choice_stock_catalog.json"
     duckdb_path = tmp_path / "moss.duckdb"
@@ -938,6 +1133,9 @@ def test_choice_stock_tushare_fallback_loads_limit_flags_for_each_trade_date(tmp
         catalog_path=str(catalog_path),
         client=PermissionDeniedCsdChoiceStockClient(),
         tushare_client=tushare_client,
+        # OHLCV 走 Tushare fallback 而 as_of 落在 choice_native 代际区,代际守卫默认拒绝;
+        # 此测试验证 fallback 数据流本身,显式受控放行。
+        allow_cross_era_backfill=True,
     )
 
     conn = duckdb.connect(str(duckdb_path), read_only=True)
@@ -976,6 +1174,9 @@ def test_choice_stock_tushare_fallback_retries_transient_limit_timeout(tmp_path:
         catalog_path=str(catalog_path),
         client=PermissionDeniedCsdChoiceStockClient(),
         tushare_client=tushare_client,
+        # OHLCV 走 Tushare fallback 而 as_of 落在 choice_native 代际区,代际守卫默认拒绝;
+        # 此测试验证 fallback 数据流本身,显式受控放行。
+        allow_cross_era_backfill=True,
     )
 
     limit_call_dates = [kwargs["trade_date"] for name, kwargs in tushare_client.calls if name == "stk_limit"]
@@ -995,6 +1196,9 @@ def test_choice_stock_factor_snapshot_materializes_into_stock_database(tmp_path:
         catalog_path=str(catalog_path),
         client=stock_client,
         tushare_client=tushare_client,
+        # OHLCV 走 Tushare fallback 而 as_of 落在 choice_native 代际区,代际守卫默认拒绝;
+        # 此测试验证 fallback 数据流本身,显式受控放行。
+        allow_cross_era_backfill=True,
     )
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -1088,6 +1292,9 @@ def test_choice_stock_factor_snapshot_keeps_rows_when_dividend_yield_missing(tmp
         catalog_path=str(catalog_path),
         client=PermissionDeniedCsdChoiceStockClient(),
         tushare_client=tushare_client,
+        # OHLCV 走 Tushare fallback 而 as_of 落在 choice_native 代际区,代际守卫默认拒绝;
+        # 此测试验证 fallback 数据流本身,显式受控放行。
+        allow_cross_era_backfill=True,
     )
 
     result = materialize_choice_stock_factor_snapshot(
@@ -1136,6 +1343,233 @@ class CssFinancialPatchClient:
         )
 
 
+class FullMarketCssFinancialClient:
+    def __init__(self, *, bulk_error: bool = False) -> None:
+        self.bulk_error = bulk_error
+        self.css_calls: list[list[str]] = []
+
+    def css(self, codes: object, indicators: object, *, options: str = "") -> object:
+        stock_codes = [code for code in str(codes).split(",") if code]
+        self.css_calls.append(stock_codes)
+        if self.bulk_error and len(stock_codes) > 280:
+            return SimpleNamespace(ErrorCode=1001, ErrorMsg="bulk request rejected")
+        return SimpleNamespace(
+            ErrorCode=0,
+            Indicators=["ROEWA", "GPMARGIN"],
+            Data={stock_code: [16.0, 44.5] for stock_code in stock_codes},
+        )
+
+
+class PartialBulkCssFinancialClient:
+    def __init__(self) -> None:
+        self.css_calls: list[list[str]] = []
+
+    def css(self, codes: object, indicators: object, *, options: str = "") -> object:
+        stock_codes = [code for code in str(codes).split(",") if code]
+        self.css_calls.append(stock_codes)
+        if len(self.css_calls) == 1:
+            partial_codes = stock_codes[:-1] + ["999999.SZ"]
+            data = {stock_code: [16.0, 44.5] for stock_code in partial_codes}
+        else:
+            data = {stock_code: [None, None] for stock_code in stock_codes}
+        return SimpleNamespace(
+            ErrorCode=0,
+            Indicators=["ROEWA", "GPMARGIN"],
+            Data=data,
+        )
+
+
+class MalformedBulkCssFinancialClient:
+    class MalformedResult:
+        ErrorCode = 0
+
+        @property
+        def Data(self) -> object:
+            raise ValueError("malformed Choice payload")
+
+    def __init__(self) -> None:
+        self.css_calls: list[list[str]] = []
+
+    def css(self, codes: object, indicators: object, *, options: str = "") -> object:
+        stock_codes = [code for code in str(codes).split(",") if code]
+        self.css_calls.append(stock_codes)
+        if len(self.css_calls) == 1:
+            return self.MalformedResult()
+        return SimpleNamespace(
+            ErrorCode=0,
+            Indicators=["ROEWA", "GPMARGIN"],
+            Data={stock_code: [16.0, 44.5] for stock_code in stock_codes},
+        )
+
+
+class SparseBulkCssFinancialClient:
+    def __init__(
+        self,
+        *,
+        bulk_values_by_code: dict[str, list[object]],
+        chunk_values_by_code: dict[str, list[object]] | None = None,
+    ) -> None:
+        self.bulk_values_by_code = bulk_values_by_code
+        self.chunk_values_by_code = chunk_values_by_code or bulk_values_by_code
+        self.css_calls: list[list[str]] = []
+
+    def css(self, codes: object, indicators: object, *, options: str = "") -> object:
+        stock_codes = [code for code in str(codes).split(",") if code]
+        self.css_calls.append(stock_codes)
+        values_by_code = self.bulk_values_by_code if len(self.css_calls) == 1 else self.chunk_values_by_code
+        return SimpleNamespace(
+            ErrorCode=0,
+            Indicators=["ROEWA", "GPMARGIN"],
+            Data={stock_code: values_by_code.get(stock_code, [None, None]) for stock_code in stock_codes},
+        )
+
+
+def test_choice_css_financial_factors_uses_one_full_market_request() -> None:
+    stock_codes = [f"{index:06d}.SZ" for index in range(281)]
+    client = FullMarketCssFinancialClient()
+
+    result = choice_stock_materialize_module._load_choice_css_financial_factors(
+        client,
+        "2026-07-22",
+        stock_codes,
+    )
+
+    assert len(client.css_calls) == 1
+    assert client.css_calls[0] == stock_codes
+    assert len(result) == len(stock_codes)
+
+
+def test_choice_css_financial_factors_falls_back_to_chunks_when_bulk_is_rejected() -> None:
+    stock_codes = [f"{index:06d}.SZ" for index in range(281)]
+    client = FullMarketCssFinancialClient(bulk_error=True)
+
+    result = choice_stock_materialize_module._load_choice_css_financial_factors(
+        client,
+        "2026-07-22",
+        stock_codes,
+    )
+
+    assert [len(codes) for codes in client.css_calls] == [281, 280, 1]
+    assert len(result) == len(stock_codes)
+
+
+def test_choice_css_financial_factors_keeps_valid_bulk_values_when_only_missing_codes_need_chunk_fallback() -> None:
+    stock_codes = [f"{index:06d}.SZ" for index in range(281)]
+    client = PartialBulkCssFinancialClient()
+
+    result = choice_stock_materialize_module._load_choice_css_financial_factors(
+        client,
+        "2026-07-22",
+        stock_codes,
+    )
+
+    missing_code = stock_codes[-1]
+    assert [len(codes) for codes in client.css_calls] == [281, 1]
+    assert missing_code not in result
+    assert len(result) == len(stock_codes) - 1
+
+
+def test_choice_css_financial_factors_falls_back_to_chunks_when_bulk_payload_is_malformed() -> None:
+    stock_codes = [f"{index:06d}.SZ" for index in range(281)]
+    client = MalformedBulkCssFinancialClient()
+
+    result = choice_stock_materialize_module._load_choice_css_financial_factors(
+        client,
+        "2026-07-22",
+        stock_codes,
+    )
+
+    assert [len(codes) for codes in client.css_calls] == [281, 280, 1]
+    assert len(result) == len(stock_codes)
+
+
+def test_choice_css_financial_factors_falls_back_for_codes_with_only_blank_bulk_cells() -> None:
+    stock_codes = [f"{index:06d}.SZ" for index in range(281)]
+    blank_code = stock_codes[-1]
+    client = SparseBulkCssFinancialClient(
+        bulk_values_by_code={
+            stock_code: ([None, None] if stock_code == blank_code else [16.0, 44.5]) for stock_code in stock_codes
+        },
+        chunk_values_by_code={blank_code: [18.0, 45.5]},
+    )
+
+    result = choice_stock_materialize_module._load_choice_css_financial_factors(
+        client,
+        "2026-07-22",
+        stock_codes,
+    )
+
+    assert [len(codes) for codes in client.css_calls] == [281, 1]
+    assert result[blank_code]["roe"] == pytest.approx(0.18)
+    assert result[blank_code]["gross_margin"] == pytest.approx(0.455)
+
+
+def test_choice_css_financial_factors_skip_chunk_fallback_when_bulk_satisfies_required_field_contract() -> None:
+    stock_codes = ["000001.SZ", "000002.SZ"]
+    client = SparseBulkCssFinancialClient(
+        bulk_values_by_code={
+            "000001.SZ": [16.0, None],
+            "000002.SZ": [None, 44.5],
+        }
+    )
+
+    result = choice_stock_materialize_module._load_choice_css_financial_factors(
+        client,
+        "2026-07-22",
+        stock_codes,
+        required_fields_by_code={
+            "000001.SZ": {"roe"},
+            "000002.SZ": {"gross_margin"},
+        },
+    )
+
+    assert client.css_calls == [stock_codes]
+    assert result == {
+        "000001.SZ": {"roe": pytest.approx(0.16)},
+        "000002.SZ": {"gross_margin": pytest.approx(0.445)},
+    }
+
+
+def test_choice_css_financial_factors_merge_chunk_values_into_partial_bulk_rows() -> None:
+    stock_codes = ["000001.SZ"]
+    client = SparseBulkCssFinancialClient(
+        bulk_values_by_code={"000001.SZ": [16.0, None]},
+        chunk_values_by_code={"000001.SZ": [None, 44.5]},
+    )
+
+    result = choice_stock_materialize_module._load_choice_css_financial_factors(
+        client,
+        "2026-07-22",
+        stock_codes,
+    )
+
+    assert client.css_calls == [stock_codes, stock_codes]
+    assert result == {
+        "000001.SZ": {
+            "roe": pytest.approx(0.16),
+            "gross_margin": pytest.approx(0.445),
+        }
+    }
+
+
+def test_choice_css_financial_factors_fail_closed_when_bulk_and_chunk_leave_required_fields_blank() -> None:
+    stock_codes = ["000001.SZ"]
+    client = SparseBulkCssFinancialClient(
+        bulk_values_by_code={"000001.SZ": [16.0, None]},
+        chunk_values_by_code={"000001.SZ": [None, None]},
+    )
+
+    result = choice_stock_materialize_module._load_choice_css_financial_factors(
+        client,
+        "2026-07-22",
+        stock_codes,
+        required_fields_by_code={"000001.SZ": {"gross_margin"}},
+    )
+
+    assert client.css_calls == [stock_codes, stock_codes]
+    assert result == {"000001.SZ": {"roe": pytest.approx(0.16)}}
+
+
 def test_choice_stock_factor_snapshot_merges_choice_css_financials(tmp_path: Path) -> None:
     catalog_path = tmp_path / "choice_stock_catalog.json"
     duckdb_path = tmp_path / "moss_css_fin.duckdb"
@@ -1148,6 +1582,9 @@ def test_choice_stock_factor_snapshot_merges_choice_css_financials(tmp_path: Pat
         catalog_path=str(catalog_path),
         client=PermissionDeniedCsdChoiceStockClient(),
         tushare_client=sparse_tushare,
+        # OHLCV 走 Tushare fallback 而 as_of 落在 choice_native 代际区,代际守卫默认拒绝;
+        # 此测试验证 fallback 数据流本身,显式受控放行。
+        allow_cross_era_backfill=True,
     )
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:

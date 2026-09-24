@@ -76,7 +76,7 @@ def test_stock_analysis_governance_record_dry_run_preflights_without_writing(
     preflight = payload["preflight"]
     assert preflight["page_id"] == "GAP-STOCK-ANALYSIS-PAGE"
     assert preflight["frontend_route"] == "/stock-analysis"
-    assert preflight["primary_api"] == "/ui/market-data/livermore"
+    assert preflight["primary_api"] == "/ui/market-data/stock-analysis/workbench"
     assert preflight["approval_status"] == "gap_or_observational"
     assert preflight["record_formal_use_policy"] == "must_be_false_for_gap_or_observational"
     assert preflight["validation"]["validation_status"] == "ready_for_audit_review"

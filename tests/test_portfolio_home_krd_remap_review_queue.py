@@ -8,7 +8,9 @@ import sys
 from pathlib import Path
 
 import duckdb
+import pytest
 
+import scripts.portfolio_home_krd_contract_decision_export as krd_export
 from scripts.portfolio_home_krd_contract_decision_export import build_export_packet
 from scripts.portfolio_home_krd_remap_review_queue import build_queue
 
@@ -455,6 +457,32 @@ def test_portfolio_home_krd_contract_decision_export_writes_risk_owner_package(
     assert "- `python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready`" in owner_summary
     assert "- `python scripts/portfolio_home_closure_scorecard.py --limit 3 --require-full-score`" in owner_summary
     assert "A filled CSV is still not approval until the business-owner approval template is completed and the strict scorecard gate passes." in owner_summary
+
+
+def test_portfolio_home_krd_contract_decision_export_labels_repo_relative_duckdb_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_root = tmp_path / "worktree"
+    fake_root.mkdir()
+    monkeypatch.setattr(krd_export, "ROOT", fake_root)
+    monkeypatch.chdir(fake_root)
+
+    assert krd_export._duckdb_path_label(fake_root / "data" / "moss.duckdb") == "data/moss.duckdb"
+    external_duckdb = tmp_path / "external" / "moss.duckdb"
+    external_duckdb.parent.mkdir(parents=True, exist_ok=True)
+    external_duckdb.touch()
+    escape_path = fake_root / ".." / "external" / "moss.duckdb"
+    sibling_spelling = external_duckdb.parent / "." / "moss.duckdb"
+    other_external_duckdb = tmp_path / "other" / "moss.duckdb"
+    other_external_duckdb.parent.mkdir(parents=True, exist_ok=True)
+    other_external_duckdb.touch()
+    expected_external_label = str(external_duckdb.resolve())
+
+    assert krd_export._duckdb_path_label(escape_path) == expected_external_label
+    assert krd_export._duckdb_path_label(sibling_spelling) == expected_external_label
+    assert krd_export._duckdb_path_label(external_duckdb) == expected_external_label
+    assert krd_export._duckdb_path_label(other_external_duckdb) != expected_external_label
 
 
 def test_portfolio_home_krd_contract_decision_export_check_current_allows_owner_input_without_rewrite(

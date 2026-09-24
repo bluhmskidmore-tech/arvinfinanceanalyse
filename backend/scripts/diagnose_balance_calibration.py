@@ -19,6 +19,12 @@ from pathlib import Path
 
 import duckdb
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from backend.app.repositories.duckdb_repo import read_only_connection  # noqa: E402
+
 ZQTZ_FACT = "fact_formal_zqtz_balance_daily"
 BOND_FACT = "fact_formal_bond_analytics_daily"
 
@@ -103,8 +109,7 @@ def main(argv: list[str]) -> int:
         print(f"ERROR: DuckDB file not found: {path}")
         return 2
 
-    conn = duckdb.connect(str(path), read_only=True)
-    try:
+    with read_only_connection(str(path)) as conn:
         if not _table_exists(conn, ZQTZ_FACT):
             print(f"ERROR: table missing: {ZQTZ_FACT}")
             return 3
@@ -138,8 +143,6 @@ def main(argv: list[str]) -> int:
             return 1
         print("\nOK: |difference| <= 0.01 for this slice.")
         return 0
-    finally:
-        conn.close()
 
 
 if __name__ == "__main__":

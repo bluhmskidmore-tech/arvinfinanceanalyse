@@ -1,0 +1,198 @@
+/* 首屏右栏决策侧栏：平卡（无 antd Card 描边覆写），随 heroAside 拉伸补齐左栏高度（§5）。 */
+.railCard {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  flex-direction: column;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  box-sizing: border-box;
+}
+
+/* 观察项行吃掉余量，动作按钮沉底：卡片背景补齐而非留裸空白断层。 */
+.railBody {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 10px 12px;
+  gap: 8px;
+  grid-template-rows: auto auto 1fr auto;
+}
+
+.railHeader {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.railTitleBlock {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.railEyebrow {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.railModuleTitle {
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+/* 常态零徽标：就绪/中性状态只留暗色圆点 + muted 文字，缺口/异常才亮起来。 */
+.railStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.railStatus > i {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.55;
+}
+
+.railStatus[data-tone="positive"] > i {
+  background: var(--dh-api-green);
+}
+
+.railStatus[data-tone="warning"] {
+  color: var(--dh-api-amber);
+}
+
+.railStatus[data-tone="negative"] {
+  color: var(--dh-api-red);
+}
+
+.railStatus[data-tone="warning"] > i,
+.railStatus[data-tone="negative"] > i {
+  opacity: 1;
+}
+
+/* 语义走左沿 2px 色条，面本身是 panel-2 平底（§5 色块减负）。 */
+.trustPanel {
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--dh-api-line);
+  border-radius: 0 var(--dh-api-radius) var(--dh-api-radius) 0;
+  background: var(--dh-api-panel-2);
+}
+
+.trustPanel[data-tone="positive"] {
+  border-left-color: var(--dh-api-green);
+}
+
+.trustPanel[data-tone="warning"] {
+  border-left-color: var(--dh-api-amber);
+}
+
+.trustPanel[data-tone="negative"] {
+  border-left-color: var(--dh-api-red);
+}
+
+.trustKicker {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.trustDescription {
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.trustReason {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.trustPanel[data-tone="warning"] .trustReason {
+  color: var(--dh-api-amber);
+}
+
+.trustPanel[data-tone="negative"] .trustReason {
+  color: var(--dh-api-red);
+}
+
+.watchlist {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  min-height: 0;
+}
+
+.watchlistKicker {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.watchlistItem {
+  display: grid;
+  gap: 1px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.watchlistItem:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.watchlistLabel {
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.watchlistReason {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+/* 与页面工具条同一控件高度阶（28px）与圆角制度；`!important` 对齐本页
+   `.toolbarDateSelect` 既有 antd 覆写方式（页根 `.ant-btn` 规则同权）。 */
+.railAction {
+  height: 28px !important;
+  padding: 0 12px !important;
+  justify-self: start;
+  border-color: var(--dh-api-line) !important;
+  border-radius: var(--dh-api-radius) !important;
+  background: transparent !important;
+  color: var(--dh-api-blue) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  box-shadow: none !important;
+}
+
+.railAction:hover {
+  border-color: var(--dh-api-blue) !important;
+  background: var(--dh-api-blue-soft) !important;
+}

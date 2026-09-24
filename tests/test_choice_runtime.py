@@ -385,3 +385,45 @@ def test_init_runtime_loads_settings_and_configures_emquant_parent(tmp_path, mon
     assert settings.choice_start_options == "UserName=demo,PassWord=demo,ForceLogin=1"
     assert called["emquant_parent"] == settings.choice_emquant_parent
     assert called["logging"] == ("DEBUG", "logs/runtime.log")
+
+
+def test_load_settings_reads_explicit_choice_socks5_proxy_environment(monkeypatch):
+    runtime_module = load_module(
+        "backend.app.config.choice_runtime_proxy",
+        "backend/app/config/choice_runtime.py",
+    )
+    monkeypatch.setattr(runtime_module, "_load_governance_settings", lambda: None)
+    monkeypatch.setenv("CHOICE_MACRO_SOCKS5_PROXY_HOST", "127.0.0.1")
+    monkeypatch.setenv("CHOICE_MACRO_SOCKS5_PROXY_PORT", "18081")
+
+    settings = runtime_module.load_settings()
+
+    assert settings.choice_socks5_proxy_host == "127.0.0.1"
+    assert settings.choice_socks5_proxy_port == 18081
+
+
+@pytest.mark.parametrize(
+    ("host", "port", "message"),
+    [
+        ("127.0.0.1", "", "host and port must be set together"),
+        ("", "18081", "host and port must be set together"),
+        ("127.0.0.1", "not-a-port", "must be an integer"),
+        ("127.0.0.1", "70000", "between 1 and 65535"),
+    ],
+)
+def test_load_settings_rejects_invalid_choice_socks5_proxy_environment(
+    monkeypatch,
+    host,
+    port,
+    message,
+):
+    runtime_module = load_module(
+        f"backend.app.config.choice_runtime_proxy_invalid_{host}_{port}",
+        "backend/app/config/choice_runtime.py",
+    )
+    monkeypatch.setattr(runtime_module, "_load_governance_settings", lambda: None)
+    monkeypatch.setenv("CHOICE_MACRO_SOCKS5_PROXY_HOST", host)
+    monkeypatch.setenv("CHOICE_MACRO_SOCKS5_PROXY_PORT", port)
+
+    with pytest.raises(ValueError, match=message):
+        runtime_module.load_settings()

@@ -1,12 +1,16 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card, Spin } from "antd";
+import { Card } from "antd";
 
 import { useApiClient } from "../../../api/client";
-import ReactECharts from "../../../lib/echarts";
+import { BaseChart } from "../../../components/charts/BaseChart";
 import { designTokens } from "../../../theme/designSystem";
 import { buildBondAnalyticsOverviewRateChartOption } from "../lib/bondAnalyticsRateChartOption";
 import { bondAnalyticsQueryKeyRoot } from "../lib/bondAnalyticsQueryKeys";
+import {
+  DetailChartSkeleton,
+  DetailEmptyNote,
+} from "./BondAnalyticsDetailPrimitives";
 
 const dt = designTokens;
 
@@ -42,24 +46,16 @@ export function BondAnalyticsOverviewRateChart() {
         横轴为交易日，纵轴为各期限/品种收益率读数；非完整 1Y–30Y 即期曲线截面。
       </div>
       {q.isPending ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: dt.space[6] }}>
-          <Spin />
-        </div>
+        <DetailChartSkeleton
+          height={280}
+          testId="bond-analytics-overview-rate-chart-loading"
+        />
       ) : option ? (
-        <ReactECharts option={option} style={{ height: 280, width: "100%" }} opts={{ renderer: "canvas" }} />
+        <BaseChart option={option} height={280} />
       ) : (
-        <div
-          style={{
-            border: `1px dashed ${dt.color.primary[200]}`,
-            borderRadius: dt.radius.md,
-            padding: dt.space[5],
-            textAlign: "center",
-            color: dt.color.neutral[500],
-            fontSize: dt.fontSize[13],
-          }}
-        >
+        <DetailEmptyNote testId="bond-analytics-overview-rate-chart-empty">
           暂无可用的利率时间序列
-        </div>
+        </DetailEmptyNote>
       )}
     </Card>
   );

@@ -6,10 +6,13 @@ from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import PlainTextResponse
+from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
+from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 
 
@@ -434,6 +437,35 @@ def test_kpi_read_routes_require_explicit_read_scope(monkeypatch):
         with pytest.raises(HTTPException) as denied:
             call()
         assert denied.value.status_code == 403
+
+
+def test_kpi_owners_allows_development_fallback_and_disclosed_empty_state(tmp_path, monkeypatch):
+    """development 环境 + 匿名 viewer 回退身份可读（与 positions/team_performance 读路由对齐）。
+
+    显式身份缺 scope 时仍 403，由 test_kpi_read_routes_require_explicit_read_scope 锁定。
+    KPI 数据未物化（kpi_owner 空表）时不得报 403/5xx，而是返回结构化空态 + 权威门披露。
+    """
+    module = _load_kpi_route_module()
+    sqlite_path = tmp_path / "kpi-dev-fallback.db"
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "development")
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", "")
+    monkeypatch.delenv("MOSS_USER_ID", raising=False)
+    monkeypatch.delenv("MOSS_USER_ROLE", raising=False)
+    monkeypatch.delenv(ROLE_HEADER_TRUST_ENV, raising=False)
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(module.router)
+    client = TestClient(app)
+
+    response = client.get("/api/kpi/owners")
+
+    assert response.status_code == 200, f"{response.status_code} {response.text}"
+    payload = response.json()
+    assert payload["owners"] == []
+    assert payload["total"] == 0
+    assert payload["meta"]["authority_status"] == "blocked"
+    assert payload["meta"]["reason"] == "no-active-owners"
 
 
 def test_kpi_auth_rejects_before_service_call(monkeypatch):

@@ -1,25 +1,26 @@
 from __future__ import annotations
 
+import csv
 import hashlib
 from pathlib import Path
 
 import xlrd
-from backend.app.schemas.source_preview import (
-    NonstdPnlPreviewRow,
-    PnlPreviewRow,
-    TywPreviewRow,
-    ZqtzPreviewRow,
-)
-from backend.app.services.source_rules import (
+from backend.app.core_finance.source_rules import (
     classify_nonstd_pnl_preview,
     classify_pnl_preview,
     classify_tyw_preview,
     classify_zqtz_preview,
     describe_source_file,
 )
-from openpyxl import load_workbook
+from backend.app.schemas.source_preview import (
+    NonstdPnlPreviewRow,
+    PnlPreviewRow,
+    TywPreviewRow,
+    ZqtzPreviewRow,
+)
 
 RULE_VERSION = "rv_phase1_source_preview_v1"
+_SOURCE_HASH_CHUNK_SIZE = 1024 * 1024
 
 ZQTZ_BOND_CODE = "\u503a\u5238\u4ee3\u53f7"
 ZQTZ_BOND_NAME = "\u503a\u5238\u540d\u79f0"
@@ -50,8 +51,17 @@ TYW_TRACE_FIELDS = {
 
 def build_source_version(path: Path) -> str:
     stat = path.stat()
-    seed = f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}"
+    content_sha256 = _sha256_file(path)
+    seed = f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}:{content_sha256}"
     return f"sv_{hashlib.sha256(seed.encode('utf-8')).hexdigest()[:12]}"
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source_file:
+        while chunk := source_file.read(_SOURCE_HASH_CHUNK_SIZE):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def parse_source_file(
@@ -139,18 +149,34 @@ def _parse_pnl_source_file(
     source_version: str,
     metadata,
 ) -> tuple[str, str | None, list[dict[str, object]], list[dict[str, object]]]:
-    sheet = xlrd.open_workbook(str(path)).sheet_by_index(0)
-    headers = [str(sheet.cell_value(0, column)).strip() for column in range(sheet.ncols)]
+    raw_rows: list[dict[str, object]] = []
+    if path.suffix.lower() == ".csv":
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
+            for record in csv.DictReader(handle):
+                raw_rows.append(
+                    {
+                        str(header).strip(): value
+                        for header, value in record.items()
+                        if header is not None and str(header).strip()
+                    }
+                )
+    else:
+        sheet = xlrd.open_workbook(str(path)).sheet_by_index(0)
+        headers = [str(sheet.cell_value(0, column)).strip() for column in range(sheet.ncols)]
+        for row_index in range(1, sheet.nrows):
+            raw_rows.append(
+                {
+                    headers[column]: sheet.cell_value(row_index, column)
+                    for column in range(sheet.ncols)
+                    if headers[column]
+                }
+            )
+
     rows: list[dict[str, object]] = []
     traces: list[dict[str, object]] = []
     row_locator = 0
 
-    for row_index in range(1, sheet.nrows):
-        raw_row = {
-            headers[column]: sheet.cell_value(row_index, column)
-            for column in range(sheet.ncols)
-            if headers[column]
-        }
+    for raw_row in raw_rows:
         if not _text(raw_row, "\u503a\u5238\u4ee3\u7801"):
             continue
 
@@ -182,47 +208,52 @@ def _parse_nonstd_pnl_source_file(
     source_version: str,
     metadata,
 ) -> tuple[str, str | None, list[dict[str, object]], list[dict[str, object]]]:
+    from openpyxl import load_workbook
+
     workbook = load_workbook(path, read_only=True, data_only=True)
-    worksheet = workbook.worksheets[0]
-    headers = [
-        "" if value is None else str(value).strip()
-        for value in next(worksheet.iter_rows(min_row=2, max_row=2, values_only=True))
-    ]
-    rows: list[dict[str, object]] = []
-    traces: list[dict[str, object]] = []
-    row_locator = 0
-    bucket = metadata.source_family.removeprefix("pnl_")
+    try:
+        worksheet = workbook.worksheets[0]
+        headers = [
+            "" if value is None else str(value).strip()
+            for value in next(worksheet.iter_rows(min_row=2, max_row=2, values_only=True))
+        ]
+        rows: list[dict[str, object]] = []
+        traces: list[dict[str, object]] = []
+        row_locator = 0
+        bucket = metadata.source_family.removeprefix("pnl_")
 
-    for values in worksheet.iter_rows(min_row=3, values_only=True):
-        raw_row = {
-            headers[index]: values[index]
-            for index in range(min(len(headers), len(values)))
-            if headers[index]
-        }
-        if not _text(raw_row, "\u8d44\u4ea7\u4ee3\u7801"):
-            continue
+        for values in worksheet.iter_rows(min_row=3, values_only=True):
+            raw_row = {
+                headers[index]: values[index]
+                for index in range(min(len(headers), len(values)))
+                if headers[index]
+            }
+            if not _text(raw_row, "\u8d44\u4ea7\u4ee3\u7801"):
+                continue
 
-        row_locator += 1
-        preview = classify_nonstd_pnl_preview(raw_row, bucket=bucket)
-        row_record = NonstdPnlPreviewRow(
-            ingest_batch_id=ingest_batch_id,
-            row_locator=row_locator,
-            report_date=metadata.report_date,
-            journal_type=str(preview["journal_type"]),
-            product_type=str(preview["product_type"]),
-            asset_code=str(preview["asset_code"]),
-            account_code=str(preview["account_code"]),
-            dc_flag_raw=str(preview["dc_flag_raw"]),
-            raw_amount=str(preview["raw_amount"]),
-            manual_review_needed=bool(preview["manual_review_needed"]),
-        ).model_dump(mode="json")
-        row_record["source_family"] = metadata.source_family
-        row_record["source_version"] = source_version
-        row_record["rule_version"] = RULE_VERSION
-        rows.append(row_record)
-        traces.extend(_nonstd_pnl_trace_rows(raw_row, row_record))
+            row_locator += 1
+            preview = classify_nonstd_pnl_preview(raw_row, bucket=bucket)
+            row_record = NonstdPnlPreviewRow(
+                ingest_batch_id=ingest_batch_id,
+                row_locator=row_locator,
+                report_date=metadata.report_date,
+                journal_type=str(preview["journal_type"]),
+                product_type=str(preview["product_type"]),
+                asset_code=str(preview["asset_code"]),
+                account_code=str(preview["account_code"]),
+                dc_flag_raw=str(preview["dc_flag_raw"]),
+                raw_amount=str(preview["raw_amount"]),
+                manual_review_needed=bool(preview["manual_review_needed"]),
+            ).model_dump(mode="json")
+            row_record["source_family"] = metadata.source_family
+            row_record["source_version"] = source_version
+            row_record["rule_version"] = RULE_VERSION
+            rows.append(row_record)
+            traces.extend(_nonstd_pnl_trace_rows(raw_row, row_record))
 
-    return metadata.source_family, metadata.report_date, rows, traces
+        return metadata.source_family, metadata.report_date, rows, traces
+    finally:
+        workbook.close()
 
 
 def _zqtz_trace_rows(raw_row: dict[str, object], row_record: dict[str, object]) -> list[dict[str, object]]:

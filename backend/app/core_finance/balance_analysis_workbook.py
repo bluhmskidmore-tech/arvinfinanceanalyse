@@ -1,23 +1,25 @@
-"""Balance analysis workbook builder - monolithic implementation.
+"""Balance analysis workbook builder - production authoritative implementation.
 
-REFACTORING NOTE (2026-04-17):
-This 1576-line file contains 29 _build_* table functions with no clear separation.
-Planned refactoring: split into modular structure under balance_workbook/ package:
-  - _utils.py: shared utilities (group_rows, weighted_average, etc.) [DONE]
-  - _cards.py: _build_cards
-  - _bond_tables.py: bond_business_type, maturity_gap, issuer_concentration, etc.
-  - _ifrs9_tables.py: ifrs9_classification, ifrs9_position_scope, ifrs9_source_family
-  - _risk_tables.py: regulatory_limits, overdue_credit_quality, risk_alerts
-  - _analysis_tables.py: campisi, cross_analysis, decision_items, event_calendar
-  - builder.py: main entry point [DONE]
-
-For now, this file remains intact to avoid breaking existing imports.
-New code should import from balance_workbook package instead.
+CANONICAL STATUS (2026-08-12，取代 2026-04-17 的迁移注释；canonical 反转已于
+2026-07-20 修复，见 f9697fe4b):
+- 本模块是 balance workbook 的生产权威编排入口。
+  `build_balance_analysis_workbook_payload` 的正式实现在此维护，
+  `backend/app/core_finance/__init__.py` 的公开导出也委托到这里。
+- `balance_workbook/` 包不再是迁移目标，其角色是：
+  - `builder.py`: 纯委托壳（compatibility shell），公开入口直接委托回本模块，
+    防止包路径与生产实现漂移；
+  - `_utils.py` / `_bond_tables.py` / `_ifrs9_tables.py` / `_risk_tables.py` /
+    `_analysis_tables.py`: 拆分出的子模块副本，不在生产调用路径上，由等价性
+    测试钉住与本模块输出一致（tests/test_balance_workbook_cross_scope.py、
+    tests/test_balance_workbook_campisi_rate.py 等）。
+- 修改 workbook 逻辑时改本模块；若涉及包内副本覆盖的逻辑，需同步维护副本
+  以保持等价性测试通过。新代码 import 本模块或 core_finance 包根即可，
+  不要再把 `balance_workbook/` 包当作"新实现"入口。
 """
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 from backend.app.core_finance.balance_analysis import (
@@ -41,6 +43,11 @@ _MATURITY_BUCKETS = (
     ("5-10年", Decimal("5"), Decimal("10")),
     ("10年以上", Decimal("10"), None),
 )
+# 缺失 maturity_date 的行（典型为活期类同业）不落"已到期/逾期"：与负债分析
+# 兼容链（liability_analytics_compat.maturity_bucket → "3个月以内"、
+# monthly_v1_bucket_name → "0-3M"）的缺失兜底口径统一，归入最短真实期限桶；
+# 条数由 bal_wb_risk_maturity_missing_001 风险预警显式披露。
+_MISSING_MATURITY_FALLBACK_BUCKET = "3个月以内"
 _RATE_BUCKETS = (
     ("零息/无息", None, Decimal("0")),
     ("1.5%以下", Decimal("0"), Decimal("1.5")),
@@ -88,16 +95,24 @@ def build_balance_analysis_workbook_payload(
     zqtz_rows: list[FormalZqtzBalanceFactRow],
     tyw_rows: list[FormalTywBalanceFactRow],
     zqtz_currency_rows: list[FormalZqtzBalanceFactRow] | None = None,
+    zqtz_full_rows: list[FormalZqtzBalanceFactRow] | None = None,
+    tyw_full_rows: list[FormalTywBalanceFactRow] | None = None,
 ) -> dict[str, Any]:
+    # ``zqtz_rows`` / ``tyw_rows`` honor the caller's ``position_scope`` filter and feed
+    # single-scope tables. Cross-scope tables (that mix asset & liability rows internally)
+    # must use the unfiltered ``*_full_rows`` so a scope filter cannot silently degrade the
+    # liability / gap / spread columns to 0. When scope="all" the callers pass identical rows.
     zqtz_currency_rows = zqtz_currency_rows or zqtz_rows
-    cards = _build_cards(zqtz_rows, tyw_rows)
+    zqtz_full_rows = zqtz_rows if zqtz_full_rows is None else zqtz_full_rows
+    tyw_full_rows = tyw_rows if tyw_full_rows is None else tyw_full_rows
+    cards = _build_cards(zqtz_full_rows, tyw_full_rows)
     tables = [
         _build_bond_business_type_table(zqtz_rows),
-        _build_maturity_gap_table(report_date, zqtz_rows, tyw_rows),
-        _build_cashflow_calendar_table(report_date, zqtz_rows, tyw_rows),
+        _build_maturity_gap_table(report_date, zqtz_full_rows, tyw_full_rows),
+        _build_cashflow_calendar_table(report_date, zqtz_full_rows, tyw_full_rows),
         _build_issuer_concentration_table(zqtz_rows),
         _build_liquidity_layers_table(zqtz_rows),
-        _build_regulatory_limits_table(report_date, zqtz_rows, tyw_rows),
+        _build_regulatory_limits_table(report_date, zqtz_full_rows, tyw_full_rows),
         _build_overdue_credit_quality_detail_table(zqtz_rows),
         _build_overdue_credit_quality_rating_table(zqtz_rows),
         _build_vintage_analysis_table(zqtz_rows),
@@ -111,15 +126,15 @@ def build_balance_analysis_workbook_payload(
         _build_issuance_business_type_table(zqtz_rows),
         _build_currency_split_table(zqtz_currency_rows),
         _build_rating_table(zqtz_rows),
-        _build_rate_distribution_table(zqtz_rows, tyw_rows),
+        _build_rate_distribution_table(zqtz_full_rows, tyw_full_rows),
         _build_industry_table(zqtz_rows),
-        _build_counterparty_type_table(tyw_rows),
+        _build_counterparty_type_table(tyw_full_rows),
         _build_campisi_table(zqtz_rows),
         _build_cross_analysis_table(zqtz_rows),
         _build_interest_mode_table(zqtz_rows),
-        _build_decision_items_table(report_date, zqtz_rows, tyw_rows),
-        _build_event_calendar_table(report_date, zqtz_rows, tyw_rows),
-        _build_risk_alerts_table(report_date, zqtz_rows, tyw_rows),
+        _build_decision_items_table(report_date, zqtz_full_rows, tyw_full_rows),
+        _build_event_calendar_table(report_date, zqtz_full_rows, tyw_full_rows),
+        _build_risk_alerts_table(report_date, zqtz_full_rows, tyw_full_rows),
     ]
     return {
         "report_date": report_date.isoformat(),
@@ -230,10 +245,10 @@ def _build_maturity_gap_table(
     cumulative_gap = _ZERO
     rows = []
     for label, lower, upper in _MATURITY_BUCKETS:
-        bucket_bonds = [row for row in asset_bonds if _match_bucket(_remaining_years(report_date, row.maturity_date), lower, upper)]
-        bucket_issuance = [row for row in issuance_rows if _match_bucket(_remaining_years(report_date, row.maturity_date), lower, upper)]
-        bucket_assets = [row for row in asset_interbank if _match_bucket(_remaining_years(report_date, row.maturity_date), lower, upper)]
-        bucket_liabilities = [row for row in liability_interbank if _match_bucket(_remaining_years(report_date, row.maturity_date), lower, upper)]
+        bucket_bonds = [row for row in asset_bonds if _matches_maturity_bucket(report_date, row.maturity_date, label, lower, upper)]
+        bucket_issuance = [row for row in issuance_rows if _matches_maturity_bucket(report_date, row.maturity_date, label, lower, upper)]
+        bucket_assets = [row for row in asset_interbank if _matches_maturity_bucket(report_date, row.maturity_date, label, lower, upper)]
+        bucket_liabilities = [row for row in liability_interbank if _matches_maturity_bucket(report_date, row.maturity_date, label, lower, upper)]
         bond_asset_amount = _sum_decimal(bucket_bonds, lambda row: row.face_value_amount)
         issuance_amount = _sum_decimal(bucket_issuance, lambda row: row.face_value_amount)
         interbank_asset_amount = _sum_decimal(bucket_assets, lambda row: row.principal_amount)
@@ -800,6 +815,29 @@ def _build_rule_reference_table() -> dict[str, Any]:
             "source_doc": "docs/BALANCE_ANALYSIS_SPEC_FOR_CODEX.md",
             "source_section": "13 当前 governed workbook 已支持的 section keys",
         },
+        {
+            "rule_id": "bal_overdue_interest_days_placeholder",
+            "rule_name": "利息逾期天数口径限制",
+            "summary": (
+                "源数据（ZQTZ 快照 overdue_days）未拆分本金/利息逾期天数，"
+                "'overdue_credit_quality' 与 'overdue_credit_quality_ratings' 表中的"
+                "利息逾期天数列为源数据限制下的占位 0，不代表无利息逾期。"
+            ),
+            "source_doc": "docs/calc_rules.md",
+            "source_section": "14 禁止事项（不允许静默降级为 0 且不打标记）",
+        },
+        {
+            "rule_id": "bal_campisi_benchmark_missing_null",
+            "rule_name": "Campisi 基准缺失口径",
+            "summary": (
+                "Campisi 归因的利差基准为在册'政策性金融债'加权票面利率；"
+                "在册无该基准（或基准行票面利率全部缺失）时，"
+                "'campisi_breakdown' 的利差(bp)与利差收入贡献列显式输出 null，"
+                "不允许把基准静默降级为 0（利差退化为票息本身）。"
+            ),
+            "source_doc": "docs/calc_rules.md",
+            "source_section": "14 禁止事项（不允许静默降级为 0 且不打标记）",
+        },
     ]
     return _table(
         "rule_reference",
@@ -1211,28 +1249,41 @@ def _build_counterparty_type_table(tyw_rows: list[FormalTywBalanceFactRow]) -> d
 def _build_campisi_table(zqtz_rows: list[FormalZqtzBalanceFactRow]) -> dict[str, Any]:
     asset_rows = [row for row in zqtz_rows if row.position_scope == "asset"]
     benchmark_rows = [row for row in asset_rows if row.bond_type == _CAMPISI_POLICY_BOND]
-    benchmark_rate = _weighted_average(benchmark_rows, lambda row: row.face_value_amount, lambda row: row.coupon_rate) or _ZERO
-    total_income = _sum_decimal(asset_rows, lambda row: row.face_value_amount * _rate_value(row.coupon_rate))
+    # 在册无政策性金融债（或基准行票面利率全部缺失）时 benchmark_rate 为 None。
+    # 此时利差(bp)与利差收入贡献列显式输出 None，不再把基准静默降级为 0
+    # （否则 spread_bp 退化为票息×100、利差收入=全部票息收入）。语义由
+    # rule_reference 的 bal_campisi_benchmark_missing_null 行披露
+    # （docs/calc_rules.md §14：不允许静默降级为 0 且不打标记）。
+    benchmark_rate = _weighted_average(benchmark_rows, lambda row: row.face_value_amount, lambda row: row.coupon_rate)
+    # coupon_rate 落库为百分数（2.85 = 2.85%，见 docs/audits/2026-07-19-system-calculation-audit.md
+    # 取证 1），收入类金额必须显式 ÷100，与包版 balance_workbook/_analysis_tables.py 保持一致。
+    total_income = _sum_decimal(asset_rows, lambda row: row.face_value_amount * _rate_value(row.coupon_rate) / Decimal("100"))
     grouped = _group_rows(asset_rows, lambda row: row.bond_type or "未分类")
     rows = []
     for bond_type, entries in sorted(grouped.items()):
         balance_amount = _sum_decimal(entries, lambda row: row.face_value_amount)
-        coupon_income = _sum_decimal(entries, lambda row: row.face_value_amount * _rate_value(row.coupon_rate))
-        spread_bp = _weighted_average(entries, lambda row: row.face_value_amount, lambda row: row.coupon_rate)
-        spread_value = ((spread_bp or _ZERO) - benchmark_rate) * Decimal("100")
-        spread_income = _sum_decimal(
-            entries,
-            lambda row: row.face_value_amount * (_rate_value(row.coupon_rate) - benchmark_rate),
-        )
+        coupon_income = _sum_decimal(entries, lambda row: row.face_value_amount * _rate_value(row.coupon_rate) / Decimal("100"))
+        bucket_rate_pct = _weighted_average(entries, lambda row: row.face_value_amount, lambda row: row.coupon_rate)
+        if benchmark_rate is None:
+            spread_value = None
+            spread_income_amount = None
+        else:
+            spread_value = ((bucket_rate_pct or _ZERO) - benchmark_rate) * Decimal("100")
+            spread_income_amount = _to_wanyuan(
+                _sum_decimal(
+                    entries,
+                    lambda row: row.face_value_amount * ((_rate_value(row.coupon_rate) - benchmark_rate) / Decimal("100")),
+                )
+            )
         rows.append(
             {
                 "bond_type": bond_type,
                 "balance_amount": _to_wanyuan(balance_amount),
-                "weighted_rate_pct": _weighted_average(entries, lambda row: row.face_value_amount, lambda row: row.coupon_rate),
+                "weighted_rate_pct": bucket_rate_pct,
                 "coupon_income_amount": _to_wanyuan(coupon_income),
                 "duration_years": _weighted_average(entries, lambda row: row.face_value_amount, lambda row: _optional_remaining_years(row.report_date, row.maturity_date)),
                 "spread_bp": spread_value,
-                "spread_income_amount": _to_wanyuan(spread_income),
+                "spread_income_amount": spread_income_amount,
                 "share_of_income": _safe_ratio(coupon_income, total_income),
                 "price_return_amount": _to_wanyuan(_sum_decimal(entries, lambda row: row.market_value_amount - row.amortized_cost_amount)),
             }
@@ -1338,7 +1389,7 @@ def _build_decision_items_table(
                     "title": f"关注 {top_rating['rating']} 评级集中度",
                     "action_label": "复核集中度",
                     "severity": "medium" if top_share < Decimal("0.75") else "high",
-                    "reason": f"最高评级桶占比已达 {(top_share * Decimal('100')).quantize(Decimal('0.01'))}%。",
+                    "reason": f"最高评级桶占比已达 {(top_share * Decimal('100')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)}%。",
                     "source_section": "rating_analysis",
                     "rule_id": "bal_wb_decision_rating_001",
                     "rule_version": "v1",
@@ -1442,6 +1493,19 @@ def _build_risk_alerts_table(
     tyw_rows: list[FormalTywBalanceFactRow],
 ) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
+    valid_scopes = {"asset", "liability"}
+    missing_zqtz = [
+        row
+        for row in zqtz_rows
+        if row.position_scope in valid_scopes and row.maturity_date is None
+    ]
+    missing_tyw = [
+        row
+        for row in tyw_rows
+        if row.position_scope in valid_scopes and row.maturity_date is None
+    ]
+    missing_maturity_count = len(missing_zqtz) + len(missing_tyw)
+
     maturity_gap = _build_maturity_gap_table(report_date, zqtz_rows, tyw_rows)
     negative_gap_rows = [row for row in maturity_gap["rows"] if _maturity_full_scope_gap_value(row) < _ZERO]
     if negative_gap_rows:
@@ -1490,6 +1554,35 @@ def _build_risk_alerts_table(
                 }
             )
 
+    if missing_maturity_count:
+        bond_asset_count = sum(row.position_scope == "asset" for row in missing_zqtz)
+        issuance_liability_count = sum(
+            row.position_scope == "liability" for row in missing_zqtz
+        )
+        interbank_asset_count = sum(row.position_scope == "asset" for row in missing_tyw)
+        interbank_liability_count = sum(
+            row.position_scope == "liability" for row in missing_tyw
+        )
+        rows.append(
+            {
+                "title": "到期日缺失口径披露",
+                "severity": "medium",
+                "reason": (
+                    f"截至 {report_date.isoformat()}，共有 {missing_maturity_count} 条正式事实行"
+                    "缺失 maturity_date："
+                    f"债券投资资产 {bond_asset_count}、发行类负债 {issuance_liability_count}、"
+                    f"同业资产 {interbank_asset_count}、同业负债 {interbank_liability_count}。"
+                    "口径说明：四类行在期限缺口中归入「3个月以内」桶"
+                    "（与负债分析兼容口径的缺失兜底一致，不落「已到期/逾期」）；"
+                    "债券投资资产和同业资产同时按 0 年进入组合剩余期限 proxy；"
+                    "债券投资资产与发行类负债的加权期限及现金流、事件日历剔除缺失值。"
+                ),
+                "source_section": "maturity_gap",
+                "rule_id": "bal_wb_risk_maturity_missing_001",
+                "rule_version": "v1",
+            }
+        )
+
     return _section(
         "risk_alerts",
         "风险预警",
@@ -1513,8 +1606,20 @@ def _group_rows(rows: list[Any], key_fn) -> dict[str, list[Any]]:
     return grouped
 
 
+def _to_finite_decimal(value: Any) -> Decimal:
+    if value in (None, ""):
+        return _ZERO
+    try:
+        result = value if isinstance(value, Decimal) else Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return _ZERO
+    if not result.is_finite():
+        return _ZERO
+    return result
+
+
 def _sum_decimal(rows: list[Any], value_fn) -> Decimal:
-    return sum((Decimal(str(value_fn(row))) for row in rows), _ZERO)
+    return sum((_to_finite_decimal(value_fn(row)) for row in rows), _ZERO)
 
 
 def _weighted_average(rows: list[Any], weight_fn, value_fn) -> Decimal | None:
@@ -1524,8 +1629,11 @@ def _weighted_average(rows: list[Any], weight_fn, value_fn) -> Decimal | None:
         value = value_fn(row)
         if value in (None, ""):
             continue
-        weight = Decimal(str(weight_fn(row)))
-        numerator += weight * Decimal(str(value))
+        weight = _to_finite_decimal(weight_fn(row))
+        value_dec = _to_finite_decimal(value)
+        if weight == _ZERO:
+            continue
+        numerator += weight * value_dec
         denominator += weight
     if denominator == _ZERO:
         return None
@@ -1540,8 +1648,11 @@ def _merged_weighted_average(specs: list[tuple[list[Any], Any, Any]]) -> Decimal
             value = value_fn(row)
             if value in (None, ""):
                 continue
-            weight = Decimal(str(weight_fn(row)))
-            numerator += weight * Decimal(str(value))
+            weight = _to_finite_decimal(weight_fn(row))
+            value_dec = _to_finite_decimal(value)
+            if weight == _ZERO:
+                continue
+            numerator += weight * value_dec
             denominator += weight
     if denominator == _ZERO:
         return None
@@ -1574,6 +1685,20 @@ def _match_bucket(value: Decimal, lower: Decimal | None, upper: Decimal | None) 
     return value > lower and value <= upper
 
 
+def _matches_maturity_bucket(
+    report_date: date,
+    maturity_date: date | None,
+    label: str,
+    lower: Decimal | None,
+    upper: Decimal | None,
+) -> bool:
+    # "已到期/逾期"只收真实 maturity_date <= report_date 的行；缺失到期日的行
+    # 归入 _MISSING_MATURITY_FALLBACK_BUCKET（见常量处注释，与 compat 链统一）。
+    if maturity_date is None:
+        return label == _MISSING_MATURITY_FALLBACK_BUCKET
+    return _match_bucket(_remaining_years(report_date, maturity_date), lower, upper)
+
+
 def _safe_ratio(numerator: Decimal, denominator: Decimal) -> Decimal:
     if denominator == _ZERO:
         return _ZERO
@@ -1587,7 +1712,7 @@ def _spread_bp(asset_rate_pct: Decimal | None, liability_rate_pct: Decimal | Non
 
 
 def _rate_value(value: Decimal | None) -> Decimal:
-    return Decimal(str(value)) if value is not None else _ZERO
+    return _to_finite_decimal(value)
 
 
 def _normalize_interest_mode(value: str) -> str:
@@ -1628,16 +1753,18 @@ def _table(key: str, title: str, columns: list[tuple[str, str]], rows: list[dict
 
 
 def _decimal_value(value: Any) -> Decimal:
-    if value in (None, ""):
-        return _ZERO
-    return Decimal(str(value))
+    return _to_finite_decimal(value)
 
 
 def _severity_from_gap(gap_value: Decimal) -> str:
+    # BAL-P1-08（owner 2026-08-12 裁决）：绝对亿元口径，以万元表达。
+    # high ≥ 100 亿元（=1,000,000 万元），medium ≥ 10 亿元（=100,000 万元）。
+    # 依据生产 2026-07-29..31 三日校准：桶级 |全口径缺口| p25=90 亿 / p50=206 亿 /
+    # max=614 亿，原 20/5 万元阈值在银行体量下恒为 high；本档位使三档均有出现率。
     absolute_gap = abs(gap_value)
-    if absolute_gap >= Decimal("20"):
+    if absolute_gap >= Decimal("1000000"):
         return "high"
-    if absolute_gap >= Decimal("5"):
+    if absolute_gap >= Decimal("100000"):
         return "medium"
     return "low"
 

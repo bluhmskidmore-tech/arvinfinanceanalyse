@@ -390,3 +390,31 @@ describe("mockClient.getLiabilitiesMonthly · W5.5 contract", () => {
     expect(payload.ytd_avg_liability_cost).toBeNull();
   });
 });
+
+// ------------------------------------------------------------------
+// 团队绩效考核底稿（后端静态工作簿）mock 对拍
+// ------------------------------------------------------------------
+
+describe("mockClient.getTeamPerformanceAssessmentWorkbook · contract", () => {
+  it("returns the backend-shaped workbook envelope with non-formal analytical caliber", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getTeamPerformanceAssessmentWorkbook();
+
+    assertAllNumerics(envelope.result, "getTeamPerformanceAssessmentWorkbook.result");
+    expect(envelope.result_meta.basis).toBe("analytical");
+    expect(envelope.result_meta.formal_use_allowed).toBe(false);
+    expect(envelope.result_meta.result_kind).toBe("team_performance.assessment_workbook");
+
+    const payload = envelope.result;
+    expect(payload.assessment_year).toBe(2025);
+    expect(payload.caliber_label).toBe("静态底稿·非正式口径（后端下发）");
+    expect(payload.centers).toHaveLength(8);
+    expect(payload.mappings).toHaveLength(31);
+    expect(payload.total_center_count).toBe(8);
+    // 与后端 tests/test_team_performance_api.py 的同一锚点：迁移前后总分一字不差。
+    expect(payload.total_workbook_score.toFixed(2)).toBe("409.28");
+    const interbank = payload.centers.find((center) => center.center_id === "interbank-finance");
+    expect(interbank?.workbook_score).toBeCloseTo(53.89125, 10);
+    expect(interbank?.weight_total).toBe(45);
+  });
+});

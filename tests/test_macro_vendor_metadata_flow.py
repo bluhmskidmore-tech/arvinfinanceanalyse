@@ -1,6 +1,13 @@
 import json
 
+import pytest
+
 from tests.helpers import load_module
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_macro_data,
+]
 
 
 def test_vendor_snapshot_manifest_skeleton_can_be_written_to_governance(tmp_path):

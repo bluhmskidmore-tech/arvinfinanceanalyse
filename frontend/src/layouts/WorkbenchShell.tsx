@@ -4,6 +4,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { LightIcon } from "../components/LightIcon";
 import {
   findWorkbenchSectionByPath,
+  isAgentFrontendEnabled,
   pathMatchesWorkbenchSection,
   primaryWorkbenchNavigationGroups,
   resolveWorkbenchGroupKey,
@@ -12,8 +13,15 @@ import {
   type WorkbenchSection,
   visibleWorkbenchNavigation,
   workbenchNavigation,
-} from "../mocks/navigation";
+} from "../app/navigation";
 import { DataModeRibbon } from "../components/DataModeRibbon";
+import {
+  COCKPIT_SHELL_SECTION_KEYS,
+  DASHBOARD_COCKPIT_SECTION_KEYS,
+  MODULE_HOME_SECTION_KEYS,
+  SECTION_SUBNAV_EXCLUDED_SECTION_KEYS,
+  TERMINAL_BAR_EXCLUDED_SECTION_KEYS,
+} from "./workbenchShellSections";
 
 const WorkbenchShellMarketTicker = lazy(() => import("./WorkbenchShellMarketTicker"));
 const institutionalConsoleShellSectionKeys = new Set([
@@ -157,20 +165,33 @@ function findSectionByKey(sections: WorkbenchSection[], key: string) {
 
 export function WorkbenchShell() {
   const location = useLocation();
+  const isAgentLabRoute = location.pathname === "/agent-lab";
   const pathnameResolved = resolveWorkbenchPathAlias(location.pathname);
   const searchParams = new URLSearchParams(location.search);
-  const matchedSection = findWorkbenchSectionByPath(location.pathname, workbenchNavigation);
+  const agentFrontendEnabled = isAgentFrontendEnabled();
+  const matchedSectionCandidate = findWorkbenchSectionByPath(
+    location.pathname,
+    workbenchNavigation,
+  );
+  const matchedSection =
+    matchedSectionCandidate?.key === "agent" && !agentFrontendEnabled
+      ? null
+      : matchedSectionCandidate;
   const currentSection = matchedSection ?? unknownWorkbenchSection;
   const currentRouteKnown = Boolean(matchedSection);
+  const showReadinessBanner =
+    currentSection.readiness !== "live" &&
+    !isAgentLabRoute &&
+    (currentSection.key !== "agent" || agentFrontendEnabled);
   const isStockAnalysisShell = currentSection.key === "stock-analysis";
   const agentWorkbenchSection = visibleWorkbenchNavigation.find((section) => section.key === "agent");
   const agentWorkbenchActive = agentWorkbenchSection
     ? pathMatchesWorkbenchSection(agentWorkbenchSection.path, pathnameResolved)
     : false;
-  const agentNavSectionLabel = isStockAnalysisShell ? "复核" : "Agent";
+  const agentNavSectionLabel = isStockAnalysisShell ? "复核" : "对话";
   const agentNavLabel = isStockAnalysisShell ? "复核助手" : agentWorkbenchSection?.label;
   const agentNavBadgeLabel = isStockAnalysisShell ? "可用" : agentWorkbenchSection?.readinessLabel;
-  const agentNavHint = isStockAnalysisShell ? "跨页证据" : "Hermes Agent";
+  const agentNavHint = isStockAnalysisShell ? "跨页证据" : "直接提问";
   const currentGroup = currentRouteKnown
     ? (primaryWorkbenchNavigationGroups.find(
         (group) => group.key === resolveWorkbenchGroupKey(currentSection),
@@ -183,16 +204,11 @@ export function WorkbenchShell() {
     : [];
   const currentGroupSections =
     currentGroup?.key === "market" ? currentGroupVisibleSections : (currentGroup?.sections ?? []);
-  const isModuleHomePage = [
-    "portfolio-home",
-    "market-overview",
-    "risk-overview",
-    "performance-home",
-    "reports-center",
-  ].includes(currentSection.key);
+  const isModuleHomePage = MODULE_HOME_SECTION_KEYS.includes(currentSection.key);
   const isPortfolioGroup = currentGroup?.key === "portfolio";
-  const isDashboardCockpitShell =
-    currentSection.key === "dashboard" || currentSection.key === "portfolio-home";
+  const isDashboardCockpitShell = DASHBOARD_COCKPIT_SECTION_KEYS.includes(
+    currentSection.key,
+  );
   const useInstitutionalConsoleShell = institutionalConsoleShellSectionKeys.has(currentSection.key);
   useInstitutionalConsoleCss(useInstitutionalConsoleShell);
   useWorkbenchChromeCss(currentSection.key !== "dashboard");
@@ -202,17 +218,11 @@ export function WorkbenchShell() {
   const isPnlAttributionShell = currentSection.key === "pnl-attribution";
   /** 资产负债页以正式内容为主：壳层只保留页面顶栏，不再重复大号标题与市场条。 */
   const isBalanceAnalysisCompactChrome = currentSection.key === "balance-analysis";
-  const useCockpitShellFrame =
-    isDashboardCockpitShell ||
-    isBondAnalysisMinimalShell ||
-    isBalanceAnalysisCompactChrome ||
-    isProductCategoryPnlShell ||
-    isModuleHomePage;
-  const showShellTerminalBar =
-    !isDashboardCockpitShell &&
-    !isBondAnalysisMinimalShell &&
-    !isBalanceAnalysisCompactChrome &&
-    !isModuleHomePage;
+  const isStockAnalysisMinimalShell = currentSection.key === "stock-analysis";
+  const useCockpitShellFrame = COCKPIT_SHELL_SECTION_KEYS.includes(currentSection.key);
+  const showShellTerminalBar = !TERMINAL_BAR_EXCLUDED_SECTION_KEYS.includes(
+    currentSection.key,
+  );
   const showShellMarketTicker = showShellTerminalBar && !isDashboardCockpitShell;
   const isBalanceMovementAnalysisCompactChrome =
     currentSection.key === "balance-movement-analysis";
@@ -220,21 +230,28 @@ export function WorkbenchShell() {
   const isLiabilityAnalyticsCompactChrome = currentSection.key === "liability-analytics";
   /** 与 bond-analysis 类似：去掉 main 外圈大卡片感，让页面自行铺色。跨资产仍保留组内子导航（市场数据 / 跨资产 / 新闻）。 */
   const isCrossAssetImmersiveMain = currentSection.key === "cross-asset";
+  const isMarketDataTerminalMain = currentSection.key === "market-data";
   const isPortfolioPageOwnedChrome =
     isBalanceAnalysisCompactChrome ||
     isBalanceMovementAnalysisCompactChrome ||
     isLiabilityAnalyticsCompactChrome ||
     isProductCategoryPnlShell;
   const isMinimalMainChrome =
+    isAgentLabRoute ||
     isDashboardCockpitShell ||
     isBondAnalysisMinimalShell ||
+    isStockAnalysisMinimalShell ||
     isCrossAssetImmersiveMain ||
+    isMarketDataTerminalMain ||
     isPortfolioPageOwnedChrome ||
     isModuleHomePage;
   const showFullWorkspaceGuidance =
+    !isAgentLabRoute &&
     currentSection.readiness !== "live" &&
     !isBondAnalysisMinimalShell &&
+    !isStockAnalysisMinimalShell &&
     !isCrossAssetImmersiveMain &&
+    !isMarketDataTerminalMain &&
     !isBalanceMovementAnalysisCompactChrome &&
     !isLiabilityAnalyticsCompactChrome &&
     (isPortfolioGroup || currentSection.key !== "dashboard");
@@ -243,6 +260,7 @@ export function WorkbenchShell() {
     isPortfolioGroup &&
     currentSection.readiness !== "live" &&
     !isBondAnalysisMinimalShell &&
+    !isStockAnalysisMinimalShell &&
     !isPortfolioPageOwnedChrome;
   const currentGroupSectionCount = currentGroupSections.length;
   const explicitReportDate = searchParams.get("report_date")?.trim() ?? "";
@@ -301,6 +319,7 @@ export function WorkbenchShell() {
       }${isProductCategoryPnlShell ? " workbench-shell-grid--product-category-pnl" : ""
       }${isPnlAttributionShell ? " workbench-shell-grid--pnl-attribution" : ""
       }${isCrossAssetImmersiveMain ? " workbench-shell-grid--cross-asset" : ""
+      }${isBalanceMovementAnalysisCompactChrome ? " workbench-shell-grid--balance-movement" : ""
       }`}
     >
       <aside
@@ -348,7 +367,7 @@ export function WorkbenchShell() {
                     {group.label}
                   </span>
                   <span className="workbench-shell-group-count">
-                    {String(group.sections.length).padStart(2, "0")}
+                    首页
                   </span>
                 </NavLink>
               );
@@ -390,7 +409,9 @@ export function WorkbenchShell() {
           </section>
         ) : null}
 
-        {!isBondAnalysisMinimalShell && secondaryWorkbenchNavigation.length > 0 ? (
+        {!isBondAnalysisMinimalShell &&
+        !isBalanceMovementAnalysisCompactChrome &&
+        secondaryWorkbenchNavigation.length > 0 ? (
           <section
             className="workbench-shell-rail-section workbench-shell-rail-section--gap-6"
           >
@@ -738,10 +759,8 @@ export function WorkbenchShell() {
             </section>
           ) : null}
 
-          {!isDashboardCockpitShell &&
-          !isBondAnalysisMinimalShell &&
-          !isBalanceAnalysisCompactChrome &&
-          !isModuleHomePage &&
+          {!isAgentLabRoute &&
+          !SECTION_SUBNAV_EXCLUDED_SECTION_KEYS.includes(currentSection.key) &&
           currentGroup ? (
             <section
               data-testid="workbench-section-subnav"
@@ -776,7 +795,7 @@ export function WorkbenchShell() {
             </section>
           ) : null}
 
-          {currentSection.readiness !== "live" ? (
+          {showReadinessBanner ? (
             <section
               data-testid="workbench-readiness-banner"
               className="workbench-notice"

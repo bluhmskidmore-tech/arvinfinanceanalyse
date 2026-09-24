@@ -9,15 +9,17 @@ from decimal import Decimal
 from pathlib import Path
 
 import xlrd
+from backend.app.core_finance.decimal_utils import to_decimal_strict
 from backend.app.core_finance.field_normalization import resolve_pnl_source_currency
+from backend.app.core_finance.pnl import FI_CUMULATIVE_REALIZED_517_EVENT_TYPE
+from backend.app.core_finance.source_rules import describe_source_file
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import SOURCE_MANIFEST_STREAM, GovernanceRepository
-from backend.app.services.source_rules import describe_source_file
-from openpyxl import load_workbook
+from backend.app.services.source_file_hash import sha256_file
 
 SUPPORTED_PNL_SOURCE_FAMILIES = ("pnl", "pnl_514", "pnl_516", "pnl_517")
 MANIFEST_ELIGIBLE_STATUSES = {"completed", "rerun"}
-PNL_SOURCE_RULE_VERSION = "rv_pnl_source_parse_v1"
+PNL_SOURCE_RULE_VERSION = "rv_pnl_source_parse_v2"
 
 
 @dataclass(slots=True, frozen=True)
@@ -301,48 +303,6 @@ def _latest_candidate_for_family(
     )
 
 
-def _legacy_parse_fi_rows(snapshot: PnlSourceSnapshot) -> list[dict[str, object]]:
-    metadata = describe_source_file(snapshot.path.name)
-    report_date = snapshot.report_date or metadata.report_date
-    workbook = xlrd.open_workbook(str(snapshot.path))
-    sheet = workbook.sheet_by_index(0)
-    headers = [str(sheet.cell_value(0, column)).strip() for column in range(sheet.ncols)]
-    rows: list[dict[str, object]] = []
-
-    for row_index in range(1, sheet.nrows):
-        raw_row = {
-            headers[column]: sheet.cell_value(row_index, column)
-            for column in range(sheet.ncols)
-            if headers[column]
-        }
-        instrument_code = _cell_text(raw_row.get("债券代码"))
-        if not instrument_code:
-            continue
-
-        rows.append(
-            {
-                "report_date": report_date,
-                "instrument_code": instrument_code,
-                "portfolio_name": _cell_text(raw_row.get("投资组合")),
-                "cost_center": _cell_text(raw_row.get("成本中心")),
-                "invest_type_raw": _cell_text(raw_row.get("投资类型")),
-                "interest_income_514": _to_decimal(raw_row.get("利息514")),
-                # The FI source column is named T损益516; the formal thin slice uses the governed sign convention.
-                "fair_value_change_516": _to_decimal(raw_row.get("T损益516")) * Decimal("-1"),
-                "capital_gain_517": _to_decimal(raw_row.get("投资收益517")),
-                "manual_adjustment": Decimal("0"),
-                # The source file's 币种 describes instrument currency. The current formal PnL slice stores basis,
-                # so only explicit CNX markers stay CNX and all other rows land in the CNY fact partition.
-                "currency_basis": _resolve_currency_basis(_cell_text(raw_row.get("币种"))),
-                "source_version": snapshot.source_version,
-                "rule_version": PNL_SOURCE_RULE_VERSION,
-                "ingest_batch_id": snapshot.ingest_batch_id,
-                "trace_id": f"{snapshot.path.name}:fi:{len(rows) + 1}",
-            }
-        )
-    return rows
-
-
 def _parse_fi_rows(snapshot: PnlSourceSnapshot) -> list[dict[str, object]]:
     metadata = describe_source_file(snapshot.path.name)
     report_date = snapshot.report_date or metadata.report_date
@@ -376,6 +336,7 @@ def _parse_fi_rows(snapshot: PnlSourceSnapshot) -> list[dict[str, object]]:
             "fair_value_change_516": _to_decimal(raw_row.get("T损益516")) * Decimal("-1"),
             "capital_gain_517": _to_decimal(raw_row.get("投资收益517")),
             "manual_adjustment": Decimal("0"),
+            "event_type": FI_CUMULATIVE_REALIZED_517_EVENT_TYPE,
             "currency_basis": currency_basis,
             "source_version": snapshot.source_version,
             "rule_version": PNL_SOURCE_RULE_VERSION,
@@ -389,6 +350,8 @@ def _parse_fi_rows(snapshot: PnlSourceSnapshot) -> list[dict[str, object]]:
 
 
 def _parse_nonstd_rows(snapshot: PnlSourceSnapshot, *, bucket: str) -> list[dict[str, object]]:
+    from openpyxl import load_workbook
+
     workbook = load_workbook(snapshot.path, read_only=True, data_only=True)
     rows: list[dict[str, object]] = []
 
@@ -451,31 +414,25 @@ def _parse_nonstd_worksheet_rows(
         if not account_code and not asset_code:
             continue
 
-        rows.append(
-            {
-                "voucher_date": _cell_text(raw_row.get("账务日期")),
-                "account_code": account_code,
-                "asset_code": asset_code,
-                "portfolio_name": _cell_text(raw_row.get("投资组合")),
-                "cost_center": _cell_text(raw_row.get("成本中心")),
-                "dc_flag": _cell_text(raw_row.get("借贷标识") or raw_row.get("方向")),
-                "event_type": _cell_text(raw_row.get("会计事件")),
-                "raw_amount": _to_decimal(raw_row.get("金额") if raw_row.get("金额") not in (None, "") else raw_row.get("AMOUNT")),
-                "source_file": snapshot.path.name,
-                "source_version": snapshot.source_version,
-                "rule_version": PNL_SOURCE_RULE_VERSION,
-                "ingest_batch_id": snapshot.ingest_batch_id,
-                "trace_id": f"{snapshot.path.name}:{bucket}:{len(rows) + 1}",
-            }
-        )
+        parsed_row = {
+            "voucher_date": _cell_text(raw_row.get("账务日期")),
+            "account_code": account_code,
+            "asset_code": asset_code,
+            "portfolio_name": _cell_text(raw_row.get("投资组合")),
+            "cost_center": _cell_text(raw_row.get("成本中心")),
+            "dc_flag": _cell_text(raw_row.get("借贷标识") or raw_row.get("方向")),
+            "event_type": _cell_text(raw_row.get("会计事件")),
+            "raw_amount": _to_decimal(raw_row.get("金额") if raw_row.get("金额") not in (None, "") else raw_row.get("AMOUNT")),
+            "source_file": snapshot.path.name,
+            "source_version": snapshot.source_version,
+            "rule_version": PNL_SOURCE_RULE_VERSION,
+            "ingest_batch_id": snapshot.ingest_batch_id,
+            "trace_id": f"{snapshot.path.name}:{bucket}:{len(rows) + 1}",
+        }
+        if asset_code.upper().startswith("J1"):
+            parsed_row["fx_base_currency"] = "USD"
+        rows.append(parsed_row)
     return rows
-
-
-def _resolve_currency_basis(raw_currency: str) -> str:
-    normalized = raw_currency.strip().upper()
-    if normalized in {"CNX", "综本"}:
-        return "CNX"
-    return "CNY"
 
 
 def _filter_nonstd_rows_for_report_month(
@@ -500,9 +457,14 @@ def _cell_text(value: object) -> str:
 
 
 def _to_decimal(value: object) -> Decimal:
+    # 源表空单元格（None/""）按既有口径归 0（调用点显式依赖该语义，如 金额/AMOUNT 回退）；
+    # 其余值严格转换：NaN/Inf/坏字符串 fail-loud，禁止流入正式 PnL 事实行。
     if value in (None, ""):
         return Decimal("0")
-    return Decimal(str(value))
+    try:
+        return to_decimal_strict(value)
+    except ArithmeticError as exc:
+        raise ValueError(f"PnL source cell must be a finite number, got {value!r}") from exc
 
 
 def _is_processed_path(path: Path) -> bool:
@@ -511,6 +473,7 @@ def _is_processed_path(path: Path) -> bool:
 
 def _build_source_version(path: Path) -> str:
     stat = path.stat()
-    seed = f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}"
+    content_sha256 = sha256_file(path)[:16]
+    seed = f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}:{content_sha256}"
     digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:12]
     return f"sv_pnl_{digest}"

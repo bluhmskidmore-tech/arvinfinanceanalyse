@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import UTC, datetime
+import logging
+import math
+import time
+from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import Literal, TypedDict
 
 from backend.app.repositories.external_data_catalog_repo import ExternalDataCatalogRepository
 from backend.app.repositories.raw_zone_repo import RawZoneRepository
@@ -18,6 +22,27 @@ from backend.app.services.external_std_macro_etl_service import ExternalStdMacro
 CATALOG_VERSION_M2A = "m2a.tushare_macro.v1"
 ACCESS_PATH_PLACEHOLDER = "select 1 -- m2a placeholder, std table comes in M2b"
 _SOURCE_FAMILY = "tushare_macro"
+
+logger = logging.getLogger(__name__)
+
+
+class TushareIngestFailure(TypedDict):
+    series_id: str
+    error: str
+
+
+class TushareIngestBatchSummary(TypedDict):
+    """Structured batch outcome: original per-series results plus success/failure split."""
+
+    results: list[dict[str, object]]
+    succeeded: list[str]
+    failed: list[TushareIngestFailure]
+    status: Literal["success", "partial", "error"]
+
+
+def _error_summary(exc: Exception) -> str:
+    text = f"{type(exc).__name__}: {exc}".strip()
+    return text if len(text) <= 300 else text[:297] + "..."
 
 
 def _access_path_vw_macro(series_id: str) -> str:
@@ -46,6 +71,34 @@ def _latest_trade_date(rows: list[object]) -> str:
     return best or datetime.now(UTC).date().isoformat()
 
 
+def _validated_observation_rows(payload: object) -> list[dict[str, object]]:
+    if not isinstance(payload, dict):
+        raise ValueError("Tushare macro payload must be an object")
+    rows = payload.get("rows")
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("Tushare macro payload rows must be a non-empty list")
+
+    validated: list[dict[str, object]] = []
+    for index, item in enumerate(rows):
+        if not isinstance(item, dict):
+            raise ValueError(f"Tushare macro row {index} must be an object")
+        trade_date = str(item.get("trade_date", "")).strip()
+        try:
+            date.fromisoformat(trade_date)
+        except ValueError as exc:
+            raise ValueError(f"Tushare macro row {index} has invalid trade_date") from exc
+        value = item.get("value") if "value" in item else item.get("value_numeric")
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+        ):
+            msg = f"Tushare macro row {index} must contain a finite numeric value"
+            raise ValueError(msg)
+        validated.append(item)
+    return validated
+
+
 class TushareMacroIngestService:
     def __init__(
         self,
@@ -69,16 +122,15 @@ class TushareMacroIngestService:
             raise ValueError(msg)
 
         payload = self._adapter.fetch_macro_snapshot(series_id)
+        row_list = _validated_observation_rows(payload)
         raw_path_template = cfg["raw_zone_path_template"]
         filename = _filename_from_template(raw_path_template, ingest_batch_id)
         body = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
         raw_meta = self._raw_zone.archive_bytes("tushare", ingest_batch_id, filename, body)
         raw_zone_path = str(raw_meta["raw_zone_path"])
         source_version = _source_version_from_payload(payload)
-        row_list = payload.get("rows", [])
-        if not isinstance(row_list, list):
-            row_list = []
         report_date = _latest_trade_date(row_list)
+        materialized_rows = 0
 
         if self._etl is not None:
             pre_entry = ExternalDataCatalogEntry(
@@ -98,7 +150,11 @@ class TushareMacroIngestService:
                 catalog_version=CATALOG_VERSION_M2A,
                 created_at=datetime.now(UTC).replace(microsecond=0).isoformat(),
             )
-            _ = self._etl.materialize_from_raw(raw_zone_path, pre_entry, ingest_batch_id)
+            materialized_rows = self._etl.materialize_from_raw(
+                raw_zone_path, pre_entry, ingest_batch_id
+            )
+            if materialized_rows <= 0:
+                raise ValueError(f"Tushare macro series {series_id!r} materialized no rows")
             access_path = _access_path_vw_macro(cfg["series_id"])
         else:
             access_path = ACCESS_PATH_PLACEHOLDER
@@ -141,8 +197,81 @@ class TushareMacroIngestService:
             "series_id": series_id,
             "raw_zone_path": raw_zone_path,
             "catalog_entry": catalog_entry,
+            "materialized_rows": materialized_rows,
             "manifest_record": manifest_record,
         }
 
     def ingest_all_seed_series(self, ingest_batch_id: str) -> list[dict[str, object]]:
         return [self.ingest_series(c["series_id"], ingest_batch_id) for c in TUSHARE_M2A_SERIES]
+
+    def _ingest_series_with_retry(
+        self,
+        series_id: str,
+        ingest_batch_id: str,
+        *,
+        max_retries: int = 2,
+        retry_sleep_seconds: float = 1.0,
+    ) -> dict[str, object]:
+        """Run ``ingest_series`` with bounded retries; re-raise the last error when exhausted."""
+        attempts = max(0, int(max_retries)) + 1
+        for attempt in range(1, attempts + 1):
+            try:
+                return self.ingest_series(series_id, ingest_batch_id)
+            except Exception as exc:
+                if attempt >= attempts:
+                    raise
+                logger.warning(
+                    "tushare macro ingest retry series_id=%s attempt=%s/%s error=%s",
+                    series_id,
+                    attempt,
+                    attempts,
+                    _error_summary(exc),
+                )
+                if retry_sleep_seconds > 0:
+                    time.sleep(retry_sleep_seconds)
+        msg = f"unreachable: retry loop exhausted for series {series_id!r}"
+        raise RuntimeError(msg)
+
+    def ingest_all_seed_series_with_summary(
+        self,
+        ingest_batch_id: str,
+        *,
+        max_retries: int = 2,
+        retry_sleep_seconds: float = 1.0,
+    ) -> TushareIngestBatchSummary:
+        """Ingest every M2a seed series; a single failing series never aborts the batch.
+
+        Additive companion to ``ingest_all_seed_series`` (whose list return shape has
+        callers): ``results`` keeps the original per-series result dicts for the
+        series that succeeded, while ``succeeded`` / ``failed`` summarize the batch
+        so callers can alert on partial failures instead of failing silently.
+        """
+        results: list[dict[str, object]] = []
+        succeeded: list[str] = []
+        failed: list[TushareIngestFailure] = []
+        for cfg in TUSHARE_M2A_SERIES:
+            series_id = cfg["series_id"]
+            try:
+                result = self._ingest_series_with_retry(
+                    series_id,
+                    ingest_batch_id,
+                    max_retries=max_retries,
+                    retry_sleep_seconds=retry_sleep_seconds,
+                )
+            except Exception as exc:
+                failed.append({"series_id": series_id, "error": _error_summary(exc)})
+                continue
+            results.append(result)
+            succeeded.append(series_id)
+        if failed and succeeded:
+            status: Literal["success", "partial", "error"] = "partial"
+        elif failed:
+            status = "error"
+        else:
+            status = "success"
+        return {
+            "results": results,
+            "succeeded": succeeded,
+            "failed": failed,
+            "status": status,
+        }

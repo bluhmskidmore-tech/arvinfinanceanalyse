@@ -12,5 +12,6 @@
 | 文件 | 用途 |
 |------|------|
 | [appendix-pnl-fixture-matrix.md](./appendix-pnl-fixture-matrix.md) | 源数据 fixture、`source_family`、共存导入与测试预期/门禁对齐表 |
+| [pnl-by-business-2026h1-vat-backfill-runbook.md](./pnl-by-business-2026h1-vat-backfill-runbook.md) | 2026 年上半年应税 514 回溯物化、版本门禁和验收步骤 |
 
 此处**不新增**业务规则；仅整理仓库内已有测试与数据布局的可追溯引用。

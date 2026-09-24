@@ -319,6 +319,12 @@ if (entryAsset && dashboardChunks.length === 1) {
   assertNoBlockedAssets(
     "DashboardHomePage preload deps",
     homeRouteAssets,
+    isAntdVendorAsset,
+    "Ant Design vendor chunk",
+  );
+  assertNoBlockedAssets(
+    "DashboardHomePage preload deps",
+    homeRouteAssets,
     isHomeSupplementalAsset,
     "home supplemental chunk",
   );

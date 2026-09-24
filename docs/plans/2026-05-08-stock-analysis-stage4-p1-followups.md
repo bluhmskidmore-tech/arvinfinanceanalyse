@@ -67,7 +67,11 @@
 ### A1
 
 - **任务输出**：沿用物化返回字段（`status` / `row_count` / `run_id` / `snapshot_as_of_date` 等，见 `materialize_livermore_candidate_history`）。  
-- **可选 backfill**：新增任务入口 **草案** `POST /ui/market-data/livermore/candidate-history/backfill`（或对齐现有 tasks 命名），Query：`from` / `to` ISO 日期、`dry_run`；**仅**在任务链路写库，API 若暴露需鉴权与配额（与 `AGENTS.md` 一致）。  
+- **可选 backfill**：新增任务入口 **草案** `POST /ui/market-data/livermore/candidate-history/backfill`（或对齐现有 tasks 命名），Query：`from` / `to` ISO 日期、`dry_run`；**仅**在任务链路写库，API 若暴露需**访问控制（认证 + 授权）**与配额（与 `AGENTS.md` 一致）。
+  - 原文此处写的是「鉴权」。这是**写入型**草案入口，暴露前两件事都要有：仓库当前只有授权
+    （`ensure_user_allowed` 的 RBAC），**没有认证**——没有 `HTTPBearer` / `OAuth2` / `APIKeyHeader` /
+    JWT / session，`X-User-Id` / `X-User-Role` 未经校验。因此这里不能简单读成「复用现有 RBAC 即可」，
+    认证属于尚不存在、需另行设计的部分。现状边界见 [README.md](../../README.md)「关键约束」一节。
 
 ### A2
 

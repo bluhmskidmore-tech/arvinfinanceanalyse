@@ -1,11 +1,16 @@
+/*
+ * 路由状态页（403/404/error）视觉：消费 --dh-api-* 语义链（DESIGN.md §2.2）。
+ * 在深色 themed-route-boundary 内自动落 Nocturne / 钢蓝兼容深色；
+ * 变量未定义（根级错误边界脱离深色外壳渲染）时回退为原浅色字面值。
+ */
 .routeStatus {
   display: grid;
   gap: 16px;
   align-content: start;
   min-height: min(460px, 70vh);
   padding: 28px;
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--dh-api-line, rgba(15, 23, 42, 0.1));
+  background: var(--dh-api-panel, rgba(255, 255, 255, 0.9));
   box-shadow: 0 20px 60px rgba(15, 23, 42, 0.08);
 }
 
@@ -18,23 +23,23 @@
 .routeStatusCode {
   width: fit-content;
   padding: 4px 8px;
-  border: 1px solid rgba(37, 99, 235, 0.18);
-  background: rgba(37, 99, 235, 0.08);
-  color: #1d4ed8;
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 18%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
+  color: var(--dh-api-blue, #1d4ed8);
   font-size: 12px;
   font-weight: 700;
 }
 
 .routeStatusTitle {
   margin: 0;
-  color: #0f172a;
+  color: var(--dh-api-ink, #0f172a);
   font-size: 24px;
   line-height: 1.2;
 }
 
 .routeStatusBody {
   margin: 0;
-  color: #475569;
+  color: var(--dh-api-soft, #475569);
   font-size: 14px;
   line-height: 1.7;
   overflow-wrap: anywhere;
@@ -45,9 +50,9 @@
   gap: 6px;
   max-width: 720px;
   padding: 12px 14px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(248, 250, 252, 0.9);
-  color: #334155;
+  border: 1px solid var(--dh-api-line-soft, rgba(15, 23, 42, 0.08));
+  background: var(--dh-api-panel-2, rgba(248, 250, 252, 0.9));
+  color: var(--dh-api-soft, #334155);
   font-size: 13px;
   line-height: 1.6;
   overflow-wrap: anywhere;
@@ -65,17 +70,17 @@
   justify-content: center;
   min-height: 36px;
   padding: 8px 12px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  background: #0f172a;
-  color: #ffffff;
+  border: 1px solid var(--dh-api-line, rgba(15, 23, 42, 0.12));
+  background: var(--dh-api-blue, #0f172a);
+  color: var(--dh-api-bg, #ffffff);
   font-size: 13px;
   font-weight: 700;
   text-decoration: none;
 }
 
 .routeStatusActionSecondary {
-  background: #ffffff;
-  color: #0f172a;
+  background: var(--dh-api-panel-2, #ffffff);
+  color: var(--dh-api-ink, #0f172a);
 }
 
 @media (max-width: 720px) {

@@ -1,5 +1,6 @@
-import { shellTokens as t } from "../../../theme/tokens";
+import "./AgentGenericCardsGrid.css";
 
+import { EM_DASH } from "../../../utils/format";
 type AgentGenericCard = {
   title: string;
   value?: string | null;
@@ -39,6 +40,14 @@ function formatCardType(type: string) {
   return typeLabels[type] ?? type;
 }
 
+function safeInternalHref(value: unknown) {
+  if (typeof value !== "string") {
+    return "#";
+  }
+  const href = value.trim();
+  return href.startsWith("/") ? href : "#";
+}
+
 function renderStructuredCard(card: AgentGenericCard, formatValue: (value: unknown) => string) {
   const columns = columnsForCard(card);
   const rows = Array.isArray(card.data)
@@ -48,128 +57,75 @@ function renderStructuredCard(card: AgentGenericCard, formatValue: (value: unkno
       : [];
 
   return (
-    <div
-      key={`${card.title}-${card.type}`}
-      style={{
-        padding: 16,
-        borderRadius: 16,
-        border: `1px solid ${t.colorBorderSoft}`,
-        background: t.colorBgCanvas,
-      }}
-    >
-      <div
-        style={{
-          color: t.colorTextPrimary,
-          fontSize: 15,
-          fontWeight: 600,
-          marginBottom: 6,
-        }}
-      >
-        {card.title}
-      </div>
-      {card.value ? (
-        <div
-          style={{
-            color: t.colorTextSecondary,
-            fontSize: 13,
-            marginBottom: rows.length > 0 ? 10 : 0,
-            wordBreak: "break-all",
-          }}
-        >
-          {card.value}
-        </div>
-      ) : null}
-      {rows.length > 0 ? (
-        <div
-          style={{
-            display: "grid",
-            gap: 8,
-          }}
-        >
-          {columns.length > 0 ? (
-            <div
-              style={{
-                display: "grid",
-                gap: 6,
-              }}
-            >
-              {rows.map((row, index) => (
-                <div
-                  key={`${card.title}-row-${index}`}
-                  style={{
-                    borderRadius: 12,
-                    background: t.colorBgSurface,
-                    padding: 10,
-                    display: "grid",
-                    gap: 4,
-                  }}
-                >
-                  {columns.map((column) => (
-                    <div
-                      key={`${card.title}-${index}-${column}`}
-                      style={{
-                        display: "flex",
-                        gap: 6,
-                        flexWrap: "wrap",
-                        fontSize: 13,
-                        color: t.colorTextSecondary,
-                      }}
-                    >
-                      <span style={{ color: t.colorTextMuted }}>{column}:</span>
-                      <span>{formatValue((row as Record<string, unknown>)[column])}</span>
-                    </div>
-                  ))}
+    <div key={`${card.title}-${card.type}`} className="agent-generic-cards__card">
+      <div className="agent-generic-cards__title">{card.title}</div>
+      {card.value ? <div className="agent-generic-cards__value">{card.value}</div> : null}
+      {rows.length > 0 && columns.length > 0 ? (
+        <div className="agent-generic-cards__rows">
+          {rows.map((row, index) => (
+            <div key={`${card.title}-row-${index}`} className="agent-generic-cards__row">
+              {columns.map((column) => (
+                <div key={`${card.title}-${index}-${column}`} className="agent-generic-cards__field">
+                  <span className="agent-generic-cards__field-label">{column}:</span>
+                  <span>{formatValue((row as Record<string, unknown>)[column])}</span>
                 </div>
               ))}
             </div>
-          ) : null}
+          ))}
         </div>
       ) : null}
     </div>
   );
 }
 
-function renderScalarCard(card: AgentGenericCard) {
+function renderLinkListCard(card: AgentGenericCard) {
+  const rows = Array.isArray(card.data) ? card.data : [];
+
+  return (
+    <div key={`${card.title}-${card.type}`} className="agent-generic-cards__card">
+      <div className="agent-generic-cards__title agent-generic-cards__title--spaced">{card.title}</div>
+      <div className="agent-generic-cards__rows agent-generic-cards__rows--links">
+        {rows.map((row, index) => {
+          const label = typeof row.label === "string" ? row.label : `Link ${index + 1}`;
+          const href = safeInternalHref(row.href);
+          const description = typeof row.description === "string" ? row.description : "";
+          return (
+            <div key={`${card.title}-link-${index}`} className="agent-generic-cards__row">
+              <a href={href} className="agent-generic-cards__link">
+                {label}
+              </a>
+              {description ? (
+                <div className="agent-generic-cards__description">{description}</div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function renderMarkdownCard(card: AgentGenericCard) {
+  const text = String(card.value ?? "").trim();
   return (
     <div
       key={`${card.title}-${card.type}`}
-      style={{
-        padding: 16,
-        borderRadius: 16,
-        border: `1px solid ${t.colorBorderSoft}`,
-        background: t.colorBgCanvas,
-      }}
+      className="agent-generic-cards__card agent-generic-cards__card--memo"
     >
-      <div
-        style={{
-          color: t.colorTextPrimary,
-          fontSize: 15,
-          fontWeight: 600,
-          marginBottom: 6,
-        }}
-      >
-        {card.title}
+      <div className="agent-generic-cards__title">{card.title}</div>
+      <div className="agent-generic-cards__memo" data-testid="agent-memo-card-body">
+        {text || EM_DASH}
       </div>
-      <div
-        style={{
-          color: t.colorTextSecondary,
-          fontSize: 14,
-          marginBottom: 8,
-          wordBreak: "break-all",
-          lineHeight: 1.5,
-        }}
-      >
-        {String(card.value ?? "--")}
-      </div>
-      <div
-        style={{
-          color: t.colorTextMuted,
-          fontSize: 12,
-          letterSpacing: "0.02em",
-        }}
-      >
-        {formatCardType(card.type)}
-      </div>
+    </div>
+  );
+}
+
+function renderScalarCard(card: AgentGenericCard) {
+  return (
+    <div key={`${card.title}-${card.type}`} className="agent-generic-cards__card">
+      <div className="agent-generic-cards__title">{card.title}</div>
+      <div className="agent-generic-cards__scalar">{String(card.value ?? EM_DASH)}</div>
+      <div className="agent-generic-cards__type">{formatCardType(card.type)}</div>
     </div>
   );
 }
@@ -186,14 +142,14 @@ export function AgentGenericCardsGrid({
   }
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-        gap: 14,
-      }}
-    >
+    <div className="agent-generic-cards">
       {cards.map((card) => {
+        if (card.type === "link_list") {
+          return renderLinkListCard(card);
+        }
+        if (card.type === "markdown") {
+          return renderMarkdownCard(card);
+        }
         if (card.type === "table" || card.type === "resource" || card.data !== undefined) {
           return renderStructuredCard(card, formatValue);
         }

@@ -1,0 +1,2324 @@
+/* Risk Overview v6 — 曜石卡 × 编辑风开放纪律（已批准设计原型回灌）。
+   外壳（top rail / 右栏）复用 dashboardHomeShell.module.css 的 .dhApi* 类；
+   本文件只承载 v6 中央内容列：hero、曜石 KPI 卡、开放摘要栏、证据链面板、
+   字段级明细表、质量与血缘。所有色值取自应用 --dh-api-* token（墨版语义），
+   不硬编码原型色值。 */
+
+/* ── 编号节题（01 / 02 / 03 / 04 统一件） ─────────────────────── */
+.roSecHead {
+  align-items: baseline;
+  border-bottom: 1px solid var(--ro-line);
+  display: flex;
+  gap: 12px;
+  padding-bottom: 10px;
+}
+
+.roSecHead i {
+  color: var(--ro-acc);
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.roSecHead h2 {
+  color: var(--ro-ink);
+  font-size: 15px;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.roSecHead span {
+  color: var(--ro-mut);
+  font-size: 12px;
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 状态胶囊（gpill）：圆角随页面 --dh-api-radius 制度 ─────────── */
+.roV6Pill {
+  align-items: center;
+  border: 1px solid var(--ro-line-2);
+  border-radius: var(--dh-api-radius, 6px);
+  color: var(--ro-ink-2);
+  display: inline-flex;
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  gap: 6px;
+  letter-spacing: 0.03em;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+.roV6Pill i {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  background: var(--ro-ok);
+  box-shadow: 0 0 8px var(--ro-ok);
+}
+
+.roV6PillWarn {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  border-color: var(--ro-amber);
+  color: var(--ro-amber);
+}
+
+.roV6PillWarn i {
+  background: var(--ro-amber);
+  box-shadow: 0 0 8px var(--ro-amber);
+}
+
+.roV6PillBad {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  border-color: var(--ro-err);
+  color: var(--ro-err);
+}
+
+.roV6PillBad i {
+  background: var(--ro-err);
+  box-shadow: 0 0 8px var(--ro-err);
+}
+
+.roV6PillMut {
+  color: var(--ro-mut);
+}
+
+.roV6PillMut i {
+  background: var(--ro-mut);
+  box-shadow: none;
+}
+
+/* ── 01 Hero（编辑风无盒 + 渐变主角数字） ─────────────────────── */
+.roV6Hero {
+  position: relative;
+}
+
+/* 双栏拆分轴统一：hero / 证据板 / 质量血缘共用 1.35fr:1fr，
+   栏距 24（开放编辑区）/ 16（盒面板区），拆分轴中心横向一致。 */
+.roV6HeroGrid {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  margin-top: 0;
+}
+
+.roV6HeroQ {
+  color: var(--ro-ink-2);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  margin-top: 16px;
+}
+
+.roV6HeroNum {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  background: var(--ro-hero-grad);
+  background-clip: text;
+  color: transparent;
+}
+
+.roV6HeroNumVoid {
+  background: none;
+  color: var(--ro-mut);
+}
+
+.roV6HeroSub {
+  color: var(--ro-mut);
+  font-family: var(--dh-font-mono);
+  font-size: 13px;
+  margin-top: 10px;
+}
+
+.roV6HeroSub b {
+  color: var(--ro-amber);
+  font-weight: 700;
+}
+
+.roV6HeroLede {
+  border-top: 1px solid var(--ro-line);
+  color: var(--ro-ink-2);
+  font-size: 13px;
+  margin: 14px 0 0;
+  max-width: 46em;
+  padding-top: 12px;
+}
+
+.roV6Facts {
+  display: flex;
+  flex-wrap: wrap;
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  gap: 8px 20px;
+  margin-top: 14px;
+}
+
+.roV6Facts span {
+  align-items: center;
+  color: var(--ro-ink-2);
+  display: inline-flex;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.roV6Facts b {
+  color: var(--ro-ink);
+  font-weight: 700;
+}
+
+.roV6FactDot,
+.roV6FactDotWarn {
+  border-radius: 50%;
+  display: inline-block;
+  height: 6px;
+  width: 6px;
+}
+
+.roV6FactDot {
+  background: var(--ro-mut);
+}
+
+.roV6FactDotWarn {
+  background: var(--ro-amber);
+}
+
+.roV6FactWarnText {
+  color: var(--ro-amber) !important;
+}
+
+.roV6HeroSide {
+  align-content: start;
+  display: grid;
+  gap: 22px;
+  padding-top: 16px;
+}
+
+/* 网格项默认 min-width:auto 会被内部 nowrap 文本撑破栏宽（实测状态块外溢
+   90px 压到右栏底下），显式归零让其始终受栏宽约束。 */
+.roV6HeroSide > * {
+  min-width: 0;
+}
+
+.roV6Rate {
+  border-top: 2px solid var(--ro-ink);
+  padding-top: 10px;
+}
+
+.roV6RateCap {
+  color: var(--ro-mut);
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  letter-spacing: 0.16em;
+}
+
+.roV6RateNote {
+  color: var(--ro-mut);
+  font-size: 13px;
+  margin-top: 6px;
+}
+
+.roV6Gate {
+  border-top: 2px solid var(--ro-ink);
+  padding-top: 10px;
+}
+
+.roV6Gate h3 {
+  align-items: baseline;
+  color: var(--ro-mut);
+  display: flex;
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  gap: 10px;
+  letter-spacing: 0.16em;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.roV6GateRow {
+  align-items: center;
+  border-bottom: 1px solid var(--ro-line);
+  color: var(--ro-ink-2);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  gap: 10px;
+  padding: 9px 0;
+}
+
+.roV6GateRow:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.roV6GateRow .roV6Pill {
+  margin-left: auto;
+}
+
+.roV6GateDetail {
+  color: var(--ro-mut);
+  font-family: var(--dh-font-mono);
+  font-size: 13px;
+  font-style: normal;
+  width: 100%;
+}
+
+/* ── 曜石 KPI 卡 ×8 ───────────────────────────────────────────── */
+.roV6Kpis {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/* 渐变描边：::before 1px mask 技巧 */
+.roV6Kpi::before {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  background: linear-gradient( 160deg, var(--ro-acc-dim), var(--ro-glass-line) 32%, var(--ro-glass-line) 68%, var(--ro-acc-dim) );
+}
+
+.roV6KpiAlert::before {
+  background: linear-gradient(
+    160deg,
+    var(--ro-err),
+    var(--ro-glass-line) 32%,
+    var(--ro-glass-line) 68%,
+    var(--ro-err)
+  );
+}
+
+.roV6KpiCap {
+  align-items: center;
+  color: var(--ro-mut);
+  display: flex;
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  justify-content: space-between;
+  letter-spacing: 0.14em;
+}
+
+.roV6CapDot,
+.roV6CapDotBad {
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+  height: 6px;
+  width: 6px;
+}
+
+.roV6CapDot {
+  background: var(--ro-ok);
+  box-shadow: 0 0 8px var(--ro-ok);
+}
+
+.roV6CapDotBad {
+  background: var(--ro-err);
+  box-shadow: 0 0 8px var(--ro-err);
+}
+
+/* 数字改首页 KPI 横带语言：纯 ink 等宽 tabular，不再用渐变 text clip。 */
+.roV6KpiNum {
+  color: var(--ro-ink);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.roV6KpiNum small {
+  color: var(--ro-mut);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.roV6KpiAlert .roV6KpiNum {
+  color: var(--ro-err);
+}
+
+.roV6KpiNumVoid {
+  color: var(--ro-mut);
+}
+
+.roV6Spark {
+  display: block;
+  height: 30px;
+  width: 100%;
+}
+
+.roV6SparkArea {
+  fill: var(--ro-spark-fill);
+}
+
+.roV6SparkLine {
+  fill: none;
+  stroke: var(--ro-acc);
+  stroke-width: 1.5;
+}
+
+.roV6SparkHalo {
+  fill: var(--ro-spark-fill);
+}
+
+.roV6SparkDot {
+  fill: var(--ro-acc);
+}
+
+.roV6KpiAlert .roV6SparkArea {
+  fill: var(--ro-spark-fill-err);
+}
+
+.roV6KpiAlert .roV6SparkLine {
+  stroke: var(--ro-err);
+}
+
+.roV6KpiAlert .roV6SparkHalo {
+  fill: var(--ro-spark-fill-err);
+}
+
+.roV6KpiAlert .roV6SparkDot {
+  fill: var(--ro-err);
+}
+
+.roV6SparkEmpty {
+  align-items: center;
+  border: 1px dashed var(--ro-line-2);
+  border-radius: var(--dh-api-radius, 6px);
+  color: var(--ro-mut);
+  display: flex;
+  font-family: var(--dh-font-mono);
+  font-size: 13px;
+  height: 30px;
+  justify-content: center;
+  letter-spacing: 0.08em;
+}
+
+.roV6KpiFoot {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.roV6KpiChip {
+  background: var(--ro-spark-fill);
+  border-radius: var(--dh-api-radius, 6px);
+  color: var(--ro-acc);
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  padding: 2px 9px;
+  white-space: nowrap;
+}
+
+.roV6KpiAlert .roV6KpiChip {
+  background: var(--ro-spark-fill-err);
+  color: var(--ro-err);
+}
+
+.roV6KpiChipVoid {
+  color: var(--ro-mut);
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  padding: 2px 9px;
+}
+
+.roV6KpiSub {
+  color: var(--ro-mut);
+  font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roV6SparkCap {
+  color: var(--ro-mut);
+  font-family: var(--dh-font-mono);
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  margin-top: -12px;
+  padding: 0;
+}
+
+/* ── 02 摘要开放栏 ────────────────────────────────────────────── */
+.roV6BriefGrid {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 16px;
+}
+
+.roV6Brief {
+  border-top: 2px solid var(--ro-ink);
+  padding-top: 10px;
+}
+
+.roV6BriefT {
+  color: var(--ro-mut);
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  letter-spacing: 0.16em;
+}
+
+.roV6BriefC {
+  color: var(--ro-ink);
+  font-size: 17px;
+  font-weight: 650;
+  line-height: 1.5;
+  margin-top: 8px;
+}
+
+.roV6BriefE {
+  border-top: 1px solid var(--ro-line);
+  color: var(--ro-mut);
+  font-size: 13px;
+  margin-top: 9px;
+  padding-top: 8px;
+}
+
+/* ── 03 证据板玻璃面板 ────────────────────────────────────────── */
+.roV6Duo {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  margin-top: 16px;
+}
+
+.roV6Panel {
+  /* 深色终端 compact 密度（§5 面板 padding 12-15px 档）。 */
+  padding: 14px 16px;
+}
+
+.roV6CashPanel {
+  margin-top: 16px;
+}
+
+.roV6PanelHead {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 12px;
+}
+
+.roV6PanelHead b {
+  color: var(--ro-ink);
+  font-size: 13px;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+}
+
+.roV6PanelHead span {
+  color: var(--ro-mut);
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roV6PanelFoot {
+  border-top: 1px solid var(--ro-line);
+  color: var(--ro-mut);
+  font-family: var(--dh-font-mono);
+  font-size: 13px;
+  margin-top: 10px;
+  padding-top: 9px;
+}
+
+/* KRD 分布条形 */
+.roV6KrdRow {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 44px minmax(0, 1fr) 84px;
+  padding: 8px 0;
+}
+
+.roV6KrdRow + .roV6KrdRow {
+  border-top: 1px solid var(--ro-line);
+}
+
+.roV6KrdBk {
+  color: var(--ro-ink-2);
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.roV6KrdHot {
+  color: var(--ro-amber);
+}
+
+.roV6KrdTrack {
+  display: flex;
+  height: 16px;
+  position: relative;
+}
+
+.roV6KrdSvg {
+  display: block;
+  height: 11px;
+  align-self: center;
+  width: 100%;
+}
+
+.roV6KrdBar {
+  fill: var(--ro-acc);
+}
+
+.roV6KrdBarHot {
+  fill: var(--ro-amber);
+}
+
+.roV6KrdBarTip {
+  fill: var(--dh-api-ink);
+  opacity: 0.9;
+}
+
+.roV6KrdBarTipHot {
+  fill: color-mix(in srgb, var(--ro-amber) 45%, var(--dh-api-ink));
+  opacity: 1;
+}
+
+.roV6KrdVal {
+  color: var(--ro-ink);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+}
+
+/* 收益率曲线 */
+.roV6CurveLegend {
+  display: flex;
+  gap: 10px;
+  padding-bottom: 6px;
+}
+
+.roV6CurveLegend i {
+  border-radius: 50%;
+  display: inline-block;
+  height: 7px;
+  width: 7px;
+}
+
+.roV6CurveInk {
+  color: var(--ro-ink);
+}
+
+.roV6CurveAmber {
+  color: var(--ro-amber);
+}
+
+.roV6CurveAcc {
+  color: var(--ro-acc);
+}
+
+.roV6CurveLegend i.roV6CurveInk {
+  background: var(--ro-ink);
+}
+
+.roV6CurveLegend i.roV6CurveAmber {
+  background: var(--ro-amber);
+}
+
+.roV6CurveLegend i.roV6CurveAcc {
+  background: var(--ro-acc);
+}
+
+.roV6CurveSvg {
+  display: block;
+  height: auto;
+  width: 100%;
+}
+
+.roV6CurveGrid {
+  stroke: var(--ro-line);
+  stroke-dasharray: 3 5;
+  stroke-width: 1;
+}
+
+.roV6CurveTick {
+  fill: var(--ro-mut);
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+}
+
+path.roV6CurveLine {
+  fill: none;
+  stroke-width: 1.8;
+}
+
+path.roV6CurveLine.roV6CurveInk {
+  stroke: var(--ro-ink);
+  stroke-width: 2;
+}
+
+path.roV6CurveLine.roV6CurveAmber {
+  stroke: var(--ro-amber);
+}
+
+path.roV6CurveLine.roV6CurveAcc {
+  stroke: var(--ro-acc);
+}
+
+path.roV6CurveArea.roV6CurveInk {
+  fill: var(--ro-spark-fill);
+}
+
+circle.roV6CurveEndHalo.roV6CurveInk {
+  fill: var(--ro-spark-fill);
+}
+
+circle.roV6CurveEndHalo.roV6CurveAmber {
+  fill: var(--dh-api-amber-soft);
+}
+
+circle.roV6CurveEndHalo.roV6CurveAcc {
+  fill: var(--ro-spark-fill);
+}
+
+circle.roV6CurveEndDot.roV6CurveInk {
+  fill: var(--ro-ink);
+}
+
+circle.roV6CurveEndDot.roV6CurveAmber {
+  fill: var(--ro-amber);
+}
+
+circle.roV6CurveEndDot.roV6CurveAcc {
+  fill: var(--ro-acc);
+}
+
+.roV6CurveEndText {
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+text.roV6CurveEndText.roV6CurveInk {
+  fill: var(--ro-ink);
+}
+
+text.roV6CurveEndText.roV6CurveAmber {
+  fill: var(--ro-amber);
+}
+
+text.roV6CurveEndText.roV6CurveAcc {
+  fill: var(--ro-acc);
+}
+
+/* 现金流双轨 */
+.roV6CashRow {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 52px 56px minmax(0, 1fr) 76px;
+  padding: 7px 0;
+}
+
+.roV6CashRow + .roV6CashRow {
+  border-top: 1px solid var(--ro-line);
+}
+
+.roV6CashW {
+  color: var(--ro-acc);
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.roV6CashT {
+  color: var(--ro-ink-2);
+  font-size: 12px;
+}
+
+.roV6CashTrack {
+  display: flex;
+  height: 13px;
+}
+
+.roV6CashSvg {
+  align-self: center;
+  display: block;
+  height: 9px;
+  width: 100%;
+}
+
+.roV6CashBarA {
+  fill: var(--ro-acc);
+}
+
+.roV6CashBarL {
+  fill: var(--ro-amber);
+}
+
+.roV6CashVal {
+  color: var(--ro-ink);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.roV6GapChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.roV6GapChip {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  border: 1px solid color-mix(in srgb, var(--dh-api-red) 40%, transparent);
+  padding: 7px 12px;
+}
+
+.roV6GapChip span {
+  color: var(--ro-mut);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+}
+
+.roV6GapChip b {
+  color: var(--ro-err);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.roV6GapChipDim b {
+  color: var(--ro-ink);
+}
+
+/* ── 03 字段级明细表（编辑风纯粹表） ──────────────────────────── */
+.roV6Tables {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: 1fr 1fr;
+  margin-top: 16px;
+}
+
+.roV6TblHead {
+  align-items: baseline;
+  border-bottom: 2px solid var(--ro-ink);
+  color: var(--ro-ink-2);
+  display: flex;
+  font-size: 12px;
+  font-weight: 750;
+  justify-content: space-between;
+  letter-spacing: 0.08em;
+  padding-bottom: 9px;
+}
+
+.roV6TblHead span {
+  color: var(--ro-mut);
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.roV6Tbl table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.roV6Tbl th {
+  border-bottom: 1px solid var(--ro-line-2);
+  color: var(--ro-mut);
+  font-family: var(--dh-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  padding: 9px 0 7px;
+  text-align: left;
+}
+
+.roV6Tbl th:last-child,
+.roV6Tbl td:last-child {
+  text-align: right;
+}
+
+.roV6Tbl td {
+  border-bottom: 1px solid var(--ro-line);
+  color: var(--ro-ink-2);
+  font-size: 12px;
+  padding: 9px 0;
+}
+
+.roV6Tbl tr:last-child td {
+  border-bottom: 0;
+}
+
+.roV6TblNum {
+  color: var(--ro-ink);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.roV6TblDt {
+  color: var(--ro-mut);
+  font-size: 12px;
+  text-align: right;
+}
+
+/* ── 04 数据质量与血缘 ────────────────────────────────────────── */
+.roV6Qual {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  margin-top: 16px;
+}
+
+.roV6Warns {
+  counter-reset: roV6Warn;
+  display: grid;
+}
+
+.roV6Warns p {
+  border-bottom: 1px solid var(--ro-line);
+  color: var(--ro-ink-2);
+  counter-increment: roV6Warn;
+  display: grid;
+  font-family: var(--dh-font-mono);
+  font-size: 13px;
+  gap: 8px;
+  grid-template-columns: 26px 1fr;
+  line-height: 1.65;
+  margin: 0;
+  padding: 9px 0;
+}
+
+.roV6Warns p:last-child {
+  border-bottom: 0;
+}
+
+.roV6Warns p::before {
+  color: var(--ro-amber);
+  content: counter(roV6Warn, decimal-leading-zero);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.roV6Lineage {
+  font-family: var(--dh-font-mono);
+}
+
+.roV6LineageRow {
+  border-bottom: 1px solid var(--ro-line);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 108px 1fr;
+  padding: 8px 0;
+}
+
+.roV6LineageRow:last-child {
+  border-bottom: 0;
+}
+
+.roV6LineageKey {
+  color: var(--ro-mut);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  padding-top: 2px;
+}
+
+.roV6LineageVal {
+  color: var(--ro-ink-2);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+/* ── 首屏债券辅助证据 ─────────────────────────────────────────── */
+.roBondEvidence {
+  /* 外层盒感已在后续 pass 撤除（透明底 / 无边框），内边距一并归零，
+     使本区左缘与 01-04 编号分区对齐。 */
+  padding: 0;
+}
+
+.roBondEvidenceHead {
+  align-items: center;
+  border-bottom: 1px solid var(--ro-line);
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  padding-bottom: 8px;
+}
+
+.roBondEvidenceHead > div {
+  min-width: 0;
+}
+
+.roBondEvidenceHead span {
+  color: var(--ro-acc);
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+.roBondEvidenceHead h2 {
+  color: var(--ro-ink);
+  font-size: 15px;
+  margin: 2px 0 0;
+}
+
+.roBondEvidenceHead p {
+  color: var(--ro-mut);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 4px 0 0;
+}
+
+.roBondEvidenceLink {
+  color: var(--ro-acc);
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.roBondEvidenceLink:hover {
+  text-decoration: underline;
+}
+
+.roBondBoundary {
+  align-items: baseline;
+  background: color-mix(in srgb, var(--dh-api-amber) 7%, transparent);
+  border-left: 2px solid var(--ro-amber);
+  color: var(--ro-ink-2);
+  display: grid;
+  font-size: 13px;
+  gap: 4px 12px;
+  grid-template-columns: auto minmax(0, 1fr);
+  line-height: 1.45;
+  padding: 8px 11px;
+}
+
+.roBondBoundary span {
+  color: var(--ro-amber);
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.roBondBoundary b {
+  font-weight: 650;
+}
+
+/* 说明句独占第二行、与主句同列对齐；单栏折行时（-2/-1）自动落回第 1 列。 */
+.roBondBoundary em {
+  color: var(--ro-mut);
+  font-style: normal;
+  grid-column: -2 / -1;
+}
+
+.roBondPlanState {
+  align-items: baseline;
+  border-bottom: 1px solid var(--ro-line);
+  color: var(--ro-ink-2);
+  display: flex;
+  font-size: 12px;
+  gap: 12px;
+  padding: 0 0 9px;
+}
+
+.roBondPlanState span {
+  color: var(--ro-acc);
+  flex-shrink: 0;
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.roBondPlanState b {
+  font-weight: 600;
+}
+
+.roBondPlanState[data-state=loading],
+.roBondPlanState[data-state=unavailable] {
+  color: var(--ro-mut);
+}
+
+.roBondPlanState[data-state=review],
+.roBondPlanState[data-state=review] span {
+  color: var(--ro-amber);
+}
+
+.roBondGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.roBondCard {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  border: 1px solid var(--ro-line);
+  padding: 12px 14px;
+}
+
+.roBondCardreview {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  border-color: color-mix(in srgb, var(--ro-amber) 52%, var(--ro-line));
+}
+
+.roBondCarderror,
+.roBondCardblocked {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  border-color: color-mix(in srgb, var(--ro-err) 58%, var(--ro-line));
+}
+
+.roBondCardempty,
+.roBondCardloading {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  border-style: dashed;
+}
+
+.roBondCardHead {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.roBondCardHead > div > span {
+  color: var(--ro-acc);
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.roBondCardHead h3 {
+  color: var(--ro-ink);
+  font-size: 13px;
+  margin: 2px 0 0;
+}
+
+.roBondMetrics {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr;
+}
+
+.roBondMetric {
+  align-items: baseline;
+  border-bottom: 1px solid var(--ro-line);
+  display: grid;
+  gap: 6px 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  padding: 0 0 8px;
+}
+
+.roBondMetric:last-child {
+  border-bottom: 0;
+}
+
+.roBondMetric > span {
+  color: var(--ro-mut);
+  font-size: 12px;
+}
+
+.roBondMetric strong {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  font-size: 14px;
+  font-weight: 720;
+}
+
+.roBondMetric small {
+  color: var(--ro-mut);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.roBondComparisonGrid {
+  display: grid;
+  gap: 5px;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.roBondComparison {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  color: var(--ro-ink-2);
+}
+
+.roBondComparison span {
+  color: var(--ro-mut);
+  font-size: 12px;
+}
+
+.roBondComparison strong {
+  font-size: 12px;
+  font-weight: 650;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.roBondComparison em {
+  color: var(--ro-acc);
+  font-size: 12px;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.roBondComparison[data-state=unavailable] strong,
+.roBondComparison[data-state=unavailable] em {
+  color: var(--ro-mut);
+}
+
+.roBondMeta {
+  border-top: 1px solid var(--ro-line);
+  color: var(--ro-mut);
+  display: flex;
+  font-size: 12px;
+  justify-content: space-between;
+  padding-top: 8px;
+}
+
+.roBondMeta b {
+  color: var(--ro-ink-2);
+  font-weight: 650;
+}
+
+.roBondComparisonBasis {
+  color: var(--ro-mut);
+  display: grid;
+  font-size: 13px;
+  gap: 3px;
+}
+
+.roBondComparisonBasis span {
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.roBondComparisonBasis b {
+  color: var(--ro-ink-2);
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.roBondTrend {
+  /* 趋势块已压平为透明子块（无边框/底），内边距归零对齐卡内正文。 */
+  padding: 0;
+}
+
+.roBondTrendHead,
+.roBondTrendDates {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.roBondTrendValues {
+  align-items: baseline;
+  color: var(--ro-mut);
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.roBondTrendValues b {
+  color: var(--ro-ink-2);
+  font-size: 12px;
+  font-weight: 650;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.roBondTrendHead b {
+  color: var(--ro-ink-2);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.roBondTrendHead span,
+.roBondTrendDates {
+  color: var(--ro-mut);
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+}
+
+.roBondTrendSvg {
+  display: block;
+  height: 34px;
+  overflow: visible;
+  width: 100%;
+}
+
+.roBondTrendArea {
+  fill: var(--ro-spark-fill);
+  opacity: 0.45;
+}
+
+.roBondTrendLine {
+  fill: none;
+  stroke: var(--ro-acc);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+  vector-effect: non-scaling-stroke;
+}
+
+.roBondTrendDot {
+  fill: var(--ro-acc);
+}
+
+.roBondTrendEmpty,
+.roBondTrendNotice {
+  color: var(--ro-mut);
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.roBondTrendEmpty {
+  border-bottom: 1px dashed var(--ro-line);
+  min-height: 32px;
+  padding: 7px 0;
+}
+
+.roBondTrendNotice {
+  color: var(--ro-amber);
+}
+
+.roBondNotices {
+  color: var(--ro-amber);
+  display: grid;
+  font-size: 13px;
+  gap: 4px;
+  line-height: 1.45;
+}
+
+.roBondNotices p {
+  margin: 0;
+}
+
+/* ── 空态 ─────────────────────────────────────────────────────── */
+.roV6EmptyText {
+  color: var(--ro-mut);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0;
+  padding: 6px 0;
+}
+
+/* ── 既有件：陈旧拦截条 / 右栏 / 辅助类（保留原实现） ─────────── */
+
+.roBlockedBadge {
+  background: color-mix(in srgb, var(--dh-api-amber) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--dh-api-amber) 50%, transparent);
+  border-radius: var(--dh-api-radius, 6px);
+  color: var(--dh-api-amber);
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 760;
+  letter-spacing: 0.04em;
+  padding: 4px 9px;
+  white-space: nowrap;
+}
+
+.roBlockedBody {
+  display: grid;
+  flex: 1;
+  gap: 3px;
+  min-width: 0;
+}
+
+.roBlockedBody strong {
+  color: var(--dh-api-ink);
+  font-size: 12.5px;
+  font-weight: 720;
+  line-height: 1.35;
+}
+
+/* 治理披露原文完整可见：证据层密度的等宽多行，不折叠不截断。 */
+.roBlockedBody span {
+  color: var(--dh-api-muted);
+  font-family: var(--dh-font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+  white-space: normal;
+}
+
+.roBlockedLink {
+  color: var(--dh-api-blue);
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 680;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.roBlockedLink:hover {
+  text-decoration: underline;
+}
+
+.roAgentDrawerBody {
+  min-height: 200px;
+}
+
+.roDrillRow {
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease;
+}
+
+.roNum {
+  font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.roToneOk {
+  color: var(--dh-api-green);
+}
+
+.roToneWatch {
+  color: var(--dh-api-amber);
+}
+
+.roToneError {
+  color: var(--dh-api-red);
+}
+
+.roToneMuted {
+  color: var(--dh-api-muted);
+}
+
+/* 空态收缩为一句话提示框（§5）；不再放形似加载环的装饰图形（§6 无语义圆点）。 */
+.roEmptyState {
+  align-items: center;
+  border: 1px dashed var(--ro-line-2);
+  border-radius: var(--dh-api-radius, 6px);
+  display: grid;
+  grid-column: 1 / -1;
+  justify-items: center;
+  padding: 22px 18px;
+  text-align: center;
+}
+
+/* ── 响应式 ───────────────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .roV6Kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .roV6HeroGrid,
+  .roV6BriefGrid,
+  .roV6Duo,
+  .roV6Tables,
+  .roV6Qual,
+  .roBondGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .roBondBoundary {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .roBlockedBand {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .roBondEvidenceHead {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .roBondMetrics {
+    grid-template-columns: 1fr;
+  }
+
+  .roBondComparisonGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Consolidated visual pass（Tier 1，仅追加段 · 2026-07）
+   范围：/risk-overview 单页。宽屏限宽、页题/区块标题层级、KPI 单表面、
+   债券证据区去框套框、证据板去外框、状态点呼吸动效。
+   不改 DOM / testid / 指标语义；本段自带完整 reduced-motion 收尾。
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── 1) 宽屏限宽：对齐组合 / 市场工作台首页（仅当主列内含本页时生效） ── */
+:global(.workbench-main-column):has([data-testid="risk-overview-page"]) {
+  width: min(100%, 1440px);
+  max-width: 1440px;
+  min-width: 0;
+  box-sizing: border-box;
+  justify-self: center;
+}
+
+/* ── v6 作用域 token（派生自应用 dh token）：多层定义已按后者赢合并至此 ── */
+.roV6Scope {
+  --ro-acc: var(--dh-api-blue);
+  --ro-acc-dim: color-mix(in srgb, var(--dh-api-blue) 55%, transparent);
+  --ro-err: var(--dh-api-red);
+  --ro-amber: var(--dh-api-amber);
+  --ro-ok: var(--dh-api-green);
+  --ro-ink: var(--dh-api-ink);
+  --ro-ink-2: var(--dh-api-soft);
+  --ro-mut: var(--dh-api-muted);
+  --ro-line: var(--dh-api-line-soft);
+  --ro-line-2: var(--dh-api-line);
+  --ro-panel: var(--dh-api-panel);
+  --ro-panel-2: var(--dh-api-panel-2);
+  --ro-glass-line: color-mix(in srgb, var(--dh-api-ink) 9%, transparent);
+  --ro-glass-hi: color-mix(in srgb, var(--dh-api-ink) 5.5%, transparent);
+  --ro-glass-hi-line: color-mix(in srgb, var(--dh-api-ink) 10%, transparent);
+  --ro-hero-grad: linear-gradient(92deg, var(--dh-api-ink) 25%, var(--ro-acc) 95%);
+  --ro-spark-fill: var(--dh-api-blue-soft);
+  --ro-spark-fill-err: var(--dh-api-red-soft);
+  --dh-font-mono: var(--moss-font-mono);
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  width: 100%;
+}
+
+/* ── 2) 旧 top rail 规则已随工具栏收敛为首页 dhTopbar 语言（文件末尾
+   「Nocturne 首页排版对齐段」）而移除。 ── */
+
+/* 区块标题提级：01–04 节题与债券证据区标题 */
+.roSecHead h2,
+.roBondEvidenceHead h2 {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+/* ── 3) KPI 单表面：gap 格子墙 → 1px hairline 接缝的整块表面 ── */
+.roV6Kpis {
+  display: grid;
+  background: var(--ro-line);
+  border-radius: var(--dh-api-radius, 6px);
+  gap: 1px;
+  overflow: hidden;
+  padding: 1px;
+}
+
+.roV6Kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 15px 18px 12px;
+  position: relative;
+  background: var(--ro-panel);
+  border-radius: 0;
+  box-shadow: none;
+  transition: none;
+}
+
+.roV6Kpi::before {
+  border-radius: var(--dh-api-radius, 6px);
+  inset: 0;
+  /* mask 只取 alpha 通道，色值无语义；black 关键字与原三位黑 hex 逐位等价。 */
+  -webkit-mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 1px;
+  pointer-events: none;
+  position: absolute;
+  content: none;
+}
+
+.roV6Kpi:hover {
+  transform: none;
+}
+
+/* 告警卡语义改挂左侧 2px 实边，并补偿内边距避免内容位移 */
+.roV6KpiAlert {
+  border-left: 2px solid var(--ro-err);
+  padding-left: 16px;
+}
+
+/* ── 4) 债券证据区去框套框：外层去框；中层边框透明化，
+   state 语义（review / error / blocked）改挂左侧 2px 色条 ── */
+.roBondEvidence {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  border: 0;
+}
+
+.roBondCard {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+  border-color: transparent;
+}
+
+.roBondCardreview {
+  border-left: 2px solid var(--ro-amber);
+  padding-left: 13px;
+}
+
+.roBondCarderror,
+.roBondCardblocked {
+  border-left: 2px solid var(--ro-err);
+  padding-left: 13px;
+}
+
+/* 空态 / 加载态保留虚线可见性（语义仍是"未就绪"） */
+.roBondCardempty,
+.roBondCardloading {
+  border-color: var(--ro-line-2);
+}
+
+/* 内层：环比/同比小格去独立底色，对齐正文 */
+
+.roBondComparison {
+  align-items: baseline;
+  display: grid;
+  font-size: 12px;
+  gap: 2px 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  background: transparent;
+  padding: 4px 0;
+}
+
+.roBondComparison span {
+  grid-column: 1 / -1;
+  line-height: 16px;
+}
+
+/* ── 5) 证据板：去玻璃外框与阴影，保留内部行分隔 ── */
+.roV6Panel {
+  background:
+    linear-gradient(
+      180deg,
+      var(--ro-glass-hi),
+      color-mix(in srgb, var(--dh-api-ink) 1.5%, transparent) 34%,
+      transparent 62%
+    ),
+    var(--ro-panel);
+  border-radius: var(--dh-api-radius, 6px);
+  border: 0;
+  box-shadow: none;
+}
+
+/* ── 6) 状态点呼吸动画已删：工具栏改首页 dhTopbar 静态状态点语言，
+   pill 内点在第二轮已改静态（§8 无限循环装饰动效默认禁止）。 ── */
+
+/* ── 7) reduced-motion 收尾：本段与既有交互动效全部归零 ── */
+@media (prefers-reduced-motion: reduce) {
+
+  .roV6Kpi,
+  .roDrillRow {
+    transform: none;
+    transition: none;
+  }
+
+  .roV6Kpi:hover,
+  .roDrillRow:hover {
+    transform: none;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Supplemental visual pass（Tier 1，仅追加段 · 2026-07-20 第二轮）
+   范围：/risk-overview 单页。修复 1440 限宽被 cockpit 壳层覆盖、
+   编辑式主角数字层级、债券证据区压平、残余边框清理、动效克制、
+   语义 pill 可读性。不改 DOM / testid / 指标语义；
+   末尾自带 reduced-motion 收尾。
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── 1) 1440 限宽落地：上一轮 :global(.workbench-main-column):has(...)
+   与 dashboardCockpit.css 的 .workbench-shell-grid--cockpit
+   .workbench-main-column（width:100%; justify-self:stretch）特异度
+   相同且无 !important，实测被覆盖（main 左贴边）。对齐
+   portfolioHome.module.css L1-4 的形态：提高特异度并加 !important。 ── */
+:global(.workbench-shell-grid--cockpit:has([data-testid="risk-overview-page"]) .workbench-main-column) {
+  justify-self: center !important;
+  max-width: 1440px !important;
+  width: min(100%, 1440px) !important;
+}
+
+/* ── 2) 编辑式主角：hero 数字为首屏唯一主角（36px），评级值压回
+   次级（20px），页题提到 24px；区块 h2 维持上一轮的 18px 不动。 ── */
+.roV6HeroNum {
+  -webkit-background-clip: text;
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-variant-numeric: tabular-nums;
+  font-weight: 680;
+  letter-spacing: 0.01em;
+  line-height: 1.08;
+  margin-top: 4px;
+  white-space: nowrap;
+  font-size: 36px;
+}
+
+.roV6HeroNum small {
+  font-family: var(--dh-font-mono);
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  -webkit-text-fill-color: var(--ro-mut);
+  font-size: 16px;
+}
+
+.roV6RateVal {
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-variant-numeric: tabular-nums;
+  font-weight: 680;
+  line-height: 1.1;
+  margin-top: 6px;
+  font-size: 20px;
+}
+
+/* 旧 top rail 24px 页题与前两张 KPI 数字放大特例已删：首页 KPI 横带
+   语言要求同排数字等字号（等宽等高分格纪律）。 */
+
+/* ── 3) 债券证据区去"大盒子"：外层渐变/panel 底改透明；卡与趋势块
+   嵌套表面压平到与页面同层或极淡。data-state 的左侧语义色条与
+   empty/loading 虚线态沿用上一轮规则，不在此覆盖。 ── */
+.roBondEvidence {
+  border-radius: var(--dh-api-radius, 6px);
+  display: grid;
+  gap: 12px;
+  box-shadow: none;
+  background: transparent;
+}
+
+.roBondCard {
+  border-radius: var(--dh-api-radius, 6px);
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  background: color-mix(in srgb, var(--dh-api-ink) 2%, transparent);
+}
+
+.roBondTrend {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+}
+
+/* ── 4) 残余边框清理：图例 pill / 缺口 chip 去外框改淡底（保留语义
+   文字色，border 宽度保留避免布局位移）；封锁横幅琥珀外框减淡。 ── */
+.roV6CurveLegend span {
+  align-items: center;
+  border: 1px solid var(--ro-line);
+  border-radius: var(--dh-api-radius, 6px);
+  color: var(--ro-ink-2);
+  display: inline-flex;
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  gap: 7px;
+  padding: 3px 10px;
+  background: color-mix(in srgb, var(--dh-api-ink) 4.5%, transparent);
+  border-color: transparent;
+}
+
+.roV6GapChip {
+  align-items: baseline;
+  border-radius: var(--dh-api-radius, 6px);
+  display: inline-flex;
+  font-family: var(--dh-font-mono);
+  gap: 8px;
+  background: color-mix(in srgb, var(--dh-api-red) 8%, transparent);
+  border-color: transparent;
+}
+
+.roV6GapChipDim {
+  background: color-mix(in srgb, var(--dh-api-ink) 4%, transparent);
+  border-color: transparent;
+}
+
+/* 数据陷阱横幅：Nocturne 语义琥珀收敛（软底 + 琥珀描边，去渐变与模糊）。 */
+.roBlockedBand {
+  align-items: center;
+  background: var(--dh-api-amber-soft);
+  border: 1px solid color-mix(in srgb, var(--dh-api-amber) 30%, transparent);
+  border-radius: var(--dh-api-radius, 6px);
+  box-shadow: none;
+  display: flex;
+  gap: 14px;
+  padding: 12px 16px;
+}
+
+/* ── 5) 动效克制：pill 内状态点为静态语义点（保留辉光）；下钻行
+   hover 位移移除（border-color 过渡保留）。 ── */
+.roV6Pill i {
+  border-radius: 50%;
+  display: inline-block;
+  height: 6px;
+  width: 6px;
+  animation: none;
+}
+
+.roDrillRow:hover {
+  transform: none;
+}
+
+/* ── 6) 语义 pill 可读性：半透明语义底色（不发明绿色成功态）。 ── */
+.roV6PillWarn {
+  background: color-mix(in srgb, var(--dh-api-amber) 13%, transparent);
+}
+
+.roV6PillBad {
+  background: color-mix(in srgb, var(--dh-api-red) 13%, transparent);
+}
+
+/* ── 7) reduced-motion 收尾（第二轮）：呼吸/位移全部归零。 ── */
+@media (prefers-reduced-motion: reduce) {
+  .roV6Pill i {
+    animation: none;
+    opacity: 1;
+  }
+
+  .roDrillRow,
+  .roDrillRow:hover {
+    transform: none;
+    transition: none;
+  }
+}
+
+/* ── Risk overview layout/readability closure (Tier 1 · 2026-08) ────────────
+   Keep the 1440px two-column decision layout intact. Stack before the
+   two-column main area becomes too narrow for readable bond evidence, then
+   let the decision column and reflowed rail use the effective page width. */
+.roSectionNav {
+  align-items: center;
+  border-bottom: 1px solid var(--ro-line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  min-width: 0;
+  padding: 0 2px 10px;
+}
+
+.roSectionNavLabel {
+  color: var(--ro-mut);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.roSectionNavLink {
+  color: var(--ro-ink-2);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.roSectionNavLink:hover {
+  color: var(--ro-acc);
+  text-decoration: underline;
+}
+
+.roSectionNavLink:focus-visible,
+.roWarningSummary:focus-visible {
+  outline: 1px solid var(--ro-acc);
+  outline-offset: 2px;
+}
+
+.roWarningDetails {
+  color: var(--dh-api-muted);
+  font-size: 13px;
+  line-height: 1.55;
+  min-width: 0;
+}
+
+.roWarningSummary {
+  cursor: pointer;
+  overflow-wrap: break-word;
+}
+
+.roWarningSummary::marker {
+  color: var(--ro-amber);
+}
+
+.roWarningRemainder {
+  display: block;
+  margin-top: 4px;
+  overflow: visible;
+  overflow-wrap: break-word;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+/* Keep values and their units together; long narrative copy wraps by words. */
+.roBondMetric strong {
+  color: var(--ro-ink);
+  overflow-wrap: normal;
+  white-space: nowrap;
+  word-break: normal;
+}
+
+.roBondComparison strong,
+.roBondComparisonBasis b,
+.roBondNotices,
+.roBondTrendEmpty,
+.roBondTrendNotice,
+.roV6Warns p {
+  overflow-wrap: break-word;
+}
+
+.roBondBoundary,
+.roBondComparisonBasis,
+.roBondNotices,
+.roBondTrendEmpty,
+.roBondTrendNotice,
+.roBlockedBody span,
+.roV6Warns p {
+  font-size: 13px;
+}
+
+@media (max-width: 1350px) {
+  .roV6Scope > .roLayout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .roV6Scope .roLayout > :is(.roMain, .roRail) {
+    grid-column: 1 / -1;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .roV6Scope .roMain {
+    grid-row: 1;
+  }
+
+  .roV6Scope .roRail {
+    grid-row: 2;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    position: static;
+  }
+}
+
+@media (max-width: 900px) {
+  .roV6Scope .roRail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Nocturne 首页排版对齐段（2026-08-13，业主拍板按经营日报首页标准重做）
+   范围：/risk-overview 单页。工具栏收敛为首页 dhTopbar 语言（左标题+
+   报告日 meta，右状态胶囊+刷新）；01-04 编号分区头统一首页语言
+   （编号 muted mono + h2 14px/20px + 发丝底线，对齐 ledger-pnl /
+   market-overview 先例）；KPI 曜石卡改首页单框横带语言（外框+发丝
+   分割+等高分格+等宽数字+标签 2 行 clamp）。颜色全走 --dh-api- 与
+   --ro- token，Nocturne scope 别名生效后色板自动翻转，不新增色值。
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── 页内变量压制块（对齐 dashboard-home OptionTwo .page 三写先例）：
+   页根挂载的 dhApiBackedHome（dashboardHomeShell module，注入晚于
+   tokens.css）以钢蓝字面量重写 --dh-api-line 等 6 个变量，会压掉
+   tokens.css 的 Nocturne scope 别名；此处三写类名（0-3-0）拉回
+   Nocturne 值，全部引用 --nct-*（仅 Nocturne scope 下有定义），
+   不新增色值。 ── */
+.roV6Scope.roV6Scope.roV6Scope {
+  --dh-api-line: var(--nct-ring);
+  --dh-api-line-soft: var(--nct-line);
+  --dh-api-blue-soft: color-mix(in srgb, var(--nct-accent) 12%, transparent);
+  --dh-api-green-soft: color-mix(in srgb, var(--nct-up) 12%, transparent);
+  --dh-api-amber-soft: color-mix(in srgb, var(--nct-warn) 13%, transparent);
+  --dh-api-red-soft: color-mix(in srgb, var(--nct-down) 13%, transparent);
+}
+
+/* 共享壳钢蓝皮肤覆盖：dashboardHomeShell 的 .dhApiBackedHome 系列把刷新按钮、
+   右栏卡、下钻行的底/边/装饰写成钢蓝 rgba 字面量（不走上面 6 个变量），
+   变量压制块翻不动。页面在 TSX 上给这些元素追加本地皮肤类（roShellBtn /
+   roRailCard / roDrillRow），此处以三写 scope 前缀（0-4-0 起）稳压共享
+   0-2-0 / 0-3-0 规则，值全走 --dh-api-*（scope 下即 --nct-*），不新增色值。 */
+.roV6Scope.roV6Scope.roV6Scope .roShellBtn {
+  background: var(--dh-api-panel-2);
+  border-color: var(--dh-api-line);
+  box-shadow: none;
+}
+
+.roV6Scope.roV6Scope.roV6Scope .roShellBtn:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  box-shadow: none;
+}
+
+.roV6Scope.roV6Scope.roV6Scope .roRailCard {
+  background: var(--dh-api-panel);
+  border-color: var(--dh-api-line);
+  box-shadow: none;
+}
+
+.roV6Scope.roV6Scope.roV6Scope .roRailCard:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  box-shadow: none;
+  transform: none;
+}
+
+/* 共享卡的钢蓝光带 + 织纹伪元素在 Nocturne 平卡语言下整体撤除。 */
+.roV6Scope.roV6Scope.roV6Scope .roRailCard::before {
+  background: none;
+  content: none;
+}
+
+/* 卡头底边与金→钢蓝渐变圆点（结构选择：卡头是卡的第一个 div）。 */
+.roV6Scope.roV6Scope.roV6Scope .roRailCard > div:first-child {
+  border-bottom-color: var(--dh-api-line-soft);
+}
+
+.roV6Scope.roV6Scope.roV6Scope .roRailCard > div:first-child > span:first-child::before {
+  background: var(--dh-api-blue);
+}
+
+/* 下钻行与数据说明列表行（li 为元素选择，SuggestionList 类名跨模块不可引）。 */
+.roV6Scope.roV6Scope.roV6Scope .roDrillRow,
+.roV6Scope.roV6Scope.roV6Scope .roRailCard li {
+  background: color-mix(in srgb, var(--dh-api-panel-2) 62%, transparent);
+  border-color: var(--dh-api-line-soft);
+  border-top-color: var(--dh-api-line-soft);
+}
+
+.roV6Scope.roV6Scope.roV6Scope .roDrillRow a {
+  color: var(--dh-api-ink);
+}
+
+.roV6Scope.roV6Scope.roV6Scope .roDrillRow a:hover {
+  color: var(--dh-api-blue);
+}
+
+/* ── 工具栏（首页 dhTopbar 语言，形态对齐 market-overview 验收先例） ── */
+.roTopbar {
+  align-items: center;
+  border-bottom: 1px solid var(--ro-line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 12px 0;
+}
+
+.roTopbarLeft {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-width: 0;
+}
+
+.roPageTitle {
+  color: var(--ro-ink);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.roTopbarMeta {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  min-width: 0;
+}
+
+.roTopbarMeta > span {
+  align-items: baseline;
+  color: var(--ro-mut);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 6px;
+  max-width: 46vw;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roTopbarMeta strong {
+  color: var(--ro-ink-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.roTopbarRight {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+  min-width: 0;
+}
+
+.roStatusPill {
+  align-items: center;
+  border: 1px solid var(--ro-line);
+  border-radius: var(--dh-api-radius, 6px);
+  color: var(--ro-ink-2);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 6px;
+  max-width: 280px;
+  min-height: 30px;
+  overflow: hidden;
+  padding: 0 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roStatusPill i {
+  border-radius: 50%;
+  flex: 0 0 auto;
+  height: 8px;
+  width: 8px;
+}
+
+.roStatusPill[data-tone="error"] {
+  color: var(--ro-err);
+}
+
+.roStatusPill[data-tone="watch"] {
+  color: var(--ro-amber);
+}
+
+/* ── 01-04 编号分区头统一首页语言（ledger-pnl / market-overview 同款） ── */
+.roSecHead {
+  gap: 10px;
+  min-height: 28px;
+  padding-bottom: 8px;
+}
+
+.roSecHead i {
+  color: var(--ro-mut);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0;
+  min-width: 22px;
+}
+
+.roSecHead h2 {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 20px;
+}
+
+.roBondEvidenceHead h2 {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+/* ── KPI 单框横带（首页 kpiRail 语言：外框 + 发丝分割 + 等高分格） ── */
+.roV6Kpis {
+  background: var(--ro-line-2);
+  border: 1px solid var(--ro-line-2);
+  border-radius: var(--dh-api-radius, 6px);
+  gap: 1px;
+  padding: 0;
+}
+
+/* 空态：横带退掉发丝墙底与外框，只留空态提示框自身（§5 空态收缩）。 */
+.roV6Kpis:has(> .roEmptyState) {
+  background: transparent;
+  border: 0;
+}
+
+.roV6Kpi {
+  background: var(--ro-panel-2);
+  gap: 6px;
+  min-height: 128px;
+  padding: 12px 14px;
+}
+
+.roV6KpiCap {
+  align-items: flex-start;
+  letter-spacing: 0;
+}
+
+/* 标签 2 行 clamp + 固定占位（DESIGN.md §3：同排数值不因换行错位）。 */
+.roV6KpiCapText {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--ro-mut);
+  display: -webkit-box;
+  font-family: var(--dh-font-sans, inherit);
+  font-size: 11px;
+  line-height: 16px;
+  min-height: 32px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.roV6KpiNum {
+  font-size: clamp(20px, 1.55vw, 23px);
+}
+
+.roV6KpiFoot {
+  margin-top: auto;
+}
+
+/* 告警卡左侧 2px 语义条的内边距补偿随新分格内边距同步。 */
+.roV6KpiAlert {
+  padding-left: 12px;
+}
+
+/* 1280 断点只收内边距，不降 KPI 字号：DESIGN §3 主值下限 20px，
+   本页每格 ≥240px 放得下（首页同断点降号是 4 卡窄格的历史先例，不复用）。 */
+@media (max-width: 1280px) {
+  .roV6Kpi {
+    padding-inline: 10px;
+  }
+
+  .roV6KpiAlert {
+    padding-left: 8px;
+  }
+}
+
+@media (max-width: 720px) {
+  .roTopbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .roTopbarRight {
+    justify-content: flex-start;
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .roBondComparison {
+    align-items: center;
+    gap: 0 8px;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    padding-block: 3px;
+  }
+
+  .roBondComparison span {
+    grid-column: auto;
+    line-height: 18px;
+  }
+}
+
+/* ── 债券口径披露：默认一行摘要，按需展开完整原文 ─────────────── */
+.roBondDisclosure {
+  color: var(--ro-mut);
+  min-width: 0;
+}
+
+.roBondDisclosureSummary {
+  border-top: 1px solid var(--ro-line);
+  color: var(--ro-mut);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 20px;
+  padding: 4px 0;
+}
+
+.roBondDisclosure:not([open]) > .roBondDisclosureSummary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roBondDisclosure[open] > .roBondDisclosureSummary {
+  color: var(--ro-ink-2);
+  margin-bottom: 4px;
+  white-space: normal;
+}
+
+.roBondDisclosureSummary::marker {
+  color: var(--ro-mut);
+}
+
+.roBondDisclosureSummary:focus-visible {
+  border-radius: var(--dh-api-radius);
+  outline: 1px solid var(--ro-acc);
+  outline-offset: 2px;
+}
+
+.roBondDisclosureList {
+  color: var(--ro-mut);
+  display: grid;
+  font-size: 12px;
+  gap: 4px;
+  line-height: 20px;
+  list-style-position: outside;
+  margin: 0;
+  max-height: none;
+  overflow: visible;
+  padding: 0 0 8px 20px;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.roBondDisclosureList > li {
+  overflow: visible;
+  overflow-wrap: break-word;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.roBondSharedDisclosure {
+  box-sizing: border-box;
+  grid-column: 1 / -1;
+  min-width: 0;
+  width: 100%;
+}
+
+/* ── 债券卡内密度收口（证据去重后 · 仅追加段）────────────────────
+   卡内子块可选出现（基期行可被上游去重掉、趋势可只剩一行摘要或空态），
+   因此密度不能依赖某个元素一定在场。本段统一两条规律：
+     1) 卡内发丝线一律「线上由 .roBondCard 的 12px 栅格间距承担、线下 8px」；
+     2) 子块不保留「只为让开发丝线」的尾随内边距，避免与栅格间距叠加。
+   全部走 :last-child 自适应，不新增类名，不改颜色语义 / 字号 / 圆角。 ── */
+
+/* 同排双卡等高：矮卡被拉伸后，默认 align-content: stretch 会把富余高度
+   平摊进每一条 auto 行，使卡内每个子块各自多出几像素、整体脱离 4px 栅格
+   （越是去重后两卡高度差越大，摊得越多）。改为 start：富余高度集中留在
+   卡片末尾，卡内节奏恒为内容自身高度 + 12px 栅格间距。 */
+.roBondCard {
+  align-content: start;
+}
+
+/* 末条指标已去掉底部发丝线，为该线预留的 8px 尾随内边距随之收掉；
+   否则与 12px 栅格间距叠成 20px 空档（基期行被去重时直接暴露给趋势块）。 */
+.roBondMetric:last-child {
+  padding-bottom: 0;
+}
+
+/* 基期行内部行距对齐 4px 栅格，保持与 12px 块间距的成组关系。 */
+.roBondComparisonBasis {
+  gap: 4px;
+}
+
+/* 空态段落是趋势块最后一行时，其虚线底边会与紧随的 .roBondMeta 顶边
+   形成两条相距 12px、中间无内容的分隔线；此处只撤线，保留 min-height
+   占位，双卡窄格下仍与有图卡等高。若上游在其后补渲染内容，线自动恢复。 */
+.roBondTrendEmpty:last-child {
+  border-bottom: 0;
+}
+
+/* 折叠块顶边与 .roBondMeta 顶边同为卡内分隔线，统一「线下 8px」；
+   点击区随之由 28px 增至 32px，720 单列触控更稳。 */
+.roBondDisclosureSummary {
+  padding: 8px 0 4px;
+}

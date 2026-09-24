@@ -2,7 +2,7 @@
 
 ## Source
 
-- `docs/live_route_maturity.md` -> `GAP-CASHFLOW-PROJECTION-PAGE`
+- `docs/live_route_maturity.md` -> `PAGE-CFP-001`
 - `docs/metric_dictionary.md` -> `MTR-CFP-001` through `MTR-CFP-004`
 - `backend/app/api/routes/cashflow_projection.py`
 - `backend/app/services/cashflow_projection_service.py`
@@ -32,19 +32,24 @@
 
 ## Frozen Values
 
-- `MTR-CFP-001`: `result.duration_gap.display == "+0.25"`.
+- `MTR-CFP-001`: `result.duration_gap.display == "+0.30"` (textbook gap `D_A - (L/A) * D_L`).
 - `MTR-CFP-002`: `result.asset_duration.display == "0.50"`.
 - `MTR-CFP-003`: `result.liability_duration.display == "0.25"`.
-- `MTR-CFP-004`: `result.rate_sensitivity_1bp.unit == "yuan"` and `display == "+0.03"`.
+- `MTR-CFP-004`: `result.rate_sensitivity_1bp.unit == "yuan"` and `display == "-0.03"` (equity value change for a +1bp rate move; positive equity duration implies a negative sensitivity).
+- `result.warnings` includes the liability remaining-term proxy disclosure.
 - `result.reinvestment_risk_12m.display == "100.00%"`.
 - `result.monthly_buckets[3].year_month == "2026-07"` and `net_cashflow.display == "-800.00"`.
 - `result.monthly_buckets[6].year_month == "2026-10"` and `net_cashflow.display == "+1,000.00"`.
+- The 24-month horizon is date-inclusive: buckets start in the `2026-04` report month and include the partial horizon-end month `2028-04`, so this non-month-start report date yields 25 calendar-month buckets without extending `horizon_end` beyond `2028-04-30`.
 - `result.top_maturing_assets_12m[0].instrument_code == "CF-BOND-001"`.
+- `result.floating_rate_proxy_count == 0` and `result.floating_rate_proxy_market_value.raw == 0.0`.
+- `result.payment_frequency_fallback_count == 0` and `result.payment_frequency_fallback_market_value.raw == 0.0`.
+- `result.bullet_value_date_fallback_count == 0` and `result.bullet_value_date_fallback_market_value.raw == 0.0`.
 - Numeric values remain backend-owned `Numeric` objects with `raw`, `unit`, `display`, `precision`, and `sign_aware`.
 
 ## Boundary
 
-- This sample freezes the `GET /api/cashflow-projection` candidate page DTO for `GAP-CASHFLOW-PROJECTION-PAGE`.
+- This sample freezes the `GET /api/cashflow-projection` candidate page DTO for `PAGE-CFP-001`.
 - It preserves `formal_use_allowed=false`; `MTR-CFP-001` through `MTR-CFP-004` remain candidate display metrics with pending confirmation.
 - It does not replace formal liquidity, PAGE-RISK-001 formal risk truth, PAGE-BALANCE-001 balance truth, or formal PnL truth.
 - Direct governance review, catalog/date evidence, manual audit closure, and business-owner approval remain separate.

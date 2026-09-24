@@ -5,9 +5,19 @@
 本规范定义债券金融分析系统的运行时缓存策略。缓存必须服从系统治理边界：
 
 - 正式金融计算只允许在 `backend/app/core_finance/` 实现。
-- `backend/app/api/` 只做参数校验、鉴权、调用 service、响应映射。
+- `backend/app/api/` 只做参数校验、**授权**、调用 service、响应映射。
 - DuckDB 在请求链路中只读，写入只允许经由 `backend/app/tasks/` / worker。
 - Scenario 与 Formal 在缓存、表、结果元数据上严格隔离。
+
+> **「授权」的边界（当前仓库有授权，没有认证）。** 原文此处写的是「鉴权」，该词混淆了 authentication
+> 与 authorization。准确结论见 [../README.md](../README.md)「关键约束」一节与
+> [SYSTEM_STACK_SPEC_FOR_CODEX.md](SYSTEM_STACK_SPEC_FOR_CODEX.md) 第 1 节：授权（`ensure_user_allowed`
+> 的 RBAC 判定）存在，认证不存在——全仓没有 `HTTPBearer` / `OAuth2` / `APIKeyHeader` / JWT / session，
+> 身份来自 `X-User-Id` / `X-User-Role` 请求头或环境变量，兜底为 `anonymous` / `viewer`。
+>
+> 对缓存的直接含义：**调用方身份未经校验，因此不得把 `user_id` / `role` 当作可信的缓存分区键**，也不得
+> 依赖它做 per-caller 的结果隔离或权限过滤。本文定义的 cache key / cache identity / cache namespace
+> 语义均不包含身份可信性假设。
 
 ## 1.1 文档归属
 
@@ -153,6 +163,16 @@ lock_key       = lock:duckdb:formal:balance-analysis:materialize
   - `rule_version`：`rv_qdb_gl_monthly_analysis_v1`
   - `cache_version`：`cv_qdb_gl_monthly_analysis_v1`
 - Refresh：`POST .../refresh` 仅向治理侧 `cache_build_run` 流追加完成记录（`GovernanceRepository` 文件流），**不**写入 DuckDB 分析物化表；工作簿在只读链路上由标准化源与人工调整拼装。底层 Excel 基线契约仍以 [data_contracts.md](data_contracts.md) 的 `qdb_gl_baseline_input` 为准。
+
+### 产品分类损益（formal + scenario overlay）
+
+- `rule_version`：`rv_product_category_pnl_v2`，覆盖双口径利差、CLN 成本拆解及零基准 FTP 重估闭合规则。
+- formal `cache_version`：`cv_product_category_pnl_formal__rv_product_category_pnl_v2`。
+- scenario `cache_version`：
+  `cv_product_category_pnl_scenario__rv_product_category_pnl_v2__ph_<12位场景参数哈希>`；
+  当前 profile 至少包含规范化后的 `scenario_rate_pct`，不同场景利率不得复用同一版本。
+- 两种 basis 共用同一 formal read model 作为只读输入，但 scenario 仅在内存叠加；其 outward
+  `cache_version` 必须与 formal 分离，禁止再共用未分 basis 的 `cv_product_category_pnl_v1`。
 
 ## 4. result_meta 要求
 

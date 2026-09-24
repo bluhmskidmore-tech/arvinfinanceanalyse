@@ -97,6 +97,22 @@ class TestBootstrapZeroCurve:
         assert len(result.zero_curve) == 1
         assert abs(float(result.zero_curve[0].rate) - 2.5) < 0.01
 
+    def test_one_year_semi_annual_bootstraps_intermediate_coupon(self):
+        """A 1Y semi-annual par bond must discount its 6M coupon."""
+        curve = [
+            CurvePoint(years=0.5, rate=Decimal("2.00")),
+            CurvePoint(years=1.0, rate=Decimal("3.00")),
+        ]
+        result = bootstrap_zero_curve(curve, coupon_frequency=2)
+        dfs = dict(result.discount_factors)
+
+        # D(0.5) = (1 + 2%)^-0.5 = 0.9901475429766743.
+        # 1 = 1.5% * D(0.5) + 101.5% * D(1),
+        # so D(1) = (1 - 0.015 * D(0.5)) / 1.015 = 0.9705889525668473.
+        assert abs(dfs[0.5] - 0.9901475429766743) < 1e-12
+        assert abs(dfs[1.0] - 0.9705889525668473) < 1e-12
+        assert abs(float(result.zero_curve[1].rate) - 3.030227) < 1e-6
+
     def test_semi_annual_frequency(self):
         """Semi-annual coupon frequency should produce valid results."""
         result = bootstrap_zero_curve(UPWARD_CURVE, coupon_frequency=2)
@@ -179,5 +195,5 @@ class TestCrossValidation:
         bootstrapped = [CurvePoint(years=1.0, rate=Decimal("2.00"))]
         vendor = [CurvePoint(years=5.0, rate=Decimal("2.50"))]
         result = cross_validate_spot_curve(bootstrapped, vendor)
-        assert result.is_consistent  # No data to compare → considered OK
+        assert result.is_consistent is None
         assert len(result.tenor_diffs) == 0

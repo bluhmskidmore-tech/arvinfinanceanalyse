@@ -4,21 +4,44 @@
  */
 import type {
   CampisiDecisionGradePayload,
+  CampisiEffectAvailabilityEntry,
   CampisiFourEffectsPayload,
   CampisiEnhancedPayload,
   CampisiMaturityBucketsPayload,
 } from "../api/contracts";
 
+/** 与后端 `FORMAL_BRIDGE_DECOMPOSITION_BASIS` 逐字对齐。 */
+const BRIDGE_DECOMPOSITION_BASIS =
+  "bridge_path: selection_effect is residual after carry, treasury, spread, " +
+  "realized_trading, manual_adjustment, and fx_translation; " +
+  "convexity_effect / cross_effect / reinvestment_effect are not decomposed on this " +
+  "path and are published as an exact 0 with their contribution folded into " +
+  "selection_effect \u2014 not an observation that second-order terms were nil; " +
+  "model_path: selection_effect is per-bond curve decomposition residual";
+
+const BRIDGE_NOT_DECOMPOSED_ENTRY: CampisiEffectAvailabilityEntry = {
+  status: "not_decomposed",
+  reason: "bridge_second_order_not_decomposed",
+  unavailable_bonds: 1,
+  unavailable_market_value_start: 32000000,
+};
+
+/** formal-bridge 路径：三项明细已从 selection 拆出，分量之和 == total_return。 */
 export const mockCampisiFourEffects: CampisiFourEffectsPayload = {
   report_date: "2026-03-31",
   period_start: "2026-03-01",
   period_end: "2026-03-31",
   num_days: 30,
+  basis: "formal_report_pnl_bridge",
+  decomposition_basis: BRIDGE_DECOMPOSITION_BASIS,
   totals: {
     income_return: 820000,
     treasury_effect: -210000,
     spread_effect: 160000,
-    selection_effect: 95000,
+    realized_trading: 40000,
+    manual_adjustment: 30000,
+    fx_translation: 30000,
+    selection_effect: -5000,
     total_return: 865000,
     market_value_start: 128000000,
   },
@@ -42,7 +65,10 @@ export const mockCampisiFourEffects: CampisiFourEffectsPayload = {
       income_return: 520000,
       treasury_effect: -180000,
       spread_effect: 120000,
-      selection_effect: 50000,
+      realized_trading: 20000,
+      manual_adjustment: 10000,
+      fx_translation: 10000,
+      selection_effect: 10000,
       total_return: 510000,
       weight_pct: 60.94,
     },
@@ -56,14 +82,18 @@ export const mockCampisiFourEffects: CampisiFourEffectsPayload = {
       income_return: 210000,
       treasury_effect: -70000,
       spread_effect: 42000,
-      selection_effect: 20000,
+      realized_trading: 8000,
+      manual_adjustment: 6000,
+      fx_translation: 6000,
+      selection_effect: 0,
       total_return: 202000,
       mod_duration: 2.7,
     },
   ],
 };
 
-export const mockCampisiEnhanced: CampisiEnhancedPayload = {
+/** 模型路径夹具：无 bridge 三项明细，仍为经典四效应。 */
+export const mockCampisiFourEffectsModelPath: CampisiFourEffectsPayload = {
   report_date: "2026-03-31",
   period_start: "2026-03-01",
   period_end: "2026-03-31",
@@ -72,11 +102,8 @@ export const mockCampisiEnhanced: CampisiEnhancedPayload = {
     income_return: 820000,
     treasury_effect: -210000,
     spread_effect: 160000,
-    convexity_effect: 18000,
-    cross_effect: 6000,
-    reinvestment_effect: 0,
-    selection_effect: 81000,
-    total_return: 875000,
+    selection_effect: 95000,
+    total_return: 865000,
     market_value_start: 128000000,
   },
   by_asset_class: [
@@ -86,10 +113,76 @@ export const mockCampisiEnhanced: CampisiEnhancedPayload = {
       income_return: 520000,
       treasury_effect: -180000,
       spread_effect: 120000,
-      convexity_effect: 12000,
-      cross_effect: 3000,
+      selection_effect: 50000,
+      total_return: 510000,
+      weight_pct: 60.94,
+    },
+  ],
+  by_bond: [],
+};
+
+export const mockCampisiEnhanced: CampisiEnhancedPayload = {
+  report_date: "2026-03-31",
+  period_start: "2026-03-01",
+  period_end: "2026-03-31",
+  num_days: 30,
+  basis: "formal_report_pnl_bridge",
+  decomposition_basis: BRIDGE_DECOMPOSITION_BASIS,
+  // bridge 一阶分解框架不产出二阶项：三项恒为未拆分的 0，贡献留在 selection_effect
+  // 里。夹具给非零值会把一个生产里不存在的行为固化进契约。
+  totals: {
+    income_return: 820000,
+    treasury_effect: -210000,
+    spread_effect: 160000,
+    realized_trading: 40000,
+    manual_adjustment: 30000,
+    fx_translation: 30000,
+    convexity_effect: 0,
+    cross_effect: 0,
+    reinvestment_effect: 0,
+    selection_effect: 5000,
+    total_return: 875000,
+    market_value_start: 128000000,
+  },
+  effect_availability: {
+    bonds: 1,
+    treasury_effect: {
+      status: "ok",
+      reason: null,
+      unavailable_bonds: 0,
+      unavailable_market_value_start: 0,
+    },
+    spread_effect: {
+      status: "ok",
+      reason: null,
+      unavailable_bonds: 0,
+      unavailable_market_value_start: 0,
+    },
+    accrued_interest: {
+      status: "ok",
+      reason: null,
+      unavailable_bonds: 0,
+      unavailable_market_value_start: 0,
+      basis: "dirty_price",
+    },
+    convexity_effect: BRIDGE_NOT_DECOMPOSED_ENTRY,
+    cross_effect: BRIDGE_NOT_DECOMPOSED_ENTRY,
+    reinvestment_effect: BRIDGE_NOT_DECOMPOSED_ENTRY,
+  },
+  by_asset_class: [
+    {
+      asset_class: "政策性金融债",
+      market_value_start: 78000000,
+      income_return: 520000,
+      treasury_effect: -180000,
+      spread_effect: 120000,
+      realized_trading: 20000,
+      manual_adjustment: 10000,
+      fx_translation: 10000,
+      convexity_effect: 0,
+      cross_effect: 0,
       reinvestment_effect: 0,
-      selection_effect: 45000,
+      selection_effect: 20000,
       total_return: 520000,
       weight_pct: 60.94,
     },
@@ -103,10 +196,13 @@ export const mockCampisiEnhanced: CampisiEnhancedPayload = {
       income_return: 210000,
       treasury_effect: -70000,
       spread_effect: 42000,
-      convexity_effect: 5000,
-      cross_effect: 1000,
+      realized_trading: 8000,
+      manual_adjustment: 6000,
+      fx_translation: 6000,
+      convexity_effect: 0,
+      cross_effect: 0,
       reinvestment_effect: 0,
-      selection_effect: 17000,
+      selection_effect: 3000,
       total_return: 205000,
       mod_duration: 2.7,
     },

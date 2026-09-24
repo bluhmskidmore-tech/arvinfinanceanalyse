@@ -1,38 +1,89 @@
-# Roadmap: MOSS V3 Audit Remediation
+# Roadmap: MOSS V3
 
-## Overview
+## Milestones
 
-This minimal GSD roadmap restores audit evidence for the current remediation effort only. It does not reconstruct historical milestones.
+- [x] **v1.0 Audit Remediation** - Phase 01, 1/1 plan; completed and verified 2026-05-11, archived 2026-07-15. See [archived roadmap](milestones/v1.0-ROADMAP.md).
+- [ ] **v1.1 PnL Historical Cutoff Precompute Coverage** - Phases 02-04; roadmap defined 2026-07-15.
 
-## v1.0 Audit Remediation
+## Current Milestone
 
-**Milestone Goal:** Move the system from "functionally mostly complete but release closure is unstable" to "verifiable, releasable, and traceable."
-**Definition of Done:** Release gates are green, live routes have formal page contracts, frontend finance boundaries are explicit, dashboard first-screen metric fallbacks preserve provenance, security-sensitive development boundaries are hardened, CI includes the release-critical checks, and GSD evidence exists for this remediation phase.
+### v1.1 PnL Historical Cutoff Precompute Coverage
+
+**Milestone Goal:** Make every available 2026 month-end cutoff on `/pnl-by-business` fast and auditable without changing any governed PnL formula.
+
+**Definition of Done:** Every available 2026 month-end has an independent exact-cutoff precompute partition; the page reports the selected cutoff's own precompute or governed live-fallback state; affected and later cumulative cutoffs rebuild without duplicate work; failures remain isolated and recoverable; and live-versus-precomputed parity is evidenced for every governed page metric and diagnostic.
 
 ## Phases
 
-- [x] **Phase 01: Audit Remediation** - Close the current audit blockers and restore release evidence.
+- [x] **Phase 02: Exact-Cutoff Historical Coverage** - Materialize all available 2026 month-end partitions and expose exact selected-cutoff state. (completed 2026-07-17; merged into `codex/V1`)
+- [ ] **Phase 03: Incremental Rebuild and Recovery** - Rebuild only affected cumulative cutoffs, coalesce overlap, and isolate failures. **DEFERRED** (see status note below)
+- [ ] **Phase 04: Exact Parity and Audit Evidence** - Prove governed live-versus-precomputed equality and publish the cutoff evidence matrix. **DEFERRED** (see status note below)
+
+## Phase 03/04 Status Note (2026-07-19 forensic reconciliation)
+
+Per `.planning/forensics/report-20260719-055254.md`, Phase 03 and 04 have three distinct states that must not be collapsed into a single "Complete":
+
+| Dimension | Phase 03 | Phase 04 |
+| --- | --- | --- |
+| Technical implementation | Complete on side branch `codex/phase-03-incremental-rebuild` (HEAD `ad28d974a`, ~3297 lines) | Parity evidence exists but is mixed into the Phase 03 side branch and docs; no standalone phase directory |
+| Adopted by current business | **No.** Business rule is monthly PnL updates with no routine historical backtrace, so automatic cascade rebuild is a low-frequency protection mechanism, not a current need | **No.** Parity evidence has not been reviewed through the standard SUMMARY/VERIFICATION closure |
+| Merged into mainline (`codex/V1`) | **No** | **No** |
+
+Disposition: the side branch is preserved as a **historical-traceability capability candidate / reference implementation**. Do not continue Phase 03 development, do not merge the side branch directly, and do not treat Phase 03/04 as next-round work. Requirements INC-01, INC-02, REC-01, PAR-01, PAR-02 remain unchecked until a business adoption decision reopens them.
 
 ## Phase Details
 
-### Phase 01: Audit Remediation
-**Goal**: Resolve the audit blockers called out in the system-wide milestone audit and restore a minimal evidence chain for release review.
-**Depends on**: Nothing.
-**Requirements**: [REQ-AUDIT-001, REQ-AUDIT-002, REQ-AUDIT-003, REQ-AUDIT-004, REQ-AUDIT-005, REQ-AUDIT-006]
-**Success Criteria** (what must be TRUE):
-  1. Backend release suite uses explicit dev/test header trust and passes.
-  2. Live routes `/agent`, `/balance-movement-analysis`, and `/liability-analytics` have formal `PAGE-*` contracts.
-  3. Frontend finance-boundary guard allows only the documented display-only DV01 label exception.
-  4. Dashboard home hero delta treats placeholder values as missing and falls back to the read-chain label.
-  5. Macro refresh, agent run lookup, and GitNexus/MCP launch boundaries have targeted authorization/path tests.
-  6. CI and backend release gate include build/page/finance/MCP coverage and GSD evidence is present.
-**Plans**: 1 plan
+### Phase 02: Exact-Cutoff Historical Coverage
 
-Plans:
-- [x] 01-01: Implement audit remediation plan and verification gates.
+**Goal:** Give `/pnl-by-business` independent precompute coverage and truthful state resolution for every available 2026 month-end cutoff.
+
+**Depends on:** Phase 01 (v1.0 complete).
+
+**Requirements:** [COV-01, COV-02, COV-03]
+
+**Success Criteria** (what must be TRUE):
+
+1. An authorized operator can run one year-bounded build that creates exactly one independent partition for every available 2026 month-end, and rerunning it does not create duplicate partitions.
+2. Selecting any available 2026 month-end on `/pnl-by-business` resolves data only for that exact cutoff and never inherits a later cutoff's partition or state.
+3. The page identifies whether the exact selected cutoff is current/precomputed or is being served through the governed live fallback.
+
+**Plans:** 1/1 plans complete
+
+### Phase 03: Incremental Rebuild and Recovery
+
+**Goal:** Keep historical partitions current with bounded cumulative invalidation, coalesced refresh work, and per-cutoff recovery.
+
+**Depends on:** Phase 02.
+
+**Requirements:** [INC-01, INC-02, REC-01]
+
+**Success Criteria** (what must be TRUE):
+
+1. A governed source or approved manual-adjustment change at a cutoff queues that cutoff and every later cumulative cutoff while earlier current partitions remain untouched and available.
+2. When automatic refresh requests overlap, each affected cutoff has at most one queued follow-up behind its running build.
+3. A failed or stale cutoff remains visibly identified and can be retried independently while other current cutoff partitions continue serving normally.
+
+**Plans:** TBD
+
+### Phase 04: Exact Parity and Audit Evidence
+
+**Goal:** Demonstrate exact governed equivalence between live and precomputed page payloads and leave reviewable cutoff-level evidence.
+
+**Depends on:** Phase 03.
+
+**Requirements:** [PAR-01, PAR-02]
+
+**Success Criteria** (what must be TRUE):
+
+1. For every tested cutoff, monthly and analysis payloads from the precomputed path match the governed live path exactly for PnL, ADB, current balance, yield, FTP, currency grouping, parent summaries, and reconciliation diagnostics.
+2. Reviewers can inspect a cutoff coverage/parity matrix that records parity outcome, source version, rule version, record count, and measured elapsed time for every tested cutoff.
+
+**Plans:** TBD
 
 ## Progress
 
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 01. Audit Remediation | 1/1 | Complete | 2026-05-11 |
+| Phase | Requirements | Plans Complete | Status | Completed |
+|-------|--------------|----------------|--------|-----------|
+| 02. Exact-Cutoff Historical Coverage | 3 | 1/1 | Complete    | 2026-07-17 |
+| 03. Incremental Rebuild and Recovery | 3 | 2/2 (side branch only) | Deferred: technically complete on `codex/phase-03-incremental-rebuild`, not adopted, not merged | - |
+| 04. Exact Parity and Audit Evidence | 2 | 0/TBD | Deferred: evidence on side branch, no standard closure | - |

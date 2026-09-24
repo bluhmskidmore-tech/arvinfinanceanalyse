@@ -1,0 +1,166 @@
+/*
+ * PagePrimitives 布局样式（2026-08-13 自 PageHeader / PageSectionLead 的重复
+ * 内联 style 布局块抽取，债务审计 P0 项）。
+ *
+ * 为什么所有选择器都写成 .x.x 双类（特异度 0,2,0）：
+ * 这些声明原先是内联 style，页面级单类 / 后代选择器（0,1,*）从来压不过它们；
+ * 抽取后必须保持同样的优先级语义，否则会出现渲染漂移，已知实例：
+ * - OperationsAnalysisPage 传入 .operations-analysis-page__hero-header
+ *   { margin-bottom: 0 }（今日被内联 28px 压制，双类下继续压制）；
+ * - MarketDataPage 的 .market-data-section-lead--compact 系列用 !important
+ *   反转 PageSectionLead（!important 在两代实现下都生效），其余非 !important
+ *   声明只覆盖内联从未声明过的属性（line-height / width 等），保持生效。
+ * 页面确需覆盖时仍走 style prop（内联恒胜）或 !important。
+ *
+ * 颜色字面值与 theme/tokens.ts shellTokens 对齐：
+ * #8a8f98=colorTextMuted #16191d=colorTextPrimary #5c6370=colorTextSecondary
+ * #ecf8f2=colorBgSuccessSoft #1f7a4d=colorSuccess
+ * #eef2f8=colorAccentSoft #14366b=colorAccent #f7f6f3=colorBgMuted
+ * PageSectionLead 保持 var(--moss-page-*) 间接层（深色页在根块注入变量，
+ * 见 MacroToolkitPage.css / BalanceAnalysisPage.css），兜底值即原内联 fallback。
+ */
+
+/* ---------- PageHeader ---------- */
+
+.pageHeader.pageHeader {
+  display: grid;
+  gap: 18px;
+  margin-bottom: 28px;
+}
+
+.headerTop.headerTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.headerTitles.headerTitles {
+  display: grid;
+  gap: 10px;
+  max-width: 920px;
+}
+
+.headerEyebrow.headerEyebrow {
+  color: #8a8f98;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.headerTitle.headerTitle {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: #16191d;
+}
+
+.headerDescription.headerDescription {
+  margin: 0;
+  color: #5c6370;
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.headerAside.headerAside {
+  display: grid;
+  justify-items: end;
+  gap: 12px;
+}
+
+.headerBadge.headerBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.headerBadgePositive.headerBadgePositive {
+  background: #ecf8f2;
+  color: #1f7a4d;
+}
+
+.headerBadgeAccent.headerBadgeAccent {
+  background: #eef2f8;
+  color: #14366b;
+}
+
+.headerBadgeNeutral.headerBadgeNeutral {
+  background: #f7f6f3;
+  color: #5c6370;
+}
+
+/* compact 密度覆盖：与基础规则同特异度（0,2,0），依靠书写顺序后置生效 */
+
+.pageHeaderCompact.pageHeaderCompact {
+  gap: 10px;
+  margin-bottom: 0;
+}
+
+.pageHeaderCompact .headerTop {
+  gap: 12px;
+}
+
+.pageHeaderCompact .headerTitles {
+  gap: 6px;
+  max-width: 760px;
+}
+
+.pageHeaderCompact .headerEyebrow {
+  font-size: 11px;
+}
+
+.pageHeaderCompact .headerTitle {
+  font-size: 26px;
+  letter-spacing: 0;
+}
+
+.pageHeaderCompact .headerDescription {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.pageHeaderCompact .headerAside {
+  gap: 8px;
+}
+
+.pageHeaderCompact .headerBadge {
+  padding: 6px 12px;
+}
+
+/* ---------- PageSectionLead ---------- */
+
+.sectionLead.sectionLead {
+  display: grid;
+  gap: 6px;
+  margin-top: 28px;
+}
+
+.sectionLeadEyebrow.sectionLeadEyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--moss-page-ink-muted, #8a8f98);
+}
+
+.sectionLeadTitle.sectionLeadTitle {
+  margin: 0;
+  font-size: var(--moss-page-section-title-size, 18px);
+  font-weight: 700;
+  color: var(--moss-page-ink, #16191d);
+}
+
+.sectionLeadDescription.sectionLeadDescription {
+  margin: 0;
+  max-width: 860px;
+  color: var(--moss-page-ink-secondary, #5c6370);
+  font-size: var(--moss-page-section-desc-size, 13px);
+  line-height: 1.7;
+}

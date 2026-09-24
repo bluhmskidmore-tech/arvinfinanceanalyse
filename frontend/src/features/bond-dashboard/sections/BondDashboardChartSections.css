@@ -1,0 +1,195 @@
+/*
+ * 02 资产结构 / 03 期限与行业分区专属样式，由 BondStructureSection 与
+ * MaturityIndustrySection 引入。容器沿用页级 __panel/__surface 语义，此处只
+ * 扩展：等高网格、面板头（13px/600 + 发丝底线）、图表体、信用等级色带、
+ * 饼图中心 overlay 与 antd Segmented 深色收口。
+ * 颜色一律 --dh-api-* 语义链（bond-dashboard scope 已重映射 Nocturne）；
+ * 圆角 var(--dh-api-radius)；字号下限 11px。
+ */
+
+/* -------------------------------------------------- 等高网格（02） */
+
+/*
+ * 页级 grid 默认 align-items:start（不等高网格禁止 stretch 空白）；
+ * 02 三面板是刻意等高对齐，桌面断点覆盖为 stretch。
+ * 双类选择器（0-2-0）保证不依赖 CSS 引入顺序压过页级单类规则。
+ */
+@media (min-width: 992px) {
+  .bond-dashboard-page__grid.bond-dashboard-charts__grid-equal {
+    align-items: stretch;
+  }
+}
+
+/* 面板改纵向 flex：__fill 段吃掉等高多出的空间，边框整行对齐。 */
+.bond-dashboard-page__panel.bond-dashboard-charts__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bond-dashboard-charts__fill {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* -------------------------------------------------------- 面板头 */
+
+.bond-dashboard-charts__head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.bond-dashboard-charts__head-title {
+  overflow: hidden;
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 头部右侧口径小注（如行业占比分母说明）。 */
+.bond-dashboard-charts__head-note {
+  flex: 0 0 auto;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* 图表上方的一行口径小字（市值加权口径 / 期限桶说明）。 */
+.bond-dashboard-charts__hint {
+  margin: 0;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ------------------------------------------- antd Segmented 深色收口 */
+
+/*
+ * antd token 已全局切 Nocturne（04d9613e，JS 常量与 --dh-api-* 链同出
+ * Nocturne 色源），原钢蓝常量已不存在；Segmented 的 --dh-api-* 重画
+ * （StockDetailDrawer 先例）保留为页内等价防御层（历史兜底）。
+ */
+.bond-dashboard-charts__segmented.ant-segmented {
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+}
+
+.bond-dashboard-charts__segmented .ant-segmented-item {
+  border-radius: var(--dh-api-radius);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+.bond-dashboard-charts__segmented .ant-segmented-item:hover:not(.ant-segmented-item-selected) {
+  color: var(--dh-api-ink);
+}
+
+.bond-dashboard-charts__segmented .ant-segmented-item-selected,
+.bond-dashboard-charts__segmented .ant-segmented-thumb {
+  background: var(--dh-api-panel-3);
+  color: var(--dh-api-ink);
+  box-shadow: none;
+}
+
+/* ------------------------------------------------ 饼图 + 中心合计 */
+
+.bond-dashboard-charts__pie-wrap {
+  position: relative;
+}
+
+/* overlay 锚点与 pie center 同步（series center x=36%）。 */
+.bond-dashboard-charts__pie-overlay {
+  position: absolute;
+  top: 50%;
+  left: 36%;
+  text-align: center;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.bond-dashboard-charts__pie-overlay-label {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.bond-dashboard-charts__pie-overlay-value {
+  color: var(--dh-api-blue);
+  font-family: var(--moss-font-mono);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------ 信用等级色带 */
+
+.bond-dashboard-charts__rating-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: stretch;
+  width: 100%;
+  min-height: 132px;
+}
+
+/* 背景色与 flex 权重是逐块动态值，由组件 inline style 提供。 */
+.bond-dashboard-charts__rating-block {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 64px;
+  padding: 10px 8px;
+  border-radius: var(--dh-api-radius);
+  /* 色块底为 Nocturne 中/浅色，块内文字统一用面板深色保证对比。 */
+  color: var(--dh-api-panel);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dh-api-panel) 15%, transparent);
+}
+
+.bond-dashboard-charts__rating-category {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.bond-dashboard-charts__rating-amount {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+.bond-dashboard-charts__rating-pct {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  opacity: 0.9;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 只数补充读数：窄评级块中独占一行，避免与占比并排溢出。 */
+.bond-dashboard-charts__rating-count {
+  display: block;
+  margin-top: 2px;
+  opacity: 0.8;
+}
+
+/* envelope 未到达时的色带骨架占位（真实空 payload 走页级 surface）。 */
+.bond-dashboard-charts__rating-empty {
+  display: grid;
+  flex: 1 1 auto;
+  place-items: center;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}

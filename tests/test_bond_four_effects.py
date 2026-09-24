@@ -14,7 +14,11 @@ from decimal import Decimal
 
 import pytest
 
-from backend.app.core_finance.bond_four_effects import compute_bond_four_effects
+from backend.app.core_finance import bond_four_effects as bond_four_effects_module
+from backend.app.core_finance.bond_four_effects import (
+    compute_bond_four_effects,
+    compute_bond_six_effects,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -47,6 +51,51 @@ def _make_bond(
     if accrued_interest_end is not None:
         bond["accrued_interest_end"] = accrued_interest_end
     return bond
+
+
+# ---------------------------------------------------------------------------
+# Coupon-frequency contract
+# ---------------------------------------------------------------------------
+
+def test_six_effects_forwards_explicit_coupon_frequency_to_all_duration_helpers(
+    monkeypatch,
+):
+    seen_frequencies: list[int] = []
+
+    def fake_estimate_duration(**kwargs):
+        seen_frequencies.append(kwargs["coupon_frequency"])
+        return Decimal("4")
+
+    def fake_modified_duration_from_macaulay(**kwargs):
+        seen_frequencies.append(kwargs["coupon_frequency"])
+        return Decimal("3.8")
+
+    def fake_estimate_convexity_bond(*args, **kwargs):
+        seen_frequencies.append(kwargs["coupon_frequency"])
+        return Decimal("20")
+
+    monkeypatch.setattr(bond_four_effects_module, "estimate_duration", fake_estimate_duration)
+    monkeypatch.setattr(
+        bond_four_effects_module,
+        "modified_duration_from_macaulay",
+        fake_modified_duration_from_macaulay,
+    )
+    monkeypatch.setattr(
+        bond_four_effects_module,
+        "estimate_convexity_bond",
+        fake_estimate_convexity_bond,
+    )
+
+    compute_bond_six_effects(
+        _make_bond(),
+        num_days=30,
+        benchmark_yield_change=Decimal("0.001"),
+        spread_change=Decimal("0.0005"),
+        report_date=date(2026, 1, 1),
+        coupon_frequency=4,
+    )
+
+    assert seen_frequencies == [4, 4, 4, 4]
 
 
 # ---------------------------------------------------------------------------
@@ -308,6 +357,63 @@ class TestFourEffectsSumToTotal:
         )
         self._assert_sum(result, 10_000_000.0)
 
+    def test_cross_coupon_window_includes_coupon_cash_in_total_return(self):
+        """跨付息日：全价变动须加回期内实付票息，否则选券效应被系统性打负。"""
+        face = 10_000_000.0
+        num_days = 30
+        bond = _make_bond(
+            coupon_rate=0.03,
+            face_value=face,
+            market_value_start=face,
+            market_value_end=face,
+            ytm=0.03,
+            maturity_date=date(2031, 1, 1),
+            # 付息前应计接近票息，付息后重置为小额 → 全价变动 alone 少计票息现金
+            accrued_interest_start=140_000.0,
+            accrued_interest_end=10_000.0,
+        )
+        result = compute_bond_four_effects(
+            bond,
+            num_days,
+            Decimal("0"),
+            Decimal("0"),
+            date(2026, 1, 15),
+        )
+        income = float(result["income_return"])
+        dirty_only = (face + 10_000.0) - (face + 140_000.0)
+        assert dirty_only < 0
+        # total_return ≈ 净价变动(0) + 票息收入估算
+        assert float(result["total_return"]) == pytest.approx(income, rel=1e-6)
+        # 旧口径只用全价变动时，选券 ≈ dirty_only - income ≪ 0
+        assert float(result["selection_effect"]) == pytest.approx(
+            float(result["total_return"])
+            - income
+            - float(result["treasury_effect"])
+            - float(result["spread_effect"]),
+            abs=1e-6,
+        )
+        assert float(result["selection_effect"]) > dirty_only - income + 1.0
+
+    def test_signed_short_notional_preserves_clean_identity_on_ai_mismatch(self):
+        """Signed short inputs must not be clamped to dirty movement."""
+        bond = _make_bond(
+            coupon_rate=0.03,
+            face_value=-1_000.0,
+            market_value_start=-1_000.0,
+            market_value_end=-1_010.0,
+            ytm=0.03,
+            maturity_date=date(2030, 6, 30),
+            accrued_interest_start=-5.0,
+            accrued_interest_end=-7.0,
+        )
+        result = compute_bond_four_effects(
+            bond, 30, Decimal("0"), Decimal("0"), date(2026, 1, 1)
+        )
+
+        expected_total = -10.0 - (0.03 * 1_000.0 * 30.0 / 365.0)
+        assert float(result["total_return"]) == pytest.approx(expected_total)
+        assert "accrued_interest_exceeds_modeled_carry" in result["diagnostics"]
+
     def test_yield_rise_scenario(self):
         """Rising yield environment."""
         bond = _make_bond(
@@ -407,7 +513,15 @@ class TestEdgeCases:
         assert "total_return" in result
 
     def test_missing_maturity_date(self):
-        """Missing maturity uses proxy years (3.0) per bond_duration._estimate_duration_proxy_years."""
+        """Missing maturity short-circuits to mod_duration=0 inside bond_four_effects itself.
+
+        No duration proxy is involved: compute_bond_four_effects guards on
+        ``mat_date is None`` before it would call ``estimate_duration``, and records the
+        ``mod_dur_fallback_zero`` diagnostic. The former
+        ``bond_duration._estimate_duration_proxy_years`` (3.0) has since been deleted --
+        missing maturity now resolves to ``DURATION_UNAVAILABLE`` (0) via
+        ``bond_analytics.common.resolve_missing_maturity_duration``.
+        """
         bond = _make_bond(maturity_date=None)
         result = compute_bond_four_effects(
             bond, 30, Decimal("0.002"), Decimal("0.001"), date(2026, 1, 1)

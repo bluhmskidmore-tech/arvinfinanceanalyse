@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 from dataclasses import dataclass
 from datetime import date
@@ -19,6 +20,8 @@ from backend.app.schemas.vendor import (
     VendorSnapshot,
 )
 from backend.app.schemas.yield_curve import YieldCurvePoint, YieldCurveSnapshot
+
+logger = logging.getLogger(__name__)
 
 # AkShare `bond_china_yield` curve names. For `aaa_credit`, only this enterprise-AAA family is allowed
 # (no cross-family AAA substitution — matches must equal this string exactly).
@@ -48,6 +51,14 @@ AKSHARE_FX_PAIR_FIELD_CANDIDATES = ("pair", "currency_pair", "symbol", "名称",
 AKSHARE_FX_VALUE_FIELD_CANDIDATES = ("mid_rate", "rate", "price", "最新价", "中间价")
 AKSHARE_FX_DATE_FIELD_CANDIDATES = ("trade_date", "日期", "date")
 AKSHARE_FX_SOURCE_FIELD_CANDIDATES = ("source_name", "source", "来源")
+AKSHARE_SAFE_FX_FIELD_BY_BASE_CURRENCY = {
+    "USD": "\u7f8e\u5143",
+    "EUR": "\u6b27\u5143",
+    "AUD": "\u6fb3\u5143",
+    "CAD": "\u52a0\u5143",
+    "HKD": "\u6e2f\u5143",
+}
+AKSHARE_SAFE_FX_QUOTE_SCALE = Decimal("100")
 
 CHOICE_CURVE_CODES = {
     # ── 到期收益率（Par Yield）── 已有 ──
@@ -246,8 +257,14 @@ class VendorAdapter(VendorAdapterBase):
             )
             if primary is not None:
                 return primary
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001  # 供应商 SDK 异常面无界；失败记入回退链，全失败时聚合抛出
             primary_error = exc
+            logger.warning(
+                "AkShare primary curve fetch failed curve_type=%s trade_date=%s: %s",
+                normalized_curve_type,
+                normalized_trade_date,
+                exc,
+            )
 
         fallback_error: Exception | None = None
         try:
@@ -257,8 +274,14 @@ class VendorAdapter(VendorAdapterBase):
             )
             if fallback is not None:
                 return fallback
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001  # 供应商 SDK 异常面无界；失败记入回退链，全失败时聚合抛出
             fallback_error = exc
+            logger.warning(
+                "Choice fallback curve fetch failed curve_type=%s trade_date=%s: %s",
+                normalized_curve_type,
+                normalized_trade_date,
+                exc,
+            )
 
         tertiary_error: Exception | None = None
         if normalized_curve_type == "cdb":
@@ -266,8 +289,13 @@ class VendorAdapter(VendorAdapterBase):
                 tertiary = self._fetch_chinabond_gkh_curve(normalized_trade_date)
                 if tertiary is not None:
                     return tertiary
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001  # 供应商 SDK 异常面无界；失败记入回退链，全失败时聚合抛出
                 tertiary_error = exc
+                logger.warning(
+                    "ChinaBond gkh tertiary curve fetch failed trade_date=%s: %s",
+                    normalized_trade_date,
+                    exc,
+                )
 
         errors = []
         if primary_error is not None:
@@ -332,8 +360,13 @@ class VendorAdapter(VendorAdapterBase):
             )
             if primary is not None:
                 return primary
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001  # 供应商 SDK 异常面无界；失败记入回退链，全失败时聚合抛出
             primary_error = exc
+            logger.warning(
+                "Choice primary aaa_credit curve fetch failed trade_date=%s: %s",
+                trade_date,
+                exc,
+            )
 
         fallback_error: Exception | None = None
         try:
@@ -343,8 +376,13 @@ class VendorAdapter(VendorAdapterBase):
             )
             if fallback is not None:
                 return fallback
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001  # 供应商 SDK 异常面无界；失败记入回退链，全失败时聚合抛出
             fallback_error = exc
+            logger.warning(
+                "AkShare fallback aaa_credit curve fetch failed trade_date=%s: %s",
+                trade_date,
+                exc,
+            )
 
         errors = []
         if primary_error is not None:
@@ -531,7 +569,7 @@ class VendorAdapter(VendorAdapterBase):
                     frame = loader(**kwargs)
                 except TypeError:
                     continue
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001  # 逐个探测 akshare loader 变体；最后一个错误聚合进 RuntimeError 再抛出
                     last_error = exc
                     continue
                 if frame is None:
@@ -585,6 +623,37 @@ class VendorAdapter(VendorAdapterBase):
                 "source_name": _lookup_record_value(record, AKSHARE_FX_SOURCE_FIELD_CANDIDATES) or "AKSHARE",
                 "pair_value": str(pair_value),
             }
+
+        safe_field = AKSHARE_SAFE_FX_FIELD_BY_BASE_CURRENCY.get(base_currency)
+        if safe_field is None:
+            return None
+
+        safe_matches: list[dict[str, object]] = []
+        for record in records:
+            raw_rate = record.get(safe_field)
+            if raw_rate in (None, "", "nan"):
+                continue
+            trade_value = _lookup_record_value(record, AKSHARE_FX_DATE_FIELD_CANDIDATES)
+            if trade_value in (None, ""):
+                continue
+            try:
+                observed_trade_date = _normalize_record_trade_date(trade_value)
+                if not observed_trade_date or observed_trade_date > report_date:
+                    continue
+                normalized_rate = Decimal(str(raw_rate)) / AKSHARE_SAFE_FX_QUOTE_SCALE
+            except (ArithmeticError, TypeError, ValueError):
+                continue
+            safe_matches.append(
+                {
+                    "base_currency": base_currency,
+                    "mid_rate": normalized_rate,
+                    "observed_trade_date": observed_trade_date,
+                    "source_name": "CFETS",
+                    "pair_value": f"SAFE:{base_currency}/CNY",
+                }
+            )
+        if safe_matches:
+            return max(safe_matches, key=lambda item: str(item["observed_trade_date"]))
         return None
 
 
@@ -636,6 +705,17 @@ def _validate_standardized_points(*, curve_type: str, points: list[YieldCurvePoi
 
 
 def _enrich_curve_points(*, curve_type: str, points: list[YieldCurvePoint]) -> list[YieldCurvePoint]:
+    if curve_type == "treasury":
+        tenor_map = {point.tenor: point for point in points}
+        enriched = dict(tenor_map)
+        point_1y = tenor_map.get("1Y")
+        point_3y = tenor_map.get("3Y")
+        if "2Y" not in enriched and point_1y is not None and point_3y is not None:
+            enriched["2Y"] = YieldCurvePoint(
+                tenor="2Y",
+                rate_pct=point_1y.rate_pct + (point_3y.rate_pct - point_1y.rate_pct) / Decimal("2"),
+            )
+        return sorted(enriched.values(), key=lambda point: point.tenor)
     if curve_type == "aaa_credit":
         tenor_map = {point.tenor: point for point in points}
         enriched = dict(tenor_map)

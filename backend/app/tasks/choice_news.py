@@ -8,6 +8,7 @@ from pathlib import Path
 
 import duckdb
 from backend.app.config.choice_runtime import _init_runtime
+from backend.app.governance.locks import acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_client import ChoiceClient
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
@@ -189,42 +190,43 @@ def _materialize_choice_news_events(
     run_id = f"{run.job_name}:{run.created_at}"
     inserted_count = 0
 
-    conn = duckdb.connect(str(duckdb_file), read_only=False)
-    try:
-        ensure_choice_news_event_schema(conn)
-        for event in events:
-            event_key = str(event.get("event_key") or _build_choice_news_event_key(event))
-            exists_row = conn.execute(
-                "select count(*) from choice_news_event where event_key = ?",
-                [event_key],
-            ).fetchone()
-            exists = int(exists_row[0]) if exists_row is not None else 0
-            if exists:
-                continue
-            conn.execute(
-                """
-                insert into choice_news_event values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
-                    event_key,
-                    event.get("received_at"),
-                    event.get("group_id"),
-                    event.get("content_type"),
-                    event.get("serial_id"),
-                    event.get("request_id"),
-                    event.get("error_code"),
-                    event.get("error_msg"),
-                    event.get("topic_code"),
-                    event.get("item_index"),
-                    event.get("payload_text"),
-                    event.get("payload_json"),
-                ],
-            )
-            inserted_count += 1
-    finally:
-        total_row = conn.execute("select count(*) from choice_news_event").fetchone()
-        total_rows = int(total_row[0]) if total_row is not None else 0
-        conn.close()
+    with acquire_lock(resolve_duckdb_writer_lock(duckdb_file), base_dir=duckdb_file.parent):
+        conn = duckdb.connect(str(duckdb_file), read_only=False)
+        try:
+            ensure_choice_news_event_schema(conn)
+            for event in events:
+                event_key = str(event.get("event_key") or _build_choice_news_event_key(event))
+                exists_row = conn.execute(
+                    "select count(*) from choice_news_event where event_key = ?",
+                    [event_key],
+                ).fetchone()
+                exists = int(exists_row[0]) if exists_row is not None else 0
+                if exists:
+                    continue
+                conn.execute(
+                    """
+                    insert into choice_news_event values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        event_key,
+                        event.get("received_at"),
+                        event.get("group_id"),
+                        event.get("content_type"),
+                        event.get("serial_id"),
+                        event.get("request_id"),
+                        event.get("error_code"),
+                        event.get("error_msg"),
+                        event.get("topic_code"),
+                        event.get("item_index"),
+                        event.get("payload_text"),
+                        event.get("payload_json"),
+                    ],
+                )
+                inserted_count += 1
+        finally:
+            total_row = conn.execute("select count(*) from choice_news_event").fetchone()
+            total_rows = int(total_row[0]) if total_row is not None else 0
+            conn.close()
 
     source_version = f"sv_choice_news_{total_rows}"
 
@@ -560,45 +562,46 @@ def repair_existing_choice_news_future_dates(
     updated_event_keys: list[str] = []
     unresolved_event_keys: list[str] = []
 
-    conn = duckdb.connect(str(duckdb_file), read_only=False)
-    try:
-        _require_choice_news_event_schema(conn)
-        rows = conn.execute(
-            """
-            select event_key, received_at, payload_json
-            from choice_news_event
-            where try_cast(substr(cast(received_at as varchar), 1, 10) as date) > ?::date
-            order by received_at, event_key
-            """,
-            [resolved_as_of],
-        ).fetchall()
-        for event_key, received_at, payload_json in rows:
-            try:
-                payload = json.loads(str(payload_json or ""))
-            except json.JSONDecodeError:
-                unresolved_event_keys.append(str(event_key))
-                continue
-            if not isinstance(payload, dict):
-                unresolved_event_keys.append(str(event_key))
-                continue
-            replacement = _resolve_choice_news_received_at(
-                payload.get("DATETIME"),
-                payload.get("EITIME"),
-                as_of_date=resolved_as_of,
-            )
-            replacement_dt = _parse_choice_news_vendor_datetime(replacement)
-            if replacement_dt is None or replacement_dt.date() > _choice_news_as_of_date(resolved_as_of):
-                unresolved_event_keys.append(str(event_key))
-                continue
-            if replacement == str(received_at):
-                continue
-            conn.execute(
-                "update choice_news_event set received_at = ? where event_key = ?",
-                [replacement, event_key],
-            )
-            updated_event_keys.append(str(event_key))
-    finally:
-        conn.close()
+    with acquire_lock(resolve_duckdb_writer_lock(duckdb_file), base_dir=duckdb_file.parent):
+        conn = duckdb.connect(str(duckdb_file), read_only=False)
+        try:
+            _require_choice_news_event_schema(conn)
+            rows = conn.execute(
+                """
+                select event_key, received_at, payload_json
+                from choice_news_event
+                where try_cast(substr(cast(received_at as varchar), 1, 10) as date) > ?::date
+                order by received_at, event_key
+                """,
+                [resolved_as_of],
+            ).fetchall()
+            for event_key, received_at, payload_json in rows:
+                try:
+                    payload = json.loads(str(payload_json or ""))
+                except json.JSONDecodeError:
+                    unresolved_event_keys.append(str(event_key))
+                    continue
+                if not isinstance(payload, dict):
+                    unresolved_event_keys.append(str(event_key))
+                    continue
+                replacement = _resolve_choice_news_received_at(
+                    payload.get("DATETIME"),
+                    payload.get("EITIME"),
+                    as_of_date=resolved_as_of,
+                )
+                replacement_dt = _parse_choice_news_vendor_datetime(replacement)
+                if replacement_dt is None or replacement_dt.date() > _choice_news_as_of_date(resolved_as_of):
+                    unresolved_event_keys.append(str(event_key))
+                    continue
+                if replacement == str(received_at):
+                    continue
+                conn.execute(
+                    "update choice_news_event set received_at = ? where event_key = ?",
+                    [replacement, event_key],
+                )
+                updated_event_keys.append(str(event_key))
+        finally:
+            conn.close()
 
     resolved_run_id = run_id or f"choice-news-future-date-repair:{datetime.now(UTC).isoformat()}"
     if governance_dir is not None:

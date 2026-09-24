@@ -1,8 +1,9 @@
 """
-M13: 跨市场联动（纯函数，自 V1 macro_analysis.cross_market_linkage 迁入）。
+M12: 跨市场联动（纯函数，自 V1 macro_analysis.cross_market_linkage 迁入）。
 
 输入为按日期降序对齐的宽表行，需含 treasury_10y；可选 vix、brent_oil、us_treasury_10y、usdcny（或 fx_usdcny）。
-缺失序列时相应相关系数为 None，整体 data_status 可能为 degraded。
+缺失序列时相应相关系数为 None；无可算相关时不得声称「常态」。
+observation-only：formal_use_allowed=false。
 """
 
 from __future__ import annotations
@@ -10,8 +11,8 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from app.core_finance.macro.helpers import pearson_corr as _pearson_corr
-from app.core_finance.macro.helpers import to_float_safe as _d
+from backend.app.core_finance.macro.helpers import pearson_corr as _pearson_corr
+from backend.app.core_finance.macro.helpers import to_float_safe as _d
 
 
 def _align(bond: list[float | None], other: list[float | None]) -> tuple[list[float], list[float]]:
@@ -23,10 +24,15 @@ def _align(bond: list[float | None], other: list[float | None]) -> tuple[list[fl
     return x, y
 
 
-_M13_VIX_LEVELS = {
+_VIX_LEVELS = {
     "panic": 30,
     "elevated": 20,
     "normal": 15,
+}
+
+_OBSERVATION_FLAGS = {
+    "observation_only": True,
+    "formal_use_allowed": False,
 }
 
 
@@ -38,10 +44,15 @@ def analyze_cross_market_linkage(
         return {
             "report_date": report_date.isoformat(),
             "data_status": "unavailable",
+            **_OBSERVATION_FLAGS,
             "linkages": {},
-            "overall_risk": "LOW",
+            "overall_risk": "UNKNOWN",
             "recommendation": "无足够市场数据",
             "warnings": ["NO_ROWS"],
+            "bond_equity_corr": None,
+            "bond_fx_corr": None,
+            "bond_commodity_corr": None,
+            "bond_us_corr": None,
         }
 
     bond_10y = [_d(r.get("treasury_10y")) for r in wide_rows_desc]
@@ -49,10 +60,15 @@ def analyze_cross_market_linkage(
         return {
             "report_date": report_date.isoformat(),
             "data_status": "unavailable",
+            **_OBSERVATION_FLAGS,
             "linkages": {},
-            "overall_risk": "LOW",
+            "overall_risk": "UNKNOWN",
             "recommendation": "缺少国债收益率序列",
             "warnings": ["TREASURY_10Y_MISSING"],
+            "bond_equity_corr": None,
+            "bond_fx_corr": None,
+            "bond_commodity_corr": None,
+            "bond_us_corr": None,
         }
 
     vix_list = [_d(r.get("vix")) for r in wide_rows_desc]
@@ -71,11 +87,10 @@ def analyze_cross_market_linkage(
     bond_us_corr = _pearson_corr(x_bu, y_us) if x_bu else None
 
     vix_today = _d(wide_rows_desc[0].get("vix"))
-    vix_levels = _M13_VIX_LEVELS
     if vix_today is not None:
-        if vix_today >= vix_levels["panic"]:
+        if vix_today >= _VIX_LEVELS["panic"]:
             vix_level = "恐慌"
-        elif vix_today >= vix_levels["elevated"]:
+        elif vix_today >= _VIX_LEVELS["elevated"]:
             vix_level = "抬升"
         else:
             vix_level = "正常"
@@ -89,9 +104,9 @@ def analyze_cross_market_linkage(
             fx_ma = sum(head) / len(head)
             fx_trend = "贬值" if fx_today > fx_ma else "升值"
         else:
-            fx_trend = "中性"
+            fx_trend = "未知"
     else:
-        fx_trend = "中性"
+        fx_trend = "未知"
 
     oil_today = _d(wide_rows_desc[0].get("brent_oil"))
     oil_ma = None
@@ -101,7 +116,7 @@ def analyze_cross_market_linkage(
     if oil_today is not None and oil_ma is not None:
         oil_level = "偏高" if oil_today > oil_ma * 1.05 else ("偏低" if oil_today < oil_ma * 0.95 else "正常")
     else:
-        oil_level = "正常"
+        oil_level = "未知"
 
     y10 = _d(wide_rows_desc[0].get("treasury_10y"))
     us10 = _d(wide_rows_desc[0].get("us_treasury_10y"))
@@ -129,6 +144,32 @@ def analyze_cross_market_linkage(
     }
 
     corrs = [c for c in [bond_equity_corr, bond_fx_corr, bond_commodity_corr, bond_us_corr] if c is not None]
+    warnings: list[str] = []
+    if bond_equity_corr is None:
+        warnings.append("BOND_EQUITY_CORR_UNAVAILABLE")
+    if bond_fx_corr is None:
+        warnings.append("BOND_FX_CORR_UNAVAILABLE")
+    if bond_commodity_corr is None:
+        warnings.append("BOND_COMMODITY_CORR_UNAVAILABLE")
+    if bond_us_corr is None:
+        warnings.append("BOND_US_CORR_UNAVAILABLE")
+
+    # 无可算相关时不得把 overall_risk=LOW 伪装成「常态」。
+    if len(corrs) == 0:
+        return {
+            "report_date": report_date.isoformat(),
+            "data_status": "unavailable",
+            **_OBSERVATION_FLAGS,
+            "linkages": linkages,
+            "overall_risk": "UNKNOWN",
+            "recommendation": "缺少跨市场对照序列，无法评估联动风险",
+            "bond_equity_corr": None,
+            "bond_fx_corr": None,
+            "bond_commodity_corr": None,
+            "bond_us_corr": None,
+            "warnings": warnings,
+        }
+
     high_corr_count = sum(1 for c in corrs if abs(c) > 0.6)
     if high_corr_count >= 3 or vix_level == "恐慌":
         overall_risk = "HIGH"
@@ -140,26 +181,12 @@ def analyze_cross_market_linkage(
         overall_risk = "LOW"
         recommendation = "跨市场联动处于常态"
 
-    warnings: list[str] = []
-    if bond_equity_corr is None:
-        warnings.append("BOND_EQUITY_CORR_UNAVAILABLE")
-    if bond_fx_corr is None:
-        warnings.append("BOND_FX_CORR_UNAVAILABLE")
-    if bond_commodity_corr is None:
-        warnings.append("BOND_COMMODITY_CORR_UNAVAILABLE")
-    if bond_us_corr is None:
-        warnings.append("BOND_US_CORR_UNAVAILABLE")
-
-    if len(corrs) == 0:
-        data_status = "degraded"
-    elif len(warnings) >= 3:
-        data_status = "degraded"
-    else:
-        data_status = "complete"
+    data_status = "degraded" if len(warnings) >= 2 else "complete"
 
     return {
         "report_date": report_date.isoformat(),
         "data_status": data_status,
+        **_OBSERVATION_FLAGS,
         "linkages": linkages,
         "overall_risk": overall_risk,
         "recommendation": recommendation,

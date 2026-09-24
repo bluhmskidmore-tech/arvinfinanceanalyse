@@ -93,6 +93,8 @@ class MacroVendorSeries(BaseModel):
     vendor_version: str
     frequency: str
     unit: str
+    theme: str = "unknown"
+    tags: list[str] = Field(default_factory=list)
     refresh_tier: ChoiceMacroRefreshTier | None = None
     fetch_mode: ChoiceMacroFetchMode | None = None
     fetch_granularity: ChoiceMacroFetchGranularity | None = None

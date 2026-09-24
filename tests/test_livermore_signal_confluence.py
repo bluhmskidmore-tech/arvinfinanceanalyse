@@ -6,6 +6,12 @@ import pytest
 
 from tests.helpers import load_module
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def _service_module():
     return load_module(
@@ -122,6 +128,56 @@ def test_build_livermore_signal_confluence_allows_observation_entries_when_gate_
     assert diagnostics[-1] == (
         "Observation-only output. This service does not generate trading instructions."
     )
+
+
+@pytest.mark.parametrize("composite_score", [-0.45, 0.0, 0.4])
+def test_build_livermore_signal_confluence_discloses_cross_asset_macro_score_reuse(
+    composite_score: float,
+) -> None:
+    result = _build_livermore_signal_confluence(
+        as_of_date="2026-05-02",
+        livermore_payload={
+            "market_gate": {
+                "state": "WARM",
+                "exposure": 0.5,
+            },
+            "stock_candidates": {"items": []},
+            "risk_exit": {"watch_items": []},
+        },
+        macro_payload={
+            "environment_score": {
+                "composite_score": composite_score,
+            }
+        },
+    )
+
+    diagnostics = cast(list[str], result["diagnostics"])
+    assert (
+        "Macro gate reuses the bond-side macro_bond_linkage composite score, where positive values mean "
+        "bond-unfavorable macro pressure; negative values are mapped to supportive for equities."
+    ) in diagnostics
+    assert (
+        "Macro gate thresholds of +/-0.3 are empirical and have no independent equity-side contract source."
+    ) in diagnostics
+    assert (
+        "Cross-asset caveat: weakening growth lowers the bond composite score and can be classified as "
+        "supportive for equities; interpret the macro gate with caution on the equity side."
+    ) in diagnostics
+    assert diagnostics[-1] == (
+        "Observation-only output. This service does not generate trading instructions."
+    )
+
+
+def test_build_livermore_signal_confluence_omits_cross_asset_reuse_disclosure_when_macro_score_is_missing() -> None:
+    result = _build_livermore_signal_confluence(
+        as_of_date="2026-05-02",
+        livermore_payload={},
+        macro_payload={},
+    )
+
+    diagnostics = cast(list[str], result["diagnostics"])
+    assert "Missing macro composite score; macro context is unknown." in diagnostics
+    assert not any("macro_bond_linkage" in item for item in diagnostics)
 
 
 def test_build_livermore_signal_confluence_keeps_candidate_price_facts_visible_but_observe_only_when_macro_is_restrictive() -> None:
@@ -308,6 +364,7 @@ def test_build_livermore_signal_confluence_keeps_entries_visible_when_adversaria
     assert closed_loop_state["entry_gate"] == "open"
     assert closed_loop_state["replay_status"] == {
         "window_status": "unsupported",
+        "maturity_status": "missing",
         "has_decision_usable_completed_stats": False,
         "completed_dates": 0,
         "pending_dates": 0,
@@ -317,6 +374,8 @@ def test_build_livermore_signal_confluence_keeps_entries_visible_when_adversaria
         "pending_candidate_rows": 0,
         "unsupported_candidate_rows": 0,
         "proxy_only_candidate_rows": 0,
+        "matched_entry_count": 0,
+        "has_required_horizon_stats": False,
         "included_completed_stats_dates": [],
         "blocked_dates": [],
         "completed_zero_signal_dates": [],
@@ -342,16 +401,17 @@ def test_build_livermore_signal_confluence_reports_missing_inputs_and_stays_obse
 
     strategy_context = cast(dict[str, Any], result["strategy_context"])
     assert strategy_context["market_gate_state"] == "UNKNOWN"
-    assert strategy_context["market_gate_exposure"] == pytest.approx(0.0)
+    assert strategy_context["market_gate_exposure"] is None
     assert strategy_context["allows_new_entry_observations"] is False
 
-    assert result["position_size_hint"] == pytest.approx(0.0)
+    assert result["position_size_hint"] is None
     assert result["entry_observations"] == []
     assert result["exit_observations"] == []
 
     diagnostics = cast(list[str], result["diagnostics"])
     assert "Missing macro composite score; macro context is unknown." in diagnostics
     assert "Missing Livermore market gate; entry observations are blocked." in diagnostics
+    assert "Missing Livermore market gate exposure; position size hint is unavailable." in diagnostics
     assert "No stock candidates available for observation." in diagnostics
     assert "No risk exit watch items or triggered exit items available." in diagnostics
     assert diagnostics[-1] == (
@@ -442,6 +502,60 @@ def test_build_livermore_signal_confluence_falls_back_to_triggered_exit_items_wh
     ]
     closed_loop_state = cast(dict[str, Any], result["closed_loop_state"])
     assert closed_loop_state["exit_gate"] == "triggered"
+
+
+def test_build_livermore_signal_confluence_keeps_position_size_hint_unavailable_when_exposure_is_null() -> None:
+    result = _build_livermore_signal_confluence(
+        as_of_date="2026-05-02",
+        livermore_payload={
+            "market_gate": {
+                "state": "WARM",
+                "exposure": None,
+            },
+            "stock_candidates": {"items": []},
+            "risk_exit": {"watch_items": []},
+        },
+        macro_payload={
+            "environment_score": {
+                "composite_score": 0.0,
+            }
+        },
+    )
+
+    strategy_context = cast(dict[str, Any], result["strategy_context"])
+    assert strategy_context["market_gate_state"] == "WARM"
+    assert strategy_context["market_gate_exposure"] is None
+    assert result["position_size_hint"] is None
+
+    diagnostics = cast(list[str], result["diagnostics"])
+    assert "Missing Livermore market gate exposure; position size hint is unavailable." in diagnostics
+    assert "Missing Livermore market gate; entry observations are blocked." not in diagnostics
+
+
+@pytest.mark.parametrize("composite_score", [-0.3, 0.3])
+def test_build_livermore_signal_confluence_treats_macro_boundary_as_neutral(
+    composite_score: float,
+) -> None:
+    result = _build_livermore_signal_confluence(
+        as_of_date="2026-05-02",
+        livermore_payload={
+            "market_gate": {
+                "state": "WARM",
+                "exposure": 0.5,
+            },
+            "stock_candidates": {"items": []},
+            "risk_exit": {"watch_items": []},
+        },
+        macro_payload={
+            "environment_score": {
+                "composite_score": composite_score,
+            }
+        },
+    )
+
+    macro_context = cast(dict[str, Any], result["macro_context"])
+    assert macro_context["status"] == "neutral"
+    assert macro_context["composite_score"] == pytest.approx(composite_score)
 
 
 def test_build_livermore_signal_confluence_does_not_invent_exit_watch_evidence_when_ema10_is_missing() -> None:
@@ -566,7 +680,8 @@ def test_build_livermore_signal_confluence_projects_backtest_window_summary_into
     replay_status = cast(dict[str, Any], cast(dict[str, Any], result["closed_loop_state"])["replay_status"])
     assert replay_status == {
         "window_status": "partial",
-        "has_decision_usable_completed_stats": True,
+        "has_decision_usable_completed_stats": False,
+        "maturity_status": "insufficient",
         "completed_dates": 1,
         "pending_dates": 1,
         "unsupported_dates": 1,
@@ -575,6 +690,8 @@ def test_build_livermore_signal_confluence_projects_backtest_window_summary_into
         "pending_candidate_rows": 1,
         "unsupported_candidate_rows": 0,
         "proxy_only_candidate_rows": 1,
+        "matched_entry_count": 0,
+        "has_required_horizon_stats": False,
         "included_completed_stats_dates": ["2026-05-06"],
         "blocked_dates": [
                 {
@@ -620,6 +737,38 @@ def test_build_livermore_replay_status_accepts_private_included_completed_dates_
     )
 
     assert replay_status["included_completed_stats_dates"] == ["2026-05-06"]
+    assert replay_status["has_decision_usable_completed_stats"] is False
+    assert replay_status["maturity_status"] == "insufficient"
+
+
+def test_build_livermore_replay_status_marks_only_mature_complete_windows_decision_usable() -> None:
+    module = _service_module()
+
+    replay_status = module.build_livermore_replay_status(
+        {
+            "status": "valid",
+            "replay_dates_completed": 20,
+            "replay_dates_pending": 0,
+            "replay_dates_unsupported": 0,
+            "replay_dates_proxy_only": 0,
+            "completed_rows": 120,
+            "pending_rows": 0,
+            "unsupported_rows": 0,
+            "proxy_only_rows": 0,
+            "included_completed_stats_dates": [f"2026-05-{day:02d}" for day in range(1, 21)],
+            "by_signal_kind_horizon_usable_stats": {
+                "stock_candidate": {
+                    "return_5d": {"available_count": 120},
+                    "return_20d": {"available_count": 105},
+                }
+            },
+            "date_reasons": [],
+        }
+    )
+
+    assert replay_status["maturity_status"] == "ready"
+    assert replay_status["matched_entry_count"] == 105
+    assert replay_status["has_required_horizon_stats"] is True
     assert replay_status["has_decision_usable_completed_stats"] is True
 
 

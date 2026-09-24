@@ -6,12 +6,16 @@ import argparse
 import hashlib
 import json
 import logging
+import random
+import socket
 import sys
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Literal
+from urllib.error import URLError
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
@@ -34,6 +38,8 @@ COMMODITY_DAILY_LOCK = LockDefinition(key="lock:duckdb:commodity-daily-ingest", 
 DEFAULT_START_DATE = "2024-01-01"
 RULE_VERSION = "rv_commodity_daily_v1"
 TUSHARE_API_PACE_SECONDS = 1.5
+VENDOR_CALL_TIMEOUT_SECONDS = 30.0
+COMMODITY_PRODUCT_SOFT_DEADLINE_SECONDS = 180.0
 
 
 def _fetch_with_retry(fn, *args, max_retries=3, base_delay=2.0, **kwargs):
@@ -41,16 +47,66 @@ def _fetch_with_retry(fn, *args, max_retries=3, base_delay=2.0, **kwargs):
         try:
             return fn(*args, **kwargs)
         except Exception as e:
-            if attempt == max_retries - 1:
+            if not _is_network_exception(e) or attempt == max_retries - 1:
                 raise
-            delay = base_delay * (2**attempt)
-            logger.warning("Retry %s/%s after %ss: %s", attempt + 1, max_retries, delay, e)
+            delay_cap = base_delay * (2**attempt)
+            delay = random.uniform(0, delay_cap)
+            logger.warning(
+                "Network retry %s/%s after %.3fs: %s",
+                attempt + 1,
+                max_retries,
+                delay,
+                e,
+            )
             time.sleep(delay)
 
 
 def _tushare_call(fn, *args, **kwargs):
     time.sleep(TUSHARE_API_PACE_SECONDS)
-    return _fetch_with_retry(fn, *args, **kwargs)
+    with _temporary_socket_default_timeout(VENDOR_CALL_TIMEOUT_SECONDS):
+        return _fetch_with_retry(fn, *args, **kwargs)
+
+
+def _is_network_exception(exc: BaseException) -> bool:
+    if isinstance(exc, (TimeoutError, ConnectionError, socket.timeout, URLError)):
+        return True
+    module = type(exc).__module__.lower()
+    name = type(exc).__name__.lower()
+    message = str(exc).lower()
+    if module.startswith(("requests", "urllib3", "httpx", "httpcore")):
+        return any(token in name or token in message for token in ("timeout", "connection", "network"))
+    return False
+
+
+@contextmanager
+def _temporary_socket_default_timeout(timeout_seconds: float):
+    previous_timeout = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(float(timeout_seconds))
+    try:
+        yield
+    finally:
+        socket.setdefaulttimeout(previous_timeout)
+
+
+def _fetch_attempt(
+    *,
+    vendor: str,
+    status: str,
+    row_count: int = 0,
+    reason: str | None = None,
+    exc: BaseException | None = None,
+) -> dict[str, object]:
+    attempt: dict[str, object] = {
+        "vendor": vendor,
+        "status": status,
+        "row_count": int(row_count),
+    }
+    if reason is not None:
+        attempt["reason"] = reason
+    if exc is not None:
+        attempt["exception_type"] = type(exc).__name__
+        attempt["message"] = str(exc)
+    return attempt
 
 
 def ensure_commodity_futures_daily_schema(conn: duckdb.DuckDBPyConnection) -> None:
@@ -490,11 +546,13 @@ def _fetch_akshare_futures_rows(
         return []
     import akshare as ak  # noqa: PLC0415
 
-    frame = ak.futures_main_sina(
-        symbol=spec.akshare_symbol,
-        start_date=_compact_date(start_date),
-        end_date=_compact_date(end_date),
-    )
+    with _temporary_socket_default_timeout(VENDOR_CALL_TIMEOUT_SECONDS):
+        frame = _fetch_with_retry(
+            ak.futures_main_sina,
+            symbol=spec.akshare_symbol,
+            start_date=_compact_date(start_date),
+            end_date=_compact_date(end_date),
+        )
     records = _records_from_frame(frame)
     vendor_version = f"vv_akshare_futures_main_sina_{spec.product_code}_{_compact_date(end_date)}"
     source_version = _source_version(f"akshare_futures_main_sina_{spec.product_code.lower()}", records)
@@ -528,7 +586,8 @@ def _fetch_product_rows(
     pro: Any | None,
     start_date: str,
     end_date: str,
-) -> tuple[list[dict[str, object]], str]:
+) -> tuple[list[dict[str, object]], str, list[dict[str, object]]]:
+    attempts: list[dict[str, object]] = []
     if pro is not None:
         try:
             if spec.kind == "index":
@@ -536,18 +595,29 @@ def _fetch_product_rows(
             else:
                 rows = _fetch_tushare_futures_rows(spec=spec, pro=pro, start_date=start_date, end_date=end_date)
             if rows:
-                return rows, "tushare"
+                attempts.append(_fetch_attempt(vendor="tushare", status="success", row_count=len(rows)))
+                return rows, "tushare", attempts
+            attempts.append(_fetch_attempt(vendor="tushare", status="empty"))
         except Exception as exc:  # noqa: BLE001
             logger.warning("Tushare fetch failed for %s: %s", spec.product_code, exc)
+            attempts.append(_fetch_attempt(vendor="tushare", status="failed", exc=exc))
+    else:
+        attempts.append(_fetch_attempt(vendor="tushare", status="skipped", reason="token_not_configured"))
 
-    try:
-        rows = _fetch_akshare_futures_rows(spec=spec, start_date=start_date, end_date=end_date)
-        if rows:
-            return rows, "akshare"
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("AkShare fetch failed for %s: %s", spec.product_code, exc)
+    if spec.akshare_symbol:
+        try:
+            rows = _fetch_akshare_futures_rows(spec=spec, start_date=start_date, end_date=end_date)
+            if rows:
+                attempts.append(_fetch_attempt(vendor="akshare", status="success", row_count=len(rows)))
+                return rows, "akshare", attempts
+            attempts.append(_fetch_attempt(vendor="akshare", status="empty"))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("AkShare fetch failed for %s: %s", spec.product_code, exc)
+            attempts.append(_fetch_attempt(vendor="akshare", status="failed", exc=exc))
+    else:
+        attempts.append(_fetch_attempt(vendor="akshare", status="skipped", reason="symbol_not_configured"))
 
-    return [], "none"
+    return [], "none", attempts
 
 
 def _replace_product_rows(conn: duckdb.DuckDBPyConnection, rows: list[dict[str, object]]) -> int:
@@ -692,6 +762,8 @@ def run_commodity_daily_ingest(
 
     estimated_trade_dates = _estimate_trading_days(start_date=start_date, end_date=resolved_end, pro=pro)
     selected_products = _select_products(products)
+    requested_product_codes = [spec.product_code for spec in selected_products]
+    successful_product_codes: list[str] = []
     per_product: list[dict[str, object]] = []
     total_rows = 0
     vendors: set[str] = set()
@@ -733,8 +805,32 @@ def run_commodity_daily_ingest(
         conn = duckdb.connect(str(db_file), read_only=False)
         try:
             apply_pending_migrations_on_connection(conn)
+            stop_reason: str | None = None
             for spec in selected_products:
-                rows, vendor = _fetch_product_rows(
+                if stop_reason is not None:
+                    vendors.add("none")
+                    per_product.append(
+                        {
+                            "product_code": spec.product_code,
+                            "name_zh": spec.name_zh,
+                            "row_count": 0,
+                            "vendor": "none",
+                            "status": "not_attempted",
+                            "reason": stop_reason,
+                            "series_id": _commodity_product_series_id(spec.product_code),
+                            "attempts": [
+                                _fetch_attempt(
+                                    vendor="none",
+                                    status="skipped",
+                                    reason=stop_reason,
+                                )
+                            ],
+                        }
+                    )
+                    continue
+
+                product_started = time.monotonic()
+                rows, vendor, attempts = _fetch_product_rows(
                     spec=spec,
                     pro=pro,
                     start_date=start_date,
@@ -742,27 +838,60 @@ def run_commodity_daily_ingest(
                 )
                 written = _replace_product_rows(conn, rows)
                 vendors.add(vendor)
+                if written > 0:
+                    successful_product_codes.append(spec.product_code)
+                product_status = "completed" if written > 0 else "missing"
+                duration_seconds = round(max(time.monotonic() - product_started, 0.0), 6)
+                product_payload: dict[str, object] = {
+                    "product_code": spec.product_code,
+                    "name_zh": spec.name_zh,
+                    "row_count": written,
+                    "vendor": vendor,
+                    "status": product_status,
+                    "duration_seconds": duration_seconds,
+                    **_latest_product_observation(rows),
+                    "series_id": _commodity_product_series_id(spec.product_code),
+                    "attempts": attempts,
+                }
+                if written == 0:
+                    product_payload["missing_reason"] = "no_rows_returned"
+                if duration_seconds > COMMODITY_PRODUCT_SOFT_DEADLINE_SECONDS:
+                    stop_reason = (
+                        "product_soft_deadline_exceeded:"
+                        f"{spec.product_code}:{COMMODITY_PRODUCT_SOFT_DEADLINE_SECONDS:.3f}s"
+                    )
+                    product_payload["deadline_exceeded"] = True
                 per_product.append(
-                    {
-                        "product_code": spec.product_code,
-                        "name_zh": spec.name_zh,
-                        "row_count": written,
-                        "vendor": vendor,
-                        **_latest_product_observation(rows),
-                        "series_id": _commodity_product_series_id(spec.product_code),
-                    }
+                    product_payload
                 )
                 total_rows += written
         finally:
             conn.close()
 
+    missing_required_products = [
+        product_code
+        for product_code in requested_product_codes
+        if product_code not in set(successful_product_codes)
+    ]
+    product_completion_rate = (
+        len(successful_product_codes) / len(requested_product_codes) if requested_product_codes else 0.0
+    )
+    status = "completed"
+    if missing_required_products:
+        status = "partial" if successful_product_codes else "failed"
+
     return {
-        "status": "completed",
+        "status": status,
         "dry_run": False,
         "start_date": start_date,
         "end_date": resolved_end,
         "duckdb_path": str(db_file),
         "product_count": len(selected_products),
+        "requested_product_count": len(requested_product_codes),
+        "successful_product_count": len(successful_product_codes),
+        "product_completion_rate": product_completion_rate,
+        "successful_products": successful_product_codes,
+        "missing_required_products": missing_required_products,
         "row_count": total_rows,
         "tushare_token_configured": bool(token),
         "vendors": sorted(vendors),

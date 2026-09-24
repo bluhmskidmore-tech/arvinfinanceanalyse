@@ -4,7 +4,7 @@
   "surface": "/ledger-pnl formal financial indicator source contract",
   "report_month": "202603",
   "report_date": "2026-03-31",
-  "source_workbook": "C:/Users/arvin/Desktop/2026年财务指标表-3月最终(1).xlsx",
+  "source_workbook": "sample_data/formal_financial_indicators/2026年财务指标表-3月最终(1).xlsx",
   "source_sheet": "财务指标-汇总",
   "source_basis": "Excel 2026-03 formal financial indicator table supplied by user",
   "contract_note": "This fixture freezes the Excel formal-indicator sample and the current system source status. It is not approval to promote analytical QDB values to formal financial indicators.",

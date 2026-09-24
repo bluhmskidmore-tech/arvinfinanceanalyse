@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 import urllib.error
 import urllib.parse
@@ -9,6 +10,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from backend.app.agent.runtime.subprocess_env import build_agent_subprocess_env
 from backend.app.agent.runtime.toolset_policy import normalize_read_only_toolsets
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import (
@@ -23,6 +25,8 @@ from backend.app.repositories.governance_repo import GovernanceRepository
 from backend.app.services.dexter_research_context_builder import build_dexter_research_context
 
 RULE_VERSION = "rv_agent_dexter_v1"
+_DEXTER_FALLBACK_REASON = "dexter_runtime_unavailable"
+_LOGGER = logging.getLogger(__name__)
 
 
 def execute_dexter_agent_query(
@@ -30,22 +34,49 @@ def execute_dexter_agent_query(
     governance_dir: str,
     settings: Any,
 ) -> AgentEnvelope:
-    research_context = build_dexter_research_context(
-        request=request,
-        duckdb_path=str(getattr(settings, "duckdb_path", "") or ""),
-    )
-    prompt = _build_dexter_prompt(request, research_context=research_context)
-    result = run_dexter_agent(
-        request=request,
-        command=str(getattr(settings, "agent_dexter_command", "dexter") or "dexter"),
-        transport=str(getattr(settings, "agent_dexter_transport", "cli") or "cli"),
-        bridge_url=str(getattr(settings, "agent_dexter_bridge_url", "") or ""),
-        model=str(getattr(settings, "agent_dexter_model", "") or ""),
-        toolsets=str(getattr(settings, "agent_dexter_toolsets", "") or ""),
-        timeout_seconds=float(getattr(settings, "agent_dexter_timeout_seconds", 180.0) or 180.0),
-        prompt_override=prompt,
-    )
-    envelope = build_dexter_envelope(request=request, result=result, research_context=research_context)
+    research_context: dict[str, Any] = {}
+    try:
+        research_context = build_dexter_research_context(
+            request=request,
+            duckdb_path=str(getattr(settings, "duckdb_path", "") or ""),
+        )
+        prompt = _build_dexter_prompt(request, research_context=research_context)
+        result = run_dexter_agent(
+            request=request,
+            command=str(getattr(settings, "agent_dexter_command", "dexter") or "dexter"),
+            transport=str(getattr(settings, "agent_dexter_transport", "cli") or "cli"),
+            bridge_url=str(getattr(settings, "agent_dexter_bridge_url", "") or ""),
+            model=str(getattr(settings, "agent_dexter_model", "") or ""),
+            toolsets=str(getattr(settings, "agent_dexter_toolsets", "") or ""),
+            timeout_seconds=float(getattr(settings, "agent_dexter_timeout_seconds", 180.0) or 180.0),
+            prompt_override=prompt,
+        )
+        envelope = build_dexter_envelope(request=request, result=result, research_context=research_context)
+    except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as exc:
+        # 运行链任何失败（含研究上下文构建、子进程拉起、超时、bridge 响应解析）都收敛到
+        # 同一条确定性兜底路径；裸异常穿透到路由层会被误映射成 404/500 且无审计。
+        _LOGGER.warning(
+            "Dexter provider runtime failed provider=dexter error_type=%s error_code=%s",
+            exc.__class__.__name__,
+            _DEXTER_FALLBACK_REASON,
+        )
+        result = {
+            "answer": "",
+            "stdout": "",
+            "stderr": "",
+            "command": str(getattr(settings, "agent_dexter_command", "dexter") or "dexter"),
+            "tool_name": "dexter_local_fallback",
+            "model": str(getattr(settings, "agent_dexter_model", "") or ""),
+            "toolsets": str(getattr(settings, "agent_dexter_toolsets", "") or ""),
+            "transport": str(getattr(settings, "agent_dexter_transport", "cli") or "cli"),
+            "error": _truncate(str(exc), 2000),
+            "error_code": _DEXTER_FALLBACK_REASON,
+        }
+        envelope = build_dexter_fallback_envelope(
+            request=request,
+            result=result,
+            research_context=research_context,
+        )
     _append_dexter_audit(request, governance_dir, envelope, result)
     return envelope
 
@@ -88,11 +119,15 @@ def run_dexter_agent(
             encoding="utf-8",
             errors="replace",
             timeout=max(timeout_seconds, 1.0),
+            env=build_agent_subprocess_env(),
         )
     except FileNotFoundError as exc:
         raise RuntimeError(f"Dexter command not found: {command}") from exc
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"Dexter timed out after {timeout_seconds:g}s") from exc
+    except OSError as exc:
+        # 覆盖 PermissionError、Windows argv 超长（WinError 206）等启动失败。
+        raise RuntimeError(f"Dexter command failed to start: {exc}") from exc
 
     stdout = str(completed.stdout or "")
     stderr = str(completed.stderr or "")
@@ -121,19 +156,13 @@ def build_dexter_envelope(
     result: dict[str, Any],
     research_context: dict[str, Any] | None = None,
 ) -> AgentEnvelope:
-    has_research_context = bool(research_context and research_context.get("domain"))
+    research_context = research_context or {}
+    has_research_context = bool(research_context.get("domain"))
     trace_id = f"tr_agent_dexter_{uuid4().hex[:12]}"
     generated_at = datetime.now(UTC)
     filters_applied = {
         key: value for key, value in request.filters.items() if value not in (None, "")
     }
-    filters_applied["provider"] = "dexter"
-    if result.get("model"):
-        filters_applied["model"] = result["model"]
-    if result.get("toolsets"):
-        filters_applied["toolsets"] = _normalize_toolsets(str(result["toolsets"]))
-    if result.get("transport"):
-        filters_applied["transport"] = result["transport"]
     if has_research_context:
         filters_applied.update(
             {
@@ -142,26 +171,43 @@ def build_dexter_envelope(
                 if value not in (None, "")
             }
         )
+    # 运行时披露键最后写入：request/research filters 里的同名键不得覆写 provider 事实。
+    filters_applied["provider"] = "dexter"
+    if result.get("model"):
+        filters_applied["model"] = result["model"]
+    if result.get("toolsets"):
+        filters_applied["toolsets"] = _normalize_toolsets(str(result["toolsets"]))
+    if result.get("transport"):
+        filters_applied["transport"] = result["transport"]
 
+    is_bridge_transport = str(result.get("transport") or "").strip().lower() in {"sidecar", "bridge"}
     tables_used = _normalize_tables_used(
         result.get("tables_used"),
-        fallback="dexter_sidecar" if str(result.get("transport") or "").strip().lower() in {"sidecar", "bridge"} else "dexter_cli",
+        fallback="dexter_sidecar" if is_bridge_transport else "dexter_cli",
     )
     if has_research_context:
         tables_used = _dedupe([*tables_used, *list(research_context.get("tables_used") or [])])
+    sql_executed = _research_sql_disclosure(research_context if has_research_context else None)
     evidence_rows = int(research_context.get("evidence_rows") or 0) if has_research_context else 0
+    evidence_strength = (
+        "mixed"
+        if has_research_context and (sql_executed or evidence_rows > 0)
+        else "provider_runtime"
+    )
     quality_flag = _provider_runtime_quality_flag(
         str(research_context.get("quality_flag") or "warning") if has_research_context else "warning"
     )
     evidence = AgentEvidence(
         tables_used=tables_used,
         filters_applied=filters_applied,
-        sql_executed=[],
+        sql_executed=sql_executed,
         evidence_rows=evidence_rows,
         quality_flag=quality_flag,
-        evidence_strength="provider_runtime",
+        evidence_strength=evidence_strength,
     )
-    source_suffix = "sidecar" if "dexter_sidecar" in tables_used else "cli"
+    # 用运行时 transport 判定来源版本：sidecar 自报真实表名时 tables_used 不含
+    # "dexter_sidecar"，按表名判定会误标 sv_dexter_cli。
+    source_suffix = "sidecar" if is_bridge_transport else "cli"
     result_meta = AgentResultMeta(
         trace_id=trace_id,
         basis=request.basis,
@@ -178,7 +224,7 @@ def build_dexter_envelope(
         generated_at=generated_at,
         tables_used=evidence.tables_used,
         filters_applied=evidence.filters_applied,
-        sql_executed=[],
+        sql_executed=evidence.sql_executed,
         evidence_rows=evidence.evidence_rows,
         evidence_strength=evidence.evidence_strength,
     )
@@ -190,6 +236,138 @@ def build_dexter_envelope(
         next_drill=_build_next_drill(result.get("next_drill")),
         suggested_actions=[],
     )
+
+
+def build_dexter_fallback_envelope(
+    *,
+    request: AgentQueryRequest,
+    result: dict[str, Any],
+    research_context: dict[str, Any] | None = None,
+) -> AgentEnvelope:
+    research_context = research_context or {}
+    has_research_context = bool(research_context.get("domain"))
+    trace_id = f"tr_agent_dexter_fallback_{uuid4().hex[:12]}"
+    generated_at = datetime.now(UTC)
+    filters_applied = {
+        key: value for key, value in request.filters.items() if value not in (None, "")
+    }
+    if has_research_context:
+        filters_applied.update(
+            {
+                key: value
+                for key, value in dict(research_context.get("filters_applied") or {}).items()
+                if value not in (None, "")
+            }
+        )
+    # 运行时披露键最后写入：request/research filters 里的同名键不得覆写 fallback 事实。
+    filters_applied["provider"] = "dexter"
+    filters_applied["fallback_provider"] = "local"
+    filters_applied["fallback_reason"] = str(result.get("error_code") or _DEXTER_FALLBACK_REASON)
+    if result.get("model"):
+        filters_applied["model"] = result["model"]
+    if result.get("toolsets"):
+        filters_applied["toolsets"] = _normalize_toolsets(str(result["toolsets"]))
+    if result.get("transport"):
+        filters_applied["transport"] = result["transport"]
+
+    # 研究上下文在 provider 失败前已真实执行过只读查询：表访问与 SQL 披露必须保留在证据里。
+    tables_used = ["dexter_local_fallback"]
+    if has_research_context:
+        tables_used = _dedupe([*tables_used, *list(research_context.get("tables_used") or [])])
+    sql_executed = _research_sql_disclosure(research_context if has_research_context else None)
+    evidence_rows = int(research_context.get("evidence_rows") or 0) if has_research_context else 0
+
+    evidence = AgentEvidence(
+        tables_used=tables_used,
+        filters_applied=filters_applied,
+        sql_executed=sql_executed,
+        evidence_rows=evidence_rows,
+        quality_flag="warning",
+        evidence_strength="local_fallback",
+    )
+    result_meta = AgentResultMeta(
+        trace_id=trace_id,
+        basis=request.basis,
+        result_kind="agent.dexter_fallback",
+        formal_use_allowed=False,
+        source_version="sv_dexter_local_fallback",
+        vendor_version="vv_dexter_unavailable",
+        rule_version=RULE_VERSION,
+        cache_version="cv_agent_dexter_fallback_v1",
+        quality_flag=evidence.quality_flag,
+        vendor_status="vendor_unavailable",
+        fallback_mode="none",
+        scenario_flag=request.basis == Basis.SCENARIO.value,
+        generated_at=generated_at,
+        tables_used=evidence.tables_used,
+        filters_applied=evidence.filters_applied,
+        sql_executed=evidence.sql_executed,
+        evidence_rows=evidence.evidence_rows,
+        evidence_strength=evidence.evidence_strength,
+    )
+    answer = _build_dexter_fallback_answer(
+        request.question,
+        has_research_context=has_research_context,
+    )
+    cards = [
+        AgentCard(type="status", title="本地稳定兜底", value=answer),
+        AgentCard(type="metric", title="Provider", value="local fallback"),
+        AgentCard(type="metric", title="Dexter Status", value="unavailable"),
+    ]
+    if has_research_context:
+        _append_list_card(
+            cards,
+            title="Research Limitations",
+            card_type="research_limitations",
+            value=[
+                *_normalize_string_list(research_context.get("limitations")),
+                *_normalize_string_list(research_context.get("stale_sources")),
+            ],
+        )
+    return AgentEnvelope(
+        answer=answer,
+        cards=cards,
+        evidence=evidence,
+        result_meta=result_meta,
+        next_drill=[],
+        suggested_actions=[],
+    )
+
+
+def _build_dexter_fallback_answer(question: str, *, has_research_context: bool) -> str:
+    normalized = str(question or "").strip()
+    is_chinese = any("\u4e00" <= char <= "\u9fff" for char in normalized)
+    if is_chinese:
+        answer = (
+            f"我收到了：{normalized}。Dexter 研究通道刚才不可用，这轮先用本地稳定兜底接住，"
+            "不会返回 503 或红框。"
+        )
+        if has_research_context:
+            answer += "已落地的 Choice/TuShare 研究证据仍在下方披露，可先据此判断，稍后重试 Dexter。"
+        else:
+            answer += "稍后可以重试 Dexter，或改问受治理的 MOSS 正式路径。"
+        return answer
+    answer = (
+        f"I received: {normalized}. The Dexter research channel is unavailable, so this turn is "
+        "handled by the local stable fallback instead of returning an error."
+    )
+    if has_research_context:
+        answer += (
+            " The landed Choice/TuShare research evidence is still disclosed below; "
+            "retry Dexter later for the full research response."
+        )
+    else:
+        answer += " Retry Dexter later, or ask for a governed MOSS path."
+    return answer
+
+
+def _research_sql_disclosure(research_context: dict[str, Any] | None) -> list[str]:
+    disclosed: list[str] = []
+    for statement in (research_context or {}).get("sql_executed") or []:
+        text = " ".join(str(statement or "").split())
+        if text.lower().startswith(("select", "with")):
+            disclosed.append(text)
+    return disclosed
 
 
 def _build_dexter_command(
@@ -238,12 +416,19 @@ def _post_dexter_bridge_query(
     )
     try:
         with urllib.request.urlopen(request, timeout=max(timeout_seconds, 1.0)) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+            raw_body = response.read()
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"Dexter sidecar failed: {_truncate(detail, 2000)}") from exc
-    except (urllib.error.URLError, TimeoutError) as exc:
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise RuntimeError(f"Dexter sidecar unavailable: {exc}") from exc
+
+    # 解析失败必须收敛为 RuntimeError：JSONDecodeError 是 ValueError 子类，裸穿透会被
+    # 路由层 except ValueError 误映射成 404。decode 用 errors="replace" 排除 UnicodeDecodeError。
+    try:
+        payload = json.loads(raw_body.decode("utf-8", errors="replace"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Dexter sidecar returned invalid JSON.") from exc
 
     if not isinstance(payload, dict):
         raise RuntimeError("Dexter sidecar returned an invalid payload.")
@@ -312,11 +497,20 @@ def _append_dexter_audit(
             tables_used=envelope.evidence.tables_used,
             filters_applied=envelope.evidence.filters_applied,
             trace_id=envelope.result_meta.trace_id,
+            run_id=str(request.context.get("run_id") or "").strip() or None,
             result_meta={
                 **envelope.result_meta.model_dump(mode="json"),
                 "dexter_tool_name": str(result.get("tool_name") or "dexter_cli"),
-                "stdout_excerpt": _truncate(str(result.get("stdout") or ""), 1000),
-                "stderr_excerpt": _truncate(str(result.get("stderr") or ""), 1000),
+                **(
+                    {
+                        "dexter_error": str(result.get("error")),
+                        "dexter_error_code": str(
+                            result.get("error_code") or _DEXTER_FALLBACK_REASON
+                        ),
+                    }
+                    if result.get("error")
+                    else {}
+                ),
             },
         ),
     )
@@ -361,7 +555,10 @@ def _build_dexter_cards(
     _append_list_card(cards, title="Research Findings", card_type="research_findings", value=result.get("findings"))
     _append_list_card(cards, title="Research Evidence", card_type="research_evidence", value=result.get("evidence"))
     _append_list_card(cards, title="Research Risks", card_type="research_risks", value=result.get("risks"))
-    limitations = result.get("limitations") or research_context.get("limitations")
+    limitations = [
+        *_normalize_string_list(result.get("limitations") or research_context.get("limitations")),
+        *_normalize_string_list(research_context.get("stale_sources")),
+    ]
     _append_list_card(cards, title="Research Limitations", card_type="research_limitations", value=limitations)
     _append_list_card(cards, title="Next Drill", card_type="research_next_drill", value=result.get("next_drill"))
     return cards

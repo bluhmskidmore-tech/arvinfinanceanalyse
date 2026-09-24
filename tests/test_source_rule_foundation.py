@@ -26,8 +26,8 @@ def test_ingest_scan_enriches_manifest_with_source_family_and_report_date(tmp_pa
 
 def test_source_rules_detect_family_and_date_from_supported_file_names():
     rules_module = load_module(
-        "backend.app.services.source_rules",
-        "backend/app/services/source_rules.py",
+        "backend.app.core_finance.source_rules",
+        "backend/app/core_finance/source_rules.py",
     )
 
     assert rules_module.detect_source_family("ZQTZSHOW-20251231.xls") == "zqtz"
@@ -39,8 +39,8 @@ def test_source_rules_detect_family_and_date_from_supported_file_names():
 def test_source_rules_v1_substring_family_detection():
     """MOSS-SYSTEM-V1 `ingest_daily_data` classifies by substring, not only strict prefixes."""
     rules_module = load_module(
-        "backend.app.services.source_rules",
-        "backend/app/services/source_rules.py",
+        "backend.app.core_finance.source_rules",
+        "backend/app/core_finance/source_rules.py",
     )
 
     assert rules_module.detect_source_family("EXPORT-ZQTZ-20250101.xls") == "zqtz"
@@ -50,8 +50,8 @@ def test_source_rules_v1_substring_family_detection():
 
 def test_zqtz_other_bond_prefix_rule_maps_to_expected_preview_group():
     rules_module = load_module(
-        "backend.app.services.source_rules",
-        "backend/app/services/source_rules.py",
+        "backend.app.core_finance.source_rules",
+        "backend/app/core_finance/source_rules.py",
     )
 
     row = {
@@ -71,10 +71,27 @@ def test_zqtz_other_bond_prefix_rule_maps_to_expected_preview_group():
     assert result["trace_fields"] == ["业务种类1", "债券代号"]
 
 
+def test_zqtz_j4_preview_uses_structured_industry_fund_label() -> None:
+    rules_module = load_module(
+        "backend.app.core_finance.source_rules",
+        "backend/app/core_finance/source_rules.py",
+    )
+
+    result = rules_module.classify_zqtz_preview(
+        {
+            "业务种类1": "其他债券",
+            "债券代号": "J40001",
+        }
+    )
+
+    assert result["business_type_final"] == "结构化产业基金"
+    assert result["asset_group"] == "特定目的载体及其他非标类"
+
+
 def test_tyw_conflicting_confirmation_flags_manual_review():
     rules_module = load_module(
-        "backend.app.services.source_rules",
-        "backend/app/services/source_rules.py",
+        "backend.app.core_finance.source_rules",
+        "backend/app/core_finance/source_rules.py",
     )
 
     row = {

@@ -1,13 +1,23 @@
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
-from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
-from pydantic import BaseModel, Field, model_validator
+from backend.app.schemas.common_numeric import Numeric, NumericRawScale, NumericUnit, numeric_from_raw
+from backend.app.schemas.result_meta import ResultMeta
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+# (unit, sign_aware) keeps the legacy "auto" pct heuristic;
+# (unit, sign_aware, raw_scale) declares the producing raw scale explicitly.
+_NumericFieldSpec = tuple[NumericUnit, bool] | tuple[NumericUnit, bool, NumericRawScale]
 
 
-def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) -> Any:
+def _coerce_value_to_numeric(
+    value: Any,
+    unit: NumericUnit,
+    sign_aware: bool,
+    raw_scale: NumericRawScale = "auto",
+) -> Any:
     if value is None:
         return None
     if isinstance(value, Numeric):
@@ -15,7 +25,9 @@ def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) ->
     if isinstance(value, dict) and {"raw", "unit", "display", "precision", "sign_aware"} <= set(value.keys()):
         return value
     if isinstance(value, Decimal):
-        return numeric_from_raw(raw=float(value), unit=unit, sign_aware=sign_aware).model_dump(mode="json")
+        return numeric_from_raw(
+            raw=float(value), unit=unit, sign_aware=sign_aware, raw_scale=raw_scale
+        ).model_dump(mode="json")
     if isinstance(value, str):
         normalized = value.strip().replace(",", "")
         if not normalized:
@@ -24,22 +36,28 @@ def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) ->
             raw = float(Decimal(normalized))
         except InvalidOperation:
             return value
-        return numeric_from_raw(raw=raw, unit=unit, sign_aware=sign_aware).model_dump(mode="json")
+        return numeric_from_raw(
+            raw=raw, unit=unit, sign_aware=sign_aware, raw_scale=raw_scale
+        ).model_dump(mode="json")
     if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return numeric_from_raw(raw=float(value), unit=unit, sign_aware=sign_aware).model_dump(mode="json")
+        return numeric_from_raw(
+            raw=float(value), unit=unit, sign_aware=sign_aware, raw_scale=raw_scale
+        ).model_dump(mode="json")
     return value
 
 
 def _apply_numeric_coercion(
-    field_map: dict[str, tuple[NumericUnit, bool]],
+    field_map: dict[str, _NumericFieldSpec],
     data: Any,
 ) -> Any:
     if not isinstance(data, dict):
         return data
     out = dict(data)
-    for field_name, (unit, sign_aware) in field_map.items():
+    for field_name, spec in field_map.items():
         if field_name in out:
-            out[field_name] = _coerce_value_to_numeric(out[field_name], unit, sign_aware)
+            unit, sign_aware = spec[0], spec[1]
+            raw_scale: NumericRawScale = spec[2] if len(spec) == 3 else "auto"
+            out[field_name] = _coerce_value_to_numeric(out[field_name], unit, sign_aware, raw_scale)
     return out
 
 
@@ -53,13 +71,15 @@ class BondDashboardHeadlineKpiBlock(BaseModel):
     total_dv01: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=False))
     bond_count: int = 0
 
-    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+    # Rates are normalized to decimal ratios in bond_analytics.engine L304-321,
+    # then passed through unchanged by bond_dashboard_service L419-430.
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
         "total_market_value": ("yuan", False),
         "unrealized_pnl": ("yuan", True),
-        "weighted_ytm": ("pct", True),
+        "weighted_ytm": ("pct", True, "ratio"),
         "weighted_duration": ("ratio", False),
-        "weighted_coupon": ("pct", True),
-        "credit_spread_median": ("pct", True),
+        "weighted_coupon": ("pct", True, "ratio"),
+        "credit_spread_median": ("pct", True, "ratio"),
         "total_dv01": ("dv01", False),
     }
 
@@ -82,9 +102,10 @@ class BondDashboardAssetStructureItem(BaseModel):
     bond_count: int = 0
     percentage: Numeric | None = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="pct", sign_aware=False))
 
-    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+    # bond_dashboard_service L413-416 calculates percentage as part / whole.
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
         "total_market_value": ("yuan", False),
-        "percentage": ("pct", False),
+        "percentage": ("pct", False, "ratio"),
     }
 
     @model_validator(mode="before")
@@ -129,8 +150,10 @@ class BondDashboardYieldDistributionPayload(BaseModel):
     items: list[BondDashboardYieldDistributionItem] = Field(default_factory=list)
     weighted_ytm: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="pct", sign_aware=True))
 
-    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
-        "weighted_ytm": ("pct", True),
+    # weighted_ytm is the normalized fact value passed through at
+    # bond_dashboard_service L700-718.
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
+        "weighted_ytm": ("pct", True, "ratio"),
     }
 
     @model_validator(mode="before")
@@ -147,9 +170,10 @@ class BondDashboardPortfolioComparisonItem(BaseModel):
     total_dv01: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=False))
     bond_count: int = 0
 
-    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+    # bond_analytics_repo L815-821 computes weighted_ytm from fact ytm ratios.
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
         "total_market_value": ("yuan", False),
-        "weighted_ytm": ("pct", True),
+        "weighted_ytm": ("pct", True, "ratio"),
         "weighted_duration": ("ratio", False),
         "total_dv01": ("dv01", False),
     }
@@ -171,8 +195,10 @@ class BondDashboardSpreadAnalysisItem(BaseModel):
     bond_count: int = 0
     total_market_value: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=False))
 
-    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
-        "median_yield": ("pct", True),
+    # bond_analytics_repo L861-864 takes median(ytm), whose snapshot source is
+    # normalized to a decimal ratio in bond_analytics.engine L304-321.
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
+        "median_yield": ("pct", True, "ratio"),
         "total_market_value": ("yuan", False),
     }
 
@@ -193,9 +219,10 @@ class BondDashboardMaturityStructureItem(BaseModel):
     bond_count: int = 0
     percentage: Numeric | None = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="pct", sign_aware=False))
 
-    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+    # bond_dashboard_service L793-809 calculates percentage as part / whole.
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
         "total_market_value": ("yuan", False),
-        "percentage": ("pct", False),
+        "percentage": ("pct", False, "ratio"),
     }
 
     @model_validator(mode="before")
@@ -225,9 +252,10 @@ class BondDashboardIndustryDistributionItem(BaseModel):
     bond_count: int = 0
     percentage: Numeric | None = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="pct", sign_aware=False))
 
-    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+    # bond_dashboard_service L825-841 calculates percentage as part / whole.
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
         "total_market_value": ("yuan", False),
-        "percentage": ("pct", False),
+        "percentage": ("pct", False, "ratio"),
     }
 
     @model_validator(mode="before")
@@ -250,6 +278,9 @@ class BondDashboardRiskIndicatorsPayload(BaseModel):
     weighted_convexity: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=False))
     total_spread_dv01: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=False))
     reinvestment_ratio_1y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=False))
+    # 凸性覆盖率（承载凸性字段的市值占比）：解释加权凸性口径的质量披露字段，
+    # repo L1136-1140 一直在算，此前被服务层丢弃未进 API。
+    weighted_convexity_coverage_ratio: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=False))
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "total_market_value": ("yuan", False),
@@ -259,6 +290,7 @@ class BondDashboardRiskIndicatorsPayload(BaseModel):
         "weighted_convexity": ("ratio", False),
         "total_spread_dv01": ("dv01", False),
         "reinvestment_ratio_1y": ("ratio", False),
+        "weighted_convexity_coverage_ratio": ("ratio", False),
     }
 
     @model_validator(mode="before")
@@ -273,6 +305,21 @@ class BondDashboardBusinessTypeMetricItem(BaseModel):
     weighted_avg_ytm_pct: str
     weighted_avg_duration: str
     duration_source: str = ""
+    # 加权指标覆盖率（承载该字段的市值占比，0-1 比率）：解释「加权值为缺值/低覆盖」
+    # 的质量披露，repo 聚合一直在算，此前被服务层丢弃未进 API。
+    # 该组市值合计为零时分母不存在，输出 null。
+    weighted_avg_ytm_coverage_ratio: Numeric | None = None
+    weighted_avg_duration_coverage_ratio: Numeric | None = None
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
+        "weighted_avg_ytm_coverage_ratio": ("ratio", False),
+        "weighted_avg_duration_coverage_ratio": ("ratio", False),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
 
 
 class BondDashboardBusinessTypeMetricsPayload(BaseModel):
@@ -292,3 +339,100 @@ class BondDashboardHomeSummaryPayload(BaseModel):
     portfolio_comparison: BondDashboardPortfolioComparisonPayload
     spread: BondDashboardSpreadAnalysisPayload
     business_type: BondDashboardBusinessTypeMetricsPayload
+
+
+class BondDashboardBundleSectionStatus(BaseModel):
+    status: Literal["ok", "error"]
+    message: str | None = None
+    duration_ms: float = 0.0
+
+
+class BondDashboardBundlePayload(BaseModel):
+    report_date: str | None = None
+    requested_sections: list[str] = Field(default_factory=list)
+    sections: dict[str, dict[str, object]] = Field(default_factory=dict)
+    section_statuses: dict[str, BondDashboardBundleSectionStatus] = Field(default_factory=dict)
+    failed_sections: list[str] = Field(default_factory=list)
+
+
+class BondDashboardDatesPayload(BaseModel):
+    report_dates: list[str] = Field(default_factory=list)
+
+
+# `bond_dashboard_service._with_bond_dashboard_data_source` stamps this on every
+# response, so it is a fixed literal rather than a free string.
+BondDashboardDataSource = Literal["bond_analytics_facts"]
+
+
+class _BondDashboardEnvelope(BaseModel):
+    """Top-level shape shared by every `/api/bond-dashboard` read.
+
+    `extra="forbid"` is the point of this class. Without it, FastAPI would
+    quietly drop any response key the model does not declare, which is exactly
+    the failure this envelope exists to prevent; with it, a wrapper that starts
+    emitting an undeclared key fails loudly instead.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+
+
+class BondDashboardDatesEnvelope(_BondDashboardEnvelope):
+    result: BondDashboardDatesPayload
+    data_source: BondDashboardDataSource
+
+
+class BondDashboardHeadlineEnvelope(_BondDashboardEnvelope):
+    result: BondDashboardHeadlinePayload
+    data_source: BondDashboardDataSource
+
+
+class BondDashboardHomeSummaryEnvelope(_BondDashboardEnvelope):
+    result: BondDashboardHomeSummaryPayload
+    data_source: BondDashboardDataSource
+
+
+class BondDashboardAssetStructureEnvelope(_BondDashboardEnvelope):
+    result: BondDashboardAssetStructurePayload
+    data_source: BondDashboardDataSource
+
+
+class BondDashboardYieldDistributionEnvelope(_BondDashboardEnvelope):
+    result: BondDashboardYieldDistributionPayload
+    data_source: BondDashboardDataSource
+
+
+class BondDashboardPortfolioComparisonEnvelope(_BondDashboardEnvelope):
+    result: BondDashboardPortfolioComparisonPayload
+    data_source: BondDashboardDataSource
+
+
+class BondDashboardSpreadAnalysisEnvelope(_BondDashboardEnvelope):
+    result: BondDashboardSpreadAnalysisPayload
+    data_source: BondDashboardDataSource
+
+
+class BondDashboardMaturityStructureEnvelope(_BondDashboardEnvelope):
+    result: BondDashboardMaturityStructurePayload
+    data_source: BondDashboardDataSource
+
+
+class BondDashboardIndustryDistributionEnvelope(_BondDashboardEnvelope):
+    result: BondDashboardIndustryDistributionPayload
+    data_source: BondDashboardDataSource
+
+
+class BondDashboardRiskIndicatorsEnvelope(_BondDashboardEnvelope):
+    result: BondDashboardRiskIndicatorsPayload
+    data_source: BondDashboardDataSource
+
+
+class BondDashboardBusinessTypeMetricsEnvelope(_BondDashboardEnvelope):
+    result: BondDashboardBusinessTypeMetricsPayload
+    data_source: BondDashboardDataSource
+
+
+class BondDashboardBundleEnvelope(_BondDashboardEnvelope):
+    result: BondDashboardBundlePayload
+    data_source: BondDashboardDataSource

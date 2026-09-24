@@ -17,6 +17,31 @@ class ChoiceClient:
         cmod = _get_em_c()
         if cmod is None:
             raise ImportError("EmQuantAPI.c is unavailable. Configure CHOICE_EMQUANT_PARENT or config/settings.yaml first.")
+        if self.settings.choice_socks5_proxy_host:
+            set_proxy = getattr(cmod, "setproxy", None)
+            if set_proxy is None:
+                raise RuntimeError("Choice runtime does not expose setproxy for the configured SOCKS5 proxy.")
+            proxy_result = set_proxy(
+                4,
+                self.settings.choice_socks5_proxy_host,
+                self.settings.choice_socks5_proxy_port,
+                False,
+                "",
+                "",
+            )
+            proxy_error_code = (
+                proxy_result
+                if isinstance(proxy_result, int)
+                else getattr(proxy_result, "ErrorCode", 0)
+            )
+            if proxy_error_code != 0:
+                raise RuntimeError(
+                    getattr(
+                        proxy_result,
+                        "ErrorMsg",
+                        f"Choice SOCKS5 proxy setup failed: {proxy_error_code}",
+                    )
+                )
         result = cmod.start(self.settings.choice_start_options)
         error_code = result.ErrorCode if hasattr(result, "ErrorCode") else 0
         if error_code != 0:

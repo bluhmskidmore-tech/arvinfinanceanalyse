@@ -1,0 +1,1038 @@
+/* AverageBalance — Nocturne 首页版式（DESIGN.md §2.2/§3/§5/§6/§7/§11）。
+   颜色一律 var(--dh-api-*) / color-mix 引用（average-balance scope 在 tokens.css
+   解析为 Nocturne 色板），禁止 hex/rgba 字面量；圆角一律 var(--dh-api-radius)
+   （scope 下 8px），禁止 999px 胶囊。
+   antd cssinjs 运行时注入且常见 0-3-0~0-4-0 特异性，页内以重复页类提权收敛
+   （bond-analytics tabRail / portfolio-home 先例），作用域限本页。
+   本文件同时供 AdbDenominatorSummary / AdbAccountingBasisSection /
+   AdbCoverageDiagnostics 等页内支撑组件消费：adb-panel / adb-subhead /
+   adb-note / adb-lines / adb-embed / adb-copy-hint / adb-coverage-list* /
+   adb-tone--* 属共享类，删改前先核对消费方。 */
+
+/* ---------------------------------------------------------- 页根与文字基线 */
+
+.average-balance-page {
+  color: var(--dh-api-ink);
+  color-scheme: dark;
+  display: grid;
+  font-family: var(--moss-font-sans, "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", "Segoe UI", sans-serif);
+  gap: 14px;
+  min-width: 0;
+}
+
+.adb-stack {
+  counter-reset: adb-sec;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  width: 100%;
+}
+
+/* ------------------------------------------------- 工具条（dhTopbar 语言） */
+
+.adb-topbar {
+  align-items: flex-start;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 2px 2px 12px;
+}
+
+.adb-topbar-left {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.adb-title-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+
+.adb-page-title {
+  color: var(--dh-api-ink);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.adb-topbar-meta {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  min-width: 0;
+}
+
+.adb-page-subtitle {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0;
+  max-width: 72em;
+  min-width: 0;
+}
+
+.adb-scope-note {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.adb-formal-link {
+  color: var(--dh-api-blue);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.adb-formal-link:hover {
+  color: color-mix(in srgb, var(--dh-api-blue) 78%, var(--dh-api-ink));
+}
+
+/* 模式胶囊（6px 语义圆点 = 数据链路状态，§6） */
+.adb-pill {
+  align-items: center;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  color: var(--dh-api-soft);
+  display: inline-flex;
+  flex-shrink: 0;
+  font-family: var(--moss-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  font-weight: 700;
+  gap: 6px;
+  min-height: 26px;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+
+.adb-pill i {
+  background: var(--dh-api-muted);
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+  height: 6px;
+  width: 6px;
+}
+
+.adb-pill[data-tone="ok"] {
+  border-color: color-mix(in srgb, var(--dh-api-green) 32%, transparent);
+  color: var(--dh-api-green);
+}
+
+.adb-pill[data-tone="ok"] i {
+  background: var(--dh-api-green);
+}
+
+.adb-pill[data-tone="accent"] {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 32%, transparent);
+  color: var(--dh-api-blue);
+}
+
+.adb-pill[data-tone="accent"] i {
+  background: var(--dh-api-blue);
+}
+
+/* 「日均分析回答什么」一行安静说明（替代 antd info Alert 大蓝框） */
+.adb-analysis-brief {
+  align-items: baseline;
+  background: var(--dh-api-panel);
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+  min-width: 0;
+  padding: 8px 12px;
+}
+
+.adb-brief-label {
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.adb-brief-text {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.6;
+  min-width: 0;
+}
+
+/* -------------------------------------------------------------- tab 导语 */
+
+.adb-tab-lead {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.adb-tab-lead h3 {
+  color: var(--dh-api-ink);
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1.3;
+  margin: 0;
+}
+
+.adb-tab-lead p {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0;
+  max-width: 78em;
+}
+
+/* ------------------------------------------------------------------ 筛选卡 */
+
+.adb-controls {
+  align-items: center;
+  background: var(--dh-api-panel);
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 10px 14px;
+}
+
+.average-balance-page .adb-controls .moss-filter-bar {
+  align-items: center;
+  flex: 1 1 auto;
+  gap: 8px 10px;
+  margin: 0;
+  min-width: 0;
+}
+
+.adb-control-label {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.adb-days-box {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.adb-days {
+  color: var(--dh-api-soft);
+  font-family: var(--moss-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.adb-days-note {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.adb-filter-date {
+  min-width: 150px;
+}
+
+.adb-filter-input {
+  width: 148px;
+}
+
+.adb-filter-top-n {
+  width: 92px;
+}
+
+.adb-filter-year {
+  width: 120px;
+}
+
+.adb-filter-month {
+  min-width: 150px;
+}
+
+/* --------------------------------------------- KPI 单框横带（首页 kpiStrip） */
+
+/* 单框 + 1px 缝隙露出底色 = 发丝竖缝；断点折行时横缝随 gap 自动出现。 */
+.adb-kpi-strip {
+  background: var(--dh-api-line);
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.adb-kpi-strip[data-cols="6"] {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.adb-kpi-strip[data-cols="5"] {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.adb-kpi-strip[data-cols="2"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.adb-kpi {
+  background: var(--dh-api-panel-2);
+  display: flex;
+  flex-direction: column;
+  min-height: 104px;
+  min-width: 0;
+  padding: 11px 14px 12px;
+}
+
+/* §3 多行标签对齐：同排标签统一 2 行 clamp + 固定 min-height，防同排数值错位。 */
+.adb-kpi-label {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--dh-api-muted);
+  display: -webkit-box;
+  font-size: 11px;
+  line-height: 15px;
+  min-height: 30px;
+  overflow: hidden;
+}
+
+.adb-kpi-value {
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 26px;
+  margin-top: 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adb-kpi-warn-icon {
+  font-size: 14px;
+  margin-left: 6px;
+}
+
+.adb-kpi-detail {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 16px;
+  margin-top: auto;
+  overflow: hidden;
+  padding-top: 6px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------- 编号分区（01/02… 语言） */
+
+.adb-sec {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.adb-sec-head {
+  align-items: center;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  counter-increment: adb-sec;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+  padding-bottom: 8px;
+}
+
+.adb-sec-head i {
+  color: var(--dh-api-blue);
+  font-family: var(--moss-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+/* 编号按已渲染节题顺序生成（每个 tab 的 .adb-stack 重置一次）：
+   数据缺失整节隐藏时编号自动连续，不出现跳号。 */
+.adb-sec-head i::before {
+  content: counter(adb-sec, decimal-leading-zero);
+}
+
+.adb-sec-head h3 {
+  color: var(--dh-api-ink);
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1.3;
+  margin: 0;
+}
+
+.adb-sec-meta {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adb-sec-actions {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.adb-sec-meta + .adb-sec-actions {
+  margin-left: 0;
+}
+
+/* ------------------------------- 面板与文字件（页内 + 支撑组件共享词汇） */
+
+.adb-panel {
+  background: var(--dh-api-panel);
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px 16px;
+}
+
+.adb-chart-panel {
+  padding: 12px 14px;
+}
+
+.adb-subhead {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  min-width: 0;
+}
+
+.adb-note {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.55;
+  margin: 0;
+  min-width: 0;
+}
+
+.adb-lines {
+  color: var(--dh-api-soft);
+  display: grid;
+  font-size: 12px;
+  gap: 3px;
+  line-height: 1.5;
+  min-width: 0;
+}
+
+/* 嵌入式安静块（分母摘要等：panel-2 底 + 发丝边，比警示 Alert 低一级） */
+.adb-embed {
+  background: var(--dh-api-panel-2);
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.adb-copy-hint {
+  font-size: 12px;
+  margin: 0;
+}
+
+.average-balance-page .ant-typography.adb-copy-hint {
+  margin-bottom: 0;
+}
+
+.adb-coverage-list {
+  max-height: 280px;
+  overflow: auto;
+}
+
+.adb-coverage-list-item {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.adb-table-group {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.adb-table-group-stack {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.adb-expanded-group {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.adb-alert-stack {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* insights 结论中 notice/info 档次视觉降权，warning 仍保持 antd 默认强调（DESIGN.md §6）。 */
+.adb-insight-muted {
+  opacity: 0.82;
+}
+
+/* 双列区（04 对比图 / 07 分类明细 / 月度深度分析）；§5 不等高列顶对齐。 */
+.adb-two-col {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.adb-chart-block {
+  margin-bottom: 12px;
+}
+
+/* -------------------------------------- 证据卡（结果元信息，视觉降权） */
+
+.adb-evidence {
+  background: var(--dh-api-panel-2);
+  border: 1px solid var(--dh-api-line-soft);
+  border-left: 2px solid var(--dh-api-blue);
+  border-radius: var(--dh-api-radius);
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.adb-evidence[data-tone="warn"] {
+  border-left-color: var(--dh-api-amber);
+}
+
+.adb-evidence-title {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.adb-evidence[data-tone="warn"] .adb-evidence-title {
+  color: var(--dh-api-amber);
+}
+
+.adb-evidence-grid {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.adb-evidence-line {
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.adb-evidence-row {
+  display: grid;
+  font-size: 12px;
+  grid-template-columns: 112px minmax(0, 1fr);
+  line-height: 1.5;
+  min-width: 0;
+}
+
+.adb-evidence-k {
+  color: var(--dh-api-muted);
+}
+
+.adb-evidence-v {
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  /* 证据层视觉降权：超长 source_version（后端拼接哈希串可达数千字符）
+     视觉上最多 3 行，textContent 完整保留（测试与复制不受影响）。 */
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  display: -webkit-box;
+  overflow: hidden;
+}
+
+/* ------------------------------------------------ 骨架占位（§6 防重排） */
+
+.adb-skeleton {
+  align-items: center;
+  background: var(--dh-api-panel);
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  color: var(--dh-api-muted);
+  display: grid;
+  font-size: 12px;
+  justify-items: center;
+  min-height: 320px;
+}
+
+/* ------------------------------------------------------- 表格与单元格件 */
+
+.adb-cell-strong {
+  color: var(--dh-api-ink);
+  font-weight: 650;
+}
+
+.adb-cell-stack {
+  display: inline-grid;
+  gap: 2px;
+  justify-items: end;
+}
+
+.adb-data-subline {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+/* ------------------------------------------ antd 皮肤收敛（作用域限本页） */
+
+/* Tabs：激活文字与 ink-bar 走 accent 链；cssinjs 钢蓝 colorPrimary 以重复页类提权压制。 */
+.average-balance-page.average-balance-page.average-balance-page .ant-tabs-top > .ant-tabs-nav {
+  margin-bottom: 16px;
+}
+
+.average-balance-page.average-balance-page.average-balance-page .ant-tabs-top > .ant-tabs-nav::before {
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.average-balance-page.average-balance-page.average-balance-page .ant-tabs-tab {
+  font-size: 13px;
+  padding: 8px 2px;
+}
+
+.average-balance-page.average-balance-page.average-balance-page .ant-tabs-tab + .ant-tabs-tab {
+  margin-left: 24px;
+}
+
+.average-balance-page.average-balance-page.average-balance-page .ant-tabs-tab .ant-tabs-tab-btn {
+  color: var(--dh-api-soft);
+}
+
+.average-balance-page.average-balance-page.average-balance-page .ant-tabs-tab:hover .ant-tabs-tab-btn {
+  color: var(--dh-api-blue);
+}
+
+.average-balance-page.average-balance-page.average-balance-page .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--dh-api-blue);
+  font-weight: 700;
+  text-shadow: none;
+}
+
+.average-balance-page.average-balance-page.average-balance-page .ant-tabs-ink-bar {
+  background: var(--dh-api-blue);
+}
+
+/* Button：32px / 12px；primary（区间预设选中态）收敛为 accent 软底链，不留钢蓝。 */
+.average-balance-page.average-balance-page.average-balance-page .ant-btn {
+  border-radius: var(--dh-api-radius);
+  box-shadow: none;
+  font-size: 12px;
+  height: 32px;
+  padding: 0 12px;
+}
+
+.average-balance-page.average-balance-page.average-balance-page .ant-btn-default {
+  background: var(--dh-api-panel-2);
+  border-color: var(--dh-api-line);
+  color: var(--dh-api-soft);
+}
+
+.average-balance-page.average-balance-page.average-balance-page .ant-btn-default:not(:disabled):hover {
+  background: var(--dh-api-panel-2);
+  border-color: color-mix(in srgb, var(--dh-api-blue) 45%, transparent);
+  color: var(--dh-api-blue);
+}
+
+.average-balance-page.average-balance-page.average-balance-page .ant-btn-primary {
+  background: var(--dh-api-blue-soft);
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 46%, transparent);
+  color: var(--dh-api-blue);
+}
+
+.average-balance-page.average-balance-page.average-balance-page .ant-btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--dh-api-blue) 20%, transparent);
+  border-color: color-mix(in srgb, var(--dh-api-blue) 60%, transparent);
+  color: var(--dh-api-blue);
+}
+
+/* Select：panel-2 软底 + 发丝边；弹层经 getPopupContainer 留在页 scope 内。 */
+.average-balance-page.average-balance-page.average-balance-page .ant-select {
+  font-size: 12px;
+}
+
+.average-balance-page.average-balance-page.average-balance-page .ant-select .ant-select-selector {
+  background: var(--dh-api-panel-2);
+  border-color: var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  color: var(--dh-api-ink);
+  font-size: 12px;
+}
+
+.average-balance-page.average-balance-page.average-balance-page .ant-select:not(.ant-select-disabled):hover .ant-select-selector {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 45%, transparent);
+}
+
+.average-balance-page.average-balance-page.average-balance-page .ant-select-focused .ant-select-selector {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 60%, transparent);
+  box-shadow: none;
+}
+
+.average-balance-page.average-balance-page.average-balance-page .ant-select .ant-select-selection-item {
+  color: var(--dh-api-ink);
+}
+
+.average-balance-page.average-balance-page.average-balance-page .ant-select .ant-select-selection-placeholder {
+  color: var(--dh-api-muted);
+}
+
+.average-balance-page.average-balance-page.average-balance-page .ant-select .ant-select-arrow {
+  color: var(--dh-api-muted);
+}
+
+.average-balance-page.average-balance-page .ant-select-dropdown {
+  background: var(--dh-api-panel-2);
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  box-shadow: none;
+}
+
+.average-balance-page.average-balance-page .ant-select-item {
+  border-radius: var(--dh-api-radius);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  min-height: 28px;
+}
+
+.average-balance-page.average-balance-page .ant-select-item-option-active:not(.ant-select-item-option-disabled) {
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-ink);
+}
+
+.average-balance-page.average-balance-page .ant-select-item-option-selected:not(.ant-select-item-option-disabled) {
+  background: color-mix(in srgb, var(--dh-api-blue) 18%, transparent);
+  color: var(--dh-api-blue);
+  font-weight: 600;
+}
+
+/* Input（日期）：同链软底；color-scheme: dark 由页根声明，原生日历图标随暗色。 */
+.average-balance-page.average-balance-page.average-balance-page .ant-input {
+  background: var(--dh-api-panel-2);
+  border-color: var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  height: 32px;
+  padding: 0 10px;
+}
+
+.average-balance-page.average-balance-page.average-balance-page .ant-input:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 45%, transparent);
+}
+
+.average-balance-page.average-balance-page.average-balance-page .ant-input:focus {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 60%, transparent);
+  box-shadow: none;
+}
+
+.average-balance-page .ant-input::placeholder {
+  color: var(--dh-api-muted);
+}
+
+/* Alert：软底 + 语义链（info→blue soft / warning→amber soft / error→red soft）。 */
+.average-balance-page .ant-alert {
+  border-radius: var(--dh-api-radius);
+  padding: 9px 12px;
+}
+
+.average-balance-page .ant-alert .ant-alert-message {
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.average-balance-page .ant-alert .ant-alert-description {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.average-balance-page .ant-alert-with-description {
+  padding: 10px 12px;
+}
+
+.average-balance-page .ant-alert-with-description .ant-alert-message {
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+
+.average-balance-page .ant-alert-info {
+  background: var(--dh-api-blue-soft);
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 30%, transparent);
+}
+
+.average-balance-page .ant-alert-info .ant-alert-icon {
+  color: var(--dh-api-blue);
+}
+
+.average-balance-page .ant-alert-warning {
+  background: var(--dh-api-amber-soft);
+  border: 1px solid color-mix(in srgb, var(--dh-api-amber) 32%, transparent);
+}
+
+.average-balance-page .ant-alert-warning .ant-alert-icon {
+  color: var(--dh-api-amber);
+}
+
+.average-balance-page .ant-alert-error {
+  background: var(--dh-api-red-soft);
+  border: 1px solid color-mix(in srgb, var(--dh-api-red) 34%, transparent);
+}
+
+.average-balance-page .ant-alert-error .ant-alert-icon {
+  color: var(--dh-api-red);
+}
+
+/* 表格纪律：表头 11px/muted/panel-2 底、表体 12px、行发丝底边、hover accent 比例混色。 */
+.average-balance-page.average-balance-page .ant-table {
+  background: transparent;
+  font-size: 12px;
+}
+
+.average-balance-page.average-balance-page .ant-table-thead > tr > th {
+  background: var(--dh-api-panel-2);
+  border-bottom: 1px solid var(--dh-api-line);
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
+  padding: 6px 10px;
+}
+
+.average-balance-page.average-balance-page .ant-table-thead > tr > th::before {
+  display: none;
+}
+
+.average-balance-page.average-balance-page .ant-table-tbody > tr > td {
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 6px 10px;
+}
+
+.average-balance-page.average-balance-page .ant-table-tbody > tr:last-child > td {
+  border-bottom: 0;
+}
+
+.average-balance-page.average-balance-page .ant-table-tbody > tr > td.ant-table-cell-row-hover,
+.average-balance-page.average-balance-page .ant-table-tbody > tr:hover > td {
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
+}
+
+/* 数值列（align: right 的内联样式）右对齐等宽 tabular。 */
+.average-balance-page .ant-table-cell {
+  font-variant-numeric: tabular-nums;
+}
+
+.average-balance-page .ant-table-cell[style*="text-align:"] {
+  font-family: var(--moss-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+}
+
+/* 矩阵固定列与展开行显式对齐页面 panel 链；全局 AntD 已切 Nocturne。 */
+.average-balance-page.average-balance-page .ant-table-cell-fix-left,
+.average-balance-page.average-balance-page .ant-table-cell-fix-right {
+  background: var(--dh-api-panel);
+}
+
+.average-balance-page.average-balance-page .ant-table-tbody > tr:hover > td.ant-table-cell-fix-left,
+.average-balance-page.average-balance-page .ant-table-tbody > tr:hover > td.ant-table-cell-fix-right {
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, var(--dh-api-panel));
+}
+
+.average-balance-page.average-balance-page .ant-table tr.ant-table-expanded-row > td {
+  background: var(--dh-api-panel-2);
+}
+
+.average-balance-page.average-balance-page .ant-table .ant-table-row-expand-icon {
+  background: transparent;
+  border-color: var(--dh-api-line);
+  color: var(--dh-api-soft);
+}
+
+.average-balance-page.average-balance-page .ant-table-tbody > tr.ant-table-placeholder > td,
+.average-balance-page.average-balance-page .ant-table-tbody > tr.ant-table-placeholder:hover > td {
+  background: transparent;
+}
+
+.average-balance-page .ant-empty-description {
+  color: var(--dh-api-muted);
+}
+
+/* Collapse / List / Spin / Tag / Typography（支撑组件用到的散件） */
+.average-balance-page .ant-collapse {
+  background: transparent;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+}
+
+.average-balance-page .ant-collapse > .ant-collapse-item {
+  border-bottom: 0;
+}
+
+.average-balance-page .ant-collapse .ant-collapse-header {
+  align-items: center;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 9px 12px;
+}
+
+.average-balance-page .ant-collapse .ant-collapse-expand-icon {
+  color: var(--dh-api-muted);
+}
+
+.average-balance-page .ant-collapse .ant-collapse-content {
+  background: transparent;
+  border-top: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-soft);
+}
+
+.average-balance-page .ant-collapse .ant-collapse-content-box {
+  display: grid;
+  font-size: 12px;
+  gap: 8px;
+  padding: 12px;
+}
+
+.average-balance-page .ant-list-bordered {
+  border-color: var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+}
+
+.average-balance-page .ant-list .ant-list-item {
+  border-block-end-color: var(--dh-api-line-soft);
+  color: var(--dh-api-soft);
+}
+
+.average-balance-page .ant-spin .ant-spin-dot-item {
+  background-color: var(--dh-api-blue);
+}
+
+.average-balance-page .ant-tag {
+  background: var(--dh-api-panel-2);
+  border-color: var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  color: var(--dh-api-soft);
+  font-size: 11px;
+  line-height: 18px;
+  margin: 0;
+}
+
+.average-balance-page .ant-typography {
+  color: var(--dh-api-ink);
+}
+
+.average-balance-page.average-balance-page .ant-typography-secondary {
+  color: var(--dh-api-soft);
+}
+
+.average-balance-page.average-balance-page .ant-typography-copy {
+  color: var(--dh-api-blue);
+}
+
+/* -------------------------------------------- 语义 tone（绿涨红跌 / 琥珀预警）
+   置于文件尾：与同特异性的文字件（adb-note 等）叠用时按源序取胜。 */
+
+.adb-tone--down {
+  color: var(--dh-api-red);
+}
+
+.adb-tone--up {
+  color: var(--dh-api-green);
+}
+
+.adb-tone--ok {
+  color: var(--dh-api-green);
+}
+
+.adb-tone--watch {
+  color: var(--dh-api-amber);
+}
+
+/* ------------------------------------------------------------------ 响应式 */
+
+@media (max-width: 1200px) {
+  .adb-two-col {
+    grid-template-columns: 1fr;
+  }
+
+  .adb-kpi-strip[data-cols="6"],
+  .adb-kpi-strip[data-cols="5"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  /* 5 格带折 3 列后行尾缺格：末格跨列补满，避免发丝缝底色漏成空块（§5）。 */
+  .adb-kpi-strip[data-cols="5"] .adb-kpi:last-child {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 900px) {
+  .adb-kpi-strip[data-cols="6"],
+  .adb-kpi-strip[data-cols="5"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* 2 列 × 5 格：末格独占整行补满（680 单列下同规则无副作用）。 */
+  .adb-kpi-strip[data-cols="5"] .adb-kpi:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 680px) {
+  .adb-topbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .adb-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .adb-kpi-strip[data-cols="6"],
+  .adb-kpi-strip[data-cols="5"],
+  .adb-kpi-strip[data-cols="2"] {
+    grid-template-columns: 1fr;
+  }
+}

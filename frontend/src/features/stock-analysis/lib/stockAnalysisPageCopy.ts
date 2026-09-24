@@ -1,5 +1,3 @@
-import dayjs from "dayjs";
-
 import {
   localizeStockBackendText,
   localizeStrategyPanelErrorDetail,
@@ -65,6 +63,9 @@ export function localizeStockErrorMessage(message: string) {
   ) {
     return "请求失败：必需数据源缺失，稍后复核供数状态。";
   }
+  if (normalized === "not found" || normalized.includes("not found") || normalized.includes("404")) {
+    return "\u4f9b\u6570\u6682\u4e0d\u53ef\u7528\uff0c\u8bf7\u7a0d\u540e\u590d\u6838\u3002";
+  }
   if (
     normalized.includes("request failed") ||
     normalized.includes("/ui/") ||
@@ -111,9 +112,9 @@ export function stockSupplyVendorLabel(value: string | null | undefined) {
   const normalized = (value ?? "").trim().toLowerCase();
   const labels: Record<string, string> = {
     ok: "正常",
-    vendor_stale: "陈旧",
+    vendor_stale: "数据延迟",
     vendor_unavailable: "异常",
-    degraded: "降级",
+    degraded: "部分缺失",
     error: "异常",
     pending: "待确认",
   };
@@ -122,13 +123,13 @@ export function stockSupplyVendorLabel(value: string | null | undefined) {
 
 export function stockSupplyFallbackLabel(value: string | null | undefined) {
   const normalized = (value ?? "").trim().toLowerCase();
-  if (!normalized || normalized === "none") return "无回退";
+  if (!normalized || normalized === "none") return "数据正常";
   const labels: Record<string, string> = {
-    latest_snapshot: "回退快照",
-    cache: "缓存回退",
-    mock: "模拟回退",
+    latest_snapshot: "数据延迟",
+    cache: "数据延迟",
+    mock: "演示数据",
   };
-  return labels[normalized] ?? "回退待确认";
+  return labels[normalized] ?? "待确认";
 }
 
 export function stockSupplyBasisLabel(value: string | null | undefined) {
@@ -147,12 +148,14 @@ export function compactStockText(text: string | null | undefined, maxLength = 28
 
 export function formatGeneratedAtLabel(value: string | null | undefined) {
   if (!value) return "";
-  const sourceTimestamp = value.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})/);
-  if (sourceTimestamp) {
-    return `${sourceTimestamp[2]}-${sourceTimestamp[3]} ${sourceTimestamp[4]}:${sourceTimestamp[5]}`;
+  const isoWallClockMatch = value.match(
+    /^\d{4}-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?$/,
+  );
+  if (isoWallClockMatch) {
+    const [, month, day, hour, minute] = isoWallClockMatch;
+    return `${month}-${day} ${hour}:${minute}`;
   }
-  const parsed = dayjs(value);
-  return parsed.isValid() ? parsed.format("MM-DD HH:mm") : compactStockText(value, 12);
+  return compactStockText(value, 12);
 }
 
 export function iconTone(tone?: string) {
@@ -169,33 +172,33 @@ export function kpiToneToDelta(tone?: string): "up" | "down" | "flat" {
 }
 
 export function filterChipClass(active: boolean): string {
-  const base =
-    "inline-flex min-h-7 cursor-pointer items-center whitespace-nowrap rounded-full border px-2.5 text-xs font-semibold transition-colors";
-  return active
-    ? `${base} border-primary-500 bg-primary-50 text-primary-800`
-    : `${base} border-neutral-200 bg-neutral-50 text-neutral-700 hover:bg-neutral-100`;
+  const base = "stock-analysis-page__filter-chip";
+  return active ? `${base} stock-analysis-page__filter-chip--active` : base;
 }
 
 export function statusIconClass(tone?: string): string {
-  const base = "inline-grid h-5 w-5 shrink-0 place-items-center rounded border text-xs leading-none";
-  if (tone === "positive") return `${base} border-success-200 bg-success-50 text-success-700`;
-  if (tone === "warning") return `${base} border-warning-200 bg-warning-50 text-warning-700`;
-  if (tone === "negative") return `${base} border-danger-200 bg-danger-50 text-danger-700`;
-  return `${base} border-primary-200 bg-primary-50 text-primary-700`;
+  const base = "stock-analysis-page__status-icon";
+  const resolvedTone = iconTone(tone);
+  if (resolvedTone === "positive") return `${base} stock-analysis-page__status-icon--positive`;
+  if (resolvedTone === "warning") return `${base} stock-analysis-page__status-icon--warning`;
+  if (resolvedTone === "negative") return `${base} stock-analysis-page__status-icon--negative`;
+  return `${base} stock-analysis-page__status-icon--neutral`;
 }
 
 export function toneTextClass(tone?: string): string {
-  if (tone === "positive") return "text-success-600";
-  if (tone === "warning") return "text-warning-600";
-  if (tone === "negative") return "text-danger-600";
-  return "text-neutral-600";
+  const base = "stock-analysis-page__tone-text";
+  if (tone === "positive") return `${base} stock-analysis-page__tone-text--positive`;
+  if (tone === "warning") return `${base} stock-analysis-page__tone-text--warning`;
+  if (tone === "negative") return `${base} stock-analysis-page__tone-text--negative`;
+  return base;
 }
 
 export function tonePillClass(tone?: string): string {
-  if (tone === "positive") return "border border-success-200 bg-success-50 text-success-700";
-  if (tone === "warning") return "border border-warning-200 bg-warning-50 text-warning-700";
-  if (tone === "negative") return "border border-danger-200 bg-danger-50 text-danger-700";
-  return "border border-neutral-200 bg-neutral-50 text-neutral-600";
+  const base = "stock-analysis-page__tone-pill";
+  if (tone === "positive") return `${base} stock-analysis-page__tone-pill--positive`;
+  if (tone === "warning") return `${base} stock-analysis-page__tone-pill--warning`;
+  if (tone === "negative") return `${base} stock-analysis-page__tone-pill--negative`;
+  return base;
 }
 
 export function buildStockRailActionLabel(

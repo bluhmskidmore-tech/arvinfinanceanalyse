@@ -1,17 +1,30 @@
 import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
+const echartsOptionMock = vi.hoisted(() => vi.fn());
+
 vi.mock("../lib/echarts", () => ({
-  default: () => <div data-testid="pnl-bridge-echarts-stub" />,
+  default: ({ option }: { option: unknown }) => {
+    echartsOptionMock(option);
+    return <div data-testid="pnl-bridge-echarts-stub" />;
+  },
 }));
 
 import * as pollingModule from "../app/jobs/polling";
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import type { Numeric, PnlBridgePayload, PnlDatesPayload, ResultMeta } from "../api/contracts";
 import PnlBridgePage from "../features/pnl/PnlBridgePage";
+import {
+  buildBridgeWarningDisplays,
+  buildCurveAvailabilityNotices,
+  buildWaterfallOption,
+  formatBridgeAxisYuan,
+  formatBridgeYuanCompact,
+} from "../features/pnl/pnlBridgePageSupport";
+import { nocturneTokens } from "../theme/designSystem";
 
 function renderPnlBridgePage(client: ApiClient) {
   function Wrapper({ children }: { children: ReactNode }) {
@@ -183,6 +196,93 @@ describe("PnlBridgePage", () => {
     });
   });
 
+  it("uses the backend summary quality as the only first-screen conclusion authority", async () => {
+    const base = createApiClient({ mode: "real" });
+    const payload = buildBridgePayload("2025-12-31", "IC-AUTH", "100.00");
+
+    renderPnlBridgePage({
+      ...base,
+      getFormalPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.dates", "tr_bridge_dates_authority"),
+        result: {
+          report_dates: ["2025-12-31"],
+          formal_fi_report_dates: ["2025-12-31"],
+          nonstd_bridge_report_dates: [],
+        } satisfies PnlDatesPayload,
+      })),
+      getPnlBridge: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.bridge", "tr_bridge_quality_authority"),
+        result: {
+          ...payload,
+          summary: {
+            ...payload.summary,
+            total_explained_pnl: bridgeYuan(100, "100.00"),
+            total_actual_pnl: bridgeYuan(100, "100.00"),
+            total_residual: bridgeYuan(20, "20.00"),
+            quality_flag: "ok" as const,
+          },
+        },
+      })),
+    });
+
+    const conclusion = await screen.findByTestId("pnl-bridge-conclusion");
+    expect(conclusion).toHaveTextContent("校验通过");
+    expect(conclusion).not.toHaveTextContent("校验未通过");
+    expect(screen.getByTestId("pnl-bridge-summary-cards")).toHaveTextContent("正常");
+  });
+
+  it("uses profit color for positive waterfall steps and loss color for negative steps", async () => {
+    echartsOptionMock.mockClear();
+    const base = createApiClient({ mode: "real" });
+
+    renderPnlBridgePage({
+      ...base,
+      getFormalPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.dates", "tr_bridge_dates_colors"),
+        result: {
+          report_dates: ["2025-12-31"],
+          formal_fi_report_dates: ["2025-12-31"],
+          nonstd_bridge_report_dates: [],
+        } satisfies PnlDatesPayload,
+      })),
+      getPnlBridge: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.bridge", "tr_bridge_colors"),
+        result: buildBridgePayload("2025-12-31", "IC-COLOR", "15.40"),
+      })),
+    });
+
+    await screen.findByTestId("pnl-bridge-waterfall-card");
+    const option = echartsOptionMock.mock.calls[echartsOptionMock.mock.calls.length - 1]?.[0] as {
+      series?: Array<{
+        name?: string;
+        data?: Array<{ itemStyle?: { color?: string } }>;
+      }>;
+    };
+    const effectSeries = option.series?.find((series) => series.name === "效应");
+
+    expect(effectSeries?.data?.[0]?.itemStyle?.color).toBe(nocturneTokens.color.green);
+    expect(effectSeries?.data?.[3]?.itemStyle?.color).toBe(nocturneTokens.color.red);
+  });
+
+  it("keeps missing waterfall steps as null gaps instead of drawing zero bars", () => {
+    const summary = buildBridgePayload("2025-12-31", "IC-NULL", "15.40").summary;
+    summary.total_fx_translation = { raw: null, unit: "yuan", display: "—", precision: 2, sign_aware: true };
+
+    const option = buildWaterfallOption(summary) as {
+      series?: Array<{
+        name?: string;
+        data?: Array<number | null | { value: number | null }>;
+      }>;
+    };
+    const helperSeries = option.series?.find((series) => series.name === "辅助");
+    const effectSeries = option.series?.find((series) => series.name === "效应");
+    const fxIndex = 4;
+
+    expect(helperSeries?.data?.[fxIndex]).toBeNull();
+    expect((effectSeries?.data?.[fxIndex] as { value: number | null }).value).toBeNull();
+    // 缺失步骤不推进累计值：下一步（已实现交易，正值）的辅助柱基线应仍是前四步之和。
+    expect(helperSeries?.data?.[fxIndex + 1]).toBeCloseTo(1.1 + 2.2 + 3.3 - 0.5);
+  });
   it("switches report date, refetches bridge payload, and updates debug meta", async () => {
     const user = userEvent.setup();
     const base = createApiClient({ mode: "real" });
@@ -291,8 +391,135 @@ describe("PnlBridgePage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("pnl-bridge-summary-section")).toHaveAttribute("data-state", "fallback");
     });
-    expect(screen.getAllByTestId("data-section-fallback-banner")).toHaveLength(2);
+    const summarySection = screen.getByTestId("pnl-bridge-summary-section");
+    const detailSection = screen.getByTestId("pnl-bridge-detail-section");
+    // 汇总区去重：首屏 Alert 已提示回退，DataSection 内部横幅只保留在明细区。
+    expect(within(summarySection).getByTestId("pnl-bridge-meta-banner")).toBeInTheDocument();
+    expect(within(summarySection).queryByTestId("data-section-fallback-banner")).toBeNull();
+    expect(within(detailSection).getByTestId("data-section-fallback-banner")).toBeInTheDocument();
+    expect(screen.getAllByTestId("data-section-fallback-banner")).toHaveLength(1);
     expect(screen.getByTestId("pnl-bridge-summary-cards")).toHaveTextContent("15.40");
+  });
+
+  it("shows a first-screen warning banner when adapter state is fallback", async () => {
+    const base = createApiClient({ mode: "real" });
+    const payload = buildBridgePayload("2025-12-31", "IC-FALLBACK", "15.40");
+
+    renderPnlBridgePage({
+      ...base,
+      getFormalPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.dates", "tr_bridge_dates_fs_fallback"),
+        result: {
+          report_dates: ["2025-12-31"],
+          formal_fi_report_dates: ["2025-12-31"],
+          nonstd_bridge_report_dates: [],
+        } satisfies PnlDatesPayload,
+      })),
+      getPnlBridge: vi.fn(async () => ({
+        result_meta: {
+          ...buildMeta("pnl.bridge", "tr_bridge_fs_fallback"),
+          quality_flag: "stale" as const,
+          fallback_mode: "latest_snapshot" as const,
+          filters_applied: { report_date: "2025-12-30" },
+          requested_report_date: "2025-12-31",
+          resolved_report_date: "2025-12-30",
+          as_of_date: "2025-12-30",
+          fallback_date: "2025-12-30",
+        },
+        result: {
+          ...payload,
+          summary: {
+            ...payload.summary,
+            quality_flag: "ok" as const,
+          },
+        },
+      })),
+    });
+
+    const banner = await screen.findByTestId("pnl-bridge-meta-banner");
+    expect(banner).toHaveTextContent("回退至最近可用快照");
+    expect(banner).toHaveTextContent("2025-12-30");
+    expect(banner).not.toHaveTextContent("latest_snapshot");
+    expect(banner).not.toHaveTextContent("quality_flag");
+    expect(screen.getByTestId("pnl-bridge-summary-cards")).toHaveTextContent("正常");
+
+    // 去重：首屏 Alert 出现时，汇总区不再重复 DataSection 内部回退横幅；明细区保留自身唯一提示。
+    const summarySection = screen.getByTestId("pnl-bridge-summary-section");
+    const detailSection = screen.getByTestId("pnl-bridge-detail-section");
+    expect(within(summarySection).queryByTestId("data-section-fallback-banner")).toBeNull();
+    expect(within(detailSection).getByTestId("data-section-fallback-banner")).toBeInTheDocument();
+  });
+
+  it("shows a first-screen warning banner when adapter state is stale", async () => {
+    const base = createApiClient({ mode: "real" });
+    const payload = buildBridgePayload("2025-12-31", "IC-STALE", "15.40");
+
+    renderPnlBridgePage({
+      ...base,
+      getFormalPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.dates", "tr_bridge_dates_fs_stale"),
+        result: {
+          report_dates: ["2025-12-31"],
+          formal_fi_report_dates: ["2025-12-31"],
+          nonstd_bridge_report_dates: [],
+        } satisfies PnlDatesPayload,
+      })),
+      getPnlBridge: vi.fn(async () => ({
+        result_meta: {
+          ...buildMeta("pnl.bridge", "tr_bridge_fs_stale"),
+          quality_flag: "stale" as const,
+          vendor_status: "vendor_stale" as const,
+          filters_applied: { report_date: "2025-12-28" },
+          as_of_date: "2025-12-28",
+        },
+        result: {
+          ...payload,
+          summary: {
+            ...payload.summary,
+            quality_flag: "ok" as const,
+          },
+        },
+      })),
+    });
+
+    const banner = await screen.findByTestId("pnl-bridge-meta-banner");
+    expect(banner).toHaveTextContent("偏旧");
+    expect(banner).toHaveTextContent("2025-12-28");
+    expect(banner).toHaveTextContent("行级闭合质量");
+    expect(banner).not.toHaveTextContent("quality_flag");
+    expect(banner).not.toHaveTextContent("summary.quality_flag");
+    expect(screen.getByTestId("pnl-bridge-summary-cards")).toHaveTextContent("正常");
+
+    // 去重：首屏 Alert 出现时，汇总区不再重复 DataSection 内部偏旧横幅；明细区保留自身唯一提示。
+    const summarySection = screen.getByTestId("pnl-bridge-summary-section");
+    const detailSection = screen.getByTestId("pnl-bridge-detail-section");
+    expect(within(summarySection).queryByTestId("data-section-stale-banner")).toBeNull();
+    expect(within(detailSection).getByTestId("data-section-stale-banner")).toBeInTheDocument();
+  });
+
+  it("does not show the first-screen meta banner when result_meta is healthy", async () => {
+    const base = createApiClient({ mode: "real" });
+
+    renderPnlBridgePage({
+      ...base,
+      getFormalPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.dates", "tr_bridge_dates_fs_ok"),
+        result: {
+          report_dates: ["2025-12-31"],
+          formal_fi_report_dates: ["2025-12-31"],
+          nonstd_bridge_report_dates: [],
+        } satisfies PnlDatesPayload,
+      })),
+      getPnlBridge: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.bridge", "tr_bridge_fs_ok"),
+        result: buildBridgePayload("2025-12-31", "IC-OK", "15.40"),
+      })),
+    });
+
+    await screen.findByTestId("pnl-bridge-summary-cards");
+    expect(screen.queryByTestId("pnl-bridge-meta-banner")).toBeNull();
+    expect(screen.queryByTestId("data-section-stale-banner")).toBeNull();
+    expect(screen.queryByTestId("data-section-fallback-banner")).toBeNull();
   });
 
   it("refreshes bridge data for the selected report date and shows polling status", async () => {
@@ -388,6 +615,427 @@ describe("PnlBridgePage", () => {
     expect(detail).toHaveTextContent("IC-9");
 
     pollingSpy.mockRestore();
+  });
+
+  it("renders an unavailable curve effect as text with its cause, never as 0", async () => {
+    const base = createApiClient({ mode: "real" });
+    const payload = buildBridgePayload("2026-07-31", "IC-NO-CURVE", "100.00");
+    const zero = bridgeYuan(0, "+0.00");
+
+    renderPnlBridgePage({
+      ...base,
+      getFormalPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.dates", "tr_bridge_dates_no_curve"),
+        result: {
+          report_dates: ["2026-07-31"],
+          formal_fi_report_dates: ["2026-07-31"],
+          nonstd_bridge_report_dates: [],
+        } satisfies PnlDatesPayload,
+      })),
+      getPnlBridge: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.bridge", "tr_bridge_no_curve"),
+        result: {
+          ...payload,
+          summary: {
+            ...payload.summary,
+            total_treasury_curve: zero,
+            total_credit_spread: zero,
+            treasury_curve_availability: {
+              status: "unavailable" as const,
+              unavailable_rows: 1715,
+              applicable_rows: 1715,
+              reasons: ["same_source_curve" as const],
+            },
+            credit_spread_availability: {
+              status: "not_applicable" as const,
+              unavailable_rows: 0,
+              applicable_rows: 0,
+              reasons: ["not_credit_book" as const],
+            },
+          },
+          rows: [
+            {
+              ...payload.rows[0],
+              treasury_curve: zero,
+              credit_spread: zero,
+              treasury_curve_availability: "unavailable" as const,
+              treasury_curve_availability_reason: "curve_unavailable" as const,
+              credit_spread_availability: "not_applicable" as const,
+              credit_spread_availability_reason: "not_credit_book" as const,
+            },
+          ],
+        },
+      })),
+    });
+
+    const banner = await screen.findByTestId("pnl-bridge-curve-availability");
+    expect(banner).toHaveTextContent("国债曲线效应");
+    expect(banner).toHaveTextContent("1715/1715 个适用行");
+    expect(banner).toHaveTextContent("两端同源");
+    expect(banner).toHaveTextContent("不是市场没有变动");
+    // not_applicable 与 unavailable 分开叙述：一个不需要补数据，一个需要。
+    expect(banner).toHaveTextContent("信用利差效应不适用");
+
+    const detail = await screen.findByTestId("pnl-bridge-detail-table");
+    await waitFor(() => {
+      expect(detail).toHaveTextContent("不可用 · 缺曲线");
+    });
+    expect(detail).toHaveTextContent("不适用 · 非信用簿");
+    // 硬性要求：不可用的曲线效应单元格里不允许出现任何数字，"0" 会被读成"利率没动"。
+    for (const field of ["treasury_curve", "credit_spread"]) {
+      const cells = Array.from(detail.querySelectorAll(`[col-id="${field}"][role="gridcell"]`));
+      expect(cells.length).toBeGreaterThan(0);
+      for (const cell of cells) {
+        expect(cell.textContent ?? "").not.toMatch(/\d/);
+      }
+    }
+  });
+
+  it("renders an unavailable roll-down as text with its cause, never as 0", async () => {
+    const base = createApiClient({ mode: "real" });
+    const payload = buildBridgePayload("2026-07-31", "IC-NO-WINDOW", "100.00");
+    const zero = bridgeYuan(0, "+0.00");
+
+    renderPnlBridgePage({
+      ...base,
+      getFormalPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.dates", "tr_bridge_dates_no_window"),
+        result: {
+          report_dates: ["2026-07-31"],
+          formal_fi_report_dates: ["2026-07-31"],
+          nonstd_bridge_report_dates: [],
+        } satisfies PnlDatesPayload,
+      })),
+      getPnlBridge: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.bridge", "tr_bridge_no_window"),
+        result: {
+          ...payload,
+          summary: {
+            ...payload.summary,
+            total_roll_down: zero,
+            roll_down_availability: {
+              status: "unavailable" as const,
+              unavailable_rows: 12,
+              applicable_rows: 12,
+              reasons: ["roll_window_missing" as const],
+            },
+          },
+          rows: [
+            {
+              ...payload.rows[0],
+              roll_down: zero,
+              roll_down_availability: "unavailable" as const,
+              roll_down_availability_reason: "roll_window_missing" as const,
+            },
+          ],
+        },
+      })),
+    });
+
+    const banner = await screen.findByTestId("pnl-bridge-curve-availability");
+    expect(banner).toHaveTextContent("骑乘效应");
+    expect(banner).toHaveTextContent("缺上期余额行，无滚动窗口");
+    expect(banner).toHaveTextContent("不是市场没有变动");
+
+    const detail = await screen.findByTestId("pnl-bridge-detail-table");
+    await waitFor(() => {
+      expect(detail).toHaveTextContent("不可用 · 缺上期余额行，无滚动窗口");
+    });
+    // 硬性要求：不可用的骑乘单元格里不允许出现任何数字。
+    const cells = Array.from(detail.querySelectorAll('[col-id="roll_down"][role="gridcell"]'));
+    expect(cells.length).toBeGreaterThan(0);
+    for (const cell of cells) {
+      expect(cell.textContent ?? "").not.toMatch(/\d/);
+    }
+  });
+
+  it("still publishes roll-down as a number when only the curve shift lost its inputs", async () => {
+    // 2026-07-31 的真实形态：曲线两端解析到同一份 06-30 快照，treasury_curve 因此
+    // 不可用，而 roll_down 仍从那条曲线上算出了真实数字。两者共用一个结论就会在
+    // 同一页上出现"利率效应不可用、骑乘 0"这种自相矛盾。
+    const base = createApiClient({ mode: "real" });
+    const payload = buildBridgePayload("2026-07-31", "IC-ROLL-OK", "100.00");
+
+    renderPnlBridgePage({
+      ...base,
+      getFormalPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.dates", "tr_bridge_dates_roll_ok"),
+        result: {
+          report_dates: ["2026-07-31"],
+          formal_fi_report_dates: ["2026-07-31"],
+          nonstd_bridge_report_dates: [],
+        } satisfies PnlDatesPayload,
+      })),
+      getPnlBridge: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.bridge", "tr_bridge_roll_ok"),
+        result: {
+          ...payload,
+          summary: {
+            ...payload.summary,
+            total_roll_down: bridgeYuan(84813.6, "+84,813.60"),
+            total_treasury_curve: bridgeYuan(0, "+0.00"),
+            roll_down_availability: {
+              status: "ok" as const,
+              unavailable_rows: 0,
+              applicable_rows: 152,
+              reasons: [],
+            },
+            treasury_curve_availability: {
+              status: "unavailable" as const,
+              unavailable_rows: 152,
+              applicable_rows: 152,
+              reasons: ["same_source_curve" as const],
+            },
+          },
+          rows: [
+            {
+              ...payload.rows[0],
+              roll_down: bridgeYuan(1234.5, "+1,234.50"),
+              treasury_curve: bridgeYuan(0, "+0.00"),
+              roll_down_availability: "ok" as const,
+              roll_down_availability_reason: null,
+              treasury_curve_availability: "unavailable" as const,
+              treasury_curve_availability_reason: "same_source_curve" as const,
+            },
+          ],
+        },
+      })),
+    });
+
+    const banner = await screen.findByTestId("pnl-bridge-curve-availability");
+    expect(banner).toHaveTextContent("国债曲线效应");
+    // 骑乘可用时不进披露列表，页面不能把它也说成不可用。
+    expect(banner).not.toHaveTextContent("骑乘效应");
+
+    const detail = await screen.findByTestId("pnl-bridge-detail-table");
+    await waitFor(() => {
+      expect(detail).toHaveTextContent("+1,234.50");
+    });
+    const rollDownCells = Array.from(
+      detail.querySelectorAll('[col-id="roll_down"][role="gridcell"]'),
+    );
+    expect(rollDownCells.length).toBeGreaterThan(0);
+    for (const cell of rollDownCells) {
+      expect(cell.textContent ?? "").not.toContain("不可用");
+    }
+  });
+
+  it("keeps the observed zero visible for an available roll-down", () => {
+    const summary = buildBridgePayload("2026-07-31", "IC-ROLL-ZERO", "100.00").summary;
+    summary.total_roll_down = bridgeYuan(0, "+0.00");
+    summary.roll_down_availability = {
+      status: "ok",
+      unavailable_rows: 0,
+      applicable_rows: 152,
+      reasons: [],
+    };
+
+    expect(buildCurveAvailabilityNotices(summary)).toEqual([]);
+
+    const option = buildWaterfallOption(summary) as {
+      series?: Array<{ name?: string; data?: Array<number | null | { value: number | null }> }>;
+    };
+    const rollDownIndex = 1;
+    const effectSeries = option.series?.find((series) => series.name === "效应");
+    expect((effectSeries?.data?.[rollDownIndex] as { value: number | null }).value).toBe(0);
+  });
+
+  it("drops the roll-down waterfall bar instead of publishing a zero", () => {
+    const summary = buildBridgePayload("2026-07-31", "IC-ROLL-GAP", "100.00").summary;
+    summary.total_roll_down = bridgeYuan(0, "+0.00");
+    summary.roll_down_availability = {
+      status: "unavailable",
+      unavailable_rows: 152,
+      applicable_rows: 152,
+      reasons: ["curve_unavailable"],
+    };
+
+    const option = buildWaterfallOption(summary) as {
+      series?: Array<{ name?: string; data?: Array<number | null | { value: number | null }> }>;
+    };
+    const helperSeries = option.series?.find((series) => series.name === "辅助");
+    const effectSeries = option.series?.find((series) => series.name === "效应");
+    const rollDownIndex = 1;
+
+    expect(helperSeries?.data?.[rollDownIndex]).toBeNull();
+    expect((effectSeries?.data?.[rollDownIndex] as { value: number | null }).value).toBeNull();
+    // 断点不推进累计值：下一步（国债曲线）的基线仍只是票息。
+    expect(helperSeries?.data?.[rollDownIndex + 1]).toBeCloseTo(1.1);
+  });
+
+  it("keeps drawing the bar and the number when the curve existed and the effect was zero", async () => {
+    const summary = buildBridgePayload("2026-07-31", "IC-FLAT", "100.00").summary;
+    summary.total_treasury_curve = bridgeYuan(0, "+0.00");
+    summary.treasury_curve_availability = {
+      status: "ok",
+      unavailable_rows: 0,
+      applicable_rows: 1715,
+      reasons: [],
+    };
+
+    expect(buildCurveAvailabilityNotices(summary)).toEqual([]);
+
+    const option = buildWaterfallOption(summary) as {
+      series?: Array<{ name?: string; data?: Array<number | null | { value: number | null }> }>;
+    };
+    const treasuryIndex = 2;
+    const effectSeries = option.series?.find((series) => series.name === "效应");
+    expect((effectSeries?.data?.[treasuryIndex] as { value: number | null }).value).toBe(0);
+  });
+
+  it("drops the waterfall bar instead of publishing a zero for an unavailable effect", () => {
+    const summary = buildBridgePayload("2026-07-31", "IC-GAP", "100.00").summary;
+    summary.total_treasury_curve = bridgeYuan(0, "+0.00");
+    summary.treasury_curve_availability = {
+      status: "unavailable",
+      unavailable_rows: 1715,
+      applicable_rows: 1715,
+      reasons: ["curve_unavailable"],
+    };
+
+    const option = buildWaterfallOption(summary) as {
+      series?: Array<{ name?: string; data?: Array<number | null | { value: number | null }> }>;
+    };
+    const helperSeries = option.series?.find((series) => series.name === "辅助");
+    const effectSeries = option.series?.find((series) => series.name === "效应");
+    const treasuryIndex = 2;
+
+    expect(helperSeries?.data?.[treasuryIndex]).toBeNull();
+    expect((effectSeries?.data?.[treasuryIndex] as { value: number | null }).value).toBeNull();
+    // 断点不推进累计值：下一步的基线仍是票息 + 骑乘。
+    expect(helperSeries?.data?.[treasuryIndex + 1]).toBeCloseTo(1.1 + 2.2 - 0.5);
+  });
+
+  it("collapses yield-curve fallback log lines into one Chinese conclusion and keeps originals in title", async () => {
+    const base = createApiClient({ mode: "real" });
+    const payload = buildBridgePayload("2026-07-31", "IC-CURVE-FALLBACK", "100.00");
+    const fallbackLines = [
+      "YIELD_CURVE_LATEST_FALLBACK: Using latest available cdb curve from trade_date=2026-06-30 for requested_trade_date=2026-07-31.",
+      "YIELD_CURVE_LATEST_FALLBACK: Using latest available aaa_credit curve from trade_date=2026-06-30 for requested_trade_date=2026-07-31.",
+      "YIELD_CURVE_LATEST_FALLBACK: Using latest available treasury curve from trade_date=2026-06-30 for requested_trade_date=2026-07-31.",
+    ];
+
+    renderPnlBridgePage({
+      ...base,
+      getFormalPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.dates", "tr_bridge_dates_curve_fallback"),
+        result: {
+          report_dates: ["2026-07-31"],
+          formal_fi_report_dates: ["2026-07-31"],
+          nonstd_bridge_report_dates: [],
+        } satisfies PnlDatesPayload,
+      })),
+      getPnlBridge: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.bridge", "tr_bridge_curve_fallback"),
+        result: {
+          ...payload,
+          warnings: [...fallbackLines, "Residual spike on instrument IC-9"],
+        },
+      })),
+    });
+
+    const warnings = await screen.findByTestId("pnl-bridge-warnings");
+    // 三条英文日志合并为一行中文结论；原文只进 title，不再直出正文。
+    expect(warnings).toHaveTextContent("国开/AAA信用/国债曲线已回退至 2026-06-30");
+    expect(warnings).not.toHaveTextContent("YIELD_CURVE_LATEST_FALLBACK");
+    const conclusionItem = within(warnings)
+      .getAllByRole("listitem")
+      .find((item) => item.textContent?.includes("曲线已回退至"));
+    expect(conclusionItem).toBeDefined();
+    expect(conclusionItem?.getAttribute("title")).toContain(fallbackLines[0]);
+    expect(conclusionItem?.getAttribute("title")).toContain(fallbackLines[2]);
+    // 非该模式的告警原样透出（fail-closed）。
+    expect(warnings).toHaveTextContent("Residual spike on instrument IC-9");
+  });
+
+  it("keeps unmatched warnings verbatim and groups fallbacks by resolved/requested date", () => {
+    const displays = buildBridgeWarningDisplays([
+      "YIELD_CURVE_LATEST_FALLBACK: Using latest available cdb curve from trade_date=2026-06-30 for requested_trade_date=2026-07-31.",
+      "Some other backend warning",
+      "YIELD_CURVE_LATEST_FALLBACK: Using latest available treasury curve from trade_date=2026-06-30 for requested_trade_date=2026-07-31.",
+      "YIELD_CURVE_LATEST_FALLBACK: Using latest available cdb curve from trade_date=2026-05-31 for requested_trade_date=2026-06-30.",
+      "YIELD_CURVE_LATEST_FALLBACK: Using latest available cnh_swap curve from trade_date=2026-06-30 for requested_trade_date=2026-07-31.",
+    ]);
+
+    expect(displays.map((display) => display.text)).toEqual([
+      // cnh_swap 未登记中文名：原 token 原样并入，不发明业务名称。
+      "国开/国债/cnh_swap曲线已回退至 2026-06-30（请求日 2026-07-31 无当日快照）。",
+      "Some other backend warning",
+      "国开曲线已回退至 2026-05-31（请求日 2026-06-30 无当日快照）。",
+    ]);
+    expect(displays[0].originalText).toContain("cdb curve");
+    expect(displays[0].originalText).toContain("treasury curve");
+    expect(displays[1].originalText).toBeNull();
+  });
+
+  it("abbreviates summary amounts to 亿/万 while keeping backend display for small values", () => {
+    expect(
+      formatBridgeYuanCompact({
+        raw: 543028952.81,
+        unit: "yuan",
+        display: "+543,028,952.81",
+        precision: 2,
+        sign_aware: true,
+      }),
+    ).toBe("+5.43 亿");
+    expect(
+      formatBridgeYuanCompact({
+        raw: -4499756.45,
+        unit: "yuan",
+        display: "-4,499,756.45",
+        precision: 2,
+        sign_aware: true,
+      }),
+    ).toBe("-449.98 万");
+    // 万元以下保留后端 display 原样；null raw 不改写。
+    expect(
+      formatBridgeYuanCompact({ raw: 15.45, unit: "yuan", display: "15.45", precision: 2, sign_aware: true }),
+    ).toBe("15.45");
+    expect(
+      formatBridgeYuanCompact({ raw: null, unit: "yuan", display: "—", precision: 2, sign_aware: true }),
+    ).toBe("—");
+    // 轴刻度缩写：600,000,000 → 6 亿。
+    expect(formatBridgeAxisYuan(600_000_000)).toBe("6 亿");
+    expect(formatBridgeAxisYuan(-50_000)).toBe("-5 万");
+    expect(formatBridgeAxisYuan(0)).toBe("0");
+  });
+
+  it("colors the residual KPI by closure quality instead of profit sign", async () => {
+    const base = createApiClient({ mode: "real" });
+    const payload = buildBridgePayload("2025-12-31", "IC-RESIDUAL", "100.00");
+
+    renderPnlBridgePage({
+      ...base,
+      getFormalPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.dates", "tr_bridge_dates_residual_tone"),
+        result: {
+          report_dates: ["2025-12-31"],
+          formal_fi_report_dates: ["2025-12-31"],
+          nonstd_bridge_report_dates: [],
+        } satisfies PnlDatesPayload,
+      })),
+      getPnlBridge: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.bridge", "tr_bridge_residual_tone"),
+        result: {
+          ...payload,
+          summary: {
+            ...payload.summary,
+            // 正残差 + 质量错误：残差卡必须跟质量走红，不得因“正数”落盈利绿。
+            total_residual: bridgeYuan(1392005.22, "+1,392,005.22"),
+            quality_flag: "error" as const,
+          },
+        },
+      })),
+    });
+
+    const summary = await screen.findByTestId("pnl-bridge-summary-cards");
+    const residualValue = within(summary).getByText("+139.20 万");
+    const residualCard = residualValue.closest(".kpi-card");
+    expect(residualCard).not.toBeNull();
+    expect(residualCard).toHaveAttribute("data-tone", "error");
+    // 原值经悬停 title 保留（缩写只改显示密度，不动后端数值）。
+    const titleHost = residualValue.closest("[title]");
+    expect(titleHost?.getAttribute("title")).toContain("+1,392,005.22");
   });
 
   it("shows refresh error and preserves the last known bridge run snapshot", async () => {

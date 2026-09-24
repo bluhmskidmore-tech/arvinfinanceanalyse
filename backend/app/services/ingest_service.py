@@ -5,10 +5,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
+from backend.app.core_finance.source_rules import describe_source_file
 from backend.app.repositories.object_store_repo import ObjectStoreRepository
 from backend.app.repositories.source_manifest_repo import SourceManifestRepository
 from backend.app.schemas.ingest import IngestManifestRow, IngestRunSummary
-from backend.app.services.source_rules import describe_source_file
 
 
 def _iter_data_input_scan_paths(data_root: Path) -> list[Path]:

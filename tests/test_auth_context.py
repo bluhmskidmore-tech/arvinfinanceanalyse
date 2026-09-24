@@ -3,12 +3,23 @@ from __future__ import annotations
 import pytest
 
 from backend.app.governance.settings import Settings
-from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV, validate_auth_startup_guardrails
+from backend.app.security.auth_context import (
+    ROLE_HEADER_TRUST_ENV,
+    reset_scope_decision_cache,
+    validate_auth_startup_guardrails,
+)
 from backend.app.security.auth_stub import (
     AuthContext,
     ensure_user_allowed,
     get_auth_context,
 )
+
+
+@pytest.fixture(autouse=True)
+def _clear_scope_decision_cache():
+    reset_scope_decision_cache()
+    yield
+    reset_scope_decision_cache()
 
 
 def test_get_auth_context_defaults_to_anonymous_viewer(monkeypatch):
@@ -188,3 +199,77 @@ def test_ensure_user_allowed_reuses_scope_repository_for_same_dsn(monkeypatch):
         )
 
     assert created == [settings.governance_sql_dsn or settings.postgres_dsn]
+
+
+def test_ensure_user_allowed_caches_allow_decisions_within_ttl(monkeypatch):
+    queries: list[str] = []
+
+    class CountingRepo:
+        def __init__(self, _dsn: str):
+            pass
+
+        def has_permission(self, *, resource, **_kwargs):
+            queries.append(resource)
+            return True
+
+    monkeypatch.setattr("backend.app.security.auth_context.UserScopeRepository", CountingRepo)
+    settings = Settings(postgres_dsn="sqlite:///auth-decision-cache-test.db", _env_file=None)
+
+    for _ in range(3):
+        ensure_user_allowed(
+            auth=AuthContext(user_id="u1", role="viewer", identity_source="header"),
+            settings=settings,
+            resource="balance_analysis",
+            action="read",
+        )
+
+    assert queries == ["balance_analysis"]
+
+
+def test_ensure_user_allowed_does_not_cache_deny_so_fresh_grants_apply(monkeypatch):
+    allowed_flags = iter([False, True])
+    queries: list[str] = []
+
+    class FlippingRepo:
+        def __init__(self, _dsn: str):
+            pass
+
+        def has_permission(self, *, resource, **_kwargs):
+            queries.append(resource)
+            return next(allowed_flags)
+
+    monkeypatch.setattr("backend.app.security.auth_context.UserScopeRepository", FlippingRepo)
+    settings = Settings(postgres_dsn="sqlite:///auth-deny-not-cached-test.db", _env_file=None)
+    auth = AuthContext(user_id="u2", role="viewer", identity_source="header")
+
+    with pytest.raises(PermissionError):
+        ensure_user_allowed(auth=auth, settings=settings, resource="balance_analysis", action="read")
+
+    ensure_user_allowed(auth=auth, settings=settings, resource="balance_analysis", action="read")
+    assert queries == ["balance_analysis", "balance_analysis"]
+
+
+def test_ensure_user_allowed_cache_disabled_by_zero_ttl(monkeypatch):
+    queries: list[str] = []
+
+    class CountingRepo:
+        def __init__(self, _dsn: str):
+            pass
+
+        def has_permission(self, *, resource, **_kwargs):
+            queries.append(resource)
+            return True
+
+    monkeypatch.setattr("backend.app.security.auth_context.UserScopeRepository", CountingRepo)
+    monkeypatch.setenv("MOSS_AUTH_SCOPE_CACHE_TTL_SECONDS", "0")
+    settings = Settings(postgres_dsn="sqlite:///auth-cache-disabled-test.db", _env_file=None)
+
+    for _ in range(2):
+        ensure_user_allowed(
+            auth=AuthContext(user_id="u3", role="viewer", identity_source="header"),
+            settings=settings,
+            resource="balance_analysis",
+            action="read",
+        )
+
+    assert queries == ["balance_analysis", "balance_analysis"]

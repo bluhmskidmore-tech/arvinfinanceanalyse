@@ -3,11 +3,13 @@ from __future__ import annotations
 import csv
 import json
 import logging
+import sys
 from datetime import datetime, timedelta, timezone
 from io import StringIO
 from pathlib import Path
 
 import duckdb
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -19,11 +21,44 @@ from backend.app.repositories.governance_repo import (
 )
 from backend.app.schemas.materialize import CacheBuildRunRecord
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
+from tests.fixtures.balance_analysis import (
+    balance_analysis_shared_materialized_read_seed,  # noqa: F401
+    balance_analysis_shared_materialized_seed,  # noqa: F401
+)
 from tests.helpers import load_module
 from tests.test_balance_analysis_materialize_flow import (
     _patch_skip_fx_refresh,
     _seed_snapshot_and_fx_tables,
 )
+
+pytestmark = [pytest.mark.integration, pytest.mark.materialize]
+
+
+def _assert_balance_read_result_meta(
+    payload: dict[str, object],
+    *,
+    evidence_rows: int,
+    extra_filters: dict[str, object] | None = None,
+) -> None:
+    result_meta = payload["result_meta"]
+    assert isinstance(result_meta, dict)
+    assert result_meta["requested_report_date"] == "2025-12-31"
+    assert result_meta["resolved_report_date"] == "2025-12-31"
+    assert result_meta["as_of_date"] == "2025-12-31"
+    assert result_meta["date_basis"] == "balance_analysis_report_date"
+    assert result_meta["filters_applied"] == {
+        "report_date": "2025-12-31",
+        "position_scope": "all",
+        "currency_basis": "CNY",
+        **(extra_filters or {}),
+    }
+    assert result_meta["tables_used"] == [
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+    ]
+    assert result_meta["evidence_rows"] == evidence_rows
+    assert result_meta["fallback_mode"] == "none"
+    assert result_meta["formal_use_allowed"] is True
 
 
 def _perf_records(caplog, endpoint: str):
@@ -34,13 +69,35 @@ def _perf_records(caplog, endpoint: str):
     ]
 
 
-def _configure_and_materialize(tmp_path, monkeypatch):
+def _clear_settings_caches() -> None:
+    get_settings.cache_clear()
+    settings_mod = sys.modules.get("backend.app.governance.settings")
+    module_get_settings = getattr(settings_mod, "get_settings", None)
+    if module_get_settings is not None and hasattr(module_get_settings, "cache_clear"):
+        module_get_settings.cache_clear()
+
+
+def _configure_and_materialize(tmp_path, monkeypatch, shared_seed=None):
+    if shared_seed is not None:
+        duckdb_path = shared_seed.duckdb_path
+        governance_dir = shared_seed.governance_dir
+        monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+        monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+        monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+        _clear_settings_caches()
+        _seed_balance_read_scope(tmp_path, monkeypatch)
+        task_mod = load_module(
+            "backend.app.tasks.balance_analysis_materialize",
+            "backend/app/tasks/balance_analysis_materialize.py",
+        )
+        return duckdb_path, governance_dir, task_mod
+
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
-    get_settings.cache_clear()
+    _clear_settings_caches()
     _seed_balance_read_scope(tmp_path, monkeypatch)
     _seed_snapshot_and_fx_tables(str(duckdb_path))
     task_mod = load_module(
@@ -393,8 +450,16 @@ def test_balance_analysis_read_surface_allows_development_fallback_without_expli
     assert response.json()["result_meta"]["result_kind"] == "balance-analysis.dates"
 
 
-def test_balance_analysis_dates_and_detail_api_flow(tmp_path, monkeypatch):
-    _duckdb_path, governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+def test_balance_analysis_dates_and_detail_api_flow(
+    tmp_path,
+    monkeypatch,
+    balance_analysis_shared_materialized_read_seed,
+):
+    _duckdb_path, governance_dir, _task_mod = _configure_and_materialize(
+        tmp_path,
+        monkeypatch,
+        balance_analysis_shared_materialized_read_seed,
+    )
 
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
 
@@ -420,6 +485,7 @@ def test_balance_analysis_dates_and_detail_api_flow(tmp_path, monkeypatch):
     assert detail_payload["result_meta"]["result_kind"] == "balance-analysis.detail"
     assert detail_payload["result_meta"]["source_version"] == "sv-fx-1__sv-t-1__sv-z-1"
     assert detail_payload["result_meta"]["cache_version"] == "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1"
+    _assert_balance_read_result_meta(detail_payload, evidence_rows=2)
     assert detail_payload["result"]["report_date"] == "2025-12-31"
     assert detail_payload["result"]["position_scope"] == "all"
     assert detail_payload["result"]["currency_basis"] == "CNY"
@@ -444,6 +510,7 @@ def test_balance_analysis_dates_and_detail_api_flow(tmp_path, monkeypatch):
     assert overview_payload["result_meta"]["cache_version"] == (
         "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1"
     )
+    _assert_balance_read_result_meta(overview_payload, evidence_rows=2)
     assert overview_payload["result"] == {
         "report_date": "2025-12-31",
         "position_scope": "all",
@@ -539,6 +606,7 @@ def test_balance_analysis_dates_and_detail_api_flow(tmp_path, monkeypatch):
     )
     assert workbook_response.status_code == 200
     workbook_payload = workbook_response.json()
+    _assert_balance_read_result_meta(workbook_payload, evidence_rows=2)
     operational_map = {
         section["key"]: section for section in workbook_payload["result"]["operational_sections"]
     }
@@ -624,8 +692,13 @@ def test_balance_analysis_workbook_api_keeps_right_rail_sections_when_rows_are_e
 def test_balance_analysis_decision_items_api_returns_generated_items_with_pending_status(
     tmp_path,
     monkeypatch,
+    balance_analysis_shared_materialized_read_seed,
 ):
-    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(
+        tmp_path,
+        monkeypatch,
+        balance_analysis_shared_materialized_read_seed,
+    )
 
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
 
@@ -643,6 +716,7 @@ def test_balance_analysis_decision_items_api_returns_generated_items_with_pendin
     assert payload["result_meta"]["basis"] == "formal"
     assert payload["result_meta"]["result_kind"] == "balance-analysis.decision-items"
     assert payload["result_meta"]["source_version"] == "sv-fx-1__sv-t-1__sv-z-1"
+    _assert_balance_read_result_meta(payload, evidence_rows=2)
     assert payload["result"]["report_date"] == "2025-12-31"
     assert payload["result"]["position_scope"] == "all"
     assert payload["result"]["currency_basis"] == "CNY"
@@ -667,8 +741,16 @@ def test_balance_analysis_decision_items_api_returns_generated_items_with_pendin
     get_settings.cache_clear()
 
 
-def test_balance_analysis_current_user_api_uses_same_auth_context_as_status_write(tmp_path, monkeypatch):
-    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+def test_balance_analysis_current_user_api_uses_same_auth_context_as_status_write(
+    tmp_path,
+    monkeypatch,
+    balance_analysis_shared_materialized_read_seed,
+):
+    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(
+        tmp_path,
+        monkeypatch,
+        balance_analysis_shared_materialized_read_seed,
+    )
     _seed_balance_decision_scope(tmp_path, monkeypatch, user_id="decision-owner")
 
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
@@ -691,8 +773,16 @@ def test_balance_analysis_current_user_api_uses_same_auth_context_as_status_writ
     get_settings.cache_clear()
 
 
-def test_balance_analysis_current_user_reports_decision_write_scope_denied(tmp_path, monkeypatch):
-    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+def test_balance_analysis_current_user_reports_decision_write_scope_denied(
+    tmp_path,
+    monkeypatch,
+    balance_analysis_shared_materialized_read_seed,
+):
+    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(
+        tmp_path,
+        monkeypatch,
+        balance_analysis_shared_materialized_read_seed,
+    )
 
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.get(
@@ -714,8 +804,16 @@ def test_balance_analysis_current_user_reports_decision_write_scope_denied(tmp_p
     get_settings.cache_clear()
 
 
-def test_balance_analysis_current_user_reports_unknown_when_scope_store_unavailable(tmp_path, monkeypatch):
-    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+def test_balance_analysis_current_user_reports_unknown_when_scope_store_unavailable(
+    tmp_path,
+    monkeypatch,
+    balance_analysis_shared_materialized_read_seed,
+):
+    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(
+        tmp_path,
+        monkeypatch,
+        balance_analysis_shared_materialized_read_seed,
+    )
     monkeypatch.setenv("MOSS_POSTGRES_DSN", "postgresql://invalid:invalid@127.0.0.1:1/moss")
     get_settings.cache_clear()
 
@@ -918,8 +1016,16 @@ def test_balance_analysis_decision_status_update_returns_503_when_scope_store_is
     get_settings.cache_clear()
 
 
-def test_balance_analysis_current_user_api_falls_back_to_env_identity(tmp_path, monkeypatch):
-    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+def test_balance_analysis_current_user_api_falls_back_to_env_identity(
+    tmp_path,
+    monkeypatch,
+    balance_analysis_shared_materialized_read_seed,
+):
+    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(
+        tmp_path,
+        monkeypatch,
+        balance_analysis_shared_materialized_read_seed,
+    )
     monkeypatch.setenv("MOSS_USER_ID", "env-balance-user")
     monkeypatch.setenv("MOSS_USER_ROLE", "ops")
     get_settings.cache_clear()
@@ -1064,7 +1170,10 @@ def test_balance_analysis_overview_api_returns_404_for_absent_report_date(tmp_pa
     get_settings.cache_clear()
 
 
-def test_balance_analysis_overview_rejects_invalid_filter_values(tmp_path, monkeypatch):
+def test_balance_analysis_overview_rejects_invalid_filter_values(
+    tmp_path,
+    monkeypatch,
+):
     _configure_and_materialize(tmp_path, monkeypatch)
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
 
@@ -1198,7 +1307,10 @@ def test_balance_analysis_surfaces_fall_back_to_report_date_manifest_when_comple
     get_settings.cache_clear()
 
 
-def test_balance_analysis_overview_returns_422_for_invalid_filters(tmp_path, monkeypatch):
+def test_balance_analysis_overview_returns_422_for_invalid_filters(
+    tmp_path,
+    monkeypatch,
+):
     _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
 
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
@@ -1244,7 +1356,11 @@ def test_balance_analysis_overview_logs_api_perf(tmp_path, monkeypatch, caplog):
     records = _perf_records(caplog, "/ui/balance-analysis/overview")
     assert records
     record = records[-1]
-    assert record.getMessage() == "moss_api_perf"
+    assert record.getMessage() == (
+        f'moss_api_perf endpoint="{record.endpoint}" duration_ms={record.duration_ms} '
+        f'trace_id="{record.trace_id}" result_kind="{record.result_kind}" '
+        "duckdb_statement_count=null"
+    )
     assert getattr(record, "duration_ms") >= 0
     assert getattr(record, "result_kind") == "balance-analysis.overview"
     assert getattr(record, "trace_id")
@@ -1274,6 +1390,11 @@ def test_balance_analysis_summary_api_returns_paginated_rows(tmp_path, monkeypat
     assert payload["result_meta"]["result_kind"] == "balance-analysis.summary"
     assert payload["result_meta"]["source_version"] == "sv-fx-1__sv-t-1__sv-z-1"
     assert payload["result_meta"]["rule_version"] == "rv_balance_analysis_formal_materialize_v1"
+    _assert_balance_read_result_meta(
+        payload,
+        evidence_rows=2,
+        extra_filters={"limit": 1, "offset": 1},
+    )
     assert payload["result"] == {
         "report_date": "2025-12-31",
         "position_scope": "all",
@@ -1323,6 +1444,7 @@ def test_balance_analysis_summary_by_basis_api_aggregates_zqtz_and_tyw(tmp_path,
     assert payload["result_meta"]["result_kind"] == "balance-analysis.basis-breakdown"
     assert payload["result_meta"]["source_version"] == "sv-fx-1__sv-t-1__sv-z-1"
     assert payload["result_meta"]["rule_version"] == "rv_balance_analysis_formal_materialize_v1"
+    _assert_balance_read_result_meta(payload, evidence_rows=2)
     assert payload["result"] == {
         "report_date": "2025-12-31",
         "position_scope": "all",

@@ -1,6 +1,6 @@
 ---
 name: moss-lineage-break-trace
-description: Use when a MOSS API result, displayed value, golden sample, source row, report date, lineage field, or page contract does not tie out and the cause must be traced.
+description: "【MOSS血缘断点追踪】用于API结果、页面值、黄金样本、来源行、报告日期或页面契约无法核对时追根因。"
 ---
 
 # MOSS Lineage Break Trace

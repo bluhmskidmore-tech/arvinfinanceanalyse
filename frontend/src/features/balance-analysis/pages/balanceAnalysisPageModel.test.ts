@@ -240,7 +240,7 @@ describe("balanceAnalysisPageModel", () => {
         selectedPositionScope: "all",
         selectedCurrencyBasis: "CNY",
         overview: overview(),
-        summary: { total_rows: 17 } as never,
+        summary: { total_rows: 17, currency_basis: "CNY" },
         decisionItems: decisionItems([
           {
             decision_key: "risk-gap",
@@ -318,13 +318,57 @@ describe("balanceAnalysisPageModel", () => {
       );
     });
 
+    it("stays pending instead of self-confirming when the overview returns no report date", () => {
+      const model = buildBalanceAnalysisPageReadModel({
+        clientMode: "real",
+        requestedReportDate: "2026-04-30",
+        selectedPositionScope: "all",
+        selectedCurrencyBasis: "CNY",
+        overview: null,
+        summary: null,
+        decisionItems: null,
+        metaSections: [{ key: "overview", title: "正式概览", meta: meta() }],
+      });
+
+      expect(model.dateStatus).toBe("pending");
+      const surfaceKeys = model.stateSurfaces.map((item) => item.key);
+      expect(surfaceKeys).not.toContain("date-matched");
+      expect(surfaceKeys).not.toContain("date-mismatch");
+      expect(model.stateSurfaces).toContainEqual(
+        expect.objectContaining({ key: "date-pending", variant: "neutral" }),
+      );
+      expect(model.statusBadges).toContainEqual(
+        expect.objectContaining({ key: "date", label: "报告日待定", tone: "warning" }),
+      );
+    });
+
+    it("labels the basis badge from the returned meta rather than a hard-coded formal basis", () => {
+      const model = buildBalanceAnalysisPageReadModel({
+        clientMode: "mock",
+        requestedReportDate: "2026-04-30",
+        selectedPositionScope: "all",
+        selectedCurrencyBasis: "CNY",
+        overview: overview(),
+        summary: null,
+        decisionItems: null,
+        metaSections: [
+          { key: "overview", title: "正式概览", meta: meta({ basis: "mock" }) },
+          { key: "workbook", title: "工作簿", meta: meta() },
+        ],
+      });
+
+      expect(model.statusBadges).toContainEqual(
+        expect.objectContaining({ key: "basis", label: "模拟口径" }),
+      );
+    });
+
     it("surfaces mock, stale, fallback, and report-date mismatch states without hiding evidence", () => {
       const model = buildBalanceAnalysisPageReadModel({
         clientMode: "mock",
         requestedReportDate: "2026-04-30",
         selectedPositionScope: "asset",
-        selectedCurrencyBasis: "native",
-        overview: overview({ report_date: "2026-03-31", position_scope: "asset", currency_basis: "native" }),
+        selectedCurrencyBasis: "CNY",
+        overview: overview({ report_date: "2026-03-31", position_scope: "asset", currency_basis: "CNY" }),
         decisionItems: decisionItems(),
         metaSections: [
           {
@@ -354,6 +398,78 @@ describe("balanceAnalysisPageModel", () => {
       });
     });
 
+    it("fails closed instead of rendering cross-currency totals from a native aggregate payload", () => {
+      const model = buildBalanceAnalysisPageReadModel({
+        clientMode: "real",
+        requestedReportDate: "2026-04-30",
+        selectedPositionScope: "all",
+        selectedCurrencyBasis: "native",
+        overview: overview({ currency_basis: "native" }),
+        summary: { total_rows: 12, currency_basis: "native" },
+        decisionItems: decisionItems(),
+        metaSections: [],
+      });
+
+      expect(model.filterLine).toContain("币种口径 人民币");
+      expect(model.kpis.slice(0, 3).map((card) => card.state)).toEqual([
+        "missing",
+        "missing",
+        "missing",
+      ]);
+      expect(model.stateSurfaces).toContainEqual(
+        expect.objectContaining({
+          key: "unsupported-native-aggregate",
+          variant: "error",
+        }),
+      );
+    });
+
+    it("keeps native workbook cards and summary rows out of the aggregate stage", () => {
+      const model = buildBalanceAnalysisPageModel({
+        clientMode: "real",
+        selectedReportDate: "2026-04-30",
+        positionScope: "all",
+        currencyBasis: "native",
+        overview: overview({ currency_basis: "native" }),
+        summary: { total_rows: 1, currency_basis: "native" },
+        decisionItems: decisionItems(),
+        workbook: {
+          report_date: "2026-04-30",
+          position_scope: "all",
+          currency_basis: "native",
+          cards: [
+            {
+              key: "bond_assets_excluding_issue",
+              label: "native total",
+              value: "999999999",
+              unit: "wan",
+            },
+          ],
+          tables: [],
+          operational_sections: [],
+        } as never,
+        summaryRows: [
+          {
+            source_family: "combined",
+            position_scope: "asset",
+            currency_basis: "native",
+            detail_row_count: 1,
+            market_value_amount: "999999999",
+            amortized_cost_amount: "999999999",
+            accrued_interest_amount: "0",
+          } as never,
+        ],
+        metaSections: [],
+      });
+
+      expect(model.headlineAmountCards.every((card) => card.state === "missing")).toBe(true);
+      expect(model.stageModel.hasRealData).toBe(false);
+      expect(model.stageModel.summary.allocationItems).toEqual([]);
+      expect(model.stageModel.summary.tags).toContainEqual(
+        expect.objectContaining({ label: "人民币" }),
+      );
+    });
+
     it("builds the page-level view model without leaking API envelopes into display components", () => {
       const model = buildBalanceAnalysisPageModel({
         clientMode: "real",
@@ -361,7 +477,7 @@ describe("balanceAnalysisPageModel", () => {
         positionScope: "all",
         currencyBasis: "CNY",
         overview: overview(),
-        summary: { total_rows: 17 } as never,
+        summary: { total_rows: 17, currency_basis: "CNY" },
         decisionItems: decisionItems(),
         workbook: {
           report_date: "2026-04-30",
@@ -681,6 +797,116 @@ describe("balanceAnalysisPageModel", () => {
         "/balance-movement-analysis?report_date=2026-03-31&currency_basis=CNX",
       );
     });
+
+    it("keeps the bridge bucket null and the status pending when a basis row amount is unreadable", () => {
+      const basisRow = (
+        overrides: Partial<BalanceAnalysisBasisBreakdownPayload["rows"][number]>,
+      ): BalanceAnalysisBasisBreakdownPayload["rows"][number] => ({
+        source_family: "zqtz",
+        invest_type_std: "H",
+        accounting_basis: "AC",
+        position_scope: "asset",
+        currency_basis: "CNY",
+        detail_row_count: 1,
+        market_value_amount: "0",
+        amortized_cost_amount: "0",
+        accrued_interest_amount: "0",
+        ...overrides,
+      });
+      const movement: BalanceMovementPayload = {
+        report_date: "2026-03-31",
+        currency_basis: "CNX",
+        rows: [],
+        summary: {
+          previous_balance_total: "0",
+          current_balance_total: "336469417748.23000000",
+          balance_change_total: "0",
+          zqtz_amount_total: "336469417748.23000000",
+          reconciliation_diff_total: "0E-8",
+          matched_bucket_count: 1,
+          bucket_count: 1,
+        },
+        trend_months: [],
+        business_trend_months: [],
+        zqtz_calibration_analysis: null,
+        structure_migration_analysis: null,
+        difference_attribution_waterfall: null,
+        basis_movement_decomposition: null,
+        zqtz_maturity_structure: null,
+        zqtz_concentration_analysis: null,
+        accounting_controls: [],
+        excluded_controls: [],
+      };
+
+      const model = buildBalanceReconciliationLinkModel({
+        reportDate: "2026-03-31",
+        workbook: null,
+        basisRows: [
+          basisRow({ amortized_cost_amount: "147935903140.93000022" }),
+          basisRow({ amortized_cost_amount: "" }),
+          basisRow({ accounting_basis: "FVOCI", market_value_amount: "106049923449.13635599" }),
+        ],
+        movement,
+        movementAvailableForDate: true,
+      });
+
+      expect(model.bridgeComponents.find((component) => component.bucket === "AC")?.amountYuan).toBeNull();
+      expect(model.bridgeComponents.find((component) => component.bucket === "OCI")?.amountYuan).toBeCloseTo(
+        106_049_923_449.14,
+        2,
+      );
+      expect(model.formalBridgeYuan).toBeNull();
+      expect(model.status).toBe("pending");
+      expect(model.statusDetail).toContain("无法读数");
+    });
+
+    it("spells out the effective reconciliation tolerances in the status detail", () => {
+      const model = buildBalanceReconciliationLinkModel({
+        reportDate: "2026-03-31",
+        workbook: null,
+        basisRows: [
+          {
+            source_family: "zqtz",
+            invest_type_std: "H",
+            accounting_basis: "AC",
+            position_scope: "asset",
+            currency_basis: "CNY",
+            detail_row_count: 1,
+            market_value_amount: "0",
+            amortized_cost_amount: "100000000000",
+            accrued_interest_amount: "0",
+          },
+        ],
+        movement: {
+          report_date: "2026-03-31",
+          currency_basis: "CNX",
+          rows: [],
+          summary: {
+            previous_balance_total: "0",
+            current_balance_total: "100000000000",
+            balance_change_total: "0",
+            zqtz_amount_total: "100000000000",
+            reconciliation_diff_total: "0E-8",
+            matched_bucket_count: 1,
+            bucket_count: 1,
+          },
+          trend_months: [],
+          business_trend_months: [],
+          zqtz_calibration_analysis: null,
+          structure_migration_analysis: null,
+          difference_attribution_waterfall: null,
+          basis_movement_decomposition: null,
+          zqtz_maturity_structure: null,
+          zqtz_concentration_analysis: null,
+          accounting_controls: [],
+          excluded_controls: [],
+        },
+        movementAvailableForDate: true,
+      });
+
+      expect(model.status).toBe("aligned");
+      expect(model.statusDetail).toContain("绝对差 ≤ 1.00 亿元 或 相对差 ≤ 0.05%");
+    });
   });
 
   describe("stage real-data model", () => {
@@ -830,13 +1056,30 @@ describe("balanceAnalysisPageModel", () => {
           }),
         ]),
       );
-      expect(model.contribution.watchItems[0]).toMatchObject({
+      const firstWatchItem = model.contribution.watchItems[0];
+      expect(firstWatchItem).toBeDefined();
+      if (firstWatchItem === undefined) {
+        throw new Error("expected contribution.watchItems[0]");
+      }
+      expect(firstWatchItem).toMatchObject({
         level: "danger",
         title: "复核 3-6个月缺口",
       });
-      expect(model.contribution.watchItems[0].detail).toContain("-2.50 亿元");
+      expect(firstWatchItem.detail).toContain("-2.50 亿元");
+      // 进度枚举中文化（pending→待处理），且单行 `·` 不超配额（§7 最多 1 个）。
+      expect(firstWatchItem.detail).toContain("进度 待处理");
+      expect(firstWatchItem.detail).not.toContain("pending");
+      const firstWatchItemDetail = firstWatchItem.detail ?? "";
+      expect((firstWatchItemDetail.match(/·/g) ?? []).length).toBeLessThanOrEqual(1);
+      // 2026-07-19 决议：期限缺口非负 ≠ 利好，风险全景走中性档不给绿。
+      expect(model.summary.riskRows[0]).toMatchObject({
+        dim: "期限缺口",
+        current: "非负",
+        level: "neutral",
+      });
       expect(model.bottom.maturityCategories).toEqual(["已到期/逾期", "3-6个月", "1-2年"]);
       expect(model.bottom.gapSeries).toEqual([-1, -2.5, 5]);
+      expect(model.bottom.assetSeries).toEqual([0, 0.5, 6]);
       expect(model.bottom.riskMetrics).toEqual(
         expect.arrayContaining([
           { label: "资产/全口径负债比", value: "4.00x" },
@@ -855,6 +1098,101 @@ describe("balanceAnalysisPageModel", () => {
         amount: "期限缺口分析",
         level: "medium",
       });
+    });
+
+    it("keeps a maturity bucket null when the workbook omits an amount", () => {
+      const model = buildBalanceStageRealDataModel({
+        workbook: {
+          report_date: "2025-12-31",
+          position_scope: "all",
+          currency_basis: "CNY",
+          cards: [],
+          tables: [
+            {
+              key: "maturity_gap",
+              title: "期限缺口分析",
+              section_kind: "table",
+              columns: [],
+              rows: [
+                {
+                  bucket: "已到期/逾期",
+                  asset_total_amount: "",
+                  full_scope_liability_amount: null,
+                  full_scope_gap_amount: "-10000",
+                },
+                {
+                  bucket: "3-6个月",
+                  asset_total_amount: "5000",
+                  full_scope_liability_amount: "30000",
+                  full_scope_gap_amount: null,
+                },
+              ],
+            },
+          ],
+          operational_sections: [],
+        },
+      });
+
+      expect(model.bottom.maturityCategories).toEqual(["已到期/逾期", "3-6个月"]);
+      expect(model.bottom.assetSeries).toEqual([null, 0.5]);
+      expect(model.bottom.liabilitySeries).toEqual([null, 3]);
+      expect(model.bottom.gapSeries).toEqual([-1, null]);
+    });
+
+    it("renders the contribution total net gap only when both side totals are computable", () => {
+      const workbookBase = {
+        report_date: "2025-12-31",
+        position_scope: "all",
+        currency_basis: "CNY",
+        tables: [],
+        operational_sections: [],
+      } satisfies Omit<BalanceAnalysisWorkbookPayload, "cards">;
+
+      // 双侧合计都在：净缺口 = 资产合计 − 负债合计。
+      const bothSides = buildBalanceStageRealDataModel({
+        workbook: {
+          ...workbookBase,
+          cards: [
+            { key: "bond_assets_excluding_issue", label: "债券资产", value: "2000000" },
+            { key: "interbank_assets", label: "同业资产", value: "1000000" },
+            { key: "issuance_liabilities", label: "发行类负债", value: "500000" },
+            { key: "interbank_liabilities", label: "同业负债", value: "250000" },
+          ],
+        },
+      });
+      expect(bothSides.contribution.rows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            item: "合计",
+            assetBal: "300.00",
+            liabBal: "75.00",
+            netGap: "+225.00",
+          }),
+        ]),
+      );
+
+      // 单侧合计缺失：资产列显 EM_DASH 时净缺口不得伪造成 -负债合计，必须一起显 EM_DASH。
+      const liabilityOnly = buildBalanceStageRealDataModel({
+        workbook: {
+          ...workbookBase,
+          cards: [
+            { key: "issuance_liabilities", label: "发行类负债", value: "500000" },
+            { key: "interbank_liabilities", label: "同业负债", value: "250000" },
+          ],
+        },
+      });
+      expect(liabilityOnly.contribution.rows.find((row) => row.item === "合计")).toMatchObject({
+        assetBal: "—",
+        assetPct: "—",
+        liabBal: "75.00",
+        netGap: "—",
+      });
+
+      // 双侧都缺失：不渲染合计行。
+      const neitherSide = buildBalanceStageRealDataModel({
+        workbook: { ...workbookBase, cards: [] },
+      });
+      expect(neitherSide.contribution.rows.some((row) => row.item === "合计")).toBe(false);
     });
 
     it("uses explicit no-data rows instead of static demonstration numbers", () => {

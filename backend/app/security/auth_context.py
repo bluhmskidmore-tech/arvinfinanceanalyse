@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass
 from threading import Lock
 from typing import Annotated
+from urllib.parse import unquote, urlparse
 
 from backend.app.governance.settings import Settings
 from backend.app.repositories.user_scope_repo import UserScopeRepository
@@ -12,8 +14,17 @@ from fastapi import Header
 DEFAULT_AUTH_USER_ID = "anonymous"
 DEFAULT_AUTH_ROLE = "viewer"
 ROLE_HEADER_TRUST_ENV = "MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST"
+# Repository-shipped weak credentials that must never survive into a
+# non-development deployment (checked by validate_auth_startup_guardrails).
+_REPO_DEFAULT_POSTGRES_CREDENTIALS = ("moss", "moss")
+_REPO_DEFAULT_MINIO_CREDENTIAL = "minioadmin"
+SCOPE_DECISION_CACHE_TTL_ENV = "MOSS_AUTH_SCOPE_CACHE_TTL_SECONDS"
+_DEFAULT_SCOPE_DECISION_CACHE_TTL_SECONDS = 30.0
+_SCOPE_DECISION_CACHE_MAX_ENTRIES = 4096
 _USER_SCOPE_REPO_CACHE: dict[tuple[object, str], UserScopeRepository] = {}
 _USER_SCOPE_REPO_CACHE_LOCK = Lock()
+_SCOPE_DECISION_CACHE: dict[tuple[object, ...], float] = {}
+_SCOPE_DECISION_CACHE_LOCK = Lock()
 
 
 @dataclass(frozen=True)
@@ -60,20 +71,78 @@ def ensure_user_allowed(
     scope_key: str | None = None,
     scope_value: str | None = None,
 ) -> None:
+    dsn = settings.governance_sql_dsn or settings.postgres_dsn
+    cache_key = (
+        str(dsn or "").strip(),
+        auth.user_id,
+        auth.role,
+        resource,
+        action,
+        scope_key,
+        scope_value,
+    )
+    ttl_seconds = _scope_decision_cache_ttl_seconds()
+    if _scope_decision_cache_get(cache_key, ttl_seconds):
+        return
     try:
-        repo = _get_user_scope_repository(settings.governance_sql_dsn or settings.postgres_dsn)
-        if repo.has_permission(
-            user_id=auth.user_id,
-            role=auth.role,
-            resource=resource,
-            action=action,
-            scope_key=scope_key,
-            scope_value=scope_value,
-        ):
-            return
+        repo = _get_user_scope_repository(dsn)
+        allowed = bool(
+            repo.has_permission(
+                user_id=auth.user_id,
+                role=auth.role,
+                resource=resource,
+                action=action,
+                scope_key=scope_key,
+                scope_value=scope_value,
+            )
+        )
     except Exception as exc:
         raise RuntimeError("User scope store is unavailable.") from exc
+    if allowed:
+        # Only allow decisions are cached: a fresh grant takes effect immediately,
+        # while a revoke is delayed by at most the TTL window.
+        _scope_decision_cache_set(cache_key, ttl_seconds)
+        return
     raise PermissionError(f"User is not allowed to {action} {resource}.")
+
+
+def _scope_decision_cache_ttl_seconds() -> float:
+    raw = os.environ.get(SCOPE_DECISION_CACHE_TTL_ENV, "").strip()
+    if not raw:
+        return _DEFAULT_SCOPE_DECISION_CACHE_TTL_SECONDS
+    try:
+        return max(float(raw), 0.0)
+    except ValueError:
+        return _DEFAULT_SCOPE_DECISION_CACHE_TTL_SECONDS
+
+
+def _scope_decision_cache_get(key: tuple[object, ...], ttl_seconds: float) -> bool:
+    if ttl_seconds <= 0:
+        return False
+    now = time.monotonic()
+    with _SCOPE_DECISION_CACHE_LOCK:
+        expires_at = _SCOPE_DECISION_CACHE.get(key)
+        if expires_at is None:
+            return False
+        if now >= expires_at:
+            _SCOPE_DECISION_CACHE.pop(key, None)
+            return False
+        return True
+
+
+def _scope_decision_cache_set(key: tuple[object, ...], ttl_seconds: float) -> None:
+    if ttl_seconds <= 0:
+        return
+    with _SCOPE_DECISION_CACHE_LOCK:
+        if len(_SCOPE_DECISION_CACHE) >= _SCOPE_DECISION_CACHE_MAX_ENTRIES:
+            _SCOPE_DECISION_CACHE.clear()
+        _SCOPE_DECISION_CACHE[key] = time.monotonic() + ttl_seconds
+
+
+def reset_scope_decision_cache() -> None:
+    """Clear cached allow/deny decisions (used by tests and grant workflows)."""
+    with _SCOPE_DECISION_CACHE_LOCK:
+        _SCOPE_DECISION_CACHE.clear()
 
 
 def _get_user_scope_repository(dsn: str) -> UserScopeRepository:
@@ -92,6 +161,14 @@ def _get_user_scope_repository(dsn: str) -> UserScopeRepository:
 
 def _header_trust_enabled() -> bool:
     return os.environ.get(ROLE_HEADER_TRUST_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _uses_repo_default_postgres_credentials(dsn: object) -> bool:
+    parsed = urlparse(str(dsn or "").strip())
+    if parsed.scheme.split("+", maxsplit=1)[0].lower() not in {"postgres", "postgresql"}:
+        return False
+    credentials = (unquote(parsed.username or ""), unquote(parsed.password or ""))
+    return credentials == _REPO_DEFAULT_POSTGRES_CREDENTIALS
 
 
 def validate_auth_startup_guardrails(settings: Settings) -> None:
@@ -113,6 +190,29 @@ def validate_auth_startup_guardrails(settings: Settings) -> None:
     if "*" in cors_origins:
         raise RuntimeError(
             f"{environment} environment cannot use wildcard CORS origins with credentialed API responses"
+        )
+    dsn_candidates = {
+        str(settings.postgres_dsn or "").strip(),
+        str(settings.governance_sql_dsn or "").strip(),
+    }
+    if any(_uses_repo_default_postgres_credentials(dsn) for dsn in dsn_candidates):
+        raise RuntimeError(
+            f"{environment} environment cannot start with the repository default postgres "
+            "credentials (moss:moss); override MOSS_POSTGRES_DSN (and MOSS_GOVERNANCE_SQL_DSN "
+            "when set) with deployment-specific credentials"
+        )
+    # minioadmin is only material when the object store actually talks to MinIO;
+    # local archive mode never presents these credentials to any service.
+    object_store_mode = str(settings.object_store_mode or "").strip().lower()
+    minio_credentials = {
+        str(settings.minio_access_key or "").strip(),
+        str(settings.minio_secret_key or "").strip(),
+    }
+    if object_store_mode != "local" and _REPO_DEFAULT_MINIO_CREDENTIAL in minio_credentials:
+        raise RuntimeError(
+            f"{environment} environment cannot start with the repository default MinIO "
+            "credentials (minioadmin); override MOSS_MINIO_ACCESS_KEY and MOSS_MINIO_SECRET_KEY "
+            "with deployment-specific credentials"
         )
 
 

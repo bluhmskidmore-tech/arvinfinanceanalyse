@@ -3,12 +3,9 @@
   gap: var(--moss-space-4);
   min-width: 0;
   padding: var(--moss-space-5);
-  border: 1px solid var(--moss-color-neutral-200);
-  border-radius: var(--moss-radius-sm);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.98)),
-    #ffffff;
-  box-shadow: var(--moss-shadow-card);
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius, 8px);
+  background: var(--dh-api-panel);
 }
 
 .header {
@@ -17,7 +14,7 @@
   gap: var(--moss-space-4);
   align-items: end;
   padding-bottom: var(--moss-space-4);
-  border-bottom: 1px solid var(--moss-color-neutral-200);
+  border-bottom: 1px solid var(--dh-api-line-soft);
 }
 
 .headingStack {
@@ -28,7 +25,7 @@
 
 .title {
   margin: 0;
-  color: var(--moss-color-neutral-900);
+  color: var(--dh-api-ink);
   font-size: 18px;
   font-weight: 700;
   line-height: 1.35;
@@ -37,7 +34,7 @@
 .description {
   max-width: 860px;
   margin: 0;
-  color: var(--moss-color-neutral-700);
+  color: var(--dh-api-soft);
   font-size: 13px;
   line-height: 1.7;
 }
@@ -48,12 +45,12 @@
   min-height: 28px;
   max-width: 100%;
   padding: 5px var(--moss-space-3);
-  border: 1px solid #cfe0f5;
-  border-radius: var(--moss-radius-sm);
-  background: #f3f8ff;
-  color: var(--moss-color-primary-600);
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 28%, var(--dh-api-line));
+  border-radius: var(--dh-api-radius, 8px);
+  background: color-mix(in srgb, var(--dh-api-blue) 10%, var(--dh-api-panel-2));
+  color: var(--dh-api-soft);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.4;
   white-space: nowrap;
 }
@@ -79,30 +76,25 @@
   margin-left: var(--moss-space-5);
 }
 
-.tabRail :global(.ant-tabs-tab-active .ant-tabs-tab-btn) {
+/* 激活 tab 以重复类提权稳定跟随页根 Nocturne 强调链；全局 AntD 已同源，
+   此处保留为防 cssinjs 注入顺序漂移的页面级守卫（portfolio-home 先例）。 */
+.tabRail.tabRail.tabRail :global(.ant-tabs-tab-active .ant-tabs-tab-btn) {
   color: var(--moss-color-primary-600);
   font-weight: 700;
 }
 
-.contentFrame {
-  min-width: 0;
-  padding: var(--moss-space-4);
-  border: 1px solid var(--moss-color-neutral-200);
-  border-radius: var(--moss-radius-sm);
-  background: #ffffff;
-  overflow-x: auto;
-  overflow-wrap: anywhere;
+.tabRail.tabRail.tabRail :global(.ant-tabs-tab:hover .ant-tabs-tab-btn) {
+  color: var(--moss-color-primary-600);
 }
 
-.loadingState {
-  display: grid;
-  min-height: 96px;
-  place-items: center;
-  border: 1px dashed #cfe0f5;
-  border-radius: var(--moss-radius-sm);
-  background: #f8fbff;
-  color: var(--moss-color-neutral-600);
-  font-size: 13px;
+.tabRail.tabRail.tabRail :global(.ant-tabs-ink-bar) {
+  background: var(--moss-color-primary-600);
+}
+
+.contentFrame {
+  min-width: 0;
+  overflow-x: auto;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 720px) {
@@ -122,10 +114,6 @@
 
   .tabRail :global(.ant-tabs-tab + .ant-tabs-tab) {
     margin-left: 14px;
-  }
-
-  .contentFrame {
-    padding: var(--moss-space-3);
   }
 
   .contentFrame :global(.ant-table) {

@@ -14,6 +14,7 @@ from backend.app.core_finance.product_category_pnl import (
     apply_manual_adjustments,
     calculate_read_model,
     calculate_product_category_interest_spread_metrics,
+    calculate_product_category_liability_cost_decomposition,
 )
 from backend.app.governance.locks import LockDefinition, acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
@@ -26,6 +27,7 @@ from backend.app.repositories.governance_repo import (
 from backend.app.schemas.materialize import CacheBuildRunRecord, CacheManifestRecord
 from backend.app.schemas.product_category_pnl import (
     ProductCategoryInterestSpreadPayload,
+    ProductCategoryLiabilityCostDecompositionPayload,
     ProductCategoryPnlPayload,
     ProductCategoryPnlRow,
 )
@@ -304,6 +306,11 @@ def product_category_pnl_payload_from_canonical_ytd_anchor(
         return None
 
     typed_rows = [ProductCategoryPnlRow.model_validate(row) for row in calc_out["rows"]]
+    interest_earning_assets = next(row for row in typed_rows if row.category_id == "interest_earning_assets")
+    credit_linked_notes = next(
+        (row for row in typed_rows if row.category_id == "credit_linked_notes"),
+        None,
+    )
     asset_total = ProductCategoryPnlRow.model_validate(calc_out["asset_total"])
     liability_total = ProductCategoryPnlRow.model_validate(calc_out["liability_total"])
     grand_total = ProductCategoryPnlRow.model_validate(calc_out["grand_total"])
@@ -312,6 +319,20 @@ def product_category_pnl_payload_from_canonical_ytd_anchor(
         view="ytd",
         asset_row=asset_total.model_dump(mode="python"),
         liability_row=liability_total.model_dump(mode="python"),
+    )
+    interest_earning_spread = calculate_product_category_interest_spread_metrics(
+        report_date=report_date,
+        view="ytd",
+        asset_row=interest_earning_assets.model_dump(mode="python"),
+        liability_row=liability_total.model_dump(mode="python"),
+    )
+    liability_cost_decomposition = calculate_product_category_liability_cost_decomposition(
+        report_date=report_date,
+        view="ytd",
+        liability_row=liability_total.model_dump(mode="python"),
+        credit_linked_notes_row=(
+            None if credit_linked_notes is None else credit_linked_notes.model_dump(mode="python")
+        ),
     )
     return ProductCategoryPnlPayload(
         report_date=report_date,
@@ -323,6 +344,10 @@ def product_category_pnl_payload_from_canonical_ytd_anchor(
         liability_total=liability_total,
         grand_total=grand_total,
         interest_spread=ProductCategoryInterestSpreadPayload.model_validate(asdict(interest_spread)),
+        interest_earning_spread=ProductCategoryInterestSpreadPayload.model_validate(asdict(interest_earning_spread)),
+        liability_cost_decomposition=ProductCategoryLiabilityCostDecompositionPayload.model_validate(
+            asdict(liability_cost_decomposition)
+        ),
     )
 
 

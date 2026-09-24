@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import Any
 
 import duckdb
 from backend.app.core_finance.risk_tensor import PortfolioRiskTensor
@@ -9,9 +10,13 @@ from backend.app.repositories.duckdb_migrations import (
     apply_pending_migrations_on_connection,
     ensure_risk_tensor_legacy_columns,
 )
+from backend.app.repositories.duckdb_repo import read_only_connection
+from backend.app.repositories.fact_load_gates import commit_report_date_purge
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
 from backend.app.repositories.task_write_guard import require_repository_task_write_scope
-from backend.app.tasks.bond_analytics_materialize import CACHE_KEY as BOND_ANALYTICS_CACHE_KEY
+
+# 与 bond_analytics_materialize.CACHE_KEY 对齐；只读路径不得 import tasks。
+BOND_ANALYTICS_CACHE_KEY = "bond_analytics:materialize:formal"
 
 FACT_TABLE = "fact_formal_risk_tensor_daily"
 
@@ -51,6 +56,24 @@ class RiskTensorRepository:
                 "upstream_source_version",
                 "''",
             )
+            upstream_rule_version = _column_or_default(
+                table_columns,
+                "upstream_rule_version",
+                "''",
+                coalesce=True,
+            )
+            upstream_cache_version = _column_or_default(
+                table_columns,
+                "upstream_cache_version",
+                "''",
+                coalesce=True,
+            )
+            cache_version = _column_or_default(
+                table_columns,
+                "cache_version",
+                "''",
+                coalesce=True,
+            )
             liability_source_version = _column_or_default(
                 table_columns,
                 "liability_source_version",
@@ -63,12 +86,37 @@ class RiskTensorRepository:
                 "''",
                 coalesce=True,
             )
+            duration_scope_columns = {
+                field_name: _column_or_default(
+                    table_columns,
+                    field_name,
+                    "cast(null as integer)"
+                    if field_name == "duration_excluded_count"
+                    else "cast(null as decimal(24, 8))",
+                )
+                for field_name in (
+                    "rate_risk_market_value",
+                    "rate_risk_dv01",
+                    "rate_risk_modified_duration",
+                    "duration_excluded_market_value",
+                    "duration_excluded_count",
+                )
+            }
             rows = conn.execute(
                 f"""
                 select cast(report_date as varchar) as report_date,
                        {upstream_source_version},
+                       {upstream_rule_version},
+                       {upstream_cache_version},
                        {liability_source_version},
-                       {liability_rule_version}
+                       {liability_rule_version},
+                       rule_version,
+                       {cache_version},
+                       {duration_scope_columns['rate_risk_market_value']},
+                       {duration_scope_columns['rate_risk_dv01']},
+                       {duration_scope_columns['rate_risk_modified_duration']},
+                       {duration_scope_columns['duration_excluded_market_value']},
+                       {duration_scope_columns['duration_excluded_count']}
                 from {FACT_TABLE}
                 order by cast(report_date as varchar) desc
                 """
@@ -76,8 +124,17 @@ class RiskTensorRepository:
             columns = [
                 "report_date",
                 "upstream_source_version",
+                "upstream_rule_version",
+                "upstream_cache_version",
                 "liability_source_version",
                 "liability_rule_version",
+                "rule_version",
+                "cache_version",
+                "rate_risk_market_value",
+                "rate_risk_dv01",
+                "rate_risk_modified_duration",
+                "duration_excluded_market_value",
+                "duration_excluded_count",
             ]
             return [dict(zip(columns, row, strict=True)) for row in rows]
         finally:
@@ -90,6 +147,8 @@ class RiskTensorRepository:
         tensor: PortfolioRiskTensor,
         source_version: str,
         upstream_source_version: str,
+        upstream_rule_version: str,
+        upstream_cache_version: str,
         liability_source_version: str,
         liability_rule_version: str,
         rule_version: str,
@@ -98,13 +157,20 @@ class RiskTensorRepository:
     ) -> None:
         require_repository_task_write_scope("replace_risk_tensor_row")
         conn = duckdb.connect(self.path, read_only=False)
+        transaction_started = False
         try:
             conn.execute("begin transaction")
+            transaction_started = True
             ensure_risk_tensor_table(conn)
-            conn.execute(
-                f"delete from {FACT_TABLE} where report_date = ?",
-                [report_date],
+            conn.execute("commit")
+            transaction_started = False
+
+            commit_report_date_purge(
+                conn, tables=(FACT_TABLE,), report_date=report_date
             )
+
+            conn.execute("begin transaction")
+            transaction_started = True
             conn.execute(
                 f"""
                 insert into {FACT_TABLE} (
@@ -120,6 +186,19 @@ class RiskTensorRepository:
                     cs01,
                     portfolio_convexity,
                     portfolio_modified_duration,
+                    rate_risk_market_value,
+                    rate_risk_dv01,
+                    rate_risk_modified_duration,
+                    duration_excluded_market_value,
+                    duration_excluded_count,
+                    missing_maturity_market_value,
+                    missing_maturity_count,
+                    floating_rate_proxy_market_value,
+                    floating_rate_proxy_count,
+                    payment_frequency_fallback_market_value,
+                    payment_frequency_fallback_count,
+                    bullet_value_date_fallback_market_value,
+                    bullet_value_date_fallback_count,
                     issuer_concentration_hhi,
                     issuer_top5_weight,
                     asset_cashflow_30d,
@@ -135,13 +214,15 @@ class RiskTensorRepository:
                     warnings_json,
                     source_version,
                     upstream_source_version,
+                    upstream_rule_version,
+                    upstream_cache_version,
                     liability_source_version,
                     liability_rule_version,
                     rule_version,
                     cache_version,
                     trace_id
                 ) values (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 """,
                 [
@@ -157,6 +238,19 @@ class RiskTensorRepository:
                     tensor.cs01,
                     tensor.portfolio_convexity,
                     tensor.portfolio_modified_duration,
+                    tensor.rate_risk_market_value,
+                    tensor.rate_risk_dv01,
+                    tensor.rate_risk_modified_duration,
+                    tensor.duration_excluded_market_value,
+                    tensor.duration_excluded_count,
+                    tensor.missing_maturity_market_value,
+                    tensor.missing_maturity_count,
+                    tensor.floating_rate_proxy_market_value,
+                    tensor.floating_rate_proxy_count,
+                    tensor.payment_frequency_fallback_market_value,
+                    tensor.payment_frequency_fallback_count,
+                    tensor.bullet_value_date_fallback_market_value,
+                    tensor.bullet_value_date_fallback_count,
                     tensor.issuer_concentration_hhi,
                     tensor.issuer_top5_weight,
                     tensor.asset_cashflow_30d,
@@ -172,6 +266,8 @@ class RiskTensorRepository:
                     json.dumps(tensor.warnings, ensure_ascii=False),
                     source_version,
                     upstream_source_version,
+                    upstream_rule_version,
+                    upstream_cache_version,
                     liability_source_version,
                     liability_rule_version,
                     rule_version,
@@ -180,9 +276,74 @@ class RiskTensorRepository:
                 ],
             )
             conn.execute("commit")
+            transaction_started = False
         except Exception:
-            conn.execute("rollback")
+            if transaction_started:
+                try:
+                    conn.execute("rollback")
+                except Exception:  # noqa: S110  # 回滚失败不得掩盖随后 raise 的原始写入异常
+                    pass
             raise
+        finally:
+            conn.close()
+
+    def fetch_risk_tensor_history(
+        self,
+        report_date: str,
+        periods: int,
+        *,
+        rule_version: str | None = None,
+    ) -> list[dict[str, object]]:
+        conn = _connect_read_only(self.path)
+        if conn is None:
+            return []
+        try:
+            if not _table_exists(conn, FACT_TABLE):
+                return []
+            table_columns = _table_columns(conn, FACT_TABLE)
+            if rule_version is not None and "rule_version" not in table_columns:
+                return []
+            regulatory_dv01 = _column_or_default(
+                table_columns,
+                "regulatory_dv01",
+                "cast(null as decimal(24, 8))",
+            )
+            where_clauses = ["cast(report_date as varchar) <= ?"]
+            parameters: list[object] = [report_date]
+            if rule_version is not None:
+                where_clauses.append("rule_version = ?")
+                parameters.append(rule_version)
+            parameters.append(periods)
+            rows = conn.execute(
+                f"""
+                select cast(report_date as varchar) as report_date,
+                       portfolio_dv01,
+                       {regulatory_dv01},
+                       portfolio_modified_duration,
+                       portfolio_convexity,
+                       cs01,
+                       issuer_concentration_hhi,
+                       issuer_top5_weight,
+                       liquidity_gap_30d
+                from {FACT_TABLE}
+                where {' and '.join(where_clauses)}
+                order by cast(report_date as varchar) desc
+                limit ?
+                """,
+                parameters,
+            ).fetchall()
+            columns = [
+                "report_date",
+                "portfolio_dv01",
+                "regulatory_dv01",
+                "portfolio_modified_duration",
+                "portfolio_convexity",
+                "cs01",
+                "issuer_concentration_hhi",
+                "issuer_top5_weight",
+                "liquidity_gap_30d",
+            ]
+            return [dict(zip(columns, row, strict=True)) for row in rows]
         finally:
             conn.close()
 
@@ -230,11 +391,58 @@ class RiskTensorRepository:
                 "''",
                 coalesce=True,
             )
+            upstream_rule_version = _column_or_default(
+                table_columns,
+                "upstream_rule_version",
+                "''",
+                coalesce=True,
+            )
+            upstream_cache_version = _column_or_default(
+                table_columns,
+                "upstream_cache_version",
+                "''",
+                coalesce=True,
+            )
             regulatory_dv01 = _column_or_default(
                 table_columns,
                 "regulatory_dv01",
                 "cast(null as decimal(24, 8))",
             )
+            duration_scope_columns = {
+                field_name: _column_or_default(
+                    table_columns,
+                    field_name,
+                    "cast(null as integer)"
+                    if field_name == "duration_excluded_count"
+                    else "cast(null as decimal(24, 8))",
+                )
+                for field_name in (
+                    "rate_risk_market_value",
+                    "rate_risk_dv01",
+                    "rate_risk_modified_duration",
+                    "duration_excluded_market_value",
+                    "duration_excluded_count",
+                )
+            }
+            projection_quality_columns = {
+                field_name: _column_or_default(
+                    table_columns,
+                    field_name,
+                    "cast(null as integer)"
+                    if field_name.endswith("_count")
+                    else "cast(null as decimal(24, 8))",
+                )
+                for field_name in (
+                    "missing_maturity_market_value",
+                    "missing_maturity_count",
+                    "floating_rate_proxy_market_value",
+                    "floating_rate_proxy_count",
+                    "payment_frequency_fallback_market_value",
+                    "payment_frequency_fallback_count",
+                    "bullet_value_date_fallback_market_value",
+                    "bullet_value_date_fallback_count",
+                )
+            }
             row = conn.execute(
                 f"""
                 select report_date,
@@ -249,6 +457,19 @@ class RiskTensorRepository:
                        cs01,
                        portfolio_convexity,
                        portfolio_modified_duration,
+                       {duration_scope_columns['rate_risk_market_value']},
+                       {duration_scope_columns['rate_risk_dv01']},
+                       {duration_scope_columns['rate_risk_modified_duration']},
+                       {duration_scope_columns['duration_excluded_market_value']},
+                       {duration_scope_columns['duration_excluded_count']},
+                       {projection_quality_columns['missing_maturity_market_value']},
+                       {projection_quality_columns['missing_maturity_count']},
+                       {projection_quality_columns['floating_rate_proxy_market_value']},
+                       {projection_quality_columns['floating_rate_proxy_count']},
+                       {projection_quality_columns['payment_frequency_fallback_market_value']},
+                       {projection_quality_columns['payment_frequency_fallback_count']},
+                       {projection_quality_columns['bullet_value_date_fallback_market_value']},
+                       {projection_quality_columns['bullet_value_date_fallback_count']},
                        issuer_concentration_hhi,
                        issuer_top5_weight,
                        {asset_cashflow_30d},
@@ -264,6 +485,8 @@ class RiskTensorRepository:
                        warnings_json,
                        source_version,
                        upstream_source_version,
+                       {upstream_rule_version},
+                       {upstream_cache_version},
                        {liability_source_version},
                        {liability_rule_version},
                        rule_version,
@@ -290,6 +513,19 @@ class RiskTensorRepository:
                 "cs01",
                 "portfolio_convexity",
                 "portfolio_modified_duration",
+                "rate_risk_market_value",
+                "rate_risk_dv01",
+                "rate_risk_modified_duration",
+                "duration_excluded_market_value",
+                "duration_excluded_count",
+                "missing_maturity_market_value",
+                "missing_maturity_count",
+                "floating_rate_proxy_market_value",
+                "floating_rate_proxy_count",
+                "payment_frequency_fallback_market_value",
+                "payment_frequency_fallback_count",
+                "bullet_value_date_fallback_market_value",
+                "bullet_value_date_fallback_count",
                 "issuer_concentration_hhi",
                 "issuer_top5_weight",
                 "asset_cashflow_30d",
@@ -305,6 +541,8 @@ class RiskTensorRepository:
                 "warnings_json",
                 "source_version",
                 "upstream_source_version",
+                "upstream_rule_version",
+                "upstream_cache_version",
                 "liability_source_version",
                 "liability_rule_version",
                 "rule_version",
@@ -318,6 +556,56 @@ class RiskTensorRepository:
             conn.close()
 
 
+    def fetch_campisi_decision_risk_tensor_aggregate(
+        self,
+        report_date: str,
+        *,
+        conn: duckdb.DuckDBPyConnection | None = None,
+    ) -> tuple[bool, list[dict[str, Any]]]:
+        if conn is not None:
+            return self._fetch_campisi_decision_risk_tensor_aggregate_impl(conn, report_date)
+        try:
+            with read_only_connection(self.path) as scoped:
+                return self._fetch_campisi_decision_risk_tensor_aggregate_impl(scoped, report_date)
+        except (OSError, duckdb.Error):
+            return False, []
+
+    def _fetch_campisi_decision_risk_tensor_aggregate_impl(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        report_date: str,
+    ) -> tuple[bool, list[dict[str, Any]]]:
+        if not _table_exists(conn, FACT_TABLE):
+            return False, []
+        rows = _campisi_decision_duckdb_rows(
+            conn,
+            """
+            select
+                sum(coalesce(portfolio_dv01, 0)) as portfolio_dv01,
+                sum(coalesce(cs01, 0)) as cs01,
+                sum(coalesce(total_market_value, 0)) as total_market_value,
+                sum(coalesce(bond_count, 0)) as bond_count,
+                max(quality_flag) as quality_flag
+            from fact_formal_risk_tensor_daily
+            where cast(report_date as date) = cast(? as date)
+            """,
+            [report_date],
+        )
+        return True, rows
+
+
+
+
+def _campisi_decision_duckdb_rows(
+    conn: duckdb.DuckDBPyConnection,
+    sql: str,
+    params: list[Any] | tuple[Any, ...] = (),
+) -> list[dict[str, Any]]:
+    cursor = conn.execute(sql, params)
+    columns = [column[0] for column in cursor.description]
+    return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
+
+
 def ensure_risk_tensor_table(conn: duckdb.DuckDBPyConnection) -> None:
     """Baseline DDL is versioned in `duckdb_migrations` (also run at API/worker startup)."""
     apply_pending_migrations_on_connection(conn)
@@ -329,17 +617,16 @@ def load_latest_bond_analytics_lineage(
     governance_dir: str,
     report_date: str,
 ) -> dict[str, str] | None:
-    rows = [
-        row
-        for row in GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
-        if str(row.get("cache_key")) == BOND_ANALYTICS_CACHE_KEY
-        and str(row.get("job_name")) == "bond_analytics_materialize"
-        and str(row.get("status")) == "completed"
-        and str(row.get("report_date")) == report_date
-    ]
-    if not rows:
+    latest = None
+    for row in GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM):
+        if (
+            str(row.get("cache_key")) == BOND_ANALYTICS_CACHE_KEY
+            and str(row.get("job_name")) == "bond_analytics_materialize"
+            and str(row.get("report_date")) == report_date
+        ):
+            latest = row
+    if latest is None or str(latest.get("status")) != "completed":
         return None
-    latest = rows[-1]
     return {
         "source_version": str(latest.get("source_version") or "").strip(),
         "rule_version": str(latest.get("rule_version") or "").strip(),
@@ -352,22 +639,27 @@ def load_latest_bond_analytics_lineage_by_report_date(
     *,
     governance_dir: str,
 ) -> dict[str, dict[str, str]]:
-    lineage_by_report_date: dict[str, dict[str, str]] = {}
+    latest_by_report_date: dict[str, dict[str, object]] = {}
     for row in GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM):
         if (
             str(row.get("cache_key")) != BOND_ANALYTICS_CACHE_KEY
             or str(row.get("job_name")) != "bond_analytics_materialize"
-            or str(row.get("status")) != "completed"
         ):
             continue
         report_date = str(row.get("report_date") or "").strip()
         if not report_date:
             continue
+        latest_by_report_date[report_date] = row
+
+    lineage_by_report_date: dict[str, dict[str, str]] = {}
+    for report_date, latest in latest_by_report_date.items():
+        if str(latest.get("status")) != "completed":
+            continue
         lineage_by_report_date[report_date] = {
-            "source_version": str(row.get("source_version") or "").strip(),
-            "rule_version": str(row.get("rule_version") or "").strip(),
-            "cache_version": str(row.get("cache_version") or "").strip(),
-            "vendor_version": str(row.get("vendor_version") or "vv_none").strip() or "vv_none",
+            "source_version": str(latest.get("source_version") or "").strip(),
+            "rule_version": str(latest.get("rule_version") or "").strip(),
+            "cache_version": str(latest.get("cache_version") or "").strip(),
+            "vendor_version": str(latest.get("vendor_version") or "vv_none").strip() or "vv_none",
         }
     return lineage_by_report_date
 

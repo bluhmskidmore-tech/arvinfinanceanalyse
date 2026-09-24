@@ -7,6 +7,14 @@ import duckdb
 
 from backend.app.tasks.livermore_monitor_append import append_daily_monitor
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def _ensure_monitor_test_schema(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute(

@@ -11,6 +11,8 @@ import pytest
 from backend.app.governance.settings import get_settings
 from tests.helpers import load_module
 
+pytestmark = [pytest.mark.integration, pytest.mark.materialize]
+
 
 def _load_modules():
     repo_mod = sys.modules.get("backend.app.repositories.balance_analysis_repo")
@@ -52,6 +54,15 @@ def _patch_usd_only_formal_fx_candidates(fx_mod, monkeypatch):
                 invert_result=False,
             )
         ],
+    )
+
+
+def _patch_chinamoney_fx_failure(fx_mod, monkeypatch, message: str = "chinamoney unavailable"):
+    monkeypatch.setattr(
+        fx_mod,
+        "_fetch_chinamoney_fx_mid_rows_for_report_date",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError(message)),
+        raising=False,
     )
 
 
@@ -173,6 +184,54 @@ def _seed_snapshot_and_fx_tables(duckdb_path: str) -> None:
         )
     finally:
         conn.close()
+
+
+def test_balance_analysis_existing_fx_only_skips_refresh_while_default_refreshes(
+    tmp_path,
+    monkeypatch,
+):
+    _repo_mod, task_mod = _load_modules()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_snapshot_and_fx_tables(str(duckdb_path))
+
+    monkeypatch.setattr(
+        task_mod.materialize_fx_mid_for_report_date,
+        "fn",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("existing-FX-only materialization refreshed FX")
+        ),
+    )
+    existing_only_payload = task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        use_existing_fx_only=True,
+    )
+
+    refresh_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        task_mod.materialize_fx_mid_for_report_date,
+        "fn",
+        lambda **kwargs: refresh_calls.append(dict(kwargs))
+        or {
+            "status": "completed",
+            "row_count": 0,
+            "source_kind": "stub",
+        },
+    )
+    default_payload = task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert existing_only_payload["status"] == "completed"
+    assert default_payload["status"] == "completed"
+    assert len(refresh_calls) == 1
+    assert refresh_calls[0]["report_date"] == "2025-12-31"
+    assert refresh_calls[0]["writer_lock_already_held"] is True
 
 
 def test_choice_fx_fetch_accepts_legacy_choice_client_signature(monkeypatch):
@@ -348,6 +407,7 @@ def test_balance_analysis_materialize_fails_when_required_fx_rate_is_missing(tmp
                 {"edb": lambda self, codes, options="", **_kwargs: (_ for _ in ()).throw(RuntimeError("choice unavailable"))},
             )(),
         )
+        _patch_chinamoney_fx_failure(fx_mod, monkeypatch)
         monkeypatch.setattr(
             fx_mod,
             "AkShareVendorAdapter",
@@ -560,11 +620,11 @@ def test_balance_analysis_materialize_fails_when_only_prior_business_day_fx_exis
         )
 
 
-def test_balance_analysis_materialize_accepts_same_date_non_business_day_fx_carry_forward(
+def test_balance_analysis_materialize_rejects_same_date_carry_forward_on_business_day(
     tmp_path,
     monkeypatch,
 ):
-    repo_mod, task_mod = _load_modules()
+    _repo_mod, task_mod = _load_modules()
 
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
@@ -597,35 +657,92 @@ def test_balance_analysis_materialize_accepts_same_date_non_business_day_fx_carr
     finally:
         conn.close()
 
-    payload = task_mod.materialize_balance_analysis_facts.fn(
-        report_date="2025-12-31",
-        duckdb_path=str(duckdb_path),
-        governance_dir=str(governance_dir),
+    with pytest.raises(ValueError, match="carry-forward is only allowed"):
+        task_mod.materialize_balance_analysis_facts.fn(
+            report_date="2025-12-31",
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+
+
+def test_balance_repository_accepts_weekend_fx_carry_forward(tmp_path):
+    repo_mod, _task_mod = _load_modules()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fx_daily_mid (
+              trade_date varchar,
+              base_currency varchar,
+              quote_currency varchar,
+              mid_rate decimal(24, 8),
+              source_name varchar,
+              is_business_day boolean,
+              is_carry_forward boolean,
+              source_version varchar,
+              observed_trade_date varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fx_daily_mid values
+            ('2026-01-03', 'USD', 'CNY', 7.10000000, 'CFETS', false, true, 'sv_fx_weekend', '2026-01-02')
+            """
+        )
+    finally:
+        conn.close()
+
+    lookup = repo_mod.BalanceAnalysisRepository(str(duckdb_path)).lookup_formal_fx_rate(
+        report_date="2026-01-03",
+        base_currency="USD",
     )
 
-    assert payload["status"] == "completed"
+    assert lookup.rate == Decimal("7.10000000")
+    assert lookup.source_version == "sv_fx_weekend"
+    assert lookup.is_carry_forward is True
 
-    repo = repo_mod.BalanceAnalysisRepository(str(duckdb_path))
-    zqtz_cny_rows = repo.fetch_formal_zqtz_rows(
-        report_date="2025-12-31",
-        position_scope="asset",
-        currency_basis="CNY",
+
+def test_balance_repository_accepts_cfets_currency_holiday_fx_carry_forward(tmp_path):
+    repo_mod, _task_mod = _load_modules()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fx_daily_mid (
+              trade_date varchar,
+              base_currency varchar,
+              quote_currency varchar,
+              mid_rate decimal(24, 8),
+              source_name varchar,
+              is_business_day boolean,
+              is_carry_forward boolean,
+              source_version varchar,
+              observed_trade_date varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fx_daily_mid values
+            ('2026-01-19', 'USD', 'CNY', 7.10000000, 'CFETS', false, true, 'sv_fx_usd_holiday', '2026-01-16')
+            """
+        )
+    finally:
+        conn.close()
+
+    lookup = repo_mod.BalanceAnalysisRepository(str(duckdb_path)).lookup_formal_fx_rate(
+        report_date="2026-01-19",
+        base_currency="USD",
     )
-    tyw_cny_rows = repo.fetch_formal_tyw_rows(
-        report_date="2025-12-31",
-        position_scope="liability",
-        currency_basis="CNY",
-    )
 
-    assert zqtz_cny_rows[0]["market_value_amount"] == Decimal("710.00000000")
-    assert tyw_cny_rows[0]["principal_amount"] == Decimal("71.00000000")
-
-    build_runs = [
-        json.loads(line)
-        for line in (governance_dir / "cache_build_run.jsonl").read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
-    assert build_runs[-1]["source_version"] == "sv-fx-carry__sv-t-1__sv-z-1"
+    assert lookup.rate == Decimal("7.10000000")
+    assert lookup.source_version == "sv_fx_usd_holiday"
+    assert lookup.is_carry_forward is True
 
 
 def test_balance_analysis_materialize_rejects_contradictory_fx_carry_forward_metadata(
@@ -847,6 +964,7 @@ def test_balance_analysis_materialize_does_not_autodiscover_fx_csv_from_data_inp
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_input_root))
     _patch_usd_only_formal_fx_candidates(fx_mod, monkeypatch)
     monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: _FailingChoiceClient())
+    _patch_chinamoney_fx_failure(fx_mod, monkeypatch)
     monkeypatch.setattr(fx_mod, "AkShareVendorAdapter", lambda: _FailingAkShareVendor())
     get_settings.cache_clear()
 
@@ -1040,7 +1158,7 @@ def test_balance_analysis_materialize_auto_populates_fx_from_choice_when_no_csv_
     get_settings.cache_clear()
 
 
-def test_balance_analysis_materialize_marks_choice_fx_carry_forward_when_prior_business_day_is_used(
+def test_balance_analysis_materialize_rejects_choice_fx_carry_forward_on_business_day(
     tmp_path,
     monkeypatch,
 ):
@@ -1079,13 +1197,60 @@ def test_balance_analysis_materialize_marks_choice_fx_carry_forward_when_prior_b
     monkeypatch.delenv("MOSS_FX_OFFICIAL_SOURCE_PATH", raising=False)
     monkeypatch.delenv("MOSS_FX_MID_CSV_PATH", raising=False)
     monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: fake_client)
+    _patch_chinamoney_fx_failure(fx_mod, monkeypatch)
+    monkeypatch.setattr(
+        fx_mod,
+        "AkShareVendorAdapter",
+        lambda: type("EmptyAkShareVendor", (), {"fetch_fx_mid_snapshot": lambda self, **_kwargs: {"rows": []}})(),
+    )
     get_settings.cache_clear()
 
-    payload = task_mod.materialize_balance_analysis_facts.fn(
-        report_date="2025-12-31",
+    with pytest.raises(ValueError, match="Formal FX carry-forward is only allowed"):
+        task_mod.materialize_balance_analysis_facts.fn(
+            report_date="2025-12-31",
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+            data_root=str(data_input_root),
+        )
+
+    assert any("StartDate=2025-12-31" in call for call in fake_client.calls)
+    assert any("StartDate=2025-12-30" in call for call in fake_client.calls)
+    get_settings.cache_clear()
+
+
+def test_fx_mid_materialize_allows_choice_carry_forward_on_weekend(tmp_path, monkeypatch):
+    fx_mod = _load_fx_module()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    data_input_root = tmp_path / "data_input"
+
+    class _ChoiceResult:
+        Codes = ["EMM00058124"]
+        Dates = ["2026-01-02"]
+        Data = {"EMM00058124": [[Decimal("7.10")]]}
+
+    class _FakeChoiceClient:
+        def __init__(self):
+            self.calls: list[str] = []
+
+        def edb(self, codes, options="", **_kwargs):
+            self.calls.append(options)
+            if "StartDate=2026-01-03" in options:
+                return type("EmptyChoiceResult", (), {"Codes": [], "Dates": [], "Data": {}})()
+            return _ChoiceResult()
+
+    fake_client = _FakeChoiceClient()
+
+    _patch_usd_only_formal_fx_candidates(fx_mod, monkeypatch)
+    monkeypatch.delenv("MOSS_FX_OFFICIAL_SOURCE_PATH", raising=False)
+    monkeypatch.delenv("MOSS_FX_MID_CSV_PATH", raising=False)
+    monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: fake_client)
+    get_settings.cache_clear()
+
+    payload = fx_mod.materialize_fx_mid_for_report_date.fn(
+        report_date="2026-01-03",
         duckdb_path=str(duckdb_path),
-        governance_dir=str(governance_dir),
-        data_root=str(data_input_root),
+        data_input_root=str(data_input_root),
     )
 
     assert payload["status"] == "completed"
@@ -1094,17 +1259,17 @@ def test_balance_analysis_materialize_marks_choice_fx_carry_forward_when_prior_b
     try:
         rows = conn.execute(
             """
-            select trade_date, mid_rate, is_business_day, is_carry_forward
+            select trade_date, mid_rate, is_business_day, is_carry_forward, observed_trade_date
             from fx_daily_mid
-            where trade_date = '2025-12-31'
+            where trade_date = '2026-01-03'
             """
         ).fetchall()
     finally:
         conn.close()
 
-    assert rows == [(date(2025, 12, 31), Decimal("7.10000000"), False, True)]
-    assert any("StartDate=2025-12-31" in call for call in fake_client.calls)
-    assert any("StartDate=2025-12-30" in call for call in fake_client.calls)
+    assert rows == [(date(2026, 1, 3), Decimal("7.10000000"), False, True, date(2026, 1, 2))]
+    assert any("StartDate=2026-01-03" in call for call in fake_client.calls)
+    assert any("StartDate=2026-01-02" in call for call in fake_client.calls)
     get_settings.cache_clear()
 
 

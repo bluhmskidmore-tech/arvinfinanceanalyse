@@ -71,8 +71,8 @@ export const displayTokens = {
     shadow: "0 4px 12px rgba(22, 35, 46, 0.06)",
   },
   radius: {
-    /** 与 DataSection / AsyncSection 历史圆角一致 */
-    section: 20,
-    control: radius.md,
+    /** Shape Lock (DESIGN.md §5): IB light section/cards = 2px (`--ib-radius`). */
+    section: radius.sm,
+    control: radius.sm,
   },
 } as const;

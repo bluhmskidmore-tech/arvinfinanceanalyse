@@ -12,6 +12,20 @@
     "vendor_status": "ok",
     "fallback_mode": "none",
     "scenario_flag": false,
+    "requested_report_date": "2025-12-31",
+    "resolved_report_date": "2025-12-31",
+    "as_of_date": "2025-12-31",
+    "date_basis": "balance_analysis_report_date",
+    "filters_applied": {
+      "report_date": "2025-12-31",
+      "position_scope": "all",
+      "currency_basis": "CNY"
+    },
+    "tables_used": [
+      "fact_formal_zqtz_balance_daily",
+      "fact_formal_tyw_balance_daily"
+    ],
+    "evidence_rows": 2,
     "generated_at": "2026-04-18T05:57:54.629092Z"
   },
   "result": {

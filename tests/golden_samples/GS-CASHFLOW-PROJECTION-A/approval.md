@@ -6,13 +6,14 @@
 - Owner: `TBD`
 - Approver: `TBD`
 - Approved at: `TBD`
-- Last reviewed: `2026-06-09`
+- Last reviewed: `2026-08-14`
 
 ## Capture Note
 
 - `response.json` is captured from a deterministic fixture-backed service call for `GET /api/cashflow-projection?report_date=2026-04-30`.
 - The fixture provides one formal asset row, one formal liability row, and one matching bond-analytics duration row.
 - The sample freezes the `/cashflow-projection` candidate liquidity projection DTO boundary only.
+- Re-captured `2026-08-14` after the monthly bucket boundary was corrected to include events through `report_date + horizon_months` inclusively. For report date `2026-04-30`, the deterministic response now includes the final `2028-04` calendar bucket; all previously frozen cashflow, duration, sensitivity, warning, unit, and precision values remain unchanged.
 
 ## Caveats
 

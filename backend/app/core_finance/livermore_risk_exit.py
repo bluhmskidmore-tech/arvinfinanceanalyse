@@ -4,7 +4,9 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-FORMULA_VERSION = "rv_livermore_risk_exit_ema10_volume_v2"
+from backend.app.core_finance.strategy_policy import POLICY
+
+FORMULA_VERSION = "rv_livermore_risk_exit_ema10_volume_obsfallback_v3"
 MVP_RULE_LABEL = "10EMA invalidation + volume confirmation"
 REQUIRED_INPUTS: tuple[str, ...] = (
     "positions",
@@ -13,10 +15,10 @@ REQUIRED_INPUTS: tuple[str, ...] = (
     "close_history",
     "volume_history",
 )
-MIN_HISTORY = 21
-EMA_WINDOW = 10
-VOLUME_MA_WINDOW = 20
-VOLUME_CONFIRMATION_RATIO = 1.3
+MIN_HISTORY = POLICY.risk_exit.min_history
+EMA_WINDOW = POLICY.risk_exit.ema_window
+VOLUME_MA_WINDOW = POLICY.risk_exit.volume_ma_window
+VOLUME_CONFIRMATION_RATIO = POLICY.risk_exit.volume_confirmation_ratio
 
 
 @dataclass(frozen=True)
@@ -73,9 +75,10 @@ def compute_risk_exit(
 
 def _watch_item(
     snapshot: RiskExitSnapshot,
-    validated: tuple[float, int, list[float], list[float]],
+    validated: tuple[float | None, int, list[float], list[float]],
 ) -> dict[str, object]:
     entry_cost, bars_since_entry, closes, volumes = validated
+    entry_cost_available = entry_cost is not None
     ema10 = _ema(closes, EMA_WINDOW)
     latest_close = closes[-1]
     prior_close = closes[-2]
@@ -87,11 +90,15 @@ def _watch_item(
     price_below_ema = latest_close < latest_ema10 and prior_close < prior_ema10
     volume_confirmed = volume_ratio >= VOLUME_CONFIRMATION_RATIO
     triggered = price_below_ema and volume_confirmed
+    latest_ma20 = sum(closes[-VOLUME_MA_WINDOW:]) / float(VOLUME_MA_WINDOW)
+    prior_ma20 = sum(closes[-(VOLUME_MA_WINDOW + 1) : -1]) / float(VOLUME_MA_WINDOW)
+    fallback_ma20_break = latest_close < latest_ma20 and prior_close < prior_ma20
+    fallback_would_trigger = fallback_ma20_break and not triggered
 
-    return {
+    watch_item: dict[str, object] = {
         "stock_code": snapshot.stock_code,
         "stock_name": snapshot.stock_name,
-        "entry_cost": round(entry_cost, 6),
+        "entry_cost_available": entry_cost_available,
         "bars_since_entry": bars_since_entry,
         "latest_close": round(latest_close, 6),
         "latest_ema10": round(latest_ema10, 6),
@@ -100,22 +107,31 @@ def _watch_item(
         "latest_volume": round(latest_volume, 6),
         "volume_ma20": round(volume_ma20, 6),
         "volume_ratio": round(volume_ratio, 6),
+        "latest_ma20": round(latest_ma20, 6),
+        "prior_ma20": round(prior_ma20, 6),
         "price_below_ema": price_below_ema,
         "volume_confirmed": volume_confirmed,
+        "fallback_ma20_break": fallback_ma20_break,
+        "fallback_would_trigger": fallback_would_trigger,
         "exit_watch_price": round(latest_ema10, 6),
         "triggered": triggered,
     }
+    if entry_cost_available:
+        watch_item["entry_cost"] = round(float(entry_cost), 6)
+    else:
+        watch_item["entry_cost"] = None
+    return watch_item
 
 
 def _risk_exit_row(watch_item: dict[str, object]) -> dict[str, object] | None:
     if not bool(watch_item["triggered"]):
         return None
 
-    return {
+    row: dict[str, object] = {
         "stock_code": watch_item["stock_code"],
         "stock_name": watch_item["stock_name"],
         "reason": "2d_below_ema10_with_volume",
-        "entry_cost": watch_item["entry_cost"],
+        "entry_cost_available": watch_item["entry_cost_available"],
         "bars_since_entry": watch_item["bars_since_entry"],
         "latest_close": watch_item["latest_close"],
         "latest_ema10": watch_item["latest_ema10"],
@@ -123,18 +139,22 @@ def _risk_exit_row(watch_item: dict[str, object]) -> dict[str, object] | None:
         "prior_ema10": watch_item["prior_ema10"],
         "volume_ratio": watch_item["volume_ratio"],
     }
+    if bool(watch_item["entry_cost_available"]):
+        row["entry_cost"] = watch_item["entry_cost"]
+    else:
+        row["entry_cost"] = None
+    return row
 
 
 def _validated_snapshot(
     snapshot: RiskExitSnapshot,
-) -> tuple[float, int, list[float], list[float]] | None:
+) -> tuple[float | None, int, list[float], list[float]] | None:
     entry_cost = _valid_float(snapshot.entry_cost)
     bars_since_entry = _valid_int(snapshot.bars_since_entry)
     closes = _float_series(snapshot.close_history)
     volumes = _float_series(snapshot.volume_history)
     if (
-        entry_cost is None
-        or bars_since_entry is None
+        bars_since_entry is None
         or closes is None
         or volumes is None
         or len(closes) < MIN_HISTORY

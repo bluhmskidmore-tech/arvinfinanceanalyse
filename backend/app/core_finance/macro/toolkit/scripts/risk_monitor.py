@@ -8,6 +8,8 @@
   4. 冷静期机制（强制平仓后停止交易 N 个交易日）
   5. 单笔止损（入场价 ±1.5%）
   6. 所有事件写入 risk_log.csv
+  7. 事中动态监测（观察口径）：波动率(GARCH)/相关性(DCC)/Crisis Score
+     超阈值只告警写日志、给降仓建议，不改仓位状态机
 
 使用方式：
   每日收盘后运行，检查是否需要强制平仓（在 macro_toolkit 根目录下）
@@ -46,6 +48,18 @@ STOP_LOSS_PCT     = 0.015   # 单笔止损 1.5%
 COOLING_DAYS      = 3       # 强制平仓后冷静期（交易日）
 STATE_FILE        = ROOT / 'risk_state.csv'
 LOG_FILE          = ROOT / 'risk_log.csv'
+
+# ── 事中动态监测阈值（尽调笔记观点23/24 与 Step4）─────────────
+VOL_ANNUAL_PCT_LIMIT   = 30.0   # 年化波动率% > 30 → 高波动，降仓防御
+CORR_WARNING_LIMIT     = 0.70   # DCC 平均相关 > 0.70 → 黄色预警
+CORR_CRITICAL_LIMIT    = 0.85   # DCC 平均相关 > 0.85 → 红色预警，启动降仓
+CRISIS_WATCH_LIMIT     = 1.0    # Crisis Score ≥1 警惕
+CRISIS_HIGH_LIMIT      = 2.0    # Crisis Score ≥2 高风险
+CRISIS_EMERGENCY_LIMIT = 3.0    # Crisis Score ≥3 危机，启动应急预案
+
+GARCH_FILE  = 'garch_results.csv'        # 波动率维度产物
+DCC_FILE    = 'dcc_latest.csv'           # 相关性维度产物
+CRISIS_FILE = 'crisis_score_latest.csv'  # 系统性风险维度产物
 
 
 # ============================================================
@@ -227,7 +241,7 @@ class RiskMonitor:
                 'STOP_LOSS', symbol,
                 f'{direction}仓止损: 入场{entry_price:.3f} 当前{current_price:.3f} '
                 f'亏损{pnl_pct:.2%}',
-                pnl_pct=pnl_pct
+                drawdown=pnl_pct
             )
             # 清除入场价
             if symbol in self.state['entry_prices']:
@@ -251,11 +265,14 @@ class RiskMonitor:
         self._save_state()
         self._log_event('ENTRY', symbol, f'入场价={price:.3f}')
 
-    def record_exit(self, symbol: str, price: float, reason: str = ''):
-        """记录出场"""
+    def record_exit(self, symbol: str, price: float, reason: str = '',
+                    direction: str = '多'):
+        """记录出场（direction='空' 时盈亏符号取反）"""
         entry = self.state['entry_prices'].get(symbol, 0)
         if entry > 0:
             pnl = (price - entry) / entry
+            if direction == '空':
+                pnl = -pnl
             self._log_event('EXIT', symbol,
                             f'出场价={price:.3f} 入场={entry:.3f} 盈亏={pnl:+.2%} {reason}')
         if symbol in self.state['entry_prices']:
@@ -344,6 +361,168 @@ class RiskMonitor:
 
 
 # ============================================================
+# 事中动态监测（观察口径：只监测、告警、给建议，不改仓位状态机）
+# 依据尽调笔记观点23（波动率/相关性 Regime Adaptive）、
+# 观点24（系统性风险上升必须降低整体暴露）与 Step4 事中监控阈值
+# ============================================================
+
+def _to_float(value):
+    """标量安全转 float：转换失败或 NaN 返回 None。"""
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return None
+    return None if pd.isna(num) else num
+
+
+def _monitor_gap(product: str, dimension: str) -> dict:
+    return {
+        'event_type': 'MONITOR_GAP',
+        'level':      'info',
+        'symbol':     'ALL',
+        'detail':     f'{dimension}维度未监测: 缺少产物 {product} 或必需列',
+    }
+
+
+def build_monitor_alerts(garch_frame, dcc_frame, crisis_frame) -> list:
+    """纯函数：根据 garch/dcc/crisis 三个产物 DataFrame 生成事中监测告警。
+
+    参数:
+        garch_frame:  garch_results.csv       需要列 [资产, 年化波动率%]
+        dcc_frame:    dcc_latest.csv          需要列 [平均相关系数]（取最末行）
+        crisis_frame: crisis_score_latest.csv 需要列 [Crisis Score]（取最末行）
+
+    返回:
+        [{'event_type', 'level', 'symbol', 'detail'}, ...]
+        全部正常时返回 []；某维度输入 None/空/缺列时降级为一条
+        MONITOR_GAP(info) 记录，不抛异常。
+    """
+    alerts = []
+
+    # ── 波动率维度：任一资产年化波动率% > 30 → 高波动 ──
+    if (garch_frame is None or garch_frame.empty
+            or '资产' not in garch_frame.columns
+            or '年化波动率%' not in garch_frame.columns):
+        alerts.append(_monitor_gap(GARCH_FILE, '波动率'))
+    else:
+        hot = []
+        for asset, raw_vol in zip(garch_frame['资产'], garch_frame['年化波动率%'], strict=True):
+            vol = _to_float(raw_vol)
+            if vol is not None and vol > VOL_ANNUAL_PCT_LIMIT:
+                hot.append((str(asset), vol))
+        if hot:
+            asset_list = ','.join(asset for asset, _ in hot)
+            vol_items  = '; '.join(f'{asset}={vol:.2f}%' for asset, vol in hot)
+            alerts.append({
+                'event_type': 'VOL_ALERT',
+                'level':      'warning',
+                'symbol':     asset_list,
+                'detail':     (f'年化波动率>{VOL_ANNUAL_PCT_LIMIT:.0f}%: {vol_items}；'
+                               f'高波动：降仓防御/尾部对冲'),
+            })
+
+    # ── 相关性维度：DCC 平均相关 > 0.70 黄色 / > 0.85 红色 ──
+    if (dcc_frame is None or dcc_frame.empty
+            or '平均相关系数' not in dcc_frame.columns):
+        alerts.append(_monitor_gap(DCC_FILE, '相关性'))
+    else:
+        avg_corr = _to_float(dcc_frame.iloc[-1]['平均相关系数'])
+        if avg_corr is None:
+            alerts.append(_monitor_gap(DCC_FILE, '相关性'))
+        elif avg_corr > CORR_CRITICAL_LIMIT:
+            alerts.append({
+                'event_type': 'CORR_ALERT',
+                'level':      'critical',
+                'symbol':     'ALL',
+                'detail':     (f'DCC平均相关{avg_corr:.4f}>{CORR_CRITICAL_LIMIT:.2f}红色预警：'
+                               f'分散化失效，建议降仓或对冲'),
+            })
+        elif avg_corr > CORR_WARNING_LIMIT:
+            alerts.append({
+                'event_type': 'CORR_ALERT',
+                'level':      'warning',
+                'symbol':     'ALL',
+                'detail':     (f'DCC平均相关{avg_corr:.4f}>{CORR_WARNING_LIMIT:.2f}黄色预警：'
+                               f'警惕相关性跃升'),
+            })
+
+    # ── 系统性风险维度：Crisis Score ≥1 警惕 / ≥2 高风险 / ≥3 危机 ──
+    if (crisis_frame is None or crisis_frame.empty
+            or 'Crisis Score' not in crisis_frame.columns):
+        alerts.append(_monitor_gap(CRISIS_FILE, '系统性风险'))
+    else:
+        score = _to_float(crisis_frame.iloc[-1]['Crisis Score'])
+        if score is None:
+            alerts.append(_monitor_gap(CRISIS_FILE, '系统性风险'))
+        elif score >= CRISIS_EMERGENCY_LIMIT:
+            alerts.append({
+                'event_type': 'CRISIS_ALERT',
+                'level':      'critical',
+                'symbol':     'ALL',
+                'detail':     f'Crisis Score={score:.3f}≥{CRISIS_EMERGENCY_LIMIT:.0f}：'
+                              f'危机状态，启动应急预案',
+            })
+        elif score >= CRISIS_HIGH_LIMIT:
+            alerts.append({
+                'event_type': 'CRISIS_ALERT',
+                'level':      'critical',
+                'symbol':     'ALL',
+                'detail':     f'Crisis Score={score:.3f}≥{CRISIS_HIGH_LIMIT:.0f}：'
+                              f'高风险，降低整体暴露',
+            })
+        elif score >= CRISIS_WATCH_LIMIT:
+            alerts.append({
+                'event_type': 'CRISIS_ALERT',
+                'level':      'warning',
+                'symbol':     'ALL',
+                'detail':     f'Crisis Score={score:.3f}≥{CRISIS_WATCH_LIMIT:.0f}：警惕状态',
+            })
+
+    return alerts
+
+
+def _load_output_csv(filename: str, output_dir: Path):
+    path = output_dir / filename
+    if not path.exists():
+        return None
+    try:
+        return pd.read_csv(path, encoding='utf-8-sig')
+    except Exception as e:
+        print(f"  [WARN] 读取 {filename} 失败: {e}")
+        return None
+
+
+def run_intraday_monitor(monitor: RiskMonitor, output_dir=None) -> list:
+    """事中动态监测接线：读三个产物 → 告警逐条写 risk_log → stdout 摘要。
+
+    无告警时仅打印"监测正常"，不写 NORMAL 日志行（避免日志膨胀）。
+    """
+    root = Path(output_dir) if output_dir is not None else ROOT
+    alerts = build_monitor_alerts(
+        _load_output_csv(GARCH_FILE, root),
+        _load_output_csv(DCC_FILE, root),
+        _load_output_csv(CRISIS_FILE, root),
+    )
+
+    print("\n事中动态监测（波动率/相关性/Crisis Score，观察口径）:")
+    if not alerts:
+        print("  监测正常：三维度均低于阈值")
+        return alerts
+
+    for alert in alerts:
+        monitor._log_event(
+            alert['event_type'], alert['symbol'],
+            f"level={alert['level']}; {alert['detail']}",
+        )
+    n_critical = sum(1 for a in alerts if a['level'] == 'critical')
+    n_warning  = sum(1 for a in alerts if a['level'] == 'warning')
+    n_info     = sum(1 for a in alerts if a['level'] == 'info')
+    print(f"  告警合计 {len(alerts)} 条: critical={n_critical} "
+          f"warning={n_warning} info(缺产物)={n_info}")
+    return alerts
+
+
+# ============================================================
 # 独立运行：读取 final_signal.csv 做检查
 # ============================================================
 
@@ -366,6 +545,9 @@ def main():
     print(f"\n当前持仓信号: {len(active)} 个品种")
     for _, row in active.iterrows():
         print(f"  {row['品种']}: {row['最终信号']}  仓位={row['仓位比例']:.1%}")
+
+    # 事中动态监测（观察口径，独立于冷静期状态机）
+    run_intraday_monitor(monitor)
 
     # 冷静期状态
     if monitor.in_cooling_period():

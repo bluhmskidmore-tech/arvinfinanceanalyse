@@ -289,16 +289,20 @@ From `frontend/`:
 
 ```powershell
 npm run test -- src/test/BondAnalyticsInstitutionalCockpit.test.tsx src/test/bondAnalyticsFormatters.test.ts
-npm run test -- src/test/BondAnalyticsInstitutionalCockpit.test.tsx src/test/bondAnalyticsFormatters.test.ts src/test/BondAnalyticsView.test.tsx src/test/BondAnalyticsViewContent.test.tsx src/test/WorkbenchShell.test.ts src/test/navigation.test.ts
+npm run test -- src/test/BondAnalyticsInstitutionalCockpit.test.tsx src/test/BondAnalyticsFilterActionStrip.test.tsx src/test/BondAnalyticsOverviewPanels.test.tsx src/test/BondAnalyticsViewContent.test.tsx src/test/BondAnalyticsView.test.tsx src/test/WorkbenchShell.test.ts src/test/navigation.test.ts src/test/bondAnalyticsFormatters.test.ts
 npm run typecheck
 npm run lint
 npm run debt:audit
+npm run build
 ```
 
 From repo root:
 
 ```powershell
-git diff --check -- frontend/src/features/bond-analytics/components/BondAnalyticsInstitutionalCockpit.tsx frontend/src/features/bond-analytics/components/BondAnalyticsInstitutionalCockpit.module.css frontend/src/test/BondAnalyticsInstitutionalCockpit.test.tsx docs/plans/2026-06-10-bond-analysis-desktop-100-playbook.md
+git diff --check -- frontend/src/features/bond-analytics/components/BondAnalyticsInstitutionalCockpit.tsx frontend/src/features/bond-analytics/components/BondAnalyticsInstitutionalCockpit.module.css frontend/src/features/bond-analytics/components/BondAnalyticsFilterActionStrip.tsx frontend/src/features/bond-analytics/components/BondAnalyticsFilterActionStrip.module.css frontend/src/features/bond-analytics/components/BondAnalyticsViewContent.tsx frontend/src/features/bond-analytics/components/BondAnalyticsViewContent.module.css frontend/src/test/BondAnalyticsInstitutionalCockpit.test.tsx frontend/src/test/BondAnalyticsFilterActionStrip.test.tsx frontend/src/test/BondAnalyticsViewContent.test.tsx docs/plans/2026-06-10-bond-analysis-desktop-100-playbook.md
+node frontend/.codex-tmp/verify-bond-analysis-pass4.mjs
+python -m pytest tests/test_golden_samples_capture_ready.py -q
+python -m pytest tests/test_bond_analysis_business_owner_approval_status.py tests/test_golden_samples_capture_ready.py -q
 ```
 
 Browser evidence:
@@ -309,18 +313,84 @@ Browser evidence:
 
 If the local dev server cannot start because of environment or native toolchain failure, report that separately. Do not replace rendered evidence with code inspection and still call the visual work complete.
 
+## Current Implementation Progress
+
+Already completed in the current pass:
+
+- The cockpit footer was reweighted so return evidence is the primary lane and support panels no longer sit as equal cards.
+- Fake trend presentation was removed when return time series data is unavailable.
+- Evidence-gap copy was made explicit for missing return time series, pending drilldowns, and returned-versus-pending fields.
+- Risk footer rows now use an explicit evidence list instead of a blind `slice(0, 3)`.
+- Holdings overflow affordance was added so desktop users can see that more columns are available.
+- The `/bond-analysis` lower review area was converted from a loose filter card into a command strip with refresh state and collapsed advanced parameters.
+- The detail disclosure now states that it is a drilldown and parameter area, not a second bottom-of-page conclusion.
+- Desktop screenshot verification has passed at 1440x900, 1728x1000, and 1920x1080 through `frontend/.codex-tmp/verify-bond-analysis-pass4.mjs`.
+- Targeted and expanded component tests, typecheck, lint, debt audit, and build have passed in the current evidence set.
+- Golden sample capture readiness now seeds the canonical bond analytics completed-build terminal for `GS-BOND-HEADLINE-A`, `GS-BOND-ANALYSIS-ACTION-ATTR-A`, and `GS-CONCENTRATION-MONITOR-A`; `tests/test_golden_samples_capture_ready.py` passes.
+- Business-owner approval status remains fail-closed while owner approval is not captured; `tests/test_bond_analysis_business_owner_approval_status.py tests/test_golden_samples_capture_ready.py` passes.
+- Full page verification has passed through `scripts/codex-verify-page.ps1 -PageSlug bond-analysis -Run`, covering candidate governance tests, bond analytics backend tests, frontend tests, browser a11y smoke, typecheck, debt audit, and production build.
+
+This is therefore no longer a pure design sketch. It is a verified candidate desktop UI implementation, but `/bond-analysis` is still evidence-pending for page closure and business certification.
+
+## Owner Handoff Status
+
+Current state:
+
+- Desktop candidate implementation is ready for owner handoff.
+- Visual and regression evidence can support a candidate UI review.
+- Golden-sample capture readiness is verified for the relevant bond analytics samples.
+- Business-owner approval is not captured.
+- `formal_use_allowed=false`, `closure_approved=false`, and `certification_effect=none` must remain in force.
+
+The remaining work is not another visual polish pass. It is an approval-capture path:
+
+1. The owner reviews the sign-off, governance audit, and owner evidence packets.
+2. The owner reviews the fixed-income convention decision draft and confirms the units, signs, date basis, clean/dirty value basis, DV01 basis, and yield convention.
+3. The owner completes only `docs/pnl/bond-analysis-business-owner-approval-template.md`.
+4. Every evidence review item in that template must be set to `yes` for approval.
+5. `python scripts/check_bond_analysis_business_owner_approval.py --require-captured` must pass before anyone says owner approval is captured.
+6. `python scripts/codex_page_readiness.py --page-slug bond-analysis` and `scripts/codex-verify-page.ps1 -PageSlug bond-analysis -Run` must be rerun after the signed template is present.
+7. If the owner chooses `reject` or `request_changes`, fix only the named issue, rerun the relevant narrow checks, and keep the page fail-closed.
+
+Do not use this handoff to widen scope into mobile layout, backend metric redesign, `/bond-dashboard` certification evidence, or formal fixed-income metric truth.
+
 ## Current Gap List
 
 Known current gaps before final "100 point" claim:
 
-- Browser screenshot verification is still missing.
-- Local Vite startup previously failed with environment-level `spawn EPERM` / native dependency loading issues.
+- Spec/visual reviewer returned OKAY for the implemented desktop UI evidence; that review does not approve page closure.
+- Code-quality reviewers did not return before timeout; manual diff review plus targeted/full gates were used as substitute evidence and must not be described as independent code-review approval.
 - MCP metric evidence tools were not exposed in the current Codex App session, so metric definitions must not be guessed.
-- `/bond-analysis` remains evidence-pending from a certification perspective; this UI work cannot promote business approval.
+- `/bond-analysis` remains evidence-pending from a certification perspective; golden samples are capture-ready, but business-owner approval is not captured and formal use is still disallowed.
+
+## How To Finish The Remaining Gap
+
+Use this order:
+
+1. Resolve reviewer feedback.
+   - Keep the spec/visual reviewer result as candidate implementation evidence only; do not treat it as page signoff.
+   - If a code-quality reviewer later returns a real high- or medium-severity finding, fix only findings tied to `/bond-analysis` desktop, evidence boundaries, golden-sample fixture correctness, or changed files.
+   - Do not widen the task into mobile or backend metric redesign.
+
+2. Lock the UI proof.
+   - Re-run the pass4 desktop screenshot script after any fix.
+   - Inspect the full-page, footer, and bottom review screenshots at 1440, 1728, and 1920 widths.
+   - Treat any overlap, clipped Chinese text, or fake-looking empty state as a blocker.
+
+3. Lock the regression proof.
+   - Re-run the focused component tests for cockpit, filter strip, and view content.
+   - Re-run the expanded bond-analysis shell tests.
+   - Re-run typecheck, lint, debt audit, build, and diff whitespace checks.
+
+4. Separate visual completion from business certification.
+   - UI implementation evidence can be called visually verified only if the rendered evidence passes.
+   - Business certification cannot be called complete until page contracts, metric definitions, lineage, and owner signoff are available.
+   - Golden-sample capture readiness is not owner approval and must not be described as formal certification.
+   - If MCP evidence remains unavailable, final wording must say so directly instead of implying metric approval.
 
 ## Done Definition
 
-This work is done only when:
+This candidate desktop implementation is ready for handoff only when:
 
 - the cockpit follows the desktop acceptance checklist
 - no business boundary is crossed

@@ -1,4 +1,8 @@
+import pytest
+
 from backend.app.core_finance.campisi import classify_primary_driver
+
+pytestmark = pytest.mark.unit
 
 
 class TestClassifyPrimaryDriver:

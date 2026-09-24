@@ -42,6 +42,18 @@ PAGES_WITHOUT_FORMAL_METRIC_BINDINGS = {
     "PAGE-POS-001": (
         "positions DTO remains page/schema truth only; no approved `MTR-*` page bindings yet."
     ),
+    "PAGE-BANK-LEDGER-001": (
+        "candidate ledger read model; the page contract explicitly forbids promoting its "
+        "headline fields to `MTR-*` without metric ownership and approval."
+    ),
+    "PAGE-BOND-DESK-001": (
+        "read-only single-bond composition surface; the page contract explicitly reuses DTO "
+        "fields without introducing standalone `MTR-*` bindings."
+    ),
+    "PAGE-CROSS-ASSET-001": (
+        "analytical/source-gated cross-asset surface; its governed source-series bindings are "
+        "not approved standalone `MTR-*` metrics."
+    ),
     "PAGE-MACRO-OBS-001": (
         "macro observation is a non-formal analytical surface; no approved `MTR-*` bindings by design."
     ),
@@ -63,10 +75,6 @@ PAGES_WITHOUT_FORMAL_METRIC_BINDINGS = {
     ),
     "PAGE-PERFORMANCE-HOME-001": (
         "performance module home is a navigation summary; downstream KPI/PnL pages own bindings."
-    ),
-    "PAGE-PNL-BY-BUSINESS-001": (
-        "business type PnL remains a temporary-exception analytical page; page contract explicitly "
-        "has no newly approved `MTR-*` binding in this pass."
     ),
     "PAGE-REPORTS-HOME-001": (
         "reports module home is a diagnostics/query entry surface; no standalone business metrics."

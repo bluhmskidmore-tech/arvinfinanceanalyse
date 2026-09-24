@@ -13,6 +13,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $frontendRoot = Join-Path $root "frontend"
 $playwrightOutputRoot = Join-Path $root ".codex-tmp\playwright-page-results"
+. "$root\scripts\codex-python-helper.ps1"
 
 function Resolve-CodexPytestTempRoot {
   if (-not [string]::IsNullOrWhiteSpace($env:CODEX_PYTEST_BASETEMP_ROOT)) {
@@ -93,6 +94,7 @@ function Test-CodexBrowserSmokeCheck {
 $codexPytestTempRoot = Resolve-CodexPytestTempRoot
 
 Set-Location $root
+$pythonExe = $null
 
 Write-Output "Codex verify page: $PageSlug"
 
@@ -101,7 +103,7 @@ $planOnly = $DryRun -or -not $Run
 $checks = @()
 
 if (-not $SkipMcpContracts) {
-  $mcpContractArgs = @("-m", "pytest", "tests/test_project_mcp_servers.py", "-q")
+  $mcpContractArgs = @("-m", "pytest", "tests/test_project_mcp_fast_contracts.py", "-m", "mcp_fast", "-q")
   if ($PageSlug -eq "risk-tensor") {
     $mcpContractArgs = @(
       "-m",
@@ -208,6 +210,18 @@ if (-not $SkipMcpContracts) {
       "tests/test_project_mcp_servers.py::test_team_performance_trace_bundle_preserves_candidate_performance_boundary",
       "tests/test_codex_page_readiness_gate.py::test_team_performance_readiness_exposes_candidate_direct_evidence_without_formal_promotion",
       "tests/test_team_performance_governance_record.py",
+      "-q"
+    )
+  } elseif ($PageSlug -eq "stock-analysis") {
+    $mcpContractArgs = @(
+      "-m",
+      "pytest",
+      "tests/test_project_mcp_servers.py::test_stock_analysis_trace_bundle_preserves_observational_livermore_boundaries",
+      "tests/test_project_mcp_servers.py::test_lineage_evidence_mcp_maps_stock_analysis_gap_to_observational_livermore_records",
+      "tests/test_codex_page_readiness_gate.py::test_stock_analysis_readiness_exposes_run_commands_without_formal_promotion",
+      "tests/test_stock_analysis_governance_record.py",
+      "tests/test_stock_analysis_owner_evidence_packet.py",
+      "tests/test_stock_analysis_business_owner_approval_status.py",
       "-q"
     )
   }
@@ -1458,7 +1472,14 @@ foreach ($check in $checks) {
         [Environment]::SetEnvironmentVariable($entry.Key, [string]$entry.Value, "Process")
       }
     }
-    & $check.Command @($check.Args)
+    $commandToRun = $check.Command
+    if ($isPytestCheck) {
+      if ($null -eq $pythonExe) {
+        $pythonExe = Resolve-CodexPython -RequiredModules @("fastapi", "uvicorn", "dramatiq", "redis", "duckdb", "sqlalchemy", "psycopg", "pytest")
+      }
+      $commandToRun = $pythonExe
+    }
+    & $commandToRun @($check.Args)
     $commandSucceeded = $?
     $exitCode = $LASTEXITCODE
     if (-not $commandSucceeded) {

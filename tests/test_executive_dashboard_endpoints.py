@@ -9,6 +9,15 @@ from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV, AuthContext
 from tests.helpers import load_module
 
+# E1 included-route contracts plus reserved-route 503 fail-closed guards (tests/AGENTS.md
+# tier 2). Gate-listed in scripts/backend_release_suite.py, so the tier marker must stay
+# `excluded_surface_regression` — an acceptance marker would silently deselect this file
+# from the default release gate (`-m "not excluded_surface_acceptance"`).
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_executive,
+]
+
 EXECUTIVE_READ_HEADERS = {"X-User-Id": "executive-read-user", "X-User-Role": "viewer"}
 
 
@@ -51,15 +60,23 @@ def _load_executive_routes_module():
 
 
 def _ok_payload(result_kind: str) -> dict[str, object]:
+    result: dict[str, object] = {}
+    if result_kind == "executive.overview":
+        result = {"title": "overview", "metrics": []}
     return {
         "result_meta": {
+            "trace_id": f"tr_{result_kind}",
             "result_kind": result_kind,
             "basis": "analytical",
             "formal_use_allowed": False,
             "scenario_flag": False,
             "vendor_status": "ok",
+            "source_version": f"sv_{result_kind}",
+            "rule_version": f"rv_{result_kind}",
+            "cache_version": f"cv_{result_kind}",
+            "source_surface": "executive_analytical",
         },
-        "result": {},
+        "result": result,
     }
 
 
@@ -98,7 +115,11 @@ def test_home_snapshot_route_logs_api_perf(monkeypatch, tmp_path, caplog):
     records = _perf_records(caplog, "/ui/home/snapshot")
     assert records
     record = records[-1]
-    assert record.getMessage() == "moss_api_perf"
+    assert record.getMessage() == (
+        f'moss_api_perf endpoint="{record.endpoint}" duration_ms={record.duration_ms} '
+        f'trace_id="{record.trace_id}" result_kind="{record.result_kind}" '
+        "duckdb_statement_count=null"
+    )
     assert getattr(record, "duration_ms") >= 0
     assert getattr(record, "result_kind") == "home.snapshot"
 
@@ -114,6 +135,7 @@ def test_fastapi_application_exposes_executive_dashboard_routes():
     assert "/ui/risk/overview" in paths
     assert "/ui/home/contribution" in paths
     assert "/ui/home/alerts" in paths
+    assert "/ui/home/macro-release-context" in paths
 
 
 def test_executive_dashboard_endpoints_return_result_meta_envelopes(monkeypatch, tmp_path):
@@ -149,6 +171,7 @@ def test_executive_overview_read_surface_requires_explicit_read_scope(tmp_path, 
         ("/ui/home/snapshot", {"report_date": "2025-11-20"}),
         ("/ui/home/research-reports", {"report_date": "2025-11-20"}),
         ("/ui/home/income-trend", {"report_date": "2025-11-20"}),
+        ("/ui/home/macro-release-context", {"start_date": "2026-07-16", "end_date": "2026-08-30"}),
     ],
 )
 def test_executive_remaining_read_surfaces_require_explicit_read_scope(
@@ -167,6 +190,7 @@ def test_executive_dashboard_http_routes_expose_only_landed_executive_surfaces_a
         "/ui/home/overview",
         "/ui/home/summary",
         "/ui/pnl/attribution",
+        "/ui/home/snapshot",
     ]
     kinds: list[str] = []
     for path in ok_paths:
@@ -178,10 +202,14 @@ def test_executive_dashboard_http_routes_expose_only_landed_executive_surfaces_a
         assert meta.get("basis") == "analytical"
         assert meta.get("formal_use_allowed") is False
         assert meta.get("scenario_flag") is False
+        assert meta.get("source_version")
+        assert meta.get("rule_version")
+        assert meta.get("cache_version")
         kinds.append(str(meta.get("result_kind", "")))
     assert "executive.overview" in kinds
     assert "executive.summary" in kinds
     assert "executive.pnl-attribution" in kinds
+    assert "home.snapshot" in kinds
 
     for path in (
         "/ui/risk/overview",
@@ -226,6 +254,29 @@ def test_partial_executive_routes_raise_503_when_service_marks_vendor_unavailabl
         with pytest.raises(HTTPException) as exc_info:
             getattr(module, name)(auth=auth)
         assert exc_info.value.status_code == 503
+
+
+def test_home_snapshot_route_rejects_vendor_unavailable_envelope(monkeypatch):
+    module = _load_executive_routes_module()
+    auth = AuthContext(user_id="executive-read-user", role="viewer", identity_source="header")
+    monkeypatch.setattr(module, "_ensure_executive_read_allowed", lambda _auth: None)
+    monkeypatch.setattr(
+        module,
+        "home_snapshot_envelope",
+        lambda **_kwargs: {
+            "result_meta": {
+                "result_kind": "home.snapshot",
+                "vendor_status": "vendor_unavailable",
+            },
+            "result": {},
+        },
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        module.home_snapshot(auth=auth)
+
+    assert exc_info.value.status_code == 503
+    assert "governed data" in str(exc_info.value.detail)
 
 
 def test_excluded_executive_routes_stay_503_even_when_service_returns_ok(monkeypatch):

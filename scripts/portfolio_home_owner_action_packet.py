@@ -63,6 +63,18 @@ STRICT_HANDOFF_GATE_NAMES = [
 ]
 
 
+def _portable_provenance_path(value: object) -> object:
+    """Keep repository-owned provenance stable across worktrees."""
+
+    if not isinstance(value, str):
+        return value
+    try:
+        relative = Path(value).resolve().relative_to(ROOT.resolve())
+    except (OSError, ValueError):
+        return value
+    return relative.as_posix()
+
+
 def _action_by_blocker(actions: list[object]) -> dict[str, dict[str, object]]:
     by_blocker: dict[str, dict[str, object]] = {}
     for action in actions:
@@ -421,20 +433,6 @@ def _risk_owner_decision_artifacts(report_date: str) -> list[dict[str, object]]:
 def _data_owner_decision_artifacts(report_date: str) -> list[dict[str, object]]:
     return [
         {
-            "artifact": f"docs/portfolio/maturity-remediation/{report_date}/bond_missing_maturity.csv",
-            "required_fields": ["proposed_maturity_date", "owner_decision", "owner_comment"],
-            "allowed_decisions": [
-                "remediate_source",
-                "approve_scoped_exclusion",
-                "reject",
-            ],
-            "note_required_for": [
-                "remediate_source",
-                "approve_scoped_exclusion",
-                "reject",
-            ],
-        },
-        {
             "artifact": f"docs/portfolio/maturity-remediation/{report_date}/tyw_liability_missing_maturity.csv",
             "required_fields": ["proposed_maturity_date", "owner_decision", "owner_comment"],
             "allowed_decisions": [
@@ -523,12 +521,9 @@ def _artifact_required_fields(artifacts: list[dict[str, object]]) -> list[object
 def _closure_artifacts_for_blocker(blocker: str, report_date: str) -> list[dict[str, object]]:
     if blocker == "krd_contract_decision_required":
         return _risk_owner_decision_artifacts(report_date)
-    if blocker == "bond_maturity_date_remediation_required":
-        maturity_artifacts = _data_owner_decision_artifacts(report_date)
-        return [maturity_artifacts[0], maturity_artifacts[2]]
     if blocker == "tyw_liability_maturity_date_remediation_required":
         maturity_artifacts = _data_owner_decision_artifacts(report_date)
-        return [maturity_artifacts[1], maturity_artifacts[2]]
+        return [maturity_artifacts[0], maturity_artifacts[1]]
     if blocker == "business_owner_approval":
         return _business_owner_decision_artifacts()
     if blocker == "owner_decision_intake_blocked":
@@ -540,9 +535,28 @@ def _closure_artifacts_for_blocker(blocker: str, report_date: str) -> list[dict[
     return []
 
 
-def _closure_evidence_sources_for_blocker(blocker: str) -> list[dict[str, object]]:
+def _closure_evidence_sources_for_blocker(
+    blocker: str,
+    report_date: str,
+) -> list[dict[str, object]]:
+    if blocker == "bond_matured_outstanding_reconciliation_required":
+        return [
+            {
+                "name": "matured_outstanding_queue",
+                "command": (
+                    "python scripts/portfolio_home_matured_outstanding_queue.py "
+                    f"--report-date {report_date} --require-empty"
+                ),
+                "fields": ["summary", "rows"],
+                "boundary": (
+                    "Read-only reconciliation evidence; does not change source positions, "
+                    "approve an exception, or close the page."
+                ),
+            }
+        ]
     if blocker not in {
         "risk_tensor_quality_warning",
+        "krd_bucket_warning_mismatch",
         "duration_exclusion_warning_mismatch",
         "risk_tensor_warning_mismatch",
     }:
@@ -551,8 +565,8 @@ def _closure_evidence_sources_for_blocker(blocker: str) -> list[dict[str, object
         {
             "name": "risk_warning_consistency",
             "command": (
-                "python scripts/portfolio_home_risk_warning_consistency.py "
-                "--require-consistent"
+                f"python scripts/portfolio_home_risk_warning_consistency.py "
+                f"--report-date {report_date} --require-consistent"
             ),
             "fields": [
                 "parsed_warnings",
@@ -569,38 +583,52 @@ def _closure_evidence_sources_for_blocker(blocker: str) -> list[dict[str, object
     ]
 
 
-def _closure_recheck_commands(blocker: str) -> list[str]:
+def _closure_recheck_commands(
+    blocker: str,
+    report_date: str = DEFAULT_REPORT_DATE,
+) -> list[str]:
+    def _date_qualified(command: str) -> str:
+        command_head, separator, command_tail = command.partition(".py")
+        return f"{command_head}{separator} --report-date {report_date}{command_tail}"
+
+    if blocker == "krd_bucket_warning_mismatch":
+        return [
+            f"python scripts/portfolio_home_risk_warning_consistency.py --report-date {report_date} --require-consistent",
+            f"python scripts/portfolio_home_full_closure_evidence.py --report-date {report_date} --require-clean",
+        ]
+    if blocker == "bond_matured_outstanding_reconciliation_required":
+        return [
+            f"python scripts/portfolio_home_matured_outstanding_queue.py --report-date {report_date} --require-empty",
+            f"python scripts/portfolio_home_full_closure_evidence.py --report-date {report_date} --require-clean",
+        ]
     if blocker in {"risk_tensor_quality_warning", "risk_tensor_warning_mismatch"}:
         return [
-            "python scripts/portfolio_home_risk_warning_consistency.py --require-clean",
-            "python scripts/portfolio_home_full_closure_evidence.py --require-clean",
+            f"python scripts/portfolio_home_risk_warning_consistency.py --report-date {report_date} --require-clean",
+            f"python scripts/portfolio_home_full_closure_evidence.py --report-date {report_date} --require-clean",
         ]
     if blocker == "duration_exclusion_warning_mismatch":
         return [
-            "python scripts/portfolio_home_risk_warning_consistency.py --require-consistent",
-            "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+            f"python scripts/portfolio_home_risk_warning_consistency.py --report-date {report_date} --require-consistent",
+            f"python scripts/portfolio_home_maturity_remediation_queue.py --report-date {report_date} --require-empty",
         ]
     if blocker == "krd_contract_decision_required":
         return [
-            "python scripts/portfolio_home_krd_remap_review_queue.py --require-clean",
-            OWNER_DECISION_INTAKE_COMMAND,
+            f"python scripts/portfolio_home_krd_remap_review_queue.py --report-date {report_date} --require-clean",
+            _date_qualified(OWNER_DECISION_INTAKE_COMMAND),
         ]
-    if blocker in {
-        "bond_maturity_date_remediation_required",
-        "tyw_liability_maturity_date_remediation_required",
-    }:
+    if blocker == "tyw_liability_maturity_date_remediation_required":
         return [
-            "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
-            OWNER_DECISION_INTAKE_COMMAND,
+            f"python scripts/portfolio_home_maturity_remediation_queue.py --report-date {report_date} --require-empty",
+            _date_qualified(OWNER_DECISION_INTAKE_COMMAND),
         ]
     if blocker == "business_owner_approval":
         return [
-            "python scripts/check_portfolio_home_business_owner_approval.py --require-captured",
-            "python scripts/portfolio_home_business_owner_approval_packet.py --limit 3 --require-ready",
-            "python scripts/portfolio_home_closure_scorecard.py --limit 3 --require-full-score",
+            f"python scripts/check_portfolio_home_business_owner_approval.py --report-date {report_date} --require-captured",
+            f"python scripts/portfolio_home_business_owner_approval_packet.py --report-date {report_date} --limit 3 --require-ready",
+            f"python scripts/portfolio_home_closure_scorecard.py --report-date {report_date} --limit 3 --require-full-score",
         ]
     if blocker == "owner_decision_intake_blocked":
-        return [OWNER_DECISION_INTAKE_COMMAND]
+        return [_date_qualified(OWNER_DECISION_INTAKE_COMMAND)]
     return []
 
 
@@ -609,6 +637,12 @@ def _closure_exit_signal(blocker: str, report_date: str) -> str:
         return (
             f"Risk tensor quality is clean for report_date {report_date} and strict "
             "full-closure evidence no longer reports this blocker."
+        )
+    if blocker == "krd_bucket_warning_mismatch":
+        return (
+            "KRD bucket warning evidence matches current formal bonds, and the risk tensor "
+            "is rematerialized or /portfolio remains candidate-only until the warning can "
+            "be cleared."
         )
     if blocker == "duration_exclusion_warning_mismatch":
         return (
@@ -626,10 +660,10 @@ def _closure_exit_signal(blocker: str, report_date: str) -> str:
             "conditional nearest-bucket or exact-bucket evidence is valid when selected, "
             "and the KRD strict gate exits 0."
         )
-    if blocker == "bond_maturity_date_remediation_required":
+    if blocker == "bond_matured_outstanding_reconciliation_required":
         return (
-            "Bond missing-maturity rows are remediated at source or covered by a "
-            "signed scoped exclusion evidence file, and the maturity strict gate exits 0."
+            "Matured or unparseable non-zero bond positions are reconciled at source, "
+            "and the matured-outstanding strict queue exits 0."
         )
     if blocker == "tyw_liability_maturity_date_remediation_required":
         return (
@@ -662,7 +696,7 @@ def _blocker_closure_matrix(
     for blocker in current_blockers:
         action = actions_by_blocker.get(blocker, {})
         artifacts = _closure_artifacts_for_blocker(blocker, report_date)
-        evidence_sources = _closure_evidence_sources_for_blocker(blocker)
+        evidence_sources = _closure_evidence_sources_for_blocker(blocker, report_date)
         row = {
             "blocker": blocker,
             "owner": action.get("owner"),
@@ -671,7 +705,7 @@ def _blocker_closure_matrix(
             "next_action": action.get("next_action"),
             "decision_artifacts": _artifact_paths(artifacts),
             "required_fields": _artifact_required_fields(artifacts),
-            "recheck_commands": _closure_recheck_commands(blocker),
+            "recheck_commands": _closure_recheck_commands(blocker, report_date),
             "exit_criteria": action.get("exit_criteria"),
             "removes_blocker_when": _closure_exit_signal(blocker, report_date),
         }
@@ -816,6 +850,7 @@ def build_packet(
         blocker
         for blocker in [
             "risk_tensor_quality_warning",
+            "krd_bucket_warning_mismatch",
             "risk_tensor_warning_mismatch",
             "krd_contract_decision_required",
             "unsupported_krd_bucket",
@@ -828,8 +863,8 @@ def build_packet(
     data_blockers = [
         blocker
         for blocker in [
-            "bond_maturity_date_remediation_required",
             "tyw_liability_maturity_date_remediation_required",
+            "bond_matured_outstanding_reconciliation_required",
             "duration_exclusion_warning_mismatch",
         ]
         if blocker in scorecard.get("score_blockers", [])
@@ -845,6 +880,10 @@ def build_packet(
     risk_warning_clean_status = _risk_warning_clean_status(warning)
     approval_items = approval.get("approval_action_items", [])
     assert isinstance(approval_items, list)
+    scorecard_gates = scorecard.get("gates", {})
+    assert isinstance(scorecard_gates, dict)
+    full_closure_gate = scorecard_gates.get("full_closure_evidence", {})
+    assert isinstance(full_closure_gate, dict)
 
     owner_packets = {
         "risk_owner": {
@@ -854,7 +893,10 @@ def build_packet(
             "risk_tensor_quality_flag": risk_tensor.get("quality_flag"),
             "risk_tensor_lineage": risk_tensor_lineage,
             "risk_warning_decision_status": warning.get("decision_status"),
-            "risk_warning_evidence_command": "python scripts/portfolio_home_risk_warning_consistency.py --require-clean",
+            "risk_warning_evidence_command": (
+                "python scripts/portfolio_home_risk_warning_consistency.py "
+                f"--report-date {report_date} --require-clean"
+            ),
             "warning_resolution_matrix": risk_warning_clean_status.get(
                 "warning_resolution_matrix",
                 [],
@@ -908,7 +950,12 @@ def build_packet(
             "scoped_exclusion_evidence": scoped_exclusion_evidence,
             "decision_intake_artifacts": _data_owner_decision_artifacts(report_date),
             "remediation_scope": maturity.get("remediation_scope", {}),
+            "bond_no_maturity_summary": maturity.get("bond_no_maturity_summary", {}),
             "bond_missing_maturity_summary": maturity.get("bond_missing_maturity_summary", {}),
+            "bond_matured_outstanding_summary": full_closure_gate.get(
+                "bond_matured_outstanding",
+                {},
+            ),
             "tyw_liability_missing_maturity_summary": maturity.get(
                 "tyw_liability_missing_maturity_summary",
                 {},
@@ -942,8 +989,6 @@ def build_packet(
     score_blockers = scorecard["score_blockers"]
     assert isinstance(score_blockers, list)
     assignment_coverage = _assignment_coverage(score_blockers, owner_packets)
-    scorecard_gates = scorecard.get("gates", {})
-    assert isinstance(scorecard_gates, dict)
     score_blocker_action_coverage = scorecard_gates.get("score_blocker_action_coverage", {})
     assert isinstance(score_blocker_action_coverage, dict)
     blocker_closure_matrix = _blocker_closure_matrix(
@@ -1009,6 +1054,7 @@ def build_packet(
     ] = business_owner_approval_boundary
     owner_packets["business_owner"]["activation_guard"] = _activation_guard(
         boundary_activation_ready,
+        report_date,
     )
 
     return {
@@ -1016,8 +1062,8 @@ def build_packet(
         "page_id": scorecard["page_id"],
         "page_slug": scorecard["page_slug"],
         "report_date": scorecard["report_date"],
-        "duckdb_path": scorecard["duckdb_path"],
-        "template_path": scorecard["template_path"],
+        "duckdb_path": _portable_provenance_path(scorecard["duckdb_path"]),
+        "template_path": _portable_provenance_path(scorecard["template_path"]),
         "current_score": scorecard["current_score"],
         "remaining_gap": scorecard["remaining_gap"],
         "score_status": scorecard["score_status"],
@@ -1047,7 +1093,9 @@ def build_packet(
         "scorecard_owner_decision_intake_gate_summary": scorecard_owner_gate_summary,
         "owner_decision_intake_alignment": owner_intake_alignment,
         "rerun_evidence_status": rerun_status,
-        "owner_decision_intake_command": OWNER_DECISION_INTAKE_COMMAND,
+        "owner_decision_intake_command": (
+            f"{OWNER_DECISION_INTAKE_COMMAND} --report-date {report_date}"
+        ),
         "strict_gate_expectations": _strict_gate_expectations(
             scorecard,
             business_owner_approval_boundary,

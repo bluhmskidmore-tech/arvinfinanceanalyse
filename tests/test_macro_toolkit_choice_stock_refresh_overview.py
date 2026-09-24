@@ -3,9 +3,15 @@ from __future__ import annotations
 from pathlib import Path
 
 import duckdb
+import pytest
 
 from backend.app.services import macro_toolkit_service
 from backend.app.services.macro_toolkit_service import choice_stock_refresh_overview
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_macro_toolkit,
+]
 
 
 def test_choice_stock_refresh_overview_reports_freshness_and_fallback_dates(tmp_path: Path) -> None:

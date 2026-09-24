@@ -5,9 +5,11 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-import duckdb
 from backend.app.repositories.choice_stock_adapter import load_choice_stock_readiness
-from backend.app.repositories.livermore_gate_supplement_repo import TABLE_NAME as GATE_SUPPLEMENT_TABLE
+from backend.app.repositories.livermore_gate_supplement_repo import (
+    LivermoreGateSupplementRepository,
+)
+from backend.app.repositories.livermore_market_read_repo import LivermoreMarketReadRepository
 from backend.app.services.market_data_livermore_service import (
     _load_broad_index_history,
     _risk_exit_input_block_reason,
@@ -42,70 +44,15 @@ class LivermoreReadinessReport:
 
 
 def _probe_gate_supplement_max_date(duckdb_path: str) -> str | None:
-    path = Path(duckdb_path)
-    if not path.is_file():
-        return None
-    try:
-        conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
-        return None
-    try:
-        exists = conn.execute(
-            """
-            select 1
-            from information_schema.tables
-            where table_schema = 'main' and table_name = ?
-            limit 1
-            """,
-            [GATE_SUPPLEMENT_TABLE],
-        ).fetchone()
-        if exists is None:
-            return None
-        row = conn.execute(f"select max(trade_date) from {GATE_SUPPLEMENT_TABLE}").fetchone()
-    except duckdb.Error:
-        return None
-    finally:
-        conn.close()
-    if not row or row[0] is None:
-        return None
-    value = row[0]
-    return value.isoformat() if hasattr(value, "isoformat") else str(value)[:10]
+    return LivermoreGateSupplementRepository(
+        duckdb_path, guard_path_exists=True
+    ).max_trade_date()
 
 
 def _probe_position_active_max_date(duckdb_path: str) -> str | None:
-    path = Path(duckdb_path)
-    if not path.is_file():
-        return None
-    try:
-        conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
-        return None
-    try:
-        exists = conn.execute(
-            """
-            select 1
-            from information_schema.tables
-            where table_schema = 'main' and table_name = 'livermore_position_snapshot'
-            limit 1
-            """
-        ).fetchone()
-        if exists is None:
-            return None
-        row = conn.execute(
-            """
-            select max(cast(as_of_date as date))
-            from livermore_position_snapshot
-            where upper(coalesce(position_status, 'ACTIVE')) = 'ACTIVE'
-            """
-        ).fetchone()
-    except duckdb.Error:
-        return None
-    finally:
-        conn.close()
-    if not row or row[0] is None:
-        return None
-    value = row[0]
-    return value.isoformat() if hasattr(value, "isoformat") else str(value)[:10]
+    return LivermoreMarketReadRepository(
+        duckdb_path, guard_path_exists=True
+    ).position_active_max_date()
 
 
 def probe_livermore_readiness(

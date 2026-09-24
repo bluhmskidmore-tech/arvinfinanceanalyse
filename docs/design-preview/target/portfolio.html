@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>组合工作台 · 目标态视觉样张</title>
+<style>
+/* ============================================================
+   组合工作台 /portfolio · 目标态视觉样张
+   结构 = 真实页面（real/portfolio.png + real/portfolio.txt）
+   令牌 = dh-api 目标态深色全套
+   ============================================================ */
+
+:root {
+  /* dh-api 目标态令牌 */
+  --bg-page:      #070a12;
+  --bg-panel:     #0c1421;
+  --bg-panel2:    #101a2a;
+  --bg-panel3:    #132033;
+  --border:       rgba(103,119,142,.34);
+  --border-2:     rgba(103,119,142,.22);
+  --text:         #e8eef7;
+  --text-2:       #a9b6c7;
+  --text-3:       #8593a8;
+  --accent:       #72a7dc;
+  --up:           #66b98b;
+  --down:         #d47a72;
+  --warn:         #c9a565;
+  --radius:       6px;
+
+  /* 左侧 rail 专用 */
+  --rail-bg:      #10161f;
+  --rail-gold:    #c9a85c;
+
+  --font-sans:    -apple-system, 'PingFang SC', 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
+  --font-num:     ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  background: var(--bg-page);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.num, .mono {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+.shell { display: flex; min-height: 100vh; }
+
+/* ================= 左侧 MOSS 导航 rail ================= */
+
+.rail {
+  width: 220px; flex: 0 0 220px;
+  background: var(--rail-bg);
+  border-right: 1px solid var(--border-2);
+  padding: 18px 12px 24px;
+  display: flex; flex-direction: column;
+}
+
+.rail-logo {
+  display: flex; align-items: center; gap: 10px;
+  padding: 2px 8px 16px;
+  border-bottom: 1px solid var(--border-2);
+}
+.rail-logo .m {
+  width: 24px; height: 24px; border: 1px solid var(--border);
+  border-radius: 4px; display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; color: var(--text);
+}
+.rail-logo .name { font-size: 15px; font-weight: 700; letter-spacing: .12em; color: var(--text); }
+
+.rail-group { margin-top: 18px; }
+.rail-group-label {
+  font-size: 11px; color: var(--text-3); letter-spacing: .08em;
+  padding: 0 10px 8px;
+}
+
+.rail-item {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 10px; margin-bottom: 2px;
+  border-radius: var(--radius);
+  color: var(--text-2); font-size: 13px;
+  border: 1px solid transparent;
+}
+.rail-item svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 1.4; flex: 0 0 12px; }
+.rail-item .tail { margin-left: auto; font-size: 11px; color: var(--text-3); }
+
+.rail-item.active {
+  background: rgba(201,168,92,.08);
+  border: 1px solid rgba(201,168,92,.38);
+  color: var(--text);
+  box-shadow: inset 2px 0 0 var(--rail-gold);
+}
+.rail-item.active .tail { color: var(--rail-gold); }
+
+.rail-chat { display: flex; flex-direction: column; gap: 1px; }
+.rail-chat .row { display: flex; align-items: center; gap: 9px; }
+.rail-chat .sub { padding-left: 21px; font-size: 11px; color: var(--text-3); }
+
+.badge-ok {
+  margin-left: auto;
+  font-size: 10px; color: var(--up);
+  border: 1px solid rgba(102,185,139,.45);
+  border-radius: 3px; padding: 0 4px; line-height: 16px;
+}
+
+/* ================= 主区 ================= */
+
+.main { flex: 1; min-width: 0; padding: 16px 20px 40px; }
+
+/* ---- 页头 ---- */
+
+.page-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  padding: 4px 2px 14px;
+}
+.page-head .title-row { display: flex; align-items: center; gap: 10px; }
+.page-head .app-icon {
+  width: 22px; height: 22px; border-radius: 5px;
+  background: var(--bg-panel3); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; color: var(--text-2);
+}
+.page-head h1 { font-size: 19px; font-weight: 650; letter-spacing: .01em; }
+.page-head .sub { margin-top: 2px; font-size: 12px; color: var(--text-3); }
+
+.head-pills { display: flex; gap: 8px; align-items: center; }
+.pill {
+  font-size: 11px; color: var(--text-2);
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 5px 10px;
+  white-space: nowrap;
+}
+.pill .num { color: var(--text); margin-left: 6px; }
+.pill.ok { color: var(--up); border-color: rgba(102,185,139,.4); }
+
+/* ---- 警示条（仅供分析） ---- */
+
+.alert {
+  background: rgba(201,165,101,.06);
+  border: 1px solid rgba(201,165,101,.42);
+  border-radius: var(--radius);
+  padding: 14px 18px 12px;
+}
+.alert-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+.alert-tags { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.alert-tags .t1 { font-size: 11px; color: var(--warn); letter-spacing: .06em; }
+.alert-tags .t2 {
+  font-size: 10px; color: var(--warn);
+  border: 1px solid rgba(201,165,101,.45); border-radius: 3px; padding: 0 5px; line-height: 16px;
+}
+.alert-title { font-size: 16px; font-weight: 650; color: var(--warn); letter-spacing: .01em; }
+.alert-sub { margin-top: 4px; font-size: 11px; color: var(--text-3); }
+.alert-sub .num { color: var(--text-2); }
+
+.alert-stats {
+  flex: 0 0 auto; display: flex; gap: 28px;
+  padding-left: 24px; border-left: 1px solid rgba(201,165,101,.25);
+}
+.alert-stats .cell .k { font-size: 11px; color: var(--text-3); }
+.alert-stats .cell .v {
+  margin-top: 2px; font-size: 18px; font-weight: 600; color: var(--text);
+  font-family: var(--font-num); font-variant-numeric: tabular-nums;
+}
+.alert-stats .cell .v small { font-size: 11px; font-weight: 400; color: var(--text-2); margin-left: 2px; }
+
+.alert-steps { display: flex; gap: 10px; margin-top: 12px; }
+.step {
+  flex: 1; display: flex; align-items: center; gap: 8px;
+  background: var(--bg-panel); border: 1px solid var(--border-2);
+  border-radius: var(--radius); padding: 6px 10px;
+  font-size: 11px; color: var(--text-3);
+}
+.step .no {
+  font-family: var(--font-num); font-variant-numeric: tabular-nums;
+  font-size: 11px; color: var(--text-2);
+  border-left: 2px solid var(--border); padding-left: 6px;
+}
+.step.hot .no { border-left-color: var(--warn); color: var(--warn); }
+.step .name { color: var(--text-2); }
+.step .go { margin-left: auto; color: var(--text-3); }
+.step .go b { color: var(--text-2); font-weight: 500; }
+.step .tag-review {
+  font-size: 10px; color: var(--warn);
+  border: 1px solid rgba(201,165,101,.4); border-radius: 3px; padding: 0 4px;
+}
+
+/* ---- 区块标题 ---- */
+
+.section-head { margin: 20px 2px 10px; }
+.section-head .t {
+  font-size: 14px; font-weight: 650; color: var(--text);
+  border-left: 3px solid var(--accent); padding-left: 8px;
+}
+.section-head .s { margin-top: 3px; padding-left: 11px; font-size: 11px; color: var(--text-3); }
+
+/* ---- KPI 网格 ---- */
+
+.kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+.kpi {
+  background: var(--bg-panel); border: 1px solid var(--border-2);
+  border-radius: var(--radius); padding: 12px 14px 11px;
+  min-height: 88px;
+  display: flex; flex-direction: column; justify-content: space-between;
+}
+.kpi .label { font-size: 11px; color: var(--text-3); letter-spacing: .03em; }
+.kpi .value {
+  margin-top: 6px;
+  font-family: var(--font-num); font-variant-numeric: tabular-nums;
+  font-size: 24px; font-weight: 600; color: var(--text);
+  white-space: nowrap; letter-spacing: 0;
+}
+.kpi .value .unit { font-size: 12px; font-weight: 400; color: var(--text-3); margin-left: 3px; }
+.kpi .delta {
+  margin-top: 6px; font-size: 11px; color: var(--text-3);
+  font-family: var(--font-num); font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.kpi .delta .up   { color: var(--up); }
+.kpi .delta .down { color: var(--down); }
+
+/* ---- 组合复盘驾驶舱 Tab 条 ---- */
+
+.cockpit {
+  margin-top: 16px;
+  background: var(--bg-panel); border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  display: flex; align-items: center; gap: 18px;
+  padding: 9px 14px;
+}
+.cockpit .title { font-size: 13px; font-weight: 650; color: var(--text); white-space: nowrap; }
+.cockpit .tabs { display: flex; gap: 4px; }
+.tab {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text-3);
+  padding: 5px 12px 6px;
+  border-bottom: 2px solid transparent;
+  cursor: default;
+}
+.tab .key {
+  font-family: var(--font-num); font-size: 10px;
+  border: 1px solid var(--border-2); border-radius: 3px;
+  padding: 0 4px; color: var(--text-3); line-height: 15px;
+}
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab.active .key { color: var(--accent); border-color: rgba(114,167,220,.5); }
+.cockpit .note { margin-left: auto; font-size: 11px; color: var(--text-3); white-space: nowrap; }
+
+/* ---- 面板通用 ---- */
+
+.panel {
+  margin-top: 12px;
+  background: var(--bg-panel); border: 1px solid var(--border-2);
+  border-radius: var(--radius); padding: 14px 16px;
+}
+.panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.panel-head .l { display: flex; align-items: center; gap: 8px; }
+.tag {
+  font-size: 10px; color: var(--text-3);
+  border: 1px solid var(--border-2); border-radius: 3px; padding: 1px 5px;
+}
+.panel-title { font-size: 14px; font-weight: 650; color: var(--text); }
+.panel-title .idx {
+  font-family: var(--font-num); font-variant-numeric: tabular-nums;
+  font-size: 11px; color: var(--text-3); font-weight: 400; margin-right: 6px;
+}
+.panel-sub { margin-top: 3px; font-size: 11px; color: var(--text-3); }
+.panel-head .r {
+  font-family: var(--font-num); font-variant-numeric: tabular-nums;
+  font-size: 12px; color: var(--text-2); white-space: nowrap;
+}
+
+.split { display: grid; grid-template-columns: 7fr 5fr; gap: 12px; margin-top: 12px; }
+.subpanel {
+  background: var(--bg-panel2); border: 1px solid var(--border-2);
+  border-radius: var(--radius); padding: 12px 14px;
+}
+.subpanel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.subpanel-title { font-size: 12px; font-weight: 600; color: var(--text); }
+.subpanel-note { font-size: 10px; color: var(--text-3); }
+
+/* ---- 持仓结构全景：堆叠条 + 类目行 ---- */
+
+.stack {
+  display: flex; height: 10px; border-radius: 2px; overflow: hidden;
+  margin: 12px 0 4px;
+}
+.stack i { display: block; height: 100%; }
+
+.legend-line { font-size: 10px; color: var(--text-3); margin: 6px 0 10px; letter-spacing: .02em; }
+.legend-line span { margin-right: 10px; white-space: nowrap; }
+.legend-line i {
+  display: inline-block; width: 7px; height: 7px; border-radius: 2px;
+  margin-right: 4px; vertical-align: -1px;
+}
+
+.cat-row {
+  display: grid; grid-template-columns: 108px 62px 1fr 92px;
+  align-items: center; gap: 10px;
+  padding: 5px 0; border-bottom: 1px solid var(--border-2);
+  font-size: 12px;
+}
+.cat-row:last-child { border-bottom: 0; }
+.cat-row .n { color: var(--text-2); }
+.cat-row .p { font-family: var(--font-num); font-variant-numeric: tabular-nums; color: var(--text); text-align: right; }
+.cat-row .bar { height: 6px; border-radius: 2px; background: var(--bg-panel3); position: relative; }
+.cat-row .bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; }
+.cat-row .v {
+  font-family: var(--font-num); font-variant-numeric: tabular-nums;
+  color: var(--text-2); text-align: right; font-size: 11px;
+}
+.cat-row .v small { color: var(--text-3); margin-left: 2px; }
+
+/* ---- 子组合小表 ---- */
+
+.subpf { margin-top: 14px; border-top: 1px solid var(--border-2); padding-top: 10px; }
+.subpf .cap { font-size: 11px; color: var(--text-3); margin-bottom: 6px; }
+.tbl { width: 100%; border-collapse: collapse; }
+.tbl th {
+  text-align: left; font-size: 10px; font-weight: 500; letter-spacing: .05em;
+  color: var(--text-3); padding: 5px 6px; border-bottom: 1px solid var(--border);
+}
+.tbl td {
+  font-size: 11px; color: var(--text-2); padding: 5px 6px;
+  border-bottom: 1px solid var(--border-2);
+}
+.tbl tr:last-child td { border-bottom: 0; }
+.tbl .num { text-align: right; white-space: nowrap; }
+.tbl th.num { text-align: right; }
+.tbl td.name { color: var(--text); }
+
+/* ---- 关键暴露账本 ---- */
+
+.ledger td .badge-a {
+  font-size: 10px; color: var(--warn);
+  border: 1px solid rgba(201,165,101,.4); border-radius: 3px; padding: 0 5px;
+}
+.ledger td .badge-r {
+  font-size: 10px; color: var(--up);
+  border: 1px solid rgba(102,185,139,.4); border-radius: 3px; padding: 0 5px;
+}
+.ledger td .act { color: var(--accent); font-size: 11px; }
+
+/* ---- 02 结构拆解工作台 ---- */
+
+.dim-stats { display: flex; gap: 10px; margin: 12px 0; }
+.dim-stat {
+  flex: 1; background: var(--bg-panel2); border: 1px solid var(--border-2);
+  border-radius: var(--radius); padding: 8px 12px;
+}
+.dim-stat .k { font-size: 11px; color: var(--text-3); }
+.dim-stat .v {
+  font-family: var(--font-num); font-variant-numeric: tabular-nums;
+  font-size: 18px; font-weight: 600; color: var(--text);
+}
+
+.scale-bar { margin-top: 12px; }
+.scale-bar .cap { font-size: 11px; color: var(--text-3); margin-bottom: 6px; }
+.scale-row { display: grid; grid-template-columns: 92px 1fr 76px; gap: 10px; align-items: center; padding: 3px 0; font-size: 11px; }
+.scale-row .n { color: var(--text-2); }
+.scale-row .bar { height: 6px; border-radius: 2px; background: var(--bg-panel3); position: relative; }
+.scale-row .bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; background: var(--accent); }
+.scale-row .v { font-family: var(--font-num); font-variant-numeric: tabular-nums; color: var(--text-2); text-align: right; }
+
+/* ---- 03 分析读数与归因 ---- */
+
+.cards4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 12px; }
+.mini {
+  background: var(--bg-panel2); border: 1px solid var(--border-2);
+  border-radius: var(--radius); padding: 12px 14px;
+}
+.mini .m-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.mini .m-title { font-size: 12px; font-weight: 600; color: var(--text); }
+.mini .m-state { font-size: 10px; color: var(--text-3); border: 1px solid var(--border-2); border-radius: 3px; padding: 0 5px; }
+.mini .m-state.warn { color: var(--warn); border-color: rgba(201,165,101,.4); }
+.mini .m-state.ok { color: var(--up); border-color: rgba(102,185,139,.4); }
+.mini .m-src { font-size: 10px; color: var(--text-3); margin-bottom: 8px; font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.mini .kv { display: flex; justify-content: space-between; font-size: 11px; padding: 3px 0; border-bottom: 1px solid var(--border-2); }
+.mini .kv:last-child { border-bottom: 0; }
+.mini .kv .k { color: var(--text-3); }
+.mini .kv .v { font-family: var(--font-num); font-variant-numeric: tabular-nums; color: var(--text-2); }
+.mini .kv .v.strong { color: var(--text); }
+.mini .body { font-size: 11px; color: var(--text-2); line-height: 1.7; }
+.mini .body .hl { color: var(--warn); }
+
+/* ---- 数据标注角标 ---- */
+
+.pill.sample-note {
+  color: var(--text-3); border-style: dashed; border-color: var(--border);
+  background: transparent; font-size: 10px;
+}
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ================= 左侧 MOSS 导航 rail ================= -->
+  <aside class="rail">
+    <div class="rail-logo">
+      <div class="m">M</div>
+      <div class="name">MOSS</div>
+    </div>
+
+    <div class="rail-group">
+      <div class="rail-group-label">工作台</div>
+      <div class="rail-item">
+        <svg viewBox="0 0 16 16"><rect x="2" y="2" width="5" height="5"/><rect x="9" y="2" width="5" height="5"/><rect x="2" y="9" width="5" height="5"/><rect x="9" y="9" width="5" height="5"/></svg>
+        <span>经营日报</span><span class="tail">首页</span>
+      </div>
+      <div class="rail-item active">
+        <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><path d="M8 2.5 V8 L12.5 10.5"/></svg>
+        <span>组合工作台</span><span class="tail">首页</span>
+      </div>
+      <div class="rail-item">
+        <svg viewBox="0 0 16 16"><path d="M2 12 L6 7 L9 9.5 L14 3.5"/></svg>
+        <span>市场工作台</span><span class="tail">首页</span>
+      </div>
+      <div class="rail-item">
+        <svg viewBox="0 0 16 16"><path d="M8 2.5 L14 13 L2 13 Z"/></svg>
+        <span>风险工作台</span><span class="tail">首页</span>
+      </div>
+      <div class="rail-item">
+        <svg viewBox="0 0 16 16"><path d="M2.5 13 V7 M6.8 13 V3.5 M11.1 13 V9 M14.5 13 V5.5"/></svg>
+        <span>绩效工作台</span><span class="tail">首页</span>
+      </div>
+      <div class="rail-item">
+        <svg viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10"/><path d="M2 6.5 H14 M6.5 6.5 V13"/></svg>
+        <span>报表与数据</span><span class="tail">首页</span>
+      </div>
+    </div>
+
+    <div class="rail-group">
+      <div class="rail-group-label">对话</div>
+      <div class="rail-item rail-chat">
+        <div class="row">
+          <svg viewBox="0 0 16 16"><path d="M2.5 3 H13.5 V10.5 H8 L4.5 13.5 V10.5 H2.5 Z"/></svg>
+          <span>MOSS Chat</span><span class="badge-ok">可用</span>
+        </div>
+        <div class="sub">直接提问</div>
+      </div>
+    </div>
+
+    <div class="rail-group">
+      <div class="rail-group-label">支持入口</div>
+      <div class="rail-item">
+        <svg viewBox="0 0 16 16"><rect x="3" y="2" width="10" height="12"/><path d="M5.5 5.5 H10.5 M5.5 8 H10.5 M5.5 10.5 H8.5"/></svg>
+        <span>报表中心</span>
+      </div>
+      <div class="rail-item">
+        <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8 V4 M8 12 V14.2 M1.8 8 H4 M12 8 H14.2 M3.6 3.6 L5.2 5.2 M10.8 10.8 L12.4 12.4 M12.4 3.6 L10.8 5.2 M5.2 10.8 L3.6 12.4"/></svg>
+        <span>中台配置</span>
+      </div>
+      <div class="rail-item">
+        <svg viewBox="0 0 16 16"><path d="M3 2.5 H10 L13 5.5 V13.5 H3 Z"/><path d="M10 2.5 V5.5 H13"/></svg>
+        <span>帮助文档</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ================= 主区 ================= -->
+  <main class="main">
+
+    <!-- 页头 -->
+    <header class="page-head">
+      <div>
+        <div class="title-row">
+          <div class="app-icon">M</div>
+          <h1>组合工作台</h1>
+        </div>
+        <div class="sub">规模、久期、结构与损益 — 首页读链路汇总</div>
+      </div>
+      <div class="head-pills">
+        <span class="pill ok">已接入</span>
+        <span class="pill">资产负债日<span class="num">2026-06-30</span></span>
+        <span class="pill">债券总览日<span class="num">2026-06-30</span></span>
+        <span class="pill sample-note">视觉样张 · 数据来自真实 API 快照（采集 2026-07-19）</span>
+      </div>
+    </header>
+
+    <!-- 警示条 -->
+    <section class="alert">
+      <div class="alert-top">
+        <div>
+          <div class="alert-tags">
+            <span class="t1">组合复核</span>
+            <span class="t2">仅供分析</span>
+          </div>
+          <div class="alert-title">仅供分析：来源证据未达到决策级口径</div>
+          <div class="alert-sub">不使用前端补数 / 风险闭合：同日闭合 <span class="num">2026-06-30</span></div>
+        </div>
+        <div class="alert-stats">
+          <div class="cell"><div class="k">证据样本</div><div class="v">1767<small>行</small></div></div>
+          <div class="cell"><div class="k">子组合</div><div class="v">6<small>个</small></div></div>
+        </div>
+      </div>
+      <div class="alert-steps">
+        <div class="step hot">
+          <span class="tag-review">待复核</span>
+          <span class="no">01</span><span class="name">来源证据复核</span>
+          <span class="go"><b>证据</b> →</span>
+        </div>
+        <div class="step">
+          <span class="no">02</span><span class="name">债券总览核对</span>
+          <span class="go"><b>债券总览</b> →</span>
+        </div>
+        <div class="step">
+          <span class="no">03</span><span class="name">收益归因复核</span>
+          <span class="go"><b>收益归因</b> →</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 核心指标 -->
+    <div class="section-head">
+      <div class="t">核心指标</div>
+      <div class="s">债券总览 · 分析/复核口径 · 仅展示读数 · 不形成调仓建议 · 不纳入风险 ticker</div>
+    </div>
+
+    <section class="kpis">
+      <div class="kpi">
+        <div class="label">债券组合市值</div>
+        <div class="value">3,478.36<span class="unit">亿元</span></div>
+        <div class="delta">亿元 · 环比 <span class="up">+3.14%</span></div>
+      </div>
+      <div class="kpi">
+        <div class="label">加权久期</div>
+        <div class="value">4.37<span class="unit">年</span></div>
+        <div class="delta">环比 <span class="down">-1.13%</span></div>
+      </div>
+      <div class="kpi">
+        <div class="label">加权 YTM</div>
+        <div class="value">2.59<span class="unit">%</span></div>
+        <div class="delta">环比 <span class="down">-0.33%</span></div>
+      </div>
+      <div class="kpi">
+        <div class="label">DV01 合计</div>
+        <div class="value">10,694.94<span class="unit">万元</span></div>
+        <div class="delta">万元 · 环比 <span class="up">+0.68%</span></div>
+      </div>
+      <div class="kpi">
+        <div class="label">信用占比</div>
+        <div class="value">30.65<span class="unit">%</span></div>
+        <div class="delta">风险指标</div>
+      </div>
+      <div class="kpi">
+        <div class="label">资产侧市值</div>
+        <div class="value">3,734.29<span class="unit">亿元</span></div>
+        <div class="delta">资产负债口径</div>
+      </div>
+      <div class="kpi">
+        <div class="label">负债侧市值</div>
+        <div class="value">1,815.7<span class="unit">亿元</span></div>
+        <div class="delta">资产负债口径</div>
+      </div>
+      <div class="kpi">
+        <div class="label">信用利差中位数</div>
+        <div class="value">2.33<span class="unit">%</span></div>
+        <div class="delta">环比 <span class="down">-1.44%</span></div>
+      </div>
+      <div class="kpi">
+        <div class="label">未实现损益</div>
+        <div class="value">82.19<span class="unit">亿元</span></div>
+        <div class="delta">亿元 · 环比 <span class="up">+2.48%</span></div>
+      </div>
+      <div class="kpi">
+        <div class="label">持仓只数</div>
+        <div class="value">1,767<span class="unit">只</span></div>
+        <div class="delta">较前日 <span class="up">+57 只</span></div>
+      </div>
+    </section>
+
+    <!-- 组合复盘驾驶舱 Tab 条 -->
+    <section class="cockpit">
+      <span class="title">组合复盘驾驶舱</span>
+      <div class="tabs">
+        <span class="tab active"><span class="key">H</span>持仓结构</span>
+        <span class="tab"><span class="key">G</span>收益/风险</span>
+        <span class="tab"><span class="key">S</span>结构拆解</span>
+        <span class="tab"><span class="key">A</span>明细入口</span>
+      </div>
+      <span class="note">结构、归因、明细按业务动作串联，保留来源状态与复核入口。</span>
+    </section>
+
+    <!-- 01 持仓结构全景 -->
+    <section class="panel">
+      <div class="panel-head">
+        <div class="l">
+          <span class="tag">图表</span>
+          <div>
+            <div class="panel-title"><span class="idx">01</span>持仓结构全景</div>
+            <div class="panel-sub">券种、子组合与关键暴露并排复核。</div>
+          </div>
+        </div>
+        <div class="r">3,478.36 亿</div>
+      </div>
+
+      <div class="split">
+        <!-- 左：券种结构 -->
+        <div class="subpanel">
+          <div class="subpanel-head">
+            <div>
+              <span class="tag">图表</span>
+              <div class="subpanel-title" style="margin-top:5px;">持仓结构全景</div>
+            </div>
+            <div class="r num">3,478.36 亿</div>
+          </div>
+
+          <div class="stack" role="img" aria-label="券种占比堆叠条">
+            <i style="width:19.32%;background:#72a7dc;"></i>
+            <i style="width:16.35%;background:#8593a8;"></i>
+            <i style="width:15.84%;background:#5d84ad;"></i>
+            <i style="width:14.78%;background:#c9a565;"></i>
+            <i style="width:13.95%;background:#a9b6c7;"></i>
+            <i style="width:8.00%;background:#4a6a8f;"></i>
+            <i style="width:6.60%;background:#66809c;"></i>
+            <i style="width:5.16%;background:#3e5875;"></i>
+          </div>
+          <div class="legend-line">
+            <span><i style="background:#72a7dc;"></i>政策性金融债</span>
+            <span><i style="background:#8593a8;"></i>其他</span>
+            <span><i style="background:#5d84ad;"></i>信用债券-企业</span>
+            <span><i style="background:#c9a565;"></i>同业存单</span>
+            <span><i style="background:#a9b6c7;"></i>地方政府债</span>
+            <span><i style="background:#4a6a8f;"></i>资产支持证券</span>
+            <span><i style="background:#66809c;"></i>商业银行债</span>
+            <span><i style="background:#3e5875;"></i>国债</span>
+          </div>
+
+          <div class="cat-row">
+            <span class="n">政策性金融债</span><span class="p">19.32%</span>
+            <span class="bar"><i style="width:100%;background:#72a7dc;"></i></span>
+            <span class="v">672.18<small>亿元</small></span>
+          </div>
+          <div class="cat-row">
+            <span class="n">其他</span><span class="p">16.35%</span>
+            <span class="bar"><i style="width:84.6%;background:#8593a8;"></i></span>
+            <span class="v">568.57<small>亿元</small></span>
+          </div>
+          <div class="cat-row">
+            <span class="n">信用债券-企业</span><span class="p">15.84%</span>
+            <span class="bar"><i style="width:82.0%;background:#5d84ad;"></i></span>
+            <span class="v">551.03<small>亿元</small></span>
+          </div>
+          <div class="cat-row">
+            <span class="n">同业存单</span><span class="p">14.78%</span>
+            <span class="bar"><i style="width:76.5%;background:#c9a565;"></i></span>
+            <span class="v">514.22<small>亿元</small></span>
+          </div>
+          <div class="cat-row">
+            <span class="n">地方政府债</span><span class="p">13.95%</span>
+            <span class="bar"><i style="width:72.2%;background:#a9b6c7;"></i></span>
+            <span class="v">485.20<small>亿元</small></span>
+          </div>
+
+          <div class="subpf">
+            <div class="cap">子组合读数（市值 / 久期 / YTM / DV01 / 持仓）</div>
+            <table class="tbl">
+              <tbody>
+                <tr><td class="name">FIOA</td><td class="num">3,376.44 亿</td><td class="num">4.26 年</td><td class="num">2.59%</td><td class="num">10,021.06 万</td><td class="num">1,665</td></tr>
+                <tr><td class="name">FI19</td><td class="num">91.39 亿</td><td class="num">7.62 年</td><td class="num">2.37%</td><td class="num">665.49 万</td><td class="num">65</td></tr>
+                <tr><td class="name">RIOA</td><td class="num">7.56 亿</td><td class="num">0.40 年</td><td class="num">3.36%</td><td class="num">2.99 万</td><td class="num">4</td></tr>
+                <tr><td class="name">PORT</td><td class="num">2.50 亿</td><td class="num">1.72 年</td><td class="num">2.20%</td><td class="num">4.30 万</td><td class="num">1</td></tr>
+                <tr><td class="name">RI19</td><td class="num">0.47 亿</td><td class="num">0.30 年</td><td class="num">3.08%</td><td class="num">0.14 万</td><td class="num">1</td></tr>
+                <tr><td class="name">未命名组合 6</td><td class="num">0.00 亿</td><td class="num">0.00 年</td><td class="num">0.00%</td><td class="num">0.97 万</td><td class="num">31</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 右：关键暴露账本 -->
+        <div class="subpanel">
+          <div class="subpanel-head">
+            <div>
+              <span class="tag">持仓</span>
+              <div class="subpanel-title" style="margin-top:5px;">关键暴露账本</div>
+            </div>
+            <div class="subpanel-note">评级、期限、品种集中在一个可扫区域。</div>
+          </div>
+          <table class="tbl ledger" style="margin-top:10px;">
+            <thead>
+              <tr><th>维度</th><th>读数</th><th>状态</th><th class="num">动作</th></tr>
+            </thead>
+            <tbody>
+              <tr><td class="name">信用占比</td><td class="num">30.65%</td><td><span class="badge-a">仅分析</span></td><td class="num act">风险复核</td></tr>
+              <tr><td class="name">DV01</td><td class="num">10,694.94 万元</td><td><span class="badge-a">仅分析</span></td><td class="num act">风险复核</td></tr>
+              <tr><td class="name">归因摘要</td><td class="num">利率</td><td><span class="badge-r">可读</span></td><td class="num act">持仓透视</td></tr>
+              <tr><td class="name">数据链路</td><td class="num">已接入 / 2026-06-30</td><td><span class="badge-r">可读</span></td><td class="num act">持仓透视</td></tr>
+              <tr><td class="name">源日期</td><td class="num">4 个来源 / 2026-06-30</td><td><span class="badge-r">可读</span></td><td class="num act">持仓透视</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 02 结构拆解工作台 -->
+    <section class="panel">
+      <div class="panel-head">
+        <div class="l">
+          <span class="tag">图表</span>
+          <div>
+            <div class="panel-title"><span class="idx">02</span>结构拆解工作台</div>
+            <div class="panel-sub">子组合、收益率、利差、业务类型统一按表格核对。</div>
+          </div>
+        </div>
+        <div class="r">4 个结构维度</div>
+      </div>
+
+      <div class="dim-stats">
+        <div class="dim-stat"><div class="k">子组合</div><div class="v">6</div></div>
+        <div class="dim-stat"><div class="k">收益率</div><div class="v">8</div></div>
+        <div class="dim-stat"><div class="k">利差</div><div class="v">8</div></div>
+        <div class="dim-stat"><div class="k">业务类型</div><div class="v">8</div></div>
+      </div>
+
+      <div class="split">
+        <div class="subpanel">
+          <div class="subpanel-head">
+            <div class="subpanel-title">子组合明细</div>
+            <div class="subpanel-note">DV01 / 持仓 / 市值</div>
+          </div>
+          <table class="tbl" style="margin-top:8px;">
+            <thead>
+              <tr><th>子组合</th><th class="num">DV01</th><th class="num">持仓</th><th class="num">市值</th></tr>
+            </thead>
+            <tbody>
+              <tr><td class="name">FIOA</td><td class="num">10,021.06 万</td><td class="num">1,665 只</td><td class="num">3,376.44 亿</td></tr>
+              <tr><td class="name">FI19</td><td class="num">665.49 万</td><td class="num">65 只</td><td class="num">91.39 亿</td></tr>
+              <tr><td class="name">RIOA</td><td class="num">2.99 万</td><td class="num">4 只</td><td class="num">7.56 亿</td></tr>
+              <tr><td class="name">PORT</td><td class="num">4.30 万</td><td class="num">1 只</td><td class="num">2.50 亿</td></tr>
+              <tr><td class="name">RI19</td><td class="num">0.14 万</td><td class="num">1 只</td><td class="num">0.47 亿</td></tr>
+              <tr><td class="name">未命名组合 6</td><td class="num">0.97 万</td><td class="num">31 只</td><td class="num">0.00 亿</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="subpanel">
+          <div class="subpanel-head">
+            <div class="subpanel-title">子组合市值规模</div>
+            <div class="subpanel-note">亿元</div>
+          </div>
+          <div class="scale-bar">
+            <div class="scale-row"><span class="n">FIOA</span><span class="bar"><i style="width:100%;"></i></span><span class="v">3,376.44</span></div>
+            <div class="scale-row"><span class="n">FI19</span><span class="bar"><i style="width:2.7%;"></i></span><span class="v">91.39</span></div>
+            <div class="scale-row"><span class="n">RIOA</span><span class="bar"><i style="width:0.6%;min-width:2px;"></i></span><span class="v">7.56</span></div>
+            <div class="scale-row"><span class="n">PORT</span><span class="bar"><i style="width:0.4%;min-width:2px;"></i></span><span class="v">2.50</span></div>
+            <div class="scale-row"><span class="n">RI19</span><span class="bar"><i style="width:0.3%;min-width:2px;"></i></span><span class="v">0.47</span></div>
+            <div class="scale-row"><span class="n">未命名组合 6</span><span class="bar"><i style="width:0.3%;min-width:2px;"></i></span><span class="v">0.00</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 03 分析读数与归因 -->
+    <section class="panel">
+      <div class="panel-head">
+        <div class="l">
+          <span class="tag">收益</span>
+          <div>
+            <div class="panel-title"><span class="idx">03</span>分析读数与归因</div>
+            <div class="panel-sub">闭合前门、风险读数、收益归因和日期闭合线并排复核。</div>
+          </div>
+        </div>
+        <div class="r">可进入复核</div>
+      </div>
+
+      <div class="cards4">
+        <div class="mini">
+          <div class="m-head"><span class="m-title">闭合状态</span><span class="m-state warn">决策口径未通过</span></div>
+          <div class="body">
+            债券总览为分析口径；债券总览尚未允许正式使用；风险指标 分析口径；风险指标 尚未允许正式使用；<span class="hl">风险指标 质量标记为关注</span>；资产负债 报告日缺失；损益归因 报告日缺失
+          </div>
+          <div class="body" style="margin-top:8px;color:var(--text-3);">风险张量已闭合 · 分析口径已隔离 · 不使用前端补数</div>
+        </div>
+        <div class="mini">
+          <div class="m-head"><span class="m-title">风险读数</span><span class="m-state">分析口径</span></div>
+          <div class="m-src">来源 bond-dashboard · 2026-06-30</div>
+          <div class="kv"><span class="k">组合市值</span><span class="v strong">3,478.36 亿元</span></div>
+          <div class="kv"><span class="k">DV01</span><span class="v">10,694.94 万元</span></div>
+          <div class="kv"><span class="k">加权久期</span><span class="v">4.37 年</span></div>
+          <div class="kv"><span class="k">信用占比</span><span class="v">30.65%</span></div>
+          <div class="kv"><span class="k">凸性(加权)</span><span class="v">26.8008</span></div>
+          <div class="kv"><span class="k">利差 DV01</span><span class="v">2,730.89 万元</span></div>
+          <div class="kv"><span class="k">1年内再投资占比</span><span class="v">36.75%</span></div>
+        </div>
+        <div class="mini">
+          <div class="m-head"><span class="m-title">收益归因</span><span class="m-state ok">已返回</span></div>
+          <div class="m-src">来源 pnl-attribution · 2026-06-30</div>
+          <div class="kv"><span class="k">主驱动</span><span class="v strong">利率 · +65.90%</span></div>
+          <div class="kv"><span class="k">TPL 与市场</span><span class="v">待核验</span></div>
+          <div class="body" style="margin-top:6px;">
+            发现 1　本期损益变动的规模与利率分解见规模/利率页签。<br>
+            发现 2　主驱动归类为 rate（约 66% 相对占比）。<br>
+            发现 3　TPL 与 10Y 国债月度变动的样本相关系数约为 -0.20。
+          </div>
+        </div>
+        <div class="mini">
+          <div class="m-head"><span class="m-title">日期闭合线</span><span class="m-state ok">已返回</span></div>
+          <div class="m-src">来源 balance-analysis · 2026-06-30</div>
+          <div class="kv"><span class="k">TYW · H · AC</span><span class="v strong">2</span></div>
+          <div class="body" style="margin-top:6px;color:var(--text-3);">
+            债券总览 = 2026-06-30<br>风险指标 = 2026-06-30<br>资产负债 = 2026-06-30<br>损益归因 = 2026-06-30<br>风险闭合：同日闭合 2026-06-30
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+</body>
+</html>

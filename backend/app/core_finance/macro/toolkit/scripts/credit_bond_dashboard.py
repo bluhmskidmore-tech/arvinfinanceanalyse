@@ -4,30 +4,41 @@ credit_bond_dashboard.py
 依赖：credit_bond_latest.csv, credit_signal.csv, credit_monitor.csv, risk_alert.csv
 输出：output/bond_macro_report_assets/credit_dashboard_*.png
 """
-import os
+import importlib.util
 import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import warnings
+from pathlib import Path
 
-import paths
+if __package__:
+    from backend.app.core_finance.macro.toolkit import paths
+else:
+    _PKG = Path(__file__).resolve().parent.parent
+    if str(_PKG) not in sys.path:
+        sys.path.insert(0, str(_PKG))
+    import paths
 
 warnings.filterwarnings("ignore")
 
-import matplotlib
 
-matplotlib.use("Agg")
+if importlib.util.find_spec("matplotlib") is None:
+    matplotlib = None
+    gridspec = None
+    mpatches = None
+    plt = None
+else:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.gridspec as gridspec
+    import matplotlib.patches as mpatches
+    import matplotlib.pyplot as plt
+
 from datetime import datetime
 
-import matplotlib.gridspec as gridspec
-import matplotlib.patches as mpatches
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
 # 中文字体
-plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei"]
-plt.rcParams["axes.unicode_minus"] = False
 
 COLORS = {
     "primary":   "#1a4b8c",
@@ -42,6 +53,13 @@ COLORS = {
     "text":      "#e6edf3",
     "text_dim":  "#8b949e",
 }
+
+
+def _set_style() -> None:
+    if plt is None or gridspec is None or mpatches is None:
+        raise RuntimeError("matplotlib is required for credit bond dashboard generation")
+    plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei"]
+    plt.rcParams["axes.unicode_minus"] = False
 
 
 # ── 信用利差图 ────────────────────────────────────────────────────────────────
@@ -226,6 +244,7 @@ def draw_kpi_card_on_ax(ax, title, value, subtitle, color):
 # ── 主函数 ────────────────────────────────────────────────────────────────────
 
 def generate_dashboard():
+    _set_style()
     fig = plt.figure(figsize=(16, 11), facecolor=COLORS["bg_dark"])
     fig.subplots_adjust(0.02, 0.02, 0.98, 0.97, wspace=0.25, hspace=0.35)
 

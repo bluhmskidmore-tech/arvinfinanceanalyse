@@ -1,0 +1,242 @@
+.concentration-monitor-page {
+  /*
+   * ib 与 moss-color 系变量在 ThemedRouteBoundary 上已被算成钢蓝字面值再
+   * 继承（ledger-pnl 2026-08-12 结论），页根按 theme-dh-api 语义映射重声明，
+   * 令其在 Nocturne scope 内重新解析（pnl-by-business-insights 同款桥接，
+   * 全 var 引用零字面量）。
+   */
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-surface: var(--dh-api-blue-soft);
+  --ib-radius: var(--dh-api-radius);
+  --ib-shadow: none;
+  --ib-warn: var(--dh-api-amber);
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
+  --ib-gold: var(--dh-api-gold);
+  --moss-color-danger-50: var(--dh-api-red-soft);
+  --moss-color-neutral-100: var(--dh-api-line-soft);
+  --moss-color-text-primary: var(--dh-api-ink);
+  --moss-color-text-secondary: var(--dh-api-soft);
+  --moss-color-text-muted: var(--dh-api-muted);
+
+  min-height: 100%;
+  padding: 24px;
+  background: var(--ib-paper);
+}
+
+.concentration-monitor-page .moss-page-v2-decision-hero {
+  padding: 14px 16px;
+  border: 1px solid var(--ib-hairline);
+  border-left: 2px solid var(--ib-accent);
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  box-shadow: none;
+}
+
+.concentration-monitor-page .moss-page-v2-decision-hero__question {
+  color: var(--ib-ink);
+  font-weight: 600;
+}
+
+.concentration-monitor-page__hero {
+  margin-bottom: 16px;
+}
+
+.concentration-monitor-page__control-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.concentration-monitor-page__control-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--ib-ink-secondary);
+  font-size: 13px;
+}
+
+.concentration-monitor-page__control-select {
+  min-width: 180px;
+  padding: 10px 12px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  color: var(--ib-ink);
+  font-size: 13px;
+}
+
+.concentration-monitor-page__url-hint {
+  align-self: flex-end;
+  color: var(--ib-ink-muted);
+  font-size: 13px;
+}
+
+.concentration-monitor-page__contract-status {
+  margin: 0 0 16px;
+  padding: 14px;
+  border: 1px solid var(--ib-hairline);
+  border-left: 2px solid var(--ib-warn);
+  border-radius: var(--ib-radius);
+  background: color-mix(in srgb, var(--ib-warn) 8%, var(--ib-surface));
+  color: var(--ib-ink);
+}
+
+.concentration-monitor-page__contract-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.concentration-monitor-page__contract-code {
+  display: block;
+  margin-top: 4px;
+  color: var(--ib-ink-secondary);
+  font-family: var(--moss-font-mono);
+  font-size: 12px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.concentration-monitor-page__contract-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px 16px;
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* 候选指标披露值列含长 token（result_kind / 表名等），任意断行防截断粘连。 */
+.concentration-monitor-page__contract-grid span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.concentration-monitor-page__summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+/* KPI 包装层：口径字段收进 title；卡片填满网格单元保持同排等高。 */
+.concentration-monitor-page__kpi-cell {
+  display: grid;
+  min-width: 0;
+}
+
+.concentration-monitor-page__kpi-cell .kpi-card {
+  height: 100%;
+}
+
+.concentration-monitor-page__block-title {
+  margin: 24px 0 0;
+  color: var(--ib-ink);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.concentration-monitor-page__grid-2x2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 16px;
+}
+
+.concentration-monitor-page__panel-title {
+  margin: 0 0 8px;
+  color: var(--ib-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.concentration-monitor-page__panel-meta {
+  margin: 0 0 8px;
+  color: var(--ib-ink-muted);
+  font-size: 12px;
+}
+
+.concentration-monitor-page__limit-lead {
+  margin: 8px 0 0;
+  color: var(--ib-ink-secondary);
+  font-size: 13px;
+}
+
+.concentration-monitor-page__limit-table-shell {
+  margin-top: 12px;
+}
+
+.concentration-monitor-page__empty-cell {
+  color: var(--ib-ink-muted);
+}
+
+.concentration-monitor-page__tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.concentration-monitor-page__limit-cell[data-tone="breach"] {
+  background: var(--moss-color-danger-50);
+  color: var(--ib-down);
+  font-weight: 600;
+}
+
+.concentration-monitor-page__limit-cell[data-tone="near"] {
+  background: color-mix(in srgb, var(--ib-warn) 8%, var(--ib-surface));
+  color: var(--ib-warn);
+}
+
+.concentration-monitor-page__limit-cell[data-missing="true"] {
+  background: var(--ib-surface-muted);
+  color: var(--ib-ink-secondary);
+  font-weight: 400;
+}
+
+.concentration-monitor-page__limit-status[data-tone="breach"] {
+  color: var(--ib-down);
+}
+
+.concentration-monitor-page__limit-status[data-tone="near"] {
+  color: var(--ib-warn);
+}
+
+.concentration-monitor-page__limit-status[data-missing="true"] {
+  color: var(--ib-ink-secondary);
+}
+
+/* 限额使用率：≥100% 红、>80% 琥珀（与 limitTone 阈值一致）。 */
+.concentration-monitor-page__limit-usage[data-tone="breach"] {
+  color: var(--ib-down);
+  font-weight: 600;
+}
+
+.concentration-monitor-page__limit-usage[data-tone="near"] {
+  color: var(--ib-warn);
+}
+
+.concentration-monitor-page__limit-usage[data-missing="true"] {
+  color: var(--ib-ink-secondary);
+}
+
+.concentration-monitor-page__limit-note {
+  display: block;
+  margin-top: 4px;
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.concentration-monitor-page__evidence-footer {
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ib-hairline);
+  color: var(--ib-ink-muted);
+  font-family: var(--moss-font-mono);
+  font-size: 11px;
+}

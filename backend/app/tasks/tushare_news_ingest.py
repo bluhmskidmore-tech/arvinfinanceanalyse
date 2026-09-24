@@ -4,12 +4,14 @@ import hashlib
 import json
 import logging
 import re
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from html import unescape
 from pathlib import Path
 from typing import Any
 
 import duckdb
+from backend.app.governance.locks import acquire_lock, resolve_duckdb_writer_lock
 from backend.app.repositories.news_warehouse_repo import purge_expired_news_events, upsert_news_event
 from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.tasks.choice_news import ensure_choice_news_event_schema
@@ -37,8 +39,39 @@ URL_KEY_CANDIDATES = (
     "source_url",
     "doc_url",
 )
+PROVIDER_ID_KEY_CANDIDATES = (
+    "id",
+    "news_id",
+    "article_id",
+    "doc_id",
+    "report_id",
+    "ann_id",
+)
 
 CHOICE_NEWS_EVENT_RETENTION_DAYS = 30
+
+
+def _empty_block_stats() -> dict[str, object]:
+    return {"inserted": 0, "skipped_duplicates": 0, "fetched": 0}
+
+
+def _format_block_error(exc: BaseException) -> str:
+    message = " ".join(str(exc).split()) or "no error details"
+    return f"{type(exc).__name__}: {message}"
+
+
+def _run_news_block_transaction(
+    conn: duckdb.DuckDBPyConnection,
+    block: Callable[[], dict[str, object]],
+) -> tuple[dict[str, object], str | None]:
+    conn.execute("begin transaction")
+    try:
+        stats = block()
+        conn.execute("commit")
+        return dict(stats), None
+    except Exception as exc:  # noqa: BLE001 - isolate a failed ingest block
+        conn.execute("rollback")
+        return _empty_block_stats(), _format_block_error(exc)
 
 
 def materialize_tushare_news_to_choice_news(
@@ -56,12 +89,11 @@ def materialize_tushare_news_to_choice_news(
     duckdb_file = Path(duckdb_path)
     duckdb_file.parent.mkdir(parents=True, exist_ok=True)
 
-    empty: dict[str, int] = {"inserted": 0, "skipped_duplicates": 0, "fetched": 0}
-    policy_stats: dict[str, int] = dict(empty)
-    news_stats: dict[str, int] = dict(empty)
-    cctv_stats: dict[str, int] = dict(empty)
-    major_stats: dict[str, int] = dict(empty)
-    research_stats: dict[str, int] = dict(empty)
+    policy_stats: dict[str, object] = _empty_block_stats()
+    news_stats: dict[str, object] = _empty_block_stats()
+    cctv_stats: dict[str, object] = _empty_block_stats()
+    major_stats: dict[str, object] = _empty_block_stats()
+    research_stats: dict[str, object] = _empty_block_stats()
     policy_error: str | None = None
     news_error: str | None = None
     cctv_error: str | None = None
@@ -70,69 +102,79 @@ def materialize_tushare_news_to_choice_news(
 
     purged = 0
     purged_warehouse = 0
-    conn = duckdb.connect(str(duckdb_file), read_only=False)
-    try:
-        with repository_task_write_scope(__name__):
-            ensure_choice_news_event_schema(conn)
-            try:
-                policy_stats = _ingest_policy_block(conn, pro, limit=limit)
-            except Exception as exc:
-                policy_error = str(exc)
-            try:
-                news_stats = _ingest_news_block(
+    with acquire_lock(resolve_duckdb_writer_lock(duckdb_file), base_dir=duckdb_file.parent):
+        conn = duckdb.connect(str(duckdb_file), read_only=False)
+        try:
+            with repository_task_write_scope(__name__):
+                ensure_choice_news_event_schema(conn)
+                policy_stats, policy_error = _run_news_block_transaction(
                     conn,
-                    pro,
-                    src=news_src,
-                    limit=news_limit,
-                    lookback_hours=news_lookback_hours,
+                    lambda: _ingest_policy_block(conn, pro, limit=limit),
                 )
-            except Exception as exc:
-                news_error = str(exc)
-            try:
-                cctv_stats = _ingest_cctv_news_block(conn, pro, lookback_days=cctv_lookback_days)
-            except Exception as exc:
-                cctv_error = str(exc)
-            try:
-                major_stats = _ingest_major_news_block(conn, pro, lookback_hours=major_lookback_hours)
-            except Exception as exc:
-                major_error = str(exc)
-            try:
-                research_stats = _ingest_research_report_block(
-                    conn, pro, lookback_days=research_lookback_days
+                news_stats, news_error = _run_news_block_transaction(
+                    conn,
+                    lambda: _ingest_news_block(
+                        conn,
+                        pro,
+                        src=news_src,
+                        limit=news_limit,
+                        lookback_hours=news_lookback_hours,
+                    ),
                 )
-            except Exception as exc:
-                research_error = str(exc)
-            try:
-                purged = _purge_expired_choice_news_events(conn)
-            except Exception:
-                logger.warning("Failed to purge expired choice_news_event rows", exc_info=True)
-                purged = 0
-            try:
-                purged_warehouse = purge_expired_news_events(conn)
-            except Exception:
-                logger.warning("Failed to purge expired warehouse news events", exc_info=True)
-                purged_warehouse = 0
-    finally:
-        conn.close()
+                cctv_stats, cctv_error = _run_news_block_transaction(
+                    conn,
+                    lambda: _ingest_cctv_news_block(conn, pro, lookback_days=cctv_lookback_days),
+                )
+                major_stats, major_error = _run_news_block_transaction(
+                    conn,
+                    lambda: _ingest_major_news_block(conn, pro, lookback_hours=major_lookback_hours),
+                )
+                research_stats, research_error = _run_news_block_transaction(
+                    conn,
+                    lambda: _ingest_research_report_block(conn, pro, lookback_days=research_lookback_days),
+                )
+                try:
+                    purged = _purge_expired_choice_news_events(conn)
+                except Exception:
+                    logger.warning("Failed to purge expired choice_news_event rows", exc_info=True)
+                    purged = 0
+                try:
+                    purged_warehouse = purge_expired_news_events(conn)
+                except Exception:
+                    logger.warning("Failed to purge expired warehouse news events", exc_info=True)
+                    purged_warehouse = 0
+        finally:
+            conn.close()
 
     blocks = [policy_stats, news_stats, cctv_stats, major_stats, research_stats]
-    total_ins = sum(block["inserted"] for block in blocks)
-    total_skip = sum(block["skipped_duplicates"] for block in blocks)
-    total_fetch = sum(block["fetched"] for block in blocks)
+    total_ins = sum(int(block.get("inserted") or 0) for block in blocks)
+    total_skip = sum(int(block.get("skipped_duplicates") or 0) for block in blocks)
+    total_fetch = sum(int(block.get("fetched") or 0) for block in blocks)
+    block_failures = [
+        error
+        for error in (policy_error, news_error, cctv_error, major_error, research_error)
+        if error is not None
+    ]
+    cctv_day_errors = cctv_stats.get("errors")
+    if isinstance(cctv_day_errors, list) and cctv_day_errors:
+        block_failures.append("cctv day errors")
 
-    def _block_payload(stats: dict[str, int], error: str | None, **extra: object) -> dict[str, object]:
+    def _block_payload(stats: dict[str, object], error: str | None, **extra: object) -> dict[str, object]:
         out: dict[str, object] = {
-            "inserted": stats["inserted"],
-            "skipped_duplicates": stats["skipped_duplicates"],
-            "fetched": stats["fetched"],
+            "inserted": int(stats.get("inserted") or 0),
+            "skipped_duplicates": int(stats.get("skipped_duplicates") or 0),
+            "fetched": int(stats.get("fetched") or 0),
         }
+        for key, value in stats.items():
+            if key not in out:
+                out[key] = value
         out.update(extra)
         if error is not None:
             out["error"] = error
         return out
 
     return {
-        "status": "completed",
+        "status": "partial" if block_failures else "completed",
         "inserted": total_ins,
         "skipped_duplicates": total_skip,
         "fetched": total_fetch,
@@ -160,47 +202,72 @@ def _normalize_received_at(value: object) -> str:
     return parsed.isoformat()
 
 
+def _stable_tushare_event_key(
+    *,
+    record: dict[str, Any],
+    group: str,
+    content: str,
+    prefix: str,
+    time_keys: list[str],
+    title_keys: list[str],
+    provider_id_keys: tuple[str, ...] = PROVIDER_ID_KEY_CANDIDATES,
+    scope: str = "",
+) -> str:
+    provider_id = _first_nonempty(record, list(provider_id_keys))
+    if provider_id:
+        seed = "|".join([group, content, scope, "provider_id", provider_id])
+    else:
+        title = _strip_html(_first_nonempty(record, title_keys))
+        title_hash = hashlib.sha256(title.encode("utf-8")).hexdigest()[:16]
+        seed = "|".join(
+            [
+                group,
+                content,
+                scope,
+                _extract_url(record),
+                _first_nonempty(record, time_keys),
+                title_hash,
+            ]
+        )
+    return prefix + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:20]
+
+
 def _event_key_policy(record: dict[str, Any], item_index: int) -> str:
-    seed = "|".join(
-        [
-            TUSHARE_GROUP_POLICY,
-            CONTENT_POLICY,
-            str(record.get("pubtime", "")),
-            str(record.get("title", "")),
-            str(record.get("pcode", "")),
-            str(item_index),
-        ]
+    _ = item_index
+    return _stable_tushare_event_key(
+        record=record,
+        group=TUSHARE_GROUP_POLICY,
+        content=CONTENT_POLICY,
+        prefix="tpol_",
+        time_keys=["pubtime", "date", "datetime"],
+        title_keys=["title"],
+        provider_id_keys=("pcode", *PROVIDER_ID_KEY_CANDIDATES),
     )
-    return "tpol_" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:20]
 
 
 def _event_key_generic(record: dict[str, Any], item_index: int, group: str, content: str) -> str:
-    seed = "|".join(
-        [
-            group,
-            content,
-            str(record.get("date", "") or record.get("datetime", "") or record.get("pub_date", "")),
-            str(record.get("title", "")),
-            str(record.get("content", ""))[:200],
-            str(item_index),
-        ]
+    _ = item_index
+    return _stable_tushare_event_key(
+        record=record,
+        group=group,
+        content=content,
+        prefix=f"{group[:6]}_",
+        time_keys=["date", "datetime", "pub_date", "pub_time", "trade_date", "report_date"],
+        title_keys=["title", "report_title", "name"],
     )
-    return f"{group[:6]}_" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:20]
 
 
 def _event_key_news(record: dict[str, Any], item_index: int, src: str) -> str:
-    seed = "|".join(
-        [
-            TUSHARE_GROUP_NEWS,
-            CONTENT_NEWS,
-            src,
-            str(record.get("datetime", "")),
-            str(record.get("title", "")),
-            str(record.get("content", ""))[:200],
-            str(item_index),
-        ]
+    _ = item_index
+    return _stable_tushare_event_key(
+        record=record,
+        group=TUSHARE_GROUP_NEWS,
+        content=CONTENT_NEWS,
+        prefix="tnews_",
+        time_keys=["datetime", "date", "pub_date"],
+        title_keys=["title"],
+        scope=src,
     )
-    return "tnews_" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:20]
 
 
 def _first_nonempty(record: dict[str, Any], keys: list[str]) -> str:
@@ -254,7 +321,7 @@ def _ingest_simple_block(
     body_keys: list[str],
     time_keys: list[str],
     warehouse_source_kind: str,
-) -> dict[str, int]:
+) -> dict[str, object]:
     frame = fetcher()
     if frame is None or len(frame) == 0:
         return {"inserted": 0, "skipped_duplicates": 0, "fetched": 0}
@@ -323,7 +390,7 @@ def _ingest_policy_block(
     pro: object,
     *,
     limit: int,
-) -> dict[str, int]:
+) -> dict[str, object]:
     lim = max(1, min(int(limit), 500))
     frame = pro.npr(
         limit=lim,
@@ -396,7 +463,7 @@ def _ingest_news_block(
     src: str,
     limit: int,
     lookback_hours: int = 48,
-) -> dict[str, int]:
+) -> dict[str, object]:
     end = datetime.now()
     start = end - timedelta(hours=max(1, int(lookback_hours)))
     start_date = start.strftime("%Y-%m-%d %H:%M:%S")
@@ -472,8 +539,10 @@ def _ingest_cctv_news_block(
     pro: object,
     *,
     lookback_days: int = 3,
-) -> dict[str, int]:
-    aggregate: dict[str, int] = {"inserted": 0, "skipped_duplicates": 0, "fetched": 0}
+) -> dict[str, object]:
+    aggregate: dict[str, object] = {"inserted": 0, "skipped_duplicates": 0, "fetched": 0}
+    errors: list[dict[str, object]] = []
+    successful_dates: list[str] = []
     today = datetime.now().date()
     for offset in range(max(1, int(lookback_days))):
         target = today - timedelta(days=offset)
@@ -495,11 +564,23 @@ def _ingest_cctv_news_block(
                 time_keys=["date", "datetime"],
                 warehouse_source_kind="cctv",
             )
-        except Exception:
-            logger.debug("CCTV news ingest failed for date %s, skipping", date_str, exc_info=True)
+        except Exception as exc:  # noqa: BLE001 - retain per-day CCTV failures in the result
+            logger.warning("CCTV news ingest failed for date %s, skipping", date_str, exc_info=True)
+            errors.append(
+                {
+                    "date": date_str,
+                    "error_type": type(exc).__name__,
+                    "message": str(exc),
+                }
+            )
             continue
-        for key in aggregate:
-            aggregate[key] += block[key]
+        for key in ("inserted", "skipped_duplicates", "fetched"):
+            aggregate[key] = int(aggregate[key]) + int(block[key])
+        successful_dates.append(date_str)
+    if errors:
+        aggregate["errors"] = errors
+    if successful_dates:
+        aggregate["successful_dates"] = successful_dates
     return aggregate
 
 
@@ -508,7 +589,7 @@ def _ingest_major_news_block(
     pro: object,
     *,
     lookback_hours: int = 48,
-) -> dict[str, int]:
+) -> dict[str, object]:
     end = datetime.now()
     start = end - timedelta(hours=max(1, int(lookback_hours)))
     start_date = start.strftime("%Y-%m-%d %H:%M:%S")
@@ -541,7 +622,7 @@ def _ingest_research_report_block(
     pro: object,
     *,
     lookback_days: int = 3,
-) -> dict[str, int]:
+) -> dict[str, object]:
     end = datetime.now().date()
     start = end - timedelta(days=max(1, int(lookback_days)))
     start_date = start.strftime("%Y%m%d")

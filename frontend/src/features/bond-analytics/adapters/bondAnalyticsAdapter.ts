@@ -1,4 +1,5 @@
 import type { Numeric, ReturnDecompositionPayload } from "../../../api/contracts";
+import { EM_DASH, numericRaw } from "../../../pageModel";
 
 /** Raw scalar for charts / sorting; governed Numeric or legacy string. */
 export function bondNumericRaw(n: Numeric | string | null | undefined): number | null {
@@ -9,28 +10,21 @@ export function bondNumericRaw(n: Numeric | string | null | undefined): number |
     const v = Number.parseFloat(n);
     return Number.isFinite(v) ? v : null;
   }
-  if (n.raw === null || !Number.isFinite(n.raw)) {
-    return null;
-  }
-  return n.raw;
+  return numericRaw(n);
 }
 
 export function bondNumericRawOrNull(n: Numeric | string | null | undefined): number | null {
   return bondNumericRaw(n);
 }
 
-export function finiteNumberOr(value: number | null | undefined, fallback = 0): number {
-  return value !== null && value !== undefined && Number.isFinite(value) ? value : fallback;
-}
-
 export function bondNumericDisplay(n: Numeric | string | null | undefined): string {
   if (n === null || n === undefined) {
-    return "—";
+    return EM_DASH;
   }
   if (typeof n === "string") {
-    return n === "" || n === "undefined" ? "—" : n;
+    return n === "" || n === "undefined" ? EM_DASH : n;
   }
-  return !n.display || n.display === "undefined" ? "—" : n.display;
+  return !n.display || n.display === "undefined" ? EM_DASH : n.display;
 }
 
 /** ECharts / table magnitude from risk tensor string or bond-analytics Numeric. */
@@ -38,19 +32,29 @@ export function bondChartMagnitude(value: Numeric | string): number | null {
   return bondNumericRaw(value);
 }
 
-export function returnDecompositionWaterfallRawSteps(d: ReturnDecompositionPayload): number[] {
-  const carry = finiteNumberOr(bondNumericRaw(d.carry));
-  const rollDown = finiteNumberOr(bondNumericRaw(d.roll_down));
-  const rateEffect = finiteNumberOr(bondNumericRaw(d.rate_effect));
-  const spreadEffect = finiteNumberOr(bondNumericRaw(d.spread_effect));
-  const trading = finiteNumberOr(bondNumericRaw(d.trading));
-  const fxEffect = finiteNumberOr(bondNumericRaw(d.fx_effect));
-  const convexityEffect = finiteNumberOr(bondNumericRaw(d.convexity_effect));
-  const explained = finiteNumberOr(bondNumericRaw(d.explained_pnl));
-  const stepValues = [carry, rollDown, rateEffect, spreadEffect, fxEffect, convexityEffect, trading].map((v) =>
-    finiteNumberOr(v),
-  );
-  return [...stepValues, explained];
+/** 非有限值（NaN/Infinity）与缺失统一收敛为 null：瀑布图按缺口断开，不再补 0 画假柱。 */
+function finiteOrNull(value: number | null): number | null {
+  return value !== null && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * 瀑布图原始步值：缺失/非有限效应保留 `null`（该柱断开、由消费方在区头披露 partial），
+ * 不得补 0 —— 0 在归因语义里是「效应恰好为零」，与「未返回」是两回事。
+ * 末位为合计（解释损益），同样可为 null。
+ */
+export function returnDecompositionWaterfallRawSteps(
+  d: ReturnDecompositionPayload,
+): Array<number | null> {
+  const stepValues = [
+    d.carry,
+    d.roll_down,
+    d.rate_effect,
+    d.spread_effect,
+    d.fx_effect,
+    d.convexity_effect,
+    d.trading,
+  ].map((value) => finiteOrNull(bondNumericRaw(value)));
+  return [...stepValues, finiteOrNull(bondNumericRaw(d.explained_pnl))];
 }
 
 export function returnDecompositionWaterfallDisplayStrings(d: ReturnDecompositionPayload): string[] {

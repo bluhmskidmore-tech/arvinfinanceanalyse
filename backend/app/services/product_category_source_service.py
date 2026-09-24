@@ -8,16 +8,19 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
+from backend.app.core_finance.config.product_category_contract import (
+    PRODUCT_CATEGORY_RULE_VERSION,
+)
 from backend.app.core_finance.product_category_pnl import (
     ZERO,
     CanonicalFactRow,
     derive_monthly_pnl,
 )
-from openpyxl import load_workbook
+from backend.app.services.source_file_hash import sha256_file
 
 LEDGER_PREFIX = "\u603b\u8d26\u5bf9\u8d26"
 AVG_PREFIX = "\u65e5\u5747"
-RULE_VERSION = "rv_product_category_pnl_v1"
+RULE_VERSION = PRODUCT_CATEGORY_RULE_VERSION
 SUPPORTED_CURRENCIES = {"CNX", "CNY"}
 
 
@@ -66,6 +69,13 @@ def discover_source_pairs(source_dir: Path) -> list[SourcePair]:
 
 
 def build_canonical_facts(pair: SourcePair) -> list[CanonicalFactRow]:
+    """合成总账 + 日均工作簿的 canonical 事实行。
+
+    键为各工作簿 (科目, 币种) 的并集；某一侧缺行/缺字段时金额填 0。
+    这是业务确认过的正确会计语义（2026-08-12）：工作簿按月人工核对后才
+    入库、全量列示，缺行即该科目当期无余额，不存在"部分工作簿缺失仍出数"
+    的场景。请勿将填 0 改为可空传播——那属于口径变更，需业务重新确认。
+    """
     ledger_rows = _parse_ledger_workbook(pair.ledger_path)
     annual_rows, monthly_rows = _parse_average_workbook(pair.avg_path)
     keys = set(ledger_rows) | set(annual_rows) | set(monthly_rows)
@@ -90,7 +100,38 @@ def build_canonical_facts(pair: SourcePair) -> list[CanonicalFactRow]:
     return facts
 
 
+def build_ledger_only_facts(pair: SourcePair) -> list[CanonicalFactRow]:
+    """只解析总账工作簿的 facts（跳过日均工作簿，解析成本约为全量的一小部分）。
+
+    供仅使用总账字段（account_code/currency/ending_balance 等）的调用方使用，
+    如经营指标汇总。daily_avg_balance/annual_avg_balance 恒为 0，不得用于
+    任何日均口径计算；需要日均字段时必须走 build_canonical_facts。
+    """
+    ledger_rows = _parse_ledger_workbook(pair.ledger_path)
+
+    facts: list[CanonicalFactRow] = []
+    for account_code, currency in sorted(ledger_rows):
+        ledger_row = ledger_rows[(account_code, currency)]
+        facts.append(
+            CanonicalFactRow(
+                report_date=pair.report_date,
+                account_code=account_code,
+                currency=currency,
+                account_name=str(ledger_row.get("account_name", "")),
+                beginning_balance=Decimal(str(ledger_row.get("beginning_balance", ZERO))),
+                ending_balance=Decimal(str(ledger_row.get("ending_balance", ZERO))),
+                monthly_pnl=Decimal(str(ledger_row.get("monthly_pnl", ZERO))),
+                daily_avg_balance=ZERO,
+                annual_avg_balance=ZERO,
+                days_in_period=monthrange(pair.report_date.year, pair.report_date.month)[1],
+            )
+        )
+    return facts
+
+
 def _parse_ledger_workbook(path: Path) -> dict[tuple[str, str], dict[str, object]]:
+    from openpyxl import load_workbook
+
     workbook = load_workbook(path, read_only=True, data_only=True)
     rows: dict[tuple[str, str], dict[str, object]] = {}
     try:
@@ -139,6 +180,8 @@ def _looks_like_currency(value: object) -> bool:
 
 
 def _parse_average_workbook(path: Path) -> tuple[dict[tuple[str, str], Decimal], dict[tuple[str, str], Decimal]]:
+    from openpyxl import load_workbook
+
     workbook = load_workbook(path, read_only=True, data_only=True)
     annual_rows: dict[tuple[str, str], Decimal] = {}
     monthly_rows: dict[tuple[str, str], Decimal] = {}
@@ -177,7 +220,8 @@ def _build_source_version(ledger_path: Path, avg_path: Path) -> str:
     parts = []
     for path in (ledger_path, avg_path):
         stat = path.stat()
-        parts.append(f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}")
+        content_sha256 = sha256_file(path)[:16]
+        parts.append(f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}:{content_sha256}")
     digest = hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:12]
     return f"sv_product_category_{digest}"
 

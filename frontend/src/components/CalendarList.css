@@ -9,7 +9,7 @@
   grid-template-columns: 88px minmax(0, 1fr) 96px auto minmax(0, 1fr);
   gap: 8px 12px;
   align-items: start;
-  color: #162033;
+  color: var(--ib-ink);
   font-size: 13px;
   line-height: 1.45;
 }
@@ -22,7 +22,7 @@
 
 .calendar-list__amount,
 .calendar-list__detail {
-  color: #5c6b82;
+  color: var(--ib-ink-secondary);
 }
 
 .calendar-list__event-cell {

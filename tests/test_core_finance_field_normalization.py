@@ -6,6 +6,7 @@ from backend.app.core_finance.field_normalization import (
     derive_accounting_basis_value,
     is_approved_status,
     normalize_currency_basis_value,
+    original_asset_currency_from_instrument_code,
     resolve_pnl_source_currency,
 )
 
@@ -47,3 +48,14 @@ def test_resolve_pnl_source_currency_marks_usd_for_fx_conversion() -> None:
     assert resolve_pnl_source_currency("USD") == ("CNY", "USD")
     assert resolve_pnl_source_currency("人民币") == ("CNY", None)
     assert resolve_pnl_source_currency("综本") == ("CNX", None)
+
+
+@pytest.mark.parametrize(
+    ("instrument_code", "expected_currency"),
+    [("J1001", "USD"), ("j1-lower", "USD"), ("JM001", "CNY"), ("J4001", "CNY"), ("P001", "CNY")],
+)
+def test_original_asset_currency_uses_confirmed_j1_rule(
+    instrument_code: str,
+    expected_currency: str,
+) -> None:
+    assert original_asset_currency_from_instrument_code(instrument_code) == expected_currency

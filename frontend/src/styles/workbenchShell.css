@@ -1,0 +1,1536 @@
+.moss-light-icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+  vertical-align: -0.125em;
+}
+
+.workbench-skip-link {
+  position: fixed;
+  top: 12px;
+  left: 16px;
+  z-index: 10000;
+  transform: translateY(-160%);
+  opacity: 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--moss-institutional-border-strong);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-institutional-surface-raised);
+  color: var(--moss-institutional-text);
+  box-shadow: var(--moss-shadow-popover);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  transition:
+    opacity var(--moss-motion-duration-fast) var(--moss-motion-ease-out),
+    transform var(--moss-motion-duration-fast) var(--moss-motion-ease-out);
+}
+
+.workbench-skip-link:focus,
+.workbench-skip-link:focus-visible {
+  transform: translateY(0);
+  opacity: 1;
+  outline: 2px solid var(--moss-institutional-focus-ring);
+  outline-offset: 3px;
+}
+
+#workbench-main-content:focus {
+  outline: 2px solid var(--moss-institutional-focus-ring);
+  outline-offset: 4px;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+  overflow-x: clip;
+}
+
+body {
+  background: var(--moss-institutional-bg);
+}
+
+.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) {
+  color: var(--dh-api-ink);
+  background:
+    radial-gradient(circle at 18% 0%, rgba(114, 167, 220, 0.06), transparent 26%),
+    radial-gradient(circle at 90% 12%, rgba(201, 165, 101, 0.04), transparent 28%),
+    var(--dh-api-bg) !important;
+}
+
+.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) .workbench-shell-aside,
+.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) .workbench-shell-rail {
+  background:
+    linear-gradient(180deg, rgba(17, 27, 42, 0.98), rgba(8, 13, 22, 0.98)),
+    var(--dh-api-rail) !important;
+  border-color: var(--dh-api-line-soft) !important;
+}
+
+.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) .workbench-main-column > main,
+.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) .workbench-main-surface {
+  border-color: var(--dh-api-line) !important;
+  background:
+    var(--moss-shell-paper-shade),
+    var(--moss-shell-paper-bg) !important;
+  box-shadow: none !important;
+}
+
+.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) .moss-page-v2-surface,
+.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) .moss-page-v2-evidence-panel,
+.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) .moss-page-v2-decision-hero__conclusion {
+  border-color: var(--dh-api-line) !important;
+  background:
+    linear-gradient(180deg, rgba(16, 26, 42, 0.98) 0%, rgba(12, 20, 33, 0.98) 100%) !important;
+  box-shadow: none !important;
+}
+
+.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) .moss-page-v2-decision-hero__conclusion {
+  border-left-color: rgba(114, 167, 220, 0.72) !important;
+}
+
+.moss-data-mode-ribbon {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  pointer-events: none;
+  color: var(--moss-color-warning-900);
+  background: linear-gradient(90deg, var(--moss-color-warning-50), var(--moss-color-warning-200));
+  border-bottom: 1px solid var(--moss-color-warning-200);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.moss-data-mode-ribbon--cockpit {
+  top: 12px;
+  right: 18px;
+  left: auto;
+  width: fit-content;
+  max-width: min(420px, calc(100vw - 36px));
+  height: 26px;
+  justify-content: flex-start;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--moss-color-warning-600) 24%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--moss-color-warning-50) 92%, transparent);
+  box-shadow: none;
+  color: var(--moss-color-warning-900);
+  font-size: 11px;
+  letter-spacing: 0;
+  backdrop-filter: blur(8px);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.app-root {
+  min-height: 100vh;
+  overflow-x: clip;
+}
+
+.workbench-shell-grid {
+  display: grid;
+  grid-template-columns: 216px minmax(0, 1fr);
+  gap: var(--moss-shell-gap);
+  align-items: start;
+}
+
+.workbench-shell-aside {
+  position: sticky;
+  top: 16px;
+}
+
+.workbench-main-column {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--moss-shell-gap);
+  min-width: 0;
+}
+
+.workbench-main-column > * {
+  min-width: 0;
+}
+
+.workbench-main-column > main {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.workbench-main-column > main > * {
+  min-width: 0;
+}
+
+.workbench-shell-section-label {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--moss-color-text-muted);
+  font-weight: 700;
+}
+
+.workbench-shell-section-label--rail {
+  color: var(--ib-rail-section-label);
+  font-size: var(--ib-kicker-font-size);
+  letter-spacing: var(--ib-kicker-letter-spacing);
+}
+
+.workbench-shell-nav-section {
+  display: grid;
+  gap: 6px;
+}
+
+.workbench-shell-agent-nav {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.workbench-shell-agent-nav__link {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  color: var(--moss-shell-rail-text);
+}
+
+.workbench-shell-agent-nav__link[data-active="true"] {
+  background: var(--moss-shell-rail-active-bg);
+  color: var(--moss-shell-rail-text-on-active, var(--ib-rail-text-active));
+  box-shadow: var(--moss-shadow-institutional-active);
+}
+
+.workbench-shell-agent-nav__main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workbench-shell-agent-nav__icon {
+  font-size: 12px;
+}
+
+.workbench-shell-agent-nav__label {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.workbench-shell-agent-nav__badge {
+  border-radius: 2px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--moss-institutional-border);
+  background: transparent;
+}
+
+:is(
+  .workbench-shell-agent-nav__badge,
+  .workbench-shell-secondary-badge,
+  .portfolio-workbench-flow__badge,
+  .workbench-shell-status-meta__badge,
+  .portfolio-workbench-board__section-badge
+)[data-readiness-tone="live"] {
+  border: 1px solid var(--moss-institutional-border);
+  background: transparent;
+  color: var(--moss-color-success-600);
+}
+
+:is(
+  .workbench-shell-agent-nav__badge,
+  .workbench-shell-secondary-badge,
+  .portfolio-workbench-flow__badge,
+  .workbench-shell-status-meta__badge,
+  .portfolio-workbench-board__section-badge
+)[data-readiness-tone="placeholder"] {
+  border: 1px solid var(--moss-institutional-border);
+  background: transparent;
+  color: var(--moss-color-neutral-700);
+}
+
+:is(
+  .workbench-shell-agent-nav__badge,
+  .workbench-shell-secondary-badge,
+  .portfolio-workbench-flow__badge,
+  .workbench-shell-status-meta__badge,
+  .portfolio-workbench-board__section-badge
+)[data-readiness-tone="gated"],
+:is(
+  .workbench-shell-agent-nav__badge,
+  .workbench-shell-secondary-badge,
+  .portfolio-workbench-flow__badge,
+  .workbench-shell-status-meta__badge,
+  .portfolio-workbench-board__section-badge
+)[data-readiness-tone="warning"] {
+  border: 1px solid var(--moss-institutional-border);
+  background: transparent;
+  color: var(--moss-color-warning-600);
+}
+
+.workbench-shell-agent-nav__hint {
+  color: var(--moss-shell-rail-text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+/* WorkbenchShell shell layout: shared surface/layout only, no business semantics. */
+.workbench-shell-root {
+  min-height: 100vh;
+  padding: 14px clamp(14px, 1.6vw, 24px);
+  background: var(--moss-institutional-bg);
+}
+
+.workbench-shell-rail {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 2px;
+  border: 1px solid var(--moss-shell-rail-border);
+  box-shadow: none;
+  background: var(--moss-shell-rail-bg);
+}
+
+.workbench-shell-rail.workbench-shell-rail--minimal {
+  padding: 12px;
+}
+
+.workbench-shell-rail-brand-wrap {
+  display: grid;
+  gap: 6px;
+  padding: 4px 2px 12px;
+  border-bottom: 1px solid var(--moss-shell-rail-border);
+}
+
+.workbench-shell-rail-brand-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.workbench-shell-rail-mark {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 2px;
+  border: 1px solid var(--moss-shell-rail-border);
+  background: transparent;
+  color: var(--moss-shell-rail-text);
+  font-weight: 700;
+}
+
+.workbench-shell-rail-title-stack {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+}
+
+.workbench-shell-rail-product-name {
+  color: var(--ib-rail-text-active);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0.12em;
+}
+
+.workbench-shell-rail-section {
+  display: grid;
+  padding-top: 8px;
+  border-top: 1px solid var(--moss-shell-rail-border);
+  gap: 4px;
+}
+
+.workbench-shell-rail-section--gap-6 {
+  gap: 6px;
+}
+
+.workbench-shell-rail .workbench-agent-dialog-trigger {
+  border-color: var(--moss-shell-rail-border);
+  border-radius: 2px;
+  color: var(--ib-rail-text-active);
+}
+
+.workbench-group-nav-shell {
+  display: grid;
+  gap: 4px;
+}
+
+.workbench-shell-group-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--moss-shell-rail-text);
+  transition: color 160ms ease;
+}
+
+.workbench-shell-group-link:hover {
+  color: var(--ib-rail-text-active);
+}
+
+.workbench-shell-group-link[data-active="true"] {
+  background: var(--moss-shell-rail-active-bg);
+  color: var(--ib-rail-text-active);
+  box-shadow: var(--moss-shadow-institutional-active);
+}
+
+.workbench-shell-group-icon {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  color: var(--moss-shell-rail-text);
+  font-size: 11px;
+}
+
+.workbench-group-nav-shell a[data-active="true"] .workbench-shell-group-icon {
+  border: none;
+  background: transparent;
+  color: var(--ib-rail-text-active);
+}
+
+.workbench-shell-group-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.workbench-group-nav-shell a[data-active="true"] .workbench-shell-group-label {
+  font-weight: 700;
+}
+
+.workbench-shell-group-count {
+  color: var(--ib-rail-section-label);
+  font-family: var(--moss-font-sans);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: normal;
+  letter-spacing: 0;
+  background: transparent;
+}
+
+.workbench-group-nav-shell a[data-active="true"] .workbench-shell-group-count {
+  color: var(--ib-rail-section-label);
+}
+
+.workbench-shell-secondary-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workbench-shell-secondary-icon {
+  font-size: 12px;
+}
+
+.workbench-shell-secondary-label {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.workbench-shell-support-icon {
+  font-size: 11px;
+}
+
+.workbench-shell-support-label {
+  flex: 1;
+}
+
+.workbench-shell-secondary-link {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--moss-shell-rail-text);
+}
+
+.workbench-shell-secondary-link:hover {
+  color: var(--ib-rail-text-active);
+}
+
+.workbench-shell-secondary-link[data-active="true"] {
+  background: var(--moss-shell-rail-active-bg);
+  color: var(--ib-rail-text-active);
+  box-shadow: var(--moss-shadow-institutional-active);
+}
+
+.workbench-shell-secondary-badge {
+  border-radius: 2px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--moss-institutional-border);
+  background: transparent;
+}
+
+.workbench-shell-support-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--moss-shell-rail-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  transition: color 160ms ease;
+}
+
+.workbench-shell-support-link:hover {
+  color: var(--ib-rail-text-active);
+}
+
+.workbench-shell-support-link[data-active="true"] {
+  background: var(--moss-shell-rail-active-bg);
+  color: var(--ib-rail-text-active);
+  box-shadow: var(--moss-shadow-institutional-active);
+}
+
+/* 本块 grid-template-columns/gap/padding 与文件末尾统一层（≥1181px）同值冗余，
+   但本块在 ≤1180 仍生效（塌缩规则在 dashboardCockpit.css，加载顺序不保证），保留不删；
+   壳层几何改动请去文件末尾的统一层。 */
+.workbench-shell-grid--desktop-aligned {
+  grid-template-columns: 216px minmax(0, 1fr);
+  gap: 0;
+  align-items: stretch;
+  min-height: 100vh !important;
+  padding: 0 !important;
+  background: var(--moss-institutional-bg) !important;
+}
+
+.workbench-shell-grid--desktop-aligned,
+.workbench-shell-grid--desktop-aligned * {
+  letter-spacing: 0 !important;
+}
+
+.workbench-shell-grid--desktop-aligned .workbench-shell-aside {
+  position: sticky !important;
+  top: 0 !important;
+  height: 100vh !important;
+  min-height: 100vh !important;
+  gap: var(--moss-space-4) !important;
+  overflow-y: auto;
+  padding: 26px var(--moss-space-4) var(--moss-space-5) !important;
+  border: 0 !important;
+  border-right: 1px solid var(--moss-shell-rail-border) !important;
+  border-radius: 0 !important;
+  background: var(--moss-shell-rail-bg) !important;
+  box-shadow: none !important;
+}
+
+.moss-data-mode-ribbon + .workbench-shell-grid--desktop-aligned {
+  min-height: calc(100vh - 28px) !important;
+  padding-top: 28px !important;
+}
+
+.moss-data-mode-ribbon + .workbench-shell-grid--desktop-aligned .workbench-shell-aside {
+  top: 28px !important;
+  height: calc(100vh - 28px) !important;
+  min-height: calc(100vh - 28px) !important;
+}
+
+.workbench-shell-grid--desktop-aligned .workbench-main-column {
+  gap: var(--moss-space-2);
+  align-self: stretch;
+  padding: 14px var(--moss-space-5) var(--moss-space-6);
+}
+
+.workbench-shell-grid--desktop-aligned .workbench-main-column > main {
+  gap: 14px !important;
+  padding: 16px var(--moss-space-5) var(--moss-space-5) !important;
+  border-color: var(--moss-color-border-default) !important;
+  border-radius: var(--moss-radius-sm) !important;
+  background: var(--moss-shell-paper-bg) !important;
+  box-shadow: var(--moss-shadow-card) !important;
+}
+
+.workbench-shell-grid--desktop-aligned.moss-page-v2-shell {
+  gap: var(--moss-space-2);
+}
+
+.workbench-shell-grid--desktop-aligned .moss-page-v2-decision-hero {
+  gap: var(--moss-space-2);
+  margin-bottom: 0;
+  padding: 12px 14px;
+}
+
+.workbench-shell-grid--desktop-aligned .moss-page-v2-decision-hero__title {
+  font-size: 21px;
+}
+
+.workbench-shell-grid--desktop-aligned .moss-page-v2-decision-hero__question {
+  max-width: 80ch;
+}
+
+.workbench-main-surface {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  padding: 20px;
+  border-radius: 24px;
+  border: 1px solid var(--moss-color-border-default);
+  box-shadow: var(--moss-shadow-panel);
+  background:
+    var(--moss-shell-paper-shade),
+    var(--moss-shell-paper-bg);
+}
+
+.workbench-main-surface.workbench-main-surface--minimal {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.workbench-agent-dialog-trigger {
+  display: grid;
+  width: 100%;
+  height: auto;
+  text-align: left;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--moss-color-text-secondary);
+  border: 1px solid transparent;
+}
+
+.workbench-agent-dialog-trigger__main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.workbench-agent-dialog-trigger__hint {
+  color: var(--moss-color-text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.moss-page-v2-shell {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+
+.moss-page-v2-surface {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(115, 132, 153, 0.28);
+  border-radius: var(--moss-radius-sm);
+  background: linear-gradient(180deg, white 0%, var(--moss-color-neutral-50) 100%);
+  box-shadow: 0 1px 5px rgba(15, 45, 80, 0.035);
+}
+
+/* Opt-in layout contract primitives (RALPLAN Phase 1); unmigrated pages do not use these classes. */
+.moss-page-v2-decision-hero {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 10px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--ib-hairline);
+  border-top: 2px solid var(--ib-accent);
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  box-shadow: none;
+}
+
+.moss-page-v2-decision-hero__top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.moss-page-v2-decision-hero__titles {
+  display: grid;
+  gap: 6px;
+  max-width: none;
+  min-width: 0;
+}
+
+.moss-page-v2-decision-hero__eyebrow {
+  color: var(--ib-ink-muted);
+  font-size: var(--ib-kicker-font-size);
+  font-weight: 600;
+  letter-spacing: var(--ib-kicker-letter-spacing);
+  text-transform: none;
+}
+
+.moss-page-v2-decision-hero__title {
+  margin: 0;
+  color: var(--ib-ink);
+  font-family: var(--ib-serif);
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.12;
+}
+
+.moss-page-v2-decision-hero__question {
+  margin: 0;
+  max-width: 86ch;
+  color: var(--moss-color-neutral-700);
+  font-size: 13px;
+  font-weight: 560;
+  line-height: 1.5;
+}
+
+.moss-page-v2-decision-hero__report,
+.moss-page-v2-decision-hero__conclusion {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--moss-color-text-secondary);
+}
+
+.moss-page-v2-decision-hero__conclusion {
+  max-width: 94ch;
+  padding: 8px 10px;
+  border: 1px solid rgba(115, 132, 153, 0.2);
+  border-left: 3px solid rgba(var(--moss-color-primary-rgb), 0.52);
+  border-radius: var(--moss-radius-sm);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: none;
+  color: var(--moss-color-text-primary);
+}
+
+.moss-page-v2-decision-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.moss-page-v2-data-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  box-shadow: none;
+}
+
+.moss-page-v2-data-status > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ib-ink-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.moss-page-v2-data-status > span::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ib-ink-muted);
+  content: "";
+  flex-shrink: 0;
+}
+
+.moss-page-v2-kpi-band {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.moss-page-v2-kpi-metric {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  min-height: 58px;
+  padding: 8px 10px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  box-shadow: none;
+}
+
+.moss-page-v2-kpi-metric__label {
+  font-size: var(--ib-kicker-font-size);
+  font-weight: 600;
+  letter-spacing: var(--ib-kicker-letter-spacing);
+  text-transform: none;
+  color: var(--ib-ink-muted);
+}
+
+.moss-page-v2-kpi-metric__value {
+  font-family: var(--moss-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ib-ink);
+  line-height: 1.15;
+}
+
+.moss-page-v2-kpi-metric__footer {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--moss-color-text-secondary);
+}
+
+.moss-page-v2-analysis-grid {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.moss-page-v2-analysis-grid--cols-1 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.moss-page-v2-analysis-grid--cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.moss-page-v2-analysis-grid--cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 1279px) {
+  .moss-page-v2-analysis-grid--cols-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 991px) {
+  .moss-page-v2-analysis-grid--cols-2,
+  .moss-page-v2-analysis-grid--cols-3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.moss-page-v2-evidence-panel {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(115, 132, 153, 0.22);
+  border-radius: var(--moss-radius-sm);
+  background: linear-gradient(180deg, white 0%, var(--moss-color-neutral-50) 100%);
+  box-shadow: none;
+}
+
+.dashboard-executive-hero {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(24, 32, 48, 0.08);
+  box-shadow:
+    0 24px 60px rgba(17, 24, 39, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.dashboard-executive-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(105deg, rgba(120, 36, 48, 0.035), transparent 26%),
+    linear-gradient(180deg, rgba(36, 64, 101, 0.04), transparent 62%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), transparent 50%);
+}
+
+.dashboard-executive-hero > * {
+  position: relative;
+}
+
+.moss-page-v2-evidence-panel__heading {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  font-weight: 750;
+  color: var(--moss-color-text-primary);
+}
+
+.moss-page-v2-state-surface {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  border-left-width: 2px;
+}
+
+.moss-page-v2-state-surface[data-state-variant="neutral"] {
+  border-left-color: var(--ib-ink-muted);
+}
+
+.moss-page-v2-state-surface[data-state-variant="loading"] {
+  border-left-color: var(--ib-accent);
+}
+
+.moss-page-v2-state-surface[data-state-variant="empty"] {
+  border-left-color: var(--ib-ink-muted);
+}
+
+.moss-page-v2-state-surface[data-state-variant="error"] {
+  border-left-color: var(--ib-down);
+}
+
+.moss-page-v2-state-surface[data-state-variant="stale"],
+.moss-page-v2-state-surface[data-state-variant="fallback-date"] {
+  border-left-color: var(--ib-warn);
+}
+
+.moss-page-v2-state-surface[data-state-variant="mock"] {
+  border-left-color: var(--ib-accent);
+}
+
+.moss-page-v2-state-surface[data-state-variant="definition-pending"] {
+  border-left-color: var(--ib-gold);
+}
+
+.moss-page-v2-state-surface__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 750;
+  color: var(--moss-color-text-primary);
+}
+
+.moss-page-v2-state-surface__description {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--moss-color-text-secondary);
+}
+
+@media (max-width: 720px) {
+  .moss-page-v2-decision-hero {
+    padding: 12px;
+  }
+
+  .moss-page-v2-decision-hero__top {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .moss-page-v2-decision-hero__actions {
+    justify-content: flex-start;
+  }
+
+  .moss-page-v2-decision-hero__title {
+    font-size: 21px;
+  }
+}
+
+/*
+ * Dark terminal (Decision Desk) shell variant — DESIGN.md §2.2.
+ * Activates when the routed page root carries the global `theme-dh-api`
+ * class (see src/styles/tokens.css). This is the single owner of the dark
+ * cockpit shell reflow; pages must NOT re-declare per-page :global shell
+ * overrides. Values mirror the --dh-api-* palette in rgba form because the
+ * shell wrapper sits above the page root that declares those variables.
+ * !important is needed to win over dashboardCockpit.css shell declarations.
+ */
+.workbench-shell-grid--cockpit:has(.theme-dh-api) {
+  background:
+    radial-gradient(circle at 18% 0%, rgba(114, 167, 220, 0.06), transparent 26%),
+    radial-gradient(circle at 90% 12%, rgba(201, 165, 101, 0.04), transparent 28%),
+    var(--dh-api-bg) !important;
+}
+
+.workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-main-surface {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-rail {
+  background:
+    linear-gradient(180deg, rgba(17, 27, 42, 0.98), rgba(8, 13, 22, 0.98)),
+    var(--dh-api-rail) !important;
+  border-right: 1px solid rgba(126, 157, 194, 0.18) !important;
+  box-shadow: none !important;
+}
+
+.workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-rail-brand-wrap {
+  border-bottom: 1px solid rgba(126, 157, 194, 0.14);
+  margin-bottom: 12px;
+  padding-bottom: 16px;
+}
+
+.workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-rail-mark {
+  background:
+    linear-gradient(145deg, rgba(232, 238, 247, 0.08), rgba(7, 12, 20, 0.9)),
+    var(--dh-api-panel-2) !important;
+  border: 1px solid rgba(126, 157, 194, 0.24) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(232, 238, 247, 0.08),
+    0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-group-link,
+.workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-agent-nav__link,
+.workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-support-link {
+  border: 1px solid transparent !important;
+  border-radius: var(--dh-api-radius, 6px) !important;
+  position: relative;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-group-link:hover,
+.workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-agent-nav__link:hover,
+.workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-support-link:hover {
+  background: rgba(114, 167, 220, 0.08) !important;
+  border-color: rgba(114, 167, 220, 0.2) !important;
+}
+
+.workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-group-link[data-active="true"] {
+  background:
+    linear-gradient(90deg, rgba(201, 165, 101, 0.16), rgba(114, 167, 220, 0.08)),
+    rgba(16, 26, 42, 0.88) !important;
+  border-color: rgba(201, 165, 101, 0.28) !important;
+  box-shadow: inset 3px 0 0 rgba(201, 165, 101, 0.84) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-group-link,
+  .workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-agent-nav__link,
+  .workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-support-link {
+    transition: none;
+  }
+}
+
+/* Balance movement keeps its page-owned chrome while sharing the Portfolio Workbench rail. */
+.workbench-shell-grid--balance-movement {
+  --balance-movement-font-ui:
+    "Noto Sans SC",
+    "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    "PingFang SC",
+    "Segoe UI",
+    sans-serif;
+  --moss-font-sans: var(--balance-movement-font-ui);
+  gap: 0 !important;
+  align-items: stretch;
+  min-height: 100vh;
+  padding: 0 !important;
+  background: var(--dh-api-bg) !important;
+  font-family: var(--balance-movement-font-ui);
+}
+
+.workbench-shell-grid--balance-movement .workbench-shell-aside {
+  position: sticky !important;
+  top: 0 !important;
+  height: 100vh;
+  min-height: 100vh;
+  overflow-y: auto;
+  gap: 18px !important;
+  padding: 16px !important;
+  border: 0 !important;
+  border-right: 1px solid var(--dh-api-line-soft) !important;
+  border-radius: 0 !important;
+  background: var(--dh-api-rail) !important;
+  box-shadow: none !important;
+}
+
+.workbench-shell-grid--balance-movement .workbench-main-column {
+  align-self: stretch;
+  gap: 0;
+  padding: 0;
+}
+
+.workbench-shell-grid--balance-movement .workbench-main-surface,
+.workbench-shell-grid--balance-movement .workbench-main-surface.workbench-main-surface--minimal {
+  min-height: 100vh;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.workbench-shell-grid--balance-movement .workbench-shell-rail-brand-wrap {
+  height: 56px;
+  margin: 0;
+  padding: 0 0 16px;
+}
+
+.workbench-shell-grid--balance-movement .workbench-shell-rail-mark {
+  border-radius: 6px;
+}
+
+.workbench-shell-grid--balance-movement .workbench-shell-nav-section {
+  gap: 6px;
+}
+
+.workbench-shell-grid--balance-movement .workbench-shell-group-link {
+  width: 176px;
+  height: 40px;
+  padding: 0 10px;
+}
+
+.workbench-shell-grid--balance-movement .workbench-shell-agent-nav__link {
+  width: 176px;
+  height: 56px;
+}
+
+.workbench-shell-grid--balance-movement .workbench-shell-support-link {
+  width: 176px;
+  min-height: 36px;
+}
+
+/* Dashboard cockpit styles are loaded after this file in some entry points;
+ * the compound route selector keeps the Figma shell authoritative. */
+.workbench-shell-grid.workbench-shell-grid--cockpit.workbench-shell-grid--balance-movement {
+  gap: 0 !important;
+  padding: 0 !important;
+}
+
+.workbench-shell-grid.workbench-shell-grid--cockpit.workbench-shell-grid--balance-movement
+  > .workbench-shell-aside {
+  top: 0 !important;
+  height: 100vh !important;
+  gap: 18px !important;
+  padding: 16px !important;
+  border-radius: 0 !important;
+  background: var(--dh-api-rail) !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  overflow-x: hidden !important;
+}
+
+.workbench-shell-grid.workbench-shell-grid--cockpit.workbench-shell-grid--balance-movement
+  > .workbench-main-column {
+  gap: 0 !important;
+  padding: 0 !important;
+}
+
+.workbench-shell-grid.workbench-shell-grid--cockpit.workbench-shell-grid--balance-movement
+  .workbench-main-surface.workbench-main-surface--minimal {
+  gap: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+
+@media (max-width: 1180px) {
+  .workbench-shell-grid.workbench-shell-grid--cockpit.workbench-shell-grid--balance-movement {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .workbench-shell-grid.workbench-shell-grid--cockpit.workbench-shell-grid--balance-movement
+    > .workbench-main-column {
+    grid-column: 1;
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* 全外壳窄屏收口：单列塌缩后侧栏不得再保持 sticky/100vh 盖住首屏。
+     上方 --desktop-aligned 与 --balance-movement 变体的 sticky/100vh !important
+     声明没有断点限制，会压过 dashboardCockpit.css 的塌缩规则（加载顺序也不保证），
+     故在此以更高特异性同文件后置压制：侧栏折叠为可滚动静态块，主列提层并
+     继承外壳不透明底，保证首屏能看到业务内容且主导航可达。
+     cockpit / institutional-console 变体在本断点由各自分册整块隐藏侧栏，不受影响。 */
+  .workbench-shell-root.workbench-shell-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .workbench-shell-root.workbench-shell-grid > .workbench-shell-aside.workbench-shell-rail {
+    position: static !important;
+    top: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: min(44vh, 420px);
+    overflow-y: auto;
+  }
+
+  .workbench-shell-root.workbench-shell-grid > .workbench-main-column {
+    position: relative;
+    z-index: 1;
+    min-width: 0;
+    background: inherit;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   全系统侧边栏统一（桌面 ≥1181px）：216px、贴窗口边、通栏侧栏、主列无缝。
+   此前 20 条路由存在 5 种侧栏宽度（129/188/208/216/224）与两种落位，
+   本层是宽度与落位的唯一权威；各壳层变体只保留配色与内饰，
+   变体内残留的列宽/外边距声明一律被本层压制，新页面不要再写私有宽度。
+   窄屏（≤1180 / ≤720）的单列塌缩行为保持原样，本层不介入。
+   ══════════════════════════════════════════════════════════════ */
+@media (min-width: 1181px) {
+  .workbench-shell-root.workbench-shell-grid {
+    grid-template-columns: 216px minmax(0, 1fr) !important;
+    column-gap: 0 !important;
+    align-items: stretch !important;
+    padding: 0 !important;
+  }
+
+  .workbench-shell-root.workbench-shell-grid > .workbench-shell-aside {
+    position: sticky !important;
+    top: 0 !important;
+    width: auto !important;
+    height: 100vh !important;
+    min-height: 100vh !important;
+    overflow-y: auto;
+    grid-template-columns: minmax(0, 1fr) !important;
+    border: 0 !important;
+    border-right: 1px solid var(--moss-shell-rail-border) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  /* 顶部数据模式横幅是 fixed 定位，需用内边距让出其高度。
+     横幅与外壳网格之间隔着 .workbench-skip-link，必须用通用兄弟 ~
+     （相邻兄弟 + 只会选中 skip link，规则永不生效）。 */
+  .moss-data-mode-ribbon ~ .workbench-shell-root.workbench-shell-grid {
+    padding-top: 28px !important;
+  }
+
+  .moss-data-mode-ribbon ~ .workbench-shell-root.workbench-shell-grid > .workbench-shell-aside {
+    top: 28px !important;
+    height: calc(100vh - 28px) !important;
+    min-height: calc(100vh - 28px) !important;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Nocturne 外壳统一收口（2026-08-12，见 DESIGN.md Decisions Log）。
+   tokens.css 的 scope 别名（已升权 0-3-0）负责在外壳网格上翻转
+   --dh-api-* / --moss-shell-* 变量；此层压制变量翻转触不到的
+   「烘焙死」声明：本文件 §Dark terminal 与 cockpit 变体、
+   workbenchInstitutionalConsole.css 以 !important 直写的钢蓝渐变
+   与金蓝装饰。值全部引用 --nct-*（仅 Nocturne scope 网格上有定义、
+   无竞争声明），不新增色值；特异性与 !important 对齐烘焙规则并后置，
+   不依赖动态 import 的注入顺序。
+   页内既有压制块（portfolio-home / market-overview 为 0-4-0/0-5-0）
+   特异性更高且取值等价，保留不冲突；dashboard-home 页内块（0-3-0
+   无 !important）由本层接管，取值同为 Nocturne 色板。
+   rail-mark 一条对非 cockpit 路由是把 transparent 基线改为 Nocturne
+   实面的视觉决定（对齐 market-overview 验收观感），并非压制烘焙；
+   cockpit 外壳（dashboard-home / portfolio-home）的 rail-mark 制度
+   是透明底 + 结构选择器 0-4-3 !important（dashboardCockpit.css），
+   不入该列表。终端条分册按启动性能守卫住 workbenchDeferredChrome.css
+   末尾。新增 Nocturne scope 的完整清单：tokens.css 别名三块列表 +
+   本层 grid / rail / rail-mark / page-v2 背景 / 结论左边线五条选择器
+   列表各加一行（cockpit hover/active 两条只在新增 cockpit 壳路由时
+   扩展）；若该路由渲染终端条（WorkbenchShell 的 showShellTerminalBar），
+   tokens.css 终端条块与 workbenchDeferredChrome.css 分册再各加一行；
+   theme.test.ts 的 parity 断言会拦截漏改。
+   2026-08-13 残留收口（见 DESIGN.md Decisions Log 同日条目）：
+   ① page-v2 面板烘焙（本文件 §83-94，0-4-0 !important 钢蓝渐变 +
+   结论左边线钢蓝直写）——背景压平为 --nct-surface、结论左边线压为
+   --nct-accent；烘焙里的 border-color: var(--dh-api-line) 与
+   box-shadow: none 经变量翻转即为 Nocturne 值（实测 border 已是
+   --nct-ring），不重复声明。② cockpit 壳 rail hover/active 金蓝烘焙
+   （本文件 §cockpit，0-4-0 !important 直写金/钢蓝 rgba）——实测
+   /portfolio 激活态仍金蓝、/ 已被页内 0-5-0 !important 块
+   （dashboardHomeOptionTwo）接管为蓝紫、/market-overview 由页内
+   0-6-0 块等值接管；本层以同权 0-4-0 后置补压三个 cockpit scope
+   兜底（hover 9%/22%、active 14%/30% + inset 2px accent，取值来源
+   见 cockpit 组行内注释）。
+   ══════════════════════════════════════════════════════════════ */
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="dashboard-home"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="positions"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="stock-analysis"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-attribution"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business-insights"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-analysis"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="module-workbench-home"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-tensor"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="operations-analysis"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-finance"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-analysis"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-movement-analysis"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="decision-items"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-bridge"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="product-category-pnl"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-trading-desk"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cross-asset"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cube-query"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="news-events"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="kpi"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="team-performance"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="platform-config"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="agent"]) {
+  background: var(--nct-bg) !important;
+}
+
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="dashboard-home"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="positions"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="stock-analysis"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-attribution"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business-insights"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-analysis"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="module-workbench-home"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-tensor"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="operations-analysis"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-finance"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-analysis"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-movement-analysis"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="decision-items"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-bridge"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="product-category-pnl"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-trading-desk"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cross-asset"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cube-query"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="news-events"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="kpi"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="team-performance"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="platform-config"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="agent"]) .workbench-shell-rail {
+  background: var(--nct-rail) !important;
+}
+
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="positions"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="stock-analysis"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-attribution"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business-insights"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-analysis"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="module-workbench-home"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-tensor"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="operations-analysis"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-finance"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-analysis"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-movement-analysis"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="decision-items"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-bridge"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="product-category-pnl"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-trading-desk"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cross-asset"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cube-query"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="news-events"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="kpi"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="team-performance"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="platform-config"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="agent"]) .workbench-shell-rail-mark {
+  background: var(--nct-surface) !important;
+  border-color: var(--nct-ring) !important;
+  box-shadow: none !important;
+}
+
+/* page-v2 面板（§83-94 烘焙 0-4-0；:is() 取最高实参 0-1-0，本组同权后置）。
+   列表与 grid/rail 同构 palette 全量：未渲染 page-v2 类的路由 :has() 命中
+   但无目标元素、零效果，保持 parity 可断言。 */
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="dashboard-home"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="positions"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="stock-analysis"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-attribution"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business-insights"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-analysis"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="module-workbench-home"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-tensor"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="operations-analysis"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-finance"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-analysis"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-movement-analysis"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="decision-items"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-bridge"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="product-category-pnl"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-trading-desk"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cross-asset"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cube-query"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="news-events"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="kpi"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="team-performance"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="platform-config"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="agent"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion) {
+  background: var(--nct-surface) !important;
+}
+
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="dashboard-home"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="positions"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="stock-analysis"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-attribution"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business-insights"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-analysis"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="module-workbench-home"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-tensor"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="operations-analysis"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-finance"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-analysis"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-movement-analysis"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="decision-items"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-bridge"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="product-category-pnl"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-trading-desk"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cross-asset"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cube-query"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="news-events"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="kpi"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="team-performance"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="platform-config"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="agent"]) .moss-page-v2-decision-hero__conclusion {
+  border-left-color: var(--nct-accent) !important;
+}
+
+/* cockpit 壳 rail hover/active（§cockpit 烘焙 0-4-0；选择器不双写以对齐烘焙
+   同权后置）。走 --cockpit 变体（WorkbenchShell useCockpitShellFrame）的
+   Nocturne scope 共十个：dashboard-home / portfolio-home
+   （isDashboardCockpitShell）、market-overview / risk-overview /
+   module-workbench-home（isModuleHomePage；module-workbench-home 单 scope
+   服务 /performance 与 /reports 双路由）、stock-analysis、bond-analysis、
+   balance-analysis、balance-movement-analysis 与 product-category-pnl
+   （2026-08-13 批量接入；完整期望清单见 theme.test.ts parity 断言的
+   cockpit 期望数组）。dashboard-home 页内 0-5-0 块、market-overview 页内
+   0-6-0 块取值等价并继续接管，列入此处仅作终层兜底；其余 scope 由本层
+   直接生效。
+   取值：hover 9%/22% 与 active 14% + inset 2px 对齐 tokens.css
+   --moss-shell-rail-active-bg / --moss-shadow-institutional-active 语义，
+   active 边线 30% mix 沿用 market-overview 验收块先例。 */
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="dashboard-home"]) .workbench-shell-group-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="dashboard-home"]) .workbench-shell-agent-nav__link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="dashboard-home"]) .workbench-shell-support-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="portfolio-home"]) .workbench-shell-group-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="portfolio-home"]) .workbench-shell-agent-nav__link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="portfolio-home"]) .workbench-shell-support-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="market-overview"]) .workbench-shell-group-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="market-overview"]) .workbench-shell-agent-nav__link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="market-overview"]) .workbench-shell-support-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="stock-analysis"]) .workbench-shell-group-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="stock-analysis"]) .workbench-shell-agent-nav__link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="stock-analysis"]) .workbench-shell-support-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="risk-overview"]) .workbench-shell-group-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="risk-overview"]) .workbench-shell-agent-nav__link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="risk-overview"]) .workbench-shell-support-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="bond-analysis"]) .workbench-shell-group-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="bond-analysis"]) .workbench-shell-agent-nav__link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="bond-analysis"]) .workbench-shell-support-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="module-workbench-home"]) .workbench-shell-group-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="module-workbench-home"]) .workbench-shell-agent-nav__link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="module-workbench-home"]) .workbench-shell-support-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="balance-analysis"]) .workbench-shell-group-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="balance-analysis"]) .workbench-shell-agent-nav__link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="balance-analysis"]) .workbench-shell-support-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="balance-movement-analysis"]) .workbench-shell-group-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="balance-movement-analysis"]) .workbench-shell-agent-nav__link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="balance-movement-analysis"]) .workbench-shell-support-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="product-category-pnl"]) .workbench-shell-group-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="product-category-pnl"]) .workbench-shell-agent-nav__link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="product-category-pnl"]) .workbench-shell-support-link:hover {
+  background: color-mix(in srgb, var(--nct-accent) 9%, transparent) !important;
+  border-color: color-mix(in srgb, var(--nct-accent) 22%, transparent) !important;
+}
+
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="dashboard-home"]) .workbench-shell-group-link[data-active="true"],
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="portfolio-home"]) .workbench-shell-group-link[data-active="true"],
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="market-overview"]) .workbench-shell-group-link[data-active="true"],
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="stock-analysis"]) .workbench-shell-group-link[data-active="true"],
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="risk-overview"]) .workbench-shell-group-link[data-active="true"],
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="bond-analysis"]) .workbench-shell-group-link[data-active="true"],
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="module-workbench-home"]) .workbench-shell-group-link[data-active="true"],
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="balance-analysis"]) .workbench-shell-group-link[data-active="true"],
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="balance-movement-analysis"]) .workbench-shell-group-link[data-active="true"],
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="product-category-pnl"]) .workbench-shell-group-link[data-active="true"] {
+  background: color-mix(in srgb, var(--nct-accent) 14%, transparent) !important;
+  border-color: color-mix(in srgb, var(--nct-accent) 30%, transparent) !important;
+  box-shadow: inset 2px 0 0 var(--nct-accent) !important;
+}

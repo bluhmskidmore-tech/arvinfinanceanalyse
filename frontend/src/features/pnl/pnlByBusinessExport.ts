@@ -6,9 +6,12 @@ import type {
   PnlByBusinessMonthlyItem,
   PnlByBusinessRow,
   PnlByBusinessYtdItem,
+  PnlByBusinessYtdSummary,
   PnlByBusinessManualAdjustmentPayload,
   PnlByBusinessAnalysisRow,
   PnlByBusinessAnalysisDimension,
+  PnlByBusinessYtdUnallocatedBreakdownRow,
+  PnlByBusinessYtdUnallocatedItem,
 } from "../../api/contracts";
 import { inclusiveCalendarDays } from "./pnlByBusinessAnnualizedYield";
 
@@ -68,6 +71,7 @@ const ANALYSIS_DIM_LABELS: Record<PnlByBusinessAnalysisDimension, string> = {
   monthly: "月份",
   portfolio: "组合",
   accounting: "会计分类",
+  currency: "原币种",
   cost_center: "成本中心",
   instrument: "资产明细",
   bond_bucket: "债券四类",
@@ -83,6 +87,9 @@ export type PnlByBusinessExcelExportArgs = {
   periodLabel?: string | null;
   /** YTD 主表（年累计视图） */
   ytdRows: PnlByBusinessYtdItem[];
+  ytdSummary?: PnlByBusinessYtdSummary;
+  unallocatedBreakdown?: PnlByBusinessYtdUnallocatedBreakdownRow[];
+  unallocatedItems?: PnlByBusinessYtdUnallocatedItem[];
   adbAvgByBusinessType: Map<string, number>;
   /** formal 主表（primary 对账视图） */
   formalRows: PnlByBusinessRow[];
@@ -97,6 +104,11 @@ export type PnlByBusinessExcelExportArgs = {
   selectedBusinessLabel?: string | null;
 };
 
+const UNALLOCATED_REASON_LABELS = {
+  no_business_rule_match: "未命中业务分类规则",
+  detail_only_business_rule_match: "仅命中其中项，未命中父级分类",
+} as const;
+
 function appendSheet(sheets: PnlByBusinessExportSheet[], name: string, aoa: SheetAoA) {
   if (aoa.length === 0) {
     return;
@@ -106,6 +118,7 @@ function appendSheet(sheets: PnlByBusinessExportSheet[], name: string, aoa: Shee
 
 function buildYtdMainSheet(
   rows: PnlByBusinessYtdItem[],
+  summary: PnlByBusinessYtdSummary | undefined,
   _adbMap: Map<string, number>,
   _ytdCalendarDays: number | null,
 ): SheetAoA {
@@ -141,52 +154,175 @@ function buildYtdMainSheet(
       row.assets_count,
     ]);
   }
-  if (parentRows.length > 0) {
-    let interest = 0;
-    let fairValue = 0;
-    let capital = 0;
-    let manual = 0;
-    let totalPnl = 0;
-    let assets = 0;
-    let adbSum = 0;
-    let hasAnyAdb = false;
-    let ftpNetPnl = 0;
-    let hasAnyFtpNetPnl = false;
-    for (const row of parentRows) {
-      interest += num(row.interest_income) ?? 0;
-      fairValue += num(row.fair_value_change) ?? 0;
-      capital += num(row.capital_gain) ?? 0;
-      manual += num(row.manual_adjustment) ?? 0;
-      totalPnl += num(row.total_pnl) ?? 0;
-      assets += row.assets_count;
-      const adb = num(row.avg_balance);
-      if (adb !== null) {
-        hasAnyAdb = true;
-        adbSum += adb;
-      }
-      const ftpNet = num(row.ftp_net_pnl);
-      if (ftpNet !== null) {
-        hasAnyFtpNetPnl = true;
-        ftpNetPnl += ftpNet;
-      }
-    }
+  if (summary) {
     data.push([
       "父级汇总",
-      hasAnyAdb ? adbSum / YUAN_PER_YI : null,
-      interest / YUAN_PER_WAN,
-      fairValue / YUAN_PER_WAN,
-      capital / YUAN_PER_WAN,
-      manual / YUAN_PER_WAN,
-      totalPnl / YUAN_PER_WAN,
-      null,
-      hasAnyFtpNetPnl ? ftpNetPnl / YUAN_PER_WAN : null,
-      null,
-      null,
-      assets,
+      yiFromYuan(summary.avg_balance),
+      wanFromYuan(summary.interest_income),
+      wanFromYuan(summary.fair_value_change),
+      wanFromYuan(summary.capital_gain),
+      wanFromYuan(summary.manual_adjustment),
+      wanFromYuan(summary.total_pnl),
+      num(summary.annualized_yield_pct),
+      wanFromYuan(summary.ftp_net_pnl),
+      num(summary.ftp_net_annualized_yield_pct),
+      num(summary.proportion),
+      summary.assets_count,
     ]);
   }
   return data;
 }
+
+function buildYtdUnallocatedBreakdownSheet(rows: PnlByBusinessYtdUnallocatedBreakdownRow[]): SheetAoA {
+  const data: SheetAoA = [[
+    "未命中原因",
+    "来源",
+    "原始类型",
+    "会计分类",
+    "组合",
+    "成本中心",
+    "条数",
+    "净额(万元)",
+    "绝对金额(万元)",
+    "示例证券",
+  ]];
+  for (const row of rows) {
+    data.push([
+      UNALLOCATED_REASON_LABELS[row.reason_code],
+      row.source_kind,
+      row.invest_type_std,
+      row.accounting_basis,
+      row.portfolio_name,
+      row.cost_center,
+      row.pnl_row_count,
+      wanFromYuan(row.total_pnl),
+      wanFromYuan(row.abs_pnl),
+      row.sample_instrument_codes.join("、"),
+    ]);
+  }
+  return data;
+}
+
+function buildYtdUnallocatedItemsSheet(rows: PnlByBusinessYtdUnallocatedItem[]): SheetAoA {
+  const data: SheetAoA = [[
+    "报表日",
+    "来源",
+    "原始类型",
+    "会计分类",
+    "组合",
+    "成本中心",
+    "证券代码",
+    "币种",
+    "利息收入(万元)",
+    "公允价值变动(万元)",
+    "资本利得(万元)",
+    "手工调整(万元)",
+    "合计损益(万元)",
+    "绝对金额(万元)",
+    "未命中原因",
+  ]];
+  for (const row of rows) {
+    data.push([
+      row.report_date,
+      row.source_kind,
+      row.invest_type_std,
+      row.accounting_basis,
+      row.portfolio_name,
+      row.cost_center,
+      row.instrument_code,
+      row.currency_basis,
+      wanFromYuan(row.interest_income_514),
+      wanFromYuan(row.fair_value_change_516),
+      wanFromYuan(row.capital_gain_517),
+      wanFromYuan(row.manual_adjustment),
+      wanFromYuan(row.total_pnl),
+      wanFromYuan(row.abs_pnl),
+      UNALLOCATED_REASON_LABELS[row.reason_code],
+    ]);
+  }
+  return data;
+}
+
+function buildMonthlyUnallocatedBreakdownSheet(months: PnlByBusinessMonthlyBucket[]): SheetAoA {
+  const data: SheetAoA = [[
+    "月份",
+    "未命中原因",
+    "来源",
+    "原始类型",
+    "会计分类",
+    "组合",
+    "成本中心",
+    "条数",
+    "净额(万元)",
+    "绝对金额(万元)",
+    "示例证券",
+  ]];
+  for (const month of months) {
+    for (const row of month.unallocated_breakdown ?? []) {
+      data.push([
+        month.month_key,
+        UNALLOCATED_REASON_LABELS[row.reason_code],
+        row.source_kind,
+        row.invest_type_std,
+        row.accounting_basis,
+        row.portfolio_name,
+        row.cost_center,
+        row.pnl_row_count,
+        wanFromYuan(row.total_pnl),
+        wanFromYuan(row.abs_pnl),
+        row.sample_instrument_codes.join("、"),
+      ]);
+    }
+  }
+  return data;
+}
+
+function buildMonthlyUnallocatedItemsSheet(months: PnlByBusinessMonthlyBucket[]): SheetAoA {
+  const data: SheetAoA = [[
+    "月份",
+    "报表日",
+    "来源",
+    "原始类型",
+    "会计分类",
+    "组合",
+    "成本中心",
+    "证券代码",
+    "币种",
+    "利息收入(万元)",
+    "公允价值变动(万元)",
+    "资本利得(万元)",
+    "手工调整(万元)",
+    "合计损益(万元)",
+    "绝对金额(万元)",
+    "未命中原因",
+  ]];
+  for (const month of months) {
+    for (const row of month.unallocated_items ?? []) {
+      data.push([
+        month.month_key,
+        row.report_date,
+        row.source_kind,
+        row.invest_type_std,
+        row.accounting_basis,
+        row.portfolio_name,
+        row.cost_center,
+        row.instrument_code,
+        row.currency_basis,
+        wanFromYuan(row.interest_income_514),
+        wanFromYuan(row.fair_value_change_516),
+        wanFromYuan(row.capital_gain_517),
+        wanFromYuan(row.manual_adjustment),
+        wanFromYuan(row.total_pnl),
+        wanFromYuan(row.abs_pnl),
+        UNALLOCATED_REASON_LABELS[row.reason_code],
+      ]);
+    }
+  }
+  return data;
+}
+
+/** 警示行 + 空行 + 表头，无明细数据行时的基线长度 */
+const YTD_DETAIL_SHEET_EMPTY_LENGTH = 3;
 
 function buildYtdDetailSheet(
   rows: PnlByBusinessYtdItem[],
@@ -208,7 +344,7 @@ function buildYtdDetailSheet(
     "资产数",
     "说明",
   ];
-  const data: SheetAoA = [header];
+  const data: SheetAoA = [["⚠ 本表金额与父级表重叠展示，请勿相加或用于加总统计"], [], header];
   for (const row of rows.filter(isDetailZqtzBusinessRow)) {
     data.push([
       row.business_type,
@@ -286,6 +422,13 @@ function buildFormalSheet(rows: PnlByBusinessRow[]): SheetAoA {
     ]);
   }
   return data;
+}
+
+/** 警示行 + 空行 + 表头，无明细数据行时的基线长度（月报/月度"其中项明细"sheet复用） */
+const MONTHLY_DETAIL_SHEET_EMPTY_LENGTH = 3;
+
+function withDetailSheetOverlapWarning(sheet: SheetAoA): SheetAoA {
+  return [["⚠ 本表金额与父级表重叠展示，请勿相加或用于加总统计"], [], ...sheet];
 }
 
 function buildMonthlyFlatSheet(
@@ -473,15 +616,31 @@ export function buildPnlByBusinessSheets(args: PnlByBusinessExcelExportArgs): Pn
 
   if (args.viewMode === "monthly" && args.months.length > 0) {
     appendSheet(wb, "月报业务种类", buildMonthlyFlatSheet(args.months));
-    const detailSheet = buildMonthlyFlatSheet(args.months, isDetailZqtzBusinessRow);
-    if (detailSheet.length > 1) {
+    if (args.months.some((month) => (month.unallocated_breakdown?.length ?? 0) > 0)) {
+      appendSheet(wb, "月报未分类汇总", buildMonthlyUnallocatedBreakdownSheet(args.months));
+    }
+    if (args.months.some((month) => (month.unallocated_items?.length ?? 0) > 0)) {
+      appendSheet(wb, "月报未分类明细", buildMonthlyUnallocatedItemsSheet(args.months));
+    }
+    const detailSheet = withDetailSheetOverlapWarning(buildMonthlyFlatSheet(args.months, isDetailZqtzBusinessRow));
+    if (detailSheet.length > MONTHLY_DETAIL_SHEET_EMPTY_LENGTH) {
       appendSheet(wb, "月报其中项明细", detailSheet);
     }
   }
   if (args.viewMode === "ytd" && args.ytdRows.length > 0) {
-    appendSheet(wb, "YTD年累计明细", buildYtdMainSheet(args.ytdRows, args.adbAvgByBusinessType, ytdCalendarDays));
+    appendSheet(
+      wb,
+      "YTD年累计明细",
+      buildYtdMainSheet(args.ytdRows, args.ytdSummary, args.adbAvgByBusinessType, ytdCalendarDays),
+    );
+    if ((args.unallocatedBreakdown?.length ?? 0) > 0) {
+      appendSheet(wb, "YTD未分类汇总", buildYtdUnallocatedBreakdownSheet(args.unallocatedBreakdown ?? []));
+    }
+    if ((args.unallocatedItems?.length ?? 0) > 0) {
+      appendSheet(wb, "YTD未分类明细", buildYtdUnallocatedItemsSheet(args.unallocatedItems ?? []));
+    }
     const detailSheet = buildYtdDetailSheet(args.ytdRows, args.adbAvgByBusinessType, ytdCalendarDays);
-    if (detailSheet.length > 1) {
+    if (detailSheet.length > YTD_DETAIL_SHEET_EMPTY_LENGTH) {
       appendSheet(wb, "YTD其中项明细", detailSheet);
     }
   }
@@ -490,8 +649,14 @@ export function buildPnlByBusinessSheets(args: PnlByBusinessExcelExportArgs): Pn
   }
   if (args.viewMode === "ytd" && args.months.length > 0) {
     appendSheet(wb, "月度业务种类", buildMonthlyFlatSheet(args.months));
-    const detailSheet = buildMonthlyFlatSheet(args.months, isDetailZqtzBusinessRow);
-    if (detailSheet.length > 1) {
+    if (args.months.some((month) => (month.unallocated_breakdown?.length ?? 0) > 0)) {
+      appendSheet(wb, "月度未分类汇总", buildMonthlyUnallocatedBreakdownSheet(args.months));
+    }
+    if (args.months.some((month) => (month.unallocated_items?.length ?? 0) > 0)) {
+      appendSheet(wb, "月度未分类明细", buildMonthlyUnallocatedItemsSheet(args.months));
+    }
+    const detailSheet = withDetailSheetOverlapWarning(buildMonthlyFlatSheet(args.months, isDetailZqtzBusinessRow));
+    if (detailSheet.length > MONTHLY_DETAIL_SHEET_EMPTY_LENGTH) {
       appendSheet(wb, "月度其中项明细", detailSheet);
     }
   }

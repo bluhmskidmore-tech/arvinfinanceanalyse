@@ -72,10 +72,12 @@ const strategyPayload: LivermoreStrategyPayload = {
       reason: "theme inputs missing",
     },
   ],
+  module_states: [],
   sector_rank: {
     as_of_date: "2026-04-29",
-    formula_version: "rv_livermore_sector_rank_provisional_v1",
-    is_provisional: true,
+    formula_version: "rv_livermore_sector_strength_observation_v1",
+    is_provisional: false,
+    formula_status: "signed_off",
     sector_count: 2,
     excluded_constituent_count: 0,
     excluded_sector_count: 0,
@@ -158,6 +160,7 @@ describe("stockAnalysisPageLabels", () => {
     expect(outputKeyLabel("vendor_unknown")).toBe("输出待确认");
     expect(outputKeyLabel(null)).toBe("待补");
     expect(dataGapFamilyLabel("factor_screen_candidates")).toBe("多因子");
+    expect(dataGapFamilyLabel("theme_taxonomy")).toBe("\u9898\u6750\u5206\u7c7b");
   });
 
   it("localizes cycle layer labels and evidence boundaries", () => {
@@ -173,6 +176,7 @@ describe("stockAnalysisPageLabels", () => {
 
     expect(cycleInputLabel("sector-rank")).toBe("板块强弱");
     expect(cycleInputLabel("external_vendor_cycle_feed")).toBe("输入待确认");
+    expect(cycleInputLabel("theme_taxonomy")).toBe("\u9898\u6750\u5206\u7c7b");
     expect(cycleInputSummary(["market_gate", "sector_rank", "stock_candidates", "pmi"], ["credit_impulse"])).toBe(
       "已有证据 市场门控、板块强弱、趋势候选 · 待补 信用脉冲",
     );
@@ -183,6 +187,9 @@ describe("stockAnalysisPageLabels", () => {
     expect(cycleGapLabel("pmi(missing)")).toBe("PMI 缺数据");
     expect(cycleConstraintLabel("single stock cap 20%")).toBe("个股上限 20%");
     expect(cycleEvidenceLabel(macroLayer.evidence)).toBe("市场门控已有可用证据；PMI 与信用脉冲待补。");
+    expect(
+      cycleEvidenceLabel("Market gate is available; PMI and credit impulse are ready and landed."),
+    ).toBe("市场门控、PMI 与信用脉冲已接入。");
     expect(cycleBoundaryLabel("proxy-reconstructed lifecourt layer")).toBe(
       "生命法庭层为量化重建口径，原始文本规则尚未完整接入。",
     );
@@ -209,9 +216,99 @@ describe("stockAnalysisPageLabels", () => {
     expect(overview.riskDetailLabel).toBe("持仓 5 / 触发 1 / 观察 1");
     expect(overview.qualityLabel).toBe("质量 需复核");
     expect(overview.vendorLabel).toBe("通道 异常");
-    expect(overview.fallbackLabel).toBe("回退快照");
+    expect(overview.fallbackLabel).toBe("数据延迟");
     expect(overview.basisLabel).toBe("分析口径");
     expect(overview.readinessRows).toBe(strategyPayload.rule_readiness);
     expect(overview.dataGapRows).toBe(strategyPayload.data_gaps);
+  });
+
+  it("keeps known policy pauses out of backend supply blocker counts", () => {
+    const overview = buildBackendSupplyOverview({
+      ...strategyPayload,
+      unsupported_outputs: [
+        {
+          key: "stock_candidates",
+          reason: "Stock candidate policy exp3b is inactive in OVERHEAT; active market states are HOT/WARM.",
+        },
+        {
+          key: "mean_reversion_candidates",
+          reason:
+            "Mean reversion watchlist is paused when the market gate is HOT or OVERHEAT because the defended-trend candidate bundle already covers overheated tape.",
+        },
+        {
+          key: "theme_breakout",
+          reason: "Theme breakout execution is paused in OVERHEAT; historical replay showed this bucket is draggy.",
+        },
+        {
+          key: "hybrid_fusion",
+          reason:
+            "Hybrid fusion is observation-only and only emits candidates in WARM/HOT market states; current state is OVERHEAT.",
+        },
+      ],
+    });
+
+    expect(overview.unsupportedLabel).toBe("阻断 0");
+    expect(overview.unsupportedValueLabel).toBe("0");
+    expect(overview.unsupportedOutputs).toHaveLength(4);
+  });
+
+  it("treats ready rows with stale source tiers as degraded inputs", () => {
+    const overview = buildBackendSupplyOverview(
+      {
+        ...strategyPayload,
+        as_of_date: "2026-07-08",
+        data_gaps: [
+          {
+            input_family: "turnover_persistence",
+            status: "ready",
+            evidence: "Turnover input is available from an older business date.",
+            business_date: "2026-06-26",
+            age_days: 12,
+            tier: "stale",
+          },
+        ],
+      },
+      { fallback_mode: "none" },
+    );
+
+    expect(overview.dataGapLabel).toBe("缺口 1");
+    expect(overview.staleSourceRows).toHaveLength(1);
+    expect(overview.staleSourceDetailLabel).toBe("换手持续：源数据日 2026-06-26（滞后 12 天）");
+    expect(overview.fallbackLabel).toBe("数据正常");
+  });
+
+  it("keeps unsupported risk exit distinct from a measured zero", () => {
+    const overview = buildBackendSupplyOverview({
+      ...strategyPayload,
+      supported_outputs: ["market_gate", "sector_rank", "stock_candidates"],
+      unsupported_outputs: [
+        {
+          key: "risk_exit",
+          reason: "livermore_position_snapshot has no ACTIVE A-share rows.",
+        },
+      ],
+      risk_exit: undefined,
+    });
+
+    expect(overview.riskSupplyLabel).toBe("风险 阻断");
+    expect(overview.riskSupplyValueLabel).toBe("阻断");
+    expect(overview.riskDetailLabel).toBe("持仓快照缺失");
+  });
+
+  it("keeps unsupported risk exit blocked when a contradictory payload is also present", () => {
+    const overview = buildBackendSupplyOverview({
+      ...strategyPayload,
+      unsupported_outputs: [
+        {
+          key: "risk_exit",
+          reason: "livermore_position_snapshot has no ACTIVE A-share rows.",
+        },
+      ],
+    });
+
+    expect(overview.riskSupplyValueLabel).toBe("阻断");
+    expect(overview.riskDetailLabel).toBe("持仓快照缺失");
+    expect(overview.risk).toBeUndefined();
+    expect(overview.riskDetailLabel).not.toContain("触发");
   });
 });

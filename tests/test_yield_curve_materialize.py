@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import sys
 from decimal import Decimal
 
 import duckdb
@@ -11,13 +10,23 @@ from tests.helpers import load_module
 
 
 def _load_yield_curve_task_module():
-    task_mod = sys.modules.get("backend.app.tasks.yield_curve_materialize")
-    if task_mod is None:
-        task_mod = load_module(
-            "backend.app.tasks.yield_curve_materialize",
-            "backend/app/tasks/yield_curve_materialize.py",
-        )
-    return task_mod
+    # Registry suites (e.g. tests/test_formal_compute_module_registry.py) replace
+    # backend.app.core_finance.module_registry in sys.modules via load_module and call
+    # clear_formal_modules(), which pops this task module but not
+    # backend.app.tasks.formal_compute_runtime. A reused task module would then bind a
+    # stale formal_compute_runtime whose require_registered_formal_module validates
+    # against an orphaned registry copy, and every run_formal_materialize call fails
+    # with "must use the registered descriptor from module_registry". Reload the
+    # runtime and the task module together so ensure/require resolve the same
+    # module_registry copy currently installed in sys.modules.
+    load_module(
+        "backend.app.tasks.formal_compute_runtime",
+        "backend/app/tasks/formal_compute_runtime.py",
+    )
+    return load_module(
+        "backend.app.tasks.yield_curve_materialize",
+        "backend/app/tasks/yield_curve_materialize.py",
+    )
 
 
 def _read_jsonl(path) -> list[dict[str, object]]:

@@ -37,9 +37,9 @@
   "result": {
     "report_date": "2026-04-30",
     "duration_gap": {
-      "raw": 0.25205479452054796,
+      "raw": 0.3019178082191781,
       "unit": "years",
-      "display": "+0.25",
+      "display": "+0.30",
       "precision": 2,
       "sign_aware": true
     },
@@ -58,16 +58,16 @@
       "sign_aware": false
     },
     "equity_duration": {
-      "raw": 1.2602739726027397,
+      "raw": 1.5095890410958903,
       "unit": "years",
-      "display": "+1.26",
+      "display": "+1.51",
       "precision": 2,
       "sign_aware": true
     },
     "rate_sensitivity_1bp": {
-      "raw": 0.025205479452054796,
+      "raw": -0.03019178082191781,
       "unit": "yuan",
-      "display": "+0.03",
+      "display": "-0.03",
       "precision": 2,
       "sign_aware": true
     },
@@ -822,6 +822,37 @@
           "precision": 2,
           "sign_aware": true
         }
+      },
+      {
+        "year_month": "2028-04",
+        "asset_inflow": {
+          "raw": 0.0,
+          "unit": "yuan",
+          "display": "0.00",
+          "precision": 2,
+          "sign_aware": false
+        },
+        "liability_outflow": {
+          "raw": 0.0,
+          "unit": "yuan",
+          "display": "0.00",
+          "precision": 2,
+          "sign_aware": false
+        },
+        "net_cashflow": {
+          "raw": 0.0,
+          "unit": "yuan",
+          "display": "+0.00",
+          "precision": 2,
+          "sign_aware": true
+        },
+        "cumulative_net": {
+          "raw": 200.0,
+          "unit": "yuan",
+          "display": "+200.00",
+          "precision": 2,
+          "sign_aware": true
+        }
       }
     ],
     "top_maturing_assets_12m": [
@@ -846,7 +877,33 @@
         "currency_code": "CNY"
       }
     ],
-    "warnings": [],
+    "floating_rate_proxy_count": 0,
+    "floating_rate_proxy_market_value": {
+      "raw": 0.0,
+      "unit": "yuan",
+      "display": "0.00",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "payment_frequency_fallback_count": 0,
+    "payment_frequency_fallback_market_value": {
+      "raw": 0.0,
+      "unit": "yuan",
+      "display": "0.00",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "bullet_value_date_fallback_count": 0,
+    "bullet_value_date_fallback_market_value": {
+      "raw": 0.0,
+      "unit": "yuan",
+      "display": "0.00",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "warnings": [
+      "Liability duration uses a remaining-term proxy (years to maturity), not a cashflow-weighted duration."
+    ],
     "computed_at": "2026-06-09T00:00:00Z"
   }
 }

@@ -1,4 +1,6 @@
 ﻿import importlib
+import json
+import os
 import sys
 from datetime import datetime, timezone
 
@@ -36,6 +38,65 @@ def _grant_source_preview_read_scope(*, settings, user_id: str = "*") -> None:
     _grant_source_preview_scope(settings=settings, user_id=user_id, action="read")
 
 
+def test_source_version_changes_when_content_changes_with_same_file_metadata(tmp_path):
+    parser_module = load_module(
+        "backend.app.core_finance.source_preview_parsers",
+        "backend/app/core_finance/source_preview_parsers.py",
+    )
+    source_path = tmp_path / "source.xls"
+    source_path.write_bytes(b"first-content")
+    original_stat = source_path.stat()
+
+    first_version = parser_module.build_source_version(source_path)
+    stable_version = parser_module.build_source_version(source_path)
+
+    source_path.write_bytes(b"other-content")
+    os.utime(source_path, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+    changed_version = parser_module.build_source_version(source_path)
+
+    assert stable_version == first_version
+    assert first_version.startswith("sv_")
+    assert len(first_version) == 15
+    int(first_version.removeprefix("sv_"), 16)
+    assert source_path.stat().st_size == original_stat.st_size
+    assert source_path.stat().st_mtime_ns == original_stat.st_mtime_ns
+    assert changed_version != first_version
+
+
+@pytest.mark.parametrize(
+    "path",
+    (
+        "/ui/preview/source-foundation",
+        "/ui/preview/source-foundation/history",
+        "/ui/preview/source-foundation/zqtz/rows",
+        "/ui/preview/source-foundation/zqtz/traces",
+    ),
+)
+def test_source_preview_reads_return_503_when_duckdb_is_busy(path, tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    conn.close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    repo_module = importlib.import_module("backend.app.repositories.source_preview_repo")
+
+    def busy_connect(*_args, **_kwargs):
+        raise duckdb.IOException("IO Error: file is already open in another process")
+
+    monkeypatch.setattr(repo_module.duckdb, "connect", busy_connect)
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        headers=SOURCE_PREVIEW_READ_HEADERS,
+        raise_server_exceptions=False,
+    )
+
+    response = client.get(path)
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Source preview storage is temporarily unavailable."}
+
+
 def test_source_preview_service_summarizes_real_zqtz_and_tyw_files():
     preview_module = load_module(
         "backend.app.services.source_preview_service",
@@ -62,6 +123,32 @@ def test_source_preview_service_summarizes_real_zqtz_and_tyw_files():
     assert len(tyw_summary["group_counts"]) >= 3
     assert all(count > 0 for count in tyw_summary["group_counts"].values())
     assert sum(tyw_summary["group_counts"].values()) == tyw_summary["total_rows"]
+
+
+def test_source_preview_parser_supports_utf8_pnl_csv(tmp_path):
+    parser_module = load_module(
+        "backend.app.core_finance.source_preview_parsers",
+        "backend/app/core_finance/source_preview_parsers.py",
+    )
+    csv_path = tmp_path / "FI_tmp_202603_delta.csv"
+    csv_path.write_text(
+        "\ufeff债券代码,投资类型,投资组合,成本中心,币种\n"
+        "010221,H,FIOA,50,RMB\n",
+        encoding="utf-8",
+    )
+
+    family, _report_date, rows, traces = parser_module.parse_source_file(
+        path=csv_path,
+        ingest_batch_id="batch-csv",
+        source_version="sv_csv",
+        source_file_name=csv_path.name,
+    )
+
+    assert family == "pnl"
+    assert len(rows) == 1
+    assert rows[0]["instrument_code"] == "010221"
+    assert rows[0]["source_version"] == "sv_csv"
+    assert traces
 
 
 def test_source_preview_service_reexports_supported_source_families_from_repo():
@@ -628,6 +715,11 @@ def test_source_preview_refresh_sync_fallback_dual_writes_job_state_when_configu
     _configure_source_preview_refresh_env(tmp_path, monkeypatch, include_pnl_preview_source=True)
     job_state_path = tmp_path / "job-state.db"
     monkeypatch.setenv("MOSS_JOB_STATE_DSN", f"sqlite:///{job_state_path.as_posix()}")
+    # _configure_source_preview_refresh_env already primed the current settings
+    # cache generation (without MOSS_JOB_STATE_DSN). Bump the shared generation so
+    # the task worker's own get_settings() rebuilds and sees the job-state DSN;
+    # otherwise its stale Settings skips the running/completed job-state writes.
+    get_settings.cache_clear()
     refresh_module = load_module(
         "backend.app.services.source_preview_refresh_service",
         "backend/app/services/source_preview_refresh_service.py",
@@ -1750,6 +1842,64 @@ def test_materialize_ignores_manifest_rows_whose_archived_paths_no_longer_exist(
     assert summaries[0]["source_version"] == "sv_valid"
 
 
+def test_materialize_applies_source_family_scope_before_archive_boundary_validation(tmp_path):
+    preview_module = load_module(
+        "backend.app.repositories.source_preview_repo",
+        "backend/app/repositories/source_preview_repo.py",
+    )
+    governance_module = load_module(
+        "backend.app.repositories.governance_repo",
+        "backend/app/repositories/governance_repo.py",
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    archive_dir = tmp_path / "archive"
+    archive_dir.mkdir()
+    valid_file = archive_dir / "TYWLSHOW-20251231.xls"
+    valid_file.write_bytes((ROOT / "data_input" / "TYWLSHOW-20251231.xls").read_bytes())
+    unrelated_file = tmp_path / "research-calendar.csv"
+    unrelated_file.write_text("date,value\n2025-12-31,1\n", encoding="utf-8")
+
+    repo = governance_module.GovernanceRepository(base_dir=governance_dir)
+    repo.append(
+        governance_module.SOURCE_MANIFEST_STREAM,
+        {
+            "ingest_batch_id": "batch-unrelated",
+            "created_at": "2026-04-10T00:00:02Z",
+            "source_family": "research_calendar",
+            "report_date": "2025-12-31",
+            "source_file": unrelated_file.name,
+            "source_version": "sv_unrelated",
+            "archived_path": str(unrelated_file),
+            "status": "completed",
+        },
+    )
+    repo.append(
+        governance_module.SOURCE_MANIFEST_STREAM,
+        {
+            "ingest_batch_id": "batch-valid",
+            "created_at": "2026-04-10T00:00:01Z",
+            "source_family": "tyw",
+            "report_date": "2025-12-31",
+            "source_file": valid_file.name,
+            "source_version": "sv_valid",
+            "archived_path": str(valid_file),
+            "status": "completed",
+        },
+    )
+
+    summaries = preview_module.materialize_source_previews(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        source_families=["tyw"],
+        archive_root=str(archive_dir),
+    )
+
+    assert len(summaries) == 1
+    assert summaries[0]["source_version"] == "sv_valid"
+
+
 def test_materialize_task_rejects_manifest_archived_path_outside_archive_root(tmp_path, monkeypatch):
     materialize_module = load_module(
         "backend.app.tasks.materialize",
@@ -1986,3 +2136,58 @@ def _grant_source_preview_scope(*, settings, user_id: str, action: str) -> None:
         resource="source_preview.source_foundation",
         action=action,
     )
+
+
+def test_source_preview_refresh_failure_restores_preview_tables_while_writer_lock_held(
+    tmp_path, monkeypatch
+):
+    """异常恢复 restore/cleanup 必须仍持有 materialize 写锁执行（B5 审计修复）。"""
+    import backend.app.tasks.source_preview_refresh as refresh_module
+    from backend.app.governance.locks import acquire_lock as real_acquire_lock
+
+    duckdb_path = tmp_path / "preview-restore-lock.duckdb"
+    governance_dir = tmp_path / "restore-lock-governance"
+    lock_probe: dict[str, bool] = {}
+
+    monkeypatch.setattr(
+        refresh_module,
+        "_run_source_preview_ingest",
+        lambda **_kwargs: {"ingest_batch_id": "batch-restore-lock"},
+    )
+    monkeypatch.setattr(refresh_module, "snapshot_preview_tables", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        refresh_module,
+        "materialize_source_previews",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("materialize failed")),
+    )
+    monkeypatch.setattr(refresh_module, "cleanup_preview_backups", lambda *_a, **_k: None)
+
+    def recording_restore(*_args, **_kwargs):
+        lock_definition = refresh_module.resolve_materialize_lock(duckdb_path)
+        try:
+            with real_acquire_lock(
+                lock_definition,
+                base_dir=duckdb_path.parent,
+                timeout_seconds=0.05,
+            ):
+                lock_probe["held_during_restore"] = False
+        except TimeoutError:
+            lock_probe["held_during_restore"] = True
+
+    monkeypatch.setattr(refresh_module, "restore_preview_tables", recording_restore)
+
+    with pytest.raises(RuntimeError, match="materialize failed"):
+        refresh_module._refresh_source_preview_cache(
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+            data_root=str(tmp_path / "input"),
+        )
+
+    assert lock_probe == {"held_during_restore": True}
+
+    build_runs = [
+        json.loads(line)
+        for line in (governance_dir / "cache_build_run.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert build_runs[-1]["status"] == "failed"

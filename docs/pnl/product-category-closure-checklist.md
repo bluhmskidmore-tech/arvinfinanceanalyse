@@ -381,4 +381,4 @@ Recommended next smallest unit:
 - Unit 2: Detail
   - next evidence target: active 3C metrics `MTR-PCP-004` through `MTR-PCP-012` are already governed; keep non-3C/additional detail fields blocked until a new governed metric matrix / dictionary / sample / test bundle exists
   - do not re-decide whether already-governed 3C scale, FTP, net income, or yield rows should become formal metrics
-  - do not invent additional `metric_id` bindings beyond `MTR-PCP-001` through `MTR-PCP-012`
+  - do not invent additional row-level `metric_id` bindings beyond `MTR-PCP-004` through `MTR-PCP-012`; the separately approved `MTR-PCP-013` through `MTR-PCP-029` bindings are limited to the three payload sections governed in `docs/metric_dictionary.md` section 12.3.2

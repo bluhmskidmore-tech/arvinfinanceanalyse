@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { isReservedBoundaryHttpMessage } from "../../../api/httpResponseError";
+import type { LivermoreGateSupplementRefreshAcceptance } from "../../../api/marketDataClient";
 import type { LivermoreStrategyModel } from "../lib/livermoreStrategyModel";
 import "./LivermoreStrategyPanel.css";
 
@@ -21,7 +22,7 @@ type Props = {
   isError: boolean;
   fetchErrorDetail?: string | null;
   onRetry: () => void;
-  onRefreshGateSupplement?: () => Promise<{ status: string; computed_rows: number; message?: string }>;
+  onRefreshGateSupplement?: () => Promise<LivermoreGateSupplementRefreshAcceptance>;
 };
 
 function statusClass(status: string) {
@@ -75,6 +76,51 @@ function positionRiskIsInactive(model: LivermoreStrategyModel, inputFamily: stri
   return inputFamily === "position_risk" && model.riskExit === null;
 }
 
+function freshnessTierStatus(tier: LivermoreStrategyModel["dataGaps"][number]["tier"]) {
+  if (tier === "stale" || tier === "expired") {
+    return "warning";
+  }
+  if (tier === "fresh") {
+    return "ready";
+  }
+  return "info";
+}
+
+function dataGapRowKey(gap: LivermoreStrategyModel["dataGaps"][number]) {
+  return [
+    gap.inputFamily,
+    gap.status,
+    gap.input ?? "",
+    gap.businessDate ?? "",
+    gap.ageDays ?? "",
+  ].join(":");
+}
+
+/**
+ * 同段缺口/就绪说明在多行重复时收敛为区块头部一处完整说明（DESIGN §6 状态去重），
+ * 行内只留短引用；出现 2 次以上的文本进入共同说明集合。
+ */
+function collectRepeatedNotes(texts: string[]): Set<string> {
+  const counts = new Map<string, number>();
+  for (const text of texts) {
+    const key = text.trim();
+    if (!key) {
+      continue;
+    }
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return new Set(
+    [...counts.entries()].filter(([, count]) => count >= 2).map(([text]) => text),
+  );
+}
+
+const SHARED_NOTE_ROW_REFERENCE = "同上方共同缺口说明";
+
+/** 本批候选整列同值的状态档位收敛为列表头部一句（行内不再重复）。 */
+function batchStateLine(count: number, marketState: string) {
+  return count > 0 ? `本批 ${count} 只均为 ${marketState} 档` : "本批暂无候选";
+}
+
 export function LivermoreStrategyPanel({
   model,
   isLoading,
@@ -98,10 +144,20 @@ export function LivermoreStrategyPanel({
     try {
       const res = await onRefreshGateSupplement();
       if (res.status === "completed") {
-        setRefreshResult(`已计算 ${res.computed_rows} 条门控数据`);
+        setRefreshResult(`已计算 ${res.computed_rows ?? 0} 条门控数据`);
         setTimeout(() => onRetry(), 600);
-      } else {
+      } else if (
+        res.status === "partial"
+        || res.status === "insufficient_data"
+        || res.status === "no_computable_dates"
+      ) {
         setRefreshResult(res.message || `状态: ${res.status}`);
+      } else if (res.status === "failed") {
+        setRefreshResult(
+          `刷新失败: ${res.error_message || res.failure_category || res.failure_reason || res.status}`,
+        );
+      } else {
+        setRefreshResult(`刷新超时，请稍后查看 run_id ${res.run_id}`);
       }
     } catch (err) {
       setRefreshResult(`刷新失败: ${err instanceof Error ? err.message : String(err)}`);
@@ -157,6 +213,10 @@ export function LivermoreStrategyPanel({
   const themeBreakout = model.themeBreakout;
   const riskExit = model.riskExit;
   const watchedCodes = new Set(watchPool.map((item) => item.stockCode));
+  const sharedGapNotes = collectRepeatedNotes([
+    ...model.ruleBlocks.map((block) => block.summary),
+    ...model.dataGaps.map((gap) => gap.evidence),
+  ]);
 
   const addToWatchPool = (candidate: StockCandidate) => {
     setWatchPool((current) => {
@@ -189,9 +249,9 @@ export function LivermoreStrategyPanel({
               onClick={handleRefreshGate}
               disabled={refreshing}
               type="button"
-              title="从已有 CSI300 数据计算 breadth / limit-up 门控"
+              title="提交并轮询门控补充刷新任务"
             >
-              {refreshing ? "计算中…" : "刷新门控数据"}
+              {refreshing ? "刷新中…" : "刷新门控数据"}
             </button>
           ) : null}
           {refreshResult ? (
@@ -219,6 +279,36 @@ export function LivermoreStrategyPanel({
           <div className="livermore-strategy-panel__metric-detail">
             需要至少 {model.marketGate.requiredConditions} 条通过
           </div>
+          {model.marketGate.macroDisclosure ? (
+            <div
+              className="livermore-strategy-panel__macro-disclosure"
+              data-testid="livermore-market-gate-macro-disclosure"
+            >
+              {model.marketGate.macroDisclosure.adjustmentLabel ? (
+                <span className="livermore-strategy-panel__macro-disclosure-line">
+                  {model.marketGate.macroDisclosure.adjustmentLabel}
+                  {model.marketGate.macroDisclosure.cycleStateLabel ? (
+                    <span className="livermore-strategy-panel__macro-cycle-tag">
+                      {model.marketGate.macroDisclosure.cycleStateLabel}
+                    </span>
+                  ) : null}
+                </span>
+              ) : null}
+              {model.marketGate.macroDisclosure.statusMarker ? (
+                <span
+                  className="livermore-strategy-panel__macro-status-marker"
+                  data-tone="warning"
+                >
+                  {model.marketGate.macroDisclosure.statusMarker}
+                </span>
+              ) : null}
+              {model.marketGate.macroDisclosure.lagLabel ? (
+                <span className="livermore-strategy-panel__macro-disclosure-line">
+                  {model.marketGate.macroDisclosure.lagLabel}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         <div className="livermore-strategy-panel__metric" data-testid="livermore-exposure">
           <div className="livermore-strategy-panel__metric-label">仓位系数</div>
@@ -251,6 +341,20 @@ export function LivermoreStrategyPanel({
         <div className="livermore-strategy-panel__state">暂无可用 Livermore 输入。</div>
       ) : null}
 
+      {sharedGapNotes.size > 0 ? (
+        <div
+          className="livermore-strategy-panel__shared-notes"
+          data-testid="livermore-shared-gap-notes"
+        >
+          {[...sharedGapNotes].map((note) => (
+            <div key={note} className="livermore-strategy-panel__shared-note">
+              <span className="livermore-strategy-panel__shared-note-label">共同缺口说明</span>
+              {note}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <div className="livermore-strategy-panel__grid">
         <div className="livermore-strategy-panel__block">
           <h3 className="livermore-strategy-panel__block-title">市场门控条件</h3>
@@ -259,8 +363,17 @@ export function LivermoreStrategyPanel({
               <li className="livermore-strategy-panel__row" key={condition.key}>
                 <span className="livermore-strategy-panel__row-main">
                   <span className="livermore-strategy-panel__row-title">{condition.label}</span>
-                  <span className="livermore-strategy-panel__row-detail">
-                    {condition.evidence}
+                  <span
+                    className="livermore-strategy-panel__row-detail"
+                    title={
+                      condition.evidenceDisplay === condition.evidence
+                        ? condition.evidenceSourceRef ?? undefined
+                        : condition.evidenceSourceRef
+                          ? `${condition.evidence}（来源 ${condition.evidenceSourceRef}）`
+                          : condition.evidence
+                    }
+                  >
+                    {condition.evidenceDisplay}
                   </span>
                 </span>
                 <span className={statusClass(condition.status)}>{condition.statusLabel}</span>
@@ -276,7 +389,14 @@ export function LivermoreStrategyPanel({
               <li className="livermore-strategy-panel__row" key={block.key}>
                 <span className="livermore-strategy-panel__row-main">
                   <span className="livermore-strategy-panel__row-title">{block.title}</span>
-                  <span className="livermore-strategy-panel__row-detail">{block.summary}</span>
+                  <span
+                    className="livermore-strategy-panel__row-detail"
+                    title={sharedGapNotes.has(block.summary.trim()) ? block.summary : undefined}
+                  >
+                    {sharedGapNotes.has(block.summary.trim())
+                      ? SHARED_NOTE_ROW_REFERENCE
+                      : block.summary}
+                  </span>
                 </span>
                 <span className={statusClass(block.status)}>{block.statusLabel}</span>
               </li>
@@ -290,13 +410,32 @@ export function LivermoreStrategyPanel({
           <h3 className="livermore-strategy-panel__block-title">数据缺口</h3>
           <ul className="livermore-strategy-panel__list">
             {model.dataGaps.map((gap) => (
-              <li className="livermore-strategy-panel__row" key={gap.inputFamily}>
+              <li className="livermore-strategy-panel__row" key={dataGapRowKey(gap)}>
                 <span className="livermore-strategy-panel__row-main">
                   <span className="livermore-strategy-panel__row-title">{gap.inputFamily}</span>
-                  <span className="livermore-strategy-panel__row-detail">{gap.evidence}</span>
+                  <span
+                    className="livermore-strategy-panel__row-detail"
+                    title={sharedGapNotes.has(gap.evidence.trim()) ? gap.evidence : undefined}
+                  >
+                    {sharedGapNotes.has(gap.evidence.trim())
+                      ? SHARED_NOTE_ROW_REFERENCE
+                      : gap.evidence}
+                  </span>
+                  {gap.freshnessLabel ? (
+                    <span className="livermore-strategy-panel__row-detail">
+                      {gap.freshnessLabel}
+                    </span>
+                  ) : null}
                 </span>
-                <span className={statusClass(positionRiskIsInactive(model, gap.inputFamily) ? "info" : gap.status)}>
-                  {positionRiskIsInactive(model, gap.inputFamily) ? "未启用" : gap.statusLabel}
+                <span className="livermore-strategy-panel__row-actions">
+                  {gap.tier ? (
+                    <span className={statusClass(freshnessTierStatus(gap.tier))}>
+                      {gap.tier}
+                    </span>
+                  ) : null}
+                  <span className={statusClass(positionRiskIsInactive(model, gap.inputFamily) ? "info" : gap.status)}>
+                    {positionRiskIsInactive(model, gap.inputFamily) ? "未启用" : gap.statusLabel}
+                  </span>
                 </span>
               </li>
             ))}
@@ -309,7 +448,12 @@ export function LivermoreStrategyPanel({
             {model.diagnostics.map((item) => (
               <li className="livermore-strategy-panel__row" key={`${item.severity}:${item.code}`}>
                 <span className="livermore-strategy-panel__row-main">
-                  <span className="livermore-strategy-panel__row-title">{item.code}</span>
+                  <span
+                    className="livermore-strategy-panel__row-title"
+                    title={item.codeLabel === item.code ? undefined : item.code}
+                  >
+                    {item.codeLabel}
+                  </span>
                   <span className="livermore-strategy-panel__row-detail">{item.message}</span>
                 </span>
                 <span className={statusClass(item.severity)}>{item.severityLabel}</span>
@@ -321,15 +465,19 @@ export function LivermoreStrategyPanel({
         {sectorRank ? (
           <div className="livermore-strategy-panel__block" data-testid="livermore-sector-rank">
             <h3 className="livermore-strategy-panel__block-title">板块排序</h3>
-            <div className="livermore-strategy-panel__row-detail">
-              {sectorRank.formulaVersion}
+            <div
+              className="livermore-strategy-panel__row-detail"
+              title={`口径版本 ${sectorRank.formulaVersion}`}
+            >
+              共 {sectorRank.items.length} 个板块
             </div>
             <ul className="livermore-strategy-panel__list">
               {sectorRank.items.map((item) => (
                 <li className="livermore-strategy-panel__row" key={`${item.rank}:${item.sectorCode}`}>
                   <span className="livermore-strategy-panel__row-main">
                     <span className="livermore-strategy-panel__row-title">
-                      #{item.rank} {item.sectorName} · {item.sectorCode}
+                      <span className="livermore-strategy-panel__row-rank">#{item.rank}</span>{" "}
+                      {item.sectorName} · {item.sectorCode}
                     </span>
                     <span className="livermore-strategy-panel__row-detail">
                       分数 {item.score} · 成分股 {item.constituentCount}
@@ -345,15 +493,36 @@ export function LivermoreStrategyPanel({
         {stockCandidates ? (
           <div className="livermore-strategy-panel__block" data-testid="livermore-stock-candidates">
             <h3 className="livermore-strategy-panel__block-title">个股候选</h3>
-            <div className="livermore-strategy-panel__row-detail">
-              {stockCandidates.formulaVersion}
+            <div
+              className="livermore-strategy-panel__row-detail"
+              title={`口径版本 ${stockCandidates.formulaVersion}`}
+            >
+              {batchStateLine(stockCandidates.items.length, stockCandidates.marketState)}
+              {stockCandidates.factorMissingCount != null && stockCandidates.factorMissingCount > 0
+                ? ` · 缺 ${stockCandidates.factorMissingCount} 个因子`
+                : ""}
             </div>
+            {stockCandidates.positionSizeHint ? (
+              <div
+                className="livermore-strategy-panel__row-detail"
+                data-testid="livermore-position-size-hint-policy"
+              >
+                建议仓位政策 {stockCandidates.positionSizeHint.policyVersion} ·{" "}
+                {stockCandidates.positionSizeHint.gateExposureNote}{" "}
+                {stockCandidates.positionSizeHint.shadowNote}
+                {stockCandidates.positionSizeHint.coverageDegraded &&
+                stockCandidates.positionSizeHint.coverageWarning
+                  ? ` · ${stockCandidates.positionSizeHint.coverageWarning}`
+                  : ""}
+              </div>
+            ) : null}
             <ul className="livermore-strategy-panel__list">
               {stockCandidates.items.map((item) => (
                 <li className="livermore-strategy-panel__row" key={`${item.rank}:${item.stockCode}`}>
                   <span className="livermore-strategy-panel__row-main">
                     <span className="livermore-strategy-panel__row-title">
-                      #{item.rank} {item.stockName} · {item.stockCode}
+                      <span className="livermore-strategy-panel__row-rank">#{item.rank}</span>{" "}
+                      {item.stockName} · {item.stockCode}
                     </span>
                     <span className="livermore-strategy-panel__row-detail">
                       {item.sectorName} · 板块第 {item.sectorRank} 名 · 现价 {item.close}
@@ -364,9 +533,13 @@ export function LivermoreStrategyPanel({
                     <span className="livermore-strategy-panel__row-detail">
                       CLV {item.closeStrength} · gap {item.gapNorm} · 异常换手 {item.abnormalTurnover}
                     </span>
+                    {item.sizeHint ? (
+                      <span className="livermore-strategy-panel__row-detail">
+                        建议仓位 {item.sizeHint}
+                      </span>
+                    ) : null}
                   </span>
                   <span className="livermore-strategy-panel__row-actions">
-                    <span className={statusClass("ready")}>{stockCandidates.marketState}</span>
                     <button
                       className="livermore-strategy-panel__watch-btn"
                       disabled={watchedCodes.has(item.stockCode)}
@@ -386,7 +559,7 @@ export function LivermoreStrategyPanel({
           <div className="livermore-strategy-panel__block" data-testid="livermore-watch-pool">
             <h3 className="livermore-strategy-panel__block-title">观察池</h3>
             <div className="livermore-strategy-panel__row-detail">
-              本地观察池仅记录策略触发价位，不生成交易指令。
+              本地观察池仅记录策略触发价位。
             </div>
             {watchPool.length > 0 ? (
               <ul className="livermore-strategy-panel__list">
@@ -422,21 +595,27 @@ export function LivermoreStrategyPanel({
         {meanReversionCandidates ? (
           <div className="livermore-strategy-panel__block" data-testid="livermore-mean-reversion-candidates">
             <h3 className="livermore-strategy-panel__block-title">超跌反弹观察池</h3>
-            <div className="livermore-strategy-panel__row-detail">
-              {meanReversionCandidates.formulaVersion}
+            <div
+              className="livermore-strategy-panel__row-detail"
+              title={`口径版本 ${meanReversionCandidates.formulaVersion}`}
+            >
+              {batchStateLine(
+                meanReversionCandidates.items.length,
+                meanReversionCandidates.marketState,
+              )}
             </div>
             <ul className="livermore-strategy-panel__list">
               {meanReversionCandidates.items.map((item) => (
                 <li className="livermore-strategy-panel__row" key={`${item.rank}:${item.stockCode}`}>
                   <span className="livermore-strategy-panel__row-main">
                     <span className="livermore-strategy-panel__row-title">
-                      #{item.rank} {item.stockName} | {item.stockCode}
+                      <span className="livermore-strategy-panel__row-rank">#{item.rank}</span>{" "}
+                      {item.stockName} · {item.stockCode}
                     </span>
                     <span className="livermore-strategy-panel__row-detail">
-                      {item.sectorName} | close {item.close} | score {item.score}
+                      {item.sectorName}，现价 {item.close} · 评分 {item.score}
                     </span>
                   </span>
-                  <span className={statusClass("ready")}>{meanReversionCandidates.marketState}</span>
                 </li>
               ))}
             </ul>
@@ -446,21 +625,30 @@ export function LivermoreStrategyPanel({
         {factorScreenCandidates ? (
           <div className="livermore-strategy-panel__block" data-testid="livermore-factor-screen-candidates">
             <h3 className="livermore-strategy-panel__block-title">多因子选股</h3>
+            <div
+              className="livermore-strategy-panel__row-detail"
+              title={`口径版本 ${factorScreenCandidates.formulaVersion}`}
+            >
+              {batchStateLine(
+                factorScreenCandidates.items.length,
+                factorScreenCandidates.marketState,
+              )}
+            </div>
             <div className="livermore-strategy-panel__row-detail">
-              {factorScreenCandidates.formulaVersion} | {factorScreenCandidates.coverageNote}
+              {factorScreenCandidates.coverageNote}
             </div>
             <ul className="livermore-strategy-panel__list">
               {factorScreenCandidates.items.map((item) => (
                 <li className="livermore-strategy-panel__row" key={`${item.rank}:${item.stockCode}`}>
                   <span className="livermore-strategy-panel__row-main">
                     <span className="livermore-strategy-panel__row-title">
-                      #{item.rank} {item.stockName} | {item.stockCode}
+                      <span className="livermore-strategy-panel__row-rank">#{item.rank}</span>{" "}
+                      {item.stockName} · {item.stockCode}
                     </span>
                     <span className="livermore-strategy-panel__row-detail">
-                      {item.sectorName} | factor score {item.score}
+                      {item.sectorName}，因子得分 {item.score}
                     </span>
                   </span>
-                  <span className={statusClass("ready")}>{factorScreenCandidates.marketState}</span>
                 </li>
               ))}
             </ul>
@@ -470,18 +658,22 @@ export function LivermoreStrategyPanel({
         {themeBreakout ? (
           <div className="livermore-strategy-panel__block" data-testid="livermore-theme-breakout">
             <h3 className="livermore-strategy-panel__block-title">题材突变</h3>
-            <div className="livermore-strategy-panel__row-detail">
-              {themeBreakout.formulaVersion} | {themeBreakout.isProxy ? "proxy" : "landed"}
+            <div
+              className="livermore-strategy-panel__row-detail"
+              title={`口径版本 ${themeBreakout.formulaVersion}`}
+            >
+              {themeBreakout.isProxy ? "代理口径" : "已接入"}
             </div>
             <ul className="livermore-strategy-panel__list">
               {themeBreakout.items.map((item) => (
                 <li className="livermore-strategy-panel__row" key={`${item.rank}:${item.themeName}`}>
                   <span className="livermore-strategy-panel__row-main">
                     <span className="livermore-strategy-panel__row-title">
-                      #{item.rank} {item.themeName}
+                      <span className="livermore-strategy-panel__row-rank">#{item.rank}</span>{" "}
+                      {item.themeName}
                     </span>
                     <span className="livermore-strategy-panel__row-detail">
-                      {item.parentSectorName} | {item.reason}
+                      {item.parentSectorName} · {item.reason}
                     </span>
                   </span>
                   <span className={statusClass("ready")}>观察</span>
@@ -493,28 +685,32 @@ export function LivermoreStrategyPanel({
 
         {riskExit ? (
           <div className="livermore-strategy-panel__block" data-testid="livermore-risk-exit">
-            <h3 className="livermore-strategy-panel__block-title">Risk exit</h3>
-            <div className="livermore-strategy-panel__row-detail">
-              {riskExit.formulaVersion}
-            </div>
-            <div className="livermore-strategy-panel__row-detail">
-              Positions {riskExit.positionCount} | Signals {riskExit.signalCount}
+            <h3 className="livermore-strategy-panel__block-title">风险退出</h3>
+            <div
+              className="livermore-strategy-panel__row-detail"
+              title={`口径版本 ${riskExit.formulaVersion}`}
+            >
+              持仓 {riskExit.positionCount} · 信号 {riskExit.signalCount}
             </div>
             <ul className="livermore-strategy-panel__list">
               {riskExit.items.map((item) => (
                 <li className="livermore-strategy-panel__row" key={`${item.stockCode}:${item.reason}`}>
                   <span className="livermore-strategy-panel__row-main">
                     <span className="livermore-strategy-panel__row-title">
-                      {item.stockName} | {item.stockCode}
+                      {item.stockName} · {item.stockCode}
                     </span>
                     <span className="livermore-strategy-panel__row-detail">
-                      {item.reason} | entry {item.entryCost} | bars {item.barsSinceEntry}
+                      {item.reason}
                     </span>
                     <span className="livermore-strategy-panel__row-detail">
-                      close {item.latestClose} | ema10 {item.latestEma10}
+                      入场成本 {item.entryCost}
+                      {item.entryCostAvailable ? "" : "（成本价缺失）"} · 持有 {item.barsSinceEntry} 根K线
+                    </span>
+                    <span className="livermore-strategy-panel__row-detail">
+                      收盘 {item.latestClose} · EMA10 {item.latestEma10}
                     </span>
                   </span>
-                  <span className={statusClass("ready")}>Ready</span>
+                  <span className={statusClass("ready")}>可用</span>
                 </li>
               ))}
             </ul>

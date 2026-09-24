@@ -4,7 +4,7 @@ This template is not an approval until completed and signed by the business owne
 
 Page ID: `GAP-STOCK-ANALYSIS-PAGE`
 Page slug: `stock-analysis`
-Primary API: `/ui/market-data/livermore`
+Primary API: `/ui/market-data/stock-analysis/workbench`
 Approval check: `business_owner_approval`
 Approval status: `approval_status=pending`
 Formal use allowed: `formal_use_allowed=false`
@@ -34,6 +34,7 @@ Business owner signature: `<required>`
 Reviewed sign-off packet: `docs/pnl/stock-analysis-sign-off-packet.md`
 Reviewed governance audit packet: `docs/pnl/stock-analysis-governance-audit-packet.md`
 Reviewed owner evidence packet: `docs/pnl/stock-analysis-owner-evidence-packet.md`
+Owner signoff runbook: `docs/pnl/stock-analysis-owner-signoff-runbook.md`
 
 ## Evidence Review
 

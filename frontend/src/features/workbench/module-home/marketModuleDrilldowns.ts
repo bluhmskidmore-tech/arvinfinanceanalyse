@@ -2,7 +2,7 @@ import {
   primaryWorkbenchNavigation,
   resolveWorkbenchGroupKey,
   type WorkbenchSection,
-} from "../../../mocks/navigation";
+} from "../../../app/navigation";
 import type { ModuleHomeDrilldown } from "./moduleHomeConfig";
 
 function sectionToDrilldown(section: WorkbenchSection): ModuleHomeDrilldown {

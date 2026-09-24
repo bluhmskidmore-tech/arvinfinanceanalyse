@@ -236,6 +236,8 @@ def build_report():
     # ── 信用债 ───────────────────────────────────────────────────
     mon_df = sig.get("风控")
     fi_risk = extract_str(mon_df, "风险等级")
+    fi_data_status = extract_str(mon_df, "数据状态")
+    fi_risk_note = "赎回压力（示例数据，外部源未接入）" if "示例数据" in fi_data_status else "赎回压力"
 
     # ── 综合判断 ─────────────────────────────────────────────────
     try:
@@ -285,7 +287,7 @@ def build_report():
     lines.append(f"| 美林时钟 | {mc_quad} | 债券方向 {mc_bond} |")
     lines.append(f"| VaR(99%) | {var99} | Monte Carlo模拟 |")
     lines.append(f"| 夏普比率 | {sharpe} | 风险调整后收益 |")
-    lines.append(f"| 固收+风险 | {fi_risk} | 赎回压力 |")
+    lines.append(f"| 固收+风险 | {fi_risk} | {fi_risk_note} |")
     lines.append("")
 
     # 宏观舆情

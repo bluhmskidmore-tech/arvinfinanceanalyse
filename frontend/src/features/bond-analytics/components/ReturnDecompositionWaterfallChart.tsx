@@ -1,4 +1,5 @@
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import { type EChartsOption } from "../../../lib/echarts";
+import { BaseChart } from "../../../components/charts/BaseChart";
 
 type Props = {
   option: EChartsOption;
@@ -6,5 +7,5 @@ type Props = {
 };
 
 export function ReturnDecompositionWaterfallChart({ option, height }: Props) {
-  return <ReactECharts option={option} style={{ height, width: "100%" }} opts={{ renderer: "canvas" }} />;
+  return <BaseChart option={option} height={height} />;
 }

@@ -1,56 +1,71 @@
 import { useMemo } from "react";
 
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
-import { DataSection } from "../../../components/DataSection";
+import { PageDataSection } from "../../../components/page/PageDataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
-import type { PnlCompositionPayload } from "../../../api/contracts";
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
-
-const cardStyle = {
-  padding: designTokens.space[5],
-  borderRadius: designTokens.radius.sm,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: "#ffffff",
-  boxShadow: "0 1px 2px rgba(31, 41, 55, 0.04)",
-} as const;
-
-const COLORS = {
-  positive: designTokens.color.success[600],
-  neutral: designTokens.color.neutral[600],
-  negative: designTokens.color.danger[500],
-  interest: designTokens.color.success[500],
-  fairValue: designTokens.color.info[500],
-  capital: designTokens.color.warning[500],
-  other: designTokens.color.neutral[500],
-} as const;
+import type { Numeric, PnlCompositionPayload } from "../../../api/contracts";
+import { designTokens, nocturneTokens } from "../../../theme/designSystem";
+import { numericRaw } from "../../../pageModel";
+import { EM_DASH } from "../../../utils/format";
+import {
+  pnlChartLabelOnFill,
+  pnlCompositionSeriesColors,
+} from "./pnlAttributionChartPalette";
+import "./PnLCompositionChart.css";
 
 function rawOr(
-  n: { raw: number | null } | null | undefined,
-  fallback = 0,
-): number {
-  if (!n) return fallback;
-  return n.raw ?? fallback;
+  n: Numeric | null | undefined,
+): number | null {
+  return numericRaw(n);
 }
 
 function pctPoints(
-  n: { raw: number | null; unit?: string } | null | undefined,
-): number {
+  n: Numeric | null | undefined,
+): number | null {
   const raw = rawOr(n);
-  return n?.unit === "pct" && Math.abs(raw) <= 1 ? raw * 100 : raw;
+  if (raw === null) return null;
+  // Contract: pct Numeric raw is always a decimal ratio; convert unconditionally.
+  return n?.unit === "pct" ? raw * 100 : raw;
 }
 
 function pctDisplay(
-  n: { raw: number | null; unit?: string; display?: string } | null | undefined,
+  n: Numeric | null | undefined,
 ): string {
+  const points = pctPoints(n);
+  if (points === null) return EM_DASH;
   const display = n?.display?.trim();
   if (display) return display;
-  return `${pctPoints(n).toFixed(1)}%`;
+  return `${points.toFixed(1)}%`;
 }
 
-function toneColor(raw: number): string {
-  if (raw > 0) return COLORS.positive;
-  if (raw < 0) return COLORS.negative;
-  return COLORS.neutral;
+function toneColor(raw: number | null): string {
+  if (raw === null) return pnlCompositionSeriesColors.neutral;
+  if (raw > 0) return pnlCompositionSeriesColors.positive;
+  if (raw < 0) return pnlCompositionSeriesColors.negative;
+  return pnlCompositionSeriesColors.neutral;
+}
+
+function toneDirection(
+  raw: number | null,
+): "positive" | "negative" | "neutral" | undefined {
+  if (raw === null) return undefined;
+  if (raw > 0) return "positive";
+  if (raw < 0) return "negative";
+  return "neutral";
+}
+
+function yiDisplay(
+  value: Numeric | null | undefined,
+  signed = false,
+): string {
+  const raw = rawOr(value);
+  if (raw === null) return EM_DASH;
+  const yi = raw / 100_000_000;
+  return `${signed && yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
+}
+
+function yiCell(raw: number | null): string {
+  return raw === null ? EM_DASH : (raw / 100_000_000).toFixed(2);
 }
 
 type Props = {
@@ -86,7 +101,7 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
       },
     ];
 
-    const hasAny = categories.some((c) => c.rawYuan !== 0);
+    const hasAny = categories.some((c) => c.rawYuan !== null);
     if (!hasAny) return null;
 
     // Reverse for yAxis so the first category renders at the top.
@@ -99,14 +114,16 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
         formatter: (params: unknown) => {
           const entries = params as Array<{
             axisValue: string;
-            data: { value: number; pct: number };
+            data: { value: number | null; pct: number | null };
           }>;
           if (!entries || entries.length === 0) return "";
           const e = entries[0];
           if (!e) return "";
           const yi = e.data.value;
+          if (yi === null) return `${e.axisValue}<br/>${EM_DASH}`;
           const sign = yi >= 0 ? "+" : "";
-          return `${e.axisValue}<br/>${sign}${yi.toFixed(2)} 亿（占比 ${e.data.pct.toFixed(1)}%）`;
+          const pct = e.data.pct === null ? EM_DASH : `${e.data.pct.toFixed(1)}%`;
+          return `${e.axisValue}<br/>${sign}${yi.toFixed(2)} 亿（占比 ${pct}）`;
         },
       },
       grid: {
@@ -121,12 +138,12 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
         name: "亿元",
         axisLine: {
           show: true,
-          lineStyle: { color: designTokens.color.neutral[300] },
+          lineStyle: { color: nocturneTokens.color.line },
         },
         splitLine: {
           lineStyle: {
             type: "dashed" as const,
-            color: designTokens.color.neutral[200],
+            color: nocturneTokens.color.lineSoft,
           },
         },
       },
@@ -141,23 +158,27 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
           type: "bar" as const,
           barWidth: 20,
           data: reversed.map((c) => ({
-            value: c.rawYuan / 100_000_000,
+            value: c.rawYuan === null ? null : c.rawYuan / 100_000_000,
             pct: c.pct,
             itemStyle: { color: toneColor(c.rawYuan) },
           })),
           label: {
             show: true,
             formatter: (params: { value?: unknown }) => {
+              if (params.value === null || params.value === undefined) {
+                return EM_DASH;
+              }
               const rawValue =
                 typeof params.value === "number"
                   ? params.value
-                  : Number(params.value ?? 0);
-              const v = Number.isFinite(rawValue) ? rawValue : 0;
+                  : Number(params.value);
+              if (!Number.isFinite(rawValue)) return EM_DASH;
+              const v = rawValue;
               const sign = v >= 0 ? "+" : "";
               return `${sign}${v.toFixed(2)}`;
             },
             position: "inside" as const,
-            color: "#ffffff",
+            color: pnlChartLabelOnFill,
             fontSize: designTokens.fontSize[11],
           },
         },
@@ -170,9 +191,16 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
     const periods = data.trend_data.map((t) =>
       (t.period_label ?? t.period).replace("年", "-").replace("月", ""),
     );
+    // ECharts canvas 读不到 CSS 变量，按 tone.ts 指南使用 Nocturne TS 镜像 token。
     return {
       tooltip: { trigger: "axis" as const },
-      legend: { bottom: 0, textStyle: { fontSize: designTokens.fontSize[12] } },
+      legend: {
+        bottom: 0,
+        textStyle: {
+          fontSize: designTokens.fontSize[12],
+          color: nocturneTokens.color.inkSoft,
+        },
+      },
       grid: {
         left: 48,
         right: designTokens.space[6],
@@ -184,19 +212,19 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
         data: periods,
         axisLabel: {
           fontSize: designTokens.fontSize[11],
-          color: designTokens.color.neutral[700],
+          color: nocturneTokens.color.inkSoft,
         },
       },
       yAxis: {
         type: "value" as const,
         axisLabel: {
           formatter: (v: number) => `${v.toFixed(1)}亿`,
-          color: designTokens.color.neutral[700],
+          color: nocturneTokens.color.inkSoft,
         },
         splitLine: {
           lineStyle: {
             type: "dashed" as const,
-            color: designTokens.color.neutral[100],
+            color: nocturneTokens.color.lineSoft,
           },
         },
       },
@@ -206,26 +234,35 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
           type: "bar" as const,
           stack: "t",
           data: data.trend_data.map(
-            (t) => rawOr(t.interest_income) / 100_000_000,
+            (t) => {
+              const raw = rawOr(t.interest_income);
+              return raw === null ? null : raw / 100_000_000;
+            },
           ),
-          itemStyle: { color: COLORS.interest },
+          itemStyle: { color: pnlCompositionSeriesColors.interest },
         },
         {
           name: "公允价值变动",
           type: "bar" as const,
           stack: "t",
           data: data.trend_data.map(
-            (t) => rawOr(t.fair_value_change) / 100_000_000,
+            (t) => {
+              const raw = rawOr(t.fair_value_change);
+              return raw === null ? null : raw / 100_000_000;
+            },
           ),
-          itemStyle: { color: COLORS.fairValue },
+          itemStyle: { color: pnlCompositionSeriesColors.fairValue },
         },
         {
           name: "投资收益",
           type: "bar" as const,
           stack: "t",
-          data: data.trend_data.map((t) => rawOr(t.capital_gain) / 100_000_000),
+          data: data.trend_data.map((t) => {
+            const raw = rawOr(t.capital_gain);
+            return raw === null ? null : raw / 100_000_000;
+          }),
           itemStyle: {
-            color: COLORS.capital,
+            color: pnlCompositionSeriesColors.capital,
             borderRadius: [
               designTokens.radius.sm,
               designTokens.radius.sm,
@@ -238,9 +275,12 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
           name: "其他收入",
           type: "bar" as const,
           stack: "t",
-          data: data.trend_data.map((t) => rawOr(t.other_income) / 100_000_000),
+          data: data.trend_data.map((t) => {
+            const raw = rawOr(t.other_income);
+            return raw === null ? null : raw / 100_000_000;
+          }),
           itemStyle: {
-            color: COLORS.other,
+            color: pnlCompositionSeriesColors.other,
             borderRadius: [
               designTokens.radius.sm,
               designTokens.radius.sm,
@@ -256,204 +296,87 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
   const hasTableRows = (data?.items ?? []).length > 0;
 
   return (
-    <DataSection title="损益构成" state={state} onRetry={onRetry}>
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: designTokens.space[5],
-        }}
-      >
+    <PageDataSection title="损益构成" state={state} onRetry={onRetry}>
+      <div className="pnl-composition-chart">
         {data && (
           <>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                gap: designTokens.space[4],
-              }}
-            >
-              <div style={{ ...cardStyle, padding: designTokens.space[4] }}>
+            <div className="pnl-composition-chart__metric-grid">
+              <div className="pnl-composition-chart__card pnl-composition-chart__card--compact">
+                <div className="pnl-composition-chart__label">总损益</div>
                 <div
-                  style={{
-                    fontSize: designTokens.fontSize[12],
-                    color: designTokens.color.neutral[700],
-                  }}
+                  className="pnl-composition-chart__value"
+                  data-direction={toneDirection(rawOr(data.total_pnl))}
                 >
-                  总损益
+                  {yiDisplay(data.total_pnl, true)}
                 </div>
-                <div
-                  style={{
-                    fontSize: designTokens.fontSize[20],
-                    fontWeight: 700,
-                    color: toneColor(rawOr(data.total_pnl)),
-                    ...tabularNumsStyle,
-                  }}
-                >
-                  {`${rawOr(data.total_pnl) >= 0 ? "+" : ""}${(rawOr(data.total_pnl) / 100_000_000).toFixed(2)} 亿`}
-                </div>
-                <div
-                  style={{
-                    fontSize: designTokens.fontSize[12],
-                    color: designTokens.color.neutral[500],
-                  }}
-                >
+                <div className="pnl-composition-chart__meta">
                   {data.report_period}
                 </div>
               </div>
-              <div
-                style={{
-                  ...cardStyle,
-                  padding: designTokens.space[4],
-                  background: designTokens.color.success[50],
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: designTokens.fontSize[12],
-                    color: designTokens.color.semantic.profit,
-                  }}
-                >
+              <div className="pnl-composition-chart__card pnl-composition-chart__card--compact pnl-composition-chart__card--interest">
+                <div className="pnl-composition-chart__label pnl-composition-chart__label--interest">
                   利息收入
                 </div>
                 <div
-                  style={{
-                    fontSize: designTokens.fontSize[18],
-                    fontWeight: 700,
-                    color: toneColor(rawOr(data.total_interest_income)),
-                    ...tabularNumsStyle,
-                  }}
+                  className="pnl-composition-chart__value pnl-composition-chart__value--medium"
+                  data-direction={toneDirection(rawOr(data.total_interest_income))}
                 >
-                  {`${(rawOr(data.total_interest_income) / 100_000_000).toFixed(2)} 亿`}
+                  {yiDisplay(data.total_interest_income)}
                 </div>
-                <div
-                  style={{
-                    fontSize: designTokens.fontSize[12],
-                    color: designTokens.color.success[600],
-                  }}
-                >
+                <div className="pnl-composition-chart__meta pnl-composition-chart__meta--interest">
                   占比 {pctDisplay(data.interest_pct)}
                 </div>
               </div>
-              <div
-                style={{
-                  ...cardStyle,
-                  padding: designTokens.space[4],
-                  background: designTokens.color.info[50],
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: designTokens.fontSize[12],
-                    color: designTokens.color.info[600],
-                  }}
-                >
+              <div className="pnl-composition-chart__card pnl-composition-chart__card--compact pnl-composition-chart__card--fair-value">
+                <div className="pnl-composition-chart__label pnl-composition-chart__label--fair-value">
                   公允价值变动
                 </div>
                 <div
-                  style={{
-                    fontSize: designTokens.fontSize[18],
-                    fontWeight: 700,
-                    color: toneColor(rawOr(data.total_fair_value_change)),
-                    ...tabularNumsStyle,
-                  }}
+                  className="pnl-composition-chart__value pnl-composition-chart__value--medium"
+                  data-direction={toneDirection(rawOr(data.total_fair_value_change))}
                 >
-                  {`${rawOr(data.total_fair_value_change) >= 0 ? "+" : ""}${(rawOr(data.total_fair_value_change) / 100_000_000).toFixed(2)} 亿`}
+                  {yiDisplay(data.total_fair_value_change, true)}
                 </div>
-                <div
-                  style={{
-                    fontSize: designTokens.fontSize[12],
-                    color: designTokens.color.neutral[700],
-                  }}
-                >
+                <div className="pnl-composition-chart__meta pnl-composition-chart__meta--muted">
                   占比 {pctDisplay(data.fair_value_pct)}
                 </div>
               </div>
-              <div
-                style={{
-                  ...cardStyle,
-                  padding: designTokens.space[4],
-                  background: designTokens.color.warning[50],
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: designTokens.fontSize[12],
-                    color: designTokens.color.warning[600],
-                  }}
-                >
+              <div className="pnl-composition-chart__card pnl-composition-chart__card--compact pnl-composition-chart__card--capital">
+                <div className="pnl-composition-chart__label pnl-composition-chart__label--capital">
                   投资收益
                 </div>
                 <div
-                  style={{
-                    fontSize: designTokens.fontSize[18],
-                    fontWeight: 700,
-                    color: toneColor(rawOr(data.total_capital_gain)),
-                    ...tabularNumsStyle,
-                  }}
+                  className="pnl-composition-chart__value pnl-composition-chart__value--medium"
+                  data-direction={toneDirection(rawOr(data.total_capital_gain))}
                 >
-                  {`${rawOr(data.total_capital_gain) >= 0 ? "+" : ""}${(rawOr(data.total_capital_gain) / 100_000_000).toFixed(2)} 亿`}
+                  {yiDisplay(data.total_capital_gain, true)}
                 </div>
-                <div
-                  style={{
-                    fontSize: designTokens.fontSize[12],
-                    color: designTokens.color.neutral[700],
-                  }}
-                >
+                <div className="pnl-composition-chart__meta pnl-composition-chart__meta--muted">
                   占比 {pctDisplay(data.capital_gain_pct)}
                 </div>
               </div>
-              <div
-                style={{
-                  ...cardStyle,
-                  padding: designTokens.space[4],
-                  background: designTokens.color.neutral[100],
-                }}
-              >
+              <div className="pnl-composition-chart__card pnl-composition-chart__card--compact pnl-composition-chart__card--other">
+                <div className="pnl-composition-chart__label">其他收入</div>
                 <div
-                  style={{
-                    fontSize: designTokens.fontSize[12],
-                    color: designTokens.color.neutral[700],
-                  }}
+                  className="pnl-composition-chart__value pnl-composition-chart__value--medium"
+                  data-direction={toneDirection(rawOr(data.total_other_income))}
                 >
-                  其他收入
+                  {yiDisplay(data.total_other_income, true)}
                 </div>
-                <div
-                  style={{
-                    fontSize: designTokens.fontSize[18],
-                    fontWeight: 700,
-                    color: toneColor(rawOr(data.total_other_income)),
-                    ...tabularNumsStyle,
-                  }}
-                >
-                  {`${rawOr(data.total_other_income) >= 0 ? "+" : ""}${(rawOr(data.total_other_income) / 100_000_000).toFixed(2)} 亿`}
-                </div>
-                <div
-                  style={{
-                    fontSize: designTokens.fontSize[12],
-                    color: designTokens.color.neutral[700],
-                  }}
-                >
+                <div className="pnl-composition-chart__meta pnl-composition-chart__meta--muted">
                   占比 {pctDisplay(data.other_pct)}
                 </div>
               </div>
             </div>
 
             {bipolarOption && (
-              <div style={cardStyle}>
-                <h3
-                  style={{
-                    margin: `0 0 ${designTokens.space[3]}px`,
-                    fontSize: designTokens.fontSize[16],
-                    fontWeight: 600,
-                    color: designTokens.color.neutral[900],
-                  }}
-                >
+              <div className="pnl-composition-chart__card">
+                <h3 className="pnl-composition-chart__section-title">
                   损益构成（带符号 · 亿元）
                 </h3>
                 <ReactECharts
                   option={bipolarOption}
-                  style={{ height: 240 }}
+                  className="pnl-composition-chart__chart"
                   notMerge
                   lazyUpdate
                 />
@@ -461,20 +384,13 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
             )}
 
             {trendOption && (
-              <div style={cardStyle}>
-                <h3
-                  style={{
-                    margin: `0 0 ${designTokens.space[3]}px`,
-                    fontSize: designTokens.fontSize[16],
-                    fontWeight: 600,
-                    color: designTokens.color.neutral[900],
-                  }}
-                >
+              <div className="pnl-composition-chart__card">
+                <h3 className="pnl-composition-chart__section-title">
                   损益构成趋势
                 </h3>
                 <ReactECharts
                   option={trendOption}
-                  style={{ height: 300 }}
+                  className="pnl-composition-chart__chart--trend"
                   notMerge
                   lazyUpdate
                 />
@@ -482,169 +398,66 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
             )}
 
             {hasTableRows && (
-              <div style={cardStyle}>
-                <h3
-                  style={{
-                    margin: `0 0 ${designTokens.space[3]}px`,
-                    fontSize: designTokens.fontSize[16],
-                    fontWeight: 600,
-                    color: designTokens.color.neutral[900],
-                  }}
-                >
+              <div className="pnl-composition-chart__card">
+                <h3 className="pnl-composition-chart__section-title">
                   分类别损益构成
                 </h3>
-                <div style={{ overflow: "auto" }}>
-                  <table
-                    style={{
-                      width: "100%",
-                      borderCollapse: "collapse",
-                      fontSize: designTokens.fontSize[13],
-                    }}
-                  >
+                <div className="pnl-composition-chart__table-wrap">
+                  <table className="pnl-composition-chart__table">
                     <thead>
-                      <tr
-                        style={{ background: designTokens.color.neutral[100] }}
-                      >
-                        <th
-                          style={{
-                            textAlign: "left",
-                            padding: designTokens.space[3],
-                          }}
-                        >
-                          资产类别
-                        </th>
-                        <th
-                          style={{
-                            textAlign: "right",
-                            padding: designTokens.space[3],
-                            ...tabularNumsStyle,
-                          }}
-                        >
-                          总损益(亿)
-                        </th>
-                        <th
-                          style={{
-                            textAlign: "right",
-                            padding: designTokens.space[3],
-                            ...tabularNumsStyle,
-                          }}
-                        >
-                          利息(亿)
-                        </th>
-                        <th
-                          style={{
-                            textAlign: "right",
-                            padding: designTokens.space[3],
-                            ...tabularNumsStyle,
-                          }}
-                        >
-                          公允(亿)
-                        </th>
-                        <th
-                          style={{
-                            textAlign: "right",
-                            padding: designTokens.space[3],
-                            ...tabularNumsStyle,
-                          }}
-                        >
-                          投资收益(亿)
-                        </th>
-                        <th
-                          style={{
-                            textAlign: "right",
-                            padding: designTokens.space[3],
-                            ...tabularNumsStyle,
-                          }}
-                        >
-                          其他(亿)
-                        </th>
-                        <th
-                          style={{
-                            textAlign: "right",
-                            padding: designTokens.space[3],
-                            ...tabularNumsStyle,
-                          }}
-                        >
-                          利息占比
-                        </th>
+                      <tr>
+                        <th>资产类别</th>
+                        <th data-align="right">总损益(亿)</th>
+                        <th data-align="right">利息(亿)</th>
+                        <th data-align="right">公允(亿)</th>
+                        <th data-align="right">投资收益(亿)</th>
+                        <th data-align="right">其他(亿)</th>
+                        <th data-align="right">利息占比</th>
                       </tr>
                     </thead>
                     <tbody>
                       {data.items.map((item, idx) => {
                         const totalPnl = rawOr(item.total_pnl);
+                        const interestIncome = rawOr(item.interest_income);
                         const fvChange = rawOr(item.fair_value_change);
                         const capitalGain = rawOr(item.capital_gain);
                         const otherIncome = rawOr(item.other_income);
-                        const cellPad = designTokens.space[3];
                         return (
-                          <tr
-                            key={idx}
-                            style={{
-                              borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
-                            }}
-                          >
-                            <td style={{ padding: cellPad, fontWeight: 500 }}>
-                              {item.category}
+                          <tr key={idx}>
+                            <td data-weight="500">{item.category}</td>
+                            <td
+                              data-align="right"
+                              data-direction={toneDirection(totalPnl)}
+                            >
+                              {yiCell(totalPnl)}
                             </td>
                             <td
-                              style={{
-                                textAlign: "right",
-                                padding: cellPad,
-                                color: toneColor(totalPnl),
-                                ...tabularNumsStyle,
-                              }}
+                              data-align="right"
+                              data-tone={
+                                interestIncome === null ? undefined : "profit"
+                              }
                             >
-                              {(totalPnl / 100_000_000).toFixed(2)}
+                              {yiCell(interestIncome)}
                             </td>
                             <td
-                              style={{
-                                textAlign: "right",
-                                padding: cellPad,
-                                color: designTokens.color.semantic.profit,
-                                ...tabularNumsStyle,
-                              }}
+                              data-align="right"
+                              data-direction={toneDirection(fvChange)}
                             >
-                              {(
-                                rawOr(item.interest_income) / 100_000_000
-                              ).toFixed(2)}
+                              {yiCell(fvChange)}
                             </td>
                             <td
-                              style={{
-                                textAlign: "right",
-                                padding: cellPad,
-                                color: toneColor(fvChange),
-                                ...tabularNumsStyle,
-                              }}
+                              data-align="right"
+                              data-direction={toneDirection(capitalGain)}
                             >
-                              {(fvChange / 100_000_000).toFixed(2)}
+                              {yiCell(capitalGain)}
                             </td>
                             <td
-                              style={{
-                                textAlign: "right",
-                                padding: cellPad,
-                                color: toneColor(capitalGain),
-                                ...tabularNumsStyle,
-                              }}
+                              data-align="right"
+                              data-direction={toneDirection(otherIncome)}
                             >
-                              {(capitalGain / 100_000_000).toFixed(2)}
+                              {yiCell(otherIncome)}
                             </td>
-                            <td
-                              style={{
-                                textAlign: "right",
-                                padding: cellPad,
-                                color: toneColor(otherIncome),
-                                ...tabularNumsStyle,
-                              }}
-                            >
-                              {(otherIncome / 100_000_000).toFixed(2)}
-                            </td>
-                            <td
-                              style={{
-                                textAlign: "right",
-                                padding: cellPad,
-                                ...tabularNumsStyle,
-                              }}
-                            >
+                            <td data-align="right">
                               {pctDisplay(item.interest_pct)}
                             </td>
                           </tr>
@@ -658,6 +471,6 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
           </>
         )}
       </div>
-    </DataSection>
+    </PageDataSection>
   );
 }

@@ -116,6 +116,37 @@ def test_compute_bond_spreads_basic():
     assert row.weight == Decimal("1")
 
 
+def test_compute_bond_spreads_interpolates_benchmark_at_actual_remaining_maturity():
+    module = load_module(
+        f"tests._credit_spread_analysis.actual_maturity_{uuid.uuid4().hex}",
+        "backend/app/core_finance/credit_spread_analysis.py",
+    )
+
+    rows = module.compute_bond_spreads(
+        bond_rows=[
+            {
+                "instrument_code": "CB-4Y",
+                "instrument_name": "4Y credit bond",
+                "asset_class_std": "credit",
+                "rating": "AAA",
+                "tenor_bucket": "3Y",
+                "years_to_maturity": Decimal("4"),
+                "ytm": Decimal("0.035"),
+                "modified_duration": Decimal("3.5"),
+                "market_value": Decimal("100"),
+            },
+        ],
+        treasury_curve={
+            "3Y": Decimal("2.00"),
+            "5Y": Decimal("3.00"),
+        },
+    )
+
+    row = rows[0]
+    assert row.benchmark_yield == Decimal("2.50")
+    assert row.credit_spread == Decimal("100.00")
+
+
 def test_compute_bond_spreads_uses_face_value_for_spread_dv01():
     module = load_module(
         f"tests._credit_spread_analysis.core_{uuid.uuid4().hex}",

@@ -4,7 +4,7 @@ import type { EChartsInstance } from "echarts-for-react/lib/types";
 import { useEffect, useRef } from "react";
 
 import ReactECharts from "../../lib/echarts";
-import { shellTokens } from "../../theme/tokens";
+import { mossChartEmptyStateStyle, mossChartLoadingMaskStyle } from "./chartTheme";
 
 export type BaseChartProps = {
   option: EChartsOption;
@@ -40,32 +40,15 @@ export function BaseChart({ option, height = 320, loading }: BaseChartProps) {
   return (
     <div ref={wrapRef} style={{ position: "relative", width: "100%", minHeight: height }}>
       {loading ? (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "rgba(251, 252, 254, 0.72)",
-            zIndex: 1,
-          }}
-        >
+        <div style={mossChartLoadingMaskStyle}>
           <Spin />
         </div>
       ) : null}
       {empty ? (
         <div
           style={{
+            ...mossChartEmptyStateStyle,
             height,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: shellTokens.colorTextMuted,
-            fontSize: 13,
-            border: `1px dashed ${shellTokens.colorBorderSoft}`,
-            borderRadius: 12,
-            background: shellTokens.colorBgSurface,
           }}
         >
           暂无数据

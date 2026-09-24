@@ -1,7 +1,8 @@
-import { render, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DashboardHomeFirstScreenHydration } from "../features/workbench/dashboard-home/dashboardHomeFirstScreenTypes";
+import { createMockHomeFirstScreenView } from "../features/workbench/dashboard-home/dashboardHomeFirstScreenMockView";
 import { DeferredTerminalHomeContent } from "../features/workbench/dashboard-home/DeferredTerminalHomeContent";
 import type { DashboardHomeSnapshotBoundary } from "../features/workbench/dashboard-home/useDashboardHomeFirstScreenViewModel";
 import { useDashboardHomeSupplementalHydration } from "../features/workbench/dashboard-home/useDashboardHomeSupplementalHydration";
@@ -35,8 +36,10 @@ function createHydration(
       maxDragValue: "4.20",
       maxContributionLabel: "carry",
       maxContributionValue: "1.20",
+      hasDrag: true,
+      hasContribution: true,
       keyRisk: "no new risk",
-      suggestions: ["monitor"],
+      suggestions: [{ id: "monitor", text: "monitor" }],
       actions: [],
       pendingSummary: "none",
       reportDate: "2026-04-30",
@@ -73,6 +76,24 @@ describe("DeferredTerminalHomeContent", () => {
     mockedUseDashboardHomeSupplementalHydration.mockReset();
   });
 
+  it("shows the below-fold evidence index before deferred sections render", () => {
+    mockedUseDashboardHomeSupplementalHydration.mockReturnValue(createHydration());
+
+    render(
+      <DeferredTerminalHomeContent
+        snapshotBoundary={{} as DashboardHomeSnapshotBoundary}
+        firstScreenView={createMockHomeFirstScreenView()}
+        userReachedDeferredContent={false}
+      />,
+    );
+
+    const index = screen.getByTestId("dashboard-home-deferred-index");
+    expect(index).toHaveTextContent("证据索引");
+    expect(index).toHaveTextContent("下半屏模块按来源延迟展开");
+    expect(index).toHaveTextContent("持仓账本");
+    expect(index).toHaveTextContent("凭证链路");
+  });
+
   it("emits equivalent first-screen hydration only once across rerenders", async () => {
     const onFirstScreenHydrated = vi.fn();
     const snapshotBoundary = {} as DashboardHomeSnapshotBoundary;
@@ -83,6 +104,7 @@ describe("DeferredTerminalHomeContent", () => {
     const { rerender } = render(
       <DeferredTerminalHomeContent
         snapshotBoundary={snapshotBoundary}
+        firstScreenView={createMockHomeFirstScreenView()}
         userReachedDeferredContent={false}
         onFirstScreenHydrated={onFirstScreenHydrated}
       />,
@@ -95,6 +117,7 @@ describe("DeferredTerminalHomeContent", () => {
     rerender(
       <DeferredTerminalHomeContent
         snapshotBoundary={snapshotBoundary}
+        firstScreenView={createMockHomeFirstScreenView()}
         userReachedDeferredContent={false}
         onFirstScreenHydrated={onFirstScreenHydrated}
       />,

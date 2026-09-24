@@ -10,6 +10,7 @@ import pytest
 from tests.helpers import load_module
 
 REPORT_DATE = "2026-03-31"
+OTHER_REPORT_DATE = "2026-02-28"
 
 
 def _load_modules():
@@ -61,8 +62,8 @@ def _seed_bond_snapshot_rows(duckdb_path: str) -> None:
                 Decimal("99"),
                 Decimal("98.5"),
                 Decimal("1.0"),
-                Decimal("0.02"),
-                Decimal("0.018"),
+                Decimal("2.0"),
+                Decimal("1.8"),
                 "2027-03-31",
                 None,
                 0,
@@ -90,8 +91,8 @@ def _seed_bond_snapshot_rows(duckdb_path: str) -> None:
                 Decimal("190"),
                 Decimal("188"),
                 Decimal("2.0"),
-                Decimal("0.03"),
-                Decimal("0.032"),
+                Decimal("3.0"),
+                Decimal("3.2"),
                 "2031-03-31",
                 None,
                 0,
@@ -119,8 +120,8 @@ def _seed_bond_snapshot_rows(duckdb_path: str) -> None:
                 Decimal("140"),
                 Decimal("138"),
                 Decimal("1.5"),
-                Decimal("0.04"),
-                Decimal("0.045"),
+                Decimal("4.0"),
+                Decimal("4.5"),
                 "2036-03-31",
                 None,
                 0,
@@ -148,8 +149,8 @@ def _seed_bond_snapshot_rows(duckdb_path: str) -> None:
                 Decimal("120"),
                 Decimal("120"),
                 Decimal("0"),
-                Decimal("0.02"),
-                Decimal("0.021"),
+                Decimal("2.0"),
+                Decimal("2.1"),
                 "2027-03-31",
                 None,
                 0,
@@ -180,6 +181,93 @@ def _seed_bond_snapshot_rows(duckdb_path: str) -> None:
         conn.close()
 
 
+def _seed_foreign_bond_snapshot_row(
+    duckdb_path: str,
+    *,
+    instrument_code: str = "USD-CB-CLOSURE",
+    source_version: str = "sv_bond_snap_usd_closure",
+) -> None:
+    conn = duckdb.connect(duckdb_path, read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into zqtz_bond_daily_snapshot (
+              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+              account_category, asset_class, bond_type, issuer_name, industry_name, rating,
+              currency_code, face_value_native, market_value_native, amortized_cost_native,
+              accrued_interest_native, coupon_rate, ytm_value, maturity_date, next_call_date,
+              overdue_days, is_issuance_like, interest_mode, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            [
+                REPORT_DATE,
+                instrument_code,
+                "USD formal CNY closure bond",
+                "Portfolio USD",
+                "CC-USD",
+                "bank book",
+                "credit bond",
+                "corporate bond",
+                "Issuer USD",
+                "Industry",
+                "A",
+                "USD",
+                Decimal("100"),
+                Decimal("100"),
+                Decimal("98"),
+                Decimal("1"),
+                Decimal("3.0"),
+                Decimal("4.0"),
+                "2031-03-31",
+                None,
+                0,
+                False,
+                "annual",
+                source_version,
+                "rv_bond_snap_usd",
+                "ib_bond_usd",
+                f"trace_{instrument_code.lower()}",
+            ],
+        )
+    finally:
+        conn.close()
+
+
+def _clone_fact_rows_for_report_date(
+    duckdb_path: str,
+    *,
+    source_report_date: str,
+    target_report_date: str,
+) -> None:
+    """Copy materialized rows to a second date so invalidation can prove scope."""
+
+    conn = duckdb.connect(duckdb_path, read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into fact_formal_bond_analytics_daily
+            select ? as report_date, * exclude (report_date)
+            from fact_formal_bond_analytics_daily
+            where report_date = ?
+            """,
+            [target_report_date, source_report_date],
+        )
+        conn.execute(
+            """
+            insert into fact_formal_risk_tensor_daily
+            select ? as report_date, * exclude (report_date)
+            from fact_formal_risk_tensor_daily
+            where report_date = ?
+            """,
+            [target_report_date, source_report_date],
+        )
+    finally:
+        conn.close()
+
+
 def _seed_formal_zqtz_balance_for_cb001(
     duckdb_path: str,
     *,
@@ -188,6 +276,8 @@ def _seed_formal_zqtz_balance_for_cb001(
     face_value_amount: Decimal | None = None,
     amortized_cost_amount: Decimal | None = None,
     accrued_interest_amount: Decimal | None = None,
+    invest_type_std: str = "A",
+    accounting_basis: str = "FVOCI",
 ) -> None:
     conn = duckdb.connect(duckdb_path, read_only=False)
     try:
@@ -241,7 +331,7 @@ def _seed_formal_zqtz_balance_for_cb001(
             select
               cast(report_date as varchar), instrument_code, instrument_name, portfolio_name, cost_center,
               account_category, asset_class, bond_type, coalesce(sub_type, ''), coalesce(business_type_primary, ''),
-              issuer_name, industry_name, rating, 'A', 'FVOCI',
+              issuer_name, industry_name, rating, ?, ?,
               'asset', 'CNY', currency_code, coalesce(?, face_value_native), ?,
               coalesce(?, amortized_cost_native), coalesce(?, accrued_interest_native),
               coupon_rate, ytm_value, cast(maturity_date as varchar),
@@ -250,6 +340,8 @@ def _seed_formal_zqtz_balance_for_cb001(
             where instrument_code = ?
             """,
             [
+                invest_type_std,
+                accounting_basis,
                 face_value_amount,
                 market_value_amount,
                 amortized_cost_amount,
@@ -262,11 +354,21 @@ def _seed_formal_zqtz_balance_for_cb001(
 
 
 def _seed_duplicate_formal_zqtz_balance_for_cb001(duckdb_path: str) -> None:
-    _seed_formal_zqtz_balance_for_cb001(duckdb_path, market_value_amount=Decimal("1900"))
-    _seed_formal_zqtz_balance_for_cb001(duckdb_path, market_value_amount=Decimal("-1900"))
+    """An offsetting pair that collapses into one snapshot join group.
+
+    The two rows sit in different books, which is how the real offsetting pairs
+    look and what keeps them distinct under the v43 natural key. The snapshot
+    join key carries no accounting basis, so both still land in one group.
+    """
+    _seed_formal_zqtz_balance_for_cb001(
+        duckdb_path, market_value_amount=Decimal("1900"), accounting_basis="FVOCI"
+    )
+    _seed_formal_zqtz_balance_for_cb001(
+        duckdb_path, market_value_amount=Decimal("-1900"), accounting_basis="AC"
+    )
 
 
-BOND_ANALYTICS_TEST_YIELD_ANCHORS = ("2026-03-01", "2026-03-30", "2026-03-31")
+BOND_ANALYTICS_TEST_YIELD_ANCHORS = ("2026-01-20", "2026-03-01", "2026-03-30", "2026-03-31")
 
 
 def seed_yield_curves_for_bond_analytics_tests(duckdb_path: str) -> None:
@@ -303,6 +405,12 @@ def seed_yield_curves_for_bond_analytics_tests(duckdb_path: str) -> None:
         ]
         with repository_task_write_scope("backend.app.tasks.bond_analytics_test_seed"):
             repo.replace_curve_snapshots(trade_date=trade_date, snapshots=snapshots, rule_version=RULE_VERSION)
+
+
+@pytest.fixture(autouse=True)
+def _seed_worker_yield_curve_inputs(tmp_path) -> None:
+    """Keep materialization unit tests local now that curve preparation runs in the worker."""
+    seed_yield_curves_for_bond_analytics_tests(str(tmp_path / "moss.duckdb"))
 
 
 def _materialize_sample_facts(tmp_path):
@@ -560,19 +668,28 @@ def test_bond_analytics_materialize_krd_distribution_has_expected_bucket_shape_a
             "tenor_bucket": "10Y",
             "market_value": Decimal("140.00000000"),
             "dv01": Decimal("0.12054196"),
+            "avg_modified_duration": Decimal("8.03613072"),
             "krd": Decimal("8.03613072"),
+            "duration_excluded_market_value": Decimal("0"),
+            "duration_excluded_count": 0,
         },
         {
             "tenor_bucket": "1Y",
             "market_value": Decimal("99.00000000"),
             "dv01": Decimal("0.00982318"),
+            "avg_modified_duration": Decimal("0.98231827"),
             "krd": Decimal("0.98231827"),
+            "duration_excluded_market_value": Decimal("0"),
+            "duration_excluded_count": 0,
         },
         {
             "tenor_bucket": "5Y",
             "market_value": Decimal("190.00000000"),
             "dv01": Decimal("0.09138735"),
+            "avg_modified_duration": Decimal("4.56936732"),
             "krd": Decimal("4.56936732"),
+            "duration_excluded_market_value": Decimal("0"),
+            "duration_excluded_count": 0,
         },
     ]
     assert sum((row["market_value"] for row in krd), Decimal("0")) == risk["total_market_value"]
@@ -668,8 +785,8 @@ def test_bond_analytics_materialize_uses_formal_cny_amounts_for_foreign_bonds(tm
                 Decimal("100"),
                 Decimal("98"),
                 Decimal("1"),
-                Decimal("0.03"),
-                Decimal("0.04"),
+                Decimal("3.0"),
+                Decimal("4.0"),
                 "2031-03-31",
                 None,
                 0,
@@ -712,6 +829,183 @@ def test_bond_analytics_materialize_uses_formal_cny_amounts_for_foreign_bonds(tm
     assert row["market_value"] == Decimal("720.00000000")
     assert row["amortized_cost"] == Decimal("686.00000000")
     assert row["accrued_interest"] == Decimal("7.00000000")
+    expected_dv01 = (row["face_value"] * row["modified_duration"] / Decimal("10000")).quantize(
+        Decimal("0.00000001")
+    )
+    assert row["dv01"] == expected_dv01
+
+
+@pytest.mark.parametrize(
+    "missing_field",
+    [
+        "face_value_amount",
+        "market_value_amount",
+        "amortized_cost_amount",
+        "accrued_interest_amount",
+    ],
+)
+def test_bond_analytics_materialize_fails_closed_clears_target_facts_and_preserves_other_dates(
+    tmp_path,
+    missing_field: str,
+):
+    repo_mod, task_mod = _load_modules()
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_bond_snapshot_rows(str(duckdb_path))
+
+    first_payload = task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+    assert first_payload["status"] == "completed"
+
+    risk_task_mod = load_module(
+        "backend.app.tasks.risk_tensor_materialize",
+        "backend/app/tasks/risk_tensor_materialize.py",
+    )
+    risk_payload = risk_task_mod.materialize_risk_tensor_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+    assert risk_payload["status"] == "completed"
+    _clone_fact_rows_for_report_date(
+        str(duckdb_path),
+        source_report_date=REPORT_DATE,
+        target_report_date=OTHER_REPORT_DATE,
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows_before = conn.execute(
+            """
+            select instrument_code, face_value, market_value_native, market_value,
+                   amortized_cost, accrued_interest, dv01, source_version
+            from fact_formal_bond_analytics_daily
+            where report_date = ?
+            order by instrument_code
+            """,
+            [REPORT_DATE],
+        ).fetchall()
+        other_rows_before = conn.execute(
+            """
+            select instrument_code, face_value, market_value_native, market_value,
+                   amortized_cost, accrued_interest, dv01, source_version
+            from fact_formal_bond_analytics_daily
+            where report_date = ?
+            order by instrument_code
+            """,
+            [OTHER_REPORT_DATE],
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert len(rows_before) == 3
+    assert len(other_rows_before) == 3
+
+    _seed_foreign_bond_snapshot_row(str(duckdb_path))
+    _seed_formal_zqtz_balance_for_cb001(
+        str(duckdb_path),
+        instrument_code="USD-CB-CLOSURE",
+        face_value_amount=Decimal("700"),
+        market_value_amount=Decimal("720"),
+        amortized_cost_amount=Decimal("686"),
+        accrued_interest_amount=Decimal("7"),
+    )
+    assert missing_field in {
+        "face_value_amount",
+        "market_value_amount",
+        "amortized_cost_amount",
+        "accrued_interest_amount",
+    }
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            f"""
+            update fact_formal_zqtz_balance_daily
+            set {missing_field} = NULL
+            where report_date = ? and instrument_code = ? and currency_basis = 'CNY'
+            """,
+            [REPORT_DATE, "USD-CB-CLOSURE"],
+        )
+    finally:
+        conn.close()
+
+    repo = repo_mod.BondAnalyticsRepository(str(duckdb_path))
+    loaded_row = next(
+        row
+        for row in repo.load_snapshot_rows(REPORT_DATE)
+        if row["instrument_code"] == "USD-CB-CLOSURE"
+    )
+    loaded_field = {
+        "face_value_amount": "face_value_cny",
+        "market_value_amount": "market_value_cny",
+        "amortized_cost_amount": "amortized_cost_cny",
+        "accrued_interest_amount": "accrued_interest_cny",
+    }[missing_field]
+    assert loaded_row[loaded_field] is None
+
+    # Catch the exception class binding the task actually raises: earlier tests
+    # (e.g. tests/test_formal_compute_runtime_contract.py) may have replaced
+    # backend.app.schemas.formal_compute_runtime in sys.modules via
+    # tests.helpers.load_module, forking a module-level import of
+    # FormalComputeMaterializeFailure in this file away from the class that the
+    # freshly loaded task_mod re-imported and raises.
+    with pytest.raises(
+        task_mod.FormalComputeMaterializeFailure,
+        match=rf"formal CNY closure unavailable:.*instrument_code=USD-CB-CLOSURE.*{loaded_field}",
+    ):
+        task_mod.materialize_bond_analytics_facts.fn(
+            report_date=REPORT_DATE,
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows_after = conn.execute(
+            """
+            select instrument_code, face_value, market_value_native, market_value,
+                   amortized_cost, accrued_interest, dv01, source_version
+            from fact_formal_bond_analytics_daily
+            where report_date = ?
+            order by instrument_code
+            """,
+            [REPORT_DATE],
+        ).fetchall()
+        other_rows_after = conn.execute(
+            """
+            select instrument_code, face_value, market_value_native, market_value,
+                   amortized_cost, accrued_interest, dv01, source_version
+            from fact_formal_bond_analytics_daily
+            where report_date = ?
+            order by instrument_code
+            """,
+            [OTHER_REPORT_DATE],
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows_after == []
+    assert other_rows_after == other_rows_before
+
+    risk_repo_mod = load_module(
+        "backend.app.repositories.risk_tensor_repo",
+        "backend/app/repositories/risk_tensor_repo.py",
+    )
+    risk_repo = risk_repo_mod.RiskTensorRepository(str(duckdb_path))
+    assert risk_repo.fetch_risk_tensor_row(REPORT_DATE) is None
+    assert risk_repo.fetch_risk_tensor_row(OTHER_REPORT_DATE) is not None
+
+    build_runs = [
+        json.loads(line)
+        for line in (governance_dir / "cache_build_run.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert build_runs[-1]["status"] == "failed"
+    assert "formal CNY closure unavailable" in build_runs[-1]["error_message"]
+    assert loaded_field in build_runs[-1]["error_message"]
 
 
 def test_bond_analytics_materialize_does_not_duplicate_snapshot_rows_when_formal_balance_has_duplicate_keys(tmp_path):

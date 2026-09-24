@@ -19,6 +19,8 @@ class AppSettings:
     choice_request_options: str = ""
     log_level: str = "INFO"
     log_path: str = ""
+    choice_socks5_proxy_host: str = ""
+    choice_socks5_proxy_port: int = 0
 
 
 def configure_emquant_parent(path: Path | str | None) -> None:
@@ -91,7 +93,28 @@ def load_settings(yaml_path: Path | None = None) -> AppSettings:
     if env_req:
         data["choice_request_options"] = env_req
 
-    return AppSettings(**data)
+    proxy_host, proxy_port = _choice_socks5_proxy_from_env()
+    return AppSettings(
+        **data,
+        choice_socks5_proxy_host=proxy_host,
+        choice_socks5_proxy_port=proxy_port,
+    )
+
+
+def _choice_socks5_proxy_from_env() -> tuple[str, int]:
+    host = os.environ.get("CHOICE_MACRO_SOCKS5_PROXY_HOST", "").strip()
+    port_text = os.environ.get("CHOICE_MACRO_SOCKS5_PROXY_PORT", "").strip()
+    if bool(host) != bool(port_text):
+        raise ValueError("Choice SOCKS5 proxy host and port must be set together")
+    if not host:
+        return "", 0
+    try:
+        port = int(port_text)
+    except ValueError as exc:
+        raise ValueError("Choice SOCKS5 proxy port must be an integer") from exc
+    if not 1 <= port <= 65535:
+        raise ValueError("Choice SOCKS5 proxy port must be between 1 and 65535")
+    return host, port
 
 
 def setup_logging(level: str, log_path: str) -> None:

@@ -4,11 +4,27 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated, Literal
 
+from backend.app.api.deps import ensure_read_allowed
 from backend.app.api.perf_logging import timed_api_call
 from backend.app.governance.settings import get_settings
+from backend.app.schemas.bond_dashboard import (
+    BondDashboardAssetStructureEnvelope,
+    BondDashboardBundleEnvelope,
+    BondDashboardBusinessTypeMetricsEnvelope,
+    BondDashboardDatesEnvelope,
+    BondDashboardHeadlineEnvelope,
+    BondDashboardHomeSummaryEnvelope,
+    BondDashboardIndustryDistributionEnvelope,
+    BondDashboardMaturityStructureEnvelope,
+    BondDashboardPortfolioComparisonEnvelope,
+    BondDashboardRiskIndicatorsEnvelope,
+    BondDashboardSpreadAnalysisEnvelope,
+    BondDashboardYieldDistributionEnvelope,
+)
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.bond_dashboard_service import (
     get_bond_dashboard_asset_structure,
+    get_bond_dashboard_bundle,
     get_bond_dashboard_business_type_metrics,
     get_bond_dashboard_dates,
     get_bond_dashboard_headline_kpis,
@@ -26,22 +42,38 @@ router = APIRouter(prefix="/api/bond-dashboard", tags=["bond-dashboard"])
 
 AssetGroupBy = Literal["bond_type", "rating", "portfolio_name", "tenor_bucket"]
 
+BOND_DASHBOARD_BUNDLE_ANALYTICS_SECTIONS = frozenset(
+    {
+        "top-holdings",
+        "portfolio-headlines",
+        "dv01-risk",
+        "dv01-risk-ac",
+        "dv01-risk-oci",
+        "dv01-risk-tpl",
+        "dv01-risk-all",
+        "yield-curve-term-structure",
+    }
+)
+
 
 def _ensure_bond_dashboard_read_allowed(auth: AuthContext) -> None:
-    try:
-        ensure_user_allowed(
-            auth=auth,
-            settings=get_settings(),
-            resource="bond_dashboard",
-            action="read",
-        )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    ensure_read_allowed(auth, "bond_dashboard", settings=get_settings(), authorize=ensure_user_allowed)
 
 
-@router.get("/dates")
+def _ensure_bond_analytics_read_allowed(auth: AuthContext) -> None:
+    ensure_read_allowed(auth, "bond_analytics", settings=get_settings(), authorize=ensure_user_allowed)
+
+
+def _bundle_requests_bond_analytics(sections: str) -> bool:
+    requested = {
+        part.strip()
+        for part in sections.split(",")
+        if part.strip()
+    }
+    return bool(requested & BOND_DASHBOARD_BUNDLE_ANALYTICS_SECTIONS)
+
+
+@router.get("/dates", response_model=BondDashboardDatesEnvelope)
 def dashboard_dates(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
 ):
@@ -52,7 +84,7 @@ def dashboard_dates(
     )
 
 
-@router.get("/headline-kpis")
+@router.get("/headline-kpis", response_model=BondDashboardHeadlineEnvelope)
 def headline_kpis(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -64,7 +96,7 @@ def headline_kpis(
     )
 
 
-@router.get("/home-summary")
+@router.get("/home-summary", response_model=BondDashboardHomeSummaryEnvelope)
 def home_summary(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -76,7 +108,7 @@ def home_summary(
     )
 
 
-@router.get("/asset-structure")
+@router.get("/asset-structure", response_model=BondDashboardAssetStructureEnvelope)
 def asset_structure(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -89,7 +121,7 @@ def asset_structure(
     )
 
 
-@router.get("/yield-distribution")
+@router.get("/yield-distribution", response_model=BondDashboardYieldDistributionEnvelope)
 def yield_distribution(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -101,7 +133,7 @@ def yield_distribution(
     )
 
 
-@router.get("/portfolio-comparison")
+@router.get("/portfolio-comparison", response_model=BondDashboardPortfolioComparisonEnvelope)
 def portfolio_comparison(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -113,7 +145,7 @@ def portfolio_comparison(
     )
 
 
-@router.get("/spread-analysis")
+@router.get("/spread-analysis", response_model=BondDashboardSpreadAnalysisEnvelope)
 def spread_analysis(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -125,7 +157,7 @@ def spread_analysis(
     )
 
 
-@router.get("/maturity-structure")
+@router.get("/maturity-structure", response_model=BondDashboardMaturityStructureEnvelope)
 def maturity_structure(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -137,7 +169,7 @@ def maturity_structure(
     )
 
 
-@router.get("/industry-distribution")
+@router.get("/industry-distribution", response_model=BondDashboardIndustryDistributionEnvelope)
 def industry_distribution(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -150,7 +182,7 @@ def industry_distribution(
     )
 
 
-@router.get("/risk-indicators")
+@router.get("/risk-indicators", response_model=BondDashboardRiskIndicatorsEnvelope)
 def risk_indicators(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -162,7 +194,7 @@ def risk_indicators(
     )
 
 
-@router.get("/business-type-metrics")
+@router.get("/business-type-metrics", response_model=BondDashboardBusinessTypeMetricsEnvelope)
 def business_type_metrics(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -172,3 +204,42 @@ def business_type_metrics(
         "/api/bond-dashboard/business-type-metrics",
         lambda: get_bond_dashboard_business_type_metrics(report_date),
     )
+
+
+@router.get("/bundle", response_model=BondDashboardBundleEnvelope)
+def dashboard_bundle(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    sections: str = Query(
+        ...,
+        description=(
+            "Comma-separated section ids, e.g. "
+            "headline-kpis,risk-indicators,yield-distribution"
+        ),
+    ),
+    report_date: date | None = Query(None, description="Report date (YYYY-MM-DD)"),
+    industry_top_n: int = Query(10, ge=1, le=500, description="Top industries for industry-distribution"),
+    analytics_top_n: int = Query(10, ge=1, le=500, description="Top rows for analytics bundle sections"),
+    dv01_top_n: int = Query(1, ge=1, le=100, description="Top dv01 rows for bundled dv01-risk sections"),
+    dv01_shock_bps: str = Query("1", description="Comma-separated dv01 shock scenarios in bps"),
+    dv01_accounting_class: str = Query("all", description="Accounting class for the dv01-risk bundle alias"),
+    curve_types: str = Query("treasury,cdb", description="Comma-separated yield curve types"),
+):
+    _ensure_bond_dashboard_read_allowed(auth)
+    if _bundle_requests_bond_analytics(sections):
+        _ensure_bond_analytics_read_allowed(auth)
+    try:
+        return timed_api_call(
+            "/api/bond-dashboard/bundle",
+            lambda: get_bond_dashboard_bundle(
+                sections=[sections],
+                report_date=report_date,
+                industry_top_n=industry_top_n,
+                analytics_top_n=analytics_top_n,
+                dv01_top_n=dv01_top_n,
+                dv01_shock_bps=dv01_shock_bps,
+                dv01_accounting_class=dv01_accounting_class,
+                curve_types=curve_types,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc

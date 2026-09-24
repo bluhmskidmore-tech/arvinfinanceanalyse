@@ -3,10 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../features/bond-analytics/components/BondAnalyticsMarketContextStrip", () => ({
-  BondAnalyticsMarketContextStrip: (props: { reportDate: string; leadModuleLabel: string; truthStrip: { title: string } }) => (
+  BondAnalyticsMarketContextStrip: (props: { leadModuleLabel: string; truthStrip: { title: string } }) => (
     <div
       data-testid="mock-bond-market-context-strip"
-      data-report-date={props.reportDate}
       data-lead-module={props.leadModuleLabel}
       data-truth-title={props.truthStrip.title}
     />
@@ -18,6 +17,7 @@ vi.mock("../features/bond-analytics/components/BondAnalyticsInstitutionalCockpit
     reportDate: string;
     topAnomalies?: string[];
     actionAttribution?: { total_actions?: number } | null;
+    calendarItems?: unknown[];
     onOpenModuleDetail: (key: string) => void;
   }) => (
     <div
@@ -25,6 +25,7 @@ vi.mock("../features/bond-analytics/components/BondAnalyticsInstitutionalCockpit
       data-report-date={props.reportDate}
       data-anomaly-count={String(props.topAnomalies?.length ?? 0)}
       data-action-count={String(props.actionAttribution?.total_actions ?? 0)}
+      data-calendar-count={String(props.calendarItems?.length ?? 0)}
     >
       <button
         type="button"
@@ -137,7 +138,7 @@ function createOverviewModel(): BondAnalyticsOverviewModel {
 }
 
 describe("BondAnalyticsOverviewPanels", () => {
-  it("composes the simplified homepage shells, passes overview props to children, and wires drill plus refresh callbacks", async () => {
+  it("composes the consolidated cockpit shell, deduplicates overview cards, and wires drill plus refresh callbacks", async () => {
     const user = userEvent.setup();
     const onOpenModuleDetail = vi.fn();
     const onRefreshAnalytics = vi.fn();
@@ -166,6 +167,7 @@ describe("BondAnalyticsOverviewPanels", () => {
         onOpenModuleDetail={onOpenModuleDetail}
         onRefreshAnalytics={onRefreshAnalytics}
         lastAnalyticsRefreshRunId="run-001"
+        calendarItems={[{} as never]}
       />,
     );
 
@@ -182,15 +184,25 @@ describe("BondAnalyticsOverviewPanels", () => {
       "data-action-count",
       "4",
     );
+    expect(screen.getByTestId("mock-bond-institutional-cockpit")).toHaveAttribute(
+      "data-calendar-count",
+      "1",
+    );
     expect(screen.queryByTestId("mock-bond-macro-bar")).not.toBeInTheDocument();
-    expect(screen.getByTestId("mock-bond-mid-charts")).toBeInTheDocument();
-    expect(screen.getByTestId("mock-risk-trend-chart")).toBeInTheDocument();
-    expect(screen.getByTestId("mock-bond-event-calendar")).toBeInTheDocument();
-
-    const market = screen.getByTestId("mock-bond-market-context-strip");
-    expect(market).toHaveAttribute("data-report-date", "2026-03-31");
-    expect(market).toHaveAttribute("data-lead-module", "Lead from overview model");
-    expect(market).toHaveAttribute("data-truth-title", "真值与证据");
+    expect(screen.queryByTestId("mock-bond-mid-charts")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("mock-risk-trend-chart")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("mock-bond-event-calendar")).not.toBeInTheDocument();
+    expect(screen.getByTestId("mock-bond-market-context-strip")).toHaveAttribute(
+      "data-lead-module",
+      "Lead from overview model",
+    );
+    expect(screen.getByTestId("bond-analysis-candidate-boundary")).toHaveTextContent("candidate");
+    expect(screen.getByTestId("bond-analysis-candidate-boundary")).toHaveTextContent(
+      "formal_use_allowed=false",
+    );
+    expect(screen.getByTestId("bond-analysis-candidate-boundary")).toHaveTextContent(
+      "owner approval pending",
+    );
 
     const filter = screen.getByTestId("mock-bond-filter-action-strip");
     expect(filter).toHaveAttribute("data-asset-class", "all");

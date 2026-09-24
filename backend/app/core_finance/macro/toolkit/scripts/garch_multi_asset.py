@@ -13,15 +13,22 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-import akshare as ak
 import numpy as np
 import pandas as pd
 from arch import arch_model
 
-_PKG = Path(__file__).resolve().parent.parent
-if str(_PKG) not in sys.path:
-    sys.path.insert(0, str(_PKG))
-from paths import OUTPUT_DIR
+if __package__:
+    from backend.app.core_finance.macro.toolkit import akshare as ak
+else:
+    import akshare as ak
+
+if __package__:
+    from backend.app.core_finance.macro.toolkit.paths import OUTPUT_DIR
+else:
+    _PKG = Path(__file__).resolve().parent.parent
+    if str(_PKG) not in sys.path:
+        sys.path.insert(0, str(_PKG))
+    from paths import OUTPUT_DIR
 
 # ============================================================
 # 1. 数据获取
@@ -102,10 +109,73 @@ MODELS = {
     'GARCH':     dict(vol='Garch', p=1, o=0, q=1),
     'GJR-GARCH': dict(vol='Garch', p=1, o=1, q=1),
     'EGARCH':    dict(vol='EGARCH', p=1, o=1, q=1),
-    'TARCH':     dict(vol='Garch', p=1, o=1, q=1),  # 同GJR，换t分布对比
+    'TARCH':     dict(vol='Garch', p=1, o=1, q=1, power=1.0),  # 绝对值形式(ZARCH)，power=1 区别于GJR
 }
 
 DISTS = ['t', 'normal', 'skewt']
+
+
+def _build_arch_model(returns: pd.Series, vol_params: dict, dist: str):
+    """按统一规格构建 arch 模型（power 仅对 Garch 族生效，EGARCH 忽略）。"""
+    return arch_model(
+        returns,
+        mean='Constant',
+        vol=vol_params['vol'],
+        p=vol_params['p'],
+        o=vol_params['o'],
+        q=vol_params['q'],
+        power=vol_params.get('power', 2.0),
+        dist=dist,
+    )
+
+
+def compute_persistence(model_name: str, params: dict) -> float:
+    """模型相关的波动率持久性。
+
+    EGARCH 的 alpha/beta 作用于 log 方差，持久性即 AR 系数 beta；
+    GARCH/GJR/TARCH 用 alpha + beta + 0.5*gamma（对称分布下 E[I(eps<0)]=0.5）。
+    """
+    alpha = params.get('alpha[1]', 0.0)
+    beta = params.get('beta[1]', 0.0)
+    gamma = params.get('gamma[1]', 0.0)
+    if model_name == 'EGARCH':
+        return beta
+    return alpha + beta + 0.5 * gamma
+
+
+def check_constraints(model_name: str, params: dict, persistence: float) -> str:
+    """按笔记约束校验参数: omega>0, alpha>=0, beta>=0, 持久性<1。
+
+    EGARCH 参数在 log 方差空间，omega/alpha 可为负是合法的，仅要求 |beta|<1（平稳）。
+    """
+    issues = []
+    if model_name == 'EGARCH':
+        if abs(params.get('beta[1]', 0.0)) >= 1:
+            issues.append('|beta|>=1')
+    else:
+        if params.get('omega', 0.0) <= 0:
+            issues.append('omega<=0')
+        if params.get('alpha[1]', 0.0) < 0:
+            issues.append('alpha<0')
+        if params.get('beta[1]', 0.0) < 0:
+            issues.append('beta<0')
+        if params.get('alpha[1]', 0.0) + params.get('gamma[1]', 0.0) < 0:
+            issues.append('alpha+gamma<0')
+        if persistence >= 1:
+            issues.append('持久性>=1')
+    return '通过' if not issues else '不满足: ' + ','.join(issues)
+
+
+def classify_vol_regime(annual_vol_pct: float) -> tuple[str, str]:
+    """按尽调笔记的绝对年化波动率阈值划分市场状态并映射策略建议。
+
+    低波动(<15%) / 中波动(15%-30%) / 高波动(>30%)，输入为年化波动率百分数。
+    """
+    if annual_vol_pct < 15:
+        return "低波动", "适合卖权/均值回归策略"
+    if annual_vol_pct <= 30:
+        return "中波动", "适合趋势跟踪/风险平价策略"
+    return "高波动", "适合CTA/尾部对冲，降仓防御"
 
 
 def fit_single_asset(returns: pd.Series, asset_name: str) -> dict:
@@ -127,15 +197,7 @@ def fit_single_asset(returns: pd.Series, asset_name: str) -> dict:
         for dist in DISTS:
             label = f"{vol_name} / {dist}"
             try:
-                model = arch_model(
-                    returns,
-                    mean='Constant',
-                    vol=vol_params['vol'],
-                    p=vol_params['p'],
-                    o=vol_params['o'],
-                    q=vol_params['q'],
-                    dist=dist
-                )
+                model = _build_arch_model(returns, vol_params, dist)
                 res = model.fit(disp='off', show_warning=False)
 
                 row = {
@@ -154,7 +216,7 @@ def fit_single_asset(returns: pd.Series, asset_name: str) -> dict:
                     best_bic = res.bic
                     best_result = row
 
-            except Exception:
+            except Exception:  # noqa: S110  # 模型选择扫描：单个(模型,分布)组合不收敛属预期，按 BIC 取存活组合最优；全失败时下方显式报告
                 pass
 
     if best_result is None:
@@ -176,12 +238,11 @@ def fit_single_asset(returns: pd.Series, asset_name: str) -> dict:
     for k, v in params.items():
         print(f"    {k}: {v:.6f}")
 
-    # 计算 alpha+beta 持久性
-    alpha = params.get('alpha[1]', 0)
-    beta = params.get('beta[1]', 0)
-    gamma = params.get('gamma[1]', 0)
-    persistence = alpha + beta + 0.5 * gamma  # GJR调整
-    print(f"  持久性 (alpha+beta+0.5*gamma): {persistence:.4f}")
+    # 计算持久性并校验笔记约束 (omega>0, alpha>=0, beta>=0, 持久性<1)
+    persistence = compute_persistence(best_result['model'], params)
+    constraint_status = check_constraints(best_result['model'], params, persistence)
+    print(f"  持久性: {persistence:.4f} (EGARCH取beta，其余为alpha+beta+0.5*gamma)")
+    print(f"  约束校验: {constraint_status}")
 
     return best_result
 
@@ -209,30 +270,24 @@ def out_of_sample_test(returns: pd.Series, best_result: dict,
     print(f"\n  样本外验证 ({asset_name}):")
     print(f"  训练集: {split} 天, 测试集: {len(test_returns)} 天")
 
-    # 滚动预测（每20天重新拟合一次以加速）
+    # 滚动预测：每20天重估一次参数以加速；两次重估之间用固定参数 + 最新数据
+    # 逐日更新条件方差（原实现在两次重估之间重复输出同一预测值，不随新收益更新）
     predicted_var = []
     refit_every = 20
-    cached_res = None
+    cached_params = None
 
     for i in range(len(test_returns)):
-        if i % refit_every == 0:
-            data = returns.iloc[:split + i]
+        data = returns.iloc[:split + i]
+        if i % refit_every == 0 or cached_params is None:
             try:
-                m = arch_model(
-                    data,
-                    mean='Constant',
-                    vol=vol_params['vol'],
-                    p=vol_params['p'],
-                    o=vol_params['o'],
-                    q=vol_params['q'],
-                    dist=dist
-                )
-                cached_res = m.fit(disp='off', show_warning=False)
-            except Exception:
+                m = _build_arch_model(data, vol_params, dist)
+                cached_params = m.fit(disp='off', show_warning=False).params
+            except Exception:  # noqa: S110  # 滚动重估失败沿用上次 cached_params（下方分支），从未成功则该日输出 NaN，失败在结果中可见
                 pass
 
-        if cached_res is not None:
-            fcast = cached_res.forecast(horizon=1)
+        if cached_params is not None:
+            fixed_res = _build_arch_model(data, vol_params, dist).fix(cached_params)
+            fcast = fixed_res.forecast(horizon=1)
             predicted_var.append(fcast.variance.values[-1, 0])
         else:
             predicted_var.append(np.nan)
@@ -267,22 +322,14 @@ def out_of_sample_test(returns: pd.Series, best_result: dict,
 
 def current_forecast(returns: pd.Series, best_result: dict,
                      asset_name: str) -> dict:
-    """用全量数据拟合，预测明日波动率，并与历史分位数比较。"""
+    """用全量数据拟合，预测明日波动率，按笔记年化阈值判断状态（历史分位数仅作参考）。"""
     vol_params = None
     for name, params in MODELS.items():
         if name == best_result['model']:
             vol_params = params
             break
 
-    model = arch_model(
-        returns,
-        mean='Constant',
-        vol=vol_params['vol'],
-        p=vol_params['p'],
-        o=vol_params['o'],
-        q=vol_params['q'],
-        dist=best_result['dist']
-    )
+    model = _build_arch_model(returns, vol_params, best_result['dist'])
     res = model.fit(disp='off', show_warning=False)
     try:
         fcast = res.forecast(horizon=1)
@@ -294,7 +341,7 @@ def current_forecast(returns: pd.Series, best_result: dict,
     daily_vol = np.sqrt(fcast.variance.values[-1, 0])
     annual_vol = daily_vol * np.sqrt(252)
 
-    # 历史条件波动率分位数
+    # 历史条件波动率分位数（仅作参考诊断，不参与状态判断）
     cond_vol = res.conditional_volatility
     pct_25 = cond_vol.quantile(0.25)
     pct_50 = cond_vol.quantile(0.50)
@@ -302,25 +349,14 @@ def current_forecast(returns: pd.Series, best_result: dict,
     pct_90 = cond_vol.quantile(0.90)
     current = cond_vol.iloc[-1]
 
-    # 判断当前处于什么水平
-    if current < pct_25:
-        regime = "低波动"
-        action = "可适当加仓"
-    elif current < pct_75:
-        regime = "中波动"
-        action = "维持当前仓位"
-    elif current < pct_90:
-        regime = "高波动"
-        action = "考虑降仓"
-    else:
-        regime = "极端波动"
-        action = "必须降仓防御"
+    # 状态判断: 按笔记绝对阈值（年化预测波动率 <15% 低 / 15%-30% 中 / >30% 高）
+    regime, action = classify_vol_regime(annual_vol)
 
     print(f"\n  {asset_name} 当前波动率状态:")
     print(f"    明日预测日波动率: {daily_vol:.4f}% (年化 {annual_vol:.2f}%)")
-    print(f"    历史分位数: 25%={pct_25:.4f} | 50%={pct_50:.4f} | 75%={pct_75:.4f} | 90%={pct_90:.4f}")
+    print(f"    历史日波动率分位参考: 25%={pct_25:.4f} | 50%={pct_50:.4f} | 75%={pct_75:.4f} | 90%={pct_90:.4f}")
     print(f"    当前条件波动率: {current:.4f}")
-    print(f"    状态判断: {regime} → {action}")
+    print(f"    状态判断(年化阈值15%/30%): {regime} → {action}")
 
     return {
         'daily_vol': daily_vol,
@@ -370,14 +406,16 @@ def main():
 
         # 汇总
         params = best['params']
+        persistence = compute_persistence(best['model'], params)
         summary_rows.append({
             '资产': asset,
             '最优模型': f"{best['model']} / {best['dist']}",
-            'omega': params.get('omega', params.get('mu', 0)),
+            'omega': params.get('omega', 0.0),
             'alpha': params.get('alpha[1]', 0),
             'beta': params.get('beta[1]', 0),
             'gamma': params.get('gamma[1]', 0),
-            '持久性': params.get('alpha[1]', 0) + params.get('beta[1]', 0) + 0.5 * params.get('gamma[1]', 0),
+            '持久性': persistence,
+            '约束校验': check_constraints(best['model'], params, persistence),
             'BIC': best['bic'],
             '样本外相关性': oos['corr'],
             '当前日波动率%': forecast['daily_vol'],
@@ -395,7 +433,7 @@ def main():
     print("=" * 60)
 
     # 参数表
-    param_cols = ['资产', '最优模型', 'alpha', 'beta', 'gamma', '持久性', 'BIC', '样本外相关性']
+    param_cols = ['资产', '最优模型', 'alpha', 'beta', 'gamma', '持久性', '约束校验', 'BIC', '样本外相关性']
     print("\n参数估计:")
     print(summary[param_cols].to_string(index=False, float_format='%.4f'))
 
@@ -404,8 +442,9 @@ def main():
     print("\n当前波动率状态:")
     print(summary[state_cols].to_string(index=False, float_format='%.2f'))
 
-    # 保存到CSV（与 toolkit output 目录一致）
+    # 保存到CSV（与 toolkit output 目录一致）；数值列统一 4 位小数，与其他模型产物精度约定一致
     output_path = OUTPUT_DIR / "garch_results.csv"
+    summary = summary.round(4)
     summary.to_csv(output_path, index=False, encoding='utf-8-sig')
     print(f"\n结果已保存到: {output_path}")
 

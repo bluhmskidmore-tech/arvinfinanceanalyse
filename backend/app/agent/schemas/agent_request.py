@@ -13,7 +13,9 @@ class AgentPageContext(BaseModel):
 
 
 class AgentQueryRequest(BaseModel):
-    question: str = Field(..., min_length=1)
+    # max_length 与 Hermes prompt 预算联动：超长 question 会在 Windows 上触发
+    # CreateProcess ~32K argv 上限，OSError 被吞成静默降级（只加约束不改字段名）。
+    question: str = Field(..., min_length=1, max_length=8000)
     basis: Literal["formal", "scenario", "analytical"] = "formal"
     filters: dict[str, Any] = Field(default_factory=dict)
     position_scope: str = "all"

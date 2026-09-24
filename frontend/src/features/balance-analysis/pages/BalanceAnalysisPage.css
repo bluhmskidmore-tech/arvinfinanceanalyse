@@ -5,25 +5,725 @@
 }
 
 .balance-analysis-page {
+  display: grid;
+  width: 100%;
+  min-width: 0;
   padding: 0;
+  gap: 16px;
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-sans);
+  font-feature-settings: "tnum" 1, "ss01" 1;
+  /* 编号分区（首页标准包）：编号按已渲染分区自动生成。 */
+  counter-reset: ba-section;
+  /*
+   * --ib-* 在 ThemedRouteBoundary 上已被算成钢蓝字面值再继承（ledger-pnl
+   * 2026-08-12 结论），页根重声明令其在 Nocturne scope 内重新解析；
+   * dhLightPage 的 --dh-* → --ib-* 链与页内直用处随之翻转
+   * （cashflow-projection / risk-tensor 同款桥接，全 var 引用零字面量）。
+   */
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line-soft);
+  --ib-rule-strong: var(--dh-api-line);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-hover: var(--dh-api-blue);
+  --ib-accent-surface: var(--dh-api-blue-soft);
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
+  --ib-warn: var(--dh-api-amber);
+  --ib-gold: var(--dh-api-gold);
+  --ib-radius: var(--dh-api-radius);
+  --ib-shadow: none;
+  /*
+   * 只补 boundary 深色重映射块里已存在的 --moss-color-* 五项（今天即钢蓝，
+   * 供工作簿面板与共享 FormalResultMetaPanel 取用）；neutral/semantic 浅色系
+   * 属页内浅色实现，留待单独轮次，不在此处翻转。
+   */
+  --moss-color-card-bg: var(--dh-api-panel);
+  --moss-color-border-default: var(--dh-api-line);
+  --moss-color-text-primary: var(--dh-api-ink);
+  --moss-color-text-secondary: var(--dh-api-soft);
+  --moss-color-text-muted: var(--dh-api-muted);
+  /*
+   * 深层明细轮次：中性阶按 ledger-pnl 页根先例整体重映射，
+   * 覆盖共享 FormalResultMetaPanel / SummaryBlock / AlertList /
+   * CalendarList 等仍引用 :root 浅色中性阶的组件（仅换色）。
+   */
+  --moss-color-neutral-50: var(--dh-api-panel-2);
+  --moss-color-neutral-100: var(--dh-api-panel-3);
+  --moss-color-neutral-200: var(--dh-api-line-soft);
+  --moss-color-neutral-300: var(--dh-api-line);
+  --moss-color-neutral-400: var(--dh-api-muted);
+  --moss-color-neutral-500: var(--dh-api-muted);
+  --moss-color-neutral-600: var(--dh-api-soft);
+  --moss-color-neutral-700: var(--dh-api-soft);
+  --moss-color-neutral-800: var(--dh-api-ink);
+  --moss-color-neutral-900: var(--dh-api-ink);
+  /* PagePrimitives（PageSectionLead）内联墨字浅色兜底在 theme-dh-api 深底不可读，经 --moss-page-* 变量接管 */
+  --moss-page-ink: var(--ib-ink);
+  --moss-page-ink-secondary: var(--ib-ink-secondary);
+  --moss-page-ink-muted: var(--ib-ink-muted);
 }
 
-.balance-analysis-page.dhPage {
-  gap: var(--dh-space-2, 12px);
+/* ------------------------------------------------------------------ 页头
+   首页标准包：20px 页题 + 12px 副题 + 模式徽标（无胶囊/大写宽字距）+ 32px 控件。 */
+.balance-analysis-topbar {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.balance-analysis-topbar__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.balance-analysis-topbar__copy {
+  min-width: 0;
+}
+
+.balance-analysis-topbar__title {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.balance-analysis-topbar__subtitle {
+  max-width: 720px;
+  margin: 4px 0 0;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.balance-analysis-topbar__badges {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.balance-analysis-topbar__mode-badge {
+  padding: 4px 8px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.balance-analysis-topbar__mode-badge[data-tone="success"] {
+  background: var(--dh-api-green-soft);
+  color: var(--dh-api-green);
+}
+
+.balance-analysis-topbar__mode-badge[data-tone="mock"] {
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-blue);
+}
+
+.balance-analysis-topbar__mode-badge[data-tone="neutral"] {
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+}
+
+.balance-analysis-topbar__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+}
+
+.balance-analysis-topbar__field {
+  display: grid;
+  gap: 4px;
+}
+
+.balance-analysis-topbar__field-label {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.balance-analysis-topbar__select {
+  min-width: 132px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-ink);
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.balance-analysis-topbar__select:focus-visible {
+  outline: none;
+  border-color: var(--dh-api-blue);
+  box-shadow: 0 0 0 3px var(--dh-api-blue-soft);
+}
+
+.balance-analysis-topbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* 32px 操作钮：描边默认、accent 主操作。 */
+.balance-analysis-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 12px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: transparent;
+  color: var(--dh-api-soft);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.balance-analysis-btn:hover:not(:disabled) {
+  border-color: var(--dh-api-blue);
+  color: var(--dh-api-blue);
+}
+
+.balance-analysis-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.balance-analysis-btn--primary {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 44%, transparent);
+  background: var(--dh-api-blue);
+  /* accent 中亮紫底上近白 ink 对比不足，取深墨 bg（AA），与页内 --balance-on-accent 同策略。 */
+  color: var(--dh-api-bg);
+}
+
+.balance-analysis-btn--primary:hover:not(:disabled) {
+  border-color: var(--dh-api-blue);
+  color: var(--dh-api-bg);
+  opacity: 0.92;
+}
+
+/* ------------------------------------------------------------ 编号分区骨架 */
+.balance-analysis-stack {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.balance-analysis-sec {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  counter-increment: ba-section;
+  scroll-margin-top: 52px;
+}
+
+.balance-analysis-sec-head {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.balance-analysis-sec-head__row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 20px;
+}
+
+.balance-analysis-sec-head__row::before {
+  content: counter(ba-section, decimal-leading-zero);
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.balance-analysis-sec-head__title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.balance-analysis-sec-head__meta {
+  overflow: hidden;
+  max-width: 46vw;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.balance-analysis-sec-head__actions {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.balance-analysis-sec-head__hint {
+  margin: 0 0 0 32px;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* -------------------------------------------------------- 结论块（01） */
+.balance-analysis-conclusion {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--dh-api-line);
+  border-left: 2px solid var(--dh-api-blue);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.balance-analysis-conclusion__body {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+/* ---------------------------------------------------- KPI 单框横带（01）
+   发丝竖缝走 gap:1px 露底色（average-balance 先例），断点折行免 nth-child 补缝。 */
+.balance-analysis-kpi-band {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-line-soft);
+}
+
+.balance-analysis-kpi-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  min-height: 84px;
+  padding: 12px 14px;
+  background: var(--dh-api-panel);
+}
+
+/* 标签 2 行 clamp + 固定 min-height，防同排数值错位（DESIGN.md §3）。 */
+.balance-analysis-kpi-cell__label {
+  display: -webkit-box;
+  overflow: hidden;
+  min-height: 32px;
+  color: var(--dh-api-soft);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* 主值下限 20px（§3）；keep-all 禁止把单位拆行。 */
+.balance-analysis-kpi-cell__value {
+  margin-top: auto;
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-mono);
+  font-size: clamp(20px, 1.5vw, 22px);
+  font-weight: 700;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+
+.balance-analysis-kpi-cell__value small {
+  margin-left: 4px;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* 1440/1920 基准视口保持单行 7 格等分（不再 4+3 折行）；窄于 1280 才降 4 列。 */
+@media (max-width: 1280px) {
+  .balance-analysis-kpi-band {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  /* 7 格在 4 列网格尾行差 1 格，末格跨 2 列补满，避免露出底色空洞。 */
+  .balance-analysis-kpi-cell:last-child {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 860px) {
+  .balance-analysis-kpi-band {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ------------------------------------------------ 运营读数窄条（01） */
+.balance-analysis-ops-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  padding: 8px 14px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+}
+
+.balance-analysis-ops-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 16px;
+  border-left: 1px solid var(--dh-api-line-soft);
+}
+
+.balance-analysis-ops-item:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.balance-analysis-ops-item__label {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.balance-analysis-ops-item__value {
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.balance-analysis-ops-item__value small {
+  margin-left: 3px;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* ---------------------------------------------------- 读面平卡（02） */
+.balance-analysis-stage-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.balance-analysis-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.balance-analysis-panel:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, var(--dh-api-line));
+}
+
+.balance-analysis-panel__title {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+/* ------------------------------------------------------ 页内密度表格
+   表头 11px / 表体 12px / 发丝底边 / 数值右对齐等宽（首页表格纪律）。 */
+.balance-analysis-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+.balance-analysis-table th {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.balance-analysis-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.balance-analysis-table th:first-child,
+.balance-analysis-table td:first-child {
+  text-align: left;
+}
+
+.balance-analysis-table td:first-child b {
+  color: var(--dh-api-ink);
+  font-weight: 600;
+}
+
+.balance-analysis-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* -------------------------------------------------- 工作簿入口（03） */
+.balance-analysis-quicknav {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.balance-analysis-quicknav__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  color: var(--dh-api-soft);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.balance-analysis-quicknav__item:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, var(--dh-api-line));
+  color: var(--dh-api-ink);
+}
+
+.balance-analysis-quicknav__icon {
+  display: inline-flex;
+  color: var(--dh-api-muted);
+  font-size: 14px;
+}
+
+.balance-analysis-quicknav__item b {
+  color: var(--dh-api-ink);
+  font-weight: 600;
+}
+
+@media (max-width: 1280px) {
+  .balance-analysis-quicknav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .balance-analysis-quicknav {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ------------------------------------------------ 折叠分区（统一 details）
+   顶级 --sec 参与编号；--sub 为分区内底稿折叠，不编号。 */
+.balance-analysis-details {
+  overflow: hidden;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  min-width: 0;
+}
+
+.balance-analysis-details--sec {
+  counter-increment: ba-section;
+  scroll-margin-top: 52px;
+}
+
+.balance-analysis-details__summary {
+  display: grid;
+  grid-template-columns: 22px minmax(0, auto) minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.balance-analysis-details__summary::-webkit-details-marker {
+  display: none;
+}
+
+.balance-analysis-details__summary::before {
+  content: counter(ba-section, decimal-leading-zero);
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 非编号子折叠：编号位收起，改画折叠角标。 */
+.balance-analysis-details--sub .balance-analysis-details__summary {
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) 14px;
+}
+
+.balance-analysis-details--sub .balance-analysis-details__summary::before {
+  content: none;
+}
+
+.balance-analysis-details__summary::after {
+  content: "";
+  justify-self: end;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--dh-api-muted);
+  border-bottom: 1.5px solid var(--dh-api-muted);
+  transform: rotate(45deg);
+  transition: transform 150ms ease;
+}
+
+.balance-analysis-details[open] > .balance-analysis-details__summary::after {
+  transform: rotate(-135deg);
+}
+
+.balance-analysis-details__title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.balance-analysis-details__meta {
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.balance-analysis-details__hint {
+  grid-column: 2 / -1;
+  margin: 0;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.balance-analysis-details--sub .balance-analysis-details__hint {
+  grid-column: 1 / -1;
+}
+
+.balance-analysis-details[open] > .balance-analysis-details__summary {
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.balance-analysis-details__content,
+.balance-analysis-details > .balance-analysis-ledger-grid,
+.balance-analysis-details > .balance-analysis-workbook-secondary-grid {
+  padding: 14px;
+}
+
+.balance-analysis-details__content {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* ---------------------------------------------------------- 空态收缩 */
+.balance-analysis-empty {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  min-height: 96px;
+  padding: 16px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+  align-content: center;
+}
+
+.balance-analysis-empty b {
+  color: var(--dh-api-ink);
+  font-size: 13px;
+}
+
+.balance-analysis-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .balance-analysis-topbar__actions {
+    margin-left: 0;
+  }
+
+  .balance-analysis-sec-head__meta {
+    display: none;
+  }
 }
 
 .balance-analysis-abnormal-sentinels {
   display: grid;
   gap: 8px;
   padding: 10px 12px;
-  border: 1px solid rgba(220, 38, 38, 0.24);
-  border-radius: 8px;
-  background: #fef2f2;
+  border: 1px solid var(--ib-hairline);
+  border-left: 2px solid var(--ib-warn);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-paper);
 }
 
 .balance-analysis-abnormal-sentinels__head strong {
   font-size: 12px;
-  color: #991b1b;
+  color: var(--ib-ink);
 }
 
 .balance-analysis-abnormal-sentinels__list {
@@ -36,18 +736,19 @@
   display: grid;
   gap: 2px;
   padding: 6px 10px;
-  border-radius: 6px;
-  background: #fff;
-  border: 1px solid rgba(220, 38, 38, 0.18);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+  border: 1px solid var(--ib-hairline);
   font-size: 11px;
 }
 
 .balance-analysis-abnormal-sentinels__item b {
-  color: #991b1b;
+  color: var(--ib-warn);
 }
 
 .balance-analysis-abnormal-sentinels__item small {
-  color: #7f1d1d;
+  color: var(--ib-ink-secondary);
+  font-size: 11px;
 }
 
 
@@ -59,12 +760,11 @@
   align-items: end;
   margin-bottom: 0;
   padding: 10px 12px 12px;
-  border: 1px solid rgba(147, 197, 253, 0.42);
-  border-radius: 8px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(248, 251, 255, 0.96)),
-    repeating-linear-gradient(90deg, transparent 0 42px, rgba(37, 99, 235, 0.026) 42px 43px);
-  box-shadow: 0 10px 24px rgba(15, 37, 68, 0.06);
+  border: 1px solid var(--ib-hairline);
+  border-top: 2px solid var(--ib-accent);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+  box-shadow: var(--ib-shadow);
 }
 
 .balance-analysis-hero__identity {
@@ -82,8 +782,8 @@
   min-height: 24px;
   padding: 0 12px;
   border-radius: 7px 0 7px 0;
-  background: var(--moss-color-primary-600);
-  color: #fff;
+  background: var(--dh-api-blue);
+  color: var(--balance-on-accent);
   font-size: 12px;
   font-weight: 780;
 }
@@ -121,14 +821,14 @@
   height: 22px;
   padding: 0 8px;
   border-radius: 4px;
-  background: #e8f0fa;
-  color: #1850a1;
+  background: var(--dh-api-blue-soft); /* 原 #e8f0fa，Nocturne 下取 accent 软底 */
+  color: var(--dh-api-blue);
   font-size: 11px;
   font-weight: 700;
 }
 
 .balance-analysis-hero__title-row span:not(.balance-analysis-hero__tag) {
-  color: var(--moss-color-primary-800);
+  color: var(--dh-api-blue);
   font-size: 12px;
   font-weight: 760;
 }
@@ -157,13 +857,13 @@
   width: fit-content;
   max-width: 100%;
   padding: 3px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(147, 197, 253, 0.48);
-  background: rgba(239, 246, 255, 0.76);
+  border-radius: var(--ib-radius, 2px);
+  border: 1px solid var(--dh-api-line-soft);
+  background: var(--dh-api-panel-2);
 }
 
 .balance-analysis-hero__report {
-  color: var(--moss-color-primary-900);
+  color: var(--dh-api-ink);
   font-size: 12px;
   font-weight: 760;
 }
@@ -173,12 +873,12 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 10px;
-  color: var(--moss-color-neutral-700);
+  color: var(--dh-api-soft);
   font-size: 12px;
 }
 
 .balance-analysis-hero-conclusion strong {
-  color: var(--moss-color-primary-800);
+  color: var(--dh-api-blue);
 }
 
 .balance-analysis-hero-actions {
@@ -194,7 +894,7 @@
   display: inline-flex;
   align-items: center;
   width: fit-content;
-  border-radius: 999px;
+  border-radius: var(--ib-radius, 2px);
   font-size: 12px;
   font-weight: 720;
 }
@@ -202,39 +902,39 @@
 .balance-analysis-source-badge {
   padding: 6px 12px;
   letter-spacing: 0;
-  border: 1px solid rgba(45, 138, 94, 0.16);
+  border: 1px solid color-mix(in srgb, var(--dh-api-green) 24%, transparent);
 }
 
 .balance-analysis-source-badge[data-tone="success"],
 .balance-analysis-status-badge[data-tone="success"] {
-  background: var(--moss-color-success-50);
-  color: var(--moss-color-success-700);
+  background: var(--dh-api-green-soft);
+  color: var(--dh-api-green);
 }
 
 .balance-analysis-source-badge[data-tone="mock"],
 .balance-analysis-status-badge[data-tone="mock"] {
-  background: var(--moss-color-primary-600);
-  color: #ffffff;
+  background: var(--dh-api-blue);
+  color: var(--balance-on-accent);
 }
 
 .balance-analysis-status-badge[data-tone="info"] {
-  background: var(--moss-color-info-50);
-  color: var(--moss-color-info-700);
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-blue);
 }
 
 .balance-analysis-status-badge[data-tone="warning"] {
-  background: var(--moss-color-warning-50);
-  color: var(--moss-color-warning-700);
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-amber);
 }
 
 .balance-analysis-status-badge[data-tone="danger"] {
-  background: var(--moss-color-danger-50);
-  color: var(--moss-color-danger-700);
+  background: var(--dh-api-red-soft);
+  color: var(--dh-api-red);
 }
 
 .balance-analysis-status-badge[data-tone="neutral"] {
-  background: rgba(255, 255, 255, 0.76);
-  color: var(--moss-color-neutral-700);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
 }
 
 .balance-analysis-inline-icon {
@@ -252,16 +952,16 @@
 .balance-analysis-control,
 .balance-analysis-action-button {
   min-height: 32px;
-  border-radius: 999px;
+  border-radius: var(--ib-radius, 2px);
   font-weight: 680;
 }
 
 .balance-analysis-control {
   min-width: 132px;
   padding: 7px var(--moss-space-3);
-  border: 1px solid rgba(148, 163, 184, 0.44);
-  background: rgba(255, 255, 255, 0.94);
-  color: var(--moss-color-neutral-900);
+  border: 1px solid var(--dh-api-line);
+  background: var(--dh-api-panel);
+  color: var(--dh-api-ink);
   cursor: pointer;
   transition:
     border-color var(--moss-motion-duration-fast) var(--moss-motion-ease-out),
@@ -273,9 +973,9 @@
   align-items: center;
   justify-content: center;
   padding: var(--moss-space-2) var(--moss-space-3);
-  border: 1px solid var(--moss-color-info-200);
-  background: rgba(255, 255, 255, 0.9);
-  color: var(--moss-color-info-600);
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 30%, transparent);
+  background: var(--dh-api-panel);
+  color: var(--dh-api-blue);
   cursor: pointer;
   transition:
     transform var(--moss-motion-duration-fast) var(--moss-motion-ease-out),
@@ -285,7 +985,7 @@
 
 .balance-analysis-action-button:hover:not(:disabled) {
   transform: translateY(-1px);
-  border-color: var(--moss-color-info-400);
+  border-color: var(--dh-api-blue);
   box-shadow: var(--moss-shadow-card);
 }
 
@@ -293,8 +993,8 @@
 .balance-analysis-control:focus-visible,
 .balance-analysis-action-button:focus-visible {
   outline: none;
-  border-color: var(--moss-color-info-400);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.14);
+  border-color: var(--dh-api-blue);
+  box-shadow: 0 0 0 3px var(--dh-api-blue-soft);
 }
 
 .balance-analysis-action-button:disabled {
@@ -306,15 +1006,15 @@
   justify-content: space-between;
   min-height: 32px;
   padding-block: 3px;
-  border-color: rgba(147, 197, 253, 0.42);
+  border-color: var(--dh-api-line-soft);
   background:
-    linear-gradient(90deg, rgba(239, 246, 255, 0.76), rgba(255, 255, 255, 0.94)),
-    rgba(255, 255, 255, 0.9);
+    linear-gradient(90deg, var(--dh-api-panel-2), var(--dh-api-panel)),
+    var(--dh-api-panel);
 }
 
 .balance-analysis-status-badge {
   padding: 5px 10px;
-  border: 1px solid rgba(115, 132, 153, 0.18);
+  border: 1px solid var(--dh-api-line-soft);
 }
 
 .balance-analysis-report-date-empty {
@@ -323,23 +1023,23 @@
   justify-content: space-between;
   gap: var(--moss-space-4);
   padding: var(--moss-space-4);
-  border: 1px solid rgba(147, 197, 253, 0.36);
-  border-radius: 8px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--ib-radius, 2px);
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(239, 246, 255, 0.92)),
-    rgba(255, 255, 255, 0.94);
-  box-shadow: 0 10px 24px rgba(15, 37, 68, 0.055);
+    linear-gradient(135deg, var(--dh-api-panel), var(--dh-api-panel-2)),
+    var(--dh-api-panel);
+  box-shadow: var(--ib-shadow);
 }
 
 .balance-analysis-report-date-empty span {
-  color: var(--moss-color-info-600);
+  color: var(--dh-api-blue);
   font-size: 11px;
   font-weight: 760;
 }
 
 .balance-analysis-report-date-empty h2 {
   margin: 4px 0 6px;
-  color: var(--moss-color-primary-900);
+  color: var(--dh-api-ink);
   font-size: 20px;
   line-height: 1.25;
 }
@@ -347,7 +1047,7 @@
 .balance-analysis-report-date-empty p {
   max-width: 680px;
   margin: 0;
-  color: var(--moss-color-neutral-700);
+  color: var(--dh-api-soft);
   font-size: 13px;
   line-height: 1.65;
 }
@@ -361,11 +1061,11 @@
   position: relative;
   min-height: 58px;
   overflow: hidden;
-  border-color: rgba(147, 197, 253, 0.46);
-  border-radius: 7px;
+  border-color: var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.94)),
-    repeating-linear-gradient(90deg, transparent 0 32px, rgba(37, 99, 235, 0.028) 32px 33px);
+    linear-gradient(180deg, var(--dh-api-panel), var(--dh-api-panel-2)),
+    repeating-linear-gradient(90deg, transparent 0 32px, color-mix(in srgb, var(--dh-api-blue) 3%, transparent) 32px 33px);
   box-shadow: 0 8px 18px rgba(15, 37, 68, 0.045);
 }
 
@@ -374,11 +1074,11 @@
   position: absolute;
   inset: 0 auto 0 0;
   width: 3px;
-  background: linear-gradient(180deg, var(--moss-color-info-400), var(--moss-color-primary-600));
+  background: linear-gradient(180deg, var(--dh-api-blue), var(--dh-api-blue));
 }
 
 .balance-analysis-contract-kpis .moss-page-v2-kpi-metric__label {
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.2;
 }
 
@@ -389,7 +1089,7 @@
 
 .balance-analysis-kpi-unit {
   margin-left: 6px;
-  color: var(--moss-color-neutral-500);
+  color: var(--dh-api-muted);
   font-family: var(--moss-font-sans);
   font-size: 12px;
   font-weight: 700;
@@ -397,7 +1097,7 @@
 
 .balance-analysis-contract-kpis .moss-page-v2-kpi-metric__footer {
   overflow-wrap: anywhere;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.25;
 }
 
@@ -475,7 +1175,7 @@
   }
 
   .balance-analysis-contract-kpis .moss-page-v2-kpi-metric__footer {
-    font-size: 10px;
+    font-size: 12px;
     line-height: 1.25;
   }
 }
@@ -517,71 +1217,18 @@
   margin-top: var(--moss-space-2);
 }
 
-.balance-analysis-evidence-details {
-  overflow: hidden;
-  border: 1px solid rgba(147, 197, 253, 0.34);
-  border-radius: 8px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.94));
-  box-shadow: 0 6px 16px rgba(15, 37, 68, 0.035);
-}
-
-.balance-analysis-evidence-details__summary {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: var(--moss-space-2) var(--moss-space-3);
-  align-items: center;
-  min-height: 44px;
-  padding: var(--moss-space-2) var(--moss-space-3);
-  cursor: pointer;
-  color: var(--moss-color-neutral-800);
-}
-
-.balance-analysis-evidence-details__summary strong {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  color: var(--moss-color-primary-800);
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.balance-analysis-evidence-details__summary span:last-child {
-  min-width: 0;
-  color: var(--moss-color-neutral-600);
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-.balance-analysis-evidence-details__eyebrow {
-  color: var(--moss-color-neutral-500);
-  font-size: 11px;
-  font-weight: 760;
-}
-
-.balance-analysis-evidence-details[open] {
-  background: rgba(255, 255, 255, 0.96);
-}
-
-.balance-analysis-evidence-details[open] .balance-analysis-evidence-details__summary {
-  border-bottom: 1px solid rgba(147, 197, 253, 0.24);
-}
-
-.balance-analysis-evidence-details > .balance-analysis-ledger-grid {
-  padding: 0 var(--moss-space-3) var(--moss-space-3);
-}
-
 .balance-analysis-ledger-panel {
   min-height: 100%;
-  border-color: rgba(147, 197, 253, 0.34);
-  border-radius: 8px;
+  border-color: var(--dh-api-line-soft);
+  border-radius: var(--ib-radius, 2px);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.94)),
-    radial-gradient(circle at top right, rgba(37, 99, 235, 0.06), transparent 34%);
+    linear-gradient(180deg, var(--dh-api-panel), var(--dh-api-panel-2)),
+    radial-gradient(circle at top right, var(--dh-api-blue-soft), transparent 34%);
 }
 
 .balance-analysis-ledger-copy {
   margin: 0 0 var(--moss-space-3);
-  color: var(--moss-color-neutral-700);
+  color: var(--dh-api-soft);
   font-size: 13px;
   line-height: 1.7;
 }
@@ -596,20 +1243,20 @@
   display: grid;
   gap: var(--moss-space-2);
   padding: var(--moss-space-3);
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
 }
 
 .balance-analysis-evidence-card__top {
   display: flex;
   justify-content: space-between;
   gap: var(--moss-space-2);
-  color: var(--moss-color-neutral-900);
+  color: var(--dh-api-ink);
 }
 
 .balance-analysis-evidence-card__top span {
-  color: var(--moss-color-primary-700);
+  color: var(--dh-api-blue);
   font-size: 12px;
   font-weight: 720;
 }
@@ -628,7 +1275,7 @@
 }
 
 .balance-analysis-evidence-card dt {
-  color: var(--moss-color-neutral-500);
+  color: var(--dh-api-muted);
   font-size: 11px;
   font-weight: 760;
   text-transform: uppercase;
@@ -638,7 +1285,7 @@
   margin: 0;
   min-width: 0;
   overflow-wrap: anywhere;
-  color: var(--moss-color-neutral-800);
+  color: var(--dh-api-ink);
   font-size: 12px;
 }
 
@@ -648,7 +1295,7 @@
 
 .balance-analysis-compact-filter-note {
   margin: 0;
-  color: var(--moss-color-neutral-600);
+  color: var(--dh-api-soft);
   font-size: 12px;
   line-height: 1.55;
 }
@@ -659,21 +1306,21 @@
 
 .balance-analysis-workbook-alert {
   padding: 14px;
-  border-radius: 16px;
+  border-radius: var(--ib-radius, 2px);
   font-size: 13px;
   line-height: 1.6;
 }
 
 .balance-analysis-workbook-alert--warning {
-  border: 1px solid var(--moss-color-warning-200);
-  background: var(--moss-color-warning-50);
-  color: var(--moss-color-warning-700);
+  border: 1px solid color-mix(in srgb, var(--dh-api-amber) 32%, transparent);
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-amber);
 }
 
 .balance-analysis-workbook-alert--empty {
-  border: 1px dashed var(--moss-color-neutral-300);
-  background: var(--moss-color-info-50);
-  color: var(--moss-color-neutral-600);
+  border: 1px dashed var(--dh-api-line);
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-soft);
 }
 
 .balance-analysis-mini-list {
@@ -700,7 +1347,7 @@
 .balance-analysis-mini-label {
   min-width: 0;
   overflow-wrap: anywhere;
-  color: var(--moss-color-neutral-900);
+  color: var(--dh-api-ink);
   font-weight: 600;
 }
 
@@ -720,58 +1367,58 @@
 }
 
 .balance-analysis-mini-value {
-  color: var(--moss-color-neutral-700);
+  color: var(--dh-api-soft);
 }
 
 .balance-analysis-mini-value--info {
-  color: var(--moss-color-info-600);
+  color: var(--dh-api-blue);
 }
 
 .balance-analysis-mini-value--success {
-  color: var(--moss-color-success-400);
+  color: var(--dh-api-green);
 }
 
 .balance-analysis-mini-value--warning {
-  color: var(--moss-color-warning-600);
+  color: var(--dh-api-amber);
 }
 
 .balance-analysis-mini-value--warning-soft {
-  color: var(--moss-color-warning-400);
+  color: color-mix(in srgb, var(--dh-api-amber) 72%, var(--dh-api-ink));
 }
 
 .balance-analysis-mini-value--net {
-  color: var(--moss-color-neutral-900);
+  color: var(--dh-api-ink);
 }
 
 .balance-analysis-mini-bar-track {
   width: 100%;
   height: 7px;
   overflow: hidden;
-  border-radius: 999px;
-  background: rgba(226, 230, 236, 0.76);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--dh-api-panel-3);
 }
 
 .balance-analysis-mini-bar-fill {
   height: 100%;
-  border-radius: 999px;
+  border-radius: var(--ib-radius, 2px);
 }
 
 .balance-analysis-gap-card {
   display: grid;
   gap: 7px;
   padding: 10px 12px;
-  border: 1px solid var(--moss-color-info-200);
-  border-radius: 14px;
-  background: var(--moss-color-info-50);
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 30%, transparent);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--dh-api-blue-soft);
 }
 
 .balance-analysis-gap-card[data-direction="negative"] {
-  border-color: var(--moss-color-warning-200);
-  background: var(--moss-color-warning-50);
+  border-color: color-mix(in srgb, var(--dh-api-amber) 32%, transparent);
+  background: var(--dh-api-amber-soft);
 }
 
 .balance-analysis-gap-note {
-  color: var(--moss-color-warning-700);
+  color: var(--dh-api-amber);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -780,50 +1427,50 @@
   display: grid;
   gap: 8px;
   padding: 14px;
-  border: 1px solid var(--moss-color-neutral-200);
-  border-radius: 16px;
-  background: var(--moss-color-primary-50);
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--dh-api-panel-2);
 }
 
 .balance-analysis-ledger-card[data-selected="true"] {
-  border-color: var(--moss-color-info-600);
-  background: var(--moss-color-info-50);
+  border-color: var(--dh-api-blue);
+  background: var(--dh-api-blue-soft);
 }
 
 .balance-analysis-ledger-card--warning {
-  border-color: var(--moss-color-warning-200);
-  background: var(--moss-color-warning-50);
+  border-color: color-mix(in srgb, var(--dh-api-amber) 32%, transparent);
+  background: var(--dh-api-amber-soft);
 }
 
 .balance-analysis-ledger-card--warning[data-selected="true"] {
-  border-color: var(--moss-color-warning-600);
-  background: var(--moss-color-warning-100);
+  border-color: var(--dh-api-amber);
+  background: color-mix(in srgb, var(--dh-api-amber) 20%, transparent);
 }
 
 .balance-analysis-ledger-copy-text {
-  color: var(--moss-color-neutral-700);
+  color: var(--dh-api-soft);
   font-size: 13px;
   line-height: 1.6;
 }
 
 .balance-analysis-ledger-copy-text--warning {
-  color: var(--moss-color-warning-700);
+  color: var(--dh-api-amber);
 }
 
 .balance-analysis-ledger-meta-row {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  color: var(--moss-color-neutral-600);
+  color: var(--dh-api-soft);
   font-size: 12px;
 }
 
 .balance-analysis-ledger-meta-row--strong {
-  color: var(--moss-color-neutral-700);
+  color: var(--dh-api-soft);
 }
 
 .balance-analysis-ledger-meta-row--warning {
-  color: var(--moss-color-warning-700);
+  color: var(--dh-api-amber);
 }
 
 .balance-analysis-rate-grid {
@@ -834,7 +1481,7 @@
 }
 
 .balance-analysis-rate-grid__label {
-  color: var(--moss-color-neutral-600);
+  color: var(--dh-api-soft);
 }
 
 .balance-analysis-right-rail-button {
@@ -854,10 +1501,10 @@
 
 .balance-analysis-mini-button {
   padding: var(--moss-space-2) var(--moss-space-3);
-  border: 1px solid var(--moss-color-neutral-300);
+  border: 1px solid var(--dh-api-line);
   border-radius: calc(var(--moss-radius-sm) + var(--moss-space-1));
-  background: var(--moss-color-primary-50);
-  color: var(--moss-color-neutral-900);
+  background: var(--dh-api-panel-3);
+  color: var(--dh-api-ink);
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
@@ -876,16 +1523,16 @@
 }
 
 .balance-analysis-panel-badge--warning {
-  background: var(--moss-color-warning-100);
-  color: var(--moss-color-warning-600);
+  background: color-mix(in srgb, var(--dh-api-amber) 20%, transparent);
+  color: var(--dh-api-amber);
 }
 
 .balance-analysis-stage-warning {
   padding: 14px 16px;
-  border: 1px solid var(--moss-color-warning-200);
+  border: 1px solid color-mix(in srgb, var(--dh-api-amber) 32%, transparent);
   border-radius: var(--moss-radius-md);
-  background: var(--moss-color-warning-50);
-  color: var(--moss-color-warning-700);
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-amber);
   font-size: 13px;
   line-height: 1.7;
 }
@@ -966,47 +1613,9 @@
   }
 }
 
-.balance-analysis-supplemental {
-  margin-top: var(--moss-space-6);
-  border: 1px solid var(--moss-color-neutral-200);
-  border-radius: var(--moss-radius-lg);
-  background: #ffffff;
-  box-shadow: var(--moss-shadow-panel);
-  overflow: hidden;
-}
-
-.balance-analysis-supplemental__summary {
-  display: grid;
-  gap: var(--moss-space-1);
-  padding: var(--moss-space-4) var(--moss-space-5);
-  cursor: pointer;
-  color: var(--moss-color-neutral-900);
-}
-
-.balance-analysis-supplemental__eyebrow {
-  color: #7a8795;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.balance-analysis-supplemental__title {
-  font-size: 18px;
-  line-height: 1.35;
-}
-
-.balance-analysis-supplemental__description {
-  color: #586575;
-  font-size: 13px;
-  line-height: 1.7;
-}
-
+/* 辅助分析三面板：列宽/间距沿用，容器 padding 由统一 details__content 提供。 */
 .balance-analysis-supplemental__grid {
-  display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
-  gap: var(--moss-space-4);
-  padding: 0 var(--moss-space-5) var(--moss-space-5);
   align-items: start;
 }
 
@@ -1016,7 +1625,7 @@
 
 .balance-analysis-detail-drilldown__eyebrow {
   margin-bottom: var(--moss-space-2);
-  color: var(--moss-color-neutral-600);
+  color: var(--dh-api-soft);
   font-size: 12px;
 }
 
@@ -1024,24 +1633,28 @@
   margin-bottom: 14px;
 }
 
+.balance-analysis-detail-grid {
+  margin-top: var(--moss-space-2);
+}
+
 .balance-analysis-detail-drilldown__error {
   padding: 14px;
-  border: 1px solid var(--moss-color-warning-200);
-  border-radius: 14px;
-  background: var(--moss-color-warning-50);
-  color: var(--moss-color-warning-700);
+  border: 1px solid color-mix(in srgb, var(--dh-api-amber) 32%, transparent);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-amber);
   font-size: 13px;
 }
 
 .balance-analysis-detail-drilldown__loading {
-  color: var(--moss-color-neutral-600);
+  color: var(--dh-api-soft);
   font-size: 13px;
 }
 
 .balance-analysis-advanced-attribution-summary {
   display: grid;
   gap: 10px;
-  color: var(--moss-color-neutral-800);
+  color: var(--dh-api-ink);
   font-size: 13px;
 }
 
@@ -1064,34 +1677,6 @@
 
 .balance-analysis-workbook-main-details {
   order: 2;
-  min-width: 0;
-  border: 1px solid var(--moss-color-neutral-200);
-  border-radius: var(--moss-radius-sm);
-  background: rgba(255, 255, 255, 0.72);
-  overflow: hidden;
-}
-
-.balance-analysis-workbook-main-details__summary {
-  display: grid;
-  gap: var(--moss-space-1);
-  padding: var(--moss-space-3);
-  cursor: pointer;
-  color: var(--moss-color-text-primary);
-}
-
-.balance-analysis-workbook-main-details__summary strong {
-  font-size: 16px;
-  line-height: 1.35;
-}
-
-.balance-analysis-workbook-main-details__summary span:last-child {
-  color: var(--moss-color-text-secondary);
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.balance-analysis-workbook-main-details[open] .balance-analysis-workbook-main-details__summary {
-  border-bottom: 1px solid var(--moss-color-neutral-200);
 }
 
 .balance-analysis-workbook-main {
@@ -1106,10 +1691,10 @@
   gap: 16px;
   margin-bottom: 20px;
   padding: 16px;
-  border: 1px solid rgba(203, 213, 225, 0.72);
-  border-left: 3px solid var(--moss-color-info-500);
+  border: 1px solid var(--dh-api-line-soft);
+  border-left: 3px solid var(--dh-api-blue);
   border-radius: var(--moss-radius-sm);
-  background: rgba(255, 255, 255, 0.86);
+  background: var(--dh-api-panel);
   box-shadow: 0 8px 18px rgba(15, 37, 68, 0.035);
 }
 
@@ -1137,29 +1722,33 @@
   align-items: center;
   height: fit-content;
   padding: 4px 8px;
-  border-radius: 999px;
+  border-radius: var(--ib-radius, 2px);
   font-size: 12px;
   font-weight: 600;
 }
 
 .balance-analysis-reconciliation__status--aligned {
-  background: #22c55e1a;
-  color: #16a34a;
+  /* 原 tailwind 绿（10% 底/实心字）按语义映射 success 阶。 */
+  background: var(--dh-api-green-soft);
+  color: var(--dh-api-green);
 }
 
 .balance-analysis-reconciliation__status--watch {
-  background: #f59e0b1a;
-  color: #d97706;
+  /* 原 tailwind 琥珀 10% 底映射 warning-50；文字同值 warning-500。 */
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-amber);
 }
 
 .balance-analysis-reconciliation__status--unavailable {
-  background: #64748b1a;
-  color: #64748b;
+  /* 原 tailwind slate（10% 底/实心字）按语义映射 neutral 阶。 */
+  background: var(--dh-api-panel-3);
+  color: var(--dh-api-soft);
 }
 
 .balance-analysis-reconciliation__status--pending {
-  background: #3b82f61a;
-  color: #2563eb;
+  /* 原 tailwind 蓝 10% 底映射 info-50；文字同值 info-600。 */
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-blue);
 }
 
 .balance-analysis-reconciliation__grid {
@@ -1172,25 +1761,25 @@
   display: grid;
   gap: 4px;
   padding: 12px;
-  border: 1px solid rgba(203, 213, 225, 0.62);
+  border: 1px solid var(--dh-api-line-soft);
   border-radius: var(--moss-radius-sm);
-  background: rgba(255, 255, 255, 0.52);
+  background: var(--dh-api-panel-2);
 }
 
 .balance-analysis-reconciliation__tile-label {
-  color: #4b5563;
+  color: var(--dh-api-soft);
   font-size: 12px;
   font-weight: 700;
 }
 
 .balance-analysis-reconciliation__tile-value {
-  color: #111827;
+  color: var(--dh-api-ink); /* 原 #111827。 */
   font-size: 20px;
   font-variant-numeric: tabular-nums;
 }
 
 .balance-analysis-reconciliation__tile-detail {
-  color: #4b5563;
+  color: var(--dh-api-soft);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -1208,16 +1797,16 @@
   justify-content: center;
   width: fit-content;
   padding: 8px 12px;
-  border: 1px solid #93c5fd;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #2563eb;
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 40%, transparent);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--balance-home-card);
+  color: var(--dh-api-blue);
   font-weight: 700;
   text-decoration: none;
 }
 
 .balance-analysis-reconciliation__footnote {
-  color: #4b5563;
+  color: var(--dh-api-soft);
   font-size: 12px;
 }
 
@@ -1239,7 +1828,8 @@
   justify-content: space-between;
   padding: 14px;
   border-radius: var(--moss-radius-sm);
-  color: #eff6ff;
+  /* 色块底为 Nocturne 中亮度 accent/语义色，取深底墨色保证 AAA/AA 标签对比度 */
+  color: var(--dh-api-bg);
 }
 
 .balance-analysis-rating-card__label {
@@ -1257,20 +1847,20 @@
   display: grid;
   gap: 4px;
   padding: 10px 12px;
-  border: 1px solid #bfdbfe;
-  border-radius: 8px;
-  background: #ffffff;
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 30%, transparent);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--balance-home-card);
 }
 
 .balance-analysis-rating-reconciliation__total {
-  color: #111827;
+  color: var(--dh-api-ink); /* 原 #111827。 */
   font-size: 13px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
 .balance-analysis-rating-reconciliation__note {
-  color: #4b5563;
+  color: var(--dh-api-soft);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -1293,7 +1883,7 @@
 
 .balance-analysis-workbook-panel {
   padding: var(--moss-space-4);
-  border: 1px solid #e4e9f0;
+  border: 1px solid var(--balance-home-line);
   border-radius: var(--moss-radius-sm);
   background: var(--moss-color-card-bg);
   box-shadow: 0 8px 18px rgba(15, 37, 68, 0.035);
@@ -1308,14 +1898,14 @@
 }
 
 .balance-analysis-workbook-panel__title {
-  color: var(--moss-color-neutral-900);
+  color: var(--dh-api-ink);
   font-size: 18px;
   font-weight: 600;
 }
 
 .balance-analysis-workbook-panel__note {
   margin: 6px 0 0;
-  color: var(--moss-color-neutral-700);
+  color: var(--dh-api-soft);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -1324,9 +1914,9 @@
   display: inline-flex;
   align-items: center;
   padding: var(--moss-space-1) var(--moss-space-2);
-  border: 1px solid #e4e9f0;
+  border: 1px solid var(--balance-home-line);
   border-radius: var(--moss-radius-sm);
-  background: var(--moss-color-neutral-100);
+  background: var(--dh-api-panel-3);
   color: var(--moss-color-text-secondary);
   font-size: 12px;
   font-weight: 600;
@@ -1340,7 +1930,7 @@
 
 .balance-analysis-workbook-secondary-grid__title {
   margin-bottom: var(--moss-space-2);
-  color: var(--moss-color-neutral-900);
+  color: var(--dh-api-ink);
   font-weight: 600;
 }
 
@@ -1362,20 +1952,14 @@
   min-width: 0;
   overflow: hidden;
   padding: var(--moss-space-3);
-  border: 1px solid var(--moss-color-neutral-200);
+  border: 1px solid var(--dh-api-line-soft);
   border-radius: var(--moss-radius-sm);
-  background: #ffffff;
+  background: var(--balance-home-card);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
-.balance-analysis-right-rail__panel::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 3px;
-  background: var(--moss-color-primary-500);
-}
-
+/* 治理三卡的彩色顶条（accent/琥珀 3px ::before）为无语义装饰（§4），已删除；
+   面板层级由既有 line-soft 描边承担。 */
 .balance-analysis-right-rail__panel--decision {
   grid-area: decision;
 }
@@ -1392,11 +1976,6 @@
   grid-area: drilldown;
 }
 
-.balance-analysis-right-rail__panel--risk::before,
-.balance-analysis-right-rail__panel--decision::before {
-  background: var(--moss-color-warning-500);
-}
-
 .balance-analysis-governance-panel__header {
   display: flex;
   align-items: flex-start;
@@ -1404,11 +1983,11 @@
   gap: var(--moss-space-3);
   margin-bottom: var(--moss-space-3);
   padding-bottom: var(--moss-space-2);
-  border-bottom: 1px solid var(--moss-color-neutral-200);
+  border-bottom: 1px solid var(--dh-api-line-soft);
 }
 
 .balance-analysis-governance-panel__title {
-  color: var(--moss-color-neutral-900);
+  color: var(--dh-api-ink);
   font-size: 16px;
   font-weight: 760;
   line-height: 1.35;
@@ -1420,7 +1999,7 @@
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  color: var(--moss-color-neutral-600);
+  color: var(--dh-api-soft);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -1430,10 +2009,10 @@
   flex: 0 0 auto;
   align-items: center;
   padding: 3px 7px;
-  border: 1px solid var(--moss-color-neutral-200);
+  border: 1px solid var(--dh-api-line-soft);
   border-radius: var(--moss-radius-sm);
-  background: var(--moss-color-neutral-50);
-  color: var(--moss-color-neutral-700);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
   font-size: 12px;
   font-weight: 700;
   line-height: 1.25;
@@ -1443,7 +2022,7 @@
   display: grid;
   gap: 6px;
   margin-bottom: var(--moss-space-2);
-  color: var(--moss-color-neutral-700);
+  color: var(--dh-api-soft);
   font-size: 12px;
 }
 
@@ -1451,10 +2030,10 @@
   width: 100%;
   min-height: 46px;
   padding: 8px 10px;
-  border: 1px solid var(--moss-color-neutral-300);
+  border: 1px solid var(--dh-api-line);
   border-radius: var(--moss-radius-sm);
-  background: #ffffff;
-  color: var(--moss-color-neutral-900);
+  background: var(--balance-home-card);
+  color: var(--dh-api-ink);
   font-size: 13px;
   line-height: 1.45;
   resize: vertical;
@@ -1467,15 +2046,15 @@
   gap: 6px;
   margin-bottom: var(--moss-space-2);
   padding: 8px 10px;
-  border: 1px solid var(--moss-color-info-200);
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 30%, transparent);
   border-radius: var(--moss-radius-sm);
-  background: var(--moss-color-info-50);
-  color: var(--moss-color-neutral-700);
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-soft);
   font-size: 12px;
 }
 
 .balance-analysis-current-user strong {
-  color: var(--moss-color-neutral-900);
+  color: var(--dh-api-ink);
   font-weight: 760;
 }
 
@@ -1489,17 +2068,17 @@
 .balance-analysis-governance-filter-row__label {
   display: block;
   margin-bottom: 5px;
-  color: var(--moss-color-neutral-600);
+  color: var(--dh-api-soft);
   font-size: 12px;
 }
 
 .balance-analysis-governance-select {
   min-width: 124px;
   padding: 7px 9px;
-  border: 1px solid var(--moss-color-neutral-300);
+  border: 1px solid var(--dh-api-line);
   border-radius: var(--moss-radius-sm);
-  background: #ffffff;
-  color: var(--moss-color-neutral-900);
+  background: var(--balance-home-card);
+  color: var(--dh-api-ink);
   font-size: 13px;
 }
 
@@ -1511,21 +2090,21 @@
   gap: 7px;
   padding: 10px;
   border-radius: var(--moss-radius-sm);
-  background: #fbfdff;
+  background: var(--balance-home-card-soft); /* 原 #fbfdff，取最近浅底 */
 }
 
 .balance-analysis-right-rail .balance-analysis-ledger-card--warning {
-  background: #fffaf1;
+  background: var(--dh-api-amber-soft); /* 原 #fffaf1，取最近琥珀 50 阶 */
 }
 
 .balance-analysis-right-rail .balance-analysis-ledger-card[data-selected="true"] {
-  border-color: var(--moss-color-primary-500);
-  box-shadow: 0 0 0 2px rgba(24, 80, 161, 0.1);
+  border-color: var(--dh-api-blue);
+  box-shadow: 0 0 0 2px var(--dh-api-blue-soft);
 }
 
 .balance-analysis-right-rail .balance-analysis-ledger-card--warning[data-selected="true"] {
-  border-color: var(--moss-color-warning-600);
-  box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.12);
+  border-color: var(--dh-api-amber);
+  box-shadow: 0 0 0 2px var(--dh-api-amber-soft);
 }
 
 .balance-analysis-right-rail .balance-analysis-mini-topline {
@@ -1552,10 +2131,10 @@
 
 .balance-analysis-right-rail .balance-analysis-ledger-meta-row span {
   padding: 2px 6px;
-  border: 1px solid var(--moss-color-neutral-200);
+  border: 1px solid var(--dh-api-line-soft);
   border-radius: var(--moss-radius-sm);
-  background: rgba(255, 255, 255, 0.78);
-  color: var(--moss-color-neutral-600);
+  background: var(--dh-api-panel-3);
+  color: var(--dh-api-soft);
 }
 
 .balance-analysis-right-rail .balance-analysis-action-row {
@@ -1577,17 +2156,17 @@
 }
 
 .balance-analysis-right-rail-drilldown-detail__title {
-  color: var(--moss-color-neutral-900);
+  color: var(--dh-api-ink);
   font-weight: 700;
 }
 
 .balance-analysis-right-rail-drilldown-detail__status {
-  color: var(--moss-color-info-600);
+  color: var(--dh-api-blue);
   font-size: 13px;
 }
 
 .balance-analysis-right-rail-drilldown-detail__body {
-  color: var(--moss-color-neutral-700);
+  color: var(--dh-api-soft);
   font-size: 13px;
 }
 
@@ -1597,21 +2176,21 @@
 
 .balance-analysis-right-rail-drilldown-detail__body--warning,
 .balance-analysis-right-rail-drilldown-detail__meta--warning {
-  color: var(--moss-color-warning-700);
+  color: var(--dh-api-amber);
 }
 
 .balance-analysis-right-rail-drilldown-detail__meta {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  color: var(--moss-color-neutral-600);
+  color: var(--dh-api-soft);
   font-size: 12px;
 }
 
 .balance-analysis-right-rail-drilldown-detail__audit {
   display: grid;
   gap: 4px;
-  color: var(--moss-color-neutral-700);
+  color: var(--dh-api-soft);
   font-size: 12px;
 }
 
@@ -1621,31 +2200,27 @@
   overflow: hidden;
 }
 
-[data-testid^="balance-analysis-workbook-panel-"]::before,
-[data-testid="balance-analysis-right-rail-drilldown"]::before {
+/* 治理右栏三卡（decision/risk/drilldown）的彩色顶条按 §4 删除；
+   工作簿分布面板的顶条不属治理三卡，保持原制度。 */
+[data-testid^="balance-analysis-workbook-panel-"]::before {
   content: "";
   position: absolute;
   inset: 0 0 auto;
   height: 3px;
-  background: var(--moss-color-info-500);
-}
-
-[data-testid="balance-analysis-right-rail-panel-decision_items"]::before,
-[data-testid="balance-analysis-right-rail-panel-risk_alerts"]::before {
-  background: var(--moss-color-warning-500);
+  background: var(--dh-api-blue);
 }
 
 [data-testid="balance-analysis-workbook-panel-maturity_gap"]::before,
 [data-testid="balance-analysis-workbook-panel-issuance_business_types"]::before {
-  background: var(--moss-color-primary-600);
+  background: var(--dh-api-blue);
 }
 
 .balance-analysis-workbook-full-details,
 .balance-analysis-stage-details {
   margin-top: var(--moss-space-5);
-  border: 1px solid var(--moss-color-neutral-200);
+  border: 1px solid var(--dh-api-line-soft);
   border-radius: var(--moss-radius-md);
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--dh-api-panel);
   box-shadow: var(--moss-shadow-card);
   overflow: hidden;
 }
@@ -1694,7 +2269,7 @@
 
 .balance-analysis-workbook-full-details[open] .balance-analysis-workbook-full-details__summary,
 .balance-analysis-stage-details[open] .balance-analysis-stage-details__summary {
-  border-bottom: 1px solid var(--moss-color-neutral-200);
+  border-bottom: 1px solid var(--dh-api-line-soft);
 }
 
 .balance-analysis-workbook-full-details > .balance-analysis-workbook-secondary-grid,
@@ -1758,25 +2333,25 @@
   }
 }
 
-/* UI/UX Pro Max refinement: institutional light cockpit */
+/* UI/UX Pro Max refinement: institutional cockpit（变量层随 Nocturne scope 翻转，原浅色见 git 历史） */
 .balance-analysis-page {
-  --balance-ink: #08213f;
-  --balance-ink-soft: #1e3a5f;
-  --balance-line: rgba(43, 86, 132, 0.16);
-  --balance-line-strong: rgba(24, 80, 161, 0.34);
-  --balance-surface: rgba(255, 255, 255, 0.96);
-  --balance-surface-soft: rgba(247, 250, 254, 0.94);
+  --balance-ink: var(--dh-api-ink);
+  --balance-ink-soft: var(--dh-api-soft);
+  --balance-line: var(--dh-api-line-soft);
+  --balance-line-strong: var(--dh-api-line);
+  --balance-surface: var(--dh-api-panel);
+  --balance-surface-soft: var(--dh-api-panel-2);
   --balance-shadow-elevated: 0 18px 44px rgba(8, 33, 63, 0.075);
   --balance-shadow-soft: 0 8px 20px rgba(8, 33, 63, 0.045);
-  font-family: "IBM Plex Sans", var(--moss-font-family);
+  font-family: var(--moss-font-sans);
 }
 
 .balance-analysis-hero {
   overflow: hidden;
   border-color: var(--balance-line);
-  border-top: 3px solid var(--moss-color-primary-600);
+  border-top: 3px solid var(--dh-api-blue);
   background:
-    linear-gradient(90deg, rgba(24, 80, 161, 0.055), transparent 32%),
+    linear-gradient(90deg, color-mix(in srgb, var(--dh-api-blue) 6%, transparent), transparent 32%),
     linear-gradient(180deg, var(--balance-surface), var(--balance-surface-soft));
   box-shadow: var(--balance-shadow-elevated);
 }
@@ -1786,11 +2361,11 @@
   position: absolute;
   inset: 0 0 auto;
   height: 1px;
-  background: linear-gradient(90deg, rgba(24, 80, 161, 0.42), transparent 72%);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--dh-api-blue) 42%, transparent), transparent 72%);
 }
 
 .balance-analysis-hero__tab {
-  background: linear-gradient(135deg, #08213f, var(--moss-color-primary-700));
+  background: linear-gradient(135deg, var(--dh-api-panel-3), var(--dh-api-blue));
   box-shadow: 0 8px 18px rgba(8, 33, 63, 0.18);
 }
 
@@ -1801,50 +2376,50 @@
 
 .balance-analysis-hero__title-row span,
 .balance-analysis-hero-conclusion strong {
-  color: var(--moss-color-primary-700);
+  color: var(--dh-api-blue);
 }
 
 .balance-analysis-hero__identity p,
 .balance-analysis-hero-conclusion {
-  color: #3f5875;
+  color: var(--dh-api-soft); /* 原 #3f5875。 */
 }
 
 .balance-analysis-hero__report,
 .balance-analysis-hero .moss-page-v2-decision-hero__conclusion,
 .balance-analysis-status-badge,
 .balance-analysis-source-badge {
-  border-color: rgba(24, 80, 161, 0.18);
-  background: rgba(255, 255, 255, 0.82);
+  border-color: var(--dh-api-line-soft);
+  background: var(--dh-api-panel-2);
 }
 
 .balance-analysis-control,
 .balance-analysis-action-button {
-  border-radius: 6px;
+  border-radius: var(--ib-radius, 2px);
 }
 
 .balance-analysis-action-button {
-  border-color: rgba(37, 99, 235, 0.26);
-  background: linear-gradient(180deg, #ffffff, #f4f8ff);
+  border-color: color-mix(in srgb, var(--dh-api-blue) 30%, transparent);
+  background: linear-gradient(180deg, var(--balance-home-card), var(--balance-home-card-soft));
 }
 
 .balance-analysis-action-button[data-variant="primary"],
 [data-testid="balance-analysis-refresh-button"] {
-  border-color: rgba(24, 80, 161, 0.38);
-  background: linear-gradient(180deg, var(--moss-color-primary-600), var(--moss-color-primary-700));
-  color: #ffffff;
+  border-color: color-mix(in srgb, var(--dh-api-blue) 44%, transparent);
+  background: var(--dh-api-blue);
+  color: var(--balance-on-accent);
 }
 
 .balance-analysis-data-status {
-  border-color: rgba(43, 86, 132, 0.14);
+  border-color: var(--dh-api-line-soft);
   background:
-    linear-gradient(90deg, rgba(8, 33, 63, 0.04), rgba(255, 255, 255, 0.96)),
-    #ffffff;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    linear-gradient(90deg, var(--dh-api-blue-soft), transparent 46%),
+    var(--balance-home-card);
+  box-shadow: inset 0 1px 0 var(--dh-api-line-soft);
 }
 
 .balance-analysis-evidence-details {
   border-color: var(--balance-line);
-  background: linear-gradient(180deg, #ffffff, #f8fbff);
+  background: linear-gradient(180deg, var(--balance-home-card), var(--balance-home-card-soft));
   box-shadow: var(--balance-shadow-soft);
 }
 
@@ -1857,13 +2432,13 @@
 }
 
 .balance-analysis-evidence-details__eyebrow {
-  color: var(--moss-color-primary-700);
+  color: var(--dh-api-blue);
 }
 
 .balance-analysis-ledger-panel,
 .balance-analysis-evidence-card {
   border-color: var(--balance-line);
-  background: linear-gradient(180deg, #ffffff, #f8fbff);
+  background: linear-gradient(180deg, var(--balance-home-card), var(--balance-home-card-soft));
 }
 
 @media (max-width: 900px) {
@@ -1877,15 +2452,18 @@
   }
 }
 
-/* Dashboard-home color alignment: reuse the homepage's cool institutional palette. */
+/* Dashboard-home alignment：--balance-home-* 中间变量层统一翻到 --dh-api-* 链（原浅色见 git 历史）。 */
 .balance-analysis-page {
-  --balance-home-card: #ffffff;
-  --balance-home-card-soft: #f7f9fc;
-  --balance-home-line: #e4e9f0;
-  --balance-home-ink: #0c1c33;
-  --balance-home-ink-2: #2c3e5a;
-  --balance-home-blue: #1850a1;
-  --balance-home-blue-deep: #10356a;
+  /* accent 底上的文字：Nocturne 的 --dh-api-blue（#9184d9）是中亮紫，
+     近白 ink 对比仅 2.97:1；取深墨 bg（5.45:1，AA 达标），与评级块同策略。 */
+  --balance-on-accent: var(--dh-api-bg);
+  --balance-home-card: var(--dh-api-panel);
+  --balance-home-card-soft: var(--dh-api-panel-2);
+  --balance-home-line: var(--dh-api-line-soft);
+  --balance-home-ink: var(--dh-api-ink);
+  --balance-home-ink-2: var(--dh-api-soft);
+  --balance-home-blue: var(--dh-api-blue);
+  --balance-home-blue-deep: var(--dh-api-ink);
   --balance-home-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
 }
 
@@ -1897,7 +2475,7 @@
 }
 
 .balance-analysis-hero::after {
-  background: linear-gradient(180deg, rgba(24, 80, 161, 0.1), transparent);
+  background: linear-gradient(180deg, var(--dh-api-blue-soft), transparent);
 }
 
 .balance-analysis-hero__tab {
@@ -1941,18 +2519,123 @@
 [data-testid="balance-analysis-refresh-button"] {
   border-color: var(--balance-home-blue);
   background: var(--balance-home-blue);
-  color: #ffffff;
+  color: var(--balance-on-accent);
 }
 
 .balance-analysis-control:hover,
 .balance-analysis-control:focus-visible,
 .balance-analysis-action-button:focus-visible {
-  border-color: rgba(24, 80, 161, 0.36);
-  box-shadow: 0 0 0 3px rgba(24, 80, 161, 0.12);
+  border-color: color-mix(in srgb, var(--dh-api-blue) 40%, transparent);
+  box-shadow: 0 0 0 3px var(--dh-api-blue-soft);
 }
 
 @media (max-width: 900px) {
   .balance-analysis-hero {
     border-top-width: 1px;
   }
+}
+
+/* antd 主题 token 派生的 Tag 字号为 10px，低于 DESIGN.md §3 的 11px 硬底线；
+   参照 macro-toolkit 的先例把页内 Tag 收敛到 11px 辅助档。 */
+.balance-analysis-page .ant-tag {
+  font-size: 11px;
+}
+
+/*
+ * 结果元信息 Collapse 覆盖：antd token 已全局切 Nocturne（04d9613e，
+ * colorBgContainer/colorFillAlter 与 --dh-api-* 链同出 Nocturne 色源），
+ * 原钢蓝底色已不存在；此块保留为页内 scoped 等价防御层
+ * （decision-items 先例的历史兜底，仅换色）。
+ */
+.balance-analysis-page :where(.ant-collapse) {
+  border-color: var(--dh-api-line-soft) !important;
+  background: var(--dh-api-panel-2) !important;
+}
+
+.balance-analysis-page :where(.ant-collapse > .ant-collapse-item) {
+  border-color: var(--dh-api-line-soft) !important;
+}
+
+.balance-analysis-page :where(.ant-collapse .ant-collapse-content) {
+  border-color: var(--dh-api-line-soft) !important;
+  background: var(--dh-api-panel) !important;
+}
+
+/*
+ * 共享展示组件的语义色（AlertList 圆点 / StatusPill 状态 / CalendarList 链接 /
+ * FormalResultMetaPanel 徽章）走 :root 浅色语义阶，中性阶已由页根重映射覆盖；
+ * 语义阶按 dashboardCockpit 的 bond-analysis cockpit 与 ledger-pnl 徽章先例
+ * 页内 scoped 拉回 --dh-api-* 链（仅换色，不改共享文件与形状布局）。
+ */
+.balance-analysis-page .alert-list__dot--danger {
+  background: var(--dh-api-red);
+}
+
+.balance-analysis-page .alert-list__dot--warning,
+.balance-analysis-page .alert-list__dot--caution {
+  background: var(--dh-api-amber);
+}
+
+.balance-analysis-page .alert-list__dot--info {
+  background: var(--dh-api-blue);
+}
+
+.balance-analysis-page .calendar-list__source-link {
+  color: var(--dh-api-blue);
+}
+
+.balance-analysis-page .status-pill[data-status="normal"] {
+  border-color: color-mix(in srgb, var(--dh-api-green) 36%, transparent);
+  background: var(--dh-api-green-soft);
+  color: var(--dh-api-green);
+}
+
+.balance-analysis-page .status-pill[data-status="caution"],
+.balance-analysis-page .status-pill[data-status="warning"] {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 36%, transparent);
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-amber);
+}
+
+.balance-analysis-page .status-pill[data-status="danger"] {
+  border-color: color-mix(in srgb, var(--dh-api-red) 36%, transparent);
+  background: var(--dh-api-red-soft);
+  color: var(--dh-api-red);
+}
+
+.balance-analysis-page .status-pill[data-status="neutral"] {
+  border-color: var(--dh-api-line-soft);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+}
+
+/* FormalResultMetaPanel 徽章变量出口按 ledger-pnl 等 9 页先例定义；圆角随先例归一。 */
+.balance-analysis-page .formal-result-meta-panel {
+  --formal-result-meta-border-soft: var(--dh-api-line-soft);
+  --formal-meta-badge-ok-bg: var(--dh-api-green-soft);
+  --formal-meta-badge-ok-ink: var(--dh-api-green);
+  --formal-meta-badge-ok-line: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
+  --formal-meta-badge-warn-bg: var(--dh-api-amber-soft);
+  --formal-meta-badge-warn-ink: var(--dh-api-amber);
+  --formal-meta-badge-warn-line: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  --formal-meta-badge-danger-bg: var(--dh-api-red-soft);
+  --formal-meta-badge-danger-ink: var(--dh-api-red);
+  --formal-meta-badge-danger-line: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
+
+  border-radius: var(--dh-api-radius);
+}
+
+.balance-analysis-page .formal-result-meta-panel__card {
+  border-radius: var(--dh-api-radius);
+}
+
+/*
+ * alpine 内建 --ag-secondary-border-color（#dde2eb）未被共享
+ * agGridInstitutional.css 的 theme-dh-api 块覆盖，行分隔线在深底透浅；
+ * 页内补齐（仅换色，系统性修复留给共享轮次）。选择器取 0-2-0 权重：
+ * 懒加载 grid chunk 的 alpine 主题 CSS 注入晚于页面 CSS，:where 同权会被压制。
+ */
+.balance-analysis-page .ag-theme-alpine {
+  --ag-secondary-border-color: var(--dh-api-line-soft);
+  --ag-row-border-color: var(--dh-api-line-soft);
 }

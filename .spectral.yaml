@@ -10,3 +10,16 @@ rules:
   oas3-api-servers: off
   info-contact: off
   info-description: off
+
+  # 项目规则。只收录当前 0 违规的条目：把已有违规压成 warning 等于没有刻度。
+  # 其余候选规则（路径段 kebab-case、2xx 必须有字段级 schema、分页词表、日期参数
+  # 词表）连同实测违规数与落地前提，见 docs/API_CONTRACT_TOOLING.md。
+  query-param-snake-case:
+    description: Query parameters must be snake_case.
+    message: "Query parameter '{{value}}' is not snake_case."
+    severity: error
+    given: $.paths[*][*].parameters[?(@.in == 'query')].name
+    then:
+      function: casing
+      functionOptions:
+        type: snake

@@ -58,6 +58,42 @@ def _annualized_pct(total_pnl: Decimal, scale: Decimal, num_days: int) -> float 
     return float(daily * (Decimal("365") / Decimal(num_days)) * Decimal("100"))
 
 
+def _covered_days(rows: list[dict[str, object]], period_start_iso: str) -> int:
+    """Actual data-coverage days: period start through the latest observed report_date.
+
+    ``total_pnl``/``scale_amount`` only ever reflect report_date rows that exist
+    (in-progress year, partial month), so annualizing by the *nominal* calendar
+    length of the whole period systematically understates the yield whenever the
+    period is not yet fully observed. Using the latest actually-observed date as
+    the coverage end keeps a fully-observed period's factor identical to the
+    nominal one (last date == period end) while shrinking it for partial periods.
+    """
+    dates = [str(r.get("report_date") or "")[:10] for r in rows]
+    dates = [d for d in dates if len(d) == 10]
+    if not dates:
+        return 0
+    last = max(dates)
+    try:
+        start = date.fromisoformat(period_start_iso)
+        end = date.fromisoformat(last)
+    except ValueError:
+        return 0
+    return max((end - start).days + 1, 0)
+
+
+def _avg_scale_across_report_dates(rows: list[dict[str, object]]) -> Decimal:
+    """Period scale = mean of per-report_date portfolio scales (not sum of snapshots)."""
+    by_date: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    for row in rows:
+        report_date = str(row.get("report_date") or "")[:10]
+        if len(report_date) < 10:
+            continue
+        by_date[report_date] += _dec(row["scale_amount"])
+    if not by_date:
+        return Decimal("0")
+    return sum(by_date.values(), Decimal("0")) / Decimal(len(by_date))
+
+
 def _items_for_rows(group_rows: list[dict[str, object]]) -> list[dict[str, Any]]:
     by_bt: dict[str, list[dict[str, object]]] = defaultdict(list)
     for r in group_rows:
@@ -66,7 +102,7 @@ def _items_for_rows(group_rows: list[dict[str, object]]) -> list[dict[str, Any]]
     out: list[dict[str, Any]] = []
     for bt, rlist in sorted(by_bt.items(), key=lambda x: x[0]):
         tp = sum(_dec(x["total_pnl"]) for x in rlist)
-        sc = sum(_dec(x["scale_amount"]) for x in rlist)
+        sc = _avg_scale_across_report_dates(rlist)
         out.append(
             {
                 "business_type_primary": bt,
@@ -106,10 +142,11 @@ def rollup_yield_periods(
 
     if norm == "yearly":
         tp = sum(_dec(r["total_pnl"]) for r in year_rows)
-        sc = sum(_dec(r["scale_amount"]) for r in year_rows)
+        sc = _avg_scale_across_report_dates(year_rows)
         start, end, nd = _year_bounds(year)
+        covered = _covered_days(year_rows, start)
         oy = _pct_yield(tp, sc)
-        ann = _annualized_pct(tp, sc, nd)
+        ann = _annualized_pct(tp, sc, covered)
         return [
             {
                 "period": ys,
@@ -117,6 +154,8 @@ def rollup_yield_periods(
                 "start_date": start,
                 "end_date": end,
                 "num_days": nd,
+                "period_days": nd,
+                "covered_days": covered,
                 "total_avg_balance": float(sc),
                 "total_pnl": float(tp),
                 "overall_yield": oy,
@@ -149,7 +188,9 @@ def rollup_yield_periods(
     for key in ordered:
         group = buckets[key]
         tp = sum(_dec(r["total_pnl"]) for r in group)
-        sc = sum(_dec(r["scale_amount"]) for r in group)
+        # Same-date business types still sum inside the helper; multi-month
+        # buckets average those per-date totals (period-average scale).
+        sc = _avg_scale_across_report_dates(group)
 
         if norm == "monthly":
             ym = key.split("-")
@@ -160,8 +201,9 @@ def rollup_yield_periods(
             y_i, q_i = int(y_part), int(q_part)
             start, end, nd = _quarter_bounds(y_i, q_i)
 
+        covered = _covered_days(group, start)
         oy = _pct_yield(tp, sc)
-        ann = _annualized_pct(tp, sc, nd)
+        ann = _annualized_pct(tp, sc, covered)
         out.append(
             {
                 "period": key,
@@ -169,6 +211,8 @@ def rollup_yield_periods(
                 "start_date": start,
                 "end_date": end,
                 "num_days": nd,
+                "period_days": nd,
+                "covered_days": covered,
                 "total_avg_balance": float(sc),
                 "total_pnl": float(tp),
                 "overall_yield": oy,

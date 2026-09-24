@@ -12,6 +12,13 @@ import type {
   PnlByBusinessYtdPayload,
   ResultMeta,
 } from "../../api/contracts";
+import {
+  EM_DASH,
+  buildStateSurfaces,
+  fixedOrDash,
+  type PageHero,
+  type StateSurfaceItem,
+} from "../../pageModel";
 import { resolveAdbAvgYuan } from "./zqtzAdbAvgRollup";
 
 export type PnlByBusinessViewMode = "monthly" | "ytd" | "formal";
@@ -35,30 +42,14 @@ export const VIEW_MODE_BUSINESS_QUESTIONS: Record<PnlByBusinessViewMode, string>
   formal: "所选报表日 formal primary 对账是否可追溯，未 join 损益有多少？",
 };
 
-export type PnlHeroModel = {
-  businessQuestion: string;
-  conclusionTitle: string;
-  conclusionDetail: string;
-  reportDateLabel: string;
-  requestedReportDate: string;
-  asOfDate: string;
-  reportDateNote: string;
-};
+/** 与共享 `PageHero` 同形；本页结论与日期字段全部必填。 */
+export type PnlHeroModel = Required<PageHero>;
 
-export type PnlStateSurfaceItem = {
-  key: string;
-  variant:
-    | "neutral"
-    | "loading"
-    | "empty"
-    | "error"
-    | "stale"
-    | "fallback-date"
-    | "mock"
-    | "definition-pending";
-  title: string;
-  description: string;
-};
+/**
+ * 状态面直接采用 `src/pageModel` 基元词汇（variant 联合与 PageStateSurface 对齐）。
+ * `descriptionTitle` 承载 sample_filled/method 类技术 token（§7 收 tooltip，不占正文）。
+ */
+export type PnlStateSurfaceItem = StateSurfaceItem & { descriptionTitle?: string };
 
 const YUAN_PER_YI = 100_000_000;
 const YUAN_PER_WAN = 10_000;
@@ -77,7 +68,10 @@ type ZqtzBusinessDisplayRow = {
 export type PnlSummaryCard = Pick<
   KpiCardProps,
   "label" | "value" | "detail" | "tone" | "valueVariant"
->;
+> & {
+  /** 悬停可见的补充事实（如覆盖天数），正文小注按 §6 去重后经此保留。 */
+  detailTitle?: string;
+};
 
 export type PnlByBusinessInsightConfidence =
   | "可分析"
@@ -85,6 +79,8 @@ export type PnlByBusinessInsightConfidence =
   | "日均为0"
   | "仅对账"
   | "预警/降级";
+
+export type PnlByBusinessAdbEvidenceStatus = "comparison" | "loading" | "ytd_fallback";
 
 export type PnlByBusinessDrilldownRecommendation = {
   targetBusinessLabel: string;
@@ -107,6 +103,8 @@ export type PnlByBusinessInsightModel = {
   ftpAvailable: boolean;
   missingAdbCount: number;
   zeroAdbCount: number;
+  missingFtpFieldCount: number;
+  adbEvidenceStatus: PnlByBusinessAdbEvidenceStatus;
   manualAdjustmentCount: number;
   formalUntracedCount: number;
   formalUntracedValueDisplay: string;
@@ -140,6 +138,17 @@ export type PnlByBusinessSelectedDrilldownModel = {
   negativeFtpRows: PnlByBusinessAnalysisRow[];
 };
 
+export type PnlByBusinessMonthlyAdjustmentBridgeModel = {
+  monthKey: string;
+  row: PnlByBusinessMonthlyItem;
+  adjustedParentRowCount: number;
+  preAdjustmentPnl: number | null;
+  pnlReconciliationDelta: number | null;
+  ftpReconciliationDelta: number | null;
+  pnlReconciled: boolean;
+  ftpReconciled: boolean;
+};
+
 type BuildPnlByBusinessPageModelInput = {
   viewMode: PnlByBusinessViewMode;
   selectedReportDate: string;
@@ -157,6 +166,7 @@ type BuildPnlByBusinessPageModelInput = {
   formalResult?: PnlByBusinessPayload;
   formalMeta?: ResultMeta;
   adbAvgByBusinessType?: Map<string, number>;
+  adbEvidenceStatus?: PnlByBusinessAdbEvidenceStatus;
   manualAdjustmentCount?: number;
 };
 
@@ -186,6 +196,30 @@ function numeric(raw: string | number | null | undefined): number | null {
   }
   const value = Number(raw);
   return Number.isFinite(value) ? value : null;
+}
+
+export function formatPnlByBusinessFtpStatus(
+  totalPnlRaw: string | number | null | undefined,
+  ftpNetPnlRaw: string | number | null | undefined,
+): string {
+  const totalPnl = numeric(totalPnlRaw);
+  const ftpNetPnl = numeric(ftpNetPnlRaw);
+  if (ftpNetPnl === null) {
+    return "FTP 后不可算";
+  }
+  if (ftpNetPnl === 0) {
+    return "FTP 后为零";
+  }
+  if (ftpNetPnl > 0) {
+    if (totalPnl === null) {
+      return "FTP 后为正（扣前损益待返回）";
+    }
+    return totalPnl <= 0 ? "FTP 后转正" : "FTP 后仍为正";
+  }
+  if (totalPnl === null) {
+    return "FTP 后为负（扣前损益待返回）";
+  }
+  return totalPnl >= 0 ? "FTP 后转负" : "FTP 后为负";
 }
 
 export function buildPnlByBusinessSelectedDrilldownModel(
@@ -233,7 +267,7 @@ export function buildPnlByBusinessSelectedDrilldownModel(
 function formatPnlWan(raw: string | number | null | undefined) {
   const value = numeric(raw);
   if (value === null) {
-    return "-";
+    return EM_DASH;
   }
   return (value / YUAN_PER_WAN).toLocaleString("zh-CN", { maximumFractionDigits: 2 });
 }
@@ -241,36 +275,50 @@ function formatPnlWan(raw: string | number | null | undefined) {
 export function formatYuanAsWanUnit(raw: string | number | null | undefined) {
   const value = numeric(raw);
   if (value === null) {
-    return "-";
+    return EM_DASH;
   }
   return `${formatPnlWan(value)} 万元`;
 }
 
-function formatYuanAsYiCell(raw: string | number | null | undefined): string {
+function formatYuanByMateriality(raw: string | number | null | undefined): string {
   const value = numeric(raw);
   if (value === null) {
-    return "-";
+    return EM_DASH;
   }
-  return (value / YUAN_PER_YI).toFixed(2);
+  if (Math.abs(value) < YUAN_PER_WAN) {
+    return `${value.toLocaleString("zh-CN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })} 元`;
+  }
+  return formatYuanAsWanUnit(value);
 }
+
+function formatYuanAsYiCell(raw: string | number | null | undefined): string {
+  const value = numeric(raw);
+  return fixedOrDash(value === null ? null : value / YUAN_PER_YI, 2);
+}
+
+/** avg_balance=null（后端未匹配到日均数据）时的展示文案；真零显示 "0.00"。 */
+export const AVG_BALANCE_MISSING_DISPLAY = `${EM_DASH}（日均缺失）`;
 
 export function formatAvgBalanceYi(raw: string | number | null | undefined): string {
   const value = numeric(raw);
   if (value === null) {
-    return "日均缺失";
+    return AVG_BALANCE_MISSING_DISPLAY;
   }
   return formatYuanAsYiCell(value);
 }
 
 export function formatAvgBalanceYiMetric(raw: string | number | null | undefined): string {
   const display = formatAvgBalanceYi(raw);
-  return display === "日均缺失" ? display : `${display} 亿元`;
+  return display === AVG_BALANCE_MISSING_DISPLAY ? display : `${display} 亿元`;
 }
 
 export function formatAnalysisYieldPct(raw: string | number | null | undefined): string {
   const value = numeric(raw);
   if (value === null) {
-    return "-";
+    return EM_DASH;
   }
   return `${value.toFixed(2)}%`;
 }
@@ -278,7 +326,7 @@ export function formatAnalysisYieldPct(raw: string | number | null | undefined):
 export function formatRatioPct(raw: string | number | null | undefined) {
   const value = numeric(raw);
   if (value === null) {
-    return "-";
+    return EM_DASH;
   }
   return `${(value * 100).toFixed(2)}%`;
 }
@@ -304,6 +352,80 @@ export function isParentZqtzBusinessRow(row: ZqtzBusinessDisplayRow): boolean {
 
 export function isDetailZqtzBusinessRow(row: ZqtzBusinessDisplayRow): boolean {
   return !isParentZqtzBusinessRow(row);
+}
+
+/**
+ * Builds a display-only reconciliation bridge from governed monthly fields.
+ * `preAdjustmentPnl` is explicitly a tie-out value (interest + FV + capital),
+ * not a new formal metric; FTP cost and FTP net PnL are never recomputed here.
+ */
+export function buildPnlByBusinessMonthlyAdjustmentBridge(
+  month: PnlByBusinessMonthlyBucket | undefined,
+): PnlByBusinessMonthlyAdjustmentBridgeModel | undefined {
+  const adjustedParentRows = month?.items
+    .filter(isParentZqtzBusinessRow)
+    .filter((item) => (numeric(item.manual_adjustment) ?? 0) !== 0)
+    .sort(
+      (left, right) =>
+        Math.abs(numeric(right.manual_adjustment) ?? 0) - Math.abs(numeric(left.manual_adjustment) ?? 0) ||
+        left.sort_order - right.sort_order,
+    );
+  const row = adjustedParentRows?.[0];
+  if (!month || !row) {
+    return undefined;
+  }
+
+  const interestIncome = numeric(row.interest_income);
+  const fairValueChange = numeric(row.fair_value_change);
+  const capitalGain = numeric(row.capital_gain);
+  const manualAdjustment = numeric(row.manual_adjustment);
+  const totalPnl = numeric(row.total_pnl);
+  const ftpCost = numeric(row.ftp_cost);
+  const ftpNetPnl = numeric(row.ftp_net_pnl);
+  const preAdjustmentPnl =
+    interestIncome !== null && fairValueChange !== null && capitalGain !== null
+      ? interestIncome + fairValueChange + capitalGain
+      : null;
+  const pnlReconciliationDelta =
+    preAdjustmentPnl !== null && manualAdjustment !== null && totalPnl !== null
+      ? totalPnl - (preAdjustmentPnl + manualAdjustment)
+      : null;
+  const ftpReconciliationDelta =
+    totalPnl !== null && ftpCost !== null && ftpNetPnl !== null ? ftpNetPnl - (totalPnl - ftpCost) : null;
+  const toleranceYuan = 0.01;
+
+  return {
+    monthKey: month.month_key,
+    row,
+    adjustedParentRowCount: adjustedParentRows.length,
+    preAdjustmentPnl,
+    pnlReconciliationDelta,
+    ftpReconciliationDelta,
+    pnlReconciled:
+      pnlReconciliationDelta !== null && Math.abs(pnlReconciliationDelta) <= toleranceYuan,
+    ftpReconciled: ftpReconciliationDelta !== null && Math.abs(ftpReconciliationDelta) <= toleranceYuan,
+  };
+}
+
+export function resolvePnlByBusinessActiveMonthlyBucket(
+  months: PnlByBusinessMonthlyBucket[],
+  selectedReportDate: string,
+  resolvedReportDate?: string,
+): PnlByBusinessMonthlyBucket | undefined {
+  const preferredReportDate =
+    resolvedReportDate && (!selectedReportDate || resolvedReportDate <= selectedReportDate)
+      ? resolvedReportDate
+      : selectedReportDate;
+  const exactBucket = months.find((month) => month.period_end_date === preferredReportDate);
+  if (exactBucket) {
+    return exactBucket;
+  }
+  return months.reduce<PnlByBusinessMonthlyBucket | undefined>((latest, month) => {
+    if (!preferredReportDate || month.period_end_date > preferredReportDate) {
+      return latest;
+    }
+    return !latest || month.period_end_date > latest.period_end_date ? month : latest;
+  }, undefined);
 }
 
 export function pickDefaultBusinessRow(rows: PnlByBusinessYtdItem[]): PnlByBusinessYtdItem | undefined {
@@ -379,13 +501,20 @@ function pickTopNegativeYtdRow(rows: PnlByBusinessYtdItem[]): PnlByBusinessYtdIt
 }
 
 function pickTopShareYtdRow(rows: PnlByBusinessYtdItem[]): PnlByBusinessYtdItem | undefined {
-  return rows.reduce<PnlByBusinessYtdItem | undefined>((current, row) => {
-    const value = Math.abs(numeric(row.proportion) ?? 0);
-    if (!current) {
-      return row;
+  let selected: PnlByBusinessYtdItem | undefined;
+  let selectedShare = Number.NEGATIVE_INFINITY;
+  for (const row of rows) {
+    const proportion = numeric(row.proportion);
+    if (proportion === null) {
+      continue;
     }
-    return value > Math.abs(numeric(current.proportion) ?? 0) ? row : current;
-  }, undefined);
+    const absoluteShare = Math.abs(proportion);
+    if (!selected || absoluteShare > selectedShare) {
+      selected = row;
+      selectedShare = absoluteShare;
+    }
+  }
+  return selected;
 }
 
 function hasAnalysisWarning(meta: ResultMeta | undefined): boolean {
@@ -517,7 +646,7 @@ function buildHeroReportDateFields(input: {
   activeResultMeta?: ResultMeta;
 }): Pick<PnlHeroModel, "reportDateLabel" | "requestedReportDate" | "asOfDate" | "reportDateNote"> {
   const requestedReportDate = input.selectedReportDate || "待选择";
-  const asOfDate = input.activeResultMeta?.as_of_date ?? (input.selectedReportDate || "待返回");
+  const asOfDate = input.activeResultMeta?.as_of_date ?? input.activeResultMeta?.resolved_report_date ?? "待返回";
   const reportDateLabel = input.viewMode === "monthly" ? "请求报表日" : "分析截止日";
   const isFallback = input.activeResultMeta?.fallback_mode === "latest_snapshot";
   const datesAligned =
@@ -565,12 +694,20 @@ function buildHeroConclusion(input: {
   if (input.viewMode === "monthly") {
     const monthKey = input.activeMonthlyBucket?.month_key ?? input.selectedReportDate.slice(0, 7);
     const total = formatYuanAsWanUnit(input.activeMonthlyBucket?.summary.total_pnl);
+    const manualAdjustment = numeric(input.activeMonthlyBucket?.summary.manual_adjustment);
+    const hasManualAdjustment = manualAdjustment !== null && manualAdjustment !== 0;
     const topBusiness = input.topMonthlyRow?.business_type ?? "暂无明细";
     return {
       ...reportDateFields,
       businessQuestion: VIEW_MODE_BUSINESS_QUESTIONS.monthly,
-      conclusionTitle: `${monthKey} 月报合计 ${total}`,
-      conclusionDetail: `最大损益业务：${topBusiness}；口径与月报 ZQTZ 管理披露分类一致。`,
+      conclusionTitle: hasManualAdjustment
+        ? `${monthKey} 调整后已分类损益 ${total}`
+        : `${monthKey} 月报合计 ${total}`,
+      conclusionDetail: hasManualAdjustment
+        ? `已含批准手工调整 ${manualAdjustment > 0 ? "+" : ""}${formatYuanAsWanUnit(
+            manualAdjustment,
+          )}；最大损益业务：${topBusiness}。`
+        : `最大损益业务：${topBusiness}；口径与月报 ZQTZ 管理披露分类一致。`,
     };
   }
 
@@ -595,87 +732,171 @@ function buildHeroConclusion(input: {
   };
 }
 
-function buildStateSurfaces(input: {
+function buildPnlStateSurfaces(input: {
   activeDataStatus: string;
   activeResultMeta?: ResultMeta;
+  activeDiagnostics?: {
+    coverage_days?: number;
+    expected_days?: number;
+    sample_filled?: boolean;
+    sample_fill_method?: string | null;
+    source_total_pnl?: string;
+    classified_parent_total_pnl?: string;
+    manual_adjustment?: string;
+    unallocated_pnl?: string;
+    unallocated_abs_pnl?: string;
+    unallocated_row_count?: number;
+    reconciliation_delta?: string;
+  };
   clientMode?: "real" | "mock";
 }): PnlStateSurfaceItem[] {
-  const surfaces: PnlStateSurfaceItem[] = [];
+  const meta = input.activeResultMeta;
+  const diagnostics = input.activeDiagnostics;
 
-  if (input.clientMode === "mock") {
-    surfaces.push({
+  const manualAdjustment = numeric(diagnostics?.manual_adjustment);
+  const hasManualAdjustment = manualAdjustment !== null && manualAdjustment !== 0;
+  const sourceTotal = numeric(diagnostics?.source_total_pnl);
+  const preAdjustmentSource =
+    sourceTotal === null || manualAdjustment === null ? null : sourceTotal - manualAdjustment;
+
+  const coverageDays = diagnostics?.coverage_days;
+  const expectedDays = diagnostics?.expected_days;
+  const hasPartialCoverage =
+    typeof coverageDays === "number" &&
+    typeof expectedDays === "number" &&
+    expectedDays > 0 &&
+    coverageDays < expectedDays;
+
+  const unallocatedPnl = numeric(diagnostics?.unallocated_pnl);
+  const unallocatedRowCount = diagnostics?.unallocated_row_count ?? 0;
+  const hasUnallocated = unallocatedRowCount > 0 || (unallocatedPnl !== null && unallocatedPnl !== 0);
+
+  const reconciliationDelta = numeric(diagnostics?.reconciliation_delta);
+  const hasReconciliationBreak = reconciliationDelta !== null && reconciliationDelta !== 0;
+
+  // 与原 push 链等价：三类具体质量警告任一出现时抑制通用“质量预警”。
+  const hasSpecificQualityWarning = hasPartialCoverage || hasUnallocated || hasReconciliationBreak;
+
+  // 技术 token 不进横幅正文（§7 中英混排技术微标签禁令），经 descriptionTitle 悬停保留。
+  const coverageSampleFillTitle = `sample_filled=${String(
+    diagnostics?.sample_filled ?? false,
+  )}，method=${diagnostics?.sample_fill_method ?? "none"}`;
+
+  const surfaces: PnlStateSurfaceItem[] = buildStateSurfaces([
+    {
       key: "mock-mode",
       variant: "mock",
       title: "演示 / Mock 读路径",
       description: "当前为本地契约回放，不代表正式 DuckDB 读面。",
-    });
-  }
-
-  const meta = input.activeResultMeta;
-  if (meta?.quality_flag === "error" || input.activeDataStatus === "错误") {
-    surfaces.push({
+      when: input.clientMode === "mock",
+    },
+    {
+      key: "definition-pending",
+      variant: "definition-pending",
+      title: "指标口径待正式确认",
+      description: "当前为分析候选口径，仅用于经营分析与对账，不作为正式报表口径。",
+      when: meta?.formal_use_allowed === false,
+    },
+    {
+      key: "manual-adjustment-included",
+      variant: "definition-pending",
+      title: "月报已包含批准手工调整",
+      description: `已批准手工调整 ${manualAdjustment !== null && manualAdjustment > 0 ? "+" : ""}${formatYuanAsWanUnit(
+        manualAdjustment,
+      )} 已计入当前结果${
+        preAdjustmentSource === null
+          ? ""
+          : `；调整前源损益（含未分类）为 ${formatYuanAsWanUnit(preAdjustmentSource)}`
+      }${
+        diagnostics?.classified_parent_total_pnl
+          ? `；调整后已分类损益为 ${formatYuanAsWanUnit(diagnostics.classified_parent_total_pnl)}`
+          : ""
+      }。`,
+      when: hasManualAdjustment,
+    },
+    {
+      key: "coverage-partial",
+      variant: "stale",
+      title: "日均余额样本覆盖不足",
+      description: `余额观测仅覆盖 ${coverageDays}/${expectedDays} 天；当前“日均”为已观测日的月度估算，不是完整自然月日均。月报收益率、FTP 成本及 FTP 后结果暂不作为汇报结论。`,
+      when: hasPartialCoverage,
+    },
+    {
+      key: "unallocated",
+      variant: "definition-pending",
+      title: "存在未分类损益",
+      description: `${unallocatedRowCount} 条损益未命中父级业务分类；净额 ${formatYuanByMateriality(
+        diagnostics?.unallocated_pnl,
+      )}${diagnostics?.unallocated_abs_pnl ? `，绝对额 ${formatYuanByMateriality(diagnostics.unallocated_abs_pnl)}` : ""}；未对 A/T 口径做推测映射。`,
+      when: hasUnallocated,
+    },
+    {
+      key: "reconciliation-break",
+      variant: "error",
+      title: "分类损益未闭合",
+      description: `源损益、父级分类与未分类差额仍有 ${formatYuanAsWanUnit(
+        diagnostics?.reconciliation_delta,
+      )}，请先核对规则与手工调整。`,
+      when: hasReconciliationBreak,
+    },
+    {
       key: "quality-error",
       variant: "error",
       title: "结果质量错误",
       description: `quality_flag=error；as_of ${meta?.as_of_date ?? "待返回"}。请勿据此做正式经营结论。`,
-    });
-  }
-
-  if (meta?.quality_flag === "missing" || input.activeDataStatus === "缺失") {
-    surfaces.push({
+      when: meta?.quality_flag === "error" || input.activeDataStatus === "错误",
+    },
+    {
       key: "quality-missing",
       variant: "empty",
       title: "结果数据缺失",
       description: "quality_flag=missing；当前读面未返回完整 formal 结果，需核对报表日与数据源。",
-    });
-  }
-
-  if (meta?.quality_flag === "stale" || input.activeDataStatus === "陈旧") {
-    surfaces.push({
+      when: meta?.quality_flag === "missing" || input.activeDataStatus === "缺失",
+    },
+    {
       key: "stale",
       variant: "stale",
       title: "结果可能陈旧",
       description: `as_of ${meta?.as_of_date ?? "待返回"}；请结合生成时间与 trace 核对是否仍适用。`,
-    });
-  }
-
-  if (meta?.quality_flag === "warning" || input.activeDataStatus === "预警") {
-    surfaces.push({
+      when: meta?.quality_flag === "stale" || input.activeDataStatus === "陈旧",
+    },
+    {
       key: "warning",
       variant: "stale",
       title: "质量预警",
       description: "结果 meta 标记为预警，下钻前请核对 vendor 与 fallback 状态。",
-    });
-  }
-
-  if (meta?.fallback_mode === "latest_snapshot") {
-    surfaces.push({
+      when:
+        !hasSpecificQualityWarning &&
+        (meta?.quality_flag === "warning" || input.activeDataStatus === "预警"),
+    },
+    {
       key: "fallback-date",
       variant: "fallback-date",
       title: "已启用 fallback 快照",
-      description: `展示 as_of ${meta.as_of_date ?? "待返回"}；非请求报表日的最新可用快照。`,
-    });
-  }
-
-  if (meta?.vendor_status === "vendor_stale") {
-    surfaces.push({
+      description: `展示 as_of ${meta?.as_of_date ?? "待返回"}；非请求报表日的最新可用快照。`,
+      when: meta?.fallback_mode === "latest_snapshot",
+    },
+    {
       key: "vendor-stale",
       variant: "stale",
       title: "供应商数据陈旧",
       description: "上游 vendor 标记为 stale，指标仍来自已返回 formal 结果。",
-    });
-  }
-
-  if (meta?.vendor_status === "vendor_unavailable") {
-    surfaces.push({
+      when: meta?.vendor_status === "vendor_stale",
+    },
+    {
       key: "vendor-unavailable",
       variant: "error",
       title: "供应商不可用",
       description: "上游 vendor 不可用；请结合降级模式与 trace 判断是否可决策。",
-    });
-  }
+      when: meta?.vendor_status === "vendor_unavailable",
+    },
+  ]);
 
-  return surfaces;
+  return surfaces.map((surface) =>
+    surface.key === "coverage-partial"
+      ? { ...surface, descriptionTitle: coverageSampleFillTitle }
+      : surface,
+  );
 }
 
 function buildStatusStrip(input: {
@@ -688,7 +909,7 @@ function buildStatusStrip(input: {
   return {
     viewModeLabel: VIEW_MODE_STATUS_LABELS[input.viewMode],
     dataStatus: input.activeDataStatus,
-    asOfDate: meta?.as_of_date ?? input.selectedReportDate ?? "待返回",
+    asOfDate: meta?.as_of_date ?? meta?.resolved_report_date ?? "待返回",
     fallbackMode: formatPnlFallbackMode(meta?.fallback_mode),
     vendorStatus: formatPnlVendorStatus(meta?.vendor_status),
     evidenceRows: formatPnlEvidenceRows(meta?.evidence_rows),
@@ -704,11 +925,22 @@ function buildMonthlySummaryCards(input: {
   topMonthlyRow?: PnlByBusinessMonthlyItem;
 }): PnlSummaryCard[] {
   const { activeMonthlyBucket, topMonthlyRow } = input;
+  const manualAdjustment = numeric(activeMonthlyBucket?.summary.manual_adjustment);
+  const hasManualAdjustment = manualAdjustment !== null && manualAdjustment !== 0;
+  const coverageDays = activeMonthlyBucket?.coverage_days;
+  const expectedDays = activeMonthlyBucket?.expected_days ?? activeMonthlyBucket?.calendar_days;
+  const coverageIncomplete =
+    typeof coverageDays === "number" &&
+    typeof expectedDays === "number" &&
+    expectedDays > 0 &&
+    coverageDays < expectedDays;
   return [
     {
-      label: "月报合计损益",
+      label: hasManualAdjustment ? "调整后已分类损益" : "月报合计损益",
       value: formatYuanAsWanUnit(activeMonthlyBucket?.summary.total_pnl),
-      detail: activeMonthlyBucket?.month_key ?? input.selectedReportDate,
+      detail: hasManualAdjustment
+        ? `含已批准调整 ${manualAdjustment > 0 ? "+" : ""}${formatYuanAsWanUnit(manualAdjustment)}`
+        : activeMonthlyBucket?.month_key ?? input.selectedReportDate,
       tone: toneFromSigned(activeMonthlyBucket?.summary.total_pnl),
     },
     {
@@ -718,16 +950,24 @@ function buildMonthlySummaryCards(input: {
     },
     {
       label: "最大损益业务",
-      value: topMonthlyRow?.business_type ?? "-",
+      value: topMonthlyRow?.business_type ?? EM_DASH,
       detail: topMonthlyRow ? formatYuanAsWanUnit(topMonthlyRow.total_pnl) : "无明细",
       valueVariant: "text",
       tone: toneFromSigned(topMonthlyRow?.total_pnl),
     },
     {
       label: "月报收益率",
-      value: formatAnalysisYieldPct(activeMonthlyBucket?.summary.annualized_yield_pct),
-      detail: "月度日均分母",
-      tone: toneFromSigned(activeMonthlyBucket?.summary.annualized_yield_pct),
+      value: coverageIncomplete
+        ? "待核对"
+        : formatAnalysisYieldPct(activeMonthlyBucket?.summary.annualized_yield_pct),
+      // 覆盖天数事实全页保留页顶横幅 + 表内警示两处（§6 去重）；KPI 小注只留结论，
+      // 具体天数经 detailTitle 悬停可见。
+      detail: coverageIncomplete ? "样本覆盖不足，详见页顶警示" : "月度日均分母",
+      detailTitle: coverageIncomplete ? `日均仅覆盖 ${coverageDays}/${expectedDays} 天` : undefined,
+      valueVariant: coverageIncomplete ? "text" : undefined,
+      tone: coverageIncomplete
+        ? undefined
+        : toneFromSigned(activeMonthlyBucket?.summary.annualized_yield_pct),
     },
   ];
 }
@@ -740,9 +980,10 @@ function buildYtdSummaryCards(input: {
   topYtdRow?: PnlByBusinessYtdItem;
 }): PnlSummaryCard[] {
   const { ytdResult, topYtdRow } = input;
+  const topShareRow = pickTopShareYtdRow(input.parentYtdRows);
   return [
     {
-      label: "月报累计损益",
+      label: "年累计损益",
       value: formatYuanAsWanUnit(ytdResult?.total_pnl),
       detail: ytdResult?.period_label ?? `${input.selectedYear} 年累计`,
       tone: toneFromSigned(ytdResult?.total_pnl),
@@ -754,15 +995,15 @@ function buildYtdSummaryCards(input: {
     },
     {
       label: "最大损益业务",
-      value: topYtdRow?.business_type ?? "-",
+      value: topYtdRow?.business_type ?? EM_DASH,
       detail: topYtdRow ? formatYuanAsWanUnit(topYtdRow.total_pnl) : "无明细",
       valueVariant: "text",
       tone: toneFromSigned(topYtdRow?.total_pnl),
     },
     {
       label: "最大占比",
-      value: formatRatioPct(topYtdRow?.proportion),
-      detail: topYtdRow?.business_type ?? "无明细",
+      value: formatRatioPct(topShareRow?.proportion),
+      detail: topShareRow?.business_type ?? "无明细",
     },
   ];
 }
@@ -788,7 +1029,7 @@ function buildFormalSummaryCards(input: {
     },
     {
       label: "最大损益（行）",
-      value: topFormalRow?.business_type_primary ?? "-",
+      value: topFormalRow?.business_type_primary ?? EM_DASH,
       detail: topFormalRow ? formatYuanAsWanUnit(topFormalRow.total_pnl) : "无明细",
       valueVariant: "text",
       tone: toneFromSigned(topFormalRow?.total_pnl),
@@ -808,7 +1049,9 @@ function buildYtdDrilldownRecommendation(input: {
   topShare?: PnlByBusinessYtdItem;
   missingAdbCount: number;
   zeroAdbCount: number;
+  missingFtpFieldCount: number;
   ftpAvailable: boolean;
+  adbEvidenceStatus: PnlByBusinessAdbEvidenceStatus;
 }): PnlByBusinessDrilldownRecommendation {
   const targetBusinessLabel =
     input.topContribution?.business_type ??
@@ -843,9 +1086,51 @@ function buildYtdDrilldownRecommendation(input: {
       targetBusinessLabel,
       priorityLabel: "日均为0",
       dimensionLabel: "日均分母",
-      actionLabel: "先确认 ADB 为真实零，再查看损益贡献；收益率/FTP 暂不计算",
-      evidenceLabel: `日均为0 ${input.zeroAdbCount} 项`,
-      reasonLabel: "ADB 已返回但存在零分母；可展示真实日均为 0，但年化收益率和 FTP 后收益不作为决策结论。",
+      actionLabel:
+        input.adbEvidenceStatus === "ytd_fallback"
+          ? "YTD 日均为真实零（缺数已单列日均缺失）；收益率/FTP 暂不计算"
+          : "先确认 ADB 为真实零，再查看损益贡献；收益率/FTP 暂不计算",
+      evidenceLabel:
+        input.adbEvidenceStatus === "ytd_fallback"
+          ? `YTD 日均为0 ${input.zeroAdbCount} 项（源数据真零）`
+          : `日均为0 ${input.zeroAdbCount} 项`,
+      reasonLabel:
+        input.adbEvidenceStatus === "ytd_fallback"
+          ? "YTD 主端点已区分日均缺失（null）与真实零，当前零分母为源数据真零；ADB comparison 补充复核不可用，年化收益率和 FTP 后收益不作为决策结论。"
+          : "ADB 已返回但存在零分母；可展示真实日均为 0，但年化收益率和 FTP 后收益不作为决策结论。",
+    };
+  }
+
+  if (input.missingFtpFieldCount > 0) {
+    return {
+      targetBusinessLabel,
+      priorityLabel: "FTP 字段待核对",
+      dimensionLabel: "FTP 返回字段",
+      actionLabel: "先核对 YTD FTP 成本与 FTP 后损益字段",
+      evidenceLabel: `FTP 字段缺失 ${input.missingFtpFieldCount} 项`,
+      reasonLabel: "日均已覆盖，但部分活跃父级未同时返回 FTP 成本和 FTP 后损益，暂不标记为 FTP 可分析。",
+    };
+  }
+
+  if (input.adbEvidenceStatus === "ytd_fallback") {
+    return {
+      targetBusinessLabel,
+      priorityLabel: "预警/降级",
+      dimensionLabel: "ADB 补充复核",
+      actionLabel: "保留 YTD 分析，暂缓跨源 ADB 覆盖结论",
+      evidenceLabel: "YTD 日均回退",
+      reasonLabel: "本页使用 YTD 主端点返回的同区间日均与 FTP 字段；ADB comparison 补充复核当前不可用。",
+    };
+  }
+
+  if (input.adbEvidenceStatus === "loading") {
+    return {
+      targetBusinessLabel,
+      priorityLabel: input.topDrag ? "先看拖累" : "FTP 后仍有效",
+      dimensionLabel: "证券级下钻",
+      actionLabel: "先看 YTD 贡献与 FTP，等待 ADB 补充复核",
+      evidenceLabel: "ADB 补充复核中",
+      reasonLabel: "YTD 主端点日均与 FTP 字段已返回；ADB comparison 尚在读取，不据此判定覆盖缺口。",
     };
   }
 
@@ -872,9 +1157,11 @@ function buildPnlByBusinessInsight(input: {
   topMonthlyRow?: PnlByBusinessMonthlyItem;
   topMonthlyDragRow?: PnlByBusinessMonthlyItem;
   adbAvgByBusinessType?: Map<string, number>;
+  adbEvidenceStatus?: PnlByBusinessAdbEvidenceStatus;
   manualAdjustmentCount?: number;
 }): PnlByBusinessInsightModel {
   const isWarning = hasAnalysisWarning(input.activeResultMeta);
+  const adbEvidenceStatus = input.adbEvidenceStatus ?? "comparison";
 
   if (input.viewMode === "formal") {
     const topFormalValue = input.topFormalRow?.total_pnl;
@@ -887,12 +1174,14 @@ function buildPnlByBusinessInsight(input: {
       topContributionLabel: input.topFormalRow?.business_type_primary ?? "暂无明细",
       topContributionDisplay: formatYuanAsWanUnit(topFormalValue),
       topDragLabel: (numeric(topFormalValue) ?? 0) < 0 ? (input.topFormalRow?.business_type_primary ?? "暂无明细") : "无拖累",
-      topDragDisplay: (numeric(topFormalValue) ?? 0) < 0 ? formatYuanAsWanUnit(topFormalValue) : "-",
+      topDragDisplay: (numeric(topFormalValue) ?? 0) < 0 ? formatYuanAsWanUnit(topFormalValue) : EM_DASH,
       topShareLabel: "仅对账",
       topShareDisplay: "不与月报/YTD 混加",
       ftpAvailable: false,
       missingAdbCount: 0,
       zeroAdbCount: 0,
+      missingFtpFieldCount: 0,
+      adbEvidenceStatus,
       manualAdjustmentCount: 0,
       formalUntracedCount,
       formalUntracedValueDisplay: `${formalUntracedCount} 条未追溯`,
@@ -921,13 +1210,15 @@ function buildPnlByBusinessInsight(input: {
       topContributionLabel: input.topMonthlyRow?.business_type ?? "暂无明细",
       topContributionDisplay: formatYuanAsWanUnit(input.topMonthlyRow?.total_pnl),
       topDragLabel: input.topMonthlyDragRow?.business_type ?? "无拖累",
-      topDragDisplay: input.topMonthlyDragRow ? formatYuanAsWanUnit(input.topMonthlyDragRow.total_pnl) : "-",
+      topDragDisplay: input.topMonthlyDragRow ? formatYuanAsWanUnit(input.topMonthlyDragRow.total_pnl) : EM_DASH,
       topShareLabel: input.topMonthlyRow?.business_type ?? "暂无明细",
       topShareDisplay: formatRatioPct(input.topMonthlyRow?.proportion),
       ftpAvailable: numeric(input.activeMonthlyBucket?.summary.ftp_net_pnl) !== null,
       missingAdbCount: 0,
       zeroAdbCount: 0,
-      manualAdjustmentCount: 0,
+      missingFtpFieldCount: 0,
+      adbEvidenceStatus,
+      manualAdjustmentCount: input.manualAdjustmentCount ?? 0,
       formalUntracedCount: 0,
       formalUntracedValueDisplay: "未读取",
       formalUntracedDisplay: "切到 primary 对账查看；不与月报/YTD 混加",
@@ -947,26 +1238,33 @@ function buildPnlByBusinessInsight(input: {
   const topContribution = pickTopPositiveYtdRow(input.parentYtdRows);
   const topDrag = pickTopNegativeYtdRow(input.parentYtdRows);
   const topShare = pickTopShareYtdRow(input.parentYtdRows);
-  const resolvedAdbValues = input.parentYtdRows
-    .filter(hasYtdBusinessActivity)
-    .map((row) =>
+  const activeYtdRows = input.parentYtdRows.filter(hasYtdBusinessActivity);
+  const resolvedAdbValues = activeYtdRows.map((row) =>
       input.adbAvgByBusinessType
-        ? resolveAdbAvgYuan(row.business_type, input.adbAvgByBusinessType)
+        ? resolveAdbAvgYuan(row.business_type, input.adbAvgByBusinessType, row.avg_balance)
         : undefined,
     );
   const missingAdbCount = resolvedAdbValues.filter((adb) => adb === undefined).length;
-  const zeroAdbCount = resolvedAdbValues.filter((adb) => adb === 0).length;
+  const zeroAdbCount = resolvedAdbValues.filter((adb) => adb !== undefined && adb.valueYuan === 0).length;
+  const missingFtpFieldCount = activeYtdRows.filter(
+    (row) => numeric(row.ftp_cost) === null || numeric(row.ftp_net_pnl) === null,
+  ).length;
   const ftpAvailable =
     missingAdbCount === 0 &&
     zeroAdbCount === 0 &&
-    input.parentYtdRows.length > 0;
+    missingFtpFieldCount === 0 &&
+    activeYtdRows.length > 0;
   const confidenceLabel: PnlByBusinessInsightConfidence = isWarning
     ? "预警/降级"
-    : ftpAvailable
-      ? "可分析"
+    : missingAdbCount > 0
+      ? "缺日均"
       : zeroAdbCount > 0
         ? "日均为0"
-        : "缺日均";
+        : missingFtpFieldCount > 0 || adbEvidenceStatus === "ytd_fallback"
+          ? "预警/降级"
+          : ftpAvailable
+            ? "可分析"
+            : "缺日均";
 
   return {
     confidenceLabel,
@@ -974,20 +1272,33 @@ function buildPnlByBusinessInsight(input: {
     topContributionLabel: topContribution?.business_type ?? "暂无正贡献",
     topContributionDisplay: formatYuanAsWanUnit(topContribution?.total_pnl),
     topDragLabel: topDrag?.business_type ?? "无拖累",
-    topDragDisplay: topDrag ? formatYuanAsWanUnit(topDrag.total_pnl) : "-",
+    topDragDisplay: topDrag ? formatYuanAsWanUnit(topDrag.total_pnl) : EM_DASH,
     topShareLabel: topShare?.business_type ?? "暂无占比",
     topShareDisplay: formatRatioPct(topShare?.proportion),
     ftpAvailable,
     missingAdbCount,
     zeroAdbCount,
+    missingFtpFieldCount,
+    adbEvidenceStatus,
     manualAdjustmentCount: input.manualAdjustmentCount ?? 0,
     formalUntracedCount: 0,
     formalUntracedValueDisplay: "未读取",
     formalUntracedDisplay: "切到 primary 对账查看；不与月报/YTD 混加",
     formalTriageDisplay: "",
-    nextStep: ftpAvailable
-      ? "先核对 FTP 后收益，再进入多维下钻定位组合、会计分类或资产明细。"
-      : "先补齐日均/ADB 映射，再判断年化收益率和 FTP 后收益。",
+    nextStep:
+      missingAdbCount > 0
+        ? "先补齐日均映射，再判断年化收益率和 FTP 后收益。"
+        : zeroAdbCount > 0
+          ? adbEvidenceStatus === "ytd_fallback"
+            ? "YTD 日均为源数据真零（缺数行已单列日均缺失）；ADB 补充复核不可用，收益率和 FTP 暂不作结论。"
+            : "先确认日均为真实零，再判断该业务的收益率和 FTP 结论。"
+          : missingFtpFieldCount > 0
+            ? "先核对 YTD FTP 成本与 FTP 后损益返回字段，再进入收益归因。"
+            : adbEvidenceStatus === "ytd_fallback"
+              ? "YTD 日均与 FTP 字段可用于本页分析；ADB 补充复核不可用，跨源覆盖结论暂缓。"
+              : ftpAvailable
+                ? "先核对 FTP 后收益，再进入多维下钻定位组合、会计分类或资产明细。"
+                : "先核对日均与 FTP 返回字段，再判断年化收益率和 FTP 后收益。",
     recommendedDrilldown: buildYtdDrilldownRecommendation({
       isWarning,
       topContribution,
@@ -995,7 +1306,9 @@ function buildPnlByBusinessInsight(input: {
       topShare,
       missingAdbCount,
       zeroAdbCount,
+      missingFtpFieldCount,
       ftpAvailable,
+      adbEvidenceStatus,
     }),
   };
 }
@@ -1008,9 +1321,11 @@ export function buildPnlByBusinessPageModel(
     selectedBusinessKey: input.selectedBusinessKey,
   });
   const monthlyBusinessMonths = input.monthlyResult?.months ?? [];
-  const activeMonthlyBucket =
-    monthlyBusinessMonths.find((month) => month.period_end_date === input.selectedReportDate) ??
-    monthlyBusinessMonths[0];
+  const activeMonthlyBucket = resolvePnlByBusinessActiveMonthlyBucket(
+    monthlyBusinessMonths,
+    input.selectedReportDate,
+    input.monthlyResult?.as_of_date,
+  );
   const parentMonthlyItems = activeMonthlyBucket?.items.filter(isParentZqtzBusinessRow) ?? [];
   const topMonthlyRow = pickTopMonthlyBusinessRow(parentMonthlyItems);
   const topMonthlyDragRow = pickTopNegativeMonthlyBusinessRow(parentMonthlyItems);
@@ -1041,6 +1356,15 @@ export function buildPnlByBusinessPageModel(
       : input.viewMode === "ytd"
         ? input.ytdMeta
         : input.formalMeta;
+  const activeDiagnostics =
+    input.viewMode === "monthly" && activeMonthlyBucket
+      ? {
+          ...activeMonthlyBucket,
+          manual_adjustment: activeMonthlyBucket.summary.manual_adjustment,
+        }
+      : input.viewMode === "ytd"
+        ? input.ytdResult
+        : undefined;
   const activeDataStatus = formatPnlQualityStatus(activeResultMeta?.quality_flag, {
     isLoading: loading,
     isError: error,
@@ -1101,6 +1425,7 @@ export function buildPnlByBusinessPageModel(
       topMonthlyRow,
       topMonthlyDragRow,
       adbAvgByBusinessType: input.adbAvgByBusinessType,
+      adbEvidenceStatus: input.adbEvidenceStatus,
       manualAdjustmentCount: input.manualAdjustmentCount,
     }),
     hero: buildHeroConclusion({
@@ -1115,9 +1440,10 @@ export function buildPnlByBusinessPageModel(
       topYtdRow,
       topFormalRow,
     }),
-    stateSurfaces: buildStateSurfaces({
+    stateSurfaces: buildPnlStateSurfaces({
       activeDataStatus,
       activeResultMeta,
+      activeDiagnostics,
       clientMode: input.clientMode,
     }),
   };

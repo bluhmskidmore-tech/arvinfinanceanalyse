@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import pytest
 import xlrd
 from xlrd import xldate
 
@@ -221,6 +222,7 @@ def test_parse_zqtz_maps_value_date_and_customer_attribute(monkeypatch):
             snapshot_row_parse_mod.ZQTZ_FAIR_VALUE,
             snapshot_row_parse_mod.ZQTZ_AMORTIZED,
             snapshot_row_parse_mod.ZQTZ_ACCRUED,
+            snapshot_row_parse_mod.ZQTZ_INTEREST_RECEIVABLE_PAYABLE,
             snapshot_row_parse_mod.ZQTZ_COUPON,
             snapshot_row_parse_mod.ZQTZ_YTM,
             snapshot_row_parse_mod.ZQTZ_MATURITY,
@@ -245,6 +247,7 @@ def test_parse_zqtz_maps_value_date_and_customer_attribute(monkeypatch):
             "100",
             "90",
             "5",
+            "1234.56",
             "2.50",
             "2.40",
             "2027-12-31",
@@ -289,6 +292,7 @@ def test_parse_zqtz_maps_value_date_and_customer_attribute(monkeypatch):
             "market_value_native": Decimal("100"),
             "amortized_cost_native": Decimal("90"),
             "accrued_interest_native": Decimal("5"),
+            "interest_receivable_payable": Decimal("1234.56"),
             "coupon_rate": Decimal("2.5"),
             "ytm_value": Decimal("2.4"),
             "maturity_date": "2027-12-31",
@@ -304,3 +308,124 @@ def test_parse_zqtz_maps_value_date_and_customer_attribute(monkeypatch):
             "trace_id": parsed[0]["trace_id"],
         }
     ]
+
+
+# The three ZQTZSHOW header layouts observed across the whole archive, identified
+# by their column count. All of them carry 应收/应付利息 at index 28.
+_ZQTZ_ARCHIVE_LAYOUT_SAMPLES = (
+    (44, "ZQTZSHOW-20240101__08107eccc091__ib_14ea5edad372.xls"),
+    (45, "ZQTZSHOW-20250320__3930a6c1a8d4__ib_14ea5edad372.xls"),
+    (46, "ZQTZSHOW-2025.11.01__5637b36951a0__ib_14ea5edad372.xls"),
+)
+
+
+@pytest.mark.parametrize(("ncols", "file_name"), _ZQTZ_ARCHIVE_LAYOUT_SAMPLES)
+def test_parse_zqtz_reads_interest_receivable_payable_for_every_source_layout(
+    ncols: int,
+    file_name: str,
+) -> None:
+    path = ROOT / "data" / "archive" / "ZQTZSHOW" / "files" / file_name
+    if not path.is_file():
+        pytest.skip(f"archived ZQTZSHOW sample not available locally: {file_name}")
+
+    content = path.read_bytes()
+    book = xlrd.open_workbook(file_contents=content)
+    assert book.sheet_by_index(0).ncols == ncols
+
+    rows = parse_zqtz_snapshot_rows_from_bytes(
+        file_bytes=content,
+        ingest_batch_id="ib-irp-layout",
+        source_version="sv-irp-layout",
+        source_file=file_name,
+        rule_version="rv-irp-layout",
+    )
+
+    assert rows
+    assert all("interest_receivable_payable" in row for row in rows)
+    values = [row["interest_receivable_payable"] for row in rows]
+    assert all(value is None or isinstance(value, Decimal) for value in values)
+    assert any(value is not None and value != Decimal("0") for value in values)
+
+
+def _zqtz_minimal_sheet(interest_header: str, interest_cell: object) -> list[list[object]]:
+    return [
+        [],
+        [
+            snapshot_row_parse_mod.ZQTZ_BOND_CODE,
+            snapshot_row_parse_mod.ZQTZ_ACCRUED,
+            interest_header,
+            snapshot_row_parse_mod.ZQTZ_FACE_VALUE,
+        ],
+        ["240001.IB", "5", interest_cell, "100"],
+    ]
+
+
+@pytest.mark.parametrize(
+    "interest_header",
+    [
+        "应收/应付利息",  # ASCII slash: the only spelling present in the archive
+        "应收／应付利息",  # full-width slash U+FF0F
+        " 应收 / 应付利息 ",  # padded and inner-spaced
+    ],
+)
+def test_parse_zqtz_resolves_interest_receivable_header_variants(
+    monkeypatch,
+    interest_header: str,
+) -> None:
+    monkeypatch.setattr(
+        snapshot_row_parse_mod.xlrd,
+        "open_workbook",
+        lambda **kwargs: _FakeBook(_zqtz_minimal_sheet(interest_header, "1234.56")),
+    )
+
+    parsed = parse_zqtz_snapshot_rows_from_bytes(
+        file_bytes=b"fake",
+        ingest_batch_id="ib-irp",
+        source_version="sv-irp",
+        source_file="ZQTZSHOW-20251231.xls",
+        rule_version="rv-irp",
+    )
+
+    assert parsed[0]["interest_receivable_payable"] == Decimal("1234.56")
+
+
+def test_parse_zqtz_keeps_blank_interest_receivable_null_not_zero(monkeypatch) -> None:
+    monkeypatch.setattr(
+        snapshot_row_parse_mod.xlrd,
+        "open_workbook",
+        lambda **kwargs: _FakeBook(_zqtz_minimal_sheet("应收/应付利息", "")),
+    )
+
+    parsed = parse_zqtz_snapshot_rows_from_bytes(
+        file_bytes=b"fake",
+        ingest_batch_id="ib-irp-blank",
+        source_version="sv-irp-blank",
+        source_file="ZQTZSHOW-20251231.xls",
+        rule_version="rv-irp-blank",
+    )
+
+    assert parsed[0]["interest_receivable_payable"] is None
+    assert parsed[0]["accrued_interest_native"] == Decimal("5")
+
+
+def test_parse_zqtz_without_interest_receivable_column_yields_null(monkeypatch) -> None:
+    rows = [
+        [],
+        [snapshot_row_parse_mod.ZQTZ_BOND_CODE, snapshot_row_parse_mod.ZQTZ_FACE_VALUE],
+        ["240001.IB", "100"],
+    ]
+    monkeypatch.setattr(
+        snapshot_row_parse_mod.xlrd,
+        "open_workbook",
+        lambda **kwargs: _FakeBook(rows),
+    )
+
+    parsed = parse_zqtz_snapshot_rows_from_bytes(
+        file_bytes=b"fake",
+        ingest_batch_id="ib-irp-missing",
+        source_version="sv-irp-missing",
+        source_file="ZQTZSHOW-20251231.xls",
+        rule_version="rv-irp-missing",
+    )
+
+    assert parsed[0]["interest_receivable_payable"] is None

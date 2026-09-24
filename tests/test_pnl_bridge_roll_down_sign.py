@@ -45,7 +45,7 @@ def _patched_roll_down_inputs(
         globals_map["_curve_market_value"] = original_market_value
 
 
-def test_roll_down_negative_normal_upward_sloping_curve() -> None:
+def test_roll_down_positive_normal_upward_sloping_curve() -> None:
     curve = {"4Y": Decimal("2.70"), "5Y": Decimal("2.80")}
     with _patched_roll_down_inputs():
         result = _calculate_roll_down(
@@ -54,7 +54,7 @@ def test_roll_down_negative_normal_upward_sloping_curve() -> None:
             prior_balance=_balance(report_d=PRIOR),
             curve=curve,
         )
-    assert result == Decimal("-450000")
+    assert result == Decimal("450000")
 
 
 def test_roll_down_zero_flat_curve() -> None:
@@ -69,7 +69,7 @@ def test_roll_down_zero_flat_curve() -> None:
     assert result == Decimal("0")
 
 
-def test_roll_down_positive_inverted_curve() -> None:
+def test_roll_down_negative_inverted_curve() -> None:
     curve = {"4Y": Decimal("2.80"), "5Y": Decimal("2.70")}
     with _patched_roll_down_inputs():
         result = _calculate_roll_down(
@@ -78,7 +78,7 @@ def test_roll_down_positive_inverted_curve() -> None:
             prior_balance=_balance(report_d=PRIOR),
             curve=curve,
         )
-    assert result == Decimal("450000")
+    assert result == Decimal("-450000")
 
 
 def test_roll_down_zero_when_duration_zero() -> None:

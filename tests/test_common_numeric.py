@@ -199,7 +199,7 @@ class TestNumericJsonRoundtrip:
 
 class TestNumericUnitTypeAlias:
     def test_numeric_unit_covers_all_expected_values(self) -> None:
-        expected = {"yuan", "pct", "bp", "ratio", "count", "dv01", "yi"}
+        expected = {"yuan", "pct", "bp", "ratio", "years", "count", "dv01", "yi"}
         # NumericUnit is a Literal; use typing.get_args to enumerate
         from typing import get_args
 

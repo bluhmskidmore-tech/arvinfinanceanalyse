@@ -2,7 +2,16 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from tests.helpers import load_module
+
+# Disclosure-drift guard on executive surfaces (tests/AGENTS.md tier 2): asserts the
+# services never fall back to shell/demo-marked payloads when governed data is missing.
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_executive,
+]
 
 
 def test_executive_surfaces_do_not_emit_shell_demo_markers(tmp_path, monkeypatch):

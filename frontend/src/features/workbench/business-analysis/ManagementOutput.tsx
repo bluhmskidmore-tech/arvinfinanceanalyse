@@ -1,4 +1,5 @@
-import { SectionCard } from "../../../components/SectionCard";
+import { EvidencePanel } from "../../../components/page/PagePrimitives";
+import styles from "./ManagementOutput.module.css";
 
 type ManagementOutputProps = {
   recommendationTitle?: string;
@@ -42,19 +43,15 @@ export function ManagementOutput({
   ];
 
   return (
-    <SectionCard title="管理输出">
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <EvidencePanel heading="管理输出">
+      <div className={styles.list}>
         {items.map((item) => (
           <div key={item.title}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#162033", marginBottom: 6 }}>
-              {item.title}
-            </div>
-            <p style={{ margin: 0, fontSize: 14, color: "#31425b", lineHeight: 1.75 }}>
-              {item.body}
-            </p>
+            <div className={styles.itemTitle}>{item.title}</div>
+            <p className={styles.itemBody}>{item.body}</p>
           </div>
         ))}
       </div>
-    </SectionCard>
+    </EvidencePanel>
   );
 }

@@ -45,9 +45,11 @@
 
 ## Ant Design 映射约定
 
-- 全局通过 `AppProviders` → `ConfigProvider theme={workbenchTheme}`。
-- **不要**在页面级再次包一层 `ConfigProvider` 改主色，除非该路由是隔离演示页。
-- Button / Input / Table / Card 的视觉以 `theme.ts` 为准；单独调某个按钮时先用 `type`/`danger`/`size`，再考虑 style。
+- 根 `AppProviders` 只承载 API 与查询缓存上下文，不异步切换 Ant Design Provider，避免业务子树二次挂载。
+- 首页和轻量工作台壳不挂载 Ant Design 主题，保持首屏启动链轻量。
+- 非首页工作台路由通过懒加载的 `ThemedRouteBoundary` 一次性挂载 `ConfigProvider theme={workbenchTheme}`，业务页面首次显示时主题已就绪。
+- **不要**在页面级再次包一层 `ConfigProvider` 改主色，除非该路由是隔离演示页，并且需要在文档中说明原因。
+- Button / Input / Table / Card 的视觉以 `theme.ts` 为准；单独调某个按钮时先用 `type` / `danger` / `size`，再考虑 style。
 
 ## 不要做
 

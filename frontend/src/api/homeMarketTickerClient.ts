@@ -2,6 +2,7 @@ import type { ApiClient } from "./client";
 import type {
   ApiEnvelope,
   ChoiceMacroLatestPayload,
+  ChoiceNewsEventsBatchPayload,
   ChoiceNewsEventsPayload,
   ResearchCalendarResultPayload,
 } from "./contracts";
@@ -15,6 +16,7 @@ export type HomeMarketTickerClientMethods = Pick<
   | "getChoiceMacroLatest"
   | "getMarketDataRates"
   | "getChoiceNewsEvents"
+  | "getChoiceNewsEventsBatch"
   | "getResearchCalendarEvents"
 >;
 
@@ -64,6 +66,7 @@ export function createRealHomeMarketTickerClient({
       groupId,
       topicCode,
       stockCode,
+      includePayloadJson,
       errorOnly,
       receivedFrom,
       receivedTo,
@@ -74,6 +77,9 @@ export function createRealHomeMarketTickerClient({
       if (groupId?.trim()) params.set("group_id", groupId.trim());
       if (topicCode?.trim()) params.set("topic_code", topicCode.trim());
       if (stockCode?.trim()) params.set("stock_code", stockCode.trim());
+      if (typeof includePayloadJson === "boolean") {
+        params.set("include_payload_json", String(includePayloadJson));
+      }
       if (errorOnly) params.set("error_only", "true");
       if (receivedFrom?.trim()) params.set("received_from", receivedFrom.trim());
       if (receivedTo?.trim()) params.set("received_to", receivedTo.trim());
@@ -81,6 +87,22 @@ export function createRealHomeMarketTickerClient({
         fetchImpl,
         baseUrl,
         `/ui/news/choice-events/latest?${params.toString()}`,
+      );
+    },
+    getChoiceNewsEventsBatch: ({ topics, groups }) => {
+      const params = new URLSearchParams();
+      const topicPairs = (topics ?? [])
+        .filter(({ topicCode }) => topicCode.trim())
+        .map(({ topicCode, limit }) => `${topicCode.trim()}:${limit}`);
+      if (topicPairs.length > 0) params.set("topics", topicPairs.join(","));
+      const groupPairs = (groups ?? [])
+        .filter(({ groupId }) => groupId.trim())
+        .map(({ groupId, limit }) => `${groupId.trim()}:${limit}`);
+      if (groupPairs.length > 0) params.set("groups", groupPairs.join(","));
+      return requestJson<ChoiceNewsEventsBatchPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/news/choice-events/latest-batch?${params.toString()}`,
       );
     },
     getResearchCalendarEvents: (options) => {

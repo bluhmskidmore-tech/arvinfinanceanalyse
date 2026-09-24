@@ -7,13 +7,18 @@ import type {
   AlertsPayload,
   ContributionPayload,
   GetHomeSnapshotOptions,
+  GetHomeMacroReleaseContextOptions,
   HomeIncomeTrendPayload,
+  HomeMacroReleaseContextPayload,
   HomeResearchReportsPayload,
   HomeSnapshotPayload,
   OverviewPayload,
   PlaceholderSnapshot,
+  ResultMeta,
   RiskOverviewPayload,
+  RiskScenarioStressPayload,
   RiskTensorDatesPayload,
+  RiskTensorHistoryPayload,
   RiskTensorPayload,
   SummaryPayload,
 } from "./contracts";
@@ -24,6 +29,9 @@ export type ExecutiveClientMethods = {
   getHomeSnapshot: (
     options?: GetHomeSnapshotOptions,
   ) => Promise<ApiEnvelope<HomeSnapshotPayload>>;
+  getHomeMacroReleaseContext: (
+    options: GetHomeMacroReleaseContextOptions,
+  ) => Promise<ApiEnvelope<HomeMacroReleaseContextPayload>>;
   getHomeResearchReports: (
     reportDate: string,
     limit?: number,
@@ -36,6 +44,11 @@ export type ExecutiveClientMethods = {
   getRiskOverview: () => Promise<ApiEnvelope<RiskOverviewPayload>>;
   getRiskTensorDates: () => Promise<ApiEnvelope<RiskTensorDatesPayload>>;
   getRiskTensor: (reportDate: string) => Promise<ApiEnvelope<RiskTensorPayload>>;
+  getRiskTensorHistory: (
+    reportDate: string,
+    periods?: number,
+  ) => Promise<ApiEnvelope<RiskTensorHistoryPayload>>;
+  getRiskScenarioStress: (reportDate: string) => Promise<ApiEnvelope<RiskScenarioStressPayload>>;
   getContribution: () => Promise<ApiEnvelope<ContributionPayload>>;
   getAlerts: () => Promise<ApiEnvelope<AlertsPayload>>;
   getPlaceholderSnapshot: (key: string) => Promise<ApiEnvelope<PlaceholderSnapshot>>;
@@ -44,16 +57,24 @@ export type ExecutiveClientMethods = {
 type FetchLike = typeof fetch;
 type Delay = () => Promise<void>;
 
+const RISK_TENSOR_FORMAL_SOURCE_VERSION = "sv_risk_tensor_fact_mock_v3";
+const RISK_TENSOR_FORMAL_RULE_VERSION = "rv_risk_tensor_formal_materialize_v6";
+const RISK_TENSOR_FORMAL_CACHE_VERSION =
+  "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6";
+
 type ExecutiveThinClientMethods = Pick<
   ExecutiveClientMethods,
   | "getOverview"
   | "getHomeSnapshot"
+  | "getHomeMacroReleaseContext"
   | "getHomeResearchReports"
   | "getHomeIncomeTrend"
   | "getSummary"
   | "getRiskOverview"
   | "getRiskTensorDates"
   | "getRiskTensor"
+  | "getRiskTensorHistory"
+  | "getRiskScenarioStress"
   | "getContribution"
   | "getAlerts"
   | "getPlaceholderSnapshot"
@@ -86,8 +107,36 @@ export type ExecutiveClientFactoryOptions = {
   fetchImpl: FetchLike;
   baseUrl: string;
   requestJson: RequestJson;
-  getPlaceholderSnapshot: ExecutiveClientMethods["getPlaceholderSnapshot"];
 };
+
+function buildReadinessPlaceholderEnvelope(key: string): ApiEnvelope<PlaceholderSnapshot> {
+  const normalizedKey = key.trim() || "unknown";
+  const meta: ResultMeta = {
+    trace_id: `readiness_${normalizedKey}`,
+    basis: "analytical",
+    result_kind: `workbench.${normalizedKey}.readiness`,
+    formal_use_allowed: false,
+    source_version: "readiness:placeholder",
+    vendor_version: "vv_none",
+    rule_version: "rv_readiness_placeholder_v1",
+    cache_version: "cv_readiness_placeholder_v1",
+    quality_flag: "missing",
+    vendor_status: "ok",
+    fallback_mode: "none",
+    source_surface: "workbench_placeholder",
+    scenario_flag: false,
+    generated_at: "2026-04-09T10:30:00Z",
+  };
+
+  return {
+    result_meta: meta,
+    result: {
+      title: normalizedKey === "source-preview" ? "Source Preview" : normalizedKey,
+      summary: "",
+      highlights: [],
+    },
+  };
+}
 
 export function createDemoExecutiveClient(
   delay: Delay,
@@ -103,6 +152,32 @@ export function createDemoExecutiveClient(
       await delay();
       const bundle = await ensureBundle();
       return bundle.buildMockApiEnvelope("home.snapshot", bundle.mockHomeSnapshot);
+    },
+    async getHomeMacroReleaseContext(options: GetHomeMacroReleaseContextOptions) {
+      await delay();
+      const bundle = await ensureBundle();
+      return bundle.buildMockApiEnvelope<HomeMacroReleaseContextPayload>(
+        "home.macro_release_context",
+        {
+          window_start_date: options.startDate,
+          window_end_date: options.endDate,
+          history_items: [],
+          coverage: {
+            configured_count: 8,
+            ready_count: 0,
+            partial_count: 0,
+            stale_count: 0,
+            fallback_count: 0,
+            source_pending_count: 8,
+            error_count: 0,
+          },
+          warnings: [],
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+        },
+      );
     },
     async getHomeResearchReports(reportDate: string, limit = 5) {
       await delay();
@@ -153,7 +228,13 @@ export function createDemoExecutiveClient(
         {
           report_dates: ["2026-02-28", "2026-01-31", "2025-12-31"],
         },
-        { basis: "formal", formal_use_allowed: true },
+        {
+          basis: "formal",
+          formal_use_allowed: true,
+          source_version: RISK_TENSOR_FORMAL_SOURCE_VERSION,
+          rule_version: RISK_TENSOR_FORMAL_RULE_VERSION,
+          cache_version: RISK_TENSOR_FORMAL_CACHE_VERSION,
+        },
       );
     },
     async getRiskTensor(reportDate: string) {
@@ -173,8 +254,9 @@ export function createDemoExecutiveClient(
           krd_10y: "5000.00000000",
           krd_30y: zero,
           cs01: "18000.00000000",
-          portfolio_convexity: "24.50000000",
-          portfolio_modified_duration: "4.20000000",
+          // 与正式后端读surface同形：治理 Numeric（raw + display），display 即页面展示值。
+          portfolio_convexity: { raw: 24.5, unit: "ratio", display: "24.50", precision: 2, sign_aware: false },
+          portfolio_modified_duration: { raw: 4.2, unit: "ratio", display: "4.20", precision: 2, sign_aware: false },
           issuer_concentration_hhi: "0.12000000",
           issuer_top5_weight: "0.36000000",
           asset_cashflow_30d: "300000000.00000000",
@@ -187,113 +269,187 @@ export function createDemoExecutiveClient(
           total_market_value: "500000000.00000000",
           rate_risk_market_value: "400000000.00000000",
           rate_risk_dv01: "110000.00000000",
-          rate_risk_modified_duration: "4.20000000",
+          rate_risk_modified_duration: { raw: 4.2, unit: "ratio", display: "4.20", precision: 2, sign_aware: false },
           duration_excluded_market_value: "100000000.00000000",
           duration_excluded_count: 2,
+          missing_maturity_market_value: zero,
+          missing_maturity_count: 0,
+          floating_rate_proxy_market_value: zero,
+          floating_rate_proxy_count: 0,
+          payment_frequency_fallback_market_value: zero,
+          payment_frequency_fallback_count: 0,
+          bullet_value_date_fallback_market_value: zero,
+          bullet_value_date_fallback_count: 0,
+          projection_quality_status: "available",
           bond_count: 8,
           quality_flag: "warning",
           warnings: [
             "2 rows carry market_value=100000000.00000000 and are excluded from portfolio duration denominator.",
           ],
-          prior_period_change: {
-            status: "no_prior",
-            comparison_report_date: null,
-            summary: "暂无可比较的上一报告日；当前仅展示截面风险。",
-            dominant_krd_bucket: "3Y",
-            previous_dominant_krd_bucket: null,
-            dominant_krd_shifted: false,
-            metrics: [],
-          },
-          dv01_controls: {
-            basis: "regulatory_dv01",
-            limit_status: "pending_configuration",
-            approved_limit_dv01: null,
-            limit_usage_ratio: null,
-            volatility_status: "pending_market_volatility",
-            daily_rate_volatility_bp: null,
-            dominant_krd_bucket: "3Y",
-            dominant_krd: {
-              raw: 50000,
-              unit: "dv01",
-              display: "+50,000.00",
-              precision: 2,
-              sign_aware: true,
-            },
-            stress_scenarios: [
-              {
-                scenario_key: "parallel_up_10bp",
-                label: "+10bp",
-                shock_bp: {
-                  raw: 10,
-                  unit: "bp",
-                  display: "+10 bp",
-                  precision: 0,
-                  sign_aware: true,
-                },
-                estimated_pnl_impact: {
-                  raw: -1200000,
-                  unit: "yuan",
-                  display: "-1,200,000.00",
-                  precision: 2,
-                  sign_aware: true,
-                },
-              },
-              {
-                scenario_key: "parallel_up_25bp",
-                label: "+25bp",
-                shock_bp: {
-                  raw: 25,
-                  unit: "bp",
-                  display: "+25 bp",
-                  precision: 0,
-                  sign_aware: true,
-                },
-                estimated_pnl_impact: {
-                  raw: -3000000,
-                  unit: "yuan",
-                  display: "-3,000,000.00",
-                  precision: 2,
-                  sign_aware: true,
-                },
-              },
-            ],
-            operating_judgement:
-              "当前监管口径 DV01 120,000.00；+10bp 平行上行估算影响 -1,200,000.00；主风险桶 3Y。审批限额与利率波动源未接入前，暂不判定超限。",
-            control_actions: [
-              {
-                key: "approved_dv01_limit",
-                title: "配置审批限额",
-                status: "required",
-                evidence: "审批 DV01 限额未接入。",
-                action: "接入投委会或风控审批后的总 DV01 限额，再计算使用率与预警带。",
-              },
-              {
-                key: "rate_volatility_input",
-                title: "接入利率波动",
-                status: "required",
-                evidence: "日度利率波动率未接入。",
-                action: "接入曲线波动率后，把 DV01 敞口转换成日度波动损益观察。",
-              },
-              {
-                key: "bucket_sub_limits",
-                title: "拆分期限桶限额",
-                status: "required",
-                evidence: "当前主风险桶为 3Y。",
-                action: "为 1Y/3Y/5Y/7Y/10Y/30Y 设置桶位限额，避免总 DV01 合规但期限错配。",
-              },
-              {
-                key: "stress_escalation",
-                title: "固化冲击升级",
-                status: "required",
-                evidence: "+10bp 估算影响 -1,200,000.00；+25bp 估算影响 -3,000,000.00。",
-                action: "将标准冲击纳入日例会；超过授权阈值时进入减久期、套保或审批升级流程。",
-              },
-            ],
-            control_message: "未接入正式限额源前，只展示当前监管口径敞口和标准平行冲击，不判定是否超限。",
-            action_hint: "经营落地需要先配置审批 DV01 限额、利率波动率输入与预警阈值，再计算使用率和波动预警。",
-          },
         },
-        { basis: "formal", formal_use_allowed: true },
+        {
+          // mock 数据不得伪装正式口径：basis/formal_use_allowed 保持 mock 语义，
+          // 让 formal 门禁（如 riskHomeAdapter）在 mock 模式下正确判为非正式态。
+          basis: "mock",
+          formal_use_allowed: false,
+          source_version: RISK_TENSOR_FORMAL_SOURCE_VERSION,
+          rule_version: RISK_TENSOR_FORMAL_RULE_VERSION,
+          cache_version: RISK_TENSOR_FORMAL_CACHE_VERSION,
+        },
+      );
+    },
+    async getRiskTensorHistory(reportDate: string, periods = 24) {
+      await delay();
+      const bundle = await ensureBundle();
+      const vary = (base: number, amplitude: number, index: number, offset: number) =>
+        (base * (1 + Math.sin(index * 0.55 + offset) * amplitude)).toFixed(8);
+      const end = new Date(`${reportDate}T00:00:00Z`).getTime();
+      const points = Array.from({ length: periods }, (_, index) => {
+        const day = new Date(end - (periods - 1 - index) * 86400000);
+        return {
+          report_date: day.toISOString().slice(0, 10),
+          portfolio_dv01: vary(120000, 0.04, index, 0.0),
+          regulatory_dv01: vary(120000, 0.04, index, 0.0),
+          portfolio_modified_duration: vary(4.2, 0.03, index, 1.3),
+          portfolio_convexity: vary(24.5, 0.03, index, 2.1),
+          cs01: vary(18000, 0.05, index, 0.7),
+          issuer_concentration_hhi: vary(0.12, 0.06, index, 2.9),
+          issuer_top5_weight: vary(0.36, 0.05, index, 3.7),
+          liquidity_gap_30d: vary(100000000, 0.35, index, 4.4),
+        };
+      });
+      return bundle.buildMockApiEnvelope(
+        "risk.tensor.history",
+        {
+          report_date: reportDate,
+          periods: points.length,
+          window: {
+            from: points[0]?.report_date ?? reportDate,
+            to: points[points.length - 1]?.report_date ?? reportDate,
+          },
+          points,
+        },
+        {
+          // 同 getRiskTensor：mock 历史序列不通过正式口径门禁。
+          basis: "mock",
+          formal_use_allowed: false,
+          source_version: RISK_TENSOR_FORMAL_SOURCE_VERSION,
+          rule_version: RISK_TENSOR_FORMAL_RULE_VERSION,
+          cache_version: RISK_TENSOR_FORMAL_CACHE_VERSION,
+        },
+      );
+    },
+    async getRiskScenarioStress(reportDate: string) {
+      await delay();
+      const bundle = await ensureBundle();
+      const yuan = (raw: number | null, display?: string) => ({
+        raw,
+        unit: "yuan" as const,
+        display: display ?? (raw === null ? "待接入" : raw.toLocaleString("zh-CN", { maximumFractionDigits: 2 })),
+        precision: 2,
+        sign_aware: true,
+      });
+      const bp = (raw: number) => ({
+        raw,
+        unit: "bp" as const,
+        display: `${raw > 0 ? "+" : ""}${raw} bp`,
+        precision: 0,
+        sign_aware: true,
+      });
+      const pct = (raw: number | null) => ({
+        raw,
+        unit: "pct" as const,
+        display: raw === null ? "待接入" : `${(raw * 100).toFixed(1)}%`,
+        precision: 1,
+        sign_aware: true,
+      });
+      const scenarios = [
+        {
+          scenario_key: "parallel_rate_up_10bp",
+          category: "rate" as const,
+          label: "利率平行上行 10bp",
+          source_field: "regulatory_dv01",
+          shock: bp(10),
+          estimated_impact: yuan(-1_200_000),
+          measure: "estimated_pnl_impact",
+          calculation: "-regulatory_dv01 * shock_bp",
+          interpretation: "利率上行时，按监管口径 DV01 估算组合价格影响。",
+          data_status: "available" as const,
+          human_review_required: true,
+        },
+        {
+          scenario_key: "credit_spread_up_10bp",
+          category: "credit" as const,
+          label: "信用利差走阔 10bp",
+          source_field: "cs01",
+          shock: bp(10),
+          estimated_impact: yuan(-180_000),
+          measure: "estimated_pnl_impact",
+          calculation: "-cs01 * shock_bp",
+          interpretation: "信用利差走阔时，按 CS01 估算信用敏感性影响。",
+          data_status: "available" as const,
+          human_review_required: true,
+        },
+        {
+          scenario_key: "liquidity_30d_cashflow_10pct",
+          category: "liquidity" as const,
+          label: "30天现金流压力 10%",
+          source_field: "asset_cashflow_30d/liability_cashflow_30d/liquidity_gap_30d",
+          shock: pct(0.1),
+          estimated_impact: yuan(-50_000_000),
+          measure: "stressed_30d_liquidity_gap_delta",
+          calculation:
+            "asset_cashflow_30d * (1 - shock_pct) - liability_cashflow_30d * (1 + shock_pct) - liquidity_gap_30d",
+          interpretation: "现金流压力下的30天流动性缺口变化；负值表示缓冲收窄。",
+          data_status: "available" as const,
+          human_review_required: true,
+          baseline_value: yuan(100_000_000),
+          stressed_value: yuan(50_000_000),
+          baseline_ratio: pct(0.05),
+          stressed_ratio: pct(0.025),
+        },
+        {
+          scenario_key: "fx_usdcny_move_candidate",
+          category: "fx" as const,
+          label: "汇率波动情景",
+          source_field: "fx_exposure",
+          shock: pct(null),
+          estimated_impact: yuan(null),
+          measure: "estimated_pnl_impact",
+          calculation: "fx_exposure * fx_shock",
+          interpretation: "当前风险张量未提供汇率敞口，需接入 FX exposure 后再估算。",
+          data_status: "source_missing" as const,
+          human_review_required: true,
+        },
+      ];
+      return bundle.buildMockApiEnvelope(
+        "risk.tensor.scenario_stress",
+        {
+          report_date: reportDate,
+          basis: "scenario",
+          scenario_set_id: "standard_risk_tensor_scenario_v1",
+          rule_version: "rv_risk_tensor_scenario_stress_v1",
+          source: {
+            result_kind: "risk.tensor",
+            trace_id: `mock_risk.tensor_${reportDate}`,
+            source_version: RISK_TENSOR_FORMAL_SOURCE_VERSION,
+            rule_version: RISK_TENSOR_FORMAL_RULE_VERSION,
+            cache_version: RISK_TENSOR_FORMAL_CACHE_VERSION,
+            quality_flag: "warning",
+          },
+          summary: {
+            scenario_count: scenarios.length,
+            available_count: 3,
+            review_required_count: scenarios.length,
+            worst_estimated_impact: yuan(-50_000_000),
+            worst_scenario_key: "liquidity_30d_cashflow_10pct",
+            message: "已生成标准多情景压力估算；所有结果均为情景口径，需复核后再用于经营判断。",
+          },
+          scenarios,
+          warnings: ["情景压力结果为基于正式风险张量的敏感性覆盖层，不是正式损益、正式限额判定或交易建议。"],
+          source_warnings: [],
+        },
+        { basis: "scenario", formal_use_allowed: false, scenario_flag: true },
       );
     },
     async getContribution() {
@@ -320,7 +476,7 @@ export function createDemoExecutiveClient(
 export function createRealExecutiveClient(
   options: ExecutiveClientFactoryOptions,
 ): ExecutiveThinClientMethods {
-  const { fetchImpl, baseUrl, requestJson, getPlaceholderSnapshot } = options;
+  const { fetchImpl, baseUrl, requestJson } = options;
 
   return {
     getOverview: (reportDate?: string) =>
@@ -331,6 +487,18 @@ export function createRealExecutiveClient(
       ),
     getHomeSnapshot: (options?: GetHomeSnapshotOptions) =>
       fetchHomeSnapshotEnvelope(fetchImpl, baseUrl, options),
+    getHomeMacroReleaseContext: (options: GetHomeMacroReleaseContextOptions) => {
+      const params = new URLSearchParams({
+        start_date: options.startDate,
+        end_date: options.endDate,
+        history_limit: String(options.historyLimit ?? 8),
+      });
+      return requestJson<HomeMacroReleaseContextPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/home/macro-release-context?${params.toString()}`,
+      );
+    },
     getHomeResearchReports: (reportDate: string, limit = 5) => {
       const params = new URLSearchParams({
         report_date: reportDate,
@@ -373,6 +541,23 @@ export function createRealExecutiveClient(
         baseUrl,
         `/api/risk/tensor?report_date=${encodeURIComponent(reportDate)}`,
       ),
+    getRiskTensorHistory: (reportDate: string, periods = 24) => {
+      const params = new URLSearchParams({
+        report_date: reportDate,
+        periods: String(periods),
+      });
+      return requestJson<RiskTensorHistoryPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/risk/tensor/history?${params.toString()}`,
+      );
+    },
+    getRiskScenarioStress: (reportDate: string) =>
+      requestJson<RiskScenarioStressPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/risk/scenario-stress?report_date=${encodeURIComponent(reportDate)}`,
+      ),
     getContribution: () =>
       requestJson<ContributionPayload>(
         fetchImpl,
@@ -381,6 +566,8 @@ export function createRealExecutiveClient(
       ),
     getAlerts: () =>
       requestJson<AlertsPayload>(fetchImpl, baseUrl, "/ui/home/alerts"),
-    getPlaceholderSnapshot,
+    async getPlaceholderSnapshot(key: string) {
+      return buildReadinessPlaceholderEnvelope(key);
+    },
   };
 }

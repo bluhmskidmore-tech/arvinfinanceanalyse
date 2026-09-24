@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Any
 
 import duckdb
+from backend.app.core_finance.data_freshness import FRESHNESS_TIER_UNKNOWN, assess_freshness
 from backend.app.schemas.external_data import ExternalDataCatalogEntry
 
 # Exact physical/view names that may be queried (no user-controlled identifiers in SQL).
@@ -39,6 +41,41 @@ class SeriesDataPage:
     table_name: str
     limit: int
     offset: int
+
+
+@dataclass(frozen=True)
+class SeriesWatermark:
+    relation_name: str
+    date_column: str
+    row_count: int
+    latest_business_date: str | None
+    latest_loaded_at: str | None
+    # Calendar-day age of latest_business_date relative to the as-of date
+    # (date.today() unless the caller pins one) and the shared freshness tier.
+    age_days: int | None = None
+    freshness_tier: str | None = None
+
+
+# Catalog ``frequency`` spellings that map onto the shared freshness cadences.
+# Anything else (quarterly, event, unknown, None) gets tier "unknown" instead
+# of being misjudged against daily thresholds.
+_CADENCE_BY_CATALOG_FREQUENCY: dict[str, str] = {
+    "d": "daily",
+    "day": "daily",
+    "daily": "daily",
+    "w": "weekly",
+    "week": "weekly",
+    "weekly": "weekly",
+    "m": "monthly",
+    "month": "monthly",
+    "monthly": "monthly",
+}
+
+
+def _cadence_from_catalog_frequency(frequency: str | None) -> str | None:
+    if frequency is None:
+        return None
+    return _CADENCE_BY_CATALOG_FREQUENCY.get(str(frequency).strip().lower())
 
 
 def _date_column_for_relation(relation: str) -> str:
@@ -91,6 +128,68 @@ def _where_clause(
 
 def _order_clause(relation: str) -> str:
     return f"order by {_date_column_for_relation(relation)} desc nulls last"
+
+
+def _value_to_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    return str(value)
+
+
+def _loaded_column_for_relation(conn: duckdb.DuckDBPyConnection, relation: str) -> str | None:
+    desc = conn.execute(f"select * from {relation} limit 0").description or []
+    columns = {str(d[0]) for d in desc}
+    if "created_at" in columns:
+        return "created_at"
+    if "received_at" in columns:
+        return "received_at"
+    return None
+
+
+def fetch_series_watermark(
+    conn: duckdb.DuckDBPyConnection,
+    entry: ExternalDataCatalogEntry,
+    *,
+    as_of_date: date | None = None,
+) -> SeriesWatermark:
+    rel = _resolve_relation(entry)
+    date_column = _date_column_for_relation(rel)
+    loaded_column = _loaded_column_for_relation(conn, rel)
+    loaded_expr = (
+        f"max(cast({loaded_column} as varchar))"
+        if loaded_column is not None
+        else "cast(null as varchar)"
+    )
+    wsql, wparams = _where_clause(entry, relation=rel, recent_days=None)
+    res = conn.execute(
+        f"""
+        select
+          count(*)::bigint as row_count,
+          max(try_cast({date_column} as date)) as latest_business_date,
+          {loaded_expr} as latest_loaded_at
+        from {rel}
+        {wsql}
+        """,
+        wparams,
+    )
+    row = res.fetchone() or (0, None, None)
+    latest_business_date = _value_to_text(row[1])
+    as_of = as_of_date if as_of_date is not None else date.today()
+    cadence = _cadence_from_catalog_frequency(entry.frequency)
+    assessment = assess_freshness(latest_business_date, as_of, cadence=cadence or "daily")
+    return SeriesWatermark(
+        relation_name=rel,
+        date_column=date_column,
+        row_count=int(row[0] or 0),
+        latest_business_date=latest_business_date,
+        latest_loaded_at=_value_to_text(row[2]),
+        age_days=assessment.age_days,
+        freshness_tier=assessment.tier if cadence is not None else FRESHNESS_TIER_UNKNOWN,
+    )
 
 
 def fetch_series_data_page(

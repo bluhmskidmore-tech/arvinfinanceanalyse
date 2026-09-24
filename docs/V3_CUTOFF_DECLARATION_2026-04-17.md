@@ -93,6 +93,23 @@ That listener was then restarted against the current workspace code, after which
 
 The current declaration is therefore based on the reconciled live listener, not the stale pre-restart process.
 
+## 2026-07-04 Home Snapshot Boundary Decision
+
+Decision: `/ui/home/snapshot` is promoted from unresolved executive boundary drift to a landed `executive-consumer cutover v1` analytical overlay surface.
+
+Evidence required for the promotion:
+
+- Route code calls `home_snapshot_envelope(report_date=..., allow_partial=...)`.
+- The route passes the returned envelope through the landed-surface guard, so `vendor_unavailable` remains fail-closed as `503`.
+- Code-level route tests assert `200` for a governed snapshot envelope, assert non-empty `source_version` / `rule_version` / `cache_version`, and assert `vendor_unavailable` still maps to `503`.
+- The home snapshot date-selection tests exercise the public `home_snapshot_envelope` surface rather than importing private service symbols.
+
+This decision does not promote the still-reserved executive routes:
+
+- `/ui/risk/overview`
+- `/ui/home/alerts`
+- `/ui/home/contribution`
+
 ## Final Statement
 
 `The current governed Phase 2 formal-compute release is accepted at cutoff for the included scope only. executive-consumer cutover v1 is included. excluded surfaces remain excluded and are currently fail-closed or reserved as documented.`

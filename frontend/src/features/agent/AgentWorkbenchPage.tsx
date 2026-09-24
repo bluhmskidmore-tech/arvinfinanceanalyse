@@ -1,1410 +1,127 @@
 import { useCallback, useDeferredValue, useEffect, useRef, useState, type FormEvent } from "react";
 
-import { CheckOutlined, CloseOutlined, CopyOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
-import { runPollingTask, type PollingTaskPayload } from "../../app/jobs/polling";
+import { EditOutlined, PlusOutlined } from "@ant-design/icons";
+import { AgentDisabledError } from "../../api/agentClient";
+import { useApiClient } from "../../api/client";
 import type {
   AgentConversationContext,
   AgentPageContext,
   AgentQueryRequest,
   AgentSuggestedAction,
 } from "../../api/contracts";
-import { AgentAnswerPanel } from "./components/AgentAnswerPanel";
-import { AgentEvidencePanel } from "./components/AgentEvidencePanel";
-import { AgentGenericCardsGrid } from "./components/AgentGenericCardsGrid";
 import { AgentQueryForm } from "./components/AgentQueryForm";
+import { AgentQueuedDraft } from "./components/AgentQueuedDraft";
 import { AgentRepoMemoryPanel } from "./components/AgentRepoMemoryPanel";
-import { AgentResultMetaPanel } from "./components/AgentResultMetaPanel";
-import { AgentSuggestedActionsPanel } from "./components/AgentSuggestedActionsPanel";
-import { GitNexusResultView as AgentGitNexusResultView } from "./components/GitNexusResultView";
+import { AgentRunProgress } from "./components/AgentRunProgress";
+import { AgentRuntimeStrip } from "./components/AgentRuntimeStrip";
+import { AgentShortcutDrawer } from "./components/AgentShortcutDrawer";
+import { AgentTurnErrorCallout } from "./components/AgentTurnErrorCallout";
+import { AgentTurnResultView } from "./components/AgentTurnResultView";
+import { isAbortError } from "./hooks/agentRunStatusOrchestrator";
+import { runManagedAgentPolling } from "./hooks/runManagedAgentPolling";
 
 import "./AgentWorkbenchPage.css";
 
-type AgentResultCard = {
-  title: string;
-  value?: string | null;
-  type: string;
-  data?: Record<string, unknown>[] | Record<string, unknown> | null;
-  spec?: Record<string, unknown> | null;
-};
-
-type AgentEvidence = {
-  tables_used: string[];
-  filters_applied: Record<string, unknown>;
-  evidence_rows: number;
-  quality_flag: string;
-};
-
-type AgentNextDrill = {
-  dimension: string;
-  label: string;
-};
-
-type AgentQueryResult = {
-  answer: string;
-  cards: AgentResultCard[];
-  evidence: AgentEvidence;
-  result_meta: Record<string, unknown>;
-  next_drill: AgentNextDrill[];
-  suggested_actions: AgentSuggestedAction[];
-};
-
-type AgentRunStatus = "queued" | "starting" | "running" | "completed" | "failed";
-type AgentCopyFeedback = { turnId: string; status: "success" | "error" };
-type PendingSuggestedActionConfirmation = { turnId: string; actionKey: string };
-
-type AgentRunPayload = PollingTaskPayload & {
-  run_id: string;
-  status: AgentRunStatus;
-  run_kind?: "managed" | "workflow" | "sync";
-  question?: string | null;
-  provider?: string;
-  model?: string;
-  transport?: string;
-  toolsets?: string;
-  queued_at?: string | null;
-  started_at?: string | null;
-  finished_at?: string | null;
-  elapsed_seconds?: number | null;
-  result?: AgentQueryResult | null;
-};
-
-type AgentQueryError =
-  | {
-      kind: "disabled";
-      detail: string;
-      phase: string;
-    }
-  | {
-      kind: "request";
-      message: string;
-    };
-
-type AgentConversationTurn = {
-  id: string;
-  question: string;
-  conversationContext?: AgentConversationContext;
-  retryMode?: "ordinary";
-  stopped?: boolean;
-  agentRun: AgentRunPayload | null;
-  result: AgentQueryResult | null;
-  error: AgentQueryError | null;
-  activeSuggestedActionPayload: Record<string, unknown> | null;
-};
-
-type AgentWorkbenchPageProps = {
-  pageContext?: AgentPageContext;
-};
-
-type AgentCopilotVariant = "embedded" | "workbench";
-
-export type EmbeddedAgentCopilotProps = AgentWorkbenchPageProps & {
-  variant?: AgentCopilotVariant;
-  showHeader?: boolean;
-  readOnly?: true;
-  defaultQuestion?: string;
-};
-
-type AgentPanelProps = EmbeddedAgentCopilotProps;
-
-type AgentOrdinaryConversationMode = "unknown" | "managed" | "local_sync";
-
-type FinancialWorkflowShortcut = {
-  id: string;
-  title: string;
-  slashCommand: string;
-  description: string;
-  mappedIntents: string[];
-};
-
-type ResearchDomain = "stock" | "macro";
-
-type ResearchShortcut = {
-  id: string;
-  title: string;
-  question: string;
-  description: string;
-  domain: ResearchDomain;
-};
-
-class AgentDisabledQueryError extends Error {
-  detail: string;
-  phase: string;
-
-  constructor(detail: string, phase: string) {
-    super(detail);
-    this.name = "AgentDisabledQueryError";
-    this.detail = detail;
-    this.phase = phase;
-  }
-}
-
-class AgentManagedRunRequiresHermesError extends Error {
-  detail: string;
-
-  constructor(detail: string) {
-    super(detail);
-    this.name = "AgentManagedRunRequiresHermesError";
-    this.detail = detail;
-  }
-}
-
-const AGENT_RUN_STATUSES = new Set<AgentRunStatus>([
-  "queued",
-  "starting",
-  "running",
-  "completed",
-  "failed",
-]);
-
-const LATEST_AGENT_RUN_ID_KEY = "moss.agent.latestRunId.v1";
-const AGENT_CONVERSATION_TURNS_KEY = "moss.agent.conversationTurns.v1";
-const AGENT_QUEUED_QUERIES_KEY = "moss.agent.queuedQueries.v1";
-const MAX_AGENT_CONTEXT_TURNS = 4;
-const MAX_AGENT_STORED_TURNS = 4;
-const MAX_AGENT_QUEUED_QUERIES = 4;
-const MAX_AGENT_CONTEXT_QUESTION_LENGTH = 800;
-const MAX_AGENT_CONTEXT_ANSWER_LENGTH = 1400;
-const AGENT_RUN_POLL_MAX_ATTEMPTS = 240;
-const AGENT_NARROW_VIEWPORT_QUERY = "(max-width: 720px)";
-const AGENT_STICKY_BOTTOM_THRESHOLD_PX = 96;
-const latestAgentRunStatusRequests = new Map<string, Promise<AgentRunPayload>>();
-const ANALYSIS_CHAT_PATTERNS = [
-  "analysis",
-  "analyze",
-  "explain",
-  "summarize",
-  "summary",
-  "judge",
-  "risk",
-  "what does this mean",
-  "continue",
-  "follow up",
-  "分析",
-  "解释",
-  "总结",
-  "判断",
-  "风险",
-  "结论",
-  "说明",
-  "继续",
-  "追问",
-];
-const GOVERNED_AGENT_PATTERNS = [
-  "gitnexus",
-  "repo graph",
-  "code graph",
-  "processes",
-  "产品损益",
-  "ftp",
-  "桥接",
-  "归因",
-  "拆解",
-  "bridge",
-  "attribution",
-  "风险张量",
-  "krd",
-  "久期",
-  "dv01",
-  "duration",
-  "信用",
-  "利差",
-  "集中度",
-  "credit",
-  "spread",
-  "concentration",
-  "组合概览",
-  "资产规模",
-  "总览",
-  "portfolio overview",
-  "market value",
-  "portfolio value",
-  "asset size",
-  "损益",
-  "收益",
-  "pnl",
-  "宏观",
-  "利率",
-  "市场数据",
-  "macro",
-  "market data",
-  "macro data",
-  "rates data",
-  "新闻",
-  "事件",
-  "news",
-  "headline",
-  "latest news",
-];
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function useAgentNarrowViewport() {
-  const [isNarrowViewport, setIsNarrowViewport] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-      return;
-    }
-    const mediaQuery = window.matchMedia(AGENT_NARROW_VIEWPORT_QUERY);
-    const syncNarrowViewport = () => setIsNarrowViewport(mediaQuery.matches);
-    syncNarrowViewport();
-    if (typeof mediaQuery.addEventListener === "function") {
-      mediaQuery.addEventListener("change", syncNarrowViewport);
-      return () => mediaQuery.removeEventListener("change", syncNarrowViewport);
-    }
-    mediaQuery.addListener(syncNarrowViewport);
-    return () => mediaQuery.removeListener(syncNarrowViewport);
-  }, []);
-
-  return isNarrowViewport;
-}
-
-function isAgentQueryResult(value: unknown): value is AgentQueryResult {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    typeof value.answer === "string" &&
-    Array.isArray(value.cards) &&
-    value.cards.every(isAgentResultCard) &&
-    isAgentEvidence(value.evidence) &&
-    Array.isArray(value.next_drill) &&
-    value.next_drill.every(isAgentNextDrill) &&
-    (value.suggested_actions === undefined ||
-      (Array.isArray(value.suggested_actions) && value.suggested_actions.every(isAgentSuggestedAction))) &&
-    isRecord(value.result_meta)
-  );
-}
-
-function isAgentResultCard(value: unknown): value is AgentResultCard {
-  return (
-    isRecord(value) &&
-    typeof value.title === "string" &&
-    (value.value == null || typeof value.value === "string") &&
-    typeof value.type === "string" &&
-    (value.data == null ||
-      isRecord(value.data) ||
-      (Array.isArray(value.data) && value.data.every(isRecord))) &&
-    (value.spec == null || isRecord(value.spec))
-  );
-}
-
-function isAgentEvidence(value: unknown): value is AgentEvidence {
-  return (
-    isRecord(value) &&
-    Array.isArray(value.tables_used) &&
-    value.tables_used.every((item) => typeof item === "string") &&
-    isRecord(value.filters_applied) &&
-    typeof value.evidence_rows === "number" &&
-    typeof value.quality_flag === "string"
-  );
-}
-
-function isAgentNextDrill(value: unknown): value is AgentNextDrill {
-  return (
-    isRecord(value) &&
-    typeof value.dimension === "string" &&
-    typeof value.label === "string"
-  );
-}
-
-function isAgentSuggestedAction(value: unknown): value is AgentSuggestedAction {
-  return (
-    isRecord(value) &&
-    typeof value.type === "string" &&
-    typeof value.label === "string" &&
-    isRecord(value.payload) &&
-    typeof value.requires_confirmation === "boolean" &&
-    (value.confirmation_token === undefined ||
-      value.confirmation_token === null ||
-      typeof value.confirmation_token === "string")
-  );
-}
-
-function getExecutableSuggestedIntent(action: AgentSuggestedAction): string | null {
-  if (action.type !== "execute_intent") {
-    return null;
-  }
-  const intent = action.payload.intent;
-  return typeof intent === "string" && intent.trim().length > 0 ? intent.trim() : null;
-}
-
-function getSuggestedActionKey(action: AgentSuggestedAction) {
-  return `${action.type}:${action.label}:${JSON.stringify(action.payload)}:${action.confirmation_token ?? ""}`;
-}
-
-function isPlainAnalysisConversationQuestion(question: string) {
-  const normalized = question.trim().toLowerCase();
-  if (!normalized) {
-    return false;
-  }
-  return (
-    ANALYSIS_CHAT_PATTERNS.some((pattern) => normalized.includes(pattern)) &&
-    !GOVERNED_AGENT_PATTERNS.some((pattern) => normalized.includes(pattern))
-  );
-}
-
-function shouldUseLocalAnalysisConversation(
-  question: string,
-  conversationContext?: AgentConversationContext,
-) {
-  if (!isPlainAnalysisConversationQuestion(question)) {
-    return false;
-  }
-  const recentTurns = conversationContext?.recent_turns ?? [];
-  if (recentTurns.length === 0) {
-    return true;
-  }
-  const latestTurn = recentTurns[recentTurns.length - 1];
-  return latestTurn?.result_kind === "agent.analysis_chat";
-}
-
-function isAgentConversationContext(value: unknown): value is AgentConversationContext {
-  return (
-    isRecord(value) &&
-    Array.isArray(value.recent_turns) &&
-    value.recent_turns.every(
-      (turn) =>
-        isRecord(turn) &&
-        typeof turn.question === "string" &&
-        typeof turn.answer === "string" &&
-        (turn.run_id === undefined || turn.run_id === null || typeof turn.run_id === "string") &&
-        (turn.trace_id === undefined || turn.trace_id === null || typeof turn.trace_id === "string") &&
-        (turn.result_kind === undefined || turn.result_kind === null || typeof turn.result_kind === "string"),
-    )
-  );
-}
-
-function isAgentQueryError(value: unknown): value is AgentQueryError {
-  if (!isRecord(value) || typeof value.kind !== "string") {
-    return false;
-  }
-  if (value.kind === "request") {
-    return typeof value.message === "string";
-  }
-  return value.kind === "disabled" && typeof value.detail === "string" && typeof value.phase === "string";
-}
-
-function isDisabledPayload(value: unknown): value is {
-  enabled: false;
-  phase: string;
-  detail: string;
-} {
-  return (
-    isRecord(value) &&
-    value.enabled === false &&
-    typeof value.phase === "string" &&
-    typeof value.detail === "string"
-  );
-}
-
-function getManagedRunRequiresHermesDetail(value: unknown) {
-  if (!isRecord(value) || typeof value.detail !== "string") {
-    return null;
-  }
-  const detail = value.detail.trim();
-  if (!detail.startsWith("Agent runs require MOSS_AGENT_PROVIDER=")) {
-    return null;
-  }
-  return detail;
-}
-
-function isAgentRunStatus(value: unknown): value is AgentRunStatus {
-  return typeof value === "string" && AGENT_RUN_STATUSES.has(value as AgentRunStatus);
-}
-
-function isAgentRunPayload(value: unknown): value is AgentRunPayload {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    typeof value.run_id === "string" &&
-    isAgentRunStatus(value.status) &&
-    (value.question == null || typeof value.question === "string") &&
-    (value.provider === undefined || typeof value.provider === "string") &&
-    (value.model === undefined || typeof value.model === "string") &&
-    (value.transport === undefined || typeof value.transport === "string") &&
-    (value.toolsets === undefined || typeof value.toolsets === "string") &&
-    (value.queued_at == null || typeof value.queued_at === "string") &&
-    (value.started_at == null || typeof value.started_at === "string") &&
-    (value.finished_at == null || typeof value.finished_at === "string") &&
-    (value.elapsed_seconds == null || typeof value.elapsed_seconds === "number") &&
-    (value.error_message == null || typeof value.error_message === "string") &&
-    (value.result == null || isAgentQueryResult(value.result))
-  );
-}
-
-function normalizeAgentResult(result: AgentQueryResult): AgentQueryResult {
-  result.suggested_actions = result.suggested_actions ?? [];
-  return result;
-}
-
-function normalizeAgentRunPayload(payload: AgentRunPayload): AgentRunPayload {
-  if (payload.result) {
-    payload.result = normalizeAgentResult(payload.result);
-  }
-  return payload;
-}
-
-function createAgentConversationTurn(
-  question: string,
-  conversationContext?: AgentConversationContext,
-  retryMode?: "ordinary",
-): AgentConversationTurn {
-  return {
-    id: `turn:${Date.now()}:${Math.random().toString(16).slice(2)}`,
-    question,
-    conversationContext,
-    retryMode,
-    stopped: false,
-    agentRun: null,
-    result: null,
-    error: null,
-    activeSuggestedActionPayload: null,
-  };
-}
-
-function formatConversationContextBadge(conversationContext?: AgentConversationContext) {
-  const turnCount = conversationContext?.recent_turns.length ?? 0;
-  return turnCount > 0 ? `已带入 ${turnCount} 轮上下文` : null;
-}
-
-function trimAgentContextText(value: string, limit: number) {
-  const normalized = value.trim();
-  if (normalized.length <= limit) {
-    return normalized;
-  }
-  return `${normalized.slice(0, limit - 3)}...`;
-}
-
-function formatQueuedComposerHint(queuedQuery: string, queuedCount: number) {
-  const preview = trimAgentContextText(queuedQuery.replace(/\s+/g, " "), 48);
-  return queuedCount > 1 ? `${queuedCount} 句已排队 · 刚加入：${preview}` : `已接住下一句：${preview} · 回答完自动发送`;
-}
-
-function buildConversationContext(turns: AgentConversationTurn[]): AgentConversationContext | undefined {
-  const history = turns
-    .filter((turn) => turn.question.trim() && turn.result?.answer.trim())
-    .slice(-MAX_AGENT_CONTEXT_TURNS)
-    .map((turn) => {
-      const traceId = turn.result?.result_meta.trace_id;
-      const resultKind = turn.result?.result_meta.result_kind;
-      return {
-        question: trimAgentContextText(turn.question, MAX_AGENT_CONTEXT_QUESTION_LENGTH),
-        answer: trimAgentContextText(turn.result?.answer ?? "", MAX_AGENT_CONTEXT_ANSWER_LENGTH),
-        run_id: turn.agentRun?.run_id ?? null,
-        trace_id: typeof traceId === "string" ? traceId : null,
-        result_kind: typeof resultKind === "string" ? resultKind : null,
-      };
-    });
-
-  return history.length > 0 ? { recent_turns: history } : undefined;
-}
-
-function buildRestoredManagedTurn(payload: AgentRunPayload): AgentConversationTurn {
-  const restoredQuestion = payload.question?.trim() || formatManagedRunRestoreQuestion(payload.provider);
-  const nextError: AgentQueryError | null =
-    payload.status === "failed"
-      ? {
-          kind: "request",
-          message: payload.error_message || formatManagedRunFailureMessage(payload.provider),
-        }
-      : null;
-  return {
-    id: `restored:${payload.run_id}`,
-    question: restoredQuestion,
-    retryMode: "ordinary",
-    agentRun: payload,
-    result: payload.status === "completed" && payload.result ? payload.result : null,
-    error: nextError,
-    activeSuggestedActionPayload: null,
-  };
-}
-
-function mergeRestoredManagedTurn(
-  currentTurns: AgentConversationTurn[],
-  payload: AgentRunPayload,
-): AgentConversationTurn[] {
-  const restoredTurn = buildRestoredManagedTurn(payload);
-  const matchingIndex = currentTurns.findIndex(
-    (turn) =>
-      turn.agentRun?.run_id === payload.run_id ||
-      turn.id === restoredTurn.id ||
-      (turn.retryMode === "ordinary" &&
-        !turn.agentRun &&
-        turn.question.trim() &&
-        payload.question?.trim() === turn.question.trim()),
-  );
-  if (matchingIndex < 0) {
-    return [...currentTurns, restoredTurn].slice(-MAX_AGENT_STORED_TURNS);
-  }
-
-  const nextTurns = [...currentTurns];
-  const currentTurn = nextTurns[matchingIndex];
-  nextTurns[matchingIndex] = {
-    ...restoredTurn,
-    id: currentTurn.id,
-    question: currentTurn.question.trim() ? currentTurn.question : restoredTurn.question,
-    conversationContext: currentTurn.conversationContext,
-    retryMode: currentTurn.retryMode ?? restoredTurn.retryMode,
-  };
-  return nextTurns.slice(-MAX_AGENT_STORED_TURNS);
-}
-
-function buildErrorMessage(error: unknown) {
-  if (isFetchNetworkError(error)) {
-    return "无法连接 Agent 后端。请确认 7888 后端、5888 前端代理和 Hermes 桥接服务正在运行。";
-  }
-  if (error instanceof Error && error.message.trim()) {
-    return error.message;
-  }
-  return "智能体查询失败，请稍后重试。";
-}
-
-function isFetchNetworkError(error: unknown) {
-  if (!(error instanceof TypeError)) {
-    return false;
-  }
-  const message = error.message.trim().toLowerCase();
-  return (
-    message.includes("failed to fetch") ||
-    message.includes("networkerror when attempting to fetch resource") ||
-    message === "load failed"
-  );
-}
-
-function hasEvidenceContent(evidence: AgentEvidence) {
-  return (
-    evidence.tables_used.length > 0 ||
-    Object.keys(evidence.filters_applied).length > 0 ||
-    evidence.evidence_rows > 0 ||
-    evidence.quality_flag.trim().length > 0
-  );
-}
-
-function hasRenderableResult(result: AgentQueryResult) {
-  return (
-    result.answer.trim().length > 0 ||
-    result.cards.length > 0 ||
-    hasEvidenceContent(result.evidence) ||
-    result.next_drill.length > 0 ||
-    result.suggested_actions.length > 0
-  );
-}
-
-function buildResultMetaEntries(resultMeta: Record<string, unknown>) {
-  const orderedKeys = ["trace_id", "basis", "generated_at"];
-  const seen = new Set<string>();
-  const entries: Array<[string, unknown]> = [];
-
-  for (const key of orderedKeys) {
-    if (key in resultMeta) {
-      entries.push([key, resultMeta[key]]);
-      seen.add(key);
-    }
-  }
-
-  for (const [key, value] of Object.entries(resultMeta)) {
-    if (seen.has(key)) {
-      continue;
-    }
-    entries.push([key, value]);
-  }
-
-  return entries;
-}
-
-function formatMetaValue(value: unknown) {
-  if (value === null || value === undefined) {
-    return "--";
-  }
-  if (typeof value === "string") {
-    return value.trim().length > 0 ? value : "--";
-  }
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-  return JSON.stringify(value);
-}
-
-function formatRuntimeLabel(value: unknown, fallback: string) {
-  if (typeof value !== "string") {
-    return fallback;
-  }
-  const normalized = value.trim();
-  return normalized || fallback;
-}
-
-function formatProviderLabel(value: unknown, fallback: string) {
-  const label = formatRuntimeLabel(value, fallback);
-  switch (label.toLowerCase()) {
-    case "hermes":
-      return "Hermes";
-    case "dexter":
-      return "Dexter";
-    default:
-      return label;
-  }
-}
-
-function formatManagedProviderLabel(provider: unknown) {
-  if (typeof provider !== "string" || provider.trim().length === 0) {
-    return null;
-  }
-  return formatProviderLabel(provider, "托管运行时");
-}
-
-function formatManagedRunTitle(status: AgentRunStatus | undefined, provider: unknown) {
-  const providerLabel = formatManagedProviderLabel(provider);
-  if (!status) {
-    return "已收到问题";
-  }
-  switch (status) {
-    case "queued":
-      return providerLabel ? `${providerLabel} 已排队` : "托管任务已排队";
-    case "starting":
-      return providerLabel ? `${providerLabel} 正在启动` : "托管任务启动中";
-    case "running":
-      return providerLabel ? `${providerLabel} 正在分析` : "托管任务分析中";
-    case "completed":
-      return providerLabel ? `${providerLabel} 托管任务完成` : "托管任务完成";
-    case "failed":
-      return providerLabel ? `${providerLabel} 托管任务失败` : "托管任务失败";
-    default:
-      return providerLabel ? `${providerLabel} 正在分析` : "托管任务分析中";
-  }
-}
-
-function formatManagedRunFailureMessage(provider: unknown) {
-  const providerLabel = formatManagedProviderLabel(provider);
-  return providerLabel
-    ? `${providerLabel} 托管任务失败，请稍后重试。`
-    : "托管任务失败，请稍后重试。";
-}
-
-function formatManagedRunRestoreQuestion(provider: unknown) {
-  const providerLabel = formatManagedProviderLabel(provider);
-  return providerLabel ? `恢复上一次 ${providerLabel} 对话` : "恢复上一次托管对话";
-}
-
-function formatAgentRunStatusLabel(status: AgentRunStatus | undefined, fallback = "--") {
-  if (!status) {
-    return fallback;
-  }
-  switch (status) {
-    case "queued":
-      return "排队中";
-    case "starting":
-      return "启动中";
-    case "running":
-      return "运行中";
-    case "completed":
-      return "已完成";
-    case "failed":
-      return "失败";
-    default:
-      return fallback;
-  }
-}
-
-function formatAgentTurnWaitTitle(agentRun: AgentRunPayload | null) {
-  if (agentRun?.run_kind === "workflow") {
-    if (agentRun.status === "failed") {
-      return "Workflow 执行失败";
-    }
-    if (agentRun.status === "completed") {
-      return "Workflow 执行完成";
-    }
-    return "Workflow 执行进行中";
-  }
-  if (agentRun?.run_kind === "sync") {
-    if (agentRun.status === "failed") {
-      return "本地查询失败";
-    }
-    if (agentRun.status === "completed") {
-      return "本地查询完成";
-    }
-    return "本地查询进行中";
-  }
-  return formatManagedRunTitle(agentRun?.status, agentRun?.provider);
-}
-
-function formatAgentWaitPhase(agentRun: AgentRunPayload | null) {
-  if (agentRun?.run_kind === "workflow") {
-    if (agentRun.status === "running") {
-      return "本地 workflow 执行中";
-    }
-    if (agentRun.status === "starting") {
-      return "准备本地 workflow";
-    }
-    if (agentRun.status === "queued") {
-      return "等待本地 workflow";
-    }
-  }
-  if (agentRun?.run_kind === "sync") {
-    if (agentRun.status === "running") {
-      return "同步处理中";
-    }
-    if (agentRun.status === "starting") {
-      return "准备本地查询";
-    }
-    if (agentRun.status === "queued") {
-      return "等待本地查询";
-    }
-  }
-  const status = agentRun?.status;
-  if (!status) {
-    return "正在交给托管运行时";
-  }
-  return formatAgentRunStatusLabel(status, "运行中");
-}
-
-function formatAgentRunElapsed(agentRun: AgentRunPayload | null, fallbackSeconds: number) {
-  if (typeof agentRun?.elapsed_seconds === "number" && Number.isFinite(agentRun.elapsed_seconds)) {
-    return Math.max(0, Math.round(agentRun.elapsed_seconds));
-  }
-  return fallbackSeconds;
-}
-
-function formatAgentWaitHint(agentRun: AgentRunPayload | null, waitSeconds: number) {
-  if (agentRun?.run_kind === "workflow") {
-    if (agentRun.status === "queued" || agentRun.status === "starting") {
-      return "本地 workflow 正在准备，本页会直接显示结果。";
-    }
-    if (agentRun.status === "running" && waitSeconds >= 10) {
-      return "本地 workflow 仍在处理，复杂问题通常会多等一会儿。";
-    }
-    if (agentRun.status === "running") {
-      return "本地 workflow 正在生成结果，本页会直接更新答案。";
-    }
-    if (agentRun.status === "completed") {
-      return "结果已返回，可以继续追问。";
-    }
-    if (agentRun.status === "failed") {
-      return "这次 workflow 没有完成，可以调整问题后重试。";
-    }
-  }
-  if (agentRun?.run_kind === "sync") {
-    if (agentRun.status === "queued" || agentRun.status === "starting") {
-      return "本地同步查询正在准备，本页会直接显示结果。";
-    }
-    if (agentRun.status === "running" && waitSeconds >= 10) {
-      return "本地查询仍在处理，复杂问题通常会多等一会儿。";
-    }
-    if (agentRun.status === "running") {
-      return "本地查询正在生成结果，本页会直接更新答案。";
-    }
-    if (agentRun.status === "completed") {
-      return "结果已返回，可以继续追问。";
-    }
-    if (agentRun.status === "failed") {
-      return "这次本地查询没有完成，可以调整问题后重试。";
-    }
-  }
-  const status = agentRun?.status;
-  if (!status) {
-    return "先把问题放进队列，拿到 run_id 后会继续更新。";
-  }
-  if (status === "queued") {
-    return "任务已入队；如果前面还有回答，会按顺序处理。";
-  }
-  if (status === "starting") {
-    const providerLabel = formatManagedProviderLabel(agentRun?.provider);
-    return providerLabel ? `${providerLabel} 正在准备运行环境。` : "托管任务正在准备运行环境。";
-  }
-  if (status === "running" && waitSeconds >= 10) {
-    const providerLabel = formatManagedProviderLabel(agentRun?.provider);
-    return providerLabel
-      ? `${providerLabel} 还在思考，复杂问题通常会多等一会儿。`
-      : "托管任务仍在处理中，复杂问题通常会多等一会儿。";
-  }
-  if (status === "running") {
-    const providerLabel = formatManagedProviderLabel(agentRun?.provider);
-    return providerLabel
-      ? `${providerLabel} 正在分析，本页会自动更新结果。`
-      : "托管任务正在分析，本页会自动更新结果。";
-  }
-  if (status === "completed") {
-    return "可以离开或刷新，回来后会继续显示这次结果。";
-  }
-  if (status === "failed") {
-    return "这次没有完成，可以调整问题后重试。";
-  }
-  return "可以离开或刷新，回来后会继续显示这次结果。";
-}
-
-function getAgentRunProgressIndex(agentRun: AgentRunPayload | null) {
-  if (!agentRun?.status) {
-    return 0;
-  }
-  if (agentRun.status === "queued") {
-    return 1;
-  }
-  if (agentRun.status === "starting") {
-    return 2;
-  }
-  if (agentRun.status === "running") {
-    return 3;
-  }
-  if (agentRun.status === "completed") {
-    return 4;
-  }
-  return 0;
-}
-
-function shouldDisplayAgentRunId(agentRun: AgentRunPayload | null) {
-  if (!agentRun?.run_id) {
-    return false;
-  }
-  if (agentRun.run_kind === "sync") {
-    return false;
-  }
-  return agentRun.run_id !== "agent_run:sync_compat";
-}
-
-function getAgentRunPollIntervalMs(_payload: AgentRunPayload, attempt: number) {
-  if (attempt < 5) {
-    return 120;
-  }
-  if (attempt < 20) {
-    return 500;
-  }
-  return 1000;
-}
-
-function buildRuntimeStatus(
-  result: AgentQueryResult | null,
-  loading: boolean,
-  agentRun: AgentRunPayload | null,
-) {
-  const filters = result?.evidence.filters_applied ?? {};
-  const statusLabel = formatAgentRunStatusLabel(agentRun?.status, loading ? "分析中" : "--");
-  return {
-    provider: formatProviderLabel(agentRun?.provider ?? filters.provider, loading ? "托管运行时" : "待连接"),
-    transport: formatRuntimeLabel(agentRun?.transport ?? filters.transport, loading ? "bridge" : "等待提问"),
-    model: formatRuntimeLabel(agentRun?.model ?? filters.model, "--"),
-    toolsets: formatRuntimeLabel(agentRun?.toolsets ?? filters.toolsets, "--"),
-    quality: formatRuntimeLabel(result?.evidence.quality_flag, statusLabel),
-  };
-}
-
-function findLatestTurnWithResult(turns: AgentConversationTurn[]) {
-  for (let index = turns.length - 1; index >= 0; index -= 1) {
-    if (turns[index]?.result) {
-      return turns[index];
-    }
-  }
-  return null;
-}
-
-function findLatestTurnWithRun(turns: AgentConversationTurn[]) {
-  for (let index = turns.length - 1; index >= 0; index -= 1) {
-    if (turns[index]?.agentRun) {
-      return turns[index];
-    }
-  }
-  return null;
-}
-
-const GITNEXUS_QUICK_EXAMPLES = [
-  "解释当前页面的主要结论和风险点",
-  "组合概览：规模、损益、久期和信用风险有什么变化？",
-  "本日损益主要由什么驱动？请给证据和下一步复核建议。",
-  "当前久期和信用集中度有什么异常？",
-  "请给我看 GitNexus 状态",
-  "请给我看 GitNexus context",
-  "请给我看 GitNexus processes",
-] as const;
-
-const FINANCIAL_WORKFLOWS: FinancialWorkflowShortcut[] = [
-  {
-    id: "portfolio_review",
-    title: "组合复核",
-    slashCommand: "/portfolio-review",
-    description: "组合规模、久期和信用暴露",
-    mappedIntents: ["portfolio_overview", "duration_risk", "credit_exposure"],
-  },
-  {
-    id: "pnl_review",
-    title: "损益复核",
-    slashCommand: "/pnl-review",
-    description: "损益摘要、归因桥和产品损益",
-    mappedIntents: ["pnl_summary", "pnl_bridge", "product_pnl"],
-  },
-  {
-    id: "risk_memo",
-    title: "风险纪要",
-    slashCommand: "/risk-memo",
-    description: "久期、信用暴露和风险张量",
-    mappedIntents: ["duration_risk", "credit_exposure", "risk_tensor"],
-  },
-  {
-    id: "market_brief",
-    title: "市场简报",
-    slashCommand: "/market-brief",
-    description: "市场数据和新闻入口",
-    mappedIntents: ["market_data", "news"],
-  },
-];
-
-const RESEARCH_SHORTCUTS: ResearchShortcut[] = [
-  {
-    id: "stock_research",
-    title: "股票研究",
-    question: "Review landed stock research context",
-    description: "复核已刷新的股票数据、证据和限制。",
-    domain: "stock",
-  },
-  {
-    id: "macro_research",
-    title: "宏观研究",
-    question: "Review landed macro research context",
-    description: "复核已刷新的宏观序列、证据和限制。",
-    domain: "macro",
-  },
-];
-
-const AGENT_FOLLOW_UP_CHIPS = [
-  {
-    label: "展开依据",
-    question: "请基于上一轮回答展开证据依据和关键假设。",
-  },
-  {
-    label: "给下一步",
-    question: "请基于上一轮回答给出最值得执行的下一步行动。",
-  },
-  {
-    label: "转检查清单",
-    question: "请把上一轮回答转成可执行的复核检查清单。",
-  },
-] as const;
-
-const RECENT_REPO_PATHS_KEY = "moss.agent.gitnexus.recentRepoPaths.v1";
-const PINNED_REPO_PATHS_KEY = "moss.agent.gitnexus.pinnedRepoPaths.v1";
-const AGENT_COMPOSER_DRAFT_KEY = "moss.agent.composerDraft.v1";
-const MAX_RECENT_REPO_PATHS = 5;
-const MAX_PINNED_REPO_PATHS = 5;
-const GITNEXUS_PROCESS_CARD_TITLE = "GitNexus Processes Table";
-
-function buildAgentRequestBody(
-  question: string,
-  repoPath: string,
-  processName: string,
-  conversationContext?: AgentConversationContext,
-  pageContext?: AgentPageContext,
-  contextPatch?: Record<string, unknown>,
-): AgentQueryRequest {
-  return {
-    question,
-    basis: "formal",
-    filters: buildFilters(question, repoPath, processName),
-    position_scope: "all",
-    currency_basis: "CNY",
-    context: {
-      user_id: "web-user",
-      ...(conversationContext ? { conversation: conversationContext } : {}),
-      ...(contextPatch ?? {}),
-    },
-    ...(pageContext ? { page_context: pageContext } : {}),
-  };
-}
-
-function shouldScrollComposerInputIntoView(input: HTMLTextAreaElement) {
-  const visualViewport = window.visualViewport;
-  const viewportTop = visualViewport?.offsetTop ?? 0;
-  const viewportHeight = visualViewport?.height ?? window.innerHeight ?? document.documentElement.clientHeight;
-  const viewportBottom = viewportTop + viewportHeight;
-  const rect = input.getBoundingClientRect();
-  return rect.top < viewportTop || rect.bottom > viewportBottom;
-}
-
-function buildFinancialWorkflowRequestBody(
-  workflow: FinancialWorkflowShortcut,
-  pageContext?: AgentPageContext,
-): AgentQueryRequest {
-  return {
-    question: workflow.slashCommand,
-    basis: "formal",
-    filters: {},
-    position_scope: "all",
-    currency_basis: "CNY",
-    context: {
-      user_id: "web-user",
-      workflow_mode: "execute",
-    },
-    ...(pageContext ? { page_context: pageContext } : {}),
-  };
-}
-
-function buildResearchRequestBody(
-  shortcut: ResearchShortcut,
-  pageContext?: AgentPageContext,
-): AgentQueryRequest {
-  return {
-    question: shortcut.question,
-    basis: "formal",
-    filters: { research_domain: shortcut.domain },
-    position_scope: "all",
-    currency_basis: "CNY",
-    context: {
-      user_id: "web-user",
-    },
-    ...(pageContext ? { page_context: pageContext } : {}),
-  };
-}
-
-function buildLocalSyncAgentRun(
-  runId: string,
-  question: string,
-  status: AgentRunStatus,
-  result?: AgentQueryResult | null,
-  errorMessage?: string,
-): AgentRunPayload {
-  const filters = result?.evidence.filters_applied ?? {};
-  return {
-    run_id: runId,
-    status,
-    run_kind: "sync",
-    question,
-    provider: formatRuntimeLabel(filters.provider, "local"),
-    model: formatRuntimeLabel(filters.model, "default"),
-    transport: formatRuntimeLabel(filters.transport, "sync"),
-    toolsets: formatRuntimeLabel(filters.toolsets, "default"),
-    error_message: errorMessage,
-    result: result ?? null,
-  };
-}
-
-function buildPendingAgentRun(
-  runId: string,
-  question: string,
-  runKind: "workflow" | "sync",
-): AgentRunPayload {
-  return {
-    run_id: runId,
-    status: "starting",
-    run_kind: runKind,
-    question,
-    provider: "local",
-    model: runKind === "workflow" ? "MOSS intents" : "default",
-    transport: "sync",
-    toolsets: runKind === "workflow" ? "workflow" : "GitNexus",
-    result: null,
-  };
-}
-
-function normalizeStoredRepoPaths(paths: string[], limit: number) {
-  const normalizedPaths: string[] = [];
-  for (const path of paths) {
-    const normalized = path.trim();
-    if (!normalized || normalizedPaths.includes(normalized)) {
-      continue;
-    }
-    normalizedPaths.push(normalized);
-    if (normalizedPaths.length >= limit) {
-      break;
-    }
-  }
-  return normalizedPaths;
-}
-
-function loadStoredRepoPaths(storageKey: string, limit: number) {
-  if (typeof window === "undefined") {
-    return [] as string[];
-  }
-
-  try {
-    const raw = window.localStorage.getItem(storageKey);
-    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    return normalizeStoredRepoPaths(
-      parsed.filter((item): item is string => typeof item === "string"),
-      limit,
-    );
-  } catch {
-    return [];
-  }
-}
-
-function persistStoredRepoPaths(storageKey: string, paths: string[]) {
-  if (typeof window === "undefined") {
-    return;
-  }
-  window.localStorage.setItem(storageKey, JSON.stringify(paths));
-}
-
-function normalizeStoredConversationTurns(value: unknown): AgentConversationTurn[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .flatMap((item): AgentConversationTurn[] => {
-      if (!isRecord(item) || typeof item.id !== "string" || typeof item.question !== "string") {
-        return [];
-      }
-      const result = isAgentQueryResult(item.result) ? normalizeAgentResult(item.result) : null;
-      const agentRun = isAgentRunPayload(item.agentRun) ? normalizeAgentRunPayload(item.agentRun) : null;
-      const error = isAgentQueryError(item.error) ? item.error : null;
-      const conversationContext = isAgentConversationContext(item.conversationContext)
-        ? item.conversationContext
-        : undefined;
-      return [
-        {
-          id: item.id,
-          question: item.question,
-          conversationContext,
-          retryMode: item.retryMode === "ordinary" ? "ordinary" : undefined,
-          agentRun,
-          result,
-          error,
-          stopped: item.stopped === true,
-          activeSuggestedActionPayload: null,
-        },
-      ];
-    })
-    .slice(-MAX_AGENT_STORED_TURNS);
-}
-
-function loadStoredConversationTurns() {
-  if (typeof window === "undefined") {
-    return [] as AgentConversationTurn[];
-  }
-
-  try {
-    const raw = window.localStorage.getItem(AGENT_CONVERSATION_TURNS_KEY);
-    return normalizeStoredConversationTurns(raw ? (JSON.parse(raw) as unknown) : []);
-  } catch {
-    return [];
-  }
-}
-
-function serializeConversationTurn(turn: AgentConversationTurn) {
-  return {
-    id: turn.id,
-    question: turn.question,
-    ...(turn.conversationContext ? { conversationContext: turn.conversationContext } : {}),
-    ...(turn.retryMode ? { retryMode: turn.retryMode } : {}),
-    ...(turn.agentRun ? { agentRun: turn.agentRun } : {}),
-    ...(turn.result ? { result: turn.result } : {}),
-    ...(turn.error ? { error: turn.error } : {}),
-    ...(turn.stopped ? { stopped: true } : {}),
-  };
-}
-
-function persistStoredConversationTurns(turns: AgentConversationTurn[]) {
-  if (typeof window === "undefined") {
-    return;
-  }
-  const storedTurns = turns.slice(-MAX_AGENT_STORED_TURNS).map(serializeConversationTurn);
-  window.localStorage.setItem(AGENT_CONVERSATION_TURNS_KEY, JSON.stringify(storedTurns));
-}
-
-function loadLatestAgentRunId() {
-  if (typeof window === "undefined") {
-    return "";
-  }
-  return window.localStorage.getItem(LATEST_AGENT_RUN_ID_KEY)?.trim() ?? "";
-}
-
-function persistLatestAgentRunId(runId: string) {
-  if (typeof window === "undefined") {
-    return;
-  }
-  window.localStorage.setItem(LATEST_AGENT_RUN_ID_KEY, runId);
-}
-
-function clearLatestAgentRunId() {
-  if (typeof window === "undefined") {
-    return;
-  }
-  window.localStorage.removeItem(LATEST_AGENT_RUN_ID_KEY);
-}
-
-function loadComposerDraft() {
-  if (typeof window === "undefined") {
-    return "";
-  }
-  return window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY) ?? "";
-}
-
-function persistComposerDraft(draft: string) {
-  if (typeof window === "undefined") {
-    return;
-  }
-  if (!draft.trim()) {
-    window.localStorage.removeItem(AGENT_COMPOSER_DRAFT_KEY);
-    return;
-  }
-  window.localStorage.setItem(AGENT_COMPOSER_DRAFT_KEY, draft);
-}
-
-function clearComposerDraft() {
-  if (typeof window === "undefined") {
-    return;
-  }
-  window.localStorage.removeItem(AGENT_COMPOSER_DRAFT_KEY);
-}
-
-function normalizeQueuedQueries(value: unknown) {
-  if (!Array.isArray(value)) {
-    return [] as string[];
-  }
-  return value
-    .filter((item): item is string => typeof item === "string")
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .slice(0, MAX_AGENT_QUEUED_QUERIES);
-}
-
-function loadQueuedQueries() {
-  if (typeof window === "undefined") {
-    return [] as string[];
-  }
-
-  try {
-    const raw = window.localStorage.getItem(AGENT_QUEUED_QUERIES_KEY);
-    return normalizeQueuedQueries(raw ? (JSON.parse(raw) as unknown) : []);
-  } catch {
-    return [];
-  }
-}
-
-function persistQueuedQueries(queries: string[]) {
-  if (typeof window === "undefined") {
-    return;
-  }
-  const nextQueries = normalizeQueuedQueries(queries);
-  if (nextQueries.length === 0) {
-    window.localStorage.removeItem(AGENT_QUEUED_QUERIES_KEY);
-    return;
-  }
-  window.localStorage.setItem(AGENT_QUEUED_QUERIES_KEY, JSON.stringify(nextQueries));
-}
-
-function clearStoredQueuedQueries() {
-  if (typeof window === "undefined") {
-    return;
-  }
-  window.localStorage.removeItem(AGENT_QUEUED_QUERIES_KEY);
-}
-
-function isGitNexusCard(card: AgentResultCard) {
-  return card.title.startsWith("GitNexus ");
-}
-
-function isGitNexusResult(result: AgentQueryResult) {
-  return result.result_meta.result_kind === "agent.gitnexus_status";
-}
-
-function extractProcessNames(cards: AgentResultCard[]) {
-  const processCard = cards.find((card) => card.title === GITNEXUS_PROCESS_CARD_TITLE);
-  if (!processCard || !Array.isArray(processCard.data)) {
-    return [];
-  }
-  return processCard.data
-    .map((row) => (isRecord(row) && typeof row.name === "string" ? row.name : ""))
-    .filter((name) => name.trim().length > 0);
-}
-
-function buildFilters(question: string, repoPath: string, processName?: string) {
-  const filters: Record<string, string> = {};
-  if (repoPath.trim()) {
-    filters.repo_path = repoPath.trim();
-  }
-  if (
-    processName &&
-    processName.trim() &&
-    /gitnexus\s+process(?:\/|\s)/i.test(question) &&
-    !/gitnexus\s+processes/i.test(question)
-  ) {
-    filters.process_name = processName.trim();
-  }
-  return filters;
-}
-
-function loadRecentRepoPaths() {
-  return loadStoredRepoPaths(RECENT_REPO_PATHS_KEY, MAX_RECENT_REPO_PATHS);
-}
-
-function loadPinnedRepoPaths() {
-  return loadStoredRepoPaths(PINNED_REPO_PATHS_KEY, MAX_PINNED_REPO_PATHS);
-}
-
-function persistRecentRepoPaths(paths: string[]) {
-  persistStoredRepoPaths(RECENT_REPO_PATHS_KEY, paths);
-}
-
-function persistPinnedRepoPaths(paths: string[]) {
-  persistStoredRepoPaths(PINNED_REPO_PATHS_KEY, paths);
-}
-
-function rememberRepoPathValue(currentPaths: string[], nextPath: string, limit = MAX_RECENT_REPO_PATHS) {
-  const normalized = nextPath.trim();
-  if (!normalized) {
-    return currentPaths;
-  }
-  return normalizeStoredRepoPaths(
-    [normalized, ...currentPaths.filter((path) => path !== normalized)],
-    limit,
-  );
-}
-
-function pinRepoPathValue(currentPaths: string[], nextPath: string) {
-  return rememberRepoPathValue(currentPaths, nextPath, MAX_PINNED_REPO_PATHS);
-}
-
-function unpinRepoPathValue(currentPaths: string[], targetPath: string) {
-  return currentPaths.filter((path) => path !== targetPath);
-}
-
-function movePinnedRepoPathValue(
-  currentPaths: string[],
-  targetPath: string,
-  direction: "up" | "down",
-) {
-  const currentIndex = currentPaths.indexOf(targetPath);
-  if (currentIndex < 0) {
-    return currentPaths;
-  }
-
-  const nextIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
-  if (nextIndex < 0 || nextIndex >= currentPaths.length) {
-    return currentPaths;
-  }
-
-  const nextPaths = [...currentPaths];
-  [nextPaths[currentIndex], nextPaths[nextIndex]] = [nextPaths[nextIndex], nextPaths[currentIndex]];
-  return nextPaths;
-}
+import {
+  AGENT_STICKY_BOTTOM_THRESHOLD_PX,
+  AgentDisabledQueryError,
+  AgentRunCancelledError,
+  GITNEXUS_QUICK_EXAMPLES,
+  buildAgentRequestBody,
+  buildConversationContext,
+  buildErrorMessage,
+  buildFinancialWorkflowRequestBody,
+  buildLocalSyncAgentRun,
+  buildPendingAgentRun,
+  buildResearchRequestBody,
+  buildRuntimeStatus,
+  createAgentConversationTurn,
+  extractProcessNames,
+  findLatestTurnWithResult,
+  findLatestTurnWithRun,
+  formatAgentConnectionElapsed,
+  formatAgentRunElapsed,
+  formatAgentThinkingLabel,
+  formatAgentThinkingText,
+  formatAgentTurnWaitTitle,
+  formatAgentWaitHint,
+  formatAgentWaitPhase,
+  formatConversationContextBadge,
+  formatQueuedComposerHint,
+  formatRuntimeLabel,
+  getAgentApiErrorPayload,
+  getAgentApiErrorStatus,
+  getExecutableSuggestedIntent,
+  getLocalAgentQueryIntent,
+  getSuggestedActionConfirmationErrorMessage,
+  getSuggestedActionKey,
+  isAgentQueryResult,
+  isAgentRunPayload,
+  isCompactProviderChatTurn,
+  isLocalOpenChatQuestion,
+  normalizeAgentResult,
+  normalizeAgentRunPayload,
+  shouldDisplayAgentRunId,
+  shouldScrollComposerInputIntoView,
+  shouldUseLocalAnalysisConversation,
+} from "./lib/agentWorkbenchModel";
+import { getAgentScrollBehavior } from "./lib/agentMotion";
+import type {
+  AgentConversationTurn,
+  AgentCopyFeedback,
+  AgentNextDrill,
+  AgentOrdinaryConversationMode,
+  AgentQueryError,
+  AgentQueryResult,
+  AgentRunPayload,
+  AgentWorkbenchPageProps,
+  EmbeddedAgentCopilotProps,
+  FinancialWorkflowShortcut,
+  PendingSuggestedActionConfirmation,
+  ResearchShortcut,
+} from "./lib/agentWorkbenchModel";
+import { useAgentRunRestore } from "./hooks/useAgentRunRestore";
+import { useConversationPersistence } from "./hooks/useConversationPersistence";
 
 export function EmbeddedAgentCopilot({
   pageContext,
   variant = "workbench",
   showHeader,
-  readOnly = true,
+  readOnly = false,
   defaultQuestion = "",
 }: EmbeddedAgentCopilotProps = {}) {
+  const apiClient = useApiClient();
   const isEmbedded = variant === "embedded";
   const shouldPersistConversation = variant === "workbench";
   const resolvedShowHeader = showHeader ?? !isEmbedded;
-  const [recentRepoPaths, setRecentRepoPaths] = useState<string[]>(() => loadRecentRepoPaths());
-  const [pinnedRepoPaths, setPinnedRepoPaths] = useState<string[]>(() => loadPinnedRepoPaths());
-  const [query, setQuery] = useState(() =>
-    defaultQuestion || (variant === "workbench" ? loadComposerDraft() : ""),
-  );
-  const [conversationTurns, setConversationTurns] = useState<AgentConversationTurn[]>(() =>
-    shouldPersistConversation ? loadStoredConversationTurns() : [],
-  );
+  const {
+    recentRepoPaths,
+    pinnedRepoPaths,
+    query,
+    setQuery,
+    conversationTurns,
+    setConversationTurns,
+    queuedQueries,
+    setQueuedQueries,
+    initialRestoringRunId,
+    rememberRepoPath,
+    pinRepoPath,
+    unpinRepoPath,
+    movePinnedRepoPath: reorderPinnedRepoPath,
+    writeComposerDraft,
+    clearComposerDraftState,
+    clearQueuedQueries,
+    clearPersistedLatestRunId,
+    persistPersistedLatestRunId,
+    persistConversationTurnsNow,
+  } = useConversationPersistence({
+    shouldPersistConversation,
+    defaultQuestion,
+    variant,
+  });
   const [ordinaryConversationMode, setOrdinaryConversationMode] =
     useState<AgentOrdinaryConversationMode>("unknown");
-  const [repoPath, setRepoPath] = useState(() => loadRecentRepoPaths()[0] ?? "");
+  const [repoPath, setRepoPath] = useState(() => recentRepoPaths[0] ?? "");
   const [availableProcesses, setAvailableProcesses] = useState<string[]>([]);
   const [processSearch, setProcessSearch] = useState("");
   const [selectedProcess, setSelectedProcess] = useState("");
@@ -1414,13 +131,8 @@ export function EmbeddedAgentCopilot({
   const [result, setResult] = useState<AgentQueryResult | null>(null);
   const [agentRun, setAgentRun] = useState<AgentRunPayload | null>(null);
   const [error, setError] = useState<AgentQueryError | null>(null);
-  const [restoringRunId, setRestoringRunId] = useState(() =>
-    shouldPersistConversation ? loadLatestAgentRunId() : "",
-  );
+  const [restoringRunId, setRestoringRunId] = useState(initialRestoringRunId);
   const [restoreErrorRunId, setRestoreErrorRunId] = useState("");
-  const [queuedQueries, setQueuedQueries] = useState<string[]>(() =>
-    shouldPersistConversation ? loadQueuedQueries() : [],
-  );
   const [pageContextChangeNotice, setPageContextChangeNotice] = useState(false);
   const [composerAssistHint, setComposerAssistHint] = useState<string | null>(null);
   const [pendingSuggestedActionConfirmation, setPendingSuggestedActionConfirmation] =
@@ -1428,6 +140,7 @@ export function EmbeddedAgentCopilot({
   const repoPathRef = useRef(repoPath);
   const conversationRef = useRef<HTMLElement | null>(null);
   const conversationBottomRef = useRef<HTMLDivElement | null>(null);
+  const composerDockRef = useRef<HTMLDivElement | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const pageContextSummaryRef = useRef(pageContext ? formatPageContextSummary(pageContext) : "");
   const lastAppliedDefaultQuestionRef = useRef(defaultQuestion.trim());
@@ -1441,8 +154,9 @@ export function EmbeddedAgentCopilot({
   const shouldStickConversationToBottomRef = useRef(true);
   const stopActiveAgentTurnRef = useRef<() => void>(() => undefined);
   const submitQueuedQueryRef = useRef<(question: string) => Promise<void>>(async () => undefined);
+  const activeManagedRunAbortRef = useRef<AbortController | null>(null);
+  const activeManagedRunIdRef = useRef("");
   const [copyFeedback, setCopyFeedback] = useState<AgentCopyFeedback | null>(null);
-  const isNarrowAgentViewport = useAgentNarrowViewport();
   const deferredProcessSearch = useDeferredValue(processSearch);
   const filteredProcesses = availableProcesses.filter((processName) =>
     processName.toLowerCase().includes(deferredProcessSearch.trim().toLowerCase()),
@@ -1494,36 +208,8 @@ export function EmbeddedAgentCopilot({
     );
   }
 
-  function rememberRepoPath(nextRepoPath: string) {
-    setRecentRepoPaths((currentPaths) => {
-      const nextPaths = rememberRepoPathValue(currentPaths, nextRepoPath);
-      persistRecentRepoPaths(nextPaths);
-      return nextPaths;
-    });
-  }
-
-  function pinRepoPath(nextRepoPath: string) {
-    setPinnedRepoPaths((currentPaths) => {
-      const nextPaths = pinRepoPathValue(currentPaths, nextRepoPath);
-      persistPinnedRepoPaths(nextPaths);
-      return nextPaths;
-    });
-  }
-
-  function unpinRepoPath(path: string) {
-    setPinnedRepoPaths((currentPaths) => {
-      const nextPaths = unpinRepoPathValue(currentPaths, path);
-      persistPinnedRepoPaths(nextPaths);
-      return nextPaths;
-    });
-  }
-
   function movePinnedRepoPath(path: string, direction: "up" | "down") {
-    setPinnedRepoPaths((currentPaths) => {
-      const nextPaths = movePinnedRepoPathValue(currentPaths, path, direction);
-      persistPinnedRepoPaths(nextPaths);
-      return nextPaths;
-    });
+    reorderPinnedRepoPath(path, direction);
     setComposerAssistHint("已调整固定仓库顺序 · 可继续提问");
     shouldFocusComposerRef.current = true;
     window.setTimeout(focusComposerInput, 0);
@@ -1591,7 +277,7 @@ export function EmbeddedAgentCopilot({
     });
     const scrollIntoView = input.scrollIntoView;
     if (typeof scrollIntoView === "function" && shouldScrollComposerInputIntoView(input)) {
-      scrollIntoView.call(input, { behavior: "smooth", block: "nearest" });
+      scrollIntoView.call(input, { behavior: getAgentScrollBehavior(), block: "nearest" });
     }
   }, [closeResultInteractionDetails, moveComposerCursorToEnd]);
 
@@ -1599,34 +285,42 @@ export function EmbeddedAgentCopilot({
     const bottom = conversationBottomRef.current;
     const scrollIntoView = bottom?.scrollIntoView;
     if (typeof scrollIntoView === "function") {
-      scrollIntoView.call(bottom, { behavior: "smooth", block: "end" });
+      scrollIntoView.call(bottom, { behavior: getAgentScrollBehavior(), block: "end" });
     }
   }
 
   function syncConversationStickiness() {
-    const conversation = conversationRef.current;
-    if (!conversation) {
+    const conversationBottom = conversationBottomRef.current;
+    if (!conversationBottom) {
       shouldStickConversationToBottomRef.current = true;
       return;
     }
-    const distanceFromBottom = conversation.scrollHeight - conversation.scrollTop - conversation.clientHeight;
-    shouldStickConversationToBottomRef.current = distanceFromBottom <= AGENT_STICKY_BOTTOM_THRESHOLD_PX;
+
+    const visualViewport = window.visualViewport;
+    const viewportTop = visualViewport?.offsetTop ?? 0;
+    const viewportHeight =
+      visualViewport?.height ?? window.innerHeight ?? document.documentElement.clientHeight;
+    const viewportBottom = viewportTop + viewportHeight;
+    const composerRect = composerDockRef.current?.getBoundingClientRect();
+    const composerIsVisible = Boolean(
+      composerRect && composerRect.bottom > viewportTop && composerRect.top < viewportBottom,
+    );
+    const readableBottom = composerIsVisible
+      ? Math.max(viewportTop, composerRect?.top ?? viewportBottom)
+      : viewportBottom;
+    const distanceFromBottom = conversationBottom.getBoundingClientRect().bottom - readableBottom;
+    shouldStickConversationToBottomRef.current =
+      Math.abs(distanceFromBottom) <= AGENT_STICKY_BOTTOM_THRESHOLD_PX;
   }
 
   function updateComposerQuery(nextQuery: string) {
     setComposerAssistHint(null);
-    setQuery(nextQuery);
-    if (shouldPersistConversation) {
-      persistComposerDraft(nextQuery);
-    }
+    writeComposerDraft(nextQuery);
   }
 
   function clearComposerQuery() {
     setComposerAssistHint(null);
-    setQuery("");
-    if (shouldPersistConversation) {
-      clearComposerDraft();
-    }
+    clearComposerDraftState();
   }
 
   function clearComposerQueryFromButton() {
@@ -1641,13 +335,6 @@ export function EmbeddedAgentCopilot({
       !latestConversationTurn.error &&
       !latestConversationTurn.stopped,
   );
-
-  function clearQueuedQueries() {
-    setQueuedQueries([]);
-    if (shouldPersistConversation) {
-      clearStoredQueuedQueries();
-    }
-  }
 
   function cancelQueuedQuery() {
     setQueuedQueries((currentQueries) => currentQueries.slice(1));
@@ -1688,21 +375,7 @@ export function EmbeddedAgentCopilot({
     lastAppliedDefaultQuestionRef.current = nextDefaultQuestion;
     setQuery(nextDefaultQuestion);
     focusComposerInput();
-  }, [defaultQuestion, focusComposerInput, query, shouldPersistConversation]);
-
-  useEffect(() => {
-    if (!shouldPersistConversation) {
-      return;
-    }
-    persistStoredConversationTurns(conversationTurns);
-  }, [conversationTurns, shouldPersistConversation]);
-
-  useEffect(() => {
-    if (!shouldPersistConversation) {
-      return;
-    }
-    persistQueuedQueries(queuedQueries);
-  }, [queuedQueries, shouldPersistConversation]);
+  }, [defaultQuestion, focusComposerInput, query, setQuery, shouldPersistConversation]);
 
   useEffect(() => {
     const nextPageContextSummary = pageContext ? formatPageContextSummary(pageContext) : "";
@@ -1756,14 +429,12 @@ export function EmbeddedAgentCopilot({
   ]);
 
   useEffect(() => {
-    const conversation = conversationRef.current;
-    if (!conversation) {
+    if (!conversationRef.current) {
       shouldStickConversationToBottomRef.current = true;
       return;
     }
-    syncConversationStickiness();
-    conversation.addEventListener("scroll", syncConversationStickiness, { passive: true });
-    return () => conversation.removeEventListener("scroll", syncConversationStickiness);
+    document.addEventListener("scroll", syncConversationStickiness, { capture: true, passive: true });
+    return () => document.removeEventListener("scroll", syncConversationStickiness, true);
   }, [hasConversation]);
 
   useEffect(() => {
@@ -1782,146 +453,105 @@ export function EmbeddedAgentCopilot({
   ]);
 
   useEffect(() => {
-    if (!shouldPersistConversation) {
-      return;
-    }
-    const latestRunId = loadLatestAgentRunId();
-    if (!latestRunId) {
-      return;
-    }
-
-    let cancelled = false;
-    const restoreSession = currentConversationSession();
-    setRestoringRunId(latestRunId);
-    let restoreRequest = latestAgentRunStatusRequests.get(latestRunId);
-    if (!restoreRequest) {
-      restoreRequest = fetchAgentRunStatus(latestRunId).finally(() => {
-        latestAgentRunStatusRequests.delete(latestRunId);
-      });
-      latestAgentRunStatusRequests.set(latestRunId, restoreRequest);
-    }
-    void restoreRequest
-      .then((payload) =>
-        runPollingTask<AgentRunPayload>({
-          start: async () => payload,
-          getStatus: fetchAgentRunStatus,
-          getIntervalMs: getAgentRunPollIntervalMs,
-          maxAttempts: AGENT_RUN_POLL_MAX_ATTEMPTS,
-          onUpdate: (nextPayload) => {
-            if (cancelled || !isCurrentConversationSession(restoreSession)) {
-              return;
-            }
-            setOrdinaryConversationMode("managed");
-            setAgentRun(nextPayload);
-            setConversationTurns((currentTurns) => mergeRestoredManagedTurn(currentTurns, nextPayload));
-          },
-        }),
-      )
-      .then((payload) => {
-        if (cancelled || !isCurrentConversationSession(restoreSession)) {
-          return;
-        }
-        setRestoringRunId("");
-        setRestoreErrorRunId("");
-        setOrdinaryConversationMode("managed");
-        setAgentRun(payload);
-        setConversationTurns((currentTurns) => mergeRestoredManagedTurn(currentTurns, payload));
-        if (payload.status === "completed" && payload.result) {
-          setResult(payload.result);
-        }
-        if (payload.status === "failed") {
-          setError({
-            kind: "request",
-            message: payload.error_message || formatManagedRunFailureMessage(payload.provider),
-          });
-        }
-      })
-      .catch(() => {
-        if (cancelled || !isCurrentConversationSession(restoreSession)) {
-          return;
-        }
-        setRestoringRunId("");
-        setRestoreErrorRunId(latestRunId);
-        clearLatestAgentRunId();
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [shouldPersistConversation]);
-
-  useEffect(() => {
     return () => {
       if (copyFeedbackTimerRef.current !== null) {
         window.clearTimeout(copyFeedbackTimerRef.current);
       }
+      // 卸载时只中止前端等待（SSE/轮询），不取消后端 run：刷新或路由切换后仍可恢复。
+      activeManagedRunAbortRef.current?.abort();
     };
   }, []);
 
+  function requestBackendRunCancel(runId: string) {
+    if (!runId.trim()) {
+      return;
+    }
+    void apiClient.cancelAgentRun(runId).catch(() => undefined);
+  }
+
   async function fetchAgentRunStatus(runId: string): Promise<AgentRunPayload> {
-    const response = await fetch(`/api/agent/runs/${encodeURIComponent(runId)}`, {
-      method: "GET",
-    });
-    const payload = (await response.json()) as unknown;
-    if (!response.ok) {
-      throw new Error(`智能体任务状态获取失败（${response.status}）`);
+    let payload: unknown;
+    try {
+      payload = await apiClient.getAgentRun(runId);
+    } catch (requestError) {
+      const status = getAgentApiErrorStatus(requestError);
+      if (status !== null) {
+        throw new Error(`智能体任务状态获取失败（${status}）`);
+      }
+      throw requestError;
     }
     if (!isAgentRunPayload(payload)) {
       throw new Error("智能体返回结果格式无效。");
     }
     return normalizeAgentRunPayload(payload);
   }
+
+  useAgentRunRestore({
+    shouldPersistConversation,
+    currentConversationSession,
+    isCurrentConversationSession,
+    fetchAgentRunStatus,
+    setRestoringRunId,
+    setRestoreErrorRunId,
+    setOrdinaryConversationMode,
+    setAgentRun,
+    setConversationTurns,
+    setResult,
+    setError,
+  });
 
   async function createAgentRun(requestBody: AgentQueryRequest): Promise<AgentRunPayload> {
-    const response = await fetch("/api/agent/runs", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestBody),
-    });
-    const payload = (await response.json()) as unknown;
-
-    if (response.status === 503 && isDisabledPayload(payload)) {
-      throw new AgentDisabledQueryError(payload.detail, payload.phase);
+    let payload: unknown;
+    try {
+      payload = await apiClient.createAgentRun(requestBody);
+    } catch (requestError) {
+      if (requestError instanceof AgentDisabledError) {
+        throw new AgentDisabledQueryError(requestError.message, requestError.phase);
+      }
+      const status = getAgentApiErrorStatus(requestError);
+      if (status !== null) {
+        throw new Error(`智能体查询失败（${status}）`);
+      }
+      throw requestError;
     }
 
-    const managedRunRequiresHermesDetail = response.status === 400 ? getManagedRunRequiresHermesDetail(payload) : null;
-    if (managedRunRequiresHermesDetail) {
-      throw new AgentManagedRunRequiresHermesError(managedRunRequiresHermesDetail);
-    }
-
-    if (!response.ok) {
-      throw new Error(`智能体查询失败（${response.status}）`);
-    }
-
-    if (isAgentQueryResult(payload)) {
-      const result = normalizeAgentResult(payload);
-      return {
-        run_id: "agent_run:sync_compat",
-        status: "completed",
-        run_kind: "sync",
-        provider: formatRuntimeLabel(result.evidence.filters_applied.provider, "managed"),
-        model: formatRuntimeLabel(result.evidence.filters_applied.model, "default"),
-        transport: formatRuntimeLabel(result.evidence.filters_applied.transport, "bridge"),
-        toolsets: formatRuntimeLabel(result.evidence.filters_applied.toolsets, "default"),
-        result,
-      };
-    }
-
+    // 后端 POST /api/agent/runs 已收窄为仅返回排队回执（不再同步短路返回 AgentEnvelope）；
+    // demo 桩返回的终态 run payload（含 result）同样满足该守卫。
     if (!isAgentRunPayload(payload)) {
       throw new Error("智能体返回结果格式无效。");
     }
 
     return normalizeAgentRunPayload(payload);
   }
-
+  async function queryAgentResult(requestBody: AgentQueryRequest): Promise<AgentQueryResult> {
+    try {
+      const payload = await apiClient.queryAgent(requestBody);
+      if (!isAgentQueryResult(payload)) {
+        throw new Error("智能体返回结果格式无效。");
+      }
+      return normalizeAgentResult(payload);
+    } catch (requestError) {
+      if (requestError instanceof AgentDisabledError) {
+        throw new AgentDisabledQueryError(requestError.message, requestError.phase);
+      }
+      const status = getAgentApiErrorStatus(requestError);
+      const confirmationErrorMessage = getSuggestedActionConfirmationErrorMessage(
+        status,
+        getAgentApiErrorPayload(requestError),
+      );
+      if (confirmationErrorMessage) {
+        throw new Error(confirmationErrorMessage);
+      }
+      if (status !== null) {
+        throw new Error(`智能体查询失败（${status}）`);
+      }
+      throw requestError;
+    }
+  }
   async function executeManagedAgentRun(
     question: string,
     turnId: string,
     conversationContext?: AgentConversationContext,
-    options?: {
-      rethrowLocalProviderFallback?: boolean;
-    },
   ) {
     const normalizedRepoPath = repoPath.trim();
     const requestVersion = beginProcessStateRequest();
@@ -1932,36 +562,48 @@ export function EmbeddedAgentCopilot({
       conversationContext,
       pageContext,
     );
+    const abortController = new AbortController();
+    // 回合提交门与 GitNexus 进程列表提交门解耦：run 进行中编辑仓库路径、点最近仓库、
+    // 点"读取流程"只会使进程列表请求失效，不能丢弃本回合的终态结果/错误提交。
+    // 回合提交只看停止信号（abort）与会话版本（新对话/新提问会重置会话）。
+    const conversationSession = currentConversationSession();
+    const canCommitTurnState = () =>
+      !abortController.signal.aborted && isCurrentConversationSession(conversationSession);
+    activeManagedRunAbortRef.current = abortController;
+    activeManagedRunIdRef.current = "";
     setAgentRun(null);
     setResult(null);
     try {
-      const finalPayload = await runPollingTask<AgentRunPayload>({
-        start: async () => {
-          const payload = await createAgentRun(requestBody);
-          if (!canCommitProcessState(requestVersion, normalizedRepoPath)) {
-            return payload;
-          }
-          setOrdinaryConversationMode("managed");
-          setAgentRun(payload);
-          setConversationTurns((currentTurns) => {
-            const nextTurns = currentTurns.map((turn) => (turn.id === turnId ? { ...turn, agentRun: payload } : turn));
-            if (shouldPersistConversation) {
-              persistStoredConversationTurns(nextTurns);
+      const finalPayload = await runManagedAgentPolling({
+        requestBody,
+        createAgentRun: async (body: AgentQueryRequest) => {
+          const payload = await createAgentRun(body);
+          if (payload.run_kind !== "sync") {
+            if (abortController.signal.aborted) {
+              // 用户在 run 建立前就点了停止：拿到 run_id 后立即请求后端取消。
+              requestBackendRunCancel(payload.run_id);
+            } else {
+              activeManagedRunIdRef.current = payload.run_id;
             }
-            return nextTurns;
-          });
-          if (shouldPersistConversation) {
-            persistLatestAgentRunId(payload.run_id);
           }
           return payload;
         },
-        getStatus: fetchAgentRunStatus,
-        getIntervalMs: getAgentRunPollIntervalMs,
-        maxAttempts: AGENT_RUN_POLL_MAX_ATTEMPTS,
-        onUpdate: (payload) => {
-          if (!canCommitProcessState(requestVersion, normalizedRepoPath)) {
-            return;
-          }
+        fetchAgentRunStatus,
+        canCommit: canCommitTurnState,
+        signal: abortController.signal,
+        onRunAccepted: (payload, runRequestLatencyMs) => {
+          setOrdinaryConversationMode("managed");
+          setAgentRun(payload);
+          // 持久化交给 useConversationPersistence 的 write-through effect；
+          // 不在 state 更新器内执行副作用（StrictMode/并发渲染下更新器可能重放）。
+          setConversationTurns((currentTurns) =>
+            currentTurns.map((turn) =>
+              turn.id === turnId ? { ...turn, agentRun: payload, runRequestLatencyMs } : turn,
+            ),
+          );
+          persistPersistedLatestRunId(payload.run_id);
+        },
+        onRunUpdate: (payload) => {
           setOrdinaryConversationMode("managed");
           setAgentRun(payload);
           updateConversationTurn(turnId, (turn) => ({
@@ -1971,21 +613,14 @@ export function EmbeddedAgentCopilot({
         },
       });
 
-      if (finalPayload.status === "failed") {
-        throw new Error(finalPayload.error_message || formatManagedRunFailureMessage(finalPayload.provider));
-      }
-
-      if (!finalPayload.result) {
-        throw new Error("智能体任务完成但未返回结果。");
-      }
-
-      if (!canCommitProcessState(requestVersion, normalizedRepoPath)) {
+      if (!canCommitTurnState()) {
         return;
       }
 
       const payload = finalPayload.result;
       const nextProcesses = extractProcessNames(payload.cards);
-      if (nextProcesses.length > 0) {
+      // 进程列表仍受 processState 门约束：仓库路径已改或已有新的进程请求时不覆盖列表。
+      if (nextProcesses.length > 0 && canCommitProcessState(requestVersion, normalizedRepoPath)) {
         setAvailableProcesses(nextProcesses);
         setSelectedProcess((current) => (current && nextProcesses.includes(current) ? current : nextProcesses[0] ?? ""));
       }
@@ -2004,13 +639,26 @@ export function EmbeddedAgentCopilot({
       shouldFocusComposerRef.current = true;
       window.setTimeout(focusComposerInput, 0);
     } catch (requestError) {
-      if (
-        requestError instanceof AgentManagedRunRequiresHermesError &&
-        options?.rethrowLocalProviderFallback
-      ) {
-        throw requestError;
+      if (isAbortError(requestError)) {
+        return;
       }
-      if (canCommitProcessState(requestVersion, normalizedRepoPath)) {
+      if (requestError instanceof AgentRunCancelledError) {
+        if (canCommitTurnState()) {
+          const cancelledRun = requestError.payload;
+          setAgentRun(cancelledRun);
+          updateConversationTurn(turnId, (turn) => ({
+            ...turn,
+            agentRun: cancelledRun,
+            result: null,
+            error: null,
+            activeSuggestedActionPayload: null,
+          }));
+          shouldFocusComposerRef.current = true;
+          window.setTimeout(focusComposerInput, 0);
+        }
+        return;
+      }
+      if (canCommitTurnState()) {
         if (requestError instanceof AgentDisabledQueryError) {
           const disabledError: AgentQueryError = {
             kind: "disabled",
@@ -2031,6 +679,11 @@ export function EmbeddedAgentCopilot({
         updateConversationTurn(turnId, (turn) => ({ ...turn, error: nextError }));
         shouldFocusComposerRef.current = true;
         window.setTimeout(focusComposerInput, 0);
+      }
+    } finally {
+      if (activeManagedRunAbortRef.current === abortController) {
+        activeManagedRunAbortRef.current = null;
+        activeManagedRunIdRef.current = "";
       }
     }
   }
@@ -2054,40 +707,7 @@ export function EmbeddedAgentCopilot({
         contextPatch,
       );
 
-      const response = await fetch("/api/agent/query", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      const payload = (await response.json()) as unknown;
-
-      if (response.status === 503 && isDisabledPayload(payload)) {
-        if (!canCommitProcessState(requestVersion, normalizedRepoPath)) {
-          return;
-        }
-        const disabledError: AgentQueryError = {
-          kind: "disabled",
-          detail: payload.detail,
-          phase: payload.phase,
-        };
-        setError(disabledError);
-        if (turnId) {
-          updateConversationTurn(turnId, (turn) => ({ ...turn, error: disabledError }));
-        }
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error(`智能体查询失败（${response.status}）`);
-      }
-
-      if (!isAgentQueryResult(payload)) {
-        throw new Error("智能体返回结果格式无效。");
-      }
-      normalizeAgentResult(payload);
+      const payload = await queryAgentResult(requestBody);
 
       const nextProcesses = extractProcessNames(payload.cards);
       if (nextProcesses.length > 0 && canCommitProcessState(requestVersion, normalizedRepoPath)) {
@@ -2106,6 +726,21 @@ export function EmbeddedAgentCopilot({
       }
       return payload;
     } catch (requestError) {
+      if (requestError instanceof AgentDisabledQueryError) {
+        if (!canCommitProcessState(requestVersion, normalizedRepoPath)) {
+          return undefined;
+        }
+        const disabledError: AgentQueryError = {
+          kind: "disabled",
+          detail: requestError.detail,
+          phase: requestError.phase,
+        };
+        setError(disabledError);
+        if (turnId) {
+          updateConversationTurn(turnId, (turn) => ({ ...turn, error: disabledError }));
+        }
+        return undefined;
+      }
       if (canCommitProcessState(requestVersion, normalizedRepoPath)) {
         const nextError: AgentQueryError = {
           kind: "request",
@@ -2204,6 +839,17 @@ export function EmbeddedAgentCopilot({
     turnId: string,
     conversationContext?: AgentConversationContext,
   ) {
+    if (isLocalOpenChatQuestion(question)) {
+      await executeLocalSyncConversation(question, turnId, conversationContext);
+      return;
+    }
+    const localQueryIntent = getLocalAgentQueryIntent(question);
+    if (localQueryIntent) {
+      await executeLocalSyncConversation(question, turnId, conversationContext, {
+        intent: localQueryIntent,
+      });
+      return;
+    }
     if (shouldUseLocalAnalysisConversation(question, conversationContext)) {
       await executeLocalSyncConversation(question, turnId, conversationContext);
       return;
@@ -2217,17 +863,7 @@ export function EmbeddedAgentCopilot({
       return;
     }
 
-    try {
-      await executeManagedAgentRun(question, turnId, conversationContext, {
-        rethrowLocalProviderFallback: true,
-      });
-    } catch (requestError) {
-      if (requestError instanceof AgentManagedRunRequiresHermesError) {
-        await executeLocalSyncConversation(question, turnId, conversationContext);
-        return;
-      }
-      throw requestError;
-    }
+    await executeManagedAgentRun(question, turnId, conversationContext);
   }
 
   function canRetryAgentTurn(turn: AgentConversationTurn) {
@@ -2291,6 +927,15 @@ export function EmbeddedAgentCopilot({
       return;
     }
 
+    const activeAbortController = activeManagedRunAbortRef.current;
+    const activeManagedRunId = activeManagedRunIdRef.current;
+    activeManagedRunAbortRef.current = null;
+    activeManagedRunIdRef.current = "";
+    activeAbortController?.abort();
+    if (activeManagedRunId) {
+      requestBackendRunCancel(activeManagedRunId);
+    }
+
     invalidateActiveRequest();
     setLoading(false);
     setAgentWaitSeconds(0);
@@ -2309,10 +954,10 @@ export function EmbeddedAgentCopilot({
     if (restoredQueryToComposer) {
       setComposerAssistHint("已恢复到输入框 · 可编辑后重新发送");
     } else if (query.trim()) {
-      setComposerAssistHint("已停止回答 · 可继续发送当前输入");
+      setComposerAssistHint("已停止等待 · 可继续发送当前输入");
     }
     if (shouldPersistConversation) {
-      clearLatestAgentRunId();
+      clearPersistedLatestRunId();
     }
     shouldFocusComposerRef.current = true;
     updateConversationTurn(latestConversationTurn.id, (turn) => ({
@@ -2334,11 +979,17 @@ export function EmbeddedAgentCopilot({
       if (event.key !== "Escape" || event.isComposing) {
         return;
       }
+      if (isEmbedded) {
+        // 嵌入态回答中：Escape 只停止当前回答，拦截住不让宿主抽屉同时关闭；
+        // 停止后（loading=false）监听被移除，再按 Escape 才走宿主的关闭逻辑。
+        event.stopPropagation();
+      }
       stopActiveAgentTurnRef.current();
     }
-    window.addEventListener("keydown", handleEscapeStop);
-    return () => window.removeEventListener("keydown", handleEscapeStop);
-  }, [loading]);
+    // capture 阶段注册，才能抢在宿主（antd Drawer 等）的 Escape 处理之前拦截。
+    window.addEventListener("keydown", handleEscapeStop, { capture: isEmbedded });
+    return () => window.removeEventListener("keydown", handleEscapeStop, { capture: isEmbedded });
+  }, [loading, isEmbedded]);
 
   async function handleSubmit(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
@@ -2363,7 +1014,7 @@ export function EmbeddedAgentCopilot({
     resetConversationSession();
     invalidateActiveRequest();
     if (shouldPersistConversation) {
-      clearLatestAgentRunId();
+      clearPersistedLatestRunId();
     }
     if (isEmbedded) {
       setPageContextChangeNotice(false);
@@ -2431,7 +1082,7 @@ export function EmbeddedAgentCopilot({
     const nextQueuedQuery = queuedQuery.trim();
     setQueuedQueries((currentQueries) => currentQueries.slice(1));
     void submitQueuedQueryRef.current(nextQueuedQuery);
-  }, [latestConversationTurnIsUnresolved, loading, queuedQuery]);
+  }, [latestConversationTurnIsUnresolved, loading, queuedQuery, setQueuedQueries]);
 
   async function executeFinancialWorkflow(workflow: FinancialWorkflowShortcut) {
     if (loading) {
@@ -2461,37 +1112,7 @@ export function EmbeddedAgentCopilot({
     shouldFocusComposerRef.current = true;
 
     try {
-      const response = await fetch("/api/agent/query", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(buildFinancialWorkflowRequestBody(workflow, pageContext)),
-      });
-      const payload = (await response.json()) as unknown;
-
-      if (response.status === 503 && isDisabledPayload(payload)) {
-        const disabledError: AgentQueryError = {
-          kind: "disabled",
-          detail: payload.detail,
-          phase: payload.phase,
-        };
-        setError(disabledError);
-        updateConversationTurn(turn.id, (currentTurn) => ({ ...currentTurn, error: disabledError }));
-        setComposerAssistHint("Workflow 执行失败 · 可重新点击或手动提问");
-        shouldFocusComposerRef.current = true;
-        window.setTimeout(focusComposerInput, 0);
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error(`智能体查询失败（${response.status}）`);
-      }
-
-      if (!isAgentQueryResult(payload)) {
-        throw new Error("智能体返回结果格式无效。");
-      }
-      normalizeAgentResult(payload);
+      const payload = await queryAgentResult(buildFinancialWorkflowRequestBody(workflow, pageContext));
 
       const workflowRun: AgentRunPayload = {
         run_id: `agent_run:workflow:${workflow.id}`,
@@ -2517,6 +1138,19 @@ export function EmbeddedAgentCopilot({
       shouldFocusComposerRef.current = true;
       window.setTimeout(focusComposerInput, 0);
     } catch (requestError) {
+      if (requestError instanceof AgentDisabledQueryError) {
+        const disabledError: AgentQueryError = {
+          kind: "disabled",
+          detail: requestError.detail,
+          phase: requestError.phase,
+        };
+        setError(disabledError);
+        updateConversationTurn(turn.id, (currentTurn) => ({ ...currentTurn, error: disabledError }));
+        setComposerAssistHint("Workflow 执行失败 · 可重新点击或手动提问");
+        shouldFocusComposerRef.current = true;
+        window.setTimeout(focusComposerInput, 0);
+        return;
+      }
       const nextError: AgentQueryError = {
         kind: "request",
         message: buildErrorMessage(requestError),
@@ -2559,37 +1193,7 @@ export function EmbeddedAgentCopilot({
     shouldFocusComposerRef.current = true;
 
     try {
-      const response = await fetch("/api/agent/query", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(buildResearchRequestBody(shortcut, pageContext)),
-      });
-      const payload = (await response.json()) as unknown;
-
-      if (response.status === 503 && isDisabledPayload(payload)) {
-        const disabledError: AgentQueryError = {
-          kind: "disabled",
-          detail: payload.detail,
-          phase: payload.phase,
-        };
-        setError(disabledError);
-        updateConversationTurn(turn.id, (currentTurn) => ({ ...currentTurn, error: disabledError }));
-        setComposerAssistHint("研究快捷入口失败 · 可重新点击或手动提问");
-        shouldFocusComposerRef.current = true;
-        window.setTimeout(focusComposerInput, 0);
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error(`智能体查询失败（${response.status}）`);
-      }
-
-      if (!isAgentQueryResult(payload)) {
-        throw new Error("智能体返回结果格式无效。");
-      }
-      normalizeAgentResult(payload);
+      const payload = await queryAgentResult(buildResearchRequestBody(shortcut, pageContext));
 
       const researchRun: AgentRunPayload = {
         run_id: `agent_run:research:${shortcut.id}`,
@@ -2616,6 +1220,19 @@ export function EmbeddedAgentCopilot({
       shouldFocusComposerRef.current = true;
       window.setTimeout(focusComposerInput, 0);
     } catch (requestError) {
+      if (requestError instanceof AgentDisabledQueryError) {
+        const disabledError: AgentQueryError = {
+          kind: "disabled",
+          detail: requestError.detail,
+          phase: requestError.phase,
+        };
+        setError(disabledError);
+        updateConversationTurn(turn.id, (currentTurn) => ({ ...currentTurn, error: disabledError }));
+        setComposerAssistHint("研究快捷入口失败 · 可重新点击或手动提问");
+        shouldFocusComposerRef.current = true;
+        window.setTimeout(focusComposerInput, 0);
+        return;
+      }
       const nextError: AgentQueryError = {
         kind: "request",
         message: buildErrorMessage(requestError),
@@ -2661,23 +1278,7 @@ export function EmbeddedAgentCopilot({
         ...(pageContext ? { page_context: pageContext } : {}),
       };
 
-      const response = await fetch("/api/agent/query", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      const payload = (await response.json()) as unknown;
-      if (!response.ok || !isAgentQueryResult(payload)) {
-        throw new Error(
-          !response.ok
-            ? `智能体查询失败（${response.status}）`
-            : "智能体返回结果格式无效。",
-        );
-      }
-      normalizeAgentResult(payload);
+      const payload = await queryAgentResult(requestBody);
 
       const nextProcesses = extractProcessNames(payload.cards);
       if (canCommitProcessState(activeRequestVersion, normalizedRepoPath)) {
@@ -2722,9 +1323,9 @@ export function EmbeddedAgentCopilot({
         focusComposerInput();
       }
     } finally {
-      if (processStateRequestVersionRef.current === activeRequestVersion) {
-        setProcessLoading(false);
-      }
+      // 无条件复位：读取期间任何提问/新的进程请求都会 bump 版本号，
+      // 若仅在版本未变时复位，"读取流程"按钮会永久卡在"读取中..."。
+      setProcessLoading(false);
     }
   }
 
@@ -2822,11 +1423,8 @@ export function EmbeddedAgentCopilot({
     clearQueuedQueries();
     clearComposerQuery();
     setComposerAssistHint("已开启新对话 · 可以直接提问");
-    if (shouldPersistConversation) {
-      clearLatestAgentRunId();
-      persistStoredConversationTurns([]);
-      clearStoredQueuedQueries();
-    }
+    clearPersistedLatestRunId();
+    persistConversationTurnsNow([]);
     shouldFocusComposerRef.current = true;
     window.setTimeout(focusComposerInput, 0);
   }
@@ -2870,12 +1468,22 @@ export function EmbeddedAgentCopilot({
     window.setTimeout(focusComposerInput, 0);
   }
 
+  function applyNextDrill(drill: AgentNextDrill, sourceElement?: HTMLElement) {
+    setPendingSuggestedActionConfirmation(null);
+    closeResultInteractionDetails(sourceElement);
+    replaceComposerQuery(`请基于当前 evidence 继续下钻：${drill.label}`);
+    setComposerAssistHint("已填入建议追问 · Enter 发送");
+  }
+
   function handleSuggestedAction(turnId: string, action: AgentSuggestedAction, sourceElement?: HTMLElement) {
     if (action.type === "inspect_drill" || action.type === "refine_query") {
       setPendingSuggestedActionConfirmation(null);
       closeResultInteractionDetails(sourceElement);
       replaceComposerQuery(`请基于当前 evidence 继续下钻：${action.label}`);
       setComposerAssistHint("已填入建议追问 · Enter 发送");
+      return;
+    }
+    if (readOnly && action.type === "execute_intent") {
       return;
     }
     const intent = getExecutableSuggestedIntent(action);
@@ -2984,421 +1592,6 @@ export function EmbeddedAgentCopilot({
     return !loading || isLatestLoadingTurn;
   }
 
-  function renderFinancialWorkflowPanel() {
-    return (
-      <section className="agent-financial-workflows" aria-label="金融工作流">
-        <div className="agent-financial-workflows__header">
-          <div>
-            <div className="agent-financial-workflows__eyebrow">金融工作流</div>
-            <h2>本地 MOSS intents 快捷入口</h2>
-          </div>
-          <span>不接外部数据</span>
-        </div>
-        <div className="agent-financial-workflows__grid">
-          {FINANCIAL_WORKFLOWS.map((workflow) => (
-            <button
-              key={workflow.id}
-              type="button"
-              className="agent-financial-workflows__button"
-              onClick={() => void executeFinancialWorkflow(workflow)}
-              disabled={loading}
-            >
-              <span className="agent-financial-workflows__title">{workflow.title}</span>
-              <span className="agent-financial-workflows__command">{workflow.slashCommand}</span>
-              <span className="agent-financial-workflows__description">{workflow.description}</span>
-            </button>
-          ))}
-        </div>
-      </section>
-    );
-  }
-
-  function renderResearchShortcutPanel() {
-    return (
-      <section className="agent-financial-workflows" aria-label="研究快捷入口">
-        <div className="agent-financial-workflows__header">
-          <div>
-            <div className="agent-financial-workflows__eyebrow">数据研究入口</div>
-            <h2>已刷新数据复核</h2>
-          </div>
-          <span>先刷新数据</span>
-        </div>
-        <div className="agent-financial-workflows__grid">
-          {RESEARCH_SHORTCUTS.map((shortcut) => (
-            <button
-              key={shortcut.id}
-              type="button"
-              className="agent-financial-workflows__button"
-              onClick={() => void executeResearchShortcut(shortcut)}
-              disabled={loading}
-            >
-              <span className="agent-financial-workflows__title">{shortcut.title}</span>
-              <span className="agent-financial-workflows__command">{shortcut.domain}</span>
-              <span className="agent-financial-workflows__description">{shortcut.description}</span>
-            </button>
-          ))}
-        </div>
-      </section>
-    );
-  }
-
-  function renderShortcutDrawer() {
-    const shortcutCount = RESEARCH_SHORTCUTS.length + FINANCIAL_WORKFLOWS.length;
-    return (
-      <details className="agent-quick-entry" open>
-        <summary>
-          <span className="agent-quick-entry__title">快捷入口</span>
-          <span className="agent-quick-entry__meta">Research / MOSS intents · {shortcutCount} 项</span>
-        </summary>
-        <div className="agent-quick-entry__content">
-          {renderFinancialWorkflowPanel()}
-          {renderResearchShortcutPanel()}
-        </div>
-      </details>
-    );
-  }
-
-  function renderQueuedDraft() {
-    if (!queuedQuery) {
-      return null;
-    }
-
-    return (
-      <div
-        className="agent-queued-draft"
-        role="status"
-        aria-live="polite"
-        aria-label="待发送的下一句"
-      >
-        <div className="agent-queued-draft__copy">
-          <div className="agent-queued-draft__header">
-            <span className="agent-queued-draft__label">下一句</span>
-            <span className="agent-queued-draft__count">{queuedQueries.length} 句待发送</span>
-          </div>
-          <span className="agent-queued-draft__text">{queuedQuery}</span>
-          {queuedQueries.length > 1 ? (
-            <ol className="agent-queued-draft__queue" aria-label="待发送的后续问题">
-              {queuedQueries.slice(1).map((queuedItem, index) => (
-                <li key={`${queuedItem}-${index}`}>
-                  <span>#{index + 2}</span>
-                  <span>{queuedItem}</span>
-                </li>
-              ))}
-            </ol>
-          ) : null}
-          <span className="agent-queued-draft__hint">当前回答完成后发送</span>
-        </div>
-        <div className="agent-queued-draft__actions">
-          <button
-            type="button"
-            className="agent-queued-draft__action"
-            aria-label={`编辑草稿：${queuedQuery}`}
-            onClick={restoreQueuedQueryToComposer}
-          >
-            <EditOutlined aria-hidden="true" />
-            <span>编辑草稿</span>
-          </button>
-          <button
-            type="button"
-            className="agent-queued-draft__action"
-            aria-label={`取消草稿：${queuedQuery}`}
-            onClick={cancelQueuedQuery}
-          >
-            <CloseOutlined aria-hidden="true" />
-            <span>取消草稿</span>
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  function renderAgentResultSide(turnResult: AgentQueryResult, resultMetaEntries: Array<[string, unknown]>) {
-    const hasEvidence = hasEvidenceContent(turnResult.evidence);
-    const detailSectionCount = (hasEvidence ? 1 : 0) + (resultMetaEntries.length > 0 ? 1 : 0);
-    const resultSide = (
-      <aside className="agent-result-side" aria-label="回答依据与运行信息">
-        {hasEvidence ? (
-          <AgentEvidencePanel
-            tablesUsed={turnResult.evidence.tables_used}
-            filtersApplied={turnResult.evidence.filters_applied}
-            evidenceRows={turnResult.evidence.evidence_rows}
-            qualityFlag={turnResult.evidence.quality_flag}
-          />
-        ) : null}
-        <AgentResultMetaPanel
-          entries={resultMetaEntries}
-          formatValue={formatMetaValue}
-        />
-      </aside>
-    );
-
-    if (!isNarrowAgentViewport) {
-      return resultSide;
-    }
-
-    return (
-      <details
-        className="agent-result-side-drawer"
-        onToggle={(event) => {
-          if (event.currentTarget.open) {
-            window.setTimeout(scrollConversationToBottom, 0);
-          }
-        }}
-      >
-        <summary>依据与运行信息 · {detailSectionCount} 项</summary>
-        {resultSide}
-      </details>
-    );
-  }
-
-  function renderAgentTurnResult(turn: AgentConversationTurn) {
-    const turnResult = turn.result;
-    if (!turnResult) {
-      return null;
-    }
-    const copyStatus = copyFeedback?.turnId === turn.id ? copyFeedback.status : null;
-    const copyLabel = copyStatus === "success" ? "已复制" : copyStatus === "error" ? "复制失败" : "复制回答";
-    const copyStatusMessage =
-      copyStatus === "success" ? "回答已复制" : copyStatus === "error" ? "复制失败，请手动选择回答文本。" : "";
-    const resultMetaEntries = buildResultMetaEntries(turnResult.result_meta);
-
-    return (
-      <div className="agent-result-shell">
-        {hasRenderableResult(turnResult) ? (
-          <div className="agent-result-grid">
-            <div className="agent-result-main">
-              <div className="agent-answer-message">
-                <AgentAnswerPanel
-                  answer={turnResult.answer}
-                  testId={isEmbedded && turn.id === latestConversationTurn?.id ? "agent-panel-answer" : undefined}
-                />
-                <div className="agent-result-toolbar" aria-label="回答操作">
-                  {canRegenerateAgentTurn(turn) ? (
-                    <button
-                      type="button"
-                      className="agent-result-toolbar__button"
-                      aria-label={`重新生成：${turn.question}`}
-                      onClick={() => void regenerateAgentTurn(turn)}
-                      disabled={loading}
-                    >
-                      <ReloadOutlined aria-hidden="true" />
-                      <span>重新生成</span>
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="agent-result-toolbar__button"
-                    aria-label={`${copyLabel}：${turn.question}`}
-                    onClick={() => void copyAgentAnswer(turn)}
-                    disabled={!turnResult.answer.trim()}
-                  >
-                    {copyStatus === "success" ? <CheckOutlined aria-hidden="true" /> : <CopyOutlined aria-hidden="true" />}
-                    <span>{copyLabel}</span>
-                  </button>
-                  {copyStatus ? (
-                    <span
-                      aria-label="复制状态"
-                      aria-live="polite"
-                      aria-atomic="true"
-                      role="status"
-                      className={`agent-copy-feedback agent-copy-feedback--${copyStatus}`}
-                    >
-                      {copyStatusMessage}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-
-              {turnResult.cards.length > 0 ? (
-                (() => {
-                  const gitNexusCards = isGitNexusResult(turnResult)
-                    ? turnResult.cards
-                    : turnResult.cards.filter(isGitNexusCard);
-                  const genericCards = isGitNexusResult(turnResult)
-                    ? []
-                    : turnResult.cards.filter((card) => !isGitNexusCard(card));
-                  return (
-                    <div className="agent-result-card-stack">
-                      {gitNexusCards.length > 0 ? <AgentGitNexusResultView cards={gitNexusCards} /> : null}
-                      <AgentGenericCardsGrid cards={genericCards} formatValue={formatMetaValue} />
-                    </div>
-                  );
-                })()
-              ) : null}
-
-              {turnResult.next_drill.length > 0 ? (
-                <div className="agent-next-drill-row">
-                  {turnResult.next_drill.map((drill) => (
-                    <span key={drill.dimension}>{drill.label}</span>
-                  ))}
-                </div>
-              ) : null}
-
-              <AgentSuggestedActionsPanel
-                actions={turnResult.suggested_actions}
-                formatValue={formatMetaValue}
-                activePayload={turn.activeSuggestedActionPayload}
-                pendingConfirmationKey={
-                  pendingSuggestedActionConfirmation?.turnId === turn.id
-                    ? pendingSuggestedActionConfirmation.actionKey
-                    : null
-                }
-                getActionKey={getSuggestedActionKey}
-                onActionClick={(action, sourceElement) => handleSuggestedAction(turn.id, action, sourceElement)}
-              />
-
-              <div className="agent-follow-up-chips" aria-label="继续追问">
-                <button
-                  type="button"
-                  className="agent-follow-up-chips__button agent-follow-up-chips__button--primary"
-                  aria-label={`继续输入：${turn.question}`}
-                  onClick={(event) => focusComposerFromFollowUp(event.currentTarget)}
-                  disabled={loading}
-                >
-                  继续输入
-                </button>
-                <details className="agent-follow-up-chips__details">
-                  <summary>更多追问</summary>
-                  <div className="agent-follow-up-chips__options">
-                    {AGENT_FOLLOW_UP_CHIPS.map((chip) => (
-                      <button
-                        key={chip.label}
-                        type="button"
-                        className="agent-follow-up-chips__button"
-                        aria-label={`${chip.label}：${turn.question}`}
-                        onClick={(event) => applyFollowUpChip(chip.question, event.currentTarget)}
-                        disabled={loading}
-                      >
-                        {chip.label}
-                      </button>
-                    ))}
-                  </div>
-                </details>
-              </div>
-            </div>
-
-            {renderAgentResultSide(turnResult, resultMetaEntries)}
-          </div>
-        ) : (
-          <div className="agent-callout agent-callout--empty" role="status" aria-label="空结果状态">
-            <strong>没有可展示结果</strong>
-            <span>本次查询未返回可展示结果。请调整问题后重试。</span>
-            <div className="agent-callout__actions">
-              <button
-                type="button"
-                className="agent-callout__action"
-                aria-label={`继续输入：${turn.question}`}
-                onClick={focusComposerFromEmptyResult}
-                disabled={loading}
-              >
-                继续输入
-              </button>
-              {canRegenerateAgentTurn(turn) ? (
-                <button
-                  type="button"
-                  className="agent-callout__action"
-                  aria-label={`重新生成：${turn.question}`}
-                  onClick={() => void regenerateAgentTurn(turn)}
-                  disabled={loading}
-                >
-                  重新生成
-                </button>
-              ) : null}
-            </div>
-          </div>
-        )}
-
-        {!hasRenderableResult(turnResult) ? (
-          <details className="agent-result-details">
-            <summary>查看依据 · {resultMetaEntries.length} 项</summary>
-            <AgentResultMetaPanel
-              entries={resultMetaEntries}
-              formatValue={formatMetaValue}
-            />
-          </details>
-        ) : null}
-      </div>
-    );
-  }
-
-  function renderAgentRunProgress(agentRun: AgentRunPayload | null, question: string) {
-    const currentIndex = getAgentRunProgressIndex(agentRun);
-    const stages = ["已提交", "排队中", "分析中"];
-
-    return (
-      <div className="agent-run-progress" aria-label={`回答进度：${question}`}>
-        {stages.map((stage, index) => {
-          const stageIndex = index + 1;
-          const isCurrent = stageIndex === currentIndex;
-          const isComplete = stageIndex < currentIndex;
-          return (
-            <div
-              key={stage}
-              className={
-                isCurrent
-                  ? "agent-run-progress__step agent-run-progress__step--current"
-                  : isComplete
-                    ? "agent-run-progress__step agent-run-progress__step--complete"
-                    : "agent-run-progress__step"
-              }
-              data-current={isCurrent ? "true" : undefined}
-            >
-              <span className="agent-run-progress__dot" aria-hidden="true" />
-              <span>{stage}</span>
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
-
-  function renderAgentTurnError(turn: AgentConversationTurn) {
-    if (turn.error?.kind === "disabled") {
-      return (
-        <div
-          className="agent-callout agent-callout--warning"
-          role="status"
-          aria-label="Agent 暂不可用"
-        >
-          智能体当前未启用。设置环境变量 MOSS_AGENT_ENABLED=true 后重启后端即可使用。
-        </div>
-      );
-    }
-
-    if (turn.error?.kind === "request") {
-      return (
-        <div className="agent-callout agent-callout--error" role="alert">
-          <strong>请求没有送达</strong>
-          <span>{turn.error.message}</span>
-          {canRetryAgentTurn(turn) ? (
-            <div className="agent-callout__actions">
-              <button
-                type="button"
-                className="agent-callout__action"
-                aria-label={`编辑这句：${turn.question}`}
-                onClick={() => editAgentQuestion(turn)}
-                disabled={loading}
-              >
-                编辑这句
-              </button>
-              <button
-                type="button"
-                className="agent-callout__action"
-                aria-label={`重试这一轮：${turn.question}`}
-                onClick={() => void retryAgentTurn(turn)}
-                disabled={loading}
-              >
-                重试这一轮
-              </button>
-            </div>
-          ) : null}
-        </div>
-      );
-    }
-
-    return null;
-  }
-
   function formatPageContextSummary(context: AgentPageContext) {
     return JSON.stringify({
       page_id: context.page_id,
@@ -3424,7 +1617,13 @@ export function EmbeddedAgentCopilot({
   const runtimeStateLabel = loading ? "分析中" : latestResultTurn?.result ? "已连接" : "待提问";
 
   return (
-    <section className={shellClassName} data-testid={isEmbedded ? "agent-panel" : undefined}>
+    // Nocturne scope 只落在 /agent 页根（workbench 变体）；嵌入态 AgentPanel 跟随宿主页 scope，
+    // 深色 owner 仍由 ThemedRouteBoundary 独占（页根不声明 data-moss-theme="dark"）。
+    <section
+      className={shellClassName}
+      data-testid={isEmbedded ? "agent-panel" : undefined}
+      data-moss-theme-scope={isEmbedded ? undefined : "agent"}
+    >
       {isEmbedded && resolvedShowHeader ? (
         <header className="agent-embedded-header">
           <div>
@@ -3438,68 +1637,32 @@ export function EmbeddedAgentCopilot({
       {!isEmbedded && resolvedShowHeader ? (
         <header className="agent-workbench-header">
           <div>
-            <div className="agent-workbench-header__eyebrow">Agent Workbench</div>
-            <h1>智能体对话</h1>
-            <p>像聊天一样提问；智能体只读取已有分析服务和证据，返回结论、依据、页面上下文和下一步建议。</p>
+            <div className="agent-workbench-header__eyebrow">MOSS Chat</div>
+            <h1>今天想看什么？</h1>
+            <p>先把问题丢给我。需要证据、运行细节或正式口径时，再展开查看。</p>
           </div>
-          <div className="agent-workbench-header__actions">
-            <button
-              type="button"
-              className="agent-workbench-header__new-chat"
-              aria-label="新对话"
-              onClick={startFreshConversation}
-              disabled={loading || !hasConversation}
-            >
-              <PlusOutlined aria-hidden="true" />
-              <span>新对话</span>
-            </button>
-            <div className="agent-workbench-header__cue" aria-hidden="true">
-              MOSS / Agent
+          {hasConversation ? (
+            <div className="agent-workbench-header__actions">
+              <button
+                type="button"
+                className="agent-workbench-header__new-chat"
+                aria-label="新对话"
+                onClick={startFreshConversation}
+                disabled={loading}
+              >
+                <PlusOutlined aria-hidden="true" />
+                <span>新对话</span>
+              </button>
             </div>
-          </div>
+          ) : null}
         </header>
       ) : null}
 
-      <div
-        className="agent-runtime-strip"
-        role="status"
-        aria-label="Agent 连接状态"
-        aria-live="polite"
-        aria-atomic="true"
-      >
-        <div className="agent-runtime-strip__summary">
-          <div className="agent-runtime-strip__state">
-            <span className={loading ? "agent-runtime-strip__dot agent-runtime-strip__dot--active" : "agent-runtime-strip__dot"} />
-            <span>{runtimeStateLabel}</span>
-            <span className="agent-runtime-strip__provider">{runtimeStatus.provider}</span>
-          </div>
-        </div>
-        <details className="agent-runtime-strip__details">
-          <summary>运行详情</summary>
-          <div className="agent-runtime-strip__detail-grid">
-            <div className="agent-runtime-strip__item">
-              <span>Engine</span>
-              <strong>{runtimeStatus.provider}</strong>
-            </div>
-            <div className="agent-runtime-strip__item">
-              <span>Transport</span>
-              <strong>{runtimeStatus.transport}</strong>
-            </div>
-            <div className="agent-runtime-strip__item">
-              <span>Model</span>
-              <strong>{runtimeStatus.model}</strong>
-            </div>
-            <div className="agent-runtime-strip__item">
-              <span>Tools</span>
-              <strong>{runtimeStatus.toolsets}</strong>
-            </div>
-            <div className="agent-runtime-strip__item">
-              <span>Quality</span>
-              <strong>{runtimeStatus.quality}</strong>
-            </div>
-          </div>
-        </details>
-      </div>
+      <AgentRuntimeStrip
+        loading={loading}
+        stateLabel={runtimeStateLabel}
+        runtimeStatus={runtimeStatus}
+      />
 
       {!isEmbedded && restoringRunId ? (
         <div
@@ -3549,7 +1712,13 @@ export function EmbeddedAgentCopilot({
         </div>
       ) : null}
 
-      {!isEmbedded ? renderShortcutDrawer() : null}
+      {!isEmbedded ? (
+        <AgentShortcutDrawer
+          loading={loading}
+          onExecuteWorkflow={(workflow) => void executeFinancialWorkflow(workflow)}
+          onExecuteResearchShortcut={(shortcut) => void executeResearchShortcut(shortcut)}
+        />
+      ) : null}
 
       {!hasConversation ? (
         <AgentQueryForm
@@ -3579,7 +1748,7 @@ export function EmbeddedAgentCopilot({
           onClearQuery={clearComposerQueryFromButton}
           onSubmit={handleSubmit}
           onQueueSubmit={isEmbedded ? undefined : queueCurrentQuery}
-          onStop={isEmbedded ? undefined : stopActiveAgentTurn}
+          onStop={stopActiveAgentTurn}
           inputRef={composerInputRef}
         />
       ) : null}
@@ -3589,11 +1758,15 @@ export function EmbeddedAgentCopilot({
           {conversationTurns.map((turn) => {
             const isLatestLoadingTurn = turn === latestConversationTurn && loading;
             const showThinkingPlaceholder = isLatestLoadingTurn && !turn.result && !turn.error;
+            const shouldShowRunStatus = (isLatestLoadingTurn || turn.agentRun) && !isCompactProviderChatTurn(turn);
             const conversationContextBadge = formatConversationContextBadge(turn.conversationContext);
             const waitElapsedSeconds = formatAgentRunElapsed(
               turn.agentRun,
               isLatestLoadingTurn ? agentWaitSeconds : 0,
             );
+            const thinkingLabel = formatAgentThinkingLabel(turn.agentRun, waitElapsedSeconds);
+            const thinkingText = formatAgentThinkingText(turn.agentRun, waitElapsedSeconds);
+            const runConnectionElapsed = formatAgentConnectionElapsed(turn.runRequestLatencyMs);
             return (
               <div key={turn.id} className="agent-turn">
                 <div className="agent-message agent-message--user">
@@ -3621,7 +1794,7 @@ export function EmbeddedAgentCopilot({
                 <div className="agent-message agent-message--assistant">
                   <div className="agent-message__speaker">智能体</div>
                   <div className="agent-message__body">
-                    {isLatestLoadingTurn || turn.agentRun ? (
+                    {shouldShowRunStatus ? (
                       <div
                         className="agent-wait-status"
                         role="status"
@@ -3631,8 +1804,8 @@ export function EmbeddedAgentCopilot({
                         <div className="agent-wait-status__copy">
                           {showThinkingPlaceholder ? (
                             <div className="agent-thinking">
-                              <span className="agent-thinking__label">正在思考</span>
-                              <span className="agent-thinking__text">我先接住问题，拿到运行状态后继续更新。</span>
+                              <span className="agent-thinking__label">{thinkingLabel}</span>
+                              <span className="agent-thinking__text">{thinkingText}</span>
                               <span className="agent-thinking__dots" aria-hidden="true">
                                 <span />
                                 <span />
@@ -3641,7 +1814,7 @@ export function EmbeddedAgentCopilot({
                             </div>
                           ) : null}
                           <div className="agent-wait-status__title">{formatAgentTurnWaitTitle(turn.agentRun)}</div>
-                          {renderAgentRunProgress(turn.agentRun, turn.question)}
+                          <AgentRunProgress agentRun={turn.agentRun} question={turn.question} />
                         </div>
                         <div className="agent-wait-status__detail">
                           <details className="agent-wait-status__details">
@@ -3649,6 +1822,7 @@ export function EmbeddedAgentCopilot({
                             <div className="agent-wait-status__detail-list">
                               <span>{formatAgentWaitPhase(turn.agentRun)}</span>
                               <span>已等待 {waitElapsedSeconds} 秒</span>
+                              {runConnectionElapsed ? <span>连接耗时 {runConnectionElapsed}</span> : null}
                               {shouldDisplayAgentRunId(turn.agentRun) ? (
                                 <span>run_id: {turn.agentRun?.run_id}</span>
                               ) : null}
@@ -3659,10 +1833,10 @@ export function EmbeddedAgentCopilot({
                             <button
                               type="button"
                               className="agent-wait-status__stop"
-                              aria-label={`停止当前回答：${turn.question}`}
+                              aria-label={`停止等待当前回答：${turn.question}`}
                               onClick={stopActiveAgentTurn}
                             >
-                              停止
+                              停止等待
                             </button>
                           ) : null}
                         </div>
@@ -3670,7 +1844,7 @@ export function EmbeddedAgentCopilot({
                     ) : null}
                     {turn.stopped ? (
                       <div className="agent-callout agent-callout--stopped" role="status">
-                        <strong>已停止</strong>
+                        <strong>已停止等待</strong>
                         <span>已停止等待这次回答。</span>
                         {turn.retryMode === "ordinary" && turn.question.trim() ? (
                           <div className="agent-callout__actions">
@@ -3688,7 +1862,10 @@ export function EmbeddedAgentCopilot({
                               className="agent-callout__action"
                               aria-label={`重新发送：${turn.question}`}
                               onClick={() =>
-                                void rerunOrdinaryTurn(turn, "正在重新发送已停止回答 · 可继续输入下一句")
+                                void rerunOrdinaryTurn(
+                                  turn,
+                                  "正在重新发送已停止等待的回答 · 可继续输入下一句",
+                                )
                               }
                               disabled={loading}
                             >
@@ -3699,8 +1876,68 @@ export function EmbeddedAgentCopilot({
                       </div>
                     ) : null}
 
-                    {renderAgentTurnError(turn)}
-                    {renderAgentTurnResult(turn)}
+                    {turn.agentRun?.status === "cancelled" && !turn.result && !turn.stopped ? (
+                      <div className="agent-callout agent-callout--stopped" role="status">
+                        <strong>任务已取消</strong>
+                        <span>这次回答的任务已取消，不会再返回结果。</span>
+                        {turn.retryMode === "ordinary" && turn.question.trim() ? (
+                          <div className="agent-callout__actions">
+                            <button
+                              type="button"
+                              className="agent-callout__action"
+                              aria-label={`编辑这句：${turn.question}`}
+                              onClick={() => editAgentQuestion(turn)}
+                              disabled={loading}
+                            >
+                              编辑这句
+                            </button>
+                            <button
+                              type="button"
+                              className="agent-callout__action"
+                              aria-label={`重新发送：${turn.question}`}
+                              onClick={() =>
+                                void rerunOrdinaryTurn(
+                                  turn,
+                                  "正在重新发送已取消的回答 · 可继续输入下一句",
+                                )
+                              }
+                              disabled={loading}
+                            >
+                              重新发送
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    <AgentTurnErrorCallout
+                      turn={turn}
+                      loading={loading}
+                      canRetry={canRetryAgentTurn(turn)}
+                      onEditQuestion={editAgentQuestion}
+                      onRetry={(retryTurn) => void retryAgentTurn(retryTurn)}
+                    />
+                    <AgentTurnResultView
+                      turn={turn}
+                      isLatestResultTurn={turn.id === latestResultTurn?.id}
+                      isEmbedded={isEmbedded}
+                      readOnly={readOnly}
+                      loading={loading}
+                      latestConversationTurnId={latestConversationTurn?.id ?? null}
+                      copyFeedback={copyFeedback}
+                      pendingSuggestedActionConfirmation={pendingSuggestedActionConfirmation}
+                      canRegenerate={canRegenerateAgentTurn(turn)}
+                      onRegenerate={(retryTurn) => void regenerateAgentTurn(retryTurn)}
+                      onCopyAnswer={(retryTurn) => void copyAgentAnswer(retryTurn)}
+                      onApplyNextDrill={applyNextDrill}
+                      onSuggestedAction={handleSuggestedAction}
+                      onFocusComposerFromFollowUp={focusComposerFromFollowUp}
+                      onApplyFollowUpChip={applyFollowUpChip}
+                      onFocusComposerFromEmptyResult={focusComposerFromEmptyResult}
+                      onSideDrawerOpen={() => {
+                        window.setTimeout(scrollConversationToBottom, 0);
+                      }}
+                    />
                   </div>
                 </div>
               </div>
@@ -3717,14 +1954,20 @@ export function EmbeddedAgentCopilot({
             <div className="agent-message agent-message--assistant">
               <div className="agent-message__speaker">智能体</div>
               <div className="agent-message__body">
-                {renderAgentTurnError({
-                  id: "page-error",
-                  question: "",
-                  agentRun: null,
-                  result: null,
-                  error,
-                  activeSuggestedActionPayload: null,
-                })}
+                <AgentTurnErrorCallout
+                  turn={{
+                    id: "page-error",
+                    question: "",
+                    agentRun: null,
+                    result: null,
+                    error,
+                    activeSuggestedActionPayload: null,
+                  }}
+                  loading={loading}
+                  canRetry={false}
+                  onEditQuestion={editAgentQuestion}
+                  onRetry={(retryTurn) => void retryAgentTurn(retryTurn)}
+                />
               </div>
             </div>
           ) : null}
@@ -3732,8 +1975,12 @@ export function EmbeddedAgentCopilot({
       ) : null}
 
       {hasConversation ? (
-        <div className="agent-composer-dock">
-          {renderQueuedDraft()}
+        <div className="agent-composer-dock" ref={composerDockRef}>
+          <AgentQueuedDraft
+            queuedQueries={queuedQueries}
+            onRestoreToComposer={restoreQueuedQueryToComposer}
+            onCancel={cancelQueuedQuery}
+          />
           <AgentQueryForm
             compact
             showAdvancedTools={!isEmbedded}
@@ -3761,7 +2008,7 @@ export function EmbeddedAgentCopilot({
             onClearQuery={clearComposerQueryFromButton}
             onSubmit={handleSubmit}
             onQueueSubmit={isEmbedded ? undefined : queueCurrentQuery}
-            onStop={isEmbedded ? undefined : stopActiveAgentTurn}
+            onStop={stopActiveAgentTurn}
             inputRef={composerInputRef}
           />
         </div>
@@ -3783,8 +2030,4 @@ export function EmbeddedAgentCopilot({
 
 export default function AgentWorkbenchPage({ pageContext }: AgentWorkbenchPageProps = {}) {
   return <EmbeddedAgentCopilot pageContext={pageContext} showHeader variant="workbench" />;
-}
-
-export function AgentPanel({ showHeader = false, ...props }: AgentPanelProps = {}) {
-  return <EmbeddedAgentCopilot {...props} showHeader={showHeader} />;
 }

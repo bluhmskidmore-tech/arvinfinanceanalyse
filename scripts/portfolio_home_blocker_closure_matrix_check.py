@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -31,6 +32,7 @@ DECISION_ARTIFACT_REQUIRED_BLOCKERS = {
 }
 EVIDENCE_SOURCE_REQUIRED_BLOCKERS = {
     "risk_tensor_quality_warning",
+    "bond_matured_outstanding_reconciliation_required",
 }
 BASE_REQUIRED_FIELDS = [
     "owner",
@@ -47,6 +49,10 @@ def _list(value: object) -> list[object]:
 
 def _truthy_list(value: object) -> bool:
     return isinstance(value, list) and bool(value)
+
+
+def _command_allowlist_key(command: object) -> str:
+    return re.sub(r"\s+--report-date\s+\S+", "", str(command), count=1).strip()
 
 
 def _matrix_coverage(
@@ -104,11 +110,11 @@ def matrix_completeness_report(
 ) -> dict[str, object]:
     coverage = _matrix_coverage(score_blockers, matrix)
     allowed_commands = {
-        str(command.get("command"))
+        _command_allowlist_key(command.get("command"))
         for command in verification_commands or []
         if isinstance(command, dict) and command.get("command")
     } | {
-        str(command)
+        _command_allowlist_key(command)
         for command in verification_commands or []
         if isinstance(command, str)
     }
@@ -130,7 +136,7 @@ def matrix_completeness_report(
         unallowlisted = [
             command
             for command in recheck_commands
-            if allowed_commands and command not in allowed_commands
+            if allowed_commands and _command_allowlist_key(command) not in allowed_commands
         ]
         if unallowlisted:
             row_blockers.append(f"{blocker}_recheck_commands_unallowlisted")
@@ -143,7 +149,7 @@ def matrix_completeness_report(
         unallowlisted_evidence_source_commands = [
             command
             for command in evidence_source_commands
-            if allowed_commands and command not in allowed_commands
+            if allowed_commands and _command_allowlist_key(command) not in allowed_commands
         ]
         if unallowlisted_evidence_source_commands:
             row_blockers.append(f"{blocker}_evidence_source_commands_unallowlisted")

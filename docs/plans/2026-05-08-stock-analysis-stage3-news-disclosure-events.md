@@ -52,7 +52,7 @@
 
 | 能力 | 现状 | 缺口 | 工作量量级 |
 |------|------|------|------------|
-| Choice 新闻只读查询 | **部分具备**：`choice_news_service.py` + 表 `choice_news_event`（`12_choice_news.sql`） | **路由人为 503**：`choice_news.py` `choice_events_latest` | **S**（解封 + 鉴权） |
+| Choice 新闻只读查询 | **部分具备**：`choice_news_service.py` + 表 `choice_news_event`（`12_choice_news.sql`） | **路由人为 503**：`choice_news.py` `choice_events_latest` | **S**（解封 + 访问控制，见 §5） |
 | 新闻按 stock_code 关联 | **部分 / 待验证**：依赖 `payload_json` / `payload_text` 解析 | 解析器 + 索引策略（可能需生成列或侧写表） | **M** |
 | 公告（上交所 / 深交所 / 港交所等） | **缺失** | 数据源契约 + 新表 + ingest + API | **L** |
 | 财报日历 / 财报披露事件 | **缺失** | 同上 | **L** |
@@ -120,7 +120,11 @@ export type StockNewsEventsPayload = {
 ## 5. 治理与合规风险
 
 - **Vendor 凭据**：任何新增 ingest（公告/财报 API）必须对照 `AGENTS.md` 与 handoff「禁止私自改 Choice/Tushare 权限」条款走审批。  
-- **503 边界的历史意图**：当前 `choice_news.py` 注释写明 surfaces「reserved」——解封需记录决策人与补偿控制（鉴权、速率限制、内网可见性）。  
+- **503 边界的历史意图**：当前 `choice_news.py` 注释写明 surfaces「reserved」——解封需记录决策人与补偿控制（**访问控制：认证 + 授权**、速率限制、内网可见性）。
+  - 原文此处写的是「鉴权」，容易被读成「复用现有 RBAC 即可」。仓库当前**有授权、没有认证**：
+    `ensure_user_allowed` 的 RBAC 判定存在，但没有 `HTTPBearer` / `OAuth2` / `APIKeyHeader` / JWT /
+    session，`X-User-Id` / `X-User-Role` 未经校验。解封这类对外可见面时，认证属于尚不存在、需另行
+    设计的补偿控制。现状边界见 [README.md](../../README.md)「关键约束」一节。
 - **个人信息 / 内幕信息**：展示字段避免未经脱敏的交易员笔记类文本；仅用公开披露字段。  
 - **正式金融口径**：事件列表为 **叙事证据**，不进入 `core_finance` 估值引擎；与 Formal 报表数字不得自动勾稽混淆。  
 - **Formal / Scenario**：只读 API；写入仅限任务链路 materialize。

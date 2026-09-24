@@ -57,10 +57,10 @@ Risk tensor fact row for `2026-05-31`:
 
 ```text
 quality_flag=warning
-portfolio_dv01=105628442.39590558
-krd_sum=105628442.39590558
-source_version=sv_risk_tensor__sv_837e9f35fdda__sv_67bf20398f44
-upstream_source_version=sv_837e9f35fdda
+portfolio_dv01=106224411.96420395
+krd_sum=106224411.96420395
+source_version=sv_risk_tensor__sv_837e9f35fdda__sv_837e9f35fdda__sv_coupon_gap_repair_20260717_v1__sv_67bf20398f44
+upstream_source_version=sv_837e9f35fdda__sv_837e9f35fdda__sv_coupon_gap_repair_20260717_v1
 liability_source_version=sv_67bf20398f44
 ```
 
@@ -68,20 +68,22 @@ Risk tensor warnings:
 
 ```text
 Non-standard tenor buckets remapped to nearest KRD bucket: 20Y, 2Y, 6M
-120 rows carry market_value=38318400505.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date; 6 with non-positive modified_duration.
+120 rows carry market_value=39109594105.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date; 6 matured on or before report_date with outstanding market_value; 0 future-dated with non-positive modified_duration.
 Excluded 114 rows without maturity_date from liquidity gap calculation.
 Excluded 1455 liability rows without maturity_date from liquidity gap calculation.
+3 floating-rate rows use the current coupon rate as a frozen proxy for the full projection horizon.
+1588 rows lack an explicit payment frequency; annual coupon frequency is used as a proxy.
 ```
 
 Risk warning consistency:
 
 ```text
-Risk warning consistency: `warning_consistency_status=mismatch`
+Risk warning consistency: `warning_consistency_status=consistent`
 Risk warning decision status: `decision_status=blocked`
-consistency_blockers=duration_exclusion_warning_mismatch
-decision_blockers=risk_tensor_quality_warning, risk_tensor_warning_mismatch
-duration_exclusion parsed row_count=120, market_value_sum=38318400505.50000008, missing_maturity_rows=114, nonpositive_duration_rows=6
-duration_exclusion recomputed row_count=120, market_value_sum=39109594105.50000008, missing_maturity_rows=114, nonpositive_duration_rows=6
+consistency_blockers=none
+decision_blockers=risk_tensor_quality_warning
+duration_exclusion parsed row_count=120, market_value_sum=39109594105.50000008, no_maturity_rows=114, matured_or_expired_outstanding_rows=6, nonpositive_duration_rows=0
+duration_exclusion recomputed row_count=120, market_value_sum=39109594105.50000008, no_maturity_rows=114, matured_or_expired_outstanding_rows=6, nonpositive_duration_rows=0
 bond_liquidity_gap missing_maturity_rows=114
 tyw_liability_liquidity_gap missing_maturity_rows=1455
 krd_buckets=20Y, 2Y, 6M
@@ -125,18 +127,28 @@ manifest=docs/portfolio/maturity-remediation/2026-05-31/manifest.json
 bond_csv=docs/portfolio/maturity-remediation/2026-05-31/bond_missing_maturity.csv
 tyw_liability_csv=docs/portfolio/maturity-remediation/2026-05-31/tyw_liability_missing_maturity.csv
 export_status=blocked
-bond_missing_maturity_rows=114
+bond_missing_maturity_rows=0
 tyw_liability_missing_maturity_rows=1455
 proposed_maturity_date columns are intentionally blank for owner/source remediation.
 ```
 
-Largest maturity-remediation queue rows sampled from the current real database:
+Separate matured-outstanding reconciliation gate:
 
 ```text
-Bond missing maturity sample, order by market_value desc:
-SA0106070101, market_value=2103574090.74000000, tenor_bucket=6M, trace_id=ffa8fb22-4d9a-4352-91fa-03eba25c98d5
-SA0207360101, market_value=1555799222.10000000, tenor_bucket=6M, trace_id=c08602d6-94d4-4503-8f56-8b5cb39d8b4d
-SA0212890101, market_value=1217040000.00000000, tenor_bucket=6M, trace_id=e02c9982-9e8f-49a3-8d9a-8b66927d737c
+row_count=6
+net_market_value=1487429865.67000000
+unparseable_maturity_date_rows=0
+```
+
+These six non-zero matured positions require source reconciliation. A scoped exclusion cannot close the matured-outstanding blocker.
+
+Largest current owner-action queue rows sampled from the real database:
+
+```text
+Bond matured-outstanding sample, order by market_value desc:
+J12006190202, maturity_date=2023-06-19, days_past_maturity=1077, market_value=463596800.00000000, trace_id=59a13786-4219-43f6-9e6b-0b678f3e7d46
+J12006190302, maturity_date=2023-06-19, days_past_maturity=1077, market_value=463596800.00000000, trace_id=c0579c87-d31a-4075-a417-4e83e2c742b6
+G018122002, maturity_date=2021-11-29, days_past_maturity=1644, market_value=247000000.00000000, trace_id=2ad47592-c8d6-47a5-851d-00cee38cc6b2
 
 TYW liability missing maturity sample, order by principal_amount desc:
 802010201929379, principal_amount=5936179478.40000000, counterparty=中信信托有限责任公司, trace_id=5201ad34-40fe-4656-8e52-f323176bc3af
@@ -182,11 +194,11 @@ Gate 1: KRD contract decision.
 - Option B: reject nearest-bucket approval and expand schema/API/UI to carry exact tenor buckets before any full closure claim.
 - Required evidence either way: row-level KRD review queue from `python scripts/portfolio_home_krd_remap_review_queue.py`, owner decision, updated metric contract, tests, and rerun risk tensor evidence.
 
-Gate 2: maturity data remediation.
+Gate 2: maturity data remediation and matured-outstanding reconciliation.
 
-- Remediate missing `maturity_date` in upstream bond and TYW liability sources, then rematerialize formal bond analytics, balance facts, and risk tensor.
-- If a business owner accepts a scoped exclusion instead, the exclusion must be explicit, signed, and shown as a warning or scope boundary. It must not be hidden behind `quality_flag=ok`.
-- Required evidence: row-level remediation queue from `python scripts/portfolio_home_maturity_remediation_queue.py`, row-level remediation file or approved exclusion scope, before/after counts, rematerialization result, risk tensor warnings review.
+- Remediate missing `maturity_date` in upstream TYW liability sources, then rematerialize balance facts and the risk tensor. Any scoped exclusion must be explicit, signed, and shown as a warning or scope boundary.
+- Reconcile the six matured non-zero bond positions at source; the read-only matured-outstanding gate does not accept an exception as closure evidence.
+- Required evidence: the TYW row-level remediation queue from `python scripts/portfolio_home_maturity_remediation_queue.py`, the bond queue from `python scripts/portfolio_home_matured_outstanding_queue.py`, before/after counts, rematerialization result, and risk tensor warning review.
 
 Gate 3: capture-ready page governance.
 
@@ -197,7 +209,7 @@ Gate 3: capture-ready page governance.
 Gate 4: business-owner approval.
 
 - Complete and sign `docs/portfolio/portfolio-home-business-owner-approval-template.md`.
-- Approval must explicitly decide KRD mapping, maturity remediation/exclusion, warning handling, and whether the page remains candidate-only.
+- Approval must explicitly decide KRD mapping, TYW maturity remediation/exclusion, matured-bond source reconciliation, warning handling, and whether the page remains candidate-only.
 - Until then, keep `formal_use_allowed=false` and `closure_approved=false`.
 
 ## Business Owner Approval Action Items
@@ -275,7 +287,7 @@ Observed status:
 - Score methodology is `discrete_full_closure_gate`; the `0.14` gap is not allocated across blockers as linear weights.
 - Closure scorecard reports `score_status=blocked` and `full_score_ready=false`.
 - Closure scorecard strict full-score gate exits non-zero while score blockers remain.
-- Closure scorecard blockers: `risk_tensor_quality_warning`, `krd_contract_decision_required`, `bond_maturity_date_remediation_required`, `tyw_liability_maturity_date_remediation_required`, `duration_exclusion_warning_mismatch`, `risk_tensor_warning_mismatch`, `business_owner_approval`, `owner_decision_intake_blocked`.
+- Closure scorecard blockers: `risk_tensor_quality_warning`, `krd_contract_decision_required`, `bond_matured_outstanding_reconciliation_required`, `tyw_liability_maturity_date_remediation_required`, `business_owner_approval`, `owner_decision_intake_blocked`.
 - Closure scorecard action map records `owner`, `next_action`, `evidence_command`, and `exit_criteria` for every score blocker.
 - Closure scorecard gates carry `score_blocker_action_coverage.status=clean`; unknown or unassigned score blockers prevent strict activation.
 - Closure scorecard emits `verification_commands` with evidence, strict-gate, and regression commands plus expected blocked-state exits.
@@ -302,7 +314,7 @@ Observed status:
 - Evidence snapshot now exposes `score_blocker_action_coverage` in the gate summary and business-owner approval summary.
 - Evidence snapshot now exposes `owner_summary_paths` with the KRD contract decision owner summary and maturity remediation owner summary.
 - Evidence snapshot now exposes `generated_owner_fields_boundaries` so reviewers can see both KRD and maturity export manifests require `generated_owner_fields_must_be_blank=true`.
-- Evidence snapshot now exposes `decision_gap_counts` with KRD owner decision gaps of 503 rows (summary 3, detail 500) and maturity owner decision gaps of 1569 rows (bond 114, TYW liability 1455).
+- Evidence snapshot now exposes `decision_gap_counts` with KRD owner decision gaps of 503 rows (summary 3, detail 500) and maturity owner decision gaps of 1455 rows (bond 0, TYW liability 1455).
 - Evidence snapshot now exposes `note_gap_counts`; current real CSVs have blank owner decisions, so note/comment gaps are empty until a decision is filled without rationale.
 - Evidence snapshot now exposes `exact_bucket_schema_evidence` so reviewers can see whether the exact-bucket schema path has metric-contract, API-schema, rematerialization, and verifier evidence.
 - Owner action packet reports `handoff_status=owner_actions_required` and groups the current blockers into `risk_owner`, `data_owner`, and `business_owner` packets.
@@ -313,7 +325,7 @@ Observed status:
 - Owner handoff Markdown summary states export-current system fields prove package freshness only; they do not approve KRD decisions, maturity remediation, signed exclusions, or business-owner closure.
 - Owner action packet carries KRD `note_gap_counts`, maturity `comment_gap_counts`, and `exact_bucket_schema_evidence` into the owner packets without changing approval status.
 - Owner action packet carries `owner_decision_intake_alignment.status=consistent` into the owner packets so owners can see activation evidence alignment before signing.
-- Owner action packet assigns `risk_tensor_warning_mismatch` to the risk-owner packet, `duration_exclusion_warning_mismatch` to the data-owner packet, and `owner_decision_intake_blocked` to the business-owner packet so no score blocker is left unowned.
+- Owner action packet assigns `risk_tensor_quality_warning` and `krd_contract_decision_required` to the risk-owner packet, the maturity and matured-outstanding blockers to the data-owner packet, and `owner_decision_intake_blocked` to the business-owner packet so no score blocker is left unowned.
 - Owner action packet strict clean gate exits non-zero while any owner packet remains blocked.
 - Business owner approval packet reports `packet_status=pending`, `activation_ready=false`, and `approval_action_item_count=19`.
 - Business owner approval packet lists sign-off, audit, evidence snapshot, owner action, KRD decision export, maturity remediation export, scorecard strict gate, and approval strict gate dependencies.
@@ -329,18 +341,18 @@ Observed status:
 - Business owner approval packet also exposes `generated_owner_fields_boundaries`, so the approval entry point itself shows that KRD and maturity exports must keep generated owner fields blank.
 - Dependency consistency check strict gate exits 0 only when the KRD and maturity manifests plus CSV queues match the current scorecard evidence.
 - Dependency consistency check also exposes `generated_owner_fields_boundaries` directly, matching the scorecard and business-owner approval packet boundary summary.
-- CSV summary currently reports `krd_summary_row_count=3`, `krd_detail_row_count=500`, `bond_missing_maturity_row_count=114`, `tyw_liability_missing_maturity_row_count=1455`, and blank owner/proposed fields.
+- CSV summary currently reports `krd_summary_row_count=3`, `krd_detail_row_count=500`, `bond_missing_maturity_row_count=0`, `tyw_liability_missing_maturity_row_count=1455`, and blank owner/proposed fields.
 - Owner decision intake check reports `intake_status=pending_owner_decisions` and `intake_ready=false` until risk-owner CSV decisions, conditional KRD evidence, data-owner CSV decisions, scoped-exclusion evidence, and business-owner approval are all filled.
 - Owner decision intake check also exposes `csv_check_summary` and `generated_owner_fields_boundaries` at the top level before owner decisions are accepted.
 - Owner decision intake check also exposes `owner_input_boundary` so allowed pre-intake owner-field blockers are separated from active dependency blockers.
 - Owner decision intake strict ready gate exits non-zero in the current real-data state.
 - KRD manifest consistency checks `remap_tenor_count=3`, `nonzero_dv01_rows=500`, and `dv01_sum=33180977.63634484`.
-- Maturity manifest consistency checks `bond_missing_maturity_rows=114`, `tyw_liability_missing_maturity_rows=1455`, `bond_missing_maturity_market_value=37622164239.83000008`, and `tyw_liability_missing_maturity_principal=43822652393.01000002`.
+- Maturity manifest consistency checks `bond_missing_maturity_rows=0`, `tyw_liability_missing_maturity_rows=1455`, `bond_missing_maturity_market_value=0`, and `tyw_liability_missing_maturity_principal=43822652393.01000002`.
 - Business owner approval packet strict ready gate exits non-zero while the template is pending or any full-score blocker remains.
 - Full-closure evidence script reports `data_quality_status=blocked`.
 - Full-closure evidence strict clean gate exits non-zero while risk tensor and maturity blockers remain.
-- Risk warning consistency strict gate exits non-zero while parsed and recomputed duration-exclusion evidence remains mismatched.
-- Risk tensor rematerialization preview is read-only: it would clear `duration_exclusion_warning_mismatch`, but `preview_decision_status=blocked` remains because `preview_quality_flag=warning`.
+- Risk warning consistency strict gate exits 0 now that parsed and recomputed duration-exclusion evidence match.
+- Risk tensor rematerialization preview is read-only: parsed warnings already match recomputed facts, and `preview_decision_status=blocked` remains because `preview_quality_flag=warning`.
 - Risk warning clean gate exits non-zero while `quality_flag=warning` remains.
 - KRD remap review queue reports `review_status=decision_required`.
 - KRD remap review queue exposes `decision_options=approve_nearest_bucket|require_exact_bucket_schema|reject` and `review_actions` for risk-owner decision.
@@ -350,14 +362,15 @@ Observed status:
 - KRD contract decision owner summary shows `generated_owner_fields_must_be_blank=true` so generated CSV fields cannot be mistaken for captured owner decisions.
 - KRD contract decision export reports `export_status=decision_required`, `remap_tenor_count=3`, `nonzero_dv01_rows=500`, and `dv01_sum=33180977.63634484`.
 - KRD contract decision export strict clean gate exits non-zero until the risk-owner decision is captured in the metric contract or exact-bucket schema is implemented.
-- Maturity remediation queue reports `remediation_status=blocked`.
+- Maturity remediation queue reports `remediation_status=blocked` because the TYW liability queue remains non-empty; the bond missing-maturity queue is empty.
 - Maturity remediation queue exposes `remediation_scope` and `remediation_actions` for data-owner remediation or signed exclusion.
 - Maturity remediation queue strict empty gate exits non-zero while missing maturity rows remain.
 - Maturity remediation export writes full data-owner CSV queues plus a manifest under `docs/portfolio/maturity-remediation/2026-05-31/`.
 - Maturity remediation export also writes the data-owner summary `docs/portfolio/maturity-remediation/2026-05-31/owner_summary.md`.
 - Maturity remediation owner summary shows `generated_owner_fields_must_be_blank=true` so generated proposed dates or owner decisions cannot be mistaken for remediation evidence.
-- Maturity remediation export reports `export_status=blocked`, `bond_missing_maturity_rows=114`, `tyw_liability_missing_maturity_rows=1455`, and blank `proposed_maturity_date` fields.
+- Maturity remediation export reports `export_status=blocked`, `bond_missing_maturity_rows=0`, `tyw_liability_missing_maturity_rows=1455`, and blank `proposed_maturity_date` fields.
 - Maturity remediation export strict clean gate exits non-zero until the source remediation queue is empty or a signed scoped exclusion is captured.
+- Matured-outstanding queue reports six non-zero matured bond positions with `net_market_value=1487429865.67000000`; its strict gate exits non-zero until those positions are reconciled at source and does not accept a scoped exclusion.
 - Closure artifact presence check reports `status=current`, `current=true`, and no blockers.
 - Evidence packet guard requires the evidence snapshot, owner handoff packet, and this sign-off packet to carry the closure artifact presence command and currentness summary.
 - `GS-PORTFOLIO-HOME-A` remains supporting-only.
@@ -366,4 +379,4 @@ Observed status:
 - Approval checker strict captured gate exits non-zero while the template is pending.
 - Scorecard verification command runner reports `verification_status=matched_expected_blocked_state`.
 - The page may show same-day risk-date closure, but must not claim full risk-tensor decision closure.
-- Full closure still requires KRD contract decision, maturity remediation or signed exclusion scope, capture-ready page evidence, business-owner approval, and owner-decision intake reconciliation.
+- Full closure still requires KRD contract decision, TYW maturity remediation or signed exclusion scope, matured-bond source reconciliation, risk-warning reconciliation/rematerialization, capture-ready page evidence, business-owner approval, and owner-decision intake reconciliation.

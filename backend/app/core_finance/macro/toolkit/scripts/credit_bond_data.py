@@ -6,20 +6,25 @@ credit_bond_data.py
 """
 import os
 import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import warnings
 
-import paths
+if __package__:
+    from backend.app.core_finance.macro.toolkit import paths
+else:
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import paths
 
 warnings.filterwarnings("ignore")
 
 try:
-    from WindPy import w
+    if __package__:
+        from backend.app.core_finance.macro.toolkit.WindPy import w
+    else:
+        from WindPy import w
     WIND_AVAILABLE = w.start() == 0
 except Exception:
     WIND_AVAILABLE = False
-    print("[WARNING] Choice/Tushare system source not available, using mock data for development")
+    print("[WARNING] Choice/Tushare system source not available; credit bond output will be empty")
 
 import time
 from datetime import date, datetime
@@ -241,7 +246,10 @@ def fetch_credit_bond_data():
     df = pd.DataFrame(records)
     out_path = paths.OUTPUT_DIR / "credit_bond_latest.csv"
     df.to_csv(out_path, index=False, encoding="utf-8-sig")
-    print(f"  Saved {len(df)} records to {out_path}")
+    if df.empty:
+        print(f"  [WARNING] no credit bond records available from system source; output is empty: {out_path}")
+    else:
+        print(f"  Saved {len(df)} records to {out_path}")
 
     # 打印摘要
     if not df.empty:

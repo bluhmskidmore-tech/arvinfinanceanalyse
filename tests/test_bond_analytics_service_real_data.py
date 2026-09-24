@@ -11,7 +11,9 @@ from backend.app.governance.settings import get_settings
 from tests.helpers import load_module
 from tests.test_bond_analytics_curve_effects import _seed_curve_rows
 from tests.test_bond_analytics_materialize_flow import REPORT_DATE
-from tests.test_bond_analytics_service import _configure_and_materialize
+from tests.test_bond_analytics_materialize_flow import _seed_formal_zqtz_balance_for_cb001
+from tests.test_bond_analytics_materialize_flow import seed_yield_curves_for_bond_analytics_tests
+from tests.test_bond_analytics_service import _clear_seeded_yield_curve_inputs, _configure_and_materialize
 
 
 @pytest.fixture
@@ -25,6 +27,21 @@ def service_mod(tmp_path, monkeypatch):
         yield module
     finally:
         get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _fail_closed_against_live_yield_vendor(monkeypatch):
+    yield_curve_mod = load_module(
+        "backend.app.tasks.yield_curve_materialize",
+        "backend/app/tasks/yield_curve_materialize.py",
+    )
+
+    def _fail_if_vendor_called(*_args, **_kwargs):
+        raise AssertionError("yield vendor should not be called")
+
+    monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_akshare_curve", _fail_if_vendor_called)
+    monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_choice_curve", _fail_if_vendor_called)
+    monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_chinabond_gkh_curve", _fail_if_vendor_called)
 
 
 def _seed_fx_rows(duckdb_path: str) -> None:
@@ -57,6 +74,58 @@ def _seed_fx_rows(duckdb_path: str) -> None:
         conn.close()
 
 
+def _seed_formal_cny_closure_for_foreign_snapshot(
+    duckdb_path: str,
+    *,
+    instrument_code: str,
+    fx_rate: Decimal = Decimal("7.08270000"),
+    invest_type_std: str = "A",
+    accounting_basis: str = "FVOCI",
+) -> None:
+    conn = duckdb.connect(duckdb_path, read_only=True)
+    try:
+        row = conn.execute(
+            """
+            select face_value_native, market_value_native, amortized_cost_native, accrued_interest_native
+            from zqtz_bond_daily_snapshot
+            where report_date = ? and instrument_code = ?
+            """,
+            [REPORT_DATE, instrument_code],
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row is not None
+    native_amounts = [Decimal(str(value)) for value in row]
+    _seed_formal_zqtz_balance_for_cb001(
+        duckdb_path,
+        instrument_code=instrument_code,
+        face_value_amount=native_amounts[0] * fx_rate,
+        market_value_amount=native_amounts[1] * fx_rate,
+        amortized_cost_amount=native_amounts[2] * fx_rate,
+        accrued_interest_amount=native_amounts[3] * fx_rate,
+        invest_type_std=invest_type_std,
+        accounting_basis=accounting_basis,
+    )
+
+
+def _fact_accounting_class(duckdb_path: str, *, instrument_code: str) -> str:
+    conn = duckdb.connect(duckdb_path, read_only=True)
+    try:
+        row = conn.execute(
+            """
+            select accounting_class
+            from fact_formal_bond_analytics_daily
+            where report_date = ? and instrument_code = ?
+            """,
+            [REPORT_DATE, instrument_code],
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row is not None
+    return str(row[0])
+
+
 def test_bond_analytics_return_decomposition_with_real_facts_uses_filtered_fact_rows(service_mod):
     payload = service_mod.get_return_decomposition(
         date.fromisoformat(REPORT_DATE),
@@ -69,19 +138,20 @@ def test_bond_analytics_return_decomposition_with_real_facts_uses_filtered_fact_
     assert payload["result_meta"]["source_version"] == "sv_bond_snap_1"
     assert result["bond_count"] == 2
     assert result["total_market_value"] == "330.00000000"
-    assert result["carry"] == "1.01917808"
-    assert result["actual_pnl"] == "1.01917808"
+    # Exclusive MoM day-count (Mar 1→31 = 30 days); legacy inclusive-31 goldens retired.
+    assert result["carry"] == "0.98630137"
+    assert result["actual_pnl"] == "0.98630137"
     assert service_mod.RETURN_TRADING_GAP_WARNING in result["warnings"]
     assert result["by_asset_class"] == [
         {
             "asset_class": "credit",
-            "carry": "1.01917808",
+            "carry": "0.98630137",
             "roll_down": "0.00000000",
             "rate_effect": "0.00000000",
             "spread_effect": "0.00000000",
             "convexity_effect": "0.00000000",
             "trading": "0.00000000",
-            "total": "1.01917808",
+            "total": "0.98630137",
             "bond_count": 2,
             "market_value": "330.00000000",
         }
@@ -89,25 +159,25 @@ def test_bond_analytics_return_decomposition_with_real_facts_uses_filtered_fact_
     assert result["by_accounting_class"] == [
         {
             "asset_class": "OCI",
-            "carry": "0.50958904",
+            "carry": "0.49315068",
             "roll_down": "0.00000000",
             "rate_effect": "0.00000000",
             "spread_effect": "0.00000000",
             "convexity_effect": "0.00000000",
             "trading": "0.00000000",
-            "total": "0.50958904",
+            "total": "0.49315068",
             "bond_count": 1,
             "market_value": "190.00000000",
         },
         {
             "asset_class": "TPL",
-            "carry": "0.50958904",
+            "carry": "0.49315068",
             "roll_down": "0.00000000",
             "rate_effect": "0.00000000",
             "spread_effect": "0.00000000",
             "convexity_effect": "0.00000000",
             "trading": "0.00000000",
-            "total": "0.50958904",
+            "total": "0.49315068",
             "bond_count": 1,
             "market_value": "140.00000000",
         },
@@ -132,11 +202,17 @@ def test_return_decomposition_fx_effect_nonzero_for_usd_bonds(tmp_path, monkeypa
         )
     finally:
         conn.close()
+    _seed_formal_cny_closure_for_foreign_snapshot(
+        str(duckdb_path),
+        instrument_code="CB-001",
+    )
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
     _task_mod.materialize_bond_analytics_facts.fn(
         report_date=REPORT_DATE,
         duckdb_path=str(duckdb_path),
         governance_dir=str(_governance_dir),
     )
+    _clear_seeded_yield_curve_inputs(str(duckdb_path))
     service_mod = load_module(
         f"tests._bond_contract.bond_analytics_service_{uuid.uuid4().hex}",
         "backend/app/services/bond_analytics_service.py",
@@ -200,6 +276,11 @@ def test_return_decomposition_warns_when_fx_uses_latest_available_snapshot(tmp_p
         )
     finally:
         conn.close()
+    _seed_formal_cny_closure_for_foreign_snapshot(
+        str(duckdb_path),
+        instrument_code="CB-001",
+    )
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
     task_mod.materialize_bond_analytics_facts.fn(
         report_date=REPORT_DATE,
         duckdb_path=str(duckdb_path),
@@ -255,11 +336,19 @@ def test_return_decomposition_marks_result_meta_stale_when_fx_uses_latest_availa
         )
     finally:
         conn.close()
+    _seed_formal_cny_closure_for_foreign_snapshot(
+        str(duckdb_path),
+        instrument_code="TB-001",
+        invest_type_std="H",
+        accounting_basis="AC",
+    )
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
     task_mod.materialize_bond_analytics_facts.fn(
         report_date=REPORT_DATE,
         duckdb_path=str(duckdb_path),
         governance_dir=str(governance_dir),
     )
+    assert _fact_accounting_class(str(duckdb_path), instrument_code="TB-001") == "AC"
     service_mod = load_module(
         f"tests._bond_contract.bond_analytics_service_{uuid.uuid4().hex}",
         "backend/app/services/bond_analytics_service.py",
@@ -291,11 +380,19 @@ def test_return_decomposition_marks_result_meta_unavailable_when_required_fx_mis
         )
     finally:
         conn.close()
+    _seed_formal_cny_closure_for_foreign_snapshot(
+        str(duckdb_path),
+        instrument_code="TB-001",
+        invest_type_std="H",
+        accounting_basis="AC",
+    )
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
     task_mod.materialize_bond_analytics_facts.fn(
         report_date=REPORT_DATE,
         duckdb_path=str(duckdb_path),
         governance_dir=str(governance_dir),
     )
+    assert _fact_accounting_class(str(duckdb_path), instrument_code="TB-001") == "AC"
     service_mod = load_module(
         f"tests._bond_contract.bond_analytics_service_{uuid.uuid4().hex}",
         "backend/app/services/bond_analytics_service.py",
@@ -313,33 +410,40 @@ def test_bond_analytics_krd_curve_risk_with_real_facts_formats_exact_risk_output
     payload = service_mod.get_krd_curve_risk(date.fromisoformat(REPORT_DATE), "standard")
     result = payload["result"]
 
-    assert payload["result_meta"]["rule_version"] == "rv_bond_analytics_formal_materialize_v1"
+    assert payload["result_meta"]["rule_version"] == "rv_bond_analytics_formal_materialize_v2"
     assert result["portfolio_duration"] == "5.05978431"
     assert result["portfolio_modified_duration"] == "4.87293147"
     assert result["portfolio_dv01"] == "0.22175249"
-    assert result["portfolio_convexity"] == "36.65108294"
+    # 8c422eff made convexity use the parsed coupon frequency; these annual-pay fixtures no longer use the old semi-annual default.
+    # W-fi-2026-08 P4：凸性由久期型近似 D(D+1)/(1+y/f)² 升级为标准现金流凸性，
+    # 组合层 35.23794449 -> 37.92819750（+7.63%）。久期 / DV01 未变，见上三条断言。
+    assert result["portfolio_convexity"] == "37.92819750"
     assert result["krd_buckets"] == [
         {
             "tenor": "10Y",
+            "avg_modified_duration": "8.03613072",
             "krd": "8.03613072",
             "dv01": "0.12054196",
             "market_value_weight": "0.32634033",
         },
         {
             "tenor": "1Y",
+            "avg_modified_duration": "0.98231827",
             "krd": "0.98231827",
             "dv01": "0.00982318",
             "market_value_weight": "0.23076923",
         },
         {
             "tenor": "5Y",
+            "avg_modified_duration": "4.56936732",
             "krd": "4.56936732",
             "dv01": "0.09138735",
             "market_value_weight": "0.44289044",
         },
     ]
     assert result["scenarios"][0]["scenario_name"] == "parallel_up_25bp"
-    assert result["scenarios"][0]["pnl_economic"] == "-5.17708364"
+    # 同上：凸性项（正）随标准化变大 0.00360662，情景损益相应少亏。
+    assert result["scenarios"][0]["pnl_economic"] == "-5.17537151"
     assert result["by_asset_class"] == [
         {
             "asset_class": "credit",
@@ -371,28 +475,52 @@ def test_bond_analytics_credit_spread_with_real_facts_returns_expected_scenario_
     assert result["spread_scenarios"] == [
         {
             "scenario_name": "利差走阔 10bp",
-            "spread_change_bp": 10.0,
+            "spread_change_bp": {
+                "raw": 10.0,
+                "unit": "bp",
+                "display": "+10.00 bp",
+                "precision": 2,
+                "sign_aware": True,
+            },
             "pnl_impact": "-2.11929310",
             "oci_impact": "-0.91387350",
             "tpl_impact": "-1.20541960",
         },
         {
             "scenario_name": "利差收窄 10bp",
-            "spread_change_bp": -10.0,
+            "spread_change_bp": {
+                "raw": -10.0,
+                "unit": "bp",
+                "display": "-10.00 bp",
+                "precision": 2,
+                "sign_aware": True,
+            },
             "pnl_impact": "2.11929310",
             "oci_impact": "0.91387350",
             "tpl_impact": "1.20541960",
         },
         {
             "scenario_name": "利差走阔 25bp",
-            "spread_change_bp": 25.0,
+            "spread_change_bp": {
+                "raw": 25.0,
+                "unit": "bp",
+                "display": "+25.00 bp",
+                "precision": 2,
+                "sign_aware": True,
+            },
             "pnl_impact": "-5.29823275",
             "oci_impact": "-2.28468375",
             "tpl_impact": "-3.01354900",
         },
         {
             "scenario_name": "利差收窄 25bp",
-            "spread_change_bp": -25.0,
+            "spread_change_bp": {
+                "raw": -25.0,
+                "unit": "bp",
+                "display": "-25.00 bp",
+                "precision": 2,
+                "sign_aware": True,
+            },
             "pnl_impact": "5.29823275",
             "oci_impact": "2.28468375",
             "tpl_impact": "3.01354900",
@@ -419,6 +547,10 @@ def test_bond_analytics_credit_spread_with_real_facts_returns_expected_scenario_
         "No aaa_credit curve available" in warning or "No treasury curve available" in warning
         for warning in result["warnings"]
     )
+    assert result["warning_codes"] == [
+        "credit_spread_weighted_avg_spread_input_unavailable",
+        "bond_analytics_partial_warning",
+    ]
 
 
 def test_bond_analytics_accounting_audit_with_real_facts_returns_rule_trace_rows(service_mod):

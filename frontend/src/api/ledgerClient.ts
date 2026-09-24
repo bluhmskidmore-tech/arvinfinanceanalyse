@@ -1,4 +1,4 @@
-export type LedgerDirection = "ASSET" | "LIABILITY";
+export type LedgerDirection = "ASSET" | "LIABILITY" | "UNCLASSIFIED";
 
 export type LedgerResponseMetadata = {
   source_version: string | null;
@@ -27,12 +27,22 @@ export type LedgerDatesData = {
   items: string[];
 };
 
-export type LedgerDashboardData = {
-  as_of_date: string | null;
+export type LedgerCurrencyBreakdown = {
+  currency: string;
   asset_face_amount: number | null;
   liability_face_amount: number | null;
   net_face_exposure: number | null;
-  alert_count: number | null;
+  classification_total_row_count: number;
+  unclassified_row_count: number | null;
+  unclassified_face_amount: number | null;
+  classification_coverage_pct: number | null;
+};
+
+export type LedgerDashboardData = {
+  as_of_date: string | null;
+  classification_status: "ready" | "legacy_unassessed" | "invalid_materialization";
+  classification_rule_version: string;
+  currency_breakdown: LedgerCurrencyBreakdown[];
 };
 
 export type LedgerPositionItem = {
@@ -89,9 +99,45 @@ export type LedgerPositionsOptions = {
   accountCategoryStd?: string | null;
   assetClassStd?: string | null;
   costCenter?: string | null;
+  currency?: string | null;
   page?: number;
   pageSize?: number;
 };
+
+export type LedgerImportStatus = "queued" | "running" | "succeeded" | "duplicate" | "failed";
+
+export type LedgerImportRunData = {
+  run_id: string;
+  status: LedgerImportStatus;
+  file_name: string;
+  batch_id?: number | null;
+  duplicate_of_batch_id?: number | null;
+  queued_at?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  error_category?: string | null;
+  error_message?: string | null;
+};
+
+export type LedgerImportResponse = {
+  data: LedgerImportRunData;
+  trace: {
+    request_id: string;
+    run_id: string;
+  };
+};
+
+export class LedgerRequestError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+    readonly status: number,
+    readonly retryable: boolean,
+  ) {
+    super(message);
+    this.name = "LedgerRequestError";
+  }
+}
 
 export type LedgerClientMethods = {
   getLedgerDates: () => Promise<LedgerApiResponse<LedgerDatesData>>;
@@ -102,6 +148,8 @@ export type LedgerClientMethods = {
     options: LedgerPositionsOptions,
   ) => Promise<LedgerApiResponse<LedgerPositionsData>>;
   exportLedgerPositions: (options: LedgerPositionsOptions) => Promise<Blob>;
+  importLedger: (file: File, signal?: AbortSignal) => Promise<LedgerImportResponse>;
+  getLedgerImportStatus: (runId: string, signal?: AbortSignal) => Promise<LedgerImportResponse>;
 };
 
 type FetchLike = typeof fetch;
@@ -113,7 +161,7 @@ type LedgerClientFactoryOptions = {
 
 const mockMetadata: LedgerResponseMetadata = {
   source_version: "sv_ledger_mock_20260317",
-  rule_version: "position_key_contract_v1",
+  rule_version: "rv_ledger_classification_v2",
   batch_id: 1,
   stale: false,
   fallback: false,
@@ -226,6 +274,7 @@ function positionsParams(options: LedgerPositionsOptions) {
     account_category_std: options.accountCategoryStd ?? undefined,
     asset_class_std: options.assetClassStd ?? undefined,
     cost_center: options.costCenter ?? undefined,
+    currency: options.currency?.trim().toUpperCase() || undefined,
     page: options.page,
     page_size: options.pageSize,
   };
@@ -252,6 +301,29 @@ async function requestLedgerJson<TData>(
   return payload as LedgerApiResponse<TData>;
 }
 
+async function requestLedgerImportJson(
+  fetchImpl: FetchLike,
+  baseUrl: string,
+  path: string,
+  init?: RequestInit,
+): Promise<LedgerImportResponse> {
+  const response = await fetchImpl(`${baseUrl}${path}`, {
+    ...init,
+    headers: { Accept: "application/json", ...init?.headers },
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const error = payload?.error;
+    const code = typeof error?.code === "string" ? error.code : "LEDGER_REQUEST_FAILED";
+    const message =
+      typeof error?.message === "string"
+        ? error.message
+        : `Request failed: ${path} (${response.status})`;
+    throw new LedgerRequestError(message, code, response.status, error?.retryable === true);
+  }
+  return payload as LedgerImportResponse;
+}
+
 export function createMockLedgerClient(): LedgerClientMethods {
   return {
     async getLedgerDates() {
@@ -266,10 +338,12 @@ export function createMockLedgerClient(): LedgerClientMethods {
       return {
         data: {
           as_of_date: "2026-03-17",
-          asset_face_amount: 3289.07,
-          liability_face_amount: 1231.77,
-          net_face_exposure: 2057.31,
-          alert_count: 0,
+          classification_status: "ready",
+          classification_rule_version: "rv_ledger_classification_v2",
+          currency_breakdown: [
+            { currency: "CNY", asset_face_amount: 3289.07, liability_face_amount: 1231.77, net_face_exposure: 2057.31, classification_total_row_count: 2, unclassified_row_count: 0, unclassified_face_amount: 0, classification_coverage_pct: 100 },
+            { currency: "USD", asset_face_amount: 2, liability_face_amount: null, net_face_exposure: 2, classification_total_row_count: 1, unclassified_row_count: 0, unclassified_face_amount: 0, classification_coverage_pct: 100 },
+          ],
         },
         metadata: {
           ...mockMetadata,
@@ -285,9 +359,11 @@ export function createMockLedgerClient(): LedgerClientMethods {
       };
     },
     async getLedgerPositions(options: LedgerPositionsOptions) {
-      const items = options.direction
-        ? mockPositions.filter((item) => item.direction === options.direction)
-        : mockPositions;
+      const items = mockPositions.filter(
+        (item) =>
+          (!options.direction || item.direction === options.direction) &&
+          (!options.currency || item.currency === options.currency.trim().toUpperCase()),
+      );
       return {
         data: {
           items,
@@ -314,6 +390,25 @@ export function createMockLedgerClient(): LedgerClientMethods {
       return new Blob(["mock ledger positions"], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       });
+    },
+    async importLedger(file: File) {
+      const runId = `ledger_import:mock:${Date.now()}`;
+      return {
+        data: { run_id: runId, status: "queued", file_name: file.name },
+        trace: { request_id: "req_ledger_import_mock", run_id: runId },
+      };
+    },
+    async getLedgerImportStatus(runId: string) {
+      return {
+        data: {
+          run_id: runId,
+          status: "succeeded",
+          file_name: "ledger_mock.xlsx",
+          batch_id: 1,
+          finished_at: new Date().toISOString(),
+        },
+        trace: { request_id: "req_ledger_import_status_mock", run_id: runId },
+      };
     },
   };
 }
@@ -350,5 +445,21 @@ export function createRealLedgerClient({
       }
       return response.blob();
     },
+    importLedger: (file: File, signal?: AbortSignal) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      return requestLedgerImportJson(fetchImpl, baseUrl, "/api/ledger/import", {
+        method: "POST",
+        body: formData,
+        signal,
+      });
+    },
+    getLedgerImportStatus: (runId: string, signal?: AbortSignal) =>
+      requestLedgerImportJson(
+        fetchImpl,
+        baseUrl,
+        `/api/ledger/import-status${buildQuery({ run_id: runId })}`,
+        { signal },
+      ),
   };
 }

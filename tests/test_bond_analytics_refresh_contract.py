@@ -82,20 +82,14 @@ def test_bond_analytics_refresh_returns_503_when_queue_dispatch_fails(tmp_path, 
     get_settings.cache_clear()
 
 
-def test_bond_analytics_refresh_prepares_yield_curve_inputs_before_queueing(tmp_path, monkeypatch):
+def test_bond_analytics_refresh_only_queues_without_preparing_yield_curve_inputs(tmp_path, monkeypatch):
     _configure_bond_analytics_api_env(tmp_path, monkeypatch)
     service_mod = load_module(
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
     )
-    prepared: list[tuple[str, str]] = []
     queued_messages: list[dict[str, object]] = []
 
-    monkeypatch.setattr(
-        service_mod,
-        "_prepare_yield_curve_inputs_for_refresh",
-        lambda *, settings, report_date: prepared.append((str(settings.duckdb_path), report_date)),
-    )
     monkeypatch.setattr(
         service_mod.materialize_bond_analytics_facts,
         "send",
@@ -105,7 +99,6 @@ def test_bond_analytics_refresh_prepares_yield_curve_inputs_before_queueing(tmp_
     payload = service_mod.refresh_bond_analytics(get_settings(), report_date=REPORT_DATE)
 
     assert payload["status"] == "queued"
-    assert prepared == [(str(get_settings().duckdb_path), REPORT_DATE)]
     assert len(queued_messages) == 1
     assert queued_messages[0]["report_date"] == REPORT_DATE
     get_settings.cache_clear()
@@ -117,14 +110,8 @@ def test_bond_analytics_refresh_reuses_run_for_same_idempotency_key(tmp_path, mo
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
     )
-    prepared: list[str] = []
     queued_messages: list[dict[str, object]] = []
 
-    monkeypatch.setattr(
-        service_mod,
-        "_prepare_yield_curve_inputs_for_refresh",
-        lambda *, settings, report_date: prepared.append(report_date),
-    )
     monkeypatch.setattr(
         service_mod.materialize_bond_analytics_facts,
         "send",
@@ -152,7 +139,6 @@ def test_bond_analytics_refresh_reuses_run_for_same_idempotency_key(tmp_path, mo
     assert second_payload["run_id"] == first_payload["run_id"]
     assert second_payload["idempotency_key"] == "bond-analytics-refresh-2026-03-31"
     assert second_payload["idempotency_replay"] is True
-    assert prepared == [REPORT_DATE]
     assert len(queued_messages) == 1
 
     records = [
@@ -382,15 +368,9 @@ def test_bond_analytics_refresh_status_returns_failed_terminal_record(tmp_path, 
 
 
 def test_bond_analytics_refresh_status_returns_503_when_status_backend_unavailable(tmp_path, monkeypatch):
-    import sys
-
     _configure_bond_analytics_api_env(tmp_path, monkeypatch)
-    # Clear cached modules so monkeypatch targets the same GovernanceRepository
-    # instance that the route handler will use.
-    for mod_name in list(sys.modules):
-        if mod_name.startswith("backend.app."):
-            sys.modules.pop(mod_name, None)
-
+    # Patch the live service module before reloading the app import chain so the
+    # route handler observes the same GovernanceRepository class identity.
     service_mod = load_module(
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",

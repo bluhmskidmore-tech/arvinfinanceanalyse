@@ -29,6 +29,13 @@ def test_descriptor_basic_metadata() -> None:
     assert "fact_formal_pnl_fi_daily" in DESCRIPTOR.applies_to
 
 
+def test_descriptor_rationale_matches_single_canonical_classifier() -> None:
+    assert "infer_invest_type is the single production classifier" in DESCRIPTOR.rationale
+    assert "derive_invest_type_std_value" not in DESCRIPTOR.rationale
+    assert "follow-up phase" not in DESCRIPTOR.rationale
+    assert "does not misclassify liabilities as H" not in DESCRIPTOR.rationale
+
+
 def test_matrix_is_complete_9_cells() -> None:
     assert len(DESCRIPTOR.cells) == 9
 

@@ -9,7 +9,7 @@ It does not authorize unrelated Phase 2 work, Agent MVP work, or broad frontend 
 
 Current repo-executable normal path:
 
-`Choice catalog-driven middle-rate discovery -> Choice live fetch -> AkShare fallback -> fail closed`
+`Choice catalog-driven middle-rate discovery -> Choice live fetch -> ChinaMoney/CFETS official history -> AkShare fallback -> fail closed`
 
 Key rules:
 
@@ -23,8 +23,40 @@ Key rules:
   - `HKD -> CNY` (from reverse supplier orientation such as `人民币兑港元`)
 - Persisted formal rows must normalize to `(trade_date, base_currency, quote_currency='CNY')`.
 - Reverse supplier orientation must be inverted before persistence.
+- ChinaMoney response values must be mapped by the returned `searchlist` pair names; response position alone is not authoritative.
+- ChinaMoney `HKD/CNY` is already normalized and must not be inverted a second time merely because the Choice catalog candidate uses reverse orientation.
 - Missing required formal middle-rates must fail closed.
 - Non-middle-rate FX observations such as RMB indices or FX swap curves stay analytical-only and must not backflow into `fx_daily_mid`.
+
+## CFETS FX Business Calendar
+
+Formal carry-forward is governed by the CFETS/ChinaMoney annual interbank FX
+currency holiday table, not by a generic weekend-only calendar.
+
+Current executable calendar source:
+
+- `backend/app/core_finance/fx_calendar.py`
+- official notice:
+  `https://www.chinamoney.com.cn/chinese/rdgz/20251218/3254567.html`
+- cross-check surface:
+  `https://www.shclearing.cn/qsywzq/whzq/`
+
+The 2026 table was published by China Foreign Exchange Trade System and Shanghai
+Clearing House on 2025-12-18. The attachment excludes weekends and lists
+currency-specific holidays. Code therefore treats a date as non-business when
+either side of the currency pair is on its CFETS holiday list, or when the date
+falls on that currency's weekend convention.
+
+Formal rule:
+
+- same-date official middle rate is accepted;
+- prior observed date is accepted only when the requested report date is a
+  confirmed CFETS non-business day for the currency pair;
+- ordinary weekday vendor misses still fail closed.
+
+Residual operational rule: the CFETS notice says temporary 2026 currency-holiday
+adjustments will be announced separately. Those notices must be ingested into the
+calendar before relying on carry-forward for affected dates.
 
 ## Choice Authority Source
 
@@ -43,6 +75,19 @@ Current known formal reference series include:
 
 The catalog is the discovery surface. Code must not maintain a second hardcoded formal-series registry that bypasses catalog selection.
 
+## ChinaMoney Official Fallback
+
+When Choice is unavailable or incomplete, the formal task queries the China
+Foreign Exchange Trade System history endpoint exposed by ChinaMoney. Candidate
+membership still comes from the Choice catalog; the official response only
+supplies the dated values for those governed pairs.
+
+- Page: `https://www.chinamoney.com.cn/chinese/bkccpr/`
+- History endpoint: `https://www.chinamoney.com.cn/ags/ms/cm-u-bk-ccpr/CcprHisNew`
+- Persisted `source_name`: `CFETS`
+- Persisted `vendor_name`: `chinamoney`
+- Ordinary weekday gaps remain fail-closed; carry-forward remains subject to the CFETS calendar rule above.
+
 ## Explicit Manual Override Path
 
 The CSV/manual path is no longer the normal governed formal route.
@@ -57,6 +102,23 @@ If an explicit override path is configured, it must exist or the pipeline fails 
 There is no silent data-root CSV fallback on the governed normal path.
 
 ## Standard Entrypoints
+
+Canonical full core-data refresh:
+
+```bash
+python scripts/run_global_data_refresh.py --report-date 2026-07-31
+```
+
+Plan-only preflight:
+
+```bash
+python scripts/run_global_data_refresh.py --report-date 2026-07-31 --dry-run
+```
+
+This entrypoint is report-date driven, serialized by a global operator lock,
+stops at the first required failure, and ends with table/date and formal FX
+completeness/lineage checks. It never auto-discovers an FX CSV; a manual replay
+must pass `--fx-source-path` explicitly.
 
 Formal balance pipeline:
 

@@ -4,6 +4,11 @@ import pytest
 
 from tests.helpers import load_module
 
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_macro_data,
+]
+
 
 @pytest.mark.parametrize(
     ("module_name", "relative_path", "expected_vendor", "env_vars"),

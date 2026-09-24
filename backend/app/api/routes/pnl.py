@@ -1,6 +1,8 @@
+from datetime import date
 from importlib import import_module
-from typing import Annotated
+from typing import Annotated, Literal
 
+from backend.app.api.deps import ensure_read_allowed
 from backend.app.api.perf_logging import timed_api_call
 from backend.app.governance.settings import get_settings
 from backend.app.schemas.pnl import PnlByBusinessAnalysisDimension, PnlByBusinessManualAdjustmentRequest
@@ -16,12 +18,7 @@ def _pnl_service():
 
 
 def _ensure_pnl_read_allowed(auth: AuthContext, settings) -> None:
-    try:
-        ensure_user_allowed(auth=auth, settings=settings, resource="pnl", action="read")
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    ensure_read_allowed(auth, "pnl", settings=settings, authorize=ensure_user_allowed)
 
 
 @router.get("/pnl/dates", response_model=ResultEnvelope)
@@ -144,7 +141,7 @@ def by_business(
 def by_business_ytd(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     year: int = Query(..., description="Requested calendar year for V1-compatible PnL by business type."),
-    as_of_date: str | None = Query(
+    as_of_date: date | None = Query(
         None,
         description="Optional report-date cutoff for V1-compatible YTD PnL.",
     ),
@@ -156,7 +153,7 @@ def by_business_ytd(
             duckdb_path=str(settings.duckdb_path),
             governance_dir=str(settings.governance_path),
             year=year,
-            as_of_date=as_of_date,
+            as_of_date=as_of_date.isoformat() if as_of_date else None,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -168,7 +165,7 @@ def by_business_ytd(
 def by_business_monthly(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     year: int = Query(..., description="Requested calendar year for monthly PnL by business type."),
-    as_of_date: str | None = Query(
+    as_of_date: date | None = Query(
         None,
         description="Optional report-date cutoff for monthly PnL by business type.",
     ),
@@ -180,7 +177,7 @@ def by_business_monthly(
             duckdb_path=str(settings.duckdb_path),
             governance_dir=str(settings.governance_path),
             year=year,
-            as_of_date=as_of_date,
+            as_of_date=as_of_date.isoformat() if as_of_date else None,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -192,7 +189,7 @@ def by_business_monthly(
 def by_business_analysis(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     year: int = Query(..., description="Requested calendar year for PnL by business analysis."),
-    as_of_date: str | None = Query(
+    as_of_date: date | None = Query(
         None,
         description="Optional report-date cutoff for PnL by business analysis.",
     ),
@@ -214,10 +211,102 @@ def by_business_analysis(
                 duckdb_path=str(settings.duckdb_path),
                 governance_dir=str(settings.governance_path),
                 year=year,
-                as_of_date=as_of_date,
+                as_of_date=as_of_date.isoformat() if as_of_date else None,
                 business_key=business_key,
                 dimension=dimension,
             ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/pnl/by-business/precompute-status")
+def by_business_precompute_status(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    year: int = Query(..., ge=2000, le=2100, description="Calendar year for the PnL by-business page read model."),
+    as_of_date: str | None = Query(None, description="Selected page cutoff date in YYYY-MM-DD format."),
+) -> dict[str, object]:
+    settings = get_settings()
+    _ensure_pnl_read_allowed(auth, settings)
+    try:
+        return _pnl_service().pnl_by_business_precompute_status(settings, year=year, as_of_date=as_of_date)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/pnl/by-business/precompute-rebuild")
+def rebuild_by_business_precompute(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    year: int = Query(..., ge=2000, le=2100, description="Calendar year to rebuild for the PnL by-business page."),
+    as_of_date: str | None = Query(None, description="Selected page cutoff date in YYYY-MM-DD format."),
+    scope: Literal["selected", "all_available"] = Query(
+        "selected",
+        description="Rebuild the selected cutoff or every available month-end cutoff in the year.",
+    ),
+) -> dict[str, object]:
+    settings = get_settings()
+    _ensure_by_business_adjustment_write_allowed(auth, settings)
+    service = _pnl_service()
+    try:
+        return service.request_pnl_by_business_precompute_rebuild(
+            settings,
+            year=year,
+            as_of_date=as_of_date,
+            scope=scope,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except service.PnlByBusinessPrecomputeConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except service.PnlByBusinessPrecomputeDispatchError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/pnl/by-business-candidate-insights", response_model=ResultEnvelope)
+def by_business_candidate_insights(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    year: int = Query(..., description="Requested calendar year for candidate business-type insights."),
+    as_of_date: str = Query(..., description="Requested report-date cutoff for candidate business-type insights."),
+) -> dict[str, object]:
+    settings = get_settings()
+    _ensure_pnl_read_allowed(auth, settings)
+    try:
+        return import_module(
+            "backend.app.services.pnl_by_business_candidate_insights"
+        ).pnl_by_business_candidate_insights_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=str(settings.governance_path),
+            year=year,
+            as_of_date=as_of_date,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/pnl/by-business-insights", response_model=ResultEnvelope)
+def by_business_insights(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    year: int = Query(..., ge=2000, le=2100, description="Calendar year for approved business insights."),
+    as_of_date: str = Query(..., description="Selected report-date cutoff in YYYY-MM-DD format."),
+) -> dict[str, object]:
+    settings = get_settings()
+    _ensure_pnl_read_allowed(auth, settings)
+    try:
+        return import_module(
+            "backend.app.services.pnl_by_business_candidate_insights"
+        ).pnl_by_business_insights_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=str(settings.governance_path),
+            year=year,
+            as_of_date=as_of_date,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

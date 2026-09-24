@@ -1,126 +1,698 @@
+/*
+ * /liability-analytics Nocturne 标准包（参照 BondDashboardPage.css / PositionsView.css 配方）：
+ * 页头 + 工具条（Tab + 32px 控件）+ 编号分区（CSS counter）+ KPI 单框横带 +
+ * 深色表格密度 + 状态块。颜色一律走 --dh-api-* 语义链；圆角制度 var(--dh-api-radius)；
+ * 字号下限 11px（DESIGN.md §3）。
+ */
+
 .liability-analytics-page {
   display: grid;
-  gap: var(--moss-space-4);
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 16px;
+  min-width: 0;
+  counter-reset: liability-section;
+}
+
+/* ---------------------------------------------------------------- 页头 */
+
+.liability-analytics-page__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.liability-analytics-page__header-copy {
   min-width: 0;
 }
 
-.liability-analytics-page__mode-badge,
-.liability-analytics-page__status-badge {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 720;
-  line-height: 1;
-  white-space: nowrap;
+.liability-analytics-page__title {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
 }
 
-.liability-analytics-page__mode-badge {
-  padding: 8px 12px;
-  border: 1px solid var(--moss-color-border-default);
-  background: var(--moss-color-card-bg);
-  color: var(--moss-color-text-primary);
-}
-
-.liability-analytics-page__mode-badge[data-tone="ok"],
-.liability-analytics-page__status-badge[data-tone="ok"] {
-  border-color: color-mix(in srgb, var(--moss-color-success-500) 42%, transparent);
-  background: var(--moss-color-success-50);
-  color: var(--moss-color-success-800);
-}
-
-.liability-analytics-page__mode-badge[data-tone="mock"],
-.liability-analytics-page__status-badge[data-tone="mock"] {
-  border-color: color-mix(in srgb, var(--moss-color-info-500) 42%, transparent);
-  background: var(--moss-color-info-50);
-  color: var(--moss-color-info-800);
-}
-
-.liability-analytics-page__status-badge {
-  padding: 6px 9px;
-  border: 1px solid var(--moss-color-border-default);
-  background: var(--moss-color-neutral-50);
-  color: var(--moss-color-text-secondary);
-}
-
-.liability-analytics-page__status-badge[data-tone="warning"] {
-  border-color: color-mix(in srgb, var(--moss-color-warning-500) 45%, transparent);
-  background: var(--moss-color-warning-50);
-  color: var(--moss-color-warning-800);
-}
-
-.liability-analytics-page__status-badge[data-tone="danger"] {
-  border-color: color-mix(in srgb, var(--moss-color-danger-500) 45%, transparent);
-  background: var(--moss-color-danger-50);
-  color: var(--moss-color-danger-800);
-}
-
-.liability-analytics-page__hero-conclusion {
-  display: grid;
-  gap: var(--moss-space-1);
-}
-
-.liability-analytics-page__hero-conclusion strong {
-  color: var(--moss-color-primary-900);
-  font-size: 15px;
-}
-
-.liability-analytics-page__hero-conclusion small {
-  color: var(--moss-color-text-secondary);
+.liability-analytics-page__subtitle {
+  max-width: 720px;
+  margin: 4px 0 0;
+  color: var(--dh-api-muted);
   font-size: 12px;
   line-height: 1.5;
 }
 
+/* 模式徽标：无大写宽字距，radius 走圆角制度。 */
+.liability-analytics-page__mode-badge {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.liability-analytics-page__mode-badge[data-tone="ok"] {
+  background: var(--dh-api-green-soft);
+  color: var(--dh-api-green);
+}
+
+.liability-analytics-page__mode-badge[data-tone="mock"] {
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-blue);
+}
+
+/* -------------------------------------------------------------- 工具条 */
+
+.liability-analytics-page__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px 16px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
 .liability-analytics-page__tabs {
-  margin-bottom: 0;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
-.liability-analytics-page__filter-field {
+.liability-analytics-page__tabs .ant-tabs-nav {
+  margin: 0;
+}
+
+.liability-analytics-page__tabs .ant-tabs-nav::before {
+  border-bottom: 0;
+}
+
+.liability-analytics-page__tabs .ant-tabs-tab {
+  padding: 8px 0 10px;
+  font-size: 13px;
+}
+
+.liability-analytics-page__toolbar-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  padding-bottom: 4px;
+}
+
+.liability-analytics-page__toolbar-field {
   display: grid;
-  gap: var(--moss-space-1);
+  gap: 4px;
 }
 
-.liability-analytics-page__report-date-select {
+.liability-analytics-page__toolbar-label {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.liability-analytics-page__toolbar-note {
+  align-self: center;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+.liability-analytics-page__toolbar-select--date {
   min-width: 160px;
 }
 
-.liability-analytics-page__fixed-date-note {
-  align-self: flex-end;
+.liability-analytics-page__toolbar-select--year {
+  min-width: 120px;
 }
 
-.liability-analytics-page__evidence-grid {
-  margin-bottom: var(--moss-space-4);
+.liability-analytics-page__toolbar-select--month {
+  min-width: 180px;
 }
 
-.liability-analytics-page__state-stack,
-.liability-analytics-page__evidence-ledger,
-.liability-analytics-page__section-stack {
+/* antd Select 深色收口：32px 控件高、panel-2 底、发丝边、12px 字号。 */
+.liability-analytics-page .liability-analytics-page__toolbar-select .ant-select-selector {
+  min-height: 32px;
+  height: 32px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-ink);
+  font-size: 12px;
+}
+
+.liability-analytics-page .liability-analytics-page__toolbar-select .ant-select-selection-item,
+.liability-analytics-page .liability-analytics-page__toolbar-select .ant-select-selection-placeholder {
+  line-height: 30px;
+}
+
+.liability-analytics-page .liability-analytics-page__toolbar-select .ant-select-arrow {
+  color: var(--dh-api-muted);
+}
+
+/* 下拉挂在工具条容器内（getPopupContainer），一并收深色。 */
+.liability-analytics-page .ant-select-dropdown {
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  box-shadow: none;
+}
+
+.liability-analytics-page .ant-select-dropdown .ant-select-item {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+.liability-analytics-page .ant-select-dropdown .ant-select-item-option-selected,
+.liability-analytics-page .ant-select-dropdown .ant-select-item-option-active {
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-ink);
+}
+
+/* ------------------------------------------------------- 编号分区骨架 */
+
+.liability-section {
   display: grid;
-  gap: var(--moss-space-3);
+  gap: 12px;
+  min-width: 0;
+  counter-increment: liability-section;
+  /* 分区锚点跳转时给粘顶导航留出余量。 */
+  scroll-margin-top: 52px;
+}
+
+.liability-section__lead {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.liability-section__lead::before {
+  content: counter(liability-section, decimal-leading-zero);
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.liability-section__lead h2 {
+  margin: 0;
+  overflow: hidden;
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.liability-section__note,
+.liability-section__state {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.liability-section__state[data-state="error"] {
+  color: var(--dh-api-red);
+}
+
+.liability-section__state[data-state="empty"] {
+  color: var(--dh-api-amber);
+}
+
+.liability-section__actions {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* ------------------------------------------------- 状态块（notice 三态） */
+
+.liability-notice {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.liability-notice__title {
+  font-weight: 600;
+}
+
+.liability-notice__description {
+  grid-column: 1;
+}
+
+.liability-notice__retry {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  padding: 4px 12px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: transparent;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.liability-notice__retry:hover {
+  border-color: var(--dh-api-blue);
+  color: var(--dh-api-blue);
+}
+
+.liability-notice--error {
+  border-color: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
+  background: var(--dh-api-red-soft);
+  color: var(--dh-api-red);
+}
+
+.liability-notice--warning {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-amber);
+}
+
+.liability-notice--info {
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+}
+
+.liability-analytics-page__notice-stack {
+  display: grid;
+  gap: 8px;
+}
+
+/* ------------------------------------------------------- 结论块（01） */
+
+.liability-analytics-page__conclusion {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--dh-api-line);
+  border-left: 2px solid var(--dh-api-blue);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.liability-analytics-page__conclusion-kicker {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.liability-analytics-page__conclusion-body {
+  color: var(--dh-api-ink);
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.liability-analytics-page__conclusion-detail {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+}
+
+/* -------------------------------------------------- KPI 单框横带 */
+
+/*
+ * 发丝分缝走 1px gap + 半透明底色透出，免去按断点维护 nth-child 边框规则；
+ * 任意列数折行下缝线依然连续。
+ */
+.liability-kpi-band {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-line-soft);
+}
+
+.liability-kpi-band[data-cols="4"] {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.liability-kpi-band[data-cols="2"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.liability-kpi-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  min-height: 108px;
+  padding: 12px 14px;
+  background: var(--dh-api-panel);
+}
+
+/* 标签 2 行 clamp + 固定 min-height，防同排数值错位（DESIGN.md §3）。 */
+.liability-kpi-cell__label {
+  display: -webkit-box;
+  overflow: hidden;
+  min-height: 32px;
+  color: var(--dh-api-soft);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* 主值下限 20px（§3）；keep-all 禁止把「亿」拆行。 */
+.liability-kpi-cell__value {
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-mono);
+  font-size: clamp(20px, 1.55vw, 23px);
+  font-weight: 700;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+
+.liability-kpi-cell__value[data-tone="down"] {
+  color: var(--dh-api-red);
+}
+
+.liability-kpi-cell__unit {
+  margin-left: 4px;
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-sans);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* 格内小注贴格底；tone 三色走 --dh-api-* 语义链。 */
+.liability-kpi-cell__note {
+  overflow: hidden;
+  margin-top: auto;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.liability-kpi-cell__note[data-tone="up"] {
+  color: var(--dh-api-green);
+}
+
+.liability-kpi-cell__note[data-tone="down"] {
+  color: var(--dh-api-red);
+}
+
+.liability-kpi-cell__note[data-tone="ink"] {
+  color: var(--dh-api-soft);
+}
+
+/* 面板内紧凑横带（收益成本分解）。 */
+.liability-kpi-band--compact .liability-kpi-cell {
+  min-height: 92px;
+  padding: 10px 12px;
+}
+
+/* ------------------------------------------------------- 状态徽标行 */
+
+.liability-analytics-page__status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.liability-analytics-page__status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.liability-analytics-page__status-badge[data-tone="ok"] {
+  border-color: color-mix(in srgb, var(--dh-api-green) 42%, transparent);
+  background: color-mix(in srgb, var(--dh-api-green) 8%, var(--dh-api-panel));
+  color: var(--dh-api-green);
+}
+
+.liability-analytics-page__status-badge[data-tone="mock"] {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 42%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, var(--dh-api-panel));
+  color: var(--dh-api-blue);
+}
+
+.liability-analytics-page__status-badge[data-tone="warning"] {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 45%, transparent);
+  background: color-mix(in srgb, var(--dh-api-amber) 10%, var(--dh-api-panel));
+  color: var(--dh-api-amber);
+}
+
+.liability-analytics-page__status-badge[data-tone="danger"] {
+  border-color: color-mix(in srgb, var(--dh-api-red) 45%, transparent);
+  background: color-mix(in srgb, var(--dh-api-red) 10%, var(--dh-api-panel));
+  color: var(--dh-api-red);
+}
+
+/* --------------------------------------------------- 分区内容网格 */
+
+.liability-analytics-page__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  /* 不等高网格必须 start，禁止 stretch 空白（DESIGN.md §5）。 */
+  align-items: start;
+}
+
+@media (min-width: 992px) {
+  .liability-analytics-page__grid--2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .liability-analytics-page__grid--3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .liability-analytics-page__grid--cp {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  }
+
+  .liability-analytics-page__grid--structure {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  }
+}
+
+/* --------------------------------------------------- 页面本地面板 */
+
+.liability-panel {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.liability-panel__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.liability-panel__title {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.liability-panel__meta {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.liability-caption {
+  margin: 0;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* 同因缺失一次性披露（§6）：区头一行原因说明，明细格保持安静 EM_DASH。 */
+.liability-caption--gap {
+  color: var(--dh-api-amber);
+}
+
+.liability-inline-error {
+  margin: 0;
+  color: var(--dh-api-red);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* 空/错/载入收缩到一句话（min-height ≤ 120px），带背板防重排（§6）。 */
+.liability-analytics-page__surface {
+  display: grid;
+  place-items: center;
+  min-height: 96px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.liability-analytics-page__surface--loading {
+  min-height: 128px;
+}
+
+/* -------------------------------------------------------- 原生表格 */
+
+.liability-analytics-page__data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.liability-analytics-page__data-table thead tr {
+  text-align: left;
+  color: var(--dh-api-muted);
+}
+
+.liability-analytics-page__data-table th {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.liability-analytics-page__data-table th.is-numeric,
+.liability-analytics-page__data-table td.is-numeric {
+  text-align: right;
+  font-family: var(--moss-font-mono);
+}
+
+.liability-analytics-page__data-table tbody tr {
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.liability-analytics-page__data-table td {
+  padding: 7px 0;
+  color: var(--dh-api-ink);
+  line-height: 1.35;
+}
+
+.liability-analytics-page__data-table td.is-label {
+  color: var(--dh-api-ink);
+  font-weight: 600;
+}
+
+.liability-analytics-page__data-table td.is-muted {
+  color: var(--dh-api-soft);
+}
+
+.liability-analytics-page__data-table--compact td {
+  padding: 6px 0;
+}
+
+/* -------------------------------------------------- antd Table 密度 */
+
+.liability-analytics-page .ant-table {
+  font-size: 12px;
+}
+
+.liability-analytics-page .ant-table-thead > tr > th {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.liability-analytics-page .ant-table-tbody > tr > td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  font-size: 12px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 行 hover 用 accent 比例混色，禁止硬编码 rgba。 */
+.liability-analytics-page .ant-table-tbody > tr > td.ant-table-cell-row-hover,
+.liability-analytics-page .ant-table-tbody > tr:hover > td {
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
+}
+
+/* ------------------------------------------------------- 证据与口径 */
+
+/*
+ * 两面板单栏满宽后，卡片按 auto-fill 流铺补满行宽（§11.2 禁止左右栏
+ * 裸空白断层；ledger-pnl 先例）。min(360px, 100%) 防窄容器横向溢出。
+ */
+.liability-analytics-page__state-stack,
+.liability-analytics-page__evidence-ledger {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(360px, 100%), 1fr));
+  align-items: start;
+  gap: 10px;
 }
 
 .liability-analytics-page__evidence-card {
   display: grid;
-  gap: var(--moss-space-2);
+  gap: 8px;
   min-width: 0;
-  padding: var(--moss-space-3);
-  border: 1px solid var(--moss-color-border-default);
-  border-left: 4px solid var(--moss-color-neutral-300);
-  border-radius: var(--moss-radius-sm);
-  background: var(--moss-color-card-bg);
+  padding: 10px 12px;
+  border: 1px solid var(--dh-api-line);
+  border-left: 2px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
 }
 
 .liability-analytics-page__evidence-card[data-tone="ok"] {
-  border-left-color: var(--moss-color-success-500);
+  border-left-color: var(--dh-api-green);
 }
 
 .liability-analytics-page__evidence-card[data-tone="warning"] {
-  border-left-color: var(--moss-color-warning-500);
+  border-left-color: var(--dh-api-amber);
 }
 
 .liability-analytics-page__evidence-card[data-tone="danger"] {
-  border-left-color: var(--moss-color-danger-500);
+  border-left-color: var(--dh-api-red);
 }
 
 .liability-analytics-page__evidence-card-top {
@@ -128,22 +700,23 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--moss-space-2);
+  gap: 8px;
 }
 
 .liability-analytics-page__evidence-card-top strong {
-  color: var(--moss-color-text-primary);
+  color: var(--dh-api-ink);
+  font-size: 12px;
 }
 
 .liability-analytics-page__evidence-card-top span {
-  color: var(--moss-color-text-secondary);
-  font-size: 12px;
+  color: var(--dh-api-soft);
+  font-size: 11px;
 }
 
 .liability-analytics-page__evidence-card dl {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--moss-space-2);
+  gap: 6px 10px;
   margin: 0;
 }
 
@@ -152,29 +725,233 @@
 }
 
 .liability-analytics-page__evidence-card dt {
-  color: var(--moss-color-text-muted);
+  color: var(--dh-api-muted);
   font-size: 11px;
 }
 
 .liability-analytics-page__evidence-card dd {
   margin: 0;
   overflow-wrap: anywhere;
-  color: var(--moss-color-text-primary);
+  color: var(--dh-api-ink);
   font-family: var(--moss-font-mono);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
-.liability-analytics-page__kpi-unit {
-  margin-left: 4px;
-  color: var(--moss-color-text-secondary);
-  font-family: var(--moss-font-sans);
+/* ---------------------------------------------------- 页面级小件 */
+
+/* NIM 预警胶囊：圆角制度归一（§5 Shape Lock，不用 999px）。 */
+.liability-status-pill {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--dh-api-red) 40%, transparent);
+  border-radius: var(--dh-api-radius);
+  background: color-mix(in srgb, var(--dh-api-red) 10%, var(--dh-api-panel));
+  color: var(--dh-api-red);
   font-size: 12px;
+  font-weight: 650;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+/* 方向标签（贡献拆分表）：资产/负债是分类不是语义状态，统一中性描边（§4）。 */
+.liability-ib-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* 对手方汇总行（面板头右侧权威读数）。 */
+.liability-cp-extra {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.liability-cp-extra__line {
+  white-space: nowrap;
+}
+
+/* 图表帧：固定高防内容到达重排。 */
+.liability-chart-frame {
+  min-width: 0;
+}
+
+.liability-chart-frame--bar {
+  height: 320px;
+}
+
+.liability-chart-frame--pie {
+  height: 280px;
+}
+
+.liability-chart-frame--structure {
+  height: 300px;
+}
+
+.liability-chart-loading {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  border: 1px dashed var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+/* 饼图图例（HTML 图例，与 canvas 内图例互斥）。 */
+.liability-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.liability-legend__swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: var(--dh-api-radius);
+  vertical-align: middle;
+}
+
+/* 业务资料笔记：整区默认折叠（参考资料不占首屏判断版面）。 */
+.liability-knowledge {
+  display: grid;
+  gap: 12px;
+}
+
+.liability-knowledge__details > summary {
+  width: fit-content;
+  padding: 6px 12px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.liability-knowledge__details > summary:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, var(--dh-api-line));
+  color: var(--dh-api-ink);
+}
+
+.liability-knowledge__details[open] > summary {
+  margin-bottom: 12px;
+}
+
+.liability-knowledge__body {
+  display: grid;
+  gap: 12px;
+}
+
+.liability-knowledge-note__summary {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.liability-knowledge-note__questions {
+  display: grid;
+  gap: 4px;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+.liability-knowledge-note__questions strong {
+  color: var(--dh-api-ink);
+  font-size: 12px;
+}
+
+.liability-knowledge-note__questions ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding-left: 18px;
+  line-height: 1.5;
+}
+
+.liability-knowledge-note__source {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------- 响应式 */
+
+@media (max-width: 1280px) {
+  .liability-kpi-cell {
+    padding-inline: 10px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .liability-kpi-band {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .liability-kpi-band[data-cols="4"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .liability-analytics-page__header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .liability-analytics-page__toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .liability-section__lead {
+    grid-template-columns: 22px minmax(0, 1fr);
+  }
+
+  .liability-section__lead h2 {
+    white-space: normal;
+  }
+
+  .liability-section__note,
+  .liability-section__state,
+  .liability-section__actions {
+    grid-column: 2;
+    justify-self: start;
+  }
 }
 
 @media (max-width: 720px) {
   .liability-analytics-page {
-    gap: var(--moss-space-3);
+    gap: 12px;
+  }
+
+  .liability-kpi-band,
+  .liability-kpi-band[data-cols="4"],
+  .liability-kpi-band[data-cols="2"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .liability-analytics-page__evidence-card dl {

@@ -1,0 +1,229 @@
+/* GitNexusResultView — GitNexus 状态 / 流程 / 追踪结果视图 */
+
+.agent-gitnexus {
+  display: grid;
+  gap: 16px;
+}
+
+.agent-gitnexus__panel {
+  padding: 18px;
+  border-radius: var(--ib-radius);
+  border: 1px solid var(--ib-hairline);
+  background: var(--ib-surface);
+  display: grid;
+  gap: 12px;
+}
+
+.agent-gitnexus__panel-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ib-ink);
+}
+
+.agent-gitnexus__columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.agent-gitnexus__metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.agent-gitnexus__metric {
+  padding: 12px;
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  display: grid;
+  gap: 6px;
+}
+
+.agent-gitnexus__metric-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ib-ink-muted);
+  text-transform: uppercase;
+}
+
+.agent-gitnexus__metric-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ib-ink);
+}
+
+.agent-gitnexus__kv-list {
+  display: grid;
+  gap: 8px;
+}
+
+.agent-gitnexus__kv-list--tight {
+  gap: 6px;
+}
+
+.agent-gitnexus__kv {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--ib-ink-secondary);
+}
+
+.agent-gitnexus__kv--small {
+  font-size: 12px;
+}
+
+.agent-gitnexus__kv-label {
+  color: var(--ib-ink-muted);
+}
+
+.agent-gitnexus__context-value {
+  font-size: 13px;
+  color: var(--ib-ink-secondary);
+  word-break: break-all;
+}
+
+.agent-gitnexus__sublist {
+  display: grid;
+  gap: 8px;
+}
+
+.agent-gitnexus__sublist-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ib-ink-muted);
+  text-transform: uppercase;
+}
+
+.agent-gitnexus__list-item {
+  padding: 10px;
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  display: grid;
+  gap: 4px;
+}
+
+.agent-gitnexus__list-item--padded {
+  padding: 12px;
+}
+
+.agent-gitnexus__list-item-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ib-ink);
+}
+
+.agent-gitnexus__list-item-detail {
+  font-size: 12px;
+  color: var(--ib-ink-secondary);
+}
+
+.agent-gitnexus__empty {
+  font-size: 13px;
+  color: var(--ib-ink-secondary);
+}
+
+.agent-gitnexus__trace {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.agent-gitnexus__trace-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.agent-gitnexus__trace-node {
+  min-width: 220px;
+  padding: 14px;
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  border: 1px solid var(--ib-hairline);
+  box-shadow: inset 4px 0 0 var(--agent-gitnexus-group-color, var(--ib-ink-muted));
+  display: grid;
+  gap: 8px;
+}
+
+.agent-gitnexus__trace-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.agent-gitnexus__trace-kicker {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ib-ink-muted);
+}
+
+.agent-gitnexus__trace-index {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--ib-radius);
+  background: var(--ib-accent);
+  color: var(--ib-surface);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.agent-gitnexus__trace-symbol {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ib-ink);
+}
+
+.agent-gitnexus__trace-group {
+  width: fit-content;
+  padding: 4px 8px;
+  border-radius: var(--ib-radius);
+  background: color-mix(in srgb, var(--agent-gitnexus-group-color, var(--ib-ink-muted)) 8%, transparent);
+  color: var(--agent-gitnexus-group-color, var(--ib-ink-muted));
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.agent-gitnexus__trace-file {
+  font-size: 12px;
+  color: var(--ib-ink-secondary);
+}
+
+.agent-gitnexus__trace-edge {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  color: var(--ib-ink-muted);
+  min-width: 52px;
+}
+
+.agent-gitnexus__trace-edge-label {
+  padding: 4px 8px;
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  border: 1px solid var(--ib-hairline);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.agent-gitnexus__trace-edge-line {
+  width: 36px;
+  height: 2px;
+  background: var(--ib-hairline);
+}
+
+.agent-gitnexus__trace-edge-arrow {
+  font-size: 12px;
+  font-weight: 600;
+}

@@ -27,6 +27,8 @@ def compute_rate_turning_point(
         return {
             "report_date": report_date.isoformat(),
             "data_status": "unavailable",
+            "observation_only": True,
+            "formal_use_allowed": False,
             "direction": "unavailable",
             "conviction": "LOW",
             "headline": "暂无市场曲线数据，无法进行利率拐点分析。",
@@ -59,6 +61,8 @@ def compute_rate_turning_point(
         return {
             "report_date": report_date.isoformat(),
             "data_status": "unavailable",
+            "observation_only": True,
+            "formal_use_allowed": False,
             "direction": "unavailable",
             "conviction": "LOW",
             "headline": "国债曲线历史不足，无法识别利率拐点。",
@@ -135,9 +139,19 @@ def compute_rate_turning_point(
     elif conviction_score >= 2:
         conviction = "MEDIUM"
 
+    warnings: list[str] = []
+    data_status = "complete"
+    # 中期窗口（20 日动量/斜率变化）不足时，斜率信号腿无法投票，
+    # 必须显式降级而不是让缺失窗口静默等价于"无信号"。
+    if change_20d_bp is None or slope_change_20d_bp is None:
+        data_status = "degraded"
+        warnings.append("TURNING_POINT_MEDIUM_WINDOW_SHORT")
+
     return {
         "report_date": report_date.isoformat(),
-        "data_status": "complete",
+        "data_status": data_status,
+        "observation_only": True,
+        "formal_use_allowed": False,
         "direction": direction,
         "conviction": conviction,
         "headline": headline,
@@ -149,5 +163,5 @@ def compute_rate_turning_point(
         "percentile_1y": _round(percentile_1y),
         "signals": signals,
         "interpretation": interpretation,
-        "warnings": [],
+        "warnings": warnings,
     }

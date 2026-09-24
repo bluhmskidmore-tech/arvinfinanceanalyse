@@ -67,10 +67,18 @@ class ObjectStoreRepository:
         port = int(port_str) if port_str else 9000
         try:
             with socket.create_connection((host, port), timeout=0.2):
-                ok = True
+                tcp_reachable = True
         except OSError:
-            ok = False
-        return {"ok": ok, "mode": "minio", "endpoint": self.endpoint, "bucket": self.bucket}
+            tcp_reachable = False
+        return {
+            "ok": False,
+            "mode": "minio",
+            "endpoint": self.endpoint,
+            "bucket": self.bucket,
+            "tcp_reachable": tcp_reachable,
+            "read_write_supported": False,
+            "error": "MinIO object-store read/write operations are not implemented.",
+        }
 
     def archive_file(
         self,

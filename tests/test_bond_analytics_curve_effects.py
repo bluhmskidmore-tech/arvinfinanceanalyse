@@ -18,6 +18,21 @@ from tests.test_bond_analytics_materialize_flow import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _fail_closed_against_live_yield_vendor(monkeypatch):
+    yield_curve_mod = load_module(
+        "backend.app.tasks.yield_curve_materialize",
+        "backend/app/tasks/yield_curve_materialize.py",
+    )
+
+    def _fail_if_vendor_called(*_args, **_kwargs):
+        raise AssertionError("yield vendor should not be called")
+
+    monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_akshare_curve", _fail_if_vendor_called)
+    monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_choice_curve", _fail_if_vendor_called)
+    monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_chinabond_gkh_curve", _fail_if_vendor_called)
+
+
 def _seed_curve_rows(duckdb_path: str) -> None:
     conn = duckdb.connect(duckdb_path, read_only=False)
     try:
@@ -53,6 +68,71 @@ def _seed_curve_rows(duckdb_path: str) -> None:
         conn.close()
 
 
+def _seed_materialization_anchor_rows(duckdb_path: str) -> None:
+    conn = duckdb.connect(duckdb_path, read_only=False)
+    try:
+        ensure_yield_curve_tables(conn)
+        conn.executemany(
+            f"""
+            insert into {FORMAL_FACT_TABLE} (
+              trade_date, curve_type, tenor, rate_pct, vendor_name, vendor_version, source_version, rule_version
+            ) values (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("2026-02-19", "treasury", "1Y", Decimal("1.00"), "choice", "vv_curve_prior3", "sv_curve_prior3", "rv_curve"),
+                ("2026-02-19", "treasury", "2Y", Decimal("2.00"), "choice", "vv_curve_prior3", "sv_curve_prior3", "rv_curve"),
+                ("2026-02-19", "treasury", "3Y", Decimal("3.00"), "choice", "vv_curve_prior3", "sv_curve_prior3", "rv_curve"),
+                ("2026-02-19", "cdb", "1Y", Decimal("1.20"), "choice", "vv_cdb_prior3", "sv_cdb_prior3", "rv_curve"),
+                ("2026-02-19", "cdb", "2Y", Decimal("2.20"), "choice", "vv_cdb_prior3", "sv_cdb_prior3", "rv_curve"),
+                ("2026-02-19", "cdb", "3Y", Decimal("3.20"), "choice", "vv_cdb_prior3", "sv_cdb_prior3", "rv_curve"),
+                ("2026-02-19", "aaa_credit", "1Y", Decimal("2.00"), "choice", "vv_aaa_prior3", "sv_aaa_prior3", "rv_curve"),
+                ("2026-02-19", "aaa_credit", "2Y", Decimal("3.00"), "choice", "vv_aaa_prior3", "sv_aaa_prior3", "rv_curve"),
+                ("2026-02-19", "aaa_credit", "3Y", Decimal("4.00"), "choice", "vv_aaa_prior3", "sv_aaa_prior3", "rv_curve"),
+                ("2026-01-20", "treasury", "1Y", Decimal("1.00"), "choice", "vv_curve_prior2", "sv_curve_prior2", "rv_curve"),
+                ("2026-01-20", "treasury", "2Y", Decimal("2.00"), "choice", "vv_curve_prior2", "sv_curve_prior2", "rv_curve"),
+                ("2026-01-20", "treasury", "3Y", Decimal("3.00"), "choice", "vv_curve_prior2", "sv_curve_prior2", "rv_curve"),
+                ("2026-01-20", "cdb", "1Y", Decimal("1.20"), "choice", "vv_cdb_prior2", "sv_cdb_prior2", "rv_curve"),
+                ("2026-01-20", "cdb", "2Y", Decimal("2.20"), "choice", "vv_cdb_prior2", "sv_cdb_prior2", "rv_curve"),
+                ("2026-01-20", "cdb", "3Y", Decimal("3.20"), "choice", "vv_cdb_prior2", "sv_cdb_prior2", "rv_curve"),
+                ("2026-01-20", "aaa_credit", "1Y", Decimal("2.00"), "choice", "vv_aaa_prior2", "sv_aaa_prior2", "rv_curve"),
+                ("2026-01-20", "aaa_credit", "2Y", Decimal("3.00"), "choice", "vv_aaa_prior2", "sv_aaa_prior2", "rv_curve"),
+                ("2026-01-20", "aaa_credit", "3Y", Decimal("4.00"), "choice", "vv_aaa_prior2", "sv_aaa_prior2", "rv_curve"),
+            ],
+        )
+    finally:
+        conn.close()
+
+
+def _clear_materialization_anchor_rows(duckdb_path: str) -> None:
+    conn = duckdb.connect(duckdb_path, read_only=False)
+    try:
+        conn.execute(
+            """
+            delete from fact_formal_yield_curve_daily
+            where trade_date in ('2026-02-19', '2026-01-20')
+              and curve_type in ('treasury', 'cdb', 'aaa_credit')
+            """
+        )
+    finally:
+        conn.close()
+
+
+def _materialize_curve_effects_facts(duckdb_path: str, governance_dir: str) -> None:
+    _seed_materialization_anchor_rows(duckdb_path)
+    task_mod = load_module(
+        "backend.app.tasks.bond_analytics_materialize",
+        "backend/app/tasks/bond_analytics_materialize.py",
+    )
+    try:
+        task_mod.materialize_bond_analytics_facts.fn(
+            report_date=REPORT_DATE,
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+    finally:
+        _clear_materialization_anchor_rows(duckdb_path)
+
+
 def test_return_decomposition_uses_curve_effects_and_merges_lineage(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
@@ -75,15 +155,7 @@ def test_return_decomposition_uses_curve_effects_and_merges_lineage(tmp_path, mo
         conn.close()
     _seed_curve_rows(str(duckdb_path))
 
-    task_mod = load_module(
-        "backend.app.tasks.bond_analytics_materialize",
-        "backend/app/tasks/bond_analytics_materialize.py",
-    )
-    task_mod.materialize_bond_analytics_facts.fn(
-        report_date=REPORT_DATE,
-        duckdb_path=str(duckdb_path),
-        governance_dir=str(governance_dir),
-    )
+    _materialize_curve_effects_facts(str(duckdb_path), str(governance_dir))
     service_mod = load_module(
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
@@ -125,15 +197,7 @@ def test_return_decomposition_uses_spread_effect_for_credit_rows(tmp_path, monke
     _seed_bond_snapshot_rows(str(duckdb_path))
     _seed_curve_rows(str(duckdb_path))
 
-    task_mod = load_module(
-        "backend.app.tasks.bond_analytics_materialize",
-        "backend/app/tasks/bond_analytics_materialize.py",
-    )
-    task_mod.materialize_bond_analytics_facts.fn(
-        report_date=REPORT_DATE,
-        duckdb_path=str(duckdb_path),
-        governance_dir=str(governance_dir),
-    )
+    _materialize_curve_effects_facts(str(duckdb_path), str(governance_dir))
     service_mod = load_module(
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
@@ -156,15 +220,7 @@ def test_convexity_effect_appears_in_return_decomposition_response(tmp_path, mon
     _seed_bond_snapshot_rows(str(duckdb_path))
     _seed_curve_rows(str(duckdb_path))
 
-    task_mod = load_module(
-        "backend.app.tasks.bond_analytics_materialize",
-        "backend/app/tasks/bond_analytics_materialize.py",
-    )
-    task_mod.materialize_bond_analytics_facts.fn(
-        report_date=REPORT_DATE,
-        duckdb_path=str(duckdb_path),
-        governance_dir=str(governance_dir),
-    )
+    _materialize_curve_effects_facts(str(duckdb_path), str(governance_dir))
     service_mod = load_module(
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
@@ -187,15 +243,7 @@ def test_credit_spread_migration_uses_curve_spread_when_available(tmp_path, monk
     _seed_bond_snapshot_rows(str(duckdb_path))
     _seed_curve_rows(str(duckdb_path))
 
-    task_mod = load_module(
-        "backend.app.tasks.bond_analytics_materialize",
-        "backend/app/tasks/bond_analytics_materialize.py",
-    )
-    task_mod.materialize_bond_analytics_facts.fn(
-        report_date=REPORT_DATE,
-        duckdb_path=str(duckdb_path),
-        governance_dir=str(governance_dir),
-    )
+    _materialize_curve_effects_facts(str(duckdb_path), str(governance_dir))
     service_mod = load_module(
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
@@ -244,15 +292,7 @@ def test_return_decomposition_marks_result_meta_stale_when_aaa_curve_uses_latest
     finally:
         conn.close()
 
-    task_mod = load_module(
-        "backend.app.tasks.bond_analytics_materialize",
-        "backend/app/tasks/bond_analytics_materialize.py",
-    )
-    task_mod.materialize_bond_analytics_facts.fn(
-        report_date=REPORT_DATE,
-        duckdb_path=str(duckdb_path),
-        governance_dir=str(governance_dir),
-    )
+    _materialize_curve_effects_facts(str(duckdb_path), str(governance_dir))
     service_mod = load_module(
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
@@ -295,15 +335,7 @@ def test_credit_spread_migration_marks_result_meta_stale_when_curve_fallback_use
     finally:
         conn.close()
 
-    task_mod = load_module(
-        "backend.app.tasks.bond_analytics_materialize",
-        "backend/app/tasks/bond_analytics_materialize.py",
-    )
-    task_mod.materialize_bond_analytics_facts.fn(
-        report_date=REPORT_DATE,
-        duckdb_path=str(duckdb_path),
-        governance_dir=str(governance_dir),
-    )
+    _materialize_curve_effects_facts(str(duckdb_path), str(governance_dir))
     service_mod = load_module(
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
@@ -324,15 +356,7 @@ def test_return_decomposition_marks_result_meta_unavailable_when_credit_curve_mi
     get_settings.cache_clear()
 
     _seed_bond_snapshot_rows(str(duckdb_path))
-    task_mod = load_module(
-        "backend.app.tasks.bond_analytics_materialize",
-        "backend/app/tasks/bond_analytics_materialize.py",
-    )
-    task_mod.materialize_bond_analytics_facts.fn(
-        report_date=REPORT_DATE,
-        duckdb_path=str(duckdb_path),
-        governance_dir=str(governance_dir),
-    )
+    _materialize_curve_effects_facts(str(duckdb_path), str(governance_dir))
     service_mod = load_module(
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
@@ -353,15 +377,7 @@ def test_credit_spread_migration_marks_result_meta_unavailable_when_curves_missi
     get_settings.cache_clear()
 
     _seed_bond_snapshot_rows(str(duckdb_path))
-    task_mod = load_module(
-        "backend.app.tasks.bond_analytics_materialize",
-        "backend/app/tasks/bond_analytics_materialize.py",
-    )
-    task_mod.materialize_bond_analytics_facts.fn(
-        report_date=REPORT_DATE,
-        duckdb_path=str(duckdb_path),
-        governance_dir=str(governance_dir),
-    )
+    _materialize_curve_effects_facts(str(duckdb_path), str(governance_dir))
     service_mod = load_module(
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
@@ -371,6 +387,10 @@ def test_credit_spread_migration_marks_result_meta_unavailable_when_curves_missi
 
     assert payload["result_meta"]["vendor_status"] == "vendor_unavailable"
     assert payload["result_meta"]["fallback_mode"] == "none"
+    assert payload["result"]["warning_codes"] == [
+        "credit_spread_weighted_avg_spread_input_unavailable",
+        "bond_analytics_partial_warning",
+    ]
     get_settings.cache_clear()
 
 
@@ -415,15 +435,7 @@ def test_return_decomposition_warns_when_latest_curve_fallback_is_used(tmp_path,
     finally:
         conn.close()
 
-    task_mod = load_module(
-        "backend.app.tasks.bond_analytics_materialize",
-        "backend/app/tasks/bond_analytics_materialize.py",
-    )
-    task_mod.materialize_bond_analytics_facts.fn(
-        report_date=REPORT_DATE,
-        duckdb_path=str(duckdb_path),
-        governance_dir=str(governance_dir),
-    )
+    _materialize_curve_effects_facts(str(duckdb_path), str(governance_dir))
     service_mod = load_module(
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
@@ -471,15 +483,7 @@ def test_return_decomposition_does_not_use_future_curve_fallback(tmp_path, monke
     finally:
         conn.close()
 
-    task_mod = load_module(
-        "backend.app.tasks.bond_analytics_materialize",
-        "backend/app/tasks/bond_analytics_materialize.py",
-    )
-    task_mod.materialize_bond_analytics_facts.fn(
-        report_date=REPORT_DATE,
-        duckdb_path=str(duckdb_path),
-        governance_dir=str(governance_dir),
-    )
+    _materialize_curve_effects_facts(str(duckdb_path), str(governance_dir))
     service_mod = load_module(
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
@@ -529,15 +533,7 @@ def test_return_decomposition_fails_closed_when_same_day_curve_snapshot_lineage_
     finally:
         conn.close()
 
-    task_mod = load_module(
-        "backend.app.tasks.bond_analytics_materialize",
-        "backend/app/tasks/bond_analytics_materialize.py",
-    )
-    task_mod.materialize_bond_analytics_facts.fn(
-        report_date=REPORT_DATE,
-        duckdb_path=str(duckdb_path),
-        governance_dir=str(governance_dir),
-    )
+    _materialize_curve_effects_facts(str(duckdb_path), str(governance_dir))
     service_mod = load_module(
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",

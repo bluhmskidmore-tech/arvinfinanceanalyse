@@ -1,0 +1,141 @@
+.page {
+  /*
+   * Nocturne 接入桥（scope=cube-query）：--ib-* 在 ThemedRouteBoundary 的
+   * .theme-dh-api 块上即被算成钢蓝字面值再继承，页根 scope 对 --dh-api-*
+   * 的翻转够不到（ledger-pnl 2026-08-12 结论、pnl-by-business-insights
+   * 页根重声明先例）。全部走 var 引用，不落字面色值。
+   */
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-radius: var(--dh-api-radius);
+  --ib-accent: var(--dh-api-blue);
+  --ib-gold: var(--dh-api-amber);
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
+  --ib-warn: var(--dh-api-amber);
+  --moss-color-text-primary: var(--dh-api-ink);
+  --moss-color-text-secondary: var(--dh-api-soft);
+  --moss-color-text-muted: var(--dh-api-muted);
+
+  min-height: 100%;
+  padding: 16px;
+  background: var(--ib-paper);
+  color: var(--ib-ink);
+}
+
+/*
+ * 共享 PageHeader（PagePrimitives.module.css）标题/说明是浅色字面量
+ * （近黑墨字），深色页不可读；hashed class 以 [class*="…_"] 定位
+ * （marketHome dhSectionTitle 同款先例），.page.page 双写升权压过组件层
+ * 双类（0,2,0）。仅收色，不动排版。
+ */
+.page.page :global([class*="headerTitle_"]) {
+  color: var(--dh-api-ink);
+}
+
+.page.page :global([class*="headerDescription_"]) {
+  color: var(--dh-api-soft);
+}
+
+.page.page :global([class*="headerEyebrow_"]) {
+  color: var(--dh-api-muted);
+}
+
+/*
+ * antd 强调色页内收敛（macro-toolkit 先例，仅取色值声明）：cssinjs 钢蓝
+ * colorPrimary 在 scope 内压为 accent 链；:not(disabled) 保留 antd 禁用态
+ * 皮肤。Select/Picker/Table 骨架色维持 antd 基础皮肤（2026-08-13 摩擦源
+ * 条目既定例外，bond-analysis 同款）。
+ */
+.page.page :global(.ant-btn-primary:not(:disabled):not(.ant-btn-disabled)) {
+  border-color: var(--dh-api-blue);
+  background: var(--dh-api-blue);
+}
+
+.page.page :global(.ant-btn-primary:not(:disabled):not(.ant-btn-disabled)):hover {
+  border-color: var(--nct-accent-400, var(--dh-api-blue));
+  background: var(--nct-accent-400, var(--dh-api-blue));
+}
+
+.page.page :global(.ant-btn-default:not(:disabled):not(.ant-btn-disabled)) {
+  border-color: var(--dh-api-line);
+  background: transparent;
+}
+
+.page.page :global(.ant-checkbox-checked .ant-checkbox-inner) {
+  border-color: var(--dh-api-blue);
+  background: var(--dh-api-blue);
+}
+
+.page.page :global(.ant-pagination-item-active) {
+  border-color: var(--dh-api-blue);
+}
+
+.page.page :global(.ant-pagination-item-active a) {
+  color: var(--dh-api-blue);
+}
+
+.page.page :global(.ant-table-thead > tr > th) {
+  background: var(--dh-api-panel-2);
+}
+
+.page.page :global(.ant-table-tbody > tr:hover > td) {
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
+}
+
+.stack {
+  width: 100%;
+}
+
+.fieldControl {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.execute {
+  margin-top: 28px;
+}
+
+.sectionBody {
+  margin-top: 8px;
+}
+
+.selectNarrow {
+  width: 120px;
+}
+
+.selectMedium {
+  width: 200px;
+}
+
+.selectWide {
+  width: 220px;
+}
+
+.selectGrow {
+  min-width: 280px;
+  flex: 1;
+}
+
+.resultsRow {
+  margin-top: 16px;
+}
+
+.pagination {
+  margin-top: 16px;
+}
+
+.resultMeta {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.drillTag {
+  cursor: pointer;
+}

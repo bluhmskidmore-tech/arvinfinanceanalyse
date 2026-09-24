@@ -3,8 +3,9 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from backend.app.repositories.kpi_repo import KpiRepository
+from backend.app.repositories.kpi_repo import KpiOwnerRow, KpiPeriodSummaryRow, KpiRepository
 from backend.app.schemas.kpi import (
+    KpiOwnerAuthorityMeta,
     KpiOwnerListPayload,
     KpiOwnerPayload,
     KpiPeriodMetricSummaryPayload,
@@ -29,7 +30,7 @@ def _load_active_owners(
     *,
     dsn: str,
     year: int | None = None,
-) -> tuple[dict[str, object], KpiRepository | None, list[dict[str, object]]]:
+) -> tuple[dict[str, object], KpiRepository | None, list[KpiOwnerRow]]:
     if not str(dsn or "").strip():
         return (
             {"status": "blocked", "reason": "missing-dsn", "owner_count": 0, "year": year},
@@ -87,6 +88,21 @@ def kpi_owners_payload(
     if is_active is not False:
         gate = resolve_kpi_authority_gate(dsn=dsn, year=year)
         if gate["status"] != "available":
+            if gate["reason"] == "no-active-owners":
+                # Unmaterialized KPI data is not a service failure: disclose the
+                # blocked authority gate on a structured empty state instead of
+                # failing the whole owners read surface.
+                gate_year = gate.get("year")
+                return KpiOwnerListPayload(
+                    owners=[],
+                    total=0,
+                    meta=KpiOwnerAuthorityMeta(
+                        authority_status=str(gate["status"]),
+                        reason=str(gate["reason"]),
+                        owner_count=0,
+                        year=gate_year if isinstance(gate_year, int) else None,
+                    ),
+                ).model_dump(mode="json")
             raise KpiAuthorityBlockedError(
                 f"KPI authority unavailable: {gate['reason']}. "
                 "Load an authoritative KPI source before treating this surface as governed."
@@ -153,12 +169,15 @@ def resolve_executive_kpi_metrics(
     if target_year is not None:
         selected_year = target_year
     else:
-        selected_year = int(gate["year"])
+        gate_year = gate["year"]
+        # An "available" gate always carries the selected year as an int.
+        assert isinstance(gate_year, int)
+        selected_year = gate_year
         owners = [owner for owner in owners if int(owner["year"]) == selected_year]
     total_weight = Decimal("0")
     total_score = Decimal("0")
     owner_count = len(owners)
-    summaries: list[dict[str, object]] = []
+    summaries: list[KpiPeriodSummaryRow] = []
     try:
         for owner in owners:
             summary = repo.fetch_period_summary(

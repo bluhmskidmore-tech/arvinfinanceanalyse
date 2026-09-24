@@ -65,15 +65,30 @@ describe("RatingDistributionCard", () => {
     renderCard("0.0325");
 
     expect(await screen.findByText("评级收益率")).toBeInTheDocument();
-    expect(await screen.findByText("2 天 · 利率债默认 AAA")).toBeInTheDocument();
+    expect(await screen.findByText("2 天 / 利率债默认 AAA")).toBeInTheDocument();
     expect(await screen.findByText("3.25%")).toBeInTheDocument();
+  });
+
+  it("renders the bond_count column with row values in column order", async () => {
+    renderCard("0.0325");
+
+    // scroll={{ x }} 会渲染隐藏测量行，表头文案会出现两次，用 AllBy 断言存在。
+    // bond_count 列头语义化为「笔数(区间)」（区间 bond-days 累计，非持券只数）。
+    expect((await screen.findAllByText("笔数(区间)")).length).toBeGreaterThan(0);
+    // 金额单位收进列头，格内裸数。
+    expect((await screen.findAllByText("日均(亿元)")).length).toBeGreaterThan(0);
+    const row = (await screen.findByText("AAA")).closest("tr");
+    expect(row).not.toBeNull();
+    const cells = Array.from(row!.querySelectorAll("td")).map((td) => td.textContent);
+    // 评级 / 日均 / 占比 / 笔数(区间) / 收益率；占比后端原始精度收敛为两位展示
+    expect(cells).toEqual(["AAA", "1.00", "100.00%", "1", "3.25%"]);
   });
 
   it("keeps missing rating yield visually distinct from zero", async () => {
     renderCard(null);
 
     expect(await screen.findByText("评级收益率")).toBeInTheDocument();
-    expect(await screen.findByText("2 天 · 利率债默认 AAA")).toBeInTheDocument();
-    expect(screen.getByText("-")).toBeInTheDocument();
+    expect(await screen.findByText("2 天 / 利率债默认 AAA")).toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
   });
 });

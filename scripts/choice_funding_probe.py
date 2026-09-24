@@ -273,7 +273,7 @@ def _choice_result_series_details(raw_result: Any) -> list[dict[str, Any]]:
     for code in codes:
         try:
             rows = raw_result.loc[[code]]
-        except Exception:
+        except Exception:  # noqa: S112  # 诊断探针脚本：code 取自同一索引，.loc 失败仅跳过该 code，缺失可在输出 details 中观察
             continue
         observed_rows = len(rows)
         valid: list[tuple[str, float]] = []

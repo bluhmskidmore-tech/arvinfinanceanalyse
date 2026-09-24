@@ -11,12 +11,14 @@ This runbook defines the approved path to close the Ledger PnL direct page/API g
 - Route: `/ledger-pnl`
 - Primary API: `/api/ledger-pnl/summary`
 - Candidate cache key: `ledger_pnl.summary:2026-05-31:ALL`
+- Read-only refresh command: `python scripts\refresh_ledger_pnl_direct_governance_record_snapshot.py`
 - Dry-run command: `python scripts\emit_ledger_pnl_governance_record.py`
 - Dry-run result: `record_write_status=not_requested`, `existing_record_line=null`, `validation_status=ready_for_audit_review`
 - Written-record search result: no match for `PAGE-LEDGER-PNL-001`, `/api/ledger-pnl/summary`, or `ledger_pnl.summary:2026-05-31:ALL`
 - Page readiness: `overall_status=static-pass`, `formal_use_allowed=false`, `business_owner_approval_captured=false`, `closure_approved=false`
+- Last read-only refresh: `2026-06-10T21:25:00+08:00`; dry-run only, no `--write` command was run.
 
-Machine-readable snapshot: `docs/audits/2026-06-10-ledger-pnl-direct-governance-record-snapshot.json`.
+Machine-readable snapshot: `docs/audits/2026-06-10-ledger-pnl-direct-governance-record-snapshot.json`. Refresh command: `python scripts\refresh_ledger_pnl_direct_governance_record_snapshot.py`.
 
 ## Non-Closure Boundary
 

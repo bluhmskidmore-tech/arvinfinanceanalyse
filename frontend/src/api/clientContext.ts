@@ -11,6 +11,8 @@ import type { HomeExecutiveClientMethods } from "./homeExecutiveClient";
 import type { HomeMarketTickerClientMethods } from "./homeMarketTickerClient";
 import type { HomeSupplementalClientMethods } from "./homeSupplementalClient";
 import type { MacroToolkitClientMethods } from "./macroToolkitClient";
+import type { MarketDataClientMethods } from "./marketDataClient";
+import type { StockAnalysisWorkbenchClientMethods } from "./stockAnalysisWorkbenchClient";
 
 export type { ApiClient, DataSourceMode } from "./client";
 
@@ -54,16 +56,22 @@ const defaultFetch = (...args: Parameters<typeof fetch>) => fetch(...args);
 const MACRO_TOOLKIT_METHODS = new Set<keyof MacroToolkitClientMethods>([
   "getMacroToolkitAnalysis",
   "getMacroToolkitStrategySummaries",
+  "fetchMacroToolkitModelChainResults",
   "getMacroToolkitScripts",
   "runMacroToolkitScript",
+  "runMacroToolkitScriptChain",
   "refreshCffexMemberRank",
+  "getCffexMemberRankRefreshStatus",
   "refreshMacroSourceBackfill",
+  "getMacroSourceBackfillRefreshStatus",
+  "refreshCommodityFutures",
   "refreshChoiceStock",
   "getChoiceStockRefreshStatus",
 ]);
 
 const HOME_EXECUTIVE_METHODS = new Set<keyof HomeExecutiveClientMethods>([
   "getHomeSnapshot",
+  "getHomeMacroReleaseContext",
   "getHomeResearchReports",
   "getHomeIncomeTrend",
 ]);
@@ -79,7 +87,19 @@ const HOME_SUPPLEMENTAL_METHODS = new Set<keyof HomeSupplementalClientMethods>([
   "getBondAnalyticsReturnDecomposition",
   "getPnlCampisiFourEffects",
   "getBondAnalyticsYieldCurveTermStructure",
+  "getBondAnalyticsKrdCurveRisk",
+  "getBalanceAnalysisDates",
+  "getBalanceAnalysisOverview",
+  "getBalanceAnalysisSummary",
+  "getBalanceAnalysisWorkbook",
+  "getBalanceAnalysisCurrentUser",
+  "getBalanceAnalysisSummaryByBasis",
+  "getBalanceAnalysisDetail",
+  "getBalanceAnalysisAdvancedAttribution",
   "getBalanceAnalysisDecisionItems",
+  "getBalanceMovementDates",
+  "getBalanceMovementAnalysis",
+  "getAdbComparison",
   "getBondDashboardAssetStructure",
   "getBondDashboardMaturityStructure",
   "getBondDashboardIndustryDistribution",
@@ -93,7 +113,27 @@ const HOME_MARKET_TICKER_METHODS = new Set<keyof HomeMarketTickerClientMethods>(
   "getChoiceMacroLatest",
   "getMarketDataRates",
   "getChoiceNewsEvents",
+  // Batch path used by dashboard-home to collapse 13 per-topic news reads.
+  "getChoiceNewsEventsBatch",
   "getResearchCalendarEvents",
+]);
+
+const STOCK_ANALYSIS_MARKET_DATA_METHODS = new Set<keyof MarketDataClientMethods>([
+  "getLivermoreStrategy",
+  "getLivermoreStockDetail",
+  "getStockKlineAnalysis",
+  "getStockHeavyweightTrends",
+  "getLivermoreCandidateHistory",
+  "getLivermoreStrategyScore",
+  "getLivermoreStrategyOptimization",
+  "getLivermoreCycleProxyBacktest",
+  "getLivermoreCandidateHistoryPortfolioBacktest",
+  "getLivermoreSectorRankSeries",
+  "getLivermoreSignalConfluence",
+  "materializeLivermorePositionSnapshot",
+  "materializeLivermoreManualPositionSnapshot",
+  "getLivermoreGateSupplementRefreshStatus",
+  "refreshGateSupplement",
 ]);
 
 export function createDeferredApiClient(options: ApiClientOptions = {}): ApiClient {
@@ -105,6 +145,8 @@ export function createDeferredApiClient(options: ApiClientOptions = {}): ApiClie
   let homeMarketTickerClientPromise: Promise<HomeMarketTickerClientMethods> | null = null;
   let homeSupplementalClientPromise: Promise<HomeSupplementalClientMethods> | null = null;
   let macroToolkitClientPromise: Promise<MacroToolkitClientMethods> | null = null;
+  let marketDataClientPromise: Promise<MarketDataClientMethods> | null = null;
+  let stockAnalysisWorkbenchClientPromise: Promise<StockAnalysisWorkbenchClientMethods> | null = null;
 
   const loadClient = () => {
     if (!clientPromise) {
@@ -117,14 +159,45 @@ export function createDeferredApiClient(options: ApiClientOptions = {}): ApiClie
 
   const loadMacroToolkitClient = () => {
     if (!macroToolkitClientPromise) {
-      macroToolkitClientPromise = import("./macroToolkitClient").then(
-        ({ createMockMacroToolkitClient, createRealMacroToolkitClient }) =>
-          mode === "mock"
-            ? createMockMacroToolkitClient()
-            : createRealMacroToolkitClient({ fetchImpl, baseUrl }),
-      );
+      macroToolkitClientPromise =
+        mode === "mock"
+          ? import("./macroToolkitMockClient").then(
+              ({ createMockMacroToolkitClient }) => createMockMacroToolkitClient(),
+            )
+          : import("./macroToolkitClient").then(
+              ({ createRealMacroToolkitClient }) =>
+                createRealMacroToolkitClient({ fetchImpl, baseUrl }),
+            );
     }
     return macroToolkitClientPromise;
+  };
+
+  const loadMarketDataClient = () => {
+    if (!marketDataClientPromise) {
+      marketDataClientPromise =
+        mode === "mock"
+          ? import("./marketDataMockClient").then(
+              ({ createMockMarketDataClient }) => createMockMarketDataClient(),
+            )
+          : import("./marketDataClient").then(
+              ({ createRealMarketDataClient }) =>
+                createRealMarketDataClient({ fetchImpl, baseUrl }),
+            );
+    }
+    return marketDataClientPromise;
+  };
+
+  const loadStockAnalysisWorkbenchClient = () => {
+    if (!stockAnalysisWorkbenchClientPromise) {
+      stockAnalysisWorkbenchClientPromise =
+        mode === "mock"
+          ? loadMarketDataClient()
+          : import("./stockAnalysisWorkbenchClient").then(
+              ({ createRealStockAnalysisWorkbenchClient }) =>
+                createRealStockAnalysisWorkbenchClient({ fetchImpl, baseUrl }),
+            );
+    }
+    return stockAnalysisWorkbenchClientPromise;
   };
 
   const loadHomeExecutiveClient = () => {
@@ -198,13 +271,24 @@ export function createDeferredApiClient(options: ApiClientOptions = {}): ApiClie
             const method = client[property as keyof HomeMarketTickerClientMethods] as (...methodArgs: unknown[]) => unknown;
             return method(...args);
           }
+          if (property === "getStockAnalysisWorkbench") {
+            const client = await loadStockAnalysisWorkbenchClient();
+            return client.getStockAnalysisWorkbench(
+              ...(args as Parameters<StockAnalysisWorkbenchClientMethods["getStockAnalysisWorkbench"]>),
+            );
+          }
+          if (STOCK_ANALYSIS_MARKET_DATA_METHODS.has(property as keyof MarketDataClientMethods)) {
+            const client = await loadMarketDataClient();
+            const method = client[property as keyof MarketDataClientMethods] as (...methodArgs: unknown[]) => unknown;
+            return method(...args);
+          }
           const client = await loadClient();
           const value = client[property as keyof ApiClient];
           if (typeof value !== "function") {
             return value;
           }
           const method = value as (...methodArgs: unknown[]) => unknown;
-          return method(...args);
+          return Reflect.apply(method, client, args);
         };
       },
     },

@@ -1,0 +1,31 @@
+{
+  "cssPath": "frontend/src/features/stock-analysis/components/StockDetailDrawer.css",
+  "tsxFiles": [
+    "frontend/src/features/stock-analysis/components/StockDetailDrawer.tsx"
+  ],
+  "wildcards": [
+    "stock-detail-drawer",
+    "stock-detail-drawer__history-row--pending",
+    "stock-detail-drawer__history-row--halt",
+    "stock-detail-drawer__alert-action",
+    "ant-btn",
+    "ant-drawer-body",
+    "ant-drawer-close",
+    "ant-drawer-content",
+    "ant-drawer-content-wrapper",
+    "ant-drawer-extra",
+    "ant-drawer-header",
+    "ant-drawer-title",
+    "ant-segmented",
+    "ant-segmented-item",
+    "ant-segmented-item-selected",
+    "ant-segmented-thumb",
+    "ant-typography",
+    "ant-typography-strong"
+  ],
+  "evidenceMode": "literal",
+  "finalMarker": null,
+  "mockUrl": "http://127.0.0.1:5897/stock-analysis",
+  "realUrl": "http://localhost:5888/stock-analysis",
+  "workDir": null
+}

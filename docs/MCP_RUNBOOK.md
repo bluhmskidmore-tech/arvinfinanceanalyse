@@ -22,8 +22,11 @@ resources, do not treat that alone as a repo configuration failure.
 4. For a cwd-independent local handshake, use the launcher helper directly:
 
 ```powershell
-python scripts/mcp/moss_mcp_launcher.py metric-contracts
+.\.venv\Scripts\python.exe scripts/mcp/moss_mcp_launcher.py metric-contracts
 ```
+
+(Use the repo venv explicitly. A bare `python` on a developer machine is often a different,
+unrelated venv.)
 
 The launcher forces the workspace root before loading
 `scripts/mcp/moss_project_mcp.py`, which is useful when a client launches MCP
@@ -86,13 +89,29 @@ node scripts/stitch/generate_cross_asset.mjs
 
 Outputs land in `artifacts/stitch/cross-asset/` (`design-draft.html`, `design-draft.png`, `meta.json`, `UI-SPEC.md`).
 
-Preferred balance-analysis design reference (MOSS tokens + 债券经营驾驶舱风格):
+### `artifacts/` is local-only
 
-- `artifacts/design/balance-analysis-v4-cockpit.html` ← **current (专业驾驶舱)**
-- `artifacts/design/balance-analysis-v3.html`
-- `artifacts/design/balance-analysis-v2.html` (superseded)
-- Spec: `artifacts/stitch/balance-analysis/UI-SPEC.md`
-- 用户参考图：细线图标 + KPI 卡片行 + 图表三列 + 风险进度表
+`artifacts/` is listed in `.gitignore` (line 61) and `git ls-files artifacts` returns nothing.
+Everything the generators above emit exists **only on the machine that ran them**. Do not cite an
+`artifacts/**` path as a shared design reference, and do not assume a teammate or a fresh clone can
+open one.
+
+An earlier version of this runbook listed `artifacts/design/balance-analysis-v4-cockpit.html`
+(marked "current"), `-v3.html`, `-v2.html`, and `artifacts/stitch/balance-analysis/UI-SPEC.md` as the
+preferred balance-analysis design reference. None of those files exist in this working tree, and
+because of the ignore rule they cannot exist in any clone. That list has been removed rather than
+repaired: there is no committed artifact to point it at.
+
+Version-controlled design references that do exist:
+
+- `DESIGN.md` and `frontend/src/theme/designSystem.ts` — the binding token/style source.
+- `docs/design-artifacts/` — committed HTML/plan references (currently cross-asset focused).
+- `docs/design-preview/` — committed light/dark previews and captured real-page snapshots.
+- `docs/plans/2026-04-11-balance-analysis-cockpit-design.md` — the committed balance-analysis
+  cockpit design plan.
+
+If a generated mockup is worth keeping as a reference, commit it under `docs/` first; leaving it in
+`artifacts/` guarantees the reference will be dead for everyone else.
 
 Stitch is a design/prototype tool only. Generated HTML must still be adapted to
 MOSS `DESIGN.md` and `frontend/src/theme/designSystem.ts` before landing in
@@ -295,6 +314,7 @@ Boundary:
 - The page governance-record preflight tool validates a supplied candidate record only. The record must contain at least one accepted direct page/API anchor, and pages with explicit catalog/date table configuration must include at least one configured table anchor. Source-table and result-kind anchors are supporting evidence only. It does not write JSONL rows, does not check whether a record exists, does not prove page/API execution, and does not approve metric/page formal use.
 - The page governance-gap queue is an action router only. Its expanded-anchor samples identify supporting source-table/result-kind lineage hints, falling back to the matched query when the raw record lacks explicit anchor fields, and its incomplete-record diagnostics identify missing fields and failed field groups for follow-up. It does not create missing records, does not prove that expanded anchors belong to a page execution, and does not close audit review by itself.
 - For `dashboard-home`, `/ui/home/snapshot` is the primary evidence source. Supplemental dashboard, bond, market, and calendar surfaces must stay visibly supplemental and date-gated where the cockpit contract requires it.
+- For the `PAGE-DASH-001` supporting API `/ui/home/macro-release-context`, MCP-unavailable work must record the unavailable server and the local substitute evidence; unresolved items remain `source_pending`. Local evidence cannot grant formal approval or justify static historical numeric fallback.
 - For `product-category-pnl`, row meaning must stay tied to the paired ledger reconciliation + daily average source chain. Do not infer page rows from ZQTZ holdings-side logic or research buckets.
 
 ### Coverage Matrix
@@ -392,18 +412,18 @@ codex mcp list
 Run the local MCP contract tests:
 
 ```powershell
-pytest tests/test_project_mcp_servers.py -q
+.\.venv\Scripts\python.exe -m pytest tests/test_project_mcp_servers.py -q
 ```
 
 Optional syntax check that does not write `__pycache__`:
 
 ```powershell
-python -c "import ast, pathlib; ast.parse(pathlib.Path('scripts/mcp/moss_project_mcp.py').read_text(encoding='utf-8')); print('syntax ok')"
+.\.venv\Scripts\python.exe -c "import ast, pathlib; ast.parse(pathlib.Path('scripts/mcp/moss_project_mcp.py').read_text(encoding='utf-8')); print('syntax ok')"
 ```
 
 ## GitNexus Index
 
-The `.mcp.json` config enables the GitNexus MCP server through a local GitNexus 1.3.11 install under `.tmp-gitnexus-v13/`.
+The `.mcp.json` config enables the GitNexus MCP server through `scripts/mcp/gitnexus_mcp_launcher.mjs`. The launcher resolves the GitNexus CLI (`node_modules/gitnexus/dist/cli/index.js`) from three candidate locations in order: `.tmp-gitnexus-v13/` under the repository root, the repository root `node_modules/`, then the global npm prefix (`%APPDATA%\npm\node_modules\gitnexus`). In the current workspace only the global npm install exists (the first two directories are absent), so the launcher runs the globally installed GitNexus.
 
 The `.gitnexus/` index has been generated for this workspace. At the time of indexing it contained:
 
@@ -415,14 +435,16 @@ The `.gitnexus/` index has been generated for this workspace. At the time of ind
 
 GitNexus records the index metadata in `.gitnexus/meta.json`.
 
-Re-index from the repository root with:
+Re-index from the repository root with the AGENTS.md command:
 
 ```powershell
-node .tmp-gitnexus-v13\node_modules\gitnexus\dist\cli\index.js analyze .
+npx gitnexus analyze --skip-agents-md
 ```
+
+`--skip-agents-md` keeps re-indexing from expanding the root instruction files (see AGENTS.md). With the global npm install present, `npx gitnexus` resolves to the same CLI the MCP launcher runs.
 
 Troubleshooting:
 
-- The latest `gitnexus@latest` package currently fails in this Windows workspace with either `EPERM: operation not permitted, symlink ... tree-sitter-proto` or native dependency load/build errors. The local GitNexus 1.3.11 install avoids that path and is the configured MCP/runtime command.
 - If re-indexing fails with access denied on `.gitnexus/kuzu.wal`, stop any active GitNexus process and rerun the command from the repository root.
-- `.gitnexus/` and `.tmp-gitnexus-v13/` are local generated/runtime directories and are ignored by git.
+- If the launcher exits with `Missing CLI`, none of the three candidate locations has a GitNexus install; install it globally (`npm install -g gitnexus`) or into one of the local candidate directories.
+- `.gitnexus/` and `.tmp-gitnexus-v13/` (if present) are local generated/runtime directories and are ignored by git.

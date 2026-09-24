@@ -1,7 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Button,
-  Card,
   Checkbox,
   Col,
   Collapse,
@@ -13,7 +12,6 @@ import {
   Table,
   Tag,
   Typography,
-  message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs, { type Dayjs } from "dayjs";
@@ -21,6 +19,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useApiClient } from "../../../api/client";
 import type { CubeDrillPath, CubeQueryRequest, CubeQueryResult } from "../../../api/contracts";
+import {
+  EvidencePanel,
+  PageHeader,
+  PageStateSurface,
+} from "../../../components/page/PagePrimitives";
+import { tabularNumsStyle } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
+
+import styles from "./CubeQueryPage.module.css";
 
 const { Text } = Typography;
 
@@ -40,6 +47,9 @@ const AGG_LABELS: Record<(typeof AGG_OPTIONS)[number], string> = {
   max: "最大",
 };
 
+/** 与 Pagination pageSizeOptions 上限一致；防止超限 limit/offset 直达后端。 */
+const MAX_PAGE_SIZE = 200;
+
 type MeasureRow = { key: string; agg: string; field: string };
 type FilterRow = { key: string; dimension: string; values: string[] };
 type OrderRow = { key: string; field: string; descending: boolean };
@@ -49,14 +59,29 @@ const nextKey = () => `k${++seq}`;
 
 const EMPTY_STRINGS: string[] = [];
 
+/**
+ * 数值列固定两位小数（min=max）：此前 min 2/max 4 会让同一列出现
+ * 1,234.50 与 1,234.5678 混排，列内小数位漂移（DESIGN.md §3 对比性数字纪律）。
+ */
 const numberFmt = new Intl.NumberFormat("zh-CN", {
   minimumFractionDigits: 2,
-  maximumFractionDigits: 4,
+  maximumFractionDigits: 2,
 });
+
+/** 与 formatCellValue 同一数值判据：number 或可解析为数值的字符串（后端 Decimal 序列化形态）。 */
+function isNumericCellValue(value: unknown): boolean {
+  if (typeof value === "number") {
+    return Number.isFinite(value);
+  }
+  if (typeof value === "string" && value.trim() !== "" && /^-?\d/.test(value.trim())) {
+    return !Number.isNaN(Number(value));
+  }
+  return false;
+}
 
 function formatCellValue(value: unknown): string {
   if (value === null || value === undefined) {
-    return "—";
+    return EM_DASH;
   }
   if (typeof value === "number" && Number.isFinite(value)) {
     return numberFmt.format(value);
@@ -93,6 +118,77 @@ function buildFiltersMap(rows: FilterRow[]): Record<string, string[]> {
   return out;
 }
 
+/**
+ * 提交前用后端 /api/cube/dimensions/* 返回的元数据做白名单校验：
+ * 度量字段/维度/筛选维度/排序字段必须在元数据清单内；
+ * 非法项显式拒绝并列出原因，不静默丢弃。
+ */
+function collectConfigIssues({
+  reportDateValid,
+  measureRows,
+  selectedDimensions,
+  filterRows,
+  orderRows,
+  dimensionList,
+  measureFields,
+}: {
+  reportDateValid: boolean;
+  measureRows: MeasureRow[];
+  selectedDimensions: string[];
+  filterRows: FilterRow[];
+  orderRows: OrderRow[];
+  dimensionList: string[];
+  measureFields: string[];
+}): string[] {
+  const issues = new Set<string>();
+  if (!reportDateValid) {
+    issues.add("请先填写有效的报告日");
+  }
+
+  const aggAllowed = new Set<string>(AGG_OPTIONS);
+  const activeMeasures = measureRows.filter((r) => r.field && r.agg);
+  if (activeMeasures.length === 0) {
+    issues.add("请至少配置一个有效度量");
+  }
+  for (const row of activeMeasures) {
+    if (!aggAllowed.has(row.agg)) {
+      issues.add(`聚合方式「${row.agg}」不受支持`);
+    }
+    if (row.agg !== "count" && !measureFields.includes(row.field)) {
+      issues.add(`度量字段「${row.field}」不在当前事实表可用清单`);
+    }
+  }
+
+  for (const dim of selectedDimensions) {
+    if (!dimensionList.includes(dim)) {
+      issues.add(`维度「${dim}」不在当前事实表可用清单`);
+    }
+  }
+
+  filterRows.forEach((row, index) => {
+    const hasValues = row.values.some((v) => v.trim() !== "");
+    if (!row.dimension) {
+      if (hasValues) {
+        issues.add(`第 ${index + 1} 个筛选条件已填写取值但未选择维度`);
+      }
+      return;
+    }
+    if (!dimensionList.includes(row.dimension)) {
+      issues.add(`筛选维度「${row.dimension}」不在当前事实表可用清单`);
+    }
+  });
+
+  const orderableFields = new Set<string>([...dimensionList, ...measureFields, "count"]);
+  for (const row of orderRows) {
+    const field = row.field.trim();
+    if (field && !orderableFields.has(field)) {
+      issues.add(`排序字段「${field}」不在可用字段清单`);
+    }
+  }
+
+  return [...issues];
+}
+
 export default function CubeQueryPage() {
   const client = useApiClient();
   const [factTable, setFactTable] = useState<string>("bond_analytics");
@@ -104,6 +200,7 @@ export default function CubeQueryPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [lastResult, setLastResult] = useState<CubeQueryResult | null>(null);
+  const [validationIssues, setValidationIssues] = useState<string[]>([]);
 
   const dimensionsQuery = useQuery({
     queryKey: [client.mode, "cube-dimensions", factTable],
@@ -153,6 +250,7 @@ export default function CubeQueryPage() {
       ),
     );
     setPage(1);
+    setValidationIssues([]);
   }, [factTable, dimensionList, measureFields]);
 
   const buildRequest = useCallback(
@@ -168,8 +266,8 @@ export default function CubeQueryPage() {
         return null;
       }
       const rows = overrides?.filterRows ?? filterRows;
-      const p = overrides?.page ?? page;
-      const ps = overrides?.pageSize ?? pageSize;
+      const p = Math.max(1, overrides?.page ?? page);
+      const ps = Math.min(Math.max(1, overrides?.pageSize ?? pageSize), MAX_PAGE_SIZE);
       const measures = measureRows
         .filter((r) => r.field && r.agg)
         .map((r) => (r.agg === "count" ? "count(*)" : `${r.agg}(${r.field})`));
@@ -209,22 +307,43 @@ export default function CubeQueryPage() {
     onSuccess: (data) => {
       setLastResult(data);
     },
-    onError: (err: unknown) => {
-      message.error(err instanceof Error ? err.message : "查询失败");
-    },
   });
 
   const submit = useCallback(
     (overrides?: Partial<{ filterRows: FilterRow[]; page: number; pageSize: number }>) => {
-      const req = buildRequest(overrides);
-      if (!req) {
-        message.warning("请填写报告日并至少配置一个有效度量。");
+      const issues = collectConfigIssues({
+        reportDateValid: Boolean(reportDate?.isValid()),
+        measureRows,
+        selectedDimensions,
+        filterRows: overrides?.filterRows ?? filterRows,
+        orderRows,
+        dimensionList,
+        measureFields,
+      });
+      if (issues.length > 0) {
+        setValidationIssues(issues);
         return false;
       }
+      const req = buildRequest(overrides);
+      if (!req) {
+        setValidationIssues(["查询请求构建失败，请检查报告日与度量配置"]);
+        return false;
+      }
+      setValidationIssues([]);
       executeMutation.mutate(req);
       return true;
     },
-    [buildRequest, executeMutation],
+    [
+      buildRequest,
+      executeMutation,
+      reportDate,
+      measureRows,
+      selectedDimensions,
+      filterRows,
+      orderRows,
+      dimensionList,
+      measureFields,
+    ],
   );
 
   const handleExecute = () => {
@@ -233,6 +352,8 @@ export default function CubeQueryPage() {
   };
 
   const tableColumns: ColumnsType<Record<string, unknown>> = useMemo(() => {
+    /** 数值单元格统一等宽 + tabular-nums（DESIGN.md §3：所有对比性数字必须 tabular）。 */
+    const numericCellProps = () => ({ style: tabularNumsStyle });
     if (!lastResult?.rows?.length) {
       const keys = [
         ...(lastResult?.dimensions ?? selectedDimensions),
@@ -244,28 +365,41 @@ export default function CubeQueryPage() {
           dataIndex: m.agg === "count" ? "count" : m.field,
           key: `${m.agg}-${m.field}`,
           align: "right" as const,
+          onCell: numericCellProps,
           render: (v: unknown) => formatCellValue(v),
         }));
       }
-      return keys.map((k) => ({
-        title: String(k) === "count" ? "计数" : k,
-        dataIndex: k,
-        key: k,
-        align:
-          measureFields.includes(String(k)) || String(k) === "count"
-            ? ("right" as const)
-            : ("left" as const),
-        render: (v: unknown) => formatCellValue(v),
-      }));
+      return keys.map((k) => {
+        const numeric = measureFields.includes(String(k)) || String(k) === "count";
+        return {
+          title: String(k) === "count" ? "计数" : k,
+          dataIndex: k,
+          key: k,
+          align: numeric ? ("right" as const) : ("left" as const),
+          onCell: numeric ? numericCellProps : undefined,
+          render: (v: unknown) => formatCellValue(v),
+        };
+      });
     }
-    const sample = lastResult.rows[0]!;
-    return Object.keys(sample).map((key) => ({
-      title: key === "count" ? "计数" : key,
-      dataIndex: key,
-      key,
-      align: typeof sample[key] === "number" ? ("right" as const) : ("left" as const),
-      render: (v: unknown) => formatCellValue(v),
-    }));
+    const rows = lastResult.rows;
+    const measureKeys = new Set(lastResult.measures ?? []);
+    return Object.keys(rows[0]!).map((key) => {
+      // 列级对齐判据：度量/计数列恒为数值列；其余列扫全部行样本，任意一行是
+      // 数值（含字符串化 Decimal）即右对齐。此前只看首行，首行 null 或后端
+      // Decimal 字符串会让整列数值左对齐。
+      const numeric =
+        measureKeys.has(key) ||
+        key === "count" ||
+        rows.some((row) => isNumericCellValue(row[key]));
+      return {
+        title: key === "count" ? "计数" : key,
+        dataIndex: key,
+        key,
+        align: numeric ? ("right" as const) : ("left" as const),
+        onCell: numeric ? numericCellProps : undefined,
+        render: (v: unknown) => formatCellValue(v),
+      };
+    });
   }, [lastResult, selectedDimensions, measureRows, measureFields]);
 
   const onDrillValue = (dimension: string, value: string) => {
@@ -296,7 +430,7 @@ export default function CubeQueryPage() {
             {p.available_values.slice(0, 80).map((v) => (
               <Tag
                 key={`${p.dimension}:${v}`}
-                style={{ cursor: "pointer" }}
+                className={styles.drillTag}
                 onClick={() => onDrillValue(p.dimension, v)}
               >
                 {v}
@@ -325,24 +459,22 @@ export default function CubeQueryPage() {
   }, [selectedDimensions, measureRows]);
 
   return (
-    <div
-      data-testid="cube-query-page"
-      style={{ background: "#f5f7fa", minHeight: "100%", padding: 16 }}
-    >
-      <Typography.Title level={3} style={{ marginTop: 0 }}>
-        多维查询
-      </Typography.Title>
-      <Text type="secondary">对正式口径事实表进行维度聚合、筛选与钻取。</Text>
+    <div className={styles.page} data-moss-theme-scope="cube-query" data-testid="cube-query-page">
+      <PageHeader
+        eyebrow="报表与数据"
+        title="多维查询"
+        description="对正式口径事实表进行维度聚合、筛选与钻取。"
+      />
 
-      <Card title="查询配置" style={{ marginTop: 16 }} size="small">
-        <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+      <EvidencePanel heading="查询配置">
+        <Space direction="vertical" size="middle" className={styles.stack}>
           <Row gutter={[16, 8]}>
             <Col xs={24} md={8}>
               <Text strong>事实表</Text>
               <Select
                 aria-label="cube-fact-table"
                 data-testid="cube-fact-select"
-                style={{ width: "100%", marginTop: 8 }}
+                className={styles.fieldControl}
                 value={factTable}
                 options={FACT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
                 onChange={(v) => {
@@ -355,7 +487,7 @@ export default function CubeQueryPage() {
               <Text strong>报告日期</Text>
               <DatePicker
                 aria-label="cube-report-date"
-                style={{ width: "100%", marginTop: 8 }}
+                className={styles.fieldControl}
                 value={reportDate}
                 onChange={(d) => d && setReportDate(d)}
               />
@@ -366,7 +498,7 @@ export default function CubeQueryPage() {
                 data-testid="cube-execute"
                 loading={executeMutation.isPending}
                 onClick={handleExecute}
-                style={{ marginTop: 28 }}
+                className={styles.execute}
               >
                 执行查询
               </Button>
@@ -375,9 +507,15 @@ export default function CubeQueryPage() {
 
           <div data-testid="cube-dimensions">
             <Text strong>维度（多选）</Text>
-            <div style={{ marginTop: 8 }}>
+            <div className={styles.sectionBody}>
               {dimensionsQuery.isLoading ? (
-                <Text type="secondary">加载维度…</Text>
+                <PageStateSurface variant="loading" title="加载维度…" />
+              ) : dimensionsQuery.isError ? (
+                <PageStateSurface
+                  variant="error"
+                  title="维度加载失败"
+                  description="维度清单请求失败，请稍后重试或切换事实表。"
+                />
               ) : (
                 <Checkbox.Group
                   options={dimensionList.map((d) => ({ label: d, value: d }))}
@@ -407,11 +545,11 @@ export default function CubeQueryPage() {
                 添加度量
               </Button>
             </Space>
-            <Space direction="vertical" style={{ width: "100%", marginTop: 8 }}>
+            <Space direction="vertical" className={`${styles.stack} ${styles.sectionBody}`}>
               {measureRows.map((row) => (
                 <Space key={row.key} wrap>
                   <Select
-                    style={{ width: 120 }}
+                    className={styles.selectNarrow}
                     value={row.agg}
                     options={AGG_OPTIONS.map((a) => ({ value: a, label: AGG_LABELS[a] }))}
                     onChange={(agg) =>
@@ -421,7 +559,7 @@ export default function CubeQueryPage() {
                     }
                   />
                   <Select
-                    style={{ width: 200 }}
+                    className={styles.selectMedium}
                     value={row.field || undefined}
                     placeholder="字段"
                     options={measureFields.map((f) => ({ value: f, label: f }))}
@@ -458,11 +596,12 @@ export default function CubeQueryPage() {
                 添加条件
               </Button>
             </Space>
-            <Space direction="vertical" style={{ width: "100%", marginTop: 8 }}>
+            <Space direction="vertical" className={`${styles.stack} ${styles.sectionBody}`}>
               {filterRows.map((row) => (
-                <Space key={row.key} wrap style={{ width: "100%" }}>
+                <Space key={row.key} wrap className={styles.stack}>
                   <Select
-                    style={{ width: 200 }}
+                    data-testid="cube-filter-dimension"
+                    className={styles.selectMedium}
                     placeholder="维度"
                     value={row.dimension || undefined}
                     options={dimensionList.map((d) => ({ value: d, label: d }))}
@@ -473,8 +612,9 @@ export default function CubeQueryPage() {
                     }
                   />
                   <Select
+                    data-testid="cube-filter-values"
                     mode="tags"
-                    style={{ minWidth: 280, flex: 1 }}
+                    className={styles.selectGrow}
                     placeholder="取值（可输入）"
                     value={row.values}
                     onChange={(values) =>
@@ -510,11 +650,11 @@ export default function CubeQueryPage() {
                 添加排序
               </Button>
             </Space>
-            <Space direction="vertical" style={{ width: "100%", marginTop: 8 }}>
+            <Space direction="vertical" className={`${styles.stack} ${styles.sectionBody}`}>
               {orderRows.map((row) => (
                 <Space key={row.key} wrap>
                   <Select
-                    style={{ width: 220 }}
+                    className={styles.selectWide}
                     placeholder="字段"
                     value={row.field || undefined}
                     options={orderFieldOptions.map((f) => ({ value: f, label: f }))}
@@ -525,7 +665,7 @@ export default function CubeQueryPage() {
                     }
                   />
                   <Select
-                    style={{ width: 120 }}
+                    className={styles.selectNarrow}
                     value={row.descending ? "desc" : "asc"}
                     options={[
                       { value: "asc", label: "升序" },
@@ -550,12 +690,38 @@ export default function CubeQueryPage() {
               ))}
             </Space>
           </div>
-        </Space>
-      </Card>
 
-      <Row gutter={16} style={{ marginTop: 16 }}>
+          {validationIssues.length > 0 ? (
+            <PageStateSurface
+              variant="error"
+              testId="cube-config-validation-error"
+              title="查询配置未通过校验，已阻止提交"
+              description={validationIssues.join("；")}
+            />
+          ) : null}
+        </Space>
+      </EvidencePanel>
+
+      <Row gutter={16} className={styles.resultsRow}>
         <Col xs={24} lg={17}>
-          <Card title="查询结果" size="small">
+          <EvidencePanel heading="查询结果">
+            {executeMutation.isError ? (
+              <PageStateSurface
+                variant="error"
+                testId="cube-query-error"
+                title="查询执行失败"
+                description={
+                  executeMutation.error instanceof Error && executeMutation.error.message
+                    ? executeMutation.error.message
+                    : "查询失败，请稍后重试。"
+                }
+                actions={
+                  <Button size="small" onClick={() => submit()}>
+                    重试
+                  </Button>
+                }
+              />
+            ) : null}
             <Table<Record<string, unknown>>
               data-testid="cube-results-table"
               size="small"
@@ -568,7 +734,7 @@ export default function CubeQueryPage() {
             />
             {lastResult ? (
               <Pagination
-                style={{ marginTop: 16 }}
+                className={styles.pagination}
                 current={page}
                 pageSize={pageSize}
                 total={lastResult.total_rows}
@@ -582,28 +748,30 @@ export default function CubeQueryPage() {
                 }}
               />
             ) : null}
-          </Card>
+          </EvidencePanel>
         </Col>
         <Col xs={24} lg={7}>
-          <Card title="钻取路径" size="small">
+          <EvidencePanel heading="钻取路径">
             {lastResult?.drill_paths?.length ? (
               drillPanel(lastResult.drill_paths)
             ) : (
-              <Text type="secondary">执行查询后展示可选钻取值。</Text>
+              <PageStateSurface
+                variant="empty"
+                description="执行查询后展示可选钻取值。"
+              />
             )}
-          </Card>
+          </EvidencePanel>
         </Col>
       </Row>
 
       {lastResult?.result_meta ? (
-        <Text
-          type="secondary"
-          style={{ display: "block", marginTop: 12 }}
-          data-testid="cube-result-meta"
-        >
-          追踪编号={lastResult.result_meta.trace_id} · 来源版本=
-          {lastResult.result_meta.source_version} · 质量标记={resultMetaQualityLabel(lastResult.result_meta.quality_flag)}
-        </Text>
+        <div className={styles.resultMeta} data-testid="cube-result-meta">
+          <Text type="secondary">
+            追踪编号={lastResult.result_meta.trace_id} · 质量标记=
+            {resultMetaQualityLabel(lastResult.result_meta.quality_flag)}
+          </Text>
+          <Text type="secondary">来源版本={lastResult.result_meta.source_version}</Text>
+        </div>
       ) : null}
     </div>
   );

@@ -1,22 +1,23 @@
 """
 批量物化脚本 — 将快照表中所有日期批量物化到 fact_formal 表。
 
-用法:
-  cd f:\MOSS-V3
+用法（在仓库根目录执行；缺省 dry-run，只打印将物化的日期，不写库）:
   python -m backend.scripts.backfill_formal_balance
+  python -m backend.scripts.backfill_formal_balance --execute
 
 功能:
   1. 扫描 zqtz_bond_daily_snapshot / tyw_interbank_daily_snapshot 中所有 distinct report_date
   2. 检查 fact_formal_zqtz_balance_daily / fact_formal_tyw_balance_daily 中已有哪些日期
-  3. 对所有缺失日期执行 materialize_balance_analysis_facts
+  3. 对所有缺失日期执行 materialize_balance_analysis_facts（需 --execute）
   4. 输出摘要
 
 注意:
-  - 这会修改 moss.duckdb，建议先备份
+  - --execute 会修改 moss.duckdb，建议先备份
   - 物化是幂等的（replace），已有日期重跑会覆盖
 """
 from __future__ import annotations
 
+import argparse
 import sys
 import time
 from datetime import date
@@ -87,6 +88,14 @@ def _get_snapshot_row_counts(conn: duckdb.DuckDBPyConnection, report_date: str) 
 
 
 def main():
+    parser = argparse.ArgumentParser(description="批量物化 balance_analysis formal 表（缺省 dry-run）")
+    parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="真实执行物化写库；缺省为 dry-run（只打印将物化的日期，不写库）。",
+    )
+    args = parser.parse_args()
+
     duckdb_path = _resolve_duckdb_path()
     print(f"[INFO] DuckDB: {duckdb_path}")
 
@@ -117,10 +126,10 @@ def main():
             print(f"          ... 共 {len(already_dates)} 个")
 
     if not missing_dates:
-        print("\n  ✅ 所有日期都已物化，无需操作。")
+        print("\n  [OK] 所有日期都已物化，无需操作。")
         return
 
-    print(f"\n  ⚠️  缺失日期: {', '.join(missing_dates[:20])}")
+    print(f"\n  [WARN] 缺失日期: {', '.join(missing_dates[:20])}")
     if len(missing_dates) > 20:
         print(f"          ... 共 {len(missing_dates)} 个")
 
@@ -135,6 +144,12 @@ def main():
             print(f"    ... 共 {len(missing_dates)} 个日期")
     finally:
         conn.close()
+
+    if not args.execute:
+        print(f"\n{'=' * 60}")
+        print(f"  [DRY-RUN] 以上 {len(missing_dates)} 个缺失日期将被物化；加 --execute 才会真正写库。")
+        print(f"{'=' * 60}")
+        return
 
     # Step 3: Materialize missing dates
     print(f"\n{'=' * 60}")
@@ -162,12 +177,12 @@ def main():
             payload = result.payload or {}
             zqtz_rows = payload.get("zqtz_rows", "?")
             tyw_rows = payload.get("tyw_rows", "?")
-            print(f"  [{i}/{len(missing_dates)}] {report_date} ✅ "
+            print(f"  [{i}/{len(missing_dates)}] {report_date} [OK] "
                   f"(zqtz={zqtz_rows}, tyw={tyw_rows}, {elapsed:.1f}s)")
             success += 1
         except Exception as exc:
             elapsed = time.time() - t0
-            print(f"  [{i}/{len(missing_dates)}] {report_date} ❌ {exc} ({elapsed:.1f}s)")
+            print(f"  [{i}/{len(missing_dates)}] {report_date} [FAIL] {exc} ({elapsed:.1f}s)")
             errors += 1
 
     # Step 4: Verify
@@ -183,7 +198,7 @@ def main():
         if final_missing:
             print(f"  仍缺失: {', '.join(final_missing[:10])}")
         else:
-            print("  ✅ 所有日期覆盖完整，ADB 页面日均计算将使用完整数据。")
+            print("  [OK] 所有日期覆盖完整，ADB 页面日均计算将使用完整数据。")
     finally:
         conn.close()
 

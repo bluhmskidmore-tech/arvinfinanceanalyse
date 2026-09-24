@@ -1,0 +1,254 @@
+/*
+ * Nocturne 页根重映射（risk-tensor / ledger-pnl 同款先例）：boundary 层的
+ * --ib-* 深色替换在 boundary 元素上按钢蓝 --dh-api-* 取值后向下继承，页根
+ * scope 翻转够不到（变量继承不回流），须在 scope 元素上重代入一次；
+ * --moss-page-* 接管 PagePrimitives（PageHeader）浅色内联兜底
+ * （platform-config 同款先例）。仅换色，不动版式。
+ */
+:global([data-moss-theme-scope="bond-trading-desk"]) {
+  --ib-hairline: var(--dh-api-line-soft);
+  --ib-radius: var(--dh-api-radius);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --moss-page-ink: var(--dh-api-ink);
+  --moss-page-ink-secondary: var(--dh-api-soft);
+  --moss-page-ink-muted: var(--dh-api-muted);
+}
+
+/* 工具条 antd 控件（DatePicker / Input / Button）的 colorBgContainer 与
+   colorBorder 为 workbenchTheme 钢蓝烘焙值（JS 主题读不到 scope 变量），
+   页内压回 Nocturne 面板链（positions CustomerDetailModal 固定列同款先例）。
+   下拉弹层挂 body portal，scope 覆盖不到，属全站 antd 共性现状。 */
+:global([data-moss-theme-scope="bond-trading-desk"]) :global(.ant-picker),
+:global([data-moss-theme-scope="bond-trading-desk"]) :global(.ant-input),
+:global([data-moss-theme-scope="bond-trading-desk"]) :global(.ant-btn-default) {
+  background: var(--dh-api-panel);
+  border-color: var(--dh-api-line);
+}
+
+.pageShell {
+  display: grid;
+  gap: 16px;
+}
+
+.heroGrid {
+  display: grid;
+  gap: 16px;
+}
+
+@media (min-width: 1280px) {
+  .heroGrid {
+    grid-template-columns: minmax(0, 1fr) 300px;
+    align-items: start;
+  }
+}
+
+.conclusionCard {
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  padding: 16px 18px;
+}
+
+.conclusionTitle {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ib-ink-secondary);
+  margin-bottom: 6px;
+}
+
+.conclusionBody {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ib-ink);
+  line-height: 1.5;
+}
+
+.conclusionDetail {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--ib-ink-secondary);
+  line-height: 1.5;
+}
+
+.sectionBlock {
+  display: grid;
+  gap: 12px;
+}
+
+.sectionTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ib-ink);
+}
+
+.metricGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (min-width: 960px) {
+  .metricGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.metricTile {
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  padding: 12px 14px;
+}
+
+.metricLabel {
+  font-size: 12px;
+  color: var(--ib-ink-secondary);
+}
+
+.metricValue {
+  margin-top: 4px;
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ib-ink);
+}
+
+.metricCaption {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--ib-ink-muted);
+}
+
+.gapItem {
+  border: 1px dashed var(--ib-hairline);
+  border-radius: var(--ib-radius);
+  padding: 12px 14px;
+  background: var(--ib-surface-muted);
+}
+
+.gapLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ib-ink);
+}
+
+.gapReason {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ib-ink-secondary);
+}
+
+.railCard {
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+}
+
+.railBody {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.railTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ib-ink);
+}
+
+.railItem {
+  display: grid;
+  gap: 4px;
+}
+
+.railItemLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ib-accent);
+}
+
+.railItemDescription {
+  font-size: 12px;
+  color: var(--ib-ink-secondary);
+}
+
+.identityStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface-muted);
+  border: 1px solid var(--ib-hairline);
+}
+
+.identityCode {
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ib-ink);
+}
+
+.identityMeta {
+  font-size: 13px;
+  color: var(--ib-ink-secondary);
+}
+
+/* 身份条徽标：中文枚举展示，色走 --dh-api-* soft 链（原文 token 收 title）。 */
+.identityTag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 1px 8px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--ib-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.identityTagAccent {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 40%, transparent);
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-blue);
+}
+
+/* 工具条控件左置，避免右对齐悬空失衡。 */
+.toolbarRow {
+  display: flex;
+  justify-content: flex-start;
+}
+
+/* 加载 / 入口态收缩到消息自身高度，不再产生整屏空白。 */
+.loadingBlock {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+}
+
+.scopeNote {
+  font-size: 12px;
+  color: var(--ib-ink-secondary);
+}
+
+.composeStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.composeStripLabel {
+  font-size: 12px;
+  color: var(--ib-ink-secondary);
+  font-weight: 600;
+}

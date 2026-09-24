@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.services.macro_vendor_service import (
+    choice_macro_formal_envelope,
     choice_macro_refresh_status,
     load_choice_macro_latest_payload,
 )
@@ -160,10 +161,124 @@ def test_market_data_rates_logs_api_perf(tmp_path, monkeypatch, caplog):
     records = _perf_records(caplog, "/ui/market-data/rates")
     assert records
     record = records[-1]
-    assert record.getMessage() == "moss_api_perf"
+    assert record.getMessage() == (
+        f'moss_api_perf endpoint="{record.endpoint}" duration_ms={record.duration_ms} '
+        f'trace_id="{record.trace_id}" result_kind="{record.result_kind}" '
+        "duckdb_statement_count=null"
+    )
     assert getattr(record, "duration_ms") >= 0
     assert getattr(record, "result_kind")
     get_settings.cache_clear()
+
+
+def test_market_data_rates_merges_formal_yield_curve_history_for_single_point_choice_rates(tmp_path):
+    duckdb_path = tmp_path / "market-data-rates-formal-history.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_choice_macro_daily (
+              series_id varchar,
+              series_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              quality_flag varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar,
+              fetch_mode varchar,
+              fetch_granularity varchar,
+              refresh_tier varchar,
+              policy_note varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table fact_formal_yield_curve_daily (
+              trade_date varchar,
+              curve_type varchar,
+              tenor varchar,
+              rate_pct decimal(18,8),
+              vendor_name varchar,
+              vendor_version varchar,
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+              (
+                'EMM00166460',
+                'China treasury yield 3Y',
+                '2026-06-11',
+                1.3141,
+                'daily',
+                'unknown',
+                'sv_choice_single_3y',
+                'vv_choice_single',
+                'rv_choice_macro_thin_slice_v1',
+                'ok',
+                'choice-single'
+              )
+            """
+        )
+        conn.execute(
+            """
+            insert into phase1_macro_vendor_catalog values
+              (
+                'EMM00166460',
+                'China treasury yield 3Y',
+                'choice',
+                'vv_choice_single',
+                'daily',
+                'unknown',
+                'date_slice',
+                'batch',
+                'stable',
+                'stable rate series'
+              )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_yield_curve_daily values
+              ('2026-05-29', 'treasury', '3Y', 1.2705, 'akshare', 'vv_formal_curve', 'sv_formal_curve_0529', 'rv_yield_curve_formal_materialize_v1'),
+              ('2026-04-30', 'treasury', '3Y', 1.2802, 'akshare', 'vv_formal_curve', 'sv_formal_curve_0430', 'rv_yield_curve_formal_materialize_v1')
+            """
+        )
+    finally:
+        conn.close()
+
+    payload = choice_macro_formal_envelope(str(duckdb_path))
+
+    series_by_id = {item["series_id"]: item for item in payload["result"]["series"]}
+    point = series_by_id["EMM00166460"]
+    assert point["trade_date"] == "2026-06-11"
+    assert point["unit"] == "%"
+    assert point["latest_change"] == pytest.approx(0.0436)
+    assert [item["trade_date"] for item in point["recent_points"][:3]] == [
+        "2026-06-11",
+        "2026-05-29",
+        "2026-04-30",
+    ]
 
 
 def test_choice_macro_latest_ignores_empty_snapshot_table_when_fact_rows_exist(
@@ -609,6 +724,57 @@ def test_choice_macro_refresh_also_runs_public_cross_asset_headlines(monkeypatch
     assert payload["warnings"] == ["tushare index_weight used latest available date"]
 
 
+def test_choice_macro_refresh_uses_public_and_tushare_backups_when_choice_fails(monkeypatch):
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+    calls: list[tuple[str, int | None]] = []
+
+    class _ChoiceRefresh:
+        @staticmethod
+        def fn(backfill_days: int = 0) -> dict[str, object]:
+            calls.append(("choice", backfill_days))
+            raise RuntimeError("user access for this API expired")
+
+    def _public_refresh() -> dict[str, object]:
+        calls.append(("public_cross_asset", None))
+        return {
+            "status": "completed",
+            "run_id": "public_cross_asset_refresh:test",
+            "series_count": 16,
+            "row_count": 1806,
+            "warnings": ["public backup used latest available date"],
+        }
+
+    def _tushare_shibor_refresh() -> dict[str, object]:
+        calls.append(("tushare_ncd_shibor", None))
+        return {
+            "status": "completed",
+            "run_id": "tushare_ncd_shibor_refresh:test",
+            "series_count": 5,
+            "row_count": 305,
+        }
+
+    monkeypatch.setattr(route_module, "refresh_choice_macro_snapshot", _ChoiceRefresh())
+    monkeypatch.setattr(route_module, "refresh_public_cross_asset_headlines", _public_refresh, raising=False)
+    monkeypatch.setattr(route_module, "refresh_tushare_ncd_shibor_proxy", _tushare_shibor_refresh, raising=False)
+    monkeypatch.setattr(route_module, "ensure_user_allowed", lambda **_kwargs: None)
+
+    payload = route_module.choice_series_refresh(auth=route_module.AuthContext(), backfill_days=30)
+
+    assert calls == [("choice", 30), ("public_cross_asset", None), ("tushare_ncd_shibor", None)]
+    assert payload["status"] == "partial"
+    assert payload["choice_macro"]["status"] == "failed"
+    assert payload["choice_macro"]["error_message"] == "user access for this API expired"
+    assert payload["public_cross_asset"]["status"] == "completed"
+    assert payload["tushare_ncd_shibor"]["status"] == "completed"
+    assert payload["warnings"] == [
+        "Choice macro refresh failed: user access for this API expired",
+        "public backup used latest available date",
+    ]
+
+
 def test_choice_macro_refresh_invalidates_cached_latest_payload(monkeypatch):
     route_module = load_module(
         "backend.app.api.routes.macro_vendor",
@@ -645,6 +811,118 @@ def test_choice_macro_refresh_invalidates_cached_latest_payload(monkeypatch):
     assert third["result"]["series"][0]["series_id"] == "series-2"
     assert build_calls == [None, None]
     route_module.market_home_response_cache.invalidate()
+
+
+def test_choice_macro_refresh_invalidates_cache_when_choice_status_is_degraded(monkeypatch):
+    """Choice macro refresh that lands data but reports a non-fatal warning returns
+    status="degraded" (see backend/app/tasks/choice_macro.py). The refreshed data is
+    already committed to DuckDB, so the response cache must still be invalidated;
+    otherwise the market-home page keeps serving pre-refresh cached data for up to
+    the cache TTL after the user explicitly triggers a refresh.
+    """
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+    route_module.market_home_response_cache.invalidate()
+    build_calls: list[object] = []
+
+    def _latest_envelope(_duckdb_path: object, *, category: object | None = None) -> dict[str, object]:
+        build_calls.append(category)
+        return {
+            "result_meta": {"result_kind": "macro.choice.latest"},
+            "result": {"series": [{"series_id": f"series-{len(build_calls)}"}]},
+        }
+
+    class _ChoiceRefresh:
+        @staticmethod
+        def fn(backfill_days: int = 0) -> dict[str, object]:
+            return {
+                "status": "degraded",
+                "run_id": f"choice-refresh-{backfill_days}",
+                "quality_flag": "warning",
+                "warning_code": "gate_supplement_failed",
+                "warnings": [{"code": "gate_supplement_failed", "message": "livermore gate supplement failed"}],
+            }
+
+    # Public backup refresh is deliberately NOT "completed"/"partial" here so the
+    # invalidation decision is isolated to the choice payload's "degraded" status
+    # instead of being masked by the public backup also counting as a success.
+    monkeypatch.setattr(route_module, "choice_macro_latest_envelope", _latest_envelope)
+    monkeypatch.setattr(route_module, "refresh_choice_macro_snapshot", _ChoiceRefresh())
+    monkeypatch.setattr(route_module, "refresh_public_cross_asset_headlines", lambda: {"status": "skipped"})
+    monkeypatch.setattr(route_module, "ensure_user_allowed", lambda **_kwargs: None)
+
+    auth = _macro_vendor_read_auth(route_module)
+    first = route_module.choice_series_latest(auth=auth)
+    second = route_module.choice_series_latest(auth=auth)
+    route_module.choice_series_refresh(auth=route_module.AuthContext(), backfill_days=3)
+    third = route_module.choice_series_latest(auth=auth)
+
+    assert first["result"]["series"][0]["series_id"] == "series-1"
+    assert second["result"]["series"][0]["series_id"] == "series-1"
+    assert third["result"]["series"][0]["series_id"] == "series-2"
+    route_module.market_home_response_cache.invalidate()
+
+
+def test_choice_macro_refresh_preserves_degraded_status_and_quality_fields(monkeypatch):
+    """The merged refresh response must pass the choice payload's degraded status,
+    quality_flag and warning_code through unchanged (not silently promoted to
+    "completed"), and must keep the underlying warning detail reachable so callers
+    can surface the quality issue instead of assuming a clean refresh.
+    """
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+
+    class _ChoiceRefresh:
+        @staticmethod
+        def fn(backfill_days: int = 0) -> dict[str, object]:
+            return {
+                "status": "degraded",
+                "run_id": "choice_macro_refresh:test",
+                "series_count": 2,
+                "vendor_version": "vv_choice",
+                "source_version": "sv_choice",
+                "cache_key": "macro.choice.latest",
+                "quality_flag": "warning",
+                "warning_code": "gate_supplement_failed",
+                "warnings": [{"code": "gate_supplement_failed", "message": "livermore gate supplement failed"}],
+            }
+
+    def _public_refresh() -> dict[str, object]:
+        return {"status": "completed", "run_id": "public_cross_asset_refresh:test", "series_count": 3}
+
+    monkeypatch.setattr(route_module, "refresh_choice_macro_snapshot", _ChoiceRefresh())
+    monkeypatch.setattr(route_module, "refresh_public_cross_asset_headlines", _public_refresh, raising=False)
+    monkeypatch.setattr(route_module, "ensure_user_allowed", lambda **_kwargs: None)
+
+    payload = route_module.choice_series_refresh(auth=route_module.AuthContext(), backfill_days=7)
+
+    assert payload["status"] == "degraded"
+    assert payload["quality_flag"] == "warning"
+    assert payload["warning_code"] == "gate_supplement_failed"
+    assert payload["choice_macro"]["status"] == "degraded"
+    assert payload["choice_macro"]["warnings"] == [
+        {"code": "gate_supplement_failed", "message": "livermore gate supplement failed"}
+    ]
+    assert payload["warnings"] == ["gate_supplement_failed: livermore gate supplement failed"]
+
+
+def test_refresh_payload_succeeded_treats_degraded_as_success():
+    """degraded means the refresh wrote fresh data to DuckDB but surfaced a
+    non-fatal warning; it must count as a successful refresh for cache
+    invalidation purposes, same as completed/partial.
+    """
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+
+    assert route_module._refresh_payload_succeeded({"status": "degraded"}) is True
+    assert route_module._refresh_payload_succeeded({"status": "failed"}, None, {"status": "degraded"}) is True
+    assert route_module._refresh_payload_succeeded({"status": "failed"}) is False
 
 
 def test_choice_macro_refresh_keeps_auth_dependency_contract():
@@ -1081,7 +1359,7 @@ def test_macro_foundation_preview_exposes_policy_metadata_from_catalog(
     get_settings.cache_clear()
 
 
-def test_market_data_catalog_tolerates_legacy_policy_metadata(
+def test_market_data_catalog_excludes_legacy_non_stable_policy_metadata(
     tmp_path,
     monkeypatch,
 ):
@@ -1135,11 +1413,8 @@ def test_market_data_catalog_tolerates_legacy_policy_metadata(
     assert response.status_code == 200
     payload = response.json()
     assert payload["result_meta"]["result_kind"] == "market_data.catalog"
-    assert payload["result"]["series"][0]["series_id"] == "legacy_macro"
-    assert payload["result"]["series"][0]["refresh_tier"] is None
-    assert payload["result"]["series"][0]["fetch_mode"] is None
-    assert payload["result"]["series"][0]["fetch_granularity"] is None
-    assert payload["result"]["series"][0]["policy_note"] == "legacy external catalog metadata"
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert payload["result"]["series"] == []
     get_settings.cache_clear()
 
 
@@ -1531,3 +1806,38 @@ def test_choice_macro_latest_returns_stale_result_meta_when_latest_rows_are_stal
     assert payload["result_meta"]["vendor_version"] == "vv_choice_batch_stale"
     assert payload["result"]["series"][0]["quality_flag"] == "stale"
     get_settings.cache_clear()
+
+
+def test_macro_vendor_route_module_has_no_task_import():
+    """The route delegates task resolution and execution to the service layer."""
+    import ast
+
+    from tests.helpers import ROOT
+
+    source = (ROOT / "backend" / "app" / "api" / "routes" / "macro_vendor.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    offending: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and str(node.module or "").startswith("backend.app.tasks"):
+            offending.append(str(node.module))
+        if isinstance(node, ast.Import):
+            offending.extend(
+                alias.name for alias in node.names if alias.name.startswith("backend.app.tasks")
+            )
+    assert offending == []
+
+
+def test_macro_vendor_lazy_task_proxies_keep_fn_call_semantics():
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+    from backend.app.tasks import choice_macro
+
+    actor_proxy = route_module.refresh_choice_macro_snapshot
+    assert getattr(actor_proxy, "fn", actor_proxy) is choice_macro.refresh_choice_macro_snapshot.fn
+
+    plain_proxy = route_module.refresh_public_cross_asset_headlines
+    resolved_plain = getattr(plain_proxy, "fn", plain_proxy)
+    assert resolved_plain is plain_proxy
+    assert callable(resolved_plain)

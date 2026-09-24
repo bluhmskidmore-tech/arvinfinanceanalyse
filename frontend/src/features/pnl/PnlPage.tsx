@@ -1,1 +1,1 @@
-export { default } from "./YieldAnalysisPage";
+export { default } from "./FormalPnlV1Page";

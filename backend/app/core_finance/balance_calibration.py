@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Literal
 
 PositionScopeCalib = Literal["asset", "liability", "all"]
@@ -73,7 +73,17 @@ def balance_calibration_meta_to_dict(meta: BalanceCalibrationMeta) -> dict[str, 
     return asdict(meta)
 
 
-def build_adb_daily_balance_calibration_meta(adb_tables_used: list[str] | None) -> BalanceCalibrationMeta:
+def build_adb_daily_balance_calibration_meta(
+    adb_tables_used: list[str] | None,
+    *,
+    snapshot_fx_conversion: dict[str, object] | None = None,
+) -> BalanceCalibrationMeta:
+    """ADB 日均口径校准元数据。
+
+    ``snapshot_fx_conversion`` 是快照回退行的 FX 处理摘要（converted_rows / dropped_rows）：
+    快照回退行的外币金额已按当日 formal 中间价折算为 CNY 后才并入（calc_rules §12.4），
+    缺当日中间价的外币行被剔除；两种降级都必须在 calibration_note 中显式披露（§14）。
+    """
     tables = list(adb_tables_used or [])
     has_formal_zqtz = _FACT_ZQTZ in tables
     has_formal_tyw = _FACT_TYW in tables
@@ -99,9 +109,29 @@ def build_adb_daily_balance_calibration_meta(adb_tables_used: list[str] | None) 
     if not families:
         families = ["zqtz", "tyw"]
 
-    return build_calibration_meta(
+    meta = build_calibration_meta(
         position_scope="all",
         currency_basis="CNY",
         source_families=families,
         data_basis=data_basis,
     )
+
+    fx_note = _snapshot_fx_conversion_note(snapshot_fx_conversion)
+    if fx_note:
+        meta = replace(meta, calibration_note=meta.calibration_note + fx_note)
+    return meta
+
+
+def _snapshot_fx_conversion_note(snapshot_fx_conversion: dict[str, object] | None) -> str:
+    if not snapshot_fx_conversion:
+        return ""
+    converted_rows = int(snapshot_fx_conversion.get("converted_rows") or 0)  # type: ignore[arg-type]
+    dropped_rows = int(snapshot_fx_conversion.get("dropped_rows") or 0)  # type: ignore[arg-type]
+    parts: list[str] = []
+    if converted_rows > 0:
+        parts.append(f"快照外币行已按当日中间价折算为人民币（{converted_rows} 行）")
+    if dropped_rows > 0:
+        parts.append(f"缺当日中间价的外币快照行已剔除（{dropped_rows} 行）")
+    if not parts:
+        return ""
+    return "；" + "，".join(parts)

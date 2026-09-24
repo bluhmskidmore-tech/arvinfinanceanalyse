@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from backend.app.schemas.result_meta import (
     ResultMeta,
@@ -59,7 +59,9 @@ def _build_result_meta(
 ) -> ResultMeta:
     formal_use_allowed, scenario_flag = _BASIS_FIXED_FLAGS[basis]
     effective_surface = source_surface or infer_source_surface_for_result_kind(result_kind)
-    meta_kwargs = {
+    # Heterogeneous kwargs for the pydantic constructor; per-field validation
+    # happens at runtime inside ResultMeta.
+    meta_kwargs: dict[str, Any] = {
         "trace_id": trace_id,
         "basis": basis,
         "result_kind": result_kind,

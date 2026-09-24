@@ -22,7 +22,10 @@ This contract applies to the `/` homepage cockpit only. It does not rewrite `/bo
 | Bond headline KPIs | `/api/bond-dashboard/headline-kpis` | `supplemental` only when `result.report_date == snapshot.report_date`; otherwise `blocked`. |
 | Portfolio headlines | `/api/bond-analytics/portfolio-headlines` | `supplemental` only when `result.report_date == snapshot.report_date`; otherwise `blocked`. |
 | Calendar | `/ui/calendar/supply-auctions` | Context/downstream focus only; does not participate in the main judgment. |
+| Macro release context | `/ui/home/macro-release-context` | Deferred `supplemental`; natural-day context only, not tied to snapshot report-date admission, and does not participate in the main judgment. |
 | Risk overview / contribution / alerts live surfaces | excluded/reserved endpoints | `reserved`; must not be requested or rendered as normal first-screen conclusions. |
+
+The macro release context must expose `stale` / `fallback` / `source_pending` / `error` states. There is no static historical numeric fallback; an unavailable automatic source renders `自动数据暂不可用` instead of maintained values or zero.
 
 ## Naming Boundaries
 

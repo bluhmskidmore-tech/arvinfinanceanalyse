@@ -1,0 +1,158 @@
+.cross-asset-livermore-rank {
+  display: grid;
+  gap: var(--moss-space-3);
+  padding: var(--moss-space-5);
+  border: 1px solid var(--ca-border-soft);
+  border-radius: var(--moss-radius-sm);
+  background: var(--ca-surface-soft);
+}
+
+.cross-asset-livermore-rank__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--moss-space-3);
+  padding-bottom: var(--moss-space-3);
+  border-bottom: 1px solid var(--ca-border-muted);
+}
+
+.cross-asset-livermore-rank__heading {
+  display: grid;
+  gap: var(--moss-space-2);
+  min-width: 0;
+}
+
+.cross-asset-livermore-rank__eyebrow {
+  color: var(--ca-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cross-asset-livermore-rank__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--ca-text);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.cross-asset-livermore-rank__badge {
+  padding: 1px 6px;
+  border: 1px solid var(--ca-border-soft);
+  border-radius: var(--ib-radius, 2px);
+  color: var(--ca-info-text);
+  background: var(--ca-card);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.cross-asset-livermore-rank__description {
+  max-width: 720px;
+  margin: 0;
+  color: var(--ca-sub);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.cross-asset-livermore-rank__meta {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  color: var(--ca-muted);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.cross-asset-livermore-rank__message {
+  padding: var(--moss-space-4);
+  border: 1px dashed var(--ca-border-muted);
+  border-radius: var(--moss-radius-sm);
+  color: var(--ca-muted);
+  font-size: 13px;
+}
+
+.cross-asset-livermore-rank__message--warning {
+  color: var(--ca-warning-text);
+}
+
+.cross-asset-livermore-rank__table-wrap {
+  overflow-x: auto;
+}
+
+.cross-asset-livermore-rank__table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--ca-text);
+  font-size: 13px;
+}
+
+.cross-asset-livermore-rank__table th {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--ca-border-muted);
+  color: var(--ca-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.cross-asset-livermore-rank__table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--ca-border-soft);
+  vertical-align: middle;
+}
+
+.cross-asset-livermore-rank__table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.cross-asset-livermore-rank__num {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cross-asset-livermore-rank__num--positive {
+  color: var(--ca-positive-text);
+}
+
+.cross-asset-livermore-rank__num--negative {
+  color: var(--ca-negative-text);
+}
+
+.cross-asset-livermore-rank__sector,
+.cross-asset-livermore-rank__stock {
+  display: grid;
+  gap: 1px;
+}
+
+.cross-asset-livermore-rank__sector strong,
+.cross-asset-livermore-rank__stock strong {
+  color: var(--ca-text);
+  font-weight: 700;
+}
+
+.cross-asset-livermore-rank__sector small,
+.cross-asset-livermore-rank__stock small {
+  color: var(--ca-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cross-asset-livermore-rank__leaders {
+  color: var(--ca-sub);
+  font-size: 12px;
+}
+
+.cross-asset-livermore-rank__footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--moss-space-2);
+  color: var(--ca-muted);
+  font-size: 11px;
+  font-weight: 700;
+}

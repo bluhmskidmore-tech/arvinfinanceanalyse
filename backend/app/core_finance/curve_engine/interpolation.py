@@ -140,6 +140,12 @@ def _compute_natural_cubic_spline_coefficients(
 
     # Step 1: intervals
     h = [xs[i + 1] - xs[i] for i in range(n - 1)]
+    if any(interval <= 0 for interval in h):
+        # 重复/乱序 x 坐标会在下方 3.0/h[i] 处除零；显式报错定位数据问题
+        # 而不是抛出难以排查的 ZeroDivisionError（2026-08 审计 FI-05）。
+        raise ValueError(
+            f"cubic spline requires strictly increasing x coordinates; got years={xs}"
+        )
 
     # Step 2: set up tridiagonal system for c coefficients
     # (n equations, natural BC: c[0] = c[n-1] = 0)

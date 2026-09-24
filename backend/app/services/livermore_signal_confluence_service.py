@@ -2,15 +2,162 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
+from datetime import date
+from pathlib import Path
+
+from backend.app.core_finance.strategy_policy import POLICY
+from backend.app.repositories.stock_analysis_theme_overlay_reader import (
+    StockAnalysisThemeOverlayReader,
+)
+from backend.app.services.formal_result_runtime import build_result_envelope
+from backend.app.services.livermore_candidate_history_service import (
+    livermore_candidate_history_backtest_window_summary,
+    livermore_candidate_history_envelope_or_none,
+)
+from backend.app.services.macro_bond_linkage_service import get_macro_environment_context
+from backend.app.services.market_data_livermore_service import livermore_strategy_envelope_from_catalog
 
 DISCLAIMER = "Observation-only output. This service does not generate trading instructions."
-ENTRY_OBSERVATION_STATES = {"WARM", "HOT"}
-MACRO_MULTIPLIERS = {
-    "supportive": 1.0,
-    "neutral": 0.5,
-    "restrictive": 0.0,
-    "unknown": 0.0,
-}
+LIVERMORE_SIGNAL_CONFLUENCE_RESULT_KIND = "market_data.livermore.signal_confluence"
+LIVERMORE_SIGNAL_CONFLUENCE_RULE_VERSION = "rv_livermore_signal_confluence_v1"
+LIVERMORE_SIGNAL_CONFLUENCE_CACHE_VERSION = "cv_livermore_signal_confluence_v1"
+ENTRY_OBSERVATION_STATES = POLICY.entry_observation_states
+REPLAY_READY_COMPLETED_DATES = 20
+REPLAY_READY_MATCHED_ENTRIES = 100
+REPLAY_PARTIAL_COMPLETED_DATES = 5
+REPLAY_PARTIAL_MATCHED_ENTRIES = 30
+REPLAY_REQUIRED_HORIZONS = ("return_5d", "return_20d")
+MACRO_MULTIPLIERS = POLICY.macro_multipliers
+MACRO_CROSS_ASSET_REUSE_DISCLOSURES = (
+    "Macro gate reuses the bond-side macro_bond_linkage composite score, where positive values mean "
+    "bond-unfavorable macro pressure; negative values are mapped to supportive for equities.",
+    "Macro gate thresholds of +/-0.3 are empirical and have no independent equity-side contract source.",
+    "Cross-asset caveat: weakening growth lowers the bond composite score and can be classified as "
+    "supportive for equities; interpret the macro gate with caution on the equity side.",
+)
+
+
+def load_macro_adversarial_signal_payload(
+    *, output_dir: str | Path | None = None
+) -> tuple[dict[str, object], dict[str, object]]:
+    try:
+        from backend.app.services.macro_adversarial_signal_service import (
+            load_macro_adversarial_signal_payload as loader,
+        )
+    except ModuleNotFoundError as exc:
+        if exc.name != "backend.app.services.macro_adversarial_signal_service":
+            raise
+        return {}, {}
+
+    payload, meta = loader(output_dir=output_dir)
+    return _dict_payload(payload), _dict_payload(meta)
+
+
+def livermore_signal_confluence_envelope(
+    *,
+    duckdb_path: str,
+    as_of_date: str | None,
+    choice_stock_catalog_file: object,
+    theme_overlay_reader: StockAnalysisThemeOverlayReader | None = None,
+) -> dict[str, object]:
+    strategy_kwargs: dict[str, object] = {
+        "duckdb_path": duckdb_path,
+        "as_of_date": as_of_date,
+        "choice_stock_catalog_file": choice_stock_catalog_file,
+    }
+    if theme_overlay_reader is not None:
+        strategy_kwargs["theme_overlay_reader"] = theme_overlay_reader
+    livermore_envelope = livermore_strategy_envelope_from_catalog(**strategy_kwargs)
+    livermore_meta = _dict_payload(livermore_envelope.get("result_meta"))
+    livermore_payload = _dict_payload(livermore_envelope.get("result"))
+    resolved_as_of_date = _optional_text(livermore_payload.get("as_of_date")) or _optional_text(as_of_date)
+
+    macro_meta: dict[str, object] = {}
+    macro_payload: dict[str, object] = {}
+    if resolved_as_of_date:
+        macro_envelope = get_macro_environment_context(date.fromisoformat(resolved_as_of_date))
+        macro_meta = _dict_payload(macro_envelope.get("result_meta"))
+        macro_payload = _dict_payload(macro_envelope.get("result"))
+    adversarial_payload, adversarial_meta = load_macro_adversarial_signal_payload(output_dir=None)
+    adversarial_meta_for_envelope = (
+        {}
+        if adversarial_payload.get("status") == "missing"
+        and not adversarial_payload.get("items")
+        else adversarial_meta
+    )
+    replay_summary = livermore_candidate_history_backtest_window_summary(
+        duckdb_path=duckdb_path,
+        stock_code=None,
+        snapshot_from=resolved_as_of_date[:10] if resolved_as_of_date else None,
+        snapshot_to=resolved_as_of_date[:10] if resolved_as_of_date else None,
+    )
+
+    result_payload = build_livermore_signal_confluence(
+        as_of_date=resolved_as_of_date or "",
+        livermore_payload=livermore_payload,
+        macro_payload=macro_payload,
+        adversarial_payload=adversarial_payload,
+        backtest_window_summary=replay_summary,
+    )
+    _attach_replay_evidence(
+        result_payload,
+        duckdb_path=duckdb_path,
+        as_of_date=resolved_as_of_date,
+        replay_summary=replay_summary,
+    )
+    return build_result_envelope(
+        basis="analytical",
+        trace_id=f"tr_livermore_signal_confluence_{date.today().strftime('%Y%m%d')}",
+        result_kind=LIVERMORE_SIGNAL_CONFLUENCE_RESULT_KIND,
+        cache_version=LIVERMORE_SIGNAL_CONFLUENCE_CACHE_VERSION,
+        source_version=_combine_lineage(
+            [
+                _meta_source_version(livermore_meta),
+                _meta_source_version(macro_meta),
+                _meta_source_version(adversarial_meta_for_envelope),
+            ],
+            empty_value="sv_livermore_signal_confluence_empty",
+        ),
+        rule_version=LIVERMORE_SIGNAL_CONFLUENCE_RULE_VERSION,
+        quality_flag=_merge_quality_flag(
+            _meta_quality_flag(livermore_meta),
+            _meta_quality_flag(macro_meta),
+            _meta_quality_flag(adversarial_meta_for_envelope),
+        ),
+        vendor_version=_combine_lineage(
+            [
+                _meta_vendor_version(livermore_meta),
+                _meta_vendor_version(macro_meta),
+                _meta_vendor_version(adversarial_meta_for_envelope),
+            ],
+            empty_value="vv_none",
+        ),
+        vendor_status=_merge_vendor_status(
+            _meta_vendor_status(livermore_meta),
+            _meta_vendor_status(macro_meta),
+            _meta_vendor_status(adversarial_meta_for_envelope),
+        ),
+        fallback_mode=_merge_fallback_mode(
+            _meta_fallback_mode(livermore_meta),
+            _meta_fallback_mode(macro_meta),
+            _meta_fallback_mode(adversarial_meta_for_envelope),
+        ),
+        filters_applied={
+            "requested_as_of_date": _optional_text(as_of_date),
+            "as_of_date": resolved_as_of_date,
+        },
+        tables_used=_combine_tables(
+            _meta_tables_used(livermore_meta),
+            _meta_tables_used(macro_meta),
+            _meta_tables_used(adversarial_meta_for_envelope),
+        ),
+        evidence_rows=(
+            _safe_int(_meta_evidence_rows(livermore_meta))
+            + _safe_int(_meta_evidence_rows(macro_meta))
+            + _safe_int(_meta_evidence_rows(adversarial_meta_for_envelope))
+        ),
+        result_payload=result_payload,
+    )
 
 
 def build_livermore_replay_status(backtest_window_summary: dict[str, object] | None = None) -> dict[str, object]:
@@ -31,12 +178,18 @@ def build_livermore_signal_confluence(
     macro_status = _macro_status(composite_score)
     if composite_score is None:
         diagnostics.append("Missing macro composite score; macro context is unknown.")
+    else:
+        diagnostics.extend(MACRO_CROSS_ASSET_REUSE_DISCLOSURES)
 
     market_gate = _mapping(livermore_payload.get("market_gate"))
     if market_gate is None:
         diagnostics.append("Missing Livermore market gate; entry observations are blocked.")
     market_gate_state = str((market_gate or {}).get("state") or "UNKNOWN").upper()
-    market_gate_exposure = _safe_float((market_gate or {}).get("exposure"))
+    market_gate_exposure = _float_or_none((market_gate or {}).get("exposure"))
+    if market_gate_exposure is None:
+        diagnostics.append(
+            "Missing Livermore market gate exposure; position size hint is unavailable."
+        )
 
     macro_multiplier = MACRO_MULTIPLIERS[macro_status]
     allows_new_entry_observations = (
@@ -44,7 +197,9 @@ def build_livermore_signal_confluence(
         and market_gate_state in ENTRY_OBSERVATION_STATES
         and macro_status in {"supportive", "neutral"}
     )
-    position_size_hint = round(market_gate_exposure * macro_multiplier, 4)
+    position_size_hint = (
+        None if market_gate_exposure is None else round(market_gate_exposure * macro_multiplier, 4)
+    )
     adversarial_context = _build_adversarial_context(
         adversarial_payload=adversarial_payload,
         allows_new_entry_observations=allows_new_entry_observations,
@@ -150,7 +305,7 @@ def _build_adversarial_context(
             "missing" if status == "missing" else "macro_adversarial_crowding"
         ),
         "risk_gate": risk_gate,
-        "position_scale": _safe_optional_float((payload or {}).get("position_scale")),
+        "position_scale": _float_or_none((payload or {}).get("position_scale")),
         "strongest_block_reason": _optional_text((payload or {}).get("strongest_block_reason")),
         "blocks_new_entry_observations": blocks_new_entry_observations,
         "diagnostics": payload_diagnostics,
@@ -205,17 +360,32 @@ def _build_replay_status(summary: Mapping[str, object] | None) -> dict[str, obje
     )
     completed_dates = _safe_int(summary.get("replay_dates_completed"))
     completed_rows = _safe_int(summary.get("completed_rows"))
+    pending_dates = _safe_int(summary.get("replay_dates_pending"))
+    unsupported_dates = _safe_int(summary.get("replay_dates_unsupported"))
+    proxy_only_dates = _safe_int(summary.get("replay_dates_proxy_only"))
+    matched_entry_count, has_required_horizon_stats = _replay_matched_entry_count(summary)
+    maturity_status = _replay_maturity_status(
+        completed_dates=completed_dates,
+        pending_dates=pending_dates,
+        unsupported_dates=unsupported_dates,
+        proxy_only_dates=proxy_only_dates,
+        matched_entry_count=matched_entry_count,
+        has_required_horizon_stats=has_required_horizon_stats,
+    )
     return {
         "window_status": _optional_text(summary.get("status")) or "unsupported",
-        "has_decision_usable_completed_stats": bool(included_completed_stats_dates or completed_dates > 0),
+        "maturity_status": maturity_status,
+        "has_decision_usable_completed_stats": maturity_status == "ready",
         "completed_dates": completed_dates,
-        "pending_dates": _safe_int(summary.get("replay_dates_pending")),
-        "unsupported_dates": _safe_int(summary.get("replay_dates_unsupported")),
-        "proxy_only_dates": _safe_int(summary.get("replay_dates_proxy_only")),
+        "pending_dates": pending_dates,
+        "unsupported_dates": unsupported_dates,
+        "proxy_only_dates": proxy_only_dates,
         "completed_candidate_rows": completed_rows,
         "pending_candidate_rows": _safe_int(summary.get("pending_rows")),
         "unsupported_candidate_rows": _safe_int(summary.get("unsupported_rows")),
         "proxy_only_candidate_rows": _safe_int(summary.get("proxy_only_rows")),
+        "matched_entry_count": matched_entry_count,
+        "has_required_horizon_stats": has_required_horizon_stats,
         "included_completed_stats_dates": included_completed_stats_dates,
         "blocked_dates": _replay_blocked_dates(summary.get("date_reasons")),
         "completed_zero_signal_dates": _completed_zero_signal_dates(summary.get("date_reasons")),
@@ -225,6 +395,7 @@ def _build_replay_status(summary: Mapping[str, object] | None) -> dict[str, obje
 def _empty_replay_status() -> dict[str, object]:
     return {
         "window_status": "unsupported",
+        "maturity_status": "missing",
         "has_decision_usable_completed_stats": False,
         "completed_dates": 0,
         "pending_dates": 0,
@@ -234,10 +405,61 @@ def _empty_replay_status() -> dict[str, object]:
         "pending_candidate_rows": 0,
         "unsupported_candidate_rows": 0,
         "proxy_only_candidate_rows": 0,
+        "matched_entry_count": 0,
+        "has_required_horizon_stats": False,
         "included_completed_stats_dates": [],
         "blocked_dates": [],
         "completed_zero_signal_dates": [],
     }
+
+
+def _replay_maturity_status(
+    *,
+    completed_dates: int,
+    pending_dates: int,
+    unsupported_dates: int,
+    proxy_only_dates: int,
+    matched_entry_count: int,
+    has_required_horizon_stats: bool,
+) -> str:
+    if (
+        completed_dates >= REPLAY_READY_COMPLETED_DATES
+        and pending_dates == 0
+        and unsupported_dates == 0
+        and proxy_only_dates == 0
+        and matched_entry_count >= REPLAY_READY_MATCHED_ENTRIES
+        and has_required_horizon_stats
+    ):
+        return "ready"
+    if completed_dates >= REPLAY_PARTIAL_COMPLETED_DATES or matched_entry_count >= REPLAY_PARTIAL_MATCHED_ENTRIES:
+        return "partial"
+    if completed_dates > 0 or matched_entry_count > 0:
+        return "insufficient"
+    if pending_dates > 0:
+        return "pending"
+    if unsupported_dates > 0:
+        return "unsupported"
+    if proxy_only_dates > 0:
+        return "proxy_only"
+    return "missing"
+
+
+def _replay_matched_entry_count(summary: Mapping[str, object]) -> tuple[int, bool]:
+    stats = _mapping(summary.get("by_signal_kind_horizon_usable_stats")) or _mapping(
+        summary.get("by_signal_kind_horizon_stats")
+    )
+    if stats is None:
+        return 0, False
+    stock_candidate_stats = _mapping(stats.get("stock_candidate"))
+    if stock_candidate_stats is None:
+        return 0, False
+    horizon_counts: list[int] = []
+    for horizon in REPLAY_REQUIRED_HORIZONS:
+        horizon_stats = _mapping(stock_candidate_stats.get(horizon))
+        if horizon_stats is None:
+            return 0, False
+        horizon_counts.append(_safe_int(horizon_stats.get("available_count")))
+    return min(horizon_counts), True
 
 
 def _replay_blocked_dates(value: object) -> list[dict[str, object]]:
@@ -362,7 +584,7 @@ def _security_label(item: Mapping[str, object]) -> str:
 
 
 def _extract_composite_score(payload: Mapping[str, object]) -> float | None:
-    direct_score = _safe_optional_float(payload.get("composite_score"))
+    direct_score = _float_or_none(payload.get("composite_score"))
     if direct_score is not None:
         return direct_score
 
@@ -370,7 +592,7 @@ def _extract_composite_score(payload: Mapping[str, object]) -> float | None:
         macro_environment = _mapping(payload.get(key))
         if macro_environment is None:
             continue
-        score = _safe_optional_float(macro_environment.get("composite_score"))
+        score = _float_or_none(macro_environment.get("composite_score"))
         if score is not None:
             return score
     return None
@@ -469,7 +691,7 @@ def _safe_int(value: object) -> int:
         return 0
 
 
-def _safe_optional_float(value: object) -> float | None:
+def _float_or_none(value: object) -> float | None:
     if value is None:
         return None
     try:
@@ -481,8 +703,200 @@ def _safe_optional_float(value: object) -> float | None:
     return parsed
 
 
-def _safe_float(value: object) -> float:
-    parsed = _safe_optional_float(value)
-    if parsed is None:
-        return 0.0
-    return parsed
+def _attach_replay_evidence(
+    payload: dict[str, object],
+    *,
+    duckdb_path: str,
+    as_of_date: str | None,
+    replay_summary: dict[str, object],
+) -> None:
+    replay_evidence = _candidate_history_replay_evidence(
+        payload=payload,
+        duckdb_path=duckdb_path,
+        as_of_date=as_of_date,
+        replay_summary=replay_summary,
+    )
+    payload["replay_evidence"] = replay_evidence
+
+
+def _candidate_history_replay_evidence(
+    *,
+    payload: dict[str, object],
+    duckdb_path: str,
+    as_of_date: str | None,
+    replay_summary: dict[str, object],
+) -> dict[str, object]:
+    snapshot_as_of_date = as_of_date[:10] if as_of_date else None
+    if not as_of_date:
+        return _empty_replay_evidence(snapshot_as_of_date=snapshot_as_of_date)
+    path = Path(duckdb_path)
+    if not path.is_file():
+        return _empty_replay_evidence(snapshot_as_of_date=snapshot_as_of_date)
+    row_count = _replay_window_candidate_row_count(replay_summary)
+    if row_count <= 0:
+        return _empty_replay_evidence(snapshot_as_of_date=snapshot_as_of_date)
+    envelope = livermore_candidate_history_envelope_or_none(
+        duckdb_path=duckdb_path,
+        stock_code=None,
+        snapshot_from=snapshot_as_of_date,
+        snapshot_to=snapshot_as_of_date,
+        limit=max(row_count, 5),
+    )
+    if envelope is None:
+        return _empty_replay_evidence(snapshot_as_of_date=snapshot_as_of_date)
+
+    result = _dict_payload(envelope.get("result"))
+    all_items = _list_of_dict_mappings(result.get("items"))
+
+    replay_stock_codes = {_normalized_stock_code(item.get("stock_code")) for item in all_items}
+    replay_stock_codes.discard("")
+    entry_stock_codes = {
+        _normalized_stock_code(item.get("stock_code"))
+        for item in _list_of_dict_mappings(payload.get("entry_observations"))
+    }
+    entry_stock_codes.discard("")
+
+    return {
+        "status": "available",
+        "snapshot_as_of_date": snapshot_as_of_date,
+        "row_count": row_count,
+        "matched_entry_count": len(entry_stock_codes & replay_stock_codes),
+        "sample_items": [_replay_sample_item(item) for item in all_items[:5]],
+    }
+
+
+def _empty_replay_evidence(*, snapshot_as_of_date: str | None) -> dict[str, object]:
+    return {
+        "status": "missing",
+        "snapshot_as_of_date": snapshot_as_of_date,
+        "row_count": 0,
+        "matched_entry_count": 0,
+        "sample_items": [],
+    }
+
+
+def _replay_window_candidate_row_count(summary: dict[str, object]) -> int:
+    return (
+        _non_negative_int(summary.get("completed_rows"))
+        + _non_negative_int(summary.get("pending_rows"))
+        + _non_negative_int(summary.get("unsupported_rows"))
+        + _non_negative_int(summary.get("proxy_only_rows"))
+    )
+
+
+def _replay_sample_item(item: dict[str, object]) -> dict[str, object]:
+    return {
+        "stock_code": item.get("stock_code"),
+        "stock_name": item.get("stock_name"),
+        "candidate_rank": item.get("candidate_rank"),
+        "signal_kind": item.get("signal_kind"),
+        "data_status": item.get("data_status"),
+    }
+
+
+def _normalized_stock_code(value: object) -> str:
+    return str(value or "").strip().upper()
+
+
+def _dict_payload(value: object) -> dict[str, object]:
+    mapping = _mapping(value)
+    if mapping is None:
+        return {}
+    return dict(mapping)
+
+
+def _list_of_dict_mappings(value: object) -> list[dict[str, object]]:
+    return [dict(item) for item in _list_of_mappings(value)]
+
+
+def _non_negative_int(value: object, *, default: int = 0) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(parsed, 0)
+
+
+def _meta_source_version(meta: dict[str, object]) -> object:
+    source = _dict_payload(meta.get("source"))
+    return meta.get("source_version") or source.get("source_version") or source.get("version")
+
+
+def _meta_quality_flag(meta: dict[str, object]) -> object:
+    source = _dict_payload(meta.get("source"))
+    return meta.get("quality_flag") or source.get("quality_flag") or source.get("status")
+
+
+def _meta_vendor_version(meta: dict[str, object]) -> object:
+    vendor = _dict_payload(meta.get("vendor"))
+    return meta.get("vendor_version") or vendor.get("vendor_version") or vendor.get("version")
+
+
+def _meta_vendor_status(meta: dict[str, object]) -> object:
+    vendor = _dict_payload(meta.get("vendor"))
+    return meta.get("vendor_status") or vendor.get("vendor_status") or vendor.get("status")
+
+
+def _meta_fallback_mode(meta: dict[str, object]) -> object:
+    source = _dict_payload(meta.get("source"))
+    return meta.get("fallback_mode") or source.get("fallback_mode")
+
+
+def _meta_tables_used(meta: dict[str, object]) -> object:
+    return meta.get("tables_used") or meta.get("tables")
+
+
+def _meta_evidence_rows(meta: dict[str, object]) -> object:
+    evidence = _dict_payload(meta.get("evidence"))
+    return meta.get("evidence_rows") or evidence.get("evidence_rows") or evidence.get("rows")
+
+
+def _combine_lineage(values: list[object], *, empty_value: str) -> str:
+    unique_values: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if text and text not in unique_values:
+            unique_values.append(text)
+    if not unique_values:
+        return empty_value
+    if len(unique_values) == 1:
+        return unique_values[0]
+    return "__".join(unique_values)
+
+
+def _merge_quality_flag(*values: object) -> str:
+    normalized = {str(value or "").strip() for value in values if str(value or "").strip()}
+    if "error" in normalized:
+        return "error"
+    if "stale" in normalized:
+        return "stale"
+    if "warning" in normalized:
+        return "warning"
+    return "ok"
+
+
+def _merge_vendor_status(*values: object) -> str:
+    normalized = {str(value or "").strip() for value in values if str(value or "").strip()}
+    if "vendor_unavailable" in normalized:
+        return "vendor_unavailable"
+    if "vendor_stale" in normalized:
+        return "vendor_stale"
+    return "ok"
+
+
+def _merge_fallback_mode(*values: object) -> str:
+    if any(str(value or "").strip() == "latest_snapshot" for value in values):
+        return "latest_snapshot"
+    return "none"
+
+
+def _combine_tables(*values: object) -> list[str]:
+    combined: list[str] = []
+    for value in values:
+        if not isinstance(value, list):
+            continue
+        for item in value:
+            text = str(item or "").strip()
+            if text and text not in combined:
+                combined.append(text)
+    return combined

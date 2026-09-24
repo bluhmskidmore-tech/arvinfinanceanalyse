@@ -23,6 +23,12 @@ LIVE_SMOKE_EVIDENCE_ARTIFACT = (
     "docs/audits/2026-06-09-bond-analysis-live-smoke-evidence.md"
 )
 LIVE_SMOKE_COMMAND = "scripts/codex-page-smoke.ps1 -PageSlug bond-analysis"
+FULL_PAGE_VERIFY_COMMAND = "scripts/codex-verify-page.ps1 -PageSlug bond-analysis -Run"
+GOLDEN_SAMPLE_CAPTURE_READY_COMMAND = "python -m pytest tests/test_golden_samples_capture_ready.py -q"
+OWNER_BOUNDARY_COMMAND = (
+    "python -m pytest tests/test_bond_analysis_business_owner_approval_status.py "
+    "tests/test_golden_samples_capture_ready.py -q"
+)
 
 
 def _run_packet(*args: str) -> tuple[int, dict[str, object]]:
@@ -79,6 +85,15 @@ def test_bond_analysis_owner_evidence_packet_preserves_candidate_boundary() -> N
         "live_smoke_evidence": LIVE_SMOKE_EVIDENCE_ARTIFACT,
         "live_smoke_command": LIVE_SMOKE_COMMAND,
         "readiness_command": "python scripts/codex_page_readiness.py --page-slug bond-analysis",
+        "full_page_verify_command": FULL_PAGE_VERIFY_COMMAND,
+        "full_page_verify_result": (
+            "passed: candidate governance tests, bond analytics backend tests, frontend tests, "
+            "browser a11y smoke, typecheck, debt audit, and production build"
+        ),
+        "golden_sample_capture_ready_command": GOLDEN_SAMPLE_CAPTURE_READY_COMMAND,
+        "golden_sample_capture_ready_result": "passed: 28 tests",
+        "owner_boundary_command": OWNER_BOUNDARY_COMMAND,
+        "owner_boundary_result": "passed: 36 tests; owner approval remains fail-closed",
         "boundary": (
             "Direct governance record and static readiness are ready for audit review. "
             "UI/API payload and live smoke evidence remain reviewer-confirmation inputs only; "
@@ -179,6 +194,15 @@ def test_bond_analysis_owner_evidence_packet_cli_writes_markdown(tmp_path: Path)
     assert "- UI/API payload evidence: `GS-BOND-ANALYSIS-ACTION-ATTR-A response.json`" in text
     assert f"- Live smoke evidence: `{LIVE_SMOKE_EVIDENCE_ARTIFACT}`" in text
     assert f"- Live smoke command: `{LIVE_SMOKE_COMMAND}`" in text
+    assert f"- Full page verification command: `{FULL_PAGE_VERIFY_COMMAND}`" in text
+    assert (
+        "- Full page verification result: `passed: candidate governance tests, bond analytics backend tests, frontend tests, browser a11y smoke, typecheck, debt audit, and production build`"
+        in text
+    )
+    assert f"- Golden sample capture-ready command: `{GOLDEN_SAMPLE_CAPTURE_READY_COMMAND}`" in text
+    assert "- Golden sample capture-ready result: `passed: 28 tests`" in text
+    assert f"- Owner boundary command: `{OWNER_BOUNDARY_COMMAND}`" in text
+    assert "- Owner boundary result: `passed: 36 tests; owner approval remains fail-closed`" in text
     assert "## Manual Review Evidence References" in text
     assert (
         "- UI/API payload review: `tests/golden_samples/GS-BOND-ANALYSIS-ACTION-ATTR-A/response.json`"
@@ -241,6 +265,10 @@ def test_bond_analysis_governance_audit_packet_matches_generator_output() -> Non
     assert "UI/API payload review evidence: `tests/golden_samples/GS-BOND-ANALYSIS-ACTION-ATTR-A/response.json`" in actual
     assert f"Live smoke evidence review: `{LIVE_SMOKE_EVIDENCE_ARTIFACT}`" in actual
     assert f"Live smoke command reference: `{LIVE_SMOKE_COMMAND}`" in actual
+    assert f"Full page verification: `{FULL_PAGE_VERIFY_COMMAND}`" in actual
+    assert f"Golden sample capture-ready verification: `{GOLDEN_SAMPLE_CAPTURE_READY_COMMAND}`" in actual
+    assert f"Owner boundary verification: `{OWNER_BOUNDARY_COMMAND}`" in actual
+    assert "owner approval remains fail-closed" in actual
     assert "Closure approved: `closure_approved=false`" in actual
 
 
@@ -267,6 +295,24 @@ def test_bond_analysis_signoff_and_audit_packets_surface_no_certification_scope(
     assert "python scripts/emit_bond_analysis_governance_record.py --write" in audit_packet
 
 
+def test_bond_analysis_signoff_packet_lists_latest_verification_evidence() -> None:
+    text = SIGNOFF_PACKET.read_text(encoding="utf-8")
+
+    assert "## Latest Verification Evidence" in text
+    assert f"- Full page verification: `{FULL_PAGE_VERIFY_COMMAND}`" in text
+    assert (
+        "- Full page verification evidence: `passed: candidate governance tests, "
+        "bond analytics backend tests, frontend tests, "
+        "browser a11y smoke, typecheck, debt audit, and production build"
+    ) in text
+    assert f"- Golden sample capture-ready verification: `{GOLDEN_SAMPLE_CAPTURE_READY_COMMAND}`" in text
+    assert "- Golden sample capture-ready result: `passed: 28 tests`" in text
+    assert f"- Owner boundary verification: `{OWNER_BOUNDARY_COMMAND}`" in text
+    assert "- Owner boundary result: `passed: 36 tests; owner approval remains fail-closed`" in text
+    assert "These verification results support reviewer handoff only." in text
+    assert "They do not capture business-owner approval" in text
+
+
 def test_bond_analysis_owner_signoff_runbook_preserves_candidate_boundary() -> None:
     text = OWNER_SIGNOFF_RUNBOOK.read_text(encoding="utf-8")
 
@@ -288,6 +334,11 @@ def test_bond_analysis_owner_signoff_runbook_preserves_candidate_boundary() -> N
     assert "Do not treat dry-run governance output as a written direct PAGE/API governance record." in text
     assert "`GS-BOND-ANALYSIS-ACTION-ATTR-A`" in text
     assert "`captured-awaiting-approval`" in text
+    assert "Review latest verification evidence in `docs/pnl/bond-analysis-sign-off-packet.md`." in text
+    assert f"Run `{FULL_PAGE_VERIFY_COMMAND}`." in text
+    assert f"Run `{GOLDEN_SAMPLE_CAPTURE_READY_COMMAND}`." in text
+    assert f"Run `{OWNER_BOUNDARY_COMMAND}`." in text
+    assert "Owner boundary verification must still report approval pending before the template is signed." in text
     assert (
         "Passing it still does not promote Bond Analysis to formal fixed-income "
         "metric truth or set `closure_approved=true`."

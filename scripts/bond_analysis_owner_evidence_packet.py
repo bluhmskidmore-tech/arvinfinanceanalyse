@@ -23,6 +23,12 @@ LIVE_SMOKE_EVIDENCE_ARTIFACT = (
     "docs/audits/2026-06-09-bond-analysis-live-smoke-evidence.md"
 )
 LIVE_SMOKE_COMMAND = "scripts/codex-page-smoke.ps1 -PageSlug bond-analysis"
+FULL_PAGE_VERIFY_COMMAND = "scripts/codex-verify-page.ps1 -PageSlug bond-analysis -Run"
+GOLDEN_SAMPLE_CAPTURE_READY_COMMAND = "python -m pytest tests/test_golden_samples_capture_ready.py -q"
+OWNER_BOUNDARY_COMMAND = (
+    "python -m pytest tests/test_bond_analysis_business_owner_approval_status.py "
+    "tests/test_golden_samples_capture_ready.py -q"
+)
 
 OUT_OF_SCOPE_SURFACES = [
     "PAGE-BOND-001",
@@ -62,6 +68,15 @@ LATEST_VERIFICATION_EVIDENCE = {
     "live_smoke_evidence": LIVE_SMOKE_EVIDENCE_ARTIFACT,
     "live_smoke_command": LIVE_SMOKE_COMMAND,
     "readiness_command": "python scripts/codex_page_readiness.py --page-slug bond-analysis",
+    "full_page_verify_command": FULL_PAGE_VERIFY_COMMAND,
+    "full_page_verify_result": (
+        "passed: candidate governance tests, bond analytics backend tests, frontend tests, "
+        "browser a11y smoke, typecheck, debt audit, and production build"
+    ),
+    "golden_sample_capture_ready_command": GOLDEN_SAMPLE_CAPTURE_READY_COMMAND,
+    "golden_sample_capture_ready_result": "passed: 28 tests",
+    "owner_boundary_command": OWNER_BOUNDARY_COMMAND,
+    "owner_boundary_result": "passed: 36 tests; owner approval remains fail-closed",
     "boundary": (
         "Direct governance record and static readiness are ready for audit review. "
         "UI/API payload and live smoke evidence remain reviewer-confirmation inputs only; "
@@ -262,6 +277,12 @@ Commands:
 - Live smoke evidence: `{latest['live_smoke_evidence']}`
 - Live smoke command: `{latest['live_smoke_command']}`
 - Readiness command: `{latest['readiness_command']}`
+- Full page verification command: `{latest['full_page_verify_command']}`
+- Full page verification result: `{latest['full_page_verify_result']}`
+- Golden sample capture-ready command: `{latest['golden_sample_capture_ready_command']}`
+- Golden sample capture-ready result: `{latest['golden_sample_capture_ready_result']}`
+- Owner boundary command: `{latest['owner_boundary_command']}`
+- Owner boundary result: `{latest['owner_boundary_result']}`
 - Boundary: {latest['boundary']}
 
 ## Manual Review Evidence References
@@ -315,6 +336,7 @@ def render_audit_markdown(packet: dict[str, Any]) -> str:
     )
     tables = "\n".join(f"- `{table}`" for table in packet["configured_table_names"])
     manual_evidence = packet["manual_review_evidence"]
+    latest = packet["latest_verification_evidence"]
     direct_record_status = (
         "ready_for_audit_review"
         if packet["governance_validation_status"] == "direct_records_ready_for_audit_review"
@@ -349,6 +371,9 @@ This packet does not write governance records, approve page closure, promote fix
 - UI/API payload review evidence: `{manual_evidence['ui_api_payload_review']}`
 - Live smoke evidence review: `{manual_evidence['live_smoke_evidence_review']}`
 - Live smoke command reference: `{manual_evidence['live_smoke_command_reference']}`
+- Full page verification: `{latest['full_page_verify_command']}` -> `{latest['full_page_verify_result']}`
+- Golden sample capture-ready verification: `{latest['golden_sample_capture_ready_command']}` -> `{latest['golden_sample_capture_ready_result']}`
+- Owner boundary verification: `{latest['owner_boundary_command']}` -> `{latest['owner_boundary_result']}`
 - Business owner approval: `{packet['approval_status']}`
 - Business owner approval captured: `{str(packet['business_owner_approval_captured']).lower()}`
 

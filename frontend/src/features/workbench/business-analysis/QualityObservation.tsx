@@ -1,5 +1,6 @@
-import { SectionCard } from "../../../components/SectionCard";
+import { EvidencePanel } from "../../../components/page/PagePrimitives";
 import { StatusPill, type StatusPillStatus } from "../../../components/StatusPill";
+import styles from "./QualityObservation.module.css";
 
 type QualityObservationProps = {
   sourceCount?: number;
@@ -64,37 +65,18 @@ export function QualityObservation(props: QualityObservationProps) {
   const rows = buildRows(props);
 
   return (
-    <SectionCard title="经营质量观察">
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <EvidencePanel heading="经营质量观察">
+      <div className={styles.list}>
         {rows.map((row) => (
-          <div
-            key={row.label}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
-              padding: "10px 0",
-              borderBottom: "1px solid #eef2f7",
-            }}
-          >
-            <span style={{ fontSize: 14, color: "#31425b", fontWeight: 600 }}>{row.label}</span>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span
-                style={{
-                  fontSize: 14,
-                  fontVariantNumeric: "tabular-nums",
-                  color: "#162033",
-                  fontWeight: 600,
-                }}
-              >
-                {row.value}
-              </span>
+          <div key={row.label} className={styles.row}>
+            <span className={styles.label}>{row.label}</span>
+            <div className={styles.valueGroup}>
+              <span className={styles.value}>{row.value}</span>
               <StatusPill status={row.status} label={row.pill} />
             </div>
           </div>
         ))}
       </div>
-    </SectionCard>
+    </EvidencePanel>
   );
 }

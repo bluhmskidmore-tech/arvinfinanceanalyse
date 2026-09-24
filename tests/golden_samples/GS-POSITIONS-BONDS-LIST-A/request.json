@@ -1,0 +1,10 @@
+{
+  "method": "GET",
+  "path": "/api/positions/bonds",
+  "params": {
+    "report_date": "2026-01-10",
+    "page": 1,
+    "page_size": 20
+  },
+  "basis": "analytical"
+}

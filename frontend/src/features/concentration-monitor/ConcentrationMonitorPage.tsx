@@ -2,130 +2,59 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
-import type { Numeric } from "../../api/contracts";
 import { useApiClient } from "../../api/client";
+import type { ResultMeta } from "../../api/contracts";
 import { apiQueryKeys } from "../../api/queryKeys";
 import { KpiCard } from "../../components/KpiCard";
 import {
-  controlBarStyle,
-  summaryGridStyle,
-  tableShellStyle,
-  tableStyle,
-  tdStyle,
-  thStyle,
-} from "../../components/page/pageStyles";
+  EvidencePanel,
+  PageDecisionHero,
+  PageStateSurface,
+} from "../../components/page/PagePrimitives";
+import { SkeletonBarStack } from "../../components/SkeletonBars";
 import type { CreditSpreadMigrationResponse } from "../bond-analytics/types";
-import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
-import { designTokens } from "../../theme/designSystem";
-import { shellTokens } from "../../theme/tokens";
 import { limitTone, limitToneToKpi, type LimitTone } from "../workbench/components/kpiFormat";
+import { EM_DASH } from "../../utils/format";
+import {
+  displayStr,
+  formatConcentrationPercent,
+  formatLimitThresholdPercent,
+  formatLimitUsagePercent,
+  parseRatio,
+} from "./concentrationFormat";
+import styles from "./concentrationMonitor.module.css";
 
-/** 前端展示用限额常量；与后端口径无关。 */
-const LIMITS = {
-  issuer_single_max: 0.1,
-  issuer_top5_max: 0.4,
-  hhi_warning: 0.15,
-  below_aa_max: 0.2,
-} as const;
+import "./ConcentrationMonitorPage.css";
 
-const controlStyle = {
-  minWidth: 180,
-  padding: "10px 12px",
-  borderRadius: designTokens.radius.md,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: shellTokens.colorBgSurface,
-  color: designTokens.color.neutral[900],
-} as const;
+const CREDIT_SPREAD_MIGRATION_API = "/api/bond-analytics/credit-spread-migration";
 
-const blockTitleStyle = {
-  margin: "24px 0 0",
-  fontSize: 16,
-  fontWeight: 600,
-  color: designTokens.color.neutral[900],
-} as const;
-
-const grid2x2Style = {
-  display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  gap: 18,
-  marginTop: 16,
-} as const;
-
-const panelTitleStyle = {
-  margin: "0 0 8px",
-  fontSize: 14,
-  fontWeight: 600,
-  color: designTokens.color.neutral[900],
-} as const;
-
-const contractStatusStyle = {
-  margin: "0 0 16px",
-  padding: 14,
-  borderRadius: designTokens.radius.md,
-  border: `1px solid ${designTokens.color.warning[200]}`,
-  background: designTokens.color.warning[50],
-  color: designTokens.color.neutral[800],
-} as const;
-
-const contractStatusGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-  gap: "8px 16px",
-  marginTop: 10,
-  fontSize: 12,
-  lineHeight: 1.6,
-} as const;
-
-function displayStr(value: string | Numeric | undefined) {
-  if (value === undefined || value === "") {
-    return "—";
-  }
-  if (typeof value === "object" && value !== null && "display" in value) {
-    return value.display || "—";
-  }
-  return String(value);
+function resultMetaBasisLabel(value: ResultMeta["basis"]): string {
+  if (value === "formal") return "正式口径";
+  if (value === "scenario") return "情景口径";
+  if (value === "analytical") return "分析口径";
+  if (value === "mock") return "演示口径";
+  return value;
 }
 
-/** 仅用于与展示限额比较，不参与组合指标重算。 */
-function parseRatio(value: string | Numeric | undefined): number | null {
-  if (value === undefined || value === "") {
-    return null;
-  }
-  if (typeof value === "object" && value !== null && "raw" in value) {
-    const r = value.raw;
-    return r !== null && Number.isFinite(r) ? r : null;
-  }
-  const n = Number.parseFloat(value);
-  return Number.isFinite(n) ? n : null;
+function resultMetaQualityLabel(value: ResultMeta["quality_flag"]): string {
+  if (value === "ok") return "正常";
+  if (value === "warning") return "预警";
+  if (value === "error") return "错误";
+  if (value === "stale") return "陈旧";
+  return value;
 }
 
-function formatConcentrationPercent(value: string | Numeric | undefined): string {
-  const ratio = parseRatio(value);
-  if (ratio === null) {
-    return displayStr(value);
+function limitStatusText(tone: LimitTone, missing: boolean): string {
+  if (missing) {
+    return "暂无数据";
   }
-  const pct = ratio >= 0 && ratio <= 1 ? ratio * 100 : ratio;
-  return `${pct.toFixed(2)}%`;
-}
-
-function toneColor(tone: LimitTone) {
   if (tone === "breach") {
-    return "#b74c45";
+    return "超限";
   }
   if (tone === "near") {
-    return "#c9a227";
+    return "接近限额";
   }
-  return designTokens.color.neutral[900];
-}
-
-function toneBackground(tone: LimitTone) {
-  if (tone === "breach") {
-    return "#fff0f0";
-  }
-  if (tone === "near") {
-    return "#fffbeb";
-  }
-  return "transparent";
+  return "正常";
 }
 
 function ConcentrationTable({
@@ -148,36 +77,46 @@ function ConcentrationTable({
 
   return (
     <div>
-      <h3 style={panelTitleStyle}>{title}</h3>
+      <h3 className="concentration-monitor-page__panel-title">{title}</h3>
       {m ? (
-        <p style={{ margin: "0 0 8px", fontSize: 12, color: designTokens.color.neutral[500] }}>
-          HHI {displayStr(m.hhi)} · 前五 {displayStr(m.top5_concentration)}
+        <p className="concentration-monitor-page__panel-meta concentration-monitor-page__tabular">
+          HHI {formatConcentrationPercent(m.hhi)} · 前五 {formatConcentrationPercent(m.top5_concentration)}
         </p>
       ) : null}
-      <div style={tableShellStyle}>
-        <table style={tableStyle}>
+      <div className={styles.tableShell}>
+        <table className={styles.table}>
           <thead>
             <tr>
-              <th style={thStyle}>名称</th>
-              <th style={thStyle}>权重</th>
-              <th style={thStyle}>市值</th>
+              <th>名称</th>
+              <th>权重</th>
+              <th>市值</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={3} style={{ ...tdStyle, color: designTokens.color.neutral[500] }}>
+                <td colSpan={3} className="concentration-monitor-page__empty-cell">
                   暂无明细
                 </td>
               </tr>
             ) : (
-              rows.map((row) => (
-                <tr key={`${metricsKey}-${row.name}`}>
-                  <td style={tdStyle}>{row.name}</td>
-                  <td style={tdStyle}>{displayStr(row.weight)}</td>
-                  <td style={tdStyle}>{displayStr(row.market_value)}</td>
-                </tr>
-              ))
+              rows.map((row) => {
+                const displayName =
+                  metricsKey === "concentration_by_rating" && row.name === "unknown"
+                    ? "未知评级"
+                    : row.name;
+                return (
+                  <tr key={`${metricsKey}-${row.name}`}>
+                    <td title={displayName === row.name ? undefined : row.name}>{displayName}</td>
+                    <td className="concentration-monitor-page__tabular">
+                      {formatConcentrationPercent(row.weight)}
+                    </td>
+                    <td className="concentration-monitor-page__tabular">
+                      {displayStr(row.market_value)}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
@@ -233,57 +172,62 @@ export default function ConcentrationMonitorPage() {
   const credit = creditQuery.data?.result;
   const creditMeta = creditQuery.data?.result_meta;
   const issuer = credit?.concentration_by_issuer;
+  // 展示限额（后端下发，非风控正式限额）；响应缺字段时显示「限额未下发」空态，不回退前端常量。
+  const displayLimits = credit?.display_limits;
   const maxSingleWeight = parseRatio(issuer?.top_items?.[0]?.weight);
   const top5 = parseRatio(issuer?.top5_concentration);
   const hhi = parseRatio(issuer?.hhi);
   const belowAa = parseRatio(credit?.rating_aa_and_below_weight);
+  const belowAaMissing = belowAa === null;
 
   const limitRows = useMemo(() => {
+    if (!displayLimits) {
+      return [];
+    }
     const top1w = issuer?.top_items?.[0]?.weight;
     return [
       {
         label: "单一发行人占比",
-        currentDisplay: top1w ? formatConcentrationPercent(top1w) : "—",
+        currentDisplay: top1w ? formatConcentrationPercent(top1w) : EM_DASH,
         currentNum: maxSingleWeight,
-        limitDisplay: String(LIMITS.issuer_single_max),
-        tone: limitTone(maxSingleWeight, LIMITS.issuer_single_max),
+        limitDisplay: formatLimitThresholdPercent(displayLimits.issuer_single_max),
+        usageDisplay: formatLimitUsagePercent(maxSingleWeight, displayLimits.issuer_single_max),
+        tone: limitTone(maxSingleWeight, displayLimits.issuer_single_max),
       },
       {
         label: "发行人前五集中度",
         currentDisplay: formatConcentrationPercent(issuer?.top5_concentration),
         currentNum: top5,
-        limitDisplay: String(LIMITS.issuer_top5_max),
-        tone: limitTone(top5, LIMITS.issuer_top5_max),
+        limitDisplay: formatLimitThresholdPercent(displayLimits.issuer_top5_max),
+        usageDisplay: formatLimitUsagePercent(top5, displayLimits.issuer_top5_max),
+        tone: limitTone(top5, displayLimits.issuer_top5_max),
       },
       {
         label: "发行人 HHI",
         currentDisplay: formatConcentrationPercent(issuer?.hhi),
         currentNum: hhi,
-        limitDisplay: String(LIMITS.hhi_warning),
-        tone: limitTone(hhi, LIMITS.hhi_warning),
+        limitDisplay: formatLimitThresholdPercent(displayLimits.hhi_warning),
+        usageDisplay: formatLimitUsagePercent(hhi, displayLimits.hhi_warning),
+        tone: limitTone(hhi, displayLimits.hhi_warning),
       },
       {
         label: "评级 AA 及以下占比",
         currentDisplay:
           credit?.rating_aa_and_below_weight !== undefined && credit.rating_aa_and_below_weight != null
             ? formatConcentrationPercent(credit.rating_aa_and_below_weight)
-            : "—",
+            : EM_DASH,
         currentNum: belowAa,
-        limitDisplay: String(LIMITS.below_aa_max),
-        tone:
-          belowAa === null
-            ? ("ok" as const)
-            : limitTone(belowAa, LIMITS.below_aa_max),
-        missingData: belowAa === null,
-        note:
-          belowAa === null
-            ? "后端未返回 rating_aa_and_below_weight，仅展示限额阈值。"
-            : undefined,
+        limitDisplay: formatLimitThresholdPercent(displayLimits.below_aa_max),
+        usageDisplay: formatLimitUsagePercent(belowAa, displayLimits.below_aa_max),
+        tone: belowAaMissing ? ("ok" as const) : limitTone(belowAa, displayLimits.below_aa_max),
+        missingData: belowAaMissing,
       },
     ];
   }, [
     belowAa,
+    belowAaMissing,
     credit?.rating_aa_and_below_weight,
+    displayLimits,
     hhi,
     issuer?.hhi,
     issuer?.top5_concentration,
@@ -293,46 +237,40 @@ export default function ConcentrationMonitorPage() {
   ]);
 
   return (
-    <section>
-      <div style={{ marginBottom: 24 }}>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: 32,
-            fontWeight: 600,
-            letterSpacing: "-0.03em",
-          }}
-        >
-          持仓集中度监控
-        </h1>
-        <p
-          style={{
-            marginTop: 10,
-            marginBottom: 0,
-            maxWidth: 860,
-            color: designTokens.color.neutral[600],
-            fontSize: 15,
-            lineHeight: 1.75,
-          }}
-        >
-          集中度与分项明细来自{" "}
-          <code style={{ fontSize: 13 }}>/api/bond-analytics/credit-spread-migration</code>
-          ；浏览器端只做展示与限额对照，不做组合层面的金融重算。
-        </p>
-      </div>
+    <section
+      className="concentration-monitor-page"
+      data-moss-theme-scope="concentration-monitor"
+      data-testid="concentration-monitor-page"
+    >
+      <PageDecisionHero
+        testId="concentration-monitor-hero"
+        titleTestId="concentration-monitor-page-title"
+        questionTestId="concentration-monitor-page-subtitle"
+        title="持仓集中度监控"
+        eyebrow="风险"
+        className="concentration-monitor-page__hero"
+        reportDateSlot={
+          reportDate ? (
+            <span>
+              报告日 <strong className="concentration-monitor-page__tabular">{reportDate}</strong>
+            </span>
+          ) : null
+        }
+        businessQuestion="集中展示信用债发行人、行业、评级与期限的分项集中度，并对照后端下发的展示限额阈值；浏览器端仅做展示对照，不做组合层面金融重算。"
+      />
 
-      <div style={controlBarStyle}>
+      <div className="concentration-monitor-page__control-bar">
         <label>
-          <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[600] }}>报告日</span>
+          <span className="concentration-monitor-page__control-label">报告日</span>
           <select
             aria-label="concentration-monitor-report-date"
             value={reportDate}
             onChange={(event) => setSelectedReportDate(event.target.value)}
-            style={controlStyle}
+            className="concentration-monitor-page__control-select"
             disabled={Boolean(explicitReportDate)}
           >
             {dateOptions.length === 0 ? (
-              <option value="">—</option>
+              <option value="">{EM_DASH}</option>
             ) : (
               dateOptions.map((d) => (
                 <option key={d} value={d}>
@@ -343,133 +281,213 @@ export default function ConcentrationMonitorPage() {
           </select>
         </label>
         {explicitReportDate ? (
-          <span style={{ alignSelf: "flex-end", color: designTokens.color.neutral[500], fontSize: 13 }}>
-            已由 URL <code style={{ fontSize: 12 }}>?report_date=</code> 固定
+          <span className="concentration-monitor-page__url-hint">
+            已由 URL 参数固定报告日
           </span>
         ) : null}
       </div>
 
-      <AsyncSection
-        title="集中度与限额"
-        isLoading={datesQuery.isLoading || creditQuery.isLoading}
-        isError={datesBlockingError || creditQuery.isError}
-        isEmpty={datesEmpty}
-        onRetry={() => {
-          void datesQuery.refetch();
-          void creditQuery.refetch();
-        }}
-      >
-        {credit ? (
+      <EvidencePanel heading="集中度与限额" testId="concentration-monitor-section">
+        {datesQuery.isLoading || creditQuery.isLoading ? (
+          <PageStateSurface
+            variant="loading"
+            testId="concentration-monitor-section-loading"
+            title="正在载入集中度与限额"
+          >
+            <SkeletonBarStack className="moss-skeleton-bar-stack--spaced" />
+          </PageStateSurface>
+        ) : datesBlockingError || creditQuery.isError ? (
+          <PageStateSurface
+            variant="error"
+            testId="concentration-monitor-section-error"
+            title="数据载入失败。"
+            description="当前页面保留重试入口，不在浏览器端自行拼接正式口径。"
+            actions={
+              <button
+                type="button"
+                className={styles.retryButton}
+                onClick={() => {
+                  void datesQuery.refetch();
+                  void creditQuery.refetch();
+                }}
+              >
+                重试
+              </button>
+            }
+          />
+        ) : datesEmpty ? (
+          <PageStateSurface
+            variant="empty"
+            testId="concentration-monitor-section-empty"
+            title="当前暂无可展示内容。"
+          />
+        ) : credit ? (
           <>
             {creditMeta ? (
-              <div data-testid="concentration-monitor-contract-status" style={contractStatusStyle}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>
-                  候选指标 · PAGE-CONTRACT-PENDING:/concentration-monitor
-                </div>
-                <div style={contractStatusGridStyle}>
-                  <span>正式可用: {creditMeta.formal_use_allowed ? "是" : "否"}</span>
-                  <span>口径 {creditMeta.basis}</span>
-                  <span>质量 {creditMeta.quality_flag}</span>
-                  <span>结果类型 {creditMeta.result_kind}</span>
-                  <span>日期基准 {creditMeta.date_basis ?? "—"}</span>
-                  <span>使用表 {creditMeta.tables_used?.join(", ") || "—"}</span>
-                  <span>证据行 {creditMeta.evidence_rows ?? "—"}</span>
+              <div
+                data-testid="concentration-monitor-contract-status"
+                className="concentration-monitor-page__contract-status"
+                title={`${CREDIT_SPREAD_MIGRATION_API} · ${creditMeta.result_kind}`}
+              >
+                <div className="concentration-monitor-page__contract-title">候选指标</div>
+                <strong className="concentration-monitor-page__contract-code">
+                  PAGE-CONTRACT-PENDING:/concentration-monitor
+                </strong>
+                <div className="concentration-monitor-page__contract-grid">
+                  <span>正式可用：{creditMeta.formal_use_allowed ? "是" : "否"}</span>
+                  <span>口径：{resultMetaBasisLabel(creditMeta.basis)}</span>
+                  <span>质量：{resultMetaQualityLabel(creditMeta.quality_flag)}</span>
+                  <span>结果类型：{creditMeta.result_kind}</span>
+                  <span>日期基准：{creditMeta.date_basis ?? EM_DASH}</span>
+                  <span>使用表：{creditMeta.tables_used?.join(", ") || EM_DASH}</span>
+                  <span>证据行：{creditMeta.evidence_rows ?? EM_DASH}</span>
                 </div>
               </div>
             ) : null}
 
-            <div data-testid="concentration-monitor-kpi-grid" style={summaryGridStyle}>
-              <KpiCard
-                title="发行人 HHI 指数"
-                value={formatConcentrationPercent(issuer?.hhi)}
-                detail="来自 concentration_by_issuer.hhi。"
-                tone={limitToneToKpi(limitTone(parseRatio(issuer?.hhi), LIMITS.hhi_warning))}
-              />
-              <KpiCard
-                title="发行人前五集中度"
-                value={formatConcentrationPercent(issuer?.top5_concentration)}
-                detail="来自 concentration_by_issuer.top5_concentration。"
-                tone={limitToneToKpi(limitTone(parseRatio(issuer?.top5_concentration), LIMITS.issuer_top5_max))}
-              />
-              <KpiCard
-                title="信用债占比"
-                value={formatConcentrationPercent(credit.credit_weight)}
-                detail="来自 credit_weight（信用子集相对组合的权重）。"
-                tone={limitToneToKpi(limitTone(parseRatio(credit.credit_weight), 0.85))}
-              />
-              <KpiCard
-                title="评级 AA 及以下占比"
-                value={formatConcentrationPercent(credit.rating_aa_and_below_weight)}
-                detail="rating_aa_and_below_weight（信用债 AA 及以下市值 / 组合总市值）。"
-                tone={limitToneToKpi(
-                  belowAa === null ? "ok" : limitTone(belowAa, LIMITS.below_aa_max),
-                )}
-              />
+            {belowAaMissing && displayLimits ? (
+              <p className="concentration-monitor-page__limit-lead">
+                评级 AA 及以下占比暂未返回，限额对照行仅展示阈值。
+              </p>
+            ) : null}
+
+            <div data-testid="concentration-monitor-kpi-grid" className="concentration-monitor-page__summary-grid">
+              <div className="concentration-monitor-page__kpi-cell" title="口径字段 concentration_by_issuer.hhi">
+                <KpiCard
+                  title="发行人 HHI 指数"
+                  value={formatConcentrationPercent(issuer?.hhi)}
+                  tone={
+                    displayLimits
+                      ? limitToneToKpi(limitTone(parseRatio(issuer?.hhi), displayLimits.hhi_warning))
+                      : "default"
+                  }
+                />
+              </div>
+              <div
+                className="concentration-monitor-page__kpi-cell"
+                title="口径字段 concentration_by_issuer.top5_concentration"
+              >
+                <KpiCard
+                  title="发行人前五集中度"
+                  value={formatConcentrationPercent(issuer?.top5_concentration)}
+                  tone={
+                    displayLimits
+                      ? limitToneToKpi(
+                          limitTone(parseRatio(issuer?.top5_concentration), displayLimits.issuer_top5_max),
+                        )
+                      : "default"
+                  }
+                />
+              </div>
+              <div className="concentration-monitor-page__kpi-cell" title="口径字段 credit_weight">
+                <KpiCard
+                  title="信用债占比"
+                  value={formatConcentrationPercent(credit.credit_weight)}
+                  tone={
+                    displayLimits
+                      ? limitToneToKpi(limitTone(parseRatio(credit.credit_weight), displayLimits.credit_weight_max))
+                      : "default"
+                  }
+                />
+              </div>
+              <div className="concentration-monitor-page__kpi-cell" title="口径字段 rating_aa_and_below_weight">
+                <KpiCard
+                  title="评级 AA 及以下占比"
+                  value={formatConcentrationPercent(credit.rating_aa_and_below_weight)}
+                  tone={
+                    displayLimits && !belowAaMissing
+                      ? limitToneToKpi(limitTone(belowAa, displayLimits.below_aa_max))
+                      : "default"
+                  }
+                />
+              </div>
             </div>
 
-            <h2 style={blockTitleStyle}>分项集中度（前列市值）</h2>
-            <div style={grid2x2Style}>
+            <h2 className="concentration-monitor-page__block-title">分项集中度（前列市值）</h2>
+            <div className="concentration-monitor-page__grid-2x2">
               <ConcentrationTable title="发行人集中度" metricsKey="concentration_by_issuer" data={credit} />
               <ConcentrationTable title="行业集中度" metricsKey="concentration_by_industry" data={credit} />
               <ConcentrationTable title="评级分布" metricsKey="concentration_by_rating" data={credit} />
               <ConcentrationTable title="期限分布" metricsKey="concentration_by_tenor" data={credit} />
             </div>
 
-            <h2 style={blockTitleStyle}>限额预警（展示对照）</h2>
-            <p style={{ margin: "8px 0 0", fontSize: 13, color: designTokens.color.neutral[600] }}>
-              超限标红，达到限额 80% 以上未超限标黄。阈值为本页常量 LIMITS，非后端下发。
-            </p>
-            <div style={{ ...tableShellStyle, marginTop: 12 }}>
-              <table style={tableStyle}>
-                <thead>
-                  <tr>
-                    <th style={thStyle}>指标</th>
-                    <th style={thStyle}>当前值</th>
-                    <th style={thStyle}>限额</th>
-                    <th style={thStyle}>状态</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {limitRows.map((row) => {
-                    const missing = "missingData" in row && row.missingData;
-                    const statusText = missing
-                      ? "暂无数据"
-                      : row.tone === "breach"
-                        ? "超限"
-                        : row.tone === "near"
-                          ? "接近限额"
-                          : "正常";
-                    const cellColor = missing ? designTokens.color.neutral[600] : toneColor(row.tone);
-                    const cellBg = missing ? "#f6f9fc" : toneBackground(row.tone);
-                    return (
-                      <tr key={row.label}>
-                        <td style={tdStyle}>{row.label}</td>
-                        <td
-                          style={{
-                            ...tdStyle,
-                            color: cellColor,
-                            background: cellBg,
-                            fontWeight: !missing && row.tone === "breach" ? 600 : 400,
-                          }}
-                        >
-                          {row.currentDisplay}
-                          {"note" in row && row.note ? (
-                            <span style={{ display: "block", fontSize: 11, color: designTokens.color.neutral[500] }}>
-                              {row.note}
-                            </span>
-                          ) : null}
-                        </td>
-                        <td style={tdStyle}>{row.limitDisplay}</td>
-                        <td style={{ ...tdStyle, color: cellColor }}>{statusText}</td>
+            <h2 className="concentration-monitor-page__block-title">限额预警（展示对照）</h2>
+            {displayLimits ? (
+              <>
+                <p
+                  className="concentration-monitor-page__limit-lead"
+                  data-testid="concentration-monitor-limit-note"
+                >
+                  超限标红，达到限额 80% 以上未超限标黄。阈值为展示限额（后端下发，非风控正式限额）。
+                </p>
+                <div className={`${styles.tableShell} concentration-monitor-page__limit-table-shell`}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>指标</th>
+                        <th>当前值</th>
+                        <th>限额</th>
+                        <th>限额使用率</th>
+                        <th>状态</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                    </thead>
+                    <tbody>
+                      {limitRows.map((row) => {
+                        const missing = "missingData" in row && row.missingData;
+                        const statusText = limitStatusText(row.tone, Boolean(missing));
+                        return (
+                          <tr key={row.label}>
+                            <td>{row.label}</td>
+                            <td
+                              className="concentration-monitor-page__limit-cell concentration-monitor-page__tabular"
+                              data-tone={missing ? undefined : row.tone}
+                              data-missing={missing ? "true" : undefined}
+                            >
+                              {row.currentDisplay}
+                            </td>
+                            <td className="concentration-monitor-page__tabular">
+                              {row.limitDisplay}
+                            </td>
+                            <td
+                              className="concentration-monitor-page__limit-usage concentration-monitor-page__tabular"
+                              data-tone={missing ? undefined : row.tone}
+                              data-missing={missing ? "true" : undefined}
+                            >
+                              {row.usageDisplay}
+                            </td>
+                            <td
+                              className="concentration-monitor-page__limit-status"
+                              data-tone={missing ? undefined : row.tone}
+                              data-missing={missing ? "true" : undefined}
+                            >
+                              {statusText}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <PageStateSurface
+                variant="empty"
+                testId="concentration-monitor-limits-missing"
+                title="限额未下发。"
+                description="后端响应未携带展示限额（display_limits），本页不回退前端配置阈值，限额对照暂不可用。"
+              />
+            )}
+
+            <footer
+              className="concentration-monitor-page__evidence-footer"
+              title={CREDIT_SPREAD_MIGRATION_API}
+              data-testid="concentration-monitor-evidence-footer"
+            >
+              接口路径 {CREDIT_SPREAD_MIGRATION_API}
+            </footer>
           </>
         ) : null}
-      </AsyncSection>
+      </EvidencePanel>
     </section>
   );
 }

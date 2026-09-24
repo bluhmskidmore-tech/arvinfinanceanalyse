@@ -1,5 +1,19 @@
 # MOSS Agent Analytics OS PRD
 
+> **副本状态提示（2026-08-13 复核）。** 本仓库存在两份 PRD：本文件（仓库根）与
+> [docs/prd-moss-agent-analytics-os.md](docs/prd-moss-agent-analytics-os.md)。
+>
+> - [docs/DOCUMENT_AUTHORITY.md](docs/DOCUMENT_AUTHORITY.md) 的权威顺序第 2 位只指向**本文件（仓库根那份）**，
+>   未提及 `docs/` 下的副本。
+> - 两份**已经漂移，不再一致**：差异集中在 §17。本文件标题为「首轮实施边界」，用条件式表述
+>   （「如果进入真正编码阶段…」），并逐条列出 4 份 `docs/CURRENT_EXECUTION_UPDATE_2026-04-09/10/11/12.md`
+>   scoped override；`docs/` 副本标题为「当前执行边界」，用既成表述（「当前默认执行边界已切换为…」），
+>   并把那 4 条 override 压缩成一句概述。其余章节当前一致。
+> - 需要注意：`docs/DOCUMENT_AUTHORITY.md`「阶段边界规则」与「当前有效 scoped override」两节的措辞，
+>   分别更接近 `docs/` 副本和本文件——即**权威链指向的这一份并不在所有点上与治理文档同步**。
+> - **发生冲突时以本文件为准**（依据是权威链，不是内容新旧）。
+> - 「保留哪一份、是否合并或删除其一、§17 以哪个版本为准」属于 owner 决策，执行方不自行处置。
+
 ## 1. 项目定义
 
 ### 1.1 系统本质
@@ -46,11 +60,27 @@
 并且：
 
 - 所有正式金融计算只允许出现在 `backend/app/core_finance/`
-- `backend/app/api/` 只允许做参数校验、鉴权、调用 service、返回响应
+- `backend/app/api/` 只允许做参数校验、**授权**、调用 service、返回响应
 - `frontend/` 不允许补算正式金融指标
 - DuckDB 常态只读；写入只能走 `backend/app/tasks/`
 - `Scenario` 与 `Formal` 必须隔离
 - 所有正式结果必须带 `result_meta`
+
+> **关于「授权」的准确边界（当前仓库有授权，没有认证）。** 原文此处写的是「鉴权」，该词混淆了
+> authentication 与 authorization，会让读者以为 API 层已经在校验调用方身份。准确结论与
+> [README.md](README.md)「关键约束」一节、[docs/SYSTEM_STACK_SPEC_FOR_CODEX.md](docs/SYSTEM_STACK_SPEC_FOR_CODEX.md)
+> 第 1 节一致：
+>
+> - 授权（authorization）确实存在：`backend/app/security/auth_context.py::ensure_user_allowed` 做基于
+>   `resource`/`action`/`scope` 的 RBAC 判定，`backend/app/api/deps.py` 把它接进路由依赖。
+> - 认证（authentication）**不存在**：全仓没有 `HTTPBearer` / `OAuth2` / `APIKeyHeader` / JWT / session。
+>   身份取自 `X-User-Id` / `X-User-Role` 请求头 → `MOSS_USER_ID` / `MOSS_USER_ROLE` 环境变量 →
+>   兜底常量 `anonymous` / `viewer`。
+> - 信任开关 `MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST` **默认关闭**：此时请求头被忽略，所有请求共用
+>   同一个进程级身份，RBAC 实际上是在对一个固定身份判权；开关打开时任何调用方都能用请求头自称任意
+>   `user_id` 和 `role`。**两种姿态都不构成认证。**
+> - 因此本节的「授权」只描述 API 层允许做的**动作类型**，不构成安全声明；不得据此认为该层已完成身份
+>   校验，也不得在它之上做安全性判断或对外暴露。
 
 ### 2.3 ADR
 
@@ -226,7 +256,7 @@ repo/
 只允许：
 
 - 参数校验
-- 鉴权
+- **授权**（authorization / RBAC；仓库当前**没有认证**，边界见 §2.2 的说明块）
 - service 调用
 - DTO 输出
 - 错误映射

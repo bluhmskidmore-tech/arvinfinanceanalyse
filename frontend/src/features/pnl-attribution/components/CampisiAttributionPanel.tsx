@@ -1,100 +1,40 @@
 import { useMemo } from "react";
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import { BaseChart } from "../../../components/charts/BaseChart";
+import type { EChartsOption } from "../../../lib/echarts";
 import type {
   CampisiAttributionPayload,
   CampisiFourEffectsPayload,
 } from "../../../api/contracts";
-import { DataSection } from "../../../components/DataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { PageDataSection } from "../../../components/page/PageDataSection";
+import { designTokens, nocturneTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
+import {
+  EFFECT_UNAVAILABLE_TEXT,
+  buildCampisiAvailabilityNotices,
+  buildEffectRows,
+  campisiReasonLabel,
+  normalizeCampisiData,
+  type CampisiEffect,
+  type CampisiEffectKey,
+  type NormalizedCampisiItem,
+} from "./campisiAttributionPanelSupport";
+import { formatYi } from "./pnlAttributionViewModel";
+import "./campisiPanels.css";
 
-const cardStyle = {
-  padding: designTokens.space[5],
-  borderRadius: designTokens.radius.sm,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: "#ffffff",
-  boxShadow: "0 1px 2px rgba(31, 41, 55, 0.04)",
-} as const;
+// 本面板挂在 Nocturne 深色路由（theme-dh-api + pnl-attribution scope）下：
+// 布局与面色收敛到共享 campisiPanels.css（--dh-api-* var 链），盈亏语义色经
+// data-tone 属性映射（绿涨红跌，与 TONE_DH_CSS_VAR 同源）；仅进度条宽度等
+// 动态值保留内联。ECharts canvas 读不到 CSS 变量，按 tone.ts 指南使用
+// nocturneTokens 静态镜像 token。
 
-const summaryGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "minmax(220px, 1.2fr) minmax(220px, 1fr)",
-  gap: designTokens.space[4],
-  alignItems: "stretch",
-  marginBottom: designTokens.space[4],
-} as const;
-
-const insightBoxStyle = {
-  padding: designTokens.space[4],
-  borderRadius: designTokens.radius.md,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-} as const;
-
-const smallLabelStyle = {
-  fontSize: designTokens.fontSize[12],
-  color: designTokens.color.neutral[600],
-  marginBottom: designTokens.space[2],
-} as const;
-
-const capabilityBoundaryStyle = {
-  marginBottom: designTokens.space[4],
-  padding: `${designTokens.space[3]}px ${designTokens.space[4]}px`,
-  borderRadius: designTokens.radius.md,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: "#f8fafc",
-  color: designTokens.color.neutral[700],
-  fontSize: designTokens.fontSize[12],
-  lineHeight: designTokens.lineHeight.normal,
-} as const;
-
-function formatYi(value: number): string {
-  const yi = value / 100_000_000;
-  return `${yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
-}
-
+// 金额一律走域内统一 formatYi（pnlAttributionViewModel → utils/format，signed 恒真）。
+// 本面板输入经 support 层 finiteOrNull 归一化，恒为有限数或 null，输出与原实现逐字一致。
 function formatOptionalYi(value: number | null | undefined): string {
   return typeof value === "number" && Number.isFinite(value)
     ? formatYi(value)
     : "不可用";
 }
-
-function pctPoints(
-  value: { raw: number | null; unit?: string } | null | undefined,
-): number {
-  const raw = value?.raw ?? 0;
-  return value?.unit === "pct" && Math.abs(raw) <= 1 ? raw * 100 : raw;
-}
-
-type CampisiEffectKey = "income" | "treasury" | "spread" | "selection";
-
-type CampisiEffect = {
-  key: CampisiEffectKey;
-  label: string;
-  amount: number;
-  share: number;
-  role: string;
-};
-
-type NormalizedCampisiData = {
-  total_return: number;
-  total_income: number;
-  total_treasury_effect: number;
-  total_spread_effect: number;
-  total_selection_effect: number;
-  income_contribution_pct: number;
-  treasury_contribution_pct: number;
-  spread_contribution_pct: number;
-  selection_contribution_pct: number;
-  interpretation: string;
-  formal_closure?: CampisiFourEffectsPayload["formal_closure"];
-  items: Array<{
-    category: string;
-    income_return: number;
-    treasury_effect: number;
-    spread_effect: number;
-    selection_effect: number;
-  }>;
-};
 
 type Props = {
   data: CampisiAttributionPayload | CampisiFourEffectsPayload | null;
@@ -102,112 +42,77 @@ type Props = {
   onRetry: () => void;
 };
 
-function normalizeCampisiData(
-  data: CampisiAttributionPayload | CampisiFourEffectsPayload | null,
-): NormalizedCampisiData | null {
-  if (!data) {
-    return null;
+/** 不可用效应的金额不进入数字通道：显示"不可用 · 成因"而不是一个 0。 */
+function effectAmountText(effect: CampisiEffect): string {
+  if (effect.unavailable) {
+    return `${EFFECT_UNAVAILABLE_TEXT} · ${campisiReasonLabel(effect.unavailableReason)}`;
   }
-
-  if ("totals" in data) {
-    const totalReturn = data.totals.total_return || 0;
-    const pct = (value: number) =>
-      totalReturn !== 0 ? (value / totalReturn) * 100 : 0;
-    return {
-      total_return: totalReturn,
-      total_income: data.totals.income_return,
-      total_treasury_effect: data.totals.treasury_effect,
-      total_spread_effect: data.totals.spread_effect,
-      total_selection_effect: data.totals.selection_effect,
-      income_contribution_pct: pct(data.totals.income_return),
-      treasury_contribution_pct: pct(data.totals.treasury_effect),
-      spread_contribution_pct: pct(data.totals.spread_effect),
-      selection_contribution_pct: pct(data.totals.selection_effect),
-      interpretation: `期间 ${data.period_start} 至 ${data.period_end} 的四效应归因拆解。`,
-      formal_closure: data.formal_closure,
-      items: data.by_asset_class.map((row) => ({
-        category: row.asset_class,
-        income_return: row.income_return,
-        treasury_effect: row.treasury_effect,
-        spread_effect: row.spread_effect,
-        selection_effect: row.selection_effect,
-      })),
-    };
-  }
-
-  return {
-    total_return: data.total_return.raw ?? 0,
-    total_income: data.total_income.raw ?? 0,
-    total_treasury_effect: data.total_treasury_effect.raw ?? 0,
-    total_spread_effect: data.total_spread_effect.raw ?? 0,
-    total_selection_effect: data.total_selection_effect.raw ?? 0,
-    income_contribution_pct: pctPoints(data.income_contribution_pct),
-    treasury_contribution_pct: pctPoints(data.treasury_contribution_pct),
-    spread_contribution_pct: pctPoints(data.spread_contribution_pct),
-    selection_contribution_pct: pctPoints(data.selection_contribution_pct),
-    interpretation: data.interpretation,
-    formal_closure: undefined,
-    items: data.items.map((row) => ({
-      category: row.category,
-      income_return: row.income_return.raw ?? 0,
-      treasury_effect: row.treasury_effect.raw ?? 0,
-      spread_effect: row.spread_effect.raw ?? 0,
-      selection_effect: row.selection_effect.raw ?? 0,
-    })),
-  };
+  return formatYi(effect.amount);
 }
 
-function buildEffectRows(normalized: NormalizedCampisiData): CampisiEffect[] {
-  return [
-    {
-      key: "income",
-      label: "收入效应",
-      amount: normalized.total_income,
-      share: normalized.income_contribution_pct,
-      role: "票息和持有收益，是债券组合最稳定的收益底盘。",
-    },
-    {
-      key: "treasury",
-      label: "国债曲线",
-      amount: normalized.total_treasury_effect,
-      share: normalized.treasury_contribution_pct,
-      role: "无风险利率曲线和 roll-down 带来的估值影响。",
-    },
-    {
-      key: "spread",
-      label: "信用利差",
-      amount: normalized.total_spread_effect,
-      share: normalized.spread_contribution_pct,
-      role: "信用利差收窄或走阔带来的价格影响。",
-    },
-    {
-      key: "selection",
-      label: "选择效应",
-      amount: normalized.total_selection_effect,
-      share: normalized.selection_contribution_pct,
-      role: "剩余已确认损益，包括个券表现、交易和会计口径差异。",
-    },
-  ];
+function effectShareText(effect: CampisiEffect): string {
+  if (effect.unavailable || effect.share === null) return EM_DASH;
+  return `${effect.share.toFixed(1)}%`;
 }
 
-function effectColor(amount: number): string {
-  if (amount > 0) {
-    return designTokens.color.semantic.profit;
+/** 参与"主要贡献 / 几乎没有影响"排序的效应：不可用的没有可比金额。 */
+function comparableEffects(effects: readonly CampisiEffect[]): CampisiEffect[] {
+  return effects.filter((effect) => !effect.unavailable && effect.amount !== null);
+}
+
+function itemAmountForEffect(
+  row: NormalizedCampisiItem,
+  key: CampisiEffectKey,
+): number | null {
+  switch (key) {
+    case "income":
+      return row.income_return;
+    case "treasury":
+      return row.treasury_effect;
+    case "spread":
+      return row.spread_effect;
+    case "realized_trading":
+      return row.realized_trading;
+    case "manual_adjustment":
+      return row.manual_adjustment;
+    case "fx_translation":
+      return row.fx_translation;
+    case "selection":
+      return row.selection_effect;
   }
-  if (amount < 0) {
-    return designTokens.color.semantic.loss;
+}
+
+/** 盈亏语义 data-tone：正→绿、负→红、缺失/零→中性（CSS 侧映射色值）。 */
+function effectTone(amount: number | null): "positive" | "negative" | "neutral" {
+  if (amount !== null && amount > 0) {
+    return "positive";
   }
-  return designTokens.color.neutral[500];
+  if (amount !== null && amount < 0) {
+    return "negative";
+  }
+  return "neutral";
+}
+
+/** ECharts canvas 无法解析 CSS 变量，正负色向走 Nocturne TS 镜像 token。 */
+function effectChartColor(amount: number | null): string {
+  if (amount !== null && amount > 0) {
+    return nocturneTokens.color.green;
+  }
+  if (amount !== null && amount < 0) {
+    return nocturneTokens.color.red;
+  }
+  return nocturneTokens.color.inkMuted;
 }
 
 function displayEffectLabel(effect: CampisiEffect): string {
   return effect.key === "selection" ? "剩余/选券" : effect.label;
 }
 
-function quietEffectLabels(effects: CampisiEffect[], totalReturn: number): string {
-  const threshold = Math.max(Math.abs(totalReturn) * 0.005, 1_000_000);
-  const labels = effects
-    .filter((effect) => Math.abs(effect.amount) <= threshold)
+function quietEffectLabels(effects: CampisiEffect[], totalReturn: number | null): string {
+  const threshold = Math.max(Math.abs(totalReturn ?? 0) * 0.005, 1_000_000);
+  // 不可用效应的 0 不是"几乎没有影响"，把它列进这句话正是本次整改要消灭的误读。
+  const labels = comparableEffects(effects)
+    .filter((effect) => Math.abs(effect.amount ?? 0) <= threshold)
     .map((effect) => displayEffectLabel(effect));
   return labels.length ? labels.join("、") : "无";
 }
@@ -218,29 +123,40 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
     () => (normalized ? buildEffectRows(normalized) : []),
     [normalized],
   );
+  const availabilityNotices = useMemo(
+    () => buildCampisiAvailabilityNotices(normalized?.effect_availability),
+    [normalized?.effect_availability],
+  );
   const primaryEffect = useMemo(
     () =>
-      [...effectRows].sort(
-        (left, right) => Math.abs(right.amount) - Math.abs(left.amount),
+      comparableEffects(effectRows).sort(
+        (left, right) => Math.abs(right.amount ?? 0) - Math.abs(left.amount ?? 0),
       )[0],
     [effectRows],
   );
   const maxEffectAbs = Math.max(
     1,
-    ...effectRows.map((effect) => Math.abs(effect.amount)),
+    ...comparableEffects(effectRows).map((effect) => Math.abs(effect.amount ?? 0)),
   );
 
   const barOption = useMemo<EChartsOption | null>(() => {
     if (!normalized) {
       return null;
     }
-    const values = effectRows.map((effect) => effect.amount / 100_000_000);
+    // 缺失或不可用的效应传 null，ECharts 留空不画 0 值柱。
+    const values = effectRows.map((effect) =>
+      effect.unavailable || effect.amount === null ? null : effect.amount / 100_000_000,
+    );
     return {
       tooltip: {
         trigger: "axis",
         valueFormatter: (value) => {
-          const n = Array.isArray(value) ? Number(value[0]) : Number(value);
-          return `${Number.isFinite(n) ? n.toFixed(2) : "—"} 亿`;
+          const item = Array.isArray(value) ? value[0] : value;
+          if (item === null || item === undefined || item === "-") {
+            return EM_DASH;
+          }
+          const n = Number(item);
+          return `${Number.isFinite(n) ? n.toFixed(2) : EM_DASH} 亿`;
         },
       },
       grid: {
@@ -253,10 +169,10 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
         type: "value",
         axisLabel: {
           formatter: (v: number) => `${v.toFixed(1)}`,
-          color: designTokens.color.neutral[700],
+          color: nocturneTokens.color.inkSoft,
         },
         splitLine: {
-          lineStyle: { type: "dashed", color: designTokens.color.neutral[100] },
+          lineStyle: { type: "dashed", color: nocturneTokens.color.lineSoft },
         },
       },
       yAxis: {
@@ -264,7 +180,7 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
         data: effectRows.map((effect) => displayEffectLabel(effect)),
         axisLabel: {
           fontSize: designTokens.fontSize[12],
-          color: designTokens.color.neutral[700],
+          color: nocturneTokens.color.inkSoft,
         },
       },
       series: [
@@ -273,7 +189,7 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
           data: values.map((value, index) => ({
             value,
             itemStyle: {
-              color: effectColor(effectRows[index]?.amount ?? 0),
+              color: effectChartColor(value === null ? null : effectRows[index]?.amount ?? null),
               borderRadius: [
                 0,
                 designTokens.radius.sm,
@@ -288,51 +204,48 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
   }, [effectRows, normalized]);
 
   return (
-    <DataSection
+    <PageDataSection
       title="Campisi 四效应归因（组合）"
       state={state}
       onRetry={onRetry}
     >
       {!normalized ? (
-        <div style={cardStyle}>
-          <p style={{ margin: 0, color: designTokens.color.neutral[700] }}>
-            暂无 Campisi 归因数据。
-          </p>
+        <div className="campisi-panel">
+          <p className="campisi-panel__empty">暂无 Campisi 归因数据。</p>
         </div>
       ) : (
-        <div style={cardStyle}>
-          <p
-            style={{
-              margin: `0 0 ${designTokens.space[4]}px`,
-              fontSize: designTokens.fontSize[13],
-              color: designTokens.color.neutral[700],
-              lineHeight: designTokens.lineHeight.normal,
-            }}
-          >
-            {normalized.interpretation}
-          </p>
-          <div data-testid="campisi-capability-boundary" style={capabilityBoundaryStyle}>
+        <div className="campisi-panel">
+          <p className="campisi-panel__intro">{normalized.interpretation}</p>
+          {normalized.decomposition_basis ? (
+            <div
+              data-testid="campisi-decomposition-basis"
+              className="campisi-panel__note"
+            >
+              分解口径：{normalized.decomposition_basis}
+            </div>
+          ) : null}
+          {availabilityNotices.length > 0 ? (
+            <div
+              data-testid="campisi-effect-availability"
+              className="campisi-panel__note"
+            >
+              {availabilityNotices.map((notice) => (
+                <div key={notice.key} data-testid={`campisi-effect-availability-${notice.key}`}>
+                  {notice.text}
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <div data-testid="campisi-capability-boundary" className="campisi-panel__note">
             当前实现边界：本页已做到正式 PnL 闭合、票息/利率/利差/剩余拆分和到期桶查看；尚未实现交易员能力评价、FVOCI/FVTPL 浮盈浮亏专项解释、曲线形态策略归因、个券跑赢同类基准和估值噪音诊断。
           </div>
           {normalized.formal_closure &&
           normalized.formal_closure.status !== "closed" ? (
             <div
               data-testid="campisi-formal-closure-warning"
-              style={{
-                marginBottom: designTokens.space[4],
-                padding: `${designTokens.space[3]}px ${designTokens.space[4]}px`,
-                borderLeft: `4px solid ${designTokens.color.neutral[600]}`,
-                background: "#fff7ed",
-                color: designTokens.color.neutral[800],
-                fontSize: designTokens.fontSize[12],
-                lineHeight: designTokens.lineHeight.normal,
-              }}
+              className="campisi-callout--warning"
             >
-              <div
-                style={{ fontWeight: 700, marginBottom: designTokens.space[1] }}
-              >
-                未闭合到正式 PnL
-              </div>
+              <div className="campisi-callout__title">未闭合到正式 PnL</div>
               <div>
                 Campisi{" "}
                 {formatOptionalYi(
@@ -349,46 +262,23 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
             </div>
           ) : null}
           {primaryEffect ? (
-            <div data-testid="campisi-driver-summary" style={summaryGridStyle}>
-              <div style={{ ...insightBoxStyle, background: "#f8fafc" }}>
-                <div style={smallLabelStyle}>一眼结论</div>
-                <div
-                  style={{
-                    fontSize: designTokens.fontSize[16],
-                    fontWeight: 700,
-                    color: designTokens.color.neutral[900],
-                    marginBottom: designTokens.space[2],
-                  }}
-                >
+            <div data-testid="campisi-driver-summary" className="campisi-summary-grid">
+              <div className="campisi-insight-box">
+                <div className="campisi-insight-box__label">一眼结论</div>
+                <div className="campisi-insight-box__headline">
                   主要贡献：{displayEffectLabel(primaryEffect)}
                 </div>
-                <div
-                  style={{
-                    color: designTokens.color.neutral[700],
-                    fontSize: designTokens.fontSize[13],
-                    lineHeight: designTokens.lineHeight.normal,
-                  }}
-                >
+                <div className="campisi-insight-box__body">
                   {formatYi(primaryEffect.amount)}，约{" "}
-                  {Math.abs(primaryEffect.share).toFixed(1)}% 的本期 Campisi
-                  PnL 来自这里。{primaryEffect.role}
+                  {primaryEffect.share === null
+                    ? EM_DASH
+                    : Math.abs(primaryEffect.share).toFixed(1)}
+                  % 的本期 Campisi PnL 来自这里。{primaryEffect.role}
                 </div>
               </div>
-              <div
-                style={{
-                  ...insightBoxStyle,
-                  background: "#fffdf7",
-                  border: "1px solid #eadfca",
-                }}
-              >
-                <div style={smallLabelStyle}>怎么读差异</div>
-                <div
-                  style={{
-                    color: designTokens.color.neutral[800],
-                    fontSize: designTokens.fontSize[13],
-                    lineHeight: designTokens.lineHeight.normal,
-                  }}
-                >
+              <div className="campisi-insight-box">
+                <div className="campisi-insight-box__label">怎么读差异</div>
+                <div className="campisi-insight-box__body">
                   几乎没有影响：
                   {quietEffectLabels(effectRows, normalized.total_return)}。
                   看金额时先看正负，再看占比；“剩余/选券”在当前正式闭合口径中不能直接等同交易员主动选券能力。
@@ -396,115 +286,55 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
               </div>
             </div>
           ) : null}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-              gap: designTokens.space[3],
-              marginBottom: designTokens.space[4],
-              fontSize: designTokens.fontSize[12],
-              color: designTokens.color.neutral[700],
-            }}
-          >
+          {normalized.shares_frontend_derived ? (
+            <div
+              data-testid="campisi-share-derived-note"
+              className="campisi-derived-note"
+            >
+              占比为展示辅助计算（非正式指标）：按各效应金额 / 本期 Campisi 总回报折算。
+            </div>
+          ) : null}
+          <div className="campisi-effect-grid">
             {effectRows.map((effect) => (
-              <div
-                key={effect.key}
-                style={{
-                  padding: designTokens.space[3],
-                  borderRadius: designTokens.radius.md,
-                  border: `1px solid ${designTokens.color.neutral[200]}`,
-                  background: "#ffffff",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: designTokens.space[2],
-                    marginBottom: designTokens.space[2],
-                  }}
-                >
-                  <span
-                    style={{
-                      fontWeight: 700,
-                      color: designTokens.color.neutral[900],
-                    }}
-                  >
+              <div key={effect.key} className="campisi-effect">
+                <div className="campisi-effect__head">
+                  <span className="campisi-effect__name">
                     {displayEffectLabel(effect)}
                   </span>
-                  <span style={tabularNumsStyle}>
-                    {effect.share.toFixed(1)}%
-                  </span>
+                  <span className="campisi-tabular">{effectShareText(effect)}</span>
                 </div>
                 <div
-                  style={{
-                    color: effectColor(effect.amount),
-                    fontWeight: 700,
-                    marginBottom: designTokens.space[2],
-                    ...tabularNumsStyle,
-                  }}
+                  data-testid={`campisi-effect-amount-${effect.key}`}
+                  data-tone={effectTone(effect.unavailable ? null : effect.amount)}
+                  className="campisi-effect__amount"
                 >
-                  {formatYi(effect.amount)}
+                  {effectAmountText(effect)}
                 </div>
-                <div
-                  style={{
-                    height: 6,
-                    borderRadius: 999,
-                    background: designTokens.color.neutral[100],
-                    overflow: "hidden",
-                  }}
-                >
+                <div className="campisi-effect__track">
                   <div
+                    className="campisi-effect__fill"
+                    data-tone={effectTone(effect.amount)}
                     style={{
-                      width: `${Math.min(
-                        100,
-                        (Math.abs(effect.amount) / maxEffectAbs) * 100,
-                      )}%`,
-                      height: "100%",
-                      borderRadius: 999,
-                      background: effectColor(effect.amount),
+                      width: `${
+                        effect.unavailable
+                          ? 0
+                          : Math.min(100, (Math.abs(effect.amount ?? 0) / maxEffectAbs) * 100)
+                      }%`,
                     }}
                   />
                 </div>
               </div>
             ))}
           </div>
-          {barOption && (
-            <ReactECharts
-              option={barOption}
-              style={{ height: 220 }}
-              notMerge
-              lazyUpdate
-            />
-          )}
+          {barOption && <BaseChart option={barOption} height={220} />}
           {normalized.items.length > 0 && (
-            <div style={{ marginTop: designTokens.space[5], overflow: "auto" }}>
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: designTokens.fontSize[12],
-                }}
-              >
+            <div className="campisi-table-wrap">
+              <table className="campisi-table">
                 <thead>
-                  <tr style={{ background: designTokens.color.neutral[100] }}>
-                    <th
-                      style={{
-                        textAlign: "left",
-                        padding: designTokens.space[2],
-                      }}
-                    >
-                      类别
-                    </th>
+                  <tr>
+                    <th>类别</th>
                     {effectRows.map((effect) => (
-                      <th
-                        key={effect.key}
-                        style={{
-                          textAlign: "right",
-                          padding: designTokens.space[2],
-                          ...tabularNumsStyle,
-                        }}
-                      >
+                      <th key={effect.key} className="campisi-table__numeric-head">
                         {displayEffectLabel(effect)}(亿)
                       </th>
                     ))}
@@ -512,32 +342,23 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
                 </thead>
                 <tbody>
                   {normalized.items.map((row, index) => (
-                    <tr
-                      key={`${row.category}-${index}`}
-                      style={{
-                        borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
-                      }}
-                    >
-                      <td style={{ padding: designTokens.space[2] }}>
-                        {row.category}
-                      </td>
-                      {[
-                        row.income_return,
-                        row.treasury_effect,
-                        row.spread_effect,
-                        row.selection_effect,
-                      ].map((value, valueIndex) => (
-                        <td
-                          key={`${row.category}-${valueIndex}`}
-                          style={{
-                            textAlign: "right",
-                            padding: designTokens.space[2],
-                            ...tabularNumsStyle,
-                          }}
-                        >
-                          {(value / 100_000_000).toFixed(2)}
-                        </td>
-                      ))}
+                    <tr key={`${row.category}-${index}`}>
+                      <td>{row.category}</td>
+                      {effectRows.map((effect) => {
+                        const value = itemAmountForEffect(row, effect.key);
+                        return (
+                          <td
+                            key={`${row.category}-${effect.key}`}
+                            className="campisi-table__numeric-cell"
+                          >
+                            {effect.unavailable
+                              ? EFFECT_UNAVAILABLE_TEXT
+                              : value === null
+                                ? EM_DASH
+                                : (value / 100_000_000).toFixed(2)}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))}
                 </tbody>
@@ -546,6 +367,6 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
           )}
         </div>
       )}
-    </DataSection>
+    </PageDataSection>
   );
 }
