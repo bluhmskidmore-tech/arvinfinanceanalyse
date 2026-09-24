@@ -50,6 +50,7 @@ _TEST_DATA_UPDATE_BALANCE_INTEGRATION = "tests/test_data_update_balance_integrat
 _TEST_QUEUE_LAUNCHER = "tests/test_data_update_queue_launcher_logging.py"
 _TEST_QUEUE_INSTALLER = "tests/test_install_data_update_queue.py"
 _TEST_DATA_HEALTH = "tests/test_data_health.py"
+_TEST_DATA_HEALTH_SCHTASKS_QUERY = "tests/test_data_health_schtasks_query.py"
 _TEST_GLOBAL_REFRESH = "tests/test_global_data_refresh.py"
 _TEST_BALANCE_API = "tests/test_balance_analysis_api.py"
 _TEST_BALANCE_CORE = "tests/test_balance_analysis_core.py"
@@ -128,7 +129,11 @@ CALIBER_GATE_MAP: dict[str, tuple[str, ...]] = {
     "backend/app/services/data_update_service.py": (_TEST_DATA_UPDATES, _TEST_DATA_UPDATE_BALANCE_INTEGRATION),
     "backend/app/tasks/data_update_center.py": (_TEST_DATA_UPDATES, _TEST_DATA_UPDATE_BALANCE_INTEGRATION),
     "backend/app/api/routes/data_health.py": (_TEST_DATA_HEALTH, _TEST_DATA_UPDATES),
-    "backend/app/services/data_health_service.py": (_TEST_DATA_HEALTH, _TEST_DATA_UPDATES),
+    "backend/app/services/data_health_service.py": (
+        _TEST_DATA_HEALTH,
+        _TEST_DATA_HEALTH_SCHTASKS_QUERY,
+        _TEST_DATA_UPDATES,
+    ),
     "scripts/run_global_data_refresh.py": (_TEST_GLOBAL_REFRESH, _TEST_DATA_UPDATES),
     "scripts/scheduling/drain_data_updates.ps1": (_TEST_QUEUE_LAUNCHER, _TEST_QUEUE_INSTALLER),
     "scripts/scheduling/install_data_update_queue.ps1": (_TEST_QUEUE_INSTALLER,),
@@ -145,6 +150,7 @@ CALIBER_GATE_MAP: dict[str, tuple[str, ...]] = {
     _TEST_DATA_UPDATE_BALANCE_INTEGRATION: (_TEST_DATA_UPDATE_BALANCE_INTEGRATION,),
     _TEST_QUEUE_LAUNCHER: (_TEST_QUEUE_LAUNCHER,),
     _TEST_QUEUE_INSTALLER: (_TEST_QUEUE_INSTALLER,),
+    _TEST_DATA_HEALTH_SCHTASKS_QUERY: (_TEST_DATA_HEALTH_SCHTASKS_QUERY,),
     _TEST_BALANCE_API: (_TEST_BALANCE_API,),
 }
 

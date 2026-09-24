@@ -82,7 +82,14 @@ def test_curve_and_pnl_bridge_source_changes_select_existing_goldens() -> None:
 def test_data_update_and_balance_paths_select_first_scope_regressions() -> None:
     assert gate.resolve_required_tests(
         ["backend/app/services/data_health_service.py"]
-    ) == ["tests/test_data_health.py", "tests/test_data_updates.py"]
+    ) == [
+        "tests/test_data_health.py",
+        "tests/test_data_health_schtasks_query.py",
+        "tests/test_data_updates.py",
+    ]
+    assert gate.resolve_required_tests(
+        ["tests/test_data_health_schtasks_query.py"]
+    ) == ["tests/test_data_health_schtasks_query.py"]
     assert gate.resolve_required_tests(
         ["backend/app/api/routes/balance_analysis.py"]
     ) == ["tests/test_balance_analysis_api.py"]
