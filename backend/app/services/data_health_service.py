@@ -500,12 +500,21 @@ def _scheduled_tasks_section() -> dict[str, object]:
     )
 
 
-def _run_schtasks_query() -> str:
+def _run_schtasks_query(
+    task_name: str | None = None,
+    *,
+    timeout: float | None = None,
+) -> str:
     """subprocess 调 schtasks（仅 Windows）；输出按控制台代码页解码。"""
+    command = ["schtasks", "/query"]
+    if task_name is not None:
+        command.extend(["/tn", task_name])
+    command.extend(["/fo", "csv", "/v"])
+    query_timeout = _SCHTASKS_TIMEOUT_SECONDS if timeout is None else timeout
     completed = subprocess.run(  # noqa: S603 - 固定参数常量，无用户输入
-        ["schtasks", "/query", "/fo", "csv", "/v"],
+        command,
         capture_output=True,
-        timeout=_SCHTASKS_TIMEOUT_SECONDS,
+        timeout=query_timeout,
         check=True,
     )
     raw = completed.stdout or b""

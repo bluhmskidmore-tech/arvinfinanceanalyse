@@ -84,6 +84,7 @@ def _execute_refresh_steps(
     report_date: str,
     run_id: str,
     steps: list[RefreshStep],
+    on_progress: Callable[[dict[str, object]], None] | None = None,
 ) -> dict[str, object]:
     receipt: dict[str, object] = {
         "status": "running",
@@ -97,6 +98,8 @@ def _execute_refresh_steps(
     assert isinstance(step_receipts, list)
 
     for step_name, execute in steps:
+        if on_progress is not None:
+            on_progress({**receipt, "current_step": step_name})
         step_started_at = _utc_now()
         started = perf_counter()
         try:
@@ -123,6 +126,8 @@ def _execute_refresh_steps(
                     "finished_at": _utc_now(),
                 }
             )
+            if on_progress is not None:
+                on_progress(receipt)
             raise GlobalDataRefreshFailed(receipt) from exc
 
         step_receipts.append(
@@ -135,8 +140,12 @@ def _execute_refresh_steps(
                 "result": result,
             }
         )
+        if on_progress is not None:
+            on_progress(receipt)
 
     receipt.update({"status": "completed", "finished_at": _utc_now()})
+    if on_progress is not None:
+        on_progress(receipt)
     return receipt
 
 
@@ -350,6 +359,7 @@ def run_global_data_refresh(
     report_date: str,
     fx_source_path: str | None = None,
     dry_run: bool = False,
+    on_progress: Callable[[dict[str, object]], None] | None = None,
 ) -> dict[str, object]:
     normalized_report_date = _normalize_report_date(report_date)
     normalized_fx_source_path = str(fx_source_path or "").strip() or None
@@ -380,6 +390,7 @@ def run_global_data_refresh(
             report_date=normalized_report_date,
             run_id=run_id,
             steps=steps,
+            on_progress=on_progress,
         )
 
 
