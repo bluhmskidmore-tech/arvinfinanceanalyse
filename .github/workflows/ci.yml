@@ -78,7 +78,7 @@ jobs:
           git fetch origin "${{ github.base_ref }}"
           python scripts/check_caliber_gate.py --base-ref "origin/${{ github.base_ref }}"
 
-  # 信息性评测：按 diff 与任务 allowed_scope 的交集选任务，跑重放评测并把
+  # 信息性评测：按 diff 与任务 pr_trigger_scope 的交集选任务，跑重放评测并把
   # scorecard 发布为 step summary + PR 评论。评测 fail/void 不阻塞合并；
   # 本 job 变红仅代表编排自身故障（见 scripts/agent_eval/pr_replay.py）。
   agent-eval-replay:
@@ -100,7 +100,15 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Check PR replay dependency setup
+        id: agent_eval_preflight
+        run: |
+          git fetch origin "${{ github.base_ref }}"
+          python scripts/agent_eval/pr_replay.py --base-ref "origin/${{ github.base_ref }}" \
+            --preflight >> "$GITHUB_OUTPUT"
+
       - name: Set up uv
+        if: steps.agent_eval_preflight.outputs.needs_dependency_setup != 'false'
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           version: "0.11.32"
@@ -108,12 +116,14 @@ jobs:
           cache-dependency-glob: backend/uv.lock
 
       - name: Install backend dependencies from backend/uv.lock
+        if: steps.agent_eval_preflight.outputs.needs_dependency_setup != 'false'
         run: |
           uv sync --frozen --project backend --extra dev --python 3.11
           echo "VIRTUAL_ENV=${GITHUB_WORKSPACE}/backend/.venv" >> "$GITHUB_ENV"
           echo "${GITHUB_WORKSPACE}/backend/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Set up Node.js
+        if: steps.agent_eval_preflight.outputs.needs_dependency_setup != 'false'
         uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -121,12 +131,13 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install frontend dependencies
+        if: steps.agent_eval_preflight.outputs.needs_dependency_setup != 'false'
         working-directory: frontend
         run: npm ci
 
-      # ledger-pnl 任务的 page_loads/no_console_errors 探针是 Playwright spec，
-      # 需要 Chromium 与 mock 数据模式；spec 在非 mock 环境下自动 skip。
+      # 页面探针需要 Chromium 与 mock 数据模式；spec 在非 mock 环境下自动 skip。
       - name: Install Playwright Chromium
+        if: steps.agent_eval_preflight.outputs.needs_dependency_setup != 'false'
         working-directory: frontend
         run: npx playwright install --with-deps chromium
 
@@ -136,7 +147,6 @@ jobs:
           MOSS_PLAYWRIGHT_USE_WEB_SERVER: "1"
           MOSS_PLAYWRIGHT_BASE_URL: "http://127.0.0.1:5888"
         run: |
-          git fetch origin "${{ github.base_ref }}"
           python scripts/agent_eval/pr_replay.py --base-ref "origin/${{ github.base_ref }}" \
             --out-md .codex-tmp/agent-eval/pr-replay/summary.md
 

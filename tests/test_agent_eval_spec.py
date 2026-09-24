@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pytest
 
+from scripts.agent_eval import validate_task as validate_task_cli
+from scripts.agent_eval.spec import validate_result_spec, validate_task_spec
+
 pytestmark = [
     pytest.mark.excluded_surface_regression,
     pytest.mark.surface_agent_eval,
 ]
-
-from scripts.agent_eval import validate_task as validate_task_cli
-from scripts.agent_eval.spec import validate_result_spec, validate_task_spec
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TASKS_DIR = REPO_ROOT / "scripts" / "agent_eval" / "tasks"
@@ -63,6 +63,12 @@ def test_validate_task_spec_rejects_empty_allowed_scope():
 
     with pytest.raises(ValueError, match="Task field 'allowed_scope' must be a non-empty list"):
         validate_task_spec(task)
+
+
+@pytest.mark.parametrize("scope", [[], [""], ["frontend/src/test/*"], ["frontend/*/test/Page*"]])
+def test_validate_task_spec_rejects_unsafe_pr_trigger_scope(scope):
+    with pytest.raises(ValueError, match="pr_trigger_scope"):
+        validate_task_spec(dict(VALID_TASK, pr_trigger_scope=scope))
 
 
 def test_validate_task_spec_rejects_task_with_no_gates_checks_or_evidence():

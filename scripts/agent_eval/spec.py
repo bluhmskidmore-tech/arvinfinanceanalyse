@@ -66,6 +66,18 @@ def validate_task_spec(task: dict[str, Any]) -> dict[str, Any]:
             "an empty scope disables out-of-scope detection in scoring"
         )
 
+    if "pr_trigger_scope" in task:
+        _require_string_list(task, "pr_trigger_scope", "Task")
+        triggers = task["pr_trigger_scope"]
+        if not triggers or any(not path.strip() for path in triggers):
+            raise ValueError("Task field 'pr_trigger_scope' must contain paths")
+        if any(
+            "*" in path
+            and (path.count("*") != 1 or not path.endswith("*") or not path[:-1] or path[:-1].endswith("/"))
+            for path in triggers
+        ):
+            raise ValueError("Task field 'pr_trigger_scope' supports only terminal filename-prefix '*'")
+
     if not any(
         task[field] for field in ("business_gates", "page_gates", "checks", "required_evidence")
     ):
@@ -215,4 +227,3 @@ def _is_bool_or_pass_fail(value: Any) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in PASS_FAIL_VALUES
     return False
-
