@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from time import perf_counter
 
@@ -85,7 +86,7 @@ def _execute_balance(settings, report_date: str, on_progress) -> dict[str, objec
         )
         raise
     pipeline_result = dict(result)
-    balance_result = {
+    balance_result: dict[str, object] = {
         "status": "completed",
         "report_date": report_date,
         "pipeline": pipeline_result,
@@ -228,10 +229,14 @@ def drain_updates(settings=None) -> int:
                             )
                         failures += int(not waiting)
                         continue
+                    attempt_value = run.get("attempt", 0)
+                    if not isinstance(attempt_value, (int, float, str, bytes, bytearray)):
+                        raise TypeError("无效的更新尝试次数。")
+                    attempt = int(attempt_value) + 1
                     run = {
                         **run,
                         "status": "running",
-                        "attempt": int(run.get("attempt", 0)) + 1,
+                        "attempt": attempt,
                         "started_at": utc_now(),
                         "updated_at": utc_now(),
                         "preflight": preflight,
@@ -243,7 +248,10 @@ def drain_updates(settings=None) -> int:
 
                 def progress(receipt: dict[str, object], current_run=run) -> None:
                     steps = []
-                    for item in receipt.get("steps", []):
+                    receipt_steps = receipt.get("steps", [])
+                    if not isinstance(receipt_steps, Iterable):
+                        raise TypeError("无效的更新步骤回执。")
+                    for item in receipt_steps:
                         step = {
                             "key": item["name"],
                             "label": STEP_LABELS.get(str(item["name"]), "更新步骤"),
@@ -284,7 +292,7 @@ def drain_updates(settings=None) -> int:
                     )
                 except Exception as exc:
                     started_steps = _has_started_steps(run)
-                    retry = not started_steps and _transient(exc) and int(run["attempt"]) < 3
+                    retry = not started_steps and _transient(exc) and attempt < 3
                     run.update(
                         status="retrying" if retry else "failed",
                         updated_at=utc_now(),

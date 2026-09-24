@@ -33,7 +33,7 @@ def save_run(governance_dir: str | Path, run: dict[str, object]) -> dict[str, ob
 
 
 def financial_dates(duckdb_path: str | Path) -> list[dict[str, object]]:
-    rows = [{"key": key, "label": label, "as_of_date": None, "status": "missing"} for key, label, _, _ in DATE_TABLES]
+    rows: list[dict[str, object]] = [{"key": key, "label": label, "as_of_date": None, "status": "missing"} for key, label, _, _ in DATE_TABLES]
     if not Path(duckdb_path).is_file():
         return rows
     try:
@@ -42,7 +42,10 @@ def financial_dates(duckdb_path: str | Path) -> list[dict[str, object]]:
             for row, (_, _, table, column) in zip(rows, DATE_TABLES, strict=True):
                 if table in tables:
                     # Identifiers come exclusively from the constant table above.
-                    value = conn.execute(f'SELECT MAX("{column}") FROM "{table}"').fetchone()[0]
+                    result = conn.execute(f'SELECT MAX("{column}") FROM "{table}"').fetchone()
+                    if result is None:
+                        raise RuntimeError(f"{table} MAX query returned no row")
+                    value = result[0]
                     row.update(
                         as_of_date=str(value)[:10] if value is not None else None,
                         status="available" if value is not None else "missing",
@@ -59,6 +62,9 @@ def verify_daily_balance_date(duckdb_path: str | Path, report_date: str) -> None
         for key, label, table, column in DATE_TABLES:
             if key == "pnl":
                 continue
-            count = conn.execute(f'SELECT COUNT(*) FROM "{table}" WHERE "{column}" = ?', [report_date]).fetchone()[0]
+            result = conn.execute(f'SELECT COUNT(*) FROM "{table}" WHERE "{column}" = ?', [report_date]).fetchone()
+            if result is None:
+                raise RuntimeError(f"{table} COUNT query returned no row")
+            count = result[0]
             if not count:
                 raise ValueError(f"{label}缺少报告日 {report_date} 的结果，更新未通过核验。")

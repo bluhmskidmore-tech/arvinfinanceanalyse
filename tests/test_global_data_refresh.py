@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -164,4 +165,22 @@ def test_global_data_refresh_rejects_ambiguous_date_and_missing_explicit_fx(tmp_
             report_date="2026-07-31",
             fx_source_path=str(tmp_path / "missing.csv"),
             dry_run=True,
+        )
+
+
+def test_report_date_verification_fails_closed_when_count_query_has_no_row(monkeypatch, tmp_path):
+    module = _load_module()
+    monkeypatch.setattr(module, "REQUIRED_DATE_TABLES", (("sample", "report_date", 1),))
+    connection = Mock()
+    connection.execute.side_effect = [
+        Mock(fetchall=Mock(return_value=[("sample",)])),
+        Mock(fetchone=Mock(return_value=None)),
+    ]
+    monkeypatch.setattr(module, "read_only_connection", lambda _path: nullcontext(connection))
+
+    with pytest.raises(RuntimeError, match="COUNT query returned no row"):
+        module._verify_report_date(
+            duckdb_path=str(tmp_path / "moss.duckdb"),
+            choice_macro_catalog_file=tmp_path / "choice.csv",
+            report_date="2026-07-31",
         )

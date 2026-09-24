@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import subprocess
 import time
+from collections.abc import Iterable
 from datetime import UTC, date, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -184,7 +185,10 @@ def scheduled_updates() -> dict[str, object]:
 
 def require_scheduler(task_name: str) -> None:
     snapshot = scheduled_updates()
-    task = next((row for row in snapshot["tasks"] if row["task_name"] == task_name), None)
+    tasks = snapshot["tasks"]
+    if not isinstance(tasks, Iterable):
+        raise TypeError("计划任务回执不可迭代。")
+    task = next((row for row in tasks if row["task_name"] == task_name), None)
     if task is None or task["status"] in {"missing", "disabled"}:
         raise RuntimeError("后台任务尚未启用，当前无法接收更新请求。")
 

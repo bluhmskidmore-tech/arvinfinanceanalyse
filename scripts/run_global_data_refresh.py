@@ -291,12 +291,13 @@ def _verify_report_date(
                 checks.append({"table": table_name, "status": "missing", "row_count": 0})
                 failures.append(f"missing table {table_name}")
                 continue
-            row_count = int(
-                conn.execute(
-                    f'select count(*) from "{table_name}" where cast("{date_column}" as varchar) = ?',
-                    [report_date],
-                ).fetchone()[0]
-            )
+            count_result = conn.execute(
+                f'select count(*) from "{table_name}" where cast("{date_column}" as varchar) = ?',
+                [report_date],
+            ).fetchone()
+            if count_result is None:
+                raise RuntimeError(f"{table_name} COUNT query returned no row")
+            row_count = int(count_result[0])
             status = "completed" if row_count >= minimum_rows else "failed"
             checks.append({"table": table_name, "status": status, "row_count": row_count})
             if row_count < minimum_rows:
@@ -331,7 +332,7 @@ def _verify_report_date(
             or row[2] <= 0
             or any(not str(row[index] or "").strip() for index in (3, 4, 5, 6, 7, 8))
         )
-        fx_check = {
+        fx_check: dict[str, object] = {
             "table": "fx_daily_mid",
             "status": "completed"
             if not missing_bases and duplicate_count == 0 and invalid_lineage_count == 0

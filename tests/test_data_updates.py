@@ -441,6 +441,18 @@ def test_balance_verification_checks_requested_partition_not_latest(settings):
     repo.verify_daily_balance_date(settings.duckdb_path, REPORT_DATE)
 
 
+def test_balance_verification_fails_closed_when_count_query_has_no_row(settings, monkeypatch):
+    @contextmanager
+    def empty_count_query(*_args, **_kwargs):
+        connection = Mock()
+        connection.execute.return_value.fetchone.return_value = None
+        yield connection
+
+    monkeypatch.setattr(repo, "read_only_connection", empty_count_query)
+    with pytest.raises(RuntimeError, match="COUNT query returned no row"):
+        repo.verify_daily_balance_date(settings.duckdb_path, REPORT_DATE)
+
+
 def test_http_post_queue_get_uses_same_durable_receipt(settings, monkeypatch):
     app = FastAPI()
     app.include_router(routes.router)
