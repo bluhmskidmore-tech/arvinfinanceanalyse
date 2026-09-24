@@ -18,6 +18,7 @@ import {
 import { SkeletonBarStack } from "../../components/SkeletonBars";
 import { EM_DASH } from "../../utils/format";
 
+import DataUpdateCenter from "./DataUpdateCenter";
 import styles from "./PlatformConfigPage.module.css";
 
 function resolveCheck(data: HealthResponse, key: string): HealthCheckStatus {
@@ -131,12 +132,14 @@ export default function PlatformConfigPage() {
     <section className={styles.page} data-moss-theme-scope="platform-config">
       <PageHeader
         eyebrow="报表与数据"
-        title="中台配置"
+        title="数据中心"
         titleTestId="platform-config-page-title"
-        description="系统健康状态、数据源概览与治理信息。"
+        description="安排数据更新，查看实际数据日期与系统运行状态。"
         badgeLabel={client.mode === "real" ? "真实治理读链路" : "本地演示数据"}
         badgeTone={client.mode === "real" ? "positive" : "accent"}
       />
+
+      <DataUpdateCenter mode={client.mode} />
 
       <PageSectionLead
         eyebrow="总览"

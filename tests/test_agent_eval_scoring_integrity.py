@@ -275,6 +275,47 @@ def test_harness_self_edit_voids_the_measurement(git_repo):
         validate_measured_result(result)
 
 
+def test_known_harness_edit_voids_before_any_probe_runs(git_repo):
+    harness_file = _commit(git_repo, "scripts/agent_eval/reward.py", "PASS_THRESHOLD = 90\n")
+    harness_file.write_text("PASS_THRESHOLD = 0\n", encoding="utf-8")
+    calls = []
+
+    def run(command, cwd, timeout_seconds):
+        calls.append(command)
+        return CommandOutcome(exit_code=0)
+
+    result = collect_measured_result(_task(), repo_root=git_repo, run_command=run)
+
+    assert result["measurement"]["integrity"]["trusted"] is False
+    assert result["measurement"]["commands"] == []
+    assert calls == []
+    with pytest.raises(ValueError, match="Scoring harness file modified"):
+        validate_measured_result(result)
+
+
+def test_probe_edit_during_measurement_still_voids_after_execution(git_repo):
+    probe_path = _commit(
+        git_repo, "tests/test_probe_unit_consistency.py", "def test_real():\n    assert True\n"
+    )
+
+    def run(command, cwd, timeout_seconds):
+        probe_path.write_text("def test_noop():\n    pass\n", encoding="utf-8")
+        return CommandOutcome(exit_code=0)
+
+    result = collect_measured_result(
+        _task(gate_probes={
+            "unit_consistency": "python -m pytest tests/test_probe_unit_consistency.py -q",
+            "no_console_errors": "python -m pytest tests/probe_console_errors.py -q",
+        }),
+        repo_root=git_repo,
+        run_command=run,
+    )
+
+    assert result["measurement"]["integrity"]["trusted"] is False
+    with pytest.raises(ValueError, match="Gate probe target modified"):
+        validate_measured_result(result)
+
+
 def test_known_gap_empty_allowed_scope_skips_out_of_scope_detection():
     """KNOWN GAP at the reward layer, mitigated at the spec layer.
 

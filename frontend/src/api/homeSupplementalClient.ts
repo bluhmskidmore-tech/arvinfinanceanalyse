@@ -33,6 +33,7 @@ import type {
 import type { LiabilityAdbClientMethods } from "./liabilityAdbClient";
 import { readHttpJsonDetail } from "./httpResponseError";
 import { normalizeNumeric } from "./numeric";
+import { assertApiEnvelopeShape } from "./transport";
 
 type FetchLike = typeof fetch;
 
@@ -460,12 +461,18 @@ export function createRealHomeSupplementalClient({
         `/api/bond-analytics/krd-curve-risk?${params.toString()}`,
       );
     },
-    getBalanceAnalysisDates: () =>
-      requestJson<BalanceAnalysisDatesPayload>(
+    getBalanceAnalysisDates: async () => {
+      const path = "/ui/balance-analysis/dates";
+      const envelope = await requestJson<BalanceAnalysisDatesPayload>(
         fetchImpl,
         baseUrl,
-        "/ui/balance-analysis/dates",
-      ),
+        path,
+      );
+      assertApiEnvelopeShape(envelope, `${baseUrl}${path}`, [
+        { path: "report_dates", type: "array" },
+      ]);
+      return envelope;
+    },
     getBalanceAnalysisOverview: ({ reportDate, positionScope, currencyBasis }) => {
       const params = new URLSearchParams({
         report_date: reportDate,

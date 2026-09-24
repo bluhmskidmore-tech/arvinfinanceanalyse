@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
+from types import SimpleNamespace
+from unittest.mock import Mock
+
 import pytest
 
 from tests.helpers import load_module
@@ -83,6 +87,73 @@ def test_global_data_refresh_steps_complete_in_declared_order():
     assert [step["name"] for step in receipt["steps"]] == ["one", "two"]
 
 
+def test_progress_reports_each_step_without_premature_completion():
+    module = _load_module()
+    events = []
+
+    def record(receipt):
+        events.append(
+            (
+                receipt["status"],
+                receipt.get("current_step"),
+                tuple((step["name"], step["status"]) for step in receipt["steps"]),
+            )
+        )
+
+    def fail_verification():
+        raise ValueError("required report date missing")
+
+    with pytest.raises(module.GlobalDataRefreshFailed):
+        module._execute_refresh_steps(
+            report_date="2026-07-31",
+            run_id="progress-test",
+            steps=[
+                ("formal_balance", lambda: {"status": "completed"}),
+                ("verify", fail_verification),
+            ],
+            on_progress=record,
+        )
+
+    assert events[0] == ("running", "formal_balance", ())
+    assert events[1] == ("running", None, (("formal_balance", "completed"),))
+    assert events[2][0:2] == ("running", "verify")
+    assert events[-1][0] == "failed"
+    assert events[-1][2][-1] == ("verify", "failed")
+    assert all(status != "completed" for status, _, _ in events)
+
+
+def test_public_global_refresh_forwards_progress_and_completes_after_final_step(
+    monkeypatch, tmp_path
+):
+    module = _load_module()
+    monkeypatch.setattr(
+        module,
+        "get_settings",
+        lambda: SimpleNamespace(duckdb_path=tmp_path / "db.duckdb"),
+    )
+    monkeypatch.setattr(module, "acquire_lock", lambda *_args, **_kwargs: nullcontext())
+    monkeypatch.setattr(
+        module,
+        "_build_refresh_steps",
+        lambda **_kwargs: [("verify", lambda: {"status": "completed"})],
+    )
+    events = []
+
+    result = module.run_global_data_refresh(
+        report_date="2026-07-31",
+        on_progress=lambda receipt: events.append(
+            (receipt["status"], receipt.get("current_step"), len(receipt["steps"]))
+        ),
+    )
+
+    assert result["status"] == "completed"
+    assert events == [
+        ("running", "verify", 0),
+        ("running", None, 1),
+        ("completed", None, 1),
+    ]
+
+
 def test_global_data_refresh_rejects_ambiguous_date_and_missing_explicit_fx(tmp_path):
     module = _load_module()
 
@@ -94,4 +165,22 @@ def test_global_data_refresh_rejects_ambiguous_date_and_missing_explicit_fx(tmp_
             report_date="2026-07-31",
             fx_source_path=str(tmp_path / "missing.csv"),
             dry_run=True,
+        )
+
+
+def test_report_date_verification_fails_closed_when_count_query_has_no_row(monkeypatch, tmp_path):
+    module = _load_module()
+    monkeypatch.setattr(module, "REQUIRED_DATE_TABLES", (("sample", "report_date", 1),))
+    connection = Mock()
+    connection.execute.side_effect = [
+        Mock(fetchall=Mock(return_value=[("sample",)])),
+        Mock(fetchone=Mock(return_value=None)),
+    ]
+    monkeypatch.setattr(module, "read_only_connection", lambda _path: nullcontext(connection))
+
+    with pytest.raises(RuntimeError, match="COUNT query returned no row"):
+        module._verify_report_date(
+            duckdb_path=str(tmp_path / "moss.duckdb"),
+            choice_macro_catalog_file=tmp_path / "choice.csv",
+            report_date="2026-07-31",
         )

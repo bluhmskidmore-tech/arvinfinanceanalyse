@@ -27,6 +27,25 @@
     "frontend/src/api/",
     "frontend/src/test/"
   ],
+  "pr_trigger_scope": [
+    "frontend/src/features/risk-tensor/",
+    "frontend/src/api/client.ts",
+    "frontend/src/api/clientContext.ts",
+    "frontend/src/api/clientFactoryOptions.ts",
+    "frontend/src/api/transport.ts",
+    "frontend/src/api/httpResponseError.ts",
+    "frontend/src/api/mockApiClient.ts",
+    "frontend/src/api/contracts.ts",
+    "frontend/src/api/contracts/core.ts",
+    "frontend/src/api/contracts/riskTensor.ts",
+    "frontend/src/api/executiveClient.ts",
+    "frontend/src/api/numeric.ts",
+    "frontend/src/test/RiskTensor*",
+    "frontend/src/test/renderWorkbenchApp.tsx",
+    "frontend/src/test/preloadWorkbenchRouteModules.ts",
+    "frontend/src/test/setup.ts",
+    "frontend/tests/playwright/agent-eval-page-probes.spec.mjs"
+  ],
   "forbidden": [
     "backend/app/schema_registry/",
     "backend/app/core_finance/",
@@ -64,16 +83,16 @@
     "date_semantics": "python -m pytest tests/test_risk_tensor_api.py -q",
     "null_zero_undefined_handling": "npm --prefix frontend run test -- RiskTensorPage",
     "no_frontend_official_metric_recalculation": "python -m pytest tests/test_no_finance_logic_in_frontend.py -q",
+    "page_loads": "npm --prefix frontend run test:a11y-smoke -- tests/playwright/agent-eval-page-probes.spec.mjs --grep agent-eval-page:risk-tensor --workers=1 --retries=0",
+    "no_console_errors": "npm --prefix frontend run test:a11y-smoke -- tests/playwright/agent-eval-page-probes.spec.mjs --grep agent-eval-page:risk-tensor --workers=1 --retries=0",
     "fallback_or_stale_state_visible_when_applicable": "npm --prefix frontend run test -- RiskTensorPage"
   },
   "probe_protected_paths": [
     "tests/test_no_finance_logic_in_frontend.py",
     "tests/test_risk_tensor_api.py",
     "frontend/src/test/RiskTensorPage.test.tsx",
-    "frontend/src/test/RiskTensorUnitContract.test.tsx"
+    "frontend/src/test/RiskTensorUnitContract.test.tsx",
+    "frontend/tests/playwright/agent-eval-page-probes.spec.mjs"
   ],
-  "gate_probe_gaps": {
-    "page_loads": "Needs a risk-tensor scoped Playwright spec; test:a11y-smoke is site-wide and does not isolate this page.",
-    "no_console_errors": "Same as page_loads; requires a scoped spec that fails on console errors."
-  }
+  "gate_probe_gaps": {}
 }

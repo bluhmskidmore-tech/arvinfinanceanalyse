@@ -138,6 +138,27 @@ function apiPayload(pathname) {
   if (pathname === "/ui/balance-movement-analysis/dates") {
     result.currency_basis = "CNX";
     result.report_dates = [reportDate];
+    result.freshness_status = "fresh";
+    result.latest_read_model_report_date = reportDate;
+  }
+  if (pathname === "/ui/balance-movement-analysis") {
+    result.currency_basis = "CNX";
+    result.summary = {
+      previous_balance_total: "0",
+      current_balance_total: "0",
+      balance_change_total: "0",
+      zqtz_amount_total: "0",
+      reconciliation_diff_total: "0",
+      matched_bucket_count: 0,
+      bucket_count: 0,
+    };
+    result.trend_months = [];
+    result.business_trend_months = [];
+    result.zqtz_calibration_analysis = null;
+    result.structure_migration_analysis = null;
+    result.difference_attribution_waterfall = null;
+    result.accounting_controls = [];
+    result.excluded_controls = [];
   }
   if (pathname === "/ui/balance-analysis/advanced-attribution") {
     Object.assign(result, {

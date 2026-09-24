@@ -79,6 +79,111 @@ def test_curve_and_pnl_bridge_source_changes_select_existing_goldens() -> None:
     ]
 
 
+def test_data_update_and_balance_paths_select_first_scope_regressions() -> None:
+    assert gate.resolve_required_tests(
+        ["backend/app/services/data_health_service.py"]
+    ) == [
+        "tests/test_data_health.py",
+        "tests/test_data_health_schtasks_query.py",
+        "tests/test_data_updates.py",
+    ]
+    assert gate.resolve_required_tests(
+        ["tests/test_data_health_schtasks_query.py"]
+    ) == ["tests/test_data_health_schtasks_query.py"]
+    assert gate.resolve_required_tests(
+        ["backend/app/api/routes/balance_analysis.py"]
+    ) == ["tests/test_balance_analysis_api.py"]
+    assert gate.resolve_required_tests(
+        ["docs/unrelated-note.md"]
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "backend/app/api/__init__.py",
+        "backend/app/api/routes/data_updates.py",
+        "backend/app/repositories/data_update_repo.py",
+        "backend/app/schemas/data_updates.py",
+        "backend/app/services/data_update_service.py",
+        "backend/app/tasks/data_update_center.py",
+    ],
+)
+def test_data_update_source_selects_same_date_integration(source: str) -> None:
+    assert gate.resolve_required_tests([source]) == [
+        "tests/test_data_update_balance_integration.py",
+        "tests/test_data_updates.py",
+    ]
+
+
+def test_queue_scheduler_and_test_changes_select_focused_regressions() -> None:
+    assert gate.resolve_required_tests(
+        ["scripts/scheduling/drain_data_updates.ps1"]
+    ) == [
+        "tests/test_data_update_queue_launcher_logging.py",
+        "tests/test_install_data_update_queue.py",
+    ]
+    assert gate.resolve_required_tests(
+        ["scripts/scheduling/install_data_update_queue.ps1"]
+    ) == ["tests/test_install_data_update_queue.py"]
+    for test_file in (
+        "tests/test_data_update_balance_integration.py",
+        "tests/test_data_update_queue_launcher_logging.py",
+        "tests/test_install_data_update_queue.py",
+    ):
+        assert gate.resolve_required_tests([test_file]) == [test_file]
+    assert gate.resolve_required_tests(["scripts/scheduling/unrelated.ps1"]) == []
+
+
+def test_windows_scheduler_scope_is_limited_to_two_scripts_and_tests() -> None:
+    assert gate.selects_scheduler_windows_scope(
+        ["scripts/scheduling/drain_data_updates.ps1"]
+    )
+    assert gate.selects_scheduler_windows_scope(
+        ["tests/test_install_data_update_queue.py"]
+    )
+    assert not gate.selects_scheduler_windows_scope(
+        ["backend/app/tasks/data_update_center.py", "docs/note.md"]
+    )
+
+
+def test_frontend_first_scope_selection_is_bounded() -> None:
+    assert gate.selects_frontend_first_scope(
+        ["frontend/src/api/dataUpdatesClient.ts"]
+    )
+    assert gate.selects_frontend_first_scope(
+        ["frontend\\src\\features\\balance-analysis\\pages\\BalanceAnalysisPage.tsx"]
+    )
+    assert not gate.selects_frontend_first_scope(
+        ["frontend/src/features/risk-tensor/RiskTensorPage.tsx", "docs/note.md"]
+    )
+
+
+def test_data_update_browser_scope_only_selects_the_daily_balance_path() -> None:
+    assert set(gate.DATA_UPDATE_BROWSER_PATHS) <= set(gate.FRONTEND_FIRST_SCOPE_PATHS)
+    assert gate.selects_data_update_browser_scope(
+        ["frontend/src/features/platform-config/DataUpdateCenter.tsx"]
+    )
+    assert gate.selects_data_update_browser_scope(
+        ["frontend/tests/playwright/data-update-center-balance-daily.spec.mjs"]
+    )
+    assert not gate.selects_data_update_browser_scope(
+        ["frontend/src/api/balanceMovementClient.ts", "docs/note.md"]
+    )
+
+
+def test_formal_release_scope_uses_canonical_boundary() -> None:
+    assert gate.selects_formal_release_scope(
+        ["backend/app/core_finance/balance_analysis.py"]
+    )
+    assert gate.selects_formal_release_scope(
+        ["backend/app/tasks/formal_balance_pipeline.py"]
+    )
+    assert not gate.selects_formal_release_scope(
+        ["backend/app/tasks/data_update_center.py", "docs/note.md"]
+    )
+
+
 def test_resolve_required_tests_exact_prefix_dedup_and_order() -> None:
     small_map = {
         "src/exact.py": ("tests/test_b.py",),
@@ -180,3 +285,98 @@ def test_invalid_base_ref_fails_closed(
     assert exit_code != 0
     assert "FAIL-CLOSED" in captured.err
     assert "no-such-ref" in captured.err
+
+
+def test_frontend_scope_cli_selects_affected_and_unrelated_changes(
+    gate_repo: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        gate, "FRONTEND_FIRST_SCOPE_PATHS", ("src/gated_module.py",)
+    )
+    (gate_repo / "unrelated.txt").write_text("changed\n", encoding="utf-8")
+    _run_git(gate_repo, "commit", "--quiet", "-am", "unrelated")
+    assert gate.main(["--base-ref", "base", "--frontend-scope"]) == 0
+    assert capsys.readouterr().out == "false\n"
+
+    (gate_repo / "src" / "gated_module.py").write_text("VALUE = 2\n", encoding="utf-8")
+    _run_git(gate_repo, "commit", "--quiet", "-am", "affected")
+    assert gate.main(["--base-ref", "base", "--frontend-scope"]) == 0
+    assert capsys.readouterr().out == "true\n"
+
+
+def test_release_scope_cli_selects_affected_and_unrelated_changes(
+    gate_repo: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(gate, "FORMAL_RELEASE_PATHS", ("src/gated_module.py",))
+    (gate_repo / "unrelated.txt").write_text("changed\n", encoding="utf-8")
+    _run_git(gate_repo, "commit", "--quiet", "-am", "unrelated")
+    assert gate.main(["--base-ref", "base", "--release-scope"]) == 0
+    assert capsys.readouterr().out == "false\n"
+
+    (gate_repo / "src" / "gated_module.py").write_text("VALUE = 2\n", encoding="utf-8")
+    _run_git(gate_repo, "commit", "--quiet", "-am", "formal source")
+    assert gate.main(["--base-ref", "base", "--release-scope"]) == 0
+    assert capsys.readouterr().out == "true\n"
+
+
+def test_browser_scope_cli_selects_affected_and_unrelated_changes(
+    gate_repo: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(gate, "DATA_UPDATE_BROWSER_PATHS", ("src/gated_module.py",))
+    (gate_repo / "unrelated.txt").write_text("changed\n", encoding="utf-8")
+    _run_git(gate_repo, "commit", "--quiet", "-am", "unrelated")
+    assert gate.main(["--base-ref", "base", "--data-update-browser-scope"]) == 0
+    assert capsys.readouterr().out == "false\n"
+
+    (gate_repo / "src" / "gated_module.py").write_text("VALUE = 2\n", encoding="utf-8")
+    _run_git(gate_repo, "commit", "--quiet", "-am", "browser source")
+    assert gate.main(["--base-ref", "base", "--data-update-browser-scope"]) == 0
+    assert capsys.readouterr().out == "true\n"
+
+
+def test_scheduler_scope_cli_selects_affected_and_unrelated_changes(
+    gate_repo: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(gate, "SCHEDULER_WINDOWS_PATHS", ("src/gated_module.py",))
+    (gate_repo / "unrelated.txt").write_text("changed\n", encoding="utf-8")
+    _run_git(gate_repo, "commit", "--quiet", "-am", "unrelated")
+    assert gate.main(["--base-ref", "base", "--scheduler-scope"]) == 0
+    assert capsys.readouterr().out == "false\n"
+
+    (gate_repo / "src" / "gated_module.py").write_text("VALUE = 2\n", encoding="utf-8")
+    _run_git(gate_repo, "commit", "--quiet", "-am", "scheduler source")
+    assert gate.main(["--base-ref", "base", "--scheduler-scope"]) == 0
+    assert capsys.readouterr().out == "true\n"
+
+
+def test_selected_pytest_failure_propagates_nonzero(
+    gate_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selected_test = gate_repo / "tests" / "test_data_update_balance_integration.py"
+    selected_test.parent.mkdir()
+    selected_test.write_text("def test_red():\n    assert False\n", encoding="utf-8")
+    changed_source = gate_repo / "backend" / "app" / "api" / "routes" / "data_updates.py"
+    changed_source.parent.mkdir(parents=True)
+    changed_source.write_text("VALUE = 2\n", encoding="utf-8")
+    monkeypatch.setattr(
+        gate,
+        "CALIBER_GATE_MAP",
+        {
+            "backend/app/api/routes/data_updates.py": (
+                "tests/test_data_update_balance_integration.py",
+            ),
+        },
+    )
+    _run_git(gate_repo, "add", ".")
+    _run_git(gate_repo, "commit", "--quiet", "-m", "selected failing regression")
+
+    assert gate.main(["--base-ref", "base"]) == 1

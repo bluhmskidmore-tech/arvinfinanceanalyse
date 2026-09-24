@@ -65,12 +65,27 @@ wraps the CLI with interpreter discovery (uv, then `py -3.11`, then `MOSS_PYTHON
 ## PR Consumer
 
 The `Agent Eval Replay` CI job (pull requests only) is the scorecard's first consumer:
-`pr_replay.py` selects every task whose `allowed_scope` overlaps the PR diff, runs a replay
+`pr_replay.py` selects tasks using optional `pr_trigger_scope` (or `allowed_scope` for older tasks), runs a replay
 evaluation per task, and publishes one Markdown report to the step summary and a marker-updated PR
 comment. The report is informational and never blocks a merge; hard failures are split into *real
 failures* (a probe ran red) and *probe gaps* (fail-closed gates with no probe yet), and a *void*
 verdict means the PR touches the scoring harness or a protected probe, which by design cannot be
 scored by itself. The job goes red only when the orchestration itself breaks.
+
+`pr_trigger_scope` narrows task selection without changing the `allowed_scope` used by scoring.
+For PR replay, task `id` must be one directory name starting with an ASCII letter, digit, or underscore, followed only by those characters or hyphens; IDs must be unique ignoring case.
+Entries are exact files, directory prefixes, or a filename prefix ending in `*`. Shared frontend API
+and test files with no trigger mapping select every task and appear in the report for mapping review;
+this keeps new or unclassified shared files from silently skipping evaluation.
+`pr_replay.py` has a short exact list of reviewed standalone Agent tests that do not trigger
+these financial-page tasks. New Agent tests remain unclassified until reviewed.
+
+The collector checks integrity before running probes, so a task already known to be void does not
+spend time on them. A second integrity check after probes still catches edits made during a run.
+Within one PR replay, only the exact `npm --prefix frontend run typecheck` command listed in
+`pr_replay.py` reuses its outcome across tasks. Gate probes and other checks do not share outcomes
+across tasks. Each task keeps its own result, scorecard, and evidence check. A Git-visible change between
+tasks clears the shared check cache.
 
 ## Integrity
 
@@ -117,7 +132,7 @@ Three hard rules; a run that breaks any of them produces a score that cannot be 
 
 Required: `id`, `required_evidence`, `checks`, `business_gates`, `page_gates`, `allowed_scope`, `forbidden`.
 
-Optional: `page`, `goal`, `gate_probes`, `evidence_probes`, `probe_protected_paths`, `gate_probe_gaps`, `metric_ids`, `evidence_receipt_log`.
+Optional: `page`, `goal`, `gate_probes`, `evidence_probes`, `probe_protected_paths`, `gate_probe_gaps`, `metric_ids`, `evidence_receipt_log`, `pr_trigger_scope`.
 
 `evidence_receipt_log` (string, repo-relative path) is read by the collector only — `spec.py` does
 not validate it, so existing tasks and results are untouched. Declaring it switches every evidence
@@ -135,9 +150,10 @@ Validation is strict where laxity would weaken scoring:
 
 ## Current Coverage
 
-`ledger_pnl_unit_mismatch_001` declares 8 gates and has probes for 4: unit consistency, precision
-and rounding, and null/zero/undefined handling (three dedicated `frontend/src/test/LedgerPnl*Contract`
-suites, each validated red-then-green), plus `no_frontend_official_metric_recalculation`
-(`tests/test_no_finance_logic_in_frontend.py`). The remaining 4 are recorded in `gate_probe_gaps`
-with the probe each one needs. That backlog is the point: the task honestly reports what is
-verifiable today rather than accepting a self-declared pass.
+All seven shipped tasks now declare a probe for every business and page gate. The six dashboard,
+balance, bond, attribution, product-category PnL, and risk-tensor page tasks use route-filtered
+Playwright checks for page loading and browser runtime errors; the ledger PnL task retains its
+scoped browser probe. The dashboard null/zero/undefined gate uses a snapshot-to-card AUM matrix.
+
+Configured probe coverage does not mean a gate passed: each command must run in the target
+environment, and a PR that changes the evaluation harness or protected probes is void by design.

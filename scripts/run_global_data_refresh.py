@@ -84,6 +84,7 @@ def _execute_refresh_steps(
     report_date: str,
     run_id: str,
     steps: list[RefreshStep],
+    on_progress: Callable[[dict[str, object]], None] | None = None,
 ) -> dict[str, object]:
     receipt: dict[str, object] = {
         "status": "running",
@@ -97,6 +98,8 @@ def _execute_refresh_steps(
     assert isinstance(step_receipts, list)
 
     for step_name, execute in steps:
+        if on_progress is not None:
+            on_progress({**receipt, "current_step": step_name})
         step_started_at = _utc_now()
         started = perf_counter()
         try:
@@ -123,6 +126,8 @@ def _execute_refresh_steps(
                     "finished_at": _utc_now(),
                 }
             )
+            if on_progress is not None:
+                on_progress(receipt)
             raise GlobalDataRefreshFailed(receipt) from exc
 
         step_receipts.append(
@@ -135,8 +140,12 @@ def _execute_refresh_steps(
                 "result": result,
             }
         )
+        if on_progress is not None:
+            on_progress(receipt)
 
     receipt.update({"status": "completed", "finished_at": _utc_now()})
+    if on_progress is not None:
+        on_progress(receipt)
     return receipt
 
 
@@ -282,12 +291,13 @@ def _verify_report_date(
                 checks.append({"table": table_name, "status": "missing", "row_count": 0})
                 failures.append(f"missing table {table_name}")
                 continue
-            row_count = int(
-                conn.execute(
-                    f'select count(*) from "{table_name}" where cast("{date_column}" as varchar) = ?',
-                    [report_date],
-                ).fetchone()[0]
-            )
+            count_result = conn.execute(
+                f'select count(*) from "{table_name}" where cast("{date_column}" as varchar) = ?',
+                [report_date],
+            ).fetchone()
+            if count_result is None:
+                raise RuntimeError(f"{table_name} COUNT query returned no row")
+            row_count = int(count_result[0])
             status = "completed" if row_count >= minimum_rows else "failed"
             checks.append({"table": table_name, "status": status, "row_count": row_count})
             if row_count < minimum_rows:
@@ -322,7 +332,7 @@ def _verify_report_date(
             or row[2] <= 0
             or any(not str(row[index] or "").strip() for index in (3, 4, 5, 6, 7, 8))
         )
-        fx_check = {
+        fx_check: dict[str, object] = {
             "table": "fx_daily_mid",
             "status": "completed"
             if not missing_bases and duplicate_count == 0 and invalid_lineage_count == 0
@@ -350,6 +360,7 @@ def run_global_data_refresh(
     report_date: str,
     fx_source_path: str | None = None,
     dry_run: bool = False,
+    on_progress: Callable[[dict[str, object]], None] | None = None,
 ) -> dict[str, object]:
     normalized_report_date = _normalize_report_date(report_date)
     normalized_fx_source_path = str(fx_source_path or "").strip() or None
@@ -380,6 +391,7 @@ def run_global_data_refresh(
             report_date=normalized_report_date,
             run_id=run_id,
             steps=steps,
+            on_progress=on_progress,
         )
 
 

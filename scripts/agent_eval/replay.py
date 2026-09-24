@@ -53,14 +53,25 @@ from typing import Any
 if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from scripts.agent_eval.collect import CommandRunner, collect_measured_result, compute_task_digest
+from scripts.agent_eval.collect import (
+    CommandOutcome,
+    CommandRunner,
+    collect_measured_result,
+    compute_task_digest,
+)
 from scripts.agent_eval.reward import evaluate_result
 from scripts.agent_eval.spec import validate_measured_result, validate_task_spec
 
 DEFAULT_OUT_ROOT = Path(".codex-tmp") / "agent-eval" / "replays"
 
 
-def main(argv: list[str] | None = None, *, run_command: CommandRunner | None = None) -> int:
+def main(
+    argv: list[str] | None = None,
+    *,
+    run_command: CommandRunner | None = None,
+    command_cache: dict[str, CommandOutcome] | None = None,
+    reusable_checks: frozenset[str] = frozenset(),
+) -> int:
     args = _parse_args(argv)
     task_path = Path(args.task)
 
@@ -89,6 +100,8 @@ def main(argv: list[str] | None = None, *, run_command: CommandRunner | None = N
         task_path=task_path,
         expected_task_digest=task_digest,
         run_command=run_command,
+        command_cache=command_cache,
+        reusable_checks=reusable_checks,
     )
 
     (out_dir / "task.json").write_bytes(task_bytes)

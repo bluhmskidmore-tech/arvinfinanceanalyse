@@ -23,6 +23,36 @@
     "frontend/src/api/",
     "frontend/src/test/"
   ],
+  "pr_trigger_scope": [
+    "frontend/src/features/balance-analysis/",
+    "frontend/src/api/client.ts",
+    "frontend/src/api/clientContext.ts",
+    "frontend/src/api/clientFactoryOptions.ts",
+    "frontend/src/api/transport.ts",
+    "frontend/src/api/httpResponseError.ts",
+    "frontend/src/api/mockApiClient.ts",
+    "frontend/src/api/contracts.ts",
+    "frontend/src/api/contracts/core.ts",
+    "frontend/src/api/contracts/balanceLedger.ts",
+    "frontend/src/api/contracts/cubeAdb.ts",
+    "frontend/src/api/balanceAnalysisClient.ts",
+    "frontend/src/api/balanceAnalysisOverviewClient.ts",
+    "frontend/src/api/balanceMovementClient.ts",
+    "frontend/src/api/balanceMovementMockClient.ts",
+    "frontend/src/api/liabilityAdbClient.ts",
+    "frontend/src/api/liabilityAdbContracts.ts",
+    "frontend/src/api/homeSupplementalClient.ts",
+    "frontend/src/api/numeric.ts",
+    "frontend/src/api/queryKeys.ts",
+    "frontend/src/api/systemReadGeneration.ts",
+    "frontend/src/test/BalanceAnalysis*",
+    "frontend/src/test/BalanceMovement*",
+    "frontend/src/test/BalanceContractSync.test.ts",
+    "frontend/src/test/portfolioCrossPageGoldenSample.ts",
+    "frontend/src/test/renderWorkbenchApp.tsx",
+    "frontend/src/test/setup.ts",
+    "frontend/tests/playwright/agent-eval-page-probes.spec.mjs"
+  ],
   "forbidden": [
     "backend/app/schema_registry/",
     "backend/app/core_finance/",
@@ -62,6 +92,8 @@
     "date_semantics": "npm --prefix frontend run test -- BalanceAnalysisDateSemanticsContract",
     "null_zero_undefined_handling": "npm --prefix frontend run test -- balanceAnalysisPageModel",
     "no_frontend_official_metric_recalculation": "python -m pytest tests/test_no_finance_logic_in_frontend.py -q",
+    "page_loads": "npm --prefix frontend run test:a11y-smoke -- tests/playwright/agent-eval-page-probes.spec.mjs --grep agent-eval-page:balance-analysis --workers=1 --retries=0",
+    "no_console_errors": "npm --prefix frontend run test:a11y-smoke -- tests/playwright/agent-eval-page-probes.spec.mjs --grep agent-eval-page:balance-analysis --workers=1 --retries=0",
     "fallback_or_stale_state_visible_when_applicable": "npm --prefix frontend run test -- BalanceAnalysisPage"
   },
   "probe_protected_paths": [
@@ -69,10 +101,8 @@
     "tests/test_balance_analysis_api.py",
     "frontend/src/test/BalanceAnalysisDateSemanticsContract.test.tsx",
     "frontend/src/test/BalanceAnalysisPage.test.tsx",
-    "frontend/src/features/balance-analysis/pages/balanceAnalysisPageModel.test.ts"
+    "frontend/src/features/balance-analysis/pages/balanceAnalysisPageModel.test.ts",
+    "frontend/tests/playwright/agent-eval-page-probes.spec.mjs"
   ],
-  "gate_probe_gaps": {
-    "page_loads": "Needs a balance-analysis scoped Playwright spec; frontend/tests/playwright has ledger-pnl and dashboard specs but nothing that isolates /balance-analysis, and test:a11y-smoke is site-wide.",
-    "no_console_errors": "Same as page_loads; requires a scoped Playwright spec that fails on console errors for /balance-analysis."
-  }
+  "gate_probe_gaps": {}
 }

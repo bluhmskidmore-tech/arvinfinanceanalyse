@@ -21,6 +21,27 @@
     "frontend/src/api/",
     "frontend/src/test/"
   ],
+  "pr_trigger_scope": [
+    "frontend/src/features/product-category-pnl/",
+    "frontend/src/api/client.ts",
+    "frontend/src/api/clientContext.ts",
+    "frontend/src/api/clientFactoryOptions.ts",
+    "frontend/src/api/transport.ts",
+    "frontend/src/api/httpResponseError.ts",
+    "frontend/src/api/mockApiClient.ts",
+    "frontend/src/api/contracts.ts",
+    "frontend/src/api/contracts/core.ts",
+    "frontend/src/api/contracts/pnl.ts",
+    "frontend/src/api/contracts/balanceLedger.ts",
+    "frontend/src/api/contracts/cubeAdb.ts",
+    "frontend/src/api/productCategoryClient.ts",
+    "frontend/src/api/qdbGlMonthlyAnalysisClient.ts",
+    "frontend/src/test/ProductCategoryPnl*",
+    "frontend/src/test/renderWorkbenchApp.tsx",
+    "frontend/src/test/preloadWorkbenchRouteModules.ts",
+    "frontend/src/test/setup.ts",
+    "frontend/tests/playwright/agent-eval-page-probes.spec.mjs"
+  ],
   "forbidden": [
     "backend/app/schema_registry/",
     "backend/app/core_finance/",
@@ -59,6 +80,8 @@
     "date_semantics": "npm --prefix frontend run test -- productCategoryPnlPageModel",
     "null_zero_undefined_handling": "npm --prefix frontend run test -- productCategoryPnlPageModel",
     "no_frontend_official_metric_recalculation": "python -m pytest tests/test_no_finance_logic_in_frontend.py -q",
+    "page_loads": "npm --prefix frontend run test:a11y-smoke -- tests/playwright/agent-eval-page-probes.spec.mjs --grep agent-eval-page:product-category-pnl --workers=1 --retries=0",
+    "no_console_errors": "npm --prefix frontend run test:a11y-smoke -- tests/playwright/agent-eval-page-probes.spec.mjs --grep agent-eval-page:product-category-pnl --workers=1 --retries=0",
     "formal_scenario_state_distinction_visible": "npm --prefix frontend run test -- ProductCategoryPnlFormalScenarioContract",
     "fallback_or_stale_state_visible_when_applicable": "npm --prefix frontend run test -- ProductCategoryPnlFormalScenarioContract"
   },
@@ -67,10 +90,8 @@
     "frontend/src/test/ProductCategoryPnlFormalScenarioContract.test.tsx",
     "frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.test.ts",
     "frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.formalJudgement.test.ts",
-    "frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.dateSemantics.test.ts"
+    "frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.dateSemantics.test.ts",
+    "frontend/tests/playwright/agent-eval-page-probes.spec.mjs"
   ],
-  "gate_probe_gaps": {
-    "page_loads": "Needs a product-category-pnl scoped Playwright spec; test:a11y-smoke is site-wide and does not isolate this page.",
-    "no_console_errors": "Same as page_loads; requires a scoped browser spec that fails on console errors."
-  }
+  "gate_probe_gaps": {}
 }

@@ -75,15 +75,24 @@ class _Collector:
     timeout_seconds: int
     command_log: list[dict[str, Any]] = field(default_factory=list)
     _cache: dict[str, CommandOutcome] = field(default_factory=dict)
+    _shared_check_cache: dict[str, CommandOutcome] | None = None
+    _reusable_checks: frozenset[str] = frozenset()
 
     def run(self, label: str, command: str) -> CommandOutcome:
         cached = self._cache.get(command)
+        reusable_check = label == "check" and command in self._reusable_checks
+        if cached is None and reusable_check and self._shared_check_cache is not None:
+            cached = self._shared_check_cache.get(command)
+            if cached is not None:
+                self._cache[command] = cached
         if cached is not None:
             self.command_log.append(_log_entry(label, command, cached, reused=True))
             return cached
 
         outcome = self.runner(command, self.repo_root, self.timeout_seconds)
         self._cache[command] = outcome
+        if reusable_check and self._shared_check_cache is not None:
+            self._shared_check_cache[command] = outcome
         self.command_log.append(_log_entry(label, command, outcome, reused=False))
         return outcome
 
@@ -96,29 +105,57 @@ def collect_measured_result(
     task_path: str | Path | None = None,
     expected_task_digest: str | None = None,
     run_command: CommandRunner | None = None,
+    command_cache: dict[str, CommandOutcome] | None = None,
+    reusable_checks: frozenset[str] = frozenset(),
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
-    """Observe the repository and produce a scorable result mapping."""
+    """Observe the repository and produce a scorable result mapping.
+
+    A caller sharing ``command_cache`` must keep the worktree, cwd, and timeout
+    stable between collections. Only commands in ``reusable_checks`` can cross
+    task boundaries; all commands still reuse outcomes within one task.
+    """
 
     root = Path(repo_root).resolve()
     collector = _Collector(
         repo_root=root,
         runner=run_command or run_shell_command,
         timeout_seconds=timeout_seconds,
+        _shared_check_cache=command_cache,
+        _reusable_checks=reusable_checks,
     )
 
     tracked_changed, untracked = _collect_change_sets(root, base_ref)
     changed_files = sorted({path for path in tracked_changed + untracked if path})
-    checks = _measure_checks(task, collector)
+    integrity = _check_integrity(
+        task, task_path, root, tracked_changed, expected_task_digest
+    )
     gate_probes = _gate_probes(task)
-    business_gates, unprobed_business = _measure_gates(
-        task.get("business_gates", []), gate_probes, collector, "business_gate"
-    )
-    page_gates, unprobed_page = _measure_gates(
-        task.get("page_gates", []), gate_probes, collector, "page_gate"
-    )
+    if integrity["trusted"]:
+        checks = _measure_checks(task, collector)
+        business_gates, unprobed_business = _measure_gates(
+            task.get("business_gates", []), gate_probes, collector, "business_gate"
+        )
+        page_gates, unprobed_page = _measure_gates(
+            task.get("page_gates", []), gate_probes, collector, "page_gate"
+        )
+        # A probe can modify a protected file or the task definition while it
+        # runs. Keep the post-run check so that such a result is still void.
+        post_tracked_changed, _ = _collect_change_sets(root, base_ref)
+        integrity = _check_integrity(
+            task, task_path, root, post_tracked_changed, expected_task_digest
+        )
+    else:
+        checks = {}
+        business_gates = {}
+        page_gates = {}
+        unprobed_business = [
+            gate for gate in task.get("business_gates", []) if not gate_probes.get(gate)
+        ]
+        unprobed_page = [
+            gate for gate in task.get("page_gates", []) if not gate_probes.get(gate)
+        ]
     evidence, evidence_detail = _measure_evidence(task, root)
-    integrity = _check_integrity(task, task_path, root, tracked_changed, expected_task_digest)
     unprobed = sorted(unprobed_business + unprobed_page)
 
     return {

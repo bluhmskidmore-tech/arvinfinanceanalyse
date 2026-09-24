@@ -22,6 +22,7 @@ import type {
   BalanceAnalysisSummaryTablePayload,
   BalanceAnalysisTableRow,
 } from "./contracts";
+import type { TransportRequestOptions } from "./transport";
 
 export type BalanceAnalysisClientMethods = {
   getBalanceAnalysisDates: () => Promise<ApiEnvelope<BalanceAnalysisDatesPayload>>;
@@ -102,6 +103,7 @@ type RequestJson = <T>(
   fetchImpl: FetchLike,
   baseUrl: string,
   path: string,
+  options?: TransportRequestOptions,
 ) => Promise<ApiEnvelope<T>>;
 
 type RequestActionJson = <T>(
@@ -923,6 +925,7 @@ export function createRealBalanceAnalysisClient(
         fetchImpl,
         baseUrl,
         "/ui/balance-analysis/dates",
+        { keyFields: [{ path: "report_dates", type: "array" }] },
       ),
     getBalanceAnalysisOverview: ({ reportDate, positionScope, currencyBasis }) => {
       const params = new URLSearchParams({

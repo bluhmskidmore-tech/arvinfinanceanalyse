@@ -57,6 +57,17 @@ export function createRealBalanceMovementClient(options: {
       if (envelope.result.currency_basis !== currencyBasis) {
         throw new Error(`Invalid ApiEnvelope from ${baseUrl}${path}: \`result.currency_basis\` does not match requested currency_basis`);
       }
+      const freshnessStatus = envelope.result.freshness_status;
+      if (freshnessStatus !== "fresh" && freshnessStatus !== "read_model_lagging" &&
+          freshnessStatus !== "read_model_empty" && freshnessStatus !== "upstream_empty") {
+        throw new Error(`Invalid ApiEnvelope from ${baseUrl}${path}: \`result.freshness_status\` is unsupported`);
+      }
+      if (freshnessStatus === "read_model_lagging") {
+        const upstreamDate = envelope.result.latest_upstream_control_report_date;
+        if (typeof upstreamDate !== "string" || !upstreamDate.trim()) {
+          throw new Error(`Invalid ApiEnvelope from ${baseUrl}${path}: \`result.latest_upstream_control_report_date\` must be a non-empty string when the read model is lagging`);
+        }
+      }
       return envelope;
     },
     getBalanceMovementAnalysis: async ({ reportDate, currencyBasis = "CNX", signal }) => {
