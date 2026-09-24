@@ -1,7 +1,7 @@
 {
   "schema_version": "ci-skip-registry-v1",
   "description": "受控的环境/数据依赖型 pytest 跳过清单。守卫测试 tests/test_ci_skip_registry.py 会静态扫描 scan_roots 下的 *.py（纯文本、不执行被扫测试），任何未登记的新增依赖型跳过（pytest.mark.skipif / pytest.skip( / importorskip，最后一项含 pytest. 前缀与裸用法）都会导致守卫失败；新增跳过必须先在本文件登记并说明原因分类、依赖资产与合成替代情况。",
-  "as_of": "2026-08-14",
+  "as_of": "2026-09-24",
   "scan_roots": ["tests", "backend/tests"],
   "kinds": {
     "skipif": "pytest.mark.skipif",
@@ -45,6 +45,22 @@
       ]
     },
     {
+      "file": "tests/test_agent_eval_pr_replay.py",
+      "expected_counts": {"skip_call": 1},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "symlink",
+          "reason": "任务归档目录符号链接逃逸回归需要创建指向输出目录外的目录链接；操作系统不支持或当前用户无创建权限时跳过",
+          "depends_on": ["操作系统目录符号链接创建能力（Ubuntu CI 可用；Windows 本地可能需要开发者模式或符号链接权限）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "用 tmp_path 构造外部工件，无真实数据依赖，但符号链接本身不可由普通目录替代。Ubuntu CI 的 agent harness 会选中本文件；run 35955027107 因前置 release suite 失败未执行该阶段，登记后必须核对该用例实际通过，跳过不算通过。"
+        }
+      ]
+    },
+    {
       "file": "tests/test_candidate_financial_indicator_component_detail_service.py",
       "expected_counts": {"skipif": 5},
       "occurrences": [
@@ -82,6 +98,38 @@
           "has_synthetic_alternative": true,
           "recommendation": "synthesize",
           "note": "合成版 tests/test_candidate_financial_indicator_period_comparison_service_synthetic.py（fixture: tests/synthetic_ledger_pnl_fixture.py）走同一磁盘 xlsx->解析->规则->桥->schema 路径，CI 可跑；真实回放保留为黄金锚点（真实 sha 锁、missing_required_sheet 缺口分支仅真实源可复现）"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_data_update_queue_launcher_logging.py",
+      "expected_counts": {"skip_call": 1},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "other",
+          "reason": "队列启动器日志契约需要执行 Windows PowerShell 脚本；Ubuntu 无 powershell.exe 时跳过平台专属用例",
+          "depends_on": ["Windows PowerShell powershell.exe（PATH 内；适用于 Windows 运行器）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "用隔离目录和假 worker 验证脚本，不依赖真实队列；PowerShell 执行语义无法由普通 Python 合成替代。PR #46 的 Windows job 107491762000（run 35955100439）与安装器契约合计 15/15 通过；Ubuntu 映射门禁中的平台跳过不计为验证。"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_install_data_update_queue.py",
+      "expected_counts": {"skip_call": 1},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "other",
+          "reason": "计划任务安装器契约需要执行 Windows PowerShell 脚本；Ubuntu 无 powershell.exe 时跳过平台专属用例",
+          "depends_on": ["Windows PowerShell powershell.exe（PATH 内；适用于 Windows 运行器）"],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "通过假 ScheduledTask 命令验证参数与卸载，不注册真实任务；PowerShell 执行语义无法由普通 Python 合成替代。PR #46 的 Windows job 107491762000（run 35955100439）与启动器契约合计 15/15 通过；Ubuntu 映射门禁中的平台跳过不计为验证。"
         }
       ]
     },

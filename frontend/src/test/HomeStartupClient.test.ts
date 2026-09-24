@@ -14,6 +14,8 @@ describe("home startup deferred client", () => {
         ? await movementClient.getBalanceMovementDates("CNX")
         : String(input).includes("/balance-movement-analysis?")
           ? await movementClient.getBalanceMovementAnalysis({ reportDate: "2026-04-30" })
+          : String(input).endsWith("/ui/balance-analysis/dates")
+            ? { result_meta: { basis: "formal" }, result: { report_dates: [] } }
           : { result_meta: { basis: "formal" }, result: {} };
       return new Response(
         JSON.stringify(payload),
