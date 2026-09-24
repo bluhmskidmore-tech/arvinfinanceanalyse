@@ -93,6 +93,51 @@ describe("createRealBalanceMovementClient", () => {
     await expect(client.getBalanceMovementDates("CNX")).rejects.toThrow("does not match requested currency_basis");
   });
 
+  it.each([undefined, null, "", "unknown", 1])("rejects an unsupported date freshness status %j", async (status) => {
+    const dates = await createMockBalanceMovementClient().getBalanceMovementDates();
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({
+      ...dates,
+      result: { ...dates.result, freshness_status: status },
+    }));
+    const client = createRealBalanceMovementClient({ fetchImpl, baseUrl });
+
+    await expect(client.getBalanceMovementDates()).rejects.toThrow("result.freshness_status");
+  });
+
+  it.each([undefined, null, "", "  ", 1])("rejects a lagging date result without an upstream date %j", async (upstreamDate) => {
+    const dates = await createMockBalanceMovementClient().getBalanceMovementDates();
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({
+      ...dates,
+      result: {
+        ...dates.result,
+        freshness_status: "read_model_lagging",
+        latest_upstream_control_report_date: upstreamDate,
+      },
+    }));
+    const client = createRealBalanceMovementClient({ fetchImpl, baseUrl });
+
+    await expect(client.getBalanceMovementDates()).rejects.toThrow("result.latest_upstream_control_report_date");
+  });
+
+  it.each(["read_model_lagging", "read_model_empty", "upstream_empty"] as const)(
+    "accepts the supported date freshness status %s",
+    async (status) => {
+      const dates = await createMockBalanceMovementClient().getBalanceMovementDates();
+      const result = {
+        ...dates.result,
+        report_dates: status === "read_model_empty" ? [] : dates.result.report_dates,
+        latest_read_model_report_date: status === "read_model_empty" ? null : dates.result.latest_read_model_report_date,
+        freshness_status: status,
+        latest_upstream_control_report_date: status === "read_model_lagging" ? "2026-02-28" : null,
+      };
+      const response = { ...dates, result };
+      const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(response));
+      const client = createRealBalanceMovementClient({ fetchImpl, baseUrl });
+
+      await expect(client.getBalanceMovementDates()).resolves.toEqual(response);
+    },
+  );
+
   it.each([
     ["report_date", "2026-05-31"],
     ["currency_basis", "CNY"],
