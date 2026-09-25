@@ -6,9 +6,18 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from typing import TypedDict
 
-from backend.app.core_finance.bond_analytics.common import compute_macaulay_duration_and_convexity
-from backend.app.core_finance.bond_duration import estimate_duration
+from backend.app.core_finance.bond_analytics.common import (
+    compute_macaulay_duration_and_convexity,
+    resolve_ytm_with_par_fallback,
+)
+from backend.app.core_finance.bond_duration import (
+    compute_macaulay_duration as compute_bond_macaulay_duration,
+)
+from backend.app.core_finance.bond_duration import (
+    estimate_duration,
+)
 from backend.app.core_finance.cashflow_projection import MonthlyBucket, compute_duration_gap
+from backend.app.core_finance.decimal_utils import to_decimal_strict
 from backend.app.core_finance.interest_mode import (
     classify_interest_rate_style,
     coupon_frequency_per_year,
@@ -308,20 +317,25 @@ def _attach_macaulay_duration(
     zqtz_rows: list[dict[str, object]],
     analytics_rows: list[dict[str, object]],
 ) -> list[dict[str, object]]:
-    macaulay_by_key: dict[tuple[str, str, str, str], Decimal] = {}
+    macaulay_by_key: dict[tuple[str, str, str, str], tuple[Decimal, bool]] = {}
+    duration_quality_by_key: dict[tuple[str, str, str, str], str] = {}
     for row in analytics_rows:
-        value = _materialized_macaulay_duration(row.get("macaulay_duration"))
-        if value is None:
-            value = _recompute_macaulay_duration(row)
-        if value is None:
-            continue
         key = (
             str(row.get("instrument_code") or ""),
             str(row.get("portfolio_name") or ""),
             str(row.get("cost_center") or ""),
             str(row.get("currency_code") or ""),
         )
-        macaulay_by_key[key] = value
+        duration_quality_flag = str(row.get("duration_quality_flag") or "").strip()
+        if duration_quality_flag:
+            duration_quality_by_key[key] = duration_quality_flag
+        value = _materialized_macaulay_duration(row.get("macaulay_duration"))
+        if value is None:
+            value, par_fallback_used = _recompute_macaulay_duration_with_assumption(row)
+        else:
+            par_fallback_used = duration_quality_flag == "ytm_par_fallback"
+        if value is not None:
+            macaulay_by_key[key] = (value, par_fallback_used)
 
     enriched: list[dict[str, object]] = []
     for row in zqtz_rows:
@@ -334,24 +348,56 @@ def _attach_macaulay_duration(
             str(row.get("cost_center") or ""),
             str(row.get("currency_code") or ""),
         )
-        macaulay_duration = macaulay_by_key.get(key)
-        if macaulay_duration is None:
-            enriched.append(row)
+        duration_entry = macaulay_by_key.get(key)
+        duration_quality_flag = duration_quality_by_key.get(key)
+        if duration_entry is None and duration_quality_flag is None:
+            enriched.append(
+                {**row, "_par_duration_assumption_used": False}
+                if "_par_duration_assumption_used" in row
+                else row
+            )
             continue
-        enriched.append({**row, "macaulay_duration": macaulay_duration})
+        updates: dict[str, object] = {"_par_duration_assumption_used": False}
+        if duration_entry is not None:
+            macaulay_duration, par_fallback_used = duration_entry
+            updates["macaulay_duration"] = macaulay_duration
+            if par_fallback_used and str(duration_quality_flag or "").lower() not in (
+                "maturity_unavailable",
+                "no_remaining_term",
+            ):
+                updates["_par_duration_assumption_used"] = True
+                if str(duration_quality_flag or "").lower() in ("", "observed"):
+                    duration_quality_flag = "ytm_par_fallback"
+        if duration_quality_flag is not None:
+            updates["duration_quality_flag"] = duration_quality_flag
+        enriched.append({**row, **updates})
     return enriched
 
 
 def _recompute_macaulay_duration(row: dict[str, object]) -> Decimal | None:
+    duration, _par_fallback_used = _recompute_macaulay_duration_with_assumption(row)
+    return duration
+
+
+def _recompute_macaulay_duration_with_assumption(
+    row: dict[str, object],
+) -> tuple[Decimal | None, bool]:
     maturity_date = _coerce_date(row.get("maturity_date"))
     report_date = _coerce_date(row.get("report_date"))
     if maturity_date is None or report_date is None:
-        return None
+        return None, False
     coupon_rate = _coerce_decimal(row.get("coupon_rate"))
     ytm_value = row.get("ytm")
     if ytm_value in (None, ""):
         ytm_value = row.get("ytm_value")
-    ytm = _coerce_decimal(ytm_value)
+    try:
+        observed_ytm = to_decimal_strict(ytm_value)
+    except (ArithmeticError, TypeError, ValueError):
+        observed_ytm = None
+    # Missing/invalid yields use the shared par rule; observed zero stays zero.
+    ytm, par_fallback_used = resolve_ytm_with_par_fallback(
+        coupon_rate, observed_ytm, preserve_observed_ytm=True
+    )
     interest_mode = row.get("interest_mode")
     _frequency, used_fallback = resolve_interest_payment_frequency(interest_mode)
     frequency_source = (
@@ -365,22 +411,36 @@ def _recompute_macaulay_duration(row: dict[str, object]) -> Decimal | None:
         # 复用 core_finance 单笔现金流路径，Macaulay 恒等于剩余年限。
         remaining_days = (maturity_date - report_date).days
         if remaining_days <= 0:
-            return Decimal("0")
+            return Decimal("0"), False
         macaulay_duration, _convexity = compute_macaulay_duration_and_convexity(
             coupon_rate=coupon_rate,
             ytm=ytm,
             years_to_maturity=Decimal(str(remaining_days)) / Decimal("365"),
             single_cashflow_at_maturity=True,
         )
-        return macaulay_duration
-    return estimate_duration(
+        return macaulay_duration, par_fallback_used
+    coupon_frequency = coupon_frequency_per_year(frequency_source)
+    if observed_ytm is not None and observed_ytm.is_finite() and observed_ytm <= 0:
+        remaining_days = (maturity_date - report_date).days
+        if remaining_days <= 0:
+            return Decimal("0"), False
+        duration = compute_bond_macaulay_duration(
+            years_to_maturity=Decimal(str(remaining_days)) / Decimal("365"),
+            coupon_rate=coupon_rate,
+            ytm=ytm,
+            frequency=coupon_frequency,
+            preserve_observed_ytm=True,
+        )
+        return duration, False
+    duration = estimate_duration(
         maturity_date,
         report_date,
         coupon_rate=coupon_rate,
         ytm=ytm,
         bond_code=str(row.get("instrument_code") or ""),
-        coupon_frequency=coupon_frequency_per_year(frequency_source),
+        coupon_frequency=coupon_frequency,
     )
+    return duration, par_fallback_used and maturity_date > report_date
 
 
 def _materialized_macaulay_duration(value: object) -> Decimal | None:
@@ -401,7 +461,22 @@ def _cashflow_projection_quality_disclosures(
     floating_rows: list[dict[str, object]] = []
     frequency_fallback_rows: list[dict[str, object]] = []
     bullet_value_date_fallback_rows: list[dict[str, object]] = []
+    par_duration_rows: list[dict[str, object]] = []
+    par_duration_market_value = Decimal("0")
     for row in rows:
+        if (
+            _row_scope(row) == "asset"
+            and row.get("_par_duration_assumption_used") is True
+            and str(row.get("duration_quality_flag") or "").strip().lower()
+            not in ("maturity_unavailable", "no_remaining_term")
+            and _materialized_macaulay_duration(row.get("macaulay_duration")) is not None
+        ):
+            market_value = _coerce_decimal(
+                row.get("market_value", row.get("market_value_amount", row.get("market_value_native")))
+            )
+            if market_value.is_finite() and market_value > 0:
+                par_duration_rows.append(row)
+                par_duration_market_value += market_value
         raw_mode = row.get("interest_mode")
         frequency, used_fallback = resolve_interest_payment_frequency(raw_mode)
         explicit_frequency = row.get("interest_payment_frequency")
@@ -436,6 +511,12 @@ def _cashflow_projection_quality_disclosures(
         warnings.append(
             f"{len(bullet_value_date_fallback_rows)} explicit bullet rows with market_value="
             f"{bullet_fallback_market_value} lack a valid value_date; a one-year interest proxy is used."
+        )
+    if par_duration_rows:
+        warnings.append(
+            f"{len(par_duration_rows)} asset rows with market_value="
+            f"{par_duration_market_value} used a par assumption (ytm=coupon_rate) "
+            "for Macaulay duration because observed ytm was missing or invalid."
         )
     return {
         "floating_rate_proxy_count": len(floating_rows),

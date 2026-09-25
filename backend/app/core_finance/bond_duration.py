@@ -77,6 +77,8 @@ def compute_macaulay_duration(
     coupon_rate: Decimal,
     ytm: Decimal,
     frequency: int = 1,
+    *,
+    preserve_observed_ytm: bool = False,
 ) -> Decimal:
     """Macaulay 久期（年）。委托 ``bond_analytics.common`` 的逐期贴现实现。
 
@@ -94,6 +96,9 @@ def compute_macaulay_duration(
 
     边界口径统一到共享实现，仅保留一处本地归一化：``frequency <= 0 → 1``。共享
     实现对 ``freq <= 0`` 直接返回剩余年限，而本函数的既有契约是退化为年付。
+
+    ``preserve_observed_ytm=True`` 仅供现金流显式选择；默认调用共享实现的
+    参数形状和旧收益率口径不变。
     """
     if frequency <= 0:
         frequency = 1
@@ -101,6 +106,14 @@ def compute_macaulay_duration(
     try:
         # 两个函数的位置参数顺序相反（本函数 years 在前，共享实现 coupon 在前）。
         # 必须按关键字传参：位置传参不会报错，只会静默算出另一种错误结果。
+        if preserve_observed_ytm:
+            return _shared_compute_macaulay_duration(
+                coupon_rate=coupon_rate,
+                ytm=ytm,
+                years_to_maturity=years_to_maturity,
+                coupon_frequency=frequency,
+                preserve_observed_ytm=True,
+            )
         return _shared_compute_macaulay_duration(
             coupon_rate=coupon_rate,
             ytm=ytm,

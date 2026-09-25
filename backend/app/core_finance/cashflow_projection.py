@@ -10,6 +10,8 @@ ZERO = Decimal("0")
 ONE_BPS = Decimal("0.0001")
 DAYS_IN_YEAR = Decimal("365")
 TYWL_DEMAND_PRODUCTS = frozenset({"同业存放", "存放同业"})
+# Keep this quality status local to the cashflow calculation.
+DURATION_QUALITY_MATURITY_UNAVAILABLE = "maturity_unavailable"
 
 
 @dataclass(slots=True, frozen=True)
@@ -672,6 +674,15 @@ def _coerce_tyw_years_to_maturity(row: dict[str, Any], report_date: date) -> Dec
 
 
 def _coerce_asset_duration(row: dict[str, Any], report_date: date) -> Decimal | None:
+    # ``maturity_unavailable`` is a DURATION_UNAVAILABLE(0) sentinel from the
+    # formal bond-analytics fact, not an observed zero duration.  Do not let the
+    # numeric zero into the duration denominator and, critically, do not fall back
+    # to a remaining-term proxy from a possibly unrelated balance-row maturity.
+    # ``no_remaining_term`` deliberately remains valid: it denotes a real matured
+    # position whose observed remaining duration is zero.
+    duration_quality_flag = _get_text(row, "duration_quality_flag").strip().lower()
+    if duration_quality_flag == DURATION_QUALITY_MATURITY_UNAVAILABLE:
+        return None
     macaulay_duration = _coerce_optional_decimal(_get_value(row, "macaulay_duration"))
     if macaulay_duration is not None and macaulay_duration >= ZERO:
         return macaulay_duration

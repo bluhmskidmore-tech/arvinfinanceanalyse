@@ -240,7 +240,9 @@ def resolve_missing_maturity_duration(
 
 def resolve_ytm_with_par_fallback(
     coupon_rate: Decimal,
-    ytm: Decimal,
+    ytm: Decimal | None,
+    *,
+    preserve_observed_ytm: bool = False,
 ) -> tuple[Decimal, bool]:
     """解析久期/修正久期/凸性估计所用的生效 ytm；有票息缺 ytm 时用 par 假设。
 
@@ -251,7 +253,19 @@ def resolve_ytm_with_par_fallback(
 
     返回 ``(生效 ytm, 是否使用 par 回退)``。ytm>0 正常路径与零票息路径
     （零息债 Macaulay=剩余年限本就正确）行为不变。
+
+    默认延续旧非正收益率 par 口径；新增的 None 规范为旧路径所用的 0。
+    ``preserve_observed_ytm=True`` 仅供现金流显式选择：有限观测值（含零和
+    合法负值）保留原值，None/非有限值按缺失处理。
     """
+    if preserve_observed_ytm:
+        if ytm is not None and ytm.is_finite():
+            return ytm, False
+        if coupon_rate > 0:
+            return coupon_rate, True
+        return Decimal("0"), False
+    if ytm is None:
+        ytm = Decimal("0")
     if ytm > 0:
         return ytm, False
     if coupon_rate > 0:
@@ -302,6 +316,7 @@ def compute_macaulay_duration_and_convexity(
     coupon_frequency: int = 1,
     *,
     single_cashflow_at_maturity: bool = False,
+    preserve_observed_ytm: bool = False,
 ) -> tuple[Decimal, Decimal]:
     """一次遍历现金流，同时产出 Macaulay 久期（年）与标准现金流凸性（年²）。
 
@@ -324,6 +339,9 @@ def compute_macaulay_duration_and_convexity(
     Macaulay 恒等于剩余年限，凸性取同一时点的单笔闭式解。这与
     ``cashflow_projection`` 的 bullet 建模（单笔 ``_bullet_coupon_amount`` 落在
     到期日）保持同一口径。
+
+    ``preserve_observed_ytm=True`` 仅供现金流显式选择，让有效的零/负
+    收益率进入本函数现有的逐期现值计算；默认保留旧单笔回退口径。
     """
     if years_to_maturity <= 0:
         return Decimal("0"), Decimal("0")
@@ -331,7 +349,11 @@ def compute_macaulay_duration_and_convexity(
     # ytm <= 0 时同样走这里：与 ``estimate_duration`` 的零息代理口径一致
     # （久期退化为剩余年限），凸性随之取同一时点的标准值而非 D² 特判。
     # bullet（到期一次还本付息）与零息同构：唯一现金流在到期日。
-    if single_cashflow_at_maturity or coupon_rate <= 0 or ytm <= 0:
+    if (
+        single_cashflow_at_maturity
+        or coupon_rate <= 0
+        or (ytm <= 0 and not preserve_observed_ytm)
+    ):
         return years_to_maturity, _single_cashflow_convexity(
             years_to_maturity, ytm, coupon_frequency
         )
@@ -355,6 +377,10 @@ def compute_macaulay_duration_and_convexity(
     c = coupon_rate / coupon_frequency if coupon_frequency > 0 else coupon_rate
     y = ytm / coupon_frequency if coupon_frequency > 0 else ytm
     one_plus_y = Decimal("1") + y
+    if preserve_observed_ytm and ytm <= 0 and one_plus_y <= 0:
+        return years_to_maturity, _single_cashflow_convexity(
+            years_to_maturity, ytm, coupon_frequency
+        )
 
     pv_sum = Decimal("0")
     convexity_sum = Decimal("0")
@@ -393,13 +419,24 @@ def compute_macaulay_duration(
     ytm: Decimal,
     years_to_maturity: Decimal,
     coupon_frequency: int = 1,
+    *,
+    preserve_observed_ytm: bool = False,
 ) -> Decimal:
     """Macaulay 久期（年）。与凸性共用同一次现金流遍历，见上。
 
     W-fi-2026-08 P4：久期本身**未改动**（折现仍为 ``(1 + ytm/f)^(t·f)``），只是把
     原本重复构造现金流的凸性并入同一次遍历。逐位回归见
-    ``tests/test_convexity_caliber_baseline.py``。
+    ``tests/test_convexity_caliber_baseline.py``。现金流显式启用
+    ``preserve_observed_ytm`` 时才向逐期计算透传，默认调用形状不变。
     """
+    if preserve_observed_ytm:
+        return compute_macaulay_duration_and_convexity(
+            coupon_rate=coupon_rate,
+            ytm=ytm,
+            years_to_maturity=years_to_maturity,
+            coupon_frequency=coupon_frequency,
+            preserve_observed_ytm=True,
+        )[0]
     return compute_macaulay_duration_and_convexity(
         coupon_rate=coupon_rate,
         ytm=ytm,

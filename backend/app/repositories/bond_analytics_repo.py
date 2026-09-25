@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import Any
 
 import duckdb
+
 from backend.app.core_finance.bond_analytics.engine import BondAnalyticsRow
 from backend.app.core_finance.bond_analytics.read_models import (
     build_krd_distribution,
@@ -524,6 +525,21 @@ class BondAnalyticsRepository:
                 if _column_exists(conn, self.path, FACT_TABLE, "market_value_native")
                 else "null as market_value_native"
             )
+            coupon_rate_input_status_expr = (
+                "coupon_rate_input_status"
+                if _column_exists(conn, self.path, FACT_TABLE, "coupon_rate_input_status")
+                else "cast(null as varchar) as coupon_rate_input_status"
+            )
+            ytm_input_status_expr = (
+                "ytm_input_status"
+                if _column_exists(conn, self.path, FACT_TABLE, "ytm_input_status")
+                else "cast(null as varchar) as ytm_input_status"
+            )
+            duration_quality_flag_expr = (
+                "duration_quality_flag"
+                if _column_exists(conn, self.path, FACT_TABLE, "duration_quality_flag")
+                else "cast(null as varchar) as duration_quality_flag"
+            )
             where_parts = ["report_date = ?"]
             params: list[object] = [report_date]
             if asset_class != "all":
@@ -538,7 +554,9 @@ class BondAnalyticsRepository:
                        asset_class_raw, asset_class_std, bond_type, issuer_name, industry_name, rating,
                        accounting_class, accounting_rule_id, currency_code, face_value, {market_value_native_expr}, market_value,
                        amortized_cost, accrued_interest, coupon_rate, {interest_mode_expr}, {interest_payment_frequency_expr},
-                       {interest_payment_frequency_fallback_expr}, {interest_rate_style_expr}, ytm, {value_date_expr}, maturity_date, {next_call_date_expr},
+                       {interest_payment_frequency_fallback_expr}, {interest_rate_style_expr}, ytm,
+                       {coupon_rate_input_status_expr}, {ytm_input_status_expr}, {duration_quality_flag_expr},
+                       {value_date_expr}, maturity_date, {next_call_date_expr},
                        years_to_maturity, tenor_bucket, macaulay_duration, modified_duration,
                        convexity, dv01, is_credit, spread_dv01, source_version, rule_version,
                        ingest_batch_id, trace_id
@@ -548,7 +566,13 @@ class BondAnalyticsRepository:
                 """,
                 params,
             ).fetchall()
-            return [dict(zip(_ANALYTICS_COLUMNS, row, strict=True)) for row in rows]
+            ytm_index = _ANALYTICS_COLUMNS.index("ytm") + 1
+            read_columns = (
+                _ANALYTICS_COLUMNS[:ytm_index]
+                + ("coupon_rate_input_status", "ytm_input_status", "duration_quality_flag")
+                + _ANALYTICS_COLUMNS[ytm_index:]
+            )
+            return [dict(zip(read_columns, row, strict=True)) for row in rows]
         finally:
             conn.close()
 
