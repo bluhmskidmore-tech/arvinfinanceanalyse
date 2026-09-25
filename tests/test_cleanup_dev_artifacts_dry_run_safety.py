@@ -1,9 +1,8 @@
 import os
+import shutil
 import subprocess
 import time
 from pathlib import Path
-
-import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "cleanup-dev-artifacts.ps1"
@@ -29,8 +28,11 @@ def _age_directory(path: Path) -> None:
 def _run_dry_run(repo_root: Path) -> tuple[str, set[str]]:
     repo_root = repo_root.resolve()
     assert repo_root != ROOT.resolve()
+    shell = next((name for name in ("powershell", "pwsh") if shutil.which(name)), None)
+    if shell is None:
+        raise RuntimeError("PowerShell (powershell or pwsh) is required for cleanup dry-run tests")
     command = [
-        "powershell",
+        shell,
         "-NoProfile",
         "-NonInteractive",
         "-File",
@@ -141,10 +143,7 @@ def test_dry_run_rejects_cache_tree_containing_symlink(tmp_path):
     target.mkdir()
     _write_old(target / "kept.txt")
     link = repo_root / ".pytest_cache" / "evidence-link"
-    try:
-        link.symlink_to(target, target_is_directory=True)
-    except (OSError, NotImplementedError) as exc:
-        pytest.skip(f"host cannot create a directory symlink for this synthetic probe: {exc}")
+    link.symlink_to(target, target_is_directory=True)
     _age_directory(repo_root / ".pytest_cache")
 
     output, candidates = _run_dry_run(repo_root)
