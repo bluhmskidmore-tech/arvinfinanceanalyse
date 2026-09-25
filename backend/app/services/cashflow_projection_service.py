@@ -326,7 +326,7 @@ def _attach_macaulay_duration(
             str(row.get("cost_center") or ""),
             str(row.get("currency_code") or ""),
         )
-        duration_quality_flag = str(row.get("duration_quality_flag") or "").strip()
+        duration_quality_flag: str | None = str(row.get("duration_quality_flag") or "").strip()
         if duration_quality_flag:
             duration_quality_by_key[key] = duration_quality_flag
         value = _materialized_macaulay_duration(row.get("macaulay_duration"))
