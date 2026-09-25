@@ -323,10 +323,11 @@ def test_refresh_service_queues_task_without_sync_materialization(monkeypatch):
 
 
 def _legacy_refresh_rematerializes_stale_zqtz_formal_window_before_movement(
+    tmp_path,
     monkeypatch,
 ):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -475,9 +476,9 @@ def _legacy_refresh_rematerializes_stale_zqtz_formal_window_before_movement(
     ]
 
 
-def _legacy_refresh_materializes_missing_product_category_before_movement(monkeypatch):
+def _legacy_refresh_materializes_missing_product_category_before_movement(tmp_path, monkeypatch):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -805,8 +806,8 @@ def _legacy_refresh_service_stops_before_task_when_formal_balance_refresh_fails(
     assert task_calls == []
 
 
-def test_refresh_zqtz_source_detection_requires_every_report_date():
-    data_root = Path("test_output") / "accounting_asset_movement" / uuid4().hex
+def test_refresh_zqtz_source_detection_requires_every_report_date(tmp_path):
+    data_root = tmp_path / "test_output" / "accounting_asset_movement" / uuid4().hex
     data_root.mkdir(parents=True, exist_ok=True)
     (data_root / "ZQTZSHOW-20250930.xls").write_bytes(b"placeholder")
 
@@ -823,9 +824,9 @@ def test_refresh_zqtz_source_detection_requires_every_report_date():
     )
 
 
-def test_balance_movement_analysis_service_exposes_gl_control_rows():
+def test_balance_movement_analysis_service_exposes_gl_control_rows(tmp_path):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -912,7 +913,7 @@ def test_balance_movement_analysis_service_exposes_gl_control_rows():
     assert envelope["result_meta"]["evidence_rows"] == 64
 
 
-def test_balance_movement_analysis_reconciles_cnx_ledger_against_zqtz_position_source():
+def test_balance_movement_analysis_reconciles_cnx_ledger_against_zqtz_position_source(tmp_path):
     """CNX 的对账对手方必须是 fact_formal_zqtz_balance_daily，不是总账自己。
 
     回归：头寸侧曾经也从 product_category_pnl_canonical_fact 取数，
@@ -920,7 +921,7 @@ def test_balance_movement_analysis_reconciles_cnx_ledger_against_zqtz_position_s
     只改头寸源、不动总账，对账列必须跟着变，列报余额必须不变。
     """
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -975,10 +976,10 @@ def test_balance_movement_analysis_reconciles_cnx_ledger_against_zqtz_position_s
     assert perturbed["result_meta"]["quality_flag"] == "warning"
 
 
-def test_repository_exposes_reconciliation_and_chain_control_evidence():
+def test_repository_exposes_reconciliation_and_chain_control_evidence(tmp_path):
     """读模型侧的只读取证入口：不平的行、断裂的跨月衔接、头寸源覆盖情况。"""
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -1025,11 +1026,11 @@ def test_repository_exposes_reconciliation_and_chain_control_evidence():
     assert gaps[0]["gap"] == Decimal("-40.00000000")
 
 
-def test_repository_reports_position_source_currency_basis_fallback():
+def test_repository_reports_position_source_currency_basis_fallback(tmp_path):
     """总账 CNX 在 ZQTZ 正式头寸表里对应 CNY；两个口径都没有行时必须报 None，
     调用方不能把"没有对手方"当成"对平"。"""
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -1050,9 +1051,9 @@ def test_repository_reports_position_source_currency_basis_fallback():
     assert coverage["2025-12-31"]["candidates"] == ["CNX", "CNY"]
 
 
-def test_balance_movement_analysis_marks_reconciliation_mismatch_as_warning():
+def test_balance_movement_analysis_marks_reconciliation_mismatch_as_warning(tmp_path):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -1085,9 +1086,9 @@ def test_balance_movement_analysis_marks_reconciliation_mismatch_as_warning():
     assert "rv_accounting_asset_movement_v3" in envelope["result_meta"]["rule_version"]
 
 
-def test_balance_movement_analysis_service_exposes_zqtz_asset_product_rows():
+def test_balance_movement_analysis_service_exposes_zqtz_asset_product_rows(tmp_path):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -1229,9 +1230,9 @@ def test_balance_movement_analysis_service_exposes_zqtz_asset_product_rows():
     assert Decimal(business_month["asset_balance_total"]) == Decimal("309.00000000")
 
 
-def test_balance_movement_analysis_service_includes_accrued_interest_when_available():
+def test_balance_movement_analysis_service_includes_accrued_interest_when_available(tmp_path):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -1317,9 +1318,9 @@ def test_balance_movement_analysis_service_includes_accrued_interest_when_availa
     assert Decimal(business_rows["asset_zqtz_abs"]["current_balance"]) == Decimal("7.25000000")
 
 
-def test_balance_movement_analysis_service_builds_derived_diagnostics():
+def test_balance_movement_analysis_service_builds_derived_diagnostics(tmp_path):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -1450,9 +1451,9 @@ def test_balance_movement_analysis_service_builds_derived_diagnostics():
     assert Decimal(waterfall["closing_check"]) == Decimal("0E-8")
 
 
-def test_balance_movement_analysis_service_builds_drilldown_payloads():
+def test_balance_movement_analysis_service_builds_drilldown_payloads(tmp_path):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -1738,9 +1739,9 @@ def test_zqtz_rating_concentration_defaults_interest_rate_bonds_to_aaa():
     assert Decimal(rating_items["未映射"]["current_amount"]) == Decimal("10.00000000")
 
 
-def test_difference_attribution_inputs_tolerate_sparse_voucher_schema():
+def test_difference_attribution_inputs_tolerate_sparse_voucher_schema(tmp_path):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -1804,9 +1805,9 @@ def test_difference_attribution_inputs_tolerate_sparse_voucher_schema():
     assert inputs["formal_voucher_accrued_interest"] == Decimal("0")
 
 
-def test_difference_attribution_inputs_use_face_value_for_voucher_treasury_cost_basis():
+def test_difference_attribution_inputs_use_face_value_for_voucher_treasury_cost_basis(tmp_path):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -1878,9 +1879,9 @@ def test_difference_attribution_inputs_use_face_value_for_voucher_treasury_cost_
     assert inputs["formal_voucher_accrued_interest"] == Decimal("3.00000000")
 
 
-def test_balance_movement_dates_only_advertise_materialized_read_model_dates():
+def test_balance_movement_dates_only_advertise_materialized_read_model_dates(tmp_path):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -1966,9 +1967,9 @@ def test_balance_movement_dates_only_advertise_materialized_read_model_dates():
     ]
 
 
-def test_balance_movement_dates_detect_an_interior_control_date_gap():
+def test_balance_movement_dates_detect_an_interior_control_date_gap(tmp_path):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -2050,9 +2051,9 @@ def test_refresh_window_includes_missing_interior_upstream_dates(tmp_path):
     assert report_dates == ["2026-01-31", "2026-02-28", "2026-03-31"]
 
 
-def test_balance_movement_dates_source_version_is_currency_scoped():
+def test_balance_movement_dates_source_version_is_currency_scoped(tmp_path):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -2139,9 +2140,9 @@ def test_balance_movement_dates_source_version_is_currency_scoped():
     assert envelope["result_meta"]["filters_applied"] == {"currency_basis": "CNX"}
 
 
-def test_balance_movement_detail_marks_upstream_date_gap_as_stale_and_exposes_dates():
+def test_balance_movement_detail_marks_upstream_date_gap_as_stale_and_exposes_dates(tmp_path):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -2195,9 +2196,9 @@ def test_balance_movement_detail_marks_upstream_date_gap_as_stale_and_exposes_da
     assert dates_envelope["result_meta"]["quality_flag"] == "stale"
 
 
-def test_balance_movement_detail_warns_when_requested_date_has_no_control_row():
+def test_balance_movement_detail_warns_when_requested_date_has_no_control_row(tmp_path):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
