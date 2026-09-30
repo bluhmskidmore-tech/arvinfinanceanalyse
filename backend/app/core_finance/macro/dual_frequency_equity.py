@@ -35,6 +35,8 @@ def build_dual_frequency_equity_snapshot(
     daily_rows: Sequence[Mapping[str, Any]] | None,
     slow_cap: float | None,
     as_of_date: date,
+    fast_history_authoritative_complete: bool = False,
+    fast_state: Mapping[str, Any] | None = None,
     nav_rows: Sequence[Mapping[str, Any]] | None = None,
     nav_history_authoritative_complete: bool = False,
     survival_state: Mapping[str, Any] | None = None,
@@ -54,14 +56,21 @@ def build_dual_frequency_equity_snapshot(
     slow layer is deliberately limited to an upstream-supplied cap; this
     function does not reinterpret a macro score as a temperature or risk
     budget. A final target is emitted only when the survival layer can be
-    evaluated from NAV history explicitly confirmed authoritative and complete
-    from strategy inception, or from a date-aligned authoritative state.
+    evaluated from inputs explicitly confirmed authoritative. Fast replay
+    requires market history complete from strategy inception, or a
+    date-aligned authoritative fast state. Survival replay likewise requires
+    complete strategy NAV history, or a date-aligned authoritative state.
     """
 
     cfg = _validated_config(config)
     market_rows, market_quality = _normalise_market_rows(daily_rows, as_of_date=as_of_date)
     slow, slow_warnings = _build_slow_layer(slow_cap)
-    fast, fast_events, fast_warnings = _build_fast_layer(market_rows, cfg)
+    fast, fast_events, fast_warnings = _build_fast_layer(
+        market_rows,
+        cfg,
+        fast_history_authoritative_complete=fast_history_authoritative_complete,
+        fast_state=fast_state,
+    )
     signal_date = _parse_date(fast.get("signal_date"))
     survival, survival_events, survival_warnings = _build_survival_layer(
         nav_rows=nav_rows,
@@ -147,6 +156,11 @@ def build_dual_frequency_equity_snapshot(
                 "Defense on close below the attack-period highest close minus 3 times ATR20, "
                 "or on 2 consecutive closes below MA60."
             ),
+            "fast_state": (
+                "Fast-state replay requires market history explicitly confirmed complete "
+                "from strategy inception; otherwise a date-aligned authoritative current "
+                "state is required."
+            ),
             "atr_proxy": (
                 "Index-close ATR proxy: rolling mean(abs(close.pct_change()), 20) multiplied "
                 "by current close; intraday high-low data is not used."
@@ -168,6 +182,10 @@ def build_dual_frequency_equity_snapshot(
             "integration_mode": "ported_read_only_candidate",
             "slow_cap_source": "upstream_input",
             "fast_input_fields": ["trade_date", "close", "amount"],
+            "fast_input_source": fast.get("source"),
+            "fast_history_authoritative_complete": (
+                fast_history_authoritative_complete is True
+            ),
             "survival_input_source": survival["source"],
             "nav_history_authoritative_complete": (
                 nav_history_authoritative_complete is True
@@ -214,6 +232,9 @@ def _build_slow_layer(slow_cap: float | None) -> tuple[dict[str, Any], list[str]
 def _build_fast_layer(
     rows: Sequence[dict[str, Any]],
     config: Mapping[str, float | int],
+    *,
+    fast_history_authoritative_complete: bool,
+    fast_state: Mapping[str, Any] | None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[str]]:
     minimum_rows = int(config["exit_ma_window"]) + 1
     if len(rows) < minimum_rows:
@@ -329,23 +350,263 @@ def _build_fast_layer(
             "consecutive_closes_below_ma60": below_ma_count,
         }
 
-    signal_date = rows[-1]["trade_date"].isoformat()
+    signal_date = rows[-1]["trade_date"]
+    replay_result = {
+        "status": "ready",
+        "source": "market_history_replay",
+        "state": state,
+        "multiplier": (
+            1.0 if state == "attack" else _round_weight(float(config["defense_multiplier"]))
+        ),
+        "signal_date": signal_date.isoformat(),
+        "minimum_required_rows": minimum_rows,
+        "available_rows": len(rows),
+        "highest_close_since_attack": (
+            _round_metric(highest_close_since_attack)
+            if highest_close_since_attack is not None
+            else None
+        ),
+        "last_transition": events[-1] if events else None,
+        "latest_metrics": latest_metrics,
+        "reason": None,
+    }
+
+    state_evaluation: tuple[dict[str, Any], list[dict[str, Any]], list[str]] | None = None
+    if fast_state:
+        state_evaluation = _fast_from_authoritative_state(
+            fast_state=fast_state,
+            expected_date=signal_date,
+            minimum_rows=minimum_rows,
+            available_rows=len(rows),
+            latest_metrics=latest_metrics,
+            config=config,
+        )
+        if state_evaluation[0]["status"] == "ready":
+            return state_evaluation
+
+    if fast_history_authoritative_complete is True:
+        if state_evaluation is None:
+            return replay_result, events, []
+        return (
+            replay_result,
+            events,
+            [
+                *state_evaluation[2],
+                "Authoritative fast state was insufficient; complete market history "
+                "was used instead.",
+            ],
+        )
+
+    if state_evaluation is not None:
+        return state_evaluation
+    return (
+        _insufficient_fast(
+            source="bounded_market_history",
+            signal_date=signal_date,
+            minimum_rows=minimum_rows,
+            available_rows=len(rows),
+            latest_metrics=latest_metrics,
+            reason="bounded_history_without_authoritative_fast_state",
+        ),
+        [],
+        [
+            "Market history was not confirmed complete from strategy inception and no "
+            "date-aligned authoritative fast state was supplied; fast target was withheld."
+        ],
+    )
+
+
+def _fast_from_authoritative_state(
+    *,
+    fast_state: Mapping[str, Any],
+    expected_date: date,
+    minimum_rows: int,
+    available_rows: int,
+    latest_metrics: Mapping[str, Any] | None,
+    config: Mapping[str, float | int],
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[str]]:
+    state_date = _parse_date(
+        fast_state.get("signal_date")
+        or fast_state.get("as_of_date")
+        or fast_state.get("trade_date")
+    )
+    if fast_state.get("authoritative") is not True:
+        return (
+            _insufficient_fast(
+                source="portfolio_fast_state",
+                signal_date=state_date,
+                minimum_rows=minimum_rows,
+                available_rows=available_rows,
+                latest_metrics=latest_metrics,
+                reason="state_not_marked_authoritative",
+            ),
+            [],
+            ["Supplied fast state was not marked authoritative; fast target was withheld."],
+        )
+    if state_date != expected_date:
+        return (
+            _insufficient_fast(
+                source="portfolio_fast_state",
+                signal_date=state_date,
+                minimum_rows=minimum_rows,
+                available_rows=available_rows,
+                latest_metrics=latest_metrics,
+                reason="state_date_not_aligned_to_market_signal",
+            ),
+            [],
+            ["Authoritative fast state date does not match the latest market signal date."],
+        )
+
+    state = fast_state.get("state")
+    if not isinstance(state, str) or state not in {"attack", "defense"}:
+        return (
+            _insufficient_fast(
+                source="portfolio_fast_state",
+                signal_date=state_date,
+                minimum_rows=minimum_rows,
+                available_rows=available_rows,
+                latest_metrics=latest_metrics,
+                reason="state_fields_missing_or_invalid",
+            ),
+            [],
+            ["Authoritative fast state requires state='attack' or state='defense'."],
+        )
+
+    highest_close = _finite_float(fast_state.get("highest_close_since_attack"))
+    if state == "attack" and (highest_close is None or highest_close <= 0):
+        return (
+            _insufficient_fast(
+                source="portfolio_fast_state",
+                signal_date=state_date,
+                minimum_rows=minimum_rows,
+                available_rows=available_rows,
+                latest_metrics=latest_metrics,
+                reason="attack_state_missing_highest_close",
+            ),
+            [],
+            [
+                "Authoritative attack state requires a positive "
+                "highest_close_since_attack."
+            ],
+        )
+    latest_close = _finite_float((latest_metrics or {}).get("close"))
+    if (
+        state == "attack"
+        and highest_close is not None
+        and latest_close is not None
+        and highest_close + 1e-9 < latest_close
+    ):
+        return (
+            _insufficient_fast(
+                source="portfolio_fast_state",
+                signal_date=state_date,
+                minimum_rows=minimum_rows,
+                available_rows=available_rows,
+                latest_metrics=latest_metrics,
+                reason="attack_state_highest_close_below_latest_close",
+            ),
+            [],
+            [
+                "Authoritative attack state highest_close_since_attack cannot "
+                "be below the latest market close."
+            ],
+        )
+
+    below_ma_count = None
+    if "consecutive_closes_below_ma60" in fast_state:
+        below_ma_count = _nonnegative_int(
+            fast_state.get("consecutive_closes_below_ma60")
+        )
+        if below_ma_count is None:
+            return (
+                _insufficient_fast(
+                    source="portfolio_fast_state",
+                    signal_date=state_date,
+                    minimum_rows=minimum_rows,
+                    available_rows=available_rows,
+                    latest_metrics=latest_metrics,
+                    reason="state_fields_missing_or_invalid",
+                ),
+                [],
+                [
+                    "Authoritative fast state consecutive_closes_below_ma60 must "
+                    "be a non-negative integer when supplied."
+                ],
+            )
+
+    last_transition = fast_state.get("last_transition")
+    if last_transition is not None and not isinstance(last_transition, Mapping):
+        return (
+            _insufficient_fast(
+                source="portfolio_fast_state",
+                signal_date=state_date,
+                minimum_rows=minimum_rows,
+                available_rows=available_rows,
+                latest_metrics=latest_metrics,
+                reason="state_fields_missing_or_invalid",
+            ),
+            [],
+            ["Authoritative fast state last_transition must be an object when supplied."],
+        )
+
+    state_metrics = dict(latest_metrics or {})
+    state_metrics["highest_close_since_attack"] = (
+        _round_metric(highest_close)
+        if state == "attack" and highest_close is not None
+        else None
+    )
+    state_metrics["consecutive_closes_below_ma60"] = below_ma_count
     return (
         {
             "status": "ready",
+            "source": "portfolio_fast_state",
             "state": state,
             "multiplier": (
-                1.0 if state == "attack" else _round_weight(float(config["defense_multiplier"]))
+                1.0
+                if state == "attack"
+                else _round_weight(float(config["defense_multiplier"]))
             ),
-            "signal_date": signal_date,
+            "signal_date": state_date.isoformat(),
             "minimum_required_rows": minimum_rows,
-            "available_rows": len(rows),
-            "last_transition": events[-1] if events else None,
-            "latest_metrics": latest_metrics,
+            "available_rows": available_rows,
+            "highest_close_since_attack": (
+                _round_metric(highest_close)
+                if state == "attack" and highest_close is not None
+                else None
+            ),
+            "last_transition": (
+                dict(last_transition) if last_transition is not None else None
+            ),
+            "latest_metrics": state_metrics,
+            "reason": None,
         },
-        events,
+        [],
         [],
     )
+
+
+def _insufficient_fast(
+    *,
+    source: str,
+    signal_date: date | None,
+    minimum_rows: int,
+    available_rows: int,
+    latest_metrics: Mapping[str, Any] | None,
+    reason: str,
+) -> dict[str, Any]:
+    return {
+        "status": "insufficient",
+        "source": source,
+        "state": None,
+        "multiplier": None,
+        "signal_date": signal_date.isoformat() if signal_date else None,
+        "minimum_required_rows": minimum_rows,
+        "available_rows": available_rows,
+        "highest_close_since_attack": None,
+        "last_transition": None,
+        "latest_metrics": dict(latest_metrics) if latest_metrics else None,
+        "reason": reason,
+    }
 
 
 def _fast_event(

@@ -566,9 +566,68 @@ def macro_toolkit_strategy_summaries(
 ) -> dict[str, object]:
     settings = get_settings()
     _ensure_macro_toolkit_read_allowed(auth, settings)
-    return market_home_response_cache.get_or_build(
+    payload = market_home_response_cache.get_or_build(
         market_home_strategy_summaries_cache_key(settings.duckdb_path),
         _build_macro_toolkit_strategy_summaries,
+    )
+    return _strategy_summaries_for_authorized_reader(
+        payload=payload,
+        auth=auth,
+        settings=settings,
+    )
+
+
+def _strategy_summaries_for_authorized_reader(
+    *,
+    payload: dict[str, object],
+    auth: AuthContext,
+    settings: object,
+) -> dict[str, object]:
+    if _can_read_macro_etf_strategy(auth=auth, settings=settings):
+        return payload
+    result = payload.get("result")
+    if not isinstance(result, Mapping) or "macro_etf_strategy" not in result:
+        return payload
+    visible_payload = dict(payload)
+    visible_result = dict(result)
+    visible_result.pop("macro_etf_strategy", None)
+    visible_payload["result"] = visible_result
+    return visible_payload
+
+
+def _can_read_macro_etf_strategy(*, auth: AuthContext, settings: object) -> bool:
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="market_data.macro_etf_strategy",
+            action="read",
+        )
+        return True
+    except PermissionError:
+        return _allows_macro_etf_strategy_development_fallback(
+            auth=auth,
+            environment=getattr(settings, "environment", ""),
+        )
+    except RuntimeError as exc:
+        if _allows_macro_etf_strategy_development_fallback(
+            auth=auth,
+            environment=getattr(settings, "environment", ""),
+        ):
+            return True
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def _allows_macro_etf_strategy_development_fallback(
+    *,
+    auth: AuthContext,
+    environment: object,
+) -> bool:
+    return (
+        str(environment).strip().lower() == "development"
+        and auth.identity_source == "fallback"
+        and auth.user_id == "anonymous"
+        and auth.role == "viewer"
     )
 
 

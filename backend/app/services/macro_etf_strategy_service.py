@@ -159,6 +159,11 @@ def _build_dual_frequency_candidate(
             daily_rows=_mapping_rows(history.get("rows")),
             slow_cap=slow_cap,
             as_of_date=as_of_date,
+            fast_state=(
+                dict(state["dual_frequency_fast_state"])
+                if isinstance(state.get("dual_frequency_fast_state"), Mapping)
+                else None
+            ),
             nav_rows=_mapping_rows(nav_history) or None,
             nav_history_authoritative_complete=nav_history_authoritative_complete,
             survival_state=(
